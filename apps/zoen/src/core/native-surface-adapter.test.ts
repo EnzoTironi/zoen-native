@@ -38,7 +38,7 @@ const output = await build({
         }));
         builder.onLoad({ filter: /.*/, namespace: 'entry' }, () => ({
           contents:
-            'export { createSurfacePort } from "./platform.ios.ts"; export { state } from "expo-app-intents";',
+            'import { initializeLocalization } from "../i18n/index.ts"; initializeLocalization("en"); export { createSurfacePort } from "./platform.ios.ts"; export { state } from "expo-app-intents";',
           resolveDir: new URL('../native-surfaces', import.meta.url).pathname,
         }));
         builder.onResolve({ filter: /./ }, (args) =>
@@ -68,7 +68,7 @@ test('item catalog failure still attempts to remove the chat catalog and propaga
   const port = await adapter.createSurfacePort();
   adapter.state.failKind = 'zoen.item';
   adapter.state.catalogs = [];
-  await assert.rejects(port.catalogs([], []), /atalhos/);
+  await assert.rejects(port.catalogs([], []), /shortcuts/);
   assert.deepEqual(adapter.state.catalogs, [
     ['zoen.item', []],
     ['zoen.chat', []],

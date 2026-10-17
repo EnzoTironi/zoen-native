@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { MAX_PHOTO_DATA_URL, type CapabilityLease, type PhotoPreview } from './capability-data';
 
 /** Decode downsampled in SDK58, then encode fresh pixels: source EXIF/GPS is discarded. */
@@ -34,5 +35,5 @@ export async function jpegPreview(
     }
     side = Math.max(1, Math.floor(side * 0.75));
   }
-  throw new Error('Esta foto não pôde ser reduzida. Escolha outra imagem.');
+  throw new Error(t('miniapps.thisPhotoCouldNotBeResizedChooseAnother'));
 }

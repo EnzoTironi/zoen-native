@@ -1,3 +1,4 @@
+import { t } from '../../i18n/index.ts';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { ScrollView } from 'react-native';
 import { useCoreQuery } from '../../core/query';
@@ -10,8 +11,8 @@ export default function RequestReview() {
   const request = read.data?.find((request) => request.id === id);
   if (!read.data)
     return read.error ? (
-      <EmptyState title="Não foi possível abrir o pedido" detail={read.error}>
-        <NativeButton label="Tentar novamente" onPress={read.retry} />
+      <EmptyState title={t('agents.theRequestCouldNotBeOpened')} detail={read.error}>
+        <NativeButton label={t('agents.tryAgain')} onPress={read.retry} />
       </EmptyState>
     ) : (
       <Loading />
@@ -19,8 +20,8 @@ export default function RequestReview() {
   if (!request)
     return (
       <EmptyState
-        title="Pedido indisponível"
-        detail="Este pedido ainda não chegou neste aparelho ou não pertence às suas conversas."
+        title={t('agents.requestUnavailable')}
+        detail={t('agents.thisRequestHasNotReachedThisDeviceYet')}
       />
     );
   return (
@@ -34,7 +35,7 @@ export default function RequestReview() {
         alignSelf: 'center',
       }}
     >
-      <Stack.Screen options={{ title: 'Revisar pedido' }} />
+      <Stack.Screen options={{ title: t('agents.reviewRequest') }} />
       <RequestCard request={request} onResolved={read.retry} />
     </ScrollView>
   );

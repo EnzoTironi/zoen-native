@@ -35,6 +35,7 @@ test('credential SDK accepts only the current owned button callback/state; no wi
       },
       renderButton: (_element, options) => {
         state = options.state;
+        assert.equal(options.locale, 'en-US');
       },
       cancel: () => {
         canceled++;
@@ -98,10 +99,10 @@ test('credential SDK accepts only the current owned button callback/state; no wi
     callback({ credential: 'after-teardown', state });
     assert.equal(accepted, 1);
     browser.crossOriginIsolated = true;
-    assert.throws(browserAuthContext, /tela de entrada/);
+    assert.throws(browserAuthContext, /sign-in screen/);
     browser.crossOriginIsolated = false;
     browser.top = {};
-    assert.throws(browserAuthContext, /própria aba/);
+    assert.throws(browserAuthContext, /own tab/);
   } finally {
     if (previous) Object.defineProperty(globalThis, 'window', previous);
     else Reflect.deleteProperty(globalThis, 'window');

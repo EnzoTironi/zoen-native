@@ -57,6 +57,6 @@ test('expired proof cannot create keys or choose recovery', async () => {
           throw new Error('must not recover');
         },
       ),
-    /Confirme/,
+    /Confirm your sign-in again/,
   );
 });

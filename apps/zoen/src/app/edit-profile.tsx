@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Stack, router } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
@@ -40,11 +41,11 @@ export default function EditProfile() {
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{ padding: 26, gap: 24 }}
     >
-      <Stack.Screen options={{ title: 'Seu perfil' }} />
+      <Stack.Screen options={{ title: t('profile.screenTitle') }} />
       <View style={{ alignItems: 'center', gap: 16 }}>
         {(photo === 'set' ? draft?.uri : photo === 'keep' ? currentPhoto : undefined) ? (
           <Image
-            accessibilityLabel="Prévia da sua foto de perfil"
+            accessibilityLabel={t('profile.preview')}
             cachePolicy="none"
             source={{ uri: photo === 'set' ? draft?.uri : currentPhoto }}
             style={{ width: 104, height: 104, borderRadius: 52 }}
@@ -55,7 +56,7 @@ export default function EditProfile() {
         {store.driver.photos ? (
           <>
             <NativeButton
-              label="Escolher foto"
+              label={t('profile.choosePhoto')}
               disabled={busy}
               onPress={() => {
                 setBusy(true);
@@ -83,7 +84,7 @@ export default function EditProfile() {
                   })
                   .catch((failure: unknown) =>
                     setError(
-                      failure instanceof Error ? failure.message : 'Não foi possível abrir a foto.',
+                      failure instanceof Error ? failure.message : t('profile.openPhotoFailed'),
                     ),
                   )
                   .finally(() => setBusy(false));
@@ -91,7 +92,7 @@ export default function EditProfile() {
             />
             {photo === 'set' || (photo === 'keep' && snapshot?.me?.photo_sha256) ? (
               <NativeButton
-                label="Remover foto"
+                label={t('profile.removePhoto')}
                 disabled={busy}
                 onPress={() => {
                   ownedDraft.current?.dispose();
@@ -104,9 +105,15 @@ export default function EditProfile() {
           </>
         ) : null}
       </View>
-      <Field label="Nome" value={name} onChangeText={setName} autoComplete="name" maxLength={64} />
       <Field
-        label="Seu @"
+        label={t('profile.name')}
+        value={name}
+        onChangeText={setName}
+        autoComplete="name"
+        maxLength={64}
+      />
+      <Field
+        label={t('profile.handle')}
         value={handle}
         onChangeText={setHandle}
         autoCapitalize="none"
@@ -115,7 +122,7 @@ export default function EditProfile() {
         editable={!busy}
       />
       <Field
-        label="Sobre você"
+        label={t('profile.about')}
         value={bio}
         onChangeText={setBio}
         multiline
@@ -123,7 +130,7 @@ export default function EditProfile() {
         style={{ minHeight: 120, textAlignVertical: 'top' }}
       />
       <Text style={{ color: colors.secondary, lineHeight: 22 }}>
-        Seu perfil é compartilhado de forma criptografada com seus contatos.
+        {t('profile.encryptedNotice')}
       </Text>
       {error ? (
         <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
@@ -131,7 +138,7 @@ export default function EditProfile() {
         </Text>
       ) : null}
       <NativeButton
-        label={busy ? 'Salvando…' : 'Salvar'}
+        label={busy ? t('profile.saving') : t('profile.save')}
         disabled={
           busy || !name.trim() || !/^[a-z][a-z0-9._]{2,23}$/.test(handle.trim().toLowerCase())
         }
@@ -145,7 +152,7 @@ export default function EditProfile() {
               current?.identity_id !== account.identity_id ||
               current.device_id !== account.device_id
             )
-              throw new Error('A sessão mudou. Abra seu perfil novamente.');
+              throw new Error(t('profile.sessionChanged'));
             const normalized = handle.trim().toLowerCase();
             if (normalized !== store.getSnapshot().snapshot?.account?.handle)
               await store.request({ op: 'update_handle', handle: normalized });
@@ -164,14 +171,12 @@ export default function EditProfile() {
           })()
             .then(() => router.back())
             .catch((failure: unknown) =>
-              setError(
-                failure instanceof Error ? failure.message : 'Não foi possível salvar seu perfil.',
-              ),
+              setError(failure instanceof Error ? failure.message : t('profile.saveFailed')),
             )
             .finally(() => setBusy(false));
         }}
       />
-      <NativeButton label="Cancelar" disabled={busy} onPress={() => router.back()} />
+      <NativeButton label={t('access.cancel')} disabled={busy} onPress={() => router.back()} />
     </ScrollView>
   );
 }

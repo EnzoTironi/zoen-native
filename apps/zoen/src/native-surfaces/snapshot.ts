@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import type { ItemDetail } from '../core/generated/ItemDetail';
 
 export type SurfaceOwner = Readonly<{ identityId: string; deviceId: string }>;
@@ -212,7 +213,7 @@ export function widgetProjection(
     : {
         redacted: true,
         title: 'Zoen',
-        detail: 'Abra para ver seu miniapp',
+        detail: t('nativeSurfaces.openToSeeYourMiniapp'),
         bars: Object.freeze([]),
         rows: Object.freeze([]),
         accentHex: '#5B8DEF',

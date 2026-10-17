@@ -650,7 +650,7 @@ export class Messages {
     await this.enqueue(async () => {
       let response: Record<string, unknown>;
       const request = JSON.stringify(command);
-      const operation = () => domain === 'app_request' ? {kind: domain, request, now: Date.now(), locale: navigator.language} : {kind: domain, request, now: Date.now()};
+      const operation = () => ({kind: domain, request, now: Date.now()});
       try { response = object(JSON.parse(await this.core.text(operation()))); }
       catch (error) { throw Object.assign(new Error(message(error)), { soft: true }); }
       const generation = this.generation;

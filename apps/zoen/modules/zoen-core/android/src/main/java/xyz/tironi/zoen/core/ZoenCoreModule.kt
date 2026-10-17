@@ -13,7 +13,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ZoenCoreModule : Module() {
@@ -34,14 +33,15 @@ class ZoenCoreModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ZoenCore")
     Events("onChange")
-    AsyncFunction("open") Coroutine { selectedMode: String ->
+    AsyncFunction("open") Coroutine { selectedMode: String, locale: String ->
       withContext(Dispatchers.IO) { mutex.withLock {
         check(!destroyed.get()) { "The app session has closed" }
         require(selectedMode in setOf("account", "demo")) { "Invalid account mode" }
+        require(locale in setOf("en", "pt-BR")) { "Invalid session language" }
         closeCore()
         val context = requireNotNull(appContext.reactContext)
         val root = File(context.noBackupFilesDir, if (selectedMode == "account") "core" else "zoen/demo").apply { mkdirs() }
-        val core = RodaEngine.open(File(root, "zoen.sqlite").path, Locale.getDefault().toLanguageTag())
+        val core = RodaEngine.open(File(root, "zoen.sqlite").path, locale)
         val keys = ZoenVault(context)
         val bridge = object : CoreListener {
           override fun onChange(spaceIds: List<String>) { emit(mapOf("kind" to "change", "spaceIds" to spaceIds)) }

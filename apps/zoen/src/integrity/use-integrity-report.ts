@@ -3,6 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { useClient } from '../core/provider';
 import type { LogReport } from '../core/generated/LogReport';
 import type { Snapshot } from '../core/types';
+import { t } from '../i18n';
 
 /** A previous success is not a verification of a changed snapshot or a new retry. */
 export function useIntegrityReport(spaceId: string) {
@@ -31,10 +32,7 @@ export function useIntegrityReport(spaceId: string) {
               space: spaceId,
               revision,
               data: null,
-              error:
-                reason instanceof Error
-                  ? reason.message
-                  : 'Não foi possível verificar este histórico.',
+              error: reason instanceof Error ? reason.message : t('integrity.verifyFailed'),
             });
         });
       return () => {

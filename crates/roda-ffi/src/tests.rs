@@ -959,8 +959,8 @@ fn english_is_the_default_language_for_demo_data_agents_and_money() {
         .requests()
         .iter()
         .any(|r| r.title == "Book the Casa Azul Inn"));
-    assert_eq!(format_money(134_800, "en-US".into()), "$1,348");
-    assert_eq!(format_money(1_240, "en".into()), "$12.40");
+    assert_eq!(format_money(134_800, "en-US".into()), "R$ 1,348");
+    assert_eq!(format_money(1_240, "en".into()), "R$ 12.40");
     assert_eq!(format_money(134_800, "pt-BR".into()), "R$ 1.348");
 
     // Agent output and mini-apps speak English too.
@@ -995,7 +995,8 @@ fn english_is_the_default_language_for_demo_data_agents_and_money() {
         .unwrap();
     let reaction = edit.reaction.unwrap();
     assert!(
-        reaction.contains('$') && !reaction.contains("R$"),
+        reaction.contains("R$")
+            && (reaction.starts_with("Recalculated:") || reaction.starts_with("Heads up:")),
         "{reaction}"
     );
 }

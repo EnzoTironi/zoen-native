@@ -8,6 +8,7 @@ import { useIntegrityReport } from '../../integrity/use-integrity-report';
 import type { LogEventDto } from '../../core/generated/LogEventDto';
 import { Loading, NativeButton, Surface } from '../../components/primitives';
 import { useTheme } from '../../theme';
+import { t, formatLocale } from '../../i18n';
 
 export default function Integrity() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -31,7 +32,7 @@ export default function Integrity() {
   const valid = !report.error && report.data?.valid === true;
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <Stack.Screen options={{ title: 'Integridade do histórico' }} />
+      <Stack.Screen options={{ title: t('integrity.title') }} />
       <FlashList
         data={entries}
         keyExtractor={(event) => event.hash}
@@ -50,34 +51,33 @@ export default function Integrity() {
                 }}
               >
                 {report.error
-                  ? 'Verificação indisponível'
+                  ? t('integrity.unavailable')
                   : !report.data
-                    ? 'Verificando…'
+                    ? t('integrity.verifying')
                     : valid
-                      ? 'Histórico local verificado'
-                      : 'Este histórico precisa de atenção'}
+                      ? t('integrity.verified')
+                      : t('integrity.needsAttention')}
               </Text>
               <Text style={{ color: colors.secondary }}>{report.data?.space_title}</Text>
               {valid ? (
                 <Text selectable style={{ color: colors.secondary }}>
-                  {report.data?.events} eventos · hash final {report.data?.head_hash}
+                  {t('integrity.verifiedHead', {
+                    events: report.data?.events ?? '0',
+                    hash: report.data?.head_hash ?? '',
+                  })}
                 </Text>
               ) : null}
               {report.data && !valid ? (
                 <Text selectable style={{ color: colors.danger }}>
-                  {report.data.error ??
-                    'Confira outro dispositivo antes de confiar neste histórico.'}
+                  {report.data.error ?? t('integrity.checkDevice')}
                 </Text>
               ) : null}
               <Text style={{ color: colors.secondary, lineHeight: 22 }}>
-                O núcleo confere as assinaturas e a sequência dos eventos disponíveis neste
-                dispositivo. Isso não confirma que todo o histórico de outros dispositivos já foi
-                recebido. Os eventos abaixo são metadados de auditoria; exibi-los não confirma sua
-                integridade.
+                {t('integrity.explanation')}
               </Text>
               <NativeButton
                 secondary
-                label="Verificar novamente"
+                label={t('integrity.verifyAgain')}
                 onPress={() => {
                   report.retry();
                   audit.retry();
@@ -95,7 +95,7 @@ export default function Integrity() {
               accessibilityRole="header"
               style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
             >
-              Eventos locais
+              {t('integrity.localEvents')}
             </Text>
           </View>
         }
@@ -107,15 +107,17 @@ export default function Integrity() {
               #{item.seq} · {item.label}
             </Text>
             <Text style={{ color: colors.secondary }}>
-              {item.author.name} · {new Date(Number(item.at_ms)).toLocaleString()}
+              {item.author.name} · {new Date(Number(item.at_ms)).toLocaleString(formatLocale)}
             </Text>
             <Text
               selectable
               style={{ color: colors.secondary, fontFamily: 'monospace', fontSize: 12 }}
             >
-              hash {item.hash}
-              {'\n'}anterior {item.prev}
-              {'\n'}assinatura {item.signature}
+              {t('integrity.hash', { hash: item.hash })}
+              {'\n'}
+              {t('integrity.previous', { hash: item.prev })}
+              {'\n'}
+              {t('integrity.signature', { signature: item.signature })}
             </Text>
           </View>
         )}
@@ -125,7 +127,7 @@ export default function Integrity() {
               <NativeButton
                 secondary
                 disabled={busy}
-                label={busy ? 'Carregando…' : 'Eventos anteriores'}
+                label={busy ? t('integrity.loading') : t('integrity.earlierEvents')}
                 onPress={() => {
                   setBusy(true);
                   setFailure(null);
@@ -146,10 +148,7 @@ export default function Integrity() {
                     .catch((reason: unknown) =>
                       setFailure({
                         scope,
-                        text:
-                          reason instanceof Error
-                            ? reason.message
-                            : 'Não foi possível carregar os eventos.',
+                        text: reason instanceof Error ? reason.message : t('integrity.loadFailed'),
                       }),
                     )
                     .finally(() => setBusy(false));

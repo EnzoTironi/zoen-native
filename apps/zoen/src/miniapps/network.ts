@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { hostname } from './sandbox.ts';
 
 /** Grant-list projections are not authority: each exact host is checked for the
@@ -7,7 +8,7 @@ export async function authorizedNetworkHosts(
   allowed: (capability: string) => Promise<boolean>,
   assertActive: () => void,
 ): Promise<string[]> {
-  if (!hosts.every(hostname)) throw new Error('Domínio de miniapp inválido.');
+  if (!hosts.every(hostname)) throw new Error(t('miniapps.invalidMiniappDomain'));
   assertActive();
   const decisions = await Promise.all(hosts.map((host) => allowed(`net:${host}`)));
   assertActive();

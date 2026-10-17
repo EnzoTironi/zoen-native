@@ -7,7 +7,7 @@ import {
   planAmountInput,
   markdownFilename,
 } from './editing.ts';
-import { parseMoneyInput } from '../core/presentation.ts';
+import { parseMoneyInput, parsePlanMoneyInput } from '../core/presentation.ts';
 import type { PageBlockDto } from '../core/generated/PageBlockDto.ts';
 
 function block(id: string): PageBlockDto {
@@ -54,12 +54,14 @@ test('text fallback moves custom marks without splitting emoji or losing values'
 });
 test('plan costs round-trip exact signed i64 domain without Number coercion', () => {
   const maximum = '9223372036854775807';
-  assert.equal(planAmountInput(maximum), '92233720368547758,07');
+  assert.equal(planAmountInput(maximum), '92233720368547758.07');
   assert.equal(parseMoneyInput(planAmountInput(maximum)), maximum);
-  assert.equal(parseMoneyInput('9.007.199.254.740,99'), '900719925474099');
-  assert.throws(() => parseMoneyInput('92233720368547758,08'));
-  for (const invalid of ['-1,00', '1.2', '1,001', 'NaN', '1e5'])
+  assert.equal(parseMoneyInput('9,007,199,254,740.99'), '900719925474099');
+  assert.throws(() => parseMoneyInput('92233720368547758.08'));
+  for (const invalid of ['-1.00', '1,2', '1.001', 'NaN', '1e5'])
     assert.throws(() => parseMoneyInput(invalid));
+  const legacyNegative = '-9223372036854775808';
+  assert.equal(parsePlanMoneyInput(planAmountInput(legacyNegative)), legacyNegative);
 });
 test('export filenames cannot escape their cache directory', () => {
   assert.equal(markdownFilename('../../Meu: diário\u0000'), '-..-Meu- diário-.md');

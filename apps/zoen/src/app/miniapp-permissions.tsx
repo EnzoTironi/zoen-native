@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text } from 'react-native';
@@ -8,11 +9,11 @@ import { useDialogs } from '../components/dialogs';
 import { useTheme } from '../theme';
 
 const labels: Record<string, string> = {
-  'photos.pick': 'Escolher fotos',
-  location: 'Localização',
-  'calendar.freebusy': 'Disponibilidade na agenda',
-  'calendar.write': 'Criar eventos na agenda',
-  camera: 'Câmera',
+  'photos.pick': t('miniapps.choosePhotos'),
+  location: t('miniapps.location'),
+  'calendar.freebusy': t('miniapps.calendarAvailability'),
+  'calendar.write': t('miniapps.createCalendarEvents'),
+  camera: t('miniapps.camera'),
 };
 export default function MiniappPermissions() {
   const { item } = useLocalSearchParams<{ item?: string }>();
@@ -35,10 +36,9 @@ export default function MiniappPermissions() {
         alignSelf: 'center',
       }}
     >
-      <Stack.Screen options={{ title: 'Permissões dos miniapps' }} />
+      <Stack.Screen options={{ title: t('miniapps.miniappPermissions') }} />
       <Text style={{ color: colors.secondary, fontSize: 16, lineHeight: 24 }}>
-        Cada permissão pertence a um miniapp de uma conversa. Revogue uma e ele terá que pedir
-        novamente.
+        {t('miniapps.eachPermissionBelongsToAMiniappInOne')}
       </Text>
       {error || read.error ? (
         <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
@@ -47,14 +47,14 @@ export default function MiniappPermissions() {
       ) : null}
       {!grants ? (
         read.error ? (
-          <NativeButton label="Tentar novamente" onPress={read.retry} />
+          <NativeButton label={t('miniapps.tryAgain')} onPress={read.retry} />
         ) : (
           <Loading />
         )
       ) : !grants.length ? (
         <EmptyState
-          title="Nenhuma permissão ativa"
-          detail="Quando você permitir acesso a um recurso, o miniapp e o motivo aparecerão aqui."
+          title={t('miniapps.noActivePermissions')}
+          detail={t('miniapps.whenYouAllowAccessToAFeatureThe')}
         />
       ) : (
         grants.map((grant) => (
@@ -65,18 +65,19 @@ export default function MiniappPermissions() {
             <Text style={{ color: colors.accent }}>
               {labels[grant.capability] ??
                 (grant.capability.startsWith('net:')
-                  ? `Acesso a ${grant.capability.slice(4)}`
+                  ? t('miniapps.networkAccess', { host: grant.capability.slice(4) })
                   : grant.capability)}
             </Text>
             <Text selectable style={{ color: colors.secondary, lineHeight: 22 }}>
               {grant.purpose}
             </Text>
             <Text style={{ color: colors.secondary, fontSize: 13 }}>
-              {grant.space_title} · {grant.always ? 'Até você revogar' : 'Permissão temporária'}
+              {grant.space_title} ·{' '}
+              {grant.always ? t('miniapps.untilYouRevoke') : t('miniapps.temporaryPermission')}
             </Text>
             <NativeButton
               secondary
-              label="Abrir miniapp"
+              label={t('miniapps.openMiniapp')}
               disabled={busy !== null}
               onPress={() =>
                 router.push({ pathname: '/miniapp/[id]', params: { id: grant.item_id } })
@@ -84,14 +85,19 @@ export default function MiniappPermissions() {
             />
             <NativeButton
               secondary
-              label={busy === grant.grant_id ? 'Revogando…' : 'Revogar permissão'}
+              label={
+                busy === grant.grant_id ? t('miniapps.revoking') : t('miniapps.revokePermission')
+              }
               disabled={busy !== null}
               onPress={() => {
                 void dialogs
                   .confirm({
-                    title: 'Revogar esta permissão?',
-                    message: `${grant.item_title}\n${labels[grant.capability] ?? grant.capability}\n\nO miniapp precisará pedir novamente.`,
-                    confirmLabel: 'Revogar',
+                    title: t('miniapps.revokeThisPermission'),
+                    message: t('miniapps.revokePermissionDetails', {
+                      title: grant.item_title,
+                      capability: labels[grant.capability] ?? grant.capability,
+                    }),
+                    confirmLabel: t('miniapps.revoke'),
                     destructive: true,
                   })
                   .then((accepted) => {
@@ -103,7 +109,9 @@ export default function MiniappPermissions() {
                       .then(read.retry)
                       .catch((reason: unknown) =>
                         setError(
-                          reason instanceof Error ? reason.message : 'Não foi possível revogar.',
+                          reason instanceof Error
+                            ? reason.message
+                            : t('miniapps.thePermissionCouldNotBeRevoked'),
                         ),
                       )
                       .finally(() => setBusy(null));

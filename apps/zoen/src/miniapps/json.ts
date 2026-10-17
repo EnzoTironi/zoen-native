@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { isInteger, isSafeNumber, LosslessNumber, parse, stringify } from 'lossless-json';
 
 /** Large Rust integers remain decimal strings inside miniapp view_json too. */
@@ -21,6 +22,6 @@ export function parseMiniappRequest(encoded: string): unknown {
 
 export function stringifyMiniappRequest(value: unknown): string {
   const encoded = stringify(value);
-  if (encoded === undefined) throw new Error('Os dados desta ação são inválidos.');
+  if (encoded === undefined) throw new Error(t('miniapps.theDataForThisActionIsInvalid'));
   return encoded;
 }

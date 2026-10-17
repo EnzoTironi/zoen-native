@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { useEffect, useRef, useState } from 'react';
 import { Text } from 'react-native';
 import { useClient } from '../core/provider';
@@ -29,21 +30,20 @@ export function DeviceDataActions() {
     const pending = snapshot?.connection.pending;
     try {
       const accepted = await confirm({
-        title: 'Sair deste aparelho?',
+        title: t('settings.signOutOfThisDevice'),
         message:
-          'As conversas e as chaves deste aparelho serão apagadas. Sua conta e os outros aparelhos continuam ativos. Sem um backup ou outro aparelho conectado, este histórico não poderá ser recuperado.' +
-          (pending && pending !== '0'
-            ? '\n\nMensagens que ainda não foram enviadas também serão apagadas.'
-            : ''),
-        confirmLabel: 'Sair e apagar dados',
+          pending && pending !== '0'
+            ? t('settings.signOutWithPending')
+            : t('settings.chatsAndKeysOnThisDeviceWillBe'),
+        confirmLabel: t('settings.signOutAndEraseData'),
         destructive: true,
       });
       if (accepted && active.current) await store.eraseDevice(expected);
     } catch (error) {
       if (active.current)
         await inform(
-          'Não foi possível sair',
-          error instanceof Error ? error.message : 'Tente novamente.',
+          t('settings.couldNotSignOut'),
+          error instanceof Error ? error.message : t('settings.tryAgain'),
         );
     } finally {
       busy.current = false;
@@ -54,13 +54,13 @@ export function DeviceDataActions() {
   return (
     <Surface>
       <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
-        Dados neste aparelho
+        {t('settings.dataOnThisDevice')}
       </Text>
       <Text style={{ color: colors.secondary, lineHeight: 22 }}>
-        Ao sair, as conversas e as chaves deste aparelho serão apagadas.
+        {t('settings.signingOutErasesChatsAndKeysOnThis')}
       </Text>
       <NativeButton
-        label="Sair e apagar dados"
+        label={t('settings.signOutAndEraseData')}
         testID="erase-device"
         destructive
         disabled={confirming}

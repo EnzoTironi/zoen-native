@@ -62,7 +62,7 @@ test('one failed notification operation does not skip other removals, scheduled 
         events.push('response');
       },
     }),
-    /notificações/,
+    /notifications on this device could not be cleared/,
   );
   assert.deepEqual(events.sort(), ['badge', 'first', 'pending', 'response', 'second']);
 });

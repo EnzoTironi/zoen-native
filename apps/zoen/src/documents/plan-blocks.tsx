@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { Pressable, Text, View } from 'react-native';
 import type { PlanPageDto } from '../core/generated/PlanPageDto';
 import type { PlanPageBlockDto } from '../core/generated/PlanPageBlockDto';
@@ -25,7 +26,7 @@ export function PlanBlocks({
   return (
     <View style={{ gap: 8 }}>
       <Surface>
-        <Text style={{ color: colors.secondary }}>Total do plano</Text>
+        <Text style={{ color: colors.secondary }}>{t('documents.planTotal')}</Text>
         {plan.total_cents !== null ? (
           <Text
             style={{
@@ -39,7 +40,7 @@ export function PlanBlocks({
           </Text>
         ) : (
           <Text accessibilityRole="alert" style={{ color: colors.danger }}>
-            O total ultrapassa o limite deste plano.
+            {t('documents.theTotalExceedsThisPlanSLimit')}
           </Text>
         )}
       </Surface>
@@ -50,18 +51,18 @@ export function PlanBlocks({
       ) : null}
       <Text accessibilityLiveRegion="polite" style={{ color: colors.secondary, fontSize: 13 }}>
         {!plan.ready
-          ? 'O plano ainda está sendo sincronizado.'
+          ? t('documents.thePlanIsStillSyncing')
           : plan.unsaved
-            ? 'Rascunho neste aparelho'
+            ? t('documents.draftOnThisDevice')
             : plan.pending_sync
-              ? 'Aguardando sincronização'
-              : `Versão ${plan.version}`}
+              ? t('documents.waitingToSync')
+              : t('documents.versionNumber', { version: plan.version })}
       </Text>
       {plan.blocks.map((block) => {
         if (typeof block.content === 'object' && 'Title' in block.content)
           return block.content.Title.budget_cents === null ? null : (
             <Text key={block.id} style={{ color: colors.secondary }}>
-              Orçamento: {money(block.content.Title.budget_cents)}
+              {t('documents.budgetAmount', { amount: money(block.content.Title.budget_cents) })}
             </Text>
           );
         if (block.content === 'Section') {
@@ -81,12 +82,12 @@ export function PlanBlocks({
                 accessibilityRole="header"
                 style={{ flex: 1, color: colors.text, fontSize: 22, fontWeight: '600' }}
               >
-                {block.text || 'Sem título'}
+                {block.text || t('documents.untitled')}
               </Text>
               {plan.ready && plan.legacy_edit_admitted ? (
                 <NativeButton
                   secondary
-                  label="Adicionar linha"
+                  label={t('documents.addLine')}
                   disabled={busy}
                   onPress={() => onAdd(index)}
                 />
@@ -147,7 +148,7 @@ export function PlanBlocks({
               </View>
               {plan.legacy_edit_admitted && plan.ready ? (
                 <IconButton
-                  label={`Editar linha: ${block.text}`}
+                  label={t('documents.editLineLabel', { text: block.text })}
                   name={{ ios: 'pencil', android: 'edit', web: 'edit' }}
                   disabled={busy}
                   onPress={() => onEdit(block)}
@@ -174,7 +175,7 @@ export function PlanVersion({ plan }: { plan: PlanDto }) {
   return (
     <View style={{ gap: 18 }}>
       <Surface>
-        <Text style={{ color: colors.secondary }}>Total nesta versão</Text>
+        <Text style={{ color: colors.secondary }}>{t('documents.totalInThisVersion')}</Text>
         <Text
           selectable
           style={{ color: colors.text, fontSize: 28, fontVariant: ['tabular-nums'] }}
@@ -182,7 +183,9 @@ export function PlanVersion({ plan }: { plan: PlanDto }) {
           {money(plan.total_cents)}
         </Text>
         {plan.budget_cents === null ? null : (
-          <Text style={{ color: colors.secondary }}>Orçamento: {money(plan.budget_cents)}</Text>
+          <Text style={{ color: colors.secondary }}>
+            {t('documents.budgetAmount', { amount: money(plan.budget_cents) })}
+          </Text>
         )}
       </Surface>
       {plan.summary ? (

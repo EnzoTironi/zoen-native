@@ -1,0 +1,39 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Zoen",
+    "NSMicrophoneUsageDescription": "Allow Zoen to record voice messages and audio in videos you choose to send.",
+    "NSCameraUsageDescription": "Allow Zoen to use the camera to scan connection codes and create photos or videos you choose to share.",
+    "NSPhotoLibraryUsageDescription": "Choose photos and videos to share in your Zoen conversations.",
+    "NSLocationWhenInUseUsageDescription": "Share your location with a miniapp only when you choose.",
+    "NSCalendarsWriteOnlyAccessUsageDescription": "Add events you confirm in Zoen to your calendar.",
+    "NSContactsUsageDescription": "Choose the contact you want to share with a miniapp.",
+    "Localizable.strings": {
+      "Zoen miniapp": "Zoen miniapp",
+      "A preview you choose. Content hidden by default.": "A preview you choose. Content hidden by default.",
+      "Zoen conversation": "Zoen conversation",
+      "Name": "Name",
+      "Miniapp": "Miniapp",
+      "Conversation": "Conversation",
+      "Open miniapp": "Open miniapp",
+      "Open conversation": "Open conversation",
+      "Opening Zoen.": "Opening Zoen.",
+      "Open ${selection}": "Open ${selection}",
+      "This session has closed. Open the app again.": "This session has closed. Open the app again.",
+      "This session could not be opened.": "This session could not be opened.",
+      "Invalid session language.": "Invalid session language.",
+      "This device already has an account.": "This device already has an account.",
+      "This account could not be unlocked with this device's keys. Use account recovery.": "This account could not be unlocked with this device's keys. Use account recovery.",
+      "This device has account keys, but the database is unavailable. Recover the account to preserve those keys.": "This device has account keys, but the database is unavailable. Recover the account to preserve those keys.",
+      "The account changed. Open the confirmation again.": "The account changed. Open the confirmation again.",
+      "Sign-out on this device could not be completed. Try again.": "Sign-out on this device could not be completed. Try again.",
+      "This file could not be read. Select it again.": "This file could not be read. Select it again.",
+      "Choose a file up to 64 MB.": "Choose a file up to 64 MB.",
+      "The recording is empty or invalid. Record it again.": "The recording is empty or invalid. Record it again.",
+      "This file version is unavailable.": "This file version is unavailable.",
+      "Select a JPEG photo up to 5 MB again.": "Select a JPEG photo up to 5 MB again.",
+      "The session changed. Open your profile again.": "The session changed. Open your profile again."
+    },
+    "NSFaceIDUsageDescription": "Allow $(PRODUCT_NAME) to use Face ID to confirm your identity.",
+    "NSLocalNetworkUsageDescription": "Expo Dev Launcher uses the local network to discover and connect to development servers running on your computer."
+  }
+}

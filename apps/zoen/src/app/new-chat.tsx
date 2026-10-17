@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../i18n/index.ts';
 import { ProfileAvatar } from '../profile/profile-avatar';
 import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
@@ -33,7 +34,9 @@ export default function NewChat() {
     ...new Map(
       [...local, ...people]
         .filter((person) =>
-          `${person.name} ${person.handle}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+          `${person.name} ${person.handle}`
+            .toLocaleLowerCase(formatLocale)
+            .includes(query.toLocaleLowerCase(formatLocale)),
         )
         .map((person) => [person.id, person]),
     ).values(),
@@ -56,7 +59,7 @@ export default function NewChat() {
               setLookupError(
                 failure instanceof Error
                   ? failure.message
-                  : 'Não foi possível buscar pessoas no servidor.',
+                  : t('chat.peopleCouldNotBeFoundOnTheServer'),
               );
             }
           });
@@ -83,9 +86,9 @@ export default function NewChat() {
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
         {(
           [
-            { value: 'direct', title: 'Pessoa' },
-            { value: 'group', title: 'Grupo' },
-            { value: 'community', title: 'Comunidade' },
+            { value: 'direct', title: t('chat.person') },
+            { value: 'group', title: t('chat.group') },
+            { value: 'community', title: t('chat.community') },
           ] as const
         ).map((choice) => (
           <NativeButton
@@ -99,15 +102,15 @@ export default function NewChat() {
       </View>
       {kind !== 'direct' ? (
         <Field
-          label={kind === 'group' ? 'Nome do grupo' : 'Nome da comunidade'}
+          label={kind === 'group' ? t('chat.groupName') : t('chat.communityName')}
           value={title}
           onChangeText={setTitle}
         />
       ) : null}
       {kind !== 'community' ? (
         <Field
-          label={kind === 'group' ? 'Adicionar pessoas' : 'Buscar pessoas'}
-          placeholder="Nome ou @"
+          label={kind === 'group' ? t('chat.addPeople') : t('chat.searchPeople')}
+          placeholder={t('chat.nameOr')}
           value={query}
           onChangeText={setQuery}
           autoCapitalize="none"
@@ -141,7 +144,7 @@ export default function NewChat() {
                       setError(
                         failure instanceof Error
                           ? failure.message
-                          : 'Não foi possível começar a conversa.',
+                          : t('chat.theChatCouldNotBeStarted'),
                       ),
                     )
                     .finally(() => setBusy(false));
@@ -166,7 +169,7 @@ export default function NewChat() {
         : null}
       {kind === 'group' ? (
         <Text style={{ color: colors.secondary, fontSize: 13 }}>
-          {selected.length} pessoas selecionadas
+          {t('chat.selectedPeople', { count: selected.length })}
         </Text>
       ) : null}
       {error ? (
@@ -176,7 +179,13 @@ export default function NewChat() {
       ) : null}
       {kind !== 'direct' ? (
         <NativeButton
-          label={busy ? 'Criando…' : kind === 'group' ? 'Criar grupo' : 'Criar comunidade'}
+          label={
+            busy
+              ? t('chat.creating')
+              : kind === 'group'
+                ? t('chat.createGroup')
+                : t('chat.createCommunity')
+          }
           disabled={!title.trim() || busy}
           onPress={() => {
             setBusy(true);
@@ -190,7 +199,7 @@ export default function NewChat() {
               .then(opened)
               .catch((failure: unknown) =>
                 setError(
-                  failure instanceof Error ? failure.message : 'Não foi possível criar a conversa.',
+                  failure instanceof Error ? failure.message : t('chat.theChatCouldNotBeCreated'),
                 ),
               )
               .finally(() => setBusy(false));

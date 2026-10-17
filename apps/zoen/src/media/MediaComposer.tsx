@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../i18n/index.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Modal, Platform, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -26,7 +27,7 @@ import { VideoClip } from './VideoClip';
 
 type Recording = { uri: string; durationMs: number; levels: number[] };
 const failureMessage = (reason: unknown) =>
-  reason instanceof Error ? reason.message : 'Não foi possível concluir. Tente novamente.';
+  reason instanceof Error ? reason.message : t('media.thisCouldNotBeCompletedTryAgain');
 async function discard(uri: string | undefined) {
   if (Platform.OS === 'web') {
     if (uri?.startsWith('blob:')) URL.revokeObjectURL(uri);
@@ -112,7 +113,7 @@ export function MediaComposer({
         } else {
           await discard(uri ?? undefined);
           if (mounted.current && focused.current && durationMs < 250)
-            void inform('Gravação muito curta', 'Grave por pelo menos um segundo para enviar.');
+            void inform(t('media.recordingTooShort'), t('media.recordForAtLeastOneSecondToSend'));
         }
       } catch (reason) {
         if (mounted.current) setFailure(failureMessage(reason));
@@ -133,7 +134,7 @@ export function MediaComposer({
       // its native recorder. A retained retry must never call that released object.
       if (mounted.current && recorder.getStatus().isRecording) await recorder.stop();
       if (mounted.current && recorder.getStatus().isRecording)
-        throw new Error('Não foi possível encerrar a gravação deste aparelho.');
+        throw new Error(t('media.theRecordingOnThisDeviceCouldNotBe'));
       discardCacheCopy(uriToDiscard.current);
       discardCacheCopy(uri ?? undefined);
     });
@@ -205,8 +206,8 @@ export function MediaComposer({
         if (!mounted.current || !focused.current) return;
         if (!permission.granted) {
           await inform(
-            kind === 'camera' ? 'Permitir câmera' : 'Permitir fotos',
-            'Você pode permitir o acesso nos Ajustes do aparelho para selecionar esta mídia.',
+            kind === 'camera' ? t('media.allowCamera') : t('media.allowPhotos'),
+            t('media.youCanAllowAccessInDeviceSettingsTo'),
           );
           return;
         }
@@ -236,7 +237,7 @@ export function MediaComposer({
       }
     } catch (reason) {
       if (mounted.current && focused.current)
-        await inform('Não foi possível selecionar a mídia', failureMessage(reason));
+        await inform(t('media.theMediaCouldNotBeSelected'), failureMessage(reason));
     } finally {
       selecting.current = false;
       if (mounted.current) setBusy(false);
@@ -258,8 +259,8 @@ export function MediaComposer({
       if (!mounted.current || !focused.current) return;
       if (!permission.granted) {
         await inform(
-          'Permitir microfone',
-          'Permita o microfone nos Ajustes do aparelho para gravar uma mensagem de voz.',
+          t('media.allowMicrophone'),
+          t('media.allowTheMicrophoneInDeviceSettingsToRecord'),
         );
         return;
       }
@@ -286,7 +287,7 @@ export function MediaComposer({
       recorder.record();
       recording.current = true;
     } catch (reason) {
-      await inform('Não foi possível gravar', failureMessage(reason));
+      await inform(t('media.couldNotRecord'), failureMessage(reason));
       await setAudioModeAsync({ allowsRecording: false });
     } finally {
       setBusy(false);
@@ -335,14 +336,14 @@ export function MediaComposer({
     <>
       {!thread && replyTo === null ? (
         <IconButton
-          label="Adicionar anexo"
+          label={t('media.addAttachment')}
           name={{ ios: 'plus', android: 'add', web: 'add' }}
           disabled={disabled || busy || presented}
           onPress={() => setMenu(true)}
         />
       ) : null}
       <IconButton
-        label="Gravar mensagem de voz"
+        label={t('media.recordVoiceMessage')}
         name={{ ios: 'mic', android: 'mic', web: 'mic' }}
         disabled={disabled || busy || presented}
         onPress={() => {
@@ -353,21 +354,21 @@ export function MediaComposer({
         <BottomSheet isPresented={menu} onDismiss={() => setMenu(false)}>
           <Column spacing={8}>
             <Button
-              label="Fotos e vídeos"
+              label={t('media.photosAndVideos')}
               variant="text"
               onPress={() => {
                 void pick('photo');
               }}
             />
             <Button
-              label="Câmera"
+              label={t('media.camera')}
               variant="text"
               onPress={() => {
                 void pick('camera');
               }}
             />
             <Button
-              label="Arquivo"
+              label={t('media.file2')}
               variant="text"
               onPress={() => {
                 void pick('document');
@@ -401,10 +402,14 @@ export function MediaComposer({
               accessibilityRole="header"
               style={{ color: colors.text, fontSize: 24, fontWeight: '600' }}
             >
-              {isRecording ? 'Gravando…' : clip ? 'Mensagem de voz' : 'Enviar anexo'}
+              {isRecording
+                ? t('media.recording')
+                : clip
+                  ? t('media.voiceMessage')
+                  : t('media.sendAttachment')}
             </Text>
             <IconButton
-              label="Cancelar anexo"
+              label={t('media.cancelAttachment')}
               name={{ ios: 'xmark', android: 'close', web: 'close' }}
               disabled={busy}
               onPress={() => {
@@ -429,7 +434,7 @@ export function MediaComposer({
               <Text style={{ color: colors.secondary }}>
                 {selection.size == null
                   ? selection.mime
-                  : `${(selection.size / 1048576).toFixed(1)} MB · ${selection.mime}`}
+                  : `${new Intl.NumberFormat(formatLocale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(selection.size / 1048576)} MB · ${selection.mime}`}
               </Text>
             </>
           ) : null}
@@ -447,7 +452,7 @@ export function MediaComposer({
                 {clipTime(recorderState.durationMillis / 1000)}
               </Text>
               <NativeButton
-                label="Parar gravação"
+                label={t('media.stopRecording')}
                 onPress={() => {
                   void stop();
                 }}
@@ -467,7 +472,7 @@ export function MediaComposer({
           ) : null}
           {!isRecording ? (
             <NativeButton
-              label={busy ? 'Enviando…' : 'Enviar'}
+              label={busy ? t('media.sending') : t('media.send')}
               disabled={busy || Boolean(selection?.size && selection.size > MAX_SELECTED_BYTES)}
               onPress={() => {
                 void send();
@@ -476,12 +481,11 @@ export function MediaComposer({
           ) : null}
           {selection?.size && selection.size > MAX_SELECTED_BYTES ? (
             <Text accessibilityRole="alert" style={{ color: colors.danger }}>
-              Escolha um arquivo de até 64 MB.
+              {t('media.chooseAFileUpTo64MB')}
             </Text>
           ) : null}
           <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 20 }}>
-            Revise antes de enviar. O arquivo fica salvo nesta conversa e sincroniza quando houver
-            conexão.
+            {t('media.reviewBeforeSendingTheFileIsSavedIn')}
           </Text>
         </ScrollView>
       </Modal>

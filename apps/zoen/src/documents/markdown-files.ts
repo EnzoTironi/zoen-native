@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import * as DocumentPicker from 'expo-document-picker';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -15,10 +16,10 @@ async function pickMarkdownCopy(): Promise<{ path: string; markdown: string } | 
   });
   if (result.canceled) return null;
   const asset = result.assets[0];
-  if (!asset) throw new Error('O arquivo não pôde ser aberto.');
+  if (!asset) throw new Error(t('documents.theFileCouldNotBeOpened'));
   const file = new File(asset.uri);
   try {
-    if (file.size > 768 * 1024) throw new Error('Escolha uma página Markdown de até 768 KB.');
+    if (file.size > 768 * 1024) throw new Error(t('documents.chooseAMarkdownPageUpTo768KB'));
     return { path: asset.name, markdown: validateMarkdown(await file.text()) };
   } finally {
     if (file.exists) file.delete();
@@ -31,7 +32,7 @@ export function exportMarkdown(title: string, markdown: string): Promise<void> {
 
 async function shareMarkdownCopy(title: string, markdown: string): Promise<void> {
   if (!(await Sharing.isAvailableAsync()))
-    throw new Error('Este aparelho não oferece compartilhamento de arquivos.');
+    throw new Error(t('documents.thisDeviceDoesNotSupportFileSharing'));
   const directory = new Directory(
     Paths.cache,
     'zoen-exports',
@@ -45,7 +46,7 @@ async function shareMarkdownCopy(title: string, markdown: string): Promise<void>
     await Sharing.shareAsync(file.uri, {
       mimeType: 'text/markdown',
       UTI: 'net.daringfireball.markdown',
-      dialogTitle: 'Exportar página Markdown',
+      dialogTitle: t('documents.exportMarkdownPage'),
     });
   } finally {
     if (directory.exists) directory.delete();

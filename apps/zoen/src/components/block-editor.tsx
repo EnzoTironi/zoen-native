@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { useRef } from 'react';
 import { TextInput, View } from 'react-native';
 import {
@@ -28,7 +29,7 @@ export function BlockEditor({
         autoFocus
         editable={!disabled}
         onChangeText={onChange}
-        accessibilityLabel="Conteúdo do bloco em Markdown"
+        accessibilityLabel={t('documents.blockContentInMarkdown')}
         style={{
           minHeight: 230,
           padding: 18,
@@ -46,19 +47,19 @@ export function BlockEditor({
     <View style={{ gap: 12 }}>
       <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
         <IconButton
-          label="Negrito"
+          label={t('documents.bold')}
           name={{ ios: 'bold', android: 'format_bold', web: 'format_bold' }}
           onPress={() => input.current?.toggleBold()}
           disabled={disabled}
         />
         <IconButton
-          label="Itálico"
+          label={t('documents.italic')}
           name={{ ios: 'italic', android: 'format_italic', web: 'format_italic' }}
           onPress={() => input.current?.toggleItalic()}
           disabled={disabled}
         />
         <IconButton
-          label="Riscado"
+          label={t('documents.strikethrough')}
           name={{
             ios: 'strikethrough',
             android: 'format_strikethrough',
@@ -68,13 +69,13 @@ export function BlockEditor({
           disabled={disabled}
         />
         <IconButton
-          label="Título"
+          label={t('documents.title')}
           name={{ ios: 'textformat.size', android: 'title', web: 'title' }}
           onPress={() => input.current?.toggleHeading(2)}
           disabled={disabled}
         />
         <IconButton
-          label="Lista"
+          label={t('documents.list')}
           name={{
             ios: 'list.bullet',
             android: 'format_list_bulleted',
@@ -93,7 +94,7 @@ export function BlockEditor({
         autoFocus
         markdownShortcuts
         formatMenuConfig={{ underline: { enabled: false }, spoiler: { enabled: false } }}
-        placeholder="Escreva sua ideia…"
+        placeholder={t('documents.writeYourIdea')}
         placeholderTextColor={colors.tertiary}
         style={{
           minHeight: 230,

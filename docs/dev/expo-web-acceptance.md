@@ -2,6 +2,14 @@
 
 The `expo / release-web-e2e` job exercises `apps/zoen`'s exported Expo Router application. The older `ci / web-e2e` job exercises `packages/zoen-ui/web`'s separate messenger shell and does not establish Expo acceptance.
 
+The job builds one release export, then runs the complete journey separately in
+`en-US` and `pt-BR`. Each invocation creates fresh CLI homes, account identifiers,
+browser context/process and Pages state. Both run even if the first fails; either
+failure fails the job. Evidence is stored under the corresponding locale folder.
+Expectations are independently authored in `expo-web-expectations.mjs`, without
+importing production translations or changing synthetic user content. Pairing
+screenshots mask both languages, including an unexpected fallback.
+
 The first journey uses a real loopback Rust relay, disposable Postgres/FoundationDB, two canonical CLI identities and a fresh Chromium context:
 
 1. Verify the exported application pins the exact worker and WASM bytes. Serve that same export through Wrangler's Cloudflare Pages runtime.
@@ -31,6 +39,13 @@ Release WASM and worker/Messages Node harnesses preserve the checked draft, usin
 in-memory checkpoints and offline transport. Those harnesses do not establish
 browser-process or IndexedDB acceptance; the complete CI journey is still required.
 
+Run `39056779692` subsequently passed all 14 checkpoints for head `0267e88d`
+(tested merge `53c5efc7bbba32886ffec4f1cb0667740b95a175`). Its checked draft
+survived a cold reload, publication/export matched the canonical peer exactly,
+local erasure/cold onboarding preserved peer history, and browser errors were
+empty. This proof predates the language integration; the new EN/PT journeys must
+pass on their own rebuilt release.
+
 No IDB/session injection, fake identity-provider tokens, authentication bypass or production account is involved. The runner refuses a non-loopback relay. Browser evaluation is limited to standard isolation capabilities; account and message assertions use visible UI and the independently running Rust CLI.
 
 ## Build and run
@@ -49,10 +64,14 @@ npm run export:web --prefix apps/zoen
 RELAY=http://127.0.0.1:8790 \
 CHROME=/path/to/chromium \
 ZOEN_EXPO_EVIDENCE=/path/to/evidence \
+ZOEN_EXPO_TEST_LOCALE=pt-BR \
 node scripts/expo-web-e2e.mjs
 ```
 
 This is a **test artifact** built with public loopback configuration and unavailable external providers. Do not deploy it. Build the deployable artifact separately with the intended relay and public provider identifiers. Existing device linking remains the normal production flow in both builds. Apple/Google confirmation and provider-account creation remain separate acceptance journeys.
+
+The locale variable is mandatory and accepts only `en-US` or `pt-BR`. Repeat with
+`en-US` to reproduce the second independent journey; the evidence root retains both.
 
 `node scripts/expo-web-artifact.mjs apps/zoen/dist` can inspect an existing export without starting a browser. This checks real emitted files and integrity relationships; it does not establish runtime acceptance.
 

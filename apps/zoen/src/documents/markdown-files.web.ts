@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import * as DocumentPicker from 'expo-document-picker';
 import { markdownFilename, validateMarkdown } from './editing';
 
@@ -8,8 +9,8 @@ export async function pickMarkdown(): Promise<{ path: string; markdown: string }
   });
   if (result.canceled) return null;
   const asset = result.assets[0];
-  if (!asset?.file) throw new Error('O navegador não disponibilizou este arquivo.');
-  if (asset.file.size > 768 * 1024) throw new Error('Escolha uma página Markdown de até 768 KB.');
+  if (!asset?.file) throw new Error(t('documents.theBrowserDidNotMakeThisFileAvailable'));
+  if (asset.file.size > 768 * 1024) throw new Error(t('documents.chooseAMarkdownPageUpTo768KB'));
   return { path: asset.name, markdown: validateMarkdown(await asset.file.text()) };
 }
 

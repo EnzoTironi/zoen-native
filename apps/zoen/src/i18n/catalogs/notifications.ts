@@ -1,0 +1,82 @@
+import { defineFeature } from '../catalog.ts';
+
+export const notifications = defineFeature(
+  {
+    registrationConfirmedByTheServer: 'Registration confirmed by the server',
+    confirmingRegistration: 'Confirming registration…',
+    waitingForServerConfirmation: 'Waiting for server confirmation',
+    registrationRefusedByTheServer: 'Registration refused by the server',
+    remoteNotificationsAreNotYetAvailableOnThis:
+      'Remote notifications are not yet available on this device',
+    thisDeviceIsNotRegisteredYet: 'This device is not registered yet',
+    notifications: 'Notifications',
+    notificationsUnderYourControl: 'Notifications under your control',
+    theServerOnlySendsASignalToSync:
+      'The server only sends a signal to sync. Message content is opened on this device. Muted chats do not create notifications.',
+    devicePermission: 'Device permission',
+    allowed: 'Allowed',
+    disabledInSettings: 'Disabled in Settings',
+    youHaveNotChosenYet: 'You have not chosen yet',
+    unavailableInThisBrowser: 'Unavailable in this browser',
+    checking: 'Checking…',
+    settingUp: 'Setting up…',
+    openSettings: 'Open Settings',
+    checkAgain: 'Check again',
+    allowNotifications: 'Allow notifications',
+    notificationsAreNotYetAvailableInThisBrowser:
+      'Notifications are not yet available in this browser. You still receive messages while Zoen is open.',
+    registrationConfirmsThatTheServerReceivedTheRequest:
+      'Registration confirms that the server received the request. Notification delivery to this device has not been verified yet. Messages keep arriving while Zoen is open.',
+    allNotificationsOnThisDeviceCouldNotBe:
+      'All notifications on this device could not be cleared. Try again.',
+    notificationsCouldNotBeSetUpNowTry: 'Notifications could not be set up now. Try again.',
+    theDeviceDidNotReturnAValidNotification:
+      'The device did not return a valid notification token.',
+    theServerRefusedNotificationRegistrationForThisDevice:
+      'The server refused notification registration for this device.',
+    registrationHasNotBeenConfirmedByTheServer:
+      'Registration has not been confirmed by the server yet. Try again when connected.',
+    remoteBrowserNotificationsAreNotSetUpYet: 'Remote browser notifications are not set up yet.',
+    accountChanged: 'The account has changed.',
+  },
+  {
+    registrationConfirmedByTheServer: 'Cadastro confirmado pelo servidor',
+    confirmingRegistration: 'Confirmando cadastro…',
+    waitingForServerConfirmation: 'Aguardando confirmação do servidor',
+    registrationRefusedByTheServer: 'Cadastro recusado pelo servidor',
+    remoteNotificationsAreNotYetAvailableOnThis:
+      'Avisos remotos ainda não disponíveis neste aparelho',
+    thisDeviceIsNotRegisteredYet: 'Este aparelho ainda não está cadastrado',
+    notifications: 'Notificações',
+    notificationsUnderYourControl: 'Avisos sob seu controle',
+    theServerOnlySendsASignalToSync:
+      'O servidor envia apenas um sinal para sincronizar. O conteúdo das mensagens é aberto neste aparelho. Conversas silenciadas não geram avisos.',
+    devicePermission: 'Permissão do aparelho',
+    allowed: 'Permitida',
+    disabledInSettings: 'Desativada nos Ajustes',
+    youHaveNotChosenYet: 'Você ainda não escolheu',
+    unavailableInThisBrowser: 'Indisponível neste navegador',
+    checking: 'Verificando…',
+    settingUp: 'Configurando…',
+    openSettings: 'Abrir Ajustes',
+    checkAgain: 'Verificar novamente',
+    allowNotifications: 'Permitir notificações',
+    notificationsAreNotYetAvailableInThisBrowser:
+      'As notificações deste navegador ainda não estão disponíveis. Você continua recebendo mensagens enquanto o Zoen está aberto.',
+    registrationConfirmsThatTheServerReceivedTheRequest:
+      'O cadastro confirma que o servidor recebeu o pedido. A entrega de avisos neste aparelho ainda não foi verificada. As mensagens continuam chegando com o Zoen aberto.',
+    allNotificationsOnThisDeviceCouldNotBe:
+      'Não foi possível apagar todas as notificações deste aparelho. Tente novamente.',
+    notificationsCouldNotBeSetUpNowTry:
+      'Não foi possível configurar as notificações agora. Tente novamente.',
+    theDeviceDidNotReturnAValidNotification:
+      'O aparelho não retornou um token de notificações válido.',
+    theServerRefusedNotificationRegistrationForThisDevice:
+      'O servidor recusou o cadastro de notificações deste aparelho.',
+    registrationHasNotBeenConfirmedByTheServer:
+      'O cadastro ainda não foi confirmado pelo servidor. Tente novamente quando estiver conectado.',
+    remoteBrowserNotificationsAreNotSetUpYet:
+      'Notificações remotas do navegador ainda não estão configuradas.',
+    accountChanged: 'A conta mudou.',
+  },
+);

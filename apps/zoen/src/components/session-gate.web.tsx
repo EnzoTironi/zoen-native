@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useClient } from '../core/provider';
@@ -12,7 +13,7 @@ import { PairingCode } from './pairing-code';
 
 export function SessionGate({ children }: { children: ReactNode }) {
   const { phase } = useClient();
-  if (phase === 'erasing') return <Loading label="Saindo deste aparelho…" />;
+  if (phase === 'erasing') return <Loading label={t('access.leavingDevice')} />;
   return <SessionContent>{children}</SessionContent>;
 }
 
@@ -35,7 +36,7 @@ function SessionContent({ children }: { children: ReactNode }) {
     } catch (error) {
       setPairing({
         kind: 'failed',
-        message: error instanceof Error ? error.message : 'Não foi possível preparar a conexão.',
+        message: error instanceof Error ? error.message : t('access.prepareConnectionFailed'),
       });
     }
   }
@@ -43,9 +44,9 @@ function SessionContent({ children }: { children: ReactNode }) {
   if (phase === 'opening') return <Loading />;
   if (phase === 'failed')
     return (
-      <EmptyState title="Não foi possível abrir o Zoen" detail={notice ?? 'Tente novamente.'}>
+      <EmptyState title={t('access.openZoenTitle')} detail={notice ?? t('access.retryDetail')}>
         <NativeButton
-          label="Tentar novamente"
+          label={t('access.retry')}
           onPress={() => {
             void store.open();
           }}
@@ -73,27 +74,24 @@ function SessionContent({ children }: { children: ReactNode }) {
             color: colors.text,
           }}
         >
-          Mais espaço para suas conversas.
+          {t('access.webHeadline')}
         </Text>
         {pairing ? (
           <>
             <Text style={{ color: colors.secondary, lineHeight: 24 }}>
               {recovering
-                ? 'Sua conta @' +
-                  recovering.handle +
-                  ' foi reconhecida. Conecte seu outro aparelho para recuperar as chaves das conversas.'
-                : 'Conecte este navegador pelo Zoen no seu outro aparelho.'}
+                ? t('access.recognizedBrowserAccount', { handle: recovering.handle })
+                : t('access.connectBrowserInstruction')}
             </Text>
             {pairing.kind === 'starting' ? (
               <Text accessibilityRole="status" style={{ color: colors.secondary }}>
-                Preparando sua conexão segura…
+                {t('access.preparingSecureConnection')}
               </Text>
             ) : null}
             {pairing.kind === 'waiting' ? (
               <>
                 <Text style={{ color: colors.secondary, lineHeight: 24 }}>
-                  No celular, abra Você → Dispositivos vinculados → Conectar dispositivo. Confira os
-                  seis números antes de aprovar.
+                  {t('access.phoneLinkInstructions')}
                 </Text>
                 <PairingCode code={pairing.code} check={pairing.check} />
               </>
@@ -104,13 +102,13 @@ function SessionContent({ children }: { children: ReactNode }) {
                   {pairing.message}
                 </Text>
                 <NativeButton
-                  label="Tentar conexão novamente"
+                  label={t('access.retryConnection')}
                   onPress={() => connect(recovering ?? undefined)}
                 />
               </>
             ) : null}
             <NativeButton
-              label="Voltar"
+              label={t('access.back')}
               secondary
               onPress={() => {
                 stop.current?.();
@@ -122,7 +120,7 @@ function SessionContent({ children }: { children: ReactNode }) {
         ) : (
           <>
             <Text style={{ fontSize: 17, lineHeight: 26, color: colors.secondary }}>
-              Suas conversas, ideias e agentes, juntos. Entre para começar.
+              {t('access.webIntroduction')}
             </Text>
             {notice && snapshot?.account?.setup_pending ? (
               <Text accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 22 }}>
@@ -144,21 +142,25 @@ function SessionContent({ children }: { children: ReactNode }) {
               }
             />
             <Text style={{ fontSize: 14, lineHeight: 21, color: colors.secondary }}>
-              Seu nome e usuário poderão ser ajustados depois.
+              {t('access.profileEditableLater')}
             </Text>
-            <NativeButton label="Conectar com outro aparelho" secondary onPress={() => connect()} />
+            <NativeButton
+              label={t('access.connectOtherDevice')}
+              secondary
+              onPress={() => connect()}
+            />
           </>
         )}
         {__DEV__ && !pairing ? (
           <>
             <NativeButton
-              label={advanced ? 'Fechar opções de desenvolvimento' : 'Opções de desenvolvimento'}
+              label={advanced ? t('access.closeDeveloperOptions') : t('access.developerOptions')}
               secondary
               onPress={() => setAdvanced(!advanced)}
             />
             {advanced ? (
               <Field
-                label="Servidor"
+                label={t('access.server')}
                 value={relay}
                 onChangeText={setRelay}
                 autoCapitalize="none"
@@ -168,8 +170,7 @@ function SessionContent({ children }: { children: ReactNode }) {
           </>
         ) : null}
         <Text style={{ fontSize: 13, lineHeight: 20, color: colors.secondary }}>
-          Conversas privadas usam criptografia de ponta a ponta. Em um novo dispositivo, o histórico
-          exige recuperação segura.
+          {t('access.webPrivacy')}
         </Text>
       </View>
     </ScrollView>

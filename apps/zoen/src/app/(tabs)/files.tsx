@@ -1,3 +1,4 @@
+import { t } from '../../i18n/index.ts';
 import { useCallback, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
@@ -27,7 +28,7 @@ export default function Files() {
         .catch((failure: unknown) => {
           if (current)
             setError(
-              failure instanceof Error ? failure.message : 'Não foi possível abrir seus arquivos.',
+              failure instanceof Error ? failure.message : t('documents.yourFilesCouldNotBeOpened'),
             );
         });
       return () => {
@@ -42,12 +43,16 @@ export default function Files() {
           accessibilityRole="header"
           style={{ color: colors.text, fontSize: 34, fontWeight: '700', letterSpacing: -1 }}
         >
-          Feito para ficar.
+          {t('documents.madeToStay')}
         </Text>
         <Text style={{ color: colors.secondary, fontSize: 16 }}>
-          Planos, páginas e arquivos das suas conversas.
+          {t('documents.plansPagesAndFilesFromYourChats')}
         </Text>
-        <NativeButton secondary label="Nova página" onPress={() => router.push('/new-page')} />
+        <NativeButton
+          secondary
+          label={t('documents.newPage')}
+          onPress={() => router.push('/new-page')}
+        />
       </View>
       {error ? (
         <Text accessibilityRole="alert" style={{ color: colors.danger, padding: 24 }}>
@@ -61,15 +66,15 @@ export default function Files() {
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
         ListEmptyComponent={
           <EmptyState
-            title="Suas ideias ganham lugar"
-            detail="Tudo que você criar e compartilhar nas conversas fica reunido aqui."
+            title={t('documents.aHomeForYourIdeas')}
+            detail={t('documents.everythingYouCreateAndShareInChatsIs')}
             icon={{ ios: 'folder', android: 'folder', web: 'folder' }}
           />
         }
         renderItem={({ item }) => (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Abrir ${item.title}`}
+            accessibilityLabel={t('documents.openNamedItem', { title: item.title })}
             onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })}
             style={{
               flexDirection: 'row',

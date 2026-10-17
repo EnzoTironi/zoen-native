@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { challengeFromWire, serviceOrigin, verificationFromWire } from './guards.ts';
 import type { AuthClient, AuthProvider, AuthService } from './types';
 
@@ -22,13 +23,13 @@ export function createAuthService(
     });
     if (!response.ok) {
       if (response.status === 404 || response.status === 503)
-        throw new Error('Este login ainda não está disponível no servidor.');
+        throw new Error(t('authProviders.thisSignInIsNotYetAvailableOn'));
       if (response.status === 429)
-        throw new Error('Muitas tentativas. Aguarde um pouco e tente novamente.');
-      throw new Error('O servidor não confirmou o login. Tente novamente.');
+        throw new Error(t('authProviders.tooManyAttemptsWaitAMomentAndTry'));
+      throw new Error(t('authProviders.theServerDidNotConfirmSignInTry'));
     }
     const reader = response.body?.getReader();
-    if (!reader) throw new Error('O servidor devolveu uma resposta incompleta.');
+    if (!reader) throw new Error(t('authProviders.theServerReturnedAnIncompleteResponse'));
     const chunks: Uint8Array[] = [];
     let bytes = 0;
     try {
@@ -36,7 +37,7 @@ export function createAuthService(
         const part = await reader.read();
         if (part.done) break;
         bytes += part.value.byteLength;
-        if (bytes > 32_768) throw new Error('O servidor devolveu uma resposta inválida.');
+        if (bytes > 32_768) throw new Error(t('authProviders.theServerReturnedAnInvalidResponse'));
         chunks.push(part.value);
       }
     } finally {
@@ -52,13 +53,13 @@ export function createAuthService(
     try {
       return JSON.parse(new TextDecoder().decode(merged));
     } catch {
-      throw new Error('O servidor devolveu uma resposta inválida.');
+      throw new Error(t('authProviders.theServerReturnedAnInvalidResponse'));
     }
   }
   return {
     async challenge(provider, client, signal) {
       const audience = audiences[provider]?.[client];
-      if (!audience) throw new Error('Este login ainda não está configurado nesta versão.');
+      if (!audience) throw new Error(t('authProviders.thisSignInIsNotConfiguredInThis'));
       return challengeFromWire(
         await post('/v1/auth/challenge', { provider, client }, signal),
         audience,

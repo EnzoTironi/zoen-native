@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -38,9 +39,7 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
     try {
       await action();
     } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : 'Não foi possível conectar o dispositivo.',
-      );
+      setError(reason instanceof Error ? reason.message : t('access.connectDeviceFailed'));
     } finally {
       setBusy(false);
     }
@@ -49,29 +48,26 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
     if (!device) return;
     const [done, total] = await store.driver.request({ op: 'link_progress', device_id: device });
     if (done < total) {
-      setProgress(
-        `${done} de ${total} conversas preparadas. Mantenha os dois dispositivos conectados e tente novamente em instantes.`,
-      );
+      setProgress(t('access.conversationsPrepared', { done, count: total }));
       return;
     }
-    setProgress('Enviando o histórico criptografado…');
+    setProgress(t('access.sendingEncryptedHistory'));
     const count = await store.driver.request({ op: 'send_history', device_id: device });
-    setProgress(`${count} eventos enviados. O novo dispositivo já pode receber o histórico.`);
+    setProgress(t('access.eventsSent', { count }));
     onLinked();
   }
   return (
     <Surface>
       <Text style={{ color: colors.text, fontSize: 19, fontWeight: '600' }}>
-        Conectar dispositivo
+        {t('access.connectDevice')}
       </Text>
       {device ? (
         <>
           <Text style={{ color: colors.secondary, lineHeight: 24 }}>
-            Dispositivo autorizado. Envie o histórico para que suas conversas anteriores apareçam
-            nele.
+            {t('access.authorizedSendHistory')}
           </Text>
           <NativeButton
-            label={busy ? 'Aguarde…' : 'Enviar histórico'}
+            label={busy ? t('access.wait') : t('access.sendHistory')}
             disabled={busy}
             onPress={() => {
               void run(transfer);
@@ -79,7 +75,7 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
           />
           <NativeButton
             secondary
-            label="Conectar outro dispositivo"
+            label={t('access.connectAnotherDevice')}
             disabled={busy}
             onPress={() => {
               setDevice(null);
@@ -92,20 +88,17 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
       ) : (
         <>
           <Text style={{ color: colors.secondary, lineHeight: 24 }}>
-            Escaneie o QR ou cole o código mostrado pelo Zoen no dispositivo que deseja conectar.
+            {t('access.scanOrPasteCode')}
           </Text>
           {CameraView.isModernBarcodeScannerAvailable ? (
             <NativeButton
               secondary
-              label="Escanear QR code"
+              label={t('access.scanQr')}
               disabled={busy}
               onPress={() => {
                 void run(async () => {
                   const access = permission?.granted ? permission : await requestPermission();
-                  if (!access.granted)
-                    throw new Error(
-                      'Permita o uso da câmera nos Ajustes ou cole o código de conexão.',
-                    );
+                  if (!access.granted) throw new Error(t('access.cameraRequired'));
                   scanning.current = true;
                   await CameraView.launchScanner({ barcodeTypes: ['qr'] });
                 });
@@ -113,7 +106,7 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
             />
           ) : null}
           <Field
-            label="Código de conexão"
+            label={t('access.connectionCode')}
             value={code}
             onChangeText={(value) => {
               setCode(value);
@@ -139,14 +132,17 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
                 {check}
               </Text>
               <Text style={{ color: colors.secondary, lineHeight: 24 }}>
-                Estes seis números precisam aparecer no outro dispositivo. Só autorize se os números
-                forem iguais e você iniciou esta conexão.
+                {t('access.compareSixDigits')}
               </Text>
             </View>
           ) : null}
           <NativeButton
             label={
-              busy ? 'Aguarde…' : check ? 'Os números são iguais — autorizar' : 'Conferir código'
+              busy
+                ? t('access.wait')
+                : check
+                  ? t('access.matchingDigitsAuthorize')
+                  : t('access.checkCode')
             }
             disabled={busy || !code.trim()}
             onPress={() => {
@@ -159,9 +155,9 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
                 }
                 if (
                   !(await confirm({
-                    title: 'Autorizar este dispositivo?',
-                    message: `Confirme que ${check} aparece no outro dispositivo. Ele poderá acessar sua conta e seu histórico.`,
-                    confirmLabel: 'Autorizar dispositivo',
+                    title: t('access.authorizeTitle'),
+                    message: t('access.authorizeExplanation', { code: check }),
+                    confirmLabel: t('access.authorizeDevice'),
                   }))
                 )
                   return;

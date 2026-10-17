@@ -18,6 +18,7 @@ import type { ProfileDto } from './generated/ProfileDto';
 import type { Persona } from './generated/Persona';
 import type { SpaceSummary } from './generated/SpaceSummary';
 import assets from './generated/web-assets.json';
+import { locale as appLocale } from '../i18n/index.ts';
 import { searchBrowser, searchBrowserMessages } from './browser-search';
 import { activateBrowserMediaHost } from './browser-media';
 import { browserMediaEntry } from './browser-media-entry';
@@ -110,7 +111,7 @@ class BrowserDriver implements CoreDriver {
               resolve();
               return;
             }
-            worker = await CoreWorker.create(vault, assets.workerIntegrity);
+            worker = await CoreWorker.create(vault, assets.workerIntegrity, appLocale);
             if (generation !== this.generation) {
               worker.close();
               resolve();

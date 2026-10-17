@@ -1,5 +1,6 @@
 import { integer, message, object, string } from './boundary.ts';
 import type { BrowserVault } from './vault.ts';
+import { sessionLocale, type AppLocale } from './locale.ts';
 
 export type CoreOperation =
   | { kind: 'create_link'; device: string; relay: string }
@@ -49,7 +50,7 @@ export type CoreOperation =
   | {kind:'history_start'|'history_finish'|'history_cleaned';now:number}
   | {kind:'history_manifest';sealed:Uint8Array;now:number}
   | {kind:'history_chunk';index:number;sealed:Uint8Array;now:number}
-  | { kind: 'app_request'; request: string; now: number; locale: string }
+  | { kind: 'app_request'; request: string; now: number }
   | { kind: 'directory_profiles'; profiles: string }
   | { kind: 'typing_frame'; space: string; typing: boolean }
   | { kind: 'document_uploads' }
@@ -68,17 +69,18 @@ export class CoreWorker {
   private loading: ReturnType<typeof setTimeout> | undefined;
   private rejectReady: (error: Error) => void = () => {};
 
-  static async create(vault: BrowserVault, workerIntegrity: string): Promise<CoreWorker> {
+  static async create(vault: BrowserVault, workerIntegrity: string, locale: AppLocale): Promise<CoreWorker> {
+    sessionLocale(locale);
     const response = await fetch(new URL('/worker.js', window.location.origin), { integrity: workerIntegrity });
     if (!response.ok) throw new Error('The encrypted browser core could not be downloaded.');
     const blob = URL.createObjectURL(new Blob([await response.text()], { type: 'text/javascript' }));
-    const core = new CoreWorker(new Worker(blob, { type: 'module', name: 'zoen-mls' }), vault);
+    const core = new CoreWorker(new Worker(blob, { type: 'module', name: 'zoen-mls' }), vault, locale);
     try { await core.ready; return core; }
     catch (error) { core.close(); throw error; }
     finally { URL.revokeObjectURL(blob); }
   }
 
-  private constructor(worker: Worker, vault: BrowserVault) {
+  private constructor(worker: Worker, vault: BrowserVault, locale: AppLocale) {
     this.worker = worker;
     this.ready = new Promise((resolve, reject) => {
       this.rejectReady = reject;
@@ -91,7 +93,9 @@ export class CoreWorker {
         try {
           const data = object(event.data);
           switch (data.kind) {
-            case 'ready': clearTimeout(this.loading); resolve(); return;
+            case 'ready':
+              if (sessionLocale(data.locale) !== locale) throw new Error('Browser core language mismatch.');
+              clearTimeout(this.loading); resolve(); return;
             case 'sign': {
               if(!this.bridge)throw new Error('Encrypted messaging requires an isolated browser page.');
               const bridge=this.bridge;
@@ -134,7 +138,7 @@ export class CoreWorker {
           }
         } catch (error) { this.close(new Error(message(error))); }
       };
-      this.worker.postMessage({ kind: 'init', bridge: this.bridge, authorityKey:vault.authorityKey(),
+      this.worker.postMessage({ kind: 'init', locale, bridge: this.bridge, authorityKey:vault.authorityKey(),
         wasmUrl: new URL('/core/zoen_web_core_bg.wasm', window.location.origin).toString() });
     });
   }

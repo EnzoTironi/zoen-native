@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../i18n/index.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { File } from 'expo-file-system';
@@ -16,8 +17,8 @@ function sizeLabel(bytes: string) {
   return value < 1024
     ? `${value} B`
     : value < 1024 * 1024
-      ? `${(value / 1024).toFixed(1)} KB`
-      : `${(value / (1024 * 1024)).toFixed(1)} MB`;
+      ? `${new Intl.NumberFormat(formatLocale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value / 1024)} KB`
+      : `${new Intl.NumberFormat(formatLocale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value / (1024 * 1024))} MB`;
 }
 
 type FileAttachmentProps = {
@@ -71,7 +72,7 @@ function FileAttachmentContent({
         .catch((reason: unknown) => {
           if (active)
             setError(
-              reason instanceof Error ? reason.message : 'Não foi possível abrir este arquivo.',
+              reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'),
             );
         });
     return () => {
@@ -88,13 +89,10 @@ function FileAttachmentContent({
   const materialize = useCallback(
     async (media: MediaDriver) => {
       const file = await media.materializeFile(itemId, version);
-      if (!file)
-        throw new Error(
-          'Este arquivo ainda está chegando. Tente novamente quando a sincronização terminar.',
-        );
+      if (!file) throw new Error(t('media.thisFileIsStillArrivingTryAgainWhen'));
       if (expectedHash && file.info.sha256 !== expectedHash) {
         await media.releaseLocalFile(file.uri);
-        throw new Error('O áudio foi atualizado. Abra a mensagem novamente.');
+        throw new Error(t('media.theAudioHasBeenUpdatedOpenTheMessage'));
       }
       return file;
     },
@@ -115,7 +113,7 @@ function FileAttachmentContent({
       }
       if (kind === 'share') {
         if (!(await Sharing.isAvailableAsync()))
-          throw new Error('O compartilhamento não está disponível neste aparelho.');
+          throw new Error(t('media.sharingIsNotAvailableOnThisDevice'));
         await Sharing.shareAsync(file.uri, {
           mimeType: file.info.mime,
           dialogTitle: file.info.name,
@@ -123,13 +121,11 @@ function FileAttachmentContent({
       } else {
         const preview = new File(file.uri);
         if (!(await preview.canPreview({ mimeType: file.info.mime })))
-          throw new Error(
-            'Este formato não tem visualização no aparelho. Use Compartilhar para abrir em outro app.',
-          );
+          throw new Error(t('media.thisFormatCannotBePreviewedOnThisDevice'));
         await preview.preview({ title: file.info.name, mimeType: file.info.mime });
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Não foi possível abrir este arquivo.');
+      setError(reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'));
     } finally {
       if (file) await driver.releaseLocalFile(file.uri);
       setBusy(false);
@@ -156,7 +152,9 @@ function FileAttachmentContent({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            voice ? 'Carregar mensagem de voz' : `Abrir ${title ?? info?.name ?? 'arquivo'}`
+            voice
+              ? t('media.loadVoiceMessage')
+              : t('media.openFileLabel', { name: title ?? info?.name ?? t('media.file') })
           }
           disabled={busy || !driver}
           onPress={() => {
@@ -179,12 +177,12 @@ function FileAttachmentContent({
           )}
           <View style={{ flex: 1, gap: 4 }}>
             <Text numberOfLines={2} style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>
-              {voice ? 'Mensagem de voz' : (title ?? info?.name ?? 'Arquivo')}
+              {voice ? t('media.voiceMessage') : (title ?? info?.name ?? t('media.file2'))}
             </Text>
             <Text style={{ color: colors.secondary, fontSize: 12 }}>
               {info
-                ? `${sizeLabel(info.bytes)} · ${info.ready ? 'Pronto para abrir' : `${info.chunks_here}/${info.chunks} partes`}`
-                : 'Carregando…'}
+                ? `${sizeLabel(info.bytes)} · ${info.ready ? t('media.readyToOpen') : t('media.receivedParts', { received: info.chunks_here, total: info.chunks, count: info.chunks })}`
+                : t('media.loading')}
             </Text>
           </View>
         </Pressable>
@@ -204,14 +202,18 @@ function FileAttachmentContent({
       ) : null}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Compartilhar ${voice ? 'áudio' : (title ?? info?.name ?? 'arquivo')}`}
+        accessibilityLabel={t('media.shareFileLabel', {
+          name: voice ? t('media.audio') : (title ?? info?.name ?? t('media.file')),
+        })}
         disabled={busy || !driver}
         onPress={() => {
           void action('share');
         }}
         style={{ minHeight: 36, justifyContent: 'center' }}
       >
-        <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>Compartilhar</Text>
+        <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
+          {t('media.share')}
+        </Text>
       </Pressable>
       {error ? (
         <Text

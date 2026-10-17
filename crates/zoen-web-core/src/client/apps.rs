@@ -92,7 +92,7 @@ impl<S: Signer> Client<S> {
         if request.len() > 1 << 20 {
             return Err("Solicitação do mini-app grande demais.".into());
         }
-        roda_i18n::set(roda_i18n::Lang::from_tag(locale));
+        let _language = roda_i18n::enter(roda_i18n::Lang::from_tag(locale));
         let command: Command = serde_json::from_str(request).map_err(error)?;
         let mut mutated = false;
         let result=match command {

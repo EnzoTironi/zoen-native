@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { parseMiniappRequest } from './json.ts';
 
 type Params = Record<string, unknown>;
@@ -68,7 +69,7 @@ export class MiniappSession {
     const key = `${typeof id}:${id}`;
     if (this.pending.has(key)) return;
     if (this.pending.size >= 16) {
-      this.error(id, -32000, 'Há uma ação em andamento.');
+      this.error(id, -32000, t('miniapps.anActionIsInProgress'));
       return;
     }
     this.pending.add(key);
@@ -77,15 +78,15 @@ export class MiniappSession {
       if (method === 'ui/initialize') {
         result = this.host.initialize();
         this.handshake = true;
-      } else if (!this.initialized) throw new Error('A interface ainda não foi inicializada.');
+      } else if (!this.initialized) throw new Error(t('miniapps.theInterfaceHasNotInitializedYet'));
       else if (method === 'ping') result = {};
       else if (method === 'tools/call') {
         if (typeof params.name !== 'string' || !this.host.tools.has(params.name))
-          throw new Error('Esta ferramenta não está disponível para este miniapp.');
+          throw new Error(t('miniapps.thisToolIsNotAvailableToThisMiniapp'));
         result = await this.host.call(params.name, record(params.arguments));
       } else if (method === 'resources/read') {
         if (params.uri !== this.host.resourceUri)
-          throw new Error('Este recurso não pertence ao miniapp.');
+          throw new Error(t('miniapps.thisResourceDoesNotBelongToTheMiniapp'));
         result = await this.host.resource();
       } else if (method === 'ui/open-link') result = await this.host.openLink(params.url);
       else if (method === 'ui/message') {
@@ -95,7 +96,7 @@ export class MiniappSession {
           !content.text.trim() ||
           content.text.length > 32_000
         )
-          throw new Error('A mensagem deste miniapp é inválida.');
+          throw new Error(t('miniapps.thisMiniappSMessageIsInvalid'));
         result = await this.host.share(content.text);
       } else if (method === 'ui/request-display-mode') {
         if (params.mode === 'inline') this.host.close();
@@ -103,7 +104,7 @@ export class MiniappSession {
       } else if (method.startsWith('zoen/native/'))
         result = await this.host.native(method.slice('zoen/native/'.length), params);
       else {
-        this.error(id, -32601, 'Este recurso não está disponível neste host.');
+        this.error(id, -32601, t('miniapps.thisFeatureIsNotAvailableOnThisHost'));
         return;
       }
       if (this.active) this.host.send({ jsonrpc: '2.0', id, result });
@@ -111,7 +112,7 @@ export class MiniappSession {
       this.error(
         id,
         -32000,
-        reason instanceof Error ? reason.message : 'Não foi possível concluir a ação.',
+        reason instanceof Error ? reason.message : t('miniapps.theActionCouldNotBeCompleted'),
       );
     } finally {
       this.pending.delete(key);
@@ -141,7 +142,7 @@ export class MiniappSession {
       jsonrpc: '2.0',
       id: 1_000_000,
       method: 'ui/resource-teardown',
-      params: { reason: 'A interface foi fechada.' },
+      params: { reason: t('miniapps.theInterfaceHasClosed') },
     });
     this.active = false;
     this.pending.clear();

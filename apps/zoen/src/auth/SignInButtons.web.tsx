@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { useTheme } from '../theme';
@@ -60,7 +61,7 @@ export function SignInButtons({
     setBusy(false);
     function failure(reason: unknown) {
       if (active && !cancelled(reason))
-        setError(reason instanceof Error ? reason.message : 'Não foi possível preparar a entrada.');
+        setError(reason instanceof Error ? reason.message : t('auth.prepareFailed'));
     }
     async function accept(ticket: AuthTicket, credential: ProviderCredential, name?: string) {
       if (!active || disabledRef.current || running.current) return;
@@ -176,9 +177,7 @@ export function SignInButtons({
       if (mounted.current && current.current === attempt) await onVerified(result);
     } catch (reason) {
       if (!cancelled(reason) && mounted.current && current.current === attempt)
-        setError(
-          reason instanceof Error ? reason.message : 'Não foi possível continuar. Tente novamente.',
-        );
+        setError(reason instanceof Error ? reason.message : t('auth.continueFailed'));
     } finally {
       running.current = false;
       if (mounted.current && current.current === attempt) {
@@ -197,7 +196,7 @@ export function SignInButtons({
       {apple ? (
         <button
           type="button"
-          aria-label="Continuar com Apple"
+          aria-label={t('auth.continueApple')}
           disabled={blocked}
           onClick={() => {
             void continueApple();
@@ -214,13 +213,13 @@ export function SignInButtons({
           }}
         >
           <img
-            alt="Continuar com Apple"
+            alt={t('auth.continueApple')}
             src={appleButtonImage(scheme === 'dark', width)}
             style={{ width: '100%', height: 52, display: 'block' }}
           />
         </button>
       ) : !preparing ? (
-        <Text style={{ color: colors.secondary }}>Apple indisponível nesta versão.</Text>
+        <Text style={{ color: colors.secondary }}>{t('auth.appleUnavailable')}</Text>
       ) : null}
       <div
         ref={node}
@@ -233,7 +232,7 @@ export function SignInButtons({
         }}
       />
       {!googleReady && !preparing ? (
-        <Text style={{ color: colors.secondary }}>Google indisponível nesta versão.</Text>
+        <Text style={{ color: colors.secondary }}>{t('auth.googleUnavailable')}</Text>
       ) : null}
       {preparing || busy ? (
         <View
@@ -242,7 +241,7 @@ export function SignInButtons({
         >
           <ActivityIndicator color={colors.accent} />
           <Text style={{ color: colors.secondary }}>
-            {busy ? 'Preparando seu Zoen…' : 'Preparando entrada…'}
+            {busy ? t('auth.preparingAccount') : t('auth.preparingSignIn')}
           </Text>
         </View>
       ) : null}
@@ -271,7 +270,7 @@ export function SignInButtons({
               cursor: 'pointer',
             }}
           >
-            Tentar novamente
+            {t('access.retry')}
           </button>
         </View>
       ) : null}

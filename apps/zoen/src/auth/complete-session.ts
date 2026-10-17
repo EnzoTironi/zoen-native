@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import type { VerifiedSignIn } from './types';
 
 export type RecoveryAccount = { identityId: string; handle: string };
@@ -10,13 +11,13 @@ export async function completeProviderSession(
   recover: (account: RecoveryAccount) => void,
 ) {
   if (result.expires_at_ms <= Date.now())
-    throw new Error('Confirme sua entrada novamente para continuar.');
+    throw new Error(t('authProviders.confirmYourSignInAgainToContinue'));
   if (result.account.kind === 'bound' && result.account.identity_id !== localIdentity) {
     recover({ identityId: result.account.identity_id, handle: result.account.handle });
     return;
   }
   await provision(
     result.proof_token,
-    result.profile?.name ?? result.suggested_name ?? 'Pessoa Zoen',
+    result.profile?.name ?? result.suggested_name ?? t('authProviders.zoenPerson'),
   );
 }

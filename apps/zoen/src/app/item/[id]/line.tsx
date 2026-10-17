@@ -1,10 +1,11 @@
+import { t } from '../../../i18n/index.ts';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { useClient } from '../../../core/provider';
 import { useCoreQuery } from '../../../core/query';
 import type { PlanPageDto } from '../../../core/types';
-import { money, parseMoneyInput } from '../../../core/presentation';
+import { money, parsePlanMoneyInput } from '../../../core/presentation';
 import { EmptyState, Field, Loading, NativeButton, Surface } from '../../../components/primitives';
 import { useDialogs } from '../../../components/dialogs';
 import { useTheme } from '../../../theme';
@@ -40,7 +41,7 @@ function Editor({
   const initialAmount =
     original && typeof original.content === 'object' && 'Line' in original.content
       ? planAmountInput(original.content.Line.cost_cents)
-      : '0,00';
+      : planAmountInput('0');
   const [text, setText] = useState(original?.text ?? '');
   const [amount, setAmount] = useState(initialAmount);
   const [busy, setBusy] = useState(false);
@@ -55,8 +56,8 @@ function Editor({
   if (lineId && !original)
     return (
       <EmptyState
-        title="Esta linha não está mais no plano"
-        detail="Volte ao plano para abrir a versão atual."
+        title={t('documents.thisLineIsNoLongerInThePlan')}
+        detail={t('documents.goBackToThePlanToOpenThe')}
       />
     );
 
@@ -65,8 +66,8 @@ function Editor({
     setBusy(true);
     setError(null);
     try {
-      const cost_cents = parseMoneyInput(amount);
-      if (!text.trim()) throw new Error('Escreva o texto desta linha.');
+      const cost_cents = parsePlanMoneyInput(amount);
+      if (!text.trim()) throw new Error(t('documents.enterTheTextForThisLine'));
       const result = await store.request(
         lineId
           ? {
@@ -90,7 +91,7 @@ function Editor({
       finish();
       router.back();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Não foi possível guardar esta linha.');
+      setError(failure instanceof Error ? failure.message : t('documents.thisLineCouldNotBeSaved'));
     } finally {
       setBusy(false);
     }
@@ -99,9 +100,11 @@ function Editor({
     if (busy || !editable || !lineId) return;
     if (
       !(await dialogs.confirm({
-        title: 'Remover esta linha?',
-        message: `${original?.text ?? 'Esta linha'}\n\nA versão anterior continuará no histórico.`,
-        confirmLabel: 'Remover linha',
+        title: t('documents.removeThisLine'),
+        message: t('documents.removeLineConfirmation', {
+          text: original?.text ?? t('documents.thisLine'),
+        }),
+        confirmLabel: t('documents.removeLine'),
         destructive: true,
       }))
     )
@@ -119,7 +122,9 @@ function Editor({
       finish();
       router.back();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Não foi possível remover esta linha.');
+      setError(
+        failure instanceof Error ? failure.message : t('documents.thisLineCouldNotBeRemoved'),
+      );
     } finally {
       setBusy(false);
     }
@@ -131,7 +136,7 @@ function Editor({
       setReview(await store.driver.request({ op: 'plan_page', item_id: observed.item_id }));
     } catch (failure) {
       setError(
-        failure instanceof Error ? failure.message : 'Não foi possível atualizar este plano.',
+        failure instanceof Error ? failure.message : t('documents.thisPlanCouldNotBeUpdated'),
       );
     } finally {
       setBusy(false);
@@ -151,39 +156,40 @@ function Editor({
         alignSelf: 'center',
       }}
     >
-      <Stack.Screen options={{ title: lineId ? 'Editar linha' : 'Nova linha' }} />
+      <Stack.Screen
+        options={{ title: lineId ? t('documents.editLine') : t('documents.newLine') }}
+      />
       <Text style={{ color: colors.secondary, fontSize: 13 }}>
-        PLANO · VERSÃO OBSERVADA {observed.version}
+        {t('documents.planObservedVersion', { version: observed.version })}
       </Text>
       {!lineId ? (
         <Text style={{ color: colors.accent, fontWeight: '600' }}>
-          {sections[sectionIndex]?.text ?? 'Seção indisponível'}
+          {sections[sectionIndex]?.text ?? t('documents.sectionUnavailable')}
         </Text>
       ) : null}
       <Field
-        label="Texto da linha"
+        label={t('documents.lineText')}
         value={text}
         onChangeText={setText}
         editable={!busy && editable}
         multiline
         autoFocus
-        placeholder="O que precisa acontecer?"
+        placeholder={t('documents.whatNeedsToHappen')}
       />
       <Field
-        label="Custo em reais"
+        label={t('documents.costInBrazilianReais')}
         value={amount}
         onChangeText={setAmount}
         editable={!busy && editable}
         keyboardType="decimal-pad"
-        placeholder="0,00"
+        placeholder={t('documents.amountPlaceholder')}
       />
       <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 20 }}>
-        Use vírgula para os centavos. Os valores são guardados exatamente, sem arredondamento.
+        {t('documents.amountPrecisionHelp')}
       </Text>
       {!editable ? (
         <Text accessibilityRole="alert" style={{ color: colors.secondary }}>
-          O plano está disponível somente para leitura ou esta linha mudou. Sua edição continua
-          neste editor.
+          {t('documents.thePlanIsReadOnlyOrThisLine')}
         </Text>
       ) : null}
       {error ? (
@@ -193,7 +199,7 @@ function Editor({
           </Text>
           <NativeButton
             secondary
-            label="Rever a versão atual sem perder minha edição"
+            label={t('documents.reviewTheCurrentVersionWithoutLosingMyEdit')}
             disabled={busy}
             onPress={() => {
               void loadCurrent();
@@ -207,7 +213,7 @@ function Editor({
             accessibilityRole="header"
             style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
           >
-            Versão atual: {review.version}
+            {t('documents.currentVersion', { version: review.version })}
           </Text>
           {lineId ? (
             reviewLine && typeof reviewLine.content === 'object' && 'Line' in reviewLine.content ? (
@@ -217,26 +223,27 @@ function Editor({
                 </Text>
                 <Text selectable style={{ color: colors.secondary }}>
                   {money(reviewLine.content.Line.cost_cents)} ·{' '}
-                  {reviewLine.content.Line.done ? 'Concluída' : 'Pendente'}
+                  {reviewLine.content.Line.done ? t('documents.done') : t('documents.pending')}
                 </Text>
               </>
             ) : (
-              <Text style={{ color: colors.danger }}>Esta linha foi removida.</Text>
+              <Text style={{ color: colors.danger }}>{t('documents.thisLineHasBeenRemoved')}</Text>
             )
           ) : (
             <Text style={{ color: colors.text }}>
-              Adicionar na seção:{' '}
-              {review.blocks.filter((block) => block.content === 'Section')[sectionIndex]?.text ??
-                'Seção indisponível'}
+              {t('documents.addToSection', {
+                section:
+                  review.blocks.filter((block) => block.content === 'Section')[sectionIndex]
+                    ?.text ?? t('documents.sectionUnavailable'),
+              })}
             </Text>
           )}
           <Text style={{ color: colors.secondary, lineHeight: 21 }}>
-            Seu texto e custo permanecem no editor. Use esta versão como base somente depois de
-            conferir as mudanças.
+            {t('documents.yourTextAndCostRemainInTheEditor')}
           </Text>
           <NativeButton
             secondary
-            label="Usar esta versão como base"
+            label={t('documents.useThisVersionAsABase')}
             disabled={
               busy ||
               !review.ready ||
@@ -255,7 +262,13 @@ function Editor({
       ) : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         <NativeButton
-          label={busy ? 'Guardando…' : lineId ? 'Guardar alteração' : 'Adicionar ao plano'}
+          label={
+            busy
+              ? t('documents.saving')
+              : lineId
+                ? t('documents.saveChange')
+                : t('documents.addToPlan')
+          }
           disabled={busy || !editable || !text.trim() || (lineId ? !dirty : false)}
           onPress={() => {
             void save();
@@ -264,7 +277,7 @@ function Editor({
         {lineId ? (
           <NativeButton
             secondary
-            label="Remover linha"
+            label={t('documents.removeLine')}
             disabled={busy || !editable}
             onPress={() => {
               void remove();
@@ -286,8 +299,8 @@ export default function PlanLine() {
   const sectionIndex = section && /^\d+$/.test(section) ? Number(section) : -1;
   if (!plan)
     return error ? (
-      <EmptyState title="Não foi possível abrir o plano" detail={error}>
-        <NativeButton label="Tentar novamente" onPress={retry} />
+      <EmptyState title={t('documents.thePlanCouldNotBeOpened')} detail={error}>
+        <NativeButton label={t('documents.tryAgain')} onPress={retry} />
       </EmptyState>
     ) : (
       <Loading />

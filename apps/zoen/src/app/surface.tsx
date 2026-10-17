@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { EmptyState, Loading, NativeButton } from '../components/primitives';
@@ -34,10 +35,10 @@ export default function SurfaceEntry() {
   }, [encoded, store, phase, mode]);
   return failure ? (
     <EmptyState
-      title="Abra este miniapp no Zoen"
-      detail="O atalho mudou ou não está disponível nesta conta."
+      title={t('chat.openThisMiniappInZoen')}
+      detail={t('chat.theShortcutHasChangedOrIsNotAvailable')}
     >
-      <NativeButton label="Voltar ao Zoen" onPress={() => router.replace('/')} />
+      <NativeButton label={t('chat.backToZoen')} onPress={() => router.replace('/')} />
     </EmptyState>
   ) : (
     <Loading />

@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { Text, View } from 'react-native';
@@ -37,37 +38,47 @@ export default function OpenLink() {
             : null;
       if (space) router.replace({ pathname: '/chat/[id]', params: { id: space } });
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : 'Não foi possível abrir este convite.');
+      setFailure(reason instanceof Error ? reason.message : t('chat.thisInviteCouldNotBeOpened'));
     } finally {
       setBusy(false);
     }
   }
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <Stack.Screen options={{ title: 'Abrir no Zoen' }} />
+      <Stack.Screen options={{ title: t('chat.openInZoen') }} />
       {!link ? (
         <EmptyState
-          title="Este link não é válido"
-          detail="Peça um novo convite à pessoa que compartilhou este link."
+          title={t('chat.thisLinkIsInvalid')}
+          detail={t('chat.askThePersonWhoSharedThisLinkFor')}
         >
-          <NativeButton label="Ir para conversas" onPress={() => router.replace('/')} />
+          <NativeButton label={t('chat.goToChats')} onPress={() => router.replace('/')} />
         </EmptyState>
       ) : link.kind === 'invite' && !preview && !error ? (
         <Loading />
       ) : error && !preview ? (
-        <EmptyState title="Não foi possível abrir o convite" detail={error}>
-          <NativeButton label="Tentar novamente" onPress={retry} />
+        <EmptyState title={t('chat.theInviteCouldNotBeOpened')} detail={error}>
+          <NativeButton label={t('chat.tryAgain2')} onPress={retry} />
         </EmptyState>
       ) : (
         <EmptyState
           title={
             preview?.title ??
-            (link.kind === 'agent' ? `@${link.target.replace(/^@/, '')}` : 'Convite do Zoen')
+            (link.kind === 'agent' ? `@${link.target.replace(/^@/, '')}` : t('chat.zoenInvite'))
           }
           detail={
             preview
-              ? `${preview.kind === 'agent' ? 'Convite de um agente' : `${preview.members} pessoas nesta conversa`}${preview.inviter ? ` · compartilhado por ${preview.inviter.name}` : ''}`
-              : 'Abra uma conversa com este agente. As permissões continuam sob seu controle.'
+              ? preview.inviter
+                ? t('chat.inviteSharedBy', {
+                    summary:
+                      preview.kind === 'agent'
+                        ? t('chat.agentInvite')
+                        : t('chat.inviteMemberCount', { count: preview.members }),
+                    name: preview.inviter.name,
+                  })
+                : preview.kind === 'agent'
+                  ? t('chat.agentInvite')
+                  : t('chat.inviteMemberCount', { count: preview.members })
+              : t('chat.openAChatWithThisAgentYouStay')
           }
         >
           {preview?.agent ? (
@@ -76,10 +87,10 @@ export default function OpenLink() {
           <NativeButton
             label={
               busy
-                ? 'Abrindo…'
+                ? t('chat.opening')
                 : preview?.kind === 'agent' || link.kind === 'agent'
-                  ? 'Abrir conversa'
-                  : 'Entrar na conversa'
+                  ? t('chat.openChat')
+                  : t('chat.joinChat')
             }
             disabled={busy}
             onPress={() => {

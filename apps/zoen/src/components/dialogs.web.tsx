@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import {
   createContext,
   use,
@@ -101,7 +102,7 @@ function Dialog({
               cursor: 'pointer',
             }}
           >
-            {options.cancelLabel ?? 'Cancelar'}
+            {options.cancelLabel ?? t('common.cancel')}
           </button>
         ) : null}
         <button
@@ -118,7 +119,7 @@ function Dialog({
             cursor: 'pointer',
           }}
         >
-          {options.confirmLabel ?? (information ? 'OK' : 'Continuar')}
+          {options.confirmLabel ?? (information ? t('common.oK') : t('common.continue'))}
         </button>
       </div>
     </dialog>,

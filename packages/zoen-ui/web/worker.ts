@@ -2,6 +2,7 @@
 import init, * as core from './core/zoen_web_core.js';
 import { bytes, integer, message, object, string } from './boundary.ts';
 import type { CoreOperation } from './worker-client.ts';
+import { sessionLocale, type AppLocale } from './locale.ts';
 import {authorityJson,openAuthority,parseAuthority,sealAuthority} from './authority.ts';
 
 declare global {
@@ -58,7 +59,7 @@ function parseOperation(input: unknown): CoreOperation {
     case 'history_start':case 'history_finish':case 'history_cleaned':return {kind:value.kind,now:integer(value.now)};
     case 'history_manifest':return {kind:'history_manifest',sealed:bytes(value.sealed),now:integer(value.now)};
     case 'history_chunk':return {kind:'history_chunk',index:integer(value.index),sealed:bytes(value.sealed),now:integer(value.now)};
-    case 'app_request': return { kind: 'app_request', request: string(value.request), now: integer(value.now), locale: string(value.locale) };
+    case 'app_request': return { kind: 'app_request', request: string(value.request), now: integer(value.now) };
     case 'directory_profiles': return {kind:'directory_profiles',profiles:string(value.profiles)};
     case 'typing_frame': return {kind:'typing_frame',space:string(value.space),typing:value.typing===true};
     case 'document_uploads': return { kind: 'document_uploads' };
@@ -69,6 +70,7 @@ function parseOperation(input: unknown): CoreOperation {
   }
 }
 
+let locale: AppLocale;
 let client: core.BrowserCore | undefined;
 let primary:core.BrowserPrimary|undefined;
 let primaryEnvelope:string|undefined;
@@ -85,7 +87,7 @@ async function run(operation: CoreOperation): Promise<string | Uint8Array> {
     case 'complete_link': return core.complete_link(operation.pending, operation.sealed);
     case 'primary_prepare':{
       if(!authorityKey)throw new Error('A proteção das chaves deste navegador não está disponível.');
-      if(!primary){primary=new core.BrowserPrimary(operation.device,operation.relay,operation.name);}
+      if(!primary){primary=new core.BrowserPrimary(operation.device,operation.relay,operation.name,locale);}
       const account=JSON.parse(primary.account()) as {identity:string;device:string;relay:string};
       if(account.device!==operation.device||account.relay!==operation.relay)throw new Error('Este navegador já preparou outra conta.');
       if(!primaryEnvelope){const envelope=await sealAuthority(primary.authority_bytes(),authorityKey,account.identity,account.device);primaryEnvelope=authorityJson(envelope);}
@@ -96,7 +98,7 @@ async function run(operation: CoreOperation): Promise<string | Uint8Array> {
       const envelope=parseAuthority(JSON.parse(operation.authority));
       const seed=await openAuthority(envelope,authorityKey,operation.device);
       try{
-        const restored=core.BrowserPrimary.restore(seed,operation.account,operation.device);
+        const restored=core.BrowserPrimary.restore(seed,operation.account,operation.device,locale);
         const account=JSON.parse(restored.account()) as {identity:string};
         if(account.identity!==envelope.identity){restored.free();throw new Error('A autoridade não corresponde à conta salva.');}
         primary?.free();primary=restored;primaryEnvelope=authorityJson(envelope);return primary.account();
@@ -121,7 +123,7 @@ async function run(operation: CoreOperation): Promise<string | Uint8Array> {
       if(!messagingAllowed)throw new Error('Abra o Zoen na página protegida para sincronizar suas conversas.');
       client?.free();
       client = undefined;
-      client = new core.BrowserCore(operation.account, operation.snapshot);
+      client = new core.BrowserCore(operation.account, operation.snapshot, locale);
       return client.view();
     }
     case 'bootstrap': return restored().bootstrap();
@@ -161,7 +163,7 @@ async function run(operation: CoreOperation): Promise<string | Uint8Array> {
     case 'history_chunk':return restored().history_chunk(operation.index,operation.sealed,operation.now);
     case 'history_finish':return restored().history_finish(operation.now);
     case 'history_cleaned':return restored().history_cleaned(operation.now);
-    case 'app_request': return restored().app_request(operation.request, operation.now, operation.locale);
+    case 'app_request': return restored().app_request(operation.request, operation.now);
     case 'directory_profiles': return restored().directory_profiles(operation.profiles);
     case 'typing_frame': return restored().typing_frame(operation.space,operation.typing);
     case 'document_uploads': return restored().document_uploads();
@@ -179,6 +181,7 @@ self.onmessage = (event: MessageEvent<unknown>) => {
   const data = object(event.data);
   if (data.kind === 'init') {
     if (ready || data.bridge!==null && (typeof SharedArrayBuffer==='undefined'||!(data.bridge instanceof SharedArrayBuffer))) throw new Error('Invalid signing bridge.');
+    locale = sessionLocale(data.locale);
     const bridge = data.bridge;
     messagingAllowed=bridge!==null;
     if(!(data.authorityKey instanceof CryptoKey)||data.authorityKey.type!=='secret'||data.authorityKey.extractable||data.authorityKey.algorithm.name!=='AES-GCM')throw new Error('Invalid browser authority protection.');
@@ -195,7 +198,7 @@ self.onmessage = (event: MessageEvent<unknown>) => {
     };
     const wasmUrl = new URL(string(data.wasmUrl));
     if (wasmUrl.origin !== new URL(self.location.href).origin) throw new Error('Invalid browser core origin.');
-    ready = init({ module_or_path: fetch(wasmUrl, { integrity: ZOEN_WASM_INTEGRITY }) }).then(() => self.postMessage({ kind: 'ready' })).catch((error: unknown) => {
+    ready = init({ module_or_path: fetch(wasmUrl, { integrity: ZOEN_WASM_INTEGRITY }) }).then(() => self.postMessage({ kind: 'ready', locale })).catch((error: unknown) => {
       self.postMessage({ kind: 'error', id: 0, message: message(error) });
       throw error;
     });

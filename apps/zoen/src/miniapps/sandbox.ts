@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { sha256 } from '@noble/hashes/sha2.js';
 import type { AppResourceDto } from '../core/generated/AppResourceDto';
 
@@ -26,11 +27,11 @@ export function verifyMiniappResource(
     resource.mime_type !== 'text/html;profile=mcp-app' ||
     new TextEncoder().encode(resource.text).length > 8 * 1024 * 1024
   )
-    throw new Error('O recurso deste miniapp não pode ser aberto.');
+    throw new Error(t('miniapps.thisMiniappSResourceCannotBeOpened'));
   if (!resource.manifest_json) return null; // Only core-bundled legacy views have no manifest.
   const value: unknown = JSON.parse(resource.manifest_json);
   if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error('O manifesto do miniapp é inválido.');
+    throw new Error(t('miniapps.theMiniappManifestIsInvalid'));
   const input = value as Record<string, unknown>;
   if (
     input.id !== appId ||
@@ -44,7 +45,7 @@ export function verifyMiniappResource(
     !/^[a-f0-9]{64}$/.test(input.sha256) ||
     !Number.isSafeInteger(input.bytes)
   )
-    throw new Error('O manifesto do miniapp não corresponde a este recurso.');
+    throw new Error(t('miniapps.theMiniappManifestDoesNotMatchThisResource'));
   const capabilities = input.capabilities.map((capability: unknown) => {
     if (
       !capability ||
@@ -57,15 +58,15 @@ export function verifyMiniappResource(
       !capability.purpose.trim() ||
       capability.purpose.length > 1000
     )
-      throw new Error('Uma permissão deste miniapp não declara seu motivo.');
+      throw new Error(t('miniapps.aPermissionInThisMiniappDoesNotDeclare'));
     return { id: capability.id, purpose: capability.purpose };
   });
   if (new Set(capabilities.map((capability) => capability.id)).size !== capabilities.length)
-    throw new Error('O manifesto tem permissões duplicadas.');
+    throw new Error(t('miniapps.theManifestHasDuplicatePermissions'));
   const bytes = new TextEncoder().encode(resource.text);
   const digest = Array.from(sha256(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('');
   if (bytes.length !== input.bytes || digest !== input.sha256)
-    throw new Error('O miniapp não corresponde ao pacote verificado e não foi aberto.');
+    throw new Error(t('miniapps.theMiniappDoesNotMatchTheVerifiedPackage'));
   return {
     id: appId,
     name: input.name,
@@ -78,7 +79,7 @@ export function verifyMiniappResource(
   };
 }
 export function miniappCsp(allowed: readonly string[]): string {
-  if (!allowed.every(hostname)) throw new Error('Domínio de miniapp inválido.');
+  if (!allowed.every(hostname)) throw new Error(t('miniapps.invalidMiniappDomain'));
   const network = allowed.map((host) => `https://${host}`).join(' ');
   return `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob: ${network}; media-src data:; font-src data:; connect-src ${network || "'none'"}; worker-src blob:; child-src blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
 }
@@ -92,7 +93,7 @@ const NETWORK_HARDENING = `(()=>{for(const key of ['RTCPeerConnection','webkitRT
 const NATIVE_SHIM = `(()=>{const bridge=window.ReactNativeWebView;const host={postMessage:(message)=>bridge.postMessage(JSON.stringify(message))};try{Object.defineProperty(window,'parent',{get:()=>host,configurable:false})}catch{}window.__zoenDeliver=(message)=>window.dispatchEvent(new MessageEvent('message',{data:message}));})();`;
 
 export function safeMiniappLink(input: unknown, manifest: MiniappManifest | null): string {
-  if (typeof input !== 'string' || input.length > 4096) throw new Error('Link inválido.');
+  if (typeof input !== 'string' || input.length > 4096) throw new Error(t('miniapps.invalidLink'));
   const url = new URL(input);
   if (
     !['https:', 'mailto:'].includes(url.protocol) ||
@@ -100,6 +101,6 @@ export function safeMiniappLink(input: unknown, manifest: MiniappManifest | null
     url.password ||
     (manifest && url.protocol === 'https:' && !manifest.linkDomains.includes(url.hostname))
   )
-    throw new Error('Este miniapp não declarou permissão para abrir esse link.');
+    throw new Error(t('miniapps.thisMiniappDidNotDeclarePermissionToOpen'));
   return url.href;
 }

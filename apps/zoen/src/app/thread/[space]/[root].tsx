@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../../../i18n/index.ts';
 import { ProfileAvatar } from '../../../profile/profile-avatar';
 import { useCallback, useState } from 'react';
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -43,7 +44,7 @@ export default function Thread() {
       });
       setDraft((value) => (value === text ? '' : value));
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : 'Não foi possível responder.');
+      setFailure(reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'));
     } finally {
       setBusy(false);
     }
@@ -54,10 +55,10 @@ export default function Thread() {
       automaticOffset
       style={{ flex: 1, backgroundColor: colors.surface }}
     >
-      <Stack.Screen options={{ title: 'Respostas' }} />
+      <Stack.Screen options={{ title: t('chat.replies') }} />
       {error && !entries ? (
-        <EmptyState title="Não foi possível abrir as respostas" detail={error}>
-          <NativeButton label="Tentar novamente" onPress={retry} />
+        <EmptyState title={t('chat.theRepliesCouldNotBeOpened')} detail={error}>
+          <NativeButton label={t('chat.tryAgain2')} onPress={retry} />
         </EmptyState>
       ) : !entries ? (
         <Loading />
@@ -95,7 +96,7 @@ export default function Thread() {
                     {item.author.name}
                   </Text>
                   <Text style={{ color: colors.secondary, fontSize: 11 }}>
-                    {new Date(Number(item.at_ms)).toLocaleTimeString([], {
+                    {new Date(Number(item.at_ms)).toLocaleTimeString(formatLocale, {
                       hour: '2-digit',
                       minute: '2-digit',
                     })}
@@ -109,7 +110,9 @@ export default function Thread() {
                 ) : null}
                 <MessageMedia entry={item} />
                 {index === 0 ? (
-                  <Text style={{ color: colors.secondary, fontSize: 12 }}>Mensagem original</Text>
+                  <Text style={{ color: colors.secondary, fontSize: 12 }}>
+                    {t('chat.originalMessage')}
+                  </Text>
                 ) : null}
               </View>
             </View>
@@ -133,14 +136,14 @@ export default function Thread() {
         <MediaComposer spaceId={space} replyTo={root} thread disabled={busy} />
         <TextInput
           multiline
-          accessibilityLabel="Responder na conversa"
+          accessibilityLabel={t('chat.replyInChat')}
           value={draft}
           onChangeText={(text) => {
             setDraft(text);
             store.setTyping(space, !!text.trim());
           }}
           onBlur={() => store.setTyping(space, false)}
-          placeholder="Continuar a conversa…"
+          placeholder={t('chat.continueTheConversation')}
           placeholderTextColor={colors.tertiary}
           style={{
             flex: 1,
@@ -154,7 +157,7 @@ export default function Thread() {
           }}
         />
         <NativeButton
-          label={busy ? 'Enviando…' : 'Enviar'}
+          label={busy ? t('chat.sending') : t('chat.send')}
           disabled={busy || !draft.trim()}
           onPress={() => {
             void send();

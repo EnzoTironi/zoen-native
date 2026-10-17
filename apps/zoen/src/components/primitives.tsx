@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { Host, Button } from '@expo/ui';
 import { Image } from 'expo-image';
@@ -214,7 +215,7 @@ export function Loading({ label }: { label?: string }) {
     <View
       accessible
       accessibilityRole="progressbar"
-      accessibilityLabel={label ?? 'Carregando'}
+      accessibilityLabel={label ?? t('common.loading')}
       aria-busy
       style={{
         flex: 1,

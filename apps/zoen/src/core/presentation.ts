@@ -1,27 +1,48 @@
 import type { TimelineEntry } from './types';
+import { locale, t } from '../i18n/index.ts';
+import { AmountError, formatMoney, parseMoneyInput as parseAmount } from '../i18n/money.ts';
 
 export function messageText(entry: TimelineEntry): string {
-  if (entry.deleted) return 'Mensagem apagada';
+  if (entry.deleted) return t('presentation.deletedMessage');
   if ('Message' in entry.kind) return entry.kind.Message.text;
   if ('System' in entry.kind) return entry.kind.System.text;
   if ('ItemEdited' in entry.kind) return entry.kind.ItemEdited.note;
   if ('Request' in entry.kind) return entry.kind.Request.title;
-  return 'Aparência da conversa atualizada';
+  return t('presentation.chatAppearanceUpdated');
 }
 
 export function money(cents: string): string {
-  const amount = BigInt(cents);
-  const absolute = amount < 0n ? -amount : amount;
-  return `${amount < 0n ? '−' : ''}R$ ${(absolute / 100n).toLocaleString('pt-BR')},${String(absolute % 100n).padStart(2, '0')}`;
+  // Plans and the current grant allowance are denominated in BRL cents by the core.
+  return formatMoney(cents, { locale, currency: 'BRL', minorUnitDigits: 2 });
 }
 
-/** Explicit pt-BR entry, parsed without floating-point rounding. */
+/** New plan costs and grant allowances remain nonnegative signed-i64 BRL cents. */
 export function parseMoneyInput(input: string): string {
-  const value = input.trim();
-  const match = /^(\d+|\d{1,3}(?:\.\d{3})+)(?:,(\d{1,2}))?$/.exec(value);
-  if (!match) throw new Error('Use um valor em reais, como 100,00.');
-  const cents =
-    BigInt(match[1]!.replaceAll('.', '')) * 100n + BigInt((match[2] ?? '').padEnd(2, '0'));
-  if (cents > 9223372036854775807n) throw new Error('Este valor é grande demais.');
-  return String(cents);
+  return parseCents(input, false);
+}
+
+/** A historical negative plan value can round-trip; Rust refuses any new negative cost. */
+export function parsePlanMoneyInput(input: string): string {
+  return parseCents(input, true);
+}
+
+function parseCents(input: string, allowNegative: boolean): string {
+  try {
+    return parseAmount(input, {
+      locale,
+      minorUnitDigits: 2,
+      allowNegative,
+      min: allowNegative ? -9223372036854775808n : 0n,
+      max: 9223372036854775807n,
+    });
+  } catch (reason) {
+    if (!(reason instanceof AmountError)) throw reason;
+    throw new Error(
+      t(
+        reason.code === 'out_of_range'
+          ? 'presentation.amountOutOfRange'
+          : 'presentation.enterBRLAmount',
+      ),
+    );
+  }
 }

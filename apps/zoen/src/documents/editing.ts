@@ -1,10 +1,12 @@
+import { locale, t } from '../i18n/index.ts';
+import { formatMoneyInput } from '../i18n/money.ts';
 import type { PageBlockDto } from '../core/generated/PageBlockDto';
 import type { TextSpanDto } from '../core/generated/TextSpanDto';
 
 /** Block operations only describe the state the editor actually observed. */
 export function moveBlock(order: readonly string[], id: string, direction: -1 | 1): string[] {
   const index = order.indexOf(id);
-  if (index < 0) throw new Error('Este bloco não está mais na página.');
+  if (index < 0) throw new Error(t('documents.thisBlockIsNoLongerOnThePage'));
   const target = index + direction;
   if (target < 0 || target >= order.length) return [...order];
   const result = [...order];
@@ -27,7 +29,7 @@ export function replaceBlock(
       changed,
     };
   if (!blocks.some((block) => block.id === originalId))
-    throw new Error('Este bloco não está mais na página.');
+    throw new Error(t('documents.thisBlockIsNoLongerOnThePage'));
   return {
     order: blocks.flatMap((block) =>
       block.id === originalId ? changed.map((item) => item.id) : [block.id],
@@ -83,9 +85,7 @@ function isLowSurrogate(value: number): boolean {
 
 /** Financial inputs stay decimal strings all the way to Rust's signed i64. */
 export function planAmountInput(cents: string): string {
-  const amount = BigInt(cents);
-  const absolute = amount < 0n ? -amount : amount;
-  return `${amount < 0n ? '-' : ''}${absolute / 100n},${String(absolute % 100n).padStart(2, '0')}`;
+  return formatMoneyInput(cents, { locale, minorUnitDigits: 2 });
 }
 
 export function markdownFilename(title: string): string {
@@ -100,6 +100,6 @@ export function markdownFilename(title: string): string {
 
 export function validateMarkdown(markdown: string): string {
   if (new TextEncoder().encode(markdown).length > 768 * 1024)
-    throw new Error('Escolha uma página Markdown de até 768 KB.');
+    throw new Error(t('documents.chooseAMarkdownPageUpTo768KB'));
   return markdown;
 }

@@ -1,9 +1,18 @@
+import { t } from '../i18n/index.ts';
 import { Pressable, Text, View } from 'react-native';
 import { Field, NativeButton, Surface } from '../components/primitives';
 import { useTheme } from '../theme';
 import { draftObject, fieldLabel, isDateField, isPriceField, type Schema } from './schema';
 
-const weekdays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const weekdays = [
+  t('miniapps.sunday'),
+  t('miniapps.monday'),
+  t('miniapps.tuesday'),
+  t('miniapps.wednesday'),
+  t('miniapps.thursday'),
+  t('miniapps.friday'),
+  t('miniapps.saturday'),
+];
 export function SchemaForm({
   schema,
   value,
@@ -24,11 +33,7 @@ export function SchemaForm({
   const { colors } = useTheme();
   const label = fieldLabel(name, schema);
   if (depth > 8)
-    return (
-      <Text style={{ color: colors.danger }}>
-        Este formulário é complexo demais para ser aberto.
-      </Text>
-    );
+    return <Text style={{ color: colors.danger }}>{t('miniapps.thisFormIsTooComplexToOpen')}</Text>;
   if (schema.enum)
     return (
       <View style={{ gap: 8 }}>
@@ -65,7 +70,7 @@ export function SchemaForm({
     return (
       <Surface>
         <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
-          Horários de atendimento
+          {t('miniapps.businessHours')}
         </Text>
         {weekdays.map((day, index) => {
           const windows = Array.isArray(hours[String(index)])
@@ -157,7 +162,7 @@ export function SchemaForm({
             {!fixed ? (
               <NativeButton
                 secondary
-                label={`Remover ${index + 1}`}
+                label={t('miniapps.removeEntry', { position: index + 1 })}
                 disabled={disabled}
                 onPress={() => onChange(visible.filter((_, position) => position !== index))}
               />
@@ -167,7 +172,7 @@ export function SchemaForm({
         {!fixed ? (
           <NativeButton
             secondary
-            label={`Adicionar em ${label.toLowerCase()}`}
+            label={t('miniapps.addToField', { label })}
             disabled={disabled || visible.length >= (schema.maxItems ?? 24)}
             onPress={() =>
               onChange([
@@ -218,16 +223,20 @@ export function SchemaForm({
           isDateField(name) || name === 'timezone' || name === 'currency' ? 'none' : 'sentences'
         }
         placeholder={
-          isDateField(name) ? '2026-10-20 09:00' : isPriceField(name) ? '100,00' : undefined
+          isDateField(name)
+            ? '2026-10-20 09:00'
+            : isPriceField(name)
+              ? t('miniapps.amountPlaceholder')
+              : undefined
         }
       />
       {isDateField(name) ? (
         <Text style={{ color: colors.secondary, fontSize: 12 }}>
-          Data e hora local: ano-mês-dia hora:minuto.
+          {t('miniapps.localDateAndTimeYearMonthDayHour')}
         </Text>
       ) : isPriceField(name) ? (
         <Text style={{ color: colors.secondary, fontSize: 12 }}>
-          Valor em reais, com vírgula para os centavos.
+          {t('miniapps.amountInTheCurrencyChosenForThisMiniapp')}
         </Text>
       ) : null}
     </View>

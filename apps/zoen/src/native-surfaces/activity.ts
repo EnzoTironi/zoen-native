@@ -1,8 +1,12 @@
+import { t } from '../i18n/index.ts';
 import { miniappSnapshot, widgetProjection } from './snapshot.ts';
 import type { NativeWidgetContent, SnapshotItem, SurfaceOwner } from './snapshot';
 import { surfaceItemURL } from './links.ts';
 
-export type MiniappActivityContent = NativeWidgetContent & { endsAt: number };
+export type MiniappActivityContent = NativeWidgetContent & {
+  endsAt: number;
+  labels?: Readonly<{ refresh: string; countdown: string; inProgress: string }>;
+};
 export const MAX_ACTIVITY_MS = 8 * 60 * 60_000;
 
 /** A Live Activity needs an actual canonical countdown with a bounded end, not a generic pin. */
@@ -25,6 +29,11 @@ export function activityContent(
     ? {
         ...projection.content,
         endsAt: snapshot.targetMs,
+        labels: {
+          refresh: t('nativeSurfaces.openToUpdate'),
+          countdown: t('nativeSurfaces.countdownInProgress'),
+          inProgress: t('nativeSurfaces.inProgress'),
+        },
         deepLink: surfaceItemURL(owner, item.id, item.version),
       }
     : null;

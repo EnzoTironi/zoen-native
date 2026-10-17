@@ -1,3 +1,4 @@
+import { t } from '../../i18n/index.ts';
 import { useRef, useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
@@ -30,8 +31,8 @@ export default function Page() {
   useDirtyEditor(!!pending.current, busy);
   if (!page)
     return error ? (
-      <EmptyState title="Não foi possível abrir esta página" detail={error}>
-        <NativeButton label="Tentar novamente" onPress={retry} />
+      <EmptyState title={t('documents.thisPageCouldNotBeOpened')} detail={error}>
+        <NativeButton label={t('documents.tryAgain')} onPress={retry} />
       </EmptyState>
     ) : (
       <Loading />
@@ -64,7 +65,7 @@ export default function Page() {
       await submitPending();
     } catch (reason) {
       setFailure(
-        reason instanceof Error ? reason.message : 'Não foi possível atualizar o rascunho.',
+        reason instanceof Error ? reason.message : t('documents.theDraftCouldNotBeUpdated'),
       );
     } finally {
       setBusy(false);
@@ -98,13 +99,13 @@ export default function Page() {
         inverse: {
           order: observed.blocks.map((block) => block.id),
           changed: observed.blocks,
-          label: 'Desfazer',
+          label: t('documents.undo'),
         },
       };
       await submitPending();
       setUndo(null);
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : 'Não foi possível desfazer.');
+      setFailure(reason instanceof Error ? reason.message : t('documents.thisCouldNotBeUndone'));
     } finally {
       setBusy(false);
     }
@@ -136,11 +137,11 @@ export default function Page() {
     >
       <Stack.Screen
         options={{
-          title: 'Página',
+          title: t('documents.page'),
           headerRight: () => (
             <NativeButton
               secondary
-              label="Histórico"
+              label={t('documents.history')}
               onPress={() => router.push({ pathname: '/item/[id]', params: { id, history: '1' } })}
             />
           ),
@@ -148,7 +149,7 @@ export default function Page() {
       />
       <View style={{ gap: 6, marginBottom: 14 }}>
         <Text style={{ color: colors.accent, fontWeight: '600', fontSize: 12 }}>
-          PÁGINA · VERSÃO {page.version}
+          {t('documents.pageVersion', { version: page.version })}
         </Text>
         <Text
           accessibilityLiveRegion="polite"
@@ -156,10 +157,10 @@ export default function Page() {
         >
           {page.save_error ??
             (page.unsaved
-              ? 'Rascunho salvo neste aparelho'
+              ? t('documents.draftSavedOnThisDevice')
               : page.pending_sync
-                ? 'Aguardando sincronização'
-                : 'Compartilhada na conversa')}
+                ? t('documents.waitingToSync')
+                : t('documents.sharedInChat'))}
         </Text>
       </View>
       {failure || error ? (
@@ -169,10 +170,10 @@ export default function Page() {
           </Text>
           {pending.current ? (
             <NativeButton
-              label="Tentar a mesma alteração novamente"
+              label={t('documents.retryTheSameChange')}
               disabled={busy}
               onPress={() => {
-                void run(submitPending, 'Não foi possível guardar.');
+                void run(submitPending, t('documents.thisCouldNotBeSaved'));
               }}
             />
           ) : null}
@@ -180,10 +181,12 @@ export default function Page() {
       ) : null}
       {undo ? (
         <Surface>
-          <Text style={{ color: colors.secondary }}>{undo.label} · rascunho guardado</Text>
+          <Text style={{ color: colors.secondary }}>
+            {t('documents.draftSavedMessage', { message: undo.label })}
+          </Text>
           <NativeButton
             secondary
-            label="Desfazer última alteração"
+            label={t('documents.undoLastChange')}
             disabled={busy || !!pending.current}
             onPress={() => {
               void undoEdit();
@@ -193,8 +196,8 @@ export default function Page() {
       ) : null}
       {!page.ready ? (
         <EmptyState
-          title="Esta página está chegando"
-          detail="O conteúdo aparecerá quando este aparelho terminar de sincronizar."
+          title={t('documents.thisPageIsOnItsWay')}
+          detail={t('documents.theContentWillAppearWhenThisDeviceFinishes')}
         />
       ) : (
         <PageBlocks
@@ -209,7 +212,7 @@ export default function Page() {
             void apply(
               observed.blocks.map((item) => item.id),
               [{ ...block, checked: !block.checked }],
-              'Tarefa atualizada',
+              t('documents.taskUpdated'),
             );
           }}
           onMove={(block, direction) => {
@@ -220,15 +223,15 @@ export default function Page() {
                 direction,
               ),
               [],
-              'Ordem atualizada',
+              t('documents.orderUpdated'),
             );
           }}
           onDelete={(block) => {
             void dialogs
               .confirm({
-                title: 'Apagar este bloco?',
-                message: block.text || 'O bloco será removido do seu rascunho.',
-                confirmLabel: 'Apagar bloco',
+                title: t('documents.deleteThisBlock'),
+                message: block.text || t('documents.theBlockWillBeRemovedFromYourDraft'),
+                confirmLabel: t('documents.deleteBlock'),
                 destructive: true,
               })
               .then((accepted) => {
@@ -236,7 +239,7 @@ export default function Page() {
                   void apply(
                     observed.blocks.filter((item) => item.id !== block.id).map((item) => item.id),
                     [],
-                    'Bloco apagado',
+                    t('documents.blockDeleted'),
                   );
               });
           }}
@@ -247,7 +250,7 @@ export default function Page() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
             <NativeButton
               secondary
-              label="Adicionar um bloco"
+              label={t('documents.addABlock')}
               disabled={busy || !!pending.current}
               onPress={() =>
                 router.push({ pathname: '/page-block/[id]', params: { id, block: 'new' } })
@@ -255,19 +258,23 @@ export default function Page() {
             />
             <NativeButton
               secondary
-              label={organizing ? 'Concluir organização' : 'Organizar blocos'}
+              label={organizing ? t('documents.finishOrganizing') : t('documents.organizeBlocks')}
               disabled={busy || !!pending.current}
               onPress={() => setOrganizing((value) => !value)}
             />
           </View>
           <NativeButton
-            label={busy ? 'Guardando…' : 'Compartilhar alterações'}
+            label={busy ? t('documents.saving') : t('documents.shareChanges')}
             disabled={busy || !page.unsaved || !!pending.current}
             onPress={() => {
               void run(async () => {
-                await store.request({ op: 'page_commit', item_id: id, note: 'Página atualizada' });
+                await store.request({
+                  op: 'page_commit',
+                  item_id: id,
+                  note: t('documents.pageUpdated'),
+                });
                 setUndo(null);
-              }, 'Não foi possível compartilhar as alterações.');
+              }, t('documents.theChangesCouldNotBeShared'));
             }}
           />
         </View>
@@ -275,13 +282,13 @@ export default function Page() {
       {page.ready ? (
         <NativeButton
           secondary
-          label="Exportar Markdown"
+          label={t('documents.exportMarkdown')}
           disabled={busy}
           onPress={() => {
             void run(async () => {
               const markdown = await store.driver.request({ op: 'page_markdown', item_id: id });
               await exportMarkdown(page.title, markdown);
-            }, 'Não foi possível exportar a página.');
+            }, t('documents.thePageCouldNotBeExported'));
           }}
         />
       ) : null}

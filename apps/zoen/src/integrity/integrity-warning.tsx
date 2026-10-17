@@ -3,6 +3,7 @@ import { Text } from 'react-native';
 import { useClient } from '../core/provider';
 import { NativeButton, Surface } from '../components/primitives';
 import { useTheme } from '../theme';
+import { t } from '../i18n';
 
 /** Cheap canonical known-error projection. Absence of a warning is not verification. */
 export function IntegrityWarning({ spaceId }: { spaceId: string }) {
@@ -14,14 +15,14 @@ export function IntegrityWarning({ spaceId }: { spaceId: string }) {
   return (
     <Surface>
       <Text accessibilityRole="alert" style={{ color: colors.danger, fontWeight: '600' }}>
-        Este histórico precisa de atenção
+        {t('integrity.needsAttention')}
       </Text>
       <Text style={{ color: colors.secondary }}>
-        {chat.title}. Confira outro dispositivo antes de confiar neste histórico.
+        {t('integrity.conversationWarning', { title: chat.title })}
       </Text>
       <NativeButton
         secondary
-        label="Verificar histórico"
+        label={t('integrity.verify')}
         onPress={() => router.push({ pathname: '/integrity/[id]', params: { id: spaceId } })}
       />
     </Surface>
@@ -37,11 +38,9 @@ export function IntegrityWarnings() {
       {snapshot?.has_unreadable_local_history ? (
         <Surface>
           <Text accessibilityRole="alert" style={{ color: colors.danger, fontWeight: '600' }}>
-            Parte do histórico não pôde ser validada
+            {t('integrity.unreadable')}
           </Text>
-          <Text style={{ color: colors.secondary }}>
-            Confira o histórico em outro aparelho antes de confiar nesta cópia.
-          </Text>
+          <Text style={{ color: colors.secondary }}>{t('integrity.checkCopy')}</Text>
         </Surface>
       ) : null}
       {snapshot?.conversations

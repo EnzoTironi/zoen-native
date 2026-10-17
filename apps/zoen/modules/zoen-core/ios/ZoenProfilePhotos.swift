@@ -21,8 +21,8 @@ final class ZoenProfilePhotos {
     case invalidPhoto, changedSession
     var errorDescription: String? {
       switch self {
-      case .invalidPhoto: "Selecione uma foto JPEG de até 5 MB novamente."
-      case .changedSession: "A sessão mudou. Abra seu perfil novamente."
+      case .invalidPhoto: NSLocalizedString("Select a JPEG photo up to 5 MB again.", comment: "Native profile photo is invalid")
+      case .changedSession: NSLocalizedString("The session changed. Open your profile again.", comment: "Profile photo session changed")
       }
     }
   }

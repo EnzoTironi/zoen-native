@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 export type PushPermission = 'unknown' | 'undetermined' | 'denied' | 'allowed';
 export type PushConfiguration = { environment: 'sandbox' | 'production'; topic: string };
 export type PushRegistrationState =
@@ -113,7 +114,7 @@ export class PushCoordinator {
     } catch {
       if (this.active(stamp) && revision === this.permissionRevision)
         this.publish({
-          failure: 'Não foi possível configurar as notificações agora. Tente novamente.',
+          failure: t('notifications.notificationsCouldNotBeSetUpNowTry'),
         });
     } finally {
       if (this.active(stamp) && revision === this.permissionRevision) this.publish({ busy: false });
@@ -124,7 +125,7 @@ export class PushCoordinator {
     if (!this.active() || this.state.permission !== 'allowed' || !this.configuration) return;
     const token = apnsToken(value);
     if (!token) {
-      this.publish({ failure: 'O aparelho não retornou um token de notificações válido.' });
+      this.publish({ failure: t('notifications.theDeviceDidNotReturnAValidNotification') });
       return;
     }
     await this.change(token);
@@ -157,7 +158,7 @@ export class PushCoordinator {
             this.desired = null;
             this.publish({
               registration: 'refused',
-              failure: 'O servidor recusou o cadastro de notificações deste aparelho.',
+              failure: t('notifications.theServerRefusedNotificationRegistrationForThisDevice'),
             });
             return;
           }
@@ -174,8 +175,7 @@ export class PushCoordinator {
           // A failed transport does not prove a refusal, a durable queue, or delivery.
           this.publish({
             registration: 'waiting',
-            failure:
-              'O cadastro ainda não foi confirmado pelo servidor. Tente novamente quando estiver conectado.',
+            failure: t('notifications.registrationHasNotBeenConfirmedByTheServer'),
           });
           this.scheduleRetry(stamp);
           return;

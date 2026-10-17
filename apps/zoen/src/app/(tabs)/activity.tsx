@@ -1,3 +1,4 @@
+import { t } from '../../i18n/index.ts';
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -30,10 +31,10 @@ export default function Activity() {
         item.plan?.sections.some((section) => section.lines.some((line) => !line.done)),
     ) ?? [];
   const choices: { id: Section; title: string; count?: number }[] = [
-    { id: 'approvals', title: 'Aprovações', count: pending.length },
-    { id: 'mentions', title: 'Menções', count: mentions.data?.length },
-    { id: 'tasks', title: 'Tarefas', count: items.data ? tasks.length : undefined },
-    { id: 'resolved', title: 'Decididos', count: resolved.length },
+    { id: 'approvals', title: t('activity.approvals'), count: pending.length },
+    { id: 'mentions', title: t('activity.mentions'), count: mentions.data?.length },
+    { id: 'tasks', title: t('activity.tasks'), count: items.data ? tasks.length : undefined },
+    { id: 'resolved', title: t('activity.resolved'), count: resolved.length },
   ];
   const error =
     section === 'mentions' ? mentions.error : section === 'tasks' ? items.error : requestRead.error;
@@ -55,10 +56,10 @@ export default function Activity() {
         accessibilityRole="header"
         style={{ fontSize: 34, fontWeight: '700', letterSpacing: -1, color: colors.text }}
       >
-        Atividade
+        {t('activity.activity')}
       </Text>
       <Text style={{ fontSize: 16, lineHeight: 23, color: colors.secondary }}>
-        Revise os pedidos e acompanhe suas conversas.
+        {t('activity.reviewRequestsAndKeepUpWithYourChats')}
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {choices.map((choice) => (
@@ -94,7 +95,7 @@ export default function Activity() {
           </Text>
           <NativeButton
             secondary
-            label="Tentar novamente"
+            label={t('activity.tryAgain')}
             onPress={() => {
               requestRead.retry();
               mentions.retry();
@@ -110,16 +111,19 @@ export default function Activity() {
             .map((agent) => (
               <Surface key={agent.persona.id}>
                 <Text style={{ color: colors.text, fontWeight: '600' }}>
-                  {agent.persona.name} está perto do limite
+                  {t('activity.agentNearLimit', { name: agent.persona.name })}
                 </Text>
                 {agent.budget_spent_cents !== null && agent.budget_limit_cents !== null ? (
                   <Text style={{ color: colors.secondary }}>
-                    {money(agent.budget_spent_cents)} de {money(agent.budget_limit_cents)}
+                    {t('activity.budgetUsage', {
+                      spent: money(agent.budget_spent_cents),
+                      limit: money(agent.budget_limit_cents),
+                    })}
                   </Text>
                 ) : null}
                 <NativeButton
                   secondary
-                  label="Ver orçamento"
+                  label={t('activity.viewBudget')}
                   onPress={() =>
                     router.push({ pathname: '/agent/[id]', params: { id: agent.persona.id } })
                   }
@@ -130,8 +134,8 @@ export default function Activity() {
             <Loading />
           ) : !pending.length && !error ? (
             <EmptyState
-              title="Tudo em dia"
-              detail="Pedidos dos seus agentes aparecem aqui, com o contexto de cada decisão."
+              title={t('activity.allCaughtUp')}
+              detail={t('activity.requestsFromYourAgentsAppearHereWithThe')}
               icon={{ ios: 'checkmark.circle', android: 'check_circle', web: 'check_circle' }}
             />
           ) : (
@@ -148,8 +152,8 @@ export default function Activity() {
       ) : section === 'resolved' ? (
         !resolved.length && !error ? (
           <EmptyState
-            title="Nenhuma decisão ainda"
-            detail="Suas aprovações e recusas aparecerão aqui."
+            title={t('activity.noDecisionsYet')}
+            detail={t('activity.yourApprovalsAndRefusalsWillAppearHere')}
           />
         ) : (
           resolved.map((request) => <RequestCard key={request.id} request={request} compact />)
@@ -161,8 +165,8 @@ export default function Activity() {
           )
         ) : !mentions.data.length ? (
           <EmptyState
-            title="Ninguém mencionou você"
-            detail="Quando alguém chamar você numa conversa, a mensagem aparecerá aqui."
+            title={t('activity.noMentionsYet')}
+            detail={t('activity.whenSomeoneMentionsYouInAChatThe')}
           />
         ) : (
           mentions.data.map((mention) => (
@@ -203,8 +207,8 @@ export default function Activity() {
         )
       ) : !tasks.length ? (
         <EmptyState
-          title="Nenhuma tarefa em aberto"
-          detail="Tarefas e planos com linhas pendentes aparecem aqui."
+          title={t('activity.noOpenTasks')}
+          detail={t('activity.tasksAndPlansWithUnfinishedLinesAppearHere')}
         />
       ) : (
         tasks.map((item) => (
@@ -223,7 +227,11 @@ export default function Activity() {
           </Pressable>
         ))
       )}
-      <NativeButton secondary label="Explorar miniapps" onPress={() => router.push('/miniapps')} />
+      <NativeButton
+        secondary
+        label={t('activity.exploreMiniapps')}
+        onPress={() => router.push('/miniapps')}
+      />
     </ScrollView>
   );
 }

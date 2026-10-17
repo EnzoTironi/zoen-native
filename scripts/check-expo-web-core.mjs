@@ -39,12 +39,12 @@ try {
   // Onboarding has no SharedArrayBuffer. Root certification stays inside WASM;
   // the public bind payload is signed asynchronously by the browser device host.
   globalThis.zoenSign = () => {throw new Error('onboarding attempted synchronous device signing');};
-  primary = new core.BrowserPrimary(deviceId, account.relay, 'WASM primary');
+  primary = new core.BrowserPrimary(deviceId, account.relay, 'WASM primary', 'pt-BR');
   const primaryAccount=JSON.parse(primary.account());
   const authority=primary.authority_bytes();
   try {
     assert.equal(JSON.stringify(primaryAccount).includes(Buffer.from(authority).toString('hex')),false);
-    primaryRestored=core.BrowserPrimary.restore(authority,primary.account(),deviceId);
+    primaryRestored=core.BrowserPrimary.restore(authority,primary.account(),deviceId,'pt-BR');
   }finally{authority.fill(0);}
   const proof='ab'.repeat(32);
   const bind=JSON.parse(primaryRestored.finish_bind(proof,new Uint8Array(sign(null,primaryRestored.bind_message(proof),device.privateKey))));
@@ -52,7 +52,7 @@ try {
   assert.equal(bind.profile.name,'');
   assert.equal(bind.device,deviceId);
   globalThis.zoenSign = (payload) => new Uint8Array(sign(null, payload, device.privateKey));
-  client = new core.BrowserCore(JSON.stringify(account), '');
+  client = new core.BrowserCore(JSON.stringify(account), '', 'pt-BR');
   const command = (value) => JSON.parse(client.document_request(JSON.stringify(value), 1000)).result;
   const mutation = command({ op: 'new_mutation_id' });
   assert.match(mutation, /^client_edit_[0-9a-hjkmnp-tv-z]{26}$/);
@@ -69,14 +69,14 @@ try {
     assert.equal(decoded.length, 1);
     assert.deepEqual({ ...decoded[0], id: block.id }, block);
   }
-  const apps = JSON.parse(client.app_request('{"op":"app_specs"}', 1000, 'pt-BR')).result;
+  const apps = JSON.parse(client.app_request('{"op":"app_specs"}', 1000)).result;
   assert.ok(apps.some((app) => app.id === 'schedule'));
   assert.ok(apps.some((app) => app.id === 'pet'));
   const agents = JSON.parse(client.agent_request('{"op":"agents"}', 1000)).result;
   assert.deepEqual(agents, []);
   const update = JSON.parse(client.bootstrap());
   assert.ok(update.frames.length > 0);
-  restored = new core.BrowserCore(JSON.stringify(account), update.snapshot);
+  restored = new core.BrowserCore(JSON.stringify(account), update.snapshot, 'pt-BR');
   assert.deepEqual(JSON.parse(restored.view()), []);
   assert.deepEqual(JSON.parse(restored.integrity_request('{"op":"integrity_warnings"}')), {});
   assert.throws(() => restored.integrity_request('{"op":"verify_log","space_id":"sp_unavailable"}'));

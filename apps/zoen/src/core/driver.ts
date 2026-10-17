@@ -3,6 +3,7 @@ import type { Command, CommandResult, CoreDriver, Snapshot } from './types';
 import { createNativeProfilePhotoDriver } from '../profile/native-driver';
 import type { MediaDriver } from '../media/types';
 import { Platform } from 'react-native';
+import { locale as appLocale } from '../i18n/index.ts';
 
 function core() {
   if (!NativeCore)
@@ -46,7 +47,7 @@ export function createDriver(): CoreDriver {
     media: Platform.OS === 'ios' ? media : undefined,
     photos: Platform.OS === 'ios' ? createNativeProfilePhotoDriver() : undefined,
     async open(mode) {
-      return JSON.parse(await core().open(mode)) as Snapshot;
+      return JSON.parse(await core().open(mode, appLocale)) as Snapshot;
     },
     async request<C extends Command>(command: C) {
       return JSON.parse(await core().request(JSON.stringify(command))) as CommandResult<C>;

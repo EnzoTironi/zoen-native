@@ -269,8 +269,11 @@ impl RodaEngine {
         let evaluated = hex32(&ev.evaluated)?;
         let kdf2 = kdf.clone();
         // Argon2id with 64 MiB takes a moment: off the async threads.
+        let language = self.lang;
         let keys = tokio::task::spawn_blocking(move || {
-            backup::password_keys(&password2, &b, &evaluated, &identity, &kdf2)
+            crate::i18n::with_lang(language, || {
+                backup::password_keys(&password2, &b, &evaluated, &identity, &kdf2)
+            })
         })
         .await
         .map_err(|e| invalid(e.to_string()))??;
@@ -493,8 +496,11 @@ impl RodaEngine {
                     .map_err(|_| invalid("unsupported backup format"))?;
                 let evaluated = hex32(s.evaluated.as_deref().unwrap_or_default())?;
                 let identity = s.identity.clone();
+                let language = self.lang;
                 tokio::task::spawn_blocking(move || {
-                    backup::password_keys(&secret, &b, &evaluated, &identity, &kdf)
+                    crate::i18n::with_lang(language, || {
+                        backup::password_keys(&secret, &b, &evaluated, &identity, &kdf)
+                    })
                 })
                 .await
                 .map_err(|e| invalid(e.to_string()))??

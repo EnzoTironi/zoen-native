@@ -11,7 +11,10 @@
       "bundleIdentifier": "xyz.tironi.zoen",
       "supportsTablet": true,
       "usesAppleSignIn": true,
-      "deploymentTarget": "26.0"
+      "deploymentTarget": "26.0",
+      "infoPlist": {
+        "CFBundleAllowMixedLocalizations": true
+      }
     },
     "android": {
       "package": "xyz.tironi.zoen",
@@ -31,14 +34,21 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Permita que o Zoen use o microfone para gravar as mensagens de voz que você escolher enviar.",
+          "microphonePermission": "Allow Zoen to use the microphone to record voice messages you choose to send.",
           "enableBackgroundRecording": false,
           "enableBackgroundPlayback": true
         }
       ],
       "expo-video",
       "expo-sharing",
-      "expo-localization",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": ["en", "pt-BR"],
+          "supportsRTL": false,
+          "forcesRTL": false
+        }
+      ],
       "expo-sqlite",
       "expo-secure-store",
       [
@@ -66,22 +76,22 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Escolha fotos e vídeos para compartilhar nas suas conversas do Zoen.",
-          "cameraPermission": "Permita que o Zoen use a câmera para criar fotos e vídeos que você escolher enviar.",
-          "microphonePermission": "Permita que o Zoen use o microfone para gravar áudio nos vídeos que você escolher enviar."
+          "photosPermission": "Choose photos and videos to share in your Zoen conversations.",
+          "cameraPermission": "Allow Zoen to use the camera to create photos and videos you choose to send.",
+          "microphonePermission": "Allow Zoen to use the microphone to record audio in videos you choose to send."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Use a câmera para escanear códigos de conexão ou criar fotos que você escolher compartilhar.",
-          "microphonePermission": "Grave áudio apenas nos vídeos que você escolher enviar."
+          "cameraPermission": "Use the camera to scan connection codes or create photos you choose to share.",
+          "microphonePermission": "Record audio only in videos you choose to send."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Compartilhe sua localização com um miniapp somente quando você escolher.",
+          "locationWhenInUsePermission": "Share your location with a miniapp only when you choose.",
           "locationAlwaysAndWhenInUsePermission": false,
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false,
@@ -97,7 +107,7 @@
         "expo-calendar",
         {
           "writeOnlyAccess": true,
-          "writeOnlyCalendarPermission": "Adicione à sua agenda os eventos que você confirmar no Zoen.",
+          "writeOnlyCalendarPermission": "Add events you confirm in Zoen to your calendar.",
           "calendarPermission": false,
           "remindersPermission": false
         }
@@ -105,7 +115,7 @@
       [
         "expo-contacts",
         {
-          "contactsPermission": "Escolha o contato que você deseja compartilhar com um miniapp."
+          "contactsPermission": "Choose the contact you want to share with a miniapp."
         }
       ],
       "expo-apple-authentication"
@@ -113,6 +123,10 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "locales": {
+      "en": "./config/locales/en.json",
+      "pt-BR": "./config/locales/pt-BR.json"
     }
   }
 }

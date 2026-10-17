@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { validLocalNotification } from './links.ts';
 
 type Request = { identifier: string; content: { data?: unknown } };
@@ -45,7 +46,5 @@ export async function clearDeviceNotificationState(
     Promise.resolve().then(port.clearResponse),
   ]);
   if (results.some((result) => result.status === 'rejected'))
-    throw new Error(
-      'Não foi possível apagar todas as notificações deste aparelho. Tente novamente.',
-    );
+    throw new Error(t('notifications.allNotificationsOnThisDeviceCouldNotBe'));
 }

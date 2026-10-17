@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import {
   PhotoVault,
   MAX_PHOTO_SOURCE_BYTES,
@@ -77,7 +78,7 @@ function prompt<T>(
       if (reason) reject(reason);
       else resolve(value!);
     };
-    const cancel = () => finish(undefined, new Error('Você cancelou esta ação.'));
+    const cancel = () => finish(undefined, new Error(t('miniapps.youCanceledThisAction')));
     dialog.addEventListener('cancel', (event) => {
       event.preventDefault();
       cancel();
@@ -93,7 +94,7 @@ function prompt<T>(
         fail: (reason) => finish(undefined, reason),
         cleanup: (fn) => cleanups.push(fn),
       });
-      buttons.append(button('Cancelar', cancel));
+      buttons.append(button(t('miniapps.cancel'), cancel));
       dialog.showModal();
     } catch (reason) {
       finish(undefined, reason);
@@ -113,9 +114,9 @@ function button(label: string, action: () => void): HTMLButtonElement {
 
 async function selectedPhotos(params: Record<string, unknown>, lease: CapabilityLease) {
   const options = photoOptions(params);
-  const files = await prompt<File[]>('Escolher fotos', lease, (ui) => {
+  const files = await prompt<File[]>(t('miniapps.choosePhotos'), lease, (ui) => {
     const message = document.createElement('p');
-    message.textContent = `Escolha até ${options.max} foto(s). As prévias ficam só com você até confirmar o compartilhamento com o grupo.`;
+    message.textContent = t('miniapps.photoPickerHelp', { count: options.max });
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/jpeg,image/png,image/webp,image/avif,image/gif,image/heic,image/heif';
@@ -124,11 +125,11 @@ async function selectedPhotos(params: Record<string, unknown>, lease: Capability
     input.addEventListener('change', () => ui.done(Array.from(input.files ?? [])));
     input.addEventListener('cancel', () => ui.done([]));
     ui.body.append(message, input);
-    ui.buttons.append(button('Escolher fotos', () => input.click()));
+    ui.buttons.append(button(t('miniapps.choosePhotos'), () => input.click()));
   });
   lease.check();
   if (files.length > options.max)
-    throw new Error(`Escolha no máximo ${options.max} foto(s) de uma vez.`);
+    throw new Error(t('miniapps.photoPickerMaximum', { count: options.max }));
   const previews: Omit<PhotoPreview, 'token'>[] = [];
   for (const file of files) {
     if (
@@ -136,7 +137,7 @@ async function selectedPhotos(params: Record<string, unknown>, lease: Capability
       file.size > MAX_PHOTO_SOURCE_BYTES ||
       !/^image\/(jpeg|png|webp|avif|gif|hei[cf])$/i.test(file.type)
     )
-      throw new Error('Escolha uma foto em formato compatível de até 32 MB.');
+      throw new Error(t('miniapps.chooseAPhotoInASupportedFormatUp'));
     const uri = URL.createObjectURL(file);
     try {
       previews.push(await jpegPreview(uri, options.maxSide, lease, URL.revokeObjectURL));
@@ -149,23 +150,23 @@ async function selectedPhotos(params: Record<string, unknown>, lease: Capability
 }
 
 async function camera(lease: CapabilityLease): Promise<PhotoPreview> {
-  const blob = await prompt<Blob>('Tirar foto', lease, (ui) => {
+  const blob = await prompt<Blob>(t('miniapps.takePhoto'), lease, (ui) => {
     const video = document.createElement('video');
     video.autoplay = true;
     video.muted = true;
     video.playsInline = true;
-    video.setAttribute('aria-label', 'Prévia da câmera');
+    video.setAttribute('aria-label', t('miniapps.cameraPreview'));
     video.style.cssText =
       'width:100%;max-height:55vh;object-fit:contain;border-radius:12px;background:#111;';
     const status = document.createElement('p');
-    status.textContent = 'Ative a câmera para enquadrar a foto.';
+    status.textContent = t('miniapps.enableTheCameraToFrameYourPhoto');
     status.setAttribute('role', 'status');
     let stream: MediaStream | undefined;
     ui.cleanup(() => {
       stream?.getTracks().forEach((track) => track.stop());
       video.srcObject = null;
     });
-    const capture = button('Tirar foto', () => {
+    const capture = button(t('miniapps.takePhoto'), () => {
       if (!video.videoWidth || !video.videoHeight) return;
       capture.disabled = true;
       const scale = Math.min(1, 1024 / Math.max(video.videoWidth, video.videoHeight));
@@ -174,7 +175,7 @@ async function camera(lease: CapabilityLease): Promise<PhotoPreview> {
       canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
       const context = canvas.getContext('2d');
       if (!context) {
-        ui.fail(new Error('Não foi possível preparar a câmera.'));
+        ui.fail(new Error(t('miniapps.theCameraCouldNotBePrepared')));
         return;
       }
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -183,7 +184,7 @@ async function camera(lease: CapabilityLease): Promise<PhotoPreview> {
           canvas.width = 0;
           canvas.height = 0;
           if (value) ui.done(value);
-          else ui.fail(new Error('Não foi possível tirar a foto.'));
+          else ui.fail(new Error(t('miniapps.thePhotoCouldNotBeTaken')));
         },
         'image/jpeg',
         0.85,
@@ -193,7 +194,7 @@ async function camera(lease: CapabilityLease): Promise<PhotoPreview> {
     video.addEventListener('loadeddata', () => {
       capture.disabled = false;
     });
-    const start = button('Ativar câmera', () => {
+    const start = button(t('miniapps.enableCamera'), () => {
       start.disabled = true;
       void navigator.mediaDevices
         .getUserMedia({
@@ -212,14 +213,10 @@ async function camera(lease: CapabilityLease): Promise<PhotoPreview> {
           stream = value;
           video.srcObject = value;
           await video.play();
-          status.textContent = 'Enquadre a foto e toque em Tirar foto.';
+          status.textContent = t('miniapps.frameYourPhotoAndSelectTakePhoto');
           start.hidden = true;
         })
-        .catch(() =>
-          ui.fail(
-            new Error('Não foi possível abrir a câmera. Verifique a permissão do navegador.'),
-          ),
-        );
+        .catch(() => ui.fail(new Error(t('miniapps.theCameraCouldNotBeOpenedCheckYour'))));
     });
     ui.body.append(video, status);
     ui.buttons.append(start, capture);
@@ -246,9 +243,9 @@ function location(approximate: boolean, lease: CapabilityLease) {
       if (reason) reject(reason);
       else resolve(value!);
     };
-    const cancel = () => finish(undefined, new Error('Este miniapp foi fechado.'));
+    const cancel = () => finish(undefined, new Error(t('miniapps.thisMiniappHasClosed')));
     const timer = setTimeout(
-      () => finish(undefined, new Error('A localização demorou demais. Tente novamente.')),
+      () => finish(undefined, new Error(t('miniapps.locationTookTooLongTryAgain'))),
       12_000,
     );
     lease.signal.addEventListener('abort', cancel, { once: true });
@@ -263,11 +260,7 @@ function location(approximate: boolean, lease: CapabilityLease) {
           finish(undefined, reason);
         }
       },
-      () =>
-        finish(
-          undefined,
-          new Error('Não foi possível obter sua localização. Verifique a permissão do navegador.'),
-        ),
+      () => finish(undefined, new Error(t('miniapps.yourLocationCouldNotBeObtainedCheckYour'))),
       { enableHighAccuracy: !approximate, maximumAge: 0, timeout: 12_000 },
     );
     if (settled) navigator.geolocation.clearWatch(watcher);
@@ -275,10 +268,10 @@ function location(approximate: boolean, lease: CapabilityLease) {
 }
 
 async function contact(lease: CapabilityLease) {
-  return prompt<ReturnType<typeof pickedContact>>('Escolher contato', lease, (ui) => {
+  return prompt<ReturnType<typeof pickedContact>>(t('miniapps.chooseContact'), lease, (ui) => {
     const message = document.createElement('p');
-    message.textContent = 'Só o nome do contato escolhido será enviado ao miniapp.';
-    const choose = button('Escolher contato', () => {
+    message.textContent = t('miniapps.onlyTheChosenContactSNameWillBe');
+    const choose = button(t('miniapps.chooseContact'), () => {
       choose.disabled = true;
       void browserContacts()!
         .select(['name'], { multiple: false })
@@ -286,7 +279,7 @@ async function contact(lease: CapabilityLease) {
           lease.check();
           ui.done(pickedContact(chosen[0]?.name?.[0] ?? ''));
         })
-        .catch(() => ui.fail(new Error('Você não escolheu um contato.')));
+        .catch(() => ui.fail(new Error(t('miniapps.youDidNotChooseAContact'))));
     });
     ui.body.append(message);
     ui.buttons.append(choose);
@@ -299,9 +292,9 @@ export async function perform(
   item: string,
 ): Promise<unknown> {
   if (!available().includes(cap))
-    throw new Error('Este recurso não está disponível neste navegador.');
-  if (document.visibilityState !== 'visible') throw new Error('Abra o Zoen para continuar.');
-  if (presenting) throw new Error('Conclua o seletor aberto antes de começar outra ação.');
+    throw new Error(t('miniapps.thisFeatureIsNotAvailableInThisBrowser'));
+  if (document.visibilityState !== 'visible') throw new Error(t('miniapps.openZoenToContinue'));
+  if (presenting) throw new Error(t('miniapps.finishTheOpenPickerBeforeStartingAnotherAction'));
   const lease = photos.begin(item);
   presenting = true;
   const background = () => {
@@ -325,7 +318,7 @@ export async function perform(
         result = await contact(lease);
         break;
       default:
-        throw new Error('Este recurso não está disponível neste navegador.');
+        throw new Error(t('miniapps.thisFeatureIsNotAvailableInThisBrowser'));
     }
     lease.check();
     return result;

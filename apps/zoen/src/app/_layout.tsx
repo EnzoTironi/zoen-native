@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import {
   ThemeProvider as NavigationThemeProvider,
   DarkTheme,
@@ -54,12 +55,12 @@ function Navigation() {
           <Stack.Screen
             name="new-chat"
             options={{
-              title: 'Nova conversa',
+              title: t('common.newChat'),
               presentation: 'formSheet',
               sheetGrabberVisible: true,
             }}
           />
-          <Stack.Screen name="item/[id]" options={{ title: 'Detalhes' }} />
+          <Stack.Screen name="item/[id]" options={{ title: t('common.details') }} />
         </Stack>
       </SessionGate>
     </NavigationThemeProvider>

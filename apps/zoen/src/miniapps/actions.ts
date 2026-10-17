@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import type { ClientStore } from '../core/store';
 import type { Dialogs } from '../components/dialog-types';
 
@@ -16,7 +17,7 @@ export async function callMiniapp(
     assertActive?.();
     const current = store.getSnapshot();
     if (`${current.mode}:${current.snapshot?.me?.id ?? ''}` !== scope)
-      throw new Error('A conta mudou. Abra o miniapp novamente.');
+      throw new Error(t('miniapps.theAccountHasChangedOpenTheMiniappAgain'));
   };
   assertScope();
   const command = {
@@ -30,9 +31,9 @@ export async function callMiniapp(
   assertScope();
   if (result.status === 'NeedsConfirmation') {
     const accepted = await dialogs.confirm({
-      title: result.confirm_title ?? 'Confirmar ação do miniapp?',
+      title: result.confirm_title ?? t('miniapps.confirmMiniappAction'),
       message: result.confirm_detail ?? result.message,
-      confirmLabel: 'Confirmar ação',
+      confirmLabel: t('miniapps.confirmAction'),
     });
     if (!accepted) return null;
     assertScope();
@@ -40,11 +41,11 @@ export async function callMiniapp(
   }
   assertScope();
   if (result.status === 'NeedsConfirmation')
-    throw new Error('A permissão mudou. Revise a ação novamente.');
+    throw new Error(t('miniapps.thePermissionHasChangedReviewTheActionAgain'));
   if (result.status === 'Denied')
-    throw new Error(result.message || 'O miniapp não tem permissão para esta ação.');
+    throw new Error(result.message || t('miniapps.theMiniappDoesNotHavePermissionForThis'));
   const payload: unknown = JSON.parse(result.result_json);
   if (payload && typeof payload === 'object' && 'isError' in payload && payload.isError === true)
-    throw new Error(result.message || 'O miniapp não conseguiu concluir esta ação.');
+    throw new Error(result.message || t('miniapps.theMiniappCouldNotCompleteThisAction'));
   return result;
 }

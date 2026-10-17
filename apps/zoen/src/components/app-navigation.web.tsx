@@ -1,12 +1,13 @@
+import { t } from '../i18n/index.ts';
 import { Tabs, TabList, TabSlot, TabTrigger } from 'expo-router/ui';
 import { Pressable, Text, useWindowDimensions } from 'react-native';
 import { useTheme } from '../theme';
 
 const destinations = [
-  { name: 'chats', href: '/', title: 'Chats' },
-  { name: 'activity', href: '/activity', title: 'Atividade' },
-  { name: 'files', href: '/files', title: 'Arquivos' },
-  { name: 'you', href: '/you', title: 'Você' },
+  { name: 'chats', href: '/', title: t('common.chats') },
+  { name: 'activity', href: '/activity', title: t('common.activity') },
+  { name: 'files', href: '/files', title: t('common.files') },
+  { name: 'you', href: '/you', title: t('common.you') },
 ] as const;
 export default function AppNavigation() {
   const { colors } = useTheme();

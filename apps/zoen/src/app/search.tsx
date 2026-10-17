@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { ProfileAvatar } from '../profile/profile-avatar';
 import { useEffect, useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
@@ -65,24 +66,22 @@ export default function Search() {
         router.push({ pathname: '/person/[id]', params: { id: hit.ref_id } });
       else router.push({ pathname: '/item/[id]', params: { id: hit.ref_id } });
     } catch (reason) {
-      setFailure(
-        reason instanceof Error ? reason.message : 'Não foi possível abrir este resultado.',
-      );
+      setFailure(reason instanceof Error ? reason.message : t('chat.thisResultCouldNotBeOpened'));
     } finally {
       setOpening(false);
     }
   }
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      <Stack.Screen options={{ title: space ? 'Buscar na conversa' : 'Buscar' }} />
+      <Stack.Screen options={{ title: space ? t('chat.searchThisChat') : t('chat.search') }} />
       <TextInput
-        accessibilityLabel="Buscar"
+        accessibilityLabel={t('chat.search')}
         autoFocus
         value={query}
         onChangeText={setQuery}
         autoCorrect={false}
         returnKeyType="search"
-        placeholder={space ? 'Mensagens desta conversa' : 'Pessoas, mensagens, páginas…'}
+        placeholder={space ? t('chat.messagesInThisChat') : t('chat.peopleMessagesPages')}
         placeholderTextColor={colors.tertiary}
         style={{
           margin: 20,
@@ -105,8 +104,8 @@ export default function Search() {
       ) : null}
       {!term ? (
         <EmptyState
-          title="Encontre o que ficou na conversa"
-          detail="A busca acontece no histórico disponível neste aparelho."
+          title={t('chat.findWhatStayedInTheConversation')}
+          detail={t('chat.searchUsesTheHistoryAvailableOnThisDevice')}
           icon={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
         />
       ) : !first && !error ? (
@@ -118,7 +117,7 @@ export default function Search() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           ListEmptyComponent={
-            <EmptyState title="Nenhum resultado" detail="Tente outra palavra ou nome." />
+            <EmptyState title={t('chat.noResults')} detail={t('chat.tryAnotherWordOrName')} />
           }
           renderItem={({ item }) => (
             <Pressable
@@ -158,10 +157,10 @@ export default function Search() {
                 <Text style={{ color: colors.tertiary, fontSize: 12 }}>
                   {item.space_title ??
                     (item.kind === 'person'
-                      ? 'Pessoa'
+                      ? t('chat.person')
                       : item.kind === 'agent'
-                        ? 'Agente'
-                        : 'Arquivo')}
+                        ? t('chat.agentLabel')
+                        : t('chat.file'))}
                 </Text>
               </View>
             </Pressable>
@@ -172,7 +171,7 @@ export default function Search() {
                 <NativeButton
                   secondary
                   disabled={opening}
-                  label="Mais resultados"
+                  label={t('chat.moreResults')}
                   onPress={() => {
                     setOpening(true);
                     setFailure(null);
@@ -195,7 +194,7 @@ export default function Search() {
                         setFailure(
                           reason instanceof Error
                             ? reason.message
-                            : 'A busca mudou. Tente novamente.',
+                            : t('chat.theSearchHasChangedTryAgain'),
                         ),
                       )
                       .finally(() => setOpening(false));

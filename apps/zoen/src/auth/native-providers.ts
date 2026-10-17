@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { requireOptionalNativeModule } from 'expo';
 import { Platform, TurboModuleRegistry } from 'react-native';
 import type * as AppleAuthentication from 'expo-apple-authentication';
@@ -37,7 +38,7 @@ export async function nativeCredential(
   modules: NativeProviders,
   configuration: ProviderConfiguration,
 ): Promise<{ credential: ProviderCredential; suggestedName?: string }> {
-  if (presenting) throw new Error('Conclua o login aberto antes de começar outro.');
+  if (presenting) throw new Error(t('authProviders.finishTheOpenSignInBeforeStartingAnother'));
   if (ticket.signal.aborted) throw new AuthCancelled();
   presenting = true;
   try {
@@ -61,11 +62,11 @@ export async function nativeCredential(
           reason.code === 'ERR_REQUEST_CANCELED'
         )
           throw new AuthCancelled();
-        throw new Error('Não foi possível continuar com Apple. Tente novamente.');
+        throw new Error(t('authProviders.couldNotContinueWithAppleTryAgain'));
       }
       if (ticket.signal.aborted) throw new AuthCancelled();
       if (!response.identityToken || !response.authorizationCode)
-        throw new Error('A Apple não confirmou o login. Tente novamente.');
+        throw new Error(t('authProviders.appleDidNotConfirmSignInTryAgain'));
       const suggestedName = response.fullName
         ? profileName(apple.formatFullName(response.fullName))
         : undefined;
@@ -94,7 +95,7 @@ export async function nativeCredential(
       } catch (reason) {
         if (google.isErrorWithCode(reason) && reason.code === google.statusCodes.SIGN_IN_CANCELLED)
           throw new AuthCancelled();
-        throw new Error('Não foi possível continuar com Google. Tente novamente.');
+        throw new Error(t('authProviders.couldNotContinueWithGoogleTryAgain'));
       } finally {
         // The ID token goes only to our verifier. Clear the SDK's app session rather
         // than retaining Google refresh/access credentials as a second login store.
@@ -102,13 +103,13 @@ export async function nativeCredential(
       }
       if (ticket.signal.aborted || google.isCancelledResponse(response)) throw new AuthCancelled();
       if (!google.isSuccessResponse(response) || !response.data.idToken)
-        throw new Error('O Google não confirmou o login. Tente novamente.');
+        throw new Error(t('authProviders.googleDidNotConfirmSignInTryAgain'));
       return {
         credential: { id_token: response.data.idToken },
         suggestedName: profileName(response.data.user.name),
       };
     }
-    throw new Error('Este login não está disponível nesta versão instalada.');
+    throw new Error(t('authProviders.thisSignInIsNotAvailableInThe'));
   } finally {
     presenting = false;
   }

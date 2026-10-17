@@ -1,3 +1,4 @@
+import { t } from '../../i18n/index.ts';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
@@ -25,8 +26,8 @@ export default function Miniapp() {
   const app = item?.app;
   if (!item)
     return read.error ? (
-      <EmptyState title="Não foi possível abrir o miniapp" detail={read.error}>
-        <NativeButton label="Tentar novamente" onPress={read.retry} />
+      <EmptyState title={t('miniapps.theMiniappCouldNotBeOpened')} detail={read.error}>
+        <NativeButton label={t('miniapps.tryAgain')} onPress={read.retry} />
       </EmptyState>
     ) : (
       <Loading />
@@ -34,8 +35,8 @@ export default function Miniapp() {
   if (!app)
     return (
       <EmptyState
-        title="Este item não é um miniapp"
-        detail="Volte à conversa para abrir o item correto."
+        title={t('miniapps.thisItemIsNotAMiniapp')}
+        detail={t('miniapps.goBackToTheChatToOpenThe')}
       />
     );
   const spec = specs.data?.find((spec) => spec.id === app.app_id);
@@ -48,12 +49,14 @@ export default function Miniapp() {
     void callMiniapp(store, dialogs, id, tool, JSON.stringify(args))
       .then((outcome) => {
         if (outcome) {
-          setMessage(outcome.message || 'Alteração guardada.');
+          setMessage(outcome.message || t('miniapps.changeSaved'));
           read.retry();
         }
       })
       .catch((reason: unknown) =>
-        setError(reason instanceof Error ? reason.message : 'Não foi possível concluir esta ação.'),
+        setError(
+          reason instanceof Error ? reason.message : t('miniapps.thisActionCouldNotBeCompleted'),
+        ),
       )
       .finally(() => setBusy(false));
   }
@@ -75,14 +78,14 @@ export default function Miniapp() {
           headerRight: () => (
             <NativeButton
               secondary
-              label="Histórico"
+              label={t('miniapps.history')}
               onPress={() => router.push({ pathname: '/item/[id]', params: { id, history: '1' } })}
             />
           ),
         }}
       />
       <Text style={{ color: colors.accent, fontWeight: '600', fontSize: 12 }}>
-        {item.space_title} · VERSÃO {item.version}
+        {t('miniapps.spaceVersion', { chat: item.space_title, version: item.version })}
       </Text>
       <Text
         accessibilityRole="header"
@@ -111,10 +114,10 @@ export default function Miniapp() {
           accessibilityRole="header"
           style={{ color: colors.text, fontSize: 20, fontWeight: '600' }}
         >
-          Ações
+          {t('miniapps.actions')}
         </Text>
         <Text style={{ color: colors.secondary, lineHeight: 22 }}>
-          O núcleo verifica cada ação e pede sua confirmação quando necessário.
+          {t('miniapps.theCoreChecksEachActionAndAsksFor')}
         </Text>
         <View style={{ gap: 12 }}>
           {tools
@@ -135,11 +138,16 @@ export default function Miniapp() {
               </View>
             ))}
         </View>
-        <NativeButton secondary label="Atualizar estado" disabled={busy} onPress={read.retry} />
+        <NativeButton
+          secondary
+          label={t('miniapps.refreshState')}
+          disabled={busy}
+          onPress={read.retry}
+        />
       </Surface>
       <NativeButton
         secondary
-        label="Permissões deste miniapp"
+        label={t('miniapps.thisMiniappSPermissions')}
         onPress={() => router.push({ pathname: '/miniapp-permissions', params: { item: id } })}
       />
     </ScrollView>

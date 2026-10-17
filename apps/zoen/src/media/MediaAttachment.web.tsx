@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../i18n/index.ts';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { Image } from 'expo-image';
@@ -18,7 +19,7 @@ type Props = {
 };
 const safeImages = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
 const failure = (reason: unknown) =>
-  reason instanceof Error ? reason.message : 'Não foi possível abrir este arquivo.';
+  reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened');
 
 export function FileAttachment(props: Props) {
   return (
@@ -75,12 +76,9 @@ function WebFile({ itemId, version, title, voice, expectedHash }: Props) {
     let acquired: LocalMediaFile | null = null;
     try {
       acquired = local ?? (await media.materializeFile(itemId, version));
-      if (!acquired)
-        throw new Error(
-          'Este arquivo ainda está chegando. Tente novamente quando estiver conectado.',
-        );
+      if (!acquired) throw new Error(t('media.thisFileIsStillArrivingTryAgainWhen2'));
       if (expectedHash && acquired.info.sha256 !== expectedHash)
-        throw new Error('O áudio foi atualizado. Abra esta mensagem novamente.');
+        throw new Error(t('media.theAudioHasBeenUpdatedOpenThisMessage'));
       if (!mounted.current) return;
       if (acquired.info.mime.startsWith('text/') && Number(acquired.info.bytes) <= 1024 * 1024) {
         const response = await fetch(acquired.uri);
@@ -137,7 +135,9 @@ function WebFile({ itemId, version, title, voice, expectedHash }: Props) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            voice ? 'Carregar mensagem de voz' : `Abrir ${title ?? info?.name ?? 'arquivo'}`
+            voice
+              ? t('media.loadVoiceMessage')
+              : t('media.openFileLabel', { name: title ?? info?.name ?? t('media.file') })
           }
           onPress={() => {
             void open();
@@ -160,10 +160,12 @@ function WebFile({ itemId, version, title, voice, expectedHash }: Props) {
           )}
           <View style={{ flex: 1, gap: 5 }}>
             <Text style={{ color: colors.text, fontWeight: '600', fontSize: 16 }} numberOfLines={2}>
-              {voice ? 'Mensagem de voz' : (title ?? info?.name ?? 'Arquivo')}
+              {voice ? t('media.voiceMessage') : (title ?? info?.name ?? t('media.file2'))}
             </Text>
             <Text style={{ color: colors.secondary, fontSize: 12 }}>
-              {info ? `${(Number(info.bytes) / 1024).toFixed(1)} KB · ${info.mime}` : 'Carregando…'}
+              {info
+                ? `${new Intl.NumberFormat(formatLocale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(info.bytes) / 1024)} KB · ${info.mime}`
+                : t('media.loading')}
             </Text>
           </View>
         </Pressable>
@@ -180,7 +182,9 @@ function WebFile({ itemId, version, title, voice, expectedHash }: Props) {
             onPress={download}
             style={{ minHeight: 44, justifyContent: 'center' }}
           >
-            <Text style={{ color: colors.accent, fontWeight: '600', fontSize: 13 }}>Baixar</Text>
+            <Text style={{ color: colors.accent, fontWeight: '600', fontSize: 13 }}>
+              {t('media.download')}
+            </Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -190,7 +194,7 @@ function WebFile({ itemId, version, title, voice, expectedHash }: Props) {
             style={{ minHeight: 44, justifyContent: 'center' }}
           >
             <Text style={{ color: colors.accent, fontWeight: '600', fontSize: 13 }}>
-              Compartilhar
+              {t('media.share')}
             </Text>
           </Pressable>
         </View>
@@ -246,7 +250,7 @@ function WebFile({ itemId, version, title, voice, expectedHash }: Props) {
                 {local?.info.name}
               </Text>
               <IconButton
-                label="Fechar visualização"
+                label={t('media.closePreview')}
                 name={{ ios: 'xmark', android: 'close', web: 'close' }}
                 onPress={() => setPreview(false)}
               />
@@ -287,13 +291,13 @@ function WebFile({ itemId, version, title, voice, expectedHash }: Props) {
               </ScrollView>
             ) : (
               <Text style={{ color: colors.secondary, lineHeight: 24 }}>
-                Baixe este arquivo para abrir em um app compatível.
+                {t('media.downloadThisFileToOpenItInA')}
               </Text>
             )}
             <View style={{ flexDirection: 'row', gap: 12 }}>
-              <NativeButton label="Baixar arquivo" onPress={download} />
+              <NativeButton label={t('media.downloadFile')} onPress={download} />
               <NativeButton
-                label="Compartilhar"
+                label={t('media.share')}
                 secondary
                 onPress={() => {
                   void share();

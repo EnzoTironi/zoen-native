@@ -48,7 +48,7 @@ const encryptionKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length:
   'encrypt',
   'decrypt',
 ]);
-let primary = new wasm.BrowserPrimary(device, relay, 'QA reverse browser history');
+let primary = new wasm.BrowserPrimary(device, relay, 'QA reverse browser history', 'en');
 const account = JSON.parse(primary.account());
 account.handle = `qa_rev_${Date.now().toString(36)}`;
 const authority = await sealAuthority(
@@ -95,7 +95,7 @@ const core = {
         return wasm.decode_server(op.bytes);
       case 'restore':
         client?.free();
-        client = new wasm.BrowserCore(op.account, op.snapshot);
+        client = new wasm.BrowserCore(op.account, op.snapshot, 'en');
         return client.view();
       case 'claim_clock':
         return client.claim_clock(op.value);
@@ -400,7 +400,7 @@ try {
   await wasm.default({ module_or_path: wasmBytes });
   const seed = await openAuthority(authority, encryptionKey, device);
   try {
-    primary = wasm.BrowserPrimary.restore(seed, JSON.stringify(account), device);
+    primary = wasm.BrowserPrimary.restore(seed, JSON.stringify(account), device, 'en');
   } finally {
     seed.fill(0);
   }

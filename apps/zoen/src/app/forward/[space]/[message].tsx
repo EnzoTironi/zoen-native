@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../../../i18n/index.ts';
 import { ProfileAvatar } from '../../../profile/profile-avatar';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
@@ -17,16 +18,17 @@ export default function Forward() {
   const chats =
     snapshot?.conversations.filter(
       (chat) =>
-        chat.id !== space && chat.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+        chat.id !== space &&
+        chat.title.toLocaleLowerCase(formatLocale).includes(query.toLocaleLowerCase(formatLocale)),
     ) ?? [];
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
-      <Stack.Screen options={{ title: 'Encaminhar para…' }} />
+      <Stack.Screen options={{ title: t('chat.forwardTo') }} />
       <TextInput
-        accessibilityLabel="Buscar conversa"
+        accessibilityLabel={t('chat.searchChats2')}
         value={query}
         onChangeText={setQuery}
-        placeholder="Buscar conversa"
+        placeholder={t('chat.searchChats2')}
         placeholderTextColor={colors.tertiary}
         style={{
           margin: 20,
@@ -47,15 +49,15 @@ export default function Forward() {
         keyExtractor={(chat) => chat.id}
         ListEmptyComponent={
           <EmptyState
-            title="Nenhuma conversa encontrada"
-            detail="Comece outra conversa para encaminhar esta mensagem."
+            title={t('chat.noChatsFound')}
+            detail={t('chat.startAnotherChatToForwardThisMessage')}
           />
         }
         renderItem={({ item }) => (
           <Pressable
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel={`Encaminhar para ${item.title}`}
+            accessibilityLabel={t('chat.forwardToNamedChat', { title: item.title })}
             onPress={() => {
               setBusy(true);
               setError(null);
@@ -71,7 +73,9 @@ export default function Forward() {
                 })
                 .catch((failure: unknown) =>
                   setError(
-                    failure instanceof Error ? failure.message : 'Não foi possível encaminhar.',
+                    failure instanceof Error
+                      ? failure.message
+                      : t('chat.theMessageCouldNotBeForwarded'),
                   ),
                 )
                 .finally(() => setBusy(false));

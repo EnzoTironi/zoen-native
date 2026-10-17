@@ -46,7 +46,7 @@ test('a frame must initialize and cannot invoke another miniapp tool or resource
     method: 'resources/read',
     params: { uri: 'ui://roda/hike' },
   });
-  assert.ok(JSON.stringify(f.messages.at(-1)).includes('não pertence'));
+  assert.ok(JSON.stringify(f.messages.at(-1)).includes('does not belong'));
   await f.receive({
     jsonrpc: '2.0',
     id: 5,

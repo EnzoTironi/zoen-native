@@ -8,8 +8,8 @@ public class ZoenCoreModule: Module {
     Name("ZoenCore")
     Events("onChange")
 
-    AsyncFunction("open") { [session, weak self] (mode: String) async throws -> String in
-      try await session.open(mode: mode) { [weak self] event in
+    AsyncFunction("open") { [session, weak self] (mode: String, locale: String) async throws -> String in
+      try await session.open(mode: mode, locale: locale) { [weak self] event in
         self?.sendEvent("onChange", event)
       }
     }
@@ -49,6 +49,7 @@ public class ZoenCoreModule: Module {
 private actor ZoenSession {
   private var core: RodaEngine?
   private var mode = "account"
+  private var sessionLocale = "en"
   private let vault = ZoenVault()
   private var listener: ZoenListener?
   private var syncStarted = false
@@ -65,9 +66,11 @@ private actor ZoenSession {
   private let mediaFiles = ZoenMediaFiles()
   private let profilePhotos = ZoenProfilePhotos()
 
-  func open(mode: String, changed: @escaping @Sendable ([String: Any]) -> Void) async throws -> String {
+  func open(mode: String, locale: String, changed: @escaping @Sendable ([String: Any]) -> Void) async throws -> String {
     guard ["account", "demo"].contains(mode) else { throw SessionError.invalidMode }
+    guard ["en", "pt-BR"].contains(locale) else { throw SessionError.invalidLocale }
     if erasureTask != nil { throw ZoenDeviceErasure.Failure.incomplete }
+    sessionLocale = locale
     if let pending = try erasure.pending() {
       self.mode = "account"
       try await eraseDevice(expected: pending)
@@ -83,7 +86,7 @@ private actor ZoenSession {
     excluded.isExcludedFromBackup = true
     var directory = root
     try directory.setResourceValues(excluded)
-    let engine = try RodaEngine.open(path: root.appending(path: mode == "account" ? "roda.sqlite" : "zoen.sqlite").path, locale: Locale.current.identifier)
+    let engine = try RodaEngine.open(path: root.appending(path: mode == "account" ? "roda.sqlite" : "zoen.sqlite").path, locale: sessionLocale)
     let bridge = ZoenListener(changed) { [weak self] in
       Task { await self?.resumePendingHistory() }
     }
@@ -270,7 +273,7 @@ private actor ZoenSession {
     guard mode == "account" else { throw ZoenDeviceErasure.Failure.changed }
     let pending = try erasure.pending()
     if core == nil, pending != expected, completedErasure != expected { throw ZoenDeviceErasure.Failure.changed }
-    let engine = try core ?? RodaEngine.open(path: ZoenDeviceErasure.accountRoot.appending(path: "roda.sqlite").path, locale: Locale.current.identifier)
+    let engine = try core ?? RodaEngine.open(path: ZoenDeviceErasure.accountRoot.appending(path: "roda.sqlite").path, locale: sessionLocale)
     if let account = engine.account() {
       guard account.identityId == expected.identityId, account.deviceId == expected.deviceId else { throw ZoenDeviceErasure.Failure.changed }
     } else {
@@ -326,14 +329,15 @@ private actor ZoenSession {
 }
 
 private enum SessionError: Error, LocalizedError {
-  case closed, invalidMode, accountExists, locked, orphanedKeys
+  case closed, invalidMode, invalidLocale, accountExists, locked, orphanedKeys
   var errorDescription: String? {
     switch self {
-    case .closed: "Esta sessão foi encerrada. Abra o app novamente."
-    case .invalidMode: "Não foi possível abrir esta sessão."
-    case .accountExists: "Este aparelho já tem uma conta."
-    case .locked: "Não foi possível desbloquear esta conta com as chaves deste aparelho. Use a recuperação da conta."
-    case .orphanedKeys: "Há chaves de uma conta neste aparelho, mas o banco de dados não está disponível. Recupere a conta para preservar essas chaves."
+    case .closed: NSLocalizedString("This session has closed. Open the app again.", comment: "Native account session closed")
+    case .invalidMode: NSLocalizedString("This session could not be opened.", comment: "Invalid native session mode")
+    case .invalidLocale: NSLocalizedString("Invalid session language.", comment: "Invalid native session language")
+    case .accountExists: NSLocalizedString("This device already has an account.", comment: "Account creation blocked on an occupied device")
+    case .locked: NSLocalizedString("This account could not be unlocked with this device's keys. Use account recovery.", comment: "Native account unlock failed")
+    case .orphanedKeys: NSLocalizedString("This device has account keys, but the database is unavailable. Recover the account to preserve those keys.", comment: "Account keys exist without an available database")
     }
   }
 }

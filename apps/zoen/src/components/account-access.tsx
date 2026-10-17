@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { useClient } from '../core/provider';
@@ -7,7 +8,7 @@ import { Field, NativeButton, Surface } from './primitives';
 import { PairingCode } from './pairing-code';
 
 const message = (error: unknown) =>
-  error instanceof Error ? error.message : 'Não foi possível concluir. Tente novamente.';
+  error instanceof Error ? error.message : t('access.finishFailed');
 
 export function AccountAccess({
   relay,
@@ -47,18 +48,16 @@ export function AccountAccess({
   async function history() {
     const current = await store.driver.request({ op: 'history_status' });
     if (current.receive_active) {
-      setStatus(
-        'Seu histórico está sendo recebido. Você pode entrar no Zoen e acompanhar em Dispositivos.',
-      );
+      setStatus(t('access.historyReceivingBackground'));
       return;
     }
     if (!current.initial_pending) {
-      setStatus('Seu histórico já foi recebido. Você pode entrar no Zoen.');
+      setStatus(t('access.historyAlreadyReceived'));
       return;
     }
-    setStatus('Recebendo seu histórico…');
+    setStatus(t('access.receivingHistory'));
     const result = await store.driver.request({ op: 'receive_history', timeout_ms: 15_000 });
-    setStatus(`${result.messages} mensagens recebidas. Seu histórico está pronto.`);
+    setStatus(t('access.historyReceived', { count: result.messages }));
     await store.refresh();
   }
   return (
@@ -67,21 +66,20 @@ export function AccountAccess({
         accessibilityRole="header"
         style={{ color: colors.text, fontSize: 28, fontWeight: '600' }}
       >
-        Sua conta, neste aparelho.
+        {t('access.accountOnDevice')}
       </Text>
       {expectedHandle ? (
         <Text style={{ color: colors.secondary, lineHeight: 24 }}>
-          Sua conta @{expectedHandle} foi reconhecida. Recupere as chaves pelo outro aparelho ou
-          pelo backup para abrir suas conversas.
+          {t('access.recognizedAccount', { handle: expectedHandle })}
         </Text>
       ) : null}
       {!linked ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {(
             [
-              { value: 'link', label: 'Outro aparelho' },
-              { value: 'recovery', label: 'Chave de recuperação' },
-              { value: 'password', label: 'Senha do backup' },
+              { value: 'link', label: t('access.otherDevice') },
+              { value: 'recovery', label: t('access.recoveryKey') },
+              { value: 'password', label: t('access.backupPassword') },
             ] as const
           ).map((choice) => (
             <NativeButton
@@ -101,14 +99,13 @@ export function AccountAccess({
       {linked ? (
         <Surface>
           <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
-            Conta conectada
+            {t('access.accountConnected')}
           </Text>
           <Text style={{ color: colors.secondary, lineHeight: 24 }}>
-            Mantenha o outro aparelho conectado para receber o histórico. Você também pode continuar
-            agora: a transferência continua automaticamente e pode ser acompanhada em Dispositivos.
+            {t('access.connectedKeepPeerOnline')}
           </Text>
           <NativeButton
-            label="Receber histórico"
+            label={t('access.receiveHistory')}
             disabled={busy}
             onPress={() => {
               void run(history);
@@ -116,7 +113,7 @@ export function AccountAccess({
           />
           <NativeButton
             secondary
-            label="Entrar no Zoen"
+            label={t('access.enterZoen')}
             disabled={busy}
             onPress={() => {
               void run(async () => {
@@ -129,17 +126,16 @@ export function AccountAccess({
       ) : method === 'link' ? (
         <>
           <Text style={{ color: colors.secondary, lineHeight: 24 }}>
-            No aparelho que já usa sua conta, abra Você → Dispositivos vinculados → Conectar
-            dispositivo. Escaneie o QR ou cole o código e compare os seis números antes de aprovar.
+            {t('access.linkInstructions')}
           </Text>
           {request ? <PairingCode code={request.code} check={request.check} /> : null}
           <NativeButton
             label={
               busy
-                ? 'Aguardando aprovação…'
+                ? t('access.waitingApproval')
                 : request
-                  ? 'Já aprovei no outro aparelho'
-                  : 'Gerar código de conexão'
+                  ? t('access.alreadyApproved')
+                  : t('access.generateCode')
             }
             disabled={busy || !relay.trim()}
             onPress={() => {
@@ -156,7 +152,7 @@ export function AccountAccess({
                   expected_identity_id: expectedIdentityId ?? null,
                 });
                 setLinked(true);
-                setStatus('Conta conectada. Envie o histórico pelo outro aparelho.');
+                setStatus(t('access.connectedSendHistory'));
                 await store.refresh();
               });
             }}
@@ -165,12 +161,10 @@ export function AccountAccess({
       ) : (
         <>
           <Text style={{ color: colors.secondary, lineHeight: 24 }}>
-            Restaure o backup criptografado que você ativou anteriormente. A{' '}
-            {method === 'recovery' ? 'chave' : 'senha'} do backup é necessária para abrir seus
-            dados.
+            {method === 'recovery' ? t('access.restoreUsingKey') : t('access.restoreUsingPassword')}
           </Text>
           <Field
-            label="Seu @"
+            label={t('profile.handle')}
             value={handle}
             onChangeText={setHandle}
             editable={!busy && !expectedHandle}
@@ -178,7 +172,7 @@ export function AccountAccess({
             autoCorrect={false}
           />
           <Field
-            label={method === 'recovery' ? 'Chave de recuperação' : 'Senha do backup'}
+            label={method === 'recovery' ? t('access.recoveryKey') : t('access.backupPassword')}
             value={secret}
             onChangeText={setSecret}
             editable={!busy}
@@ -188,7 +182,7 @@ export function AccountAccess({
             autoComplete="off"
           />
           <NativeButton
-            label={busy ? 'Restaurando seu backup…' : 'Restaurar minha conta'}
+            label={busy ? t('access.restoringBackup') : t('access.restoreAccount')}
             disabled={busy || !handle.trim() || !secret.trim() || !relay.trim()}
             onPress={() => {
               void run(async () => {
@@ -224,7 +218,9 @@ export function AccountAccess({
           {error}
         </Text>
       ) : null}
-      {!linked ? <NativeButton secondary label="Voltar" disabled={busy} onPress={onBack} /> : null}
+      {!linked ? (
+        <NativeButton secondary label={t('access.back')} disabled={busy} onPress={onBack} />
+      ) : null}
     </View>
   );
 }

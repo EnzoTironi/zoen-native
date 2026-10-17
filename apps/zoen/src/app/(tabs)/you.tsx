@@ -1,3 +1,4 @@
+import { t } from '../../i18n/index.ts';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useDialogs } from '../../components/dialogs';
 import { router } from 'expo-router';
@@ -23,14 +24,14 @@ export default function You() {
         accessibilityRole="header"
         style={{ fontSize: 34, fontWeight: '700', color: colors.text }}
       >
-        Você
+        {t('settings.you')}
       </Text>
       <Surface>
         <View style={{ flexDirection: 'row', gap: 18, alignItems: 'center' }}>
-          <Avatar uri={photo} name={me?.name ?? 'Você'} color={me?.tint_hex} size={66} />
+          <Avatar uri={photo} name={me?.name ?? t('settings.you')} color={me?.tint_hex} size={66} />
           <View style={{ flex: 1, gap: 5 }}>
             <Text style={{ fontSize: 23, fontWeight: '600', color: colors.text }}>
-              {me?.name ?? 'Sua conta'}
+              {me?.name ?? t('settings.yourAccount')}
             </Text>
             <Text style={{ fontSize: 15, color: colors.secondary }}>@{me?.handle}</Text>
           </View>
@@ -38,19 +39,21 @@ export default function You() {
         {me?.bio ? <Text style={{ color: colors.secondary, lineHeight: 23 }}>{me.bio}</Text> : null}
         <NativeButton
           secondary
-          label="Editar meu perfil"
+          label={t('settings.editMyProfile')}
           onPress={() => router.push('/edit-profile')}
         />
       </Surface>
       <IntegrityWarnings />
       <Surface>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>Aparência</Text>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
+          {t('settings.appearance')}
+        </Text>
         <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
           {(
             [
-              { value: 'light', label: 'Claro' },
-              { value: 'system', label: 'Sistema' },
-              { value: 'dark', label: 'Escuro' },
+              { value: 'light', label: t('settings.light') },
+              { value: 'system', label: t('settings.system') },
+              { value: 'dark', label: t('settings.dark') },
             ] as const
           ).map((item) => (
             <NativeButton
@@ -68,11 +71,13 @@ export default function You() {
         </Text>
       ) : null}
       <Surface>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>Seus agentes</Text>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
+          {t('settings.yourAgents')}
+        </Text>
         {snapshot?.agents.map((agent) => (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Permissões de ${agent.persona.name}`}
+            accessibilityLabel={t('settings.agentPermissions', { name: agent.persona.name })}
             onPress={() =>
               router.push({ pathname: '/agent/[id]', params: { id: agent.persona.id } })
             }
@@ -90,42 +95,46 @@ export default function You() {
         ))}
       </Surface>
       <Surface>
-        <Text style={{ color: colors.text, fontWeight: '600', fontSize: 18 }}>Conexão</Text>
+        <Text style={{ color: colors.text, fontWeight: '600', fontSize: 18 }}>
+          {t('settings.connection')}
+        </Text>
         <NativeButton
           secondary
-          label="Dispositivos vinculados"
+          label={t('settings.linkedDevices')}
           onPress={() => router.push('/devices')}
         />
         <NativeButton
           secondary
-          label="Backup criptografado"
+          label={t('settings.encryptedBackup')}
           onPress={() => router.push('/backup')}
         />
         <NativeButton
           secondary
-          label="Notificações"
+          label={t('settings.notifications')}
           onPress={() => router.push('/notifications')}
         />
         <Text style={{ color: colors.secondary }}>
-          Estado:{' '}
-          {snapshot?.connection.state === 'online'
-            ? 'Conectado'
-            : snapshot?.connection.state === 'connecting'
-              ? 'Conectando'
-              : 'Offline'}
+          {t('settings.connectionStatus', {
+            status:
+              snapshot?.connection.state === 'online'
+                ? t('settings.connected')
+                : snapshot?.connection.state === 'connecting'
+                  ? t('settings.connecting')
+                  : t('settings.offline'),
+          })}
         </Text>
         <Text style={{ color: colors.secondary }}>
-          {snapshot?.connection.pending ?? '0'} mensagens aguardando sincronização
+          {t('settings.pendingSync', { total: snapshot?.connection.pending ?? '0' })}
         </Text>
       </Surface>
       <DeviceDataActions />
       {mode === 'demo' ? (
         <NativeButton
-          label="Usar uma conta de verdade"
+          label={t('settings.useYourOwnAccount')}
           onPress={() => {
             void confirm({
-              title: 'Sair da demonstração?',
-              message: 'As conversas de demonstração ficam separadas da sua conta.',
+              title: t('settings.leaveTheDemo'),
+              message: t('settings.demoChatsAreKeptSeparateFromYourAccount'),
             }).then((accepted) => {
               if (accepted) void store.open('account');
             });

@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { parseMoneyInput } from '../core/presentation.ts';
 
 export type Schema = {
@@ -34,7 +35,7 @@ export function parseSchema(encoded: string): Schema {
     Array.isArray(value) ||
     ('type' in value && value.type !== 'object')
   )
-    throw new Error('O formulário deste miniapp não está disponível.');
+    throw new Error(t('miniapps.thisMiniappSFormIsNotAvailable'));
   return value as Schema;
 }
 export function isDateField(key: string): boolean {
@@ -44,51 +45,51 @@ export function isPriceField(key: string): boolean {
   return /Cents$|_cents$/.test(key);
 }
 const names: Record<string, string> = {
-  name: 'Nome',
-  title: 'Título',
-  business: 'Negócio',
-  description: 'Descrição',
-  species: 'Espécie',
-  question: 'Pergunta',
-  options: 'Opções',
-  items: 'Itens',
-  dish: 'Prato',
-  servings: 'Porções',
-  day: 'Dia',
-  area: 'Região',
-  driver: 'Quem dirige',
-  pickups: 'Pontos de encontro',
-  names: 'Pessoas',
-  place: 'Local',
-  photos: 'Fotos',
-  target_ms: 'Data e hora',
-  startMs: 'Início',
-  endMs: 'Fim',
-  serviceId: 'Serviço',
-  bookingId: 'Agendamento',
-  note: 'Observação',
-  action: 'Decisão',
-  timezone: 'Fuso horário',
-  currency: 'Moeda',
-  services: 'Serviços',
-  minutes: 'Duração em minutos',
-  priceCents: 'Preço em reais',
-  slotMinutes: 'Intervalo em minutos',
-  horizonDays: 'Dias disponíveis',
-  weeklyHours: 'Horários de atendimento',
-  accentHex: 'Cor',
-  resolvers: 'Quem pode resolver pedidos',
-  forId: 'Pessoa atendida',
-  forName: 'Nome da pessoa',
-  round: 'Rodada',
-  lat: 'Latitude',
-  lon: 'Longitude',
-  meters: 'Metros percorridos',
-  carrots: 'Cenouras',
-  option: 'Opção',
-  text: 'Texto',
-  trail: 'Trilha',
-  id: 'Identificação',
+  name: t('miniappFields.name'),
+  title: t('miniappFields.title'),
+  business: t('miniappFields.business'),
+  description: t('miniappFields.description'),
+  species: t('miniappFields.species'),
+  question: t('miniappFields.question'),
+  options: t('miniappFields.options'),
+  items: t('miniappFields.items'),
+  dish: t('miniappFields.dish'),
+  servings: t('miniappFields.servings'),
+  day: t('miniappFields.day'),
+  area: t('miniappFields.area'),
+  driver: t('miniappFields.driver'),
+  pickups: t('miniappFields.pickups'),
+  names: t('miniappFields.names'),
+  place: t('miniappFields.place'),
+  photos: t('miniappFields.photos'),
+  target_ms: t('miniappFields.target_ms'),
+  startMs: t('miniappFields.startMs'),
+  endMs: t('miniappFields.endMs'),
+  serviceId: t('miniappFields.serviceId'),
+  bookingId: t('miniappFields.bookingId'),
+  note: t('miniappFields.note'),
+  action: t('miniappFields.action'),
+  timezone: t('miniappFields.timezone'),
+  currency: t('miniappFields.currency'),
+  services: t('miniappFields.services'),
+  minutes: t('miniappFields.minutes'),
+  priceCents: t('miniappFields.priceCents'),
+  slotMinutes: t('miniappFields.slotMinutes'),
+  horizonDays: t('miniappFields.horizonDays'),
+  weeklyHours: t('miniappFields.weeklyHours'),
+  accentHex: t('miniappFields.accentHex'),
+  resolvers: t('miniappFields.resolvers'),
+  forId: t('miniappFields.forId'),
+  forName: t('miniappFields.forName'),
+  round: t('miniappFields.round'),
+  lat: t('miniappFields.lat'),
+  lon: t('miniappFields.lon'),
+  meters: t('miniappFields.meters'),
+  carrots: t('miniappFields.carrots'),
+  option: t('miniappFields.option'),
+  text: t('miniappFields.text'),
+  trail: t('miniappFields.trail'),
+  id: t('miniappFields.id'),
 };
 export function fieldLabel(key: string, schema: Schema): string {
   return schema.title ?? names[key] ?? key.replaceAll('_', ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -107,13 +108,13 @@ export function formValue(
   required = true,
   depth = 0,
 ): ExactJson | undefined {
-  const label = fieldLabel(key, schema) || 'Campo';
-  if (depth > 8) throw new Error('Este formulário é complexo demais para ser aberto.');
+  const label = fieldLabel(key, schema) || t('miniapps.field');
+  if (depth > 8) throw new Error(t('miniapps.thisFormIsTooComplexToOpen'));
   const empty = draft === undefined || draft === '' || draft === null;
   if (empty && !required) return undefined;
   if (schema.enum) {
     if (!schema.enum.some((value) => value === draft))
-      throw new Error(`Escolha ${label.toLowerCase()}.`);
+      throw new Error(t('miniapps.chooseField', { label }));
     return draft as string | number | boolean | null;
   }
   if (schema.type === 'object' || schema.properties || schema.patternProperties) {
@@ -128,7 +129,7 @@ export function formValue(
         )?.[1];
       if (!child) {
         if (schema.additionalProperties === false)
-          throw new Error(`Campo desconhecido: ${property}.`);
+          throw new Error(t('miniapps.unknownField', { field: property }));
         continue;
       }
       const value = formValue(
@@ -146,9 +147,9 @@ export function formValue(
   if (schema.type === 'array') {
     const list = Array.isArray(draft) ? draft : [];
     if (list.length < (schema.minItems ?? 0))
-      throw new Error(`Adicione pelo menos ${schema.minItems} em ${label.toLowerCase()}.`);
+      throw new Error(t('miniapps.minimumItems', { count: schema.minItems ?? 0, label }));
     if (list.length > (schema.maxItems ?? 100))
-      throw new Error(`Há itens demais em ${label.toLowerCase()}.`);
+      throw new Error(t('miniapps.tooManyItems', { label }));
     return list.map(
       (value) => formValue(schema.items ?? { type: 'string' }, value, key, true, depth + 1) ?? null,
     );
@@ -160,34 +161,33 @@ export function formValue(
     if (isPriceField(key)) value = BigInt(parseMoneyInput(input));
     else if (isDateField(key)) {
       const milliseconds = Date.parse(input.replace(' ', 'T'));
-      if (!Number.isSafeInteger(milliseconds))
-        throw new Error(`Informe uma data válida em ${label.toLowerCase()}.`);
+      if (!Number.isSafeInteger(milliseconds)) throw new Error(t('miniapps.validDate', { label }));
       value = BigInt(milliseconds);
     } else if (schema.type === 'integer') {
       if (!/^-?\d+$/.test(input) || input.length > 20)
-        throw new Error(`Informe um número inteiro em ${label.toLowerCase()}.`);
+        throw new Error(t('miniapps.validInteger', { label }));
       value = BigInt(input);
       if (value < -9223372036854775808n || value > 9223372036854775807n)
-        throw new Error(`${label} ultrapassa o limite permitido.`);
+        throw new Error(t('miniapps.fieldAboveLimit', { label }));
     } else {
       if (!/^-?(?:\d+(?:[.,]\d*)?|[.,]\d+)$/.test(input))
-        throw new Error(`Informe um número em ${label.toLowerCase()}.`);
+        throw new Error(t('miniapps.validNumber', { label }));
       value = Number(input.replace(',', '.'));
-      if (!Number.isFinite(value)) throw new Error(`${label} ultrapassa o limite permitido.`);
+      if (!Number.isFinite(value)) throw new Error(t('miniapps.fieldAboveLimit', { label }));
     }
     if (schema.minimum !== undefined && value < schema.minimum)
-      throw new Error(`${label} precisa ser pelo menos ${schema.minimum}.`);
+      throw new Error(t('miniapps.fieldMinimum', { label, minimum: schema.minimum }));
     if (schema.maximum !== undefined && value > schema.maximum)
-      throw new Error(`${label} precisa ser no máximo ${schema.maximum}.`);
+      throw new Error(t('miniapps.fieldMaximum', { label, maximum: schema.maximum }));
     return value;
   }
   const value = typeof draft === 'string' ? draft : '';
   const count = Array.from(value).length;
   if (count < (schema.minLength ?? (required ? 1 : 0)))
-    throw new Error(`Preencha ${label.toLowerCase()}.`);
-  if (count > (schema.maxLength ?? 16_384)) throw new Error(`${label} está longo demais.`);
+    throw new Error(t('miniapps.requiredField', { label }));
+  if (count > (schema.maxLength ?? 16_384)) throw new Error(t('miniapps.fieldTooLong', { label }));
   if (schema.pattern && !new RegExp(schema.pattern).test(value))
-    throw new Error(`Confira o formato de ${label.toLowerCase()}.`);
+    throw new Error(t('miniapps.fieldFormat', { label }));
   return value;
 }
 

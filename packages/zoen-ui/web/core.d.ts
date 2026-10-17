@@ -1,7 +1,7 @@
 declare module '*/core/zoen_web_core.js' {
   export class BrowserPrimary {
-    constructor(device:string,relay:string,name:string);
-    static restore(seed:Uint8Array,account:string,device:string):BrowserPrimary;
+    constructor(device:string,relay:string,name:string,locale:string);
+    static restore(seed:Uint8Array,account:string,device:string,locale:string):BrowserPrimary;
     account():string;
     authority_bytes():Uint8Array;
     bind_message(proof:string):Uint8Array;
@@ -22,7 +22,7 @@ declare module '*/core/zoen_web_core.js' {
   export function open_chunk(chunk: string, sealed: Uint8Array): Uint8Array;
   export function blob_put_message(sha: string, ts: number, relay: string): Uint8Array;
   export class BrowserCore {
-    constructor(account: string, snapshot: string);
+    constructor(account: string, snapshot: string, locale: string);
     free(): void;
     view(): string;
     bootstrap(): string;
@@ -54,7 +54,7 @@ declare module '*/core/zoen_web_core.js' {
     history_chunk(index:number, sealed:Uint8Array, now:number):string;
     history_finish(now:number):string;
     history_cleaned(now:number):string;
-    app_request(request: string, now: number, locale: string): string;
+    app_request(request: string, now: number): string;
     directory_profiles(profiles: string): string;
     typing_frame(space: string, typing: boolean): Uint8Array;
     document_uploads(): string;

@@ -15,13 +15,15 @@ function MiniappActivity(props: MiniappActivityContent, environment: LiveActivit
   const privateContent = props.redacted || stale;
   const color = environment.isLuminanceReduced ? '#A6AAB1' : props.accentHex;
   const label = stale
-    ? 'Abra para atualizar'
+    ? (props.labels?.refresh ?? 'Open to update')
     : props.redacted
-      ? 'Contagem em andamento'
+      ? (props.labels?.countdown ?? 'Countdown in progress')
       : props.title;
   const icon = <Image systemName={privateContent ? 'lock.fill' : 'timer'} color={color} />;
   const timer = privateContent ? (
-    <Text modifiers={[font({ size: 13 }), lineLimit(1)]}>{stale ? 'Zoen' : 'Em andamento'}</Text>
+    <Text modifiers={[font({ size: 13 }), lineLimit(1)]}>
+      {stale ? 'Zoen' : (props.labels?.inProgress ?? 'In progress')}
+    </Text>
   ) : (
     <Text
       timerInterval={{ lower: new Date(0), upper: new Date(props.endsAt) }}

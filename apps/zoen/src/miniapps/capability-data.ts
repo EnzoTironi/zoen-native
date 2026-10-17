@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 export const MAX_PHOTO_DATA_URL = 150_000;
 export const MAX_PHOTO_SOURCE_BYTES = 32 * 1024 * 1024;
 const DAY = 86_400_000;
@@ -23,7 +24,7 @@ export class PhotoVault {
   }
 
   begin(item: string): CapabilityLease {
-    if (!item || item.length > 200) throw new Error('Miniapp inválido.');
+    if (!item || item.length > 200) throw new Error(t('miniapps.invalidMiniapp'));
     let controller = this.sessions.get(item);
     if (!controller) {
       controller = new AbortController();
@@ -35,14 +36,14 @@ export class PhotoVault {
       signal: current.signal,
       check: () => {
         if (current.signal.aborted || this.sessions.get(item) !== current)
-          throw new Error('Este miniapp foi fechado.');
+          throw new Error(t('miniapps.thisMiniappHasClosed'));
       },
     };
   }
 
   put(lease: CapabilityLease, nonce: string, photo: Omit<PhotoPreview, 'token'>): PhotoPreview {
     lease.check();
-    if (!/^[a-zA-Z0-9-]{24,80}$/.test(nonce)) throw new Error('Identificador de foto inválido.');
+    if (!/^[a-zA-Z0-9-]{24,80}$/.test(nonce)) throw new Error(t('miniapps.invalidPhotoIdentifier'));
     if (
       !photo.dataUrl.startsWith('data:image/jpeg;base64,') ||
       photo.dataUrl.length > MAX_PHOTO_DATA_URL ||
@@ -53,10 +54,10 @@ export class PhotoVault {
       photo.width > 1600 ||
       photo.height > 1600
     )
-      throw new Error('Não foi possível preparar uma prévia desta foto.');
+      throw new Error(t('miniapps.aPreviewOfThisPhotoCouldNotBe'));
     this.prune();
     const token = `zoen-photo:${nonce}`;
-    if (this.photos.has(token)) throw new Error('Identificador de foto repetido.');
+    if (this.photos.has(token)) throw new Error(t('miniapps.duplicatePhotoIdentifier'));
     // Bound memory without retaining original files or a disk photo history.
     while (this.photos.size >= 24) this.photos.delete(this.photos.keys().next().value!);
     const owned = [...this.photos].filter(([, entry]) => entry.item === lease.item);
@@ -91,7 +92,7 @@ export function photoOptions(params: Record<string, unknown>): { max: number; ma
   const bounded = (value: unknown, fallback: number, min: number, max: number) => {
     if (value === undefined) return fallback;
     if (typeof value !== 'number' || !Number.isSafeInteger(value))
-      throw new Error('Opções de foto inválidas.');
+      throw new Error(t('miniapps.invalidPhotoOptions'));
     return Math.min(max, Math.max(min, value));
   };
   return { max: bounded(params.max, 4, 1, 6), maxSide: bounded(params.maxSide, 1024, 320, 1600) };
@@ -109,7 +110,7 @@ export function timeWindow(params: Record<string, unknown>): BusyBlock {
     endMs <= startMs ||
     !Number.isFinite(new Date(endMs).getTime())
   )
-    throw new Error('Escolha um intervalo de datas válido.');
+    throw new Error(t('miniapps.chooseAValidDateRange'));
   return { startMs, endMs: Math.min(endMs, startMs + 31 * DAY) };
 }
 
@@ -121,13 +122,13 @@ export function eventDraft(params: Record<string, unknown>) {
       typeof value !== 'string' ||
       [...value].some((char) => char.charCodeAt(0) < 32 && !['\t', '\n', '\r'].includes(char))
     )
-      throw new Error('Os dados do evento são inválidos.');
+      throw new Error(t('miniapps.theEventDataIsInvalid'));
     return [...value.trim()].slice(0, max).join('');
   };
   const title = text('title', 120);
-  if (!title) throw new Error('Informe um título para o evento.');
+  if (!title) throw new Error(t('miniapps.enterATitleForTheEvent'));
   const window = timeWindow(params);
-  if (window.endMs !== params.endMs) throw new Error('O evento pode durar no máximo 31 dias.');
+  if (window.endMs !== params.endMs) throw new Error(t('miniapps.theEventCanLastUpTo31Days'));
   return {
     title,
     startDate: new Date(window.startMs),
@@ -167,7 +168,7 @@ export function busyBlocks(
 
 export function place(lat: number, lon: number, accuracyM: number | null, approximate: boolean) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180)
-    throw new Error('Não foi possível obter sua localização.');
+    throw new Error(t('miniapps.yourLocationCouldNotBeObtained'));
   const accuracy =
     typeof accuracyM === 'number' && Number.isFinite(accuracyM) && accuracyM >= 0
       ? accuracyM

@@ -111,6 +111,7 @@ impl RodaEngine {
         bytes: Vec<u8>,
         thumbnail: Option<Vec<u8>>,
     ) -> Result<ItemDetail, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         let mut e = self.lock();
         let id = e.file_add(&space_id, &path, &name, &mime, &bytes, thumbnail.as_deref())?;
         e.item(&id)
@@ -131,6 +132,7 @@ impl RodaEngine {
         reply_to: Option<String>,
         thread: bool,
     ) -> Result<TimelineEntry, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         self.lock().send_voice_note(
             &space_id,
             &bytes,
@@ -188,6 +190,7 @@ impl RodaEngine {
         version: Option<u32>,
         max_bytes: u64,
     ) -> Result<Option<Vec<u8>>, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         self.lock().file_bytes_bounded(&item_id, version, max_bytes)
     }
 
@@ -206,6 +209,7 @@ impl RodaEngine {
         item_id: String,
         version: Option<u32>,
     ) -> Result<FileDto, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         self.lock().file_info_at(&item_id, version)
     }
 }

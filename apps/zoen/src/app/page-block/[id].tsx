@@ -1,3 +1,4 @@
+import { t } from '../../i18n/index.ts';
 import { useRef, useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text, TextInput, View } from 'react-native';
@@ -36,12 +37,15 @@ function Editor({ initialPage, blockId }: { initialPage: PageDto; blockId: strin
   const finish = useDirtyEditor(dirty, busy);
   if (!original && blockId !== 'new')
     return (
-      <EmptyState title="Este bloco mudou" detail="Volte à página para abrir a versão atual." />
+      <EmptyState
+        title={t('documents.thisBlockHasChanged')}
+        detail={t('documents.goBackToThePageToOpenThe')}
+      />
     );
   if (source.error && !lossless)
     return (
-      <EmptyState title="Não foi possível abrir o editor" detail={source.error}>
-        <NativeButton label="Tentar novamente" onPress={source.retry} />
+      <EmptyState title={t('documents.theEditorCouldNotBeOpened')} detail={source.error}>
+        <NativeButton label={t('documents.tryAgain')} onPress={source.retry} />
       </EmptyState>
     );
   if (original && source.data === null && !lossless) return <Loading />;
@@ -62,9 +66,9 @@ function Editor({ initialPage, blockId }: { initialPage: PageDto; blockId: strin
           original &&
           blocks.length === 0 &&
           !(await dialogs.confirm({
-            title: 'Apagar este bloco?',
-            message: 'O conteúdo está vazio. Guardar esta edição remove o bloco do rascunho.',
-            confirmLabel: 'Apagar bloco',
+            title: t('documents.deleteThisBlock'),
+            message: t('documents.theContentIsEmptySavingThisEditRemoves'),
+            confirmLabel: t('documents.deleteBlock'),
             destructive: true,
           }))
         )
@@ -85,7 +89,7 @@ function Editor({ initialPage, blockId }: { initialPage: PageDto; blockId: strin
       router.back();
     } catch (failure) {
       setError(
-        failure instanceof Error ? failure.message : 'Não foi possível guardar este rascunho.',
+        failure instanceof Error ? failure.message : t('documents.thisDraftCouldNotBeSaved'),
       );
     } finally {
       setBusy(false);
@@ -103,18 +107,20 @@ function Editor({ initialPage, blockId }: { initialPage: PageDto; blockId: strin
         alignSelf: 'center',
       }}
     >
-      <Stack.Screen options={{ title: original ? 'Editar bloco' : 'Novo bloco' }} />
+      <Stack.Screen
+        options={{ title: original ? t('documents.editBlock') : t('documents.newBlock') }}
+      />
       {lossless && losslessBlock ? (
         <View style={{ gap: 12 }}>
           <Text style={{ color: colors.secondary, lineHeight: 22 }}>
-            Este bloco tem formatação adicional. O editor de texto preserva essas informações.
+            {t('documents.thisBlockHasAdditionalFormattingTheTextEditor')}
           </Text>
           <TextInput
             defaultValue={original?.text}
             multiline
             autoFocus
             editable={!busy && page.can_edit}
-            accessibilityLabel="Texto do bloco, preservando formatação adicional"
+            accessibilityLabel={t('documents.blockTextPreservingAdditionalFormatting')}
             onChangeText={(value) => {
               setLosslessBlock((previous) =>
                 previous
@@ -157,7 +163,7 @@ function Editor({ initialPage, blockId }: { initialPage: PageDto; blockId: strin
           process.env.EXPO_OS !== 'web' ? (
             <NativeButton
               secondary
-              label={sourceMode ? 'Abrir editor visual' : 'Editar Markdown'}
+              label={sourceMode ? t('documents.openVisualEditor') : t('documents.editMarkdown')}
               disabled={busy}
               onPress={() => setSourceMode((value) => !value)}
             />
@@ -170,21 +176,18 @@ function Editor({ initialPage, blockId }: { initialPage: PageDto; blockId: strin
         </Text>
       ) : null}
       {!page.can_edit ? (
-        <Text style={{ color: colors.secondary }}>
-          Esta página está disponível somente para leitura.
-        </Text>
+        <Text style={{ color: colors.secondary }}>{t('documents.thisPageIsReadOnly')}</Text>
       ) : (
         <NativeButton
           disabled={busy || !dirty}
-          label={busy ? 'Guardando…' : 'Guardar rascunho'}
+          label={busy ? t('documents.saving') : t('documents.saveDraft')}
           onPress={() => {
             void save();
           }}
         />
       )}
       <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 20 }}>
-        As mudanças ficam no seu rascunho. Compartilhe as alterações na página quando estiver
-        pronto.
+        {t('documents.changesStayInYourDraftShareThePage')}
       </Text>
     </ScrollView>
   );
@@ -194,8 +197,8 @@ export default function PageBlock() {
   const { data: page, error, retry } = useCoreQuery({ op: 'page', item_id: id });
   if (!page)
     return error ? (
-      <EmptyState title="Não foi possível abrir a página" detail={error}>
-        <NativeButton label="Tentar novamente" onPress={retry} />
+      <EmptyState title={t('documents.thePageCouldNotBeOpened')} detail={error}>
+        <NativeButton label={t('documents.tryAgain')} onPress={retry} />
       </EmptyState>
     ) : (
       <Loading />

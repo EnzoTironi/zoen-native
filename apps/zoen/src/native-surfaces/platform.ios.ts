@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { requireOptionalNativeModule } from 'expo';
 import { File, Paths } from 'expo-file-system';
 import * as AppIntents from 'expo-app-intents';
@@ -23,7 +24,7 @@ export async function createSurfacePort(): Promise<SurfacePort | null> {
   const redacted: NativeWidgetContent = {
     redacted: true,
     title: 'Zoen',
-    detail: 'Escolha um miniapp no Zoen',
+    detail: t('nativeSurfaces.chooseAMiniappInZoen'),
     bars: [],
     rows: [],
     accentHex: '#5B8DEF',
@@ -47,7 +48,7 @@ export async function createSurfacePort(): Promise<SurfacePort | null> {
         if (file.exists) file.delete();
         return;
       }
-      if (value.length > 8_192) throw new Error('Too many native surface preferences');
+      if (value.length > 8_192) throw new Error(t('nativeSurfaces.tooManyPreferences'));
       file.write(value);
     },
     widget(content) {
@@ -71,14 +72,14 @@ export async function createSurfacePort(): Promise<SurfacePort | null> {
         AppIntents.setEntityCatalogAsync('zoen.chat', chats),
       ]);
       if (results.some((result) => result.status === 'rejected'))
-        throw new Error('Não foi possível atualizar os atalhos deste aparelho.');
+        throw new Error(t('nativeSurfaces.thisDeviceSShortcutsCouldNotBeUpdated'));
     },
     activities: () => activity.getInstances().map((value) => value.getId()),
     startActivity: (content: MiniappActivityContent) =>
       activity.start(content, content.deepLink, new Date(content.endsAt)).getId(),
     async updateActivity(id, content) {
       const instance = findActivity(id);
-      if (!instance) throw new Error('Activity ended');
+      if (!instance) throw new Error(t('nativeSurfaces.activityEnded'));
       await instance.update(content, new Date(content.endsAt));
     },
     async endActivity(id) {

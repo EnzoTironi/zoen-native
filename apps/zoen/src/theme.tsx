@@ -1,3 +1,4 @@
+import { t } from './i18n/index.ts';
 import { createContext, use, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
 import { preferences } from './preferences';
@@ -62,7 +63,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           updatePreference(value);
       })
       .catch(() => {
-        if (active) setPreferenceError('Não foi possível recuperar sua preferência de aparência.');
+        if (active) setPreferenceError(t('settings.yourAppearancePreferenceCouldNotBeRestored'));
       });
     return () => {
       active = false;
@@ -80,9 +81,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         if (version === revision.current)
-          setPreferenceError(
-            'A aparência mudou, mas não foi possível guardar a preferência neste aparelho.',
-          );
+          setPreferenceError(t('settings.appearanceChangedButThePreferenceCouldNotBe'));
       });
   }
   return <Context value={{ preference, setPreference, preferenceError }}>{children}</Context>;

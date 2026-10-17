@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { Text } from 'react-native';
@@ -38,10 +39,7 @@ export function HistoryTransfer() {
           if (epoch.current === generation)
             setState({
               identity: accountIdentity,
-              error:
-                reason instanceof Error
-                  ? reason.message
-                  : 'Não foi possível verificar o histórico.',
+              error: reason instanceof Error ? reason.message : t('access.checkHistoryFailed'),
             });
         }
       }
@@ -74,7 +72,7 @@ export function HistoryTransfer() {
         setState({
           identity: identity!,
           status,
-          error: reason instanceof Error ? reason.message : 'A transferência continuará depois.',
+          error: reason instanceof Error ? reason.message : t('access.transferContinuesLater'),
         });
     } finally {
       if (generation === epoch.current) {
@@ -90,12 +88,15 @@ export function HistoryTransfer() {
         accessibilityRole="header"
         style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
       >
-        Seu histórico neste dispositivo
+        {t('access.historyOnDevice')}
       </Text>
       <Text accessibilityRole="status" style={{ color: colors.secondary, lineHeight: 24 }}>
         {status?.manifest_received
-          ? `${status.chunks_received} de ${status.chunks_total} partes recebidas. As conversas serão abertas após a conferência.`
-          : 'Mantenha o outro dispositivo conectado para enviar o histórico. A transferência é retomada automaticamente.'}
+          ? t('access.partsReceived', {
+              received: status.chunks_received,
+              count: status.chunks_total,
+            })
+          : t('access.historyAutoResume')}
       </Text>
       {error ? (
         <Text selectable accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 24 }}>
@@ -104,7 +105,9 @@ export function HistoryTransfer() {
       ) : null}
       <NativeButton
         secondary
-        label={busy || status?.receive_active ? 'Recebendo histórico…' : 'Tentar receber agora'}
+        label={
+          busy || status?.receive_active ? t('access.historyReceiving') : t('access.tryReceiveNow')
+        }
         disabled={busy || status?.receive_active === true}
         onPress={() => void retry()}
       />

@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { Linking, Platform, ScrollView, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { useNotifications } from '../notifications/provider';
@@ -9,16 +10,16 @@ export function NotificationSettings() {
   const { colors } = useTheme();
   const status =
     notifications.registration === 'acknowledged'
-      ? 'Cadastro confirmado pelo servidor'
+      ? t('notifications.registrationConfirmedByTheServer')
       : notifications.registration === 'registering'
-        ? 'Confirmando cadastro…'
+        ? t('notifications.confirmingRegistration')
         : notifications.registration === 'waiting'
-          ? 'Aguardando confirmação do servidor'
+          ? t('notifications.waitingForServerConfirmation')
           : notifications.registration === 'refused'
-            ? 'Cadastro recusado pelo servidor'
+            ? t('notifications.registrationRefusedByTheServer')
             : notifications.registration === 'unsupported'
-              ? 'Avisos remotos ainda não disponíveis neste aparelho'
-              : 'Este aparelho ainda não está cadastrado';
+              ? t('notifications.remoteNotificationsAreNotYetAvailableOnThis')
+              : t('notifications.thisDeviceIsNotRegisteredYet');
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
@@ -30,7 +31,7 @@ export function NotificationSettings() {
         alignSelf: 'center',
       }}
     >
-      <Stack.Screen options={{ title: 'Notificações' }} />
+      <Stack.Screen options={{ title: t('notifications.notifications') }} />
       <Surface>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           <Icon
@@ -42,12 +43,11 @@ export function NotificationSettings() {
             accessibilityRole="header"
             style={{ color: colors.text, fontSize: 22, fontWeight: '600' }}
           >
-            Avisos sob seu controle
+            {t('notifications.notificationsUnderYourControl')}
           </Text>
         </View>
         <Text style={{ color: colors.secondary, fontSize: 16, lineHeight: 25 }}>
-          O servidor envia apenas um sinal para sincronizar. O conteúdo das mensagens é aberto neste
-          aparelho. Conversas silenciadas não geram avisos.
+          {t('notifications.theServerOnlySendsASignalToSync')}
         </Text>
       </Surface>
       <Surface>
@@ -55,29 +55,29 @@ export function NotificationSettings() {
           accessibilityRole="header"
           style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}
         >
-          Permissão do aparelho
+          {t('notifications.devicePermission')}
         </Text>
         <Text style={{ color: colors.secondary, lineHeight: 23 }}>
           {notifications.permission === 'allowed'
-            ? 'Permitida'
+            ? t('notifications.allowed')
             : notifications.permission === 'denied'
-              ? 'Desativada nos Ajustes'
+              ? t('notifications.disabledInSettings')
               : notifications.permission === 'undetermined'
-                ? 'Você ainda não escolheu'
+                ? t('notifications.youHaveNotChosenYet')
                 : Platform.OS === 'web'
-                  ? 'Indisponível neste navegador'
-                  : 'Verificando…'}
+                  ? t('notifications.unavailableInThisBrowser')
+                  : t('notifications.checking')}
         </Text>
         {Platform.OS === 'ios' ? (
           <NativeButton
             label={
               notifications.busy
-                ? 'Configurando…'
+                ? t('notifications.settingUp')
                 : notifications.permission === 'denied'
-                  ? 'Abrir Ajustes'
+                  ? t('notifications.openSettings')
                   : notifications.permission === 'allowed'
-                    ? 'Verificar novamente'
-                    : 'Permitir notificações'
+                    ? t('notifications.checkAgain')
+                    : t('notifications.allowNotifications')
             }
             disabled={notifications.busy}
             onPress={() => {
@@ -88,8 +88,7 @@ export function NotificationSettings() {
           />
         ) : (
           <Text style={{ color: colors.secondary, lineHeight: 23 }}>
-            As notificações deste navegador ainda não estão disponíveis. Você continua recebendo
-            mensagens enquanto o Zoen está aberto.
+            {t('notifications.notificationsAreNotYetAvailableInThisBrowser')}
           </Text>
         )}
       </Surface>
@@ -101,8 +100,7 @@ export function NotificationSettings() {
           {status}
         </Text>
         <Text style={{ color: colors.secondary, lineHeight: 23 }}>
-          O cadastro confirma que o servidor recebeu o pedido. A entrega de avisos neste aparelho
-          ainda não foi verificada. As mensagens continuam chegando com o Zoen aberto.
+          {t('notifications.registrationConfirmsThatTheServerReceivedTheRequest')}
         </Text>
         {notifications.failure ? (
           <Text

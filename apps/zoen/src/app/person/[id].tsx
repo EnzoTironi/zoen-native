@@ -1,3 +1,4 @@
+import { t } from '../../i18n/index.ts';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
@@ -19,8 +20,8 @@ export default function Person() {
   const [failure, setFailure] = useState<string | null>(null);
   if (!person)
     return error ? (
-      <EmptyState title="Perfil indisponível" detail={error}>
-        <NativeButton label="Tentar novamente" onPress={retry} />
+      <EmptyState title={t('chat.profileUnavailable')} detail={error}>
+        <NativeButton label={t('chat.tryAgain2')} onPress={retry} />
       </EmptyState>
     ) : (
       <Loading />
@@ -34,7 +35,7 @@ export default function Person() {
     try {
       await action();
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : 'Não foi possível concluir.');
+      setFailure(reason instanceof Error ? reason.message : t('chat.thisCouldNotBeCompleted'));
     } finally {
       setBusy(false);
     }
@@ -77,10 +78,13 @@ export default function Person() {
         </Text>
       ) : null}
       {person.is_me ? (
-        <NativeButton label="Editar meu perfil" onPress={() => router.push('/edit-profile')} />
+        <NativeButton
+          label={t('chat.editMyProfile')}
+          onPress={() => router.push('/edit-profile')}
+        />
       ) : (
         <NativeButton
-          label="Conversar"
+          label={t('chat.chat')}
           disabled={busy || person.blocked}
           onPress={() => {
             void act(async () => {
@@ -93,22 +97,22 @@ export default function Person() {
       {agent ? (
         <NativeButton
           secondary
-          label="Permissões e orçamento"
+          label={t('chat.permissionsAndBudget')}
           onPress={() => router.push({ pathname: '/agent/[id]', params: { id } })}
         />
       ) : null}
       {!person.is_me ? (
         <NativeButton
           secondary
-          label={person.blocked ? 'Desbloquear' : 'Bloquear pessoa'}
+          label={person.blocked ? t('chat.unblock') : t('chat.blockPerson')}
           disabled={busy}
           onPress={() => {
             void confirm({
-              title: person.blocked ? 'Desbloquear esta pessoa?' : 'Bloquear esta pessoa?',
+              title: person.blocked ? t('chat.unblockThisPerson') : t('chat.blockThisPerson'),
               message: person.blocked
-                ? 'Você poderá conversar com ela novamente.'
-                : 'Você deixará de receber mensagens desta pessoa.',
-              confirmLabel: person.blocked ? 'Desbloquear' : 'Bloquear',
+                ? t('chat.youWillBeAbleToChatWithThem')
+                : t('chat.youWillStopReceivingMessagesFromThisPerson'),
+              confirmLabel: person.blocked ? t('chat.unblock') : t('chat.block'),
               destructive: !person.blocked,
             }).then((accepted) => {
               if (accepted)

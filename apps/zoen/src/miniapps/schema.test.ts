@@ -18,14 +18,14 @@ test('miniapp money arrives as an exact numeric JSON token beyond JS safe intege
     },
   };
   const parsed = formValue(schema, {
-    services: [{ name: 'Serviço', priceCents: '92233720368547758,07' }],
+    services: [{ name: 'Serviço', priceCents: '92233720368547758.07' }],
   });
   assert.equal(
     exactJson(parsed!),
     '{"services":[{"name":"Serviço","priceCents":9223372036854775807}]}',
   );
   assert.throws(() =>
-    formValue(schema, { services: [{ name: 'A', priceCents: '92233720368547758,08' }] }),
+    formValue(schema, { services: [{ name: 'A', priceCents: '92233720368547758.08' }] }),
   );
 });
 test('required nested values, enums and integer bounds are checked before signing', () => {

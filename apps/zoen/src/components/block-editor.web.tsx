@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { TextInput, View, Text } from 'react-native';
 import { useTheme } from '../theme';
 export function BlockEditor({
@@ -14,7 +15,7 @@ export function BlockEditor({
   return (
     <View style={{ gap: 12 }}>
       <Text style={{ color: colors.secondary, fontSize: 13 }}>
-        Markdown · **negrito**, *itálico*, [texto](https://…)
+        {t('documents.markdownBoldItalicTextHttps')}
       </Text>
       <TextInput
         defaultValue={initial}
@@ -22,7 +23,7 @@ export function BlockEditor({
         editable={!disabled}
         autoFocus
         multiline
-        accessibilityLabel="Conteúdo do bloco em Markdown"
+        accessibilityLabel={t('documents.blockContentInMarkdown')}
         style={{
           minHeight: 230,
           padding: 18,

@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../../i18n/index.ts';
 import { ProfileAvatar } from '../../profile/profile-avatar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -50,7 +51,7 @@ export default function Chat() {
   const reveal = useCallback(
     async (messageId: string) => {
       const index = await store.revealMessage(id, messageId);
-      if (index < 0) throw new Error('Esta mensagem não está mais no histórico deste aparelho.');
+      if (index < 0) throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
       return messageId;
     },
     [id, store],
@@ -66,8 +67,8 @@ export default function Chat() {
         .catch((reason: unknown) => {
           if (active)
             void inform(
-              'Mensagem indisponível',
-              reason instanceof Error ? reason.message : 'Tente novamente.',
+              t('chat.messageUnavailable'),
+              reason instanceof Error ? reason.message : t('chat.tryAgain'),
             );
         });
       return () => {
@@ -82,7 +83,7 @@ export default function Chat() {
     // Wait until the loaded history has committed before addressing list indices.
     const frame = requestAnimationFrame(() => {
       void list.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 }).catch(() => {
-        void inform('Não foi possível abrir a mensagem', 'Tente novamente.');
+        void inform(t('chat.theMessageCouldNotBeOpened'), t('chat.tryAgain'));
       });
       setScrollTarget(null);
     });
@@ -128,8 +129,8 @@ export default function Chat() {
   if (!chat)
     return (
       <EmptyState
-        title="Conversa indisponível"
-        detail="Volte às suas conversas e tente abrir novamente."
+        title={t('chat.chatUnavailable')}
+        detail={t('chat.goBackToYourChatsAndTryOpening')}
       />
     );
   return (
@@ -159,7 +160,7 @@ export default function Chat() {
           headerRight: () => (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Detalhes da conversa"
+              accessibilityLabel={t('chat.chatDetails')}
               onPress={() => router.push({ pathname: '/space/[id]', params: { id } })}
             >
               <ProfileAvatar
@@ -175,7 +176,7 @@ export default function Chat() {
       {notice ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`${notice}. Dispensar aviso`}
+          accessibilityLabel={t('chat.dismissNotice', { notice })}
           onPress={() => store.dismissNotice()}
           style={{ padding: 12, backgroundColor: colors.muted }}
         >
@@ -206,8 +207,8 @@ export default function Chat() {
           onStartReachedThreshold={0.1}
           ListEmptyComponent={
             <EmptyState
-              title="O começo de algo bom"
-              detail="Escreva a primeira mensagem desta conversa."
+              title={t('chat.theStartOfSomethingGood')}
+              detail={t('chat.writeTheFirstMessageInThisChat')}
             />
           }
           renderItem={({ item: entry, index }) => {
@@ -265,7 +266,7 @@ export default function Chat() {
                   }}
                   accessibilityRole="button"
                   accessibilityLabel={`${entry.author.name}: ${text}`}
-                  accessibilityHint="Mantenha pressionado para responder ou ver ações"
+                  accessibilityHint={t('chat.touchAndHoldToReplyOrSeeActions')}
                   style={{
                     maxWidth: '87%',
                     borderRadius: 23,
@@ -279,7 +280,7 @@ export default function Chat() {
                   {entry.reply_to ? (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="Ir à mensagem citada"
+                      accessibilityLabel={t('chat.goToQuotedMessage')}
                       onPress={() => {
                         void reveal(entry.reply_to!.id)
                           .then((target) => {
@@ -288,8 +289,8 @@ export default function Chat() {
                           .catch(
                             () =>
                               void inform(
-                                'Não foi possível abrir a mensagem',
-                                'Tente novamente em instantes.',
+                                t('chat.theMessageCouldNotBeOpened'),
+                                t('chat.tryAgainInAMoment'),
                               ),
                           );
                       }}
@@ -328,7 +329,7 @@ export default function Chat() {
                         marginBottom: 5,
                       }}
                     >
-                      Encaminhada
+                      {t('chat.forwarded')}
                     </Text>
                   ) : null}
                   {!entry.voice && card?.kind_id !== 'file' ? (
@@ -341,13 +342,13 @@ export default function Chat() {
                         fontStyle: entry.deleted ? 'italic' : 'normal',
                       }}
                     >
-                      {entry.deleted ? 'Mensagem apagada' : text}
+                      {entry.deleted ? t('chat.deletedMessage') : text}
                     </Text>
                   ) : null}
                   <MessageMedia entry={entry} />
                   {entry.voice || card?.kind_id === 'file' ? (
                     <IconButton
-                      label={`Ações da mensagem de ${entry.author.name}`}
+                      label={t('chat.messageActions', { name: entry.author.name })}
                       name={{ ios: 'ellipsis', android: 'more_horiz', web: 'more_horiz' }}
                       onPress={() => setSelected(entry)}
                     />
@@ -355,7 +356,7 @@ export default function Chat() {
                   {card && card.kind_id !== 'file' ? (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={`Abrir ${card.title}`}
+                      accessibilityLabel={t('chat.openNamedItem', { title: card.title })}
                       onPress={() =>
                         router.push({ pathname: '/item/[id]', params: { id: card.item_id } })
                       }
@@ -403,11 +404,17 @@ export default function Chat() {
                         fontSize: 10,
                       }}
                     >
-                      {entry.edited ? 'editada · ' : ''}
-                      {new Date(Number(entry.at_ms)).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {entry.edited
+                        ? t('chat.editedAt', {
+                            time: new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            }),
+                          })
+                        : new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
                     </Text>
                     {mine ? (
                       <Text
@@ -433,7 +440,10 @@ export default function Chat() {
                       <Pressable
                         key={reaction.emoji}
                         accessibilityRole="button"
-                        accessibilityLabel={`${reaction.emoji}, ${reaction.people.length} pessoas`}
+                        accessibilityLabel={t('chat.reactionPeople', {
+                          emoji: reaction.emoji,
+                          count: reaction.people.length,
+                        })}
                         onPress={() => {
                           void store
                             .request({
@@ -463,7 +473,7 @@ export default function Chat() {
                 {entry.thread_replies > 0 ? (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Ver ${entry.thread_replies} respostas`}
+                    accessibilityLabel={t('chat.viewReplies', { count: entry.thread_replies })}
                     onPress={() =>
                       router.push({
                         pathname: '/thread/[space]/[root]',
@@ -473,8 +483,7 @@ export default function Chat() {
                     style={{ paddingHorizontal: 12, paddingVertical: 10 }}
                   >
                     <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
-                      {entry.thread_replies} {entry.thread_replies === 1 ? 'resposta' : 'respostas'}{' '}
-                      →
+                      {t('chat.replyCount', { count: entry.thread_replies })} →
                     </Text>
                   </Pressable>
                 ) : null}
@@ -497,14 +506,16 @@ export default function Chat() {
         >
           <View style={{ flex: 1, gap: 4 }}>
             <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>
-              {editing ? 'Editar mensagem' : `Respondendo a ${reply?.author.name}`}
+              {editing
+                ? t('chat.editMessage')
+                : t('chat.replyingTo', { name: reply?.author.name ?? '' })}
             </Text>
             <Text numberOfLines={1} style={{ color: colors.secondary, fontSize: 13 }}>
               {messageText((editing ?? reply)!)}
             </Text>
           </View>
           <IconButton
-            label="Cancelar"
+            label={t('chat.cancel')}
             name={{ ios: 'xmark', android: 'close', web: 'close' }}
             onPress={() => {
               if (editing) {
@@ -549,8 +560,8 @@ export default function Chat() {
           <TextInput
             ref={input}
             testID="message-input"
-            accessibilityLabel={editing ? 'Editar mensagem' : 'Mensagem'}
-            placeholder="Mensagem"
+            accessibilityLabel={editing ? t('chat.editMessage') : t('chat.message')}
+            placeholder={t('chat.message')}
             placeholderTextColor={colors.tertiary}
             multiline
             value={composerText}
@@ -579,7 +590,7 @@ export default function Chat() {
         <Pressable
           testID="send-message"
           accessibilityRole="button"
-          accessibilityLabel={editing ? 'Salvar edição' : 'Enviar mensagem'}
+          accessibilityLabel={editing ? t('chat.saveEdit') : t('chat.sendMessage')}
           disabled={!composerText.trim() || sending}
           onPress={() => {
             void send();
@@ -604,7 +615,7 @@ export default function Chat() {
         <BottomSheet isPresented={selected !== null} onDismiss={() => setSelected(null)}>
           <Column spacing={8}>
             <Button
-              label="Responder"
+              label={t('chat.reply')}
               variant="text"
               onPress={() => {
                 setEditing(null);
@@ -614,7 +625,7 @@ export default function Chat() {
               }}
             />
             <Button
-              label="Abrir respostas"
+              label={t('chat.openReplies')}
               variant="text"
               onPress={() => {
                 if (selected)
@@ -627,7 +638,7 @@ export default function Chat() {
             />
             {selected && !selected.deleted ? (
               <Button
-                label="Encaminhar"
+                label={t('chat.forward')}
                 variant="text"
                 onPress={() => {
                   router.push({
@@ -639,7 +650,7 @@ export default function Chat() {
               />
             ) : null}
             <Button
-              label="Copiar texto"
+              label={t('chat.copyText')}
               variant="text"
               onPress={() => {
                 if (selected) void Clipboard.setStringAsync(messageText(selected));
@@ -647,7 +658,7 @@ export default function Chat() {
               }}
             />
             <Button
-              label="Curtir ♥"
+              label={t('chat.like')}
               variant="text"
               onPress={() => {
                 if (selected)
@@ -663,7 +674,7 @@ export default function Chat() {
             'Message' in selected.kind &&
             !selected.kind.Message.card ? (
               <Button
-                label="Editar"
+                label={t('chat.edit')}
                 variant="text"
                 onPress={() => {
                   setEditing(selected);
@@ -675,15 +686,15 @@ export default function Chat() {
             ) : null}
             {selected?.author.is_me && !selected.deleted ? (
               <Button
-                label="Apagar para todos"
+                label={t('chat.deleteForEveryone')}
                 variant="text"
                 onPress={() => {
                   const entry = selected;
                   setSelected(null);
                   void confirm({
-                    title: 'Apagar mensagem?',
-                    message: 'A mensagem será removida para todas as pessoas desta conversa.',
-                    confirmLabel: 'Apagar',
+                    title: t('chat.deleteMessage'),
+                    message: t('chat.theMessageWillBeRemovedForEveryoneIn'),
+                    confirmLabel: t('chat.delete'),
                     destructive: true,
                   }).then((accepted) => {
                     if (accepted)

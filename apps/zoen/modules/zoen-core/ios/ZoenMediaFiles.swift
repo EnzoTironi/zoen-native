@@ -27,10 +27,10 @@ final class ZoenMediaFiles {
     case invalidFile, tooLarge, invalidRecording, invalidVersion
     var errorDescription: String? {
       switch self {
-      case .invalidFile: "Não foi possível ler este arquivo. Selecione-o novamente."
-      case .tooLarge: "Escolha um arquivo de até 64 MB."
-      case .invalidRecording: "A gravação está vazia ou inválida. Grave novamente."
-      case .invalidVersion: "Esta versão do arquivo não está disponível."
+      case .invalidFile: NSLocalizedString("This file could not be read. Select it again.", comment: "Native media file selection failed")
+      case .tooLarge: NSLocalizedString("Choose a file up to 64 MB.", comment: "Native media bridge file size limit")
+      case .invalidRecording: NSLocalizedString("The recording is empty or invalid. Record it again.", comment: "Native voice recording is unavailable")
+      case .invalidVersion: NSLocalizedString("This file version is unavailable.", comment: "Native media version is unavailable")
       }
     }
   }

@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { getBrowserMediaHost, type BrowserMediaHost } from '../core/browser-media.ts';
 import { MAX_PROFILE_PHOTO_BYTES, type ProfilePhotoDriver } from './types.ts';
 
@@ -13,7 +14,7 @@ export function createBrowserProfilePhotoDriver(
       host.ownerId !== ownerId ||
       host.deviceId !== deviceId
     )
-      throw new Error('A sessão mudou. Abra seu perfil novamente.');
+      throw new Error(t('profile.sessionChanged'));
   }
   function observe(host: BrowserMediaHost) {
     if (observed.has(host)) return;
@@ -39,9 +40,9 @@ export function createBrowserProfilePhotoDriver(
         // Only our locally encoded picker output crosses this bridge; no remote URL.
         const url = new URL(profile.uri ?? '');
         if (url.protocol !== 'blob:' || url.origin !== window.location.origin)
-          throw new Error('Selecione a foto novamente.');
+          throw new Error(t('profile.chooseAgain'));
         const response = await fetch(url, { signal: host.closed });
-        if (!response.ok || !response.body) throw new Error('Não foi possível abrir a foto.');
+        if (!response.ok || !response.body) throw new Error(t('profile.openPhotoFailed'));
         const reader = response.body.getReader();
         const chunks: Uint8Array[] = [];
         let length = 0;
@@ -50,21 +51,21 @@ export function createBrowserProfilePhotoDriver(
             const { done, value } = await reader.read();
             if (done) break;
             if (value.byteLength > MAX_PROFILE_PHOTO_BYTES - length)
-              throw new Error('A foto precisa ter até 5 MB.');
+              throw new Error(t('profile.photoLimit'));
             length += value.byteLength;
             chunks.push(value);
           }
         } finally {
           await reader.cancel().catch(() => {});
         }
-        if (!length) throw new Error('Esta foto está vazia.');
+        if (!length) throw new Error(t('profile.photoEmpty'));
         bytes = new Uint8Array(length);
         let offset = 0;
         for (const chunk of chunks) {
           bytes.set(chunk, offset);
           offset += chunk.length;
         }
-      } else if (profile.uri) throw new Error('A alteração da foto é inválida.');
+      } else if (profile.uri) throw new Error(t('profile.invalidPhotoChange'));
       current(host, profile.ownerId, profile.deviceId);
       await host.saveProfile(
         {
@@ -89,7 +90,7 @@ export function createBrowserProfilePhotoDriver(
         photo.bytes.length > MAX_PROFILE_PHOTO_BYTES ||
         !['image/jpeg', 'image/png', 'image/heic', 'image/webp'].includes(photo.mime)
       )
-        throw new Error('Esta foto não corresponde ao perfil.');
+        throw new Error(t('profile.photoMismatch'));
       const uri = URL.createObjectURL(
         new Blob([Uint8Array.from(photo.bytes)], { type: photo.mime }),
       );

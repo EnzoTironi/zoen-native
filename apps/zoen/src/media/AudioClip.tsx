@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../i18n/index.ts';
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -61,14 +62,12 @@ export function AudioClip({
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={status.playing ? 'Pausar áudio' : 'Reproduzir áudio'}
+          accessibilityLabel={status.playing ? t('media.pauseAudio') : t('media.playAudio')}
           onPress={() => {
             setFailure(null);
             void toggle().catch((reason: unknown) =>
               setFailure(
-                reason instanceof Error
-                  ? reason.message
-                  : 'Não foi possível reproduzir este áudio.',
+                reason instanceof Error ? reason.message : t('media.thisAudioCouldNotBePlayed'),
               ),
             );
           }}
@@ -121,7 +120,7 @@ export function AudioClip({
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Voltar 10 segundos"
+            accessibilityLabel={t('media.back10Seconds')}
             onPress={() => {
               void player.seekTo(Math.max(0, status.currentTime - 10));
             }}
@@ -131,7 +130,11 @@ export function AudioClip({
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Velocidade ${status.playbackRate || 1}. Alterar velocidade`}
+            accessibilityLabel={t('media.playbackRateLabel', {
+              rate: new Intl.NumberFormat(formatLocale, { maximumFractionDigits: 1 }).format(
+                status.playbackRate || 1,
+              ),
+            })}
             onPress={() => {
               player.setPlaybackRate(
                 (status.playbackRate || 1) === 1 ? 1.5 : status.playbackRate === 1.5 ? 2 : 1,
@@ -140,12 +143,15 @@ export function AudioClip({
             style={{ minHeight: 36, paddingHorizontal: 10, justifyContent: 'center' }}
           >
             <Text style={{ color: colors.secondary, fontSize: 12 }}>
-              {status.playbackRate || 1}×
+              {new Intl.NumberFormat(formatLocale, { maximumFractionDigits: 1 }).format(
+                status.playbackRate || 1,
+              )}
+              ×
             </Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Avançar 10 segundos"
+            accessibilityLabel={t('media.forward10Seconds')}
             onPress={() => {
               void player.seekTo(Math.min(total, status.currentTime + 10));
             }}

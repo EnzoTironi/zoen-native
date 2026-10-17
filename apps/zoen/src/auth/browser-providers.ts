@@ -1,3 +1,4 @@
+import { t, providerLocale } from '../i18n/index.ts';
 import { AuthCancelled, profileName, webAppleRedirect } from './guards.ts';
 import type { AuthTicket } from './attempt';
 import type { ProviderCredential } from './types';
@@ -48,8 +49,7 @@ type ProviderWindow = Window & {
   AppleID?: { auth?: AppleIdentity };
 };
 const GOOGLE_SCRIPT = 'https://accounts.google.com/gsi/client';
-const APPLE_SCRIPT =
-  'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/pt_BR/appleid.auth.js';
+const APPLE_SCRIPT = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1';
 const loading = new Map<string, Promise<void>>();
 let googleOwner: symbol | null = null;
 let applePresenting = false;
@@ -57,9 +57,10 @@ let applePresenting = false;
 /** SDKs execute only on the dedicated auth page, never in an embedded miniapp. */
 export function browserAuthContext(): void {
   if (typeof window === 'undefined' || window.top !== window.self)
-    throw new Error('Abra o Zoen em sua própria aba para entrar.');
-  if (!window.isSecureContext) throw new Error('Use a versão HTTPS do Zoen para entrar.');
-  if (window.crossOriginIsolated) throw new Error('Abra a tela de entrada do Zoen para continuar.');
+    throw new Error(t('authProviders.openZoenInItsOwnTabToSign'));
+  if (!window.isSecureContext) throw new Error(t('authProviders.useTheHTTPSVersionOfZoenToSign'));
+  if (window.crossOriginIsolated)
+    throw new Error(t('authProviders.openZoenSSignInScreenToContinue'));
 }
 
 function officialScript(key: string, source: string): Promise<void> {
@@ -86,11 +87,11 @@ function officialScript(key: string, source: string): Promise<void> {
       } else resolve();
     };
     const timer = setTimeout(
-      () => finish(new Error('O provedor demorou para carregar. Tente novamente.')),
+      () => finish(new Error(t('authProviders.theProviderTookTooLongToLoadTry'))),
       15_000,
     );
     script.onload = () => finish();
-    script.onerror = () => finish(new Error('Não foi possível carregar o provedor de login.'));
+    script.onerror = () => finish(new Error(t('authProviders.theSignInProviderCouldNotBeLoaded')));
     document.head.append(script);
   });
   loading.set(key, promise);
@@ -98,17 +99,20 @@ function officialScript(key: string, source: string): Promise<void> {
 }
 
 export async function loadGoogleIdentity(): Promise<GoogleIdentity> {
-  await officialScript('google', GOOGLE_SCRIPT);
+  await officialScript(
+    'google',
+    `${GOOGLE_SCRIPT}?hl=${encodeURIComponent(providerLocale.google)}`,
+  );
   const sdk = (window as ProviderWindow).google?.accounts?.id;
   if (!sdk || typeof sdk.initialize !== 'function' || typeof sdk.renderButton !== 'function')
-    throw new Error('O Google não pôde ser iniciado.');
+    throw new Error(t('authProviders.googleCouldNotBeInitialized'));
   return sdk;
 }
 export async function loadAppleIdentity(): Promise<AppleIdentity> {
-  await officialScript('apple', APPLE_SCRIPT);
+  await officialScript('apple', `${APPLE_SCRIPT}/${providerLocale.apple}/appleid.auth.js`);
   const sdk = (window as ProviderWindow).AppleID?.auth;
   if (!sdk || typeof sdk.init !== 'function' || typeof sdk.signIn !== 'function')
-    throw new Error('A Apple não pôde ser iniciada.');
+    throw new Error(t('authProviders.appleCouldNotBeInitialized'));
   return sdk;
 }
 
@@ -139,7 +143,7 @@ export function mountGoogleButton(
       // No generic window/message listener or URL credential ingestion exists here.
       if (googleOwner !== owner || consumed || ticket.signal.aborted) return;
       if (typeof response.credential !== 'string' || response.state !== ticket.challenge.state) {
-        onError(new Error('A resposta não pertence a este login.'));
+        onError(new Error(t('authProviders.theResponseDoesNotBelongToThisSign')));
         return;
       }
       consumed = true;
@@ -153,7 +157,7 @@ export function mountGoogleButton(
     size: 'large',
     shape: 'rectangular',
     width: Math.min(400, Math.max(200, Math.floor(width))),
-    locale: 'pt-BR',
+    locale: providerLocale.google,
     state: ticket.challenge.state,
   });
   return () => {
@@ -175,9 +179,9 @@ export async function appleBrowserCredential(
   const redirectURI = webAppleRedirect(redirectUri, window.location.origin);
   if (ticket.provider !== 'apple' || ticket.client !== 'web' || ticket.signal.aborted)
     throw new AuthCancelled();
-  if (applePresenting) throw new Error('Conclua o login Apple que já está aberto.');
+  if (applePresenting) throw new Error(t('authProviders.finishTheAppleSignInThatIsAlready'));
   if (ticket.challenge.expires_at_ms <= Date.now())
-    throw new Error('O login expirou. Tente novamente.');
+    throw new Error(t('authProviders.signInExpiredTryAgain'));
   applePresenting = true;
   try {
     sdk.init({
@@ -201,7 +205,7 @@ export async function appleBrowserCredential(
         code === 'user_cancelled'
       )
         throw new AuthCancelled();
-      throw new Error('Não foi possível continuar com Apple. Tente novamente.');
+      throw new Error(t('authProviders.couldNotContinueWithAppleTryAgain'));
     }
     if (ticket.signal.aborted) throw new AuthCancelled();
     const auth = response.authorization;
@@ -211,7 +215,7 @@ export async function appleBrowserCredential(
       typeof auth.code !== 'string' ||
       auth.state !== ticket.challenge.state
     )
-      throw new Error('A resposta não pertence a este login.');
+      throw new Error(t('authProviders.theResponseDoesNotBelongToThisSign'));
     const name = response.user?.name;
     const suggestedName = profileName(
       [name?.firstName, name?.lastName].filter((value) => typeof value === 'string').join(' '),
@@ -229,7 +233,7 @@ export function appleButtonImage(dark: boolean, width: number): string {
   const url = new URL('https://appleid.cdn-apple.com/appleid/button');
   url.search = new URLSearchParams({
     type: 'continue',
-    locale: 'pt_BR',
+    locale: providerLocale.apple,
     color: dark ? 'white' : 'black',
     width: String(Math.min(375, Math.max(130, Math.floor(width)))),
     height: '52',

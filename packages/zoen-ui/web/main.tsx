@@ -9,6 +9,9 @@ import { Messages, type Conversation, type Invite, type MessagesState } from './
 import { inviteFromPath, relayUrl, type StoredSession } from './session.ts';
 import { BrowserVault } from './vault.ts';
 import { CoreWorker } from './worker-client.ts';
+import { resolveLocale } from './locale.ts';
+
+const locale = resolveLocale(navigator.languages);
 import './web.css';
 import './messenger.css';
 import { Messenger } from './messenger.tsx';
@@ -165,7 +168,7 @@ function App() {
         let core: CoreWorker | undefined;
         try {
           const session = await vault.load();
-          core = await CoreWorker.create(vault, ZOEN_WORKER_INTEGRITY);
+          core = await CoreWorker.create(vault, ZOEN_WORKER_INTEGRITY, locale);
           runtime = { vault, core };
           if (closed) return;
           setBoot({ kind: 'ready', runtime, session });

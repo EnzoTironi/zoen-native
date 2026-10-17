@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { useTheme } from '../theme';
@@ -62,9 +63,7 @@ export function SignInButtons({
       if (mounted.current && latest.current === attempt) await onVerified(result);
     } catch (reason) {
       if (!cancelled(reason) && mounted.current && latest.current === attempt)
-        setError(
-          reason instanceof Error ? reason.message : 'Não foi possível continuar. Tente novamente.',
-        );
+        setError(reason instanceof Error ? reason.message : t('auth.continueFailed'));
     } finally {
       if (ticket) attempt.release(ticket);
       running.current = false;
@@ -94,7 +93,7 @@ export function SignInButtons({
           />
         </View>
       ) : modules ? (
-        <Text style={{ color: colors.secondary }}>Apple indisponível nesta versão.</Text>
+        <Text style={{ color: colors.secondary }}>{t('auth.appleUnavailable')}</Text>
       ) : null}
       {Google ? (
         <Google
@@ -105,10 +104,10 @@ export function SignInButtons({
           disabled={blocked}
           loading={busy}
           onPress={() => signIn('google')}
-          accessibilityLabel="Continuar com Google"
+          accessibilityLabel={t('auth.continueGoogle')}
         />
       ) : modules ? (
-        <Text style={{ color: colors.secondary }}>Google indisponível nesta versão.</Text>
+        <Text style={{ color: colors.secondary }}>{t('auth.googleUnavailable')}</Text>
       ) : null}
       {modules === null || busy ? (
         <View
@@ -117,7 +116,7 @@ export function SignInButtons({
         >
           <ActivityIndicator color={colors.accent} />
           <Text style={{ color: colors.secondary }}>
-            {busy ? 'Preparando seu Zoen…' : 'Preparando entrada…'}
+            {busy ? t('auth.preparingAccount') : t('auth.preparingSignIn')}
           </Text>
         </View>
       ) : null}

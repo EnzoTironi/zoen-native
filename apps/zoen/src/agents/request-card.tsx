@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../i18n/index.ts';
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
@@ -10,10 +11,10 @@ import { useDialogs } from '../components/dialogs';
 import { useTheme } from '../theme';
 
 const statuses = {
-  Pending: 'Aguardando sua decisão',
-  Stale: 'O conteúdo mudou',
-  Approved: 'Aprovado',
-  Denied: 'Não permitido',
+  Pending: t('agents.waitingForYourDecision'),
+  Stale: t('agents.theContentHasChanged'),
+  Approved: t('agents.approved'),
+  Denied: t('agents.notAllowed'),
 };
 export function RequestCard({
   request,
@@ -42,10 +43,15 @@ export function RequestCard({
       !(await dialogs.confirm({
         title:
           decision === 'AlwaysApprove'
-            ? 'Sempre permitir este tipo de ação?'
-            : 'Sempre negar este tipo de ação?',
-        message: `${request.agent.name} · ${request.space_title}\n${request.action_label}\n\nA decisão também vale para pedidos atuais compatíveis e para os próximos deste agente nesta conversa. Você pode revogá-la nas permissões do agente.`,
-        confirmLabel: decision === 'AlwaysApprove' ? 'Sempre permitir' : 'Sempre negar',
+            ? t('agents.alwaysAllowThisTypeOfAction')
+            : t('agents.alwaysDenyThisTypeOfAction'),
+        message: t('agents.standingDecisionConfirmation', {
+          name: request.agent.name,
+          chat: request.space_title,
+          action: request.action_label,
+        }),
+        confirmLabel:
+          decision === 'AlwaysApprove' ? t('agents.alwaysAllow') : t('agents.alwaysDeny'),
         destructive: decision === 'AlwaysDeny',
       }))
     )
@@ -60,12 +66,14 @@ export function RequestCard({
         decision,
       });
       setResult(
-        `${outcome.message}${outcome.also_resolved ? ` · ${outcome.also_resolved} outro(s) pedido(s) resolvido(s).` : ''}`,
+        outcome.also_resolved
+          ? t('agents.alsoResolved', { message: outcome.message, count: outcome.also_resolved })
+          : outcome.message,
       );
       onResolved?.();
     } catch (reason) {
       setFailure(
-        reason instanceof Error ? reason.message : 'Não foi possível guardar esta decisão.',
+        reason instanceof Error ? reason.message : t('agents.thisDecisionCouldNotBeSaved'),
       );
     } finally {
       setBusy(false);
@@ -75,7 +83,7 @@ export function RequestCard({
     <Surface>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Ver agente ${request.agent.name}`}
+        accessibilityLabel={t('agents.viewAgentLabel', { name: request.agent.name })}
         onPress={() => router.push({ pathname: '/agent/[id]', params: { id: request.agent.id } })}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 }}
       >
@@ -84,11 +92,14 @@ export function RequestCard({
           <Text style={{ color: colors.text, fontWeight: '600' }}>
             {request.agent.name} ·{' '}
             {request.agent.is_mine
-              ? 'seu agente'
-              : `agente de ${request.agent.owner_name ?? 'outra pessoa'}`}
+              ? t('agents.yourAgent2')
+              : t('agents.agentOwnedBy', {
+                  name: request.agent.owner_name ?? t('agents.someoneElse'),
+                })}
           </Text>
           <Text style={{ color: colors.secondary, fontSize: 12 }}>
-            {request.space_title} · {new Date(Number(request.opened_ms)).toLocaleString('pt-BR')}
+            {request.space_title} ·{' '}
+            {new Date(Number(request.opened_ms)).toLocaleString(formatLocale)}
           </Text>
         </View>
       </Pressable>
@@ -109,10 +120,10 @@ export function RequestCard({
       {!compact ? (
         <View style={{ gap: 8 }}>
           <Text selectable style={{ color: colors.secondary }}>
-            Quem vê: {request.audience}
+            {t('agents.requestAudience', { audience: request.audience })}
           </Text>
           <Text selectable style={{ color: colors.secondary }}>
-            Ação: {request.action_label}
+            {t('agents.requestAction', { action: request.action_label })}
           </Text>
           {request.cost_cents === null ? null : (
             <Text
@@ -143,18 +154,17 @@ export function RequestCard({
           fontWeight: '600',
         }}
       >
-        {statuses[request.status]}
-        {request.by_standing ? ' · decisão permanente' : ''}
+        {request.by_standing
+          ? t('agents.standingDecisionStatus', { status: statuses[request.status] })
+          : statuses[request.status]}
       </Text>
       {request.status === 'Stale' ? (
         <Text style={{ color: colors.danger, lineHeight: 21 }}>
-          A aprovação anterior não corresponde ao conteúdo atual. Confira o item e peça uma nova
-          proposta antes de permitir.
+          {t('agents.thePreviousApprovalDoesNotMatchTheCurrent')}
         </Text>
       ) : pending ? (
         <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
-          A permissão vale para o conteúdo exato deste pedido. Se ele mudar, será preciso revisar
-          novamente.
+          {t('agents.permissionAppliesToTheExactContentOfThis')}
         </Text>
       ) : null}
       {failure ? (
@@ -171,7 +181,7 @@ export function RequestCard({
         {compact ? (
           <NativeButton
             secondary
-            label="Revisar pedido"
+            label={t('agents.reviewRequest')}
             disabled={busy}
             onPress={() => router.push({ pathname: '/request/[id]', params: { id: request.id } })}
           />
@@ -179,7 +189,7 @@ export function RequestCard({
         {request.item_id ? (
           <NativeButton
             secondary
-            label="Abrir item"
+            label={t('agents.openItem')}
             disabled={busy}
             onPress={() =>
               router.push({ pathname: '/item/[id]', params: { id: request.item_id! } })
@@ -190,14 +200,14 @@ export function RequestCard({
           <>
             <NativeButton
               secondary
-              label="Não permitir"
+              label={t('agents.doNotAllow')}
               disabled={!canDecide}
               onPress={() => {
                 void decide('Deny');
               }}
             />
             <NativeButton
-              label={busy ? 'Guardando…' : 'Permitir uma vez'}
+              label={busy ? t('agents.saving') : t('agents.allowOnce')}
               disabled={!canDecide || request.status === 'Stale'}
               onPress={() => {
                 void decide('Approve');
@@ -211,7 +221,7 @@ export function RequestCard({
           {request.can_always_approve ? (
             <NativeButton
               secondary
-              label="Sempre permitir este tipo"
+              label={t('agents.alwaysAllowThisType')}
               disabled={!canDecide || request.status === 'Stale'}
               onPress={() => {
                 void decide('AlwaysApprove');
@@ -219,12 +229,12 @@ export function RequestCard({
             />
           ) : (
             <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
-              Esta ação sempre pede uma decisão individual.
+              {t('agents.thisActionAlwaysRequiresAnIndividualDecision')}
             </Text>
           )}
           <NativeButton
             secondary
-            label="Sempre negar este tipo"
+            label={t('agents.alwaysDenyThisType')}
             disabled={!canDecide}
             onPress={() => {
               void decide('AlwaysDeny');
@@ -234,7 +244,7 @@ export function RequestCard({
       ) : null}
       {pending && !request.agent.is_mine ? (
         <Text style={{ color: colors.secondary }}>
-          O dono deste agente decide esta solicitação.
+          {t('agents.thisAgentSOwnerDecidesThisRequest')}
         </Text>
       ) : null}
     </Surface>

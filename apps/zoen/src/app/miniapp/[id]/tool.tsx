@@ -1,3 +1,4 @@
+import { t } from '../../../i18n/index.ts';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text } from 'react-native';
@@ -26,10 +27,8 @@ function Form({ item, tool }: { item: string; tool: AppToolDto }) {
   } catch (reason) {
     return (
       <EmptyState
-        title="Formulário indisponível"
-        detail={
-          reason instanceof Error ? reason.message : 'Não foi possível abrir este formulário.'
-        }
+        title={t('miniapps.formUnavailable')}
+        detail={reason instanceof Error ? reason.message : t('miniapps.thisFormCouldNotBeOpened')}
       />
     );
   }
@@ -63,7 +62,7 @@ function Form({ item, tool }: { item: string; tool: AppToolDto }) {
         </Text>
       ) : null}
       <NativeButton
-        label={busy ? 'Aguarde…' : tool.title}
+        label={busy ? t('miniapps.pleaseWait') : tool.title}
         disabled={busy}
         onPress={() => {
           setBusy(true);
@@ -78,7 +77,9 @@ function Form({ item, tool }: { item: string; tool: AppToolDto }) {
           })()
             .catch((reason: unknown) =>
               setError(
-                reason instanceof Error ? reason.message : 'Não foi possível concluir esta ação.',
+                reason instanceof Error
+                  ? reason.message
+                  : t('miniapps.thisActionCouldNotBeCompleted'),
               ),
             )
             .finally(() => setBusy(false));
@@ -94,9 +95,9 @@ export default function MiniappTool() {
   if (!item.data || !specs.data) {
     const error = item.error ?? specs.error;
     return error ? (
-      <EmptyState title="Não foi possível abrir a ação" detail={error}>
+      <EmptyState title={t('miniapps.theActionCouldNotBeOpened')} detail={error}>
         <NativeButton
-          label="Tentar novamente"
+          label={t('miniapps.tryAgain')}
           onPress={() => {
             item.retry();
             specs.retry();
@@ -113,8 +114,8 @@ export default function MiniappTool() {
   if (!tool)
     return (
       <EmptyState
-        title="Ação indisponível"
-        detail="Este miniapp não permite abrir esta ação pela interface."
+        title={t('miniapps.actionUnavailable')}
+        detail={t('miniapps.thisMiniappDoesNotAllowThisActionThrough')}
       />
     );
   return <Form key={`${id}:${name}`} item={id} tool={tool} />;

@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../../../i18n/index.ts';
 import { ProfileAvatar } from '../../../profile/profile-avatar';
 import { Stack, router } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
@@ -8,12 +9,12 @@ import { useTheme } from '../../../theme';
 import { EmptyState, IconButton } from '../../../components/primitives';
 
 const filters = [
-  { id: 'all', label: 'Todas' },
-  { id: 'unread', label: 'Não lidas' },
-  { id: 'Direct', label: 'Pessoas' },
-  { id: 'Group', label: 'Grupos' },
-  { id: 'Community', label: 'Comunidades' },
-  { id: 'archived', label: 'Arquivadas' },
+  { id: 'all', label: t('chat.all') },
+  { id: 'unread', label: t('chat.unread') },
+  { id: 'Direct', label: t('chat.people') },
+  { id: 'Group', label: t('chat.groups') },
+  { id: 'Community', label: t('chat.communities') },
+  { id: 'archived', label: t('chat.archived') },
 ] as const;
 export default function Chats() {
   const { snapshot, mode, store } = useClient();
@@ -30,8 +31,8 @@ export default function Chats() {
               filter === 'archived' ||
               (filter === 'unread' ? chat.unread > 0 : chat.kind === filter)) &&
             `${chat.title} ${chat.last_preview}`
-              .toLocaleLowerCase()
-              .includes(query.toLocaleLowerCase()),
+              .toLocaleLowerCase(formatLocale)
+              .includes(query.toLocaleLowerCase(formatLocale)),
         )
         .sort(
           (a, b) =>
@@ -43,10 +44,10 @@ export default function Chats() {
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <Stack.Screen
         options={{
-          title: 'Chats',
+          title: t('chat.chats'),
           headerLargeTitle: true,
           headerSearchBarOptions: {
-            placeholder: 'Buscar nas conversas',
+            placeholder: t('chat.searchChats'),
             onChangeText: (event) => setQuery(event.nativeEvent.text),
             onSearchButtonPress: () => router.push({ pathname: '/search', params: { query } }),
           },
@@ -54,12 +55,12 @@ export default function Chats() {
             <View style={{ flexDirection: 'row' }}>
               <IconButton
                 name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
-                label="Buscar em todo o histórico"
+                label={t('chat.searchAllHistory')}
                 onPress={() => router.push('/search')}
               />
               <IconButton
                 name={{ ios: 'square.and.pencil', android: 'edit_square', web: 'edit_square' }}
-                label="Nova conversa"
+                label={t('chat.newChat')}
                 onPress={() => router.push('/new-chat')}
               />
             </View>
@@ -82,7 +83,7 @@ export default function Chats() {
                 }}
               >
                 <Text style={{ color: colors.secondary, fontSize: 13 }}>
-                  Demonstração · conversas simuladas neste aparelho
+                  {t('chat.demoSimulatedChatsOnThisDevice')}
                 </Text>
               </View>
             ) : null}
@@ -122,18 +123,24 @@ export default function Chats() {
         }
         ListEmptyComponent={
           <EmptyState
-            title={query ? 'Nada por aqui ainda' : 'Comece uma conversa'}
+            title={query ? t('chat.nothingHereYet') : t('chat.startAConversation')}
             detail={
-              query
-                ? 'Tente outro nome ou palavra.'
-                : 'Converse com alguém, reúna um grupo ou crie algo com seu agente.'
+              query ? t('chat.tryAnotherNameOrWord') : t('chat.talkToSomeoneBringAGroupTogetherOr')
             }
           />
         }
         renderItem={({ item: chat }) => (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`${chat.title}, ${chat.unread ? `${chat.unread} não lidas. ` : ''}${chat.last_preview}`}
+            accessibilityLabel={
+              chat.unread
+                ? t('chat.conversationUnreadLabel', {
+                    title: chat.title,
+                    count: chat.unread,
+                    preview: chat.last_preview,
+                  })
+                : t('chat.conversationLabel', { title: chat.title, preview: chat.last_preview })
+            }
             onPress={() => router.push({ pathname: '/chat/[id]', params: { id: chat.id } })}
             style={({ pressed }) => ({
               flexDirection: 'row',
@@ -176,7 +183,7 @@ export default function Chats() {
                   style={{ fontSize: 12, color: chat.unread ? colors.accent : colors.secondary }}
                 >
                   {Number(chat.last_at_ms)
-                    ? new Date(Number(chat.last_at_ms)).toLocaleTimeString([], {
+                    ? new Date(Number(chat.last_at_ms)).toLocaleTimeString(formatLocale, {
                         hour: '2-digit',
                         minute: '2-digit',
                       })

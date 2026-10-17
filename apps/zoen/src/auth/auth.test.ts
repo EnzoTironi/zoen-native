@@ -190,7 +190,7 @@ test('transport uses explicit origin/POST/abort, carries exact challenge context
     client: 'web',
   });
   large = true;
-  await assert.rejects(api.challenge('google', 'web', controller.signal), /inválida/);
+  await assert.rejects(api.challenge('google', 'web', controller.signal), /invalid response/);
   assert.throws(() => serviceOrigin('http://example.com'));
   assert.throws(() => serviceOrigin('https://user:secret@example.com'));
   assert.throws(() => serviceOrigin('https://relay.tryzoen.com/?token=secret'));

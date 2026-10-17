@@ -32,10 +32,10 @@ test('private photos bind to one item, expire, and teardown invalidates an in-fl
   vault.release('item-a');
   assert.equal(lease.signal.aborted, true);
   assert.equal(vault.resolve(second.token, 'item-a'), null);
-  assert.throws(() => vault.put(lease, nonce(3), preview), /fechado/);
+  assert.throws(() => vault.put(lease, nonce(3), preview), /miniapp has closed/);
   const reopened = vault.begin('item-a');
   vault.put(reopened, nonce(4), preview);
-  assert.throws(() => lease.check(), /fechado/);
+  assert.throws(() => lease.check(), /miniapp has closed/);
 });
 
 test('a miniapp cannot retain unbounded full images or evade preview size constraints', () => {

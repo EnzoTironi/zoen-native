@@ -88,7 +88,7 @@ export function MiniappWidget(props: NativeWidgetContent, environment: WidgetEnv
 export default createWidget<NativeWidgetContent>('ZoenMiniapp', MiniappWidget, {
   redacted: true,
   title: 'Zoen',
-  detail: 'Escolha um miniapp no Zoen',
+  detail: 'Choose a miniapp in Zoen',
   bars: [],
   rows: [],
   accentHex: '#5B8DEF',

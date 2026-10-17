@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../../i18n/index.ts';
 import { useState } from 'react';
 import { Redirect, Stack, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text, View, Pressable } from 'react-native';
@@ -35,8 +36,8 @@ export default function Item() {
   const undo = usePlanUndo(store, id);
   if (!item)
     return itemRead.error ? (
-      <EmptyState title="Não foi possível abrir este item" detail={itemRead.error}>
-        <NativeButton label="Tentar novamente" onPress={itemRead.retry} />
+      <EmptyState title={t('documents.thisItemCouldNotBeOpened')} detail={itemRead.error}>
+        <NativeButton label={t('documents.tryAgain')} onPress={itemRead.retry} />
       </EmptyState>
     ) : (
       <Loading />
@@ -70,7 +71,7 @@ export default function Item() {
       pageRead.retry();
     } catch (reason) {
       setFailure(
-        reason instanceof Error ? reason.message : 'Não foi possível atualizar este item.',
+        reason instanceof Error ? reason.message : t('documents.thisItemCouldNotBeUpdated'),
       );
     } finally {
       setBusy(false);
@@ -80,11 +81,11 @@ export default function Item() {
     if (!canRestore || selected === null || busy) return;
     const version = selected;
     const accepted = await dialogs.confirm({
-      title: `Restaurar a versão ${version}?`,
+      title: t('documents.restoreVersionQuestion', { version }),
       message: page?.unsaved
-        ? 'O rascunho atual será substituído. A restauração cria uma nova versão compartilhada; as versões anteriores continuam no histórico.'
-        : 'A restauração cria uma nova versão compartilhada. As versões anteriores continuam no histórico.',
-      confirmLabel: 'Restaurar versão',
+        ? t('documents.theCurrentDraftWillBeReplacedRestoringCreates')
+        : t('documents.restoringCreatesANewSharedVersionPreviousVersions'),
+      confirmLabel: t('documents.restoreVersion'),
       destructive: !!page?.unsaved,
     });
     if (!accepted) return;
@@ -113,7 +114,7 @@ export default function Item() {
         alignSelf: 'center',
       }}
     >
-      <Stack.Screen options={{ title: history ? 'Histórico' : item.kind_label }} />
+      <Stack.Screen options={{ title: history ? t('documents.history') : item.kind_label }} />
       <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
         {item.space_title}
       </Text>
@@ -137,7 +138,7 @@ export default function Item() {
           </Text>
           <NativeButton
             secondary
-            label="Atualizar"
+            label={t('documents.refresh')}
             disabled={busy}
             onPress={() => {
               itemRead.retry();
@@ -154,21 +155,19 @@ export default function Item() {
               accessibilityLiveRegion="polite"
               style={{ color: colors.accent, fontWeight: '600' }}
             >
-              PRÉVIA · VERSÃO {selected}
+              {t('documents.previewVersion', { version: selected })}
             </Text>
-            <Text style={{ color: colors.secondary }}>
-              Esta versão está disponível somente para leitura.
-            </Text>
+            <Text style={{ color: colors.secondary }}>{t('documents.thisVersionIsReadOnly')}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
               <NativeButton
                 secondary
-                label="Voltar à versão atual"
+                label={t('documents.backToCurrentVersion')}
                 disabled={busy}
                 onPress={() => setSelected(null)}
               />
               {canRestore && oldReady ? (
                 <NativeButton
-                  label={busy ? 'Restaurando…' : 'Restaurar esta versão'}
+                  label={busy ? t('documents.restoring') : t('documents.restoreThisVersion')}
                   disabled={busy}
                   onPress={() => {
                     void restore();
@@ -178,9 +177,9 @@ export default function Item() {
             </View>
           </Surface>
           {oldError ? (
-            <EmptyState title="Não foi possível carregar esta versão" detail={oldError}>
+            <EmptyState title={t('documents.thisVersionCouldNotBeLoaded')} detail={oldError}>
               <NativeButton
-                label="Tentar novamente"
+                label={t('documents.tryAgain')}
                 onPress={() => {
                   past.retry();
                   pastPage.retry();
@@ -204,7 +203,7 @@ export default function Item() {
             <MiniappState app={past.data.app} busy onCall={() => {}} />
           ) : (
             <Text selectable style={{ color: colors.text, fontSize: 17, lineHeight: 27 }}>
-              {past.data?.text ?? 'Esta versão não possui conteúdo de texto.'}
+              {past.data?.text ?? t('documents.thisVersionHasNoTextContent')}
             </Text>
           )}
         </>
@@ -218,7 +217,7 @@ export default function Item() {
               <Text style={{ color: colors.secondary }}>{undo.label}</Text>
               <NativeButton
                 secondary
-                label="Desfazer última alteração"
+                label={t('documents.undoLastChange')}
                 disabled={busy}
                 onPress={() => {
                   void run(async () => {
@@ -270,7 +269,7 @@ export default function Item() {
                 <PageBlocks blocks={page.blocks} />
                 <NativeButton
                   secondary
-                  label="Abrir página"
+                  label={t('documents.openPage')}
                   onPress={() => router.push({ pathname: '/page/[id]', params: { id } })}
                 />
               </>
@@ -281,7 +280,7 @@ export default function Item() {
             <>
               <MiniappState app={item.app} busy onCall={() => {}} />
               <NativeButton
-                label="Abrir miniapp"
+                label={t('documents.openMiniapp')}
                 onPress={() => router.push({ pathname: '/miniapp/[id]', params: { id } })}
               />
             </>
@@ -311,14 +310,17 @@ export default function Item() {
         }}
       >
         <Text accessibilityRole="header" style={{ color: colors.secondary, fontWeight: '600' }}>
-          Histórico · versão atual {item.version}
+          {t('documents.historyCurrentVersion', { version: item.version })}
         </Text>
         {item.versions.map((version) => (
           <Pressable
             key={version.number}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel={`Prévia da versão ${version.number}: ${version.note}`}
+            accessibilityLabel={t('documents.previewVersionLabel', {
+              version: version.number,
+              note: version.note,
+            })}
             accessibilityState={{ selected: selected === version.number, disabled: busy }}
             aria-pressed={process.env.EXPO_OS === 'web' ? selected === version.number : undefined}
             onPress={() => {
@@ -338,7 +340,8 @@ export default function Item() {
             <View style={{ flex: 1, gap: 5 }}>
               <Text style={{ color: colors.text }}>{version.note}</Text>
               <Text style={{ color: colors.secondary, fontSize: 12 }}>
-                {version.author.name} · {new Date(Number(version.at_ms)).toLocaleString('pt-BR')}
+                {version.author.name} ·{' '}
+                {new Date(Number(version.at_ms)).toLocaleString(formatLocale)}
               </Text>
             </View>
             <Text style={{ color: colors.tertiary }}>›</Text>

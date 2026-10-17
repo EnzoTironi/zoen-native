@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { Pressable, Text, View } from 'react-native';
 import type { PageBlockDto } from '../core/generated/PageBlockDto';
 import { Icon, IconButton } from '../components/primitives';
@@ -43,7 +44,7 @@ export function PageBlocks({
               <Pressable
                 disabled={!editable || busy}
                 accessibilityRole="checkbox"
-                accessibilityLabel={block.text || 'Tarefa sem título'}
+                accessibilityLabel={block.text || t('documents.untitledTask')}
                 aria-checked={block.checked}
                 onPress={() => onToggle?.(block)}
                 style={{
@@ -72,10 +73,16 @@ export function PageBlocks({
               accessibilityRole={editable ? 'button' : undefined}
               accessibilityLabel={
                 editable
-                  ? `Editar ${block.kind === 'heading' ? 'título' : 'bloco'}: ${block.text || 'vazio'}`
+                  ? block.kind === 'heading'
+                    ? t('documents.editHeadingLabel', {
+                        text: block.text || t('documents.emptyBlock'),
+                      })
+                    : t('documents.editBlockLabel', {
+                        text: block.text || t('documents.emptyBlock'),
+                      })
                   : undefined
               }
-              accessibilityHint={editable ? 'Abre o editor de texto' : undefined}
+              accessibilityHint={editable ? t('documents.opensTheTextEditor') : undefined}
               disabled={!editable || busy}
               onPress={() => onEdit?.(block)}
               style={{ flex: 1, minHeight: 32 }}
@@ -87,8 +94,8 @@ export function PageBlocks({
                   <RichText
                     text={
                       block.kind === 'image'
-                        ? block.alt || 'Imagem'
-                        : block.text || (editable ? 'Bloco vazio' : '')
+                        ? block.alt || t('documents.image')
+                        : block.text || (editable ? t('documents.emptyBlock') : '')
                     }
                     spans={block.spans}
                     style={{
@@ -135,22 +142,22 @@ export function PageBlocks({
               }}
             >
               <Text style={{ flex: 1, color: colors.secondary, fontSize: 12 }}>
-                Bloco {index + 1} de {blocks.length}
+                {t('documents.blockPosition', { position: index + 1, total: blocks.length })}
               </Text>
               <IconButton
-                label={`Mover bloco ${index + 1} para cima`}
+                label={t('documents.moveBlockUp', { position: index + 1 })}
                 name={{ ios: 'arrow.up', android: 'arrow_upward', web: 'arrow_upward' }}
                 disabled={busy || index === 0}
                 onPress={() => onMove?.(block, -1)}
               />
               <IconButton
-                label={`Mover bloco ${index + 1} para baixo`}
+                label={t('documents.moveBlockDown', { position: index + 1 })}
                 name={{ ios: 'arrow.down', android: 'arrow_downward', web: 'arrow_downward' }}
                 disabled={busy || index === blocks.length - 1}
                 onPress={() => onMove?.(block, 1)}
               />
               <IconButton
-                label={`Apagar bloco ${index + 1}`}
+                label={t('documents.deleteBlockPosition', { position: index + 1 })}
                 name={{ ios: 'trash', android: 'delete', web: 'delete' }}
                 disabled={busy}
                 onPress={() => onDelete?.(block)}

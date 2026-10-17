@@ -364,6 +364,7 @@ impl RodaEngine {
 impl RodaEngine {
     /// The account on this device, if any.
     pub fn account(&self) -> Option<AccountDto> {
+        let _language = crate::i18n::enter(self.lang);
         self.account_dto()
     }
 
@@ -377,6 +378,7 @@ impl RodaEngine {
         relay_url: String,
         vault: Arc<dyn SecretVault>,
     ) -> Result<AccountDto, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         {
             let mut e = self.lock();
             if crate::provider_auth::ProviderSetup::load(&vault)?.is_some() {
@@ -403,6 +405,7 @@ impl RodaEngine {
 
     /// Loads the device key from `vault`. `false` = no account here yet.
     pub fn unlock(&self, vault: Arc<dyn SecretVault>) -> Result<bool, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         self.resume_provider_setup(vault.clone())?;
         let mut e = self.lock();
         if e.account().is_none() {
@@ -430,6 +433,7 @@ impl RodaEngine {
     /// or a locked account. All local keys/metadata are validated before the
     /// staging record is removed; server registration remains pending.
     pub fn resume_provider_setup(&self, vault: Arc<dyn SecretVault>) -> Result<bool, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         let mut engine = self.lock();
         let Some(setup) = crate::provider_auth::ProviderSetup::load(&vault)? else {
             return Ok(false);
@@ -440,6 +444,7 @@ impl RodaEngine {
 
     /// Connects to the relay and keeps the connection (reconnects with backoff).
     pub fn start_sync(&self, listener: Option<Arc<dyn CoreListener>>) -> Result<(), CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         if self.lock().provider_setup_pending() {
             return Err(invalid(t(
                 "Continue com Apple ou Google para concluir sua entrada.",
@@ -465,6 +470,7 @@ impl RodaEngine {
     /// Forgets everything on this device: chats, account and keys. Your account and
     /// chats stay on the relay for the other members; this device just signs out.
     pub fn erase_device(&self, vault: Arc<dyn SecretVault>) -> Result<(), CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         self.stop_sync();
         {
             let mut e = self.lock();
@@ -479,6 +485,7 @@ impl RodaEngine {
     }
 
     pub fn stop_sync(&self) {
+        let _language = crate::i18n::enter(self.lang);
         self.cancel_history_receive();
         let net = self.net.lock().unwrap_or_else(|p| p.into_inner()).take();
         if let Some(n) = net {
@@ -685,6 +692,7 @@ impl RodaEngine {
         identity_id: String,
         expected_sha256: String,
     ) -> Result<Option<crate::ProfilePhotoBytes>, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         self.lock()
             .profile_photo_bytes(&identity_id, &expected_sha256)
     }
@@ -697,6 +705,7 @@ impl RodaEngine {
         bio: String,
         photo: PhotoChange,
     ) -> Result<ProfileDto, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         let mut e = self.lock();
         e.update_my_profile(&name, &bio, photo)?;
         let me = e.me_id()?;

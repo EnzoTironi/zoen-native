@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { useRef, useState } from 'react';
 import { usePreventRemove } from 'expo-router';
 import { useDialogs } from '../components/dialogs';
@@ -10,16 +11,19 @@ export function useDirtyEditor(dirty: boolean, busy: boolean) {
   const disable = usePreventRemove(!leaving && (dirty || busy), ({ repeat }) => {
     if (confirming.current) return;
     if (busy) {
-      void dialogs.inform('Guardando alterações', 'Espere esta operação terminar antes de sair.');
+      void dialogs.inform(
+        t('documents.savingChanges'),
+        t('documents.waitForThisOperationToFinishBeforeLeaving'),
+      );
       return;
     }
     confirming.current = true;
     void dialogs
       .confirm({
-        title: 'Sair sem guardar?',
-        message: 'As alterações deste editor ainda não foram guardadas no rascunho.',
-        confirmLabel: 'Descartar alterações',
-        cancelLabel: 'Continuar editando',
+        title: t('documents.leaveWithoutSaving'),
+        message: t('documents.changesInThisEditorHaveNotBeenSaved'),
+        confirmLabel: t('documents.discardChanges'),
+        cancelLabel: t('documents.keepEditing'),
         destructive: true,
       })
       .then((accepted) => {

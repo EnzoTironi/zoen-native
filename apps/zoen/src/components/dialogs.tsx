@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { Alert } from 'react-native';
 import type { ReactNode } from 'react';
 import type { Dialogs } from './dialog-types';
@@ -10,12 +11,12 @@ const dialogs: Dialogs = {
         options.message,
         [
           {
-            text: options.cancelLabel ?? 'Cancelar',
+            text: options.cancelLabel ?? t('common.cancel'),
             style: 'cancel',
             onPress: () => resolve(false),
           },
           {
-            text: options.confirmLabel ?? 'Continuar',
+            text: options.confirmLabel ?? t('common.continue'),
             style: options.destructive ? 'destructive' : 'default',
             onPress: () => resolve(true),
           },
@@ -25,7 +26,7 @@ const dialogs: Dialogs = {
     }),
   inform: (title, message) =>
     new Promise((resolve) => {
-      Alert.alert(title, message, [{ text: 'OK', onPress: resolve }], {
+      Alert.alert(title, message, [{ text: t('common.oK'), onPress: resolve }], {
         cancelable: true,
         onDismiss: resolve,
       });

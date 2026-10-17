@@ -79,7 +79,7 @@ test('selection rereads canonical versions; lost access and account switches cle
   );
   coordinator.activate();
   await coordinator.refresh();
-  await assert.rejects(coordinator.selectWidget('it_a', 2, true), /mudou/);
+  await assert.rejects(coordinator.selectWidget('it_a', 2, true), /miniapp has changed/);
   assert.equal(coordinator.getSnapshot().preferences?.widget, null);
   await coordinator.selectWidget('it_a', 3, false);
   await coordinator.selectShortcut('it_a', 3, true);
@@ -156,7 +156,7 @@ test('cleanup failures still clear independent surfaces and retire locked or swi
         assert.ok(attempted.includes(target), `${failure} prevented cleanup of ${target}`);
       assert.equal(coordinator.getSnapshot().preferences, null);
       assert.equal(coordinator.getSnapshot().ready, false);
-      assert.match(coordinator.getSnapshot().error ?? '', /atualizar/);
+      assert.match(coordinator.getSnapshot().error ?? '', /surfaces could not be updated/);
       if (failure !== 'preferences') assert.equal(stored, null);
       failing = false;
       await coordinator.refresh();
@@ -218,7 +218,7 @@ test('explicit device erase waits for old publications and removes pending nativ
   current = null;
   brokenMetadata = true;
   const erasing = coordinator.eraseDevice();
-  const refusal = assert.rejects(erasing, /prévias/);
+  const refusal = assert.rejects(erasing, /previews could not be erased/);
   finishRead();
   await oldRefresh;
   await refusal;

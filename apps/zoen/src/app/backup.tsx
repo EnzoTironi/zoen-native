@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../i18n';
 import { useRef, useState } from 'react';
 import { Stack, usePreventRemove } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -25,18 +26,16 @@ export default function Backup() {
   const confirming = useRef(false);
   usePreventRemove(!leaving && (!!key || !!password || busy), ({ repeat: leave }) => {
     if (busy) {
-      void inform('Backup em andamento', 'Espere esta operação terminar antes de sair.');
+      void inform(t('access.backupInProgress'), t('access.waitBeforeLeaving'));
       return;
     }
     if (confirming.current) return;
     confirming.current = true;
     void confirm({
-      title: 'Sair da configuração do backup?',
-      message: key
-        ? 'A chave de recuperação deixará de aparecer nesta tela. Guarde-a em um lugar seguro antes de sair.'
-        : 'A senha preenchida será descartada.',
-      confirmLabel: 'Sair da configuração',
-      cancelLabel: 'Continuar aqui',
+      title: t('access.leaveBackupTitle'),
+      message: key ? t('access.recoveryKeyWillHide') : t('access.passwordWillDiscard'),
+      confirmLabel: t('access.leaveSetup'),
+      cancelLabel: t('access.stayHere'),
     })
       .then((accepted) => {
         if (accepted) {
@@ -56,7 +55,7 @@ export default function Backup() {
     try {
       await action();
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : 'Não foi possível concluir o backup.');
+      setFailure(reason instanceof Error ? reason.message : t('access.backupFailed'));
     } finally {
       retry();
       setBusy(false);
@@ -64,10 +63,7 @@ export default function Backup() {
   }
   if (mode === 'demo')
     return (
-      <EmptyState
-        title="Backup da sua conta"
-        detail="Entre na sua conta para proteger seu histórico com um backup criptografado."
-      />
+      <EmptyState title={t('access.yourAccountBackup')} detail={t('access.signInForBackup')} />
     );
   return (
     <ScrollView
@@ -75,57 +71,59 @@ export default function Backup() {
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{ padding: 24, gap: 20 }}
     >
-      <Stack.Screen options={{ title: 'Backup criptografado' }} />
+      <Stack.Screen options={{ title: t('access.backupTitle') }} />
       <Text style={{ color: colors.secondary, lineHeight: 24, fontSize: 16 }}>
-        Seu backup protege o histórico e as chaves da conta. Guarde a chave de recuperação ou a
-        senha em um lugar seguro. O Zoen não consegue recuperá-las por você.
+        {t('access.backupExplanation')}
       </Text>
       <Surface>
         <Text style={{ color: colors.text, fontSize: 20, fontWeight: '600' }}>
           {data
             ? data.enabled
-              ? 'Backup ativado'
-              : 'Backup desativado'
-            : 'Conferindo seu backup…'}
+              ? t('access.backupEnabled')
+              : t('access.backupDisabled')
+            : t('access.checkingBackup')}
         </Text>
         {data?.enabled ? (
           <>
             <Text style={{ color: colors.secondary }}>
-              Protegido por {data.mode === 'recovery_key' ? 'chave de recuperação' : 'senha'}.
+              {data.mode === 'recovery_key'
+                ? t('access.protectedByKey')
+                : t('access.protectedByPassword')}
             </Text>
             <Text style={{ color: colors.secondary }}>
               {data.last_backup_ms !== '0'
-                ? `Último envio: ${new Date(Number(data.last_backup_ms)).toLocaleString('pt-BR')}`
-                : 'O primeiro envio ainda não terminou.'}
+                ? t('access.backupLastSent', {
+                    date: new Date(Number(data.last_backup_ms)).toLocaleString(formatLocale),
+                  })
+                : t('access.firstBackupPending')}
             </Text>
             <NativeButton
-              label={busy ? 'Aguarde…' : 'Fazer backup agora'}
+              label={busy ? t('access.wait') : t('access.backupNow')}
               disabled={busy}
               onPress={() => {
                 void perform(async () => {
                   await store.driver.request({ op: 'backup_now' });
-                  setStatus('Backup enviado e protegido.');
+                  setStatus(t('access.backupSentProtected'));
                 });
               }}
             />
             <NativeButton
               secondary
-              label="Desativar e apagar backup"
+              label={t('access.disableDeleteBackup')}
               disabled={busy}
               onPress={() => {
                 void perform(async () => {
                   if (
                     !(await confirm({
-                      title: 'Apagar o backup do servidor?',
-                      message:
-                        'Você perderá esta opção de recuperação até ativar um novo backup. Os dados nos seus aparelhos permanecem disponíveis.',
-                      confirmLabel: 'Apagar backup',
+                      title: t('access.deleteServerBackupTitle'),
+                      message: t('access.deleteServerBackupExplanation'),
+                      confirmLabel: t('access.deleteBackup'),
                       destructive: true,
                     }))
                   )
                     return;
                   await store.driver.request({ op: 'backup_turn_off' });
-                  setStatus('Backup apagado do servidor.');
+                  setStatus(t('access.backupDeleted'));
                 });
               }}
             />
@@ -135,17 +133,17 @@ export default function Backup() {
       {data && (!data.enabled || key) ? (
         <Surface>
           <Text style={{ color: colors.text, fontSize: 19, fontWeight: '600' }}>
-            Como você quer recuperar sua conta?
+            {t('access.howRecoverAccount')}
           </Text>
           <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
             <NativeButton
-              label="Chave de recuperação"
+              label={t('access.recoveryKey')}
               secondary={method !== 'recovery'}
               disabled={busy || !!key}
               onPress={() => setMethod('recovery')}
             />
             <NativeButton
-              label="Senha do backup"
+              label={t('access.backupPassword')}
               secondary={method !== 'password'}
               disabled={busy || !!key}
               onPress={() => setMethod('password')}
@@ -155,8 +153,7 @@ export default function Backup() {
             key ? (
               <>
                 <Text style={{ color: colors.secondary, lineHeight: 24 }}>
-                  Guarde estes 64 caracteres antes de ativar. Quem tiver esta chave poderá abrir seu
-                  backup.
+                  {t('access.saveRecoveryKeyFirst')}
                 </Text>
                 <Text
                   selectable
@@ -171,14 +168,14 @@ export default function Backup() {
                 </Text>
                 <NativeButton
                   secondary
-                  label="Copiar chave de recuperação"
+                  label={t('access.copyRecoveryKey')}
                   onPress={() => {
                     void Clipboard.setStringAsync(key, { android: { isSensitive: true } })
                       .then((copied) => {
-                        if (!copied) throw new Error('Não foi possível copiar.');
-                        setStatus('Chave copiada. Guarde-a no seu gerenciador de senhas.');
+                        if (!copied) throw new Error(t('access.copyFailed'));
+                        setStatus(t('access.keyCopiedStoreSafely'));
                       })
-                      .catch(() => setFailure('Não foi possível copiar a chave.'));
+                      .catch(() => setFailure(t('access.copyKeyFailed')));
                   }}
                 />
                 <Pressable
@@ -195,11 +192,11 @@ export default function Backup() {
                 >
                   <Text style={{ color: colors.accent, fontSize: 24 }}>{saved ? '☑' : '☐'}</Text>
                   <Text style={{ color: colors.text, flex: 1, lineHeight: 23 }}>
-                    Guardei esta chave em um lugar seguro fora do Zoen.
+                    {t('access.savedKeyOutsideZoen')}
                   </Text>
                 </Pressable>
                 <NativeButton
-                  label={busy ? 'Protegendo seu backup…' : 'Ativar meu backup'}
+                  label={busy ? t('access.protectingBackup') : t('access.enableBackup')}
                   disabled={busy || !saved}
                   onPress={() => {
                     void perform(async () => {
@@ -209,14 +206,14 @@ export default function Backup() {
                       });
                       setKey('');
                       setSaved(false);
-                      setStatus('Backup ativado e enviado.');
+                      setStatus(t('access.backupEnabledSent'));
                     });
                   }}
                 />
               </>
             ) : (
               <NativeButton
-                label="Gerar minha chave"
+                label={t('access.generateKey')}
                 disabled={busy}
                 onPress={() => {
                   void perform(async () => {
@@ -229,7 +226,7 @@ export default function Backup() {
           ) : (
             <>
               <Field
-                label="Nova senha do backup"
+                label={t('access.newBackupPassword')}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
@@ -240,7 +237,7 @@ export default function Backup() {
                 editable={!busy}
               />
               <Field
-                label="Repita a senha"
+                label={t('access.repeatPassword')}
                 value={repeat}
                 onChangeText={setRepeat}
                 secureTextEntry
@@ -251,17 +248,17 @@ export default function Backup() {
                 editable={!busy}
               />
               <Text style={{ color: colors.secondary, lineHeight: 22 }}>
-                Use pelo menos 12 caracteres e guarde a senha no seu gerenciador de senhas.
+                {t('access.passwordGuidance')}
               </Text>
               <NativeButton
-                label={busy ? 'Protegendo seu backup…' : 'Ativar com esta senha'}
+                label={busy ? t('access.protectingBackup') : t('access.enableWithPassword')}
                 disabled={busy || password.length < 12 || password !== repeat}
                 onPress={() => {
                   void perform(async () => {
                     await store.driver.request({ op: 'backup_password', password });
                     setPassword('');
                     setRepeat('');
-                    setStatus('Backup ativado e enviado.');
+                    setStatus(t('access.backupEnabledSent'));
                   });
                 }}
               />
@@ -280,7 +277,7 @@ export default function Backup() {
         </Text>
       ) : null}
       {error ? (
-        <NativeButton secondary label="Tentar novamente" disabled={busy} onPress={retry} />
+        <NativeButton secondary label={t('access.retry')} disabled={busy} onPress={retry} />
       ) : null}
     </ScrollView>
   );

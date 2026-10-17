@@ -1,3 +1,4 @@
+import { t, locale } from '../i18n/index.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { Linking, Modal, ScrollView, Text, View } from 'react-native';
@@ -108,7 +109,8 @@ function FocusedView({
         if (active)
           setRead({
             scope,
-            error: reason instanceof Error ? reason.message : 'Não foi possível abrir a interface.',
+            error:
+              reason instanceof Error ? reason.message : t('miniapps.theInterfaceCouldNotBeOpened'),
           });
       });
     return () => {
@@ -137,7 +139,7 @@ function FocusedView({
     if (read.scope !== scope || !read.resource) return null;
     try {
       if (read.resource.uri !== spec.resource_uri)
-        throw new Error('Este recurso não pertence ao miniapp aberto.');
+        throw new Error(t('miniapps.thisResourceDoesNotBelongToTheOpen'));
       return {
         resource: read.resource,
         manifest: verifyMiniappResource(read.resource, spec.id),
@@ -148,7 +150,9 @@ function FocusedView({
         resource: read.resource,
         manifest: null,
         error:
-          reason instanceof Error ? reason.message : 'O pacote do miniapp não pôde ser verificado.',
+          reason instanceof Error
+            ? reason.message
+            : t('miniapps.theMiniappPackageCouldNotBeVerified'),
       };
     }
   }, [read, scope, spec.id, spec.resource_uri]);
@@ -165,7 +169,7 @@ function FocusedView({
       (capability) =>
         store.driver.request({ op: 'app_device_allowed', item_id: item.id, capability }),
       () => {
-        if (!active) throw new Error('Esta interface foi fechada.');
+        if (!active) throw new Error(t('miniapps.thisInterfaceHasClosed'));
       },
     )
       .then((hosts) => {
@@ -179,7 +183,7 @@ function FocusedView({
             error:
               reason instanceof Error
                 ? reason.message
-                : 'Não foi possível verificar o acesso à rede.',
+                : t('miniapps.networkAccessCouldNotBeVerified'),
           });
       });
     return () => {
@@ -194,7 +198,7 @@ function FocusedView({
         </Text>
         <NativeButton
           secondary
-          label="Verificar novamente"
+          label={t('miniapps.checkAgain')}
           onPress={() => setRevision((value) => value + 1)}
         />
       </Surface>
@@ -271,12 +275,12 @@ function ReadyView({
       `${state.mode}:${state.snapshot?.account?.identity_id ?? state.snapshot?.me?.id ?? ''}:${state.snapshot?.account?.device_id ?? ''}` !==
       initialScope
     )
-      throw new Error('Esta interface foi fechada ou a conta mudou.');
+      throw new Error(t('miniapps.thisInterfaceHasClosedOrTheAccountHas'));
   }, [store, initialScope]);
   const permission = useCallback(
     async (capability: string, purpose: string, assertActive?: () => void) => {
       const check = assertActive ?? authority.current?.check;
-      if (!check) throw new Error('Esta interface foi fechada.');
+      if (!check) throw new Error(t('miniapps.thisInterfaceHasClosed'));
       check();
       const allowed = await store.driver.request({
         op: 'app_device_allowed',
@@ -287,7 +291,7 @@ function ReadyView({
       if (allowed) return;
       const choice = await ask(capability, purpose);
       check();
-      if (choice === 'deny') throw new Error('Você não permitiu esse acesso.');
+      if (choice === 'deny') throw new Error(t('miniapps.youDidNotAllowThisAccess'));
       await store.request({
         op: 'grant_app_device',
         item_id: item.id,
@@ -327,7 +331,7 @@ function ReadyView({
       displayMode: 'fullscreen',
       availableDisplayModes: ['fullscreen', 'inline'],
       containerDimensions: { width: current.width },
-      locale: 'pt-BR',
+      locale,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       platform: process.env.EXPO_OS === 'web' ? 'web' : 'mobile',
       deviceCapabilities: { touch: true, hover: process.env.EXPO_OS === 'web' },
@@ -391,12 +395,15 @@ function ReadyView({
         if (
           photos.tokens.length &&
           !(await dialogs.confirm({
-            title: `Compartilhar ${photos.tokens.length} foto(s) com o grupo?`,
-            message: `Todos em ${latest.current.item.space_title} verão essas fotos em ${manifest?.name ?? appName}. Os dados de localização foram removidos.`,
-            confirmLabel: 'Compartilhar com o grupo',
+            title: t('miniapps.sharePhotoCount', { count: photos.tokens.length }),
+            message: t('miniapps.sharePhotoDetails', {
+              chat: latest.current.item.space_title,
+              app: manifest?.name ?? appName,
+            }),
+            confirmLabel: t('miniapps.shareWithGroup'),
           }))
         )
-          throw new Error('As fotos não foram compartilhadas.');
+          throw new Error(t('miniapps.thePhotosWereNotShared'));
         check();
         const resolved = photos.tokens.length
           ? photoArguments(args, item.id, resolvePhoto, true).value
@@ -410,14 +417,14 @@ function ReadyView({
           check,
         );
         check();
-        if (!result) throw new Error('A ação não foi confirmada.');
+        if (!result) throw new Error(t('miniapps.theActionWasNotConfirmed'));
         return parseMiniappJson(result.result_json);
       },
       native: async (capability, params) => {
         check();
         const declared = manifest?.capabilities.find((cap) => cap.id === capability);
         if (!declared || !available().includes(capability))
-          throw new Error('Este recurso não está declarado ou não está disponível neste aparelho.');
+          throw new Error(t('miniapps.thisFeatureIsNotDeclaredOrIsNot'));
         await permission(capability, declared.purpose, check);
         check();
         const result = await perform(capability, params, item.id);
@@ -430,9 +437,7 @@ function ReadyView({
         check();
         if (!stillAllowed) {
           releaseItemPhotos(item.id);
-          throw new Error(
-            'Esta permissão foi revogada ou expirou. Os dados não foram compartilhados.',
-          );
+          throw new Error(t('miniapps.thisPermissionWasRevokedOrExpiredTheData'));
         }
         return result;
       },
@@ -441,12 +446,12 @@ function ReadyView({
         const url = safeMiniappLink(input, manifest);
         if (
           !(await dialogs.confirm({
-            title: 'Abrir link fora do Zoen?',
+            title: t('miniapps.openLinkOutsideZoen'),
             message: url,
-            confirmLabel: 'Abrir link',
+            confirmLabel: t('miniapps.openLink'),
           }))
         )
-          throw new Error('Você não abriu o link.');
+          throw new Error(t('miniapps.youDidNotOpenTheLink'));
         check();
         await Linking.openURL(url);
         return {};
@@ -455,12 +460,12 @@ function ReadyView({
         check();
         if (
           !(await dialogs.confirm({
-            title: `Enviar mensagem em ${latest.current.item.space_title}?`,
+            title: t('miniapps.sendInChat', { chat: latest.current.item.space_title }),
             message: text,
-            confirmLabel: 'Enviar mensagem',
+            confirmLabel: t('miniapps.sendMessage'),
           }))
         )
-          throw new Error('A mensagem não foi enviada.');
+          throw new Error(t('miniapps.theMessageWasNotSent'));
         check();
         await store.request({
           op: 'send_message',
@@ -542,13 +547,13 @@ function ReadyView({
           <Text selectable accessibilityRole="alert" style={{ color: colors.danger }}>
             {error ?? networkError}
           </Text>
-          <NativeButton secondary label="Reabrir interface" onPress={onReload} />
+          <NativeButton secondary label={t('miniapps.reopenInterface')} onPress={onReload} />
         </View>
       ) : null}
       {manifest?.allowedDomains.some((host) => !hosts.includes(host)) ? (
         <NativeButton
           secondary
-          label="Ativar mapas online"
+          label={t('miniapps.enableOnlineMaps')}
           onPress={() => {
             const check = authority.current?.check;
             if (!check) return;
@@ -556,7 +561,7 @@ function ReadyView({
               for (const host of manifest.allowedDomains) {
                 await permission(
                   `net:${host}`,
-                  manifest.networkPurpose || 'Carregar conteúdo deste domínio.',
+                  manifest.networkPurpose || t('miniapps.loadContentFromThisDomain'),
                   check,
                 );
               }
@@ -564,7 +569,9 @@ function ReadyView({
               onNetworkChange();
             })().catch((reason: unknown) =>
               setError(
-                reason instanceof Error ? reason.message : 'Não foi possível permitir a conexão.',
+                reason instanceof Error
+                  ? reason.message
+                  : t('miniapps.theConnectionCouldNotBeAllowed'),
               ),
             );
           }}
@@ -603,21 +610,28 @@ function ReadyView({
                 accessibilityRole="header"
                 style={{ color: colors.text, fontSize: 23, fontWeight: '600' }}
               >
-                Permitir este acesso a {manifest?.name ?? spec.name}?
+                {t('miniapps.allowAccessToApp', { app: manifest?.name ?? spec.name })}
               </Text>
               <Text selectable style={{ color: colors.secondary, lineHeight: 23 }}>
                 {consent.consent?.purpose}
               </Text>
               <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 20 }}>
-                Só este miniapp, em {item.space_title}. Nada vai para o grupo sem você compartilhar.
+                {t('miniapps.accessScope', { chat: item.space_title })}
               </Text>
-              <NativeButton label="Permitir uma vez" onPress={() => consent.finish('once')} />
+              <NativeButton
+                label={t('miniapps.allowOnce')}
+                onPress={() => consent.finish('once')}
+              />
               <NativeButton
                 secondary
-                label="Permitir até eu revogar"
+                label={t('miniapps.allowUntilIRevoke')}
                 onPress={() => consent.finish('always')}
               />
-              <NativeButton secondary label="Não permitir" onPress={() => consent.finish('deny')} />
+              <NativeButton
+                secondary
+                label={t('miniapps.doNotAllow')}
+                onPress={() => consent.finish('deny')}
+              />
             </Surface>
           </ScrollView>
         </View>

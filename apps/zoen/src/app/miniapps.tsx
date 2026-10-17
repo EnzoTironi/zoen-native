@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -34,8 +35,8 @@ function Install({
   if (!creator)
     return (
       <EmptyState
-        title="Este miniapp ainda não pode ser instalado"
-        detail="O catálogo não forneceu um formulário de criação."
+        title={t('miniapps.thisMiniappCannotBeInstalledYet')}
+        detail={t('miniapps.theCatalogDidNotProvideACreationForm')}
       />
     );
   let schema;
@@ -44,10 +45,8 @@ function Install({
   } catch (reason) {
     return (
       <EmptyState
-        title="Formulário indisponível"
-        detail={
-          reason instanceof Error ? reason.message : 'Não foi possível abrir este formulário.'
-        }
+        title={t('miniapps.formUnavailable')}
+        detail={reason instanceof Error ? reason.message : t('miniapps.thisFormCouldNotBeOpened')}
       />
     );
   }
@@ -62,7 +61,7 @@ function Install({
       <Text style={{ color: colors.secondary, fontSize: 16, lineHeight: 24 }}>
         {spec.description}
       </Text>
-      <Text style={{ color: colors.secondary, fontWeight: '600' }}>Adicionar na conversa</Text>
+      <Text style={{ color: colors.secondary, fontWeight: '600' }}>{t('miniapps.addToChat')}</Text>
       <View style={{ gap: 8 }}>
         {snapshot?.conversations
           .filter((chat) => chat.members.some((person) => person.is_me))
@@ -93,7 +92,7 @@ function Install({
         </Text>
       ) : null}
       <NativeButton
-        label={busy ? 'Adicionando…' : 'Adicionar miniapp'}
+        label={busy ? t('miniapps.adding') : t('miniapps.addMiniapp')}
         disabled={busy || !space}
         onPress={() => {
           setBusy(true);
@@ -113,7 +112,7 @@ function Install({
               setError(
                 reason instanceof Error
                   ? reason.message
-                  : 'Não foi possível instalar este miniapp.',
+                  : t('miniapps.thisMiniappCouldNotBeInstalled'),
               ),
             )
             .finally(() => setBusy(false));
@@ -121,17 +120,16 @@ function Install({
       />
       <NativeButton
         secondary
-        label="Voltar ao catálogo"
+        label={t('miniapps.backToCatalog')}
         disabled={busy}
         onPress={() => {
           void (async () => {
             if (
               JSON.stringify(draft) !== '{}' &&
               !(await dialogs.confirm({
-                title: 'Descartar este formulário?',
-                message:
-                  'O miniapp ainda não foi criado. Seus dados neste formulário serão descartados.',
-                confirmLabel: 'Descartar',
+                title: t('miniapps.discardThisForm'),
+                message: t('miniapps.theMiniappHasNotBeenCreatedYetYour'),
+                confirmLabel: t('miniapps.discard'),
                 destructive: true,
               }))
             )
@@ -162,7 +160,7 @@ export default function Miniapps() {
         alignSelf: 'center',
       }}
     >
-      <Stack.Screen options={{ title: 'Miniapps' }} />
+      <Stack.Screen options={{ title: t('miniapps.miniapps') }} />
       {selected ? (
         <Install
           key={selected.id}
@@ -176,20 +174,20 @@ export default function Miniapps() {
             accessibilityRole="header"
             style={{ color: colors.text, fontSize: 32, fontWeight: '600' }}
           >
-            Pequenas coisas, juntas
+            {t('miniapps.littleThingsTogether')}
           </Text>
           <Text style={{ color: colors.secondary, fontSize: 16, lineHeight: 24 }}>
-            Listas, votações, receitas e agendas compartilhadas nas suas conversas.
+            {t('miniapps.listsPollsRecipesAndSchedulesSharedInYour')}
           </Text>
           <NativeButton
             secondary
-            label="Permissões dos miniapps"
+            label={t('miniapps.miniappPermissions')}
             onPress={() => router.push('/miniapp-permissions')}
           />
           {!read.data ? (
             read.error ? (
-              <EmptyState title="Não foi possível abrir o catálogo" detail={read.error}>
-                <NativeButton label="Tentar novamente" onPress={read.retry} />
+              <EmptyState title={t('miniapps.theCatalogCouldNotBeOpened')} detail={read.error}>
+                <NativeButton label={t('miniapps.tryAgain')} onPress={read.retry} />
               </EmptyState>
             ) : (
               <Loading />
@@ -205,7 +203,7 @@ export default function Miniapps() {
                 </Text>
                 <NativeButton
                   secondary
-                  label={`Adicionar ${spec.name}`}
+                  label={t('miniapps.addNamedApp', { name: spec.name })}
                   onPress={() => setSelected(spec)}
                 />
               </Surface>

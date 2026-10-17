@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { requireOptionalNativeModule } from 'expo';
 import { AppState, Platform } from 'react-native';
 import * as Device from 'expo-device';
@@ -56,7 +57,7 @@ async function pickPhoto(
   const options = photoOptions(params);
   lease.check();
   if (camera && !(await Picker.requestCameraPermissionsAsync()).granted)
-    throw new Error('Permita a câmera nos Ajustes para tirar uma foto.');
+    throw new Error(t('miniapps.allowTheCameraInSettingsToTakeA'));
   lease.check();
   const result = camera
     ? await Picker.launchCameraAsync({
@@ -81,7 +82,7 @@ async function pickPhoto(
     for (const asset of result.assets.slice(0, options.max)) {
       const size = asset.fileSize ?? new File(asset.uri).size;
       if (asset.type !== 'image' || size < 1 || size > MAX_PHOTO_SOURCE_BYTES)
-        throw new Error('Escolha uma foto de até 32 MB.');
+        throw new Error(t('miniapps.chooseAPhotoUpTo32MB'));
       const preview = await jpegPreview(asset.uri, options.maxSide, lease, releaseCache);
       previews.push(preview);
     }
@@ -95,7 +96,7 @@ async function location(approximate: boolean, lease: CapabilityLease) {
   const Location = await import('expo-location');
   lease.check();
   if (!(await Location.requestForegroundPermissionsAsync()).granted)
-    throw new Error('Permita a localização durante o uso nos Ajustes.');
+    throw new Error(t('miniapps.allowLocationWhileUsingTheAppInSettings'));
   lease.check();
   return new Promise<ReturnType<typeof place>>((resolve, reject) => {
     let watcher: { remove(): void } | undefined;
@@ -109,9 +110,9 @@ async function location(approximate: boolean, lease: CapabilityLease) {
       if (failure) reject(failure);
       else resolve(result!);
     };
-    const cancel = () => finish(undefined, new Error('Este miniapp foi fechado.'));
+    const cancel = () => finish(undefined, new Error(t('miniapps.thisMiniappHasClosed')));
     const timer = setTimeout(
-      () => finish(undefined, new Error('A localização demorou demais. Tente novamente.')),
+      () => finish(undefined, new Error(t('miniapps.locationTookTooLongTryAgain'))),
       12_000,
     );
     lease.signal.addEventListener('abort', cancel, { once: true });
@@ -130,7 +131,7 @@ async function location(approximate: boolean, lease: CapabilityLease) {
           finish(undefined, failure);
         }
       },
-      () => finish(undefined, new Error('Não foi possível obter sua localização.')),
+      () => finish(undefined, new Error(t('miniapps.yourLocationCouldNotBeObtained'))),
     ).then(
       (value) => {
         watcher = value;
@@ -156,7 +157,7 @@ async function freebusy(params: Record<string, unknown>, lease: CapabilityLease)
   const Calendar = await import('expo-calendar');
   lease.check();
   if (!(await Calendar.requestCalendarPermissions(false)).granted)
-    throw new Error('Permita a leitura do calendário nos Ajustes para consultar horários livres.');
+    throw new Error(t('miniapps.allowCalendarReadingInSettingsToCheckFree'));
   lease.check();
   const calendars = await Calendar.getCalendars(Calendar.EntityTypes.EVENT);
   let events: Awaited<ReturnType<typeof Calendar.listEvents>> = [];
@@ -184,7 +185,7 @@ async function addEvent(params: Record<string, unknown>, lease: CapabilityLease)
   const Calendar = await import('expo-calendar');
   lease.check();
   if (!(await Calendar.requestCalendarPermissions(true)).granted)
-    throw new Error('Permita adicionar eventos ao calendário nos Ajustes.');
+    throw new Error(t('miniapps.allowAddingCalendarEventsInSettings'));
   lease.check();
   const calendar = Calendar.getDefaultCalendarSync();
   try {
@@ -215,9 +216,9 @@ export async function perform(
   item: string,
 ): Promise<unknown> {
   if (!available().includes(cap))
-    throw new Error('Este recurso não está disponível neste aparelho.');
-  if (AppState.currentState !== 'active') throw new Error('Abra o Zoen para continuar.');
-  if (presenting) throw new Error('Conclua o seletor aberto antes de começar outra ação.');
+    throw new Error(t('miniapps.thisFeatureIsNotAvailableOnThisDevice'));
+  if (AppState.currentState !== 'active') throw new Error(t('miniapps.openZoenToContinue'));
+  if (presenting) throw new Error(t('miniapps.finishTheOpenPickerBeforeStartingAnotherAction'));
   const lease = photos.begin(item);
   presenting = true;
   const background = AppState.addEventListener('change', (state) => {
@@ -233,7 +234,7 @@ export async function perform(
         const selection = await sensitiveCacheWork.run(() =>
           pickPhoto({ max: 1, maxSide: 1024 }, lease, true),
         );
-        if (!selection[0]) throw new Error('Você não tirou uma foto.');
+        if (!selection[0]) throw new Error(t('miniapps.youDidNotTakeAPhoto'));
         result = selection[0];
         break;
       }
@@ -251,7 +252,7 @@ export async function perform(
         result = await contact(lease);
         break;
       default:
-        throw new Error('Este recurso não está disponível neste aparelho.');
+        throw new Error(t('miniapps.thisFeatureIsNotAvailableOnThisDevice'));
     }
     lease.check();
     return result;

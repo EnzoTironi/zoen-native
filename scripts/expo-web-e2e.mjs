@@ -13,7 +13,10 @@ import { setTimeout as delay } from "node:timers/promises";
 import { inspectExpoWebArtifact } from "./expo-web-artifact.mjs";
 import { verifyExpoWebHosting } from "./expo-web-hosting.mjs";
 import { acceptMarkdownJourney } from "./expo-web-markdown-journey.mjs";
+import { expoWebExpectations, pairingScreenshotMasks } from "./expo-web-expectations.mjs";
 
+const locale = process.env.ZOEN_EXPO_TEST_LOCALE;
+const ui = expoWebExpectations(locale);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = resolve(process.env.ZOEN_EXPO_DIST ?? join(root, "apps/zoen/dist"));
 const tools = resolve(process.env.ZOEN_E2E_TOOLS ?? join(root, "scripts/expo-web-tests"));
@@ -31,9 +34,10 @@ assert.ok(
     !relay.hash,
   "this synthetic-account journey requires a loopback relay",
 );
-const evidencePath = resolve(
+const evidenceRoot = resolve(
   process.env.ZOEN_EXPO_EVIDENCE ?? join(root, ".dev/expo-web-evidence"),
 );
+const evidencePath = join(evidenceRoot, locale);
 const privateRoot = await mkdtemp(join(tmpdir(), "zoen-expo-acceptance-"));
 const children = new Set();
 const processes = new Map();
@@ -41,13 +45,14 @@ const logs = [];
 const errors = [];
 const evidence = {
   journey: "expo-linked-browser-release-v3",
+  locale,
   commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
   steps: [],
   passed: false,
 };
 const tag = createHash("sha256")
   .update(
-    `${process.env.GITHUB_RUN_ID ?? randomBytes(12).toString("hex")}:${process.env.GITHUB_RUN_ATTEMPT ?? 1}`,
+    `${process.env.GITHUB_RUN_ID ?? randomBytes(12).toString("hex")}:${process.env.GITHUB_RUN_ATTEMPT ?? 1}:${locale}`,
   )
   .digest("hex")
   .slice(0, 10);
@@ -67,7 +72,7 @@ function scrub(input) {
 }
 function step(name, details = {}) {
   evidence.steps.push({ name, ...details });
-  console.log(`PASS ${name}`);
+  console.log(`PASS [${locale}] ${name}`);
 }
 function start(command, args, options = {}) {
   const child = spawn(command, args, {
@@ -166,11 +171,7 @@ async function screenshot(name) {
   await page.screenshot({
     path: join(evidencePath, name),
     fullPage: true,
-    mask: [
-      page.getByLabel("QR code para conectar este dispositivo", { exact: true }),
-      page.getByLabel("Código de conexão deste dispositivo", { exact: true }),
-      page.locator('[aria-label^="Código de verificação:"]'),
-    ],
+    mask: pairingScreenshotMasks(page),
   });
 }
 try {
@@ -256,7 +257,7 @@ try {
   evidence.browser = browser.version();
   const context = await browser.newContext({
     viewport: { width: 1280, height: 820 },
-    locale: "pt-BR",
+    locale,
   });
   page = await context.newPage();
   page.setDefaultTimeout(30_000);
@@ -269,27 +270,30 @@ try {
   );
   await page.goto(origin, { waitUntil: "domcontentloaded" });
   await page.waitForURL("**/sign-in");
+  evidence.browserLocale = await page.evaluate(() => navigator.language);
+  assert.equal(
+    evidence.browserLocale,
+    locale,
+    "browser locale must match this explicit acceptance run",
+  );
   assert.equal(
     await page.evaluate(() => crossOriginIsolated),
     false,
     "provider entry must allow popups",
   );
   assert.equal(
-    await page.getByRole("button", { name: "Opções de desenvolvimento", exact: true }).count(),
+    await page.getByRole("button", { name: ui.developmentOptions, exact: true }).count(),
     0,
     "release build must not expose development controls",
   );
   await screenshot("01-release-onboarding.png");
-  await page.getByRole("button", { name: "Conectar com outro aparelho", exact: true }).click();
-  await page.getByRole("button", { name: "Mostrar código", exact: true }).click();
-  const code = (
-    await page.getByLabel("Código de conexão deste dispositivo", { exact: true }).innerText()
-  ).trim();
+  await page.getByRole("button", { name: ui.connectOtherDevice, exact: true }).click();
+  await page.getByRole("button", { name: ui.showPairingCode, exact: true }).click();
+  const code = (await page.getByLabel(ui.pairingCode, { exact: true }).innerText()).trim();
   assert.match(code, /^zoen-link:1:[a-f0-9]{192}$/);
-  const digits = (await page.locator('[aria-label^="Código de verificação:"]').innerText()).replace(
-    /\s/g,
-    "",
-  );
+  const digits = (
+    await page.locator(`[aria-label^=${JSON.stringify(ui.verificationPrefix)}]`).innerText()
+  ).replace(/\s/g, "");
   const [linked] = await Promise.all([
     cli(ana.home, "link", code),
     page.waitForURL((url) => url.pathname === "/", { timeout: 120_000 }),
@@ -340,7 +344,7 @@ try {
   await expectMessage(ana.name, outbound);
   await expectMessage(bruno.name, reply);
   assert.equal(
-    await page.getByRole("button", { name: "Conectar com outro aparelho", exact: true }).count(),
+    await page.getByRole("button", { name: ui.connectOtherDevice, exact: true }).count(),
     0,
     "cold reload must retain the encrypted browser session",
   );
@@ -353,6 +357,7 @@ try {
   step("cold-dynamic-chat-reload-retains-keys-and-history");
   await acceptMarkdownJourney({
     page,
+    ui,
     origin,
     space,
     tag,
@@ -365,8 +370,8 @@ try {
   await page.goto(`${origin}/you`, { waitUntil: "domcontentloaded" });
   await page.getByText(`@${ana.handle}`, { exact: true }).waitFor();
   await page.getByTestId("erase-device").click();
-  const confirmation = page.getByRole("dialog", { name: "Sair deste aparelho?", exact: true });
-  await confirmation.getByRole("button", { name: "Cancelar", exact: true }).click();
+  const confirmation = page.getByRole("dialog", { name: ui.eraseDialog, exact: true });
+  await confirmation.getByRole("button", { name: ui.cancel, exact: true }).click();
   await confirmation.waitFor({ state: "hidden" });
   await page.goto(`${origin}/chat/${space}`, { waitUntil: "domcontentloaded" });
   await expectMessage(ana.name, seed);
@@ -377,12 +382,12 @@ try {
   await page.goto(`${origin}/you`, { waitUntil: "domcontentloaded" });
   await page.getByText(`@${ana.handle}`, { exact: true }).waitFor();
   await page.getByTestId("erase-device").click();
-  await confirmation.getByRole("button", { name: "Sair e apagar dados", exact: true }).click();
+  await confirmation.getByRole("button", { name: ui.confirmErase, exact: true }).click();
   await page.waitForURL("**/sign-in", { timeout: 90_000 });
-  await page.getByRole("button", { name: "Conectar com outro aparelho", exact: true }).waitFor();
+  await page.getByRole("button", { name: ui.connectOtherDevice, exact: true }).waitFor();
   assert.equal(await page.evaluate(() => crossOriginIsolated), false);
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Conectar com outro aparelho", exact: true }).waitFor();
+  await page.getByRole("button", { name: ui.connectOtherDevice, exact: true }).waitFor();
   assert.equal(new URL(page.url()).pathname, "/sign-in");
   assert.equal(await page.getByTestId("erase-device").count(), 0);
   assert.equal(await page.getByTestId("message-input").count(), 0);

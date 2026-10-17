@@ -1,0 +1,77 @@
+import { defineFeature } from '../catalog.ts';
+
+export const nativeSurfaces = defineFeature(
+  {
+    onYourIPhone: 'On your iPhone',
+    chooseWhatAppearsOutsideZoenTheWidgetKeeps:
+      'Choose what appears outside Zoen. The widget keeps content hidden until you choose to show it.',
+    removeFromWidget: 'Remove from widget',
+    useInWidget: 'Use in widget',
+    hideWidgetContent: 'Hide widget content',
+    showWidgetContent: 'Show widget content',
+    addZoenMiniappFromTheIPhoneWidgetGallery:
+      'Add “Zoen Miniapp” from the iPhone widget gallery. This selection applies to Zoen widgets on this device.',
+    removeFromShortcuts: 'Remove from shortcuts',
+    makeAvailableInShortcutsAndSiri: 'Make available in Shortcuts and Siri',
+    selectedShortcutsIncludeTheMiniappAndChatNames:
+      'Selected shortcuts include the miniapp and chat names so they can be found and opened in Zoen.',
+    endLiveCountdown: 'End live countdown',
+    startLiveCountdown: 'Start live countdown',
+    iOSSurfacesCouldNotBeUpdated: 'iOS surfaces could not be updated.',
+    theAccountHasChanged: 'The account has changed.',
+    iOSPreviewsCouldNotBeErasedTryAgain: 'iOS previews could not be erased. Try again.',
+    openYourAccountBeforeContinuing: 'Open your account before continuing.',
+    thisCouldNotBeCompleted: 'This could not be completed.',
+    thisItemIsNoLongerAvailableInThis: 'This item is no longer available in this account.',
+    theMiniappHasChangedRefreshBeforeContinuing:
+      'The miniapp has changed. Refresh before continuing.',
+    thisMiniappHasNoCompatiblePreview: 'This miniapp has no compatible preview.',
+    removeOneOfThe20MiniappsFromShortcuts: 'Remove one of the 20 miniapps from shortcuts first.',
+    useACountdownThatEndsWithinTheNext: 'Use a countdown that ends within the next 8 hours.',
+    chooseAMiniappInZoen: 'Choose a miniapp in Zoen',
+    thisDeviceSShortcutsCouldNotBeUpdated: "This device's shortcuts could not be updated.",
+    openToSeeYourMiniapp: 'Open to see your miniapp',
+    openToUpdate: 'Open to update',
+    countdownInProgress: 'Countdown in progress',
+    inProgress: 'In progress',
+    tooManyPreferences: 'Too many iOS surface preferences. Remove a shortcut and try again.',
+    activityEnded: 'This live countdown has ended.',
+  },
+  {
+    onYourIPhone: 'No seu iPhone',
+    chooseWhatAppearsOutsideZoenTheWidgetKeeps:
+      'Escolha o que aparece fora do Zoen. O widget mantém o conteúdo oculto até você escolher mostrá-lo.',
+    removeFromWidget: 'Remover do widget',
+    useInWidget: 'Usar no widget',
+    hideWidgetContent: 'Ocultar conteúdo do widget',
+    showWidgetContent: 'Mostrar conteúdo do widget',
+    addZoenMiniappFromTheIPhoneWidgetGallery:
+      'Adicione “Miniapp do Zoen” pela galeria de widgets do iPhone. Esta seleção vale para os widgets do Zoen neste aparelho.',
+    removeFromShortcuts: 'Remover dos atalhos',
+    makeAvailableInShortcutsAndSiri: 'Disponibilizar nos Atalhos e Siri',
+    selectedShortcutsIncludeTheMiniappAndChatNames:
+      'Os atalhos selecionados incluem o nome deste miniapp e da conversa para encontrar e abrir no Zoen.',
+    endLiveCountdown: 'Encerrar contagem ao vivo',
+    startLiveCountdown: 'Iniciar contagem ao vivo',
+    iOSSurfacesCouldNotBeUpdated: 'Não foi possível atualizar as superfícies do iOS.',
+    theAccountHasChanged: 'A conta mudou.',
+    iOSPreviewsCouldNotBeErasedTryAgain:
+      'Não foi possível apagar as prévias do iOS. Tente novamente.',
+    openYourAccountBeforeContinuing: 'Abra sua conta antes de continuar.',
+    thisCouldNotBeCompleted: 'Não foi possível concluir.',
+    thisItemIsNoLongerAvailableInThis: 'Este item não está mais disponível nesta conta.',
+    theMiniappHasChangedRefreshBeforeContinuing: 'O miniapp mudou. Atualize antes de continuar.',
+    thisMiniappHasNoCompatiblePreview: 'Este miniapp não possui uma prévia compatível.',
+    removeOneOfThe20MiniappsFromShortcuts: 'Remova um dos 20 miniapps dos atalhos primeiro.',
+    useACountdownThatEndsWithinTheNext: 'Use uma contagem que termine nas próximas 8 horas.',
+    chooseAMiniappInZoen: 'Escolha um miniapp no Zoen',
+    thisDeviceSShortcutsCouldNotBeUpdated: 'Não foi possível atualizar os atalhos deste aparelho.',
+    openToSeeYourMiniapp: 'Abra para ver seu miniapp',
+    openToUpdate: 'Abra para atualizar',
+    countdownInProgress: 'Contagem em andamento',
+    inProgress: 'Em andamento',
+    tooManyPreferences:
+      'Há muitas preferências para as superfícies do iOS. Remova um atalho e tente novamente.',
+    activityEnded: 'Esta contagem ao vivo terminou.',
+  },
+);

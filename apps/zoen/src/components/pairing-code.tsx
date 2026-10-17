@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { Image } from 'expo-image';
@@ -22,20 +23,20 @@ export function PairingCode({ code, check }: { code: string; check: string }) {
       <Image
         cachePolicy="none"
         source={{ uri }}
-        accessibilityLabel="QR code para conectar este dispositivo"
+        accessibilityLabel={t('access.pairingQr')}
         style={{ width: 248, height: 248, backgroundColor: '#FFFFFF', borderRadius: 16 }}
         contentFit="contain"
       />
       <Text
         selectable
-        accessibilityLabel={`Código de verificação: ${check.split('').join(' ')}`}
+        accessibilityLabel={t('access.verificationCode', { code: check.split('').join(' ') })}
         style={{ fontSize: 36, fontWeight: '600', letterSpacing: 8, color: colors.text }}
       >
         {check}
       </Text>
       <NativeButton
         secondary
-        label={copiedCode === code ? 'Código copiado' : 'Copiar código de conexão'}
+        label={copiedCode === code ? t('access.codeCopied') : t('access.copyConnectionCode')}
         onPress={() => {
           setCopiedCode(null);
           setFailedCode(null);
@@ -55,22 +56,22 @@ export function PairingCode({ code, check }: { code: string; check: string }) {
       />
       {failedCode === code ? (
         <Text accessibilityRole="alert" style={{ color: colors.danger }}>
-          Não foi possível copiar. Selecione o código abaixo para copiar manualmente.
+          {t('access.copyCodeFailed')}
         </Text>
       ) : null}
       <NativeButton
         secondary
-        label={shownCode === code ? 'Ocultar código' : 'Mostrar código'}
+        label={shownCode === code ? t('access.hideCode') : t('access.showCode')}
         onPress={() => setShownCode((shown) => (shown === code ? null : code))}
       />
       {shownCode === code ? (
         <View style={{ alignSelf: 'stretch', gap: 8 }}>
           <Text style={{ color: colors.secondary, fontSize: 14, lineHeight: 20 }}>
-            Selecione e copie este código de conexão no seu outro aparelho.
+            {t('access.selectConnectionCode')}
           </Text>
           <Text
             selectable
-            accessibilityLabel="Código de conexão deste dispositivo"
+            accessibilityLabel={t('access.deviceConnectionCode')}
             style={{
               color: colors.text,
               backgroundColor: colors.muted,

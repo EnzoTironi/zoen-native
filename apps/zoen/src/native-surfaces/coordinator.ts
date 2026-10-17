@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import type { AppIntentEntity } from 'expo-app-intents';
 import type { ItemDetail } from '../core/generated/ItemDetail';
 import { activityContent } from './activity.ts';
@@ -92,15 +93,15 @@ export class SurfaceCoordinator {
         } catch {
           // Do not retain an unverified private projection after access/read failure.
           await this.clear();
-          this.publish({ error: 'Não foi possível atualizar as superfícies do iOS.' });
+          this.publish({ error: t('nativeSurfaces.iOSSurfacesCouldNotBeUpdated') });
         }
       }
     });
   };
   private async save(preferences: SurfacePreferences) {
-    if (!this.current(preferences.owner)) throw new Error('A conta mudou.');
+    if (!this.current(preferences.owner)) throw new Error(t('nativeSurfaces.theAccountHasChanged'));
     await this.port.writePreferences(JSON.stringify(preferences));
-    if (!this.current(preferences.owner)) throw new Error('A conta mudou.');
+    if (!this.current(preferences.owner)) throw new Error(t('nativeSurfaces.theAccountHasChanged'));
     this.publish({ preferences });
   }
   /** Every target gets a cleanup attempt even when an unrelated native bridge fails. */
@@ -144,7 +145,7 @@ export class SurfaceCoordinator {
     this.publish({ ready: false, preferences: null });
     return this.queue(async () => {
       if (!(await this.clear(true)))
-        throw new Error('Não foi possível apagar as prévias do iOS. Tente novamente.');
+        throw new Error(t('nativeSurfaces.iOSPreviewsCouldNotBeErasedTryAgain'));
     });
   }
   private async reconcile() {
@@ -240,18 +241,20 @@ export class SurfaceCoordinator {
   private async change(work: (preferences: SurfacePreferences) => Promise<void>) {
     return this.queue(async () => {
       const owner = this.source.owner();
-      if (!owner || !this.current(owner)) throw new Error('Abra sua conta antes de continuar.');
+      if (!owner || !this.current(owner))
+        throw new Error(t('nativeSurfaces.openYourAccountBeforeContinuing'));
       this.publish({ busy: true, error: null });
       try {
         const preferences = sameSurfaceOwner(this.state.preferences?.owner ?? null, owner)
           ? this.state.preferences!
           : parsePreferences(await this.port.readPreferences(), owner);
-        if (!this.current(owner)) throw new Error('A conta mudou.');
+        if (!this.current(owner)) throw new Error(t('nativeSurfaces.theAccountHasChanged'));
         await work(preferences);
         await this.reconcile();
       } catch (error) {
         this.publish({
-          error: error instanceof Error ? error.message : 'Não foi possível concluir.',
+          error:
+            error instanceof Error ? error.message : t('nativeSurfaces.thisCouldNotBeCompleted'),
         });
         throw error;
       } finally {
@@ -267,10 +270,11 @@ export class SurfaceCoordinator {
       item.id !== id ||
       !this.source.spaces().has(item.space_id)
     )
-      throw new Error('Este item não está mais disponível nesta conta.');
-    if (item.version !== version) throw new Error('O miniapp mudou. Atualize antes de continuar.');
+      throw new Error(t('nativeSurfaces.thisItemIsNoLongerAvailableInThis'));
+    if (item.version !== version)
+      throw new Error(t('nativeSurfaces.theMiniappHasChangedRefreshBeforeContinuing'));
     if (!widgetProjection(item, owner))
-      throw new Error('Este miniapp não possui uma prévia compatível.');
+      throw new Error(t('nativeSurfaces.thisMiniappHasNoCompatiblePreview'));
     return item;
   }
   selectWidget(id: string, version: number, showContent: boolean) {
@@ -288,7 +292,7 @@ export class SurfaceCoordinator {
       const shortcutItems = preferences.shortcutItems.filter((value) => value !== id);
       if (enabled) shortcutItems.push(id);
       if (shortcutItems.length > 20)
-        throw new Error('Remova um dos 20 miniapps dos atalhos primeiro.');
+        throw new Error(t('nativeSurfaces.removeOneOfThe20MiniappsFromShortcuts'));
       await this.save({ ...preferences, shortcutItems });
     });
   }
@@ -296,9 +300,10 @@ export class SurfaceCoordinator {
     return this.change(async (preferences) => {
       const item = await this.checkedItem(id, version, preferences.owner);
       const content = activityContent(item, preferences.owner, showContent);
-      if (!content) throw new Error('Use uma contagem que termine nas próximas 8 horas.');
+      if (!content) throw new Error(t('nativeSurfaces.useACountdownThatEndsWithinTheNext'));
       for (const existing of this.port.activities()) await this.port.endActivity(existing);
-      if (!this.current(preferences.owner)) throw new Error('A conta mudou.');
+      if (!this.current(preferences.owner))
+        throw new Error(t('nativeSurfaces.theAccountHasChanged'));
       const activityId = this.port.startActivity(content);
       try {
         await this.save({

@@ -19,7 +19,7 @@ test('a late consent from a covered frame cannot regain authority when its repla
   const next = frameAuthority(() => {});
   next.check();
   resolve();
-  await assert.rejects(consent, /fechada/);
+  await assert.rejects(consent, /interface has closed/);
   assert.equal(writes, 0);
   next.check();
 });

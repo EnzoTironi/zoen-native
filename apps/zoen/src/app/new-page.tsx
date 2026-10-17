@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -23,7 +24,9 @@ export default function NewPage() {
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{ padding: 26, gap: 24 }}
     >
-      <Stack.Screen options={{ title: imported ? 'Importar página' : 'Nova página' }} />
+      <Stack.Screen
+        options={{ title: imported ? t('documents.importPage') : t('documents.newPage') }}
+      />
       {imported ? (
         <View style={{ gap: 12 }}>
           <Text selectable style={{ color: colors.text, fontSize: 20, fontWeight: '600' }}>
@@ -39,27 +42,29 @@ export default function NewPage() {
               fontFamily: process.env.EXPO_OS === 'ios' ? 'Menlo' : 'monospace',
             }}
           >
-            {imported.markdown || 'Arquivo vazio'}
+            {imported.markdown || t('documents.emptyFile')}
           </Text>
           <NativeButton
             secondary
-            label="Criar uma página vazia"
+            label={t('documents.createAnEmptyPage')}
             disabled={busy}
             onPress={() => setImported(null)}
           />
         </View>
       ) : (
         <Field
-          label="Título"
+          label={t('documents.title')}
           value={title}
           onChangeText={setTitle}
           autoFocus
-          placeholder="Uma ideia para começar"
+          placeholder={t('documents.anIdeaToStartWith')}
         />
       )}
       <NativeButton
         secondary
-        label={imported ? 'Escolher outro Markdown' : 'Importar arquivo Markdown'}
+        label={
+          imported ? t('documents.chooseAnotherMarkdownFile') : t('documents.importMarkdownFile')
+        }
         disabled={busy}
         onPress={() => {
           setBusy(true);
@@ -70,7 +75,7 @@ export default function NewPage() {
             })
             .catch((reason: unknown) =>
               setError(
-                reason instanceof Error ? reason.message : 'Não foi possível abrir este arquivo.',
+                reason instanceof Error ? reason.message : t('documents.thisFileCouldNotBeOpened'),
               ),
             )
             .finally(() => setBusy(false));
@@ -78,7 +83,7 @@ export default function NewPage() {
       />
       <View style={{ gap: 10 }}>
         <Text style={{ color: colors.secondary, fontSize: 14, fontWeight: '600' }}>
-          Compartilhar na conversa
+          {t('documents.shareInChat')}
         </Text>
         {snapshot?.conversations.map((chat) => (
           <Pressable
@@ -106,7 +111,13 @@ export default function NewPage() {
       ) : null}
       <NativeButton
         disabled={busy || !space || (!imported && !title.trim())}
-        label={busy ? 'Guardando…' : imported ? 'Importar e compartilhar página' : 'Criar página'}
+        label={
+          busy
+            ? t('documents.saving')
+            : imported
+              ? t('documents.importAndSharePage')
+              : t('documents.createPage')
+        }
         onPress={() => {
           setBusy(true);
           setError(null);
@@ -127,7 +138,9 @@ export default function NewPage() {
             })
             .catch((failure: unknown) =>
               setError(
-                failure instanceof Error ? failure.message : 'Não foi possível criar a página.',
+                failure instanceof Error
+                  ? failure.message
+                  : t('documents.thePageCouldNotBeCreated'),
               ),
             )
             .finally(() => setBusy(false));

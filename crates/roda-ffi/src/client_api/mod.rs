@@ -533,7 +533,10 @@ impl RodaEngine {
     /// Typed domain commands for the Expo app. Native code retains keys and lifetime.
     /// i64/u64 response values are decimal strings, never lossy JS numbers.
     pub async fn client_request(&self, request: String) -> Result<String, CoreError> {
-        self.dispatch_client(decode(&request)?, None).await
+        crate::i18n::scope(self.lang, async {
+            self.dispatch_client(decode(&request)?, None).await
+        })
+        .await
     }
 
     /// The native account session injects its own vault. JavaScript may request
@@ -543,7 +546,10 @@ impl RodaEngine {
         request: String,
         vault: Arc<dyn SecretVault>,
     ) -> Result<String, CoreError> {
-        self.dispatch_client(decode(&request)?, Some(vault)).await
+        crate::i18n::scope(self.lang, async {
+            self.dispatch_client(decode(&request)?, Some(vault)).await
+        })
+        .await
     }
 }
 
@@ -1102,6 +1108,46 @@ mod tests {
                 restored.id = block.id.clone();
                 assert_eq!(restored, block, "{encoded}");
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod session_language_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn two_engine_languages_cover_prelock_network_errors_and_sync_lifecycle_errors() {
+        crate::i18n::set(crate::i18n::Lang::En);
+        let portuguese = RodaEngine::open(":memory:".into(), "pt-BR".into()).unwrap();
+        let english = RodaEngine::open(":memory:".into(), "en".into()).unwrap();
+        assert_eq!(crate::i18n::lang(), crate::i18n::Lang::En);
+        for (engine, no_key, offline) in [
+            (
+                &portuguese,
+                "Sem chave deste aparelho.",
+                "Sem conexão com o servidor agora.",
+            ),
+            (
+                &english,
+                "This device's key isn't loaded.",
+                "Can't reach the server right now.",
+            ),
+        ] {
+            assert_eq!(engine.start_sync(None).unwrap_err().to_string(), no_key);
+            assert_eq!(crate::i18n::lang(), crate::i18n::Lang::En);
+            tokio::task::yield_now().await;
+            // This command returns a localized relay error before it ever locks
+            // the engine. Decode and the async dispatch must already be scoped.
+            let error = engine
+                .client_request(
+                    r#"{"op":"find_people","query":"synthetic-language-fixture"}"#.into(),
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(error.to_string(), offline);
+            assert_eq!(engine.start_sync(None).unwrap_err().to_string(), no_key);
+            assert_eq!(crate::i18n::lang(), crate::i18n::Lang::En);
         }
     }
 }

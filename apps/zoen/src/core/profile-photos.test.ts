@@ -32,10 +32,10 @@ test('profile saves reject remote URIs and stale account/device before bytes ent
   };
   await assert.rejects(
     driver.save({ ...base, uri: 'https://example.test/avatar.jpg' }),
-    /Selecione/,
+    /Select the photo again/,
   );
-  await assert.rejects(driver.save({ ...base, ownerId: 'other' }), /sessão mudou/);
-  await assert.rejects(driver.save({ ...base, deviceId: 'other' }), /sessão mudou/);
+  await assert.rejects(driver.save({ ...base, ownerId: 'other' }), /session changed/);
+  await assert.rejects(driver.save({ ...base, deviceId: 'other' }), /session changed/);
   assert.equal(saves.length, 0);
   await driver.save({ ...base, photo: 'remove' });
   assert.equal(saves.length, 1);
@@ -66,7 +66,7 @@ test('profile previews release on close and late prior-session results create no
   const pending = lateDriver.materialize('owner', 'device', 'person', sha);
   next.closed.abort();
   finish!({ bytes: new Uint8Array([1]), mime: 'image/jpeg', sha256: sha });
-  await assert.rejects(pending, /sessão mudou/);
+  await assert.rejects(pending, /session changed/);
   assert.equal(created.mock.callCount(), 1);
 });
 
@@ -75,7 +75,7 @@ test('profile preview refuses unexpected hashes and over-limit binary responses'
   const driver = createBrowserProfilePhotoDriver(() => host);
   await assert.rejects(
     driver.materialize('owner', 'device', 'person', 'cd'.repeat(32)),
-    /não corresponde/,
+    /photo does not match the profile/,
   );
   host.profilePhoto = async () => ({
     bytes: new Uint8Array(5 * 1024 * 1024 + 1),
@@ -84,7 +84,7 @@ test('profile preview refuses unexpected hashes and over-limit binary responses'
   });
   await assert.rejects(
     driver.materialize('owner', 'device', 'person', 'ab'.repeat(32)),
-    /não corresponde/,
+    /photo does not match the profile/,
   );
 });
 

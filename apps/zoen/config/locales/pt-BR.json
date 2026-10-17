@@ -1,0 +1,39 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Zoen",
+    "NSMicrophoneUsageDescription": "Permita que o Zoen grave mensagens de voz e áudio nos vídeos que você escolher enviar.",
+    "NSCameraUsageDescription": "Permita que o Zoen use a câmera para escanear códigos de conexão e criar fotos ou vídeos que você escolher compartilhar.",
+    "NSPhotoLibraryUsageDescription": "Escolha fotos e vídeos para compartilhar nas suas conversas do Zoen.",
+    "NSLocationWhenInUseUsageDescription": "Compartilhe sua localização com um miniapp somente quando você escolher.",
+    "NSCalendarsWriteOnlyAccessUsageDescription": "Adicione à sua agenda os eventos que você confirmar no Zoen.",
+    "NSContactsUsageDescription": "Escolha o contato que você deseja compartilhar com um miniapp.",
+    "Localizable.strings": {
+      "Zoen miniapp": "Miniapp do Zoen",
+      "A preview you choose. Content hidden by default.": "Uma prévia escolhida por você. Conteúdo oculto por padrão.",
+      "Zoen conversation": "Conversa do Zoen",
+      "Name": "Nome",
+      "Miniapp": "Miniapp",
+      "Conversation": "Conversa",
+      "Open miniapp": "Abrir miniapp",
+      "Open conversation": "Abrir conversa",
+      "Opening Zoen.": "Abrindo o Zoen.",
+      "Open ${selection}": "Abrir ${selection}",
+      "This session has closed. Open the app again.": "Esta sessão foi encerrada. Abra o app novamente.",
+      "This session could not be opened.": "Não foi possível abrir esta sessão.",
+      "Invalid session language.": "Idioma da sessão inválido.",
+      "This device already has an account.": "Este aparelho já tem uma conta.",
+      "This account could not be unlocked with this device's keys. Use account recovery.": "Não foi possível desbloquear esta conta com as chaves deste aparelho. Use a recuperação da conta.",
+      "This device has account keys, but the database is unavailable. Recover the account to preserve those keys.": "Há chaves de uma conta neste aparelho, mas o banco de dados não está disponível. Recupere a conta para preservar essas chaves.",
+      "The account changed. Open the confirmation again.": "A conta mudou. Abra a confirmação novamente.",
+      "Sign-out on this device could not be completed. Try again.": "Não foi possível concluir a saída deste aparelho. Tente novamente.",
+      "This file could not be read. Select it again.": "Não foi possível ler este arquivo. Selecione-o novamente.",
+      "Choose a file up to 64 MB.": "Escolha um arquivo de até 64 MB.",
+      "The recording is empty or invalid. Record it again.": "A gravação está vazia ou inválida. Grave novamente.",
+      "This file version is unavailable.": "Esta versão do arquivo não está disponível.",
+      "Select a JPEG photo up to 5 MB again.": "Selecione uma foto JPEG de até 5 MB novamente.",
+      "The session changed. Open your profile again.": "A sessão mudou. Abra seu perfil novamente."
+    },
+    "NSFaceIDUsageDescription": "Permita que $(PRODUCT_NAME) use o Face ID para confirmar sua identidade.",
+    "NSLocalNetworkUsageDescription": "O Expo Dev Launcher usa a rede local para encontrar e conectar aos servidores de desenvolvimento do seu computador."
+  }
+}

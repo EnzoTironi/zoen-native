@@ -3,10 +3,10 @@ import Foundation
 internal import ExpoAppIntents
 private enum ZoenNavigationError: Error { case unavailable }
 struct ZoenItemEntity: AppEntity {
-  static let typeDisplayRepresentation: TypeDisplayRepresentation = "Miniapp do Zoen"
+  static let typeDisplayRepresentation: TypeDisplayRepresentation = "Zoen miniapp"
   static let defaultQuery = ZoenItemQuery()
   var id: String
-  @Property(title: "Nome") var name: String
+  @Property(title: "Name") var name: String
   var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
   init(record: AppIntentEntityRecord) { id = record.id; name = record.title }
 }
@@ -22,11 +22,11 @@ struct ZoenItemQuery: EntityStringQuery {
   }
 }
 struct ZoenOpenItemIntent: AppIntent {
-  static let title: LocalizedStringResource = "Abrir miniapp"
+  static let title: LocalizedStringResource = "Open miniapp"
   static let openAppWhenRun = true
   static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
   @Parameter(title: "Miniapp") var selection: ZoenItemEntity
-  static var parameterSummary: some ParameterSummary { Summary("Abrir \(\.$selection)") }
+  static var parameterSummary: some ParameterSummary { Summary("Open \(\.$selection)") }
   @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
     // Saved shortcuts re-resolve IDs against the currently selected local catalog.
     guard let record = try await AppIntentEntityStore.shared.entities(ofKind: "zoen.item", matching: [selection.id]).first,
@@ -37,14 +37,14 @@ struct ZoenOpenItemIntent: AppIntent {
     await AppIntentDispatcher.shared.dispatch(name: "zoen.openItem", params: [
       "identityId": .string(identity), "deviceId": .string(device), "itemId": .string(record.id), "version": .int(version)
     ])
-    return .result(dialog: "Abrindo o Zoen.")
+    return .result(dialog: "Opening Zoen.")
   }
 }
 struct ZoenChatEntity: AppEntity {
-  static let typeDisplayRepresentation: TypeDisplayRepresentation = "Conversa do Zoen"
+  static let typeDisplayRepresentation: TypeDisplayRepresentation = "Zoen conversation"
   static let defaultQuery = ZoenChatQuery()
   var id: String
-  @Property(title: "Nome") var name: String
+  @Property(title: "Name") var name: String
   var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)") }
   init(record: AppIntentEntityRecord) { id = record.id; name = record.title }
 }
@@ -60,11 +60,11 @@ struct ZoenChatQuery: EntityStringQuery {
   }
 }
 struct ZoenOpenChatIntent: AppIntent {
-  static let title: LocalizedStringResource = "Abrir conversa"
+  static let title: LocalizedStringResource = "Open conversation"
   static let openAppWhenRun = true
   static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
-  @Parameter(title: "Conversa") var selection: ZoenChatEntity
-  static var parameterSummary: some ParameterSummary { Summary("Abrir \(\.$selection)") }
+  @Parameter(title: "Conversation") var selection: ZoenChatEntity
+  static var parameterSummary: some ParameterSummary { Summary("Open \(\.$selection)") }
   @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
     // Saved shortcuts re-resolve IDs against the currently selected local catalog.
     guard let record = try await AppIntentEntityStore.shared.entities(ofKind: "zoen.chat", matching: [selection.id]).first,
@@ -74,12 +74,12 @@ struct ZoenOpenChatIntent: AppIntent {
     await AppIntentDispatcher.shared.dispatch(name: "zoen.openChat", params: [
       "identityId": .string(identity), "deviceId": .string(device), "spaceId": .string(record.id)
     ])
-    return .result(dialog: "Abrindo o Zoen.")
+    return .result(dialog: "Opening Zoen.")
   }
 }
 struct ZoenShortcuts: AppShortcutsProvider {
   static var appShortcuts: [AppShortcut] {
-    AppShortcut(intent: ZoenOpenItemIntent(), phrases: ["Abrir miniapp no \(.applicationName)"], shortTitle: "Abrir miniapp", systemImageName: "square.grid.2x2")
-    AppShortcut(intent: ZoenOpenChatIntent(), phrases: ["Abrir conversa no \(.applicationName)"], shortTitle: "Abrir conversa", systemImageName: "bubble.left.and.bubble.right")
+    AppShortcut(intent: ZoenOpenItemIntent(), phrases: ["Open a miniapp in \(.applicationName)"], shortTitle: "Open miniapp", systemImageName: "square.grid.2x2")
+    AppShortcut(intent: ZoenOpenChatIntent(), phrases: ["Open a conversation in \(.applicationName)"], shortTitle: "Open conversation", systemImageName: "bubble.left.and.bubble.right")
   }
 }

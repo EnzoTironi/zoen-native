@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import {
   createContext,
   use,
@@ -46,7 +47,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           token: nativePushToken,
           async register(configuration, token) {
             if (store.getSnapshot().snapshot?.account?.device_id !== deviceId)
-              throw new Error('Account changed');
+              throw new Error(t('notifications.accountChanged'));
             await store.driver.request({
               op: 'register_push',
               platform: configuration.environment === 'sandbox' ? 'apns-sandbox' : 'apns',

@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Image } from 'expo-image';
 import { Text, View } from 'react-native';
@@ -13,7 +14,7 @@ import { AccountAccess } from './account-access';
 
 export function SessionGate({ children }: { children: ReactNode }) {
   const { phase } = useClient();
-  if (phase === 'erasing') return <Loading label="Saindo deste aparelho…" />;
+  if (phase === 'erasing') return <Loading label={t('access.leavingDevice')} />;
   return <SessionContent>{children}</SessionContent>;
 }
 
@@ -30,12 +31,9 @@ function SessionContent({ children }: { children: ReactNode }) {
   if (phase === 'failed')
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <EmptyState
-          title="Vamos tentar de novo"
-          detail={notice ?? 'Não foi possível abrir o Zoen.'}
-        >
+        <EmptyState title={t('access.tryAgainTitle')} detail={notice ?? t('access.openZoenFailed')}>
           <NativeButton
-            label="Tentar novamente"
+            label={t('access.retry')}
             onPress={() => {
               void store.open();
             }}
@@ -76,10 +74,10 @@ function SessionContent({ children }: { children: ReactNode }) {
                 accessibilityRole="header"
                 style={{ fontSize: 38, fontWeight: '700', letterSpacing: -1.5, color: colors.text }}
               >
-                Seu mundo, junto.
+                {t('access.nativeHeadline')}
               </Text>
               <Text style={{ fontSize: 18, lineHeight: 26, color: colors.secondary }}>
-                Pessoas, ideias e agentes. Uma conversa de cada vez.
+                {t('access.nativeIntroduction')}
               </Text>
             </View>
             {notice && snapshot?.account?.setup_pending ? (
@@ -105,13 +103,17 @@ function SessionContent({ children }: { children: ReactNode }) {
               }
             />
             <Text style={{ fontSize: 14, lineHeight: 21, color: colors.secondary }}>
-              Seu nome e usuário poderão ser ajustados depois.
+              {t('access.profileEditableLater')}
             </Text>
-            <NativeButton label="Recuperar acesso" secondary onPress={() => setAccess(true)} />
+            <NativeButton
+              label={t('access.recoverAccess')}
+              secondary
+              onPress={() => setAccess(true)}
+            />
             {__DEV__ ? (
               <>
                 <NativeButton
-                  label="Explorar a demonstração"
+                  label={t('access.exploreDemo')}
                   secondary
                   onPress={() => {
                     void store.open('demo');
@@ -119,14 +121,14 @@ function SessionContent({ children }: { children: ReactNode }) {
                 />
                 <NativeButton
                   label={
-                    advanced ? 'Fechar opções de desenvolvimento' : 'Opções de desenvolvimento'
+                    advanced ? t('access.closeDeveloperOptions') : t('access.developerOptions')
                   }
                   secondary
                   onPress={() => setAdvanced(!advanced)}
                 />
                 {advanced ? (
                   <Field
-                    label="Servidor"
+                    label={t('access.server')}
                     value={relay}
                     onChangeText={setRelay}
                     autoCapitalize="none"
@@ -139,8 +141,7 @@ function SessionContent({ children }: { children: ReactNode }) {
             <Text
               style={{ textAlign: 'center', fontSize: 13, lineHeight: 20, color: colors.secondary }}
             >
-              Conversas privadas usam criptografia de ponta a ponta. Permissões e backup serão
-              apresentados quando você precisar.
+              {t('access.nativePrivacy')}
             </Text>
           </>
         )}

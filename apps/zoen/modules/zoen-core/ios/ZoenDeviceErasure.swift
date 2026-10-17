@@ -22,8 +22,8 @@ final class ZoenDeviceErasure {
     case changed, incomplete
     var errorDescription: String? {
       switch self {
-      case .changed: "A conta mudou. Abra a confirmação novamente."
-      case .incomplete: "Não foi possível concluir a saída deste aparelho. Tente novamente."
+      case .changed: NSLocalizedString("The account changed. Open the confirmation again.", comment: "Device erasure scope changed")
+      case .incomplete: NSLocalizedString("Sign-out on this device could not be completed. Try again.", comment: "Device erasure needs a retry")
       }
     }
   }

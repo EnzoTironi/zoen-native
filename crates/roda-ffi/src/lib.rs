@@ -125,7 +125,7 @@ impl RodaEngine {
     #[uniffi::constructor]
     pub fn open(path: String, locale: String) -> Result<Arc<Self>, CoreError> {
         let lang = i18n::Lang::from_tag(&locale);
-        i18n::set(lang);
+        let _language = i18n::enter(lang);
         Ok(Arc::new(Self {
             inner: Arc::new(Mutex::new(Engine::open(&path)?)),
             lang,
@@ -141,6 +141,7 @@ impl RodaEngine {
 
     /// Cria o elenco e a história da demo se o banco estiver vazio. Devolve `true` se semeou.
     pub fn seed_demo_if_empty(&self) -> Result<bool, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         let mut e = self.lock();
         if !e.is_empty() {
             // Demo data follows the device language: if the story was seeded in another
@@ -166,6 +167,7 @@ impl RodaEngine {
 
     /// Apaga tudo e recomeça a demo.
     pub fn reset_demo(&self) -> Result<(), CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         let mut e = self.lock();
         e.wipe()?;
         seed::seed(&mut e)?;
@@ -353,6 +355,7 @@ impl RodaEngine {
     }
 
     pub fn item(&self, item_id: String) -> Result<ItemDetail, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         self.lock().item(&item_id)
     }
 
@@ -680,7 +683,7 @@ pub fn format_brl(cents: i64) -> String {
     engine::brl(cents)
 }
 
-/// Formats cents for a locale: "$1,348" (en) or "R$ 1.348" (pt-BR).
+/// Formats the existing plan/grant domain's BRL cents for the chosen locale.
 #[uniffi::export]
 pub fn format_money(cents: i64, locale: String) -> String {
     i18n::money_in(i18n::Lang::from_tag(&locale), cents)

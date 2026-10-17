@@ -1,6 +1,7 @@
+import { t, locale, formatLocale } from '../i18n/index.ts';
 import { Pressable, Text, View } from 'react-native';
 import { NativeButton, Surface } from '../components/primitives';
-import { money } from '../core/presentation';
+import { formatMoney } from '../i18n/money.ts';
 import type { AppStateDto } from '../core/generated/AppStateDto';
 import { useTheme } from '../theme';
 import { parseMiniappJson } from './json';
@@ -19,22 +20,32 @@ function text(value: unknown): string {
 function count(value: unknown): number {
   return Array.isArray(value) ? value.length : 0;
 }
-function exactMoney(value: unknown): string {
-  if (typeof value === 'string' && /^-?\d+$/.test(value)) return money(value);
-  if (typeof value === 'number' && Number.isSafeInteger(value)) return money(String(value));
-  return 'Valor indisponível';
+function exactMoney(value: unknown, currency: unknown): string {
+  const amount =
+    typeof value === 'string' && /^-?\d+$/.test(value)
+      ? value
+      : typeof value === 'number' && Number.isSafeInteger(value)
+        ? String(value)
+        : null;
+  if (amount === null || typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency))
+    return t('miniapps.amountUnavailable');
+  try {
+    return formatMoney(amount, { locale, currency, minorUnitDigits: 2 });
+  } catch {
+    return t('miniapps.amountUnavailable');
+  }
 }
 function time(value: unknown, zone?: unknown): string {
   const milliseconds = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value;
   if (typeof milliseconds !== 'number' || !Number.isSafeInteger(milliseconds))
-    return 'Data indisponível';
+    return t('miniapps.dateUnavailable');
   try {
     return new Date(milliseconds).toLocaleString(
-      'pt-BR',
+      formatLocale,
       typeof zone === 'string' ? { timeZone: zone } : undefined,
     );
   } catch {
-    return 'Data indisponível';
+    return t('miniapps.dateUnavailable');
   }
 }
 export function MiniappState({
@@ -53,7 +64,7 @@ export function MiniappState({
   } catch {
     return (
       <Text accessibilityRole="alert" style={{ color: colors.danger }}>
-        O estado deste miniapp não pôde ser aberto. Atualize a página.
+        {t('miniapps.thisMiniappSStateCouldNotBeOpened')}
       </Text>
     );
   }
@@ -106,19 +117,19 @@ export function MiniappState({
           {!state.released ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
               <NativeButton
-                label="Dar comida"
+                label={t('miniapps.feed')}
                 disabled={busy || state.asleep === true}
                 onPress={() => onCall('pet_feed', {})}
               />
               <NativeButton
                 secondary
-                label={state.asleep ? 'Acordar' : 'Cochilar'}
+                label={state.asleep ? t('miniapps.wakeUp') : t('miniapps.nap')}
                 disabled={busy}
                 onPress={() => onCall(state.asleep ? 'pet_wake' : 'pet_nap', {})}
               />
               <NativeButton
                 secondary
-                label="Brincar"
+                label={t('miniapps.play')}
                 disabled={busy || state.asleep === true}
                 onPress={() => onCall('pet_play', {})}
               />
@@ -139,7 +150,10 @@ export function MiniappState({
               key={text(option.id)}
               disabled={busy || state.closed === true}
               accessibilityRole="button"
-              accessibilityLabel={`Votar em ${text(option.text)}, ${count(option.votes)} voto(s)`}
+              accessibilityLabel={t('miniapps.voteForOption', {
+                option: text(option.text),
+                count: count(option.votes),
+              })}
               onPress={() => onCall('poll_vote', { option: text(option.id) })}
               style={{
                 minHeight: 56,
@@ -151,18 +165,18 @@ export function MiniappState({
             >
               <Text style={{ color: colors.text, fontSize: 17 }}>{text(option.text)}</Text>
               <Text style={{ color: colors.secondary, fontSize: 12 }}>
-                {count(option.votes)} voto(s)
+                {t('miniapps.voteCount', { count: count(option.votes) })}
               </Text>
             </Pressable>
           ))}
           {state.closed ? (
             <Text style={{ color: colors.accent, fontWeight: '600' }}>
-              Decidido: {text(state.winner)}
+              {t('miniapps.pollDecided', { winner: text(state.winner) })}
             </Text>
           ) : (
             <NativeButton
               secondary
-              label="Fechar votação e levar ao plano"
+              label={t('miniapps.closePollAndAddToPlan')}
               disabled={busy}
               onPress={() => onCall('poll_close', {})}
             />
@@ -217,7 +231,7 @@ export function MiniappState({
               {text(state.title)}
             </Text>
             <Text style={{ color: colors.secondary }}>
-              Porções: {String(state.servings ?? '—')}
+              {t('miniapps.servingsCount', { total: String(state.servings ?? '—') })}
             </Text>
             {list(state.ingredients).map((ingredient) => (
               <Pressable
@@ -233,7 +247,7 @@ export function MiniappState({
                   {text(ingredient.name) || text(ingredient.text)}
                   {ingredient.qty === undefined
                     ? ''
-                    : ` · ${typeof ingredient.qty === 'number' && typeof state.servings === 'number' && typeof state.baseServings === 'number' && state.baseServings > 0 ? ((ingredient.qty * state.servings) / state.baseServings).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : String(ingredient.qty)} ${text(ingredient.unit)}`}
+                    : ` · ${typeof ingredient.qty === 'number' && typeof state.servings === 'number' && typeof state.baseServings === 'number' && state.baseServings > 0 ? ((ingredient.qty * state.servings) / state.baseServings).toLocaleString(formatLocale, { maximumFractionDigits: 2 }) : String(ingredient.qty)} ${text(ingredient.unit)}`}
                 </Text>
               </Pressable>
             ))}
@@ -241,7 +255,7 @@ export function MiniappState({
           {Array.isArray(state.steps) ? (
             <Surface>
               <Text style={{ color: colors.text, fontSize: 21, fontWeight: '600' }}>
-                Modo cozinhar
+                {t('miniapps.cookingMode')}
               </Text>
               {state.steps.map((step, index) => (
                 <Pressable
@@ -251,7 +265,9 @@ export function MiniappState({
                   onPress={() => onCall('recipe_cook', { step: index })}
                   style={{ minHeight: 48, gap: 6, paddingVertical: 10 }}
                 >
-                  <Text style={{ color: colors.accent, fontWeight: '600' }}>Passo {index + 1}</Text>
+                  <Text style={{ color: colors.accent, fontWeight: '600' }}>
+                    {t('miniapps.stepNumber', { position: index + 1 })}
+                  </Text>
                   <Text style={{ color: colors.text, lineHeight: 23 }}>
                     {typeof step === 'string' ? step : text(object(step).text)}
                   </Text>
@@ -292,22 +308,28 @@ export function MiniappState({
                 <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
                   {text(trail.name)}
                 </Text>
-                <Text style={{ color: colors.secondary }}>{count(trail.votes)} voto(s)</Text>
+                <Text style={{ color: colors.secondary }}>
+                  {t('miniapps.voteCount', { count: count(trail.votes) })}
+                </Text>
               </Pressable>
             ))}
             {!state.decided ? (
               <NativeButton
-                label="Fechar escolha"
+                label={t('miniapps.closeSelection')}
                 disabled={busy}
                 onPress={() => onCall('hike_decide', {})}
               />
             ) : (
-              <Text style={{ color: colors.accent }}>Escolha fechada: {text(state.decided)}</Text>
+              <Text style={{ color: colors.accent }}>
+                {t('miniapps.selectionClosed', { selection: text(state.decided) })}
+              </Text>
             )}
           </Surface>
           {state.itinerary ? (
             <Surface>
-              <Text style={{ color: colors.text, fontSize: 20, fontWeight: '600' }}>Roteiro</Text>
+              <Text style={{ color: colors.text, fontSize: 20, fontWeight: '600' }}>
+                {t('miniapps.itinerary')}
+              </Text>
               {Object.entries(object(state.itinerary)).map(([key, value]) => (
                 <Text key={key} selectable style={{ color: colors.secondary, lineHeight: 23 }}>
                   {key}: {typeof value === 'string' ? value : JSON.stringify(value)}
@@ -333,14 +355,17 @@ export function MiniappState({
                   {text(service.name)}
                 </Text>
                 <Text style={{ color: colors.secondary }}>
-                  {String(service.minutes ?? '—')} minutos · {exactMoney(service.priceCents)}
+                  {t('miniapps.serviceDurationAndPrice', {
+                    minutes: String(service.minutes ?? '—'),
+                    price: exactMoney(service.priceCents, state.currency),
+                  })}
                 </Text>
               </View>
             ))}
           </Surface>
           <Surface>
             <Text style={{ color: colors.text, fontSize: 21, fontWeight: '600' }}>
-              Seus agendamentos
+              {t('miniapps.yourBookings')}
             </Text>
             {list(state.bookings).length ? (
               list(state.bookings).map((booking) => (
@@ -357,7 +382,7 @@ export function MiniappState({
                   {booking.status !== 'cancelled' ? (
                     <NativeButton
                       secondary
-                      label="Pedir cancelamento"
+                      label={t('miniapps.requestCancellation')}
                       disabled={busy}
                       onPress={() => onCall('schedule_cancel', { bookingId: text(booking.id) })}
                     />
@@ -365,9 +390,7 @@ export function MiniappState({
                 </View>
               ))
             ) : (
-              <Text style={{ color: colors.secondary }}>
-                Nenhum agendamento nesta visualização.
-              </Text>
+              <Text style={{ color: colors.secondary }}>{t('miniapps.noBookingsInThisView')}</Text>
             )}
           </Surface>
         </>
@@ -376,19 +399,23 @@ export function MiniappState({
         <Surface>
           <Text style={{ color: colors.text, fontSize: 21, fontWeight: '600' }}>MapTap</Text>
           <Text style={{ color: colors.secondary }}>
-            Os lugares da partida são compartilhados pelo grupo. Registre seu palpite em “Cravar
-            palpite”.
+            {t('miniapps.theGroupSharesTheGameLocationsEnterYour')}
           </Text>
           {list(state.places).map((place, index) => (
             <Text key={index} style={{ color: colors.text }}>
-              Rodada {index + 1}: {text(place.name) || text(place.title)}
+              {t('miniapps.roundLocation', {
+                position: index + 1,
+                place: text(place.name) || text(place.title),
+              })}
             </Text>
           ))}
         </Surface>
       ) : null}
       {list(state.log).length ? (
         <Surface>
-          <Text style={{ color: colors.text, fontWeight: '600' }}>O que aconteceu</Text>
+          <Text style={{ color: colors.text, fontWeight: '600' }}>
+            {t('miniapps.whatHappened')}
+          </Text>
           {list(state.log)
             .slice(0, 8)
             .map((entry, index) => (

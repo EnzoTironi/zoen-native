@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { useSyncExternalStore } from 'react';
 import { Text, View } from 'react-native';
 import { NativeButton, Surface } from '../components/primitives';
@@ -27,15 +28,16 @@ function Controls({ coordinator, item }: { coordinator: SurfaceCoordinator; item
   return (
     <Surface>
       <View style={{ gap: 12 }}>
-        <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>No seu iPhone</Text>
+        <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>
+          {t('nativeSurfaces.onYourIPhone')}
+        </Text>
         <Text style={{ color: colors.secondary }}>
-          Escolha o que aparece fora do Zoen. O widget mantém o conteúdo oculto até você escolher
-          mostrá-lo.
+          {t('nativeSurfaces.chooseWhatAppearsOutsideZoenTheWidgetKeeps')}
         </Text>
         <NativeButton
           secondary
           disabled={state.busy}
-          label={selected ? 'Remover do widget' : 'Usar no widget'}
+          label={selected ? t('nativeSurfaces.removeFromWidget') : t('nativeSurfaces.useInWidget')}
           onPress={() =>
             run(
               selected
@@ -50,8 +52,8 @@ function Controls({ coordinator, item }: { coordinator: SurfaceCoordinator; item
             disabled={state.busy}
             label={
               preferences.widget?.showContent
-                ? 'Ocultar conteúdo do widget'
-                : 'Mostrar conteúdo do widget'
+                ? t('nativeSurfaces.hideWidgetContent')
+                : t('nativeSurfaces.showWidgetContent')
             }
             onPress={() =>
               run(coordinator.selectWidget(item.id, item.version, !preferences.widget?.showContent))
@@ -59,24 +61,30 @@ function Controls({ coordinator, item }: { coordinator: SurfaceCoordinator; item
           />
         ) : null}
         <Text style={{ color: colors.secondary }}>
-          Adicione “Miniapp do Zoen” pela galeria de widgets do iPhone. Esta seleção vale para os
-          widgets do Zoen neste aparelho.
+          {t('nativeSurfaces.addZoenMiniappFromTheIPhoneWidgetGallery')}
         </Text>
         <NativeButton
           secondary
           disabled={state.busy}
-          label={shortcut ? 'Remover dos atalhos' : 'Disponibilizar nos Atalhos e Siri'}
+          label={
+            shortcut
+              ? t('nativeSurfaces.removeFromShortcuts')
+              : t('nativeSurfaces.makeAvailableInShortcutsAndSiri')
+          }
           onPress={() => run(coordinator.selectShortcut(item.id, item.version, !shortcut))}
         />
         <Text style={{ color: colors.secondary }}>
-          Os atalhos selecionados incluem o nome deste miniapp e da conversa para encontrar e abrir
-          no Zoen.
+          {t('nativeSurfaces.selectedShortcutsIncludeTheMiniappAndChatNames')}
         </Text>
         {activity || canStart ? (
           <NativeButton
             secondary
             disabled={state.busy}
-            label={activity ? 'Encerrar contagem ao vivo' : 'Iniciar contagem ao vivo'}
+            label={
+              activity
+                ? t('nativeSurfaces.endLiveCountdown')
+                : t('nativeSurfaces.startLiveCountdown')
+            }
             onPress={() =>
               run(
                 activity

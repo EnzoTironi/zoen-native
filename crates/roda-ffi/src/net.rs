@@ -159,16 +159,19 @@ impl Net {
             }));
         }
         let engine = EngineLease::new(engine);
-        rt.spawn(run(
-            Ctx {
-                engine: engine.clone(),
-                listener,
-                status: status_tx,
-                lang,
-                #[cfg(test)]
-                maintenance_work: None,
-            },
-            cmd_rx,
+        rt.spawn(crate::i18n::scope(
+            lang,
+            run(
+                Ctx {
+                    engine: engine.clone(),
+                    listener,
+                    status: status_tx,
+                    lang,
+                    #[cfg(test)]
+                    maintenance_work: None,
+                },
+                cmd_rx,
+            ),
         ));
         Ok(Net {
             rt: Some(rt),
@@ -274,8 +277,7 @@ impl Ctx {
     }
 
     fn engine<T>(&self, work: impl FnOnce(&mut Engine) -> T) -> Option<T> {
-        crate::i18n::set(self.lang);
-        self.engine.with(work)
+        crate::i18n::with_lang(self.lang, || self.engine.with(work))
     }
 }
 
@@ -570,13 +572,16 @@ async fn session(
     engine!(|engine| engine.profiles_session_start(profiles));
     // Encrypted media moves over HTTP beside the socket, for as long as this session lives.
     let media_kick = Arc::new(tokio::sync::Notify::new());
-    let _media = AbortOnDrop(tokio::spawn(media_worker(
-        ctx.engine.clone(),
-        ctx.listener.clone(),
-        http_base(&relay_url),
-        relay.clone(),
-        key.clone(),
-        media_kick.clone(),
+    let _media = AbortOnDrop(tokio::spawn(crate::i18n::scope(
+        ctx.lang,
+        media_worker(
+            ctx.engine.clone(),
+            ctx.listener.clone(),
+            http_base(&relay_url),
+            relay.clone(),
+            key.clone(),
+            media_kick.clone(),
+        ),
     )));
     ctx.set(|s| {
         s.state = ConnState::Online;

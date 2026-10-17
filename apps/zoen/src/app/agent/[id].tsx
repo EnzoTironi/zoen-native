@@ -1,3 +1,4 @@
+import { t, formatLocale } from '../../i18n/index.ts';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, Share, Text, View } from 'react-native';
@@ -18,17 +19,21 @@ import { useTheme } from '../../theme';
 import { useDialogs } from '../../components/dialogs';
 
 const levels: { value: TrustLevelDto; title: string; detail: string }[] = [
-  { value: 'Listen', title: 'Ouvir', detail: 'Acompanha a conversa.' },
-  { value: 'Suggest', title: 'Sugerir', detail: 'Propõe mudanças e pede sua aprovação.' },
+  { value: 'Listen', title: t('agents.listen'), detail: t('agents.followsTheConversation') },
+  {
+    value: 'Suggest',
+    title: t('agents.suggest'),
+    detail: t('agents.proposesChangesAndAsksForYourApproval'),
+  },
   {
     value: 'Act',
-    title: 'Agir',
-    detail: 'Executa ações permitidas, com possibilidade de desfazer.',
+    title: t('agents.act'),
+    detail: t('agents.performsAllowedActionsWithAnOptionToUndo'),
   },
   {
     value: 'Autonomous',
-    title: 'Autônomo',
-    detail: 'Age dentro das permissões e do orçamento que você definiu.',
+    title: t('agents.autonomous'),
+    detail: t('agents.actsWithinThePermissionsAndBudgetYouSet'),
   },
 ];
 export default function Agent() {
@@ -64,15 +69,15 @@ export default function Agent() {
       activity.retry();
       previews.retry();
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : 'Não foi possível concluir.');
+      setFailure(reason instanceof Error ? reason.message : t('agents.thisCouldNotBeCompleted'));
     } finally {
       setBusy(false);
     }
   }
   if (!agent)
     return error ? (
-      <EmptyState title="Agente indisponível" detail={error}>
-        <NativeButton label="Tentar novamente" onPress={retry} />
+      <EmptyState title={t('agents.agentUnavailable')} detail={error}>
+        <NativeButton label={t('agents.tryAgain')} onPress={retry} />
       </EmptyState>
     ) : (
       <Loading />
@@ -103,15 +108,15 @@ export default function Agent() {
         ) : null}
         <Text style={{ color: colors.secondary }}>
           {agent.persona.is_mine
-            ? 'Você administra este agente.'
-            : `Administrado por ${agent.persona.owner_name ?? 'outra pessoa'}.`}
+            ? t('agents.youManageThisAgent')
+            : t('agents.managedBy', { name: agent.persona.owner_name ?? t('agents.someoneElse') })}
         </Text>
         <NativeButton
           secondary
           label={
             agent.owner_notes_pending
-              ? `Conversar · ${agent.owner_notes_pending} recado(s) aguardando`
-              : 'Conversar com agente'
+              ? t('agents.chatPendingNotes', { count: agent.owner_notes_pending })
+              : t('agents.chatWithAgent')
           }
           disabled={busy}
           onPress={() => {
@@ -134,7 +139,7 @@ export default function Agent() {
       ) : null}
       {agent.budget_limit_cents !== null ? (
         <Surface>
-          <Text style={{ color: colors.secondary }}>Orçamento</Text>
+          <Text style={{ color: colors.secondary }}>{t('agents.budget')}</Text>
           <Text
             selectable
             style={{
@@ -145,35 +150,39 @@ export default function Agent() {
             }}
           >
             {agent.budget_spent_cents === null
-              ? 'Consumo ainda indisponível'
-              : `${money(agent.budget_spent_cents)} de ${money(agent.budget_limit_cents)}`}
+              ? t('agents.usageIsNotYetAvailable')
+              : t('agents.budgetUsage', {
+                  spent: money(agent.budget_spent_cents),
+                  limit: money(agent.budget_limit_cents),
+                })}
           </Text>
           {agent.near_limit ? (
-            <Text style={{ color: colors.danger }}>Perto do limite de orçamento.</Text>
+            <Text style={{ color: colors.danger }}>{t('agents.approachingTheBudgetLimit')}</Text>
           ) : null}
           {agent.persona.is_mine ? (
             <>
               <Field
-                label="Adicionar orçamento (R$)"
+                label={t('agents.addBudgetBRL')}
                 value={extra}
                 onChangeText={setExtra}
                 keyboardType="decimal-pad"
-                placeholder="100,00"
+                placeholder={t('agents.budgetAmountPlaceholder')}
                 editable={!busy}
               />
               <NativeButton
                 secondary
                 disabled={busy || !extra.trim()}
-                label="Adicionar ao limite"
+                label={t('agents.increaseLimit')}
                 onPress={() => {
                   void act(async () => {
                     const cents = parseMoneyInput(extra);
-                    if (BigInt(cents) === 0n) throw new Error('Informe um valor maior que zero.');
+                    if (BigInt(cents) === 0n)
+                      throw new Error(t('agents.enterAnAmountGreaterThanZero'));
                     if (BigInt(cents) + BigInt(agent.budget_limit_cents!) > 9223372036854775807n)
-                      throw new Error('O novo orçamento ultrapassa o limite permitido.');
+                      throw new Error(t('agents.theNewBudgetExceedsTheAllowedLimit'));
                     await store.request({ op: 'raise_budget', agent_id: id, extra_cents: cents });
                     setExtra('');
-                    setMessage('Orçamento atualizado.');
+                    setMessage(t('agents.budgetUpdated'));
                   });
                 }}
               />
@@ -199,9 +208,13 @@ export default function Agent() {
                     levels.findIndex((item) => item.value === level.value) >
                       levels.findIndex((item) => item.value === space.level) &&
                     !(await dialogs.confirm({
-                      title: `Permitir ${level.title.toLowerCase()}?`,
-                      message: `${agent.persona.name} · ${space.space_title}\n\n${level.detail} Ações que sempre pedem confirmação continuarão exigindo sua decisão.`,
-                      confirmLabel: 'Atualizar autonomia',
+                      title: t('agents.allowAutonomy', { level: level.title }),
+                      message: t('agents.autonomyConfirmation', {
+                        name: agent.persona.name,
+                        chat: space.space_title,
+                        detail: level.detail,
+                      }),
+                      confirmLabel: t('agents.updateAutonomy'),
                     }))
                   )
                     return;
@@ -212,7 +225,7 @@ export default function Agent() {
                     level: level.value,
                   });
                   setPreviewSpace(space.space_id);
-                  setMessage('Autonomia atualizada nesta conversa.');
+                  setMessage(t('agents.autonomyUpdatedInThisChat'));
                 });
               }}
               style={{ flexDirection: 'row', gap: 12, paddingVertical: 9 }}
@@ -237,7 +250,7 @@ export default function Agent() {
           ))}
           <NativeButton
             secondary
-            label="Ver permissões na prática"
+            label={t('agents.seePermissionsInPractice')}
             disabled={busy}
             onPress={() => setPreviewSpace(space.space_id)}
           />
@@ -249,7 +262,7 @@ export default function Agent() {
             accessibilityRole="header"
             style={{ color: colors.text, fontSize: 19, fontWeight: '600' }}
           >
-            O que pode acontecer
+            {t('agents.whatCanHappen')}
           </Text>
           <Text style={{ color: colors.secondary }}>
             {agent.spaces.find((space) => space.space_id === selectedSpace)?.space_title}
@@ -271,12 +284,12 @@ export default function Agent() {
                 >
                   {preview.action} ·{' '}
                   {preview.kind === 'Act'
-                    ? 'Executa'
+                    ? t('agents.performs')
                     : preview.kind === 'ActWithUndo'
-                      ? 'Executa com desfazer'
+                      ? t('agents.performsWithUndo')
                       : preview.kind === 'Request'
-                        ? 'Pede aprovação'
-                        : 'Bloqueado'}
+                        ? t('agents.asksForApproval')
+                        : t('agents.blocked')}
                 </Text>
                 <Text style={{ color: colors.secondary, fontSize: 14 }}>{preview.example}</Text>
                 <Text selectable style={{ color: colors.secondary, fontSize: 13, lineHeight: 20 }}>
@@ -289,12 +302,12 @@ export default function Agent() {
       ) : null}
       <Surface>
         <Text style={{ color: colors.text, fontSize: 19, fontWeight: '600' }}>
-          Decisões permanentes
+          {t('agents.standingDecisions')}
         </Text>
         {standing.error ? <Text style={{ color: colors.danger }}>{standing.error}</Text> : null}
         {standing.data && !standing.data.some((grant) => grant.agent.id === id) ? (
           <Text style={{ color: colors.secondary }}>
-            Nenhuma decisão permanente para este agente.
+            {t('agents.noStandingDecisionsForThisAgent')}
           </Text>
         ) : null}
         {standing.data
@@ -302,12 +315,13 @@ export default function Agent() {
           .map((grant) => (
             <View key={grant.grant_id} style={{ gap: 10, paddingVertical: 10 }}>
               <Text style={{ color: colors.text }}>
-                {grant.allow ? 'Sempre permitir' : 'Sempre negar'} · {grant.action_label}
+                {grant.allow ? t('agents.alwaysAllow') : t('agents.alwaysDeny')} ·{' '}
+                {grant.action_label}
               </Text>
               <Text style={{ color: colors.secondary, fontSize: 13 }}>{grant.space_title}</Text>
               <NativeButton
                 secondary
-                label="Pedir de novo da próxima vez"
+                label={t('agents.askAgainNextTime')}
                 disabled={busy}
                 onPress={() => {
                   void act(() =>
@@ -320,7 +334,9 @@ export default function Agent() {
       </Surface>
       {agent.persona.is_mine && mode === 'account' ? (
         <Surface>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>Seu agente</Text>
+          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
+            {t('agents.yourAgent')}
+          </Text>
           {status.error ? (
             <Text selectable style={{ color: colors.danger }}>
               {status.error}
@@ -328,18 +344,18 @@ export default function Agent() {
           ) : null}
           <Text style={{ color: colors.secondary }}>
             {status.data === 'Active'
-              ? 'Ativo'
+              ? t('agents.active')
               : status.data === 'Paused'
-                ? 'Pausado'
+                ? t('agents.paused')
                 : status.data === 'Revoked'
-                  ? 'Revogado'
-                  : 'Consultando estado…'}
+                  ? t('agents.revoked')
+                  : t('agents.checkingStatus')}
           </Text>
           {status.data === 'Active' || status.data === 'Paused' ? (
             <NativeButton
               secondary
               disabled={busy}
-              label={status.data === 'Active' ? 'Pausar agente' : 'Retomar agente'}
+              label={status.data === 'Active' ? t('agents.pauseAgent') : t('agents.resumeAgent')}
               onPress={() => {
                 void act(() =>
                   store.request({
@@ -354,7 +370,7 @@ export default function Agent() {
           <NativeButton
             secondary
             disabled={busy}
-            label="Compartilhar agente"
+            label={t('agents.shareAgent')}
             onPress={() => {
               void act(async () => {
                 const invite = await store.driver.request({
@@ -363,7 +379,7 @@ export default function Agent() {
                 });
                 if (process.env.EXPO_OS === 'web') {
                   await Clipboard.setStringAsync(invite.link);
-                  setMessage('Link de convite copiado.');
+                  setMessage(t('agents.inviteLinkCopied'));
                 } else await Share.share({ message: invite.link });
               });
             }}
@@ -371,7 +387,7 @@ export default function Agent() {
           <NativeButton
             secondary
             disabled={busy}
-            label="Desativar link de convite"
+            label={t('agents.disableInviteLink')}
             onPress={() => {
               void act(() => store.request({ op: 'revoke_agent_invite', agent_id: id }));
             }}
@@ -380,13 +396,13 @@ export default function Agent() {
             <NativeButton
               secondary
               disabled={busy}
-              label="Revogar agente"
+              label={t('agents.revokeAgent')}
               onPress={() => {
                 void dialogs
                   .confirm({
-                    title: 'Revogar este agente?',
-                    message: 'Esta ação encerra o acesso do agente e desativa seu convite.',
-                    confirmLabel: 'Revogar agente',
+                    title: t('agents.revokeThisAgent'),
+                    message: t('agents.thisEndsTheAgentSAccessAndDisables'),
+                    confirmLabel: t('agents.revokeAgent'),
                     destructive: true,
                   })
                   .then((accepted) => {
@@ -405,17 +421,17 @@ export default function Agent() {
           accessibilityRole="header"
           style={{ color: colors.text, fontSize: 19, fontWeight: '600' }}
         >
-          Atividade recente
+          {t('agents.recentActivity')}
         </Text>
         <Text style={{ color: colors.secondary, fontSize: 12 }}>
-          Lida do histórico assinado das conversas.
+          {t('agents.readFromTheSignedChatHistory')}
         </Text>
         {activity.error ? (
           <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
             {activity.error}
           </Text>
         ) : activity.data?.length === 0 ? (
-          <Text style={{ color: colors.secondary }}>Nenhuma atividade ainda.</Text>
+          <Text style={{ color: colors.secondary }}>{t('agents.noActivityYet')}</Text>
         ) : (
           activity.data?.map((entry, index) => (
             <Pressable
@@ -430,7 +446,7 @@ export default function Agent() {
                 {entry.label}: {entry.detail}
               </Text>
               <Text style={{ color: colors.secondary, fontSize: 12 }}>
-                {entry.space_title} · {new Date(Number(entry.at_ms)).toLocaleString('pt-BR')}
+                {entry.space_title} · {new Date(Number(entry.at_ms)).toLocaleString(formatLocale)}
                 {entry.cost_cents === null ? '' : ` · ${money(entry.cost_cents)}`}
               </Text>
             </Pressable>

@@ -266,6 +266,7 @@ fn secret32(b: Option<Vec<u8>>) -> Option<[u8; 32]> {
 impl RodaEngine {
     /// Status is derived from the canonical device database; no UI-local completion flag.
     pub fn history_status(&self) -> Result<HistoryStatusDto, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         let e = self.lock();
         let manifest = e
             .store
@@ -300,6 +301,7 @@ impl RodaEngine {
     }
 
     pub fn cancel_history_receive(&self) {
+        let _language = crate::i18n::enter(self.lang);
         self.history_receive.cancel();
     }
 }
@@ -566,138 +568,142 @@ impl RodaEngine {
         timeout_ms: u64,
         listener: Option<Arc<dyn TransferListener>>,
     ) -> Result<HistoryDto, CoreError> {
-        let mut receive = self.history_receive.begin(timeout_ms)?;
-        {
-            let e = self.lock();
-            if e.store.meta(META_INITIAL_HISTORY_PENDING)?.is_none() {
-                if let Some(receipt) = e.store.meta(META_HISTORY_COMPLETE)? {
-                    return serde_json::from_str(&receipt)
-                        .map_err(|_| invalid("Invalid history receipt."));
+        crate::i18n::scope(self.lang, async {
+            let mut receive = self.history_receive.begin(timeout_ms)?;
+            {
+                let e = self.lock();
+                if e.store.meta(META_INITIAL_HISTORY_PENDING)?.is_none() {
+                    if let Some(receipt) = e.store.meta(META_HISTORY_COMPLETE)? {
+                        return serde_json::from_str(&receipt)
+                            .map_err(|_| invalid("Invalid history receipt."));
+                    }
+                }
+                if e.store.meta(META_PRIMARY)?.is_none() {
+                    return Err(invalid("This device was not linked."));
+                }
+                // Legacy manual retries also become resumable before fetching the one-time box.
+                e.store.set_meta(META_INITIAL_HISTORY_PENDING, "1")?;
+            }
+            let manifest = self.history_manifest(&mut receive).await?;
+            let key =
+                secret32(hex::decode(&manifest.key).ok()).ok_or_else(|| invalid("history"))?;
+            let base = self.relay_base()?;
+            let client = http()?;
+            let total = manifest.chunks.len();
+            let stop_after: Option<usize> = std::env::var("ZOEN_TRANSFER_STOP_AFTER")
+                .ok()
+                .and_then(|v| v.parse().ok());
+            let mut resumed = 0;
+            let mut fetched = 0;
+            let b64 = base64::engine::general_purpose::STANDARD;
+            for (n, sha) in manifest.chunks.iter().enumerate() {
+                receive.check()?;
+                if let Some(retained) = self.lock().store.meta(&chunk_meta(n))? {
+                    if b64.decode(retained).ok().is_some_and(|bytes| {
+                        bytes.len() <= MAX_HISTORY_CHUNK && roda_log::sha256_hex(&bytes) == *sha
+                    }) {
+                        resumed += 1;
+                        continue;
+                    }
+                    return Err(invalid("A retained history chunk does not match."));
+                }
+                if stop_after.is_some_and(|s| fetched >= s) {
+                    return Err(invalid(format!("history stopped at {}/{total}", n)));
+                }
+                let mut r = receive
+                    .wait(async {
+                        client
+                            .get(format!("{base}/v1/transfer/{}/{n}", manifest.transfer))
+                            .send()
+                            .await
+                            .map_err(|e| invalid(e.to_string()))
+                    })
+                    .await?;
+                if !r.status().is_success() {
+                    return Err(invalid(format!("history download: {}", r.status())));
+                }
+                if r.content_length()
+                    .is_some_and(|length| length > MAX_HISTORY_CHUNK as u64)
+                {
+                    return Err(invalid("A history chunk is too large."));
+                }
+                let mut bytes = Vec::new();
+                while let Some(part) = receive
+                    .wait(async { r.chunk().await.map_err(|e| invalid(e.to_string())) })
+                    .await?
+                {
+                    if bytes.len().saturating_add(part.len()) > MAX_HISTORY_CHUNK {
+                        return Err(invalid("A history chunk is too large."));
+                    }
+                    bytes.extend_from_slice(&part);
+                }
+                if roda_log::sha256_hex(&bytes) != *sha {
+                    return Err(invalid("a history chunk doesn't match"));
+                }
+                receive.check()?;
+                self.lock()
+                    .store
+                    .set_meta(&chunk_meta(n), &b64.encode(&bytes))?;
+                fetched += 1;
+                if let Some(l) = &listener {
+                    l.on_progress((n + 1) as u32, total as u32);
                 }
             }
-            if e.store.meta(META_PRIMARY)?.is_none() {
-                return Err(invalid("This device was not linked."));
-            }
-            // Legacy manual retries also become resumable before fetching the one-time box.
-            e.store.set_meta(META_INITIAL_HISTORY_PENDING, "1")?;
-        }
-        let manifest = self.history_manifest(&mut receive).await?;
-        let key = secret32(hex::decode(&manifest.key).ok()).ok_or_else(|| invalid("history"))?;
-        let base = self.relay_base()?;
-        let client = http()?;
-        let total = manifest.chunks.len();
-        let stop_after: Option<usize> = std::env::var("ZOEN_TRANSFER_STOP_AFTER")
-            .ok()
-            .and_then(|v| v.parse().ok());
-        let mut resumed = 0;
-        let mut fetched = 0;
-        let b64 = base64::engine::general_purpose::STANDARD;
-        for (n, sha) in manifest.chunks.iter().enumerate() {
-            receive.check()?;
-            if let Some(retained) = self.lock().store.meta(&chunk_meta(n))? {
-                if b64.decode(retained).ok().is_some_and(|bytes| {
-                    bytes.len() <= MAX_HISTORY_CHUNK && roda_log::sha256_hex(&bytes) == *sha
-                }) {
-                    resumed += 1;
-                    continue;
+            let mut plain = Vec::new();
+            for n in 0..total {
+                receive.check()?;
+                let sealed = self
+                    .lock()
+                    .store
+                    .meta(&chunk_meta(n))?
+                    .and_then(|s| b64.decode(s).ok())
+                    .ok_or_else(|| invalid("history chunk"))?;
+                if sealed.len() > MAX_HISTORY_CHUNK
+                    || roda_log::sha256_hex(&sealed) != manifest.chunks[n]
+                {
+                    return Err(invalid("A retained history chunk does not match."));
                 }
-                return Err(invalid("A retained history chunk does not match."));
+                let opened = link::open_chunk(&key, n as u32, &sealed)
+                    .ok_or_else(|| invalid("A history chunk does not open."))?;
+                if plain.len().saturating_add(opened.len()) > MAX_HISTORY_BYTES {
+                    return Err(invalid("The history bundle is too large."));
+                }
+                plain.extend(opened);
             }
-            if stop_after.is_some_and(|s| fetched >= s) {
-                return Err(invalid(format!("history stopped at {}/{total}", n)));
+            let bundle: link::Bundle =
+                serde_json::from_slice(&plain).map_err(|e| invalid(e.to_string()))?;
+            if bundle.events.len() > MAX_HISTORY_EVENTS {
+                return Err(invalid("The history bundle has too many events."));
             }
-            let mut r = receive
+            // Receiving the box does not mean the authenticated relay chain is already here.
+            while !self.connection().synced {
+                receive
+                    .wait(async {
+                        tokio::time::sleep(Duration::from_millis(250)).await;
+                        Ok(())
+                    })
+                    .await?;
+            }
+            let receipt =
+                self.commit_initial_history(bundle.events, total as u32, resumed, &receive)?;
+            // Local completion was committed before this best-effort relay cleanup.
+            let (device, ts, sig) = self
+                .signed_headers(|ts| transfer_message("delete", &manifest.transfer, "", "", ts))?;
+            let _ = receive
                 .wait(async {
                     client
-                        .get(format!("{base}/v1/transfer/{}/{n}", manifest.transfer))
+                        .delete(format!("{base}/v1/transfer/{}", manifest.transfer))
+                        .header("x-zoen-device", device)
+                        .header("x-zoen-ts", ts)
+                        .header("x-zoen-sig", sig)
                         .send()
                         .await
                         .map_err(|e| invalid(e.to_string()))
                 })
-                .await?;
-            if !r.status().is_success() {
-                return Err(invalid(format!("history download: {}", r.status())));
-            }
-            if r.content_length()
-                .is_some_and(|length| length > MAX_HISTORY_CHUNK as u64)
-            {
-                return Err(invalid("A history chunk is too large."));
-            }
-            let mut bytes = Vec::new();
-            while let Some(part) = receive
-                .wait(async { r.chunk().await.map_err(|e| invalid(e.to_string())) })
-                .await?
-            {
-                if bytes.len().saturating_add(part.len()) > MAX_HISTORY_CHUNK {
-                    return Err(invalid("A history chunk is too large."));
-                }
-                bytes.extend_from_slice(&part);
-            }
-            if roda_log::sha256_hex(&bytes) != *sha {
-                return Err(invalid("a history chunk doesn't match"));
-            }
-            receive.check()?;
-            self.lock()
-                .store
-                .set_meta(&chunk_meta(n), &b64.encode(&bytes))?;
-            fetched += 1;
-            if let Some(l) = &listener {
-                l.on_progress((n + 1) as u32, total as u32);
-            }
-        }
-        let mut plain = Vec::new();
-        for n in 0..total {
-            receive.check()?;
-            let sealed = self
-                .lock()
-                .store
-                .meta(&chunk_meta(n))?
-                .and_then(|s| b64.decode(s).ok())
-                .ok_or_else(|| invalid("history chunk"))?;
-            if sealed.len() > MAX_HISTORY_CHUNK
-                || roda_log::sha256_hex(&sealed) != manifest.chunks[n]
-            {
-                return Err(invalid("A retained history chunk does not match."));
-            }
-            let opened = link::open_chunk(&key, n as u32, &sealed)
-                .ok_or_else(|| invalid("A history chunk does not open."))?;
-            if plain.len().saturating_add(opened.len()) > MAX_HISTORY_BYTES {
-                return Err(invalid("The history bundle is too large."));
-            }
-            plain.extend(opened);
-        }
-        let bundle: link::Bundle =
-            serde_json::from_slice(&plain).map_err(|e| invalid(e.to_string()))?;
-        if bundle.events.len() > MAX_HISTORY_EVENTS {
-            return Err(invalid("The history bundle has too many events."));
-        }
-        // Receiving the box does not mean the authenticated relay chain is already here.
-        while !self.connection().synced {
-            receive
-                .wait(async {
-                    tokio::time::sleep(Duration::from_millis(250)).await;
-                    Ok(())
-                })
-                .await?;
-        }
-        let receipt =
-            self.commit_initial_history(bundle.events, total as u32, resumed, &receive)?;
-        // Local completion was committed before this best-effort relay cleanup.
-        let (device, ts, sig) =
-            self.signed_headers(|ts| transfer_message("delete", &manifest.transfer, "", "", ts))?;
-        let _ = receive
-            .wait(async {
-                client
-                    .delete(format!("{base}/v1/transfer/{}", manifest.transfer))
-                    .header("x-zoen-device", device)
-                    .header("x-zoen-ts", ts)
-                    .header("x-zoen-sig", sig)
-                    .send()
-                    .await
-                    .map_err(|e| invalid(e.to_string()))
-            })
-            .await;
-        Ok(receipt)
+                .await;
+            Ok(receipt)
+        })
+        .await
     }
 
     /// New device: asks the device that linked it for an older page of `space_id`.

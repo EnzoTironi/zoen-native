@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 export function photoArguments(
   value: unknown,
   item: string,
@@ -6,16 +7,14 @@ export function photoArguments(
 ): { value: unknown; tokens: string[] } {
   const tokens = new Set<string>();
   function visit(input: unknown, depth: number): unknown {
-    if (depth > 12) throw new Error('Os dados desta ação são complexos demais.');
+    if (depth > 12) throw new Error(t('miniapps.theDataForThisActionIsTooComplex'));
     if (isLosslessNumber(input)) return input;
     if (typeof input === 'string') {
       if (/^data:image/i.test(input))
-        throw new Error(
-          'Escolha as fotos pelo seletor e confirme antes de compartilhar com o grupo.',
-        );
+        throw new Error(t('miniapps.choosePhotosUsingThePickerAndConfirmBefore'));
       if (input.startsWith('zoen-photo:')) {
         const data = resolve(input, item);
-        if (!data) throw new Error('Esta foto não pertence a este miniapp ou já foi descartada.');
+        if (!data) throw new Error(t('miniapps.thisPhotoDoesNotBelongToThisMiniapp'));
         tokens.add(input);
         return replace ? data : input;
       }

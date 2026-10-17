@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { forwardRef, useImperativeHandle, useRef } from 'react';
 import { View } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -63,7 +64,7 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         }}
         onError={(event) => onError(event.nativeEvent.description)}
         onContentProcessDidTerminate={() =>
-          onError('A interface foi encerrada pelo sistema. Atualize para abrir novamente.')
+          onError(t('miniapps.theSystemClosedThisInterfaceRefreshToOpen'))
         }
         style={{ backgroundColor: 'transparent' }}
       />

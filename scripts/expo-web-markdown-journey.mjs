@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 export async function acceptMarkdownJourney({
   page,
+  ui,
   origin,
   space,
   tag,
@@ -27,39 +28,39 @@ export async function acceptMarkdownJourney({
     waitUntil: "domcontentloaded",
   });
   const choosing = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Importar arquivo Markdown", exact: true }).click();
+  await page.getByRole("button", { name: ui.importMarkdown, exact: true }).click();
   await (await choosing).setFiles(source);
   await page.getByText(filename, { exact: true }).waitFor();
-  await page.getByRole("button", { name: "Importar e compartilhar página", exact: true }).click();
+  await page.getByRole("button", { name: ui.importAndSharePage, exact: true }).click();
   await page.waitForURL((url) => /^\/page\/[^/]+$/.test(url.pathname), { timeout: 90_000 });
   const pageUrl = page.url();
   const itemId = decodeURIComponent(new URL(pageUrl).pathname.split("/").at(-1));
   assert.ok(itemId, "Markdown import must open its canonical item route");
-  const block = (text) => page.getByRole("button", { name: `Editar bloco: ${text}`, exact: true });
+  const block = (text) => page.getByRole("button", { name: ui.editBlock(text), exact: true });
   await block(original).waitFor({ timeout: 90_000 });
   assert.equal(
     await page.getByRole("checkbox", { name: task, exact: true }).getAttribute("aria-checked"),
     "false",
   );
-  await page.getByText("Compartilhada na conversa", { exact: true }).waitFor({ timeout: 90_000 });
+  await page.getByText(ui.publishedPage, { exact: true }).waitFor({ timeout: 90_000 });
   step("markdown-file-chooser-imports-encrypted-page", { itemId });
 
   const taskCheckbox = page.getByRole("checkbox", { name: task, exact: true });
   await taskCheckbox.click();
   await page.getByRole("checkbox", { name: task, exact: true, checked: true }).waitFor();
-  await page.getByText("Rascunho salvo neste aparelho", { exact: true }).waitFor();
+  await page.getByText(ui.savedDraft, { exact: true }).waitFor();
   const checkedReload = await page.reload({ waitUntil: "domcontentloaded" });
   assert.equal(checkedReload?.status(), 200);
   await page.getByRole("checkbox", { name: task, exact: true, checked: true }).waitFor();
-  await page.getByText("Rascunho salvo neste aparelho", { exact: true }).waitFor();
+  await page.getByText(ui.savedDraft, { exact: true }).waitFor();
   await screenshot("markdown-checked-draft-after-cold-reload.png");
   await taskCheckbox.click();
   await page.getByRole("checkbox", { name: task, exact: true, checked: false }).waitFor();
   assert.equal(await taskCheckbox.getAttribute("aria-checked"), "false");
   // Returning to the published content clears the draft difference by design.
-  await page.getByText("Compartilhada na conversa", { exact: true }).waitFor();
+  await page.getByText(ui.publishedPage, { exact: true }).waitFor();
   assert.equal(
-    await page.getByRole("button", { name: "Compartilhar alterações", exact: true }).isDisabled(),
+    await page.getByRole("button", { name: ui.sharePageChanges, exact: true }).isDisabled(),
     true,
   );
   step("markdown-checkbox-interaction-updates-visible-state-and-draft", {
@@ -69,25 +70,23 @@ export async function acceptMarkdownJourney({
   });
 
   await block(original).click();
-  await page
-    .getByRole("textbox", { name: "Conteúdo do bloco em Markdown", exact: true })
-    .fill(edited);
-  await page.getByRole("button", { name: "Guardar rascunho", exact: true }).click();
+  await page.getByRole("textbox", { name: ui.blockContent, exact: true }).fill(edited);
+  await page.getByRole("button", { name: ui.saveDraft, exact: true }).click();
   await page.waitForURL((url) => url.pathname === new URL(pageUrl).pathname);
   await block(edited).waitFor();
-  await page.getByText("Rascunho salvo neste aparelho", { exact: true }).waitFor();
+  await page.getByText(ui.savedDraft, { exact: true }).waitFor();
   const draftReload = await page.reload({ waitUntil: "domcontentloaded" });
   assert.equal(draftReload?.status(), 200);
   await block(edited).waitFor({ timeout: 90_000 });
-  await page.getByText("Rascunho salvo neste aparelho", { exact: true }).waitFor();
+  await page.getByText(ui.savedDraft, { exact: true }).waitFor();
   await screenshot("06-markdown-draft-after-cold-reload.png");
   step("markdown-block-edit-draft-survives-cold-route-reload");
 
-  await page.getByRole("button", { name: "Compartilhar alterações", exact: true }).click();
-  await page.getByText("Compartilhada na conversa", { exact: true }).waitFor({ timeout: 90_000 });
+  await page.getByRole("button", { name: ui.sharePageChanges, exact: true }).click();
+  await page.getByText(ui.publishedPage, { exact: true }).waitFor({ timeout: 90_000 });
   await page.reload({ waitUntil: "domcontentloaded" });
   await block(edited).waitFor({ timeout: 90_000 });
-  await page.getByText("Compartilhada na conversa", { exact: true }).waitFor({ timeout: 90_000 });
+  await page.getByText(ui.publishedPage, { exact: true }).waitFor({ timeout: 90_000 });
   assert.equal(
     await page.getByRole("alert").count(),
     0,
@@ -95,7 +94,7 @@ export async function acceptMarkdownJourney({
   );
 
   const downloading = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Exportar Markdown", exact: true }).click();
+  await page.getByRole("button", { name: ui.exportMarkdown, exact: true }).click();
   const download = await downloading;
   assert.equal(download.suggestedFilename(), `${title}.md`);
   const browserPath = join(privateRoot, "browser-export.md");

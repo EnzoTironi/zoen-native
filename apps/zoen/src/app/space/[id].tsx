@@ -1,3 +1,4 @@
+import { t } from '../../i18n/index.ts';
 import { IntegrityWarning } from '../../integrity/integrity-warning';
 import { ProfileAvatar } from '../../profile/profile-avatar';
 import { useState } from 'react';
@@ -20,8 +21,8 @@ export default function Space() {
   if (!chat)
     return (
       <EmptyState
-        title="Conversa indisponível"
-        detail="Esta conversa não está mais neste aparelho."
+        title={t('chat.chatUnavailable')}
+        detail={t('chat.thisChatIsNoLongerOnThisDevice')}
       />
     );
   const selected = chat;
@@ -32,7 +33,7 @@ export default function Space() {
     try {
       await action();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Não foi possível concluir.');
+      setError(failure instanceof Error ? failure.message : t('chat.thisCouldNotBeCompleted'));
     } finally {
       setBusy(false);
     }
@@ -54,7 +55,7 @@ export default function Space() {
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{ padding: 24, gap: 22 }}
     >
-      <Stack.Screen options={{ title: 'Detalhes' }} />
+      <Stack.Screen options={{ title: t('chat.details') }} />
       <View style={{ alignItems: 'center', gap: 16, paddingVertical: 16 }}>
         <Avatar
           name={chat.title}
@@ -96,10 +97,10 @@ export default function Space() {
           />
           <Text style={{ color: colors.secondary, fontSize: 13 }}>
             {chat.privacy === 'EndToEnd'
-              ? 'Criptografia de ponta a ponta'
+              ? t('chat.endToEndEncryption')
               : chat.privacy === 'Closed'
-                ? 'Conversa fechada · legível pelo servidor'
-                : 'Conversa pública'}
+                ? t('chat.closedChatReadableByTheServer')
+                : t('chat.publicChat')}
           </Text>
         </View>
       </View>
@@ -113,19 +114,19 @@ export default function Space() {
         <Host matchContents colorScheme={scheme} seedColor={colors.accent}>
           <Column spacing={18}>
             <Switch
-              label="Fixar conversa"
+              label={t('chat.pinChat')}
               value={chat.pinned}
               onValueChange={(value) => preference('pinned', value)}
               disabled={busy}
             />
             <Switch
-              label="Silenciar notificações"
+              label={t('chat.muteNotifications')}
               value={chat.muted}
               onValueChange={(value) => preference('muted', value)}
               disabled={busy}
             />
             <Switch
-              label="Arquivar conversa"
+              label={t('chat.archiveChat')}
               value={chat.archived}
               onValueChange={(value) => preference('archived', value)}
               disabled={busy}
@@ -136,30 +137,30 @@ export default function Space() {
       <Surface>
         <NativeButton
           secondary
-          label="Buscar nesta conversa"
+          label={t('chat.searchThisChat2')}
           onPress={() => router.push({ pathname: '/search', params: { space: id } })}
         />
         <NativeButton
           secondary
-          label="Verificar integridade do histórico"
+          label={t('chat.checkHistoryIntegrity')}
           onPress={() => router.push({ pathname: '/integrity/[id]', params: { id } })}
         />
         <NativeButton
           secondary
-          label="Criar uma página"
+          label={t('chat.createAPage')}
           onPress={() => router.push({ pathname: '/new-page', params: { space: id } })}
         />
       </Surface>
       {chat.members.length ? (
         <Surface>
           <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
-            {chat.members.length} participantes
+            {t('chat.participantCount', { count: chat.members.length })}
           </Text>
           {chat.members.map((person) => (
             <Pressable
               key={person.id}
               accessibilityRole="button"
-              accessibilityLabel={`Ver ${person.name}`}
+              accessibilityLabel={t('chat.viewPerson', { name: person.name })}
               onPress={() => router.push({ pathname: '/person/[id]', params: { id: person.id } })}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 13, paddingVertical: 9 }}
             >
@@ -172,15 +173,14 @@ export default function Space() {
               />
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={{ color: colors.text, fontSize: 16, fontWeight: '500' }}>
-                  {person.name}
-                  {person.is_me ? ' (você)' : ''}
+                  {person.is_me ? t('chat.personIsYou', { name: person.name }) : person.name}
                 </Text>
                 <Text style={{ color: colors.secondary, fontSize: 12 }}>
                   {person.handle
                     ? `@${person.handle}`
                     : person.kind === 'Agent'
-                      ? 'Agente'
-                      : 'Pessoa'}
+                      ? t('chat.agentLabel')
+                      : t('chat.person')}
                 </Text>
               </View>
             </Pressable>
@@ -189,7 +189,7 @@ export default function Space() {
       ) : null}
       {chat.kind !== 'Direct' ? (
         <NativeButton
-          label="Convidar alguém"
+          label={t('chat.inviteSomeone')}
           disabled={busy}
           onPress={() => {
             void perform(async () => {
@@ -202,13 +202,13 @@ export default function Space() {
       {chat.kind !== 'Direct' ? (
         <NativeButton
           secondary
-          label="Sair da conversa"
+          label={t('chat.leaveChat')}
           disabled={busy}
           onPress={() => {
             void confirm({
-              title: `Sair de ${chat.title}?`,
-              message: 'Você precisará de um novo convite para voltar.',
-              confirmLabel: 'Sair',
+              title: t('chat.leaveNamedChat', { title: chat.title }),
+              message: t('chat.youWillNeedANewInviteToReturn'),
+              confirmLabel: t('chat.leave'),
               destructive: true,
             }).then((accepted) => {
               if (accepted)
@@ -221,7 +221,7 @@ export default function Space() {
         />
       ) : null}
       <Text selectable style={{ color: colors.tertiary, fontSize: 11, textAlign: 'center' }}>
-        {chat.event_count} eventos no histórico
+        {t('chat.historyEventTotal', { total: chat.event_count })}
       </Text>
     </ScrollView>
   );

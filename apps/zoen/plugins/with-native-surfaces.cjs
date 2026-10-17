@@ -24,8 +24,8 @@ function withNativeSurfaces(config) {
         widgets: [
           {
             name: 'ZoenMiniapp',
-            displayName: 'Miniapp do Zoen',
-            description: 'Uma prévia escolhida por você. Conteúdo oculto por padrão.',
+            displayName: 'Zoen miniapp',
+            description: 'A preview you choose. Content hidden by default.',
             ios: {
               supportedFamilies: [
                 'systemSmall',
