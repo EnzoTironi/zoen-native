@@ -33,10 +33,20 @@ final class NativeIconMotionCaptureTests: XCTestCase {
             var pixels = [UInt8](repeating: 0, count: crop.width * crop.height * 4)
             let context = try XCTUnwrap(CGContext(data: &pixels, width: crop.width, height: crop.height, bitsPerComponent: 8, bytesPerRow: crop.width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
             context.draw(crop, in: CGRect(x: 0, y: 0, width: crop.width, height: crop.height))
-            return stride(from: 0, to: pixels.count, by: 4).filter {
-                white ? pixels[$0] > 220 && pixels[$0 + 1] > 220 && pixels[$0 + 2] > 220
-                      : pixels[$0] < 160 && pixels[$0 + 1] < 160 && pixels[$0 + 2] < 160
-            }.count
+            var count = 0
+            for offset in stride(from: 0, to: pixels.count, by: 4) {
+                let red: UInt8 = pixels[offset]
+                let green: UInt8 = pixels[offset + 1]
+                let blue: UInt8 = pixels[offset + 2]
+                let matches: Bool
+                if white {
+                    matches = red > 220 && green > 220 && blue > 220
+                } else {
+                    matches = red < 160 && green < 160 && blue < 160
+                }
+                if matches { count += 1 }
+            }
+            return count
         }
         let white = try ink(in: button.frame, white: true)
         let search = app.buttons["Search"].firstMatch
