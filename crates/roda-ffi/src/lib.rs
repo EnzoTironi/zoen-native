@@ -9,11 +9,11 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-mod parity_fixture;
 mod agent_notes;
 mod api;
 mod backup;
 mod backup_api;
+mod parity_fixture;
 pub use backup_api::BackupStatusDto;
 mod files;
 mod growth;

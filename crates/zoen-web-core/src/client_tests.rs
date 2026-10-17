@@ -499,31 +499,85 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
 
 #[test]
 fn real_item_cards_follow_versions_reverts_and_authorized_deletion() {
-    use roda_types::{ItemContent, ItemKind, PlanDoc, PlanSection, PlanLine};
+    use roda_types::{ItemContent, ItemKind, PlanDoc, PlanLine, PlanSection};
     let (mut client, author, other, mut log, _) = web_fixture();
-    let content = ItemContent::Plan(PlanDoc { title: "Trip".into(), summary: "Coast".into(), budget_cents: Some(5000), sections: vec![PlanSection { title: "Day".into(), lines: vec![PlanLine { id: "one".into(), text: "Lunch".into(), cost_cents: 1200, done: true }] }] });
-    clear(&mut log, &author, EventBody::ItemCreated { item: "plan_real".into(), kind: ItemKind::Plan, content: content.clone(), origin: "human".into() }, 3);
+    let content = ItemContent::Plan(PlanDoc {
+        title: "Trip".into(),
+        summary: "Coast".into(),
+        budget_cents: Some(5000),
+        sections: vec![PlanSection {
+            title: "Day".into(),
+            lines: vec![PlanLine {
+                id: "one".into(),
+                text: "Lunch".into(),
+                cost_cents: 1200,
+                done: true,
+            }],
+        }],
+    });
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: "plan_real".into(),
+            kind: ItemKind::Plan,
+            content: content.clone(),
+            origin: "human".into(),
+        },
+        3,
+    );
     let target = log.events().last().unwrap().hash.clone();
-    clear(&mut log, &author, EventBody::ItemVersioned { item: "plan_real".into(), content: ItemContent::Text { text: "Changed".into() }, note: "edit".into() }, 4);
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemVersioned {
+            item: "plan_real".into(),
+            content: ItemContent::Text {
+                text: "Changed".into(),
+            },
+            note: "edit".into(),
+        },
+        4,
+    );
     client.logs.insert(log.space().into(), log.clone());
     let edited = client.conversations();
     let edited = edited[0].messages[1].card.as_ref().unwrap();
     assert_eq!((edited.version, edited.summary.as_str()), (2, "Changed"));
-    clear(&mut log, &author, EventBody::ItemReverted { item: "plan_real".into(), to_version: 1, note: "undo".into() }, 5);
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemReverted {
+            item: "plan_real".into(),
+            to_version: 1,
+            note: "undo".into(),
+        },
+        5,
+    );
     client.logs.insert(log.space().into(), log.clone());
     let views = client.conversations();
     assert!(views[0].messages[0].card.is_none());
     let card = views[0].messages[1].card.as_ref().unwrap();
-    assert_eq!((card.title.as_str(), card.version, card.total_cents, card.line_count, card.done_count), ("Trip", 3, Some(1200), 1, 1));
+    assert_eq!(
+        (
+            card.title.as_str(),
+            card.version,
+            card.total_cents,
+            card.line_count,
+            card.done_count
+        ),
+        ("Trip", 3, Some(1200), 1, 1)
+    );
     let json = serde_json::to_value(card).unwrap();
-    assert_eq!(json["itemId"], "plan_real"); assert_eq!(json["budgetCents"], 5000);
+    assert_eq!(json["itemId"], "plan_real");
+    assert_eq!(json["budgetCents"], 5000);
     annotate(&mut log, &other, &target, roda_types::Annotation::Delete);
     client.logs.insert(log.space().into(), log.clone());
     assert!(client.conversations()[0].messages[1].card.is_some());
     annotate(&mut log, &author, &target, roda_types::Annotation::Delete);
     client.logs.insert(log.space().into(), log);
     let views = client.conversations();
-    assert!(views[0].messages[1].deleted); assert!(views[0].messages[1].card.is_none());
+    assert!(views[0].messages[1].deleted);
+    assert!(views[0].messages[1].card.is_none());
 }
 
 fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
@@ -821,17 +875,25 @@ fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect() {
 fn counterpart_projects_only_synced_public_profile() {
     let roster = BTreeMap::from([("me".into(), Role::Owner), ("other".into(), Role::Member)]);
     let profile = Identity {
-        id: "other".into(), kind: roda_types::IdentityKind::Agent,
-        name: "Ágata Helper Three".into(), handle: "agata".into(),
-        tint_hex: "#123456".into(), glyph: Some("sparkles".into()),
-        owner: Some("me".into()), bio: "Not exported".into(), owner_proof: None,
+        id: "other".into(),
+        kind: roda_types::IdentityKind::Agent,
+        name: "Ágata Helper Three".into(),
+        handle: "agata".into(),
+        tint_hex: "#123456".into(),
+        glyph: Some("sparkles".into()),
+        owner: Some("me".into()),
+        bio: "Not exported".into(),
+        owner_proof: None,
     };
     let profiles = BTreeMap::from([("other".into(), profile)]);
     let view = project_counterpart(SpaceKind::Direct, "me", &roster, &profiles).unwrap();
-    assert_eq!(serde_json::to_value(view).unwrap(), serde_json::json!({
-        "id":"other", "kind":"agent", "name":"Ágata Helper Three", "handle":"agata",
-        "tintHex":"#123456", "glyph":"sparkles", "initials":"ÁH"
-    }));
+    assert_eq!(
+        serde_json::to_value(view).unwrap(),
+        serde_json::json!({
+            "id":"other", "kind":"agent", "name":"Ágata Helper Three", "handle":"agata",
+            "tintHex":"#123456", "glyph":"sparkles", "initials":"ÁH"
+        })
+    );
     assert!(project_counterpart(SpaceKind::Group, "me", &roster, &profiles).is_none());
     assert!(project_counterpart(SpaceKind::Direct, "me", &roster, &BTreeMap::new()).is_none());
     let mut mismatched = profiles.clone();
@@ -842,12 +904,24 @@ fn counterpart_projects_only_synced_public_profile() {
 #[test]
 fn counterpart_preserves_missing_metadata_without_defaults() {
     let roster = BTreeMap::from([("me".into(), Role::Owner), ("other".into(), Role::Member)]);
-    let profiles = BTreeMap::from([("other".into(), Identity {
-        id: "other".into(), kind: roda_types::IdentityKind::Person,
-        name: String::new(), handle: "actual_handle".into(), tint_hex: String::new(),
-        glyph: None, owner: None, bio: String::new(), owner_proof: None,
-    })]);
-    let value = serde_json::to_value(project_counterpart(SpaceKind::Direct, "me", &roster, &profiles).unwrap()).unwrap();
+    let profiles = BTreeMap::from([(
+        "other".into(),
+        Identity {
+            id: "other".into(),
+            kind: roda_types::IdentityKind::Person,
+            name: String::new(),
+            handle: "actual_handle".into(),
+            tint_hex: String::new(),
+            glyph: None,
+            owner: None,
+            bio: String::new(),
+            owner_proof: None,
+        },
+    )]);
+    let value = serde_json::to_value(
+        project_counterpart(SpaceKind::Direct, "me", &roster, &profiles).unwrap(),
+    )
+    .unwrap();
     assert_eq!(value["kind"], "person");
     assert_eq!(value["tintHex"], "");
     assert_eq!(value["initials"], "");
@@ -859,19 +933,70 @@ fn counterpart_preserves_missing_metadata_without_defaults() {
 fn authorized_app_snapshots_use_shared_native_clock_locale_and_versions() {
     use roda_types::{AppDoc, ItemContent, ItemKind};
     let (mut client, author, _, mut log, _) = web_fixture();
-    let content = |name: &str| ItemContent::App(AppDoc { app: "pet".into(), resource_uri: "ui://roda/pet".into(), title: name.into(), state_json: serde_json::json!({"name":name,"updated":0,"fullness":90,"energy":90,"joy":90}).to_string() });
-    clear(&mut log, &author, EventBody::ItemCreated { item: "actual-pet".into(), kind: ItemKind::App, content: content("Peanut"), origin: "human".into() }, 3);
-    clear(&mut log, &author, EventBody::ItemVersioned { item: "actual-pet".into(), content: content("Renamed"), note: "edit".into() }, 4);
+    let content = |name: &str| {
+        ItemContent::App(AppDoc {
+            app: "pet".into(),
+            resource_uri: "ui://roda/pet".into(),
+            title: name.into(),
+            state_json:
+                serde_json::json!({"name":name,"updated":0,"fullness":90,"energy":90,"joy":90})
+                    .to_string(),
+        })
+    };
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: "actual-pet".into(),
+            kind: ItemKind::App,
+            content: content("Peanut"),
+            origin: "human".into(),
+        },
+        3,
+    );
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemVersioned {
+            item: "actual-pet".into(),
+            content: content("Renamed"),
+            note: "edit".into(),
+        },
+        4,
+    );
     client.logs.insert(log.space().into(), log.clone());
     let views = client.conversations_at(3_600_000, true);
-    let snapshot = views[0].messages.iter().find_map(|m| m.card.as_ref()).unwrap().snapshot.as_ref().unwrap();
+    let snapshot = views[0]
+        .messages
+        .iter()
+        .find_map(|m| m.card.as_ref())
+        .unwrap()
+        .snapshot
+        .as_ref()
+        .unwrap();
     assert_eq!(snapshot["title"], "Renamed");
     assert_eq!(snapshot["bars"][0]["label"], "Food");
     assert_eq!(snapshot["bars"][0]["value"], 0.84);
-    clear(&mut log, &author, EventBody::ItemReverted { item: "actual-pet".into(), to_version: 1, note: "undo".into() }, 5);
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemReverted {
+            item: "actual-pet".into(),
+            to_version: 1,
+            note: "undo".into(),
+        },
+        5,
+    );
     client.logs.insert(log.space().into(), log);
     let views = client.conversations_at(0, false);
-    let snapshot = views[0].messages.iter().find_map(|m| m.card.as_ref()).unwrap().snapshot.as_ref().unwrap();
+    let snapshot = views[0]
+        .messages
+        .iter()
+        .find_map(|m| m.card.as_ref())
+        .unwrap()
+        .snapshot
+        .as_ref()
+        .unwrap();
     assert_eq!(snapshot["title"], "Peanut");
     assert_eq!(snapshot["bars"][0]["label"], "Comida");
 }

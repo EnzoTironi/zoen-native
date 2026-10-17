@@ -192,7 +192,8 @@ mod browser {
         }
         #[wasm_bindgen(js_name = viewAt)]
         pub fn view_at(&self, now_ms: f64, english: bool) -> Result<String, JsValue> {
-            serde_json::to_string(&self.client.conversations_at(time(now_ms)?, english)).map_err(error)
+            serde_json::to_string(&self.client.conversations_at(time(now_ms)?, english))
+                .map_err(error)
         }
         pub fn view(&self) -> Result<String, JsValue> {
             serde_json::to_string(&self.client.conversations()).map_err(error)

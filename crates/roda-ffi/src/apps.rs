@@ -677,9 +677,9 @@ pub fn view_for(app: &str, state: &Value, now: i64, viewer: &str) -> Value {
 // ── leitura (com o tempo passando, no caso do bichinho) ──
 
 /// O estado como a interface deve ver agora (o bichinho sente fome com o tempo).
-pub fn view(app: &str, state: &Value, now: i64) -> Value { roda_types::widget::view(app, state, now, is_en()) }
-
-
+pub fn view(app: &str, state: &Value, now: i64) -> Value {
+    roda_types::widget::view(app, state, now, is_en())
+}
 
 /// Linha e métricas para o cartão vivo da tela inicial.
 pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64)>) {
@@ -864,7 +864,9 @@ pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64
 
 /// The mini-app's widget snapshot (one of a few native templates; see `WidgetSnapshot` in
 /// the Apple app). Content only, no labels about the app itself. `None` = no widget.
-pub fn snapshot(app: &str, state: &Value, item_id: &str, now: i64) -> Option<Value> { roda_types::widget::snapshot(app, state, item_id, now, is_en()) }
+pub fn snapshot(app: &str, state: &Value, item_id: &str, now: i64) -> Option<Value> {
+    roda_types::widget::snapshot(app, state, item_id, now, is_en())
+}
 
 pub fn last_action(state: &Value) -> Option<String> {
     let first = state["log"].as_array()?.first()?;
@@ -1699,7 +1701,9 @@ pub fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
 }
 
 /// (quem, pontos, rodadas jogadas), do maior para o menor.
-pub fn maptap_board(v: &Value) -> Vec<(String, i64, usize)> { roda_types::widget::maptap_board(v) }
+pub fn maptap_board(v: &Value) -> Vec<(String, i64, usize)> {
+    roda_types::widget::maptap_board(v)
+}
 
 // ── Receita ──
 
@@ -1764,8 +1768,12 @@ pub const HIKE_TRAILS: [(&str, &str, i64, i64); 3] = [
     ("lands", "Lands End", 25, 2),
 ];
 
-fn hike_name(id: &str) -> Option<&'static str> { roda_types::widget::hike_name(id, is_en()) }
-fn pet_mood(v: &Value) -> &'static str { roda_types::widget::pet_mood(v, is_en()) }
+fn hike_name(id: &str) -> Option<&'static str> {
+    roda_types::widget::hike_name(id, is_en())
+}
+fn pet_mood(v: &Value) -> &'static str {
+    roda_types::widget::pet_mood(v, is_en())
+}
 
 fn st_day(st: &Value) -> String {
     st["day"].as_str().unwrap_or("").to_lowercase()

@@ -23,7 +23,9 @@ use crate::tr;
 use crate::CoreError;
 
 pub(crate) fn now_ms() -> i64 {
-    if let Some(ms) = crate::parity_fixture::fixed_ms() { return ms; }
+    if let Some(ms) = crate::parity_fixture::fixed_ms() {
+        return ms;
+    }
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)

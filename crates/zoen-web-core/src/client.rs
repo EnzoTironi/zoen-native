@@ -145,20 +145,31 @@ fn project_counterpart(
     roster: &BTreeMap<String, Role>,
     profiles: &BTreeMap<String, Identity>,
 ) -> Option<CounterpartView> {
-    if kind != SpaceKind::Direct { return None; }
+    if kind != SpaceKind::Direct {
+        return None;
+    }
     let other = roster.keys().find(|id| id.as_str() != me)?;
     let profile = profiles.get(other)?;
-    if profile.id != *other { return None; }
+    if profile.id != *other {
+        return None;
+    }
     Some(CounterpartView {
         id: profile.id.clone(),
         kind: match profile.kind {
             roda_types::IdentityKind::Person => "person",
             roda_types::IdentityKind::Agent => "agent",
         },
-        name: profile.name.clone(), handle: profile.handle.clone(),
-        tint_hex: profile.tint_hex.clone(), glyph: profile.glyph.clone(),
-        initials: profile.name.split_whitespace().filter_map(|word| word.chars().next())
-            .take(2).collect::<String>().to_uppercase(),
+        name: profile.name.clone(),
+        handle: profile.handle.clone(),
+        tint_hex: profile.tint_hex.clone(),
+        glyph: profile.glyph.clone(),
+        initials: profile
+            .name
+            .split_whitespace()
+            .filter_map(|word| word.chars().next())
+            .take(2)
+            .collect::<String>()
+            .to_uppercase(),
     })
 }
 
@@ -667,14 +678,8 @@ impl<S: Signer> Client<S> {
             }
         }
         let epoch = self.ready_epoch(space)?;
-        let inner = self.clear_event(
-            space,
-            EventBody::MessageAnnotated {
-                target,
-                note,
-            },
-            now_ms,
-        )?;
+        let inner =
+            self.clear_event(space, EventBody::MessageAnnotated { target, note }, now_ms)?;
         let event = inner
             .envelope()?
             .plain_event()
@@ -1470,8 +1475,7 @@ impl<S: Signer> Client<S> {
 fn is_post(body: &EventBody) -> bool {
     matches!(
         body,
-        EventBody::MessagePosted { .. }
-            | EventBody::ItemCreated { .. }
+        EventBody::MessagePosted { .. } | EventBody::ItemCreated { .. }
     )
 }
 
