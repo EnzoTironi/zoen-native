@@ -1,67 +1,170 @@
+<div align="center">
+
+<img src="docs/screens/mascot-wave.png" width="120" height="120" alt="Zoen's mascot, a green furball, waving" />
+
 # Zoen
 
-Talk to people and agents in the same place. Keep the plans, pages, files and mini-apps produced by the conversation under your control.
+**The messenger where friendships, relationships and communities form —<br/>and where people create apps and agents and share them with each other.**
 
-© 2026 Enzo Tironi. All rights reserved. Public for viewing only. See [LICENSE](LICENSE).
+*O mensageiro onde a vida acontece.*
 
-Zoen is being built as a complete product for one billion monthly users. The shared Rust core powers native iPhone and Mac clients. Android and the reusable web shell are being integrated with the same conversation and document model.
+[![CI](https://github.com/EnzoTironi/zoen-native/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/EnzoTironi/zoen-native/actions/workflows/ci.yml)
+[![Android](https://github.com/EnzoTironi/zoen-native/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/EnzoTironi/zoen-native/actions/workflows/android.yml)
+[![Web](https://github.com/EnzoTironi/zoen-native/actions/workflows/web.yml/badge.svg?branch=main)](https://github.com/EnzoTironi/zoen-native/actions/workflows/web.yml)
+![Rust 1.99](https://img.shields.io/badge/rust-1.99-b7410e?logo=rust)
+![Platforms](https://img.shields.io/badge/platforms-iOS%20·%20macOS%20·%20Android%20·%20Web-3b7a2a)
+![License: all rights reserved](https://img.shields.io/badge/license-all%20rights%20reserved-555)
 
-## Current progress
+[Why Zoen](docs/product/why-zoen.md) · [Features](docs/product/features.md) · [Roadmap](docs/product/roadmap.md) · [Run it locally](docs/guides/run-locally.md) · [Architecture](docs/technical/architecture.md) · [Docs site](docs-site/README.md)
 
-Reviewed on 12 October 2026 against the verified product baseline [`ff5b519`](https://github.com/EnzoTironi/zoen-native/commit/ff5b519f1734e9d28018ab33d3919d12c9147e45). Native/web consolidation [PR 67](https://github.com/EnzoTironi/zoen-native/pull/67), bounded confirmed Plan history [PR 68](https://github.com/EnzoTironi/zoen-native/pull/68), keyboard controls [PR 69](https://github.com/EnzoTironi/zoen-native/pull/69) and native motion [PR 71](https://github.com/EnzoTironi/zoen-native/pull/71) are merged. PR 71's [complete Linux run](https://github.com/EnzoTironi/zoen-native/actions/runs/38309704131) passed **573 standard tests, zero failed or filtered, with one original cross-process helper ignored**, including all 198 actual FFI cases. Its tested, published and merged whole trees match. Custom log-store 10 and ownership 17 cases retain separate counts.
+<br/>
 
-The merged native interface packages Core193. Its [reviewed images and screenshot walkthroughs](https://github.com/EnzoTironi/zoen-native/pull/67) cover exact Plan save/cold reopen/removal/restore, scoped Escape, themes, chat opening, Cards/List/Cards and actual TextKit typing, Unicode paste, undo and saved-version restoration. [PR 69's evidence](https://github.com/EnzoTironi/zoen-native/pull/69) verifies request review/back with focus return, change-event opening and quoted-message navigation. PR 71 adds three full arm64 Debug builds and bounded chat/thread/notification journeys. Its [settings evidence](https://github.com/EnzoTironi/zoen-native/pull/71#issuecomment-6132977105) also covers actual Reduce Motion, Reduce Transparency and Increase Contrast checks, with all temporary preferences restored.
+<img src="docs/screens/iphone/chats-light.webp" width="200" alt="Chats on iPhone: every conversation in one list, with plans pinned on top" /> <img src="docs/screens/iphone/chat-light.webp" width="200" alt="A group chat with a hike countdown pinned on top" /> <img src="docs/screens/iphone/space-dark.webp" width="200" alt="A community, in dark mode" /> <img src="docs/screens/iphone/composer-dark.webp" width="200" alt="Writing a message, in dark mode" />
 
-The 12 October [shared-main checkpoint and complete handoff](docs/dev/handoff-2026-10-12.md) includes the current backend, Android, authenticated web and Apple work. Fresh checks pass 13 web behavior tests, 17 portable MLS tests, three web-Core Rust tests, seven attachment journeys, five push-boundary journeys and six Android verifier cases. Current full Core/CLI execution, generated bindings, browser pairing, Android device validation, native UI cleanup, push delivery, Release and full HIG remain open. The user requested pausing after publishing this checkpoint. New work uses one branch per unit. The coordinator merges that branch into `main` after the unit's proof, following the pstack playbooks.
+</div>
 
-| Area | Implemented and verified boundary | Remaining completion gates |
+---
+
+## What is Zoen?
+
+Zoen is a private messenger first. You talk to one person, a group or a whole community — and the conversation can **turn into something**: a plan with a budget, a shared page, a booking app, an agent that works for you. Everything stays inside the chat that created it.
+
+- **Private by default.** Direct messages and new groups are end-to-end encrypted with MLS; the relay stores ciphertext it cannot read.
+- **Agents are members, not plugins.** An agent has its own identity, profile and invite link, reads only what it was let into, and asks before it acts.
+- **Apps live in the chat.** Mini-apps follow the open **MCP Apps** standard, with Zoen as the host. Anyone can build one and share it.
+- **One core, every screen.** A single Rust core runs on iPhone, Mac, Android, the web (WASM) and a terminal CLI, so every client behaves the same.
+
+> [!NOTE]
+> **Zoen v1 is live on WhatsApp** with real users. This repository is **Zoen v2** — the native messenger — and it is **pre-launch**. The docs mark every capability as *Built*, *In progress* or *Planned*; see the [roadmap](docs/product/roadmap.md).
+
+## The barber's booking bot
+
+The first release is built around one end-to-end journey. Bruno, a barber, describes the agent he wants. Zoen's Creator agent builds it, Bruno approves it, fills in his services and hours in his own words, and shares a link. Clients book free slots; Bruno is told about every booking and approves replies before they go out.
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screens/iphone/approvals-light.webp" width="240" alt="Owner notes on iPhone: the agent asks for approval" /><br/><sub>“Your agent needs you”</sub></td>
+    <td align="center"><img src="docs/screens/iphone/approvals-dark.webp" width="240" alt="The same owner notes in dark mode" /><br/><sub>The same cards in dark mode</sub></td>
+    <td align="center"><img src="docs/screens/iphone/agenda-light.webp" width="240" alt="Bruno's booking page: a haircut request from Marina waiting for Confirm" /><br/><sub>Bookings come in</sub></td>
+  </tr>
+</table>
+
+Step-by-step status of this journey is in the [roadmap](docs/product/roadmap.md#journey-the-barber-builds-his-booking-bot).
+
+## Features
+
+| Area | What you get | Status |
 | --- | --- | --- |
-| Messaging | Accounts, signed events, durable outbox, relay sync and OpenMLS encryption. Reviewed claim/M2 journeys retain the original 50-group workload. | Compatible production rollout, release journeys and sustained distributed capacity. |
-| Devices and recovery | Enrollment/revocation, encrypted history transfer, backups and recovery after loss of every original MLS device. | Native recovery/device controls, current Android device proof and production backup authority. |
-| Relay | Renewable ownership leases, transaction fencing, bounded forwarding and retry deduplication. | TLS workloads, cell placement, regional recovery, operating SLOs and complete costs. |
-| Apple clients | PRs 67, 69 and 71 integrate unified Chats, shared themes, transparent overlays, pinned cards, notifications and keyboard controls. Scoped Core216 native builds also pass. | Current bounded media APIs, physical iOS, Release, complete accessibility/settings and remaining product workflows. |
-| Android | [PR 41](https://github.com/EnzoTironi/zoen-native/pull/41) retains Android 28/35 and Rust CI. Current Plan and generated-ABI verification units are on shared main for integration. | Fresh bindings and current-main builds/device journeys, release and public relay compatibility. |
-| Live Pages and Plans | Shared observed document session, encrypted drafts/retries/versions, typed Plan reads and common cards. Offline legacy edits, validated cache repair and private authenticated history prefixes are integrated. | Canonical Plan writers/history/approvals, complete block UX, comments/nested pages/live updates and two-device convergence. |
-| Web | Themed shell and authenticated browser source; fresh typecheck/13 TS tests, 17 portable MLS tests and three web-Core Rust tests pass. | Real pairing/MLS messaging and reload/reconnect journeys, shared editor and native-equivalent accessibility/workflows. |
-| Agents | Approval/authorization, financial claims and certified-runtime source are merged through PR 63. Scoped canonical decisions pass 216 local FFI cases, but PR 70's full hosted run failed a file-import journey. | Fix and verify that failure on current main; canonical writers, managed custody/continuity, productive model/tool/approval lifecycle and live provider reconciliation. |
-| Media, push and shared resources | Encrypted blob, file, sandbox and infrastructure foundations. | Apple photo/voice delivery, APNs/FCM, remote MCP/catalog, community moderation, commerce and deployment/restore drills. |
+| **Messenger** | DMs and groups (E2E by default), unified Chats, replies, receipts, reactions, search/edit/delete, typing, offline outbox | Built |
+| **Devices** | Linked devices with history transfer, encrypted backup with a 64-digit recovery key, recovery after losing every device | Built (development) · browser pairing in progress |
+| **Communities** | Large moderated Spaces with permissions and resources inside the conversation | In progress |
+| **Live Pages & Plans** | Block pages and plans with budgets, edited by people and agents, synced and versioned | In progress |
+| **Agents** | Own identity and invite link, durable owner approvals, Creator agent, sandboxed tools (WASM · Firecracker · browser microVM) | In progress |
+| **Mini-apps** | MCP Apps host, offline hash-pinned bundles, Agenda and Hike apps, SDK | In progress |
+| **Look and feel** | Native SwiftUI and Material 3 · system Liquid Glass on Apple · a living sky that follows your local time | In progress (glass is on `main`; sky in [PR #127](https://github.com/EnzoTironi/zoen-native/pull/127); the docs site already uses a photo time-lapse sky) |
 
-Production and billion-user capacity require deployment, failure-recovery and cost evidence.
+Full, sourced list: [Features](docs/product/features.md).
 
-## Product navigation
+## How it's built
 
-Chats contains direct conversations, groups and communities. Optional filters narrow it; community permissions and resources stay inside the conversation. Notifications open as cards, with explicit switches to a list and back. Plans use the same card and Live Page presentation as other items. Desktop and web follow the iOS themes and conversation hierarchy.
+```mermaid
+flowchart LR
+  subgraph Clients
+    A["iPhone · Mac<br/>SwiftUI"]
+    B["Android<br/>Kotlin · Compose"]
+    W["Web<br/>React + WASM"]
+    C["zoen CLI"]
+  end
+  Core["Rust core<br/>signed log · MLS · pages · grants · sync"]
+  Relay["zoen-relay<br/>axum · FoundationDB · Postgres · NATS"]
+  Agentd["zoen-agentd<br/>agents as members (Rig)"]
+  Sandboxes["Sandboxes<br/>WASM · Firecracker · browser"]
 
-## Development
+  A -- UniFFI --> Core
+  B -- UniFFI --> Core
+  C --> Core
+  W -- wasm-bindgen --> Core
+  Core -- "Zoen Sync (protocol 4)" --> Relay
+  Agentd -- "own MLS identity" --> Relay
+  Agentd --> Sandboxes
+```
+
+Every conversation is a **signed, hash-chained log**. The relay orders and fans out events but never rewrites them — and, in end-to-end Spaces, cannot read them. Agents join through the same membership flow as people. Read the [architecture overview](docs/technical/architecture.md).
+
+## Quickstart
+
+Requirements: Linux or macOS, `git`, `curl`, a C toolchain and Rust **1.99.0**.
 
 ```sh
 rustup toolchain install 1.99.0 --profile minimal --component rustfmt,clippy
 export RUSTUP_TOOLCHAIN=1.99.0
-cargo fmt --all --check
-scripts/build-core.sh
+
+# Terminal 1 — private FoundationDB + Postgres, then the relay on :8787
+scripts/dev-stack.sh
+
+# Terminal 2 — two people, one end-to-end encrypted chat
+alias zoen=target/debug/zoen
+zoen --home /tmp/zoen/ana   init --name Ana   --handle ana   --relay http://127.0.0.1:8787
+zoen --home /tmp/zoen/bruno init --name Bruno --handle bruno --relay http://127.0.0.1:8787
+zoen --home /tmp/zoen/ana   dm @bruno "oi Bruno"
+zoen --home /tmp/zoen/bruno read @ana
 ```
 
-Apple builds require Xcode, XcodeGen and the Rust Apple targets. Run `scripts/dev-stack.sh` in a separate terminal; it remains attached to the relay. The full Rust suite also requires PostgreSQL, FoundationDB, NATS and the sandbox providers configured by [CI](.github/workflows/ci.yml). Read [development setup](docs/dev/setup.md) before account/device journeys. The [web package](packages/zoen-ui/README.md) describes the reusable shell and preview.
+The [full tutorial](docs/guides/run-locally.md) continues with linking a second device and recovering from a backup.
 
-The certified runtime reads reply receipts in batches of at most 64 real history positions. A prefix retains every pending event, retry field, reference, and sealed publication byte for cold restore. Concurrent member messages can share an earlier verified `seen` without proving a fork. A signed `seen` that contradicts the held chain, or an authenticated checkpoint with an incompatible prefix or group digest, still parks sending and rejects cold activation. Restore also requires the exact certified agent device and owner bound to the image.
+| Run… | Command | Guide |
+| --- | --- | --- |
+| iPhone + Mac apps (Xcode, XcodeGen) | `scripts/run.sh` · `scripts/run.sh ios` · `scripts/run.sh mac` | [Apple](docs/guides/apple.md) |
+| Android app (SDK 36, NDK 27) | `scripts/run-android.sh` | [Android](docs/guides/android.md) |
+| Web shell preview (sample data, :4173) | `npm ci --prefix packages/zoen-ui --ignore-scripts && npm run preview --prefix packages/zoen-ui` | [Web](docs/guides/web.md) |
+| Authenticated web client (:4174) | `cd packages/zoen-ui && npm ci && npm run build:web && npm run web` (needs `wasm-bindgen`; see guide) | [Web](docs/guides/web.md) |
+| Rebuild the shared core for Apple | `scripts/build-core.sh` | [Apple](docs/guides/apple.md) |
+| A mini-app bundle | `cd tools/miniapp-build && npm ci` | [First mini-app](docs/guides/first-mini-app.md) |
 
-Run the receipt and fork regressions with:
-
-```sh
-cargo test --locked -j2 -p roda-ffi --lib runtime_core::tests::receipt_prefix_keeps_exact_pending_bytes_and_resumes_beyond_64_real_positions -- --exact --test-threads=1
-cargo test --locked -j2 -p roda-ffi --lib runtime_core::tests -- --test-threads=1
-cargo test --locked -j2 -p roda-ffi --lib mls::tests -- --test-threads=1
-```
-### Markdown import performance
-
-`journey_files` measures import through relay acceptance of every sealed page. It exports every page on another device and compares the original bytes. The default hosted budget is 250 ms per page. The F5 measurement corpus had 94 UTF-8 Markdown files under `docs`, with 1,137,578 bytes in total. F7 adds documentation to the imported corpus; the aggregate candidate needs fresh corpus counts, hashes, timing and round-trip evidence.
-
-Debug import spends most of its time on one CPU in Loro documents, message cryptography, and durable-queue decoding. `Cargo.toml` sets `opt-level = 3` for the sampled dependencies `loro-internal`, `loro-kv-store`, `sha2`, `chacha20`, `poly1305`, `serde_json`, `memchr`, and `foldhash`. The four core libraries `roda-docs`, `roda-log`, `roda-mls`, and `roda-store` have the same override because generic code uses the profile of the crate that instantiates it. [Cargo profile overrides](https://doc.rust-lang.org/cargo/reference/profiles.html#overrides-and-generics) explain that boundary. Debug assertions and overflow checks retain the development defaults. The application publish window is five messages per Space, matching the MLS receiver's out-of-order tolerance.
-
-Compare five runs of `cargo test --locked -j2 -p zoen-cli --test journey_files -- --test-threads=1 --nocapture` on each revision. Keep the Rust toolchain, debug settings, two build jobs, disabled incremental compilation, and private Postgres and FoundationDB instances identical. Record the median and range of `IMPORT`, the successful byte count from `ROUND TRIP`, and compile cost from a separate `--timings` run. Profile CPU separately from reported timings. Keep the corpus unchanged between sides. These notes live in the root README so documentation does not add a page to that corpus.
+The full Rust suite also needs PostgreSQL, FoundationDB, NATS and the sandbox providers configured in [CI](.github/workflows/ci.yml); see [Testing & CI](docs/technical/testing-and-ci.md).
 
 ## Documentation
 
-Start with the [documentation index](docs/README.md), [current roadmap](docs/roadmap-status.md), [architecture](docs/architecture.md) and [system design](docs/system-design.md). The [Live Page contract](docs/product/live-pages.md), [session API](docs/dev/live-page-session.md) and [HIG matrix](docs/product/hig-compliance.md) separate implemented behavior from required acceptance. The [source auditor](tools/hig-audit/README.md) is advisory. [Dated history](docs/history/roadmap-2026-10-12-before-consolidation.md) preserves older results.
+The docs follow [Diátaxis](https://diataxis.fr): learn by doing, solve a task, understand the design, look something up.
 
-The product and built-in agent are Zoen. Technical `roda-*`, `RodaCore` and some preference/protocol identifiers still need the [atomic naming cutover](docs/dev/naming.md). Zoen has not launched: the [prelaunch policy](docs/dev/prelaunch-policy.md) requires direct caller/test updates and coordinated disposable database resets, without compatibility aliases or dual reads/writes.
+| | |
+| --- | --- |
+| **Start here** | [Why Zoen](docs/product/why-zoen.md) · [Features](docs/product/features.md) · [Roadmap](docs/product/roadmap.md) · [Glossary](docs/product/glossary.md) |
+| **Tutorials** | [Run Zoen on your machine](docs/guides/run-locally.md) · [Build your first mini-app](docs/guides/first-mini-app.md) |
+| **How-to guides** | [Apple](docs/guides/apple.md) · [Android](docs/guides/android.md) · [Web](docs/guides/web.md) · [Testing & CI](docs/technical/testing-and-ci.md) · [Contributing & merge rules](docs/technical/contributing.md) |
+| **Explanation** | [Architecture](docs/technical/architecture.md) · [Rust core](docs/technical/rust-core.md) · [Encryption & devices](docs/technical/encryption-and-devices.md) · [Relay](docs/technical/relay.md) · [Sync](docs/technical/sync.md) · [Clients](docs/technical/clients.md) · [Agents & sandboxes](docs/technical/agents.md) · [Mini-apps](docs/technical/mini-apps.md) |
+| **Reference** | [Repository map](docs/reference/repo-map.md) · [Scripts](docs/reference/scripts.md) · [Mini-app manifest](docs/reference/miniapp-manifest.md) · [Decision records](docs/reference/decision-records.md) |
+
+**Docs site.** The same pages render as a searchable site with dark mode and diagrams:
+
+```sh
+cd docs-site && npm ci && npm run dev    # http://localhost:4321
+```
+
+Evidence and history: [roadmap status](docs/roadmap-status.md) · [12 October handoff](docs/dev/handoff-2026-10-12.md) · [all documents](docs/README.md).
+
+## Repository map
+
+```text
+crates/      Rust workspace — core (types, log, store, mls, docs, grants, gate, proto, ffi),
+             zoen-relay, zoen-cli, zoen-agentd, zoen-models, zoen-runtime, sandboxes, zoen-web-core
+apple/       SwiftUI apps for iOS and macOS (XcodeGen)
+android/     Kotlin + Jetpack Compose app
+packages/    zoen-ui (web shell + authenticated client) · zoen-miniapp-sdk
+miniapps/    mini-app sources (schedule/Agenda, hike)
+tools/       miniapp-build, miniapp-gen, uniffi-bindgen, hig-audit
+infra/       deployment: Fly, Kubernetes (k8s, k3d), OpenTofu, FoundationDB
+scripts/     dev stack, builds, journeys, device runs
+docs/        product, technical, guides, reference, ADRs, evidence
+docs-site/   Starlight site built from docs/
+```
+
+Core crates still carry a legacy `roda-*` prefix; the rename is tracked in [docs/dev/naming.md](docs/dev/naming.md). Details: [Repository map](docs/reference/repo-map.md).
+
+## Contributing
+
+Zoen is pre-launch, so there are no compatibility shims: callers, tests and disposable databases move together ([prelaunch policy](docs/dev/prelaunch-policy.md)). Work happens one branch per unit; the coordinator merges into `main` after the unit's proof. Read [Contributing & merge rules](docs/technical/contributing.md) first.
+
+## License
+
+© 2026 Enzo Tironi. **All rights reserved.** The source is public for viewing only — no license to use, copy, modify or distribute is granted. See [LICENSE](LICENSE).

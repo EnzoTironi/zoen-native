@@ -1,0 +1,203 @@
+/* Zoen brand on top of Starlight: moss-green action colour, a living local-time sky, generous type. */
+:root {
+  --sl-font: "Inter", ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --sl-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sl-content-width: 48rem;
+  --zoen-moss: #3b7a2a;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #e3f1dc;
+  --sl-color-accent: #3b7a2a;
+  --sl-color-accent-high: #1f4416;
+  /* Link ink: deep moss keeps 4.5:1 on the brightest-allowed sky wash (L ≥ 0.50), not just on white. */
+  --sl-color-text-accent: #285419;
+  --sl-color-white: #121a14;
+  --sl-color-gray-1: #24302a;
+  --sl-color-gray-2: #39453e;
+  --sl-color-gray-5: #c9d3cc;
+  --sl-color-gray-6: #eef2ef;
+  --sl-color-gray-7: #f6f8f7;
+}
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #18300f;
+  --sl-color-accent: #7cc463;
+  --sl-color-accent-high: #c9efbb;
+  --sl-color-black: #0c1210;
+}
+
+/* Headings: tighter tracking, like Linear/Stripe docs. */
+.sl-markdown-content :is(h1, h2, h3) { letter-spacing: -0.015em; }
+.sl-markdown-content h2 { margin-top: 2.4rem; }
+h1#_top { letter-spacing: -0.025em; font-weight: 700; }
+
+/* Tables: quiet header, comfortable rows. */
+.sl-markdown-content table { display: table; width: 100%; font-size: 0.92em; }
+.sl-markdown-content th { background: var(--sl-color-gray-6); font-weight: 600; }
+.sl-markdown-content :is(th, td) { padding: 0.55rem 0.8rem; vertical-align: top; }
+
+/* Images: rounded, framed screenshots. */
+.sl-markdown-content img { border-radius: 14px; border: 1px solid var(--sl-color-hairline); box-shadow: 0 8px 30px -12px rgb(0 0 0 / 0.25); }
+
+/* Mermaid diagrams sit on a soft card. */
+.sl-markdown-content pre.mermaid, .sl-markdown-content .mermaid {
+  background: var(--sl-color-gray-7, transparent);
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 14px; padding: 1.2rem; display: flex; justify-content: center;
+}
+:root[data-theme='dark'] .sl-markdown-content .mermaid { background: #111815; }
+
+.hero h1 { font-size: clamp(2.4rem, 5vw, 3.6rem); letter-spacing: -0.035em; line-height: 1.05; }
+.hero .tagline { font-size: 1.2rem; max-width: 34rem; }
+.hero img.zoen-hero-shot { border-radius: 18px; box-shadow: 0 30px 80px -30px rgb(0 0 0 / 0.45); border: 1px solid var(--sl-color-hairline); }
+
+/* Landing gallery of phone screenshots. */
+.zoen-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.2rem; margin-top: 1.5rem; }
+.zoen-gallery figure { margin: 0; }
+.zoen-gallery img { width: 100%; height: auto; }
+.zoen-gallery figcaption { font-size: 0.85rem; color: var(--sl-color-gray-3); margin-top: 0.5rem; text-align: center; }
+.zoen-pill { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 0.15rem 0.6rem; border-radius: 999px; background: var(--sl-color-accent-low); color: var(--sl-color-accent-high); margin-bottom: 0.4rem; }
+
+/* Mermaid: calm, on-brand palette in light mode (the library's default theme uses yellow clusters). */
+:root[data-theme='light'] .sl-markdown-content .mermaid .cluster rect {
+  fill: #f4f8f2 !important;
+  stroke: #cddbc7 !important;
+}
+:root[data-theme='light'] .sl-markdown-content .mermaid .node rect,
+:root[data-theme='light'] .sl-markdown-content .mermaid .node polygon,
+:root[data-theme='light'] .sl-markdown-content .mermaid .node path,
+:root[data-theme='light'] .sl-markdown-content .mermaid .actor {
+  fill: #ffffff !important;
+  stroke: #3b7a2a !important;
+}
+:root[data-theme='light'] .sl-markdown-content .mermaid .note {
+  fill: #eef5ea !important;
+  stroke: #9fbf94 !important;
+}
+
+/* Mermaid's dark theme draws #ccc edge labels on #585858 (4.43:1); lift them to AA. */
+:root[data-theme='dark'] .sl-markdown-content .mermaid .edgeLabel,
+:root[data-theme='dark'] .sl-markdown-content .mermaid .edgeLabel p { color: #f0f0f0 !important; }
+
+/* Heading anchor links: present, but quiet until hovered (Stripe/Tailwind style). */
+.sl-markdown-content .sl-anchor-link { opacity: 0; transition: opacity 120ms ease; }
+.sl-markdown-content .sl-heading-wrapper:hover .sl-anchor-link,
+.sl-markdown-content .sl-anchor-link:focus-visible { opacity: 1; }
+
+/* Give the hero screenshot real room (Starlight caps hero art at 25rem) and keep it in its column. */
+.hero > .hero-html { width: 100%; }
+.hero .zoen-hero-shot { display: block; width: 100%; height: auto; }
+@media (min-width: 50rem) {
+  .hero { grid-template-columns: 5fr 6fr; gap: 4%; }
+  .hero > .hero-html { width: 100%; }
+}
+
+/* ───────────────────────── Living sky ─────────────────────────
+ * Real time-lapse footage (src/sky/living-sky.js, public/sky/, credits in src/sky/CREDITS.md),
+ * softly blurred and toned. Text never sits on the raw sky: header, sidebars, the table of
+ * contents and the content all sit on frosted panels. Checked for WCAG 2.2 AA on real video
+ * frames in every phase and theme by scripts/check-sky-contrast.mjs.
+ *
+ * Frosting lives on a ::before layer, never on the panel itself: a backdrop-filter on an
+ * ancestor would become the containing block of the fixed table of contents and make it scroll.
+ */
+:root {
+  --zoen-scrim: rgb(255 255 255 / 0.22);
+  --zoen-panel: color-mix(in srgb, var(--sl-color-bg) 84%, transparent);
+  --zoen-panel-chrome: color-mix(in srgb, var(--sl-color-bg-nav) 80%, transparent);
+  background-color: var(--sl-color-bg);
+}
+:root[data-theme='dark'] {
+  --zoen-scrim: rgb(6 10 9 / 0.45);
+  --zoen-panel: color-mix(in srgb, var(--sl-color-bg) 88%, transparent);
+  --zoen-panel-chrome: color-mix(in srgb, #111816 86%, transparent);
+  --sl-color-bg-nav: #111816;
+  --sl-color-bg-sidebar: #111816;
+  /* Muted text (table of contents, captions): lifted from Starlight's #888c96 so it keeps 4.5:1 on the frosted panels. */
+  --sl-color-gray-3: #aeb3bb;
+}
+body { background: transparent; }
+
+.zoen-sky { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; background: var(--sl-color-bg); }
+.zoen-sky-layer {
+  position: absolute; inset: -40px; /* bleed so the blur has no soft edge */
+  background-size: cover; background-position: center;
+  filter: blur(7px) saturate(1.1);
+  transition: opacity 2s linear;
+}
+.zoen-sky-layer video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.zoen-sky::after { content: ''; position: absolute; inset: 0; z-index: 3; background: var(--zoen-scrim); } /* above both clips (z 1 and 2) */
+
+/* Frosted panels. */
+/* Header, sidebar and table of contents are already fixed by Starlight (a positioned box for ::before);
+ * only the in-flow panels need position: relative. */
+.header { isolation: isolate; }
+/* The sidebars scroll, so a ::before inside them would scroll away: paint them directly (the sky
+ * behind is already blurred, so no backdrop-filter is needed). */
+.sidebar-pane { background-color: var(--zoen-panel-chrome) !important; }
+.right-sidebar { background-color: var(--zoen-panel) !important; }
+:root:not([data-has-hero]) .main-frame > div,
+[data-has-hero] .hero,
+[data-has-hero] .sl-container > .sl-markdown-content,
+[data-has-hero] .sl-container > footer { position: relative; isolation: isolate; }
+.header { background-color: transparent; }
+:is(.header, .main-frame > div, [data-has-hero] .hero, [data-has-hero] .sl-container > .sl-markdown-content, [data-has-hero] .sl-container > footer)::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-color: var(--zoen-panel);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1); backdrop-filter: blur(18px) saturate(1.1);
+}
+.header::before { background-color: var(--zoen-panel-chrome); }
+[data-has-hero] .main-frame > div::before { display: none; }
+/* Landing: the hero and the content below it are floating cards over the open sky. */
+[data-has-hero] .content-panel { border-top: 0; }
+[data-has-hero] .hero { margin-top: 1.5rem; padding: clamp(1.25rem, 3vw, 2.5rem); }
+[data-has-hero] :is(.hero, .sl-container > .sl-markdown-content) { border: 1px solid var(--sl-color-hairline); border-radius: 24px; box-shadow: 0 30px 80px -50px rgb(0 0 0 / 0.45); }
+[data-has-hero] :is(.hero, .sl-container > .sl-markdown-content)::before { border-radius: 24px; }
+[data-has-hero] .sl-container > .sl-markdown-content { padding: clamp(1.25rem, 3vw, 2.5rem); }
+[data-has-hero] .sl-container > footer { padding: 1rem 1.25rem; margin-bottom: 2rem; border-radius: 18px; }
+[data-has-hero] .sl-container > footer::before { border-radius: 18px; }
+
+/* Mascot: logo in the header and hero art on the home page. */
+.site-title img { height: 2.4rem; width: auto; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.25)); }
+.zoen-hero-art { position: relative; display: flex; justify-content: center; width: 100%; }
+.zoen-hero-art .zoen-hero-phone { width: min(300px, 70vw); height: auto; filter: drop-shadow(0 30px 40px rgb(0 0 0 / 0.35)); }
+.zoen-phones { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.zoen-phones img { border: 0 !important; box-shadow: none !important; background: none !important; }
+.zoen-hero-art .zoen-hero-mascot {
+  position: absolute; z-index: 1; width: clamp(96px, 13vw, 168px); height: auto;
+  left: max(0px, calc(50% - min(150px, 35vw) - 70px)); top: -6%; filter: drop-shadow(0 12px 18px rgb(0 0 0 / 0.3));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zoen-sky-layer { transition: none; }
+}
+/* More contrast requested, or forced colours: drop the sky and use solid surfaces. */
+@media (prefers-contrast: more), (forced-colors: active) {
+  .zoen-sky { display: none; }
+  .sidebar-pane, .right-sidebar { background-color: var(--sl-color-bg) !important; }
+  :is(.header, .main-frame > div, [data-has-hero] .hero, [data-has-hero] .sl-container > .sl-markdown-content, [data-has-hero] .sl-container > footer)::before {
+    background-color: var(--sl-color-bg); -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+}
+@media print { .zoen-sky { display: none; } }
+
+/* Mermaid's dark theme draws sequence notes as #ccc-ish text on a grey box (4.49:1); lift them to AA. */
+:root[data-theme='dark'] .sl-markdown-content .mermaid :is(.noteText, .noteText tspan) { fill: #f2f2f2 !important; }
+
+/* Pause/play the moving sky (WCAG 2.2.2). Hidden when the sky is already still or off. */
+.zoen-sky-toggle {
+  position: fixed; right: 1rem; bottom: 1rem; z-index: 20;
+  font: 500 0.8rem/1 var(--sl-font); padding: 0.55rem 0.8rem; border-radius: 999px; cursor: pointer;
+  color: var(--sl-color-white); background: var(--sl-color-bg); border: 1px solid var(--sl-color-gray-5);
+  box-shadow: 0 6px 20px -8px rgb(0 0 0 / 0.4);
+}
+.zoen-sky-toggle:focus-visible { outline: 2px solid var(--sl-color-text-accent); outline-offset: 2px; }
+@media print { .zoen-sky-toggle { display: none; } }
+/* Phones, home page: the button leaves the bottom corner (where it covered the hero heading) and
+ * sits in the strip of sky under the header, scrolling away beneath it (z 5 < header 10).
+ * Doc pages keep the small bottom-corner button: they have no hero, and the top strip there is
+ * taken by the sticky "On this page" bar. */
+@media (max-width: 50rem) {
+  .zoen-sky-toggle { right: 0.75rem; bottom: calc(0.75rem + env(safe-area-inset-bottom)); padding: 0.4rem 0.65rem; font-size: 0.75rem; }
+  [data-has-hero] .zoen-sky-toggle { position: absolute; z-index: 5; top: calc(var(--sl-nav-height) + 0.5rem); bottom: auto; }
+  [data-has-hero] .hero { margin-top: 3rem; }
+}

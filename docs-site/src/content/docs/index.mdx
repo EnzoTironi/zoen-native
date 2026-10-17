@@ -1,0 +1,91 @@
+---
+title: Zoen
+description: The messenger where friendships, relationships and communities form — and where people build the apps and agents they share.
+template: splash
+hero:
+  title: Conversations that turn into something.
+  tagline: Zoen is a private messenger where friendships, relationships and communities form — and where people create apps and agents and share them with each other. <br/><em>O mensageiro onde a vida acontece.</em>
+  image:
+    html: '<div class="zoen-hero-art"><img class="zoen-hero-mascot" src="/mascot-wave.png" alt="" width="262" height="262" /><img class="zoen-hero-phone light:sl-hidden" src="/media/screens/iphone/chats-dark.webp" alt="Zoen on iPhone: the Chats list with pinned plans and countdowns" width="638" height="1321" /><img class="zoen-hero-phone dark:sl-hidden" src="/media/screens/iphone/chats-light.webp" alt="Zoen on iPhone: the Chats list with pinned plans and countdowns" width="638" height="1321" /></div>'
+  actions:
+    - text: Why Zoen
+      link: /product/why-zoen/
+      icon: right-arrow
+    - text: Run it locally
+      link: /guides/run-locally/
+      variant: minimal
+      icon: rocket
+    - text: GitHub
+      link: https://github.com/EnzoTironi/zoen-native
+      variant: minimal
+      icon: github
+---
+
+import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="Where things stand">
+Zoen **v1 is live on WhatsApp** with real users. This repository is **Zoen v2** — the native messenger — and it is **pre-launch**. Every page marks what is built, in progress or planned; the [roadmap](/product/roadmap/) has the details.
+</Aside>
+
+## What Zoen does
+
+<CardGrid>
+  <Card title="A private messenger" icon="comment">
+    Direct chats, groups and communities in one **Chats** list. End-to-end encrypted by default with MLS; offline-first; linked devices with history.
+  </Card>
+  <Card title="Live Pages and Plans" icon="document">
+    Documents the chat edits together — plans with budgets in exact cents, versions you can restore, all signed and synced.
+  </Card>
+  <Card title="Agents as members" icon="star">
+    Agents have their own identity, profile and invite link. They read only where they're members and **ask before acting**.
+  </Card>
+  <Card title="Mini-apps" icon="puzzle">
+    Small apps inside the chat on the open **MCP Apps** standard — booking, polls, lists, games — with state everyone sees live.
+  </Card>
+</CardGrid>
+
+## The app on iPhone
+
+<div class="zoen-gallery zoen-phones">
+  <figure><img src="/media/screens/iphone/chats-light.webp" alt="Chats: every conversation in one list, with plans pinned on top" width="638" height="1321" /><figcaption>Chats</figcaption></figure>
+  <figure><img src="/media/screens/iphone/chat-light.webp" alt="A group chat with a hike countdown pinned on top" width="638" height="1321" /><figcaption>A group chat</figcaption></figure>
+  <figure><img src="/media/screens/iphone/space-dark.webp" alt="Coastal Travelers, a community, in dark mode" width="638" height="1321" /><figcaption>A community</figcaption></figure>
+  <figure><img src="/media/screens/iphone/composer-light.webp" alt="Writing a message, with the keyboard up" width="638" height="1321" /><figcaption>Writing a message</figcaption></figure>
+  <figure><img src="/media/screens/iphone/settings-dark.webp" alt="Settings in dark mode" width="638" height="1321" /><figcaption>Settings</figcaption></figure>
+  <figure><img src="/media/screens/iphone/onboarding-light.webp" alt="The first screen: Hi, I'm Zoen" width="638" height="1321" /><figcaption>Getting started</figcaption></figure>
+</div>
+
+## The barber's booking bot
+
+Bruno, a barber, describes the agent he wants. Zoen's Creator agent builds it, Bruno approves it, sets his services and hours in his own words, and shares a link. Clients book free slots; Bruno is told about every booking and approves replies before they go out.
+
+<div class="zoen-gallery">
+  <figure><img src="/media/screens/iphone/approvals-light.webp" alt="Your agent needs you: the agent shows Bruno its suggested reply before sending" width="640" height="1330" /><figcaption>“Your agent needs you”</figcaption></figure>
+  <figure><img src="/media/screens/iphone/approvals-dark.webp" alt="The same approval cards in dark mode" width="640" height="1330" /><figcaption>The same cards in dark mode</figcaption></figure>
+  <figure><img src="/media/screens/iphone/agenda-light.webp" alt="Bruno's Barbershop booking page: Marina asks for a haircut tomorrow at 10, with Confirm and Decline" width="638" height="1321" /><figcaption>Bookings come in</figcaption></figure>
+  <figure><img src="/media/screens/iphone/agenda-dark.webp" alt="The same booking page in dark mode: services, days and free times" width="638" height="1321" /><figcaption>Pick a day and a time</figcaption></figure>
+</div>
+
+[Follow the whole journey →](/product/roadmap/#journey-the-barber-builds-his-booking-bot)
+
+## How it's built
+
+```mermaid
+flowchart LR
+    Apps["iPhone · Mac · Android · Web"] -- "UniFFI / WASM" --> Core["One Rust core<br/>signed log · MLS · pages · grants"]
+    Core <-- "Zoen Sync (protocol 4)" --> Relay["zoen-relay<br/>FoundationDB · Postgres · NATS"]
+    Agents["zoen-agentd<br/>agents with their own devices"] <-- "MLS member" --> Relay
+```
+
+One Rust core powers every client, so behaviour is identical everywhere. The relay orders and delivers events it usually can't read. Agents join chats as real, accountable members. [Read the architecture →](/technical/architecture/)
+
+## Find your way
+
+<CardGrid>
+  <LinkCard title="Tutorials" description="Run the whole stack and talk end-to-end from two terminals. Build a mini-app." href="/guides/run-locally/" />
+  <LinkCard title="How-to guides" description="Run the Apple, Android and web clients. Test and contribute." href="/guides/apple/" />
+  <LinkCard title="Explanation" description="Architecture, the Rust core, encryption, relay, sync, agents, mini-apps." href="/technical/architecture/" />
+  <LinkCard title="Reference" description="Repository map, scripts, the mini-app manifest, decision records, glossary." href="/reference/repo-map/" />
+</CardGrid>
+
+<p style="margin-top:2.5rem;font-size:0.85rem;color:var(--sl-color-gray-3)">© 2026 Enzo Tironi. All rights reserved. The source is public for viewing only — see the <a href="https://github.com/EnzoTironi/zoen-native/blob/main/LICENSE">license</a>. Sky footage: U.S. National Park Service (public domain) and FreeSwissVideo (CC BY 3.0) — <a href="/credits/">credits</a>.</p>
