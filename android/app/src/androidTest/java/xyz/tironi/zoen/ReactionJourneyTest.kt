@@ -57,7 +57,14 @@ class ReactionJourneyTest {
         compose.onNodeWithTag("reaction-emoji").performTextInput("🦋")
         compose.onNodeWithText("Reagir", substring = false).performClick()
         compose.waitUntil(10_000) { mine() == "🦋" }
-        openPicker()
+        compose.onNodeWithTag("chat-timeline").performScrollToNode(hasTestTag("timeline:$id"))
+        compose.onNodeWithTag("reaction-details:$id").performClick()
+        compose.onNodeWithText("Quem reagiu com 🦋").assertIsDisplayed()
+        compose.onNodeWithText("Trocar minha reação").performClick()
+        // Back from the picker returns to reaction details, not the conversation.
+        compose.onNodeWithText("Cancelar").performClick()
+        compose.onNodeWithText("Quem reagiu com 🦋").assertIsDisplayed()
+        compose.onNodeWithText("Trocar minha reação").performClick()
         compose.onNodeWithTag("reaction-emoji").performTextInput("🌻")
         compose.onNodeWithText("Reagir", substring = false).performClick()
         compose.waitUntil(10_000) { mine() == "🌻" }

@@ -1,0 +1,126 @@
+{
+  "applied_fixture" : "{\"fixed_time\":\"2026-01-15T12:00:00Z\",\"fixture_id\":\"native-parity-v1\",\"locale\":\"en_US\",\"seed\":128,\"source_revision\":\"e5d1bb5e751c5e23512f30c4c6294726e3b2e051\",\"timezone\":\"UTC\"}",
+  "complete" : true,
+  "files" : [
+    {
+      "file" : "wave.png",
+      "jitter" : 0.59999999999999998,
+      "pixels" : 1152,
+      "points" : 384,
+      "scale" : 3,
+      "seed" : 77
+    },
+    {
+      "file" : "map.png",
+      "jitter" : 0.59999999999999998,
+      "pixels" : 1152,
+      "points" : 384,
+      "scale" : 3,
+      "seed" : 77
+    },
+    {
+      "file" : "juggle.png",
+      "jitter" : 0.59999999999999998,
+      "pixels" : 1152,
+      "points" : 384,
+      "scale" : 3,
+      "seed" : 77
+    },
+    {
+      "file" : "run.png",
+      "jitter" : 0.59999999999999998,
+      "pixels" : 1152,
+      "points" : 384,
+      "scale" : 3,
+      "seed" : 77
+    },
+    {
+      "file" : "phone.png",
+      "jitter" : 0.59999999999999998,
+      "pixels" : 1152,
+      "points" : 384,
+      "scale" : 3,
+      "seed" : 77
+    },
+    {
+      "file" : "walk.png",
+      "jitter" : 0.59999999999999998,
+      "pixels" : 1152,
+      "points" : 384,
+      "scale" : 3,
+      "seed" : 77
+    },
+    {
+      "file" : "zen.png",
+      "jitter" : 0.59999999999999998,
+      "pixels" : 1152,
+      "points" : 384,
+      "scale" : 3,
+      "seed" : 77
+    },
+    {
+      "file" : "roar.png",
+      "jitter" : 0.59999999999999998,
+      "pixels" : 1152,
+      "points" : 384,
+      "scale" : 3,
+      "seed" : 77
+    },
+    {
+      "file" : "shield.png",
+      "jitter" : 0.59999999999999998,
+      "pixels" : 1152,
+      "points" : 384,
+      "scale" : 3,
+      "seed" : 77
+    },
+    {
+      "file" : "coin.png",
+      "jitter" : 0.59999999999999998,
+      "pixels" : 1152,
+      "points" : 384,
+      "scale" : 3,
+      "seed" : 77
+    },
+    {
+      "file" : "cheer.png",
+      "jitter" : 0.59999999999999998,
+      "pixels" : 1152,
+      "points" : 384,
+      "scale" : 3,
+      "seed" : 77
+    },
+    {
+      "file" : "head.png",
+      "jitter" : 0.5,
+      "pixels" : 384,
+      "points" : 128,
+      "scale" : 3,
+      "seed" : 78
+    },
+    {
+      "file" : "head_smirk.png",
+      "jitter" : 0.5,
+      "pixels" : 384,
+      "points" : 128,
+      "scale" : 3,
+      "seed" : 78
+    },
+    {
+      "file" : "head_working.png",
+      "jitter" : 0.5,
+      "pixels" : 384,
+      "points" : 128,
+      "scale" : 3,
+      "seed" : 78
+    }
+  ],
+  "ink_frame" : 0,
+  "phase_seconds" : 2.3999999999999999,
+  "progress" : 2,
+  "renderer_source" : [
+    "apple\/Shared\/DesignSystem\/HandDrawn.swift",
+    "apple\/Shared\/DesignSystem\/Mascot.swift"
+  ],
+  "transparent" : true
+}

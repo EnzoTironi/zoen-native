@@ -4436,6 +4436,37 @@
         }
       }
     },
+    "Couldn’t open chat": {
+      "localizations": { "pt-BR": { "stringUnit": { "state": "translated", "value": "Não foi possível abrir a conversa" } } }
+    },
+    "Marketplace": {
+      "localizations": { "pt-BR": { "stringUnit": { "state": "translated", "value": "Mercado" } } }
+    },
+    "View activity": {
+      "localizations": { "pt-BR": { "stringUnit": { "state": "translated", "value": "Ver atividade" } } }
+    },
+    "Pending requests": {
+      "localizations": { "pt-BR": { "stringUnit": { "state": "translated", "value": "Pedidos pendentes" } } }
+    },
+    "%lld pending requests": {
+      "localizations": { "pt-BR": { "stringUnit": { "state": "translated", "value": "%lld pedidos pendentes" } } }
+    },
+    "Chats, messages or @handle": {
+      "localizations": { "pt-BR": { "stringUnit": { "state": "translated", "value": "Conversas, mensagens ou @usuário" } } }
+    },
+    "Offline. Search this device or start a chat with someone you know.": {
+      "localizations": { "pt-BR": { "stringUnit": { "state": "translated", "value": "Sem conexão. Busque neste aparelho ou comece uma conversa com alguém que você conhece." } } }
+    },
+    "Search chats": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscar conversas"
+          }
+        }
+      }
+    },
     "Search communities": {
       "localizations": {
         "pt-BR": {

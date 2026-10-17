@@ -4,7 +4,9 @@ import SwiftUI
 /// gesture language as the chat composer, then sends to Zoen and opens that chat.
 struct PlusVoiceCapture: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.nativeIconReduceMotion) private var appReduceMotion
+    private var reduceMotion: Bool { systemReduceMotion || appReduceMotion }
     @Environment(\.colorScheme) private var scheme
     var triggerSize: CGFloat = 56
     /// Bumped by RadialMenu when the finger that armed the hold lifts — finishes the take.
@@ -40,7 +42,7 @@ struct PlusVoiceCapture: View {
         }
         // Sits in the +'s slot: keep the mic there and let the row extend to the left.
         .frame(width: triggerSize, height: triggerSize, alignment: .bottomTrailing)
-        .animation(.spring(duration: 0.35, bounce: 0.25), value: recorder.phase)
+        .animation(reduceMotion ? nil : .spring(duration: 0.35, bounce: 0.25), value: recorder.phase)
         .sheet(item: $review) { m in
             VoiceReviewSheet(model: m) { clip, text in
                 review = nil
@@ -74,7 +76,7 @@ struct PlusVoiceCapture: View {
     private var micButton: some View {
         let recording = recorder.phase == .recording
         return ZStack {
-            ZoenIcon(morphMic || recording ? .mic : .plus, size: morphMic ? 21 : 25)
+            NativeIconMotion(systemName: morphMic || recording ? "mic" : "plus", size: morphMic ? 21 : 25)
                 .foregroundStyle(scheme == .dark ? Color(hex: "#10200A") : .white)
         }
         .frame(width: triggerSize, height: triggerSize)
@@ -85,9 +87,9 @@ struct PlusVoiceCapture: View {
             in: .circle
         )
         .glassEffectID("plus-mic", in: glassNS)
-        .scaleEffect(recording ? 1.18 : 1)
-        .offset(x: recording ? min(0, drag.width) * 0.35 : 0,
-                y: recording ? min(0, drag.height) * 0.35 : 0)
+        .scaleEffect(recording && !reduceMotion ? 1.18 : 1)
+        .offset(x: recording && !reduceMotion ? min(0, drag.width) * 0.35 : 0,
+                y: recording && !reduceMotion ? min(0, drag.height) * 0.35 : 0)
         .gesture(holdGesture)
         .accessibilityLabel(String(localized: "Hold to record for Zoen"))
     }

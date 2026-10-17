@@ -69,10 +69,10 @@ fun FilesScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Uni
     }
     val startImport: (String) -> Unit = { id -> importInto = id; add = false; picker.launch(arrayOf("*/*")) }
     Scaffold(topBar = { ScreenBar(state.spaces.firstOrNull { it.id == folder }?.title ?: stringResource(R.string.files), back, actions = {
-        IconButton({ add = true }, enabled = state.spaces.isNotEmpty(), modifier = Modifier.testTag("files-add")) { Icon(Icons.Rounded.Add, stringResource(R.string.files_add)) }
+        NativeIconButton({ add = true }, enabled = state.spaces.isNotEmpty(), modifier = Modifier.testTag("files-add")) { MotionVectorIcon(Icons.Rounded.Add, stringResource(R.string.files_add)) }
     }) }) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize().testTag("files-list"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item { OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().testTag("files-search"), singleLine = true, label = { Text(stringResource(R.string.files_search)) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }) }
+            item { OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().testTag("files-search"), singleLine = true, label = { Text(stringResource(R.string.files_search)) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.Search, null) }) }
             if (folder == null) {
                 item { LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(FileScope.entries) { option ->
                     FilterChip(scope == option, { scope = option }, label = { Text(stringResource(when (option) { FileScope.ALL -> R.string.all; FileScope.PERSONAL -> R.string.files_personal; FileScope.SHARED -> R.string.files_shared; FileScope.AGENTS -> R.string.files_agents })) })
@@ -84,7 +84,7 @@ fun FilesScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Uni
                         ListItem(headlineContent = { Text(space.title, fontWeight = FontWeight.SemiBold) }, supportingContent = {
                             val count = folders[id]?.size ?: 0
                             Text(pluralStringResource(R.plurals.files_items, count, count))
-                        }, leadingContent = { Icon(Icons.Rounded.Folder, null, tint = MaterialTheme.colorScheme.tertiary) })
+                        }, leadingContent = { MotionVectorIcon(Icons.Rounded.Folder, null, tint = MaterialTheme.colorScheme.tertiary) })
                     }
                 }
                 if (filtered.isNotEmpty()) item { SectionLabel(stringResource(R.string.files_recent)) }
@@ -94,9 +94,9 @@ fun FilesScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Uni
             if (folder != null) item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.files_versions), style = MaterialTheme.typography.bodySmall)
-                    TextButton({ createIn = folder; title = "" }) { Icon(Icons.Rounded.NoteAdd, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.new_page)) }
-                    TextButton({ startImport(folder) }) { Icon(Icons.Rounded.FileUpload, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.files_import_many)) }
-                    TextButton({ navigate(Chat(folder)) }) { Icon(Icons.AutoMirrored.Rounded.Chat, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.files_open_chat)) }
+                    TextButton({ createIn = folder; title = "" }) { MotionVectorIcon(Icons.Rounded.NoteAdd, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.new_page)) }
+                    TextButton({ startImport(folder) }) { MotionVectorIcon(Icons.Rounded.FileUpload, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.files_import_many)) }
+                    TextButton({ navigate(Chat(folder)) }) { MotionVectorIcon(Icons.AutoMirrored.Rounded.Chat, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.files_open_chat)) }
                 }
             }
         }

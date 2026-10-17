@@ -115,6 +115,7 @@ pub struct MessageView {
     last_reply_ms: Option<i64>,
     /// A shared file, photo, video or voice note (the chunks to fetch and open).
     file: Option<roda_types::FileDoc>,
+    card: Option<crate::cards::ItemCard>,
 }
 
 #[derive(Default)]
@@ -124,11 +125,60 @@ struct Folded {
     reactions: BTreeMap<String, String>,
 }
 
+/// Only fields received in an authorized public profile. Avatar media references
+/// are not part of Identity's sync protocol and must not be fabricated here.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CounterpartView {
+    id: String,
+    kind: &'static str,
+    name: String,
+    handle: String,
+    tint_hex: String,
+    glyph: Option<String>,
+    initials: String,
+}
+
+fn project_counterpart(
+    kind: SpaceKind,
+    me: &str,
+    roster: &BTreeMap<String, Role>,
+    profiles: &BTreeMap<String, Identity>,
+) -> Option<CounterpartView> {
+    if kind != SpaceKind::Direct {
+        return None;
+    }
+    let other = roster.keys().find(|id| id.as_str() != me)?;
+    let profile = profiles.get(other)?;
+    if profile.id != *other {
+        return None;
+    }
+    Some(CounterpartView {
+        id: profile.id.clone(),
+        kind: match profile.kind {
+            roda_types::IdentityKind::Person => "person",
+            roda_types::IdentityKind::Agent => "agent",
+        },
+        name: profile.name.clone(),
+        handle: profile.handle.clone(),
+        tint_hex: profile.tint_hex.clone(),
+        glyph: profile.glyph.clone(),
+        initials: profile
+            .name
+            .split_whitespace()
+            .filter_map(|word| word.chars().next())
+            .take(2)
+            .collect::<String>()
+            .to_uppercase(),
+    })
+}
+
 #[derive(Serialize)]
 pub struct ConversationView {
     id: String,
     title: String,
     kind: &'static str,
+    counterpart: Option<CounterpartView>,
     can_send: bool,
     waiting: Option<String>,
     unreadable: usize,
@@ -138,11 +188,30 @@ pub struct ConversationView {
     messages: Vec<MessageView>,
 }
 
+/// Transient UI signals from the authenticated relay receive path, never saved.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum UiEvent {
+    Typing {
+        space: String,
+        from: String,
+        name: Option<String>,
+    },
+    Stopped {
+        space: String,
+        from: String,
+    },
+    SpaceChanged {
+        space: String,
+    },
+}
+
 #[derive(Serialize)]
 pub struct Update {
     pub snapshot: String,
     pub frames: Vec<Vec<u8>>,
     pub conversations: Vec<ConversationView>,
+    pub ui_events: Vec<UiEvent>,
 }
 
 /// The same OpenMLS crypto, log verification and binary protocol used by native clients.
@@ -806,6 +875,7 @@ impl<S: Signer> Client<S> {
 
     pub fn receive(&mut self, bytes: &[u8], now_ms: i64) -> Result<Update, String> {
         let mut extra = Vec::new();
+        let mut ui_events = Vec::new();
         match ServerFrame::decode(bytes).map_err(|e| e.to_string())? {
             ServerFrame::Event { ev } => {
                 let space = ev.env.space().to_string();
@@ -822,6 +892,7 @@ impl<S: Signer> Client<S> {
                 }
                 let author = ev.env.author().to_string();
                 self.ingest(ev, now_ms)?;
+                ui_events.push(UiEvent::SpaceChanged { space });
                 if self.synced {
                     extra.extend(self.delivered());
                     if !self.saved.profiles.contains_key(&author) {
@@ -836,6 +907,32 @@ impl<S: Signer> Client<S> {
                 }
             }
             ServerFrame::Ephemeral { space, from, kind } => {
+                // Relay authentication binds `from`; verified local membership is
+                // still required before exposing this transient signal to the UI.
+                let roster = self.roster(&space);
+                if from != self.account.identity
+                    && roster.contains_key(&self.account.identity)
+                    && roster.contains_key(&from)
+                {
+                    match &kind {
+                        roda_proto::EphemeralKind::Typing => ui_events.push(UiEvent::Typing {
+                            space: space.clone(),
+                            from: from.clone(),
+                            name: self
+                                .saved
+                                .profiles
+                                .get(&from)
+                                .map(|profile| profile.name.clone()),
+                        }),
+                        roda_proto::EphemeralKind::StoppedTyping => {
+                            ui_events.push(UiEvent::Stopped {
+                                space: space.clone(),
+                                from: from.clone(),
+                            })
+                        }
+                        _ => {}
+                    }
+                }
                 let mark = match kind {
                     roda_proto::EphemeralKind::Read { seq } => Some((seq, seq)),
                     roda_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
@@ -925,7 +1022,9 @@ impl<S: Signer> Client<S> {
             }
             _ => {}
         }
-        self.update(extra)
+        let mut update = self.update(extra)?;
+        update.ui_events = ui_events;
+        Ok(update)
     }
 
     fn ask_rejoin(&mut self, now_ms: i64) -> Result<(), String> {
@@ -1177,6 +1276,7 @@ impl<S: Signer> Client<S> {
             snapshot,
             frames,
             conversations: self.conversations(),
+            ui_events: Vec::new(),
         })
     }
 
@@ -1250,6 +1350,11 @@ impl<S: Signer> Client<S> {
     }
 
     pub fn conversations(&self) -> Vec<ConversationView> {
+        self.conversations_at(0, false)
+    }
+
+    /// Projection time and language supplied by the displaying client, as on native.
+    pub fn conversations_at(&self, now_ms: i64, english: bool) -> Vec<ConversationView> {
         self.logs.keys().filter_map(|space| {
             let (title, kind, _) = self.metadata(space)?;
             let roster = self.roster(space);
@@ -1291,11 +1396,13 @@ impl<S: Signer> Client<S> {
             };
             let (all_delivered, all_read) = (watermark(|r| r.0.max(r.1)), watermark(|r| r.1));
             let my_read = receipts.and_then(|r| r.get(me)).map(|r| r.1).unwrap_or(0);
+            let cards = crate::cards::project(events, now_ms, english);
             let mut messages = events.iter().filter_map(|event| {
                 let mut view = self.message_view(event, "confirmed", None)?;
                 view.entry = Some(event.hash.clone());
                 view.seq = Some(event.seq);
                 if let EventBody::ItemCreated { item, .. } = &event.body {
+                    view.card = cards.get(item).cloned();
                     if let Some((_, versions)) = files.get(item.as_str()) {
                         view.file = versions.last().map(|doc| (*doc).clone());
                         view.edited = versions.len() > 1;
@@ -1306,7 +1413,7 @@ impl<S: Signer> Client<S> {
                 }
                 if let Some(f) = folded.get(&event.hash) {
                     view.deleted = f.deleted;
-                    if f.deleted { view.text.clear(); view.file = None; }
+                    if f.deleted { view.text.clear(); view.file = None; view.card = None; }
                     if let Some(text) = &f.text { view.text = text.clone(); view.edited = true; }
                     let mut groups: BTreeMap<&str, Vec<ReactionParticipant>> = BTreeMap::new();
                     for (who, emoji) in &f.reactions {
@@ -1365,6 +1472,7 @@ impl<S: Signer> Client<S> {
             let waiting = self.ready_epoch(space).err();
             let unreadable = events.iter().filter(|event| matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")).count();
             Some(ConversationView { id: space.clone(), title, kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
+                counterpart: project_counterpart(kind, me, &roster, &self.saved.profiles),
                 can_send: waiting.is_none(), waiting, unreadable, unread, mentions, members: roster.len(), messages })
         }).collect()
     }
@@ -1435,6 +1543,7 @@ impl<S: Signer> Client<S> {
                 false,
                 Some(doc.clone()),
             ),
+            EventBody::ItemCreated { .. } => (String::new(), None, false, None),
             _ => return None,
         };
         let name = if event.author == self.account.identity {
@@ -1477,6 +1586,7 @@ impl<S: Signer> Client<S> {
             repliers: Vec::new(),
             last_reply_ms: None,
             file,
+            card: None,
         })
     }
 }
@@ -1484,11 +1594,7 @@ impl<S: Signer> Client<S> {
 fn is_post(body: &EventBody) -> bool {
     matches!(
         body,
-        EventBody::MessagePosted { .. }
-            | EventBody::ItemCreated {
-                content: roda_types::ItemContent::File(_),
-                ..
-            }
+        EventBody::MessagePosted { .. } | EventBody::ItemCreated { .. }
     )
 }
 

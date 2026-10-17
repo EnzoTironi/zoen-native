@@ -15,9 +15,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.unit.dp
 
-/** Compatibility wrapper using Material3's filled and outlined buttons. */
+/** iOS glass surface with Material interaction/accessibility and shared haptics. */
 @Composable
 fun GlassButton(
     onClick: () -> Unit,
@@ -35,13 +37,14 @@ fun GlassButton(
     val haptics = rememberZoenHaptics()
     LaunchedEffect(pressed) { if (pressed && enabled) haptics.perform(ZoenFeedback.Tap) }
 
+    val glassModifier = modifier.zoenGlass(shape, if (prominent) MaterialTheme.colorScheme.primary.copy(alpha = 0.82f) else null)
     if (prominent) {
         Button(
             onClick = onClick,
-            modifier = modifier,
+            modifier = glassModifier,
             enabled = enabled,
             shape = shape,
-            colors = colors ?: ButtonDefaults.buttonColors(),
+            colors = colors ?: ButtonDefaults.buttonColors(containerColor = Color.Transparent, disabledContainerColor = Color.Transparent),
             interactionSource = interactions,
             contentPadding = contentPadding,
             content = content,
@@ -49,10 +52,10 @@ fun GlassButton(
     } else {
         OutlinedButton(
             onClick = onClick,
-            modifier = modifier,
+            modifier = glassModifier,
             enabled = enabled,
             shape = shape,
-            colors = colors ?: ButtonDefaults.outlinedButtonColors(),
+            colors = colors ?: ButtonDefaults.outlinedButtonColors(containerColor = Color.Transparent, disabledContainerColor = Color.Transparent),
             interactionSource = interactions,
             contentPadding = contentPadding,
             content = content,

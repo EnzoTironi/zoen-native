@@ -230,13 +230,17 @@ struct SymbolIcon: View {
     var selected = false
     var size: CGFloat
     var wiggle: Int = 0
+    @Environment(\.zoenIconBoil) private var pressed
+    @State private var taps = 0
 
     var body: some View {
-        Image(systemName: glyph.symbol(selected: selected))
+        NativeIconMotion(systemName: glyph.symbol(selected: selected), bounce: taps, drawOn: true)
             .font(.system(size: size * 0.82, weight: selected ? .semibold : .medium))
-            .contentTransition(.symbolEffect(.replace))
-            .symbolEffect(.bounce, value: wiggle)
             .frame(width: size, height: size)
+            .onChange(of: pressed) { old, new in
+                if old && !new { taps += 1 }
+            }
+            .onChange(of: wiggle) { _, _ in taps += 1 }
             .accessibilityHidden(true)
     }
 }

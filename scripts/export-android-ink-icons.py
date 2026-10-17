@@ -96,6 +96,12 @@ if args.verify_ref:
         "source_variants": {str(p.relative_to(root)): sorted({reference["sources"][str(p.relative_to(root))], hashlib.sha256(source_bytes(p)).hexdigest()}) for p in (icons, glyphs, hand)},
     }
     if args.equivalence_output:
+        if args.equivalence_output.exists():
+            previous = json.loads(args.equivalence_output.read_text())
+            if previous["reference_icons_sha256"] != verified["reference_icons_sha256"]:
+                raise SystemExit("Existing source equivalence belongs to a different icon corpus")
+            for path, variants in verified["source_variants"].items():
+                verified["source_variants"][path] = sorted(set(variants) | set(previous["source_variants"].get(path, [])))
         args.equivalence_output.write_text(json.dumps(verified, indent=2) + "\n")
     print(json.dumps(verified, indent=2))
     raise SystemExit(0)

@@ -68,16 +68,14 @@ class SettingsJourneyTest {
         val stack = open()
         val context = compose.activity
         AppAppearance.set(context, "auto")
-        compose.onNodeWithTag("settings:Preferences").performClick()
-        compose.onNodeWithTag("settings:Theme").performClick()
+        compose.onNodeWithTag("settings:Theme").performScrollTo().performClick()
         compose.onNodeWithTag("theme:dark").assertIsNotSelected().performClick()
         compose.onNodeWithTag("theme:dark").assertIsSelected()
         assertEquals("dark", AppAppearance.mode)
 
         compose.onNodeWithTag("settings:back").performClick()
-        compose.onNodeWithTag("settings:Theme").assertIsDisplayed()  // one pop: Preferências
-        compose.onNodeWithTag("settings:back").performClick()
-        compose.onNodeWithTag("settings:search").assertIsDisplayed() // Ajustes home
+        compose.onNodeWithTag("settings:search").assertIsDisplayed()
+        compose.onNodeWithTag("settings:Theme").performScrollTo().assertIsDisplayed()
 
         compose.onNodeWithTag("settings:search").performTextInput("xyzzy")
         compose.onNodeWithTag("settings:noResults").assertExists()

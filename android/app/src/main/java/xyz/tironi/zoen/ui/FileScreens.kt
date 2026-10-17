@@ -112,8 +112,8 @@ fun FileScreen(model: ZoenViewModel, state: AppState, item: ItemDetail, modifier
                 GlassButton(onClick = { model.launch { FileAccess.shareFile(context, file.name, file.mime, bytes!!) } }, modifier = Modifier.testTag("file-export")) { Text(stringResource(R.string.export)) }
                 GlassOutlinedButton(onClick = { model.launch { MediaFiles.open(context, file.name, file.mime, bytes!!) } }, modifier = Modifier.testTag("file-open-with")) { Text(stringResource(R.string.media_open_with)) }
                 if (drawing && local != null) GlassOutlinedButton(enabled = file.mime == "application/pdf" || imageCanEdit == true,
-                    onClick = { markup = true }, modifier = Modifier.testTag("file-markup")) { Icon(Icons.Rounded.Draw, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.media_markup)) }
-                if (media && local != null) GlassOutlinedButton(onClick = { trimming = true }, modifier = Modifier.testTag("file-trim")) { Icon(Icons.Rounded.ContentCut, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.media_trim)) }
+                    onClick = { markup = true }, modifier = Modifier.testTag("file-markup")) { MotionVectorIcon(Icons.Rounded.Draw, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.media_markup)) }
+                if (media && local != null) GlassOutlinedButton(onClick = { trimming = true }, modifier = Modifier.testTag("file-trim")) { MotionVectorIcon(Icons.Rounded.ContentCut, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.media_trim)) }
                 if (editableText) GlassOutlinedButton(onClick = {
                     if (!editing) { text = bytes!!.toString(Charsets.UTF_8); editing = true }
                     else model.launch { model.repository.change { it.fileNewVersion(item.id, text.orEmpty().toByteArray(), null, saved) }; editing = false }

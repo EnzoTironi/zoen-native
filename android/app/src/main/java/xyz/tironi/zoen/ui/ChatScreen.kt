@@ -73,6 +73,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import xyz.tironi.zoen.ui.ink.ZoenGlyph
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -137,6 +139,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     var draft by remember(draftKey) { mutableStateOf(model.repository.preferences.getString(draftKey, "").orEmpty()) }
     var sending by remember { mutableStateOf(false) }
     var attachments by remember { mutableStateOf(false) }
+    var inlineVoiceActive by remember { mutableStateOf(false) }
     var overflow by remember { mutableStateOf(false) }
     var highlight by remember(spaceId) { mutableStateOf<String?>(null) }
     var jumpTo by remember(spaceId) { mutableStateOf<String?>(focusMessage) }
@@ -249,12 +252,12 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     if (space == null) {
         Scaffold(topBar = { ScreenBar(stringResource(R.string.chats), back) }) { padding ->
             EmptyState(stringResource(R.string.unavailable), stringResource(R.string.unavailable_detail), Modifier.padding(padding)) {
-                GlassOutlinedButton(onClick = { model.launch { model.repository.refresh() } }) { Text(stringResource(R.string.retry)) }
+                TextButton(onClick = back) { Text(stringResource(R.string.back)) }
             }
         }
         return
     }
-    Scaffold(
+    ZoenGlassBackdrop { Scaffold(
         topBar = {
             val enlargedText = LocalDensity.current.fontScale >= 1.5f
             val participants = stringResource(R.string.participants)
@@ -281,25 +284,25 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
             Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
                 TopAppBar(title = { if (!enlargedText) identity() }, navigationIcon = { InkIconButton(ZoenGlyph.Back, stringResource(R.string.back), { navigationHaptics.perform(ZoenFeedback.Dismiss); back() }) }, actions = {
                     val callsComing = stringResource(R.string.calls_coming)
-                    IconButton(onClick = { model.notify(callsComing) }) { Icon(Icons.Rounded.Call, stringResource(R.string.voice_call)) }
-                    IconButton(onClick = { model.notify(callsComing) }) { Icon(Icons.Rounded.VideoCall, stringResource(R.string.video_call)) }
-                    IconButton(onClick = { overflow = true }) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.more)) }
+                    MotionIconButton(Icons.Rounded.Call, stringResource(R.string.voice_call), { model.notify(callsComing) })
+                    MotionIconButton(Icons.Rounded.VideoCall, stringResource(R.string.video_call), { model.notify(callsComing) })
+                    MotionIconButton(Icons.Rounded.MoreVert, stringResource(R.string.more), { overflow = true })
                     DropdownMenu(overflow, onDismissRequest = { overflow = false }) {
-                        DropdownMenuItem(text = { Text(stringResource(R.string.participants)) }, onClick = { overflow = false; navigate(Participants(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Groups, null) })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.files)) }, onClick = { overflow = false; navigate(Folder(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Folder, null) })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.chat_appearance)) }, onClick = { overflow = false; navigate(Appearance(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Palette, null) })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.signed_log)) }, onClick = { overflow = false; navigate(History) }, leadingIcon = { Icon(Icons.Rounded.VerifiedUser, null) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.participants)) }, onClick = { overflow = false; navigate(Participants(space.id)) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.Groups, null) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.files)) }, onClick = { overflow = false; navigate(Folder(space.id)) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.Folder, null) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.chat_appearance)) }, onClick = { overflow = false; navigate(Appearance(space.id)) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.Palette, null) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.signed_log)) }, onClick = { overflow = false; navigate(History) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.VerifiedUser, null) })
                         if (BuildConfig.DEBUG && state.demo) DropdownMenuItem(text = { Text(stringResource(R.string.agent_browser_start)) }, onClick = {
                             overflow = false
                             space.members.firstOrNull { it.kind == PersonaKind.AGENT && it.isMine }?.let { model.browser.startDemo(space.id, it, model.repository.locale); navigate(Browser) }
-                        }, leadingIcon = { Icon(Icons.Rounded.Language, null) })
+                        }, leadingIcon = { MotionVectorIcon(Icons.Rounded.Language, null) })
                     }
                 })
                 if (enlargedText) Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) { identity() }
             }
         },
         bottomBar = {
-            Surface(color = MaterialTheme.colorScheme.surface) {
+            Box {
                 Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
                     working[spaceId]?.let { text -> Row(Modifier.padding(start = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Text(text, style = MaterialTheme.typography.labelMedium)
@@ -311,34 +314,41 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                     replyId?.let { id ->
                         val original = timeline.firstOrNull { it.id == id }
                         Row(Modifier.fillMaxWidth().padding(8.dp).testTag("reply-target:$id"), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.AutoMirrored.Rounded.Reply, null, tint = MaterialTheme.colorScheme.primary)
+                            MotionVectorIcon(Icons.AutoMirrored.Rounded.Reply, null, tint = MaterialTheme.colorScheme.primary)
                             Text(original?.author?.name.orEmpty() + " · " + (original?.kind as? EntryKind.Message)?.text.orEmpty(), Modifier.weight(1f).padding(horizontal = 12.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            IconButton(onClick = { replyId = null }) { Icon(Icons.Rounded.Close, stringResource(R.string.cancel)) }
+                            NativeIconButton(onClick = { replyId = null }) { MotionVectorIcon(Icons.Rounded.Close, stringResource(R.string.cancel)) }
                         }
                     }
-                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        InkIconButton(ZoenGlyph.Plus, stringResource(R.string.attach), { navigationHaptics.perform(ZoenFeedback.Open); attachments = true }, Modifier.padding(bottom = 4.dp))
-                        OutlinedTextField(value = draft, onValueChange = {
+                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(if (inlineVoiceActive) 0.dp else 10.dp)) {
+                        Box(if (inlineVoiceActive) Modifier.width(0.dp) else Modifier) {
+                            NativeIconButton({ navigationHaptics.perform(ZoenFeedback.Open); attachments = true }, Modifier.size(44.dp).zoenGlass(androidx.compose.foundation.shape.CircleShape).testTag("composer-attach")) { NativeIconMotion(selection = attachments) { ZoenIcon(ZoenGlyph.Plus, stringResource(R.string.attach)) } }
+                            DropdownMenu(attachments, { attachments = false }) {
+                                DropdownMenuItem(text = { Text(stringResource(R.string.chat_attachment_camera)) }, onClick = { attachments = false; val uri = FileAccess.cameraUri(context); cameraUri = uri.toString(); camera.launch(uri) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.CameraAlt, null) })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.chat_attachment_library)) }, onClick = { attachments = false; photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.PhotoLibrary, null) })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.chat_attachment_files)) }, onClick = { attachments = false; filePicker.launch(arrayOf("*/*")) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.Folder, null) })
+                            }
+                        }
+                        androidx.compose.foundation.text.BasicTextField(value = draft, onValueChange = {
                             draft = it
                             model.repository.preferences.edit().putString(draftKey, it).apply()
-                        }, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("composer"), shape = RoundedCornerShape(24.dp),
-                            // Hark: 15/19 text.
-                            textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 19.sp),
-                            placeholder = { Text(stringResource(if (space.counterpart?.handle == "zoen") R.string.message_zoen else R.string.message), maxLines = 1) },
+                        }, modifier = (if (inlineVoiceActive) Modifier.width(0.dp) else Modifier.weight(1f)).heightIn(min = 48.dp).zoenGlass(RoundedCornerShape(24.dp)).padding(horizontal = 18.dp, vertical = 14.dp).testTag("composer"),
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 19.sp, color = MaterialTheme.colorScheme.onSurface),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                            decorationBox = { field -> Box { if (draft.isEmpty()) Text(stringResource(if (space.counterpart?.handle == "zoen") R.string.message_zoen else R.string.message), fontSize = 15.sp, lineHeight = 19.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1); field() } },
                             maxLines = 5, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                             keyboardActions = KeyboardActions(onSend = { send() }),
                         )
-                        if (draft.isBlank()) VoiceComposer(model, spaceId, Modifier.padding(bottom = 4.dp), reply = replyId, onSent = { replyId = null })
-                        else FilledIconButton(onClick = send, enabled = draft.isNotBlank() && !sending && !state.keyMissing, modifier = Modifier.padding(bottom = 4.dp).size(48.dp).testTag("send")) {
+                        if (draft.isBlank()) VoiceComposer(model, spaceId, Modifier, reply = replyId, onActiveChanged = { inlineVoiceActive = it }, onSent = { replyId = null })
+                        else NativeIconButton(onClick = send, enabled = draft.isNotBlank() && !sending && !state.keyMissing, modifier = Modifier.size(48.dp).zoenGlass(androidx.compose.foundation.shape.CircleShape, MaterialTheme.colorScheme.primary).testTag("send")) {
                             if (sending) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            else ZoenIcon(ZoenGlyph.Send, stringResource(R.string.send))
+                            else ZoenIcon(ZoenGlyph.Send, stringResource(R.string.send), modifier = Modifier.size(21.dp), tint = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
                 }
             }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()).zoenGlassSource()) {
             if (!state.demo && state.connection.state != "online" && space.counterpart?.handle != "zoen") {
                 Text(stringResource(if (state.connection.state == "connecting") R.string.connecting else R.string.offline), Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(12.dp), style = MaterialTheme.typography.bodySmall)
             }
@@ -349,7 +359,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
             Box(Modifier.weight(1f)) {
                 ChatBackdrop(model, space.id, state.revision, Modifier.fillMaxSize())
                 if (spaceId in state.timelines) {
-                    LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("chat-timeline"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Bottom)) {
+                    LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("chat-timeline"), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = padding.calculateBottomPadding() + 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Bottom)) {
                         itemsIndexed(timeline, key = { _, entry -> entry.id }) { index, entry ->
                             if (index == 0) Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), contentAlignment = Alignment.Center) {
                                 if (space.counterpart != null) Avatar(space.counterpart, size = 64, contact = true)
@@ -373,28 +383,18 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                         unseen = 0
                     }
                 }, modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).testTag("chat-new-messages").semantics { liveRegion = LiveRegionMode.Polite }) {
-                    Icon(Icons.Rounded.ArrowDownward, null); Spacer(Modifier.width(8.dp))
+                    MotionVectorIcon(Icons.Rounded.ArrowDownward, null); Spacer(Modifier.width(8.dp))
                     Text(pluralStringResource(R.plurals.chat_new_messages, unseen, unseen))
                 } else if (timeline.size > 5 && !nearBottom) SmallFloatingActionButton(onClick = {
                     navigationHaptics.perform(ZoenFeedback.Selection)
                     scrollScope.launch { if (motion) list.animateScrollToItem(timeline.lastIndex) else list.scrollToItem(timeline.lastIndex) }
                 }, Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
-                    Icon(Icons.Rounded.ArrowDownward, stringResource(R.string.jump_latest))
+                    MotionVectorIcon(Icons.Rounded.ArrowDownward, stringResource(R.string.jump_latest))
                 }
             }
         }
     }
-    if (attachments) ModalBottomSheet(onDismissRequest = { attachments = false }) {
-        SettingsRow(Icons.Rounded.PhotoLibrary, stringResource(R.string.media_gallery), onClick = { attachments = false; photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) })
-        SettingsRow(Icons.Rounded.CameraAlt, stringResource(R.string.camera), onClick = { attachments = false; val uri = FileAccess.cameraUri(context); cameraUri = uri.toString(); camera.launch(uri) })
-        SettingsRow(Icons.Rounded.Videocam, stringResource(R.string.media_record_video), onClick = { attachments = false; val uri = MediaFiles.videoUri(context); videoUri = uri.toString(); videoCamera.launch(uri) })
-        SettingsRow(Icons.Rounded.AttachFile, stringResource(R.string.import_file), onClick = { attachments = false; filePicker.launch(arrayOf("*/*")) })
-        SettingsRow(Icons.Rounded.Article, stringResource(R.string.new_page), onClick = {
-            attachments = false
-            model.launch { val item = model.repository.change { it.pageCreate(spaceId, newPageTitle) }; navigate(Item(item.id)) }
-        })
-        Spacer(Modifier.height(24.dp))
-    }
+    } // Shared backdrop: timeline source and composer are siblings.
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -433,7 +433,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                     Spacer(Modifier.width(36.dp))
                     OwnerAgentNoteCard(entry.author, note,
                         personName = { id -> state.spaces.asSequence().flatMap { it.members }.firstOrNull { it.id == id }?.name },
-                        fresh = System.currentTimeMillis() - entry.atMs < 15_000,
+                        fresh = xyz.tironi.zoen.NativeParityFixture.nowMs() - entry.atMs < 15_000,
                         open = { navigate(Chat(it)) })
                 }
                 return
@@ -448,7 +448,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
             var returnJob by remember { mutableStateOf<Job?>(null) }
             var returning by remember { mutableStateOf(false) }
             var armed by remember { mutableStateOf(false) }
-            val shownSwipe = if (returning) settling.value else swipe
+            val shownSwipe = if (!motion) 0f else if (returning) settling.value else swipe
             fun settle() {
                 if (!motion) { swipe = 0f; returning = false; return }
                 returnJob = scope.launch {
@@ -459,15 +459,25 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
             }
             val reply by rememberUpdatedState(onReply)
             val thread by rememberUpdatedState(onThread)
+            val replyLabel = stringResource(R.string.reply)
+            val threadLabel = stringResource(R.string.thread)
+            val actionsLabel = stringResource(R.string.more)
+            val accessibleActions = Modifier.semantics {
+                customActions = buildList {
+                    add(CustomAccessibilityAction(replyLabel) { reply(); true })
+                    if (thread != null) add(CustomAccessibilityAction(threadLabel) { thread?.invoke(); true })
+                    add(CustomAccessibilityAction(actionsLabel) { menu = true; true })
+                }
+            }
             Box(Modifier.fillMaxWidth()) {
-                if (swipe < -threshold / 3) Icon(Icons.AutoMirrored.Rounded.Reply, stringResource(R.string.reply), Modifier.align(Alignment.CenterEnd).padding(12.dp), tint = MaterialTheme.colorScheme.primary)
-                if (swipe > threshold / 3 && onThread != null) Icon(Icons.Rounded.Forum, stringResource(R.string.thread), Modifier.align(Alignment.CenterStart).padding(12.dp), tint = MaterialTheme.colorScheme.primary)
+                if (swipe < -threshold / 3) MotionVectorIcon(Icons.AutoMirrored.Rounded.Reply, stringResource(R.string.reply), Modifier.align(Alignment.CenterEnd).padding(12.dp), tint = MaterialTheme.colorScheme.primary)
+                if (swipe > threshold / 3 && onThread != null) MotionVectorIcon(Icons.Rounded.Forum, stringResource(R.string.thread), Modifier.align(Alignment.CenterStart).padding(12.dp), tint = MaterialTheme.colorScheme.primary)
             Row(Modifier.fillMaxWidth().offset { IntOffset(shownSwipe.roundToInt(), 0) }.pointerInput(entry.id, onThread != null, threshold) {
                 detectHorizontalDragGestures(onDragStart = {
                     swipe = shownSwipe; returnJob?.cancel(); returning = false; armed = false
                 }, onDragEnd = {
-                    if (swipe <= -threshold) reply()
-                    else if (swipe >= threshold && thread != null) thread?.invoke()
+                    if (swipe <= -threshold) { haptics.perform(ZoenFeedback.Open); reply() }
+                    else if (swipe >= threshold && thread != null) { haptics.perform(ZoenFeedback.Open); thread?.invoke() }
                     settle()
                 }, onDragCancel = { settle() }) { change, distance ->
                     change.consume()
@@ -484,14 +494,14 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                 Box {
                     Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (entry.deleted) Surface(shape = RoundedCornerShape(24.dp), color = androidx.compose.ui.graphics.Color.Transparent, border = androidx.compose.foundation.BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant),
-                        modifier = Modifier.padding(top = 6.dp).messageFace().combinedClickable(onClick = {}, onLongClick = { menu = true })) {
+                        modifier = Modifier.padding(top = 6.dp).messageFace().then(accessibleActions).combinedClickable(onClick = {}, onLongClick = { haptics.perform(ZoenFeedback.Selection); menu = true })) {
                         Text(stringResource(R.string.message_deleted), Modifier.padding(horizontal = 14.dp, vertical = 10.dp), style = MaterialTheme.typography.bodyMedium.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     else if (entry.voice != null || kind.text.isNotBlank() || entry.replyTo != null) {
                     Surface(shape = RoundedCornerShape(24.dp, 24.dp, if (mine) 6.dp else 24.dp, if (mine) 24.dp else 6.dp),
                         color = if (mine) MaterialTheme.colorScheme.ownMessage else MaterialTheme.colorScheme.otherMessage,
                         contentColor = if (mine) MaterialTheme.colorScheme.onOwnMessage else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(top = 6.dp).messageFace().widthIn(max = 360.dp).testTag("message-actions:${entry.id}").combinedClickable(onClick = { kind.card?.let { navigate(Item(it.itemId)) } }, onLongClick = { menu = true })) {
+                        modifier = Modifier.padding(top = 6.dp).messageFace().widthIn(max = 360.dp).testTag("message-actions:${entry.id}").then(accessibleActions).combinedClickable(onClick = { kind.card?.let { navigate(Item(it.itemId)) } }, onLongClick = { haptics.perform(ZoenFeedback.Selection); menu = true })) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             entry.replyTo?.let { quote ->
                                 Surface(color = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface, shape = RoundedCornerShape(8.dp), modifier = Modifier.testTag("quote:${quote.id}").clickable { onQuote?.invoke(quote.id) }) {
@@ -521,7 +531,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(card.title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge,
                                                 fontFamily = if (card.app == null) FontFamily.Serif else FontFamily.Default, fontWeight = FontWeight.Bold)
-                                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            MotionVectorIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                         Text(card.app?.headline ?: card.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         card.totalCents?.let { Text(formatMoney(it, locale), style = MaterialTheme.typography.titleSmall) }
@@ -541,13 +551,13 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                             }
                         }
                         if (!entry.deleted) DropdownMenuItem(text = { Text("Mais reações") }, onClick = { menu = false; choosingReaction = true })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.reply)) }, onClick = { menu = false; onReply() }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Reply, null) })
-                        if (onThread != null) DropdownMenuItem(text = { Text(stringResource(R.string.thread)) }, onClick = { menu = false; onThread() }, leadingIcon = { Icon(Icons.Rounded.Forum, null) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.reply)) }, onClick = { menu = false; onReply() }, leadingIcon = { MotionVectorIcon(Icons.AutoMirrored.Rounded.Reply, null) })
+                        if (onThread != null) DropdownMenuItem(text = { Text(stringResource(R.string.thread)) }, onClick = { menu = false; onThread() }, leadingIcon = { MotionVectorIcon(Icons.Rounded.Forum, null) })
                         if (!entry.deleted) {
-                            DropdownMenuItem(text = { Text(stringResource(R.string.forward)) }, onClick = { menu = false; forwarding = true }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Forward, null) })
-                            if (kind.text.isNotBlank()) DropdownMenuItem(text = { Text(stringResource(R.string.copy)) }, onClick = { menu = false; context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(copied, kind.text)) }, leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) })
-                            if (mine && entry.voice == null && kind.text.isNotBlank() && VoiceNoteRef.parse(kind.text) == null) DropdownMenuItem(text = { Text(stringResource(R.string.edit)) }, onClick = { menu = false; editText = kind.text; editing = true }, leadingIcon = { Icon(Icons.Rounded.Edit, null) })
-                            if (mine) DropdownMenuItem(text = { Text(stringResource(R.string.delete_for_everyone), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; confirmDelete = true }, leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.forward)) }, onClick = { menu = false; forwarding = true }, leadingIcon = { MotionVectorIcon(Icons.AutoMirrored.Rounded.Forward, null) })
+                            if (kind.text.isNotBlank()) DropdownMenuItem(text = { Text(stringResource(R.string.copy)) }, onClick = { menu = false; context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(copied, kind.text)) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.ContentCopy, null) })
+                            if (mine && entry.voice == null && kind.text.isNotBlank() && VoiceNoteRef.parse(kind.text) == null) DropdownMenuItem(text = { Text(stringResource(R.string.edit)) }, onClick = { menu = false; editText = kind.text; editing = true }, leadingIcon = { MotionVectorIcon(Icons.Rounded.Edit, null) })
+                            if (mine) DropdownMenuItem(text = { Text(stringResource(R.string.delete_for_everyone), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; confirmDelete = true }, leadingIcon = { MotionVectorIcon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) })
                         }
                     }
                     if (choosingReaction) ReactionPickerDialog(model, spaceId, entry) { choosingReaction = false }
@@ -562,7 +572,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
             }
             }
         }
-        is EntryKind.ItemEdited -> TextButton(onClick = { navigate(Item(kind.itemId)) }, Modifier.fillMaxWidth()) { Icon(Icons.Rounded.History, null, Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)); Text(kind.note, style = MaterialTheme.typography.bodySmall) }
+        is EntryKind.ItemEdited -> TextButton(onClick = { navigate(Item(kind.itemId)) }, Modifier.fillMaxWidth()) { MotionVectorIcon(Icons.Rounded.History, null, Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)); Text(kind.note, style = MaterialTheme.typography.bodySmall) }
         is EntryKind.Request -> {
             val state by model.state.collectAsStateWithLifecycle()
             val request = state.requests.firstOrNull { it.id == kind.requestId }
@@ -579,10 +589,10 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                             approving = true
                             model.launch { try { val result = model.repository.change { it.approveRequest(kind.requestId) }; model.notify(result.message) } finally { approving = false } }
                         }) { Text(stringResource(R.string.approve)) }
-                        RequestStatus.APPROVED -> Icon(Icons.Rounded.CheckCircle, stringResource(R.string.status_approved), tint = MaterialTheme.colorScheme.primary)
-                        RequestStatus.DENIED -> Icon(Icons.Rounded.Cancel, stringResource(R.string.status_denied), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        RequestStatus.STALE -> Icon(Icons.Rounded.Update, stringResource(R.string.status_stale), tint = MaterialTheme.colorScheme.tertiary)
-                        null -> Icon(Icons.Rounded.ChevronRight, stringResource(R.string.review))
+                        RequestStatus.APPROVED -> MotionVectorIcon(Icons.Rounded.CheckCircle, stringResource(R.string.status_approved), tint = MaterialTheme.colorScheme.primary)
+                        RequestStatus.DENIED -> MotionVectorIcon(Icons.Rounded.Cancel, stringResource(R.string.status_denied), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        RequestStatus.STALE -> MotionVectorIcon(Icons.Rounded.Update, stringResource(R.string.status_stale), tint = MaterialTheme.colorScheme.tertiary)
+                        null -> MotionVectorIcon(Icons.Rounded.ChevronRight, stringResource(R.string.review))
                     }
                 }
             }
@@ -598,14 +608,23 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
     val entries = loadedEntries
     val list = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
-    var text by rememberSaveable { mutableStateOf("") }
+    val draftKey = model.repository.localKey("thread-draft", "$space:$root", state.me?.id.orEmpty())
+    var text by remember(draftKey) { mutableStateOf(model.repository.preferences.getString(draftKey, "").orEmpty()) }
+    LaunchedEffect(text, draftKey) { model.repository.preferences.edit().putString(draftKey, text).apply() }
     var replyTo by rememberSaveable(root) { mutableStateOf(root) }
     var sending by remember { mutableStateOf(false) }
     val threadHaptics = rememberZoenHaptics()
     val motion = rememberMotionEnabled()
+    LaunchedEffect(entries.map { it.id }) {
+        if (entries.isNotEmpty()) {
+            withFrameNanos { }
+            if (motion) list.animateScrollToItem(entries.lastIndex) else list.scrollToItem(entries.lastIndex)
+        }
+    }
     Scaffold(topBar = { ScreenBar(stringResource(R.string.replies), back) }, bottomBar = {
         Row(Modifier.navigationBarsPadding().imePadding().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.reply)) }, maxLines = 4,
+            OutlinedTextField(text, { text = it }, Modifier.weight(1f).testTag("thread-composer"), placeholder = { Text(stringResource(R.string.reply)) }, maxLines = 4,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 label = entries.firstOrNull { it.id == replyTo }?.let { { Text(it.author.name) } })
             if (text.isBlank()) VoiceComposer(model, space, reply = replyTo, thread = true, threadRoot = root, onSent = { replyTo = root })
             else FilledIconButton(onClick = {
@@ -630,13 +649,14 @@ fun ReceiptTicks(delivery: Delivery, base: androidx.compose.ui.graphics.Color = 
         Delivery.SENT -> Icons.Rounded.Done
         Delivery.DELIVERED, Delivery.READ -> Icons.Rounded.DoneAll
     }
+    val motion = rememberMotionEnabled()
     val tint by androidx.compose.animation.animateColorAsState(
         when (delivery) {
             Delivery.READ -> androidx.compose.ui.graphics.Color(0xFF53BDEB)
             Delivery.FAILED -> MaterialTheme.colorScheme.error
             else -> base
         },
-        androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)),
+        androidx.compose.animation.core.tween(if (motion) 280 else 0, easing = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)),
         label = "ticks",
     )
     val label = stringResource(when (delivery) { Delivery.READ -> R.string.receipt_read; Delivery.DELIVERED -> R.string.receipt_delivered; Delivery.FAILED -> R.string.receipt_failed; Delivery.SENT -> R.string.receipt_sent; else -> R.string.receipt_sending })
@@ -660,20 +680,21 @@ internal fun BubbleMeta(atMs: Long, delivery: Delivery?, modifier: Modifier = Mo
 
 private val QUICK_REACTIONS = listOf("👍", "❤️", "😂", "😮", "😢", "🙏")
 
-/** One chip per emoji; tap to react, long press or open details to see participants. */
+/** One chip per emoji; tap or long press to see participants and manage your reaction. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ReactionChips(model: ZoenViewModel, spaceId: String, entry: TimelineEntry) {
     var showingPeople by remember(entry.id) { mutableStateOf(false) }
     val haptics = rememberZoenHaptics()
+    val motion = rememberMotionEnabled()
     if (showingPeople) ReactionPeopleDialog(model, spaceId, entry) { showingPeople = false }
-    Column(Modifier.padding(top = 2.dp)) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        entry.reactions.forEach { r ->
+    Row(Modifier.padding(top = 2.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        entry.reactions.forEachIndexed { index, r ->
             Surface(shape = CircleShape, color = if (r.mine) MaterialTheme.colorScheme.primary.copy(alpha = .16f) else MaterialTheme.colorScheme.otherMessage,
                 border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
-                modifier = Modifier.animateContentSize(androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)))
-                    .combinedClickable(onClick = { haptics.perform(ZoenFeedback.Selection); model.launch { model.repository.change { it.react(spaceId, entry.id, if (r.mine) null else r.emoji) } } }, onLongClick = { showingPeople = true })
+                modifier = Modifier.animateContentSize(androidx.compose.animation.core.tween(if (motion) 280 else 0, easing = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)))
+                    .combinedClickable(onClick = { haptics.perform(ZoenFeedback.Selection); showingPeople = true }, onLongClick = { haptics.perform(ZoenFeedback.Selection); showingPeople = true })
+                    .then(if (index == 0) Modifier.testTag("reaction-details:${entry.id}") else Modifier)
                     .semantics { contentDescription = "${r.emoji} " + r.people.joinToString { it.name } }) {
                 Row(Modifier.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(r.emoji, fontSize = 14.sp)
@@ -681,8 +702,6 @@ private fun ReactionChips(model: ZoenViewModel, spaceId: String, entry: Timeline
                 }
             }
         }
-    }
-        TextButton(onClick = { showingPeople = true }, modifier = Modifier.testTag("reaction-details:${entry.id}")) { Text("Ver reações") }
     }
 }
 
@@ -707,7 +726,7 @@ private fun MessageActionDialogs(model: ZoenViewModel, spaceId: String, entry: T
     }
     @Composable fun failure() {
         error?.let {
-            Text("Não foi possível concluir. Tente novamente.\n$it", color = MaterialTheme.colorScheme.error,
+            Text("Não foi possível concluir. Tente novamente.", color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.testTag("message-mutation-error"))
         }
         if (running) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -725,18 +744,21 @@ private fun MessageActionDialogs(model: ZoenViewModel, spaceId: String, entry: T
         dismissButton = { TextButton(onClick = dismiss, enabled = !running) { Text(stringResource(R.string.cancel)) } })
     if (forwarding) {
         val state by model.state.collectAsStateWithLifecycle()
-        AlertDialog(onDismissRequest = done, title = { Text(stringResource(R.string.forward_to)) },
+        AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.forward_to)) },
             text = {
+                Column {
+                failure()
                 androidx.compose.foundation.lazy.LazyColumn {
                     items(state.spaces.filter { it.id != spaceId }, key = { it.id }) { target ->
-                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { run { it.forwardMessage(spaceId, entry.id, target.id) } }.padding(vertical = 8.dp),
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(enabled = !running) { run { it.forwardMessage(spaceId, entry.id, target.id) } }.padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (target.counterpart != null) Avatar(target.counterpart!!, size = 36, contact = true) else SpaceAvatar(target, size = 36)
                             Text(target.title, style = MaterialTheme.typography.bodyLarge)
                         }
                     }
                 }
+                }
             },
-            confirmButton = {}, dismissButton = { TextButton(onClick = done) { Text(stringResource(R.string.cancel)) } })
+            confirmButton = {}, dismissButton = { TextButton(onClick = dismiss, enabled = !running) { Text(stringResource(R.string.cancel)) } })
     }
 }

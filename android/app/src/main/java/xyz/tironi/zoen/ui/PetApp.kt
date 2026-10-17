@@ -74,7 +74,7 @@ internal fun PetApp(preferences: android.content.SharedPreferences, itemId: Stri
                             Text(data.optString("name"), style = MaterialTheme.typography.displaySmall, color = petText)
                             Text(data.optString("mood"), color = petText.copy(alpha = .8f))
                             GlassOutlinedButton(onClick = { showEmotes = !showEmotes }, Modifier.testTag("pet-emotes-toggle"), colors = outlineColors) {
-                                Icon(Icons.Rounded.EmojiEmotions, null); Spacer(Modifier.width(8.dp)); Text(emoteLabel)
+                                MotionVectorIcon(Icons.Rounded.EmojiEmotions, null); Spacer(Modifier.width(8.dp)); Text(emoteLabel)
                             }
                             AnimatedVisibility(showEmotes, enter = if (motion) scaleIn() + fadeIn() else EnterTransition.None,
                                 exit = if (motion) scaleOut() + fadeOut() else ExitTransition.None) {
@@ -102,7 +102,7 @@ internal fun PetApp(preferences: android.content.SharedPreferences, itemId: Stri
                             FilledTonalButton(onClick = { action(if (asleep) "pet_wake" else "pet_nap", JSONObject()) }) { Text(stringResource(if (asleep) R.string.wake else R.string.nap)) }
                             FilledTonalButton(onClick = { action("pet_play", JSONObject()) }, enabled = !asleep) { Text(stringResource(R.string.play)) }
                         } }
-                        item { GlassOutlinedButton(onClick = { tab = 1 }, Modifier.fillMaxWidth(), enabled = !asleep, colors = outlineColors) { Icon(Icons.Rounded.SportsEsports, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.dash)) } }
+                        item { GlassOutlinedButton(onClick = { tab = 1 }, Modifier.fillMaxWidth(), enabled = !asleep, colors = outlineColors) { MotionVectorIcon(Icons.Rounded.SportsEsports, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.dash)) } }
                         item { Surface(shape = MaterialTheme.shapes.medium) {
                             Row { TextButton(onClick = { name = data.optString("name"); rename = true }) { Text(stringResource(R.string.rename)) }; Spacer(Modifier.weight(1f)); TextButton(onClick = { action("pet_release", JSONObject()) }) { Text(stringResource(R.string.release_pet), color = MaterialTheme.colorScheme.error) } }
                         } }

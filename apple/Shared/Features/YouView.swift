@@ -111,7 +111,7 @@ struct YouScreen: View {
         }
         .scrollContentBackground(.hidden)
         .background(NightBackdrop())
-        .navigationTitle("Your context")
+        .navigationTitle("Profile")
         .sheet(item: $settings) { SettingsRoot(start: $0.start).environment(model) }
         .onAppear {
             // `-RodaSettings tema`: opens Ajustes on that screen (journey tests, screenshots).

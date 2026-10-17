@@ -54,7 +54,10 @@ class NativeJourneysTest {
         val before = application.repository.state.value.items.map { it.id }.toSet()
         compose.onNodeWithTag("conversation-list").performScrollToNode(hasTestTag("chat:zoen"))
         compose.onNodeWithTag("chat:zoen").performClick()
-        compose.onNodeWithTag("composer").performTextReplacement(prompt)
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("composer").fetchSemanticsNodes().size == 1
+        }
+        compose.onNodeWithTag("composer").assertIsDisplayed().performTextReplacement(prompt)
         compose.onNodeWithTag("send").performClick()
         fun fromThisPrompt(item: ItemDetail) = item.id !in before && item.spaceId == chat.id && item.kindId == "plan" && item.origin.contains(prompt) && item.plan?.budgetCents == 150_000L
         compose.waitUntil(60_000) { application.repository.state.value.items.any(::fromThisPrompt) }
@@ -87,7 +90,7 @@ class NativeJourneysTest {
 
     @Test fun approvalsAreReviewedAndRecordedByTheSharedEngine() {
         val request = application.repository.state.value.requests.first { it.status == RequestStatus.PENDING }
-        compose.onNodeWithText(application.getString(R.string.activity)).performClick()
+        compose.onNodeWithTag("home-notifications").performClick()
         compose.onNodeWithTag("activity-show-list").performClick()
         compose.onNodeWithText(request.title).performScrollTo().performClick()
         compose.onNodeWithTag("request-details").performScrollToNode(hasText(application.getString(R.string.approve)))
@@ -134,8 +137,7 @@ class NativeJourneysTest {
     }
 
     @Test fun searchFindsThePersistedStory() {
-        compose.onNodeWithTag("home-plus").performClick()
-        compose.onNode(hasText(application.getString(R.string.search)) and hasAnyAncestor(hasTestTag("quickActions")), useUnmergedTree = true).performClick()
+        compose.onNodeWithContentDescription(application.getString(R.string.search)).performClick()
         compose.onNodeWithTag("search").performTextInput("Paraty")
         val result = hasText("Paraty", substring = true) and hasClickAction() and !hasSetTextAction()
         compose.waitUntil(10_000) { compose.onAllNodes(result).fetchSemanticsNodes().isNotEmpty() }
@@ -146,9 +148,9 @@ class NativeJourneysTest {
     @Test fun homeSearchOpensJoinedCommunityAndKeepsItAfterRecreation() {
         val community = application.repository.state.value.spaces.first { it.kind == SpaceKindDto.COMMUNITY }
         compose.onNodeWithContentDescription(application.getString(R.string.search)).performClick()
-        compose.onNode(hasSetTextAction()).performTextInput(community.title)
-        compose.onNodeWithTag("conversation-list").performScrollToNode(hasTestTag("chat:${community.id}"))
-        compose.onNodeWithTag("chat:${community.id}").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("search").performTextInput(community.title)
+        compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("search-chat:${community.id}"))
+        compose.onNodeWithTag("search-chat:${community.id}").assertIsDisplayed().performClick()
         compose.onNodeWithTag("composer").assertIsDisplayed()
         scenario.recreate()
         compose.onNodeWithText(community.title).assertIsDisplayed()

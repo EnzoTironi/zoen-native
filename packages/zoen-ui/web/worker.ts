@@ -2,6 +2,7 @@
 import init, * as core from './core/zoen_web_core.js';
 import { bytes, integer, message, object, string } from './boundary.ts';
 import type { CoreOperation } from './worker-client.ts';
+import { projectCurrentConversations, updatesConversations } from './core-view.ts';
 
 declare global {
   var zoenSign: (payload: Uint8Array) => Uint8Array;
@@ -39,6 +40,7 @@ function parseOperation(input: unknown): CoreOperation {
 }
 
 let client: core.BrowserCore | undefined;
+let displayEnglish = false;
 function restored(): core.BrowserCore {
   if (!client) throw new Error('The encrypted session has not been restored.');
   return client;
@@ -58,7 +60,7 @@ function run(operation: CoreOperation): string | Uint8Array {
       client?.free();
       client = undefined;
       client = new core.BrowserCore(operation.account, operation.snapshot);
-      return client.view();
+      return client.viewAt(Date.now(), displayEnglish);
     }
     case 'bootstrap': return restored().bootstrap();
     case 'receive': return restored().receive(operation.bytes, operation.now);
@@ -84,6 +86,7 @@ self.onmessage = (event: MessageEvent<unknown>) => {
   const data = object(event.data);
   if (data.kind === 'init') {
     if (!(data.bridge instanceof SharedArrayBuffer) || ready) throw new Error('Invalid signing bridge.');
+    displayEnglish = string(data.locale).toLowerCase().startsWith('en');
     const bridge = data.bridge;
     const control = new Int32Array(bridge, 0, 4);
     globalThis.zoenSign = (payload) => {
@@ -105,8 +108,11 @@ self.onmessage = (event: MessageEvent<unknown>) => {
   const id = integer(data.id);
   void ready?.then(() => {
     try {
-      const result = run(parseOperation(data.operation));
-      self.postMessage({ kind: 'result', id, result });
+      const operation = parseOperation(data.operation);
+      const result = run(operation);
+      const projected = typeof result === 'string' && updatesConversations(operation.kind)
+        ? projectCurrentConversations(result, restored().viewAt(Date.now(), displayEnglish)) : result;
+      self.postMessage({ kind: 'result', id, result: projected });
     } catch (error) { self.postMessage({ kind: 'error', id, message: message(error) }); }
   });
 };

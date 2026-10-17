@@ -231,6 +231,12 @@ private final class AvatarLoopPlayback {
     }
 
     private func reconcile() {
+        // Keep the real decoded loop art, at the same frame on both platforms.
+        if ProcessInfo.processInfo.environment["ZOEN_PARITY_FIXTURE"] == "native-parity-v1" {
+            layer.removeAnimation(forKey: Self.animationKey)
+            setContents(frames.first)
+            return
+        }
         let running = layer.animation(forKey: Self.animationKey) != nil
         if attached && !paused && frames.count > 1 {
             guard !running else { return }

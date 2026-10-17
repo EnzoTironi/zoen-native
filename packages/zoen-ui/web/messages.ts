@@ -1,14 +1,20 @@
 import { array, boolean, bytes, hex, integer, message, object, publicKey, string } from './boundary.ts';
 import { persistBeforeOutgoing } from './persistence.ts';
+import { parseWidgetSnapshot } from './widget-snapshot.ts';
 import type { StoredSession } from './session.ts';
 import { AuthenticatedTransport, type ConnectionState, type RelayFrame } from './transport.ts';
 import type { BrowserVault } from './vault.ts';
 import type { CoreWorker } from './worker-client.ts';
+import { expireTyping, parseCoreUiEvents, reduceTyping, type TypingState } from './typing-state.ts';
 
 function nullableText(value: unknown): string | null { return value === null ? null : string(value); }
 function timestamp(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) throw new Error('Invalid message timestamp.');
   return value;
+}
+export function parseItemCard(input: unknown) {
+  const value = object(input);
+  return { itemId: string(value.itemId), title: string(value.title), summary: string(value.summary), kindLabel: string(value.kindLabel), kindId: string(value.kindId), version: integer(value.version), totalCents: value.totalCents === null ? null : integer(value.totalCents), budgetCents: value.budgetCents === null ? null : integer(value.budgetCents), lineCount: integer(value.lineCount), doneCount: integer(value.doneCount), ...(Object.hasOwn(value, 'snapshot') ? { snapshot: parseWidgetSnapshot(value.snapshot) } : {}) };
 }
 function parseMessage(input: unknown) {
   const value = object(input);
@@ -34,7 +40,7 @@ function parseMessage(input: unknown) {
     quote: quote ? { id: string(quote.id), name: string(quote.name), text: string(quote.text) } : null,
     thread: value.thread ? string(value.thread) : null, replies: integer(value.replies ?? 0),
     repliers: array(value.repliers ?? []).map(string), last_reply_ms: typeof value.last_reply_ms === 'number' ? value.last_reply_ms : null,
-    file };
+    file, ...(value.card ? { card: parseItemCard(value.card) } : {}) };
 }
 
 const HASH = /^[0-9a-f]{64}$/;
@@ -84,7 +90,8 @@ function parseConversation(input: unknown) {
   if (kind !== 'direct' && kind !== 'group' && kind !== 'community' && kind !== 'personal') throw new Error('Invalid conversation kind.');
   return { id: string(value.id), title: string(value.title), kind, can_send: boolean(value.can_send),
     waiting: nullableText(value.waiting), unreadable: integer(value.unreadable),
-    unread: integer(value.unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), messages: array(value.messages).map(parseMessage) };
+    unread: integer(value.unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), messages: array(value.messages).map(parseMessage),
+    ...(value.counterpart ? { counterpart: (() => { const person = object(value.counterpart); const kind = string(person.kind); if (kind !== 'person' && kind !== 'agent') throw new Error('Invalid counterpart kind.'); return { id: publicKey(person.id), kind: kind as 'person' | 'agent', name: string(person.name), handle: string(person.handle), glyph: nullableText(person.glyph), initials: string(person.initials), tintHex: string(person.tintHex) }; })() } : {}) };
 }
 export type Conversation = ReturnType<typeof parseConversation>;
 export type Message = ReturnType<typeof parseMessage>;
@@ -101,7 +108,7 @@ export type Invite = ReturnType<typeof parseInvite>;
 function parseUpdate(json: string) {
   const value = object(JSON.parse(json));
   return { snapshot: string(value.snapshot), frames: array(value.frames).map(bytes),
-    conversations: array(value.conversations).map(parseConversation) };
+    conversations: array(value.conversations).map(parseConversation), uiEvents: parseCoreUiEvents(value.ui_events) };
 }
 
 /** Core refusals arrive in English; people see plain Portuguese. */
@@ -115,7 +122,7 @@ function plain(reason: string): string {
 
 export type MessagesState =
   | { kind: 'loading' }
-  | { kind: 'active'; connection: ConnectionState; conversations: Conversation[]; notice: string | null }
+  | { kind: 'active'; connection: ConnectionState; conversations: Conversation[]; notice: string | null; typing?: TypingState }
   | { kind: 'failed'; message: string; conversations: Conversation[] };
 type LinkedSession = Extract<StoredSession, { kind: 'linked' }>;
 type MessageCore = Pick<CoreWorker, 'text' | 'bytes' | 'close'>;
@@ -133,6 +140,8 @@ export class Messages {
   private generation = 0;
   private conversations: Conversation[] = [];
   private notice: string | null = null;
+  private typing: TypingState = {};
+  private typingTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor({ core, vault, session, changed }: {
     core: MessageCore; vault: MessageVault; session: LinkedSession; changed: (state: MessagesState) => void;
@@ -141,7 +150,7 @@ export class Messages {
     this.transport = new AuthenticatedTransport(core, vault, session.account, (connection) => {
       if (this.closed) return;
       this.connection = connection;
-      if (connection.kind !== 'ready') ++this.generation;
+      if (connection.kind !== 'ready') { ++this.generation; this.clearTyping(); }
       if (connection.kind === 'failed') { this.fail(connection.message); return; }
       this.publish();
     }, (frame, raw) => this.received(frame, raw));
@@ -158,7 +167,27 @@ export class Messages {
   }
 
   private publish(): void {
-    if (!this.closed) this.changed({ kind: 'active', connection: this.connection, conversations: this.conversations, notice: this.notice });
+    if (!this.closed) this.changed({ kind: 'active', connection: this.connection, conversations: this.conversations, notice: this.notice, typing: this.typing });
+  }
+
+  private clearTyping(): void {
+    clearTimeout(this.typingTimer);
+    this.typingTimer = undefined;
+    this.typing = {};
+  }
+
+  private scheduleTyping(): void {
+    clearTimeout(this.typingTimer);
+    this.typingTimer = undefined;
+    const expiry = Object.values(this.typing).flat().map(peer => peer.expiresAt);
+    if (!expiry.length || this.closed) return;
+    this.typingTimer = setTimeout(() => {
+      this.typingTimer = undefined;
+      if (this.closed) return;
+      const next = expireTyping(this.typing, Date.now(), new Set(this.conversations.map(space => space.id)));
+      if (next !== this.typing) { this.typing = next; this.publish(); }
+      this.scheduleTyping();
+    }, Math.max(0, Math.min(...expiry) - Date.now()));
   }
 
   private received(frame: RelayFrame, raw: Uint8Array): Promise<void> {
@@ -182,6 +211,13 @@ export class Messages {
       } });
     if (this.closed) return;
     this.conversations = update.conversations;
+    // Persistence may outlive the socket generation. Never revive transient peer state
+    // after a disconnect, and never persist it in the encrypted conversation snapshot.
+    if (generation === this.generation && this.connection.kind === 'ready') {
+      this.typing = reduceTyping(this.typing, update.uiEvents, Date.now(), this.session.account.identity,
+        new Set(this.conversations.map(space => space.id)));
+      this.scheduleTyping();
+    }
     this.publish();
   }
 
@@ -394,6 +430,7 @@ export class Messages {
   }
 
   stop(): void {
+    this.clearTyping();
     this.closed = true;
     ++this.generation;
     this.transport.stop();

@@ -27,6 +27,7 @@ enum ChatInboxFilter: String, CaseIterable, Identifiable {
 struct ChatInboxFilterMenu: View {
     @Environment(AppModel.self) private var model
     var showsLabel = true
+    var touchSize: CGFloat = 28
 
     var body: some View {
         @Bindable var model = model
@@ -44,7 +45,7 @@ struct ChatInboxFilterMenu: View {
             }
             .font(.subheadline.weight(.medium))
             .foregroundStyle(model.chatFilter == .all ? Palette.textSecondary : Palette.action)
-            .frame(minWidth: 28, minHeight: showsLabel ? 44 : 28)
+            .frame(minWidth: touchSize, minHeight: showsLabel ? 44 : touchSize)
         }
         #if os(macOS)
         .menuStyle(.borderlessButton)
@@ -331,36 +332,22 @@ struct GlossySphere: View {
 /// Home (iPhone): the zoen wordmark, the live mini-app strip, then your chats.
 struct ConversationsScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let searching = model.chatSearch || !model.chatQuery.isEmpty
         VStack(spacing: 0) {
-            // Glass chrome stays put; the refresh band grows beneath it (Snapchat-style).
-            if !searching {
-                HomeHeader()
-                    .padding(.horizontal, 20)
-                    .padding(.top, 4)
-                    .padding(.bottom, 8)
-            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if !searching {
                         HomeStrip()
                             .transition(.opacity.combined(with: .move(edge: .top)))
                     }
-                    ChatInboxFilterMenu()
-                        .padding(.horizontal, 20)
                     ConversationsList(query: model.chatQuery) { id in model.push(.space(id)) }
                 }
                 .padding(.top, searching ? 12 : 0)
-                .animation(.spring(duration: 0.4, bounce: 0.15), value: searching)
+                .animation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.15), value: searching)
             }
-            #if os(iOS)
-            // Reserve the floating bar on the scroll view that needs the clearance.
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear.frame(height: ZoenBottomBar.height + ZoenBottomBar.bottom)
-            }
-            #endif
             .contentMargins(.bottom, 12, for: .scrollContent)
             .accessibilityIdentifier("chats-list-scroll")
             .scrollDismissesKeyboard(.interactively)
@@ -370,7 +357,7 @@ struct ConversationsScreen: View {
         .background(NightBackdrop())
         .navigationTitle("Chats")
         #if os(iOS)
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationBarTitleDisplayMode(.large)
         #endif
     }
 }
@@ -424,6 +411,52 @@ struct HomeHeader: View {
     }
 }
 
+/// Notifications are a permanent first card, not a destination competing with chats.
+struct NotificationInboxCard: View {
+    @Environment(AppModel.self) private var model
+    var side: CGFloat = 170
+    @State private var taps = 0
+    private var pendingIDs: Set<String> {
+        Set(model.requests.filter { $0.status == .pending && $0.agent.isMine }.map(\.id))
+    }
+
+    var body: some View {
+        Button {
+            taps += 1
+            Haptics.open()
+            if model.usesAdaptiveShell { model.select(.activity) }
+            else { model.notificationsOpen = true }
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    NativeNavigationSymbol(name: "bell.fill", tap: taps, notificationIDs: pendingIDs, diagnosticName: "notification-card")
+                        .font(.system(size: 25, weight: .semibold))
+                    Spacer()
+                    Image(systemName: "arrow.up.right").font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Palette.textTertiary)
+                }
+                Spacer(minLength: 0)
+                Text(model.pendingCount > 99 ? "99+" : "\(model.pendingCount)")
+                    .font(.system(size: 46, weight: .bold, design: .rounded)).monospacedDigit()
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Notifications").font(.subheadline.weight(.semibold))
+                    Text(model.pendingCount == 0 ? String(localized: "View activity") : String(localized: "Pending requests"))
+                        .font(.caption).foregroundStyle(Palette.textSecondary)
+                }
+            }
+            .foregroundStyle(Palette.textPrimary)
+            .padding(16)
+            .frame(width: side, height: side)
+            .background(Palette.action.opacity(0.1), in: .rect(cornerRadius: 26))
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 26))
+        }
+        .buttonStyle(NativeIconPressStyle())
+        .accessibilityLabel("Notifications")
+        .accessibilityValue(String(localized: "\(model.pendingCount) pending requests"))
+        .accessibilityIdentifier("home-notifications-card")
+    }
+}
+
 /// The live mini-app cards (the same snapshot the widgets show). Tap opens; long-press to
 /// move or unpin.
 struct HomeStrip: View {
@@ -438,7 +471,12 @@ struct HomeStrip: View {
     var body: some View {
         let cards = model.homeApps.compactMap { item in WidgetSnapshot.from(item).map { Card(id: item.id, item: item, snap: $0) } }
         if cards.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) { PinHereCard(side: Self.side) }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    NotificationInboxCard(side: Self.side)
+                    PinHereCard(side: Self.side)
+                }
+            }
                 .contentMargins(.horizontal, 20, for: .scrollContent)
                 .scrollClipDisabled()
                 .frame(height: Self.side)
@@ -453,7 +491,9 @@ struct HomeStrip: View {
                 remove: { c in model.unpinFromHome(c.id) },
                 removeTitle: { c in String(localized: "Unpin “\(c.snap.title)” from Home?") },
                 removeMessage: "It stays in its chat; you can pin it again from there.",
-                removeAction: "Unpin from Home"
+                removeAction: "Unpin from Home",
+                leadingCard: AnyView(NotificationInboxCard(side: Self.side)),
+                leadingCardID: "home-notifications-card"
             ) { c in
                 SnapshotCard(snap: c.snap, side: Self.side)
                     .appZoomSource(c.id, zoom)
@@ -505,18 +545,10 @@ struct ConnectionDot: View {
 
     var body: some View {
         let c = model.sync.connection
-        if c.state != "online" {
-            HStack(spacing: 5) {
-                Circle().fill(c.state == "connecting" ? Color.orange : Palette.textTertiary).frame(width: 7, height: 7)
-                Text(c.state == "connecting" ? String(localized: "Connecting") : (c.pending > 0 ? String(localized: "Offline · \(c.pending) queued") : String(localized: "Offline")))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Palette.textSecondary)
-            }
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .glassEffect(.regular, in: .capsule)
-            .help(c.error ?? "")
-            .accessibilityElement(children: .combine)
-            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        if c.state == "offline", model.sync.account != nil {
+            Circle().fill(Palette.textTertiary).frame(width: 6, height: 6)
+                .accessibilityLabel("Offline")
+                .help(c.error ?? String(localized: "Offline"))
         }
     }
 }

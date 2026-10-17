@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="26dp" android:height="26dp" android:viewportWidth="26" android:viewportHeight="26">
+    <group android:name="symbol" android:pivotX="13" android:pivotY="13">
+        <path android:name="contour" android:pathData="M4,3 L17,3 Q19,3 19,5 L19,7 L12,7 Q8,7 8,11 L8,20 L4,17 L3,17 Q1,17 1,15 L1,6 Q1,3 4,3 Z M13,9 L23,9 Q25,9 25,11 L25,18 Q25,20 23,20 L22,20 L22,24 L17,20 L13,20 Q10,20 10,18 L10,12 Q10,9 13,9 Z" android:fillColor="#FF000000" android:strokeColor="#FF000000" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+    </group>
+</vector>

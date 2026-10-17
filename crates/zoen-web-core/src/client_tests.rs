@@ -666,6 +666,89 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     assert!(conversations[0].messages[1].file.is_none());
 }
 
+#[test]
+fn real_item_cards_follow_versions_reverts_and_authorized_deletion() {
+    use roda_types::{ItemContent, ItemKind, PlanDoc, PlanLine, PlanSection};
+    let (mut client, author, other, mut log, _) = web_fixture();
+    let content = ItemContent::Plan(PlanDoc {
+        title: "Trip".into(),
+        summary: "Coast".into(),
+        budget_cents: Some(5000),
+        sections: vec![PlanSection {
+            title: "Day".into(),
+            lines: vec![PlanLine {
+                id: "one".into(),
+                text: "Lunch".into(),
+                cost_cents: 1200,
+                done: true,
+            }],
+        }],
+    });
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: "plan_real".into(),
+            kind: ItemKind::Plan,
+            content: content.clone(),
+            origin: "human".into(),
+        },
+        3,
+    );
+    let target = log.events().last().unwrap().hash.clone();
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemVersioned {
+            item: "plan_real".into(),
+            content: ItemContent::Text {
+                text: "Changed".into(),
+            },
+            note: "edit".into(),
+        },
+        4,
+    );
+    client.logs.insert(log.space().into(), log.clone());
+    let edited = client.conversations();
+    let edited = edited[0].messages[1].card.as_ref().unwrap();
+    assert_eq!((edited.version, edited.summary.as_str()), (2, "Changed"));
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemReverted {
+            item: "plan_real".into(),
+            to_version: 1,
+            note: "undo".into(),
+        },
+        5,
+    );
+    client.logs.insert(log.space().into(), log.clone());
+    let views = client.conversations();
+    assert!(views[0].messages[0].card.is_none());
+    let card = views[0].messages[1].card.as_ref().unwrap();
+    assert_eq!(
+        (
+            card.title.as_str(),
+            card.version,
+            card.total_cents,
+            card.line_count,
+            card.done_count
+        ),
+        ("Trip", 3, Some(1200), 1, 1)
+    );
+    let json = serde_json::to_value(card).unwrap();
+    assert_eq!(json["itemId"], "plan_real");
+    assert_eq!(json["budgetCents"], 5000);
+    annotate(&mut log, &other, &target, roda_types::Annotation::Delete);
+    client.logs.insert(log.space().into(), log.clone());
+    assert!(client.conversations()[0].messages[1].card.is_some());
+    annotate(&mut log, &author, &target, roda_types::Annotation::Delete);
+    client.logs.insert(log.space().into(), log);
+    let views = client.conversations();
+    assert!(views[0].messages[1].deleted);
+    assert!(views[0].messages[1].card.is_none());
+}
+
 fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
     let identity = NativeSigner::from_secret(&[41; 32]);
     let host = HostSigner(NativeSigner::from_secret(&[42; 32]));
@@ -776,6 +859,139 @@ fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption() 
     }
 }
 
+#[test]
+fn web_ui_events_require_current_membership_and_never_replay() {
+    use roda_proto::EphemeralKind::{Delivered, Read, StoppedTyping, Typing};
+    let (mut client, author, other, mut log, _) = web_fixture();
+    let space = log.space().to_owned();
+    let me = client.account.identity.clone();
+    let peer = other.identity.clone();
+    clear(
+        &mut log,
+        &author,
+        EventBody::MemberAdded {
+            identity: peer.clone(),
+            role: Role::Member,
+        },
+        3,
+    );
+    client.logs.insert(space.clone(), log.clone());
+    let receive = |client: &mut Client<HostSigner>, space: &str, from: &str, kind| {
+        client
+            .receive(
+                &ServerFrame::Ephemeral {
+                    space: space.into(),
+                    from: from.into(),
+                    kind,
+                }
+                .encode(),
+                100,
+            )
+            .unwrap()
+    };
+    let update = receive(&mut client, &space, &peer, Typing);
+    assert_eq!(
+        update.ui_events,
+        vec![UiEvent::Typing {
+            space: space.clone(),
+            from: peer.clone(),
+            name: None
+        }]
+    );
+    assert_eq!(
+        serde_json::to_value(&update.ui_events).unwrap()[0]["kind"],
+        "typing"
+    );
+    assert_eq!(
+        receive(&mut client, &space, &peer, StoppedTyping).ui_events,
+        vec![UiEvent::Stopped {
+            space: space.clone(),
+            from: peer.clone()
+        }]
+    );
+    for (s, sender) in [
+        ("unknown", peer.as_str()),
+        (space.as_str(), "unknown"),
+        (space.as_str(), me.as_str()),
+    ] {
+        assert!(receive(&mut client, s, sender, Typing).ui_events.is_empty());
+        assert!(receive(&mut client, s, sender, StoppedTyping)
+            .ui_events
+            .is_empty());
+    }
+    assert!(receive(&mut client, &space, &peer, Delivered { seq: 3 })
+        .ui_events
+        .is_empty());
+    assert!(receive(&mut client, &space, &peer, Read { seq: 2 })
+        .ui_events
+        .is_empty());
+    assert_eq!(client.saved.receipts[&space][&peer], (3, 2));
+    assert!(client.update(Vec::new()).unwrap().ui_events.is_empty());
+    let mut restored = Client::new(
+        client.account.clone(),
+        client.signer.clone(),
+        &update.snapshot,
+    )
+    .unwrap();
+    assert!(restored.update(Vec::new()).unwrap().ui_events.is_empty());
+    clear(
+        &mut log,
+        &author,
+        EventBody::MemberRemoved {
+            identity: peer.clone(),
+        },
+        4,
+    );
+    client.logs.insert(space.clone(), log.clone());
+    assert!(receive(&mut client, &space, &peer, Typing)
+        .ui_events
+        .is_empty());
+    clear(
+        &mut log,
+        &author,
+        EventBody::MemberAdded {
+            identity: peer.clone(),
+            role: Role::Member,
+        },
+        5,
+    );
+    clear(
+        &mut log,
+        &author,
+        EventBody::MemberRemoved { identity: me },
+        6,
+    );
+    client.logs.insert(space.clone(), log);
+    assert!(receive(&mut client, &space, &peer, Typing)
+        .ui_events
+        .is_empty());
+}
+
+#[test]
+fn web_verified_event_emits_transient_space_changed() {
+    let (mut client, author, _, mut log, _) = web_fixture();
+    let space = log.space().to_owned();
+    client.logs.insert(space.clone(), log.clone());
+    let bytes = clear(
+        &mut log,
+        &author,
+        EventBody::MessagePosted {
+            message: "msg_changed".into(),
+            text: "New message".into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+        },
+        10,
+    );
+    let update = client.receive(&bytes, 10).unwrap();
+    assert_eq!(update.ui_events, vec![UiEvent::SpaceChanged { space }]);
+    assert!(client.update(Vec::new()).unwrap().ui_events.is_empty());
+    let mut invalid = bytes;
+    invalid.truncate(invalid.len() / 2);
+    assert!(client.receive(&invalid, 11).is_err());
+}
+
 fn receipt_marks(frames: &[Vec<u8>]) -> Vec<(&'static str, u64)> {
     frames
         .iter()
@@ -822,4 +1038,134 @@ fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect() {
         );
         assert!(restored.delivered().is_empty());
     }
+}
+
+#[test]
+fn counterpart_projects_only_synced_public_profile() {
+    let roster = BTreeMap::from([("me".into(), Role::Owner), ("other".into(), Role::Member)]);
+    let profile = Identity {
+        id: "other".into(),
+        kind: roda_types::IdentityKind::Agent,
+        name: "Ágata Helper Three".into(),
+        handle: "agata".into(),
+        tint_hex: "#123456".into(),
+        glyph: Some("sparkles".into()),
+        owner: Some("me".into()),
+        bio: "Not exported".into(),
+        owner_proof: None,
+    };
+    let profiles = BTreeMap::from([("other".into(), profile)]);
+    let view = project_counterpart(SpaceKind::Direct, "me", &roster, &profiles).unwrap();
+    assert_eq!(
+        serde_json::to_value(view).unwrap(),
+        serde_json::json!({
+            "id":"other", "kind":"agent", "name":"Ágata Helper Three", "handle":"agata",
+            "tintHex":"#123456", "glyph":"sparkles", "initials":"ÁH"
+        })
+    );
+    assert!(project_counterpart(SpaceKind::Group, "me", &roster, &profiles).is_none());
+    assert!(project_counterpart(SpaceKind::Direct, "me", &roster, &BTreeMap::new()).is_none());
+    let mut mismatched = profiles.clone();
+    mismatched.get_mut("other").unwrap().id = "unrelated".into();
+    assert!(project_counterpart(SpaceKind::Direct, "me", &roster, &mismatched).is_none());
+}
+
+#[test]
+fn counterpart_preserves_missing_metadata_without_defaults() {
+    let roster = BTreeMap::from([("me".into(), Role::Owner), ("other".into(), Role::Member)]);
+    let profiles = BTreeMap::from([(
+        "other".into(),
+        Identity {
+            id: "other".into(),
+            kind: roda_types::IdentityKind::Person,
+            name: String::new(),
+            handle: "actual_handle".into(),
+            tint_hex: String::new(),
+            glyph: None,
+            owner: None,
+            bio: String::new(),
+            owner_proof: None,
+        },
+    )]);
+    let value = serde_json::to_value(
+        project_counterpart(SpaceKind::Direct, "me", &roster, &profiles).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(value["kind"], "person");
+    assert_eq!(value["tintHex"], "");
+    assert_eq!(value["initials"], "");
+    assert!(value["glyph"].is_null());
+    assert!(value.get("avatarRef").is_none());
+}
+
+#[test]
+fn authorized_app_snapshots_use_shared_native_clock_locale_and_versions() {
+    use roda_types::{AppDoc, ItemContent, ItemKind};
+    let (mut client, author, _, mut log, _) = web_fixture();
+    let content = |name: &str| {
+        ItemContent::App(AppDoc {
+            app: "pet".into(),
+            resource_uri: "ui://roda/pet".into(),
+            title: name.into(),
+            state_json:
+                serde_json::json!({"name":name,"updated":0,"fullness":90,"energy":90,"joy":90})
+                    .to_string(),
+        })
+    };
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: "actual-pet".into(),
+            kind: ItemKind::App,
+            content: content("Peanut"),
+            origin: "human".into(),
+        },
+        3,
+    );
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemVersioned {
+            item: "actual-pet".into(),
+            content: content("Renamed"),
+            note: "edit".into(),
+        },
+        4,
+    );
+    client.logs.insert(log.space().into(), log.clone());
+    let views = client.conversations_at(3_600_000, true);
+    let snapshot = views[0]
+        .messages
+        .iter()
+        .find_map(|m| m.card.as_ref())
+        .unwrap()
+        .snapshot
+        .as_ref()
+        .unwrap();
+    assert_eq!(snapshot["title"], "Renamed");
+    assert_eq!(snapshot["bars"][0]["label"], "Food");
+    assert_eq!(snapshot["bars"][0]["value"], 0.84);
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemReverted {
+            item: "actual-pet".into(),
+            to_version: 1,
+            note: "undo".into(),
+        },
+        5,
+    );
+    client.logs.insert(log.space().into(), log);
+    let views = client.conversations_at(0, false);
+    let snapshot = views[0]
+        .messages
+        .iter()
+        .find_map(|m| m.card.as_ref())
+        .unwrap()
+        .snapshot
+        .as_ref()
+        .unwrap();
+    assert_eq!(snapshot["title"], "Peanut");
+    assert_eq!(snapshot["bars"][0]["label"], "Comida");
 }

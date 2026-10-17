@@ -1,0 +1,7 @@
+/* Explicit appearance preference overrides system media identically in app and captures. */
+:root[data-appearance=light] { --zm-canvas:#fff;--zm-card:#fff;--zm-ink:#0e1320;--zm-grey:#5b6478;--zm-other:#f2f2f2;--zm-own:#111113;--zm-line:#e1e5ee;--zm-line-soft:#e1e5ee; }
+:root[data-appearance=dark] { --zm-canvas:#090d15;--zm-card:#121826;--zm-ink:#eef2fa;--zm-grey:#93a0b8;--zm-other:#26272b;--zm-own:#f2f2f0;--zm-line:#253047;--zm-line-soft:#253047; }
+:root[data-appearance=light] .na-shell { --na-background:#f4f6fb;--na-surface:#fff;--na-muted:#eceff6;--na-text:#0e1320;--na-secondary:#5b6478;--na-action:#3d7a28;--na-hairline:rgb(225 229 238 / .6);color-scheme:light; }
+:root[data-appearance=dark] .na-shell { --na-background:#090d15;--na-surface:#121826;--na-muted:#1a2233;--na-text:#eef2fa;--na-secondary:#93a0b8;--na-action:#86c25a;--na-hairline:rgb(37 48 71 / .6);color-scheme:dark; }
+:root[data-appearance=light] .native-settings { --ns-bg:#f4f6fb;--ns-card:#f3f4f7;--ns-edge:#e1e5ee;--ns-text:#0e1320;--ns-secondary:#5b6478;--ns-tertiary:#8c95a8;--ns-outline:#646d80; }
+:root[data-appearance=dark] .native-settings { --ns-bg:#090d15;--ns-card:#151a24;--ns-edge:#253047;--ns-text:#eef2fa;--ns-secondary:#93a0b8;--ns-tertiary:#5f6b82;--ns-outline:#6b7790; }
