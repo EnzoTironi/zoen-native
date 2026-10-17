@@ -234,6 +234,8 @@ pub(crate) struct GrantState {
 
 #[derive(Default)]
 pub(crate) struct State {
+    /// Signed experiment announcement labels; rebuilt in event order on import.
+    pub living_announcements: HashMap<SpaceId, HashSet<ItemId>>,
     pub spaces: HashMap<SpaceId, SpaceState>,
     pub items: HashMap<ItemId, ItemState>,
     pub requests: HashMap<RequestId, RequestState>,
@@ -333,6 +335,22 @@ impl State {
             }
             Projection::Applied => {}
         }
+        if let EventBody::ItemVersioned { item, .. } | EventBody::ItemReverted { item, .. } =
+            &e.body
+        {
+            if self
+                .living_announcements
+                .get(&e.space)
+                .is_some_and(|items| items.contains(item))
+                && !self.spaces.get(&e.space).is_some_and(|s| {
+                    s.members.iter().any(|(id, role)| {
+                        id == &e.author && matches!(role, Role::Owner | Role::Admin)
+                    })
+                })
+            {
+                return Projection::Refused;
+            }
+        }
         let entry = |body| Entry {
             hash: e.hash.clone(),
             client_id: e.client_id.clone(),
@@ -391,6 +409,36 @@ impl State {
                 forwarded,
                 ..
             } => {
+                // Reserved experiment metadata is signed and replayed by living_space,
+                // never presented as a conversation message (including to older views).
+                if text.starts_with(crate::living_hackathon::HACK_META)
+                    || text.starts_with(crate::living_tiers::TIER_META)
+                    || text.starts_with(crate::living_tiers::TIER_CLAIM)
+                {
+                    return Projection::Applied;
+                }
+                if let Some(raw) = text.strip_prefix(crate::living_space::META_PREFIX) {
+                    if self.spaces.get(&e.space).is_some_and(|s| {
+                        s.kind == SpaceKind::Community
+                            && s.members.iter().any(|(id, role)| {
+                                id == &e.author && matches!(role, Role::Owner | Role::Admin)
+                            })
+                    }) {
+                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) {
+                            if value["action"] == "announce" {
+                                if let Some(item) = value["item_id"].as_str().filter(|item| {
+                                    self.items.get(*item).is_some_and(|i| i.space == e.space)
+                                }) {
+                                    self.living_announcements
+                                        .entry(e.space.clone())
+                                        .or_default()
+                                        .insert(item.into());
+                                }
+                            }
+                        }
+                    }
+                    return Projection::Applied;
+                }
                 // Older Android builds posted the file, then a marker naming its Item.
                 let legacy_voice = text
                     .strip_prefix("⟦voice:")
@@ -718,6 +766,9 @@ impl Engine {
             if let Some(projected) = scoped.spaces.get(space) {
                 state.spaces.insert(space.clone(), projected.clone());
             }
+            state
+                .living_announcements
+                .extend(scoped.living_announcements.clone());
             // Only a Personal Space projects prefs (checked when applied).
             state.chat_prefs.extend(
                 scoped
@@ -905,6 +956,7 @@ impl Engine {
         if self.approval_replay_needed {
             self.reproject_approval_overlay()?;
         }
+        self.living_guard_write(space, author, &body)?;
         let signer = self.author_for(author)?;
         if self.net.synced.contains(space) {
             // Only this device's account publishes to the relay for now; local agents
@@ -1570,6 +1622,12 @@ impl Engine {
         let mut out: Vec<SpaceSummary> = self
             .space_order
             .iter()
+            .filter(|id| {
+                !self.living_enabled()
+                    || (!self.living_child_hidden(id)
+                        && !self.living_hackathon_hidden(id)
+                        && !self.living_tier_hidden(id))
+            })
             .filter_map(|id| self.space_summary(id).ok())
             .filter(|s| s.kind != SpaceKindDto::Community || !s.members.is_empty() || true)
             .collect();
@@ -1578,6 +1636,7 @@ impl Engine {
     }
 
     pub fn space_summary(&self, id: &str) -> R<SpaceSummary> {
+        self.living_guard_read_space(id, self.me.as_deref().unwrap_or_default())?;
         let s = self.space_state(id)?;
         let kind = match s.kind {
             SpaceKind::Direct => SpaceKindDto::Direct,
@@ -1692,6 +1751,7 @@ impl Engine {
     }
 
     pub fn timeline(&self, space: &str) -> R<Vec<TimelineEntry>> {
+        self.living_guard_read_space(space, self.me.as_deref().unwrap_or_default())?;
         let s = self.space_state(space)?;
         let mut out: Vec<TimelineEntry> = s.entries.iter().map(|e| self.entry_dto(e)).collect();
         crate::replies::count_thread_replies(&mut out);
@@ -1989,6 +2049,7 @@ impl Engine {
     }
 
     pub fn item(&self, id: &str) -> R<ItemDetail> {
+        self.living_guard_read_resource(id)?;
         let it = self.item_state(id)?;
         let v = it.current();
         let snapshot = if it.kind == ItemKind::Plan {
@@ -2081,6 +2142,7 @@ impl Engine {
     }
 
     pub fn item_at(&self, id: &str, number: u32) -> R<ItemDetail> {
+        self.living_guard_read_resource(id)?;
         let state = self.item_state(id)?;
         if state.kind == ItemKind::Plan {
             self.require_legacy_plan(id)?;
@@ -3201,6 +3263,9 @@ impl Engine {
         }
         let mut hits = Vec::new();
         for it in self.state.items.values() {
+            if self.living_guard_read_resource(&it.id).is_err() {
+                continue;
+            }
             let v = it.current();
             let plan = if it.kind == ItemKind::Plan {
                 match self.plan_snapshot(&it.id) {

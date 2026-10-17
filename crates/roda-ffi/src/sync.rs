@@ -1252,6 +1252,32 @@ impl Engine {
 
     pub fn add_member(&mut self, space: &str, who: &str, role: Role) -> R<()> {
         let me = self.me_id()?;
+        let previous = self
+            .space_state(space)?
+            .members
+            .iter()
+            .find(|(id, _)| id == who)
+            .map(|(_, role)| *role);
+        if matches!(previous, Some(Role::Admin | Role::Owner))
+            && !matches!(role, Role::Admin | Role::Owner)
+        {
+            // Revoke administrator-only MLS access before publishing the root
+            // demotion. A failure leaves the root role unchanged and retryable.
+            let actor = self
+                .space_state(space)?
+                .members
+                .iter()
+                .find(|(id, _)| id == &me)
+                .map(|(_, role)| *role);
+            if !matches!(actor, Some(Role::Owner))
+                && !(matches!(actor, Some(Role::Admin)) && previous != Some(Role::Owner))
+            {
+                return Err(CoreError::Forbidden {
+                    reason: "Only administrators can demote members".into(),
+                });
+            }
+            self.living_tier_demote_admin(space, who)?;
+        }
         self.append(
             space,
             &me,
@@ -1260,6 +1286,12 @@ impl Engine {
                 role,
             },
         )?;
+        if matches!(role, Role::Admin | Role::Owner) {
+            self.living_tier_promote_admin(space, who)?;
+        }
+        if self.living_enabled() {
+            self.living_conversation_ensure(space)?;
+        }
         Ok(())
     }
 
@@ -1293,6 +1325,9 @@ impl Engine {
                 ),
             });
         }
+        self.living_tier_remove_from_all(space, who)?;
+        self.living_conversation_remove(space, who)?;
+        self.living_children_remove(space, who)?;
         self.append(
             space,
             &me,
@@ -1305,6 +1340,9 @@ impl Engine {
 
     pub fn leave_space(&mut self, space: &str) -> R<()> {
         let me = self.me_id()?;
+        self.living_tier_remove_from_all(space, &me)?;
+        self.living_conversation_remove(space, &me)?;
+        self.living_children_remove(space, &me)?;
         self.append(
             space,
             &me,

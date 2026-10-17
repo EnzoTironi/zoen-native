@@ -75,7 +75,14 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
         return
     }
 
+    val livingSpacesEnabled = model.repository.preferences.getBoolean("LivingSpacesEnabled", false)
+    LaunchedEffect(livingSpacesEnabled, state.me?.id) {
+        model.repository.query { it.setLivingSpaceEnabled(livingSpacesEnabled) }
+    }
     key(state.demo, state.me?.id, LocalConfiguration.current.locales[0].language) {
+        if (livingSpacesEnabled) {
+            LivingGlassScene { LivingSpaceRoot(model, state, deepLink, consumed, snackbar) }
+        } else {
         var tab by rememberSaveable { mutableStateOf(Tab.Chats) }
         val chats = rememberNavBackStack(Home)
         val store = rememberNavBackStack(Home)
@@ -237,6 +244,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
     }
 }
 

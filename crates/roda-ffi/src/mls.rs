@@ -4129,4 +4129,211 @@ mod tests {
         assert!(engine.outbox_envelopes().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn living_tier_assignment_delivers_keys_and_revocation_removes_future_decryption() {
+        use serde_json::json;
+        let mut owner = Engine::open(":memory:").unwrap();
+        owner
+            .create_account("Alex", "alex_tier_test", "http://relay.test")
+            .unwrap();
+        owner.net.profiles.supported = true;
+        owner
+            .store
+            .set_meta("experiment.living_space.enabled", "true")
+            .unwrap();
+        let mut peer = Engine::open(":memory:").unwrap();
+        peer.create_account("Sam", "sam_tier_test", "http://relay.test")
+            .unwrap();
+        peer.net.profiles.supported = true;
+        let peer_id = peer.me_id().unwrap();
+        let owner_id = owner.me_id().unwrap();
+        let root = owner
+            .create_synced_space(
+                "Community",
+                SpaceKind::Community,
+                Privacy::Closed,
+                std::slice::from_ref(&peer_id),
+            )
+            .unwrap();
+        let created = owner
+            .living_tier_command(&root, &json!({"action":"tier_create","name":"Pro"}))
+            .unwrap();
+        let tier_id = created["tiers"][0]["id"].as_str().unwrap().to_string();
+        let partition = created["tiers"][0]["space"].as_str().unwrap().to_string();
+        let issued = owner.living_tier_command(&root, &json!({"action":"tier_invite","tier_id":tier_id,"expires_at_ms":crate::engine::now_ms()+60000})).unwrap();
+        let invite_id = issued["invite_id"].as_str().unwrap().to_string();
+        owner.reload().unwrap();
+        let metadata = owner.living_tier_home(&root).unwrap();
+        assert_eq!(metadata["invitations"][0]["id"], invite_id);
+        assert!(metadata["invitations"][0].get("digest").is_none());
+        assert!(metadata["invitations"][0].get("token").is_none());
+        owner
+            .living_tier_command(
+                &root,
+                &json!({"action":"tier_invite_revoke","invite_id":invite_id}),
+            )
+            .unwrap();
+        assert_eq!(
+            owner.living_tier_home(&root).unwrap()["invitations"][0]["revoked"],
+            true
+        );
+        let mut frames = confirm_claim_handshakes(&mut owner);
+        assert_eq!(owner.device().unwrap().leaves(&partition).unwrap().len(), 1);
+        owner
+            .living_tier_command(
+                &root,
+                &json!({"action":"tier_assign","tier_id":tier_id,"identity_id":peer_id}),
+            )
+            .unwrap();
+        frames.extend(confirm_claim_handshakes(&mut owner));
+        let (public, signed) = peer.agreement_to_publish().unwrap();
+        owner.agreement_keys_arrived(
+            vec![roda_proto::AgreementKeyRecord {
+                identity: peer_id.clone(),
+                public,
+                signed,
+            }],
+            std::slice::from_ref(&peer_id),
+        );
+        let clock = Some(KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap());
+        let (group, targets, operation) = owner.mls_to_claim(clock).unwrap().unwrap();
+        assert_eq!(group, partition);
+        owner.mls_claimed(
+            &partition,
+            &operation,
+            Ok(claimed_records(std::slice::from_mut(&mut peer), &targets)),
+        );
+        frames.extend(confirm_claim_handshakes(&mut owner));
+        assert_eq!(owner.device().unwrap().leaves(&partition).unwrap().len(), 2);
+        for frame in frames {
+            assert_eq!(peer.ingest(frame), Ingest::Applied);
+        }
+        let page = owner
+            .page_import_markdown(
+                &partition,
+                "private.md",
+                "# Private notes\n\nOnly eligible members.\n",
+            )
+            .unwrap();
+        let file = owner
+            .file_add(
+                &partition,
+                "private.txt",
+                "private.txt",
+                "text/plain",
+                b"old protected content",
+                None,
+            )
+            .unwrap();
+        owner
+            .living_tier_command(
+                &root,
+                &json!({"action":"tier_bind","tier_id":tier_id,"item_id":page,"kind":"page"}),
+            )
+            .unwrap();
+        for (sha, _) in owner.pending_uploads(100) {
+            owner.upload_done(&sha);
+        }
+        owner.mls_seal_outbox().unwrap();
+        for envelope in owner.outbox_envelopes() {
+            if envelope.space() == partition {
+                assert!(
+                    envelope.is_sealed(),
+                    "protected content left the device unencrypted"
+                );
+            }
+            let frame = ordered(&owner, envelope);
+            assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
+            assert_eq!(peer.ingest(frame), Ingest::Applied);
+        }
+        assert_eq!(
+            peer.page_markdown(&page).unwrap(),
+            "# Private notes\n\nOnly eligible members.\n"
+        );
+        assert_eq!(peer.file_info_at(&file, None).unwrap().name, "private.txt");
+        let old_chunk_key = match &peer.item_state(&file).unwrap().current().content {
+            ItemContent::File(content) => hex::decode(&content.chunks[0].key).unwrap(),
+            _ => panic!("expected file"),
+        };
+        let sender = Leaf {
+            identity: owner_id.clone(),
+            device: owner.net.account.as_ref().unwrap().device.clone(),
+            cert: owner.net.author.as_ref().unwrap().cert.clone().unwrap(),
+        };
+        let roster = BTreeSet::from([owner_id.clone(), peer_id.clone()]);
+        let first = owner
+            .device()
+            .unwrap()
+            .seal(&partition, b"protected before revocation")
+            .unwrap();
+        assert!(
+            matches!(peer.device().unwrap().open(&partition,&first,&roster,&sender).unwrap(), Opened::Application {plaintext,..} if plaintext == b"protected before revocation")
+        );
+        let before_epoch = owner.device().unwrap().checkpoint(&partition).unwrap().0;
+        owner
+            .living_tier_command(
+                &root,
+                &json!({"action":"tier_revoke","tier_id":tier_id,"identity_id":peer_id}),
+            )
+            .unwrap();
+        let mut removed = confirm_claim_handshakes(&mut owner);
+        assert!(
+            owner.mls_to_claim(None).unwrap().is_none(),
+            "removal needs no new key packages"
+        );
+        removed.extend(confirm_claim_handshakes(&mut owner));
+        assert_eq!(owner.device().unwrap().leaves(&partition).unwrap().len(), 1);
+        assert!(owner.device().unwrap().checkpoint(&partition).unwrap().0 > before_epoch);
+        for frame in removed {
+            assert_eq!(peer.ingest(frame), Ingest::Applied);
+        }
+        let later = owner
+            .device()
+            .unwrap()
+            .seal(&partition, b"protected after revocation")
+            .unwrap();
+        let opened =
+            peer.device()
+                .unwrap()
+                .open(&partition, &later, &BTreeSet::from([owner_id]), &sender);
+        assert!(
+            !matches!(opened, Ok(Opened::Application { .. })),
+            "revoked peer decrypted a future epoch"
+        );
+        assert!(peer.living_tier_guard_space(&partition, &peer_id).is_err());
+        assert!(peer.page_markdown(&page).is_err());
+        assert!(peer.item(&page).is_err());
+        assert!(peer.file_info_at(&file, None).is_err());
+        owner
+            .file_new_version(
+                &file,
+                b"new protected content after revocation",
+                None,
+                "Updated",
+            )
+            .unwrap();
+        let new_blob = match &owner.item_state(&file).unwrap().current().content {
+            ItemContent::File(content) => content.chunks[0].blob.clone(),
+            _ => panic!("expected file"),
+        };
+        let sealed = owner
+            .pending_uploads(100)
+            .into_iter()
+            .find(|(sha, _)| *sha == new_blob)
+            .unwrap()
+            .1;
+        use chacha20poly1305::{
+            aead::{Aead, KeyInit},
+            XChaCha20Poly1305, XNonce,
+        };
+        let old_cipher = XChaCha20Poly1305::new_from_slice(&old_chunk_key).unwrap();
+        let nonce: [u8; 24] = sealed[..24].try_into().unwrap();
+        assert!(
+            old_cipher
+                .decrypt(&XNonce::from(nonce), &sealed[24..])
+                .is_err(),
+            "an old chunk key decrypted new file content"
+        );
+    }
 }

@@ -2,7 +2,7 @@ import SwiftUI
 import RodaCore
 
 /// Tela 2: a conversa com pessoas e agentes. O Item nasce da mensagem do agente.
-struct SpaceView: View {
+struct ConversationSpaceView: View {
     @Environment(AppModel.self) private var model
     let spaceId: String
     var onOpenItem: (String) -> Void

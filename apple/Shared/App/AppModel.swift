@@ -181,6 +181,13 @@ final class AppModel {
         // Tests and demos of the real thing: `-RodaFreshStart YES` forgets this device's
         // account and chats; `-RodaAccount "Ana:ana"` signs up without onboarding.
         let d = UserDefaults.standard
+        if d.bool(forKey: "RodaLivingAccountFixture"), core.account() == nil {
+            do {
+                _ = try core.createAccount(name: "Alex", handle: "living_builder", relayUrl: "https://relay.test", vault: sync.vault)
+            } catch {
+                bootError = (error as? CoreError)?.message ?? error.localizedDescription
+            }
+        }
         if d.bool(forKey: "RodaWowReset") {
             // Proof videos: replay first-time WOW moments (stamp, flourish).
             for k in d.dictionaryRepresentation().keys where k.hasPrefix("RodaWow.") { d.removeObject(forKey: k) }
@@ -208,6 +215,28 @@ final class AppModel {
     private static func boot() -> (RodaEngine, String?) {
         do {
             Money.locale = AppLocale.tag
+            #if DEBUG
+            if UserDefaults.standard.bool(forKey: "RodaLivingAccountFixture") || UserDefaults.standard.bool(forKey: "RodaLivingSpaceFixture") {
+                let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent("LivingSpaceFixture", isDirectory: true)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let requested = UserDefaults.standard.string(forKey: "RodaLivingFixtureVariant") ?? "default"
+                let variant = ["light", "dark"].contains(requested) ? requested : "default"
+                let actualAccount = UserDefaults.standard.bool(forKey: "RodaLivingAccountFixture")
+                let prefix = actualAccount ? "account" : "demo"
+                let database = directory.appendingPathComponent("\(prefix)-\(variant).sqlite")
+                if actualAccount || UserDefaults.standard.bool(forKey: "RodaLivingFixtureReset") {
+                    // Fresh volatile-vault account or explicit demo reset; never the normal account.
+                    for suffix in ["", "-wal", "-shm"] {
+                        let file = URL(fileURLWithPath: database.path + suffix)
+                        if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
+                    }
+                }
+                let engine = try RodaEngine.open(path: database.path, locale: AppLocale.tag)
+                if !actualAccount { _ = try engine.seedDemoIfEmpty() }
+                return (engine, nil)
+            }
+            #endif
             let engine = try RodaEngine.openDefault(locale: AppLocale.tag)
             // The demo story only behind the dev flag (`-RodaDemo YES`); a real install
             // starts empty and creates its account in onboarding.

@@ -276,6 +276,7 @@ impl Engine {
         }
         self.space_state(space)?;
         let me = self.me_id()?;
+        self.living_guard_read_space(space, &me)?;
         if !self.is_member(space, &me) {
             return Err(CoreError::Forbidden {
                 reason: "Só membros podem buscar nesta conversa.".into(),
@@ -368,6 +369,13 @@ impl Engine {
         let mut hits = Vec::new();
         for kind in wanted {
             for r in self.store.search(query, kind, limit)? {
+                if !r.space.is_empty()
+                    && self
+                        .living_guard_read_space(&r.space, self.me.as_deref().unwrap_or_default())
+                        .is_err()
+                {
+                    continue;
+                }
                 let space_id = (!r.space.is_empty()).then(|| r.space.clone());
                 let space_title = space_id
                     .as_ref()

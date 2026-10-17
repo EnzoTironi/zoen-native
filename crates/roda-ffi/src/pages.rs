@@ -220,6 +220,7 @@ impl Engine {
         kind: ItemKind,
         f: impl FnOnce(&ItemState, &mut PageSession) -> R<T>,
     ) -> R<T> {
+        self.living_guard_read_resource(item)?;
         let it = self.item_state(item)?;
         if it.kind != kind {
             return Err(invalid(

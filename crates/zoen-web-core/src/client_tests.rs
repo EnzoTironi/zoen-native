@@ -199,182 +199,6 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         .unwrap();
     assert_eq!(client.conversations()[0].messages[0].text, "Native to web");
 
-    // Ordinary files need a companion chat post for native's Entry projection.
-    let before_media = client.saved.outbox.clone();
-    let file = crate::media::seal_file("report.txt", "text/plain", b"report", None)
-        .unwrap()
-        .doc;
-    client.queue_file(space, file, 11).unwrap();
-    let events: Vec<_> = client
-        .saved
-        .outbox
-        .values()
-        .filter_map(|p| p.inner.clone())
-        .collect();
-    let item = events
-        .iter()
-        .find_map(|e| match &e.body {
-            EventBody::ItemCreated { item, .. } => Some(item.clone()),
-            _ => None,
-        })
-        .unwrap();
-    assert!(events.iter().any(|e| matches!(&e.body,
-        EventBody::MessagePosted { attaches: Some(id), .. } if id == &item)));
-    assert_eq!(
-        client.conversations()[0]
-            .messages
-            .iter()
-            .filter(|m| m.file.is_some())
-            .count(),
-        1
-    );
-    // Only the redundant empty file companion may disappear. Attachment posts
-    // carrying text, reply/thread context, forwards, or non-file items are posts.
-    let companion = events
-        .iter()
-        .find(|e| matches!(e.body, EventBody::MessagePosted { .. }))
-        .unwrap();
-    assert!(client.message_view(companion, "sending", None).is_none());
-    assert_eq!(client.conversations()[0].messages.len(), 2);
-    // A later empty reshare is not the generated companion, even by its owner.
-    let mut reshare = companion.clone();
-    if let EventBody::MessagePosted { message, .. } = &mut reshare.body {
-        *message = "later-reshare".into();
-    }
-    reshare.at_ms += 60_000;
-    let shared = client.message_view(&reshare, "sending", None).unwrap();
-    assert_eq!(shared.file.as_ref().unwrap().name, "report.txt");
-    let mut other_author = companion.clone();
-    other_author.author = "another-author".into();
-    assert!(client
-        .message_view(&other_author, "sending", None)
-        .unwrap()
-        .file
-        .is_some());
-    let mut other_space = companion.clone();
-    other_space.space = "another-space".into();
-    assert!(client
-        .message_view(&other_space, "sending", None)
-        .unwrap()
-        .file
-        .is_none());
-    for (text, reply, forwarded, attachment) in [
-        ("caption", None, false, item.clone()),
-        (
-            "",
-            Some(roda_types::ReplyRef {
-                to: "root".into(),
-                thread: false,
-            }),
-            false,
-            item.clone(),
-        ),
-        (
-            "",
-            Some(roda_types::ReplyRef {
-                to: "root".into(),
-                thread: true,
-            }),
-            false,
-            item.clone(),
-        ),
-        ("", None, true, item.clone()),
-        ("", None, false, "non-file-item".into()),
-    ] {
-        let mut post = companion.clone();
-        if let EventBody::MessagePosted {
-            text: t,
-            reply: r,
-            forwarded: f,
-            attaches,
-            ..
-        } = &mut post.body
-        {
-            *t = text.into();
-            *r = reply.clone();
-            *f = forwarded;
-            *attaches = Some(attachment.clone());
-        }
-        let view = client
-            .message_view(&post, "sending", None)
-            .expect("meaningful attachment post must survive");
-        assert_eq!(view.text, text);
-        if attachment == item {
-            let doc = view
-                .file
-                .as_ref()
-                .expect("retained attachment must render file payload");
-            assert_eq!(doc.name, "report.txt");
-            assert!(!doc.chunks.is_empty());
-        } else {
-            assert!(view.file.is_none());
-        }
-        assert_eq!(view.forwarded, forwarded);
-        assert_eq!(
-            view.quote.is_some() || view.thread.is_some(),
-            reply.is_some()
-        );
-    }
-    client.saved.outbox = before_media.clone();
-    let target = client.conversations()[0].messages[0].entry.clone().unwrap();
-    let expected = client
-        .resolve_post(space, &target)
-        .unwrap()
-        .client_id
-        .clone();
-    let mut voice = crate::media::seal_file("voice.webm", "audio/webm", b"voice", None)
-        .unwrap()
-        .doc;
-    voice.voice = Some(roda_types::VoiceMeta {
-        reply: Some(roda_types::ReplyRef {
-            to: target,
-            thread: false,
-        }),
-        ..Default::default()
-    });
-    client.queue_file(space, voice, 11).unwrap();
-    assert!(client
-        .saved
-        .outbox
-        .values()
-        .filter_map(|p| p.inner.as_ref())
-        .any(|e| matches!(&e.body,
-        EventBody::ItemCreated { content: roda_types::ItemContent::File(doc), .. }
-        if doc.voice.as_ref().and_then(|v| v.reply.as_ref()).is_some_and(|r| r.to == expected))));
-    client.saved.outbox = before_media;
-
-    let sealed =
-        crate::media::seal_file("voice.webm", "audio/webm", b"retained audio", None).unwrap();
-    let chunks = sealed
-        .uploads
-        .iter()
-        .map(|u| (u.blob.clone(), u.sealed.clone()))
-        .collect();
-    // A recording that failed offline must survive without a synced MLS epoch.
-    client.synced = false;
-    let failed = client
-        .queue_failed_file(space, sealed.doc.clone(), 11, "offline".into(), chunks)
-        .unwrap();
-    assert!(failed
-        .frames
-        .iter()
-        .all(|f| !matches!(ClientFrame::decode(f).unwrap(), ClientFrame::Publish { .. })));
-    let restored_failed = Client::new(account.clone(), host.clone(), &failed.snapshot).unwrap();
-    let bytes = restored_failed.local_chunk(&sealed.doc.chunks[0].blob);
-    assert_eq!(
-        crate::media::open_chunk(&sealed.doc.chunks[0], &bytes).unwrap(),
-        b"retained audio"
-    );
-    assert_eq!(
-        restored_failed.conversations()[0]
-            .messages
-            .last()
-            .unwrap()
-            .delivery,
-        "failed"
-    );
-    client.synced = true;
-    client.saved.outbox.retain(|_, p| p.failure.is_none());
     let sending = client.queue_message(space, "Web to native", 11).unwrap();
     let env = sending
         .frames
@@ -449,6 +273,9 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
     );
 }
 
+#[path = "mutation_tests.rs"]
+mod mutation_tests;
+
 #[test]
 fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_message_fallback() {
     let identity = NativeSigner::from_secret(&[21; 32]);
@@ -476,6 +303,667 @@ fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_me
     assert!(client
         .queue_message("sp_invite", "plain text forbidden", 3)
         .is_err());
+}
+
+#[test]
+fn browser_internal_conversations_remain_in_detail_model() {
+    let identity = NativeSigner::from_secret(&[71; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[72; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let mut client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let mut root = SpaceLog::new("root");
+    clear(
+        &mut root,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Community".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    clear(&mut root, &author, EventBody::MessagePosted { message: "register".into(), text: "zoen-living-space-meta-v1:{\"action\":\"conversation_partition\",\"child\":\"child\"}".into(), attaches: None, reply: None, forwarded: false }, 2);
+    let mut child = SpaceLog::new("child");
+    clear(
+        &mut child,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Conversation".into(),
+            kind: SpaceKind::Group,
+            privacy: Privacy::EndToEnd,
+        },
+        1,
+    );
+    client.logs.insert("root".into(), root);
+    client.logs.insert("child".into(), child);
+    let value = serde_json::to_value(client.conversations()).unwrap();
+    assert!(value
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c["id"] == "child" && c["internal"] == true));
+}
+
+#[test]
+fn browser_announcement_replay_rejects_member_versions_after_publish() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let identity = NativeSigner::from_secret(&[71; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[72; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let member = Author::root(NativeSigner::from_secret(&[73; 32]));
+    let mut client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let mut log = SpaceLog::new("root");
+    clear(
+        &mut log,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Community".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    let content = |text: &str| {
+        roda_types::ItemContent::Page(roda_types::PageContent {
+            title: text.into(),
+            path: String::new(),
+            loro: STANDARD.encode(roda_docs::Page::from_markdown(text).unwrap().snapshot()),
+            blob: None,
+            manifest: None,
+        })
+    };
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: "page".into(),
+            kind: roda_types::ItemKind::Page,
+            content: content("Original"),
+            origin: "test".into(),
+        },
+        2,
+    );
+    clear(
+        &mut log,
+        &author,
+        EventBody::MessagePosted {
+            message: "publish".into(),
+            text: "zoen-living-space-meta-v1:{\"action\":\"announce\",\"item_id\":\"page\"}".into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+        },
+        3,
+    );
+    clear(
+        &mut log,
+        &author,
+        EventBody::MemberAdded {
+            identity: member.identity.clone(),
+            role: Role::Member,
+        },
+        3,
+    );
+    clear(
+        &mut log,
+        &member,
+        EventBody::ItemVersioned {
+            item: "page".into(),
+            content: content("Unauthorized"),
+            note: String::new(),
+        },
+        4,
+    );
+    client.logs.insert("root".into(), log);
+    assert_eq!(
+        client.page("page").unwrap()["blocks"][0]["text"],
+        "Original"
+    );
+    assert_eq!(
+        client.living_space_home("root").unwrap()["page_details"][0]["title"],
+        "Original"
+    );
+}
+
+#[test]
+fn browser_live_page_edits_survive_snapshot_and_merge_stale_editor() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use serde_json::{json, Value};
+    let identity = NativeSigner::from_secret(&[71; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[72; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let account = account(&identity, &host.0);
+    let mut client = Client::new(account.clone(), host.clone(), "").unwrap();
+    let mut log = SpaceLog::new("sp_browser_page");
+    clear(
+        &mut log,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Pages".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    let page = roda_docs::Page::from_markdown("# Home\n\nFirst\n\nSecond\n").unwrap();
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: "page_test".into(),
+            kind: roda_types::ItemKind::Page,
+            content: roda_types::ItemContent::Page(roda_types::PageContent {
+                title: "Home".into(),
+                path: String::new(),
+                loro: STANDARD.encode(page.snapshot()),
+                blob: None,
+                manifest: None,
+            }),
+            origin: "Test".into(),
+        },
+        2,
+    );
+    client.logs.insert(log.space().into(), log.clone());
+    client.synced = true;
+    let read = client.page("page_test").unwrap();
+    let original = read["blocks"].as_array().unwrap().clone();
+    let request = |id: &str, index: usize, text: &str| {
+        let mut blocks = original.clone();
+        blocks[index]["text"] = json!(text);
+        json!({"item_id":"page_test","edit_id":id,"edit_context":read["edit_context"],"base_blocks":original,"blocks":blocks,"order":blocks.iter().map(|b|b["id"].clone()).collect::<Vec<_>>(),"changed":[blocks[index].clone()]}).to_string()
+    };
+    let first = request("browser-edit-one", 1, "First edited");
+    let one = client.page_apply(&first, 3).unwrap();
+    assert!(one
+        .frames
+        .iter()
+        .any(|bytes| matches!(ClientFrame::decode(bytes), Ok(ClientFrame::Publish { .. }))));
+    let two = client
+        .page_apply(&request("browser-edit-two", 2, "Second edited"), 4)
+        .unwrap();
+    let merged = client.page("page_test").unwrap();
+    assert_eq!(merged["blocks"][1]["text"], "First edited");
+    assert_eq!(merged["blocks"][2]["text"], "Second edited");
+    let mut restored = Client::new(account, host, &two.snapshot).unwrap();
+    restored.synced = true;
+    assert_eq!(
+        restored.page("page_test").unwrap()["blocks"],
+        merged["blocks"]
+    );
+    let pending_before = restored.saved.outbox.len();
+    restored.page_apply(&first, 5).unwrap();
+    assert_eq!(
+        restored.saved.outbox.len(),
+        pending_before,
+        "same edit ID is idempotent"
+    );
+    let mut wrong: Value = serde_json::from_str(&first).unwrap();
+    wrong["changed"][0]["text"] = json!("collision");
+    assert!(restored.page_apply(&wrong.to_string(), 6).is_err());
+    let failed = restored.page("page_test").unwrap();
+    assert_eq!(failed["unsaved"], true);
+    assert_eq!(failed["draft"]["changed"][0]["text"], "collision");
+    assert!(failed["save_error"]
+        .as_str()
+        .unwrap()
+        .contains("Edit ID reused"));
+    let snapshot = restored.update(vec![]).unwrap().snapshot;
+    let mut restored =
+        Client::new(restored.account.clone(), restored.signer.clone(), &snapshot).unwrap();
+    restored.synced = true;
+    assert_eq!(
+        restored.page("page_test").unwrap()["draft"],
+        failed["draft"]
+    );
+
+    // A permanent relay rejection is a recoverable draft, never confirmed page content.
+    for pending in restored.saved.outbox.values_mut() {
+        pending.failure = Some("Relay rejected edit".into());
+    }
+    let rejected = restored.page("page_test").unwrap();
+    assert_eq!(rejected["save_error"], "Relay rejected edit");
+    assert_eq!(rejected["blocks"][1]["text"], "First");
+    restored.page_apply(&first, 7).unwrap();
+    assert_eq!(
+        restored.page("page_test").unwrap()["blocks"][1]["text"],
+        "First edited"
+    );
+    assert!(restored.page("page_test").unwrap()["save_error"].is_null());
+}
+
+#[test]
+fn browser_live_page_two_devices_converge_from_signed_relay_frames() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use serde_json::json;
+    let identity = NativeSigner::from_secret(&[74; 32]);
+    let host_a = HostSigner(NativeSigner::from_secret(&[75; 32]));
+    let host_b = HostSigner(NativeSigner::from_secret(&[76; 32]));
+    let author = Author::device(&identity, host_a.0.clone());
+    let mut a = Client::new(account(&identity, &host_a.0), host_a, "").unwrap();
+    let mut b = Client::new(account(&identity, &host_b.0), host_b, "").unwrap();
+    let mut relay = SpaceLog::new("sp_page_converge");
+    clear(
+        &mut relay,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Pages".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    let page = roda_docs::Page::from_markdown("# Home\n\nFirst\n\nSecond\n").unwrap();
+    clear(
+        &mut relay,
+        &author,
+        EventBody::ItemCreated {
+            item: "page_converge".into(),
+            kind: roda_types::ItemKind::Page,
+            content: roda_types::ItemContent::Page(roda_types::PageContent {
+                title: "Home".into(),
+                path: String::new(),
+                loro: STANDARD.encode(page.snapshot()),
+                blob: None,
+                manifest: None,
+            }),
+            origin: "Test".into(),
+        },
+        2,
+    );
+    a.logs.insert(relay.space().into(), relay.clone());
+    b.logs.insert(relay.space().into(), relay.clone());
+    a.synced = true;
+    b.synced = true;
+    let read = a.page("page_converge").unwrap();
+    let original = read["blocks"].as_array().unwrap().clone();
+    let request = |id: &str, index: usize, text: &str| {
+        let mut blocks = original.clone();
+        blocks[index]["text"] = json!(text);
+        json!({"item_id":"page_converge","edit_id":id,"edit_context":read["edit_context"],"base_blocks":original,"blocks":blocks,"order":blocks.iter().map(|b|b["id"].clone()).collect::<Vec<_>>(),"changed":[blocks[index].clone()]}).to_string()
+    };
+    let from_a = a.page_apply(&request("device-a", 1, "From A"), 3).unwrap();
+    let from_b = b.page_apply(&request("device-b", 2, "From B"), 4).unwrap();
+    for bytes in from_a.frames.into_iter().chain(from_b.frames) {
+        if let Ok(ClientFrame::Publish { env }) = ClientFrame::decode(&bytes) {
+            let ordered = sequence(&mut relay, env);
+            a.receive(&ordered, 5).unwrap();
+            b.receive(&ordered, 5).unwrap();
+        }
+    }
+    let final_a = a.page("page_converge").unwrap();
+    let final_b = b.page("page_converge").unwrap();
+    assert_eq!(final_a["blocks"], final_b["blocks"]);
+    assert_eq!(final_a["blocks"][1]["text"], "From A");
+    assert_eq!(final_a["blocks"][2]["text"], "From B");
+    assert_eq!(final_a["content_hash"], final_b["content_hash"]);
+}
+
+#[test]
+fn browser_file_upload_plan_signs_blobs_and_commits_into_actual_mls_child() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use serde_json::json;
+    let identity = NativeSigner::from_secret(&[91; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[92; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let mut client = Client::new(account(&identity, &host.0), host.clone(), "").unwrap();
+    let mut root = SpaceLog::new("sp_browser_files");
+    clear(
+        &mut root,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Files".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    client.logs.insert(root.space().into(), root.clone());
+    client.synced = true;
+    let mutation = client
+        .living_space_mutate(
+            root.space(),
+            &json!({"action":"create_child","title":"Files"}).to_string(),
+            2,
+            "file-child",
+        )
+        .unwrap();
+    let child = mutation.result["space"].as_str().unwrap().to_string();
+    let plain = b"Shared encrypted file bytes";
+    let plan = client
+        .file_prepare(&child, "notes.txt", "text/plain", plain, 3)
+        .unwrap();
+    let mut packed = vec![];
+    for upload in plan["uploads"].as_array().unwrap() {
+        let blob = upload["blob"].as_str().unwrap();
+        let headers = &upload["headers"];
+        assert!(roda_log::verify_sig(
+            &host.0.id(),
+            &roda_proto::blob_put_message(blob, 3, &client.account.relay),
+            headers["x-zoen-sig"].as_str().unwrap()
+        ));
+        packed.extend(
+            STANDARD
+                .decode(upload["body_base64"].as_str().unwrap())
+                .unwrap(),
+        );
+    }
+    let update = client
+        .file_commit(&child, &plan.to_string(), 4, "file-commit")
+        .unwrap();
+    assert!(!update.frames.is_empty());
+    let item = plan["item"].as_str().unwrap();
+    assert_eq!(client.file_manifest(item).unwrap()["bytes"], plain.len());
+    assert_eq!(client.file_open(item, &packed).unwrap(), plain);
+    let mut corrupted = packed.clone();
+    corrupted[24] ^= 1;
+    assert!(client.file_open(item, &corrupted).is_err());
+    let before = client.saved.outbox.len();
+    client
+        .file_commit(&child, &plan.to_string(), 5, "file-commit")
+        .unwrap();
+    assert_eq!(before, client.saved.outbox.len());
+}
+
+#[test]
+fn browser_page_create_is_encrypted_idempotent_and_survives_snapshot_reload() {
+    use serde_json::json;
+    let identity = NativeSigner::from_secret(&[101; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[102; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let mut client = Client::new(account(&identity, &host.0), host.clone(), "").unwrap();
+    let mut root = SpaceLog::new("sp_browser_page_creation");
+    clear(
+        &mut root,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Community".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    client.logs.insert(root.space().into(), root.clone());
+    client.synced = true;
+    let child = client
+        .living_space_mutate(
+            root.space(),
+            &json!({"action":"create_child","title":"Private work"}).to_string(),
+            2,
+            "page-child",
+        )
+        .unwrap()
+        .result["space"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let created = client
+        .page_create(&child, "Private plan", 3, "new-page")
+        .unwrap();
+    let item = created.result["item_id"].as_str().unwrap();
+    assert_eq!(created.result["title"], "Private plan");
+    assert_eq!(created.result["can_edit"], true);
+    assert_eq!(created.result["pending_sync"], true);
+    assert!(!created.update.frames.is_empty());
+    let count = client.saved.outbox.len();
+    let retry = client
+        .page_create(&child, "Private plan", 4, "new-page")
+        .unwrap();
+    assert_eq!(retry.result["item_id"], item);
+    assert_eq!(client.saved.outbox.len(), count);
+    assert!(client
+        .page_create(&child, "Different content", 4, "new-page")
+        .is_err());
+    assert!(client.page_create(&child, "Private plan", 4, "").is_err());
+    let restored =
+        Client::new(account(&identity, &host.0), host, &created.update.snapshot).unwrap();
+    assert_eq!(restored.page(item).unwrap()["title"], "Private plan");
+    assert_eq!(
+        restored.page(item).unwrap()["content_hash"],
+        created.result["content_hash"]
+    );
+}
+
+#[test]
+fn browser_live_page_downloads_authenticated_blob_before_editing() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use chacha20poly1305::{
+        aead::{Aead, KeyInit},
+        XChaCha20Poly1305, XNonce,
+    };
+    use sha2::{Digest, Sha256};
+    let identity = NativeSigner::from_secret(&[93; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[94; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let mut client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let mut root = SpaceLog::new("sp_blob_page");
+    clear(
+        &mut root,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Pages".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    let page = roda_docs::Page::from_markdown("# Blob-backed home\n\nActual shared Loro blocks\n")
+        .unwrap();
+    let plain = page.snapshot();
+    let key = [7u8; 32];
+    let nonce = [8u8; 24];
+    let cipher = XChaCha20Poly1305::new_from_slice(&key).unwrap();
+    let mut sealed = nonce.to_vec();
+    sealed.extend(
+        cipher
+            .encrypt(&XNonce::from(nonce), plain.as_slice())
+            .unwrap(),
+    );
+    let blob = hex::encode(Sha256::digest(&sealed));
+    let reference = roda_types::ChunkRef {
+        sha256: hex::encode(Sha256::digest(&plain)),
+        bytes: plain.len() as u64,
+        blob: blob.clone(),
+        key: hex::encode(key),
+    };
+    clear(
+        &mut root,
+        &author,
+        EventBody::ItemCreated {
+            item: "page_blob_test".into(),
+            kind: roda_types::ItemKind::Page,
+            content: roda_types::ItemContent::Page(roda_types::PageContent {
+                title: "Blob-backed home".into(),
+                path: String::new(),
+                loro: String::new(),
+                blob: Some(reference),
+                manifest: None,
+            }),
+            origin: "Test".into(),
+        },
+        2,
+    );
+    client.logs.insert(root.space().into(), root);
+    client.synced = true;
+    assert!(client.page("page_blob_test").is_err());
+    assert_eq!(
+        client.page_download_manifest("page_blob_test").unwrap()["ready"],
+        false
+    );
+    let mut corrupted = sealed.clone();
+    corrupted[25] ^= 1;
+    assert!(client
+        .page_blob_supply("page_blob_test", &blob, &corrupted)
+        .is_err());
+    client
+        .page_blob_supply("page_blob_test", &blob, &sealed)
+        .unwrap();
+    assert_eq!(
+        client.page_download_manifest("page_blob_test").unwrap()["ready"],
+        true
+    );
+    assert_eq!(
+        client.page("page_blob_test").unwrap()["blocks"][1]["text"],
+        "Actual shared Loro blocks"
+    );
+    assert!(STANDARD.encode(&sealed).len() > plain.len());
+}
+
+fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
+    let identity = NativeSigner::from_secret(&[41; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[42; 32]));
+    let author = Author::device(&identity, NativeSigner::from_secret(&[43; 32]));
+    let other = Author::device(
+        &NativeSigner::from_secret(&[44; 32]),
+        NativeSigner::from_secret(&[45; 32]),
+    );
+    let client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let mut log = SpaceLog::new("sp_web_receipts");
+    clear(
+        &mut log,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Fixture".into(),
+            kind: SpaceKind::Group,
+            privacy: Privacy::EndToEnd,
+        },
+        1,
+    );
+    clear(
+        &mut log,
+        &author,
+        EventBody::MessagePosted {
+            message: "msg_fixture".into(),
+            text: "Oi".into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+        },
+        2,
+    );
+    let target = log.events().last().unwrap().hash.clone();
+    (client, author, other, log, target)
+}
+
+fn annotate(log: &mut SpaceLog, author: &Author, target: &str, note: roda_types::Annotation) {
+    let now = log.next_seq() as i64 + 10;
+    clear(
+        log,
+        author,
+        EventBody::MessageAnnotated {
+            target: target.into(),
+            note,
+        },
+        now,
+    );
+}
+
+#[test]
+fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
+    let (mut client, author, other, mut log, target) = web_fixture();
+    let react = |emoji: &str| roda_types::Annotation::React {
+        emoji: emoji.into(),
+    };
+    annotate(&mut log, &author, &target, react("👍"));
+    annotate(&mut log, &other, &target, react("👍"));
+    client.logs.insert(log.space().into(), log.clone());
+    let view = client.conversations();
+    let reaction = &view[0].messages[0].reactions[0];
+    assert_eq!(reaction.count, 2);
+    assert_eq!(reaction.participants.len(), 2);
+    assert!(reaction.mine);
+    assert!(reaction
+        .participants
+        .iter()
+        .any(|p| p.identity == client.account.identity && p.name == "Fixture"));
+    annotate(&mut log, &author, &target, react("❤️"));
+    annotate(&mut log, &other, &target, react(" "));
+    annotate(&mut log, &other, &target, react(&"😀".repeat(9)));
+    client.logs.insert(log.space().into(), log.clone());
+    let view = client.conversations();
+    assert_eq!(view[0].messages[0].reactions.len(), 2);
+    annotate(&mut log, &author, &target, roda_types::Annotation::Unreact);
+    client.logs.insert(log.space().into(), log.clone());
+    let view = client.conversations();
+    let reactions = &view[0].messages[0].reactions;
+    assert_eq!(reactions.len(), 1);
+    assert_eq!(reactions[0].emoji, "👍");
+    assert_eq!(reactions[0].count, 1);
+    assert!(!reactions[0].mine);
+    annotate(&mut log, &author, &target, roda_types::Annotation::Delete);
+    annotate(&mut log, &other, &target, react("❤️"));
+    client.logs.insert(log.space().into(), log);
+    assert!(client.conversations()[0].messages[0].reactions.is_empty());
+    assert!(client
+        .queue_annotation("sp_web_receipts", &target, react("👍"), 90)
+        .err()
+        .unwrap()
+        .contains("no longer available"));
+}
+
+#[test]
+fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption() {
+    let (mut client, _, _, log, target) = web_fixture();
+    client.logs.insert(log.space().into(), log);
+    for emoji in [" ".into(), "😀".repeat(9)] {
+        assert!(client
+            .queue_annotation(
+                "sp_web_receipts",
+                &target,
+                roda_types::Annotation::React { emoji },
+                90
+            )
+            .err()
+            .unwrap()
+            .contains("32 bytes"));
+    }
+}
+
+fn receipt_marks(frames: &[Vec<u8>]) -> Vec<(&'static str, u64)> {
+    frames
+        .iter()
+        .filter_map(|frame| match ClientFrame::decode(frame).unwrap() {
+            ClientFrame::Ephemeral {
+                kind: roda_proto::EphemeralKind::Delivered { seq },
+                ..
+            } => Some(("delivered", seq)),
+            ClientFrame::Ephemeral {
+                kind: roda_proto::EphemeralKind::Read { seq },
+                ..
+            } => Some(("read", seq)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect() {
+    let (mut client, _, _, log, _) = web_fixture();
+    let space = log.space().to_owned();
+    let last = log.next_seq() - 1;
+    client.logs.insert(space.clone(), log);
+    let first = client.mark_read(&space).unwrap(); // Simulate a durable save, then losing the outgoing frame.
+    assert_eq!(receipt_marks(&first.frames), vec![("read", last)]);
+    assert_eq!(
+        receipt_marks(&client.mark_read(&space).unwrap().frames),
+        vec![("read", last)]
+    );
+    let mut restored = Client::new(
+        client.account.clone(),
+        client.signer.clone(),
+        &first.snapshot,
+    )
+    .unwrap();
+    for _ in 0..2 {
+        restored.bootstrap().unwrap();
+        let update = restored
+            .receive(&ServerFrame::SyncDone.encode(), 100)
+            .unwrap();
+        assert_eq!(
+            receipt_marks(&update.frames),
+            vec![("delivered", last), ("read", last)]
+        );
+        assert!(restored.delivered().is_empty());
+    }
 }
 
 #[test]
@@ -664,162 +1152,4 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     let conversations = client.conversations();
     assert!(conversations[0].messages[1].deleted);
     assert!(conversations[0].messages[1].file.is_none());
-}
-
-fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
-    let identity = NativeSigner::from_secret(&[41; 32]);
-    let host = HostSigner(NativeSigner::from_secret(&[42; 32]));
-    let author = Author::device(&identity, NativeSigner::from_secret(&[43; 32]));
-    let other = Author::device(
-        &NativeSigner::from_secret(&[44; 32]),
-        NativeSigner::from_secret(&[45; 32]),
-    );
-    let client = Client::new(account(&identity, &host.0), host, "").unwrap();
-    let mut log = SpaceLog::new("sp_web_receipts");
-    clear(
-        &mut log,
-        &author,
-        EventBody::SpaceCreated {
-            title: "Fixture".into(),
-            kind: SpaceKind::Group,
-            privacy: Privacy::EndToEnd,
-        },
-        1,
-    );
-    clear(
-        &mut log,
-        &author,
-        EventBody::MessagePosted {
-            message: "msg_fixture".into(),
-            text: "Oi".into(),
-            attaches: None,
-            reply: None,
-            forwarded: false,
-        },
-        2,
-    );
-    let target = log.events().last().unwrap().hash.clone();
-    (client, author, other, log, target)
-}
-
-fn annotate(log: &mut SpaceLog, author: &Author, target: &str, note: roda_types::Annotation) {
-    let now = log.next_seq() as i64 + 10;
-    clear(
-        log,
-        author,
-        EventBody::MessageAnnotated {
-            target: target.into(),
-            note,
-        },
-        now,
-    );
-}
-
-#[test]
-fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
-    let (mut client, author, other, mut log, target) = web_fixture();
-    let react = |emoji: &str| roda_types::Annotation::React {
-        emoji: emoji.into(),
-    };
-    annotate(&mut log, &author, &target, react("👍"));
-    annotate(&mut log, &other, &target, react("👍"));
-    client.logs.insert(log.space().into(), log.clone());
-    let view = client.conversations();
-    let reaction = &view[0].messages[0].reactions[0];
-    assert_eq!(reaction.count, 2);
-    assert_eq!(reaction.participants.len(), 2);
-    assert!(reaction.mine);
-    assert!(reaction
-        .participants
-        .iter()
-        .any(|p| p.identity == client.account.identity && p.name == "Fixture"));
-    annotate(&mut log, &author, &target, react("❤️"));
-    annotate(&mut log, &other, &target, react(" "));
-    annotate(&mut log, &other, &target, react(&"😀".repeat(9)));
-    client.logs.insert(log.space().into(), log.clone());
-    let view = client.conversations();
-    assert_eq!(view[0].messages[0].reactions.len(), 2);
-    annotate(&mut log, &author, &target, roda_types::Annotation::Unreact);
-    client.logs.insert(log.space().into(), log.clone());
-    let view = client.conversations();
-    let reactions = &view[0].messages[0].reactions;
-    assert_eq!(reactions.len(), 1);
-    assert_eq!(reactions[0].emoji, "👍");
-    assert_eq!(reactions[0].count, 1);
-    assert!(!reactions[0].mine);
-    annotate(&mut log, &author, &target, roda_types::Annotation::Delete);
-    annotate(&mut log, &other, &target, react("❤️"));
-    client.logs.insert(log.space().into(), log);
-    assert!(client.conversations()[0].messages[0].reactions.is_empty());
-    assert!(client
-        .queue_annotation("sp_web_receipts", &target, react("👍"), 90)
-        .err()
-        .unwrap()
-        .contains("no longer available"));
-}
-
-#[test]
-fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption() {
-    let (mut client, _, _, log, target) = web_fixture();
-    client.logs.insert(log.space().into(), log);
-    for emoji in [" ".into(), "😀".repeat(9)] {
-        assert!(client
-            .queue_annotation(
-                "sp_web_receipts",
-                &target,
-                roda_types::Annotation::React { emoji },
-                90
-            )
-            .err()
-            .unwrap()
-            .contains("32 bytes"));
-    }
-}
-
-fn receipt_marks(frames: &[Vec<u8>]) -> Vec<(&'static str, u64)> {
-    frames
-        .iter()
-        .filter_map(|frame| match ClientFrame::decode(frame).unwrap() {
-            ClientFrame::Ephemeral {
-                kind: roda_proto::EphemeralKind::Delivered { seq },
-                ..
-            } => Some(("delivered", seq)),
-            ClientFrame::Ephemeral {
-                kind: roda_proto::EphemeralKind::Read { seq },
-                ..
-            } => Some(("read", seq)),
-            _ => None,
-        })
-        .collect()
-}
-
-#[test]
-fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect() {
-    let (mut client, _, _, log, _) = web_fixture();
-    let space = log.space().to_owned();
-    let last = log.next_seq() - 1;
-    client.logs.insert(space.clone(), log);
-    let first = client.mark_read(&space).unwrap(); // Simulate a durable save, then losing the outgoing frame.
-    assert_eq!(receipt_marks(&first.frames), vec![("read", last)]);
-    assert_eq!(
-        receipt_marks(&client.mark_read(&space).unwrap().frames),
-        vec![("read", last)]
-    );
-    let mut restored = Client::new(
-        client.account.clone(),
-        client.signer.clone(),
-        &first.snapshot,
-    )
-    .unwrap();
-    for _ in 0..2 {
-        restored.bootstrap().unwrap();
-        let update = restored
-            .receive(&ServerFrame::SyncDone.encode(), 100)
-            .unwrap();
-        assert_eq!(
-            receipt_marks(&update.frames),
-            vec![("delivered", last), ("read", last)]
-        );
-        assert!(restored.delivered().is_empty());
-    }
 }

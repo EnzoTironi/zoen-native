@@ -1,4 +1,4 @@
-import { integer, object, publicKey, string } from './boundary.ts';
+import { array, integer, object, publicKey, string } from './boundary.ts';
 
 export function parsePending(json: string) {
   const value = object(JSON.parse(json));
@@ -23,17 +23,26 @@ export function parseAccount(json: string) {
 }
 export type LinkedAccount = ReturnType<typeof parseAccount>;
 
+export interface StoredFileUpload { planJSON: string; editId: string }
+function uploads(input: unknown): StoredFileUpload[] {
+  const values = array(input);
+  if (values.length > 4) throw Error('Too many unfinished file uploads.');
+  return values.map((raw) => { const value = object(raw); const planJSON = string(value.planJSON); const editId = string(value.editId); if (planJSON.length > 96 * 1024 * 1024 || !editId || editId.length > 256) throw Error('Invalid saved file upload.'); return { planJSON, editId }; });
+}
 export type StoredSession =
   | { kind: 'empty' }
   | { kind: 'pending'; pending: PendingLink }
-  | { kind: 'linked'; account: LinkedAccount; snapshot: string };
+  | { kind: 'linked'; account: LinkedAccount; snapshot: string; pendingUploads?: StoredFileUpload[]; pageDrafts?: Record<string, { request: string; error: string }> };
 
 export function parseSession(json: string): StoredSession {
   const value = object(JSON.parse(json));
   switch (value.kind) {
     case 'empty': return { kind: 'empty' };
     case 'pending': return { kind: 'pending', pending: parsePending(JSON.stringify(value.pending)) };
-    case 'linked': return { kind: 'linked', account: parseAccount(JSON.stringify(value.account)), snapshot: string(value.snapshot) };
+    case 'linked': {
+      const pending = value.pendingUploads === undefined ? [] : uploads(value.pendingUploads);
+      return { kind: 'linked', account: parseAccount(JSON.stringify(value.account)), snapshot: string(value.snapshot), ...(value.pageDrafts ? { pageDrafts: Object.fromEntries(Object.entries(object(value.pageDrafts)).map(([id, raw]) => { const draft = object(raw); const request = string(draft.request); if (request.length > 2_000_000) throw Error('Page draft too large.'); return [id, { request, error: string(draft.error) }]; })) } : {}), ...(pending.length ? { pendingUploads: pending } : {}) };
+    }
     default: throw new Error('Unrecognized local session.');
   }
 }

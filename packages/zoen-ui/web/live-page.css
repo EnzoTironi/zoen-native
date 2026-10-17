@@ -1,0 +1,11 @@
+.live-page{display:flex;flex-direction:column;min-height:100%;color:var(--z-ink);background:var(--z-bg);font-family:var(--z-font-family,system-ui)}
+.live-page>header{display:flex;align-items:center;gap:12px;padding:12px 22px;border-bottom:1px solid var(--z-muted,rgba(128,128,128,.25))}
+.live-page>header h1{font-size:17px;margin:0;flex:1}.live-page>header [role=status]{font-size:12px;color:var(--z-ink-2)}
+.live-page button{font:inherit;color:var(--z-action, currentColor);background:transparent;border:1px solid var(--z-muted,rgba(128,128,128,.25));border-radius:8px;min-height:44px;padding:8px 12px;cursor:pointer}.live-page button:disabled{opacity:.45;cursor:default}
+.live-page button:focus-visible,.live-page [contenteditable]:focus-visible,.live-page input:focus-visible{outline:2px solid var(--z-action, currentColor);outline-offset:3px}
+.live-page-body{box-sizing:border-box;width:100%;max-width:760px;margin:0 auto;padding:8px 22px 120px;flex:1;font-size:17px;line-height:1.55;overflow-wrap:anywhere}
+.live-page-body [role=textbox]{white-space:pre-wrap;min-height:1.55em;margin:8px 0;outline-offset:4px}.live-page-body h1{font-size:30px}.live-page-body h2{font-size:25px}.live-page-body h3{font-size:21px}.live-page-body blockquote{border-inline-start:3px solid var(--z-muted,rgba(128,128,128,.25));padding-inline-start:16px;color:var(--z-ink-2)}
+.live-page-body pre,.live-page-body code{font-family:ui-monospace,monospace}.live-page-body pre{overflow:auto}.live-page-body img{max-width:100%;height:auto}.live-page-body figure{margin:12px 0}.live-page-body a{color:var(--z-action, currentColor)}
+.live-page-list{display:flex;align-items:baseline;gap:10px}.live-page-list>[role=textbox]{flex:1}.live-page-list input{width:18px;height:18px;accent-color:var(--z-action, currentColor)}
+.live-page-toolbar{position:sticky;bottom:0;display:flex;gap:4px;overflow:auto;max-width:760px;box-sizing:border-box;width:100%;margin:0 auto;padding:8px 22px;background:var(--z-surface);border-top:1px solid var(--z-muted,rgba(128,128,128,.25))}.live-page-toolbar button{white-space:nowrap;flex-shrink:0}
+.live-page>[role=alert],.live-page>aside{margin:8px 22px;font-size:14px;color:var(--z-ink-2)}.live-page>form{padding:12px 22px;display:flex;gap:8px;flex-wrap:wrap}.live-page>form input{font:inherit;min-height:44px;margin-inline-start:8px}.live-page-add{margin-top:16px}

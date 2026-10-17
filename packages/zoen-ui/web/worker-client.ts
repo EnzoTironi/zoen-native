@@ -12,6 +12,18 @@ export type CoreOperation =
   | { kind: 'decode_server'; bytes: Uint8Array }
   | { kind: 'restore'; account: string; snapshot: string }
   | { kind: 'bootstrap' }
+  | { kind: 'living_space_home'; space: string }
+  | { kind: 'living_space_mutate'; space: string; command: string; now: number; editId: string }
+  | { kind: 'page'; item: string }
+  | { kind: 'page_download_manifest'; item: string }
+  | { kind: 'page_blob_supply'; item: string; blob: string; data: Uint8Array }
+  | { kind: 'page_apply'; request: string; now: number }
+  | { kind: 'page_create'; space: string; title: string; now: number; editId: string }
+  | { kind: 'file_manifest'; item: string }
+  | { kind: 'file_open'; item: string; data: Uint8Array }
+  | { kind: 'file_prepare'; space: string; name: string; mime: string; data: Uint8Array; now: number }
+  | { kind: 'file_upload_headers'; blob: string; now: number }
+  | { kind: 'file_commit'; space: string; plan: string; now: number; editId: string }
   | { kind: 'receive'; bytes: Uint8Array; now: number }
   | { kind: 'queue_message'; space: string; text: string; now: number }
   | { kind: 'queue_post'; space: string; text: string; replyTo: string; thread: boolean; forwarded: boolean; now: number }

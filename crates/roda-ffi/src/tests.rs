@@ -4,6 +4,7 @@ use super::*;
 
 mod client_api;
 mod file_bounds;
+mod living_space;
 mod message_search;
 mod voice_notes;
 

@@ -199,6 +199,10 @@ private fun matchesSpace(space: SpaceSummary, query: String): Boolean {
 
 @Composable
 fun ActivityScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit) {
+    if (model.repository.preferences.getBoolean("LivingSpacesEnabled", false)) {
+        LivingSpaceNotifications(model, state)
+        return
+    }
     var showingList by rememberSaveable(state.me?.id) { mutableStateOf(false) }
     if (showingList) ActivityList(model, state, navigate) { showingList = false }
     else Scaffold(topBar = { HomeBar(stringResource(R.string.activity), state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
