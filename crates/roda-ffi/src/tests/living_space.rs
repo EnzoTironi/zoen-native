@@ -195,6 +195,19 @@ fn living_space_signed_demo_request_approval_changes_actual_membership() {
 }
 
 #[test]
+fn living_space_demo_request_rejects_real_account() {
+    let e = seeded();
+    e.lock()
+        .create_account("Owner", "real_owner", "http://relay.test")
+        .unwrap();
+    e.set_living_space_enabled(true).unwrap();
+    let root = e.create_community("Real account".into()).unwrap();
+    assert!(e
+        .living_space_command(root, json!({"action":"demo_join_request"}).to_string())
+        .is_err());
+}
+
+#[test]
 fn living_space_small_cap_splits_admission_into_real_mls_partitions() {
     use crate::engine::Engine;
     use roda_types::{Privacy, Role, SpaceKind};
@@ -370,5 +383,8 @@ fn living_space_rejects_cross_space_page_and_nonadmin_metadata() {
             &space,
             &json!({"action":"create_child","title":"secret"}).to_string()
         )
+        .is_err());
+    assert!(engine
+        .living_space_command(&space, &json!({"action":"demo_join_request"}).to_string())
         .is_err());
 }

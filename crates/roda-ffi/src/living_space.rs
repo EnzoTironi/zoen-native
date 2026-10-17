@@ -424,13 +424,10 @@ impl Engine {
                 return serde_json::to_string(&value).map_err(invalid);
             }
             Command::DemoJoinRequest => {
-                // Capture fixture only: demo identities already have local signing keys.
-                // Never accepts an arbitrary actor, and cannot run for a real account.
-                if !cfg!(debug_assertions)
-                    || self.net.author.is_some()
-                    || !admin
-                    || self.signers.len() < 2
-                {
+                // Demo fixture only: demo identities already have local signing keys.
+                // Release-core native journeys use this too. Profile is not authority:
+                // never accept an arbitrary actor or operate on a real account.
+                if self.net.author.is_some() || !admin || self.signers.len() < 2 {
                     return Err(forbidden());
                 }
                 let applicant = self
