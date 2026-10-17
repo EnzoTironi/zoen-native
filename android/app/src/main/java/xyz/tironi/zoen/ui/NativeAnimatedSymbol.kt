@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -44,6 +45,7 @@ internal fun NativeAnimatedSymbol(
     val allPending = pendingIds + signals.pendingIds
     val liveActive = active || signals.active
     val context = LocalContext.current
+    val resources = LocalResources.current
     val view = remember(context) { ImageView(context).apply { importantForAccessibility = ImageView.IMPORTANT_FOR_ACCESSIBILITY_NO } }
     val enabled = rememberMotionEnabled()
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
@@ -54,7 +56,7 @@ internal fun NativeAnimatedSymbol(
     var previousSelection by remember { mutableStateOf(signals.selection) }
     var previousName by remember { mutableStateOf(name) }
     var appeared by remember { mutableStateOf(false) }
-    LaunchedEffect(name, press, allPending, liveActive, signals.selection, running) {
+    LaunchedEffect(name, press, allPending, liveActive, signals.selection, running, resources) {
         val tapped = previousPress != press || previousSelection != signals.selection
         val arrived = hasNewPendingRequest(previousPending, allPending)
         val replaced = previousName != name
@@ -66,9 +68,9 @@ internal fun NativeAnimatedSymbol(
         appeared = true
         (view.drawable as? AnimatedVectorDrawable)?.apply { clearAnimationCallbacks(); stop() }
         val suffix = if (effect.isEmpty()) "" else "_$effect"
-        val resource = context.resources.getIdentifier("native_$name$suffix", "drawable", context.packageName)
+        val resource = resources.getIdentifier("native_$name$suffix", "drawable", context.packageName)
         check(resource != 0) { "Missing native symbol: $name$suffix" }
-        val drawable = context.getDrawable(resource)!!.mutate()
+        val drawable = resources.getDrawable(resource, context.theme).mutate()
         drawable.setTint(tint)
         view.setImageDrawable(drawable)
         if (drawable is AnimatedVectorDrawable && running) {
@@ -81,8 +83,8 @@ internal fun NativeAnimatedSymbol(
                             drawable.start()
                         } else {
                             // Finish tap/arrival feedback once, then show the live state.
-                            val id = context.resources.getIdentifier("native_${name}_active", "drawable", context.packageName)
-                            val live = context.getDrawable(id)!!.mutate() as AnimatedVectorDrawable
+                            val id = resources.getIdentifier("native_${name}_active", "drawable", context.packageName)
+                            val live = resources.getDrawable(id, context.theme).mutate() as AnimatedVectorDrawable
                             live.setTint(tint)
                             live.registerAnimationCallback(object : Animatable2.AnimationCallback() {
                                 override fun onAnimationEnd(ended: Drawable?) {
