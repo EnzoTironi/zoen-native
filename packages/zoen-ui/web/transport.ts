@@ -27,7 +27,13 @@ export function parseFrame(json: string) {
     case 'request_error': return { kind, id: integer(value.id), message: string(value.message) };
     case 'error': return { kind, code: string(value.code), message: string(value.message) };
     case 'joined': return { kind, space: string(value.space) };
-    case 'accepted': return { kind, space: string(value.space), client_id: string(value.client_id), seq: integer(value.seq) };
+    case 'accepted': {
+      const seq=string(value.seq);
+      if(!/^[0-9]+$/.test(seq)||BigInt(seq)>18446744073709551615n)throw new Error('Invalid acknowledgement sequence.');
+      return {kind,space:string(value.space),client_id:string(value.client_id),seq};
+    }
+    case 'ephemeral': return {kind,space:string(value.space),from:string(value.from),event:string(value.event),detail:string(value.detail)};
+    case 'presence': return {kind,identity:string(value.identity),online:boolean(value.online)};
     case 'rejected': return { kind, space: string(value.space), client_id: string(value.client_id), reason: string(value.reason), permanent: boolean(value.permanent) };
     case 'key_packages_low': return { kind, device: string(value.device), remaining: integer(value.remaining) };
     case 'event': case 'sync_done': case 'other': return { kind };
@@ -132,7 +138,7 @@ export class AuthenticatedTransport {
           return;
         }
         // Native relays may announce presence while Ready is being delivered.
-        if (phase === 'auth' && frame.kind === 'other') return;
+        if (phase === 'auth' && (frame.kind === 'other'||frame.kind==='presence')) return;
         if (phase !== 'ready') throw new Error('The relay sent data before authentication completed.');
         if (frame.kind === 'response' || frame.kind === 'request_error') {
           const request = this.pending.get(frame.id);
@@ -167,7 +173,9 @@ export class AuthenticatedTransport {
   async request(kind: string, value = ''): Promise<unknown> {
     if (!this.ready) throw new Error('The relay is reconnecting. Try again when connected.');
     const id = ++this.requestId;
+    const generation=this.generation;
     const frame = await this.core.bytes({ kind: 'request', requestId: id, op: kind, value });
+    if(this.stopped||!this.ready||generation!==this.generation)throw new Error('A conexão mudou. Tente de novo.');
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('The relay request timed out.')); }, 15_000);
       this.pending.set(id, { resolve, reject, timer });

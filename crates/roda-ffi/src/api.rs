@@ -40,7 +40,8 @@ pub trait CoreListener: Send + Sync {
     fn on_profile_changed(&self, identity_id: String);
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AccountDto {
     pub identity_id: String,
     pub device_id: String,
@@ -51,6 +52,10 @@ pub struct AccountDto {
     pub registered: bool,
     /// The device key is loaded (from the Keychain) and can sign.
     pub unlocked: bool,
+    /// A social signup has local keys, but its provider binding is not confirmed yet.
+    #[serde(default)]
+    #[uniffi(default = false)]
+    pub setup_pending: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -62,7 +67,8 @@ pub struct AgentAuthorizationDto {
     pub signature: String,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct ConnectionDto {
     /// "offline", "connecting" or "online".
     pub state: String,
@@ -89,7 +95,8 @@ impl ConnectionDto {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct InviteDto {
     pub code: String,
     /// Space: `zoen://join/CODE`. Agent: `https://tryzoen.com/a/CODE`.
@@ -97,7 +104,8 @@ pub struct InviteDto {
     pub expires_at_ms: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct InvitePreviewDto {
     pub space_id: String,
     pub title: String,
@@ -116,7 +124,7 @@ fn link_no_longer_valid() -> CoreError {
     ))
 }
 
-fn invalid(reason: impl Into<String>) -> CoreError {
+pub(crate) fn invalid(reason: impl Into<String>) -> CoreError {
     CoreError::Invalid {
         reason: reason.into(),
     }
@@ -186,6 +194,7 @@ impl RodaEngine {
             relay_url: a.relay_url.clone(),
             registered: a.registered,
             unlocked: e.is_unlocked(),
+            setup_pending: e.provider_setup_pending(),
         })
     }
 
@@ -413,6 +422,12 @@ impl RodaEngine {
 
     /// Connects to the relay and keeps the connection (reconnects with backoff).
     pub fn start_sync(&self, listener: Option<Arc<dyn CoreListener>>) -> Result<(), CoreError> {
+        if self.lock().provider_setup_pending() {
+            return Err(invalid(t(
+                "Continue com Apple ou Google para concluir sua entrada.",
+                "Continue with Apple or Google to finish signing in.",
+            )));
+        }
         let mut guard = self.net.lock().unwrap_or_else(|p| p.into_inner());
         if guard.is_some() {
             return Ok(());

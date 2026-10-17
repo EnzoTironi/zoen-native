@@ -51,7 +51,8 @@ pub trait TransferListener: Send + Sync {
     fn on_progress(&self, done: u32, total: u32);
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct LinkRequestDto {
     /// What the QR code carries.
     pub code: String,
@@ -59,13 +60,15 @@ pub struct LinkRequestDto {
     pub check: String,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct LinkedDto {
     pub device_id: String,
     pub check: String,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct HistoryDto {
     pub messages: u32,
     pub chunks: u32,
@@ -73,7 +76,8 @@ pub struct HistoryDto {
     pub resumed: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct OlderDto {
     pub loaded: u32,
     /// Older messages are left on the other device.
@@ -84,7 +88,8 @@ pub struct OlderDto {
     pub message: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct DeviceDto {
     pub device_id: String,
     pub revoked: bool,

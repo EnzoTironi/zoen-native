@@ -15,6 +15,7 @@ import { Messenger } from './messenger.tsx';
 import { RecoveryHelp } from './recovery.tsx';
 
 type Runtime = { vault: BrowserVault; core: CoreWorker };
+declare const ZOEN_WORKER_INTEGRITY: string;
 type Boot = { kind: 'loading' } | { kind: 'unavailable'; message: string } |
   { kind: 'ready'; runtime: Runtime; session: StoredSession };
 const invitation = inviteFromPath(location.pathname);
@@ -164,7 +165,7 @@ function App() {
         let core: CoreWorker | undefined;
         try {
           const session = await vault.load();
-          core = await CoreWorker.create(vault);
+          core = await CoreWorker.create(vault, ZOEN_WORKER_INTEGRITY);
           runtime = { vault, core };
           if (closed) return;
           setBoot({ kind: 'ready', runtime, session });

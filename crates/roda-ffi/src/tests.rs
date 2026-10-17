@@ -375,6 +375,27 @@ fn budget_stops_at_ceiling_and_can_be_raised() {
 }
 
 #[test]
+fn budget_rejects_nonpositive_and_overflowing_increases_without_mutation() {
+    let e = seeded();
+    let fin = agent(&e, "Financeiro");
+    let before = e.agent_profile(fin.id.clone());
+    for extra in [0, -1, i64::MIN, i64::MAX] {
+        assert!(matches!(
+            e.raise_budget(fin.id.clone(), extra),
+            Err(CoreError::Invalid { .. })
+        ));
+        assert_eq!(e.agent_profile(fin.id.clone()), before);
+    }
+    let max = e.raise_budget(fin.id.clone(), i64::MAX - 500).unwrap();
+    assert_eq!(max.budget_limit_cents, Some(i64::MAX));
+    assert!(matches!(
+        e.raise_budget(fin.id.clone(), 1),
+        Err(CoreError::Invalid { .. })
+    ));
+    assert_eq!(e.agent_profile(fin.id), max);
+}
+
+#[test]
 fn everything_persists_and_reverifies_after_reopen() {
     let dir = std::env::temp_dir().join(format!("roda-test-{}", roda_types::new_id("t")));
     std::fs::create_dir_all(&dir).unwrap();
@@ -1230,7 +1251,7 @@ fn schedule_journey_client_books_agent_resolves_privately() {
         manifest["sha256"].as_str().unwrap(),
         format!(
             "{:x}",
-            sha2::Sha256::digest(include_bytes!("../apps/schedule.html"))
+            sha2::Sha256::digest(include_bytes!("../../roda-apps/resources/schedule.html"))
         )
     );
     // Services were sanitized and deduped; the business is free-form, no trade.

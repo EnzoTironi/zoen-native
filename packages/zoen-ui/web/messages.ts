@@ -1,5 +1,6 @@
 import { array, boolean, bytes, hex, integer, message, object, publicKey, string } from './boundary.ts';
 import { persistBeforeOutgoing } from './persistence.ts';
+import {historySlice,type HistoryResult} from './history.ts';
 import type { StoredSession } from './session.ts';
 import { AuthenticatedTransport, type ConnectionState, type RelayFrame } from './transport.ts';
 import type { BrowserVault } from './vault.ts';
@@ -17,14 +18,23 @@ function parseMessage(input: unknown) {
   const ticks = value.ticks === null || value.ticks === undefined ? null : string(value.ticks);
   if (ticks !== null && ticks !== 'sent' && ticks !== 'delivered' && ticks !== 'read') throw new Error('Invalid message receipt.');
   const quote = value.quote ? object(value.quote) : null;
+  const sequence = value.seq === null || value.seq === undefined ? null : string(value.seq);
+  if (sequence !== null && (!/^[0-9]+$/.test(sequence) || BigInt(sequence) > 18446744073709551615n)) throw new Error('Invalid message sequence.');
   let text = string(value.text);
   let file: FileDoc | null = null;
+  let fileItemId: string | null = null;
+  let fileVersion: number | null = null;
   // A bad attachment must not prevent saving or restoring the conversation's sync state.
   if (value.file) {
-    try { file = parseFile(value.file); }
-    catch { text = 'Anexo indisponível'; }
+    try {
+      file = parseFile(value.file);
+      fileItemId = string(value.file_item_id);
+      fileVersion = integer(value.file_version);
+      if (!fileItemId || fileVersion < 1) throw new Error('Invalid file identity.');
+    }
+    catch { file = null; fileItemId = null; fileVersion = null; text = 'Anexo indisponível'; }
   }
-  return { id: string(value.id), entry: value.entry ? string(value.entry) : null, author: publicKey(value.author), name: string(value.name), text,
+  return { id: string(value.id), entry: value.entry ? string(value.entry) : null, seq: sequence, author: publicKey(value.author), name: string(value.name), text,
     at_ms: timestamp(value.at_ms), delivery, failure: nullableText(value.failure), ticks: ticks as 'sent' | 'delivered' | 'read' | null,
     edited: value.edited === true, deleted: value.deleted === true, forwarded: value.forwarded === true,
     reactions: array(value.reactions ?? []).map((r) => { const x = object(r); return {
@@ -34,7 +44,23 @@ function parseMessage(input: unknown) {
     quote: quote ? { id: string(quote.id), name: string(quote.name), text: string(quote.text) } : null,
     thread: value.thread ? string(value.thread) : null, replies: integer(value.replies ?? 0),
     repliers: array(value.repliers ?? []).map(string), last_reply_ms: typeof value.last_reply_ms === 'number' ? value.last_reply_ms : null,
-    file };
+    file, file_item_id: fileItemId, file_version: fileVersion, card: value.card ? parseCard(value.card) : null };
+}
+
+function parseCard(input: unknown) {
+  const value = object(input);
+  const app = value.app === null ? null : object(value.app);
+  const trust = app ? string(app.trust) : null;
+  if (trust && !['Listen', 'Suggest', 'Act', 'Autonomous'].includes(trust)) throw new Error('Invalid mini-app trust.');
+  return {item_id: string(value.item_id), title: string(value.title), summary: string(value.summary),
+    kind_label: string(value.kind_label), kind_id: string(value.kind_id), version: integer(value.version),
+    total_cents: value.total_cents === null ? null : decimal(value.total_cents, 9223372036854775807n, true),
+    budget_cents: value.budget_cents === null ? null : decimal(value.budget_cents, 9223372036854775807n, true),
+    line_count: integer(value.line_count), done_count: integer(value.done_count),
+    app: app ? {app_id: string(app.app_id), resource_uri: string(app.resource_uri), name: string(app.name),
+      view_json: string(app.view_json), headline: string(app.headline),
+      metrics: array(app.metrics).map((metric) => {const parsed = object(metric); if (typeof parsed.value !== 'number' || !Number.isFinite(parsed.value)) throw new Error('Invalid mini-app metric.'); return {label: string(parsed.label), value: parsed.value};}),
+      last_action: nullableText(app.last_action), trust: trust as 'Listen' | 'Suggest' | 'Act' | 'Autonomous', snapshot_json: string(app.snapshot_json)} : null};
 }
 
 const HASH = /^[0-9a-f]{64}$/;
@@ -64,12 +90,12 @@ export type VoiceMeta = ReturnType<typeof parseVoice>;
 const MAX_FILE_BYTES = 512 << 20;
 const MAX_CHUNK_BYTES = 16 << 20;
 const MAX_THUMBNAIL_BYTES = 2 << 20;
-function boundedFile(input: FileDoc): FileDoc {
+function boundedFile(input: FileDoc, maxChunk = MAX_CHUNK_BYTES): FileDoc {
   const invalid = () => new Error('Arquivo inválido ou grande demais para abrir.');
   if (!input.chunks.length || input.chunks.length > MAX_FILE_BYTES / (1 << 20) + 1) throw invalid();
   const file = parseFile(input); // Snapshot the manifest before any asynchronous work.
   if (!file.bytes || file.bytes > MAX_FILE_BYTES || !HASH.test(file.sha256)) throw invalid();
-  if (file.chunks.some((c) => !c.bytes || c.bytes > MAX_CHUNK_BYTES) ||
+  if (file.chunks.some((c) => !c.bytes || c.bytes > maxChunk) ||
       file.chunks.reduce((total, c) => total + c.bytes, 0) !== file.bytes ||
       (file.thumb && (!file.thumb.bytes || file.thumb.bytes > MAX_THUMBNAIL_BYTES))) throw invalid();
   const metadata = new TextEncoder().encode(file.name + file.mime + file.sha256).length +
@@ -78,16 +104,51 @@ function boundedFile(input: FileDoc): FileDoc {
   return file;
 }
 
-function parseConversation(input: unknown) {
+function decimal(value: unknown, max: bigint, signed = false): string {
+  const text = string(value);
+  if (!(signed ? /^-?[0-9]+$/ : /^[0-9]+$/).test(text) || BigInt(text) > max || BigInt(text) < (signed ? -max - 1n : 0n)) throw new Error('Invalid exact integer.');
+  return text;
+}
+function parseProfile(input: unknown) {
+  const value = object(input);
+  const kind = string(value.kind);
+  if (kind !== 'Person' && kind !== 'Agent') throw new Error('Invalid identity kind.');
+  return { id: publicKey(value.id), kind: kind as 'Person' | 'Agent', name: string(value.name), handle: string(value.handle),
+    tint_hex: string(value.tint_hex), glyph: nullableText(value.glyph), bio: string(value.bio),
+    owner: value.owner === null ? null : publicKey(value.owner) };
+}
+export type Profile = ReturnType<typeof parseProfile>;
+
+export function parseConversation(input: unknown) {
   const value = object(input);
   const kind = string(value.kind);
   if (kind !== 'direct' && kind !== 'group' && kind !== 'community' && kind !== 'personal') throw new Error('Invalid conversation kind.');
-  return { id: string(value.id), title: string(value.title), kind, can_send: boolean(value.can_send),
+  const privacy = string(value.privacy);
+  if (privacy !== 'EndToEnd' && privacy !== 'Closed' && privacy !== 'Public') throw new Error('Invalid conversation privacy.');
+  const roster = Object.entries(object(value.roster)).map(([id, input]) => {
+    const role = string(input);
+    if (role !== 'Owner' && role !== 'Admin' && role !== 'Member' && role !== 'Reader') throw new Error('Invalid member role.');
+    return { id: publicKey(id), role };
+  });
+  const prefs = object(value.prefs);
+  return { id: string(value.id), title: string(value.title), kind, privacy: privacy as 'EndToEnd' | 'Closed' | 'Public', roster, profiles: array(value.profiles).map(parseProfile),
+    prefs: { pinned: boolean(prefs.pinned), archived: boolean(prefs.archived), muted_until_ms: prefs.muted_until_ms === null ? null : decimal(prefs.muted_until_ms, 9223372036854775807n, true) },
+    event_count: decimal(value.event_count, 18446744073709551615n), can_send: boolean(value.can_send),
     waiting: nullableText(value.waiting), unreadable: integer(value.unreadable),
     unread: integer(value.unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), messages: array(value.messages).map(parseMessage) };
 }
 export type Conversation = ReturnType<typeof parseConversation>;
 export type Message = ReturnType<typeof parseMessage>;
+
+export function parseDevices(input: unknown, current: string) {
+  const response = object(input);
+  if (response.kind !== 'devices') throw new Error('O servidor não retornou os dispositivos.');
+  return array(response.devices).map((input) => {
+    const device = object(input);
+    const device_id = publicKey(device.device);
+    return { device_id, revoked: boolean(device.revoked), this_device: device_id === current };
+  });
+}
 
 export function parseInvite(input: unknown) {
   const value = object(input);
@@ -133,10 +194,19 @@ export class Messages {
   private generation = 0;
   private conversations: Conversation[] = [];
   private notice: string | null = null;
+  private readonly aborted = new AbortController();
+  private historyTimer: ReturnType<typeof setTimeout> | undefined;
+  private historyRunning = false;
+  private historyResult: HistoryResult | null = null;
+  private historyError = 'O histórico aguarda o celular conectar.';
+  private readonly historyWaiters = new Set<{resolve:(result:HistoryResult)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
+  private readonly ephemeral: ((frame: Extract<RelayFrame,{kind:'ephemeral'|'presence'}>) => void) | undefined;
 
-  constructor({ core, vault, session, changed }: {
+  constructor({ core, vault, session, changed, ephemeral }: {
     core: MessageCore; vault: MessageVault; session: LinkedSession; changed: (state: MessagesState) => void;
+    ephemeral?: (frame: Extract<RelayFrame,{kind:'ephemeral'|'presence'}>) => void;
   }) {
+    this.ephemeral=ephemeral;
     this.core = core; this.vault = vault; this.session = session; this.changed = changed;
     this.transport = new AuthenticatedTransport(core, vault, session.account, (connection) => {
       if (this.closed) return;
@@ -162,6 +232,10 @@ export class Messages {
   }
 
   private received(frame: RelayFrame, raw: Uint8Array): Promise<void> {
+    if(frame.kind==='presence'||frame.kind==='ephemeral') {
+      this.ephemeral?.(frame);
+      if(frame.kind==='presence'||frame.event!=='read'&&frame.event!=='delivered')return Promise.resolve();
+    }
     const generation = this.generation;
     return this.enqueue(async () => {
       if (generation !== this.generation || this.connection.kind !== 'ready') return;
@@ -169,6 +243,15 @@ export class Messages {
         await this.core.text({ kind: 'receive', bytes: raw, now: Date.now() });
       if (frame.kind === 'rejected' && frame.permanent) this.notice = frame.reason;
       await this.apply(update, generation);
+      if (frame.kind === 'ready') {
+        try { await this.resumeDocumentUploads(generation); }
+        catch (error) {
+          if (!(error as {documentUploadRetry?: boolean}).documentUploadRetry) throw error;
+          this.notice = 'Uma página aguarda conexão para terminar de enviar. O rascunho foi preservado.'; this.publish();
+        }
+        this.scheduleHistory();
+      }
+      if (frame.kind === 'sync_done') this.scheduleHistory();
     });
   }
 
@@ -186,22 +269,12 @@ export class Messages {
   }
 
   send({ space, text }: { space: string; text: string }): Promise<void> {
-    if (this.closed) return Promise.reject(new Error('Reload Zoen to reopen this browser session.'));
-    if (this.connection.kind !== 'ready') return Promise.reject(new Error('The relay is reconnecting. Try again when connected.'));
-    if (!this.conversations.find((conversation) => conversation.id === space)?.can_send) {
-      return Promise.reject(new Error('The encrypted conversation is not ready to send.'));
-    }
-    const generation = this.generation;
-    return this.enqueue(async () => {
-      this.notice = null;
-      const update = await this.core.text({ kind: 'queue_message', space, text, now: Date.now() });
-      await this.apply(update, generation);
-    }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'The connection changed. Try again when connected.' : null);
+    return this.act(space, { kind: 'queue_message', space, text, now: Date.now() }, true);
   }
 
   /** Post with an optional inline reply, thread reply or forward. Refusals stay non-fatal. */
   post({ space, text, replyTo = '', thread = false, forwarded = false }: { space: string; text: string; replyTo?: string; thread?: boolean; forwarded?: boolean }): Promise<void> {
-    return this.act(space, { kind: 'queue_post', space, text, replyTo, thread, forwarded, now: Date.now() });
+    return this.act(space, { kind: 'queue_post', space, text, replyTo, thread, forwarded, now: Date.now() }, true);
   }
 
   /** Reaction, edit or delete for everyone, in the shared annotation shape. */
@@ -210,7 +283,7 @@ export class Messages {
   }
 
   /** Seal like native, upload every encrypted chunk, then post the file into the chat. */
-  async sendFile(space: string, file: { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null; voice?: VoiceMeta }, progress?: (done: number, total: number) => void): Promise<void> {
+  async sendFile(space: string, file: { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null; voice?: VoiceMeta }, progress?: (done: number, total: number) => void): Promise<{itemId: string; messageId: string}> {
     if (file.bytes.length > MAX_FILE_BYTES) throw new Error('Este arquivo é grande demais para o navegador.');
     let framed: Uint8Array;
     try { framed = await this.core.bytes({ kind: 'seal_file', name: file.name.replace(/[\\/\0]/g, '_').slice(0, 255) || 'arquivo', mime: file.mime || 'application/octet-stream', bytes: file.bytes, thumb: file.thumb ?? new Uint8Array() }); }
@@ -228,7 +301,7 @@ export class Messages {
         progress?.(i + 1, uploads.length);
       }
       // A disconnect after the last PUT still must retain the recording locally.
-      await this.act(space, { kind: 'queue_file', space, doc: JSON.stringify(doc), now: Date.now() });
+      return await this.queueFileRecord(space, doc);
     } catch (error) {
       // Keep the sealed voice/file in the timeline as failed, like native — do not lose the clip.
       // Best effort: the upload error is what the user must see, even if queueing also fails.
@@ -251,6 +324,28 @@ export class Messages {
     }
   }
 
+  private async queueFileRecord(space: string, doc: FileDoc): Promise<{itemId: string; messageId: string}> {
+    if (this.closed) throw new Error('Esta sessão está fechada.');
+    if (this.connection.kind !== 'ready') throw new Error('Sem conexão agora. Tente de novo em instantes.');
+    let result: {itemId: string; messageId: string} | undefined;
+    const generation = this.generation;
+    await this.enqueue(async () => {
+      let response: Record<string, unknown>;
+      try { response = object(JSON.parse(await this.core.text({ kind: 'queue_file_record', space, doc: JSON.stringify(doc), now: Date.now() }))); }
+      catch (error) { throw Object.assign(new Error(plain(message(error))), {soft: true}); }
+      const posted = object(response.result);
+      result = {itemId: string(posted.itemId), messageId: string(posted.messageId)};
+      await this.apply(JSON.stringify(response.update), generation);
+    }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'A conexão mudou. Tente de novo.' : null, false);
+    if (!result) throw new Error('Não foi possível enviar o arquivo.');
+    return result;
+  }
+
+  async fileManifest(itemId: string, version?: number): Promise<{itemId: string; version: number; doc: FileDoc; info: unknown}> {
+    const result = object(await this.documentRequest({op: 'file_manifest', item_id: itemId, version: version ?? null}));
+    return {itemId: string(result.itemId), version: integer(result.version), doc: parseFile(result.doc), info: result.info};
+  }
+
   /** The same encrypted chunks, named again in another chat: nothing to upload. */
   forwardFile(space: string, doc: FileDoc): Promise<void> {
     return this.act(space, { kind: 'queue_file', space,
@@ -264,6 +359,7 @@ export class Messages {
       const sig = Array.from(await this.vault.sign(payload), (b) => b.toString(16).padStart(2, '0')).join('');
       try {
         const response = await fetch(`${this.base()}/v1/blobs/${blob}`, { method: 'PUT', body: Uint8Array.from(sealed),
+          signal: this.aborted.signal,
           headers: { 'content-type': 'application/octet-stream', 'x-zoen-device': this.session.account.device, 'x-zoen-ts': String(ts), 'x-zoen-sig': sig } });
         if (response.ok) return;
         if (response.status === 413) throw Object.assign(new Error('Este arquivo é grande demais.'), { final: true });
@@ -277,8 +373,8 @@ export class Messages {
   private base(): string { return new URL(this.session.account.relay).origin; }
 
   /** Fetches, checks and opens a file's chunks. Throws plain Portuguese on failure. */
-  async openFile(input: FileDoc, thumbnail = false): Promise<Blob> {
-    const file = boundedFile(input);
+  async openFile(input: FileDoc, thumbnail = false, pagePayload = false): Promise<Blob> {
+    const file = boundedFile(input, pagePayload ? 32 << 20 : MAX_CHUNK_BYTES);
     const expected = thumbnail ? file.thumb : file;
     if (!expected) throw new Error('Este arquivo não tem prévia.');
     const chunks = thumbnail ? [file.thumb!] : file.chunks;
@@ -287,7 +383,7 @@ export class Messages {
     for (const chunk of chunks) {
       let sealed: Uint8Array;
       try {
-        const response = await fetch(`${this.base()}/v1/blobs/${chunk.blob}`);
+        const response = await fetch(`${this.base()}/v1/blobs/${chunk.blob}`, { signal: this.aborted.signal });
         if (!response.ok || !response.body) { await response.body?.cancel(); throw new Error(String(response.status)); }
         const reader = response.body.getReader();
         sealed = new Uint8Array(chunk.bytes + 40); // XChaCha20 nonce + authentication tag.
@@ -331,25 +427,175 @@ export class Messages {
     }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'A conexão mudou. Tente de novo.' : null, false);
   }
 
-  private act(space: string, operation: Parameters<MessageCore['text']>[0]): Promise<void> {
+  private act(space: string, operation: Parameters<MessageCore['text']>[0], allowOffline = false): Promise<void> {
     if (this.closed) return Promise.reject(new Error('Recarregue o Zoen para abrir esta sessão de novo.'));
-    if (this.connection.kind !== 'ready') return Promise.reject(new Error('Sem conexão agora. Tente de novo em instantes.'));
+    if (!allowOffline && this.connection.kind !== 'ready') return Promise.reject(new Error('Sem conexão agora. Tente de novo em instantes.'));
     if (!this.conversations.find((conversation) => conversation.id === space)?.can_send) {
       return Promise.reject(new Error('Esta conversa ainda está sendo preparada no seu celular.'));
     }
     const generation = this.generation;
     return this.enqueue(async () => {
+      if (!this.conversations.find((conversation) => conversation.id === space)?.can_send)
+        throw Object.assign(new Error('Esta conversa ainda está sendo preparada no seu celular.'), { soft: true });
       this.notice = null;
       let update: string;
       try { update = await this.core.text(operation); }
       catch (error) { throw Object.assign(new Error(plain(message(error))), { soft: true }); }
       await this.apply(update, generation);
-    }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'A conexão mudou. Tente de novo.' : null, false);
+    }, () => !allowOffline && (generation !== this.generation || this.connection.kind !== 'ready') ? 'A conexão mudou. Tente de novo.' : null, false);
+  }
+
+  /** Shared Page/Plan commands execute inside Rust, then persist before any publication.
+   * Downloaded CRDT payloads are verified by the signed descriptor and the Rust cache.
+   * A large outgoing page has a durable upload barrier, including across tab reloads.
+   */
+  async documentRequest(command: unknown): Promise<unknown> {
+    return this.domainRequest(command, 'document_request');
+  }
+
+  async agentRequest(command: unknown): Promise<unknown> {
+    return this.domainRequest(command, 'agent_request');
+  }
+
+  async appRequest(command: unknown): Promise<unknown> {
+    return this.domainRequest(command, 'app_request');
+  }
+
+  async profileRequest(command: unknown): Promise<unknown> {
+    return this.domainRequest(command, 'profile_request');
+  }
+
+  private scheduleHistory(delay=0):void {
+    if(this.closed||this.historyResult||this.connection.kind!=='ready'||this.historyRunning
+      ||!this.session.account.link_secret||!this.session.account.hpke_secret)return;
+    clearTimeout(this.historyTimer);
+    this.historyTimer=setTimeout(()=>{this.historyTimer=undefined;void this.restoreHistory();},delay);
+  }
+
+  private async restoreHistory():Promise<void> {
+    if(this.historyRunning||this.closed||this.connection.kind!=='ready')return;
+    this.historyRunning=true;const generation=this.generation;
+    const valid=()=>!this.closed&&generation===this.generation&&this.connection.kind==='ready';
+    try {
+      const result=await historySlice({base:this.base(),signal:this.aborted.signal,valid,
+        rpc:(kind,value)=>this.rpc(kind,value),core:async(operation)=>{
+          let work:unknown;
+          await this.enqueue(async()=>{
+            let response:Record<string,unknown>;
+            try{response=object(JSON.parse(await this.core.text(operation)));}
+            catch(error){throw Object.assign(new Error(message(error)),{soft:true});}
+            await this.apply(JSON.stringify(response.update),generation);work=response.work;
+          },()=>valid()?null:'A conexão mudou durante a restauração.',false);
+          return work;
+        }});
+      if(result&&valid()){
+        this.historyResult=result;
+        for(const waiter of this.historyWaiters){clearTimeout(waiter.timer);waiter.resolve(result);}this.historyWaiters.clear();
+      }
+    }catch(error){this.historyError=message(error);}
+    finally{this.historyRunning=false;this.scheduleHistory(1_000);}
+  }
+
+  receiveHistory(timeoutMs:number):Promise<HistoryResult>{
+    if(this.closed)return Promise.reject(new Error('Esta sessão está fechada.'));
+    if(this.historyResult)return Promise.resolve(this.historyResult);
+    if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>300_000)return Promise.reject(new Error('Tempo de restauração inválido.'));
+    this.scheduleHistory();
+    return new Promise((resolve,reject)=>{
+      const waiter={resolve,reject,timer:setTimeout(()=>{this.historyWaiters.delete(waiter);reject(new Error(this.historyError));},timeoutMs)};
+      this.historyWaiters.add(waiter);
+    });
+  }
+
+  private async domainRequest(command: unknown, domain: 'document_request' | 'agent_request' | 'app_request' | 'profile_request'): Promise<unknown> {
+    let result: unknown;
+    await this.enqueue(async () => {
+      let response: Record<string, unknown>;
+      const request = JSON.stringify(command);
+      const operation = () => domain === 'app_request' ? {kind: domain, request, now: Date.now(), locale: navigator.language} : {kind: domain, request, now: Date.now()};
+      try { response = object(JSON.parse(await this.core.text(operation()))); }
+      catch (error) { throw Object.assign(new Error(message(error)), { soft: true }); }
+      const generation = this.generation;
+      if (response.update !== null) await this.apply(JSON.stringify(response.update), generation);
+      // The saved snapshot now owns every outgoing byte. An interrupted PUT cannot
+      // publish an incomplete document or erase the person's local draft.
+      if (array(response.uploads).length && this.connection.kind === 'ready') {
+        try { await this.resumeDocumentUploads(generation); }
+        catch (error) {
+          if (!(error as {documentUploadRetry?: boolean}).documentUploadRetry) throw error;
+          this.notice = 'A página foi salva neste navegador e aguarda conexão para terminar de enviar.'; this.publish();
+        }
+      }
+      const downloads = array(response.downloads).map(parseChunk);
+      if (downloads.length) {
+        let complete = true;
+        for (const reference of downloads) {
+          let bytes: Uint8Array;
+          try {
+            if (reference.bytes > 32 << 20) throw new Error('Página grande demais.');
+            const blob = await this.openFile({ name: 'page', path: '', mime: 'application/vnd.zoen.page',
+              bytes: reference.bytes, sha256: reference.sha256, chunks: [reference], thumb: null, voice: null }, false, true);
+            bytes = new Uint8Array(await blob.arrayBuffer());
+          } catch { complete = false; continue; }
+          const update = await this.core.text({ kind: 'document_cache_blob', reference: JSON.stringify(reference), bytes });
+          await this.apply(update, generation);
+        }
+        if (complete) {
+          // Only reads can request missing payloads. Mutations refuse an incomplete
+          // page before changing it, so fetching never replays a non-idempotent write.
+          try { response = object(JSON.parse(await this.core.text(operation()))); }
+          catch (error) { throw Object.assign(new Error(message(error)), { soft: true }); }
+          if (response.update !== null) await this.apply(JSON.stringify(response.update), generation);
+        } else if (response.result === null) {
+          throw Object.assign(new Error('A página ainda está chegando. Tente de novo quando estiver conectado.'), { soft: true });
+        }
+      }
+      result = response.result;
+    }, () => this.closed ? 'Esta sessão está fechada.' : null, false);
+    return result;
+  }
+
+  private async resumeDocumentUploads(generation: number): Promise<void> {
+    const blobs = array(JSON.parse(await this.core.text({ kind: 'document_uploads' }))).map(string);
+    for (const blob of blobs) {
+      if (this.closed || this.connection.kind !== 'ready' || generation !== this.generation) return;
+      const sealed = await this.core.bytes({ kind: 'local_chunk', blob });
+      if (!sealed.length) throw new Error('O conteúdo local da página está indisponível.');
+      try { await this.upload(blob, sealed); }
+      catch (error) { throw Object.assign(error instanceof Error ? error : new Error('Sem conexão para enviar a página.'), {documentUploadRetry: true}); }
+      const update = await this.core.text({ kind: 'document_uploaded', blobs: JSON.stringify([blob]) });
+      await this.apply(update, generation);
+    }
   }
 
   async devices(): Promise<unknown> {
     if (this.closed) throw new Error('Esta sessão está fechada.');
     return this.transport.request('devices');
+  }
+
+  async rpc(kind:string,value=''):Promise<unknown> {
+    if(this.closed)throw new Error('Esta sessão está fechada.');
+    const generation=this.generation;
+    const response=await this.transport.request(kind,value);
+    if(this.closed||generation!==this.generation)throw new Error('A conexão mudou. Tente de novo.');
+    return response;
+  }
+
+  async directoryProfiles(profiles:unknown[]):Promise<unknown> {
+    let result:unknown;
+    const generation=this.generation;
+    await this.enqueue(async()=>{
+      const response=object(JSON.parse(await this.core.text({kind:'directory_profiles',profiles:JSON.stringify(profiles)})));
+      await this.apply(JSON.stringify(response.update),generation);result=response.result;
+    },()=>generation!==this.generation?'A conexão mudou. Tente de novo.':null,false);
+    return result;
+  }
+
+  async typing(space:string,typing:boolean):Promise<void> {
+    if(this.closed||this.connection.kind!=='ready')return;
+    const generation=this.generation;
+    const frame=await this.core.bytes({kind:'typing_frame',space,typing});
+    if(frame.length&&!this.closed&&this.connection.kind==='ready'&&generation===this.generation)this.transport.send(frame);
   }
 
   async unlinkDevice(device: string): Promise<void> {
@@ -395,6 +641,9 @@ export class Messages {
 
   stop(): void {
     this.closed = true;
+    this.aborted.abort();
+    clearTimeout(this.historyTimer);
+    for(const waiter of this.historyWaiters){clearTimeout(waiter.timer);waiter.reject(new Error('Esta sessão está fechada.'));}this.historyWaiters.clear();
     ++this.generation;
     this.transport.stop();
   }

@@ -32,7 +32,8 @@ const MAX_THUMBNAIL_BYTES: usize = 2 << 20;
 const MAX_FILE_CHUNKS: usize = MAX_FILE_BYTES / MIN_CHUNK + 1;
 const MAX_FILE_METADATA_BYTES: usize = 128 << 10;
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct FileDto {
     pub name: String,
     pub path: String,

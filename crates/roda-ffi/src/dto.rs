@@ -1,12 +1,14 @@
 //! Tipos expostos ao Swift (UniFFI). São "visões" da projeção, nunca a fonte da verdade.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum PersonaKind {
     Person,
     Agent,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct Persona {
     pub id: String,
     pub kind: PersonaKind,
@@ -24,14 +26,16 @@ pub struct Persona {
     pub is_mine: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum SpaceKindDto {
     Direct,
     Group,
     Community,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct MemberRoleDto {
     pub identity_id: String,
     /// owner, admin, member, reader
@@ -40,21 +44,35 @@ pub struct MemberRoleDto {
 
 /// An end-to-end chat's MLS group as this device has it. Members compare `digest` for
 /// the same `epoch` to know they share one group (ADR 0026).
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct GroupKeysDto {
     pub epoch: u64,
     pub digest: String,
     pub members: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum PrivacyDto {
     EndToEnd,
     Closed,
     Public,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, uniffi::Enum)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    uniffi::Enum,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum TrustLevelDto {
     Listen,
     Suggest,
@@ -62,7 +80,8 @@ pub enum TrustLevelDto {
     Autonomous,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct SpaceSummary {
     pub id: String,
     pub title: String,
@@ -91,7 +110,8 @@ pub struct SpaceSummary {
     pub event_count: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct ItemCard {
     pub item_id: String,
     pub title: String,
@@ -108,7 +128,8 @@ pub struct ItemCard {
     pub app: Option<AppStateDto>,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 #[expect(
     clippy::large_enum_variant,
     reason = "uniffi enums cross the FFI by value; a Box isn't representable"
@@ -139,7 +160,8 @@ pub enum EntryKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct TimelineEntry {
     pub id: String,
     pub seq: u64,
@@ -176,7 +198,8 @@ pub struct TimelineEntry {
 
 /// A voice note in the chat. The audio is an end-to-end encrypted file Item; until its
 /// pieces arrive `file_bytes` returns `None` and the player waits.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct VoiceNoteDto {
     pub item_id: String,
     /// The current signed audio hash, used to invalidate loaded players after edits.
@@ -189,7 +212,8 @@ pub struct VoiceNoteDto {
     pub transcript: String,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct ReactionDto {
     pub emoji: String,
     pub people: Vec<Persona>,
@@ -198,7 +222,8 @@ pub struct ReactionDto {
 }
 
 /// What an inline reply shows of the message it answers.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct ReplyQuote {
     pub id: String,
     pub author: Persona,
@@ -209,7 +234,8 @@ pub struct ReplyQuote {
 /// relay (offline-safe). `Sent`: the relay ordered it (✓). `Delivered`: every other member
 /// has it on a device (✓✓). `Read`: every other member read it (blue ✓✓). `Failed`: the
 /// relay refused it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum Delivery {
     Local,
     Sending,
@@ -219,7 +245,8 @@ pub enum Delivery {
     Failed,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct PlanLineDto {
     pub id: String,
     pub text: String,
@@ -227,13 +254,15 @@ pub struct PlanLineDto {
     pub done: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct PlanSectionDto {
     pub title: String,
     pub lines: Vec<PlanLineDto>,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct PlanDto {
     pub title: String,
     pub summary: String,
@@ -243,7 +272,8 @@ pub struct PlanDto {
     pub total_cents: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct VersionDto {
     pub number: u32,
     pub author: Persona,
@@ -253,7 +283,8 @@ pub struct VersionDto {
     pub total_cents: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct ItemDetail {
     pub id: String,
     pub space_id: String,
@@ -279,7 +310,8 @@ pub struct ItemDetail {
 // ───────────────────────────── MCP Apps (mini-apps) ─────────────────────────────
 
 /// Uma ferramenta de um mini-app, no formato do MCP (`Tool` + `_meta.ui`).
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AppToolDto {
     pub name: String,
     pub title: String,
@@ -292,7 +324,8 @@ pub struct AppToolDto {
     pub read_only: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AppSpecDto {
     pub id: String,
     pub name: String,
@@ -304,7 +337,8 @@ pub struct AppSpecDto {
 }
 
 /// Conteúdo de `resources/read` para um recurso `ui://`.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AppResourceDto {
     pub uri: String,
     pub mime_type: String,
@@ -317,7 +351,8 @@ pub struct AppResourceDto {
 }
 
 /// A native capability a mini-app holds (Settings → Mini-app permissions).
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct DeviceGrantDto {
     pub grant_id: String,
     pub item_id: String,
@@ -331,14 +366,16 @@ pub struct DeviceGrantDto {
     pub at_ms: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AppMetricDto {
     pub label: String,
     /// 0…1
     pub value: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AppStateDto {
     pub app_id: String,
     pub resource_uri: String,
@@ -354,7 +391,8 @@ pub struct AppStateDto {
     pub snapshot_json: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum AppCallStatus {
     /// Rodou (ou era só leitura).
     Done,
@@ -364,7 +402,8 @@ pub enum AppCallStatus {
     Denied,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AppCallOutcome {
     pub status: AppCallStatus,
     /// `CallToolResult` do MCP em JSON (content + structuredContent + isError).
@@ -375,7 +414,8 @@ pub struct AppCallOutcome {
     pub item: Option<ItemDetail>,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct UndoToken {
     pub item_id: String,
     /// Versão para a qual "Desfazer" volta.
@@ -387,7 +427,8 @@ pub struct UndoToken {
     pub label: String,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct EditOutcome {
     pub item: ItemDetail,
     pub undo: UndoToken,
@@ -395,7 +436,8 @@ pub struct EditOutcome {
     pub reaction: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum RequestStatus {
     Pending,
     Approved,
@@ -404,7 +446,8 @@ pub enum RequestStatus {
     Stale,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AgentRequestDto {
     pub id: String,
     pub agent: Persona,
@@ -430,14 +473,16 @@ pub struct AgentRequestDto {
     pub by_standing: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AgentSpaceTrust {
     pub space_id: String,
     pub space_title: String,
     pub level: TrustLevelDto,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AgentProfile {
     pub persona: Persona,
     /// `None` quando o orçamento é de outra pessoa (quem é dono paga).
@@ -454,7 +499,8 @@ pub struct AgentProfile {
 }
 
 /// An agent's status, as its owner sees it on the relay.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum AgentStatus {
     Active,
     Paused,
@@ -463,7 +509,8 @@ pub enum AgentStatus {
 }
 
 /// What an owner can do to one of their agents.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum AgentControl {
     Pause,
     Resume,
@@ -471,7 +518,8 @@ pub enum AgentControl {
     Revoke,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum DecisionKind {
     Act,
     ActWithUndo,
@@ -479,7 +527,8 @@ pub enum DecisionKind {
     Block,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct DecisionPreview {
     pub action: String,
     pub example: String,
@@ -488,21 +537,24 @@ pub struct DecisionPreview {
     pub red_line: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct PlanOutcome {
     pub kind: DecisionKind,
     pub item: Option<ItemDetail>,
     pub message: String,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct ApproveOutcome {
     pub request: AgentRequestDto,
     pub message: String,
 }
 
 /// The four swipes on the approvals stack.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum RequestDecision {
     /// Right: approve this one.
     Approve,
@@ -514,7 +566,8 @@ pub enum RequestDecision {
     AlwaysDeny,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct DecideOutcome {
     pub request: AgentRequestDto,
     pub message: String,
@@ -525,7 +578,8 @@ pub struct DecideOutcome {
 }
 
 /// A standing "always approve / always deny" an owner gave one of their agents.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct StandingDecisionDto {
     pub grant_id: String,
     pub agent: Persona,
@@ -537,7 +591,8 @@ pub struct StandingDecisionDto {
     pub at_ms: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct LogReport {
     pub space_id: String,
     pub space_title: String,
@@ -547,7 +602,8 @@ pub struct LogReport {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct LogEventDto {
     pub seq: u64,
     pub label: String,
@@ -558,7 +614,8 @@ pub struct LogEventDto {
     pub signature: String,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct SearchHit {
     pub space_id: String,
     pub space_title: String,
@@ -569,14 +626,16 @@ pub struct SearchHit {
     pub at_ms: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct Mention {
     pub space_id: String,
     pub space_title: String,
     pub entry: TimelineEntry,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct CoreStats {
     pub spaces: u32,
     pub events: u64,
@@ -587,7 +646,8 @@ pub struct CoreStats {
 }
 
 /// Uma ação de um agente, lida do log assinado (tela "Atividade do agente").
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AgentActivityDto {
     pub label: String,
     pub detail: String,
@@ -598,7 +658,8 @@ pub struct AgentActivityDto {
     pub cost_cents: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct MediaRefDto {
     pub sha256: String,
     pub mime: String,
@@ -608,7 +669,8 @@ pub struct MediaRefDto {
 }
 
 /// A chat background (see `roda_types::BackgroundSpec`).
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct BackgroundDto {
     pub style: String,
     pub media: Option<MediaRefDto>,
@@ -666,7 +728,8 @@ impl From<&BackgroundDto> for roda_types::BackgroundSpec {
 
 /// One universal-search hit. `kind`: "message", "person", "agent", "space", "item" or
 /// "app". Snippets mark the matched text with `[[` and `]]`.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct UniversalHit {
     pub kind: String,
     pub ref_id: String,
@@ -681,13 +744,15 @@ pub struct UniversalHit {
 
 /// A bounded conversation-scoped message page. Restart after a mutation makes a
 /// cursor stale; `ref_id` on each hit is the exact original message ID.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct MessageSearchPage {
     pub hits: Vec<UniversalHit>,
     pub next_cursor: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct UniversalResults {
     pub hits: Vec<UniversalHit>,
     /// Query time in microseconds (index refresh included).

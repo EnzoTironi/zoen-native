@@ -261,38 +261,12 @@ fn joins_meta(space: &str) -> String {
     format!("mls.joins:{space}")
 }
 
-/// What a group owes, as one commit: identities to add (every device of theirs), single
-/// devices to add (identity already in), and removals (identities or leaf names).
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct Owed {
-    add: BTreeSet<IdentityId>,
-    add_devices: BTreeSet<(IdentityId, String)>,
-    remove: BTreeSet<String>,
-}
+use roda_mls::reconciliation::{self, Owed};
 
 impl MlsNet {
     pub(crate) fn mark_dirty(&mut self, spaces: Vec<SpaceId>) {
         self.wake_recovery_many(spaces.iter().cloned());
         self.dirty.extend(spaces);
-    }
-}
-
-impl Owed {
-    fn is_empty(&self) -> bool {
-        self.add.is_empty() && self.add_devices.is_empty() && self.remove.is_empty()
-    }
-
-    fn adds_nobody(&self) -> bool {
-        self.add.is_empty() && self.add_devices.is_empty()
-    }
-
-    /// Whose key packages a claim asks for.
-    fn to_claim(&self) -> Vec<IdentityId> {
-        let mut ids = self.add.clone();
-        ids.extend(self.add_devices.iter().map(|(id, _)| id.clone()));
-        // The relay serves up to fifty distinct identities per operation. Remaining
-        // members reconcile after this batch's commit/Welcome lands.
-        ids.into_iter().take(50).collect()
     }
 }
 
@@ -1914,45 +1888,16 @@ impl Engine {
         let Some(leaves) = device.committed_leaves(space).map_err(mls_err)? else {
             return Ok(None);
         };
-        let group: BTreeSet<IdentityId> = leaves.keys().map(|(id, _)| id.clone()).collect();
-        let mut owed = Owed::default();
-        if admin || reconciling {
-            let listed: BTreeSet<IdentityId> = roster.keys().cloned().collect();
-            if admin {
-                owed.add = listed.difference(&group).cloned().collect();
-            }
-            owed.remove = group.difference(&listed).cloned().collect();
-        }
-        let has = |id: &str, dev: &str| leaves.get(&(id.to_string(), dev.to_string()));
-        // Our unlinked devices leave every group we are in.
-        for (id, dev) in leaves.keys() {
-            if *id == me && revoked.contains(dev) {
-                owed.remove.insert(leaf_name(id, dev));
-            }
-        }
-        for name in stranded.iter().filter(|n| for_me(n)) {
-            if split_leaf(name).is_some_and(|(id, dev)| has(id, dev).is_some()) {
-                owed.remove.insert(name.clone());
-            }
-        }
-        for (name, stale) in joins.iter().filter(|(n, _)| for_me(n)) {
-            let Some((id, dev)) = split_leaf(name) else {
-                continue;
-            };
-            if !roster.contains_key(id) || owed.add.contains(id) || owed.remove.contains(id) {
-                continue;
-            }
-            match has(id, dev) {
-                Some(key) if hex::encode(key) == *stale => {
-                    owed.remove.insert(name.clone());
-                }
-                Some(_) => {}
-                None => {
-                    owed.add_devices.insert((id.to_string(), dev.to_string()));
-                }
-            }
-        }
-        Ok((!owed.is_empty() || reconciling).then_some(owed))
+        Ok(reconciliation::plan(reconciliation::Input {
+            me: &me,
+            admin,
+            reconciling,
+            listed: &roster.keys().cloned().collect(),
+            leaves: &leaves,
+            joins: &joins,
+            stranded: &stranded,
+            revoked: &revoked,
+        }))
     }
 
     /// Key packages for a group's newcomers came back: commit them (and any removals).

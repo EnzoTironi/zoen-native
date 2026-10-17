@@ -8,7 +8,7 @@ publish.workspace = true
 
 [features]
 default = ["device"]
-portable = ["dep:openmls_traits", "dep:sha2"]
+portable = ["dep:openmls_traits", "dep:sha2", "dep:serde"]
 # Groups and their sealed SQLite state. Without it, only key package and leaf checks
 # (what the relay needs).
 device = ["dep:openmls_basic_credential", "dep:openmls_sqlite_storage", "dep:rusqlite",

@@ -20,6 +20,7 @@ use crate::{
 const STATUS_META: &str = "backup.status";
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct BackupStatusDto {
     pub enabled: bool,
     /// "password" or "recovery_key" (empty while off).

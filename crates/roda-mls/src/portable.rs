@@ -457,6 +457,29 @@ where
     pub fn roster(&self, space: &str) -> Result<BTreeSet<String>, MlsError> {
         identities(&self.load(space)?)
     }
+    /// Current verified device encryption keys, for shared membership reconciliation.
+    pub fn leaves(&self, space: &str) -> Result<crate::LeafKeys, MlsError> {
+        crate::group::leaf_keys(&self.load(space)?)
+    }
+    /// An unconfirmed commit must finish or be abandoned before another is planned.
+    pub fn committed_leaves(&self, space: &str) -> Result<Option<crate::LeafKeys>, MlsError> {
+        let group = match self.snapshot(space)? {
+            Snapshot::Absent | Snapshot::Stale(_) => return Ok(None),
+            Snapshot::Foreign(_) => return Err(MlsError::Credential),
+            Snapshot::Ours(group) => group,
+        };
+        if group.pending_commit().is_some() {
+            return Ok(None);
+        }
+        crate::group::leaf_keys(&group).map(Some)
+    }
+    /// Discard only a staged commit that lost the relay epoch race.
+    pub fn abandon(&self, space: &str) -> Result<(), MlsError> {
+        let mut group = self.load(space)?;
+        group
+            .clear_pending_commit(self.provider.storage())
+            .map_err(mls)
+    }
     pub fn epoch(&self, space: &str) -> Result<u64, MlsError> {
         Ok(self.load(space)?.epoch().as_u64())
     }

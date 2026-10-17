@@ -5,7 +5,7 @@ mod link;
 pub mod media;
 mod wire;
 
-pub use client::{Client, Update};
+pub use client::{Client, DocumentResponse, Update};
 pub use link::{complete_link, create_link, LinkedAccount, PendingLink};
 pub use wire::{decode_server, hello, request, ServerMessage};
 
@@ -138,6 +138,22 @@ mod browser {
             )
             .map_err(error)
         }
+        pub fn queue_file_record(
+            &mut self,
+            space: &str,
+            doc: &str,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            let doc = serde_json::from_str(doc).map_err(error)?;
+            let (update, item, message) = self
+                .client
+                .queue_file_record(space, doc, time(now_ms)?)
+                .map_err(error)?;
+            serde_json::to_string(
+                &serde_json::json!({"update":update,"result":{"itemId":item,"messageId":message}}),
+            )
+            .map_err(error)
+        }
         pub fn queue_failed_file(
             &mut self,
             space: &str,
@@ -191,6 +207,111 @@ mod browser {
         }
         pub fn view(&self) -> Result<String, JsValue> {
             serde_json::to_string(&self.client.conversations()).map_err(error)
+        }
+        pub fn document_request(&mut self, request: &str, now_ms: f64) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .document_request(request, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn agent_request(&mut self, request: &str, now_ms: f64) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .agent_request(request, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn profile_request(&mut self, request: &str, now_ms: f64) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .profile_request(request, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn history_start(&mut self, now_ms: f64) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.history_start(time(now_ms)?).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn history_manifest(&mut self, sealed: &[u8], now_ms: f64) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .history_manifest(sealed, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn history_chunk(
+            &mut self,
+            index: u32,
+            sealed: &[u8],
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .history_chunk(index, sealed, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn history_finish(&mut self, now_ms: f64) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.history_finish(time(now_ms)?).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn history_cleaned(&mut self, now_ms: f64) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.history_cleaned(time(now_ms)?).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn directory_profiles(&mut self, profiles: &str) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.directory_profiles(profiles).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn typing_frame(&self, space: &str, typing: bool) -> Result<Vec<u8>, JsValue> {
+            self.client.typing_frame(space, typing).map_err(error)
+        }
+        pub fn app_request(
+            &mut self,
+            request: &str,
+            now_ms: f64,
+            locale: &str,
+        ) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .app_request(request, time(now_ms)?, locale)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn document_uploads(&self) -> Result<String, JsValue> {
+            self.client.document_uploads().map_err(error)
+        }
+        pub fn document_uploaded(&mut self, blobs: &str) -> Result<String, JsValue> {
+            let blobs = serde_json::from_str::<Vec<String>>(blobs).map_err(error)?;
+            serde_json::to_string(&self.client.document_uploaded(&blobs).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn document_cache_blob(
+            &mut self,
+            reference: &str,
+            bytes: &[u8],
+        ) -> Result<String, JsValue> {
+            let reference = serde_json::from_str(reference).map_err(error)?;
+            serde_json::to_string(
+                &self
+                    .client
+                    .document_cache_blob(reference, bytes.to_vec())
+                    .map_err(error)?,
+            )
+            .map_err(error)
         }
     }
 

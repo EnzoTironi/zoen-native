@@ -21,8 +21,8 @@
 
 use roda_types::{ActionClass, AppDoc, ItemContent};
 
-use crate::i18n::{is_en, t, thousands, ts};
-use crate::tr;
+use roda_i18n as i18n;
+use roda_i18n::{is_en, t, thousands, tr, ts};
 use serde_json::{json, Value};
 
 mod schedule;
@@ -113,7 +113,7 @@ pub fn specs() -> Vec<AppSpec> {
             name: ts("Jumento do grupo", "Group donkey"),
             description: ts("Um jumento em pixel art que mora no grupo: comer, cochilar, brincar e a Corrida do Jumento, com placar do grupo. Todo mundo vê o mesmo bicho e quem fez o quê.", "A pixel-art donkey that lives in the group: eat, nap, play and Donkey Dash, with a group leaderboard. Everyone sees the same pet and who did what."),
             resource_uri: "ui://roda/pet",
-            html: Some(include_str!("../apps/pet.html")),
+            html: Some(include_str!("../resources/pet.html")),
             manifest: None,
             tools: vec![
                 tool("adopt_pet", ts("Adotar um bichinho", "Adopt a pet"), ts("Cria o bichinho compartilhado do grupo.", "Creates the group’s shared pet."), json!({"type":"object","properties":{"name":{"type":"string"},"species":{"type":"string","enum":["jumento"]}}}), &["model"], Reversible, false),
@@ -160,7 +160,7 @@ pub fn specs() -> Vec<AppSpec> {
             name: ts("Enquete", "Poll"),
             description: ts("Votação rápida no grupo. Ao fechar, a opção vencedora entra no plano do Espaço.", "Quick group vote. When it closes, the winning option goes into the Space’s plan."),
             resource_uri: "ui://roda/poll",
-            html: Some(include_str!("../apps/poll.html")),
+            html: Some(include_str!("../resources/poll.html")),
             manifest: None,
             tools: vec![
                 tool("start_poll", ts("Abrir enquete", "Open poll"), ts("Abre uma enquete no grupo.", "Opens a poll in the group."), json!({"type":"object","properties":{"question":{"type":"string"},"options":{"type":"array","items":{"type":"string"}}},"required":["question","options"]}), &["model"], Reversible, false),
@@ -175,7 +175,7 @@ pub fn specs() -> Vec<AppSpec> {
             name: ts("Lista do grupo", "Group list"),
             description: ts("Lista compartilhada: quem marcou cada coisa fica registrado.", "Shared list: who checked off each thing is recorded."),
             resource_uri: "ui://roda/list",
-            html: Some(include_str!("../apps/list.html")),
+            html: Some(include_str!("../resources/list.html")),
             manifest: None,
             tools: vec![
                 tool("start_list", ts("Criar lista", "Create list"), ts("Cria uma lista compartilhada.", "Creates a shared list."), json!({"type":"object","properties":{"title":{"type":"string"},"items":{"type":"array","items":{"type":"string"}}},"required":["title"]}), &["model"], Reversible, false),
@@ -202,8 +202,8 @@ pub fn specs() -> Vec<AppSpec> {
             name: ts("Trilha de sábado", "Saturday hike"),
             description: ts("Três trilhas com mapa e fotos: o grupo compara, vota e o agente monta o dia (carona, horários).", "Three trails with maps and photos: the group compares, votes and the agent plans the day (rides, times)."),
             resource_uri: "ui://roda/hike",
-            html: Some(include_str!("../apps/hike.html")),
-            manifest: Some(include_str!("../apps/hike.manifest.json")),
+            html: Some(include_str!("../resources/hike.html")),
+            manifest: Some(include_str!("../resources/hike.manifest.json")),
             tools: vec![
                 tool("start_hike", ts("Planejar uma trilha", "Plan a hike"), ts("Abre a trilha do grupo com três opções.", "Opens the group's hike with three options."), json!({"type":"object","properties":{"day":{"type":"string","maxLength":16},"area":{"type":"string","maxLength":24}}}), &["model"], Reversible, false),
                 tool("hike_vote", ts("Votar", "Vote"), ts("Vota numa trilha (troca o voto se já votou).", "Votes for a trail (changes your vote if you already voted)."), json!({"type":"object","properties":{"trail":{"type":"string","enum":["tomales","steep","lands"]}},"required":["trail"]}), &["app"], Reversible, false),
@@ -221,8 +221,8 @@ pub fn specs() -> Vec<AppSpec> {
                 "Free slots, services and prices. The client books; the agent confirms anything special.",
             ),
             resource_uri: "ui://roda/schedule",
-            html: Some(include_str!("../apps/schedule.html")),
-            manifest: Some(include_str!("../apps/schedule.manifest.json")),
+            html: Some(include_str!("../resources/schedule.html")),
+            manifest: Some(include_str!("../resources/schedule.manifest.json")),
             tools: vec![
                 tool(
                     "start_schedule",
@@ -632,7 +632,7 @@ pub fn replayed(app: &str, tool_name: &str, args: &Value, state: &Value) -> Opti
 }
 
 /// The owner's note for what a client just did in a mini-app (only the schedule speaks).
-pub(crate) fn owner_note_for(prev: &AppDoc, next: &AppDoc, by: &str) -> Option<Value> {
+pub fn owner_note_for(prev: &AppDoc, next: &AppDoc, by: &str) -> Option<Value> {
     if next.app != "schedule" {
         return None;
     }

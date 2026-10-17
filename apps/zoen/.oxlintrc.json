@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "import", "jsx-a11y"],
+  "categories": { "correctness": "error" },
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "typescript/consistent-type-imports": "error",
+    "jsx-a11y/no-autofocus": "off"
+  },
+  "env": { "browser": true, "node": true },
+  "globals": { "__DEV__": "readonly" },
+  "ignorePatterns": [
+    "src/core/generated/**",
+    "ios/**",
+    "android/**",
+    "modules/zoen-core/generated/**",
+    "modules/zoen-core/ios/generated/**",
+    ".expo/**",
+    "dist/**",
+    "public/core/**",
+    "public/worker.js"
+  ]
+}

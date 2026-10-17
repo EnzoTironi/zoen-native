@@ -125,11 +125,12 @@ const linked: Extract<StoredSession, { kind: 'linked' }> = { kind: 'linked', acc
   ...login, name: 'Web fixture', handle: 'web_fixture', primary: '33'.repeat(32), primary_hpke: '', hpke_secret: '',
   link_secret: '', agreement_secret: '', profile_key: '', profile_key_version: 0, profile_seen_version: 0, profile_fields: '',
 }, snapshot: '' };
-const conversation = { id: 'sp_fixture', title: 'Fixture', kind: 'group', can_send: true, waiting: null, unreadable: 0, messages: [] };
+const conversation = { id: 'sp_fixture', title: 'Fixture', kind: 'group', privacy: 'EndToEnd', roster: {}, profiles: [], prefs: { pinned: false, archived: false, muted_until_ms: null }, event_count: '0', can_send: true, waiting: null, unreadable: 0, messages: [] };
 function messagingCore() {
   let closed = false;
   return { ...unitCodec(), close() { closed = true; }, get closed() { return closed; },
     text: async (operation: CoreOperation) => {
+      if (operation.kind === 'document_uploads') return '[]';
       if (operation.kind === 'restore') return JSON.stringify([conversation]);
       if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
       if (operation.kind === 'bootstrap') return JSON.stringify({ snapshot: 'durable bootstrap', frames: [[7]], conversations: [conversation] });
@@ -229,6 +230,24 @@ test('production send persists the ratchet before emitting and reconnect replays
   assert.equal(core.closed, false);
 });
 
+test('offline sends persist locally and emit only from the next authenticated bootstrap', async (t) => {
+  install(t);
+  const core = messagingCore();
+  const saves: StoredSession[] = [];
+  const messages = new Messages({ core, session: linked, vault: { ...vault, save: async (session) => { saves.push(session); } }, changed: () => {} });
+  t.after(() => messages.stop());
+  await messages.start(); await authenticate();
+  const first = socket();
+  first.close(); await settle();
+  await messages.send({ space: 'sp_fixture', text: 'Keep this offline' });
+  assert.equal(first.sent.length, 3);
+  assert.equal(saves.at(-1)?.kind, 'linked');
+  assert.equal((saves.at(-1) as Extract<StoredSession, { kind: 'linked' }>).snapshot, 'new MLS send ratchet');
+  t.mock.timers.tick(900); await settle(); await authenticate();
+  assert.equal(socket().sent.length, 3);
+  assert.equal(core.closed, false);
+});
+
 const digest = async (data: Uint8Array) => Buffer.from(await crypto.subtle.digest('SHA-256', Uint8Array.from(data))).toString('hex');
 async function attachment(data = new Uint8Array([1, 2, 3])): Promise<FileDoc> {
   const sha256 = await digest(data);
@@ -241,7 +260,7 @@ test('native voice metadata and legacy paths survive parsing; forwarding clears 
   const file = { ...await attachment(), path: 'VoiceNotes/native.webm',
     voice: { ms: 3400, levels: '08ff80', transcript: 'Bring the tent', reply: { to: 'source-entry', thread: true } } };
   const { voice: _, ...legacy } = file;
-  const entry = { id: 'voice', entry: 'ordered', author: login.identity, name: 'Member', text: '',
+  const entry = { file_item_id: 'it_fixture', file_version: 1, id: 'voice', entry: 'ordered', author: login.identity, name: 'Member', text: '',
     at_ms: 1, delivery: 'confirmed', failure: null };
   const received = [{ ...conversation, messages: [
     { ...entry, file }, { ...entry, id: 'legacy', file: legacy },
@@ -285,9 +304,9 @@ test('web recordings post a FileDoc with native voice metadata after uploading',
   let queued: FileDoc | undefined;
   const core = { ...codec, bytes: async (op: CoreOperation) => op.kind === 'seal_file' ? framed : codec.bytes(op),
     text: async (op: CoreOperation) => {
-      if (op.kind !== 'queue_file') return codec.text(op);
+      if (op.kind !== 'queue_file_record') return codec.text(op);
       queued = JSON.parse(op.doc);
-      return JSON.stringify({ snapshot: 'sent voice', frames: [], conversations: [conversation] });
+      return JSON.stringify({ result: {itemId: 'it_fixture', messageId: 'voice'}, update: { snapshot: 'sent voice', frames: [], conversations: [conversation] } });
     } };
   const messages = new Messages({ core, session: linked, vault: { ...vault, save: async () => {} }, changed: () => {} });
   t.after(() => messages.stop());
@@ -301,7 +320,7 @@ test('malformed attachments stay local while received updates persist, synchroni
   install(t);
   const file = await attachment();
   const chunk = file.chunks[0]!;
-  const entry = { id: 'text', entry: 'ordered', author: login.identity, name: 'Member', text: 'Still readable',
+  const entry = { file_item_id: 'it_fixture', file_version: 1, id: 'text', entry: 'ordered', author: login.identity, name: 'Member', text: 'Still readable',
     at_ms: 1, delivery: 'confirmed', failure: null, file: null };
   const invalid = [
     { ...file, chunks: [{ ...chunk, blob: 'bad' }] },
@@ -509,7 +528,7 @@ test('upload failure keeps the queued voice note as failed instead of losing it'
           id: 'pending-voice', entry: null, author: login.identity, name: 'Me', text: '', at_ms: 1,
           delivery: 'failed', failure: op.reason, ticks: null, edited: false, deleted: false, forwarded: false,
           reactions: [], quote: null, thread: null, replies: 0, repliers: [], last_reply_ms: null,
-          file: { ...file, voice },
+          file: { ...file, voice }, file_item_id: 'it_fixture', file_version: 1,
         }] }] });
       }
       return codec.text(op);
@@ -552,7 +571,7 @@ test('disconnect after upload retains voice bytes locally without publishing', a
           id: 'pending-voice', entry: null, author: login.identity, name: 'Me', text: '', at_ms: 1,
           delivery: 'failed', failure: op.reason, ticks: null, edited: false, deleted: false, forwarded: false,
           reactions: [], quote: null, thread: null, replies: 0, repliers: [], last_reply_ms: null,
-          file: { ...file, voice },
+          file: { ...file, voice }, file_item_id: 'it_fixture', file_version: 1,
         }] }] });
       }
       return codec.text(op);
@@ -573,4 +592,81 @@ test('disconnect after upload retains voice bytes locally without publishing', a
   const msg = state.conversations[0]!.messages[0]!;
   assert.equal(msg.delivery, 'failed');
   assert.deepEqual(msg.file?.voice, voice);
+});
+
+test('document blobs persist before upload and publish only after the completed upload is durable', async (t) => {
+  install(t);
+  const base=messagingCore();
+  let queued=false;
+  let uploaded=false;
+  let release=()=>{};
+  const durable=new Promise<void>((resolve)=>{release=resolve;});
+  const core={...base,
+    bytes:async(op:CoreOperation)=>op.kind==='local_chunk'?new Uint8Array([1,2,3]):base.bytes(op),
+    text:async(op:CoreOperation)=>{
+      if(op.kind==='document_request'){queued=true;return JSON.stringify({result:true,update:{snapshot:'document queued',frames:[],conversations:[conversation]},uploads:['blob'],downloads:[]});}
+      if(op.kind==='document_uploads')return JSON.stringify(queued&&!uploaded?['blob']:[]);
+      if(op.kind==='document_uploaded'){uploaded=true;return JSON.stringify({snapshot:'document uploaded',frames:[[19]],conversations:[conversation]});}
+      return base.text(op);
+    }};
+  const saved:string[]=[];
+  const messages=new Messages({core,session:linked,vault:{...vault,save:async(session)=>{
+    if(session.kind!=='linked')assert.fail('expected linked session');
+    saved.push(session.snapshot);
+    if(session.snapshot==='document queued')await durable;
+  }},changed:()=>{}});
+  t.after(()=>messages.stop());
+  const fetching=t.mock.method(globalThis,'fetch',async()=>new Response(null,{status:200}));
+  await messages.start();await authenticate();
+  const before=socket().sent.length;
+  const commit=messages.documentRequest({op:'page_commit',item_id:'it_page',note:'Editou'});
+  await settle();assert.equal(fetching.mock.callCount(),0);assert.equal(socket().sent.length,before);
+  release();assert.equal(await commit,true);
+  assert.equal(fetching.mock.callCount(),1);
+  assert.deepEqual(saved.slice(-2),['document queued','document uploaded']);
+  assert.deepEqual(socket().sent.at(-1),new Uint8Array([19]));
+});
+
+test('a failed durable upload acknowledgement terminates the core and publishes no document frame',async(t)=>{
+  install(t);
+  const base=messagingCore();let queued=false;
+  const core={...base,
+    bytes:async(op:CoreOperation)=>op.kind==='local_chunk'?new Uint8Array([1]):base.bytes(op),
+    text:async(op:CoreOperation)=>{
+      if(op.kind==='document_request'){queued=true;return JSON.stringify({result:true,update:{snapshot:'document queued',frames:[],conversations:[conversation]},uploads:['blob'],downloads:[]});}
+      if(op.kind==='document_uploads')return JSON.stringify(queued?['blob']:[]);
+      if(op.kind==='document_uploaded')return JSON.stringify({snapshot:'document uploaded',frames:[[20]],conversations:[conversation]});
+      return base.text(op);
+    }};
+  const states:MessagesState[]=[];
+  const messages=new Messages({core,session:linked,vault:{...vault,save:async(session)=>{
+    if(session.kind==='linked'&&session.snapshot==='document uploaded')throw new Error('QuotaExceededError');
+  }},changed:(state)=>states.push(state)});
+  t.after(()=>messages.stop());t.mock.method(globalThis,'fetch',async()=>new Response(null,{status:200}));
+  await messages.start();await authenticate();const before=socket().sent.length;
+  await assert.rejects(messages.documentRequest({op:'page_commit',item_id:'it_page',note:'Editou'}),/QuotaExceededError/);
+  assert.equal(base.closed,true);assert.equal(states.at(-1)?.kind,'failed');assert.equal(socket().sent.length,before);
+});
+
+test('an owner request encoded for an old socket never reaches its authenticated replacement',async(t)=>{
+  install(t);const codec=unitCodec();let release=(_:Uint8Array)=>{};
+  const delayed=new Promise<Uint8Array>((resolve)=>{release=resolve;});
+  const core={...codec,bytes:async(operation:CoreOperation)=>operation.kind==='request'?delayed:codec.bytes(operation)};
+  const transport=new AuthenticatedTransport(core,vault,login,()=>{},async()=>{});t.after(()=>transport.stop());
+  transport.start();await authenticate();const old=socket();
+  const asking=transport.request('agent_status','agent');const rejected=assert.rejects(asking,/conexão mudou/);
+  old.close();t.mock.timers.tick(900);await settle();await authenticate();const replacement=socket();const before=replacement.sent.length;
+  release(new Uint8Array([99]));await rejected;assert.equal(replacement.sent.length,before);
+});
+
+test('typing and presence are delivered without rewriting durable snapshots on every keystroke',async(t)=>{
+  install(t);const base=messagingCore();let saves=0;const events:unknown[]=[];const typed:unknown[]=[];
+  const core={...base,bytes:async(operation:CoreOperation)=>{if(operation.kind==='typing_frame'){typed.push(operation);return new Uint8Array([31]);}return base.bytes(operation);}};
+  const messages=new Messages({core,session:linked,vault:{...vault,save:async()=>{saves++;}},changed:()=>{},ephemeral:(event)=>events.push(event)});t.after(()=>messages.stop());
+  await messages.start();await messages.typing('sp_fixture',true);assert.equal(typed.length,0);
+  await authenticate();const before=saves;
+  socket().frame({kind:'ephemeral',space:'sp_fixture',from:login.identity,event:'typing',detail:''});await settle();
+  socket().frame({kind:'presence',identity:login.identity,online:true});await settle();
+  assert.equal(events.length,2);assert.equal(saves,before);
+  await messages.typing('sp_fixture',true);assert.deepEqual(typed,[{kind:'typing_frame',space:'sp_fixture',typing:true}]);assert.deepEqual(socket().sent.at(-1),new Uint8Array([31]));
 });

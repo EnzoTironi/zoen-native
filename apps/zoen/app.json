@@ -1,0 +1,118 @@
+{
+  "expo": {
+    "name": "Zoen",
+    "slug": "zoen",
+    "version": "0.1.0",
+    "orientation": "default",
+    "icon": "./assets/images/icon.png",
+    "scheme": "zoen",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "xyz.tironi.zoen",
+      "supportsTablet": true,
+      "usesAppleSignIn": true,
+      "deploymentTarget": "26.0"
+    },
+    "android": {
+      "package": "xyz.tironi.zoen",
+      "predictiveBackGestureEnabled": true,
+      "allowBackup": false,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#F4F6FB"
+      }
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Permita que o Zoen use o microfone para gravar as mensagens de voz que você escolher enviar.",
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": true
+        }
+      ],
+      "expo-video",
+      "expo-sharing",
+      "expo-localization",
+      "expo-sqlite",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F4F6FB",
+          "image": "./assets/images/icon.png",
+          "imageWidth": 88,
+          "dark": {
+            "backgroundColor": "#090D15"
+          }
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 28,
+            "compileSdkVersion": 37,
+            "targetSdkVersion": 37
+          }
+        }
+      ],
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Escolha fotos e vídeos para compartilhar nas suas conversas do Zoen.",
+          "cameraPermission": "Permita que o Zoen use a câmera para criar fotos e vídeos que você escolher enviar.",
+          "microphonePermission": "Permita que o Zoen use o microfone para gravar áudio nos vídeos que você escolher enviar."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Use a câmera para escanear códigos de conexão ou criar fotos que você escolher compartilhar.",
+          "microphonePermission": "Grave áudio apenas nos vídeos que você escolher enviar."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Compartilhe sua localização com um miniapp somente quando você escolher.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false,
+          "locationAlwaysPermission": false,
+          "motionUsagePermission": false,
+          "locationFullAccuracyPermission": false,
+          "isIosReducedAccuracyByDefault": true,
+          "isAndroidMotionActivityEnabled": false
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "writeOnlyAccess": true,
+          "writeOnlyCalendarPermission": "Adicione à sua agenda os eventos que você confirmar no Zoen.",
+          "calendarPermission": false,
+          "remindersPermission": false
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Escolha o contato que você deseja compartilhar com um miniapp."
+        }
+      ],
+      "expo-apple-authentication"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

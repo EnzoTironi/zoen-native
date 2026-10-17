@@ -177,7 +177,8 @@ fn verify_as(identity: &str, msg: &[u8], s: &DeviceSigned) -> bool {
         && verify_sig(&s.device, msg, &s.sig)
 }
 
-fn upload_message(identity: &str, version: u64, ciphertext: &[u8]) -> Vec<u8> {
+/// Canonical bytes for a certified external device signer to authorize an upload.
+pub fn upload_message(identity: &str, version: u64, ciphertext: &[u8]) -> Vec<u8> {
     let mut m = UPLOAD_DOMAIN.to_vec();
     m.extend_from_slice(identity.as_bytes());
     m.push(0);
@@ -220,7 +221,8 @@ impl AgreementKey {
     }
 }
 
-fn agreement_message(identity: &str, public: &str) -> Vec<u8> {
+/// Canonical bytes for a certified external device signer to publish its agreement key.
+pub fn agreement_message(identity: &str, public: &str) -> Vec<u8> {
     [
         AGREEMENT_DOMAIN,
         identity.as_bytes(),

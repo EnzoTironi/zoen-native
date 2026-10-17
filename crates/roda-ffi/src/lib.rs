@@ -13,7 +13,10 @@ mod agent_notes;
 mod api;
 mod backup;
 mod backup_api;
+mod client_api;
 pub use backup_api::BackupStatusDto;
+#[cfg(feature = "client-types")]
+pub use client_api::export_typescript;
 mod files;
 mod growth;
 pub use growth::{AcquisitionDto, GrowthSyncDto, OnboardingPlanDto};
@@ -36,6 +39,7 @@ mod mls_opening;
 mod mls_recovery;
 mod net;
 mod profile;
+mod provider_auth;
 mod replies;
 pub mod runtime_core;
 pub use profile::{PhotoChange, ProfileDto};
@@ -45,7 +49,8 @@ pub use link_api::{DeviceDto, HistoryDto, LinkRequestDto, LinkedDto, OlderDto, T
 pub use sync::Ingest;
 
 mod approvals;
-mod apps;
+use roda_apps as apps;
+pub use roda_i18n::tr;
 pub mod dto;
 pub mod engine;
 pub mod i18n;

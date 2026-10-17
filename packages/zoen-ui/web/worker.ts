@@ -26,6 +26,7 @@ function parseOperation(input: unknown): CoreOperation {
     case 'queue_post': return { kind: 'queue_post', space: string(value.space), text: string(value.text), replyTo: string(value.replyTo), thread: value.thread === true, forwarded: value.forwarded === true, now: integer(value.now) };
     case 'queue_annotation': return { kind: 'queue_annotation', space: string(value.space), target: string(value.target), note: string(value.note), now: integer(value.now) };
     case 'mark_read': return { kind: 'mark_read', space: string(value.space) };
+    case 'queue_file_record': return { kind: 'queue_file_record', space: string(value.space), doc: string(value.doc), now: integer(value.now) };
     case 'queue_file': return { kind: 'queue_file', space: string(value.space), doc: string(value.doc), now: integer(value.now) };
     case 'queue_failed_file': return { kind: 'queue_failed_file', space: string(value.space), doc: string(value.doc), now: integer(value.now), reason: string(value.reason), chunks: string(value.chunks) };
     case 'local_chunk': return { kind: 'local_chunk', blob: string(value.blob) };
@@ -33,6 +34,18 @@ function parseOperation(input: unknown): CoreOperation {
     case 'seal_file': return { kind: 'seal_file', name: string(value.name), mime: string(value.mime), bytes: bytes(value.bytes), thumb: bytes(value.thumb) };
     case 'open_chunk': return { kind: 'open_chunk', chunk: string(value.chunk), sealed: bytes(value.sealed) };
     case 'blob_put_message': return { kind: 'blob_put_message', sha: string(value.sha), ts: integer(value.ts), relay: string(value.relay) };
+    case 'document_request': return { kind: 'document_request', request: string(value.request), now: integer(value.now) };
+    case 'agent_request': return { kind: 'agent_request', request: string(value.request), now: integer(value.now) };
+    case 'profile_request': return { kind: 'profile_request', request: string(value.request), now: integer(value.now) };
+    case 'history_start':case 'history_finish':case 'history_cleaned':return {kind:value.kind,now:integer(value.now)};
+    case 'history_manifest':return {kind:'history_manifest',sealed:bytes(value.sealed),now:integer(value.now)};
+    case 'history_chunk':return {kind:'history_chunk',index:integer(value.index),sealed:bytes(value.sealed),now:integer(value.now)};
+    case 'app_request': return { kind: 'app_request', request: string(value.request), now: integer(value.now), locale: string(value.locale) };
+    case 'directory_profiles': return {kind:'directory_profiles',profiles:string(value.profiles)};
+    case 'typing_frame': return {kind:'typing_frame',space:string(value.space),typing:value.typing===true};
+    case 'document_uploads': return { kind: 'document_uploads' };
+    case 'document_uploaded': return { kind: 'document_uploaded', blobs: string(value.blobs) };
+    case 'document_cache_blob': return { kind: 'document_cache_blob', reference: string(value.reference), bytes: bytes(value.bytes) };
     case 'queue_join': return { kind: 'queue_join', space: string(value.space), role: string(value.role), code: string(value.code), now: integer(value.now) };
     default: throw new Error('Invalid browser core operation.');
   }
@@ -69,10 +82,25 @@ function run(operation: CoreOperation): string | Uint8Array {
     case 'queue_failed_file': return restored().queue_failed_file(operation.space, operation.doc, operation.now, operation.reason, operation.chunks);
     case 'local_chunk': return restored().local_chunk(operation.blob);
     case 'fail_outbox': return restored().fail_outbox(operation.client_id, operation.reason);
+    case 'queue_file_record': return restored().queue_file_record(operation.space, operation.doc, operation.now);
     case 'queue_file': return restored().queue_file(operation.space, operation.doc, operation.now);
     case 'seal_file': return core.seal_file(operation.name, operation.mime, operation.bytes, operation.thumb);
     case 'open_chunk': return core.open_chunk(operation.chunk, operation.sealed);
     case 'blob_put_message': return core.blob_put_message(operation.sha, operation.ts, operation.relay);
+    case 'document_request': return restored().document_request(operation.request, operation.now);
+    case 'agent_request': return restored().agent_request(operation.request, operation.now);
+    case 'profile_request': return restored().profile_request(operation.request, operation.now);
+    case 'history_start':return restored().history_start(operation.now);
+    case 'history_manifest':return restored().history_manifest(operation.sealed,operation.now);
+    case 'history_chunk':return restored().history_chunk(operation.index,operation.sealed,operation.now);
+    case 'history_finish':return restored().history_finish(operation.now);
+    case 'history_cleaned':return restored().history_cleaned(operation.now);
+    case 'app_request': return restored().app_request(operation.request, operation.now, operation.locale);
+    case 'directory_profiles': return restored().directory_profiles(operation.profiles);
+    case 'typing_frame': return restored().typing_frame(operation.space,operation.typing);
+    case 'document_uploads': return restored().document_uploads();
+    case 'document_uploaded': return restored().document_uploaded(operation.blobs);
+    case 'document_cache_blob': return restored().document_cache_blob(operation.reference, operation.bytes);
     case 'queue_join': return restored().queue_join(operation.space, operation.role, operation.code, operation.now);
     default: { const exhaustive: never = operation; throw new Error(`Unknown operation ${exhaustive}`); }
   }

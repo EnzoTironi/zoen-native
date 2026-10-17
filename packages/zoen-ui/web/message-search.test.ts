@@ -6,7 +6,7 @@ import type { Conversation, Message } from './messages.ts';
 function message(id: string, text = 'café', at_ms = 1000): Message {
   return { id, entry: id, author: '11'.repeat(32), name: 'Ana', text, at_ms, delivery: 'confirmed', failure: null, ticks: 'sent', edited: false, deleted: false, forwarded: false, reactions: [], quote: null, thread: null, replies: 0, repliers: [], last_reply_ms: null };
 }
-function chat(id: string, messages: Message[]): Conversation { return { id, title: id, kind: 'group', can_send: true, waiting: null, unreadable: 0, unread: 0, mentions: 0, members: 2, messages }; }
+function chat(id: string, messages: Message[]): Conversation { return { id, title: id, kind: 'group', privacy: 'EndToEnd', roster: [], profiles: [], prefs: { pinned: false, archived: false, muted_until_ms: null }, event_count: '0', can_send: true, waiting: null, unreadable: 0, unread: 0, mentions: 0, members: 2, messages }; }
 
 test('message search scopes before limiting, normalizes Unicode and ignores deleted/pending messages', () => {
   const pending = { ...message('pending'), entry: null };

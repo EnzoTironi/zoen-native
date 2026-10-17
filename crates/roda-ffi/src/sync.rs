@@ -878,7 +878,23 @@ impl Engine {
         handle: &str,
         relay_url: &str,
     ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
-        self.create_account_as(name, handle, relay_url, Signer::generate(), None)
+        self.create_account_as(name, handle, relay_url, Signer::generate(), None, false)
+    }
+
+    /// The handle is independent of provider email/name and can be edited later.
+    pub(crate) fn create_provider_account(
+        &mut self,
+        name: &str,
+        relay_url: &str,
+    ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
+        let root = Signer::generate();
+        let handle = format!("zoen_{}", &root.id()[..16]);
+        self.create_account_as(name, &handle, relay_url, root, None, true)
+    }
+
+    pub(crate) fn provider_setup_pending(&self) -> bool {
+        // A storage failure must not turn unfinished signup into an active account.
+        !matches!(self.store.meta("provider_signup_pending"), Ok(None))
     }
 
     /// An Agent citizen's own account: its root key, a fresh certified device and the
@@ -904,6 +920,7 @@ impl Engine {
             relay_url,
             root,
             Some((owner.to_string(), proof)),
+            false,
         )
     }
 
@@ -914,6 +931,7 @@ impl Engine {
         relay_url: &str,
         root: Signer,
         agent: Option<(String, roda_types::AgentOwnerProof)>,
+        provider_signup: bool,
     ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
         if self.net.account.is_some() {
             return Err(CoreError::Invalid {
@@ -938,6 +956,9 @@ impl Engine {
         // A real account replaces the demo story.
         if !self.is_empty() {
             self.wipe()?;
+        }
+        if provider_signup {
+            self.store.set_meta("provider_signup_pending", "1")?;
         }
         let device = Signer::generate();
         let author = Author::device(&root, device.clone());

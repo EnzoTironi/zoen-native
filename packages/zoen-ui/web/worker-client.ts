@@ -18,15 +18,27 @@ export type CoreOperation =
   | { kind: 'queue_annotation'; space: string; target: string; note: string; now: number }
   | { kind: 'mark_read'; space: string }
   | { kind: 'queue_file'; space: string; doc: string; now: number }
+  | { kind: 'queue_file_record'; space: string; doc: string; now: number }
   | { kind: 'queue_failed_file'; space: string; doc: string; now: number; reason: string; chunks: string }
   | { kind: 'local_chunk'; blob: string }
   | { kind: 'fail_outbox'; client_id: string; reason: string }
   | { kind: 'seal_file'; name: string; mime: string; bytes: Uint8Array; thumb: Uint8Array }
   | { kind: 'open_chunk'; chunk: string; sealed: Uint8Array }
   | { kind: 'blob_put_message'; sha: string; ts: number; relay: string }
-  | { kind: 'queue_join'; space: string; role: string; code: string; now: number };
+  | { kind: 'queue_join'; space: string; role: string; code: string; now: number }
+  | { kind: 'document_request'; request: string; now: number }
+  | { kind: 'agent_request'; request: string; now: number }
+  | { kind: 'profile_request'; request: string; now: number }
+  | {kind:'history_start'|'history_finish'|'history_cleaned';now:number}
+  | {kind:'history_manifest';sealed:Uint8Array;now:number}
+  | {kind:'history_chunk';index:number;sealed:Uint8Array;now:number}
+  | { kind: 'app_request'; request: string; now: number; locale: string }
+  | { kind: 'directory_profiles'; profiles: string }
+  | { kind: 'typing_frame'; space: string; typing: boolean }
+  | { kind: 'document_uploads' }
+  | { kind: 'document_uploaded'; blobs: string }
+  | { kind: 'document_cache_blob'; reference: string; bytes: Uint8Array };
 
-declare const ZOEN_WORKER_INTEGRITY: string;
 type Awaiting = { resolve: (result: string | Uint8Array) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
 
 export class CoreWorker {
@@ -39,8 +51,8 @@ export class CoreWorker {
   private loading: ReturnType<typeof setTimeout> | undefined;
   private rejectReady: (error: Error) => void = () => {};
 
-  static async create(vault: BrowserVault): Promise<CoreWorker> {
-    const response = await fetch(new URL('/worker.js', window.location.origin), { integrity: ZOEN_WORKER_INTEGRITY });
+  static async create(vault: BrowserVault, workerIntegrity: string): Promise<CoreWorker> {
+    const response = await fetch(new URL('/worker.js', window.location.origin), { integrity: workerIntegrity });
     if (!response.ok) throw new Error('The encrypted browser core could not be downloaded.');
     const blob = URL.createObjectURL(new Blob([await response.text()], { type: 'text/javascript' }));
     const core = new CoreWorker(new Worker(blob, { type: 'module', name: 'zoen-mls' }), vault);

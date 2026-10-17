@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "singleQuote": true,
+  "printWidth": 100,
+  "trailingComma": "all",
+  "ignorePatterns": [
+    "src/core/generated/**",
+    "ios/**",
+    "android/**",
+    "modules/zoen-core/generated/**",
+    "modules/zoen-core/ios/generated/**",
+    ".expo/**",
+    "dist/**",
+    "public/core/**",
+    "public/worker.js",
+    "package-lock.json"
+  ]
+}

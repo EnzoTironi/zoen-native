@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["ZoenCoreModule"]
+  },
+  "android": {
+    "modules": ["xyz.tironi.zoen.core.ZoenCoreModule"]
+  }
+}

@@ -10,8 +10,14 @@ publish.workspace = true
 crate-type = ["lib", "staticlib", "cdylib"]
 name = "roda_ffi"
 
+[features]
+client-types = ["dep:ts-rs"]
+
 [dependencies]
 roda-types.workspace = true
+roda-i18n.workspace = true
+roda-apps.workspace = true
+roda-link.workspace = true
 roda-log.workspace = true
 roda-grants.workspace = true
 roda-store.workspace = true
@@ -43,7 +49,7 @@ base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
 fastcdc = "5"
-hpke-rs = { version = "0.7", default-features = false, features = ["rustcrypto"] }
+ts-rs = { version = "12.0.1", optional = true }
 
 [dev-dependencies]
 sha2.workspace = true

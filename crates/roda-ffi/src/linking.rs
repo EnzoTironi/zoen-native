@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use roda_log::{content_hash_of, verify_author, Author, Signer};
+use roda_log::{Author, Signer};
 use roda_proto::DeviceRecord;
 use roda_types::*;
 
@@ -290,7 +290,7 @@ impl Engine {
     /// a pruned stub keeps too), signed by its author. Returns how many it took.
     pub(crate) fn import_opened(&mut self, events: Vec<Event>) -> R<u32> {
         let mut taken = 0;
-        for mut e in events {
+        for e in events {
             let Some(local) = self
                 .logs
                 .get(&e.space)
@@ -299,19 +299,9 @@ impl Engine {
             else {
                 continue;
             };
-            let fits = matches!(local.body, EventBody::Sealed { .. })
-                && local.sealed_wire.is_none()
-                && e.sealed_wire.as_deref() == Some(content_hash_of(&local).as_str())
-                && e.client_id == local.client_id
-                && e.author == local.author
-                && e.space == local.space
-                && !matches!(e.body, EventBody::Sealed { .. })
-                && verify_author(&e).is_ok();
-            if !fits {
+            let Some(e) = crate::link::opened_history_event(&local, e) else {
                 continue;
-            }
-            e.prev = local.prev.clone();
-            e.hash = local.hash.clone();
+            };
             if self.store.replace_event(&e)? {
                 taken += 1;
             }

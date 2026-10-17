@@ -2954,6 +2954,15 @@ impl Engine {
                 "this budget belongs to someone else",
             ),
         })?;
+        let limit_cents = (extra_cents > 0)
+            .then(|| current.limit_cents.checked_add(extra_cents))
+            .flatten()
+            .ok_or_else(|| CoreError::Invalid {
+                reason: t(
+                    "O aumento deve ser positivo e caber no orçamento.",
+                    "The increase must be positive and fit the budget.",
+                ),
+            })?;
         let personal = self
             .personal_space()
             .ok_or_else(|| not_found(&t("Espaço pessoal", "Personal space")))?;
@@ -2962,9 +2971,7 @@ impl Engine {
             grantor: me.clone(),
             grantee: Some(agent.into()),
             scope: GrantScope::Everywhere,
-            capability: Capability::MonthlyBudget {
-                cents: current.limit_cents + extra_cents.max(0),
-            },
+            capability: Capability::MonthlyBudget { cents: limit_cents },
             expires_at_ms: None,
         };
         self.append(&personal, &me, EventBody::GrantIssued { grant })?;

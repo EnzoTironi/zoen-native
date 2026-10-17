@@ -63,7 +63,8 @@ impl ProfileNet {
 }
 
 /// How `update_my_profile` treats the photo.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum PhotoChange {
     Keep,
     Remove,
@@ -71,7 +72,8 @@ pub enum PhotoChange {
 }
 
 /// A person's profile as this device can see it.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct ProfileDto {
     pub identity_id: String,
     pub handle: String,
