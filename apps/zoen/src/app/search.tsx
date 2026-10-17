@@ -3,6 +3,7 @@ import { ProfileAvatar } from '../profile/profile-avatar';
 import { useEffect, useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
+import { useHeaderHeight } from 'expo-router/react-navigation';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { useCoreQuery } from '../core/query';
 import { useClient } from '../core/provider';
@@ -12,6 +13,7 @@ import { EmptyState, Loading, NativeButton } from '../components/primitives';
 
 const plain = (text: string) => text.replace(/\[\[|\]\]/g, '');
 export default function Search() {
+  const headerHeight = useHeaderHeight();
   const { space, query: initial } = useLocalSearchParams<{ space?: string; query?: string }>();
   const { store } = useClient();
   const { colors } = useTheme();
@@ -72,7 +74,7 @@ export default function Search() {
     }
   }
   return (
-    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+    <View style={{ flex: 1, paddingTop: headerHeight, backgroundColor: 'transparent' }}>
       <Stack.Screen options={{ title: space ? t('chat.searchThisChat') : t('chat.search') }} />
       <TextInput
         accessibilityLabel={t('chat.search')}
@@ -112,6 +114,7 @@ export default function Search() {
         <Loading />
       ) : (
         <FlashList
+          contentInsetAdjustmentBehavior="never"
           data={hits}
           keyExtractor={(hit) => `${hit.kind}:${hit.space_id}:${hit.ref_id}`}
           keyboardShouldPersistTaps="handled"

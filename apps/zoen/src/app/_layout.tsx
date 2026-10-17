@@ -6,6 +6,7 @@ import {
   Stack,
 } from 'expo-router';
 import { useEffect } from 'react';
+import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -18,13 +19,15 @@ import { DialogsProvider } from '../components/dialogs';
 import { NotificationProvider } from '../notifications/provider';
 import { NativeSurfacesProvider } from '../native-surfaces/provider';
 import { NativeIntentConsumer } from '../native-surfaces/intent-consumer';
+import { SkyBackground } from '../components/sky-background';
+import { HomeProvider } from '../home/provider';
 
 // Cold links keep the real tabs beneath their destination, including on iOS.
 export const unstable_settings = { anchor: '(tabs)' };
 
 void SplashScreen.preventAutoHideAsync();
 function Navigation() {
-  const { scheme, colors } = useTheme();
+  const { scheme, colors, sky } = useTheme();
   useEffect(() => {
     void SplashScreen.hideAsync();
   }, []);
@@ -35,7 +38,7 @@ function Navigation() {
         ...base,
         colors: {
           ...base.colors,
-          background: colors.background,
+          background: 'transparent',
           card: colors.surface,
           text: colors.text,
           primary: colors.accent,
@@ -44,28 +47,40 @@ function Navigation() {
       }}
     >
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      <SessionGate>
-        <NativeIntentConsumer />
-        <Stack
-          screenOptions={{
-            headerBackButtonDisplayMode: 'minimal',
-            headerShadowVisible: false,
-            contentStyle: { backgroundColor: colors.background },
-          }}
-        >
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="chat/[id]" options={{ title: '' }} />
-          <Stack.Screen
-            name="new-chat"
-            options={{
-              title: t('common.newChat'),
-              presentation: 'formSheet',
-              sheetGrabberVisible: true,
+      <View style={{ flex: 1, backgroundColor: sky.bottom }}>
+        <SkyBackground />
+        <SessionGate>
+          <NativeIntentConsumer />
+          <Stack
+            screenOptions={{
+              headerBackButtonDisplayMode: 'minimal',
+              headerShadowVisible: false,
+              headerTransparent: true,
+              headerBlurEffect: 'none',
+              headerStyle: { backgroundColor: 'transparent' },
+              headerLargeStyle: { backgroundColor: 'transparent' },
+              headerLargeTitleShadowVisible: false,
+              headerTitleStyle: { color: colors.text },
+              headerLargeTitleStyle: { color: colors.text },
+              scrollEdgeEffects: { top: 'hidden', bottom: 'hidden' },
+              headerTintColor: colors.text,
+              contentStyle: { backgroundColor: 'transparent' },
             }}
-          />
-          <Stack.Screen name="item/[id]" options={{ title: t('common.details') }} />
-        </Stack>
-      </SessionGate>
+          >
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="chat/[id]" options={{ title: '' }} />
+            <Stack.Screen
+              name="new-chat"
+              options={{
+                title: t('common.newChat'),
+                presentation: 'formSheet',
+                sheetGrabberVisible: true,
+              }}
+            />
+            <Stack.Screen name="item/[id]" options={{ title: t('common.details') }} />
+          </Stack>
+        </SessionGate>
+      </View>
     </NavigationThemeProvider>
   );
 }
@@ -77,11 +92,13 @@ export default function RootLayout() {
           <ThemeProvider>
             <DialogsProvider>
               <ClientProvider>
-                <NativeSurfacesProvider>
-                  <NotificationProvider>
-                    <Navigation />
-                  </NotificationProvider>
-                </NativeSurfacesProvider>
+                <HomeProvider>
+                  <NativeSurfacesProvider>
+                    <NotificationProvider>
+                      <Navigation />
+                    </NotificationProvider>
+                  </NativeSurfacesProvider>
+                </HomeProvider>
               </ClientProvider>
             </DialogsProvider>
           </ThemeProvider>

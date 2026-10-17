@@ -1,26 +1,23 @@
-import { t } from '../i18n';
-import { View } from 'react-native';
+import { Host, Picker } from '@expo/ui';
 import { useTheme } from '../theme';
-import { NativeButton } from './primitives';
+import { SKY_PHASES, type ThemePreference } from '../theme/sky.ts';
+import { skyLabels } from './appearance-options';
 
 export function AppearancePicker() {
-  const { preference, setPreference } = useTheme();
+  const { preference, setPreference, scheme } = useTheme();
+  const labels = skyLabels();
   return (
-    <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-      {(
-        [
-          { value: 'light', label: t('settings.light') },
-          { value: 'system', label: t('settings.system') },
-          { value: 'dark', label: t('settings.dark') },
-        ] as const
-      ).map((item) => (
-        <NativeButton
-          key={item.value}
-          label={item.label}
-          secondary={preference !== item.value}
-          onPress={() => setPreference(item.value)}
-        />
-      ))}
-    </View>
+    <Host matchContents={{ vertical: true }} style={{ width: '100%' }} colorScheme={scheme}>
+      <Picker<ThemePreference>
+        testID="appearance-picker"
+        selectedValue={preference}
+        onValueChange={setPreference}
+        appearance="menu"
+      >
+        {(['auto', ...SKY_PHASES] as const).map((value) => (
+          <Picker.Item key={value} label={labels[value]} value={value} />
+        ))}
+      </Picker>
+    </Host>
   );
 }

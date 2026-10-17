@@ -30,7 +30,7 @@ function SessionContent({ children }: { children: ReactNode }) {
   if (phase === 'opening') return <Loading />;
   if (phase === 'failed')
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
         <EmptyState title={t('access.tryAgainTitle')} detail={notice ?? t('access.openZoenFailed')}>
           <NativeButton
             label={t('access.retry')}
@@ -43,7 +43,7 @@ function SessionContent({ children }: { children: ReactNode }) {
     );
   return (
     <KeyboardAwareScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
+      style={{ flex: 1, backgroundColor: 'transparent' }}
       bottomOffset={24}
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"

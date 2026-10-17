@@ -81,7 +81,7 @@ export default function NewChat() {
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={{ padding: 24, gap: 22, backgroundColor: colors.surface }}
+      contentContainerStyle={{ padding: 24, gap: 22, backgroundColor: 'transparent' }}
     >
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
         {(

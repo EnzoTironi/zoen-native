@@ -222,7 +222,7 @@ export function Loading({ label }: { label?: string }) {
         alignItems: 'center',
         justifyContent: 'center',
         gap: 12,
-        backgroundColor: colors.background,
+        backgroundColor: 'transparent',
       }}
     >
       <ActivityIndicator color={colors.accent} />
@@ -231,7 +231,6 @@ export function Loading({ label }: { label?: string }) {
   );
 }
 export function Surface({ children, style }: { children: ReactNode; style?: ViewStyle }) {
-  const { colors } = useTheme();
   return (
     <View
       style={[
@@ -239,7 +238,9 @@ export function Surface({ children, style }: { children: ReactNode; style?: View
           borderRadius: 24,
           borderCurve: 'continuous',
           padding: 20,
-          backgroundColor: colors.surface,
+          // Content groups share the scene's sky. Inputs and actions retain
+          // their own material; a group is not another opaque page layer.
+          backgroundColor: 'transparent',
           gap: 12,
         },
         style,

@@ -1,3 +1,4 @@
+import { SkyScene } from '../../components/sky-background';
 import { t } from '../../i18n/index.ts';
 import { useCallback, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
@@ -8,7 +9,7 @@ import type { ItemDetail } from '../../core/types';
 import { useTheme } from '../../theme';
 import { EmptyState, Icon, NativeButton } from '../../components/primitives';
 
-export default function Files() {
+function FilesContent() {
   const { store, snapshot } = useClient();
   const { colors } = useTheme();
   const [items, setItems] = useState<ItemDetail[]>([]);
@@ -37,33 +38,35 @@ export default function Files() {
     }, [store, snapshot]),
   );
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 24, gap: 12 }}>
-        <Text
-          accessibilityRole="header"
-          style={{ color: colors.text, fontSize: 34, fontWeight: '700', letterSpacing: -1 }}
-        >
-          {t('documents.madeToStay')}
-        </Text>
-        <Text style={{ color: colors.secondary, fontSize: 16 }}>
-          {t('documents.plansPagesAndFilesFromYourChats')}
-        </Text>
-        <NativeButton
-          secondary
-          label={t('documents.newPage')}
-          onPress={() => router.push('/new-page')}
-        />
-      </View>
-      {error ? (
-        <Text accessibilityRole="alert" style={{ color: colors.danger, padding: 24 }}>
-          {error}
-        </Text>
-      ) : null}
+    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
       <FlashList
         data={items}
         keyExtractor={(item) => item.id}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
+        ListHeaderComponent={
+          <View style={{ paddingHorizontal: 4, paddingVertical: 24, gap: 12 }}>
+            <Text
+              accessibilityRole="header"
+              style={{ color: colors.text, fontSize: 34, fontWeight: '700', letterSpacing: -1 }}
+            >
+              {t('documents.madeToStay')}
+            </Text>
+            <Text style={{ color: colors.secondary, fontSize: 16 }}>
+              {t('documents.plansPagesAndFilesFromYourChats')}
+            </Text>
+            <NativeButton
+              secondary
+              label={t('documents.newPage')}
+              onPress={() => router.push('/new-page')}
+            />
+            {error ? (
+              <Text accessibilityRole="alert" style={{ color: colors.danger }}>
+                {error}
+              </Text>
+            ) : null}
+          </View>
+        }
         ListEmptyComponent={
           <EmptyState
             title={t('documents.aHomeForYourIdeas')}
@@ -82,7 +85,7 @@ export default function Files() {
               gap: 16,
               padding: 18,
               marginBottom: 10,
-              backgroundColor: colors.surface,
+              backgroundColor: 'transparent',
               borderRadius: 22,
               borderCurve: 'continuous',
             }}
@@ -122,5 +125,13 @@ export default function Files() {
         )}
       />
     </View>
+  );
+}
+
+export default function Files() {
+  return (
+    <SkyScene>
+      <FilesContent />
+    </SkyScene>
   );
 }

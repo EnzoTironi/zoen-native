@@ -6,7 +6,10 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useClient } from '../../../core/provider';
 import { useTheme } from '../../../theme';
-import { EmptyState, IconButton } from '../../../components/primitives';
+import { EmptyState } from '../../../components/primitives';
+import { ChatsActions } from '../../../components/chats-actions';
+import { useHome } from '../../../home/provider';
+import { MiniappRail } from '../../../miniapps/rail';
 
 const filters = [
   { id: 'all', label: t('chat.all') },
@@ -19,7 +22,7 @@ const filters = [
 export default function Chats() {
   const { snapshot, mode, store } = useClient();
   const { colors } = useTheme();
-  const [query, setQuery] = useState('');
+  const { items } = useHome();
   const [filter, setFilter] = useState<string>('all');
   const conversations = useMemo(
     () =>
@@ -29,51 +32,50 @@ export default function Chats() {
             (filter === 'archived' ? chat.archived : !chat.archived) &&
             (filter === 'all' ||
               filter === 'archived' ||
-              (filter === 'unread' ? chat.unread > 0 : chat.kind === filter)) &&
-            `${chat.title} ${chat.last_preview}`
-              .toLocaleLowerCase(formatLocale)
-              .includes(query.toLocaleLowerCase(formatLocale)),
+              (filter === 'unread' ? chat.unread > 0 : chat.kind === filter)),
         )
         .sort(
           (a, b) =>
             Number(b.pinned) - Number(a.pinned) || Number(b.last_at_ms) - Number(a.last_at_ms),
         ),
-    [snapshot, query, filter],
+    [snapshot, filter],
   );
   return (
-    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
       <Stack.Screen
         options={{
           title: t('chat.chats'),
-          headerLargeTitle: true,
-          headerSearchBarOptions: {
-            placeholder: t('chat.searchChats'),
-            onChangeText: (event) => setQuery(event.nativeEvent.text),
-            onSearchButtonPress: () => router.push({ pathname: '/search', params: { query } }),
-          },
-          headerRight: () => (
-            <View style={{ flexDirection: 'row' }}>
-              <IconButton
-                name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
-                label={t('chat.searchAllHistory')}
-                onPress={() => router.push('/search')}
-              />
-              <IconButton
-                name={{ ios: 'square.and.pencil', android: 'edit_square', web: 'edit_square' }}
-                label={t('chat.newChat')}
-                onPress={() => router.push('/new-chat')}
-              />
-            </View>
-          ),
+          headerShown: false,
         }}
       />
       <FlashList
+        style={{ backgroundColor: 'transparent' }}
+        ListHeaderComponentStyle={{ backgroundColor: 'transparent' }}
         data={conversations}
         keyExtractor={(chat) => chat.id}
         contentInsetAdjustmentBehavior="automatic"
         keyboardDismissMode="on-drag"
         ListHeaderComponent={
-          <View style={{ paddingBottom: 12 }}>
+          <View style={{ paddingBottom: 12, backgroundColor: 'transparent' }}>
+            <View
+              style={{
+                paddingTop: 18,
+                paddingHorizontal: 20,
+                paddingBottom: 6,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+              }}
+            >
+              <Text
+                accessibilityRole="header"
+                style={{ color: colors.text, fontSize: 34, fontWeight: '700', letterSpacing: -1 }}
+              >
+                {t('chat.chats')}
+              </Text>
+              <ChatsActions />
+            </View>
             {mode === 'demo' ? (
               <View
                 style={{
@@ -87,8 +89,10 @@ export default function Chats() {
                 </Text>
               </View>
             ) : null}
+            <MiniappRail items={items} />
             <ScrollView
               horizontal
+              style={{ backgroundColor: 'transparent' }}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingTop: 12 }}
             >
@@ -99,13 +103,16 @@ export default function Chats() {
                   accessibilityState={{ selected: filter === item.id }}
                   aria-pressed={process.env.EXPO_OS === 'web' ? filter === item.id : undefined}
                   onPress={() => setFilter(item.id)}
-                  style={{
+                  style={({ pressed }) => ({
                     minHeight: 36,
                     paddingHorizontal: 14,
                     justifyContent: 'center',
                     borderRadius: 18,
-                    backgroundColor: filter === item.id ? colors.text : colors.muted,
-                  }}
+                    backgroundColor: filter === item.id ? colors.text : 'transparent',
+                    borderWidth: 1,
+                    borderColor: filter === item.id ? colors.text : colors.line,
+                    opacity: pressed ? 0.65 : 1,
+                  })}
                 >
                   <Text
                     style={{
@@ -123,10 +130,8 @@ export default function Chats() {
         }
         ListEmptyComponent={
           <EmptyState
-            title={query ? t('chat.nothingHereYet') : t('chat.startAConversation')}
-            detail={
-              query ? t('chat.tryAnotherNameOrWord') : t('chat.talkToSomeoneBringAGroupTogetherOr')
-            }
+            title={t('chat.startAConversation')}
+            detail={t('chat.talkToSomeoneBringAGroupTogetherOr')}
           />
         }
         renderItem={({ item: chat }) => (
@@ -149,7 +154,8 @@ export default function Chats() {
               paddingVertical: 14,
               minHeight: 88,
               alignItems: 'center',
-              backgroundColor: pressed ? colors.muted : colors.surface,
+              backgroundColor: 'transparent',
+              opacity: pressed ? 0.65 : 1,
             })}
           >
             <ProfileAvatar

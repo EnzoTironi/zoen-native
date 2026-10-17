@@ -1,81 +1,108 @@
 import { t } from './i18n/index.ts';
-import { createContext, use, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Appearance, Platform, useColorScheme } from 'react-native';
+import {
+  createContext,
+  use,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { AccessibilityInfo, Appearance, AppState, Platform } from 'react-native';
 import { preferences } from './preferences';
+import {
+  sampleSkyClock,
+  normalizeAppearance,
+  resolveSkyTheme,
+  type ThemePreference,
+} from './theme/sky.ts';
 
-const palettes = {
-  light: {
-    background: '#F4F6FB',
-    surface: '#FFFFFF',
-    raised: '#FFFFFF',
-    muted: '#ECEFF6',
-    line: '#E1E5EE',
-    text: '#0E1320',
-    secondary: '#5B6478',
-    tertiary: '#626C80',
-    accent: '#3D7A28',
-    onAccent: '#FFFFFF',
-    mine: '#111113',
-    onMine: '#FFFFFF',
-    theirs: '#F2F2F2',
-    danger: '#CB3046',
-    read: '#1F8FD8',
-  },
-  dark: {
-    background: '#090D15',
-    surface: '#121826',
-    raised: '#182032',
-    muted: '#1A2233',
-    line: '#253047',
-    text: '#EEF2FA',
-    secondary: '#93A0B8',
-    tertiary: '#8C9AB3',
-    accent: '#86C25A',
-    onAccent: '#0E1320',
-    mine: '#F2F2F0',
-    onMine: '#111113',
-    theirs: '#26272B',
-    danger: '#FF6575',
-    read: '#53BDEB',
-  },
-};
-type Preference = 'system' | 'light' | 'dark';
-const Context = createContext<{
-  preference: Preference;
-  setPreference: (value: Preference) => void;
+export type { SkyPhase, SkyColors, SemanticColors, ThemePreference } from './theme/sky.ts';
+const CLOCK_INTERVAL = 30_000;
+type Theme = ReturnType<typeof resolveSkyTheme> & {
+  preference: ThemePreference;
+  setPreference: (value: ThemePreference) => void;
   preferenceError: string | null;
-} | null>(null);
+  reducedMotion: boolean;
+};
+const Context = createContext<Theme | null>(null);
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [preference, updatePreference] = useState<Preference>('system');
+  const [preference, updatePreference] = useState<ThemePreference>('auto');
+  const [clock, setClock] = useState(() => sampleSkyClock(new Date()));
+  const [reducedMotion, setReducedMotion] = useState(false);
   const [preferenceError, setPreferenceError] = useState<string | null>(null);
   const revision = useRef(0);
   const writes = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
-    if (Platform.OS === 'ios') {
-      Appearance.setColorScheme(preference === 'system' ? 'auto' : preference);
-    }
+    let active = true;
+    let changed = false;
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', (value) => {
+      changed = true;
+      setReducedMotion(value);
+    });
+    void AccessibilityInfo.isReduceMotionEnabled()
+      .then((value) => {
+        if (active && !changed) setReducedMotion(value);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
+  useEffect(() => {
+    if (preference !== 'auto') return;
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const stop = () => {
+      if (interval !== undefined) clearInterval(interval);
+      interval = undefined;
+    };
+    const refresh = () => {
+      stop();
+      // Date's local getters pick up timezone, daylight-saving and clock changes.
+      setClock(sampleSkyClock(new Date()));
+      interval = setInterval(
+        () => setClock((previous) => sampleSkyClock(new Date(), previous)),
+        CLOCK_INTERVAL,
+      );
+    };
+    if (AppState.currentState === 'active') refresh();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+      else stop();
+    });
+    return () => {
+      stop();
+      subscription.remove();
+    };
   }, [preference]);
+  const resolved = useMemo(
+    () => (preference === 'auto' ? clock.automatic : resolveSkyTheme(preference, clock.date)),
+    [preference, clock],
+  );
+  useEffect(() => {
+    if (Platform.OS === 'ios') Appearance.setColorScheme(resolved.scheme);
+  }, [resolved.scheme]);
   useEffect(() => {
     let active = true;
     void preferences
       .get('appearance')
       .then((value) => {
-        if (
-          active &&
-          revision.current === 0 &&
-          (value === 'light' || value === 'dark' || value === 'system')
-        )
-          updatePreference(value);
+        if (active && revision.current === 0) updatePreference(normalizeAppearance(value));
       })
       .catch(() => {
-        if (active) setPreferenceError(t('settings.yourAppearancePreferenceCouldNotBeRestored'));
+        if (active && revision.current === 0)
+          setPreferenceError(t('settings.yourAppearancePreferenceCouldNotBeRestored'));
       });
     return () => {
       active = false;
     };
   }, []);
-  function setPreference(value: Preference) {
+  const setPreference = useCallback((value: ThemePreference) => {
     const version = ++revision.current;
+    // Refresh immediately even if Auto was already selected before backgrounding.
+    setClock(sampleSkyClock(new Date()));
     updatePreference(value);
     writes.current = writes.current
       .catch(() => {})
@@ -88,14 +115,33 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (version === revision.current)
           setPreferenceError(t('settings.appearanceChangedButThePreferenceCouldNotBe'));
       });
-  }
-  return <Context value={{ preference, setPreference, preferenceError }}>{children}</Context>;
+  }, []);
+  const value = useMemo<Theme>(
+    () => ({
+      ...resolved,
+      sky: {
+        ...resolved.sky,
+        transitionMs: !reducedMotion && preference === 'auto' && clock.timed ? CLOCK_INTERVAL : 0,
+      },
+      preference,
+      setPreference,
+      preferenceError,
+      reducedMotion,
+    }),
+    [
+      resolved,
+      reducedMotion,
+
+      preference,
+      clock.timed,
+      setPreference,
+      preferenceError,
+    ],
+  );
+  return <Context value={value}>{children}</Context>;
 }
 export function useTheme() {
   const context = use(Context);
-  const system = useColorScheme();
   if (!context) throw new Error('ThemeProvider is missing.');
-  const scheme =
-    context.preference === 'system' ? (system === 'dark' ? 'dark' : 'light') : context.preference;
-  return { ...context, scheme, colors: palettes[scheme] };
+  return context;
 }

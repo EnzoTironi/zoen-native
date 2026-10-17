@@ -6,6 +6,7 @@ import { authProviders } from './catalogs/authProviders.ts';
 import { chat } from './catalogs/chat.ts';
 import { common } from './catalogs/common.ts';
 import { documents } from './catalogs/documents.ts';
+import { home } from './catalogs/home.ts';
 import { integrity } from './catalogs/integrity.ts';
 import { media } from './catalogs/media.ts';
 import { miniappFields } from './catalogs/miniappFields.ts';
@@ -33,6 +34,7 @@ const catalogs = {
   chat,
   common,
   documents,
+  home,
   integrity,
   media,
   miniappFields,

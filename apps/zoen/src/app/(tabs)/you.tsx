@@ -1,3 +1,4 @@
+import { SkyScene } from '../../components/sky-background';
 import { t } from '../../i18n/index.ts';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useDialogs } from '../../components/dialogs';
@@ -10,7 +11,7 @@ import { DeviceDataActions } from '../../components/device-data-actions';
 import { IntegrityWarnings } from '../../integrity/integrity-warning';
 import { AppearancePicker } from '../../components/appearance-picker';
 
-export default function You() {
+function YouContent() {
   const { snapshot, store, mode } = useClient();
   const { colors, preferenceError } = useTheme();
   const { confirm } = useDialogs();
@@ -19,7 +20,7 @@ export default function You() {
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{ padding: 24, gap: 24, backgroundColor: colors.background }}
+      contentContainerStyle={{ padding: 24, gap: 24, backgroundColor: 'transparent' }}
     >
       <Text
         accessibilityRole="header"
@@ -129,5 +130,13 @@ export default function You() {
         />
       ) : null}
     </ScrollView>
+  );
+}
+
+export default function You() {
+  return (
+    <SkyScene>
+      <YouContent />
+    </SkyScene>
   );
 }

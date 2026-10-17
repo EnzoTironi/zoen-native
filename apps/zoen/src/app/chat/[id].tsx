@@ -1,30 +1,32 @@
 import { t, formatLocale } from '../../i18n/index.ts';
-import { ProfileAvatar } from '../../profile/profile-avatar';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Host, BottomSheet, Column, Button } from '@expo/ui';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Pressable, Text, TextInput, View, type TextInputInstance } from 'react-native';
+import { Pressable, Text, View, type TextInputInstance } from 'react-native';
 import { useDialogs } from '../../components/dialogs';
 import { useClient } from '../../core/provider';
 import type { TimelineEntry } from '../../core/types';
 import { chatActivityLabel } from '../../core/live-activity';
 import { messageText } from '../../core/presentation';
 import { useTheme } from '../../theme';
-import { EmptyState, Icon, IconButton, Loading } from '../../components/primitives';
-import { MediaComposer } from '../../media/MediaComposer';
+import { EmptyState, IconButton, Loading } from '../../components/primitives';
+import { MessageComposer } from '../../components/message-composer';
 import { MessageMedia } from '../../media/MediaAttachment';
+import { ChatHeader } from '../../components/chat-header';
+import { MessageReceipt, messageDeliveryLabel } from '../../components/message-receipt';
+import { useHome } from '../../home/provider';
+import { MiniappRail } from '../../miniapps/rail';
 
 export default function Chat() {
   const { id, jump } = useLocalSearchParams<{ id: string; jump?: string }>();
   const { store, snapshot, timelines, notice, activity } = useClient();
   const { colors, scheme } = useTheme();
+  const { items } = useHome();
   const { confirm, inform } = useDialogs();
-  const insets = useSafeAreaInsets();
   const input = useRef<TextInputInstance>(null);
   const list = useRef<FlashListRef<TimelineEntry>>(null);
   const [draft, setDraft] = useState('');
@@ -137,41 +139,13 @@ export default function Chat() {
     <KeyboardAvoidingView
       behavior="padding"
       automaticOffset
-      style={{ flex: 1, backgroundColor: colors.surface }}
+      style={{ flex: 1, backgroundColor: 'transparent' }}
     >
-      <Stack.Screen
-        options={{
-          title: chat.title,
-          headerTitle: () => (
-            <View style={{ alignItems: 'center', maxWidth: 240 }}>
-              <Text
-                numberOfLines={1}
-                style={{ color: colors.text, fontWeight: '600', fontSize: 17 }}
-              >
-                {chat.title}
-              </Text>
-              {activityLabel ? (
-                <Text numberOfLines={1} style={{ color: colors.secondary, fontSize: 12 }}>
-                  {activityLabel}
-                </Text>
-              ) : null}
-            </View>
-          ),
-          headerRight: () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('chat.chatDetails')}
-              onPress={() => router.push({ pathname: '/space/[id]', params: { id } })}
-            >
-              <ProfileAvatar
-                person={chat.counterpart}
-                name={chat.title}
-                size={34}
-                color={chat.counterpart?.tint_hex}
-              />
-            </Pressable>
-          ),
-        }}
+      <ChatHeader
+        id={id}
+        title={chat.title}
+        counterpart={chat.counterpart}
+        activityLabel={activityLabel}
       />
       {notice ? (
         <Pressable
@@ -196,7 +170,13 @@ export default function Chat() {
           keyExtractor={(entry) => entry.id}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
+          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 12 }}
+          ListHeaderComponent={
+            <View style={{ marginHorizontal: -16 }}>
+              <MiniappRail items={items.filter((item) => item.space_id === id)} />
+            </View>
+          }
           maintainVisibleContentPosition={{
             startRenderingFromBottom: true,
             autoscrollToBottomThreshold: 0.12,
@@ -232,6 +212,10 @@ export default function Chat() {
                     color: colors.secondary,
                     textAlign: 'center',
                     marginVertical: 14,
+                    alignSelf: 'center',
+                    maxWidth: '95%',
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
                   }}
                 >
                   {text}
@@ -252,7 +236,8 @@ export default function Chat() {
                       fontWeight: '600',
                       fontSize: 12,
                       marginBottom: 5,
-                      marginLeft: 12,
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
                     }}
                   >
                     {entry.author.name}
@@ -268,7 +253,10 @@ export default function Chat() {
                     process.env.EXPO_OS === 'ios' ? () => setSelected(entry) : undefined
                   }
                   accessibilityRole="button"
-                  accessibilityLabel={`${entry.author.name}: ${text}`}
+                  accessibilityLabel={
+                    `${entry.author.name}: ${text}` +
+                    (mine ? `, ${messageDeliveryLabel(entry.delivery)}` : '')
+                  }
                   accessibilityHint={
                     process.env.EXPO_OS === 'ios'
                       ? t('chat.messageActions', { name: entry.author.name })
@@ -407,7 +395,8 @@ export default function Chat() {
                     <Text
                       style={{
                         color: mine ? colors.onMine : colors.secondary,
-                        fontSize: 10,
+                        fontSize: 11,
+                        fontVariant: ['tabular-nums'],
                       }}
                     >
                       {entry.edited
@@ -422,22 +411,7 @@ export default function Chat() {
                             minute: '2-digit',
                           })}
                     </Text>
-                    {mine ? (
-                      <Text
-                        style={{
-                          color: entry.delivery === 'Read' ? colors.read : colors.onMine,
-                          fontSize: 11,
-                        }}
-                      >
-                        {entry.delivery === 'Sending'
-                          ? '◷'
-                          : entry.delivery === 'Failed'
-                            ? '!'
-                            : ['Read', 'Delivered'].includes(entry.delivery)
-                              ? '✓✓'
-                              : '✓'}
-                      </Text>
-                    ) : null}
+                    {mine ? <MessageReceipt delivery={entry.delivery} /> : null}
                   </View>
                 </Pressable>
                 {entry.reactions.length ? (
@@ -486,7 +460,11 @@ export default function Chat() {
                         params: { space: id, root: entry.id },
                       })
                     }
-                    style={{ paddingHorizontal: 12, paddingVertical: 10 }}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      marginTop: 4,
+                    }}
                   >
                     <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
                       {t('chat.replyCount', { count: entry.thread_replies })} →
@@ -532,91 +510,28 @@ export default function Chat() {
           />
         </View>
       ) : null}
-      <View
-        style={{
-          paddingHorizontal: 12,
-          paddingTop: 8,
-          paddingBottom: Math.max(insets.bottom, 12),
-          flexDirection: 'row',
-          gap: 8,
-          alignItems: 'flex-end',
-          backgroundColor: colors.surface,
+      <MessageComposer
+        spaceId={id}
+        inputRef={input}
+        value={composerText}
+        sending={sending}
+        editing={Boolean(editing)}
+        replyTo={reply?.id ?? null}
+        onChangeText={(text) => {
+          if (editing) {
+            setEditDraft(text);
+            store.setTyping(id, false);
+          } else {
+            setDraft(text);
+            store.setTyping(id, Boolean(text.trim()));
+          }
         }}
-      >
-        {!editing ? (
-          <MediaComposer
-            spaceId={id}
-            replyTo={reply?.id ?? null}
-            disabled={sending}
-            onSent={() => setReply(null)}
-          />
-        ) : null}
-        <View
-          style={{
-            flex: 1,
-            flexDirection: 'row',
-            alignItems: 'flex-end',
-            minHeight: 48,
-            paddingHorizontal: 15,
-            borderRadius: 25,
-            borderCurve: 'continuous',
-            backgroundColor: colors.muted,
-          }}
-        >
-          <TextInput
-            ref={input}
-            testID="message-input"
-            accessibilityLabel={editing ? t('chat.editMessage') : t('chat.message')}
-            placeholder={t('chat.message')}
-            placeholderTextColor={colors.tertiary}
-            multiline
-            value={composerText}
-            onChangeText={(text) => {
-              if (editing) {
-                setEditDraft(text);
-                store.setTyping(id, false);
-              } else {
-                setDraft(text);
-                store.setTyping(id, !!text.trim());
-              }
-            }}
-            onBlur={() => store.setTyping(id, false)}
-            style={{
-              flex: 1,
-              maxHeight: 160,
-              minHeight: 48,
-              paddingTop: 13,
-              paddingBottom: 12,
-              color: colors.text,
-              fontSize: 16,
-              lineHeight: 22,
-            }}
-          />
-        </View>
-        <Pressable
-          testID="send-message"
-          accessibilityRole="button"
-          accessibilityLabel={editing ? t('chat.saveEdit') : t('chat.sendMessage')}
-          disabled={!composerText.trim() || sending}
-          onPress={() => {
-            void send();
-          }}
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: 24,
-            backgroundColor: composerText.trim() ? colors.accent : colors.muted,
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: sending ? 0.5 : 1,
-          }}
-        >
-          <Icon
-            name={{ ios: 'arrow.up', android: 'arrow_upward', web: 'arrow_upward' }}
-            color={composerText.trim() ? colors.onAccent : colors.secondary}
-          />
-        </Pressable>
-      </View>
+        onBlur={() => store.setTyping(id, false)}
+        onSend={() => {
+          void send();
+        }}
+        onMediaSent={() => setReply(null)}
+      />
       <Host colorScheme={scheme} seedColor={colors.accent}>
         <BottomSheet isPresented={selected !== null} onDismiss={() => setSelected(null)}>
           <Column spacing={8}>

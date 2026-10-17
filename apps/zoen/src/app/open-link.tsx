@@ -44,14 +44,14 @@ export default function OpenLink() {
     }
   }
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
       <Stack.Screen options={{ title: t('chat.openInZoen') }} />
       {!link ? (
         <EmptyState
           title={t('chat.thisLinkIsInvalid')}
           detail={t('chat.askThePersonWhoSharedThisLinkFor')}
         >
-          <NativeButton label={t('chat.goToChats')} onPress={() => router.replace('/')} />
+          <NativeButton label={t('chat.goToChats')} onPress={() => router.replace('/chats')} />
         </EmptyState>
       ) : link.kind === 'invite' && !preview && !error ? (
         <Loading />

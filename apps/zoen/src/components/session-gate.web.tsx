@@ -59,7 +59,7 @@ function SessionContent({ children }: { children: ReactNode }) {
         flexGrow: 1,
         justifyContent: 'center',
         padding: 32,
-        backgroundColor: colors.background,
+        backgroundColor: 'transparent',
       }}
     >
       <View style={{ maxWidth: 440, width: '100%', alignSelf: 'center', gap: 24 }}>

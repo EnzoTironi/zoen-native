@@ -1,5 +1,5 @@
 import { t, formatLocale } from '../i18n/index.ts';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, Modal, Platform, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
@@ -24,6 +24,7 @@ import { discardCacheCopy } from './cache-files';
 import { sensitiveCacheWork } from './cache-work';
 import { MAX_SELECTED_BYTES } from './types';
 import { VideoClip } from './VideoClip';
+import { ComposerAction } from '../components/composer-action';
 
 type Recording = { uri: string; durationMs: number; levels: number[] };
 const failureMessage = (reason: unknown) =>
@@ -47,12 +48,14 @@ export function MediaComposer({
   thread = false,
   disabled = false,
   onSent,
+  renderControls,
 }: {
   spaceId: string;
   replyTo?: string | null;
   thread?: boolean;
   disabled?: boolean;
   onSent?: () => void;
+  renderControls?: (controls: { attachment: ReactNode; voice: ReactNode }) => ReactNode;
 }) {
   const { store } = useClient();
   const media = store.driver.media;
@@ -329,27 +332,41 @@ export function MediaComposer({
     setClip(null);
     setFailure(null);
   }
-  if (!media) return null;
+  if (!media) return renderControls?.({ attachment: null, voice: null }) ?? null;
   const isRecording = recorderState.isRecording;
   const presented = Boolean(selection || clip || isRecording);
+  const attachment =
+    !thread && replyTo === null ? (
+      <ComposerAction
+        testID="add-attachment"
+        label={t('media.addAttachment')}
+        name="plus"
+        disabled={disabled || busy || presented}
+        onPress={() => setMenu(true)}
+      />
+    ) : null;
+  const voice = (
+    <ComposerAction
+      testID="record-voice"
+      label={t('media.recordVoiceMessage')}
+      name="mic"
+      prominent
+      disabled={disabled || busy || presented}
+      onPress={() => {
+        void start();
+      }}
+    />
+  );
   return (
     <>
-      {!thread && replyTo === null ? (
-        <IconButton
-          label={t('media.addAttachment')}
-          name={{ ios: 'plus', android: 'add', web: 'add' }}
-          disabled={disabled || busy || presented}
-          onPress={() => setMenu(true)}
-        />
-      ) : null}
-      <IconButton
-        label={t('media.recordVoiceMessage')}
-        name={{ ios: 'mic', android: 'mic', web: 'mic' }}
-        disabled={disabled || busy || presented}
-        onPress={() => {
-          void start();
-        }}
-      />
+      {renderControls ? (
+        renderControls({ attachment, voice })
+      ) : (
+        <>
+          {attachment}
+          {voice}
+        </>
+      )}
       <Host colorScheme={scheme} seedColor={colors.accent}>
         <BottomSheet isPresented={menu} onDismiss={() => setMenu(false)}>
           <Column spacing={8}>

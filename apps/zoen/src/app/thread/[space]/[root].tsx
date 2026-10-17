@@ -3,15 +3,14 @@ import { ProfileAvatar } from '../../../profile/profile-avatar';
 import { useCallback, useState } from 'react';
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
-import { Text, TextInput, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCoreQuery } from '../../../core/query';
 import { useClient } from '../../../core/provider';
 import { messageText } from '../../../core/presentation';
 import { EmptyState, Loading, NativeButton } from '../../../components/primitives';
 import { useTheme } from '../../../theme';
-import { MediaComposer } from '../../../media/MediaComposer';
+import { MessageComposer } from '../../../components/message-composer';
 import { MessageMedia } from '../../../media/MediaAttachment';
 
 export default function Thread() {
@@ -24,7 +23,6 @@ export default function Thread() {
     retry,
   } = useCoreQuery({ op: 'thread', space_id: space, root_id: root });
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -53,7 +51,7 @@ export default function Thread() {
     <KeyboardAvoidingView
       behavior="padding"
       automaticOffset
-      style={{ flex: 1, backgroundColor: colors.surface }}
+      style={{ flex: 1, backgroundColor: 'transparent' }}
     >
       <Stack.Screen options={{ title: t('chat.replies') }} />
       {error && !entries ? (
@@ -68,6 +66,7 @@ export default function Thread() {
           keyExtractor={(entry) => entry.id}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
+          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{ padding: 20, gap: 18 }}
           maintainVisibleContentPosition={{
             startRenderingFromBottom: false,
@@ -124,46 +123,21 @@ export default function Thread() {
           {failure ?? error}
         </Text>
       ) : null}
-      <View
-        style={{
-          padding: 16,
-          paddingBottom: Math.max(16, insets.bottom),
-          flexDirection: 'row',
-          alignItems: 'flex-end',
-          gap: 10,
+      <MessageComposer
+        spaceId={space}
+        replyTo={root}
+        thread
+        value={draft}
+        sending={busy}
+        onChangeText={(text) => {
+          setDraft(text);
+          store.setTyping(space, Boolean(text.trim()));
         }}
-      >
-        <MediaComposer spaceId={space} replyTo={root} thread disabled={busy} />
-        <TextInput
-          multiline
-          accessibilityLabel={t('chat.replyInChat')}
-          value={draft}
-          onChangeText={(text) => {
-            setDraft(text);
-            store.setTyping(space, !!text.trim());
-          }}
-          onBlur={() => store.setTyping(space, false)}
-          placeholder={t('chat.continueTheConversation')}
-          placeholderTextColor={colors.tertiary}
-          style={{
-            flex: 1,
-            minHeight: 48,
-            maxHeight: 160,
-            padding: 14,
-            borderRadius: 20,
-            color: colors.text,
-            backgroundColor: colors.muted,
-            fontSize: 16,
-          }}
-        />
-        <NativeButton
-          label={busy ? t('chat.sending') : t('chat.send')}
-          disabled={busy || !draft.trim()}
-          onPress={() => {
-            void send();
-          }}
-        />
-      </View>
+        onBlur={() => store.setTyping(space, false)}
+        onSend={() => {
+          void send();
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }

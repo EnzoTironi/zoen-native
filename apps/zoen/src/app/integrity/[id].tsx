@@ -31,7 +31,7 @@ export default function Integrity() {
   const error = report.error ?? audit.error ?? (failure?.scope === scope ? failure.text : null);
   const valid = !report.error && report.data?.valid === true;
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
       <Stack.Screen options={{ title: t('integrity.title') }} />
       <FlashList
         data={entries}

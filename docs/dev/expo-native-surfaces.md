@@ -1,6 +1,6 @@
 # Widgets, Live Activities and App Intents
 
-Source audit: 2026-10-17. Active migration scope is iOS and Web. The signed ARM64
+Source audit: 2026-10-17. Current acceptance priority is iPhone; Web and Android follow later. The signed ARM64
 iOS simulator Release has compiled the widget extension, Live Activities and App
 Intents metadata. Signed v7 accepts the redacted Portuguese Widget gallery preview. Selected content,
 Siri and Lock Screen journeys below remain pending.
@@ -79,12 +79,94 @@ Nine focused tests cover snapshot binding, unsafe content, bounded projection, d
 redaction, explicit catalog selection, stale/foreign/unauthorized navigation and account
 switches during asynchronous reads. They exercise shared code, not an installed extension.
 
+## Sky appearance and conversation chrome
+
+The iPhone appearance setting is **Your sky / Seu céu**. Six curated phases replace
+the light/dark/system control: deep night, dawn, morning, day, sunset and night.
+Automatic follows the device's local civil clock, using anchors at 00:00, 05:00,
+08:00, 13:00, 18:00 and 21:00. It does not request location or use weather or solar
+services. Existing light/dark/system preferences resolve to day/night/automatic;
+the existing serialized preference writes remain authoritative.
+
+The shared backdrop uses bundled photorealistic sky textures over quiet Fabric gradients, with a bounded radial haze. The photos are cropped to a small patch of sky, enlarged 1.8× and blurred natively by 20 points; illustrated stars and celestial objects are absent.
+Native Stack headers are transparent, with blur, shadows and scroll-edge fills disabled. The per-scene sky continues behind navigation and scroll content; native Back, glass title/actions and system search remain UIKit controls. Static Search and Forward fields reserve the actual native header height, while scroll-first screens use automatic insets without adding that height twice. Content surfaces retain their own contrast. The selector uses native Expo UI rows, photographic previews and
+an explicit dismissal action. The selected phase also sets UIKit appearance, so
+native sheets, buttons and glass agree with the sky.
+
+The clock samples only while Automatic is active and the app is in the foreground.
+Normal samples can fade on the native driver after checking the outgoing and
+incoming color envelope. Manual selections, clock/timezone jumps, foreground
+resumption, scheme changes and reduced motion update immediately. The backdrop
+has no perpetual animation and cannot receive touches or accessibility focus.
+Eight deterministic tests cover all 1,440 local minutes, gradient/haze/photo contrast,
+alpha-composited surfaces, paired controls, midnight, preference migration and
+clock/transition guards. Photographic overlays use 28% intensity in the four light
+presets and 20% in the two night presets; automatic twilight can reduce intensity
+to preserve contrast. All semantic inks are checked against arbitrary image pixels.
+Native tab controllers paint their own scene, so each tab also hosts its backdrop
+inside that scene; relying only on a root underlay left a white canvas in v10. These checks complement installed iPhone visual QA.
+
+Conversation headers preserve UIKit Back and group avatar, name and disclosure in
+a native glass title. Native phone/video buttons remain disabled because the core
+has no calling operation; the adjacent magnifier opens real search scoped to that
+conversation. The composer uses native circular glass buttons and a growing field:
+empty input offers voice recording, while text offers Send. Existing attachment
+review, recording lifecycle, encrypted send and draft retention remain in place.
+Delivery marks use vector symbols and canonical core acknowledgements: pending
+clock, one sent check, two delivered checks, and blue checks only after Read.
+Local-only and failed messages have distinct device/warning symbols.
+
+## In-app Home and miniapp cards
+
+The source now defines four native tabs: Home (`/`), Chats (`/chats`), Files and You.
+Activity remains a root Stack screen at `/activity`; the Home menu always opens it,
+and a review tile appears when canonical requests are Pending or Stale. Chats aligns
+its heading and native glass search/compose capsule in one row, with the same
+18-point top and 20-point horizontal content padding as Home. The whole heading and
+miniapp rail live inside the automatic-inset list; the separate Stack header is
+hidden. There is no expanded search field. Search opens the actual `/search` route,
+and the cards retain separate spacing below the heading.
+
+`HomeProvider` is mounted under the canonical client. It reads actual `items` with
+miniapp content and filters them against currently known conversation membership.
+Personal or unknown cached spaces remain hidden until the core supplies an explicit
+authorization projection for them.
+Home renders explicit favorites followed by remaining miniapps; Chats renders the
+accessible miniapps, and an individual conversation rail filters by its own Space.
+Compact cards render the canonical snapshot using bundled Zoen artwork and open
+`/miniapp/[id]`. Invalid snapshots have a bounded title/headline fallback. These
+in-app cards do not require external widget-content consent and do not donate titles,
+start Live Activities or publish anything to the system launcher.
+
+Favorites persist only Item IDs in a versioned device-local preference namespace
+bound to identity and device. There are no implicit default pins. Restore/read/write
+results are fenced across account changes; failed pin writes retain the prior pins,
+and device erasure awaits their cleanup. Demo pins are volatile. Pin order is the
+selection order; drag ordering and a separate per-conversation item-pin preference
+are not implemented. Conversation pin/archive/mute commands retain their own meaning.
+
+Home uses native SwiftUI add and per-card pin menus. Add opens the existing miniapp
+creation flow, new conversation, Activity or search. On iOS 26+, the native tab bottom
+accessory provides a stateless Search Zoen launcher while Home is selected. It stays
+mounted, and the SDK58 documented `unstable_nativeProps.ios.bottomAccessoryHidden`
+host option hides the entire accessory on other routes. Merely conditionally removing
+its children left an empty rounded native plate on Chats in installed v12. The
+installed React Native Screens host maps this flag to UIKit `setBottomAccessory:nil`,
+rather than hiding only the React content. Actual signed v13/v15 screenshots confirm
+the empty plate absent on Chats and Files. Search opens the search screen. Loading, failure and empty
+states expose real state rather than synthetic content. Twelve focused controller tests
+cover owner changes, persistence failures, stale reads, access loss and cleanup.
+Actual v12 screenshots show canonical Recipe/Countdown/Pet/Poll cards in Home and
+Chats, and Recipe opened its native detail. Signed v15 also confirms the Files
+heading and actions below the notch. Isolated menu/pin and final cold-relaunch
+acceptance remain pending during concurrent user exploration.
+
 ## Integration and command map
 
 | Journey                                              | Existing authoritative operations                                                         | Remaining integration                                                                                                                                                                          |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Read a miniapp widget                                | `items`, `item`, `item_at`, `app.snapshot_json`                                           | CNG widget kind/App Group, per-instance item selection, active-account publisher, freshness and cleanup on access loss.                                                                        |
-| Home/chat miniapp pinning and ordering               | Baseline device-local UserDefaults; `set_chat_prefs` only covers conversation preferences | Account-scoped presentation preference policy and UI; a conversation pin command must not be repurposed as an item pin. No new preference command is implemented here.                         |
+| In-app Home favorites and miniapp rails | Canonical `items`, `app.snapshot_json`; identity/device-scoped local Item-ID preferences | Home pin/unpin UI and membership-filtered Home/Chats/conversation cards are implemented in source. Installed interaction/relaunch QA, drag ordering and independent conversation item pinning remain pending. No conversation preference command is repurposed. |
 | Open an item/chat through Siri                       | `item` plus current conversation membership                                               | Swift entities/query and read-only intents, app-target setup, local device authentication, single queue consumer, catalog update/clear lifecycle and actual Shortcuts/Siri QA.                 |
 | Perform a miniapp tool from a widget/intent          | `app_specs`, `app_call_tool`; Rust grant/confirmation checks                              | Durable invocation-ID deduplication atomic with the mutation and outcome, then native result/confirmation semantics. No props-only Feed/Nap/vote simulation.                                   |
 | Send a message or decide a request through an intent | `send_message`, `decide_request`                                                          | Persistent idempotency for invocation replay; approval/account/access checks and honest queued/acknowledged/refused results. These actions are not accepted by this router.                    |

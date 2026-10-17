@@ -3,13 +3,13 @@ import { Tabs, TabList, TabSlot, TabTrigger } from 'expo-router/ui';
 import { Pressable, Text, useWindowDimensions } from 'react-native';
 import { useTheme } from '../theme';
 
-const destinations = [
-  { name: 'chats', href: '/', title: t('common.chats') },
-  { name: 'activity', href: '/activity', title: t('common.activity') },
-  { name: 'files', href: '/files', title: t('common.files') },
-  { name: 'you', href: '/you', title: t('common.you') },
-] as const;
 export default function AppNavigation() {
+  const destinations = [
+    { name: 'home', href: '/', title: t('home.title') },
+    { name: 'chats', href: '/chats', title: t('common.chats') },
+    { name: 'files', href: '/files', title: t('common.files') },
+    { name: 'you', href: '/you', title: t('common.you') },
+  ] as const;
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const wide = width >= 820;
@@ -18,7 +18,7 @@ export default function AppNavigation() {
       style={{
         flex: 1,
         flexDirection: wide ? 'row' : 'column',
-        backgroundColor: colors.background,
+        backgroundColor: 'transparent',
       }}
     >
       <TabList

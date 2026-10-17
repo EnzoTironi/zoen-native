@@ -3,12 +3,14 @@ import { ProfileAvatar } from '../../../profile/profile-avatar';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
+import { useHeaderHeight } from 'expo-router/react-navigation';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { useClient } from '../../../core/provider';
 import { useTheme } from '../../../theme';
 import { EmptyState } from '../../../components/primitives';
 
 export default function Forward() {
+  const headerHeight = useHeaderHeight();
   const { space, message } = useLocalSearchParams<{ space: string; message: string }>();
   const { snapshot, store } = useClient();
   const { colors } = useTheme();
@@ -22,7 +24,7 @@ export default function Forward() {
         chat.title.toLocaleLowerCase(formatLocale).includes(query.toLocaleLowerCase(formatLocale)),
     ) ?? [];
   return (
-    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+    <View style={{ flex: 1, paddingTop: headerHeight, backgroundColor: 'transparent' }}>
       <Stack.Screen options={{ title: t('chat.forwardTo') }} />
       <TextInput
         accessibilityLabel={t('chat.searchChats2')}
@@ -45,6 +47,7 @@ export default function Forward() {
         </Text>
       ) : null}
       <FlashList
+        contentInsetAdjustmentBehavior="never"
         data={chats}
         keyExtractor={(chat) => chat.id}
         ListEmptyComponent={
