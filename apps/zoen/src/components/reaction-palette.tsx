@@ -115,6 +115,7 @@ export function ReactionPalette({
       horizontal
       showsHorizontalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      style={{ height: 56, flexGrow: 0 }}
       contentContainerStyle={{ padding: 6, alignItems: 'center' }}
     >
       {QUICK_REACTIONS.map((emoji) => (
@@ -140,12 +141,14 @@ export function ReactionPalette({
     <GlassView
       colorScheme={scheme}
       glassEffectStyle="regular"
-      style={{ borderRadius: 28, overflow: 'hidden' }}
+      style={{ height: 56, borderRadius: 28, overflow: 'hidden' }}
     >
       {contents}
     </GlassView>
   ) : (
-    <View style={{ borderRadius: 28, backgroundColor: colors.raised, overflow: 'hidden' }}>
+    <View
+      style={{ height: 56, borderRadius: 28, backgroundColor: colors.raised, overflow: 'hidden' }}
+    >
       {contents}
     </View>
   );

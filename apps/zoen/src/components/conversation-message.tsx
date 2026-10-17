@@ -78,6 +78,24 @@ export const ConversationMessage = memo(function ConversationMessage({
       );
     else onMenu(entry, mode);
   };
+  // Native media owns its touch stream; a Pressable ancestor can still receive
+  // AVKit taps even when the row pan is correctly fenced by a native gesture.
+  const Bubble = attachment ? View : Pressable;
+  const bubbleInteraction = attachment
+    ? { accessible: false }
+    : {
+        accessible: true,
+        accessibilityRole: entry.deleted ? ('text' as const) : ('button' as const),
+        accessibilityLabel:
+          `${entry.author.name}: ${text}` +
+          (mine ? `, ${messageDeliveryLabel(entry.delivery)}` : ''),
+        accessibilityHint: disabled ? undefined : t('chat.touchAndHoldToReplyOrSeeActions'),
+        onPress: () => open('reactions'),
+        onLongPress: () => open('actions'),
+        onAccessibilityTap: () => open('actions'),
+        delayLongPress: 350,
+        disabled: disabled || !messageCanInteract(entry),
+      };
   const metadata = (outside = false) => (
     <View
       pointerEvents={outside ? 'auto' : 'none'}
@@ -186,21 +204,10 @@ export const ConversationMessage = memo(function ConversationMessage({
         onActions={() => open('actions')}
       >
         <View style={{ width: '100%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
-          <Pressable
+          <Bubble
+            {...bubbleInteraction}
             ref={bubble}
             testID={`message-bubble-${entry.id}`}
-            accessible={!attachment}
-            accessibilityRole={entry.deleted ? 'text' : 'button'}
-            accessibilityLabel={
-              `${entry.author.name}: ${text}` +
-              (mine ? `, ${messageDeliveryLabel(entry.delivery)}` : '')
-            }
-            accessibilityHint={disabled ? undefined : t('chat.touchAndHoldToReplyOrSeeActions')}
-            onPress={() => open('reactions')}
-            onLongPress={() => open('actions')}
-            onAccessibilityTap={() => open('actions')}
-            delayLongPress={350}
-            disabled={disabled || !messageCanInteract(entry)}
             style={{
               width: attachment ? mediaWidth : undefined,
               maxWidth: attachment ? '100%' : '87%',
@@ -306,7 +313,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                 }}
               />
             ) : null}
-          </Pressable>
+          </Bubble>
           {attachment ? metadata(true) : null}
         </View>
       </MessageInteraction>

@@ -24,8 +24,10 @@ export function VoiceDock(props: VoiceDockProps) {
   const pending = useRef(false);
   const lift = useSharedValue(0);
   const locked = props.busy;
-  const captured = props.session?.getSendable();
-  const preview = state?.rendering ? null : captured?.preview;
+  // The current preview becomes sendable before rendering is cleared in finally.
+  // Match expanded review: keep Send disabled until that preparation cycle settles.
+  const captured = state?.rendering ? null : props.session?.getSendable();
+  const preview = captured?.preview;
   const uri = props.session ? preview?.uri : props.uri;
   const durationMs = preview?.durationMs ?? props.durationMs;
   const levels = preview?.levels ?? props.levels;

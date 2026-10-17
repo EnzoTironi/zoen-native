@@ -31,7 +31,7 @@ export function MessageActions(props: MessageActionsProps) {
   const [visible, setVisible] = useState(false);
   const [presentedId, setPresentedId] = useState<string | null>(null);
   const [more, setMore] = useState(false);
-  const [height, setHeight] = useState(0);
+  const [measurement, setMeasurement] = useState({ key: '', height: 0 });
   const closing = useRef(false);
   const action = useRef<(() => void) | null>(null);
   const mounted = useRef(true);
@@ -59,46 +59,6 @@ export function MessageActions(props: MessageActionsProps) {
   }, [incomingId, props.mode]);
   const current = props.entry?.id === presentation?.entry?.id ? props : presentation;
   const entry = current?.entry;
-  const width = Math.min(336, window.width - 32);
-  const anchor = current?.anchor;
-  const desiredTop = anchor
-    ? anchor.y > window.height / 2
-      ? anchor.y - height - 10
-      : anchor.y + Math.min(anchor.height, 120) + 10
-    : window.height * 0.32;
-  const top = Math.max(
-    insets.top + 12,
-    Math.min(desiredTop, window.height - insets.bottom - Math.max(height, 56) - 12),
-  );
-  const left = Math.max(
-    16,
-    Math.min(
-      anchor
-        ? entry?.author.is_me
-          ? anchor.x + anchor.width - width
-          : anchor.x
-        : (window.width - width) / 2,
-      window.width - width - 16,
-    ),
-  );
-  const animated = useAnimatedStyle(() => ({
-    opacity: opacity.get(),
-    transform: [{ scale: reducedMotion ? 1 : scale.get() }],
-  }));
-  function closeNative() {
-    if (mounted.current) setVisible(false);
-  }
-  function close(callback?: () => void) {
-    if (closing.current || !visible) return;
-    closing.current = true;
-    action.current = callback ?? null;
-    scale.set(withTiming(reducedMotion ? 1 : 0.96, { duration: 100 }));
-    opacity.set(
-      withTiming(0, { duration: reducedMotion ? 80 : 100 }, (finished) => {
-        if (finished) scheduleOnRN(closeNative);
-      }),
-    );
-  }
   type ActionRow = {
     label: string;
     image: ComponentProps<typeof Button>['systemImage'];
@@ -134,6 +94,56 @@ export function MessageActions(props: MessageActionsProps) {
       ]
     : [];
   const rows = rawRows.filter((row) => row.run);
+  const measurementKey = `${entry?.id ?? ''}:${current?.mode}:${more}:${Boolean(current?.error)}:${Boolean(current?.preview)}`;
+  const estimatedHeight =
+    56 +
+    (current?.mode === 'actions' ? rows.length * 48 + 10 : 0) +
+    (more ? 238 : 0) +
+    (current?.error ? 64 : 0) +
+    (current?.preview ? 170 : 0);
+  const height = measurement.key === measurementKey ? measurement.height : estimatedHeight;
+  const width = Math.min(336, window.width - 32);
+  const anchor = current?.anchor;
+  const desiredTop = anchor
+    ? anchor.y > window.height / 2
+      ? anchor.y - height - 10
+      : anchor.y + Math.min(anchor.height, 120) + 10
+    : window.height * 0.32;
+  const top = Math.max(
+    insets.top + 12,
+    Math.min(desiredTop, window.height - insets.bottom - Math.max(height, 56) - 12),
+  );
+  const left = Math.max(
+    16,
+    Math.min(
+      anchor
+        ? entry?.author.is_me
+          ? anchor.x + anchor.width - width
+          : anchor.x
+        : (window.width - width) / 2,
+      window.width - width - 16,
+    ),
+  );
+  const animated = useAnimatedStyle(() => ({
+    transform: [{ scale: reducedMotion ? 1 : scale.get() }],
+  }));
+  // UIVisualEffectView needs alpha 1 throughout its ancestor chain.
+  // Fade the separate backdrop; the glass panel only scales.
+  const backdrop = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+  function closeNative() {
+    if (mounted.current) setVisible(false);
+  }
+  function close(callback?: () => void) {
+    if (closing.current || !visible) return;
+    closing.current = true;
+    action.current = callback ?? null;
+    scale.set(withTiming(reducedMotion ? 1 : 0.96, { duration: 100 }));
+    opacity.set(
+      withTiming(0, { duration: reducedMotion ? 80 : 100 }, (finished) => {
+        if (finished) scheduleOnRN(closeNative);
+      }),
+    );
+  }
   const menu = (
     <Host style={{ height: rows.length * 48, width: width - 24 }} colorScheme={scheme}>
       <VStack spacing={0}>
@@ -188,14 +198,23 @@ export function MessageActions(props: MessageActionsProps) {
       }}
     >
       <View accessibilityViewIsModal style={{ flex: 1 }}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('chat.closeMessageActions')}
-          onPress={() => close()}
-          style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.28)' }}
-        />
+        <Animated.View style={[{ position: 'absolute', inset: 0 }, backdrop]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('chat.closeMessageActions')}
+            onPress={() => close()}
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.28)' }}
+          />
+        </Animated.View>
         <Animated.View
-          onLayout={({ nativeEvent }) => setHeight(nativeEvent.layout.height)}
+          onLayout={({ nativeEvent }) => {
+            const height = nativeEvent.layout.height;
+            setMeasurement((previous) =>
+              previous.key === measurementKey && previous.height === height
+                ? previous
+                : { key: measurementKey, height },
+            );
+          }}
           style={[
             {
               position: 'absolute',
@@ -267,7 +286,7 @@ export function MessageActions(props: MessageActionsProps) {
             <ScrollView
               bounces={false}
               keyboardShouldPersistTaps="handled"
-              style={{ flexShrink: 1, borderRadius: 20 }}
+              style={{ height: rows.length * 48, flexGrow: 0, flexShrink: 1, borderRadius: 20 }}
             >
               {process.env.EXPO_OS === 'ios' && isLiquidGlassAvailable() ? (
                 <GlassView
