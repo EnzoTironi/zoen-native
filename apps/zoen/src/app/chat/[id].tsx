@@ -16,6 +16,7 @@ import { messageText } from '../../core/presentation';
 import { useTheme } from '../../theme';
 import { EmptyState, IconButton, Loading } from '../../components/primitives';
 import { MessageComposer } from '../../components/message-composer';
+import { ConversationViewport } from '../../components/conversation-viewport';
 import { MessageMedia } from '../../media/MediaAttachment';
 import { ChatHeader } from '../../components/chat-header';
 import { MessageReceipt, messageDeliveryLabel } from '../../components/message-receipt';
@@ -173,406 +174,418 @@ export default function Chat() {
         counterpart={chat.counterpart}
         activityLabel={activityLabel}
       />
-      {!page ? (
-        <Loading />
-      ) : (
-        <View style={{ flex: 1 }}>
-          <FlashList
-            key={id}
-            ref={list}
-            onLoad={() => setLoadedSpace(id)}
-            data={page.entries}
-            keyExtractor={(entry) => entry.id}
-            keyboardDismissMode="interactive"
-            keyboardShouldPersistTaps="handled"
-            contentInsetAdjustmentBehavior="never"
-            contentContainerStyle={{
-              paddingHorizontal: 16,
-              paddingTop: headerHeight + railHeight + 8,
-              paddingBottom: 12,
-            }}
-            maintainVisibleContentPosition={{
-              startRenderingFromBottom: true,
-              autoscrollToBottomThreshold: 0.12,
-            }}
-            onStartReached={() => {
-              if (page.has_more) void store.loadTimeline(id, true).catch(() => {});
-            }}
-            onStartReachedThreshold={0.1}
-            ListEmptyComponent={
-              <EmptyState
-                title={t('chat.theStartOfSomethingGood')}
-                detail={t('chat.writeTheFirstMessageInThisChat')}
-              />
-            }
-            renderItem={({ item: entry, index }) => {
-              const mine = entry.author.is_me;
-              const text = messageText(entry);
-              const previous = page.entries[index - 1];
-              const next = page.entries[index + 1];
-              const grouped =
-                previous?.author.id === entry.author.id &&
-                Number(entry.at_ms) - Number(previous.at_ms) < 180_000;
-              const lastInGroup = next?.author.id !== entry.author.id;
-              const card = 'Message' in entry.kind ? entry.kind.Message.card : null;
-              const system = 'System' in entry.kind || 'Background' in entry.kind;
-              if (system)
-                return (
-                  <Text
-                    selectable
-                    style={{
-                      fontSize: 12,
-                      lineHeight: 19,
-                      color: colors.secondary,
-                      textAlign: 'center',
-                      marginVertical: 14,
-                      alignSelf: 'center',
-                      maxWidth: '95%',
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                    }}
-                  >
-                    {text}
+      <ConversationViewport
+        composer={
+          <>
+            {reply || editing ? (
+              <View
+                style={{
+                  marginHorizontal: 16,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderRadius: 18,
+                  backgroundColor: colors.muted,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                }}
+              >
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>
+                    {editing
+                      ? t('chat.editMessage')
+                      : t('chat.replyingTo', { name: reply?.author.name ?? '' })}
                   </Text>
-                );
-              return (
-                <View
-                  style={{
-                    alignItems: mine ? 'flex-end' : 'flex-start',
-                    marginTop: grouped ? 3 : 16,
-                    marginBottom: lastInGroup ? 5 : 0,
+                  <Text numberOfLines={1} style={{ color: colors.secondary, fontSize: 13 }}>
+                    {messageText((editing ?? reply)!)}
+                  </Text>
+                </View>
+                <IconButton
+                  label={t('chat.cancel')}
+                  name={{ ios: 'xmark', android: 'close', web: 'close' }}
+                  onPress={() => {
+                    if (editing) {
+                      setEditing(null);
+                      setEditDraft('');
+                    } else setReply(null);
                   }}
-                >
-                  {!mine && !grouped && chat.kind !== 'Direct' ? (
+                />
+              </View>
+            ) : null}
+            <MessageComposer
+              spaceId={id}
+              inputRef={input}
+              value={composerText}
+              sending={sending}
+              editing={Boolean(editing)}
+              replyTo={reply?.id ?? null}
+              onChangeText={(text) => {
+                if (editing) {
+                  setEditDraft(text);
+                  store.setTyping(id, false);
+                } else {
+                  setDraft(text);
+                  store.setTyping(id, Boolean(text.trim()));
+                }
+              }}
+              onBlur={() => store.setTyping(id, false)}
+              onSend={() => {
+                void send();
+              }}
+              onMediaSent={() => setReply(null)}
+            />
+          </>
+        }
+        overlay={
+          <View
+            pointerEvents="box-none"
+            onLayout={({ nativeEvent }) => setRailHeight(nativeEvent.layout.height)}
+            style={{
+              position: 'absolute',
+              top: headerHeight,
+              left: 0,
+              right: 0,
+              zIndex: 1,
+              backgroundColor: 'transparent',
+            }}
+          >
+            <MiniappRail items={conversationMiniapps} paddingVertical={6} />
+            {notice ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('chat.dismissNotice', { notice })}
+                onPress={() => store.dismissNotice()}
+                style={{ padding: 12, backgroundColor: colors.muted }}
+              >
+                <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 13 }}>
+                  {notice}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        }
+      >
+        {(composerHeight) =>
+          !page ? (
+            <Loading />
+          ) : (
+            <FlashList
+              key={id}
+              ref={list}
+              onLoad={() => setLoadedSpace(id)}
+              data={page.entries}
+              keyExtractor={(entry) => entry.id}
+              keyboardDismissMode="interactive"
+              keyboardShouldPersistTaps="handled"
+              contentInsetAdjustmentBehavior="never"
+              contentContainerStyle={{
+                paddingHorizontal: 16,
+                paddingTop: headerHeight + railHeight + 8,
+                paddingBottom: composerHeight + 12,
+              }}
+              maintainVisibleContentPosition={{
+                startRenderingFromBottom: true,
+                autoscrollToBottomThreshold: 0.12,
+              }}
+              onStartReached={() => {
+                if (page.has_more) void store.loadTimeline(id, true).catch(() => {});
+              }}
+              onStartReachedThreshold={0.1}
+              ListEmptyComponent={
+                <EmptyState
+                  title={t('chat.theStartOfSomethingGood')}
+                  detail={t('chat.writeTheFirstMessageInThisChat')}
+                />
+              }
+              renderItem={({ item: entry, index }) => {
+                const mine = entry.author.is_me;
+                const text = messageText(entry);
+                const previous = page.entries[index - 1];
+                const next = page.entries[index + 1];
+                const grouped =
+                  previous?.author.id === entry.author.id &&
+                  Number(entry.at_ms) - Number(previous.at_ms) < 180_000;
+                const lastInGroup = next?.author.id !== entry.author.id;
+                const card = 'Message' in entry.kind ? entry.kind.Message.card : null;
+                const system = 'System' in entry.kind || 'Background' in entry.kind;
+                if (system)
+                  return (
                     <Text
+                      selectable
                       style={{
-                        color: colors.secondary,
-                        fontWeight: '600',
                         fontSize: 12,
-                        marginBottom: 5,
-                        paddingHorizontal: 10,
-                        paddingVertical: 4,
+                        lineHeight: 19,
+                        color: colors.secondary,
+                        textAlign: 'center',
+                        marginVertical: 14,
+                        alignSelf: 'center',
+                        maxWidth: '95%',
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
                       }}
                     >
-                      {entry.author.name}
+                      {text}
                     </Text>
-                  ) : null}
-                  <Pressable
-                    accessible={!entry.voice && card?.kind_id !== 'file'}
-                    onLongPress={() => {
-                      void Haptics.selectionAsync().catch(() => {});
-                      setSelected(entry);
-                    }}
-                    onAccessibilityTap={
-                      process.env.EXPO_OS === 'ios' ? () => setSelected(entry) : undefined
-                    }
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      `${entry.author.name}: ${text}` +
-                      (mine ? `, ${messageDeliveryLabel(entry.delivery)}` : '')
-                    }
-                    accessibilityHint={
-                      process.env.EXPO_OS === 'ios'
-                        ? t('chat.messageActions', { name: entry.author.name })
-                        : t('chat.touchAndHoldToReplyOrSeeActions')
-                    }
+                  );
+                return (
+                  <View
                     style={{
-                      maxWidth: '87%',
-                      borderRadius: 23,
-                      borderCurve: 'continuous',
-                      paddingHorizontal: 15,
-                      paddingTop: 11,
-                      paddingBottom: 8,
-                      backgroundColor: mine ? colors.mine : colors.theirs,
+                      alignItems: mine ? 'flex-end' : 'flex-start',
+                      marginTop: grouped ? 3 : 16,
+                      marginBottom: lastInGroup ? 5 : 0,
                     }}
                   >
-                    {entry.reply_to ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={t('chat.goToQuotedMessage')}
-                        onPress={() => {
-                          void reveal(entry.reply_to!.id)
-                            .then((target) => {
-                              setScrollTarget(target);
-                            })
-                            .catch(
-                              () =>
-                                void inform(
-                                  t('chat.theMessageCouldNotBeOpened'),
-                                  t('chat.tryAgainInAMoment'),
-                                ),
-                            );
-                        }}
-                        style={{
-                          borderLeftWidth: 3,
-                          borderLeftColor: colors.accent,
-                          paddingLeft: 9,
-                          paddingVertical: 5,
-                          marginBottom: 7,
-                          opacity: 0.8,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: mine ? colors.onMine : colors.text,
-                            fontWeight: '600',
-                            fontSize: 12,
-                          }}
-                        >
-                          {entry.reply_to.author.name}
-                        </Text>
-                        <Text
-                          numberOfLines={2}
-                          style={{ color: mine ? colors.onMine : colors.secondary, fontSize: 13 }}
-                        >
-                          {entry.reply_to.text}
-                        </Text>
-                      </Pressable>
-                    ) : null}
-                    {entry.forwarded ? (
+                    {!mine && !grouped && chat.kind !== 'Direct' ? (
                       <Text
                         style={{
-                          color: mine ? colors.onMine : colors.secondary,
+                          color: colors.secondary,
+                          fontWeight: '600',
                           fontSize: 12,
-                          fontStyle: 'italic',
                           marginBottom: 5,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
                         }}
                       >
-                        {t('chat.forwarded')}
+                        {entry.author.name}
                       </Text>
                     ) : null}
-                    {!entry.voice && card?.kind_id !== 'file' ? (
-                      <Text
-                        selectable
-                        style={{
-                          fontSize: 16,
-                          lineHeight: 23,
-                          color: mine ? colors.onMine : colors.text,
-                          fontStyle: entry.deleted ? 'italic' : 'normal',
-                        }}
-                      >
-                        {entry.deleted ? t('chat.deletedMessage') : text}
-                      </Text>
-                    ) : null}
-                    <MessageMedia entry={entry} />
-                    {entry.voice || card?.kind_id === 'file' ? (
-                      <IconButton
-                        label={t('chat.messageActions', { name: entry.author.name })}
-                        name={{ ios: 'ellipsis', android: 'more_horiz', web: 'more_horiz' }}
-                        onPress={() => setSelected(entry)}
-                      />
-                    ) : null}
-                    {card && card.kind_id !== 'file' ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={t('chat.openNamedItem', { title: card.title })}
-                        onPress={() =>
-                          router.push({ pathname: '/item/[id]', params: { id: card.item_id } })
-                        }
-                        style={{
-                          padding: 14,
-                          marginTop: 10,
-                          borderRadius: 16,
-                          backgroundColor: colors.surface,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: colors.accent,
-                            fontSize: 12,
-                            fontWeight: '700',
-                            marginBottom: 4,
-                          }}
-                        >
-                          {card.kind_label}
-                        </Text>
-                        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>
-                          {card.title}
-                        </Text>
-                        <Text
-                          numberOfLines={3}
-                          style={{ color: colors.secondary, lineHeight: 20, marginTop: 5 }}
-                        >
-                          {card.summary}
-                        </Text>
-                      </Pressable>
-                    ) : null}
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        justifyContent: 'flex-end',
-                        alignItems: 'center',
-                        gap: 5,
-                        marginTop: 5,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: mine ? colors.onMine : colors.secondary,
-                          fontSize: 11,
-                          fontVariant: ['tabular-nums'],
-                        }}
-                      >
-                        {entry.edited
-                          ? t('chat.editedAt', {
-                              time: new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              }),
-                            })
-                          : new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                      </Text>
-                      {mine ? <MessageReceipt delivery={entry.delivery} /> : null}
-                    </View>
-                  </Pressable>
-                  {entry.reactions.length ? (
-                    <View style={{ flexDirection: 'row', gap: 5, marginTop: 4 }}>
-                      {entry.reactions.map((reaction) => (
-                        <Pressable
-                          key={reaction.emoji}
-                          accessibilityRole="button"
-                          accessibilityLabel={t('chat.reactionPeople', {
-                            emoji: reaction.emoji,
-                            count: reaction.people.length,
-                          })}
-                          onPress={() => {
-                            void store
-                              .request({
-                                op: 'react',
-                                space_id: id,
-                                message_id: entry.id,
-                                emoji: reaction.mine ? null : reaction.emoji,
-                              })
-                              .catch(() => {});
-                          }}
-                          style={{
-                            borderRadius: 14,
-                            backgroundColor: colors.muted,
-                            borderWidth: reaction.mine ? 1 : 0,
-                            borderColor: colors.accent,
-                            paddingHorizontal: 8,
-                            paddingVertical: 4,
-                          }}
-                        >
-                          <Text style={{ fontSize: 13, color: colors.text }}>
-                            {reaction.emoji} {reaction.people.length}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  ) : null}
-                  {entry.thread_replies > 0 ? (
                     <Pressable
+                      accessible={!entry.voice && card?.kind_id !== 'file'}
+                      onLongPress={() => {
+                        void Haptics.selectionAsync().catch(() => {});
+                        setSelected(entry);
+                      }}
+                      onAccessibilityTap={
+                        process.env.EXPO_OS === 'ios' ? () => setSelected(entry) : undefined
+                      }
                       accessibilityRole="button"
-                      accessibilityLabel={t('chat.viewReplies', { count: entry.thread_replies })}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/thread/[space]/[root]',
-                          params: { space: id, root: entry.id },
-                        })
+                      accessibilityLabel={
+                        `${entry.author.name}: ${text}` +
+                        (mine ? `, ${messageDeliveryLabel(entry.delivery)}` : '')
+                      }
+                      accessibilityHint={
+                        process.env.EXPO_OS === 'ios'
+                          ? t('chat.messageActions', { name: entry.author.name })
+                          : t('chat.touchAndHoldToReplyOrSeeActions')
                       }
                       style={{
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        marginTop: 4,
+                        maxWidth: '87%',
+                        borderRadius: 23,
+                        borderCurve: 'continuous',
+                        paddingHorizontal: 15,
+                        paddingTop: 11,
+                        paddingBottom: 8,
+                        backgroundColor: mine ? colors.mine : colors.theirs,
                       }}
                     >
-                      <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
-                        {t('chat.replyCount', { count: entry.thread_replies })} →
-                      </Text>
+                      {entry.reply_to ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={t('chat.goToQuotedMessage')}
+                          onPress={() => {
+                            void reveal(entry.reply_to!.id)
+                              .then((target) => {
+                                setScrollTarget(target);
+                              })
+                              .catch(
+                                () =>
+                                  void inform(
+                                    t('chat.theMessageCouldNotBeOpened'),
+                                    t('chat.tryAgainInAMoment'),
+                                  ),
+                              );
+                          }}
+                          style={{
+                            borderLeftWidth: 3,
+                            borderLeftColor: colors.accent,
+                            paddingLeft: 9,
+                            paddingVertical: 5,
+                            marginBottom: 7,
+                            opacity: 0.8,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: mine ? colors.onMine : colors.text,
+                              fontWeight: '600',
+                              fontSize: 12,
+                            }}
+                          >
+                            {entry.reply_to.author.name}
+                          </Text>
+                          <Text
+                            numberOfLines={2}
+                            style={{ color: mine ? colors.onMine : colors.secondary, fontSize: 13 }}
+                          >
+                            {entry.reply_to.text}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                      {entry.forwarded ? (
+                        <Text
+                          style={{
+                            color: mine ? colors.onMine : colors.secondary,
+                            fontSize: 12,
+                            fontStyle: 'italic',
+                            marginBottom: 5,
+                          }}
+                        >
+                          {t('chat.forwarded')}
+                        </Text>
+                      ) : null}
+                      {!entry.voice && card?.kind_id !== 'file' ? (
+                        <Text
+                          selectable
+                          style={{
+                            fontSize: 16,
+                            lineHeight: 23,
+                            color: mine ? colors.onMine : colors.text,
+                            fontStyle: entry.deleted ? 'italic' : 'normal',
+                          }}
+                        >
+                          {entry.deleted ? t('chat.deletedMessage') : text}
+                        </Text>
+                      ) : null}
+                      <MessageMedia entry={entry} />
+                      {entry.voice || card?.kind_id === 'file' ? (
+                        <IconButton
+                          label={t('chat.messageActions', { name: entry.author.name })}
+                          name={{ ios: 'ellipsis', android: 'more_horiz', web: 'more_horiz' }}
+                          onPress={() => setSelected(entry)}
+                        />
+                      ) : null}
+                      {card && card.kind_id !== 'file' ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={t('chat.openNamedItem', { title: card.title })}
+                          onPress={() =>
+                            router.push({ pathname: '/item/[id]', params: { id: card.item_id } })
+                          }
+                          style={{
+                            padding: 14,
+                            marginTop: 10,
+                            borderRadius: 16,
+                            backgroundColor: colors.surface,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: colors.accent,
+                              fontSize: 12,
+                              fontWeight: '700',
+                              marginBottom: 4,
+                            }}
+                          >
+                            {card.kind_label}
+                          </Text>
+                          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>
+                            {card.title}
+                          </Text>
+                          <Text
+                            numberOfLines={3}
+                            style={{ color: colors.secondary, lineHeight: 20, marginTop: 5 }}
+                          >
+                            {card.summary}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'flex-end',
+                          alignItems: 'center',
+                          gap: 5,
+                          marginTop: 5,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: mine ? colors.onMine : colors.secondary,
+                            fontSize: 11,
+                            fontVariant: ['tabular-nums'],
+                          }}
+                        >
+                          {entry.edited
+                            ? t('chat.editedAt', {
+                                time: new Date(Number(entry.at_ms)).toLocaleTimeString(
+                                  formatLocale,
+                                  {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  },
+                                ),
+                              })
+                            : new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                        </Text>
+                        {mine ? <MessageReceipt delivery={entry.delivery} /> : null}
+                      </View>
                     </Pressable>
-                  ) : null}
-                </View>
-              );
-            }}
-          />
-        </View>
-      )}
-      <View
-        pointerEvents="box-none"
-        onLayout={({ nativeEvent }) => setRailHeight(nativeEvent.layout.height)}
-        style={{
-          position: 'absolute',
-          top: headerHeight,
-          left: 0,
-          right: 0,
-          zIndex: 1,
-          backgroundColor: 'transparent',
-        }}
-      >
-        <MiniappRail items={conversationMiniapps} paddingVertical={6} />
-        {notice ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('chat.dismissNotice', { notice })}
-            onPress={() => store.dismissNotice()}
-            style={{ padding: 12, backgroundColor: colors.muted }}
-          >
-            <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 13 }}>
-              {notice}
-            </Text>
-          </Pressable>
-        ) : null}
-      </View>
-      {reply || editing ? (
-        <View
-          style={{
-            marginHorizontal: 16,
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            borderRadius: 18,
-            backgroundColor: colors.muted,
-            flexDirection: 'row',
-            alignItems: 'center',
-          }}
-        >
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>
-              {editing
-                ? t('chat.editMessage')
-                : t('chat.replyingTo', { name: reply?.author.name ?? '' })}
-            </Text>
-            <Text numberOfLines={1} style={{ color: colors.secondary, fontSize: 13 }}>
-              {messageText((editing ?? reply)!)}
-            </Text>
-          </View>
-          <IconButton
-            label={t('chat.cancel')}
-            name={{ ios: 'xmark', android: 'close', web: 'close' }}
-            onPress={() => {
-              if (editing) {
-                setEditing(null);
-                setEditDraft('');
-              } else setReply(null);
-            }}
-          />
-        </View>
-      ) : null}
-      <MessageComposer
-        spaceId={id}
-        inputRef={input}
-        value={composerText}
-        sending={sending}
-        editing={Boolean(editing)}
-        replyTo={reply?.id ?? null}
-        onChangeText={(text) => {
-          if (editing) {
-            setEditDraft(text);
-            store.setTyping(id, false);
-          } else {
-            setDraft(text);
-            store.setTyping(id, Boolean(text.trim()));
-          }
-        }}
-        onBlur={() => store.setTyping(id, false)}
-        onSend={() => {
-          void send();
-        }}
-        onMediaSent={() => setReply(null)}
-      />
+                    {entry.reactions.length ? (
+                      <View style={{ flexDirection: 'row', gap: 5, marginTop: 4 }}>
+                        {entry.reactions.map((reaction) => (
+                          <Pressable
+                            key={reaction.emoji}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('chat.reactionPeople', {
+                              emoji: reaction.emoji,
+                              count: reaction.people.length,
+                            })}
+                            onPress={() => {
+                              void store
+                                .request({
+                                  op: 'react',
+                                  space_id: id,
+                                  message_id: entry.id,
+                                  emoji: reaction.mine ? null : reaction.emoji,
+                                })
+                                .catch(() => {});
+                            }}
+                            style={{
+                              borderRadius: 14,
+                              backgroundColor: colors.muted,
+                              borderWidth: reaction.mine ? 1 : 0,
+                              borderColor: colors.accent,
+                              paddingHorizontal: 8,
+                              paddingVertical: 4,
+                            }}
+                          >
+                            <Text style={{ fontSize: 13, color: colors.text }}>
+                              {reaction.emoji} {reaction.people.length}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
+                    {entry.thread_replies > 0 ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t('chat.viewReplies', { count: entry.thread_replies })}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/thread/[space]/[root]',
+                            params: { space: id, root: entry.id },
+                          })
+                        }
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          marginTop: 4,
+                        }}
+                      >
+                        <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
+                          {t('chat.replyCount', { count: entry.thread_replies })} →
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                );
+              }}
+            />
+          )
+        }
+      </ConversationViewport>
       <Host colorScheme={scheme} seedColor={colors.accent}>
         <BottomSheet isPresented={selected !== null} onDismiss={() => setSelected(null)}>
           <Column spacing={8}>

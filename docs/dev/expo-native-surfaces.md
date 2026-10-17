@@ -116,6 +116,18 @@ Delivery marks use vector symbols and canonical core acknowledgements: pending
 clock, one sent check, two delivered checks, and blue checks only after Read.
 Local-only and failed messages have distinct device/warning symbols.
 
+The composer overlays the full timeline in main chat and threads. Its wrapper is
+transparent, with no full-width blur or painted panel; the existing native glass
+input and controls retain their own material. A shared flex viewport shrinks with
+the keyboard avoider's padding, while the absolute composer measures its height
+for list bottom padding. The latest message can clear the controls, and older
+history can scroll behind them. The composer is above the fixed rail in stacking
+order. Own bubbles are white/black text in light skies and black/white text in dark
+skies; received bubbles use neutral #E9E9EB/#262628. Actual signed v20 light-sky
+capture confirms own white bubbles, gray received messages and history behind the
+transparent footer. Keyboard, night, multiline/thread and cold acceptance remain
+pending; automation left the actively scrolling user in control.
+
 Conversation miniapps stay fixed below the measured native header, with 6-point
 rail padding. Their wrapper is a transparent absolute overlay; messages scroll
 behind the cards and remain visible in their gaps, without a fade, mask or painted
@@ -129,13 +141,22 @@ pending.
 
 ## Voice editing checkpoint
 
-The immutable original-frame edit model and session coordinator pass 29 focused
+The immutable original-frame edit model and session coordinator pass 37 focused
 tests covering trim/cuts, restoration, transcript rebasing, undo/redo, obsolete
 exports, cancellation and cleanup ownership. The actual macOS AVFoundation harness
 encodes and decodes exactly66,150 retained frames at44.1kHz (1,500ms): synthetic
 440/880Hz regions survive, the removed1,200Hz region does not, and contained15ms
 fades preserve frame counts and original hashes. The real Swift module compiled in
-signed iOS v17. Source checks pass TypeScript, Oxlint, Oxfmt and173/173 tests.
+signed iOS v17 and updated v20. Source checks pass TypeScript, Oxlint, Oxfmt and181/181 tests.
+
+The 37 pure checks comprise 15 edit, 14 session and 8 suggestion tests. Native
+regressions also clamp extreme/invalid Speech times before numeric conversion and
+bound analysis to a duration-aware 60–900 seconds. Text fragments may be phrases;
+controls retain their exact ranges and never invent inner word times. Optional
+hesitation cuts require complete retained fragments; pause proposals use intact
+original-adjacent timing gaps over 1.2 seconds and retain 300 milliseconds. Such
+gaps may contain other sounds. Nothing is removed automatically, proposals are
+revalidated and each accepted batch is one undo step.
 
 The installed app does not mount the new editing UI. Actual waveform/word controls,
 on-device transcription, edited preview, cancellation, encrypted edited send and

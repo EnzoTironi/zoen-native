@@ -194,7 +194,7 @@ function semanticColors(
   const surface = dark ? '#121D2BF5' : '#FFFFFFF5';
   const raised = dark ? '#17212DF5' : '#FFFFFFF5';
   const muted = dark ? '#1E2A36' : '#EDF1F4';
-  const theirs = dark ? '#22303D' : '#F0F3F5';
+  const theirs = dark ? '#262628' : '#E9E9EB';
   const plates = [
     background,
     muted,
@@ -207,7 +207,7 @@ function semanticColors(
   const foreground = (night: string, day: string) =>
     readable(dark ? night : day, plates, text, 4.6);
   const accent = foreground('#9BCD6A', '#2E6B31');
-  const mine = dark ? '#F3F3EE' : '#181D24';
+  const mine = dark ? '#000000' : '#FFFFFF';
   return {
     scheme,
     colors: {
@@ -223,7 +223,7 @@ function semanticColors(
       accent,
       onAccent: inkFor(accent),
       mine,
-      onMine: inkFor(mine),
+      onMine: dark ? '#FFFFFF' : '#000000',
       danger: foreground('#FF9B9D', '#AE2843'),
       read: foreground('#8CCEE9', '#225C88'),
     },
