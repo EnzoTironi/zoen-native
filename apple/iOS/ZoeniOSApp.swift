@@ -276,10 +276,8 @@ struct RootView: View {
 
     private var barVisible: Bool { model.path(model.tab).isEmpty }
 
-    var body: some View {
-        @Bindable var model = model
-        ZStack(alignment: .bottom) {
-            TabView(selection: $selectedTab) {
+    private var rootTabs: some View {
+        TabView(selection: $selectedTab) {
                 Tab(value: AppTab.conversations) { stack(for: .conversations) } label: {
                     Label("Chats", systemImage: "bubble.left.and.bubble.right")
                 }
@@ -325,6 +323,12 @@ struct RootView: View {
             .onChange(of: model.tab) { _, tab in
                 if [.conversations, .store, .you].contains(tab) { selectedTab = tab }
             }
+    }
+
+    var body: some View {
+        @Bindable var model = model
+        ZStack(alignment: .bottom) {
+            rootTabs
 
             if model.searchOpen {
                 SearchReveal(origin: model.searchOrigin)
