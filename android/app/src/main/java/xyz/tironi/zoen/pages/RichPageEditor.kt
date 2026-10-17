@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
@@ -25,6 +26,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import java.util.UUID
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenViewModel
@@ -38,6 +40,7 @@ import xyz.tironi.zoen.ui.keepSnackbarAbove
 fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modifier: Modifier = Modifier) {
     val owner = state.me?.id ?: return
     val context = LocalContext.current
+    val focus = LocalFocusManager.current
     val unreadableDraft = stringResource(R.string.page_draft_unreadable)
     val draftSaveFailed = stringResource(R.string.page_draft_save_failed)
     val draftCopied = stringResource(R.string.page_draft_copied)
@@ -291,10 +294,12 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
                 val status = saveError ?: current.saveError ?: if (!editable) stringResource(R.string.read_only) else if (current.pendingSync) stringResource(R.string.page_pending_sync) else if (draft != null) stringResource(R.string.page_draft_saved) else saved
                 Text(status, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall,
                     color = if (saveError != null || current.saveError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                GlassButton(enabled = editable && composingBlocks.isEmpty() && (draft != null || current.unsaved) && !busy, modifier = Modifier.testTag("page-save"), onClick = {
+                GlassButton(enabled = editable && (draft != null || current.unsaved) && !busy, modifier = Modifier.testTag("page-save"), onClick = {
                     busy = true
+                    focus.clearFocus(force = true)
                     model.launch {
                         try {
+                            snapshotFlow { composingBlocks.isEmpty() }.first { it }
                             latestSave(true)
                         } catch (error: Exception) {
                             if (error is CancellationException) throw error
