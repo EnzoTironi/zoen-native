@@ -210,7 +210,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   };
   const toggleFollow = (root: string, on: boolean) => { const next = { ...follow, [root]: on }; setFollow(next); localStorage.setItem(FOLLOW, JSON.stringify(next)); };
   const lastAt = (c: Conversation) => c.messages.at(-1)?.at_ms ?? 0;
-  const matches = conversations.filter((c) => (!experimental || c.kind === 'community') && c.title.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
+  const matches = conversations.filter((c) => !c.internal && (!experimental || c.kind === 'community') && c.title.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
   const ordered = [...matches].sort((a, b) => Number(!!prefs[b.id]?.pinned) - Number(!!prefs[a.id]?.pinned) || lastAt(b) - lastAt(a));
   const archived = ordered.filter((c) => prefs[c.id]?.archived);
   const list = showArchived ? archived : ordered.filter((c) => !prefs[c.id]?.archived);

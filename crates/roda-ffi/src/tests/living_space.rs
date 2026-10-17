@@ -102,7 +102,7 @@ fn living_space_hackathon_uses_actual_mls_team_and_one_winners_announcement() {
         engine
             .living_space_command(&root, &json!({"action":"finalize"}).to_string())
             .is_err(),
-        "cannot finalize before deadline"
+        "cannot finalize before authoritative phase transition"
     );
     let me = engine.me_id().unwrap();
     engine
@@ -122,6 +122,13 @@ fn living_space_hackathon_uses_actual_mls_team_and_one_winners_announcement() {
                 forwarded: false,
             },
         )
+        .unwrap();
+    assert!(
+        !engine.living_hackathon_replay(&root).unwrap().finalized,
+        "a future authored timestamp cannot finalize the open phase"
+    );
+    engine
+        .living_space_command(&root, &json!({"action":"submissions_close"}).to_string())
         .unwrap();
     for _ in 0..2 {
         engine
@@ -240,6 +247,25 @@ fn living_space_small_cap_splits_admission_into_real_mls_partitions() {
     engine.remove_member(&root, &a).unwrap();
     assert!(engine.living_conversation_space(&root, &a).is_none());
     assert!(groups.iter().all(|g| !engine.is_member(g, &a)));
+    engine
+        .store
+        .set_meta("experiment.living_space.enabled", "false")
+        .unwrap();
+    assert!(
+        engine.spaces().iter().any(|s| s.id == groups[0]),
+        "disabling experiment restores legacy child visibility"
+    );
+    assert!(engine
+        .send_message(&root, "legacy parent messaging restored")
+        .is_ok());
+    engine
+        .store
+        .set_meta("experiment.living_space.enabled", "true")
+        .unwrap();
+    assert!(!engine.spaces().iter().any(|s| s.id == groups[0]));
+    assert!(engine
+        .send_message(&root, "living parent plaintext refused")
+        .is_err());
     // A root removal can arrive before the corresponding child commit. Retained
     // cached child membership must not authorize opening or sending into the child.
     let me = engine.me_id().unwrap();

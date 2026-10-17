@@ -306,6 +306,126 @@ fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_me
 }
 
 #[test]
+fn browser_internal_conversations_remain_in_detail_model() {
+    let identity = NativeSigner::from_secret(&[71; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[72; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let mut client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let mut root = SpaceLog::new("root");
+    clear(
+        &mut root,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Community".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    clear(&mut root, &author, EventBody::MessagePosted { message: "register".into(), text: "zoen-living-space-meta-v1:{\"action\":\"conversation_partition\",\"child\":\"child\"}".into(), attaches: None, reply: None, forwarded: false }, 2);
+    let mut child = SpaceLog::new("child");
+    clear(
+        &mut child,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Conversation".into(),
+            kind: SpaceKind::Group,
+            privacy: Privacy::EndToEnd,
+        },
+        1,
+    );
+    client.logs.insert("root".into(), root);
+    client.logs.insert("child".into(), child);
+    let value = serde_json::to_value(client.conversations()).unwrap();
+    assert!(value
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c["id"] == "child" && c["internal"] == true));
+}
+
+#[test]
+fn browser_announcement_replay_rejects_member_versions_after_publish() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let identity = NativeSigner::from_secret(&[71; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[72; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let member = Author::root(NativeSigner::from_secret(&[73; 32]));
+    let mut client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let mut log = SpaceLog::new("root");
+    clear(
+        &mut log,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Community".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    let content = |text: &str| {
+        roda_types::ItemContent::Page(roda_types::PageContent {
+            title: text.into(),
+            path: String::new(),
+            loro: STANDARD.encode(roda_docs::Page::from_markdown(text).unwrap().snapshot()),
+            blob: None,
+            manifest: None,
+        })
+    };
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: "page".into(),
+            kind: roda_types::ItemKind::Page,
+            content: content("Original"),
+            origin: "test".into(),
+        },
+        2,
+    );
+    clear(
+        &mut log,
+        &author,
+        EventBody::MessagePosted {
+            message: "publish".into(),
+            text: "zoen-living-space-meta-v1:{\"action\":\"announce\",\"item_id\":\"page\"}".into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+        },
+        3,
+    );
+    clear(
+        &mut log,
+        &author,
+        EventBody::MemberAdded {
+            identity: member.identity.clone(),
+            role: Role::Member,
+        },
+        3,
+    );
+    clear(
+        &mut log,
+        &member,
+        EventBody::ItemVersioned {
+            item: "page".into(),
+            content: content("Unauthorized"),
+            note: String::new(),
+        },
+        4,
+    );
+    client.logs.insert("root".into(), log);
+    assert_eq!(
+        client.page("page").unwrap()["blocks"][0]["text"],
+        "Original"
+    );
+    assert_eq!(
+        client.living_space_home("root").unwrap()["page_details"][0]["title"],
+        "Original"
+    );
+}
+
+#[test]
 fn browser_live_page_edits_survive_snapshot_and_merge_stale_editor() {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
     use serde_json::{json, Value};
@@ -380,6 +500,35 @@ fn browser_live_page_edits_survive_snapshot_and_merge_stale_editor() {
     let mut wrong: Value = serde_json::from_str(&first).unwrap();
     wrong["changed"][0]["text"] = json!("collision");
     assert!(restored.page_apply(&wrong.to_string(), 6).is_err());
+    let failed = restored.page("page_test").unwrap();
+    assert_eq!(failed["unsaved"], true);
+    assert_eq!(failed["draft"]["changed"][0]["text"], "collision");
+    assert!(failed["save_error"]
+        .as_str()
+        .unwrap()
+        .contains("Edit ID reused"));
+    let snapshot = restored.update(vec![]).unwrap().snapshot;
+    let mut restored =
+        Client::new(restored.account.clone(), restored.signer.clone(), &snapshot).unwrap();
+    restored.synced = true;
+    assert_eq!(
+        restored.page("page_test").unwrap()["draft"],
+        failed["draft"]
+    );
+
+    // A permanent relay rejection is a recoverable draft, never confirmed page content.
+    for pending in restored.saved.outbox.values_mut() {
+        pending.failure = Some("Relay rejected edit".into());
+    }
+    let rejected = restored.page("page_test").unwrap();
+    assert_eq!(rejected["save_error"], "Relay rejected edit");
+    assert_eq!(rejected["blocks"][1]["text"], "First");
+    restored.page_apply(&first, 7).unwrap();
+    assert_eq!(
+        restored.page("page_test").unwrap()["blocks"][1]["text"],
+        "First edited"
+    );
+    assert!(restored.page("page_test").unwrap()["save_error"].is_null());
 }
 
 #[test]

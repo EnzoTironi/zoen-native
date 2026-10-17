@@ -5,7 +5,7 @@ import { AuthenticatedTransport, type ConnectionState, type RelayFrame } from '.
 import type { BrowserVault } from './vault.ts';
 import type { CoreWorker } from './worker-client.ts';
 import type { PageDto, PageSaveRequest } from './live-page.tsx';
-import { parsePage } from './page-data.ts';
+import { parsePage, parsePageRequest } from './page-data.ts';
 import { download, prepare, parsePlan, parseManifest, upload, ensurePage, MAX_FILE_BYTES, type FileCore, type PreparedFile } from './file-transfer.ts';
 
 function nullableText(value: unknown): string | null { return value === null ? null : string(value); }
@@ -36,7 +36,7 @@ function parseConversation(input: unknown) {
   const value = object(input);
   const kind = string(value.kind);
   if (kind !== 'direct' && kind !== 'group' && kind !== 'community' && kind !== 'personal') throw new Error('Invalid conversation kind.');
-  return { id: string(value.id), title: string(value.title), kind, can_send: boolean(value.can_send),
+  return { id: string(value.id), title: string(value.title), kind, internal: value.internal === true, can_send: boolean(value.can_send),
     waiting: nullableText(value.waiting), unreadable: integer(value.unreadable),
     unread: integer(value.unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), messages: array(value.messages).map(parseMessage) };
 }
@@ -112,12 +112,26 @@ export class Messages {
     await ensurePage({ pageDownloadManifest: (item) => this.core.text({ kind: 'page_download_manifest', item }), pageBlobSupply: async (item, blob, data) => { await this.core.text({ kind: 'page_blob_supply', item, blob, data }); } }, item, { relay: this.session.account.relay });
     const result = await this.core.text({ kind: 'page', item });
     if (this.closed) throw Error('This browser session has closed.');
-    return parsePage(JSON.parse(result));
+    const page = parsePage(JSON.parse(result));
+    const local = this.session.pageDrafts?.[item];
+    return local ? { ...page, unsaved: true, save_error: local.error || 'Unsent edits', draft: parsePageRequest(JSON.parse(local.request)) } : page;
   }
 
   async savePage(request: PageSaveRequest, space: string): Promise<PageDto> {
-    await this.act(space, { kind: 'page_apply', request: JSON.stringify(request), now: Date.now() });
-    return this.readPage(request.item_id);
+    const raw = JSON.stringify(request);
+    this.session.pageDrafts ??= {};
+    this.session.pageDrafts[request.item_id] = { request: raw, error: 'Unsent edits' };
+    await this.vault.save(this.stored());
+    try {
+      await this.act(space, { kind: 'page_apply', request: raw, now: Date.now() });
+      delete this.session.pageDrafts[request.item_id];
+      await this.vault.save(this.stored());
+      return await this.readPage(request.item_id);
+    } catch (error) {
+      this.session.pageDrafts[request.item_id] = { request: raw, error: message(error) };
+      await this.vault.save(this.stored());
+      throw error;
+    }
   }
 
   async createPage(space: string, title: string): Promise<PageDto> {
@@ -174,7 +188,7 @@ export class Messages {
 
   private stored(snapshot = this.currentSnapshot): LinkedSession {
     const pendingUploads = [...this.pendingFiles.values()].map(({ planJSON, editId }) => ({ planJSON, editId }));
-    return { kind: 'linked', account: this.session.account, snapshot, ...(pendingUploads.length ? { pendingUploads } : {}) };
+    return { kind: 'linked', account: this.session.account, snapshot, ...(this.session.pageDrafts ? { pageDrafts: this.session.pageDrafts } : {}), ...(pendingUploads.length ? { pendingUploads } : {}) };
   }
 
   get pendingUploadCount(): number { return this.pendingFiles.size; }

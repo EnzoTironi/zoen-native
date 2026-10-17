@@ -39,8 +39,11 @@ test('real page adapter persists signed update before emitting frames, then read
   Socket.flow = [];
   const request = { item_id: 'page', edit_id: 'edit', edit_context: 'frontiers', base_blocks: page.blocks, blocks: page.blocks, order: ['paragraph'], changed: page.blocks };
   assert.deepEqual(await messages.savePage(request, 'space'), page);
-  assert.deepEqual(Socket.flow, ['apply', 'persist', 'send', 'read']);
+  assert.deepEqual(Socket.flow, ['persist', 'apply', 'persist', 'send', 'persist', 'read']);
   Socket.flow = []; reject = true;
   await assert.rejects(messages.savePage(request, 'space'), /Não deu para fazer isso agora/);
-  assert.deepEqual(Socket.flow, ['apply']); assert.equal(closed, false);
+  assert.deepEqual(Socket.flow, ['persist', 'apply', 'persist']); assert.equal(closed, false);
+  const recovered = await messages.readPage('page');
+  assert.equal(recovered.unsaved, true); assert.equal(recovered.draft?.edit_id, 'edit');
+  assert.equal(recovered.draft?.edit_context, 'frontiers');
 });

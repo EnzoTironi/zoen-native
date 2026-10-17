@@ -540,6 +540,37 @@ impl Engine {
             Ok(())
         }
     }
+    pub(crate) fn living_tier_demote_admin(&mut self, root: &str, who: &str) -> R<()> {
+        if !self
+            .state
+            .spaces
+            .get(root)
+            .is_some_and(|s| s.kind == SpaceKind::Community)
+        {
+            return Ok(());
+        }
+        let state = self.tier_state(root)?;
+        for tier in state.tiers {
+            let entitled = state
+                .entitlements
+                .iter()
+                .any(|e| e.identity_id == who && e.tier_id == tier.id)
+                && tier.members.iter().any(|id| id == who);
+            for group in std::iter::once(tier.space).chain(tier.groups) {
+                if self.is_member(&group, who) {
+                    if entitled {
+                        // Preserve independently granted access, never the inherited role.
+                        self.add_member(&group, who, Role::Member)?;
+                    } else {
+                        // remove_member emits the MLS removal commit as well as the event.
+                        self.remove_member(&group, who)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn living_tier_promote_admin(&mut self, root: &str, who: &str) -> R<()> {
         if !self
             .state
@@ -983,6 +1014,17 @@ mod tests {
             )
             .unwrap();
         assert!(engine.living_tier_guard_space(&partition, &member).is_ok());
+        engine.add_member(&root, &member, Role::Admin).unwrap();
+        engine.add_member(&root, &member, Role::Member).unwrap();
+        assert!(
+            engine
+                .space_state(&partition)
+                .unwrap()
+                .members
+                .iter()
+                .any(|(id, role)| id == &member && *role == Role::Member),
+            "demotion retains independent entitlement but removes child admin role"
+        );
         state.entitlements.clear();
         state.tiers[0].members.clear();
         engine.tier_store(&root, &state).unwrap();
@@ -993,6 +1035,12 @@ mod tests {
         assert!(
             engine.living_tier_guard_space(&partition, &owner).is_ok(),
             "owners retain management access"
+        );
+        engine.add_member(&root, &member, Role::Admin).unwrap();
+        engine.add_member(&root, &member, Role::Member).unwrap();
+        assert!(
+            !engine.is_member(&partition, &member),
+            "demotion revokes inherited tier MLS membership without an entitlement"
         );
         engine.me = Some(member.clone());
         assert!(engine

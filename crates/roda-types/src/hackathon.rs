@@ -32,6 +32,9 @@ pub struct Hackathon {
     pub id: String,
     pub title: String,
     pub deadline_ms: i64,
+    /// The schedule is advisory; only a signed administrator transition closes submissions.
+    #[serde(default)]
+    pub submissions_closed: bool,
     pub registered: BTreeSet<String>,
     pub profiles: BTreeMap<String, String>,
     pub teams: Vec<Team>,
@@ -69,6 +72,7 @@ impl Hackathon {
             id: text(v, "id")?.into(),
             title: text(v, "title")?.into(),
             deadline_ms: deadline,
+            submissions_closed: false,
             registered: BTreeSet::new(),
             profiles: BTreeMap::new(),
             teams: vec![],
@@ -81,13 +85,17 @@ impl Hackathon {
             scores: BTreeMap::new(),
         })
     }
-    pub fn apply(&mut self, actor: &str, role: Role, now: i64, v: &Value) -> Result<(), String> {
+    pub fn apply(&mut self, actor: &str, role: Role, _now: i64, v: &Value) -> Result<(), String> {
         require(role != Role::Reader, "Readers cannot participate")?;
         require(!self.finalized, "Hackathon is finalized")?;
         let action = text(v, "action")?;
         match action {
+            "submissions_close" => {
+                require(admin(role), "Administrators close submissions")?;
+                self.submissions_closed = true;
+            }
             "register" => {
-                require(now < self.deadline_ms, "Registration closed")?;
+                require(!self.submissions_closed, "Registration closed")?;
                 self.registered.insert(actor.into());
                 self.profiles.insert(
                     actor.into(),
@@ -101,7 +109,7 @@ impl Hackathon {
             }
             "team_create" => {
                 require(
-                    now < self.deadline_ms && self.registered.contains(actor),
+                    !self.submissions_closed && self.registered.contains(actor),
                     "Register before forming a team",
                 )?;
                 require(
@@ -126,7 +134,7 @@ impl Hackathon {
                 });
             }
             "team_join" => {
-                require(now < self.deadline_ms, "Team formation closed")?;
+                require(!self.submissions_closed, "Team formation closed")?;
                 let team_id = text(v, "team_id")?;
                 let who = v["identity_id"].as_str().unwrap_or(actor);
                 require(self.registered.contains(who), "Applicant must register")?;
@@ -170,7 +178,7 @@ impl Hackathon {
                 }
             }
             "project_submit" => {
-                require(now < self.deadline_ms, "Submissions are frozen")?;
+                require(!self.submissions_closed, "Submissions are frozen")?;
                 let team_id = text(v, "team_id")?;
                 let slot = self
                     .deadline_ms
@@ -224,7 +232,7 @@ impl Hackathon {
             }
             "vote" => {
                 require(
-                    now >= self.deadline_ms && self.registered.contains(actor),
+                    self.submissions_closed && self.registered.contains(actor),
                     "Voting opens after submissions close for registered participants",
                 )?;
                 require(
@@ -246,7 +254,7 @@ impl Hackathon {
             }
             "judge" => {
                 require(
-                    now >= self.deadline_ms && (admin(role) || self.judges.contains(actor)),
+                    self.submissions_closed && (admin(role) || self.judges.contains(actor)),
                     "Assigned judges only after submission deadline",
                 )?;
                 let team_id = text(v, "team_id")?;
@@ -287,7 +295,7 @@ impl Hackathon {
             }
             "finalize" => {
                 require(
-                    admin(role) && now >= self.deadline_ms,
+                    admin(role) && self.submissions_closed,
                     "Administrators finalize after deadline",
                 )?;
                 let mut eligible: Vec<_> = self
@@ -385,7 +393,31 @@ mod tests {
         let slot = h.teams[0].demo_slot_ms;
         h.apply("alice",Role::Member,5,&json!({"action":"project_submit","team_id":"a","url":"https://example.com/new","file_ids":[]})).unwrap();
         assert_eq!(slot, h.teams[0].demo_slot_ms);
-        assert!(h.apply("alice",Role::Member,100,&json!({"action":"project_submit","team_id":"a","url":"https://example.com/late","file_ids":[]})).is_err());
+        assert!(h
+            .apply(
+                "alice",
+                Role::Member,
+                i64::MAX,
+                &json!({"action":"submissions_close"})
+            )
+            .is_err());
+        assert!(!h.submissions_closed);
+        assert!(h
+            .apply(
+                "owner",
+                Role::Owner,
+                i64::MAX,
+                &json!({"action":"finalize"})
+            )
+            .is_err());
+        h.apply(
+            "owner",
+            Role::Owner,
+            0,
+            &json!({"action":"submissions_close"}),
+        )
+        .unwrap();
+        assert!(h.apply("alice",Role::Member,i64::MIN,&json!({"action":"project_submit","team_id":"a","url":"https://example.com/late","file_ids":[]})).is_err());
         assert!(h
             .apply(
                 "alice",
@@ -401,6 +433,21 @@ mod tests {
         team(&mut h, "alice", "a");
         team(&mut h, "bob", "b");
         register(&mut h, "voter");
+        assert!(h
+            .apply(
+                "voter",
+                Role::Member,
+                i64::MAX,
+                &json!({"action":"vote","team_id":"a"})
+            )
+            .is_err());
+        h.apply(
+            "owner",
+            Role::Owner,
+            0,
+            &json!({"action":"submissions_close"}),
+        )
+        .unwrap();
         assert!(h
             .apply(
                 "alice",

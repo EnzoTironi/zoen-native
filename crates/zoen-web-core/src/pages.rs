@@ -9,6 +9,51 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+/// Enforce announcement authorship while replaying, not just in the editor UI.
+pub(crate) fn authorized_page_events(events: Vec<&roda_types::Event>) -> Vec<&roda_types::Event> {
+    let mut roles = std::collections::BTreeMap::new();
+    let mut announced = std::collections::BTreeSet::new();
+    events
+        .into_iter()
+        .filter(|event| {
+            let key = |id: &str| (event.space.clone(), id.to_owned());
+            let admin = matches!(
+                roles.get(&key(&event.author)),
+                Some(Role::Owner | Role::Admin)
+            );
+            match &event.body {
+                EventBody::SpaceCreated { .. } => {
+                    roles.insert(key(&event.author), Role::Owner);
+                }
+                EventBody::MemberAdded { identity, role } => {
+                    roles.insert(key(identity), *role);
+                }
+                EventBody::MemberRemoved { identity } => {
+                    roles.remove(&key(identity));
+                }
+                EventBody::MessagePosted { text, .. } if admin => {
+                    if let Some(raw) = text.strip_prefix("zoen-living-space-meta-v1:") {
+                        if let Ok(value) = serde_json::from_str::<Value>(raw) {
+                            if value["action"] == "announce" {
+                                if let Some(id) = value["item_id"].as_str() {
+                                    announced.insert(key(id));
+                                }
+                            }
+                        }
+                    }
+                }
+                EventBody::ItemVersioned { item, .. }
+                    if announced.contains(&key(item)) && !admin =>
+                {
+                    return false
+                }
+                _ => {}
+            }
+            true
+        })
+        .collect()
+}
+
 fn block_dto(block: &Block) -> Value {
     let kind = serde_json::to_value(&block.kind).expect("kind serializes");
     json!({"id":block.id,"kind":kind["k"],"level":kind["level"].as_u64().unwrap_or(0),"indent":kind["indent"].as_u64().unwrap_or(0),"number":kind["number"].as_u64().unwrap_or(0),"checked":kind["checked"].as_bool().unwrap_or(false),"lang":kind["lang"].as_str().unwrap_or(""),"url":kind["url"].as_str().unwrap_or(""),"alt":kind["alt"].as_str().unwrap_or(""),"text":block.plain_text(),"spans":roda_docs::spans_of(&block.runs)})
@@ -252,11 +297,35 @@ impl<S: Signer> Client<S> {
         let can_edit = matches!(self.page_role(&space), Some(Role::Owner | Role::Admin))
             || (!announced && self.page_role(&space) == Some(Role::Member));
         let context=json!({"item":item,"frontiers":hex::encode(page.frontiers().encode()),"content_hash":page.content_hash()}).to_string();
+        let error = self.page_save_error(item).map(str::to_owned).or_else(|| {
+            self.page_draft(item)
+                .filter(|(_, e)| !e.is_empty())
+                .map(|(_, e)| e.clone())
+        });
+        let draft = error
+            .as_ref()
+            .and_then(|_| self.page_draft(item))
+            .and_then(|(raw, _)| serde_json::from_str::<Value>(raw).ok());
         Ok(
-            json!({"item_id":item,"space_id":space,"title":page.title(),"path":content.path,"version":version,"ready":true,"unsaved":false,"pending_sync":self.page_pending(item),"save_error":null,"can_edit":can_edit,"content_hash":page.content_hash(),"edit_context":context,"blocks":page.blocks().iter().map(block_dto).collect::<Vec<_>>()}),
+            json!({"draft":draft,"item_id":item,"space_id":space,"title":page.title(),"path":content.path,"version":version,"ready":true,"unsaved":error.is_some(),"pending_sync":self.page_pending(item),"save_error":error,"can_edit":can_edit,"content_hash":page.content_hash(),"edit_context":context,"blocks":page.blocks().iter().map(block_dto).collect::<Vec<_>>()}),
         )
     }
     pub fn page_apply(&mut self, request_json: &str, now_ms: i64) -> Result<Update, String> {
+        let result = self.page_apply_inner(request_json, now_ms);
+        if request_json.len() <= 2_000_000 {
+            if let Ok(request) = serde_json::from_str::<SaveRequest>(request_json) {
+                // Preserve the original context and complete user input for retry, including
+                // synchronous failures. Hosts persist the next Update before navigation.
+                self.page_store_draft(
+                    request.item_id,
+                    request_json.into(),
+                    result.as_ref().err().cloned().unwrap_or_default(),
+                );
+            }
+        }
+        result.and_then(|update| self.update(update.frames))
+    }
+    fn page_apply_inner(&mut self, request_json: &str, now_ms: i64) -> Result<Update, String> {
         if request_json.len() > 2_000_000 {
             return Err("Page edit is too large".into());
         }
@@ -318,6 +387,7 @@ impl<S: Signer> Client<S> {
         content.loro = STANDARD.encode(&delta);
         content.blob = None;
         let digest = hex::encode(Sha256::digest(request_json.as_bytes()));
+        self.page_prepare_retry(&request.item_id, &request.edit_id, &digest)?;
         self.queue_page_body(
             &space,
             EventBody::ItemVersioned {

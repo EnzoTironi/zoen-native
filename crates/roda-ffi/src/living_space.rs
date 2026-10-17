@@ -358,6 +358,7 @@ impl Engine {
                 | "project_submit"
                 | "vote"
                 | "judge"
+                | "submissions_close"
                 | "finalize"
                 | "schedule_event"
                 | "set_judge"

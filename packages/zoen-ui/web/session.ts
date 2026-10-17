@@ -32,7 +32,7 @@ function uploads(input: unknown): StoredFileUpload[] {
 export type StoredSession =
   | { kind: 'empty' }
   | { kind: 'pending'; pending: PendingLink }
-  | { kind: 'linked'; account: LinkedAccount; snapshot: string; pendingUploads?: StoredFileUpload[] };
+  | { kind: 'linked'; account: LinkedAccount; snapshot: string; pendingUploads?: StoredFileUpload[]; pageDrafts?: Record<string, { request: string; error: string }> };
 
 export function parseSession(json: string): StoredSession {
   const value = object(JSON.parse(json));
@@ -41,7 +41,7 @@ export function parseSession(json: string): StoredSession {
     case 'pending': return { kind: 'pending', pending: parsePending(JSON.stringify(value.pending)) };
     case 'linked': {
       const pending = value.pendingUploads === undefined ? [] : uploads(value.pendingUploads);
-      return { kind: 'linked', account: parseAccount(JSON.stringify(value.account)), snapshot: string(value.snapshot), ...(pending.length ? { pendingUploads: pending } : {}) };
+      return { kind: 'linked', account: parseAccount(JSON.stringify(value.account)), snapshot: string(value.snapshot), ...(value.pageDrafts ? { pageDrafts: Object.fromEntries(Object.entries(object(value.pageDrafts)).map(([id, raw]) => { const draft = object(raw); const request = string(draft.request); if (request.length > 2_000_000) throw Error('Page draft too large.'); return [id, { request, error: string(draft.error) }]; })) } : {}), ...(pending.length ? { pendingUploads: pending } : {}) };
     }
     default: throw new Error('Unrecognized local session.');
   }

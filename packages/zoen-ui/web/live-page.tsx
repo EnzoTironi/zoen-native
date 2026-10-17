@@ -3,7 +3,7 @@ import './live-page.css';
 
 export interface TextSpanDto { start: number; end: number; key: string; value: string }
 export interface PageBlockDto { id: string; kind: string; level: number; indent: number; number: number; checked: boolean; lang: string; url: string; alt: string; text: string; spans: TextSpanDto[] }
-export interface PageDto { item_id: string; space_id: string; title: string; path: string; version: number; ready: boolean; unsaved: boolean; pending_sync: boolean; save_error: string | null; can_edit: boolean; content_hash: string; edit_context: string; blocks: PageBlockDto[] }
+export interface PageDto { draft?: PageSaveRequest; item_id: string; space_id: string; title: string; path: string; version: number; ready: boolean; unsaved: boolean; pending_sync: boolean; save_error: string | null; can_edit: boolean; content_hash: string; edit_context: string; blocks: PageBlockDto[] }
 export interface PageSaveRequest { item_id: string; edit_id: string; edit_context: string; base_blocks: PageBlockDto[]; blocks: PageBlockDto[]; order: string[]; changed: PageBlockDto[] }
 export interface LivePageProps { page: PageDto; save: (request: PageSaveRequest) => Promise<PageDto>; refresh: () => Promise<PageDto>; onConflict?: (remote: PageDto) => void; onDirtyChange?: (dirty: boolean) => void }
 const emptyBlock = (): PageBlockDto => ({ id: crypto.randomUUID(), kind: 'paragraph', level: 0, indent: 0, number: 0, checked: false, lang: '', url: '', alt: '', text: '', spans: [] });
@@ -66,16 +66,24 @@ function EditableBlock({ block, editable, change, select }: { block: PageBlockDt
 
 /** Parent owns loading and real CRDT persistence. Mount with key={page.item_id}. */
 export function LivePage({ page, save, refresh, onConflict, onDirtyChange }: LivePageProps) {
-  const [base,setBase] = useState(page); const [blocks,setBlocks] = useState(page.blocks);
+  const [base,setBase] = useState(page.draft ? { ...page, blocks: page.draft.base_blocks, edit_context: page.draft.edit_context } : page); const [blocks,setBlocks] = useState(page.draft?.blocks ?? page.blocks);
   const [pending,setPending] = useState(false); const [error,setError] = useState<string | null>(page.save_error);
   const [remote,setRemote] = useState<PageDto | null>(null); const [active,setActive] = useState<{id:string;start:number;end:number} | null>(null);
   const [link,setLink] = useState(''); const [linking,setLinking] = useState(false);
   const [composing,setComposing] = useState(false);
-  const editId = useRef(crypto.randomUUID()); const dirty = !same(blocks,base.blocks);
+  const editId = useRef(page.draft?.edit_id ?? crypto.randomUUID()); const dirty = !same(blocks,base.blocks);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   const observed = useRef(page);
   useEffect(() => {
-    if (page.item_id !== base.item_id || page.edit_context === observed.current.edit_context) return;
+    if (page.item_id !== base.item_id) return;
+    if (page.save_error && page.save_error !== observed.current.save_error) {
+      setError(page.save_error);
+      if (!dirty && page.draft) {
+        setBase({ ...page, blocks: page.draft.base_blocks, edit_context: page.draft.edit_context });
+        setBlocks(page.draft.blocks); editId.current = page.draft.edit_id;
+      }
+    }
+    if (page.edit_context === observed.current.edit_context) { observed.current=page; return; }
     observed.current=page;
     if (page.edit_context === base.edit_context) return;
     if (dirty || pending) { setRemote(page); onConflict?.(page); }
@@ -97,7 +105,7 @@ export function LivePage({ page, save, refresh, onConflict, onDirtyChange }: Liv
   };
   const reload = async () => { setPending(true); setError(null); try { const next = await refresh(); if(next.item_id !== base.item_id) throw Error('Refresh returned a different page'); setBase(next); setBlocks(next.blocks); setRemote(null); editId.current=crypto.randomUUID(); } catch(e) { setError(e instanceof Error ? e.message : 'Could not refresh page'); } finally { setPending(false); } };
   return <section className="live-page" aria-label={page.title || 'Page'} onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)}>
-    <header><h1>{page.title || 'Page'}</h1><span role="status">{pending ? 'Saving…' : !page.can_edit ? 'Read only' : dirty ? 'Unsaved edits' : base.pending_sync ? 'Saved on this device · Sync pending' : base.unsaved ? 'Not committed' : 'Saved'}</span><button disabled={!editable || !dirty || composing} onClick={persist}>Save</button></header>
+    <header><h1>{page.title || 'Page'}</h1><span role="status">{pending ? 'Saving…' : !page.can_edit ? 'Read only' : dirty ? 'Unsaved edits' : base.pending_sync ? 'Saved on this device · Sync pending' : base.unsaved ? 'Not committed' : 'Saved'}</span><button disabled={!editable || !dirty || composing} onClick={persist}>{error ? 'Retry save' : 'Save'}</button></header>
     {!page.ready && <p role="status">Page is still downloading.</p>}
     {error && <p role="alert">{error} Your edits are still here.</p>}
     {remote && <aside role="alert">This page changed elsewhere. Your edits are preserved; saving merges against their original CRDT context. <button disabled={pending} onClick={reload}>Discard edits and refresh</button></aside>}

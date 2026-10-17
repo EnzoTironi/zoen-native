@@ -77,6 +77,8 @@ struct SavedClient {
     living_failure: Option<String>,
     #[serde(default)]
     page_edits: BTreeMap<String, String>,
+    #[serde(default)]
+    page_drafts: BTreeMap<String, (String, String)>,
     storage: Vec<(Vec<u8>, Vec<u8>)>,
     logs: BTreeMap<String, Vec<Event>>,
     outbox: BTreeMap<String, PendingEnvelope>,
@@ -152,6 +154,7 @@ pub struct ConversationView {
     id: String,
     title: String,
     kind: &'static str,
+    internal: bool,
     can_send: bool,
     waiting: Option<String>,
     unreadable: usize,
@@ -1137,12 +1140,67 @@ impl<S: Signer> Client<S> {
             EventBody::ItemCreated { item: id, .. } | EventBody::ItemVersioned { item: id, .. } if id == item)))
     }
 
+    pub(crate) fn page_draft(&self, item: &str) -> Option<&(String, String)> {
+        self.saved.page_drafts.get(item)
+    }
+    pub(crate) fn page_store_draft(&mut self, item: String, request: String, error: String) {
+        self.saved.page_drafts.insert(item, (request, error));
+    }
+    pub(crate) fn page_prepare_retry(
+        &mut self,
+        item: &str,
+        edit_id: &str,
+        digest: &str,
+    ) -> Result<(), String> {
+        if self
+            .saved
+            .page_edits
+            .get(edit_id)
+            .is_some_and(|prior| prior != digest)
+        {
+            return Err("Edit ID reused with different contents".into());
+        }
+        let failed: Vec<_> = self.saved.outbox.iter().filter(|(_, pending)| {
+            pending.failure.is_some() && pending.inner.as_ref().is_some_and(|event|
+                matches!(&event.body, EventBody::ItemVersioned { item: target, .. } if target == item))
+        }).map(|(id, _)| id.clone()).collect();
+        if !failed.is_empty() {
+            for id in failed {
+                self.saved.outbox.remove(&id);
+                self.sent.remove(&id);
+            }
+            self.saved.page_edits.remove(edit_id);
+        }
+        Ok(())
+    }
+    pub(crate) fn page_save_error(&self, item: &str) -> Option<&str> {
+        self.saved.outbox.values().find_map(|pending| {
+            let event = pending.inner.as_ref()?;
+            match &event.body {
+                EventBody::ItemCreated { item: id, .. }
+                | EventBody::ItemVersioned { item: id, .. }
+                    if id == item =>
+                {
+                    pending.failure.as_deref()
+                }
+                _ => None,
+            }
+        })
+    }
     pub(crate) fn page_events(&self) -> Vec<&Event> {
-        self.logs
-            .values()
-            .flat_map(|log| log.events())
-            .chain(self.saved.outbox.values().filter_map(|p| p.inner.as_ref()))
-            .collect()
+        crate::pages::authorized_page_events(
+            self.logs
+                .values()
+                .flat_map(|log| log.events())
+                .chain(
+                    self.saved
+                        .outbox
+                        .values()
+                        .filter(|p| p.failure.is_none())
+                        .filter_map(|p| p.inner.as_ref()),
+                )
+                .collect(),
+        )
     }
     pub(crate) fn page_role(&self, space: &str) -> Option<Role> {
         self.roster(space).get(&self.account.identity).copied()
@@ -1630,7 +1688,12 @@ impl<S: Signer> Client<S> {
         if events.is_empty() {
             return Err("Space log unavailable".into());
         }
-        Ok(events)
+        Ok(
+            crate::pages::authorized_page_events(events.iter().collect())
+                .into_iter()
+                .cloned()
+                .collect(),
+        )
     }
 
     pub(crate) fn file_relay(&self) -> &str {
@@ -1727,7 +1790,7 @@ impl<S: Signer> Client<S> {
         self.logs.keys().filter_map(|space| {
             let (title, kind, _) = self.metadata(space)?;
             let roster = self.roster(space);
-            if kind == SpaceKind::Personal || !self.living_tier_allows(space) || self.living_internal_group(space) || !roster.contains_key(&self.account.identity) { return None; }
+            if kind == SpaceKind::Personal || !self.living_tier_allows(space) || !roster.contains_key(&self.account.identity) { return None; }
             let events = self.logs.get(space)?.events();
             let me = &self.account.identity;
             // A direct chat is named after the other person, like every messenger.
@@ -1818,7 +1881,7 @@ impl<S: Signer> Client<S> {
             let (unread, mentions) = incoming.fold((0, 0), |(u, n), m| (u + 1, n + usize::from(!self.account.name.is_empty() && m.text.to_lowercase().contains(&mention))));
             let waiting = self.ready_epoch(space).err();
             let unreadable = events.iter().filter(|event| matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")).count();
-            Some(ConversationView { id: space.clone(), title, kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
+            Some(ConversationView { id: space.clone(), title, internal: self.living_internal_group(space), kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
                 can_send: waiting.is_none(), waiting, unreadable, unread, mentions, members: roster.len(), messages })
         }).collect()
     }

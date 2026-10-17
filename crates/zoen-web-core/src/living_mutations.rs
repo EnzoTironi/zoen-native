@@ -156,8 +156,8 @@ impl<S: Signer> Client<S> {
                     result: json!({"ok":true,"pending":self.living_has_pending()}),
                 });
             }
-            "hackathon_create" | "project_submit" | "set_judge" | "judge" | "finalize"
-            | "team_create" | "team_join" | "register" | "vote" | "schedule_event" => {
+            "hackathon_create" | "submissions_close" | "project_submit" | "set_judge" | "judge"
+            | "finalize" | "team_create" | "team_join" | "register" | "vote" | "schedule_event" => {
                 let mut hack = self.living_hack_replay(space)?;
                 if action == "hackathon_create" {
                     if hack.is_some() {
