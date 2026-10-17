@@ -105,9 +105,8 @@ class IconMotionParityCaptureTest {
                 tab = target
             }
             when (event) {
-                "tab-chats-tap" -> { tapTab("Spaces"); tapTab("Chats") }
-                "tab-spaces-tap" -> tapTab("Spaces")
-                "tab-notifications-tap" -> tapTab("Notifications")
+                "tab-chats-tap" -> { tapTab("Marketplace"); tapTab("Chats") }
+                "tab-marketplace-tap" -> tapTab("Marketplace")
                 "tab-profile-tap" -> tapTab("Profile")
                 "composer-mic", "composer-send" -> {
                     val direct = initial.spaces.first { it.counterpart?.handle == "marina" }
@@ -190,9 +189,9 @@ class IconMotionParityCaptureTest {
     }
 
     companion object {
-        val EVENTS = listOf("tab-chats-tap", "tab-spaces-tap", "tab-notifications-tap", "tab-profile-tap",
+        val EVENTS = listOf("tab-chats-tap", "tab-marketplace-tap", "tab-profile-tap",
             "composer-mic", "composer-send", "bell-new", "typing-active", "connecting-active", "icons-draw-on")
-        // Explicit partial coverage: 8 × 2 appearances × 2 motion modes = 32 frames.
+        // Explicit partial coverage: 7 × 2 appearances × 2 motion modes = 28 frames.
         // Reject unsupported events before resetting the fixture or touching evidence.
         val AVAILABLE_EVENTS = EVENTS.filterNot { it == "typing-active" || it == "connecting-active" }
     }
