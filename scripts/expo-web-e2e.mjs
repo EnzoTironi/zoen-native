@@ -347,6 +347,10 @@ try {
     true,
     "MLS application must be isolated after linking",
   );
+  // Successful linking opens Home. Reach the actual conversation list through
+  // its visible navigation link before checking the exact recovered preview.
+  await page.locator('a[href="/chats"]').click();
+  await page.waitForURL((url) => url.pathname === "/chats");
   const row = page.getByRole("button", { name: new RegExp(seed) });
   await row.waitFor({ timeout: 120_000 });
   await row.click();
