@@ -125,8 +125,42 @@ history can scroll behind them. The composer is above the fixed rail in stacking
 order. Own bubbles are white/black text in light skies and black/white text in dark
 skies; received bubbles use neutral #E9E9EB/#262628. Actual signed v20 light-sky
 capture confirms own white bubbles, gray received messages and history behind the
-transparent footer. Keyboard, night, multiline/thread and cold acceptance remain
-pending; automation left the actively scrolling user in control.
+transparent footer. A later signed v22 capture confirms black own bubbles with
+white text on the night sky, hidden cards while typing and approximately 8.7 points
+between the composer and keyboard. Interactive restoration, multiline/thread and
+cold acceptance remain separate from that bounded screenshot.
+
+Keyboard motion now follows actual `useKeyboardHandler` move/interactive/end
+frames shared by the input and card rail. The keyboard avoider remains the sole
+owner of keyboard overlap. The input reduces home-indicator padding to 8 points
+above the keyboard, and a measured native animated list footer reserves its real
+height without setting React state on each animation frame. Cards stay mounted,
+preserving horizontal position; their matching list spacer collapses with them.
+Hidden cards lose touch/accessibility targets, reduced motion removes the extra
+slide/fade, and notices remain visible.
+
+Conversation search replaces the title/action HUD with a native SwiftUI field and
+older/newer arrows. Canonical paginated results reveal exact message IDs, including
+thread replies rendered temporarily in the same conversation. Closing restores
+the main timeline and draft. A completed empty search swaps the magnifier for an
+explicit Ask Zoen action; loading, failures and stale results never trigger AI.
+Only an opaque ticket enters navigation; the question remains in memory.
+
+Ask Zoen uses real Apple Foundation Models when the current iPhone supports and
+enables the model and language. It is a bounded, read-only temporary conversation,
+not a new durable Agent, Space or chat message. Each turn reads a current bounded
+canonical text excerpt and rechecks membership and device/session ownership after
+generation. Closing or erasing cancels and drains the lease. Unsupported hardware,
+disabled/downloading models and unsupported languages produce truthful capability
+states; there is no remote or canned-answer fallback. A root-reviewed signed v23
+capture during human use shows a Portuguese model reply grounded in the limited
+text excerpt. That observation is not a controlled known-query or physical-device
+acceptance run.
+
+The normal composer stays mounted while search hides it, so entering and closing
+search preserves a staged audio draft as well as text. Entering search stops a live
+recording into its retained draft; asynchronous recording startup checks suspension
+after permission and preparation, preventing a hidden recording from starting later.
 
 Conversation miniapps stay fixed below the measured native header, with 6-point
 rail padding. Their wrapper is a transparent absolute overlay; messages scroll
@@ -147,7 +181,9 @@ exports, cancellation and cleanup ownership. The actual macOS AVFoundation harne
 encodes and decodes exactly66,150 retained frames at44.1kHz (1,500ms): synthetic
 440/880Hz regions survive, the removed1,200Hz region does not, and contained15ms
 fades preserve frame counts and original hashes. The real Swift module compiled in
-signed iOS v17 and updated v20. Source checks pass TypeScript, Oxlint, Oxfmt and181/181 tests.
+signed iOS v17 and updated v21/v22. Current source checks pass TypeScript, Oxlint,
+Oxfmt and212/212 tests, including16 owner-lifecycle,6 scoped-search and9 temporary
+conversation lifecycle regressions in addition to the37 edit/session/suggestion tests.
 
 The 37 pure checks comprise 15 edit, 14 session and 8 suggestion tests. Native
 regressions also clamp extreme/invalid Speech times before numeric conversion and
@@ -158,10 +194,17 @@ original-adjacent timing gaps over 1.2 seconds and retain 300 milliseconds. Such
 gaps may contain other sounds. Nothing is removed automatically, proposals are
 revalidated and each accepted batch is one undo step.
 
-The installed app does not mount the new editing UI. Actual waveform/word controls,
-on-device transcription, edited preview, cancellation, encrypted edited send and
-independent-peer playback remain pending. These foundations do not establish full
-parity with the previous Swift editor.
+Signed v22 imports the known synthetic 5.54-second Portuguese audio through the
+ordinary file picker and mounts the real editor. The attachment menu now uses the
+direct SwiftUI sheet's fully-finished dismissal callback before presenting another
+picker. Earlier v21 stopped before the picker; no causal UIKit warning was captured.
+Current source defaults to a compact audio strip above the normal input. Dragging
+up or using its accessible expand control opens the detailed editor; collapsing
+preserves the same draft/edits, while explicit discard releases its owned files.
+Recording and preview retain the same send/cleanup fences. No transcription or
+removal starts automatically. Installed gestures, retained preview, on-device
+transcription, edited encrypted send and independent-peer playback remain pending;
+these checkpoints do not establish full parity with the previous Swift editor.
 
 ## In-app Home and miniapp cards
 

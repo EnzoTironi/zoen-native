@@ -1,6 +1,6 @@
 import { t, formatLocale } from '../i18n/index.ts';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { AppState, Modal, Platform, ScrollView, Text, View } from 'react-native';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { AppState, Platform, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import * as DocumentPicker from 'expo-document-picker';
@@ -12,8 +12,6 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
-import { Host, BottomSheet, Column, Button } from '@expo/ui';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import { IconButton, NativeButton } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
@@ -25,8 +23,15 @@ import { sensitiveCacheWork } from './cache-work';
 import { MAX_SELECTED_BYTES } from './types';
 import { VideoClip } from './VideoClip';
 import { ComposerAction } from '../components/composer-action';
+import { VoiceReviewOwner } from './voice-review-owner';
+import type { VoiceSendable } from './voice-session';
+import { VoiceReview } from './voice-review';
+import { VoiceDock } from './voice-dock';
+import { MediaSheet } from './media-sheet';
+import { MediaActions } from './media-actions';
+import type { MediaPickKind } from './media-actions.types';
 
-type Recording = { uri: string; durationMs: number; levels: number[] };
+type Recording = { uri: string; durationMs: number; levels: number[]; owner?: VoiceReviewOwner };
 const failureMessage = (reason: unknown) =>
   reason instanceof Error ? reason.message : t('media.thisCouldNotBeCompletedTryAgain');
 async function discard(uri: string | undefined) {
@@ -47,6 +52,7 @@ export function MediaComposer({
   replyTo = null,
   thread = false,
   disabled = false,
+  suspended = false,
   onSent,
   renderControls,
 }: {
@@ -54,13 +60,17 @@ export function MediaComposer({
   replyTo?: string | null;
   thread?: boolean;
   disabled?: boolean;
+  suspended?: boolean;
   onSent?: () => void;
-  renderControls?: (controls: { attachment: ReactNode; voice: ReactNode }) => ReactNode;
+  renderControls?: (controls: {
+    attachment: ReactNode;
+    voice: ReactNode;
+    review?: ReactNode;
+  }) => ReactNode;
 }) {
   const { store } = useClient();
   const media = store.driver.media;
-  const { colors, scheme } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const { inform } = useDialogs();
   const recorder = useAudioRecorder({
     ...RecordingPresets.HIGH_QUALITY,
@@ -70,31 +80,69 @@ export function MediaComposer({
   });
   const recorderState = useAudioRecorderState(recorder, 100);
   const [menu, setMenu] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [selection, setSelection] = useState<FileSelection | null>(null);
   const [clip, setClip] = useState<Recording | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const levels = useRef<number[]>([]);
+  const [recordingLevels, setRecordingLevels] = useState<readonly number[]>([]);
   const stopTask = useRef<Promise<void> | null>(null);
   const recording = useRef(false);
+  const suspendedNow = useRef(suspended);
   const uriToDiscard = useRef<string | undefined>(undefined);
   const mounted = useRef(true);
   const focused = useRef(false);
   const selecting = useRef(false);
+  const busyNow = useRef(false);
+  const clipNow = useRef<Recording | null>(null);
+  const owners = useRef(new Set<VoiceReviewOwner>());
+  const closeOwner = useCallback(async (owner: VoiceReviewOwner) => {
+    await owner.close();
+    owners.current.delete(owner);
+  }, []);
+  const stageVoice = useCallback(
+    (capture: Omit<Recording, 'owner'>, preserveExpansion = false) => {
+      const owner = media?.voiceEditor
+        ? new VoiceReviewOwner({
+            port: media.voiceEditor,
+            uri: capture.uri,
+            registerCleanup: (cleanup) => store.registerDeviceCleanup(cleanup),
+            work: sensitiveCacheWork,
+            discard: discardCacheCopy,
+          })
+        : undefined;
+      if (owner) owners.current.add(owner);
+      const value = { ...capture, owner };
+      clipNow.current = value;
+      uriToDiscard.current = owner ? undefined : capture.uri;
+      setClip(value);
+      if (!preserveExpansion) setExpanded(false);
+      if (owner)
+        void owner.prepare().catch((reason: unknown) => {
+          if (mounted.current) setFailure(failureMessage(reason));
+        });
+    },
+    [media, store],
+  );
   useEffect(() => {
-    uriToDiscard.current = selection?.uri ?? clip?.uri;
+    uriToDiscard.current = selection?.uri ?? (clip?.owner ? undefined : clip?.uri);
   }, [selection, clip]);
   useEffect(() => {
     mounted.current = true;
+    const retainedOwners = owners.current;
     return () => {
       mounted.current = false;
+      for (const owner of retainedOwners) void closeOwner(owner).catch(() => {});
       void discard(uriToDiscard.current);
     };
-  }, []);
+  }, [closeOwner]);
   useEffect(() => {
     if (!recorderState.isRecording) return;
-    if (typeof recorderState.metering === 'number')
+    if (typeof recorderState.metering === 'number') {
       levels.current.push(Math.min(1, Math.max(0.02, 10 ** (recorderState.metering / 40))));
+      setRecordingLevels(levels.current.slice(-18));
+    }
   }, [recorderState.isRecording, recorderState.durationMillis, recorderState.metering]);
 
   const stop = useCallback(() => {
@@ -108,11 +156,14 @@ export function MediaComposer({
         const uri = recorder.uri;
         if (uri && durationMs >= 250 && mounted.current && focused.current) {
           const stride = Math.max(1, Math.ceil(levels.current.length / 160));
-          setClip({
-            uri,
-            durationMs: Math.round(durationMs),
-            levels: levels.current.filter((_, index) => index % stride === 0),
-          });
+          stageVoice(
+            {
+              uri,
+              durationMs: Math.round(durationMs),
+              levels: levels.current.filter((_, index) => index % stride === 0),
+            },
+            true,
+          );
         } else {
           await discard(uri ?? undefined);
           if (mounted.current && focused.current && durationMs < 250)
@@ -127,7 +178,7 @@ export function MediaComposer({
     })();
     stopTask.current = task;
     return sensitiveCacheWork.track(task);
-  }, [recorder, inform]);
+  }, [recorder, inform, stageVoice]);
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
     return store.registerDeviceCleanup(async () => {
@@ -139,7 +190,8 @@ export function MediaComposer({
       if (mounted.current && recorder.getStatus().isRecording)
         throw new Error(t('media.theRecordingOnThisDeviceCouldNotBe'));
       discardCacheCopy(uriToDiscard.current);
-      discardCacheCopy(uri ?? undefined);
+      if (![...owners.current].some((owner) => owner.uri === uri))
+        discardCacheCopy(uri ?? undefined);
     });
   }, [store, stop, recorder]);
   useFocusEffect(
@@ -157,19 +209,26 @@ export function MediaComposer({
     });
     return () => subscription.remove();
   }, [stop]);
+  useLayoutEffect(() => {
+    // Search keeps this owner mounted. End a live capture into its retained draft
+    // before hiding the recording controls; returning restores the same edits.
+    suspendedNow.current = suspended;
+    if (suspended) void stop();
+  }, [suspended, stop]);
   useEffect(() => {
     if (recorderState.isRecording && recorderState.durationMillis >= 3_600_000) void stop();
   }, [recorderState.isRecording, recorderState.durationMillis, stop]);
 
-  async function pick(kind: 'document' | 'photo' | 'camera') {
+  async function pick(kind: MediaPickKind) {
     try {
       await sensitiveCacheWork.run(() => pickSelection(kind));
     } catch (reason) {
       if (mounted.current) setFailure(failureMessage(reason));
     }
   }
-  async function pickSelection(kind: 'document' | 'photo' | 'camera') {
-    if (!media || busy || disabled || selecting.current || !focused.current) return;
+  async function pickSelection(kind: MediaPickKind) {
+    if (!media || busy || disabled || suspendedNow.current || selecting.current || !focused.current)
+      return;
     selecting.current = true;
     setBusy(true);
     setMenu(false);
@@ -184,22 +243,27 @@ export function MediaComposer({
       setSelection(file);
     }
     try {
-      if (kind === 'document') {
+      if (kind === 'document' || kind === 'audio') {
         const result = await DocumentPicker.getDocumentAsync({
           copyToCacheDirectory: true,
           multiple: false,
-          type: '*/*',
+          type: kind === 'audio' ? 'audio/*' : '*/*',
           base64: false,
         });
         if (!result.canceled) {
           const file = result.assets[0];
-          if (file)
-            await stage({
-              uri: file.uri,
-              name: file.name,
-              mime: file.mimeType || 'application/octet-stream',
-              size: file.size,
-            });
+          if (file) {
+            if (kind === 'audio') {
+              if (!mounted.current || !focused.current) await discard(file.uri);
+              else stageVoice({ uri: file.uri, durationMs: 0, levels: [] });
+            } else
+              await stage({
+                uri: file.uri,
+                name: file.name,
+                mime: file.mimeType || 'application/octet-stream',
+                size: file.size,
+              });
+          }
         }
       } else {
         const permission =
@@ -254,12 +318,12 @@ export function MediaComposer({
     }
   }
   async function startRecording() {
-    if (!media || busy || disabled || recording.current) return;
+    if (!media || busy || disabled || suspendedNow.current || recording.current) return;
     setBusy(true);
     setFailure(null);
     try {
       const permission = await AudioModule.requestRecordingPermissionsAsync();
-      if (!mounted.current || !focused.current) return;
+      if (!mounted.current || !focused.current || suspendedNow.current) return;
       if (!permission.granted) {
         await inform(
           t('media.allowMicrophone'),
@@ -275,18 +339,20 @@ export function MediaComposer({
         allowsBackgroundRecording: false,
         interruptionMode: 'doNotMix',
       });
-      if (!mounted.current || !focused.current) {
+      if (!mounted.current || !focused.current || suspendedNow.current) {
         await setAudioModeAsync({ allowsRecording: false });
         return;
       }
       await recorder.prepareToRecordAsync();
-      if (!mounted.current || !focused.current) {
+      if (!mounted.current || !focused.current || suspendedNow.current) {
         await recorder.stop();
         await discard(recorder.uri ?? undefined);
         await setAudioModeAsync({ allowsRecording: false });
         return;
       }
       levels.current = [];
+      setRecordingLevels([]);
+      setExpanded(false);
       recorder.record();
       recording.current = true;
     } catch (reason) {
@@ -296,8 +362,40 @@ export function MediaComposer({
       setBusy(false);
     }
   }
+  async function sendEdited(owner: VoiceReviewOwner, captured: VoiceSendable) {
+    if (!media || busyNow.current) throw new Error(t('media.voiceRecordingUnavailable'));
+    busyNow.current = true;
+    setBusy(true);
+    setFailure(null);
+    try {
+      await owner.send(captured, (value) =>
+        media.sendVoice({
+          uri: value.preview.uri,
+          durationMs: value.preview.durationMs,
+          levels: [...value.preview.levels],
+          mime: value.preview.mime,
+          transcript: value.transcript,
+          voiceSourceId: owner.session.getSnapshot().source?.id,
+          spaceId,
+          replyTo,
+          thread,
+        }),
+      );
+      // Acknowledged once: cleanup/refresh failures cannot resubmit the mutation.
+      clipNow.current = null;
+      setClip(null);
+      uriToDiscard.current = undefined;
+      void closeOwner(owner).catch(() => {});
+      onSent?.();
+      void store.refresh().catch(() => {});
+    } finally {
+      busyNow.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
   async function send() {
-    if (!media || busy || (!selection && !clip)) return;
+    if (!media || busyNow.current || (!selection && !clip) || clip?.owner) return;
+    busyNow.current = true;
     setBusy(true);
     setFailure(null);
     const uri = selection?.uri ?? clip?.uri;
@@ -305,36 +403,95 @@ export function MediaComposer({
       if (selection) await media.sendFile({ ...selection, spaceId });
       else if (clip)
         await media.sendVoice({
-          ...clip,
+          uri: clip.uri,
+          durationMs: clip.durationMs,
+          levels: clip.levels,
           spaceId,
           mime: Platform.OS === 'web' ? 'audio/webm' : 'audio/mp4',
           replyTo,
           thread,
         });
-      // Rust accepted the durable mutation. Refresh failure must not send a duplicate.
       setSelection(null);
+      clipNow.current = null;
       setClip(null);
       uriToDiscard.current = undefined;
       await discard(uri);
       onSent?.();
-      void store.refresh();
+      void store.refresh().catch(() => {});
     } catch (reason) {
       setFailure(failureMessage(reason));
     } finally {
-      setBusy(false);
+      busyNow.current = false;
+      if (mounted.current) setBusy(false);
     }
   }
   async function cancel() {
-    if (busy) return;
-    await stop();
-    await discard(selection?.uri ?? clip?.uri ?? recorder.uri ?? undefined);
-    setSelection(null);
-    setClip(null);
-    setFailure(null);
+    if (busyNow.current) return;
+    busyNow.current = true;
+    setBusy(true);
+    try {
+      await stop();
+      const capture = clipNow.current;
+      if (capture?.owner) await closeOwner(capture.owner);
+      else await discard(selection?.uri ?? capture?.uri ?? recorder.uri ?? undefined);
+      clipNow.current = null;
+      uriToDiscard.current = undefined;
+      setSelection(null);
+      setClip(null);
+      setExpanded(false);
+      setFailure(null);
+    } catch {
+      setFailure(t('media.voiceCleanupFailed'));
+    } finally {
+      busyNow.current = false;
+      if (mounted.current) setBusy(false);
+    }
   }
   if (!media) return renderControls?.({ attachment: null, voice: null }) ?? null;
   const isRecording = recorderState.isRecording;
-  const presented = Boolean(selection || clip || isRecording);
+  const voiceActive = Boolean(clip || isRecording);
+  const presented = Boolean(selection || clip || isRecording || failure);
+  const sheetVisible = Boolean(selection || (voiceActive ? expanded : failure));
+  function collapseVoice() {
+    if (busy || busyNow.current) return;
+    pauseAudioPlayback();
+    setExpanded(false);
+  }
+  const review =
+    voiceActive && !expanded ? (
+      <VoiceDock
+        key={clip?.uri ?? 'recording'}
+        session={clip?.owner?.session}
+        recording={isRecording}
+        uri={clip?.uri}
+        durationMs={isRecording ? recorderState.durationMillis : (clip?.durationMs ?? 0)}
+        levels={isRecording ? recordingLevels : (clip?.levels ?? [])}
+        busy={busy}
+        failure={failure}
+        onCancel={cancel}
+        onStop={stop}
+        onRetry={
+          clip?.owner
+            ? async () => {
+                setFailure(null);
+                const session = clip.owner!.session;
+                const phase = session.getSnapshot().phase;
+                if (phase === 'closing' || phase === 'closed') await cancel();
+                else if (phase === 'ready') await session.retryPreview();
+                else await clip.owner!.prepare();
+              }
+            : undefined
+        }
+        onExpand={() => {
+          pauseAudioPlayback();
+          setExpanded(true);
+        }}
+        onSend={async (value) => {
+          if (clip?.owner && value) await sendEdited(clip.owner, value);
+          else if (!clip?.owner) await send();
+        }}
+      />
+    ) : null;
   const attachment =
     !thread && replyTo === null ? (
       <ComposerAction
@@ -360,56 +517,40 @@ export function MediaComposer({
   return (
     <>
       {renderControls ? (
-        renderControls({ attachment, voice })
+        renderControls({ attachment, voice, review })
       ) : (
         <>
+          {review}
           {attachment}
           {voice}
         </>
       )}
-      <Host colorScheme={scheme} seedColor={colors.accent}>
-        <BottomSheet isPresented={menu} onDismiss={() => setMenu(false)}>
-          <Column spacing={8}>
-            <Button
-              label={t('media.photosAndVideos')}
-              variant="text"
-              onPress={() => {
-                void pick('photo');
-              }}
-            />
-            <Button
-              label={t('media.camera')}
-              variant="text"
-              onPress={() => {
-                void pick('camera');
-              }}
-            />
-            <Button
-              label={t('media.file2')}
-              variant="text"
-              onPress={() => {
-                void pick('document');
-              }}
-            />
-          </Column>
-        </BottomSheet>
-      </Host>
-      <Modal
-        visible={presented}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => {
-          if (!busy) void cancel();
+      <MediaActions
+        visible={menu}
+        hasVoiceEditor={Boolean(media.voiceEditor)}
+        onClose={() => setMenu(false)}
+        onChoose={(kind) => {
+          void pick(kind);
+        }}
+      />
+      <MediaSheet
+        visible={sheetVisible}
+        locked={busy}
+        onDismiss={() => {
+          if (voiceActive) collapseVoice();
+          else if (!busyNow.current) void cancel();
         }}
       >
         <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
             flexGrow: 1,
             padding: 24,
-            paddingTop: Math.max(insets.top, 30),
-            paddingBottom: Math.max(insets.bottom, 24),
+            paddingTop: 24,
+            paddingBottom: 24,
             gap: 24,
-            backgroundColor: colors.surface,
+            backgroundColor: 'transparent',
           }}
         >
           <View
@@ -426,11 +567,16 @@ export function MediaComposer({
                   : t('media.sendAttachment')}
             </Text>
             <IconButton
-              label={t('media.cancelAttachment')}
-              name={{ ios: 'xmark', android: 'close', web: 'close' }}
+              label={t(voiceActive ? 'media.voiceCollapse' : 'media.cancelAttachment')}
+              name={
+                voiceActive
+                  ? { ios: 'chevron.down', android: 'expand_more', web: 'expand_more' }
+                  : { ios: 'xmark', android: 'close', web: 'close' }
+              }
               disabled={busy}
               onPress={() => {
-                void cancel();
+                if (voiceActive) collapseVoice();
+                else void cancel();
               }}
             />
           </View>
@@ -475,6 +621,20 @@ export function MediaComposer({
                 }}
               />
             </>
+          ) : clip?.owner ? (
+            <VoiceReview
+              key={clip.uri}
+              session={clip.owner.session}
+              initiallyEditing
+              busy={busy}
+              onSend={(value) => sendEdited(clip.owner!, value)}
+              onRetryPrepare={() => {
+                setFailure(null);
+                void clip
+                  .owner!.prepare()
+                  .catch((reason: unknown) => setFailure(failureMessage(reason)));
+              }}
+            />
           ) : clip ? (
             <AudioClip uri={clip.uri} durationMs={clip.durationMs} levels={clip.levels} />
           ) : null}
@@ -487,7 +647,7 @@ export function MediaComposer({
               {failure}
             </Text>
           ) : null}
-          {!isRecording ? (
+          {!isRecording && !clip?.owner && Boolean(selection || clip) ? (
             <NativeButton
               label={busy ? t('media.sending') : t('media.send')}
               disabled={busy || Boolean(selection?.size && selection.size > MAX_SELECTED_BYTES)}
@@ -505,7 +665,7 @@ export function MediaComposer({
             {t('media.reviewBeforeSendingTheFileIsSavedIn')}
           </Text>
         </ScrollView>
-      </Modal>
+      </MediaSheet>
     </>
   );
 }

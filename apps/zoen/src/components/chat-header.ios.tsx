@@ -1,4 +1,4 @@
-import { Stack, router } from 'expo-router';
+import { Stack } from 'expo-router';
 import { Host } from '@expo/ui';
 import { Button, HStack } from '@expo/ui/swift-ui';
 import {
@@ -13,12 +13,48 @@ import {
 import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import { ChatTitle, type ChatHeaderProps } from './chat-title';
+import { ConversationSearch } from './conversation-search';
 
 export function ChatHeader(props: ChatHeaderProps) {
   const { colors, scheme } = useTheme();
+  const search = props.search;
+  if (search?.state.active)
+    return (
+      <>
+        <Stack.Screen options={{ title: props.title, headerBackVisible: false }} />
+        <Stack.Title asChild>
+          <ConversationSearch {...search} />
+        </Stack.Title>
+        <Stack.Toolbar placement="left">
+          <Stack.Toolbar.Button
+            icon="xmark"
+            accessibilityLabel={t('chat.closeSearch')}
+            onPress={search.onClose}
+          />
+        </Stack.Toolbar>
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="chevron.up"
+            accessibilityLabel={t('chat.olderSearchResult')}
+            disabled={
+              search.state.loading ||
+              search.state.index < 0 ||
+              (!search.state.cursor && search.state.index >= search.state.hits.length - 1)
+            }
+            onPress={() => search.onMove('older')}
+          />
+          <Stack.Toolbar.Button
+            icon="chevron.down"
+            accessibilityLabel={t('chat.newerSearchResult')}
+            disabled={search.state.loading || search.state.index <= 0}
+            onPress={() => search.onMove('newer')}
+          />
+        </Stack.Toolbar>
+      </>
+    );
   return (
     <>
-      <Stack.Screen options={{ title: props.title }} />
+      <Stack.Screen options={{ title: props.title, headerBackVisible: true }} />
       <Stack.Title asChild>
         <ChatTitle {...props} />
       </Stack.Title>
@@ -37,11 +73,7 @@ export function ChatHeader(props: ChatHeaderProps) {
                   key={icon}
                   systemImage={icon}
                   label={label}
-                  onPress={
-                    unavailable
-                      ? undefined
-                      : () => router.push({ pathname: '/search', params: { space: props.id } })
-                  }
+                  onPress={unavailable ? undefined : search?.onOpen}
                   modifiers={[
                     buttonStyle('plain'),
                     labelStyle('iconOnly'),

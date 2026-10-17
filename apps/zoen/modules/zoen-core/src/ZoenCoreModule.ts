@@ -4,18 +4,12 @@ import type { CoreEvent } from '../../../src/core/types';
 declare class ZoenCoreModule extends NativeModule<{ onChange: (event: CoreEvent) => void }> {
   open(mode: 'account' | 'demo', locale: 'en' | 'pt-BR'): Promise<string>;
   request(command: string): Promise<string>;
+  openAssistant(spaceId: string, locale: 'en' | 'pt-BR'): Promise<string>;
+  askAssistant(id: string, question: string): Promise<string>;
+  closeAssistant(id: string): Promise<void>;
   createAccount(name: string, handle: string, relay: string): Promise<string>;
   sendFile(spaceId: string, uri: string, name: string, mime: string): Promise<string>;
-  sendVoice(
-    spaceId: string,
-    uri: string,
-    mime: string,
-    durationMs: number,
-    levels: number[],
-    replyTo: string | null,
-    thread: boolean,
-    transcript: string,
-  ): Promise<string>;
+  sendVoice(request: string): Promise<string>;
   prepareVoice(uri: string): Promise<string>;
   renderVoice(sourceId: string, ranges: string): Promise<string>;
   transcribeVoice(sourceId: string, locale: string): Promise<string>;

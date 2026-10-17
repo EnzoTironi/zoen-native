@@ -1,6 +1,7 @@
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { router } from 'expo-router';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
+import type { ChatSearchControls } from './conversation-search.types';
 import type { Persona } from '../core/generated/Persona';
 import { t } from '../i18n/index.ts';
 import { ProfileAvatar } from '../profile/profile-avatar';
@@ -12,6 +13,7 @@ export type ChatHeaderProps = {
   title: string;
   counterpart?: Persona | null;
   activityLabel?: string | null;
+  search?: ChatSearchControls;
 };
 
 export function ChatTitle({ id, title, counterpart, activityLabel }: ChatHeaderProps) {

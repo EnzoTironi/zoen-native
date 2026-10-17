@@ -3,7 +3,7 @@ import { useTheme } from '../theme';
 import { Icon } from './primitives';
 
 export type ComposerActionProps = {
-  name: 'plus' | 'mic' | 'arrow.up' | 'checkmark';
+  name: 'plus' | 'mic' | 'arrow.up' | 'checkmark' | 'stop.fill';
   label: string;
   onPress: () => void;
   disabled?: boolean;
@@ -15,6 +15,7 @@ const material = {
   mic: 'mic',
   'arrow.up': 'arrow_upward',
   checkmark: 'check',
+  'stop.fill': 'stop',
 } as const;
 export function ComposerAction({
   name,

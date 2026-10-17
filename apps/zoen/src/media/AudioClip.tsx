@@ -21,10 +21,12 @@ export function AudioClip({
   uri,
   durationMs = 0,
   levels = [],
+  compact = false,
 }: {
   uri: string;
   durationMs?: number;
   levels?: number[];
+  compact?: boolean;
 }) {
   const { colors } = useTheme();
   const player = useAudioPlayer({ uri }, { updateInterval: 150, allowsExternalPlayback: false });
@@ -39,8 +41,10 @@ export function AudioClip({
   const total = status.duration || durationMs / 1000;
   const progress = total ? Math.min(1, status.currentTime / total) : 0;
   const bars = levels.length
-    ? levels.filter((_, index) => index % Math.max(1, Math.ceil(levels.length / 40)) === 0)
-    : Array.from({ length: 28 }, () => 0.2);
+    ? levels.filter(
+        (_, index) => index % Math.max(1, Math.ceil(levels.length / (compact ? 14 : 40))) === 0,
+      )
+    : Array.from({ length: compact ? 14 : 28 }, () => 0.2);
   async function toggle() {
     if (status.playing) player.pause();
     else {
@@ -58,7 +62,7 @@ export function AudioClip({
     }
   }
   return (
-    <View style={{ minWidth: 210, gap: 8 }}>
+    <View style={{ minWidth: compact ? 0 : 210, gap: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <Pressable
           accessibilityRole="button"
@@ -104,7 +108,9 @@ export function AudioClip({
             <View
               key={index}
               style={{
-                width: 3,
+                width: compact ? undefined : 3,
+                flex: compact ? 1 : undefined,
+                maxWidth: compact ? 3 : undefined,
                 height: 4 + Math.max(0, Math.min(1, level)) * 28,
                 borderRadius: 2,
                 backgroundColor: index / bars.length <= progress ? colors.accent : colors.tertiary,
@@ -116,7 +122,7 @@ export function AudioClip({
           {clipTime(status.playing ? status.currentTime : total)}
         </Text>
       </View>
-      {total > 0 ? (
+      {!compact && total > 0 ? (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Pressable
             accessibilityRole="button"

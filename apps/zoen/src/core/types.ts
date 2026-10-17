@@ -24,6 +24,7 @@ import type { AgentStatus } from './generated/AgentStatus';
 import type { UniversalResults } from './generated/UniversalResults';
 import type { PageBlockDto } from './generated/PageBlockDto';
 import type { MediaDriver } from '../media/types';
+import type { AssistantPort } from '../assistant/types';
 import type { ProfilePhotoDriver } from '../profile/types';
 import type { EditOutcome } from './generated/EditOutcome';
 import type { BackupStatusDto } from './generated/BackupStatusDto';
@@ -142,6 +143,7 @@ export type CommandResult<C extends Command> = C['op'] extends keyof Results
 
 export interface CoreDriver {
   canAuthorizeDevice?(): boolean;
+  assistant?: AssistantPort;
   media?: MediaDriver;
   photos?: ProfilePhotoDriver;
   open(mode: Mode): Promise<Snapshot>;

@@ -47,7 +47,12 @@ actor ZoenVoiceEditor {
       }
     }
   }
-  private struct Lease: Sendable { let root: URL; let source: Source? }
+  private struct Lease: Sendable {
+    let root: URL
+    let source: Source?
+    var revision: UInt64 = 0
+    var completed: Render?
+  }
   private struct Job: Sendable {
     let sourceId: String
     let cancel: @Sendable () -> Void
@@ -104,7 +109,14 @@ actor ZoenVoiceEditor {
   }
 
   func render(sourceId: String, ranges: [Range]) async throws -> Render {
-    guard !closing.contains(sourceId), let lease = leases[sourceId], let source = lease.source else { throw Failure.closed }
+    guard !closing.contains(sourceId), var lease = leases[sourceId], let source = lease.source,
+          lease.revision < UInt64.max else { throw Failure.closed }
+    // Admission of any newer edit invalidates the earlier export, including
+    // when validation/export of the newer edit subsequently fails.
+    lease.revision += 1
+    lease.completed = nil
+    leases[sourceId] = lease
+    let revision = lease.revision
     let count = try Self.validate(ranges: ranges, source: source)
     let output = lease.root.appendingPathComponent("\(UUID().uuidString).m4a")
     do {
@@ -120,7 +132,9 @@ actor ZoenVoiceEditor {
         return Render(uri: output.absoluteString, mime: "audio/mp4", frameCount: count,
           durationMs: Double(count) / source.sampleRate * 1_000, levels: try Self.waveform(file))
       }
-      guard leases[sourceId] != nil, !closing.contains(sourceId) else { throw Failure.closed }
+      guard var current = leases[sourceId], current.revision == revision, !closing.contains(sourceId) else { throw Failure.closed }
+      current.completed = rendered
+      leases[sourceId] = current
       return rendered
     } catch {
       try? FileManager.default.removeItem(at: output)
@@ -141,6 +155,11 @@ actor ZoenVoiceEditor {
 
   /// Cancel work without losing the original, so a review can retry or undo.
   func cancel(_ sourceId: String) async {
+    if var lease = leases[sourceId] {
+      lease.completed = nil
+      if lease.revision < UInt64.max { lease.revision += 1 }
+      leases[sourceId] = lease
+    }
     let pending = jobs.values.filter { $0.sourceId == sourceId }
     pending.forEach { $0.cancel() }
     for job in pending { await job.drain() }
@@ -157,12 +176,24 @@ actor ZoenVoiceEditor {
   }
 
   func releaseOutput(sourceId: String, uri: String) throws {
-    guard let lease = leases[sourceId], let url = URL(string: uri), url.isFileURL,
+    guard var lease = leases[sourceId], let url = URL(string: uri), url.isFileURL,
           url.standardizedFileURL.deletingLastPathComponent() == lease.root,
           UUID(uuidString: url.deletingPathExtension().lastPathComponent) != nil,
           url.pathExtension == "m4a" else { return }
+    if lease.completed?.uri == uri {
+      lease.completed = nil
+      leases[sourceId] = lease
+    }
     do { try FileManager.default.removeItem(at: url) }
     catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile { }
+  }
+
+  /// Only the latest completed export of a live original lease can be sent.
+  /// A retained file after a failed cleanup is not a send capability.
+  func admitSend(sourceId: String, uri: String) throws -> Render {
+    guard !closing.contains(sourceId), let render = leases[sourceId]?.completed,
+          render.uri == uri else { throw Failure.closed }
+    return render
   }
 
   func releaseAll() async throws {

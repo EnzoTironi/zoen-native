@@ -46,14 +46,17 @@ export function createDriver(): CoreDriver {
     async sendVoice(recording) {
       return JSON.parse(
         await core().sendVoice(
-          recording.spaceId,
-          recording.uri,
-          recording.mime,
-          recording.durationMs,
-          recording.levels,
-          recording.replyTo,
-          recording.thread,
-          recording.transcript ?? '',
+          JSON.stringify({
+            spaceId: recording.spaceId,
+            uri: recording.uri,
+            mime: recording.mime,
+            durationMs: recording.durationMs,
+            levels: recording.levels,
+            replyTo: recording.replyTo,
+            thread: recording.thread,
+            transcript: recording.transcript ?? '',
+            sourceId: recording.voiceSourceId ?? '',
+          }),
         ),
       );
     },
@@ -68,6 +71,20 @@ export function createDriver(): CoreDriver {
     },
   };
   return {
+    assistant:
+      Platform.OS === 'ios' && typeof NativeCore?.openAssistant === 'function'
+        ? {
+            async open(spaceId, locale) {
+              return JSON.parse(await core().openAssistant(spaceId, locale));
+            },
+            async ask(id, question) {
+              return JSON.parse(await core().askAssistant(id, question));
+            },
+            async close(id) {
+              await core().closeAssistant(id);
+            },
+          }
+        : undefined,
     media: Platform.OS === 'ios' ? media : undefined,
     photos: Platform.OS === 'ios' ? createNativeProfilePhotoDriver() : undefined,
     async open(mode) {

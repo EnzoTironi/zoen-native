@@ -1,27 +1,34 @@
 import { t, formatLocale } from '../../i18n/index.ts';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Host, BottomSheet, Column, Button } from '@expo/ui';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import {
+  KeyboardAvoidingView,
+  useReanimatedKeyboardAnimation,
+} from 'react-native-keyboard-controller';
 import { Pressable, Text, View, type TextInputInstance } from 'react-native';
 import { useDialogs } from '../../components/dialogs';
 import { useClient } from '../../core/provider';
 import type { TimelineEntry } from '../../core/types';
+import type { UniversalHit } from '../../core/generated/UniversalHit';
 import { chatActivityLabel } from '../../core/live-activity';
 import { messageText } from '../../core/presentation';
 import { useTheme } from '../../theme';
 import { EmptyState, IconButton, Loading } from '../../components/primitives';
 import { MessageComposer } from '../../components/message-composer';
 import { ConversationViewport } from '../../components/conversation-viewport';
+import { ConversationRail, ConversationRailSpacer } from '../../components/conversation-rail';
 import { MessageMedia } from '../../media/MediaAttachment';
 import { ChatHeader } from '../../components/chat-header';
 import { MessageReceipt, messageDeliveryLabel } from '../../components/message-receipt';
 import { useHome } from '../../home/provider';
 import { MiniappRail } from '../../miniapps/rail';
+import { ConversationSearch, conversationQueryFits } from '../../core/conversation-search';
+import { launchConversationAssistant } from '../../assistant/launch';
 
 export default function Chat() {
   const { id, jump } = useLocalSearchParams<{ id: string; jump?: string }>();
@@ -29,6 +36,7 @@ export default function Chat() {
   const { colors, scheme } = useTheme();
   const { items } = useHome();
   const headerHeight = useHeaderHeight();
+  const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
   const conversationMiniapps = items.filter((item) => item.space_id === id);
   const { confirm, inform } = useDialogs();
   const input = useRef<TextInputInstance>(null);
@@ -42,9 +50,70 @@ export default function Chat() {
   const [loadedSpace, setLoadedSpace] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
   const [railHeight, setRailHeight] = useState(0);
+  const [noticeHeight, setNoticeHeight] = useState(0);
   const composerText = editing ? editDraft : draft;
   const chat = snapshot?.conversations.find((conversation) => conversation.id === id);
-  const page = timelines[id];
+  const owner = [
+    store.getSnapshot().mode,
+    snapshot?.account?.identity_id ?? snapshot?.me?.id,
+    snapshot?.account?.device_id,
+  ].join(':');
+  const search = useMemo(
+    () =>
+      new ConversationSearch({
+        current: () => {
+          const current = store.getSnapshot();
+          return (
+            current.phase === 'ready' &&
+            [
+              current.mode,
+              current.snapshot?.account?.identity_id ?? current.snapshot?.me?.id,
+              current.snapshot?.account?.device_id,
+            ].join(':') === owner &&
+            Boolean(current.snapshot?.conversations.some((conversation) => conversation.id === id))
+          );
+        },
+        search: (query, cursor) =>
+          store.driver.request({ op: 'search_messages', space_id: id, query, cursor, limit: 30 }),
+      }),
+    [id, owner, store],
+  );
+  const searchState = useSyncExternalStore(
+    search.subscribe,
+    search.getSnapshot,
+    search.getSnapshot,
+  );
+  const [searchRead, setSearchRead] = useState<{
+    search: ConversationSearch;
+    hit: UniversalHit;
+    thread: { root: string; entries: TimelineEntry[] } | null;
+    error: string | null;
+  } | null>(null);
+  const selectedHit = searchState.hits[searchState.index];
+  const selectedSearchId = searchState.active ? selectedHit?.ref_id : null;
+  const currentRead =
+    searchState.active && searchRead?.search === search && searchRead.hit === selectedHit
+      ? searchRead
+      : null;
+  const searchThread = currentRead?.thread ?? null;
+  const searchRevealBusy = Boolean(searchState.active && selectedHit && !currentRead);
+  const searchRevealError = currentRead?.error;
+  const page = useMemo(
+    () =>
+      searchThread
+        ? { entries: searchThread.entries, before: null, has_more: false }
+        : timelines[id],
+    [searchThread, timelines, id],
+  );
+  const timelineKey = searchState.active && searchThread ? `${id}:${searchThread.root}` : id;
+  useEffect(() => {
+    if (!searchState.active || !searchState.query.trim()) return;
+    const timer = setTimeout(() => {
+      void search.search();
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [search, searchState.active, searchState.query]);
+  useEffect(() => () => search.close(), [search]);
   const activityLabel = chatActivityLabel(snapshot, activity, id);
   useFocusEffect(
     useCallback(() => {
@@ -63,6 +132,45 @@ export default function Chat() {
     },
     [id, store],
   );
+  useEffect(() => {
+    let active = true;
+    if (!searchState.active || !selectedHit) return;
+    void (async () => {
+      const message = await store.driver.request({
+        op: 'message',
+        space_id: id,
+        message_id: selectedHit.ref_id,
+      });
+      if (!active || !search.isCurrent()) return;
+      let thread: { root: string; entries: TimelineEntry[] } | null = null;
+      if (message.in_thread) {
+        const entries = await store.driver.request({
+          op: 'thread',
+          space_id: id,
+          root_id: message.in_thread,
+        });
+        if (!active || !search.isCurrent()) return;
+        if (!entries.some((entry) => entry.id === selectedHit.ref_id))
+          throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
+        thread = { root: message.in_thread, entries };
+      } else await reveal(selectedHit.ref_id);
+      if (active && search.isCurrent()) {
+        setSearchRead({ search, hit: selectedHit, thread, error: null });
+        setScrollTarget(selectedHit.ref_id);
+      }
+    })().catch((reason: unknown) => {
+      if (active && search.isCurrent())
+        setSearchRead({
+          search,
+          hit: selectedHit,
+          thread: null,
+          error: reason instanceof Error ? reason.message : t('chat.thisResultCouldNotBeOpened'),
+        });
+    });
+    return () => {
+      active = false;
+    };
+  }, [id, store, reveal, selectedHit, searchState.active, search]);
   useFocusEffect(
     useCallback(() => {
       if (!jump) return;
@@ -86,7 +194,7 @@ export default function Chat() {
   useEffect(() => {
     if (
       !scrollTarget ||
-      loadedSpace !== id ||
+      loadedSpace !== timelineKey ||
       !page ||
       (conversationMiniapps.length > 0 && railHeight === 0)
     )
@@ -100,7 +208,12 @@ export default function Chat() {
           index,
           animated: true,
           viewPosition: 0,
-          viewOffset: -(headerHeight + railHeight + 8),
+          viewOffset: -(
+            headerHeight +
+            railHeight * (1 - Math.min(1, Math.max(0, keyboardProgress.value))) +
+            noticeHeight +
+            8
+          ),
         })
         .catch(() => {
           void inform(t('chat.theMessageCouldNotBeOpened'), t('chat.tryAgain'));
@@ -111,11 +224,14 @@ export default function Chat() {
   }, [
     scrollTarget,
     loadedSpace,
+    timelineKey,
     id,
     page,
     inform,
     headerHeight,
     railHeight,
+    noticeHeight,
+    keyboardProgress,
     conversationMiniapps.length,
   ]);
   const last = page?.entries.at(-1)?.id;
@@ -173,72 +289,138 @@ export default function Chat() {
         title={chat.title}
         counterpart={chat.counterpart}
         activityLabel={activityLabel}
+        search={{
+          state: searchState,
+          onOpen: () => {
+            input.current?.blur();
+            store.setTyping(id, false);
+            search.open();
+          },
+          onClose: () => {
+            setScrollTarget(null);
+            search.close();
+          },
+          onChange: (query) => search.setQuery(query),
+          onSearch: () => {
+            void search.search();
+          },
+          onMove: (direction) => {
+            void search.move(direction);
+          },
+          onAsk: () => {
+            const current = search.getSnapshot();
+            if (
+              search.isCurrent() &&
+              current.completed &&
+              !current.loading &&
+              !current.error &&
+              !current.hits.length &&
+              !current.cursor &&
+              current.query.trim() &&
+              conversationQueryFits(current.query.trim())
+            )
+              launchConversationAssistant(id, current.query.trim());
+          },
+        }}
       />
       <ConversationViewport
         composer={
           <>
-            {reply || editing ? (
-              <View
-                style={{
-                  marginHorizontal: 16,
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
-                  borderRadius: 18,
-                  backgroundColor: colors.muted,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                }}
-              >
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>
-                    {editing
-                      ? t('chat.editMessage')
-                      : t('chat.replyingTo', { name: reply?.author.name ?? '' })}
+            {searchState.active ? (
+              <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 6 }}>
+                <Text accessibilityLiveRegion="polite" style={{ color: colors.text, fontSize: 14 }}>
+                  {!conversationQueryFits(searchState.query.trim())
+                    ? t('chat.searchQueryTooLong')
+                    : searchState.loading || searchRevealBusy
+                      ? t('chat.searchingMessages')
+                      : searchState.error ||
+                        searchRevealError ||
+                        (searchState.completed
+                          ? searchState.hits.length
+                            ? t('chat.searchPosition', {
+                                position: searchState.index + 1,
+                                count: searchState.hits.length,
+                                more: searchState.cursor ? '+' : '',
+                              })
+                            : t('chat.noResults')
+                          : t('chat.searchUsesTheHistoryAvailableOnThisDevice'))}
+                </Text>
+                {searchThread ? (
+                  <Text style={{ color: colors.secondary, fontSize: 12 }}>
+                    {t('chat.searchThreadResult')}
                   </Text>
-                  <Text numberOfLines={1} style={{ color: colors.secondary, fontSize: 13 }}>
-                    {messageText((editing ?? reply)!)}
-                  </Text>
-                </View>
-                <IconButton
-                  label={t('chat.cancel')}
-                  name={{ ios: 'xmark', android: 'close', web: 'close' }}
-                  onPress={() => {
-                    if (editing) {
-                      setEditing(null);
-                      setEditDraft('');
-                    } else setReply(null);
-                  }}
-                />
+                ) : null}
               </View>
             ) : null}
-            <MessageComposer
-              spaceId={id}
-              inputRef={input}
-              value={composerText}
-              sending={sending}
-              editing={Boolean(editing)}
-              replyTo={reply?.id ?? null}
-              onChangeText={(text) => {
-                if (editing) {
-                  setEditDraft(text);
-                  store.setTyping(id, false);
-                } else {
-                  setDraft(text);
-                  store.setTyping(id, Boolean(text.trim()));
-                }
-              }}
-              onBlur={() => store.setTyping(id, false)}
-              onSend={() => {
-                void send();
-              }}
-              onMediaSent={() => setReply(null)}
-            />
+            <View
+              style={{ display: searchState.active ? 'none' : 'flex' }}
+              pointerEvents={searchState.active ? 'none' : 'box-none'}
+              accessibilityElementsHidden={searchState.active}
+              importantForAccessibility={searchState.active ? 'no-hide-descendants' : 'auto'}
+            >
+              {reply || editing ? (
+                <View
+                  style={{
+                    marginHorizontal: 16,
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderRadius: 18,
+                    backgroundColor: colors.muted,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>
+                      {editing
+                        ? t('chat.editMessage')
+                        : t('chat.replyingTo', { name: reply?.author.name ?? '' })}
+                    </Text>
+                    <Text numberOfLines={1} style={{ color: colors.secondary, fontSize: 13 }}>
+                      {messageText((editing ?? reply)!)}
+                    </Text>
+                  </View>
+                  <IconButton
+                    label={t('chat.cancel')}
+                    name={{ ios: 'xmark', android: 'close', web: 'close' }}
+                    onPress={() => {
+                      if (editing) {
+                        setEditing(null);
+                        setEditDraft('');
+                      } else setReply(null);
+                    }}
+                  />
+                </View>
+              ) : null}
+              <MessageComposer
+                spaceId={id}
+                suspended={searchState.active}
+                inputRef={input}
+                value={composerText}
+                sending={sending}
+                editing={Boolean(editing)}
+                replyTo={reply?.id ?? null}
+                onChangeText={(text) => {
+                  if (editing) {
+                    setEditDraft(text);
+                    store.setTyping(id, false);
+                  } else {
+                    setDraft(text);
+                    store.setTyping(id, Boolean(text.trim()));
+                  }
+                }}
+                onBlur={() => store.setTyping(id, false)}
+                onSend={() => {
+                  void send();
+                }}
+                onMediaSent={() => setReply(null)}
+              />
+            </View>
           </>
         }
         overlay={
           <View
             pointerEvents="box-none"
-            onLayout={({ nativeEvent }) => setRailHeight(nativeEvent.layout.height)}
             style={{
               position: 'absolute',
               top: headerHeight,
@@ -248,46 +430,53 @@ export default function Chat() {
               backgroundColor: 'transparent',
             }}
           >
-            <MiniappRail items={conversationMiniapps} paddingVertical={6} />
-            {notice ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t('chat.dismissNotice', { notice })}
-                onPress={() => store.dismissNotice()}
-                style={{ padding: 12, backgroundColor: colors.muted }}
-              >
-                <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 13 }}>
-                  {notice}
-                </Text>
-              </Pressable>
-            ) : null}
+            <ConversationRail onHeight={setRailHeight}>
+              <MiniappRail items={conversationMiniapps} paddingVertical={6} />
+            </ConversationRail>
+            <View onLayout={({ nativeEvent }) => setNoticeHeight(nativeEvent.layout.height)}>
+              {notice ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('chat.dismissNotice', { notice })}
+                  onPress={() => store.dismissNotice()}
+                  style={{ padding: 12, backgroundColor: colors.muted }}
+                >
+                  <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 13 }}>
+                    {notice}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
         }
       >
-        {(composerHeight) =>
+        {(composerSpacer) =>
           !page ? (
             <Loading />
           ) : (
             <FlashList
-              key={id}
+              key={timelineKey}
               ref={list}
-              onLoad={() => setLoadedSpace(id)}
+              onLoad={() => setLoadedSpace(timelineKey)}
               data={page.entries}
               keyExtractor={(entry) => entry.id}
               keyboardDismissMode="interactive"
               keyboardShouldPersistTaps="handled"
               contentInsetAdjustmentBehavior="never"
+              ListHeaderComponent={<ConversationRailSpacer height={railHeight} />}
+              ListFooterComponent={composerSpacer}
               contentContainerStyle={{
                 paddingHorizontal: 16,
-                paddingTop: headerHeight + railHeight + 8,
-                paddingBottom: composerHeight + 12,
+                paddingTop: headerHeight + noticeHeight + 8,
+                paddingBottom: 12,
               }}
               maintainVisibleContentPosition={{
                 startRenderingFromBottom: true,
                 autoscrollToBottomThreshold: 0.12,
               }}
               onStartReached={() => {
-                if (page.has_more) void store.loadTimeline(id, true).catch(() => {});
+                if (!searchThread && page.has_more)
+                  void store.loadTimeline(id, true).catch(() => {});
               }}
               onStartReachedThreshold={0.1}
               ListEmptyComponent={
@@ -315,6 +504,9 @@ export default function Chat() {
                         fontSize: 12,
                         lineHeight: 19,
                         color: colors.secondary,
+                        borderWidth: entry.id === selectedSearchId ? 2 : 0,
+                        borderColor: colors.accent,
+                        borderRadius: 12,
                         textAlign: 'center',
                         marginVertical: 14,
                         alignSelf: 'center',
@@ -351,11 +543,14 @@ export default function Chat() {
                     <Pressable
                       accessible={!entry.voice && card?.kind_id !== 'file'}
                       onLongPress={() => {
+                        if (searchState.active) return;
                         void Haptics.selectionAsync().catch(() => {});
                         setSelected(entry);
                       }}
                       onAccessibilityTap={
-                        process.env.EXPO_OS === 'ios' ? () => setSelected(entry) : undefined
+                        process.env.EXPO_OS === 'ios' && !searchState.active
+                          ? () => setSelected(entry)
+                          : undefined
                       }
                       accessibilityRole="button"
                       accessibilityLabel={
@@ -371,6 +566,8 @@ export default function Chat() {
                         maxWidth: '87%',
                         borderRadius: 23,
                         borderCurve: 'continuous',
+                        borderWidth: entry.id === selectedSearchId ? 2 : 0,
+                        borderColor: colors.accent,
                         paddingHorizontal: 15,
                         paddingTop: 11,
                         paddingBottom: 8,
@@ -381,6 +578,7 @@ export default function Chat() {
                         <Pressable
                           accessibilityRole="button"
                           accessibilityLabel={t('chat.goToQuotedMessage')}
+                          disabled={searchState.active}
                           onPress={() => {
                             void reveal(entry.reply_to!.id)
                               .then((target) => {
@@ -446,7 +644,7 @@ export default function Chat() {
                         </Text>
                       ) : null}
                       <MessageMedia entry={entry} />
-                      {entry.voice || card?.kind_id === 'file' ? (
+                      {!searchState.active && (entry.voice || card?.kind_id === 'file') ? (
                         <IconButton
                           label={t('chat.messageActions', { name: entry.author.name })}
                           name={{ ios: 'ellipsis', android: 'more_horiz', web: 'more_horiz' }}

@@ -3,6 +3,23 @@ import { defineFeature } from '../catalog.ts';
 export const agents = defineFeature(
   {
     listen: 'Listen',
+    temporaryChat: 'Ask Zoen',
+    temporaryPrivacy: 'Temporary · Only on this iPhone',
+    temporaryContext:
+      'Uses a recent text excerpt from this conversation. Replies stay out of your chat history.',
+    temporaryPreparing: 'Preparing your conversation…',
+    temporaryThinking: 'Thinking…',
+    temporaryFailed: 'Zoen could not answer. Your question is ready to try again.',
+    temporaryUnavailable: 'AI is not available on this iPhone',
+    temporaryNotEligible: 'This iPhone does not support Apple Intelligence.',
+    temporaryDisabled: 'Turn on Apple Intelligence in iPhone Settings to ask Zoen here.',
+    temporaryNotReady: 'Apple Intelligence is still getting ready. Try again later.',
+    temporaryUnsupportedLocale: 'The on-device model does not support this language yet.',
+    temporaryUnsupported: 'This feature needs an iPhone with Apple Intelligence.',
+    temporaryQuestionTooLong: 'Try a shorter question.',
+    temporaryNew: 'New temporary conversation',
+    temporaryFinished:
+      'This temporary conversation has reached its limit. Start a fresh one to continue.',
     followsTheConversation: 'Follows the conversation.',
     suggest: 'Suggest',
     proposesChangesAndAsksForYourApproval: 'Proposes changes and asks for your approval.',
@@ -104,6 +121,25 @@ export const agents = defineFeature(
   },
   {
     listen: 'Ouvir',
+    temporaryChat: 'Pergunte ao Zoen',
+    temporaryPrivacy: 'Temporária · Só neste iPhone',
+    temporaryContext:
+      'Usa um trecho recente de texto desta conversa. As respostas não entram no seu histórico.',
+    temporaryPreparing: 'Preparando sua conversa…',
+    temporaryThinking: 'Pensando…',
+    temporaryFailed:
+      'O Zoen não conseguiu responder. Sua pergunta está pronta para tentar novamente.',
+    temporaryUnavailable: 'IA indisponível neste iPhone',
+    temporaryNotEligible: 'Este iPhone não oferece suporte ao Apple Intelligence.',
+    temporaryDisabled:
+      'Ative o Apple Intelligence nos Ajustes do iPhone para perguntar ao Zoen aqui.',
+    temporaryNotReady:
+      'O Apple Intelligence ainda está sendo preparado. Tente novamente mais tarde.',
+    temporaryUnsupportedLocale: 'O modelo do aparelho ainda não oferece suporte a este idioma.',
+    temporaryUnsupported: 'Este recurso precisa de um iPhone com Apple Intelligence.',
+    temporaryQuestionTooLong: 'Tente uma pergunta mais curta.',
+    temporaryNew: 'Nova conversa temporária',
+    temporaryFinished: 'Esta conversa temporária chegou ao limite. Comece uma nova para continuar.',
     followsTheConversation: 'Acompanha a conversa.',
     suggest: 'Sugerir',
     proposesChangesAndAsksForYourApproval: 'Propõe mudanças e pede sua aprovação.',

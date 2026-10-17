@@ -20,6 +20,7 @@ export type SendVoice = {
   durationMs: number;
   levels: number[];
   transcript?: string;
+  voiceSourceId?: string;
   replyTo: string | null;
   thread: boolean;
 };

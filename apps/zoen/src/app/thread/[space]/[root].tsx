@@ -85,7 +85,7 @@ export default function Thread() {
           </>
         }
       >
-        {(composerHeight) =>
+        {(composerSpacer) =>
           error && !entries ? (
             <EmptyState title={t('chat.theRepliesCouldNotBeOpened')} detail={error}>
               <NativeButton label={t('chat.tryAgain2')} onPress={retry} />
@@ -99,10 +99,11 @@ export default function Thread() {
               keyboardDismissMode="interactive"
               keyboardShouldPersistTaps="handled"
               contentInsetAdjustmentBehavior="automatic"
+              ListFooterComponent={composerSpacer}
               contentContainerStyle={{
                 paddingHorizontal: 20,
                 paddingTop: 20,
-                paddingBottom: composerHeight + 20,
+                paddingBottom: 20,
                 gap: 18,
               }}
               maintainVisibleContentPosition={{

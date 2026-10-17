@@ -9,6 +9,7 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { KeyboardMotionProvider } from '../components/keyboard-motion';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -89,19 +90,21 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <KeyboardProvider>
-          <ThemeProvider>
-            <DialogsProvider>
-              <ClientProvider>
-                <HomeProvider>
-                  <NativeSurfacesProvider>
-                    <NotificationProvider>
-                      <Navigation />
-                    </NotificationProvider>
-                  </NativeSurfacesProvider>
-                </HomeProvider>
-              </ClientProvider>
-            </DialogsProvider>
-          </ThemeProvider>
+          <KeyboardMotionProvider>
+            <ThemeProvider>
+              <DialogsProvider>
+                <ClientProvider>
+                  <HomeProvider>
+                    <NativeSurfacesProvider>
+                      <NotificationProvider>
+                        <Navigation />
+                      </NotificationProvider>
+                    </NativeSurfacesProvider>
+                  </HomeProvider>
+                </ClientProvider>
+              </DialogsProvider>
+            </ThemeProvider>
+          </KeyboardMotionProvider>
         </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -24,6 +24,10 @@ enum ZoenMediaFiles { static let maximumBytes: UInt64 = 64 << 20 }
     }
     return (real * real + imaginary * imaginary) / pow(Double(values.count), 2)
   }
+  static func refused(_ editor: ZoenVoiceEditor, sourceId: String, uri: String) async throws {
+    do { _ = try await editor.admitSend(sourceId: sourceId, uri: uri); fatalError("stale/unowned render admitted") }
+    catch ZoenVoiceEditor.Failure.closed { }
+  }
   static func main() async throws {
     let root = URL.temporaryDirectory.appendingPathComponent("zoen-voice-audio-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -61,6 +65,15 @@ enum ZoenMediaFiles { static let maximumBytes: UInt64 = 64 << 20 }
     expect(try digest(source.uri).elementsEqual(originalHash))
     let ranges = [ZoenVoiceEditor.Range(startFrame: 5_512, endFrame: 38_587), ZoenVoiceEditor.Range(startFrame: 93_712, endFrame: 126_787)]
     let output = try await editor.render(sourceId: source.id, ranges: ranges)
+    let admitted = try await editor.admitSend(sourceId: source.id, uri: output.uri)
+    precondition(admitted.frameCount == 66_150 && admitted.durationMs == 1_500 && admitted.mime == "audio/mp4")
+    try await refused(editor, sourceId: source.id, uri: source.uri)
+    try await refused(editor, sourceId: UUID().uuidString, uri: output.uri)
+    let other = try await editor.prepare(uri: input.absoluteString)
+    try await refused(editor, sourceId: other.id, uri: output.uri)
+    let replacement = try await editor.render(sourceId: source.id, ranges: ranges)
+    try await refused(editor, sourceId: source.id, uri: output.uri)
+    _ = try await editor.admitSend(sourceId: source.id, uri: replacement.uri)
     let decoded = try samples(output.uri)
     precondition(output.frameCount == 66_150 && decoded.count == 66_150)
     precondition(abs(output.durationMs - 1_500) < 0.001)
@@ -80,6 +93,23 @@ enum ZoenMediaFiles { static let maximumBytes: UInt64 = 64 << 20 }
       do { _ = try await editor.render(sourceId: source.id, ranges: bad); fatalError("malformed edit admitted") }
       catch ZoenVoiceEditor.Failure.invalidRanges { }
     }
+    try await refused(editor, sourceId: source.id, uri: replacement.uri)
+    let beforeCancel = try await editor.render(sourceId: source.id, ranges: ranges)
+    await editor.cancel(source.id)
+    try await refused(editor, sourceId: source.id, uri: beforeCancel.uri)
+    let beforeRelease = try await editor.render(sourceId: source.id, ranges: ranges)
+    try await editor.releaseOutput(sourceId: source.id, uri: beforeRelease.uri)
+    try await refused(editor, sourceId: source.id, uri: beforeRelease.uri)
+    // A cleanup failure leaves readable files behind, but never a send capability.
+    let blocked = try await editor.render(sourceId: other.id, ranges: ranges)
+    let blockedRoot = URL(string: other.uri)!.deletingLastPathComponent()
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: blockedRoot.path)
+    var cleanupFailed = false
+    do { try await editor.release(other.id) } catch { cleanupFailed = true }
+    precondition(cleanupFailed && FileManager.default.fileExists(atPath: URL(string: blocked.uri)!.path))
+    try await refused(editor, sourceId: other.id, uri: blocked.uri)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: blockedRoot.path)
+    try await editor.release(other.id)
     try await editor.releaseOutput(sourceId: source.id, uri: source.uri)
     precondition(FileManager.default.fileExists(atPath: URL(string: source.uri)!.path), "releaseRender must never erase original")
     try await editor.releaseOutput(sourceId: source.id, uri: input.absoluteString)
@@ -91,8 +121,9 @@ enum ZoenMediaFiles { static let maximumBytes: UInt64 = 64 << 20 }
     do { _ = try await cancelled.value; fatalError("cancelled export returned") } catch is CancellationError { }
     try await editor.release(source.id)
     try await editor.release(source.id)
+    try await refused(editor, sourceId: source.id, uri: replacement.uri)
     precondition(!FileManager.default.fileExists(atPath: URL(string: source.uri)!.deletingLastPathComponent().path))
     expect(try digest(input.absoluteString).elementsEqual(originalHash))
-    print("Native voice PCM→AAC PASS: 66150 decoded frames,1500ms; disjoint440/880Hz kept,1200Hz excluded;15ms fades; immutable source; invalid edits refused; cancellation and owned cleanup; extreme/invalid Speech times and duration-aware processing budgets.")
+    print("Native voice PCM→AAC PASS: 66150 decoded frames,1500ms; disjoint440/880Hz kept,1200Hz excluded;15ms fades; immutable source; invalid edits refused; cancellation and owned cleanup; extreme/invalid Speech times and duration-aware processing budgets; only current completed render admitted, stale/foreign/cancelled/released/failed-cleanup renders refused.")
   }
 }
