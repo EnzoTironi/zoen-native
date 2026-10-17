@@ -175,6 +175,7 @@ struct ZoenAdaptiveShell: View {
             appearanceControl
             Button { newMessageTap += 1; model.newChatOpen = true } label: {
                 NativeIconMotion(systemName: "magnifyingglass", bounce: newMessageTap, drawOn: true)
+                    .foregroundStyle(Palette.textSecondary)
                     .frame(width: 44, height: 44)
                     .glassEffect(.regular.interactive(), in: .circle)
             }

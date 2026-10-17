@@ -19,6 +19,7 @@ struct NativeIconMotion: View {
     var wiggle: Int = 0
     var active = false
     var drawOn = false
+    @State private var appeared = false
     @Environment(\.accessibilityReduceMotion) private var systemReduce
     @Environment(\.nativeIconReduceMotion) private var appReduce
     @Environment(\.ambientPaused) private var paused
@@ -26,18 +27,20 @@ struct NativeIconMotion: View {
 
     var body: some View {
         // Keep the semantic SF Image alive even in native button-label extraction.
-        // DrawOn is a native indefinite effect: activation reveals it once and
-        // retains the completed glyph, without an empty first-appearance branch.
+        // Release the native indefinite draw-on phase on appearance. Leaving it
+        // active indefinitely keeps the glyph erased on the actual iOS renderer.
         Group {
             if drawOn && !reduced && !paused {
-                artwork.symbolEffect(.drawOn, options: .nonRepeating, isActive: true)
+                artwork.symbolEffect(.drawOn, options: .nonRepeating, isActive: !appeared)
             } else {
-                // Inactive drawOn represents the drawn-off state, not a static icon.
+                // Reduced motion and paused scenes use the unmodified static glyph.
                 artwork
             }
         }
             .animation(reduced || paused ? nil : .smooth(duration: 0.2), value: systemName)
             .transaction { if reduced || paused { $0.animation = nil } }
+            .onAppear { appeared = true }
+            .onDisappear { appeared = false }
             .accessibilityHidden(true)
     }
 

@@ -11,6 +11,43 @@ final class NativeIconMotionCaptureTests: XCTestCase {
     @MainActor func testLightUnifiedSearchJourney() throws { try searchJourney(appearance: "light") }
     @MainActor func testDarkUnifiedSearchJourney() throws { try searchJourney(appearance: "dark") }
 
+    @MainActor func testMicrophoneInk() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["ZOEN_PARITY_FIXTURE"] = "native-parity-v1"
+        app.launchEnvironment["ZOEN_PARITY_REVISION"] = ProcessInfo.processInfo.environment["ZOEN_PARITY_REVISION"]
+        app.launchArguments = ["-RodaFreshStart", "YES", "-RodaResetDemo", "YES", "-RodaDemo", "YES", "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-RodaAppearance", "light"]
+        app.launch()
+        XCTAssertTrue(app.buttons["home-notifications-card"].waitForExistence(timeout: 40))
+        XCTAssertNotNil(UIImage(systemName: "mic"))
+        XCTAssertNotNil(UIImage(systemName: "magnifyingglass"))
+        let button = app.buttons["Record voice message"].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 10))
+        let shot = app.screenshot()
+        attach(shot, name: "microphone-ink")
+        let image = try XCTUnwrap(UIImage(data: shot.pngRepresentation)?.cgImage)
+        let scale = CGFloat(image.width) / app.frame.width
+        // Sample only the inner 24pt; the glass border cannot satisfy the check.
+        func ink(in frame: CGRect, white: Bool) throws -> Int {
+            let rect = CGRect(x: (frame.midX - 12) * scale, y: (frame.midY - 12) * scale, width: 24 * scale, height: 24 * scale)
+            let crop = try XCTUnwrap(image.cropping(to: rect))
+            var pixels = [UInt8](repeating: 0, count: crop.width * crop.height * 4)
+            let context = try XCTUnwrap(CGContext(data: &pixels, width: crop.width, height: crop.height, bitsPerComponent: 8, bytesPerRow: crop.width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(crop, in: CGRect(x: 0, y: 0, width: crop.width, height: crop.height))
+            return stride(from: 0, to: pixels.count, by: 4).filter {
+                white ? pixels[$0] > 220 && pixels[$0 + 1] > 220 && pixels[$0 + 2] > 220
+                      : pixels[$0] < 160 && pixels[$0 + 1] < 160 && pixels[$0 + 2] < 160
+            }.count
+        }
+        let white = try ink(in: button.frame, white: true)
+        let search = app.buttons["Search"].firstMatch
+        XCTAssertTrue(search.exists)
+        let searchInk = try ink(in: search.frame, white: false)
+        try attachJSON(["white_ink_pixels": white, "search_ink_pixels": searchInk,
+                        "button": NSCoder.string(for: button.frame), "search": NSCoder.string(for: search.frame)], name: "microphone-ink-count")
+        XCTAssertGreaterThan(white, 10, "Inner microphone glyph must have white ink, excluding the glass edge")
+        XCTAssertGreaterThan(searchInk, 10, "Inner Search glyph must have contrasting ink")
+    }
+
     @MainActor func testCanonicalRootDestinations() throws {
         let env = ProcessInfo.processInfo.environment
         continueAfterFailure = false

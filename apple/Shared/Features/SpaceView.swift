@@ -1210,14 +1210,12 @@ struct Composer: View {
 
     private var trailing: some View {
         actionSurface
-            .overlay {
-                // One SF Image identity survives mic/send changes. The surfaces below
-                // retain their distinct button and hold/drag interaction semantics.
-                NativeIconMotion(systemName: actionSymbol, size: 21, active: busy)
-                    .foregroundStyle(recorder.phase == .recording ? AnyShapeStyle(Color.white) : AnyShapeStyle(ActionGlassForeground()))
-                    .opacity(!micMode && recorder.phase == .idle && empty ? 0.55 : 1)
-                    .allowsHitTesting(false)
-            }
+    }
+
+    private var actionGlyph: some View {
+        NativeIconMotion(systemName: actionSymbol, size: 21, active: busy)
+            .foregroundStyle(recorder.phase == .recording ? AnyShapeStyle(Color.white) : AnyShapeStyle(ActionGlassForeground()))
+            .allowsHitTesting(false)
     }
 
     private var actionSymbol: String {
@@ -1229,7 +1227,7 @@ struct Composer: View {
     @ViewBuilder private var actionSurface: some View {
         if recorder.phase == .locked {
             Button(action: finishRecording) {
-                Color.clear.frame(width: Composer.height, height: Composer.height)
+                actionGlyph.frame(width: Composer.height, height: Composer.height)
             }
             .buttonStyle(IconPressStyle())
             .foregroundStyle(ActionGlassForeground())
@@ -1240,7 +1238,7 @@ struct Composer: View {
             mic
         } else {
             Button(action: send) {
-                Color.clear.frame(width: Composer.height, height: Composer.height)
+                actionGlyph.frame(width: Composer.height, height: Composer.height)
             }
             .buttonStyle(IconPressStyle())
             .foregroundStyle(ActionGlassForeground())
@@ -1257,7 +1255,7 @@ struct Composer: View {
     /// Hold to record · slide left to cancel · slide up to lock · release to send.
     private var mic: some View {
         let recording = recorder.phase == .recording
-        return Color.clear
+        return actionGlyph
             .foregroundStyle(recording ? AnyShapeStyle(Color.white) : AnyShapeStyle(ActionGlassForeground()))
             .frame(width: Composer.height, height: Composer.height)
             // While recording it's a solid red disc outside the glass (so it doesn't melt
