@@ -3,13 +3,9 @@ use super::*;
 
 impl<S: Signer> Client<S> {
     pub(super) fn thread_root(&self, space: &str, root: &str) -> String {
-        self.logs
-            .get(space)
-            .and_then(|l| {
-                l.events()
-                    .iter()
-                    .find(|e| e.hash == root || e.client_id == root)
-            })
+        // Resolve hashes before client aliases so an untrusted client id cannot
+        // shadow an ordered event, then retain the native-compatible alias.
+        self.resolve_post(space, root)
             .map(|e| {
                 if e.client_id.is_empty() {
                     e.hash.clone()
@@ -149,23 +145,23 @@ impl<S: Signer> Client<S> {
     }
 
     pub(super) fn fill_threads(&self, space: &str, messages: &mut [MessageView]) {
-        let aliases: BTreeMap<&str, &str> = self
-            .logs
-            .get(space)
-            .into_iter()
-            .flat_map(|log| log.events())
-            .flat_map(|e| {
-                let canonical = if e.client_id.is_empty() {
-                    e.hash.as_str()
+        let mut aliases: BTreeMap<&str, &str> = BTreeMap::new();
+        if let Some(log) = self.logs.get(space) {
+            for event in log.events() {
+                let canonical = if event.client_id.is_empty() {
+                    event.hash.as_str()
                 } else {
-                    e.client_id.as_str()
+                    event.client_id.as_str()
                 };
-                [
-                    (e.hash.as_str(), canonical),
-                    (e.client_id.as_str(), canonical),
-                ]
-            })
-            .collect();
+                aliases.insert(event.hash.as_str(), canonical);
+            }
+            for event in log.events() {
+                if !event.client_id.is_empty() {
+                    let canonical = aliases[event.hash.as_str()];
+                    aliases.entry(event.client_id.as_str()).or_insert(canonical);
+                }
+            }
+        }
         let canonical = |id: &str| aliases.get(id).copied().unwrap_or(id).to_string();
         let mut by_root: BTreeMap<String, Vec<&MessageView>> = BTreeMap::new();
         for message in messages.iter() {

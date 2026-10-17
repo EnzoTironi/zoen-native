@@ -31,6 +31,13 @@ function parseOperation(input: unknown): CoreOperation {
       return { kind: 'set_thread_follow', space: string(value.space), root: string(value.root), follow: value.follow, now: integer(value.now) };
     }
     case 'mark_thread_read': return { kind: 'mark_thread_read', space: string(value.space), root: string(value.root), now: integer(value.now) };
+    case 'queue_file': return { kind: 'queue_file', space: string(value.space), doc: string(value.doc), now: integer(value.now) };
+    case 'queue_failed_file': return { kind: 'queue_failed_file', space: string(value.space), doc: string(value.doc), now: integer(value.now), reason: string(value.reason), chunks: string(value.chunks) };
+    case 'local_chunk': return { kind: 'local_chunk', blob: string(value.blob) };
+    case 'fail_outbox': return { kind: 'fail_outbox', client_id: string(value.client_id), reason: string(value.reason) };
+    case 'seal_file': return { kind: 'seal_file', name: string(value.name), mime: string(value.mime), bytes: bytes(value.bytes), thumb: bytes(value.thumb) };
+    case 'open_chunk': return { kind: 'open_chunk', chunk: string(value.chunk), sealed: bytes(value.sealed) };
+    case 'blob_put_message': return { kind: 'blob_put_message', sha: string(value.sha), ts: integer(value.ts), relay: string(value.relay) };
     case 'queue_join': return { kind: 'queue_join', space: string(value.space), role: string(value.role), code: string(value.code), now: integer(value.now) };
     default: throw new Error('Invalid browser core operation.');
   }
@@ -66,6 +73,13 @@ function run(operation: CoreOperation): string | Uint8Array {
     case 'mark_read': return restored().mark_read(operation.space);
     case 'set_thread_follow': return restored().set_thread_follow(operation.space, operation.root, operation.follow ?? undefined, operation.now);
     case 'mark_thread_read': return restored().mark_thread_read(operation.space, operation.root, operation.now);
+    case 'queue_failed_file': return restored().queue_failed_file(operation.space, operation.doc, operation.now, operation.reason, operation.chunks);
+    case 'local_chunk': return restored().local_chunk(operation.blob);
+    case 'fail_outbox': return restored().fail_outbox(operation.client_id, operation.reason);
+    case 'queue_file': return restored().queue_file(operation.space, operation.doc, operation.now);
+    case 'seal_file': return core.seal_file(operation.name, operation.mime, operation.bytes, operation.thumb);
+    case 'open_chunk': return core.open_chunk(operation.chunk, operation.sealed);
+    case 'blob_put_message': return core.blob_put_message(operation.sha, operation.ts, operation.relay);
     case 'queue_join': return restored().queue_join(operation.space, operation.role, operation.code, operation.now);
     default: { const exhaustive: never = operation; throw new Error(`Unknown operation ${exhaustive}`); }
   }

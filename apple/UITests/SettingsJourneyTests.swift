@@ -59,14 +59,26 @@ final class SettingsJourneyTests: XCTestCase {
     }
 
     @MainActor
-    func testBackupWithoutCopyCannotRestore() throws {
+    func testRecoveryRequiresTheSavedKeyAndDoesNotOfferPassword() throws {
         continueAfterFailure = false
         let app = launch(["-RodaSettings", "backup"])
-        let restore = app.descendants(matching: .any)["backupRestore"]
-        XCTAssertTrue(restore.waitForExistence(timeout: 15), "Cópia e recuperação opens")
-        XCTAssertTrue(app.staticTexts["Ainda não disponível neste aparelho"].exists, "restore says it isn't available yet")
-        restore.tap()
-        XCTAssertFalse(app.secureTextFields["backupPassword"].waitForExistence(timeout: 1), "tapping restore does nothing")
+        let setup = app.buttons["backupTurnOn"]
+        XCTAssertTrue(setup.waitForExistence(timeout: 15), "key setup is reachable")
+        XCTAssertFalse(app.descendants(matching: .any)["backupRestore"].exists, "no unavailable restore placeholder")
+        setup.tap()
+        XCTAssertTrue(app.staticTexts["recoveryKey"].waitForExistence(timeout: 5))
+        app.buttons["Já guardei a chave"].tap()
+        let confirmation = app.secureTextFields["recoveryConfirmation"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        confirmation.tap()
+        // Synthetic incorrect input only: never read/type/log the generated secret.
+        confirmation.typeText(String(repeating: "1", count: 63))
+        XCTAssertFalse(app.buttons["recoveryActivate"].isEnabled, "malformed key cannot activate")
+        confirmation.typeText("1")
+        XCTAssertFalse(app.buttons["recoveryActivate"].isEnabled, "a different key cannot activate")
+        XCTAssertFalse(app.secureTextFields["backupPassword"].exists)
+        app.buttons["Fechar"].tap()
+        XCTAssertTrue(setup.waitForExistence(timeout: 5), "cancel before activation leaves setup available")
     }
 
     @MainActor

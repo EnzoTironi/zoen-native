@@ -387,6 +387,47 @@ fn many_threads_project_hash_and_client_aliases_without_cross_counting() {
 }
 
 #[test]
+fn hash_references_beat_later_client_aliases_in_thread_projection() {
+    let (mut client, _, other, root_id, root_hash) = fixture();
+    let shadow = {
+        let log = client.logs.get_mut("chat").unwrap();
+        let event = other.sign_event(
+            "chat",
+            &root_hash,
+            101,
+            log.head(),
+            EventBody::MessagePosted {
+                message: "shadow".into(),
+                text: "A different post".into(),
+                attaches: None,
+                reply: None,
+                forwarded: false,
+            },
+        );
+        log.sequence(event).clone()
+    };
+    reply(&mut client, &other, &root_hash, false);
+
+    assert_eq!(client.thread_root("chat", &root_hash), root_id);
+    let view = client.conversations().remove(0);
+    let root = view
+        .messages
+        .iter()
+        .find(|message| message.entry.as_deref() == Some(root_hash.as_str()))
+        .unwrap();
+    let shadow = view
+        .messages
+        .iter()
+        .find(|message| message.entry.as_deref() == Some(shadow.hash.as_str()))
+        .unwrap();
+    assert_eq!(root.replies, 1);
+    assert_eq!(shadow.replies, 0);
+    assert!(view.messages.iter().any(|message| {
+        message.text == "reply" && message.thread.as_deref() == Some(root_hash.as_str())
+    }));
+}
+
+#[test]
 fn thread_mentions_only_count_unseen_incoming_whole_handles() {
     let (mut client, me, other, root, _) = fixture();
     let old = append(

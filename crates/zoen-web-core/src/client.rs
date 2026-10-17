@@ -57,6 +57,8 @@ struct SavedClient {
     logs: BTreeMap<String, Vec<Event>>,
     outbox: BTreeMap<String, PendingEnvelope>,
     profiles: BTreeMap<String, Identity>,
+    #[serde(default)]
+    local_chunks: BTreeMap<String, Vec<u8>>,
     packages: Option<Packages>,
     packages_published: bool,
     joining: BTreeSet<String>,
@@ -118,6 +120,8 @@ pub struct MessageView {
     replies: usize,
     repliers: Vec<String>,
     last_reply_ms: Option<i64>,
+    /// A shared file, photo, video or voice note (the chunks to fetch and open).
+    file: Option<roda_types::FileDoc>,
 }
 
 #[derive(Default)]
@@ -427,8 +431,9 @@ impl<S: Signer> Client<S> {
                     Some(root) if thread && root.thread => root.to,
                     _ => to,
                 };
+                let to = self.thread_root(space, &to);
                 Some(roda_types::ReplyRef {
-                    to: self.thread_root(space, &to),
+                    to,
                     thread,
                     also_in_chat: thread && also_in_chat,
                 })
@@ -457,7 +462,139 @@ impl<S: Signer> Client<S> {
         self.update(Vec::new())
     }
 
+    /// A file, photo, video or voice note whose chunks the host already uploaded.
+    pub fn queue_file(
+        &mut self,
+        space: &str,
+        doc: roda_types::FileDoc,
+        now_ms: i64,
+    ) -> Result<Update, String> {
+        self.queue_file_inner(space, doc, now_ms, None)
+    }
+
+    /// Persist failed media atomically without ever publishing its incomplete manifest.
+    pub fn queue_failed_file(
+        &mut self,
+        space: &str,
+        doc: roda_types::FileDoc,
+        now_ms: i64,
+        reason: String,
+        chunks: BTreeMap<String, Vec<u8>>,
+    ) -> Result<Update, String> {
+        for chunk in &doc.chunks {
+            let sealed = chunks.get(&chunk.blob).ok_or("missing local chunk")?;
+            crate::media::open_chunk(chunk, sealed)?;
+        }
+        if doc.chunks.is_empty() {
+            return Err("file empty or too large".into());
+        }
+        // Failed media is local-only: retain it even while disconnected or before
+        // MLS catches up. It must never need encryption or become publishable.
+        let mut pending = self.clear_event(
+            space,
+            EventBody::ItemCreated {
+                item: roda_types::new_secret_id("it"),
+                kind: roda_types::ItemKind::File,
+                content: roda_types::ItemContent::File(doc),
+                origin: "Adicionado".into(),
+            },
+            now_ms,
+        )?;
+        let event = pending
+            .envelope()?
+            .plain_event()
+            .ok_or("invalid inner message")?;
+        pending.inner = Some(event.clone());
+        pending.failure = Some(reason);
+        self.saved.local_chunks.extend(chunks);
+        self.saved.outbox.insert(event.client_id.clone(), pending);
+        self.update(Vec::new())
+    }
+
+    pub fn local_chunk(&self, blob: &str) -> Vec<u8> {
+        self.saved
+            .local_chunks
+            .get(blob)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn queue_file_inner(
+        &mut self,
+        space: &str,
+        mut doc: roda_types::FileDoc,
+        now_ms: i64,
+        failure: Option<String>,
+    ) -> Result<Update, String> {
+        if doc.chunks.is_empty() {
+            return Err("file empty or too large".into());
+        }
+        if let Some(reply) = doc.voice.as_mut().and_then(|voice| voice.reply.as_mut()) {
+            let target = self
+                .resolve_post(space, &reply.to)
+                .ok_or("That message is no longer available.")?;
+            reply.to = target.client_id.clone();
+        }
+        let item = roda_types::new_secret_id("it");
+        let attachment = (!doc.is_voice()).then(|| format!("msg_attachment_{item}"));
+        let epoch = self.ready_epoch(space)?;
+        let inner = self.clear_event(
+            space,
+            EventBody::ItemCreated {
+                item: item.clone(),
+                kind: roda_types::ItemKind::File,
+                content: roda_types::ItemContent::File(doc),
+                origin: "Adicionado".into(),
+            },
+            now_ms,
+        )?;
+        let event = inner
+            .envelope()?
+            .plain_event()
+            .ok_or("invalid inner message")?;
+        let mut pending = self.seal_inner(&event, epoch)?;
+        pending.failure = failure;
+        let chat = if let Some(message) = attachment {
+            let inner = self.clear_event(
+                space,
+                EventBody::MessagePosted {
+                    message,
+                    text: String::new(),
+                    attaches: Some(item),
+                    reply: None,
+                    forwarded: false,
+                },
+                now_ms,
+            )?;
+            let event = inner
+                .envelope()?
+                .plain_event()
+                .ok_or("invalid inner message")?;
+            Some((event.client_id.clone(), self.seal_inner(&event, epoch)?))
+        } else {
+            None
+        };
+        self.saved.outbox.insert(event.client_id.clone(), pending);
+        if let Some((id, pending)) = chat {
+            self.saved.outbox.insert(id, pending);
+        }
+        self.update(Vec::new())
+    }
+
     /// Edit, delete for everyone, react or unreact. Same encrypted path as messages.
+    /// Keep a queued file/voice in the timeline as failed so the clip is not lost.
+    pub fn fail_outbox(
+        &mut self,
+        client_id: &str,
+        reason: impl Into<String>,
+    ) -> Result<Update, String> {
+        if let Some(pending) = self.saved.outbox.get_mut(client_id) {
+            pending.failure = Some(reason.into());
+            self.sent.remove(client_id);
+        }
+        self.update(Vec::new())
+    }
+
     pub fn queue_annotation(
         &mut self,
         space: &str,
@@ -465,16 +602,20 @@ impl<S: Signer> Client<S> {
         note: roda_types::Annotation,
         now_ms: i64,
     ) -> Result<Update, String> {
+        let target = self
+            .resolve_post(space, target)
+            .map(|event| event.hash.clone())
+            .ok_or("That message is no longer available.")?;
         let author = self
             .logs
             .get(space)
             .and_then(|log| log.events().iter().find(|e| e.hash == target))
-            .filter(|e| matches!(e.body, EventBody::MessagePosted { .. }))
+            .filter(|e| is_post(&e.body))
             .map(|e| e.author.clone())
             .ok_or("That message is no longer available.")?;
         if self.logs.get(space).is_some_and(|log| log.events().iter().any(|event| matches!(
             &event.body, EventBody::MessageAnnotated { target: to, note: roda_types::Annotation::Delete }
-                if to == target && event.author == author
+                if self.resolve_post(space, to).is_some_and(|post| post.hash == target) && event.author == author
         ))) {
             return Err("That message is no longer available.".into());
         }
@@ -493,7 +634,7 @@ impl<S: Signer> Client<S> {
                 event.author == author
                     && matches!(&event.body, EventBody::MessageAnnotated {
                         target: deleted, note: roda_types::Annotation::Delete,
-                    } if deleted == target)
+                    } if self.resolve_post(space, deleted).is_some_and(|post| post.hash == target))
             };
             let deleted = self
                 .logs
@@ -520,14 +661,8 @@ impl<S: Signer> Client<S> {
             }
         }
         let epoch = self.ready_epoch(space)?;
-        let inner = self.clear_event(
-            space,
-            EventBody::MessageAnnotated {
-                target: target.into(),
-                note,
-            },
-            now_ms,
-        )?;
+        let inner =
+            self.clear_event(space, EventBody::MessageAnnotated { target, note }, now_ms)?;
         let event = inner
             .envelope()?
             .plain_event()
@@ -603,17 +738,26 @@ impl<S: Signer> Client<S> {
         frames
     }
 
+    // Hashes are authoritative. An untrusted client id must never shadow one.
+    fn resolve_post(&self, space: &str, reference: &str) -> Option<&Event> {
+        let events = self.logs.get(space)?.events();
+        events
+            .iter()
+            .find(|e| e.hash == reference)
+            .or_else(|| events.iter().find(|e| e.client_id == reference))
+            .filter(|e| is_post(&e.body))
+    }
+
     /// The reply link of the message with this entry id in `space`, if it is a message.
     fn posted(&self, space: &str, entry: &str) -> Option<Option<roda_types::ReplyRef>> {
-        self.logs
-            .get(space)?
-            .events()
-            .iter()
-            .find(|e| e.hash == entry || e.client_id == entry)
-            .and_then(|e| match &e.body {
-                EventBody::MessagePosted { reply, .. } => Some(reply.clone()),
-                _ => None,
-            })
+        self.resolve_post(space, entry).and_then(|e| match &e.body {
+            EventBody::MessagePosted { reply, .. } => Some(reply.clone()),
+            EventBody::ItemCreated {
+                content: roda_types::ItemContent::File(doc),
+                ..
+            } => Some(doc.voice.as_ref().and_then(|v| v.reply.clone())),
+            _ => None,
+        })
     }
 
     pub fn bootstrap(&mut self) -> Result<Update, String> {
@@ -1063,6 +1207,75 @@ impl<S: Signer> Client<S> {
         })
     }
 
+    // Shared ownership-checked manifest fold for cards and attachment posts.
+    fn folded_files<'a>(
+        &'a self,
+        space: &str,
+    ) -> BTreeMap<&'a str, (&'a str, Vec<&'a roda_types::FileDoc>)> {
+        let events = self
+            .logs
+            .get(space)
+            .into_iter()
+            .flat_map(|log| log.events().iter())
+            .chain(
+                self.saved
+                    .outbox
+                    .values()
+                    .filter_map(|pending| pending.inner.as_ref())
+                    .filter(|event| event.space == space),
+            );
+        let mut files: BTreeMap<&str, (&str, Vec<&roda_types::FileDoc>)> = BTreeMap::new();
+        for event in events {
+            match &event.body {
+                EventBody::ItemCreated {
+                    item,
+                    content: roda_types::ItemContent::File(doc),
+                    ..
+                } => {
+                    files
+                        .entry(item)
+                        .or_insert((event.author.as_str(), vec![doc]));
+                }
+                EventBody::ItemVersioned {
+                    item,
+                    content: roda_types::ItemContent::File(doc),
+                    ..
+                } => {
+                    if let Some((author, versions)) = files.get_mut(item.as_str()) {
+                        // Like native, any voice version keeps the original author's ownership.
+                        if *author == event.author
+                            || !versions
+                                .iter()
+                                .copied()
+                                .chain([doc])
+                                .any(roda_types::FileDoc::is_voice)
+                        {
+                            versions.push(doc);
+                        }
+                    }
+                }
+                EventBody::ItemReverted {
+                    item, to_version, ..
+                } => {
+                    if let Some((author, versions)) = files.get_mut(item.as_str()) {
+                        if *author != event.author && versions.iter().any(|doc| doc.is_voice()) {
+                            continue;
+                        }
+                        if let Some(doc) = to_version
+                            .checked_sub(1)
+                            .and_then(|v| versions.get(v as usize))
+                            .copied()
+                        {
+                            versions.push(doc);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        files
+    }
+
     pub fn conversations(&self) -> Vec<ConversationView> {
         self.logs.keys().filter_map(|space| {
             let (title, kind, _) = self.metadata(space)?;
@@ -1070,6 +1283,7 @@ impl<S: Signer> Client<S> {
             if kind == SpaceKind::Personal || !roster.contains_key(&self.account.identity) { return None; }
             let events = self.logs.get(space)?.events();
             let me = &self.account.identity;
+            let files = self.folded_files(space);
             // A direct chat is named after the other person, like every messenger.
             let title = match roster.keys().find(|m| *m != me) {
                 Some(other) if kind == SpaceKind::Direct => self.saved.profiles.get(other)
@@ -1078,14 +1292,17 @@ impl<S: Signer> Client<S> {
                 _ => title,
             };
             // Fold annotations over their targets. Readers enforce authorship.
-            let authors: BTreeMap<&str, &str> = events.iter().filter(|e| matches!(e.body, EventBody::MessagePosted { .. }))
-                .map(|e| (e.hash.as_str(), e.author.as_str())).collect();
+            let mut authors: BTreeMap<&str, (&str, &str)> = events.iter().filter(|e| is_post(&e.body))
+                .map(|e| (e.hash.as_str(), (e.author.as_str(), e.hash.as_str()))).collect();
+            for event in events.iter().filter(|e| is_post(&e.body)) {
+                authors.entry(event.client_id.as_str()).or_insert((event.author.as_str(), event.hash.as_str()));
+            }
             let mut folded: BTreeMap<String, Folded> = BTreeMap::new();
             for event in events {
                 let EventBody::MessageAnnotated { target, note } = &event.body else { continue };
-                let Some(author) = authors.get(target.as_str()) else { continue };
+                let Some((author, hash)) = authors.get(target.as_str()) else { continue };
                 if note.author_only() && *author != event.author { continue; }
-                let f = folded.entry(target.clone()).or_default();
+                let f = folded.entry((*hash).to_owned()).or_default();
                 match note {
                     roda_types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
                     roda_types::Annotation::Delete => { f.deleted = true; f.text = None; f.reactions.clear(); }
@@ -1105,12 +1322,18 @@ impl<S: Signer> Client<S> {
                 let mut view = self.message_view(event, "confirmed", None)?;
                 view.entry = Some(event.hash.clone());
                 view.seq = Some(event.seq);
+                if let EventBody::ItemCreated { item, .. } = &event.body {
+                    if let Some((_, versions)) = files.get(item.as_str()) {
+                        view.file = versions.last().map(|doc| (*doc).clone());
+                        view.edited = versions.len() > 1;
+                    }
+                }
                 if event.author == *me {
                     view.ticks = Some(if others.is_empty() || event.seq > all_delivered { "sent" } else if event.seq > all_read { "delivered" } else { "read" });
                 }
                 if let Some(f) = folded.get(&event.hash) {
                     view.deleted = f.deleted;
-                    if f.deleted { view.text.clear(); }
+                    if f.deleted { view.text.clear(); view.file = None; }
                     if let Some(text) = &f.text { view.text = text.clone(); view.edited = true; }
                     let mut groups: BTreeMap<&str, Vec<ReactionParticipant>> = BTreeMap::new();
                     for (who, emoji) in &f.reactions {
@@ -1133,6 +1356,16 @@ impl<S: Signer> Client<S> {
                 if inner.space != *space { return None; }
                 self.message_view(inner, if pending.failure.is_some() { "failed" } else { "sending" }, pending.failure.clone())
             }));
+            // Native references may use client ids. Normalize before folding replies,
+            // preserving real hash targets if an alias collides.
+            for message in &mut messages {
+                if let Some(quote) = &mut message.quote {
+                    if let Some((_, hash)) = authors.get(quote.id.as_str()) { quote.id = (*hash).into(); }
+                }
+                if let Some(thread) = &mut message.thread {
+                    if let Some((_, hash)) = authors.get(thread.as_str()) { *thread = (*hash).into(); }
+                }
+            }
             // Quotes and thread summaries resolve against the folded views.
             let by_entry: BTreeMap<String, (String, String, i64, String)> = messages.iter().filter_map(|m| m.entry.clone().map(|e| (e, (m.name.clone(), if m.deleted { String::new() } else { m.text.clone() }, m.at_ms, m.author.clone())))).collect();
             let mut threads: BTreeMap<String, (usize, Vec<String>, i64)> = BTreeMap::new();
@@ -1171,14 +1404,67 @@ impl<S: Signer> Client<S> {
         delivery: &'static str,
         failure: Option<String>,
     ) -> Option<MessageView> {
-        let EventBody::MessagePosted {
-            text,
-            reply,
-            forwarded,
-            ..
-        } = &event.body
-        else {
-            return None;
+        let (text, reply, forwarded, file) = match &event.body {
+            EventBody::MessagePosted {
+                text,
+                reply,
+                forwarded,
+                attaches,
+                message,
+            } => {
+                // Hide only an explicitly generated, context-free companion whose same-author
+                // file card is actually present. Other attachment posts are real
+                // timeline entries (including non-file items and forwards).
+                if text.is_empty()
+                    && reply.is_none()
+                    && !forwarded
+                    && attaches
+                        .as_ref()
+                        .is_some_and(|item| *message == format!("msg_attachment_{item}"))
+                {
+                    if let Some(item) = attaches {
+                        let is_file_card = |candidate: &Event| {
+                            candidate.space == event.space
+                                && candidate.author == event.author
+                                && matches!(&candidate.body, EventBody::ItemCreated {
+                                    item: id, content: roda_types::ItemContent::File(_), ..
+                                } if id == item)
+                        };
+                        let confirmed = self
+                            .logs
+                            .get(&event.space)
+                            .is_some_and(|log| log.events().iter().any(is_file_card));
+                        let pending = self
+                            .saved
+                            .outbox
+                            .values()
+                            .filter_map(|p| p.inner.as_ref())
+                            .any(is_file_card);
+                        if confirmed || pending {
+                            return None;
+                        }
+                    }
+                }
+                // Resolve only from this conversation's readable events, never the
+                // global media cache (which may contain another space's files).
+                let files = self.folded_files(&event.space);
+                let file = attaches
+                    .as_ref()
+                    .and_then(|item| files.get(item.as_str()))
+                    .and_then(|(_, versions)| versions.last())
+                    .map(|doc| (*doc).clone());
+                (text.clone(), reply.clone(), *forwarded, file)
+            }
+            EventBody::ItemCreated {
+                content: roda_types::ItemContent::File(doc),
+                ..
+            } => (
+                String::new(),
+                doc.voice.as_ref().and_then(|v| v.reply.clone()),
+                false,
+                Some(doc.clone()),
+            ),
+            _ => return None,
         };
         let name = if event.author == self.account.identity {
             self.account.name.clone()
@@ -1201,37 +1487,25 @@ impl<S: Signer> Client<S> {
             seq: None,
             author: event.author.clone(),
             name,
-            text: text.clone(),
+            text,
             at_ms: event.at_ms,
             delivery,
             failure,
             ticks: None,
             edited: false,
             deleted: false,
-            forwarded: *forwarded,
+            forwarded,
             reactions: Vec::new(),
             quote: reply.as_ref().filter(|r| !r.thread).map(|r| Quote {
                 id: self
-                    .logs
-                    .get(&event.space)
-                    .and_then(|l| {
-                        l.events()
-                            .iter()
-                            .find(|e| e.client_id == r.to || e.hash == r.to)
-                    })
+                    .resolve_post(&event.space, &r.to)
                     .map(|e| e.hash.clone())
                     .unwrap_or_else(|| r.to.clone()),
                 name: String::new(),
                 text: String::new(),
             }),
             thread: reply.as_ref().filter(|r| r.thread).map(|r| {
-                self.logs
-                    .get(&event.space)
-                    .and_then(|l| {
-                        l.events()
-                            .iter()
-                            .find(|e| e.client_id == r.to || e.hash == r.to)
-                    })
+                self.resolve_post(&event.space, &r.to)
                     .map(|e| e.hash.clone())
                     .unwrap_or_else(|| r.to.clone())
             }),
@@ -1242,8 +1516,20 @@ impl<S: Signer> Client<S> {
             replies: 0,
             repliers: Vec::new(),
             last_reply_ms: None,
+            file,
         })
     }
+}
+
+fn is_post(body: &EventBody) -> bool {
+    matches!(
+        body,
+        EventBody::MessagePosted { .. }
+            | EventBody::ItemCreated {
+                content: roda_types::ItemContent::File(_),
+                ..
+            }
+    )
 }
 
 fn inner_event(sequenced: &Sequenced, plaintext: &[u8], from: &Leaf) -> Option<Event> {
