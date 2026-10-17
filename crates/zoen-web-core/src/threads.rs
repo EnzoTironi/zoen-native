@@ -33,52 +33,39 @@ impl<S: Signer> Client<S> {
         space: &str,
         canonical: &impl Fn(&str) -> String,
     ) -> BTreeMap<String, (Option<bool>, u64)> {
+        let personal = |id: &str| {
+            matches!(self.metadata(id), Some((_, SpaceKind::Personal, _)))
+                && self.roster(id).contains_key(&self.account.identity)
+        };
+        let mut events: Vec<&Event> = self
+            .logs
+            .iter()
+            .filter(|(id, _)| personal(id))
+            .flat_map(|(_, log)| log.events())
+            .chain(
+                self.saved
+                    .outbox
+                    .values()
+                    .filter(|pending| pending.failure.is_none())
+                    .filter_map(|pending| pending.inner.as_ref())
+                    .filter(|event| personal(&event.space)),
+            )
+            .filter(|event| event.author == self.account.identity)
+            .collect();
+        // Personal logs have independent sequence numbers. Match native's total
+        // LWW order for follow, while reads only ever move forward.
+        events.sort_by(|a, b| (a.at_ms, a.seq, &a.client_id).cmp(&(b.at_ms, b.seq, &b.client_id)));
         let mut states = BTreeMap::new();
-        for (id, log) in &self.logs {
-            if !matches!(self.metadata(id), Some((_, SpaceKind::Personal, _)))
-                || !self.roster(id).contains_key(&self.account.identity)
-            {
-                continue;
-            }
-            for event in log.events() {
-                if event.author != self.account.identity {
-                    continue;
-                }
-                if let EventBody::ThreadStateSet {
-                    space: s,
-                    root: r,
-                    follow,
-                    read_up_to,
-                } = &event.body
-                {
-                    if s == space {
-                        let state = states.entry(canonical(r)).or_insert((None, 0u64));
-                        *state = (*follow, state.1.max(*read_up_to));
-                    }
-                }
-            }
-        }
-        for pending in self.saved.outbox.values() {
-            let Some(event) = &pending.inner else {
-                continue;
-            };
-            if pending.failure.is_some()
-                || !matches!(
-                    self.metadata(&event.space),
-                    Some((_, SpaceKind::Personal, _))
-                )
-            {
-                continue;
-            }
+        for event in events {
             if let EventBody::ThreadStateSet {
                 space: s,
-                root: r,
+                root,
                 follow,
                 read_up_to,
             } = &event.body
             {
                 if s == space {
-                    let state = states.entry(canonical(r)).or_insert((None, 0u64));
+                    let state = states.entry(canonical(root)).or_insert((None, 0u64));
                     *state = (*follow, state.1.max(*read_up_to));
                 }
             }
@@ -111,8 +98,9 @@ impl<S: Signer> Client<S> {
         if let Some(error) = self.saved.integrity_errors.get(&personal) {
             return Err(error.clone());
         }
-        // Personal Space uses signed clear events on native, not an MLS group.
-        let mut pending = self.clear_event(
+        // Preferences follow the same encrypted Personal contract as native.
+        let epoch = self.ready_epoch(&personal)?;
+        let pending = self.clear_event(
             &personal,
             EventBody::ThreadStateSet {
                 space: space.into(),
@@ -127,7 +115,7 @@ impl<S: Signer> Client<S> {
             .envelope()?
             .plain_event()
             .ok_or("invalid thread state")?;
-        pending.inner = Some(inner.clone());
+        let pending = self.seal_inner(&inner, epoch)?;
         self.saved.outbox.insert(inner.client_id.clone(), pending);
         self.update(Vec::new())
     }

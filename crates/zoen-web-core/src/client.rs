@@ -978,7 +978,7 @@ impl<S: Signer> Client<S> {
             .outbox
             .iter()
             .filter_map(|(id, pending)| {
-                // Clear Personal Space state must never be upgraded into MLS traffic.
+                // Only encrypted application events are resealed after an epoch change.
                 pending.epoch?;
                 let event = pending.inner.as_ref()?;
                 let epoch = self.ready_epoch(&event.space).ok()?;
@@ -1016,6 +1016,15 @@ impl<S: Signer> Client<S> {
             .iter()
             .filter(|(_, pending)| pending.failure.is_none())
         {
+            // Older snapshots could contain clear Personal preferences. Never
+            // replay those bytes to the relay, even without an inner projection.
+            if pending
+                .envelope()?
+                .plain_event()
+                .is_some_and(|event| matches!(event.body, EventBody::ThreadStateSet { .. }))
+            {
+                continue;
+            }
             if self.sent.contains(id) {
                 continue;
             }

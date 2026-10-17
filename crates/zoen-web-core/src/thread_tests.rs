@@ -164,36 +164,20 @@ fn synced_follow_read_and_also_in_chat_project_native_roots() {
 }
 
 #[test]
-fn browser_thread_state_matches_native_personal_replication_and_read_is_idempotent() {
+fn personal_preferences_fail_closed_without_encryption_keys() {
     let (mut client, _, other, root, hash) = fixture();
-    let last = reply(&mut client, &other, &root, false);
-    // Native Personal Space has no MLS group. Catch-up failures must remain retryable.
+    reply(&mut client, &other, &root, false);
+    // Without the Personal MLS group, fail closed rather than publish preferences.
     client.synced = false;
     assert!(client.mark_thread_read("chat", &hash, 199).is_err());
     assert_eq!(client.conversations()[0].threads_unread, 1);
     client.synced = true;
-    client
+    assert!(client
         .set_thread_follow("chat", &hash, Some(true), 200)
-        .unwrap();
-    client.mark_thread_read("chat", &hash, 201).unwrap();
-    let count = client.saved.outbox.len();
-    assert_eq!(client.conversations()[0].threads_unread, 0);
-    let update = client.mark_thread_read("chat", &hash, 202).unwrap();
-    assert_eq!(client.saved.outbox.len(), count);
-    let pending = client.saved.outbox.values().find(|p| matches!(&p.inner.as_ref().unwrap().body, EventBody::ThreadStateSet { read_up_to, .. } if *read_up_to == last)).unwrap();
-    assert_eq!(pending.envelope().unwrap().space(), "personal");
-    assert!(pending.envelope().unwrap().plain_event().is_some());
-    assert_eq!(pending.epoch, None);
-    assert!(
-        matches!(&pending.inner.as_ref().unwrap().body, EventBody::ThreadStateSet { root: r, follow: Some(true), .. } if r == &root)
-    );
-    let restored = Client::new(
-        client.account.clone(),
-        client.signer.clone(),
-        &update.snapshot,
-    )
-    .unwrap();
-    assert_eq!(restored.conversations()[0].threads_unread, 0);
+        .is_err());
+    assert!(client.mark_thread_read("chat", &hash, 201).is_err());
+    assert!(client.saved.outbox.is_empty());
+    assert_eq!(client.conversations()[0].threads_unread, 1);
 }
 
 fn deliver(client: &mut Client<HostSigner>, log: &mut SpaceLog, env: Envelope) {
@@ -224,7 +208,7 @@ fn deliver(client: &mut Client<HostSigner>, log: &mut SpaceLog, env: Envelope) {
 }
 
 #[test]
-fn personal_thread_state_stays_clear_even_with_a_legacy_mls_group() {
+fn personal_thread_state_is_encrypted_and_native_can_receive_it() {
     let (mut client, _, other, root, hash) = fixture();
     let last = reply(&mut client, &other, &root, false);
     let package = client
@@ -284,19 +268,42 @@ fn personal_thread_state_stays_clear_even_with_a_legacy_mls_group() {
         .receive(&ServerFrame::SyncDone.encode(), 301)
         .unwrap();
     let update = client.mark_thread_read("chat", &hash, 302).unwrap();
+    let count = client.saved.outbox.len();
+    client.mark_thread_read("chat", &hash, 302).unwrap();
+    assert_eq!(client.saved.outbox.len(), count);
+    let restored = Client::new(
+        client.account.clone(),
+        client.signer.clone(),
+        &update.snapshot,
+    )
+    .unwrap();
+    assert_eq!(restored.conversations()[0].threads_unread, 0);
     let env = update
         .frames
         .into_iter()
         .find_map(|f| match ClientFrame::decode(&f).unwrap() {
-            ClientFrame::Publish { env }
-                if env.space() == "personal" && env.plain_event().is_some() =>
-            {
+            ClientFrame::Publish { env } if env.space() == "personal" && env.is_sealed() => {
                 Some(env)
             }
             _ => None,
         })
         .unwrap();
-    let event = env.plain_event().unwrap();
+    assert!(env.plain_event().is_none());
+    assert!(!String::from_utf8_lossy(env.content()).contains("ThreadStateSet"));
+    let (_, ciphertext) = env.sealed_data().unwrap();
+    let Opened::Application { plaintext, from } = native
+        .open("personal", ciphertext, &roster, native.leaf())
+        .unwrap()
+    else {
+        panic!("expected application")
+    };
+    let sequenced = Sequenced {
+        seq: log.events().len() as u64 + 1,
+        prev: log.head().unwrap().hash,
+        hash: String::new(),
+        env: env.clone(),
+    };
+    let event = inner_event(&sequenced, &plaintext, &from).unwrap();
     roda_log::verify_author(&event).unwrap();
     assert!(
         matches!(&event.body, EventBody::ThreadStateSet { root: r, read_up_to, follow: None, .. } if r == &root && *read_up_to == last)
@@ -458,4 +465,67 @@ fn mentions_require_a_whole_handle() {
     assert!(mentions("Hi @Fixture!", "fixture"));
     assert!(!mentions("@fixture2", "fixture"));
     assert!(!mentions("mail@fixture.com", "fixture"));
+}
+
+#[test]
+fn personal_follow_uses_timestamp_not_log_order_and_read_never_regresses() {
+    for newer_id in ["aaa", "zzz"] {
+        let (mut client, me, _, root, _) = fixture();
+        let genesis = client.logs["personal"].events()[0].body.clone();
+        for (id, at, follow, read) in [
+            ("personal", 200, Some(true), 9),
+            (newer_id, 300, Some(false), 2),
+        ] {
+            let mut log = SpaceLog::new(id);
+            append(&mut log, &me, genesis.clone());
+            let event = me.sign_event(
+                id,
+                &roda_types::new_ulid(at),
+                at,
+                log.head(),
+                EventBody::ThreadStateSet {
+                    space: "chat".into(),
+                    root: root.clone(),
+                    follow,
+                    read_up_to: read,
+                },
+            );
+            log.sequence(event);
+            client.logs.insert(id.into(), log);
+        }
+        assert_eq!(
+            client.thread_state("chat", &root),
+            (Some(false), 9),
+            "newer log {newer_id}"
+        );
+    }
+}
+
+#[test]
+fn legacy_snapshot_never_republishes_plaintext_preferences() {
+    let (mut client, _, _, root, _) = fixture();
+    let pending = client
+        .clear_event(
+            "personal",
+            EventBody::ThreadStateSet {
+                space: "chat".into(),
+                root,
+                follow: Some(false),
+                read_up_to: 4,
+            },
+            400,
+        )
+        .unwrap();
+    let id = pending.envelope().unwrap().client_id().to_string();
+    client.saved.outbox.insert(id, pending);
+    let update = client.update(Vec::new()).unwrap();
+    assert!(!update.frames.iter().any(|frame| matches!(ClientFrame::decode(frame).unwrap(), ClientFrame::Publish { env } if env.plain_event().is_some_and(|event| matches!(event.body, EventBody::ThreadStateSet { .. })))));
+    let mut restored = Client::new(
+        client.account.clone(),
+        client.signer.clone(),
+        &update.snapshot,
+    )
+    .unwrap();
+    let update = restored.update(Vec::new()).unwrap();
+    assert!(!update.frames.iter().any(|frame| matches!(ClientFrame::decode(frame).unwrap(), ClientFrame::Publish { env } if env.plain_event().is_some_and(|event| matches!(event.body, EventBody::ThreadStateSet { .. })))));
 }
