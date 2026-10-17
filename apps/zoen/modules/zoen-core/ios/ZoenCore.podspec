@@ -12,6 +12,7 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
+  s.dependency 'GoogleSignIn', '~> 10.0'
   s.vendored_frameworks = 'generated/RodaFFI.xcframework'
 
   # Swift/Objective-C compatibility

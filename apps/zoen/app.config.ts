@@ -25,6 +25,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins,
     extra: {
       ...config.extra,
+      zoenRelayUrl: process.env.EXPO_PUBLIC_ZOEN_RELAY_URL?.trim() || providers.relayUrl,
       zoenAuth: {
         googleIosClientId,
         googleWebClientId,

@@ -1,4 +1,13 @@
 declare module '*/core/zoen_web_core.js' {
+  export class BrowserPrimary {
+    constructor(device:string,relay:string,name:string);
+    static restore(seed:Uint8Array,account:string,device:string):BrowserPrimary;
+    account():string;
+    authority_bytes():Uint8Array;
+    bind_message(proof:string):Uint8Array;
+    finish_bind(proof:string,signature:Uint8Array):string;
+    free():void;
+  }
   export default function init(options: { module_or_path: Promise<Response> }): Promise<unknown>;
   export function create_link(device: string, relay: string): string;
   export function complete_link(pending: string, sealed: Uint8Array): string;
@@ -27,6 +36,8 @@ declare module '*/core/zoen_web_core.js' {
     document_request(request: string, now: number): string;
     agent_request(request: string, now: number): string;
     profile_request(request: string, now: number): string;
+    handle_profile(handle:string):string;
+    handle_confirmed(profile:string,expected:string):string;
     history_start(now:number):string;
     history_manifest(sealed:Uint8Array, now:number):string;
     history_chunk(index:number, sealed:Uint8Array, now:number):string;

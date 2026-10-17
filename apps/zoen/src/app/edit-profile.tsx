@@ -9,6 +9,7 @@ export default function EditProfile() {
   const { snapshot, store } = useClient();
   const { colors } = useTheme();
   const [name, setName] = useState(snapshot?.me?.name ?? '');
+  const [handle, setHandle] = useState(snapshot?.account?.handle ?? '');
   const [bio, setBio] = useState(snapshot?.me?.bio ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,13 +20,22 @@ export default function EditProfile() {
       contentContainerStyle={{ padding: 26, gap: 24 }}
     >
       <Stack.Screen options={{ title: 'Seu perfil' }} />
-      <Field label="Nome" value={name} onChangeText={setName} autoComplete="name" maxLength={100} />
+      <Field label="Nome" value={name} onChangeText={setName} autoComplete="name" maxLength={64} />
+      <Field
+        label="Seu @"
+        value={handle}
+        onChangeText={setHandle}
+        autoCapitalize="none"
+        autoCorrect={false}
+        maxLength={24}
+        editable={!busy}
+      />
       <Field
         label="Sobre você"
         value={bio}
         onChangeText={setBio}
         multiline
-        maxLength={1000}
+        maxLength={280}
         style={{ minHeight: 120, textAlignVertical: 'top' }}
       />
       <Text style={{ color: colors.secondary, lineHeight: 22 }}>
@@ -38,12 +48,18 @@ export default function EditProfile() {
       ) : null}
       <NativeButton
         label={busy ? 'Salvando…' : 'Salvar'}
-        disabled={busy || !name.trim()}
+        disabled={
+          busy || !name.trim() || !/^[a-z][a-z0-9._]{2,23}$/.test(handle.trim().toLowerCase())
+        }
         onPress={() => {
           setBusy(true);
           setError(null);
-          void store
-            .request({ op: 'update_profile', name: name.trim(), bio })
+          void (async () => {
+            const normalized = handle.trim().toLowerCase();
+            if (normalized !== store.getSnapshot().snapshot?.account?.handle)
+              await store.request({ op: 'update_handle', handle: normalized });
+            await store.request({ op: 'update_profile', name: name.trim(), bio: bio.trim() });
+          })()
             .then(() => router.back())
             .catch((failure: unknown) =>
               setError(

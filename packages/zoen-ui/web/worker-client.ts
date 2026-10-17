@@ -4,6 +4,10 @@ import type { BrowserVault } from './vault.ts';
 export type CoreOperation =
   | { kind: 'create_link'; device: string; relay: string }
   | { kind: 'complete_link'; pending: string; sealed: Uint8Array }
+  | {kind:'primary_prepare';device:string;relay:string;name:string}
+  | {kind:'primary_restore';device:string;account:string;authority:string}
+  | {kind:'primary_bind_message';proof:string}
+  | {kind:'primary_finish_bind';proof:string;signature:Uint8Array}
   | { kind: 'hello'; identity: string; device: string; cert: string }
   | { kind: 'auth_message'; nonce: string; relay: string }
   | { kind: 'device_cert_message'; device: string }
@@ -29,6 +33,8 @@ export type CoreOperation =
   | { kind: 'document_request'; request: string; now: number }
   | { kind: 'agent_request'; request: string; now: number }
   | { kind: 'profile_request'; request: string; now: number }
+  | {kind:'handle_profile';handle:string}
+  | {kind:'handle_confirmed';profile:string;expected:string}
   | {kind:'history_start'|'history_finish'|'history_cleaned';now:number}
   | {kind:'history_manifest';sealed:Uint8Array;now:number}
   | {kind:'history_chunk';index:number;sealed:Uint8Array;now:number}
@@ -43,7 +49,7 @@ type Awaiting = { resolve: (result: string | Uint8Array) => void; reject: (error
 
 export class CoreWorker {
   private readonly worker: Worker;
-  private readonly bridge = new SharedArrayBuffer(128);
+  private readonly bridge = typeof SharedArrayBuffer === 'undefined'||globalThis.crossOriginIsolated===false ? null : new SharedArrayBuffer(128);
   private readonly waiting = new Map<number, Awaiting>();
   private sequence = 0;
   private disposed = false;
@@ -76,13 +82,15 @@ export class CoreWorker {
           switch (data.kind) {
             case 'ready': clearTimeout(this.loading); resolve(); return;
             case 'sign': {
+              if(!this.bridge)throw new Error('Encrypted messaging requires an isolated browser page.');
+              const bridge=this.bridge;
               if (!(data.payload instanceof Uint8Array)) throw new Error('Invalid signing request.');
-              const control = new Int32Array(this.bridge, 0, 4);
+              const control = new Int32Array(bridge, 0, 4);
               const nonce = integer(data.nonce);
               void vault.sign(data.payload).then((signature) => {
                 if (Atomics.load(control, 1) !== nonce || this.disposed) return;
                 if (signature.length !== 64) throw new Error('Invalid Ed25519 signature length.');
-                new Uint8Array(this.bridge, 16, 64).set(signature);
+                new Uint8Array(bridge, 16, 64).set(signature);
                 Atomics.store(control, 0, 1);
                 Atomics.notify(control, 0);
               }).catch(() => {
@@ -115,7 +123,7 @@ export class CoreWorker {
           }
         } catch (error) { this.close(new Error(message(error))); }
       };
-      this.worker.postMessage({ kind: 'init', bridge: this.bridge,
+      this.worker.postMessage({ kind: 'init', bridge: this.bridge, authorityKey:vault.authorityKey(),
         wasmUrl: new URL('/core/zoen_web_core_bg.wasm', window.location.origin).toString() });
     });
   }
@@ -153,9 +161,9 @@ export class CoreWorker {
     this.disposed = true;
     clearTimeout(this.loading);
     this.rejectReady(error);
-    const control = new Int32Array(this.bridge, 0, 4);
+    if(this.bridge){const control = new Int32Array(this.bridge, 0, 4);
     Atomics.store(control, 0, -1);
-    Atomics.notify(control, 0);
+    Atomics.notify(control, 0);}
     this.worker.terminate();
     this.fail(error);
   }

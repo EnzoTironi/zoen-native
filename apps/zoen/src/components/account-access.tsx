@@ -11,10 +11,14 @@ const message = (error: unknown) =>
 
 export function AccountAccess({
   relay,
+  expectedIdentityId,
+  expectedHandle,
   onDone,
   onBack,
 }: {
   relay: string;
+  expectedIdentityId?: string;
+  expectedHandle?: string;
   onDone: () => void;
   onBack: () => void;
 }) {
@@ -22,7 +26,7 @@ export function AccountAccess({
   const { colors } = useTheme();
   const [method, setMethod] = useState<'link' | 'recovery' | 'password'>('link');
   const [request, setRequest] = useState<LinkRequestDto | null>(null);
-  const [handle, setHandle] = useState('');
+  const [handle, setHandle] = useState(expectedHandle ?? '');
   const [secret, setSecret] = useState('');
   const [busy, setBusy] = useState(false);
   const [linked, setLinked] = useState(false);
@@ -54,6 +58,12 @@ export function AccountAccess({
       >
         Sua conta, neste aparelho.
       </Text>
+      {expectedHandle ? (
+        <Text style={{ color: colors.secondary, lineHeight: 24 }}>
+          Sua conta @{expectedHandle} foi reconhecida. Recupere as chaves pelo outro aparelho ou
+          pelo backup para abrir suas conversas.
+        </Text>
+      ) : null}
       {!linked ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {(
@@ -129,7 +139,11 @@ export function AccountAccess({
                   );
                   return;
                 }
-                await store.driver.request({ op: 'link_wait', timeout_ms: 10_000 });
+                await store.driver.request({
+                  op: 'link_wait',
+                  timeout_ms: 10_000,
+                  expected_identity_id: expectedIdentityId ?? null,
+                });
                 setLinked(true);
                 setStatus('Conta conectada. Envie o histórico pelo outro aparelho.');
                 await store.refresh();
@@ -148,7 +162,7 @@ export function AccountAccess({
             label="Seu @"
             value={handle}
             onChangeText={setHandle}
-            editable={!busy}
+            editable={!busy && !expectedHandle}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -167,7 +181,11 @@ export function AccountAccess({
             disabled={busy || !handle.trim() || !secret.trim() || !relay.trim()}
             onPress={() => {
               void run(async () => {
-                const common = { relay_url: relay.trim(), handle: handle.trim().replace(/^@/, '') };
+                const common = {
+                  relay_url: relay.trim(),
+                  handle: handle.trim().replace(/^@/, ''),
+                  expected_identity_id: expectedIdentityId ?? null,
+                };
                 await store.driver.request(
                   method === 'recovery'
                     ? {

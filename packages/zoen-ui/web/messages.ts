@@ -189,6 +189,7 @@ export class Messages {
   private readonly changed: (state: MessagesState) => void;
   private readonly transport: AuthenticatedTransport;
   private serial: Promise<void> = Promise.resolve();
+  private handleChanges:Promise<void>=Promise.resolve();
   private closed = false;
   private connection: ConnectionState = { kind: 'connecting' };
   private generation = 0;
@@ -463,6 +464,27 @@ export class Messages {
 
   async profileRequest(command: unknown): Promise<unknown> {
     return this.domainRequest(command, 'profile_request');
+  }
+
+  updateHandle(handle:string):Promise<string>{
+    const generation=this.generation;
+    const task=this.handleChanges.then(async()=>{
+      const active=()=>!this.closed&&this.connection.kind==='ready'&&generation===this.generation;
+      if(!active())throw new Error('Conecte ao servidor para mudar seu nome de usuário.');
+      const profile=object(JSON.parse(await this.core.text({kind:'handle_profile',handle})));
+      const normalized=string(profile.handle);
+      let response:Record<string,unknown>;
+      try{response=object(await this.rpc('register',JSON.stringify(profile)));}
+      catch(error){if(/handle_taken/.test(message(error)))throw new Error('Este nome de usuário já está em uso.');throw error;}
+      if(response.kind!=='registered')throw new Error('O servidor não confirmou seu nome de usuário.');
+      await this.enqueue(async()=>{
+        const update=await this.core.text({kind:'handle_confirmed',profile:JSON.stringify(response.profile),expected:normalized});
+        this.session.account.handle=normalized;
+        await this.apply(update,generation);
+      },()=>active()?null:'A conta ou conexão mudou. Tente novamente.');
+      return normalized;
+    });
+    this.handleChanges=task.then(()=>{},()=>{});return task;
   }
 
   private scheduleHistory(delay=0):void {

@@ -4,6 +4,7 @@
 //! operations, never private keys, database paths, or arbitrary native execution.
 //! Every mutation below goes through the same engine methods as the native apps.
 
+mod handle;
 mod wire;
 
 use serde::{Deserialize, Serialize};
@@ -332,6 +333,9 @@ enum Command {
         name: String,
         bio: String,
     },
+    UpdateHandle {
+        handle: String,
+    },
     BlockPerson {
         identity_id: String,
     },
@@ -354,6 +358,7 @@ enum Command {
     },
     LinkWait {
         timeout_ms: u32,
+        expected_identity_id: Option<String>,
     },
     LinkDevice {
         code: String,
@@ -384,11 +389,13 @@ enum Command {
         relay_url: String,
         handle: String,
         password: String,
+        expected_identity_id: Option<String>,
     },
     RestoreBackupRecoveryKey {
         relay_url: String,
         handle: String,
         recovery_key: String,
+        expected_identity_id: Option<String>,
     },
     RegisterPush {
         platform: String,
@@ -780,6 +787,7 @@ impl RodaEngine {
             UpdateProfile { name, bio } => {
                 encode(&self.update_my_profile(name, bio, crate::PhotoChange::Keep)?)
             }
+            UpdateHandle { handle } => encode(&self.client_update_handle(handle).await?),
             BlockPerson { identity_id } => encode(&self.block_person(identity_id)?),
             UnblockPerson { identity_id } => encode(&self.unblock_person(identity_id)?),
             BlockedPeople {} => encode(&self.blocked_people()?),
@@ -790,9 +798,16 @@ impl RodaEngine {
                 encode(&self.link_request(relay_url, account_vault(&vault)?)?)
             }
             LinkCodeCheck { code } => encode(&self.link_code_check(code)?),
-            LinkWait { timeout_ms } => encode(
+            LinkWait {
+                timeout_ms,
+                expected_identity_id,
+            } => encode(
                 &self
-                    .link_wait(account_vault(&vault)?, transfer_timeout(timeout_ms)?)
+                    .link_wait_expected(
+                        account_vault(&vault)?,
+                        transfer_timeout(timeout_ms)?,
+                        expected_identity_id,
+                    )
                     .await?,
             ),
             LinkDevice { code } => encode(&self.link_device(code, account_vault(&vault)?).await?),
@@ -831,22 +846,33 @@ impl RodaEngine {
                 relay_url,
                 handle,
                 password,
+                expected_identity_id,
             } => encode(
                 &self
-                    .restore_backup(relay_url, handle, password, account_vault(&vault)?)
+                    .restore_backup_expected(
+                        relay_url,
+                        handle,
+                        password,
+                        account_vault(&vault)?,
+                        false,
+                        expected_identity_id,
+                    )
                     .await?,
             ),
             RestoreBackupRecoveryKey {
                 relay_url,
                 handle,
                 recovery_key,
+                expected_identity_id,
             } => encode(
                 &self
-                    .restore_backup_with_recovery_key(
+                    .restore_backup_expected(
                         relay_url,
                         handle,
                         recovery_key,
                         account_vault(&vault)?,
+                        true,
+                        expected_identity_id,
                     )
                     .await?,
             ),

@@ -1,4 +1,5 @@
 use roda_proto::{ClientFrame, ErrorCode, Op, Reply, ServerFrame, CAPABILITIES, PROTOCOL_VERSION};
+use roda_types::Identity;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -37,6 +38,22 @@ pub fn hello(identity: &str, device: &str, cert: &str) -> Vec<u8> {
 
 pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
     let op = match kind {
+        "register" => {
+            let profile: Identity =
+                serde_json::from_str(value).map_err(|error| error.to_string())?;
+            if profile.kind != roda_types::IdentityKind::Person
+                || !profile.name.is_empty()
+                || !profile.bio.is_empty()
+                || profile.owner.is_some()
+                || profile.owner_proof.is_some()
+                || roda_proto::normalize_handle(&profile.handle).as_deref()
+                    != Some(profile.handle.as_str())
+            {
+                return Err("invalid public profile".into());
+            }
+            identity(&profile.id)?;
+            Op::Register { profile }
+        }
         "fetch_link" => Op::FetchLink {
             id: value.to_string(),
         },
@@ -185,6 +202,9 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
         } => ServerMessage::Response {
             id,
             value: match reply {
+                Reply::Registered(profile) => {
+                    serde_json::json!({"kind":"registered","profile":profile})
+                }
                 Reply::Link(sealed) => serde_json::json!({"kind":"link","sealed":sealed}),
                 Reply::AgentState(a) => {
                     serde_json::json!({"kind":"agent_state","status":a.status,"definition_version":a.definition_version})

@@ -45,6 +45,29 @@ fn invalid(reason: impl Into<String>) -> CoreError {
     }
 }
 
+/// Optional authenticated provider account, pinned before any recovery side effect.
+pub(crate) struct ExpectedIdentity(Option<String>);
+impl ExpectedIdentity {
+    pub(crate) fn parse(value: Option<String>) -> Result<Self, CoreError> {
+        if value
+            .as_ref()
+            .is_some_and(|identity| roda_log::parse_device_key(identity).is_none())
+        {
+            return Err(invalid(t(
+                "A conta esperada é inválida.",
+                "The expected account is invalid.",
+            )));
+        }
+        Ok(Self(value.map(|identity| identity.to_ascii_lowercase())))
+    }
+    pub(crate) fn check(&self, actual: &str) -> Result<(), CoreError> {
+        if self.0.as_ref().is_some_and(|expected| expected != actual) {
+            return Err(invalid(t("Este vínculo ou backup pertence a outra conta. Use a conta confirmada no login.","This link or backup belongs to another account. Use the account confirmed during sign in.")));
+        }
+        Ok(())
+    }
+}
+
 /// Progress of a history transfer, chunk by chunk.
 #[uniffi::export(with_foreign)]
 pub trait TransferListener: Send + Sync {
@@ -204,72 +227,7 @@ impl RodaEngine {
         vault: Arc<dyn SecretVault>,
         timeout_ms: u64,
     ) -> Result<AccountDto, CoreError> {
-        let pending: Pending = vault
-            .load(link::VAULT_PENDING.into())
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .ok_or_else(|| invalid(t("Nenhum pedido de vínculo.", "No link request.")))?;
-        let device = Signer::from_secret(
-            &secret32(hex::decode(&pending.device_secret).ok())
-                .ok_or_else(|| invalid("link request"))?,
-        );
-        let secret =
-            secret32(hex::decode(&pending.secret).ok()).ok_or_else(|| invalid("link request"))?;
-        let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
-        let sealed = crate::net::fetch_link_box(
-            &pending.relay,
-            &device,
-            &link::box_id(&secret, "identity"),
-            deadline,
-        )
-        .await
-        .map_err(invalid)?;
-        let hpke_secret = hex::decode(&pending.hpke_secret).unwrap_or_default();
-        let plain = link::open(&hpke_secret, &secret, "identity", &sealed)
-            .ok_or_else(|| invalid(t("O vínculo não abriu.", "The link didn't open.")))?;
-        let b: IdentityBox = serde_json::from_slice(&plain).map_err(|e| invalid(e.to_string()))?;
-        let identity = Signer::from_secret(
-            &secret32(hex::decode(&b.identity_secret).ok()).ok_or_else(|| invalid("identity"))?,
-        );
-        // The certificate must be the account's, for this device.
-        if !roda_log::verify_sig(
-            &identity.id(),
-            &roda_log::device_cert_message(&device.id()),
-            &b.cert,
-        ) {
-            return Err(invalid(t(
-                "O certificado deste aparelho não confere.",
-                "This device's certificate doesn't match.",
-            )));
-        }
-        let agreement = hex::decode(&b.agreement_secret).unwrap_or_default();
-        {
-            let mut e = self.lock();
-            e.create_linked_account(&b, &identity, device.clone(), &pending.relay)?;
-            let peer = Peer {
-                device: b.primary.clone(),
-                their_hpke: b.primary_hpke.clone(),
-                my_hpke_secret: pending.hpke_secret.clone(),
-                secret: pending.secret.clone(),
-            };
-            let mut peers = load_peers(&vault);
-            peers.push(peer.clone());
-            if !vault.save(VAULT_IDENTITY.into(), identity.secret().to_vec())
-                || !vault.save(VAULT_DEVICE.into(), device.secret().to_vec())
-                || !vault.save(VAULT_AGREEMENT.into(), agreement.clone())
-                || !save_peers(&vault, &peers)
-            {
-                let _ = e.wipe();
-                let _ = e.store.meta_delete("account");
-                return Err(invalid(t(
-                    "Não deu para guardar a chave no Keychain.",
-                    "Couldn't store the key in the Keychain.",
-                )));
-            }
-            e.add_peer(peer);
-            e.unlock_profile(Some(agreement))?;
-        }
-        vault.delete(link::VAULT_PENDING.into());
-        self.account_dto_pub().ok_or_else(|| invalid("account"))
+        self.link_wait_expected(vault, timeout_ms, None).await
     }
 
     /// Existing device: hands the account to the device showing `code`, and asks for it
@@ -648,5 +606,177 @@ impl RodaEngine {
             .store
             .set_meta(META_HISTORY, &serde_json::to_string(&m).unwrap_or_default())?;
         Ok(m)
+    }
+}
+
+impl RodaEngine {
+    pub(crate) async fn link_wait_expected(
+        &self,
+        vault: Arc<dyn SecretVault>,
+        timeout_ms: u64,
+        expected_identity_id: Option<String>,
+    ) -> Result<AccountDto, CoreError> {
+        let expected = ExpectedIdentity::parse(expected_identity_id)?;
+        let pending: Pending = vault
+            .load(link::VAULT_PENDING.into())
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .ok_or_else(|| invalid(t("Nenhum pedido de vínculo.", "No link request.")))?;
+        let device = Signer::from_secret(
+            &secret32(hex::decode(&pending.device_secret).ok())
+                .ok_or_else(|| invalid("link request"))?,
+        );
+        let secret =
+            secret32(hex::decode(&pending.secret).ok()).ok_or_else(|| invalid("link request"))?;
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
+        let sealed = crate::net::fetch_link_box(
+            &pending.relay,
+            &device,
+            &link::box_id(&secret, "identity"),
+            deadline,
+        )
+        .await
+        .map_err(invalid)?;
+        let hpke_secret = hex::decode(&pending.hpke_secret).unwrap_or_default();
+        let plain = link::open(&hpke_secret, &secret, "identity", &sealed)
+            .ok_or_else(|| invalid(t("O vínculo não abriu.", "The link didn't open.")))?;
+        let b: IdentityBox = serde_json::from_slice(&plain).map_err(|e| invalid(e.to_string()))?;
+        self.finish_link(pending, device, b, vault, &expected)
+    }
+
+    fn finish_link(
+        &self,
+        pending: Pending,
+        device: Signer,
+        b: IdentityBox,
+        vault: Arc<dyn SecretVault>,
+        expected: &ExpectedIdentity,
+    ) -> Result<AccountDto, CoreError> {
+        let identity = Signer::from_secret(
+            &secret32(hex::decode(&b.identity_secret).ok()).ok_or_else(|| invalid("identity"))?,
+        );
+        expected.check(&identity.id())?;
+        // The certificate must be the account's, for this device.
+        if !roda_log::verify_sig(
+            &identity.id(),
+            &roda_log::device_cert_message(&device.id()),
+            &b.cert,
+        ) {
+            return Err(invalid(t(
+                "O certificado deste aparelho não confere.",
+                "This device's certificate doesn't match.",
+            )));
+        }
+        let agreement = hex::decode(&b.agreement_secret).unwrap_or_default();
+        {
+            let mut e = self.lock();
+            e.create_linked_account(&b, &identity, device.clone(), &pending.relay)?;
+            let peer = Peer {
+                device: b.primary.clone(),
+                their_hpke: b.primary_hpke.clone(),
+                my_hpke_secret: pending.hpke_secret.clone(),
+                secret: pending.secret.clone(),
+            };
+            let mut peers = load_peers(&vault);
+            peers.push(peer.clone());
+            if !vault.save(VAULT_IDENTITY.into(), identity.secret().to_vec())
+                || !vault.save(VAULT_DEVICE.into(), device.secret().to_vec())
+                || !vault.save(VAULT_AGREEMENT.into(), agreement.clone())
+                || !save_peers(&vault, &peers)
+            {
+                let _ = e.wipe();
+                let _ = e.store.meta_delete("account");
+                return Err(invalid(t(
+                    "Não deu para guardar a chave no Keychain.",
+                    "Couldn't store the key in the Keychain.",
+                )));
+            }
+            e.add_peer(peer);
+            e.unlock_profile(Some(agreement))?;
+        }
+        vault.delete(link::VAULT_PENDING.into());
+        self.account_dto_pub().ok_or_else(|| invalid("account"))
+    }
+}
+
+#[cfg(test)]
+mod pin_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    #[derive(Default)]
+    struct Vault {
+        reads: AtomicUsize,
+        writes: AtomicUsize,
+    }
+    impl SecretVault for Vault {
+        fn load(&self, _: String) -> Option<Vec<u8>> {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            None
+        }
+        fn save(&self, _: String, _: Vec<u8>) -> bool {
+            self.writes.fetch_add(1, Ordering::SeqCst);
+            true
+        }
+        fn delete(&self, _: String) {
+            self.writes.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    #[test]
+    fn provider_identity_mismatch_cannot_install_a_decrypted_link_or_write_secrets() {
+        let core = RodaEngine::open(":memory:".into(), "en-US".into()).unwrap();
+        let vault = Arc::new(Vault::default());
+        let wrong = Signer::from_secret(&[91; 32]);
+        let expected = ExpectedIdentity::parse(Some(Signer::from_secret(&[92; 32]).id())).unwrap();
+        let device = Signer::from_secret(&[93; 32]);
+        let pending = Pending {
+            device_secret: hex::encode(device.secret()),
+            hpke_secret: String::new(),
+            hpke_public: String::new(),
+            secret: hex::encode([94; 32]),
+            relay: "http://localhost".into(),
+        };
+        let boxed = IdentityBox {
+            identity_secret: hex::encode(wrong.secret()),
+            agreement_secret: String::new(),
+            cert: wrong.sign(&roda_log::device_cert_message(&device.id())),
+            name: "Wrong account".into(),
+            handle: "wrong_account".into(),
+            relay: pending.relay.clone(),
+            primary: wrong.id(),
+            primary_hpke: String::new(),
+            profile_key: String::new(),
+            profile_key_version: 0,
+            profile_seen_version: 0,
+            profile_fields: String::new(),
+        };
+        assert!(core
+            .finish_link(pending, device, boxed, vault.clone(), &expected)
+            .is_err());
+        assert!(core.account().is_none());
+        assert!(core.lock().store.meta("account").unwrap().is_none());
+        assert_eq!(vault.reads.load(Ordering::SeqCst), 0);
+        assert_eq!(vault.writes.load(Ordering::SeqCst), 0);
+    }
+    #[tokio::test]
+    async fn malformed_provider_identity_is_refused_before_vault_reads_or_recovery_network() {
+        let core = RodaEngine::open(":memory:".into(), "en-US".into()).unwrap();
+        let vault = Arc::new(Vault::default());
+        assert!(core
+            .link_wait_expected(vault.clone(), 1, Some("invalid".into()))
+            .await
+            .is_err());
+        assert!(core
+            .restore_backup_expected(
+                "not a URL".into(),
+                "valid_handle".into(),
+                "secret".into(),
+                vault.clone(),
+                false,
+                Some("invalid".into())
+            )
+            .await
+            .is_err());
+        assert!(core.account().is_none());
+        assert_eq!(vault.reads.load(Ordering::SeqCst), 0);
+        assert_eq!(vault.writes.load(Ordering::SeqCst), 0);
     }
 }

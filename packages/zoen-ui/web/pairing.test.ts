@@ -55,6 +55,15 @@ test('failed enrollment storage never exposes a linked account', async () => {
   assert.equal(f.states.some((s) => s.kind === 'linked'), false);
 });
 
+test('provider identity pin is persisted and refuses another phone before saving its account',async()=>{
+  const expected='aa'.repeat(32);const f=fixture(async()=>({kind:'link',sealed:new Uint8Array([1])}));
+  await f.pairing.start('https://relay.example',{kind:'pending',pending:pending()},expected);await f.ready();
+  const saved=f.saved.find(session=>session.kind==='pending');assert.equal(saved?.kind==='pending'?saved.pending.expected_identity:undefined,expected);
+  assert.equal(f.saved.some(session=>session.kind==='linked'),false);assert.equal(f.states.at(-1)?.kind,'failed');
+  const reload=fixture(async()=>({kind:'link',sealed:new Uint8Array([1])}));assert.ok(saved);
+  await reload.pairing.start('https://relay.example',saved);await reload.ready();assert.equal(reload.saved.some(session=>session.kind==='linked'),false);
+});
+
 test('first ready request rejection retries without another ready event', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   let requests = 0;

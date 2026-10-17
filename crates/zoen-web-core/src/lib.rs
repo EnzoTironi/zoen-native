@@ -3,10 +3,12 @@
 mod client;
 mod link;
 pub mod media;
+mod primary;
 mod wire;
 
 pub use client::{Client, DocumentResponse, Update};
 pub use link::{complete_link, create_link, LinkedAccount, PendingLink};
+pub use primary::Primary;
 pub use wire::{decode_server, hello, request, ServerMessage};
 
 #[cfg(target_arch = "wasm32")]
@@ -48,6 +50,52 @@ mod browser {
             return Err(error("invalid browser timestamp"));
         }
         Ok(value as i64)
+    }
+
+    #[wasm_bindgen]
+    pub struct BrowserPrimary {
+        primary: super::Primary,
+    }
+    #[wasm_bindgen]
+    impl BrowserPrimary {
+        #[wasm_bindgen(constructor)]
+        pub fn new(device: &str, relay: &str, name: &str) -> Result<BrowserPrimary, JsValue> {
+            Ok(Self {
+                primary: super::Primary::new(device, relay, name).map_err(error)?,
+            })
+        }
+        pub fn restore(
+            seed: &[u8],
+            account: &str,
+            device: &str,
+        ) -> Result<BrowserPrimary, JsValue> {
+            Ok(Self {
+                primary: super::Primary::restore(
+                    seed,
+                    serde_json::from_str(account).map_err(error)?,
+                    device,
+                )
+                .map_err(error)?,
+            })
+        }
+        pub fn account(&self) -> Result<String, JsValue> {
+            serde_json::to_string(self.primary.account()).map_err(error)
+        }
+        pub fn authority_bytes(&self) -> Vec<u8> {
+            self.primary.authority_bytes()
+        }
+        pub fn bind_message(&self, proof: &str) -> Result<Vec<u8>, JsValue> {
+            self.primary.binding_message(proof).map_err(error)
+        }
+        pub fn finish_bind(&self, proof: &str, signature: &[u8]) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .primary
+                    .finish_binding(proof, signature)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
     }
 
     #[wasm_bindgen]
@@ -231,6 +279,22 @@ mod browser {
                 &self
                     .client
                     .profile_request(request, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn handle_profile(&self, handle: &str) -> Result<String, JsValue> {
+            self.client.handle_profile(handle).map_err(error)
+        }
+        pub fn handle_confirmed(
+            &mut self,
+            profile: &str,
+            expected: &str,
+        ) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .handle_confirmed(profile, expected)
                     .map_err(error)?,
             )
             .map_err(error)

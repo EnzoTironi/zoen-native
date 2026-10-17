@@ -22,8 +22,8 @@ OAuth alone never grants a device certificate or decrypts existing history.
    or joined by matching email. Binding and automatic provisioning are idempotent.
 
 The backend owns token verification and signed binding. Client adapters and buttons
-are being implemented under this directory, with an injectable `AuthService`; the
-SessionGate is deliberately not wired until the complete checkpoint is validated.
+live under this directory with an injectable `AuthService`. Native callers use
+`createExpoAuthService`, which supplies SDK58's streaming `expo/fetch` transport.
 No provider tokens are persisted, logged, put in navigation URLs, or treated as relay
 credentials. Native Apple's first-login full name is an optional initial user-provided
 profile hint, separate from verified identity claims.
@@ -61,5 +61,9 @@ profile hint, separate from verified identity claims.
 - [Apple authentication](https://developer.apple.com/documentation/signinwithapple/authenticating-users-with-sign-in-with-apple)
 - [Apple JS setup](https://developer.apple.com/documentation/signinwithapple/configuring-your-webpage-for-sign-in-with-apple)
 
-No real provider credential, login, binding, or recovery has been exercised by this
-checkpoint. Console configuration and the full adapters/UI remain ongoing work.
+Seven client tests pass, covering challenge/credential context, transport bounds,
+ticket ownership, teardown and official SDK callback ownership. They do not perform
+provider signature verification or authenticate a real provider account. Google iOS
+client and Web origin configuration were saved and re-read in the console; Apple
+console setup and real provider login/recovery remain pending. See
+[social auth setup and acceptance](../../../../docs/dev/social-auth.md).

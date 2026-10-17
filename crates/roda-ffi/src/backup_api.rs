@@ -414,7 +414,7 @@ impl RodaEngine {
         secret: String,
         vault: Arc<dyn SecretVault>,
     ) -> Result<AccountDto, CoreError> {
-        self.restore_backup_inner(relay_url, handle, secret, vault, false)
+        self.restore_backup_expected(relay_url, handle, secret, vault, false, None)
             .await
     }
 
@@ -426,21 +426,25 @@ impl RodaEngine {
         recovery_key: String,
         vault: Arc<dyn SecretVault>,
     ) -> Result<AccountDto, CoreError> {
-        backup::recovery_keys(&recovery_key)?;
-        self.restore_backup_inner(relay_url, handle, recovery_key, vault, true)
+        self.restore_backup_expected(relay_url, handle, recovery_key, vault, true, None)
             .await
     }
 }
 
 impl RodaEngine {
-    async fn restore_backup_inner(
+    pub(crate) async fn restore_backup_expected(
         &self,
         relay_url: String,
         handle: String,
         secret: String,
         vault: Arc<dyn SecretVault>,
         recovery_only: bool,
+        expected_identity_id: Option<String>,
     ) -> Result<AccountDto, CoreError> {
+        let expected = crate::link_api::ExpectedIdentity::parse(expected_identity_id)?;
+        if recovery_only {
+            backup::recovery_keys(&secret)?;
+        }
         if self.lock().account().is_some() {
             return Err(invalid(t(
                 "Este aparelho já tem uma conta.",
@@ -472,6 +476,10 @@ impl RodaEngine {
             return Err(refused(r).await);
         }
         let s: Started = json(r).await?;
+        if roda_log::parse_device_key(&s.identity).is_none() {
+            return Err(invalid("backup identity"));
+        }
+        expected.check(&s.identity)?;
         if recovery_only && s.mode != "recovery_key" {
             return Err(invalid(t(
                 "Esta cópia usa senha. Use um aparelho que já esteja conectado.",
@@ -554,6 +562,7 @@ impl RodaEngine {
             .try_into()
             .map_err(|_| invalid("backup identity"))?;
         let root_signer = roda_log::Signer::from_secret(&root_secret);
+        expected.check(&root_signer.id())?;
         if root_signer.id() != s.identity {
             return Err(invalid("backup identity"));
         }
@@ -647,5 +656,65 @@ impl RodaEngine {
             .flatten()
             .and_then(|j| serde_json::from_str(&j).ok())
             .unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod pin_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    #[derive(Default)]
+    struct Vault(AtomicUsize);
+    impl SecretVault for Vault {
+        fn load(&self, _: String) -> Option<Vec<u8>> {
+            None
+        }
+        fn save(&self, _: String, _: Vec<u8>) -> bool {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            true
+        }
+        fn delete(&self, _: String) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    #[tokio::test]
+    async fn mismatched_backup_identity_stops_after_start_before_authentication_or_enrollment() {
+        let wrong = roda_log::Signer::from_secret(&[81; 32]).id();
+        let expected = roda_log::Signer::from_secret(&[82; 32]).id();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counted = calls.clone();
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                counted.fetch_add(1, Ordering::SeqCst);
+                let mut bytes = vec![0; 8192];
+                let _ = socket.read(&mut bytes).await.unwrap();
+                let body=serde_json::json!({"identity":wrong,"mode":"recovery_key","kdf":null,"evaluated":null,"generation":"aa".repeat(32)}).to_string();
+                let response=format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len());
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let core = RodaEngine::open(":memory:".into(), "en-US".into()).unwrap();
+        let vault = Arc::new(Vault::default());
+        let result = core
+            .restore_backup_expected(
+                format!("http://{address}"),
+                "valid_handle".into(),
+                "password".into(),
+                vault.clone(),
+                false,
+                Some(expected),
+            )
+            .await;
+        assert!(
+            matches!(result,Err(CoreError::Invalid {reason}) if reason.contains("another account"))
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert!(core.account().is_none());
+        assert_eq!(vault.0.load(Ordering::SeqCst), 0);
+        server.abort();
     }
 }

@@ -126,6 +126,34 @@ mod tests {
     }
 
     #[test]
+    fn handle_changes_redact_private_fields_and_only_apply_matching_acknowledgements() {
+        let (mut client, identity, _) = client();
+        let before = client.my_profile_fields().unwrap().2;
+        let prepared = client.handle_profile("  @Depois_123  ").unwrap();
+        let profile: Identity = serde_json::from_str(&prepared).unwrap();
+        assert_eq!(profile.handle, "depois_123");
+        assert!(profile.name.is_empty());
+        assert!(profile.bio.is_empty());
+        assert_eq!(client.account.handle, "fixture");
+        let mut wrong = profile.clone();
+        wrong.id = roda_log::Signer::from_secret(&[82; 32]).id();
+        assert!(client
+            .handle_confirmed(&serde_json::to_string(&wrong).unwrap(), "depois_123")
+            .is_err());
+        assert_eq!(client.account.handle, "fixture");
+        assert!(client.handle_confirmed(&prepared, "different").is_err());
+        assert_eq!(client.account.handle, "fixture");
+        let update = client.handle_confirmed(&prepared, "depois_123").unwrap();
+        assert_eq!(client.account.handle, "depois_123");
+        assert_eq!(client.my_profile_fields().unwrap().2, before);
+        let mut original = client.account.clone();
+        original.handle = "fixture".into();
+        let reload = Client::new(original, client.signer.clone(), &update.snapshot).unwrap();
+        assert_eq!(reload.account.handle, "depois_123");
+        assert_eq!(reload.fields_of(&identity.id()).unwrap().1, before);
+    }
+
+    #[test]
     fn certified_native_share_opens_only_matching_signed_profile_and_survives_reload() {
         let (mut client, _, _) = client();
         let identity = NativeSigner::from_secret(&[74; 32]);
@@ -358,6 +386,9 @@ impl<S: Signer> Client<S> {
         }
     }
     pub(super) fn load_linked_profile(&mut self) {
+        if let Some(handle) = &self.saved.own_handle {
+            self.account.handle = handle.clone();
+        }
         if !self.saved.profile.rows.contains_key(&self.account.identity)
             && ProfileKey::from_hex(&self.account.profile_key).is_some()
         {
@@ -382,6 +413,57 @@ impl<S: Signer> Client<S> {
             );
         }
         self.overlay_saved_profiles();
+    }
+
+    /// Prepare the redacted registration payload without changing the local alias.
+    pub fn handle_profile(&self, handle: &str) -> Result<String, String> {
+        let handle = roda_proto::normalize_handle(handle)
+            .ok_or("Use de 3 a 24 letras, números, pontos ou _. Comece com uma letra.")?;
+        let mut profile = self
+            .saved
+            .profiles
+            .get(&self.account.identity)
+            .cloned()
+            .unwrap_or(Identity {
+                id: self.account.identity.clone(),
+                kind: roda_types::IdentityKind::Person,
+                name: String::new(),
+                handle: handle.clone(),
+                tint_hex: "#4F7CFF".into(),
+                glyph: None,
+                owner: None,
+                bio: String::new(),
+                owner_proof: None,
+            });
+        if profile.kind != roda_types::IdentityKind::Person {
+            return Err("Este perfil não é uma pessoa.".into());
+        }
+        profile.name.clear();
+        profile.bio.clear();
+        profile.handle = handle;
+        serde_json::to_string(&profile).map_err(|error| error.to_string())
+    }
+
+    /// Only a matching Registered response on this authenticated session can rename.
+    pub fn handle_confirmed(&mut self, encoded: &str, expected: &str) -> Result<Update, String> {
+        let mut profile: Identity =
+            serde_json::from_str(encoded).map_err(|error| error.to_string())?;
+        let expected = roda_proto::normalize_handle(expected).ok_or("Nome de usuário inválido.")?;
+        if profile.id != self.account.identity
+            || profile.kind != roda_types::IdentityKind::Person
+            || profile.owner.is_some()
+            || profile.owner_proof.is_some()
+            || profile.handle != expected
+        {
+            return Err("O servidor confirmou outro perfil. Tente novamente.".into());
+        }
+        self.account.handle = expected.clone();
+        self.saved.own_handle = Some(expected);
+        profile.name.clear();
+        profile.bio.clear();
+        self.saved.profiles.insert(profile.id.clone(), profile);
+        self.overlay_saved_profiles();
+        self.update(Vec::new())
     }
 
     fn agreement_key(&self) -> Option<AgreementKey> {

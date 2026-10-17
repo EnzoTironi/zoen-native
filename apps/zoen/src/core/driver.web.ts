@@ -3,6 +3,7 @@ import { CoreWorker } from '../../../../packages/zoen-ui/web/worker-client';
 import {
   Messages,
   parseDevices,
+  parseInvite,
   type MessagesState,
   type Conversation,
   type Message,
@@ -11,6 +12,8 @@ import {
 import { Pairing } from '../../../../packages/zoen-ui/web/pairing';
 import { unavailableCapability } from '../../../../packages/zoen-ui/web/capabilities';
 import type { StoredSession } from '../../../../packages/zoen-ui/web/session';
+import { enrollPrimary } from '../../../../packages/zoen-ui/web/primary';
+import { authorityJson } from '../../../../packages/zoen-ui/web/authority';
 import type { Persona } from './generated/Persona';
 import type { SpaceSummary } from './generated/SpaceSummary';
 import assets from './generated/web-assets.json';
@@ -44,6 +47,12 @@ class BrowserDriver implements CoreDriver {
   private locked: Promise<void> | undefined;
   private generation = 0;
   private disposeMedia: (() => void) | null = null;
+  private providerAbort: AbortController | null = null;
+  private selfProfile: { name: string; bio: string } | null = null;
+
+  private authRoute() {
+    return window.location.pathname.replace(/\/$/, '') === '/sign-in';
+  }
 
   subscribe(listener: (event: CoreEvent) => void) {
     this.listeners.add(listener);
@@ -61,7 +70,7 @@ class BrowserDriver implements CoreDriver {
         'A demonstração é executada pelo motor nativo. Use uma conta vinculada neste navegador.',
       );
     const generation = ++this.generation;
-    const unavailable = await unavailableCapability();
+    const unavailable = await unavailableCapability({ onboarding: this.authRoute() });
     if (unavailable) throw new Error(unavailable);
     await new Promise<void>((resolve, reject) => {
       const held = new Promise<void>((done) => {
@@ -77,6 +86,12 @@ class BrowserDriver implements CoreDriver {
           let worker: CoreWorker | null = null;
           try {
             const session = await vault.load();
+            if ((session.kind === 'linked') === this.authRoute()) {
+              this.session = session;
+              window.location.replace(session.kind === 'linked' ? '/' : '/sign-in');
+              resolve();
+              return;
+            }
             worker = await CoreWorker.create(vault, assets.workerIntegrity);
             if (generation !== this.generation) {
               worker.close();
@@ -86,6 +101,16 @@ class BrowserDriver implements CoreDriver {
             this.vault = vault;
             this.worker = worker;
             this.session = session;
+            if (session.kind === 'linked') {
+              const authority = await vault.authority();
+              if (authority)
+                await worker.text({
+                  kind: 'primary_restore',
+                  device: await vault.device(),
+                  account: JSON.stringify(session.account),
+                  authority: authorityJson(authority),
+                });
+            }
             if (session.kind === 'linked') await this.startMessages();
             resolve();
             await held;
@@ -136,14 +161,22 @@ class BrowserDriver implements CoreDriver {
     }
   }
 
-  pair(relay: string, changed: (state: PairingStatus) => void) {
+  pair(relay: string, changed: (state: PairingStatus) => void, expectedIdentityId?: string) {
     if (!this.vault || !this.worker) throw new Error('Este navegador ainda está abrindo.');
+    if (this.session.kind === 'provider_pending')
+      throw new Error(
+        'Suas chaves desta entrada estão preservadas. Conclua ou recupere essa conta antes de vincular outra.',
+      );
     this.pairing?.stop();
     const generation = this.generation;
     const pairing = new Pairing(this.vault, this.worker, (state) => {
       if (generation !== this.generation) return;
       if (state.kind === 'linked') {
         this.session = { kind: 'linked', account: state.account, snapshot: '' };
+        if (this.authRoute()) {
+          window.location.replace('/');
+          return;
+        }
         void this.startMessages()
           .then(() => this.changed())
           .catch((error: unknown) =>
@@ -159,7 +192,7 @@ class BrowserDriver implements CoreDriver {
       else changed({ kind: 'starting' });
     });
     this.pairing = pairing;
-    void pairing.start(relay, this.session).catch((error: unknown) =>
+    void pairing.start(relay, this.session, expectedIdentityId).catch((error: unknown) =>
       changed({
         kind: 'failed',
         message: error instanceof Error ? error.message : 'Não foi possível vincular.',
@@ -172,7 +205,9 @@ class BrowserDriver implements CoreDriver {
     const account = this.session.kind === 'linked' ? this.session.account : null;
     const profile = this.profile(identity);
     const owner = profile?.owner ? this.profile(profile.owner) : null;
-    const displayName = profile?.name || (profile?.handle ? `@${profile.handle}` : name);
+    const own = identity === account?.identity ? this.selfProfile : null;
+    const displayName =
+      own?.name || profile?.name || (profile?.handle ? `@${profile.handle}` : name);
     return {
       id: identity,
       name: displayName,
@@ -186,7 +221,7 @@ class BrowserDriver implements CoreDriver {
       kind: profile?.kind ?? 'Person',
       tint_hex: profile?.tint_hex ?? '#8E8E93',
       glyph: profile?.glyph ?? null,
-      bio: profile?.bio ?? '',
+      bio: own?.bio ?? profile?.bio ?? '',
       owner_id: profile?.owner ?? null,
       owner_name: owner?.name ?? null,
       owner_tint_hex: owner?.tint_hex ?? null,
@@ -250,7 +285,10 @@ class BrowserDriver implements CoreDriver {
     };
   }
   private snapshot(): Snapshot {
-    const account = this.session.kind === 'linked' ? this.session.account : null;
+    const account =
+      this.session.kind === 'linked' || this.session.kind === 'provider_pending'
+        ? this.session.account
+        : null;
     const conversations: SpaceSummary[] = this.conversations().map((conversation) => {
       const last = conversation.messages.at(-1);
       return {
@@ -293,12 +331,12 @@ class BrowserDriver implements CoreDriver {
         ? {
             identity_id: account.identity,
             device_id: account.device,
-            name: account.name,
+            name: this.selfProfile?.name ?? account.name,
             handle: account.handle,
             relay_url: account.relay,
-            registered: true,
+            registered: this.session.kind === 'linked',
             unlocked: true,
-            setup_pending: false,
+            setup_pending: this.session.kind === 'provider_pending',
           }
         : null,
       me: account
@@ -328,30 +366,56 @@ class BrowserDriver implements CoreDriver {
   }
 
   async request<C extends Command>(command: C): Promise<CommandResult<C>> {
+    const requestGeneration = this.generation;
     let result: unknown = null;
     const messages = this.messages;
-    if (command.op === 'snapshot') {
-      const snapshot = this.snapshot();
+    if (command.op === 'provider_sign_in') {
+      const vault = this.vault;
+      const core = this.worker;
+      if (!vault || !core) throw new Error('Este navegador ainda está abrindo.');
+      this.pairing?.stop();
+      this.providerAbort?.abort();
+      const abort = new AbortController();
+      this.providerAbort = abort;
+      const generation = this.generation;
+      const linked = await enrollPrimary({
+        vault,
+        core,
+        relay: command.relay_url,
+        proof: command.proof_token,
+        name: command.name,
+        signal: abort.signal,
+        pending: (pending) => {
+          if (generation === this.generation) {
+            this.session = pending;
+            this.changed();
+          }
+        },
+      });
+      if (generation !== this.generation) throw new Error('Esta sessão foi encerrada.');
+      this.session = linked;
+      result = this.snapshot().account;
+      if (this.authRoute()) {
+        window.location.replace('/');
+      } else {
+        await this.startMessages();
+        this.changed();
+      }
+    } else if (command.op === 'snapshot') {
+      let snapshot = this.snapshot();
       if (messages) {
         const [agents, requests, profile] = await Promise.all([
           messages.agentRequest({ op: 'agents' }),
           messages.agentRequest({ op: 'requests' }),
           messages.profileRequest({ op: 'profile', identity_id: snapshot.account!.identity_id }),
         ]);
+        if (requestGeneration !== this.generation)
+          throw new Error('A conta mudou. Abra esta tela novamente.');
+        const me = profile as { name: string | null; bio: string | null };
+        if (me.name) this.selfProfile = { name: me.name, bio: me.bio ?? '' };
+        snapshot = this.snapshot();
         snapshot.agents = agents as Snapshot['agents'];
         snapshot.requests = requests as Snapshot['requests'];
-        const me = profile as { name: string | null; bio: string | null };
-        if (me.name && snapshot.account && snapshot.me) {
-          snapshot.account.name = me.name;
-          snapshot.me.name = me.name;
-          snapshot.me.bio = me.bio ?? '';
-          snapshot.me.initials = me.name
-            .split(/\s+/)
-            .slice(0, 2)
-            .map((part) => Array.from(part)[0] ?? '')
-            .join('')
-            .toUpperCase();
-        }
       }
       result = snapshot;
     } else if (!messages) throw new Error('Vincule este navegador pelo seu celular primeiro.');
@@ -391,6 +455,20 @@ class BrowserDriver implements CoreDriver {
         case 'unblock_person':
         case 'blocked_people':
           result = await messages.profileRequest(command);
+          if (command.op === 'update_profile' && this.session.kind === 'linked') {
+            const own = (await messages.profileRequest({
+              op: 'profile',
+              identity_id: this.session.account.identity,
+            })) as { name: string | null; bio: string | null };
+            if (requestGeneration !== this.generation)
+              throw new Error('A conta mudou. Abra esta tela novamente.');
+            if (own.name) this.selfProfile = { name: own.name, bio: own.bio ?? '' };
+            this.changed();
+          }
+          break;
+        case 'update_handle':
+          await messages.updateHandle(command.handle);
+          result = this.snapshot().account;
           break;
         case 'receive_history':
           result = await messages.receiveHistory(Number(command.timeout_ms));
@@ -553,6 +631,18 @@ class BrowserDriver implements CoreDriver {
           };
           break;
         }
+        case 'join_invite': {
+          const code = command.code.trim().toUpperCase();
+          const response = object(await messages.rpc('preview_invite', code));
+          if (response.invite_kind !== 'space')
+            throw new Error(
+              'Este link de agente ainda não pode ser aberto neste navegador. Abra no iPhone por enquanto.',
+            );
+          const invite = parseInvite(response);
+          await messages.join({ invite, code });
+          result = invite.space;
+          break;
+        }
         case 'new_mutation_id':
         case 'page_parse_markdown':
         case 'page_block_markdown':
@@ -624,6 +714,8 @@ class BrowserDriver implements CoreDriver {
         default:
           throw new Error('Este recurso ainda está sendo integrado ao cliente web.');
       }
+    if (requestGeneration !== this.generation)
+      throw new Error('A conta mudou. Abra esta tela novamente.');
     return result as CommandResult<C>;
   }
   private target(space: string, id: string | null): string {
@@ -636,10 +728,12 @@ class BrowserDriver implements CoreDriver {
     );
   }
   async createAccount(): Promise<Snapshot> {
-    throw new Error('Crie sua conta no celular e vincule este navegador.');
+    throw new Error('Entre com Apple ou Google para continuar.');
   }
   async close() {
     ++this.generation;
+    this.providerAbort?.abort();
+    this.providerAbort = null;
     this.disposeMedia?.();
     this.disposeMedia = null;
     this.pairing?.stop();
@@ -652,6 +746,7 @@ class BrowserDriver implements CoreDriver {
     this.vault = null;
     this.session = { kind: 'empty' };
     this.state = { kind: 'loading' };
+    this.selfProfile = null;
     const locked = this.locked;
     this.locked = undefined;
     this.release = undefined;

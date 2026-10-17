@@ -130,6 +130,7 @@ type Results = {
   restore_backup_password: AccountDto;
   restore_backup_recovery_key: AccountDto;
   provider_sign_in: AccountDto;
+  update_handle: AccountDto;
 };
 export type CommandResult<C extends Command> = C['op'] extends keyof Results
   ? Results[C['op']]
@@ -142,5 +143,9 @@ export interface CoreDriver {
   createAccount(name: string, handle: string, relay: string): Promise<Snapshot>;
   subscribe(listener: (event: CoreEvent) => void): () => void;
   close(): Promise<void>;
-  pair?(relay: string, changed: (state: PairingStatus) => void): () => void;
+  pair?(
+    relay: string,
+    changed: (state: PairingStatus) => void,
+    expectedIdentityId?: string,
+  ): () => void;
 }

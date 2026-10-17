@@ -60,9 +60,39 @@ The Expo CI workflow runs the generated-contract check, TypeScript, Oxlint, Oxfm
 the shared client tests and Expo Doctor. `npm run lint` uses Oxlint; `npm run format`
 uses Oxfmt. Generated bindings and native projects stay outside formatter/linter input.
 
-Production web hosting must send `Cross-Origin-Opener-Policy: same-origin` and
-`Cross-Origin-Embedder-Policy: require-corp`, as the local Metro middleware does.
-The browser signing bridge needs the resulting cross-origin isolation.
+## Cloudflare Pages web deployment
+
+`npm run export:web` exports static pages and copies `public/_headers` into `dist/`.
+Serve this output through Cloudflare Pages for the intended `app.tryzoen.com` domain;
+this configuration does not create a Pages project, change DNS or deploy anything.
+
+The app and its MLS signing worker require `Cross-Origin-Opener-Policy: same-origin`
+and `Cross-Origin-Embedder-Policy: require-corp`. Only the `/sign-in` document and its
+static HTML aliases use `same-origin-allow-popups` and `unsafe-none`, so official
+provider popups work. Entering the app requires a full document navigation back to
+an isolated page. OAuth credentials stay in memory and are posted to the relay;
+they must never appear in navigation URLs. The sign-in entry must not start the
+WASM signing worker.
+
+[Pages combines overlapping header values](https://developers.cloudflare.com/pages/configuration/headers/).
+The exact entry rules explicitly detach both headers before adding their policy;
+adding a second value without detachment breaks browser policy parsing. Keep zone
+response-header rules from appending another COOP/COEP value. If deployment later
+uses Pages Functions, attach the policy to those responses in the function, because
+static `_headers` rules do not cover function responses.
+
+Verify the actual Pages header engine locally, with no Cloudflare credentials or deployment:
+
+```sh
+# From the repository root; Wrangler is a separate tool, not an app runtime dependency.
+npx --yes --package=wrangler@4.151.1 -c 'node scripts/check-expo-web-headers.mjs'
+# Or point WRANGLER_CLI at an already installed Wrangler executable.
+```
+
+This fixture checks the canonical entry, both clean-URL redirects, a query variation,
+lookalike paths, the worker asset and 404s. OAuth provider origins and callback URLs
+must separately match the public IDs in the app and the relay audience/origin
+configuration in [provider-auth.md](../../docs/dev/provider-auth.md).
 
 The development-only demonstration uses a separate Rust database. It never replaces
 an account or contacts the relay. Real account and device-link tests should use an

@@ -83,6 +83,8 @@ struct SavedClient {
     profile: profile::Journal,
     #[serde(default)]
     history: history::Journal,
+    #[serde(default)]
+    own_handle: Option<String>,
 }
 
 #[derive(Serialize)]

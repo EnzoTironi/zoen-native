@@ -31,10 +31,27 @@ const account = {
   agreement_secret: '', profile_key: '', profile_key_version: 0,
   profile_seen_version: 0, profile_fields: '',
 };
-globalThis.zoenSign = (payload) => new Uint8Array(sign(null, payload, device.privateKey));
 let client;
 let restored;
+let primary;
+let primaryRestored;
 try {
+  // Onboarding has no SharedArrayBuffer. Root certification stays inside WASM;
+  // the public bind payload is signed asynchronously by the browser device host.
+  globalThis.zoenSign = () => {throw new Error('onboarding attempted synchronous device signing');};
+  primary = new core.BrowserPrimary(deviceId, account.relay, 'WASM primary');
+  const primaryAccount=JSON.parse(primary.account());
+  const authority=primary.authority_bytes();
+  try {
+    assert.equal(JSON.stringify(primaryAccount).includes(Buffer.from(authority).toString('hex')),false);
+    primaryRestored=core.BrowserPrimary.restore(authority,primary.account(),deviceId);
+  }finally{authority.fill(0);}
+  const proof='ab'.repeat(32);
+  const bind=JSON.parse(primaryRestored.finish_bind(proof,new Uint8Array(sign(null,primaryRestored.bind_message(proof),device.privateKey))));
+  assert.equal(bind.profile.id,primaryAccount.identity);
+  assert.equal(bind.profile.name,'');
+  assert.equal(bind.device,deviceId);
+  globalThis.zoenSign = (payload) => new Uint8Array(sign(null, payload, device.privateKey));
   client = new core.BrowserCore(JSON.stringify(account), '');
   const command = (value) => JSON.parse(client.document_request(JSON.stringify(value), 1000)).result;
   const blocks = command({ op: 'page_parse_markdown', markdown: '# Viagem **junta** 🪴\n\n- [x] Conferir *amanhã*\n' });
@@ -58,8 +75,10 @@ try {
   assert.ok(update.frames.length > 0);
   restored = new core.BrowserCore(JSON.stringify(account), update.snapshot);
   assert.deepEqual(JSON.parse(restored.view()), []);
-  process.stdout.write(`WASM verified: ${blocks.length} rich-text blocks, ${apps.length} shared mini-apps, signed bootstrap/reload, pinned worker (${wasm.byteLength} bytes).\n`);
+  process.stdout.write(`WASM verified: primary creation/cold retry without SAB, ${blocks.length} rich-text blocks, ${apps.length} shared mini-apps, signed bootstrap/reload, pinned worker (${wasm.byteLength} bytes).\n`);
 } finally {
+  primaryRestored?.free();
+  primary?.free();
   restored?.free();
   client?.free();
   delete globalThis.zoenSign;
