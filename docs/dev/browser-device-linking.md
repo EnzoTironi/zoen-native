@@ -68,8 +68,18 @@ publication, peer/request/Space correlation, verified opened imports and bounded
 oversized-page failure. Browser controller tests check persistence before PUT and
 that a failed encrypted save never uploads.
 
-A real browser-primary to native-device UI walkthrough, multi-chunk interruption
-across a real browser restart, and visual confirmation on both devices are still
-required before claiming this journey fully validated. Provider login, backup
-recovery, release signing, and production relay deployment are separate acceptance
-items.
+The reverse protocol runner (`scripts/qa-web-primary-native-history.mjs`) passed on
+2026-10-17 with 90 pre-link encrypted messages and 8 chunks. After the first
+acknowledged chunk it restored the encrypted checkpoint into a distinct WASM
+instance, reused the exact retained ciphertext and skipped that acknowledged
+upload. The canonical native engine was interrupted 7 times, resumed 7 retained
+chunks, imported all 90 exact texts and cleared its initial pending marker. The
+canonical repository runner was repeated against the final Release WASM and passed
+with 439 encrypted checkpoints; its WASM SHA-256 was
+`cd4fc5f17c9e032814d48ce0127e9ffbf19dbaa54830d065fe4ee5e407f44b32`.
+
+That runner retains encrypted checkpoints in its own process. A real browser-process
+restart with IndexedDB, native-device UI walkthrough and visual confirmation on both
+devices remain required before claiming the whole journey validated. Provider
+login, backup recovery, release signing and production relay deployment are separate
+acceptance items.

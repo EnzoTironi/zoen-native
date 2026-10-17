@@ -47,3 +47,45 @@ to reuse the binary while other build work proceeds.
 
 Pair only the dedicated QA app/simulator. The fixture does not supply Google/Apple
 credentials, provider proofs, real-user data or a completed provider-login verdict.
+
+## A pinned native recipient
+
+For a browser-primary to native journey, the fixture can receive a link instead of
+creating an account:
+
+```sh
+cargo run -p roda-ffi --example qa-device -- \
+  --handle qa_receiver_1 --relay http://127.0.0.1:8790 \
+  --mode linked --expected-identity <synthetic-source-public-identity>
+```
+
+Linked mode requires the public identity pin. It emits `event: "pending"` with the
+canonical code/check digits, waits for the existing device, verifies the identity
+through the normal engine boundary, and refuses a source whose public handle is
+not synthetic (`qa_`). `event: "ready"` follows real authentication/sync. The same
+volatile vault and in-memory SQLite rules apply. This mode additionally accepts
+canonical `receive_history` and `load_older` commands.
+
+## Repeatable reverse history acceptance
+
+With an owned local relay running, build the current fixture and WASM, then run:
+
+```sh
+cargo build -p roda-ffi --example qa-device
+node scripts/build-expo-web-core.mjs
+node scripts/qa-web-primary-native-history.mjs --relay http://127.0.0.1:8790
+```
+
+The runner creates only fresh synthetic accounts, uses actual current WASM and
+Messages transport, publishes 90 encrypted messages before linking, and authorizes
+the pinned native recipient. It retains a real AES-GCM encrypted sender checkpoint
+after the first acknowledged upload, destroys the sender objects and instantiates
+a distinct WASM runtime. It checks every resumed PUT against retained ciphertext
+hashes and ensures the acknowledged chunk is not uploaded again. The native engine
+is deliberately interrupted after individual downloads, then must import all exact
+message texts and clear its pending marker.
+
+This is a protocol integration runner. Its encrypted checkpoints live in the test
+process; browser-process/IndexedDB durability and rendered UI are separate checks.
+The JSON result explicitly reports `browser_storage_verified: false` and
+`ui_verified: false`. It does not exercise Apple/Google provider login.

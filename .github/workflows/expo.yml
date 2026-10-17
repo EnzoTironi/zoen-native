@@ -2,10 +2,32 @@ name: expo
 
 on:
   pull_request:
-    paths: ["apps/zoen/**", "packages/zoen-ui/web/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-expo-*.mjs", ".github/workflows/expo.yml"]
+    paths:
+      [
+        "apps/zoen/**",
+        "packages/zoen-ui/web/**",
+        "crates/**",
+        "Cargo.toml",
+        "Cargo.lock",
+        "scripts/build-expo-*.mjs",
+        "scripts/expo-web-*.mjs",
+        "scripts/expo-web-tests/**",
+        ".github/workflows/expo.yml",
+      ]
   push:
     branches: [main]
-    paths: ["apps/zoen/**", "packages/zoen-ui/web/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-expo-*.mjs", ".github/workflows/expo.yml"]
+    paths:
+      [
+        "apps/zoen/**",
+        "packages/zoen-ui/web/**",
+        "crates/**",
+        "Cargo.toml",
+        "Cargo.lock",
+        "scripts/build-expo-*.mjs",
+        "scripts/expo-web-*.mjs",
+        "scripts/expo-web-tests/**",
+        ".github/workflows/expo.yml",
+      ]
 
 permissions:
   contents: read
@@ -51,3 +73,91 @@ jobs:
         run: npm run check
       - name: Expo SDK compatibility
         run: npx --yes expo-doctor@1.21.5
+
+  # Exercises the exported Expo Router application, not the separate legacy Web shell.
+  release-web-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_JOBS: "2"
+      EXPO_NO_TELEMETRY: "1"
+      ZOEN_EXPO_EVIDENCE: ${{ runner.temp }}/expo-web-evidence
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: |
+            apps/zoen/package-lock.json
+            scripts/expo-web-tests/package-lock.json
+      - name: Rust and WASM toolchains
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --target wasm32-unknown-unknown
+          rustup default 1.99.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          key: expo-release-web-acceptance
+      - name: Install application and acceptance tools
+        run: |
+          npm ci --prefix apps/zoen
+          npm ci --prefix scripts/expo-web-tests
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked
+      - name: Disposable Postgres and FoundationDB
+        run: |
+          pg=""
+          for attempt in 1 2 3; do
+            for img in public.ecr.aws/docker/library/postgres:17-alpine mirror.gcr.io/library/postgres:17-alpine; do
+              docker pull -q "$img" && { pg="$img"; break 2; }
+            done
+            sleep $((attempt * 15))
+          done
+          test -n "$pg"
+          docker run -d --name expo-pg -p 5432:5432 -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust "$pg"
+          scripts/fdb.sh up
+          eval "$(scripts/fdb.sh env)"
+          for v in FDB_CLUSTER_FILE LIBRARY_PATH LD_LIBRARY_PATH; do echo "$v=${!v}" >> "$GITHUB_ENV"; done
+          for _ in $(seq 1 30); do docker exec expo-pg pg_isready -U zoen >/dev/null 2>&1 && break; sleep 1; done
+          docker exec expo-pg pg_isready -U zoen
+      - name: Build canonical peers and Expo release artifact
+        env:
+          EXPO_PUBLIC_ZOEN_RELAY_URL: http://127.0.0.1:8790
+          # This synthetic relay has no provider configuration. Normal device linking
+          # is the journey under test; no credentials or fake provider proofs are used.
+          EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ""
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ""
+        run: |
+          cargo build --locked -p zoen-relay -p zoen-cli
+          npm run export:web --prefix apps/zoen
+      - name: Expo release linking, encrypted roundtrip and cold dynamic-route reload
+        env:
+          RELAY: http://127.0.0.1:8790
+          DATABASE_URL: postgres://zoen@127.0.0.1:5432/postgres
+          ZOEN_RELAY_NAME: zoen-expo-acceptance
+          ZOEN_FDB_CELL: expo-release-acceptance
+          ZOEN_BLOB_DIR: .dev/expo-release-blobs
+          ZOEN_LIMITS: connect_ip=100000/s:100000,register_ip=100000/s:100000
+        run: |
+          mkdir -p .dev/expo-release-blobs
+          target/debug/zoen-relay --bind 127.0.0.1:8790 > "$RUNNER_TEMP/expo-relay.log" 2>&1 &
+          relay_pid=$!
+          trap 'kill "$relay_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fsS "$RELAY/healthz" >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          CHROME="$(command -v google-chrome)" node scripts/expo-web-e2e.mjs
+      - name: Retain release acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: expo-release-web-evidence
+          path: ${{ runner.temp }}/expo-web-evidence
+          if-no-files-found: warn
+          retention-days: 7

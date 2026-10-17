@@ -4,7 +4,7 @@
   Cross-Origin-Embedder-Policy: require-corp
 
 # Pages merges overlapping values. Detach before attaching the exact OAuth policy.
-# These are only the static export's canonical sign-in entry and its HTML aliases.
+# Only the canonical sign-in entry and its explicitly redirected aliases relax isolation.
 /sign-in
   ! Cross-Origin-Opener-Policy
   ! Cross-Origin-Embedder-Policy

@@ -1,0 +1,15 @@
+{
+  "name": "zoen-expo-web-acceptance-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "playwright-core": "1.64.1",
+    "wrangler": "4.151.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261012.1": true,
+    "fsevents@2.3.3": false
+  }
+}

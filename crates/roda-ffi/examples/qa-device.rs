@@ -1,4 +1,4 @@
-//! Disposable primary device for QA against an explicitly selected local relay.
+//! Disposable primary or identity-pinned linked device for an explicit local QA relay.
 //! It uses the real engine, signatures, registration, grants, linking and history.
 //! No account, SQLite file or vault material survives this process.
 
@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use zeroize::Zeroize;
 
 const MAX_LINE_BYTES: usize = 1 << 20;
-const USAGE: &str = "qa-device --handle qa_<unique_test_name> --relay http://127.0.0.1:8787\n\
+const USAGE: &str = "qa-device --handle qa_<unique_test_name> --relay http://127.0.0.1:8787 [--mode linked --expected-identity <public-id>]\n\
 Reads one canonical JSON command per line; EOF stops sync and discards the device.\n\
 Only loopback HTTP address literals and synthetic qa_ handles are accepted.";
 
@@ -89,15 +89,25 @@ fn synthetic_handle(value: &str) -> bool {
         })
 }
 
-fn options(args: impl IntoIterator<Item = String>) -> Result<(String, String), &'static str> {
+fn options(
+    args: impl IntoIterator<Item = String>,
+) -> Result<(String, String, bool, Option<String>), &'static str> {
     let mut args = args.into_iter();
     let mut handle = None;
     let mut relay = None;
+    let mut linked = false;
+    let mut expected_identity = None;
     while let Some(flag) = args.next() {
         let value = args.next().ok_or("Every option requires a value.")?;
         match flag.as_str() {
             "--handle" if handle.is_none() => handle = Some(value),
             "--relay" if relay.is_none() => relay = Some(loopback_relay(&value)?),
+            "--mode" if value == "linked" && !linked => linked = true,
+            "--expected-identity"
+                if expected_identity.is_none() && roda_log::parse_device_key(&value).is_some() =>
+            {
+                expected_identity = Some(value)
+            }
             _ => return Err("Unknown or duplicate option."),
         }
     }
@@ -105,9 +115,14 @@ fn options(args: impl IntoIterator<Item = String>) -> Result<(String, String), &
     if !synthetic_handle(&handle) {
         return Err("Use a unique lowercase qa_ handle of 4 to 24 ASCII characters.");
     }
+    if linked != expected_identity.is_some() {
+        return Err("Linked QA mode requires an explicit expected identity.");
+    }
     Ok((
         handle,
         relay.ok_or("An explicit loopback --relay is required.")?,
+        linked,
+        expected_identity,
     ))
 }
 
@@ -126,6 +141,8 @@ fn allowed_operation(value: &Value) -> bool {
             | "link_progress"
             | "send_history"
             | "history_status"
+            | "receive_history"
+            | "load_older"
             | "find_people"
             | "start_direct"
             | "create_group"
@@ -181,10 +198,30 @@ fn emit(value: Value) -> io::Result<()> {
     output.flush()
 }
 
-async fn run(handle: String, relay: String) -> Result<(), Box<dyn std::error::Error>> {
+async fn run(
+    handle: String,
+    relay: String,
+    linked: bool,
+    expected: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let vault = Arc::new(VolatileVault::default());
     let core = RodaEngine::open(":memory:".into(), "en-US".into())?;
-    core.create_account("QA disposable device".into(), handle, relay, vault.clone())?;
+    if linked {
+        let request = core.link_request(relay, vault.clone())?;
+        emit(json!({"event":"pending","request":request}))?;
+        let request =
+            json!({"op":"link_wait","timeout_ms":120_000,"expected_identity_id":expected})
+                .to_string();
+        core.client_vault_request(request, vault.clone()).await?;
+        if !core
+            .account()
+            .is_some_and(|account| synthetic_handle(&account.handle))
+        {
+            return Err("The linked source is not a synthetic QA account.".into());
+        }
+    } else {
+        core.create_account("QA disposable device".into(), handle, relay, vault.clone())?;
+    }
     core.start_sync(None)?;
     if core.wait_until_settled(20_000).await.is_err() {
         core.stop_sync();
@@ -243,7 +280,7 @@ async fn main() {
         return;
     }
     let result = match options(args) {
-        Ok((handle, relay)) => run(handle, relay).await,
+        Ok((handle, relay, linked, expected)) => run(handle, relay, linked, expected).await,
         Err(reason) => {
             eprintln!("{reason}\n{USAGE}");
             std::process::exit(2);
@@ -289,11 +326,40 @@ mod tests {
     }
 
     #[test]
+    fn linked_fixture_requires_a_valid_identity_pin_and_retains_synthetic_scope() {
+        let mut args = vec![
+            "--handle".into(),
+            "qa_linked".into(),
+            "--relay".into(),
+            "http://127.0.0.1:8790".into(),
+        ];
+        args.extend(["--mode".into(), "linked".into()]);
+        assert!(options(args.clone()).is_err());
+        let identity = roda_log::Signer::from_secret(&[91; 32]).id();
+        args.extend(["--expected-identity".into(), identity.clone()]);
+        let (handle, _, linked, expected) = options(args).unwrap();
+        assert_eq!(handle, "qa_linked");
+        assert!(linked);
+        assert_eq!(expected, Some(identity.clone()));
+        let without_mode = vec![
+            "--handle".into(),
+            "qa_linked".into(),
+            "--relay".into(),
+            "http://127.0.0.1:8790".into(),
+            "--expected-identity".into(),
+            identity,
+        ];
+        assert!(options(without_mode).is_err());
+    }
+
+    #[test]
     fn fixture_forwards_pairing_and_messages_but_never_auth_or_recovery_secrets() {
         assert!(allowed_operation(
             &json!({"op":"link_device","code":"typed in the UI"})
         ));
         assert!(allowed_operation(&json!({"op":"send_message"})));
+        assert!(allowed_operation(&json!({"op":"receive_history"})));
+        assert!(allowed_operation(&json!({"op":"load_older"})));
         for op in [
             "provider_sign_in",
             "backup_create_recovery_key",
