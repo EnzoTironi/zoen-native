@@ -83,7 +83,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
       CARGO_BUILD_JOBS: "2"
       EXPO_NO_TELEMETRY: "1"
-      ZOEN_EXPO_EVIDENCE: ${{ runner.temp }}/expo-web-evidence
+      ZOEN_EXPO_EVIDENCE: ${{ github.workspace }}/.dev/expo-web-evidence
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -158,6 +158,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: expo-release-web-evidence
-          path: ${{ runner.temp }}/expo-web-evidence
+          path: ${{ github.workspace }}/.dev/expo-web-evidence
           if-no-files-found: warn
           retention-days: 7
