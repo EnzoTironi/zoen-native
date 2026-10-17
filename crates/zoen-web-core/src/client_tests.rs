@@ -1584,3 +1584,169 @@ fn browser_typing_is_connection_local_and_requires_a_current_writing_member() {
     client.receive(&reader, 11).unwrap();
     assert!(client.typing_frame(log.space(), true).unwrap().is_empty());
 }
+
+#[test]
+fn browser_task_checkbox_draft_survives_reread_and_cold_journal_restore() {
+    let (mut client, _, mut log) = document_fixture();
+    let made = doc(
+        &mut client,
+        serde_json::json!({"op":"page_import_markdown","space_id":log.space(),"path":"checkbox.md","markdown":"# Checkbox\n\nOriginal café\n\n- [ ] Revisar documento\n"}),
+        10,
+    );
+    let id = made.result["id"].as_str().unwrap().to_owned();
+    confirm_documents(&mut client, &mut log, made.update.unwrap(), 11);
+    let read = doc(
+        &mut client,
+        serde_json::json!({"op":"page","item_id":id}),
+        12,
+    )
+    .result;
+    assert_eq!(read["unsaved"], false);
+    let published_markdown = doc(
+        &mut client,
+        serde_json::json!({"op":"page_markdown","item_id":id}),
+        12,
+    )
+    .result;
+    let mut task = read["blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|block| block["kind"] == "task")
+        .unwrap()
+        .clone();
+    assert_eq!(task["checked"], false);
+    task["checked"] = true.into();
+    let order = read["blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|block| block["id"].clone())
+        .collect::<Vec<_>>();
+    let applied = doc(
+        &mut client,
+        serde_json::json!({"op":"page_apply","item_id":id,"mutation_id":"check-task","edit_context":read["edit_context"],"order":order,"changed":[task]}),
+        13,
+    );
+    let assert_checked_draft = |value: &serde_json::Value| {
+        assert_eq!(
+            value["unsaved"], true,
+            "accepted toggle must create a visible local draft"
+        );
+        let task = value["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|block| block["kind"] == "task")
+            .unwrap();
+        assert_eq!(task["checked"], true, "accepted toggle must remain checked");
+    };
+    assert_checked_draft(&applied.result["page"]);
+    let snapshot = applied.update.unwrap().snapshot;
+    let read_again = doc(
+        &mut client,
+        serde_json::json!({"op":"page","item_id":id}),
+        14,
+    )
+    .result;
+    assert_checked_draft(&read_again);
+    let exported = doc(
+        &mut client,
+        serde_json::json!({"op":"page_markdown","item_id":id}),
+        15,
+    )
+    .result;
+    assert!(exported.as_str().unwrap().contains("[x] Revisar documento"));
+    let mut reopened =
+        Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
+    let restored = doc(
+        &mut reopened,
+        serde_json::json!({"op":"page","item_id":id}),
+        16,
+    )
+    .result;
+    assert_checked_draft(&restored);
+    let exported = doc(
+        &mut reopened,
+        serde_json::json!({"op":"page_markdown","item_id":id}),
+        17,
+    )
+    .result;
+    assert!(exported.as_str().unwrap().contains("[x] Revisar documento"));
+    let mut unchecked = restored["blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|block| block["kind"] == "task")
+        .unwrap()
+        .clone();
+    unchecked["checked"] = false.into();
+    let restored_order = restored["blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|block| block["id"].clone())
+        .collect::<Vec<_>>();
+    let reverted = doc(
+        &mut reopened,
+        serde_json::json!({"op":"page_apply","item_id":id,"mutation_id":"uncheck-task","edit_context":restored["edit_context"],"order":restored_order,"changed":[unchecked]}),
+        18,
+    );
+    let assert_clean = |value: &serde_json::Value| {
+        assert_eq!(
+            value["unsaved"], false,
+            "returning to published content clears the draft difference"
+        );
+        assert_eq!(
+            value["blocks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|block| block["kind"] == "task")
+                .unwrap()["checked"],
+            false
+        );
+    };
+    assert_clean(&reverted.result["page"]);
+    let clean_snapshot = reverted.update.unwrap().snapshot;
+    assert_clean(
+        &doc(
+            &mut reopened,
+            serde_json::json!({"op":"page","item_id":id}),
+            19,
+        )
+        .result,
+    );
+    assert_eq!(
+        doc(
+            &mut reopened,
+            serde_json::json!({"op":"page_markdown","item_id":id}),
+            20
+        )
+        .result,
+        published_markdown
+    );
+    let mut clean_reopened = Client::new(
+        reopened.account.clone(),
+        reopened.signer.clone(),
+        &clean_snapshot,
+    )
+    .unwrap();
+    assert_clean(
+        &doc(
+            &mut clean_reopened,
+            serde_json::json!({"op":"page","item_id":id}),
+            21,
+        )
+        .result,
+    );
+    assert_eq!(
+        doc(
+            &mut clean_reopened,
+            serde_json::json!({"op":"page_markdown","item_id":id}),
+            22
+        )
+        .result,
+        published_markdown
+    );
+}

@@ -9,7 +9,7 @@ The first journey uses a real loopback Rust relay, disposable Postgres/Foundatio
 3. Create a private DM and a synthetic message before the browser joins. Use the ordinary **Conectar com outro aparelho** and **Mostrar código** flow, authorize through the existing CLI, and compare both sides' verification digits.
 4. Enter the isolated application and read the older encrypted message. Send from the Expo composer and require the real CLI peer's decrypted, persisted timeline to contain it. Send a reply from that peer and read it in Expo. Check outbound relay frames do not contain the private test text.
 5. Reload the actual `/chat/<id>` URL and require the same encrypted session and all three messages without onboarding or error alerts.
-6. Import a synthetic UTF-8 Markdown file through the real file chooser into that encrypted conversation. Edit a body block and require the local draft to survive a dynamic-route reload. Publish the edit, reload again, download the real Markdown export and compare its exact bytes with an export decrypted by the independent canonical CLI peer.
+6. Import a synthetic UTF-8 Markdown file through the real file chooser into that encrypted conversation. Check its task and require the checked local draft to survive a dynamic-route reload. Uncheck it and require the exact published state with sharing disabled. Edit a body block and require that local draft to survive another reload. Publish the edit, reload again, download the real Markdown export and compare its exact bytes with an export decrypted by the independent canonical CLI peer.
 7. Open You and cancel **Sair e apagar dados**. Reopen the chat and require all three messages again.
 8. Confirm local erasure, require the nonisolated sign-in document, reload it and require onboarding with no message composer or erasure action.
 9. Read the independent canonical peer and require all three earlier messages to remain present.
@@ -20,6 +20,16 @@ would make the assertion ambiguous. Checkpoint `03d787f` passed the messaging an
 erasure journey, but screenshot review found a false account-change banner. The
 reconnect correction, stricter zero-alert assertion and new Markdown journey need
 their own successful revision-specific run before being accepted.
+
+At `7d65d6b5`, run `39055735543` accepted the zero-alert chat reload, real
+Markdown import, checked task with a saved draft and unchecked task returning to
+the original content. It then failed an incorrect assertion that reversing this
+edit must remain unsaved. The corrected runner requires a cold reload while the
+task is checked, then a clean state after unchecking. A canonical Rust regression
+also checks both states, exact Markdown and snapshot/reopen persistence. Actual
+Release WASM and worker/Messages Node harnesses preserve the checked draft, using
+in-memory checkpoints and offline transport. Those harnesses do not establish
+browser-process or IndexedDB acceptance; the complete CI journey is still required.
 
 No IDB/session injection, fake identity-provider tokens, authentication bypass or production account is involved. The runner refuses a non-loopback relay. Browser evaluation is limited to standard isolation capabilities; account and message assertions use visible UI and the independently running Rust CLI.
 

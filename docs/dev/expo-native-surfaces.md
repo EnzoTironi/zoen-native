@@ -201,5 +201,17 @@ delayed writes, inaccessible files and retry behavior. Signed iOS checkpoint `f9
 passed two disposable-device confirmations, cold onboarding without Metro and exact
 primary-history preservation; it also accepted profile save/cold reopen and canceled
 silent recording. Actual Web checkpoint `03d787f` passed erasure and peer preservation
-in CI. The later cache-inspection correction needs its own fresh installed acceptance.
+in CI. Signed v3 and v4 installed acceptance subsequently passed with the
+cache-inspection correction: confirmed local erasure, cold onboarding without Metro
+and exact primary-history preservation. v3 repeated cancel as well. A sanitized
+runtime witness found that the official SDK launch envelope reaches the native
+intent with a slash root. The minimal validator correction accepts only that root
+variant while retaining the exact SDK query checks and never following its inner
+address. Signed v4 opened directly into Chats through the official CLI and through
+a Metro-off linked cold restart; it then passed erasure and Metro-off empty cold
+onboarding. Its 244-input source SHA256 is
+`f53a592b3dd40bfe6c9d52c99efa8b7cc8f6c2dc40a66b0bcd353087d13d67b0`,
+with JS bundle SHA256
+`9b23c6324db740ca431ecdd00c34676bf8a7e95ae51109e1f2fcef89e9288553`.
+Temporary diagnostic instrumentation was removed before the final bundle.
 Existing personal accounts must never be reset to produce evidence.

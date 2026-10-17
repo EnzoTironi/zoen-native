@@ -48,12 +48,24 @@ export async function acceptMarkdownJourney({
   await taskCheckbox.click();
   await page.getByRole("checkbox", { name: task, exact: true, checked: true }).waitFor();
   await page.getByText("Rascunho salvo neste aparelho", { exact: true }).waitFor();
+  const checkedReload = await page.reload({ waitUntil: "domcontentloaded" });
+  assert.equal(checkedReload?.status(), 200);
+  await page.getByRole("checkbox", { name: task, exact: true, checked: true }).waitFor();
+  await page.getByText("Rascunho salvo neste aparelho", { exact: true }).waitFor();
+  await screenshot("markdown-checked-draft-after-cold-reload.png");
   await taskCheckbox.click();
   await page.getByRole("checkbox", { name: task, exact: true, checked: false }).waitFor();
   assert.equal(await taskCheckbox.getAttribute("aria-checked"), "false");
-  await page.getByText("Rascunho salvo neste aparelho", { exact: true }).waitFor();
+  // Returning to the published content clears the draft difference by design.
+  await page.getByText("Compartilhada na conversa", { exact: true }).waitFor();
+  assert.equal(
+    await page.getByRole("button", { name: "Compartilhar alterações", exact: true }).isDisabled(),
+    true,
+  );
   step("markdown-checkbox-interaction-updates-visible-state-and-draft", {
+    checkedDraftSurvivesColdReload: true,
     checkedThenUnchecked: true,
+    returnsToPublishedState: true,
   });
 
   await block(original).click();

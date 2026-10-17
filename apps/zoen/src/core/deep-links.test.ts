@@ -57,14 +57,18 @@ test('Expo SDK transport envelopes always open home and never follow their inner
       'http://192.168.2.113:8081',
       'https://example.test/tunnel',
     ]) {
-      const launch = `${scheme}://?__expo_url=${encodeURIComponent(transport)}`;
-      assert.equal(nativeLinkPath(launch), '/');
-      assert.equal(
-        nativeLinkPath(
-          `${launch}&__expo_disable_fab=1&__expo_disable_auto_launch=1&__expo_disable_onboarding=1`,
-        ),
-        '/',
-      );
+      for (const root of ['', '/']) {
+        // Real Expo Router initial links include a slash before the SDK query.
+        const launch = `${scheme}://${root}?__expo_url=${encodeURIComponent(transport)}`;
+        assert.equal(nativeLinkPath(launch), '/', launch);
+        assert.equal(
+          nativeLinkPath(
+            `${launch}&__expo_disable_fab=1&__expo_disable_auto_launch=1&__expo_disable_onboarding=1`,
+          ),
+          '/',
+          launch,
+        );
+      }
     }
   }
 });
@@ -74,6 +78,8 @@ test('only the exact SDK bootstrap shape is discarded; malformed links remain in
   for (const value of [
     base.replace('zoen:', 'foreign:'),
     base.replace('zoen://?', 'zoen://chat/private?'),
+    base.replace('zoen://?', 'zoen:///nested/path?'),
+    base.replace('zoen://?', 'zoen:////?'),
     base.replace('zoen://?', 'zoen:/?'),
     base.replace('zoen://?', 'zoen:?'),
     `${base}&code=provider-proof`,
@@ -88,6 +94,9 @@ test('only the exact SDK bootstrap shape is discarded; malformed links remain in
     'zoen://?__expo_url=javascript%3Aalert(1)',
     'zoen://?__expo_url=http%3A%2F%2Fuser%3Apassword%40localhost',
     'zoen://?__expo_url=not-a-url',
+    'zoen:///?__expo_url=not-a-url',
+    'zoen:///?__expo_url=javascript%3Aalert(1)',
+    'exp+zoen:///?__expo_url=http%3A%2F%2Flocalhost&extra=value',
     `zoen://?__expo_url=${'x'.repeat(2048)}`,
   ])
     assert.equal(nativeLinkPath(value), '/open-link?invalid=1', value);

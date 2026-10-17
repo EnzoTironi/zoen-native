@@ -59,7 +59,7 @@ export function parseZoenLink(value: string): ZoenLink | null {
 function expoBootstrapLink(path: string): boolean {
   if (
     path.length > 2048 ||
-    !/^(?:zoen|exp\+zoen):\/\/\?/.test(path) ||
+    !/^(?:zoen|exp\+zoen):\/\/\/?\?/.test(path) ||
     Array.from(path).some(
       (character) => character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127,
     )
@@ -72,7 +72,7 @@ function expoBootstrapLink(path: string): boolean {
       launch.host ||
       launch.username ||
       launch.password ||
-      launch.pathname ||
+      (launch.pathname !== '' && launch.pathname !== '/') ||
       launch.hash
     )
       return false;
