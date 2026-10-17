@@ -41,6 +41,13 @@ class CaptureSafetyTests(unittest.TestCase):
         setup = android.split('uses: android-actions/setup-android@v3', 1)[1].split('      - ', 1)[0]
         self.assertIn('packages: platform-tools', setup)
 
+    def test_android_timezone_uses_supported_alarm_shell_command(self):
+        adb = ('adb', '-s', 'emulator-5554')
+        with patch.object(parity_capture, 'run') as run:
+            parity_capture.set_android_timezone(adb)
+        run.assert_called_once_with(*adb, 'shell', 'cmd', 'alarm', 'set-timezone', 'UTC')
+        self.assertNotIn('setprop', run.call_args.args)
+
     def test_capture_rejects_physical_phone_before_any_command(self):
         with TemporaryDirectory() as directory, patch.object(parity_capture, 'run') as run:
             with self.assertRaisesRegex(ValueError, 'only supports emulator'):

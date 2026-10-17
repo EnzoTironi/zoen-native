@@ -120,6 +120,12 @@ def android_capture_test_classes():
         '#' + key.replace('-light', 'Light').replace('-dark', 'Dark') for key in KEYS)
 
 
+def set_android_timezone(adb, timezone='UTC'):
+    # Writing persist.sys.timezone directly requires root on current emulator
+    # images. AlarmManager exposes a shell command backed by SET_TIME_ZONE.
+    run(*adb, 'shell', 'cmd', 'alarm', 'set-timezone', timezone)
+
+
 def capture_android(args, output):
     serial = android_emulator_serial(args.device)
     adb = ('adb', '-s', serial)
@@ -132,7 +138,7 @@ def capture_android(args, output):
     run(*adb, 'shell', 'settings', 'put', 'global', 'window_animation_scale', '0')
     run(*adb, 'shell', 'settings', 'put', 'global', 'transition_animation_scale', '0')
     run(*adb, 'shell', 'settings', 'put', 'global', 'animator_duration_scale', '0')
-    run(*adb, 'shell', 'setprop', 'persist.sys.timezone', 'UTC')
+    set_android_timezone(adb)
     run('bash', 'android/gradlew', '-p', 'android', ':app:assembleDebug', ':app:assembleDebugAndroidTest', '--max-workers=2', f'-PandroidAbis={abi}', f'-PcoreProfile={args.core_profile}')
     run(*adb, 'install', '-r', 'android/app/build/outputs/apk/debug/app-debug.apk')
     run(*adb, 'install', '-r', 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')
