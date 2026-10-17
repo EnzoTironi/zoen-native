@@ -23,14 +23,24 @@ export function messageDeliveryLabel(delivery: Delivery): string {
 }
 
 /** Receipts reflect the core's acknowledgements, never a presentation timer. */
-export function MessageReceipt({ delivery }: { delivery: Delivery }) {
+export function MessageReceipt({
+  delivery,
+  ink,
+  background,
+}: {
+  delivery: Delivery;
+  ink?: string;
+  background?: string;
+}) {
   const { colors } = useTheme();
   const doubled = delivery === 'Delivered' || delivery === 'Read';
   const readBlue =
     ['#168CD2', '#4CC3F2', '#1167A3', '#79D7FF'].find(
-      (color) => contrastRatio(color, colors.mine) >= 3,
-    ) ?? colors.onMine;
-  const color = delivery === 'Read' ? readBlue : colors.onMine;
+      (color) => contrastRatio(color, background ?? colors.mine) >= 3,
+    ) ??
+    ink ??
+    colors.onMine;
+  const color = delivery === 'Read' ? readBlue : (ink ?? colors.onMine);
   const name =
     delivery === 'Sending'
       ? { ios: 'clock' as const, android: 'schedule' as const, web: 'schedule' as const }

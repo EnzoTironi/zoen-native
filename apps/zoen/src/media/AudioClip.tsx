@@ -1,174 +1,219 @@
 import { t, formatLocale } from '../i18n/index.ts';
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { Icon } from '../components/primitives';
 import { useTheme } from '../theme';
+import { AudioProgress } from './audio-progress';
 
 export function clipTime(seconds: number) {
-  const value = Math.max(0, Math.floor(seconds));
+  const value = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 }
 
 let stopPrevious: (() => void) | null = null;
-
+let playbackIntent = 0;
 export function pauseAudioPlayback() {
+  ++playbackIntent;
   stopPrevious?.();
   stopPrevious = null;
 }
 
-export function AudioClip({
+type Props = {
+  uri: string;
+  durationMs?: number;
+  levels?: readonly number[];
+  compact?: boolean;
+  appearance?: 'mine' | 'received' | 'default';
+  autoPlay?: boolean;
+  onLongPress?: () => void;
+};
+
+/** Each signed URI owns one player; recycled rows cannot retain a previous source's intent. */
+export function AudioClip(props: Props) {
+  return <AudioClipContent key={props.uri} {...props} />;
+}
+
+function AudioClipContent({
   uri,
   durationMs = 0,
   levels = [],
   compact = false,
-}: {
-  uri: string;
-  durationMs?: number;
-  levels?: number[];
-  compact?: boolean;
-}) {
+  appearance = 'default',
+  autoPlay = false,
+  onLongPress,
+}: Props) {
   const { colors } = useTheme();
-  const player = useAudioPlayer({ uri }, { updateInterval: 150, allowsExternalPlayback: false });
+  const ink = appearance === 'mine' ? colors.onMine : colors.text;
+  const player = useAudioPlayer({ uri }, { updateInterval: 100, allowsExternalPlayback: false });
   const status = useAudioPlayerStatus(player);
   const [failure, setFailure] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [seeking, setSeeking] = useState<number | null>(null);
+  const mounted = useRef(false);
+  const autoplay = useRef(autoPlay);
+  const seekTarget = useRef<number | null>(null);
+  const seekRunning = useRef(false);
   const pause = useCallback(() => player.pause(), [player]);
   useEffect(() => {
+    mounted.current = true;
     return () => {
-      if (stopPrevious === pause) stopPrevious = null;
+      mounted.current = false;
+      seekTarget.current = null;
+      if (stopPrevious === pause) {
+        ++playbackIntent;
+        stopPrevious = null;
+      }
     };
   }, [pause]);
-  const total = status.duration || durationMs / 1000;
-  const progress = total ? Math.min(1, status.currentTime / total) : 0;
-  const bars = levels.length
-    ? levels.filter(
-        (_, index) => index % Math.max(1, Math.ceil(levels.length / (compact ? 14 : 40))) === 0,
-      )
-    : Array.from({ length: compact ? 14 : 28 }, () => 0.2);
-  async function toggle() {
-    if (status.playing) player.pause();
-    else {
-      stopPrevious?.();
-      stopPrevious = pause;
+  const total =
+    Number.isFinite(status.duration) && status.duration > 0
+      ? status.duration
+      : Math.max(0, durationMs / 1000);
+  const current = Math.min(total, Math.max(0, seeking ?? status.currentTime));
+  const progress = total > 0 ? current / total : 0;
+  const report = useCallback((reason: unknown) => {
+    if (mounted.current)
+      setFailure(reason instanceof Error ? reason.message : t('media.thisAudioCouldNotBePlayed'));
+  }, []);
+  const play = useCallback(async () => {
+    if (!player.isLoaded || !mounted.current) return;
+    const intent = ++playbackIntent;
+    stopPrevious?.();
+    stopPrevious = pause;
+    setStarting(true);
+    try {
       await setAudioModeAsync({
         playsInSilentMode: true,
         allowsRecording: false,
         shouldPlayInBackground: false,
         interruptionMode: 'doNotMix',
       });
-      if (status.didJustFinish || (total && status.currentTime >= total - 0.05))
+      if (!mounted.current || playbackIntent !== intent || stopPrevious !== pause) return;
+      if (player.duration > 0 && player.currentTime >= player.duration - 0.05)
         await player.seekTo(0);
-      player.play();
+      if (mounted.current && playbackIntent === intent && stopPrevious === pause) player.play();
+    } finally {
+      if (mounted.current) setStarting(false);
     }
+  }, [player, pause]);
+  useEffect(() => {
+    if (!autoplay.current || !status.isLoaded) return;
+    autoplay.current = false;
+    void play().catch(report);
+  }, [status.isLoaded, play, report]);
+
+  function seek(fraction: number) {
+    if (!status.isLoaded || !total) return;
+    const seconds = Math.min(total, Math.max(0, fraction * total));
+    seekTarget.current = seconds;
+    setSeeking(seconds);
+    if (seekRunning.current) return;
+    seekRunning.current = true;
+    void (async () => {
+      try {
+        while (mounted.current && seekTarget.current !== null) {
+          const target = seekTarget.current;
+          seekTarget.current = null;
+          await player.seekTo(target);
+        }
+      } catch (reason) {
+        report(reason);
+      } finally {
+        seekRunning.current = false;
+        if (mounted.current) setSeeking(null);
+      }
+    })();
   }
+  const rate = status.playbackRate || 1;
   return (
-    <View style={{ minWidth: compact ? 0 : 210, gap: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+    <View style={{ width: '100%', minWidth: 0, gap: compact ? 2 : 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 6 : 10 }}>
         <Pressable
+          onLongPress={onLongPress}
+          delayLongPress={350}
           accessibilityRole="button"
           accessibilityLabel={status.playing ? t('media.pauseAudio') : t('media.playAudio')}
+          accessibilityState={{
+            disabled: !status.isLoaded || starting,
+            busy: starting || status.isBuffering,
+          }}
+          disabled={!status.isLoaded || starting}
           onPress={() => {
             setFailure(null);
-            void toggle().catch((reason: unknown) =>
-              setFailure(
-                reason instanceof Error ? reason.message : t('media.thisAudioCouldNotBePlayed'),
-              ),
-            );
+            if (status.playing) pauseAudioPlayback();
+            else void play().catch(report);
           }}
-          style={{
-            minWidth: 44,
-            minHeight: 44,
+          style={({ pressed }) => ({
+            width: 44,
+            height: 44,
             borderRadius: 22,
-            backgroundColor: colors.muted,
             alignItems: 'center',
             justifyContent: 'center',
-          }}
+            opacity: pressed ? 0.6 : 1,
+          })}
         >
-          <Icon
-            name={
-              status.playing
-                ? { ios: 'pause.fill', android: 'pause', web: 'pause' }
-                : { ios: 'play.fill', android: 'play_arrow', web: 'play_arrow' }
-            }
-            color={colors.accent}
-          />
-        </Pressable>
-        <View
-          accessibilityElementsHidden
-          style={{
-            flex: 1,
-            height: 35,
-            flexDirection: 'row',
-            gap: 2,
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          {bars.map((level, index) => (
-            <View
-              key={index}
-              style={{
-                width: compact ? undefined : 3,
-                flex: compact ? 1 : undefined,
-                maxWidth: compact ? 3 : undefined,
-                height: 4 + Math.max(0, Math.min(1, level)) * 28,
-                borderRadius: 2,
-                backgroundColor: index / bars.length <= progress ? colors.accent : colors.tertiary,
-              }}
+          {!status.isLoaded || starting || status.isBuffering ? (
+            <ActivityIndicator color={ink} size="small" />
+          ) : (
+            <Icon
+              name={
+                status.playing
+                  ? { ios: 'pause.fill', android: 'pause', web: 'pause' }
+                  : { ios: 'play.fill', android: 'play_arrow', web: 'play_arrow' }
+              }
+              size={25}
+              color={ink}
             />
-          ))}
-        </View>
-        <Text style={{ color: colors.secondary, fontSize: 12, fontVariant: ['tabular-nums'] }}>
-          {clipTime(status.playing ? status.currentTime : total)}
-        </Text>
-      </View>
-      {!compact && total > 0 ? (
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          )}
+        </Pressable>
+        <AudioProgress
+          levels={levels}
+          progress={progress}
+          duration={total}
+          ink={ink}
+          compact={compact}
+          disabled={!status.isLoaded}
+          onSeek={seek}
+        />
+        <View style={{ alignItems: 'flex-end', justifyContent: 'center', minWidth: 44 }}>
+          <Text style={{ color: ink, opacity: 0.72, fontSize: 12, fontVariant: ['tabular-nums'] }}>
+            {clipTime(current > 0 && current < total ? current : total)}
+          </Text>
           <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('media.back10Seconds')}
-            onPress={() => {
-              void player.seekTo(Math.max(0, status.currentTime - 10));
-            }}
-            style={{ minHeight: 36, paddingHorizontal: 10, justifyContent: 'center' }}
-          >
-            <Text style={{ color: colors.secondary, fontSize: 12 }}>↶ 10 s</Text>
-          </Pressable>
-          <Pressable
+            onLongPress={onLongPress}
+            delayLongPress={350}
+            hitSlop={{ top: 6, bottom: 6 }}
             accessibilityRole="button"
             accessibilityLabel={t('media.playbackRateLabel', {
-              rate: new Intl.NumberFormat(formatLocale, { maximumFractionDigits: 1 }).format(
-                status.playbackRate || 1,
-              ),
+              rate: new Intl.NumberFormat(formatLocale, { maximumFractionDigits: 1 }).format(rate),
             })}
+            disabled={!status.isLoaded}
             onPress={() => {
-              player.setPlaybackRate(
-                (status.playbackRate || 1) === 1 ? 1.5 : status.playbackRate === 1.5 ? 2 : 1,
-              );
+              try {
+                player.setPlaybackRate(rate === 1 ? 1.5 : rate === 1.5 ? 2 : 1);
+              } catch (reason) {
+                report(reason);
+              }
             }}
-            style={{ minHeight: 36, paddingHorizontal: 10, justifyContent: 'center' }}
+            style={({ pressed }) => ({
+              minHeight: 32,
+              minWidth: 44,
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+              opacity: pressed ? 0.6 : 1,
+            })}
           >
-            <Text style={{ color: colors.secondary, fontSize: 12 }}>
-              {new Intl.NumberFormat(formatLocale, { maximumFractionDigits: 1 }).format(
-                status.playbackRate || 1,
-              )}
-              ×
+            <Text
+              style={{ color: ink, fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] }}
+            >
+              {new Intl.NumberFormat(formatLocale, { maximumFractionDigits: 1 }).format(rate)}×
             </Text>
           </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('media.forward10Seconds')}
-            onPress={() => {
-              void player.seekTo(Math.min(total, status.currentTime + 10));
-            }}
-            style={{ minHeight: 36, paddingHorizontal: 10, justifyContent: 'center' }}
-          >
-            <Text style={{ color: colors.secondary, fontSize: 12 }}>10 s ↷</Text>
-          </Pressable>
         </View>
-      ) : null}
+      </View>
       {failure ? (
-        <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 13 }}>
+        <Text selectable accessibilityRole="alert" style={{ color: ink, fontSize: 13 }}>
           {failure}
         </Text>
       ) : null}

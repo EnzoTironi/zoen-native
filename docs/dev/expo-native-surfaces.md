@@ -141,8 +141,8 @@ slide/fade, and notices remain visible.
 
 Conversation search reuses the actual message input rather than replacing the
 header. The header magnifier switches that same field into search; the microphone
-slot becomes older/newer arrows, and a completed empty query offers Send to Ask
-Zoen. Loading, failures and stale results never admit AI. Canonical paginated hits
+slot becomes older/newer arrows; a completed search with a nonempty query and
+zero hits offers Send to Ask Zoen. Loading, failures and stale results never admit AI. Canonical paginated hits
 reveal exact message IDs, including thread replies temporarily rendered in the
 same conversation. Closing restores the normal field, saved text and audio owner.
 Only an opaque ticket enters navigation; the question remains in memory. The
@@ -160,8 +160,9 @@ capture during human use shows a Portuguese model reply grounded in the limited
 text excerpt. That observation is not a controlled known-query or physical-device
 acceptance run.
 
-The normal composer stays mounted while search hides it, so entering and closing
-search preserves a staged audio draft as well as text. Entering search stops a live
+The same message field and MediaComposer stay mounted while search changes the
+controlled input and hides the audio review, preserving staged audio and text.
+Entering search stops a live
 recording into its retained draft; asynchronous recording startup checks suspension
 after permission and preparation, preventing a hidden recording from starting later.
 
@@ -175,6 +176,49 @@ normalized y0.140/height0.174. No automation swipe was performed during that use
 interaction. Earlier v17 independently confirmed fixed frames across one bounded
 automated swipe. Final keyboard/jump, isolated pin/unpin and cold acceptance remain
 pending.
+
+## Message interaction source checkpoint — v26 build pending
+
+The current installed artifact remains signed v25. The following changes are
+implemented in source and passed TypeScript, Oxlint, Oxfmt and all 226 app tests;
+the v26 signed build, artifact hashes and installed gesture acceptance are pending.
+This checkpoint does not claim full iMessage, WhatsApp, Slack or prior Swift parity.
+
+Main chat and threads now share `ConversationMessage`, `useMessageActions` and the
+same canonical mutations. Bubble grouping respects author, time continuity and
+system boundaries; deleted messages do not reveal retained attachments or actions.
+Horizontal reply/thread gestures distinguish intentional movement from vertical
+scroll, multitouch and the system Back edge. Press/threshold feedback respects
+reduced motion. Audio scrubbing explicitly wins before row swipes. The anchored
+message-action modal waits for native dismissal before focus, navigation or share
+callbacks; fresh account/device/Space/message checks fence deferred actions.
+Text accessibility actions and a separate media-action control preserve access
+without swallowing playback controls. Actual VoiceOver, nested player gestures,
+interactive scrolling and dismissal timing still require installed iPhone QA.
+
+A shared revision-based draft reducer consumes only the accepted send/edit attempt.
+Typing during a delayed save, changing the edit target or selecting another reply
+survives an earlier completion. A failed mutation preserves the draft. Pending
+reactions release their latch across scope changes, and external sharing rechecks
+scope after asynchronous availability/materialization, releasing decrypted copies
+on completion or refusal. Highlight rings overlay the finished message instead
+of changing attachment layout.
+
+Photo/video messages use version-pinned decrypted media, proportionate rounded
+previews, native playback/QuickLook and release-owned temporary copies. Miniapp
+messages reuse the Home snapshot/artwork renderer with an integrated real Open
+action. The canonical embedded `ItemCard.app` works without a per-row fetch; a live
+`ItemDetail` supersedes it only for the same item, scope and app with a nonolder
+version. Other nonfile items retain their actual summary and exact Plan amounts.
+There are no fabricated unread markers, counts, hearts or app mutations in previews.
+
+The 14 new deterministic tests cover four draft-completion races, three
+presentation/deletion policies, three swipe-admission/threshold policies and four
+miniapp projection/scope regressions. They prove those model boundaries rather
+than gesture feel, native player arbitration or a completed media/peer journey.
+The full check log is `/private/tmp/zoen-message-polish-check.log`. A new isolated
+simulator is being prepared for installed validation; creation/boot or a v25 install
+alone is not acceptance of this pending v26 source.
 
 ## Voice editing checkpoint
 

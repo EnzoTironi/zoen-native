@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { t, formatLocale } from '../i18n/index.ts';
 import type { ItemDetail } from '../core/generated/ItemDetail';
+import { useTheme } from '../theme';
 import { miniappSnapshot } from '../native-surfaces/snapshot';
 import { Icon } from '../components/primitives';
 import type { SFSymbol } from 'expo-symbols';
@@ -37,13 +38,16 @@ const papers: Record<string, string> = {
   hike: '#E2EBCF',
 };
 
+export type MiniappCardItem = Pick<ItemDetail, 'id' | 'space_id' | 'version' | 'title' | 'app'>;
 export type CompactMiniappCardProps = {
-  item: ItemDetail;
+  item: MiniappCardItem;
   size?: number;
   onPress?: () => void;
   onLongPress?: () => void;
   /** A sibling control, so menus never become an interactive child of the card. */
   accessory?: ReactNode;
+  /** Passive content inside the same accessible card action. */
+  footer?: ReactNode;
 };
 
 /** In-app content only. No widget consent, publication, commands, or web runtime. */
@@ -53,8 +57,10 @@ export function CompactMiniappCard({
   onPress,
   onLongPress,
   accessory,
+  footer,
 }: CompactMiniappCardProps) {
   const { fontScale } = useWindowDimensions();
+  const { reducedMotion } = useTheme();
   if (!item.app) return null;
   const snapshot = miniappSnapshot(item);
   const side = Math.max(136, size);
@@ -108,7 +114,7 @@ export function CompactMiniappCard({
           gap: photoSource ? 0 : 6,
           backgroundColor: art ? (papers[art] ?? '#F5F4EF') : '#F5F4EF',
           opacity: pressed && !photoSource ? 0.75 : 1,
-          transform: [{ scale: pressed && photoSource ? 0.985 : 1 }],
+          transform: [{ scale: pressed && photoSource && !reducedMotion ? 0.985 : 1 }],
         })}
       >
         {photoSource ? (
@@ -260,6 +266,7 @@ export function CompactMiniappCard({
             </Text>
           ) : null}
         </View>
+        {footer}
       </Pressable>
       {accessory ? (
         <View style={{ position: 'absolute', right: 8, top: 8 }}>{accessory}</View>

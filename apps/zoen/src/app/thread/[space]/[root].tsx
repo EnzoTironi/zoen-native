@@ -1,22 +1,35 @@
-import { t, formatLocale } from '../../../i18n/index.ts';
-import { ProfileAvatar } from '../../../profile/profile-avatar';
-import { useCallback, useState } from 'react';
-import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { FlashList } from '@shopify/flash-list';
-import { Text, View } from 'react-native';
+import { t } from '../../../i18n/index.ts';
+import { useCallback, useReducer, useRef, useState } from 'react';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { Text, View, type TextInputInstance } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useCoreQuery } from '../../../core/query';
 import { useClient } from '../../../core/provider';
+import type { TimelineEntry } from '../../../core/types';
 import { messageText } from '../../../core/presentation';
+import { messageCard } from '../../../core/message-presentation';
+import {
+  initialMessageDraft,
+  messageDraftReducer,
+  captureMessageDraft,
+} from '../../../core/message-draft';
 import { EmptyState, Loading, NativeButton } from '../../../components/primitives';
 import { useTheme } from '../../../theme';
+import { useHome } from '../../../home/provider';
 import { MessageComposer } from '../../../components/message-composer';
+import { MessageContext } from '../../../components/message-context';
 import { ConversationViewport } from '../../../components/conversation-viewport';
-import { MessageMedia } from '../../../media/MediaAttachment';
+import { ConversationMessage } from '../../../components/conversation-message';
+import { useMessageActions } from '../../../components/use-message-actions';
 
 export default function Thread() {
   const { space, root } = useLocalSearchParams<{ space: string; root: string }>();
-  const { store } = useClient();
+  const { store, notice } = useClient();
+  const { items } = useHome();
+  const input = useRef<TextInputInstance>(null);
+  const list = useRef<FlashListRef<TimelineEntry>>(null);
+  const sending = useRef(false);
   useFocusEffect(useCallback(() => () => store.setTyping(space, false), [space, store]));
   const {
     data: entries,
@@ -24,27 +37,56 @@ export default function Thread() {
     retry,
   } = useCoreQuery({ op: 'thread', space_id: space, root_id: root });
   const { colors } = useTheme();
-  const [draft, setDraft] = useState('');
+  const [messageDraft, updateDraft] = useReducer(
+    messageDraftReducer,
+    undefined,
+    initialMessageDraft,
+  );
+  const { text: draft, reply, editing, editText: editDraft } = messageDraft;
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const actions = useMessageActions({
+    spaceId: space,
+    entries: entries ?? [],
+    onReply: (entry) => {
+      updateDraft({ type: 'reply', entry });
+      input.current?.focus();
+    },
+    onEdit: (entry) => {
+      updateDraft({ type: 'edit', entry, text: messageText(entry) });
+      input.current?.focus();
+    },
+    onThread: () => input.current?.focus(),
+  });
   async function send() {
-    if (!draft.trim() || busy) return;
-    const text = draft;
+    const attempt = captureMessageDraft(messageDraft);
+    const text = attempt.text;
+    if (!text.trim() || sending.current) return;
+    sending.current = true;
     store.setTyping(space, false);
     setBusy(true);
     setFailure(null);
     try {
-      await store.request({
-        op: 'send_message',
-        space_id: space,
-        text,
-        reply_to: root,
-        thread: true,
-      });
-      setDraft((value) => (value === text ? '' : value));
+      if (attempt.editingId)
+        await store.request({
+          op: 'edit_message',
+          space_id: space,
+          message_id: attempt.editingId,
+          text,
+        });
+      else
+        await store.request({
+          op: 'send_message',
+          space_id: space,
+          text,
+          reply_to: attempt.replyId ?? root,
+          thread: true,
+        });
+      updateDraft({ type: 'accepted', attempt });
     } catch (reason) {
       setFailure(reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'));
     } finally {
+      sending.current = false;
       setBusy(false);
     }
   }
@@ -58,29 +100,41 @@ export default function Thread() {
       <ConversationViewport
         composer={
           <>
-            {failure || error ? (
+            {failure || error || notice ? (
               <Text
                 accessibilityRole="alert"
                 selectable
                 style={{ color: colors.danger, padding: 16 }}
               >
-                {failure ?? error}
+                {failure ?? error ?? notice}
               </Text>
+            ) : null}
+            {reply || editing ? (
+              <MessageContext
+                entry={(editing ?? reply)!}
+                editing={Boolean(editing)}
+                onCancel={() => {
+                  updateDraft({ type: 'cancel' });
+                }}
+              />
             ) : null}
             <MessageComposer
               spaceId={space}
-              replyTo={root}
+              inputRef={input}
+              replyTo={reply?.id ?? root}
               thread
-              value={draft}
+              editing={Boolean(editing)}
+              value={editing ? editDraft : draft}
               sending={busy}
               onChangeText={(text) => {
-                setDraft(text);
-                store.setTyping(space, Boolean(text.trim()));
+                updateDraft({ type: 'text', value: text });
+                store.setTyping(space, !editing && Boolean(text.trim()));
               }}
               onBlur={() => store.setTyping(space, false)}
               onSend={() => {
                 void send();
               }}
+              onMediaSent={() => updateDraft({ type: 'cancel' })}
             />
           </>
         }
@@ -94,70 +148,66 @@ export default function Thread() {
             <Loading />
           ) : (
             <FlashList
+              ref={list}
               data={entries}
               keyExtractor={(entry) => entry.id}
               keyboardDismissMode="interactive"
               keyboardShouldPersistTaps="handled"
               contentInsetAdjustmentBehavior="automatic"
               ListFooterComponent={composerSpacer}
-              contentContainerStyle={{
-                paddingHorizontal: 20,
-                paddingTop: 20,
-                paddingBottom: 20,
-                gap: 18,
-              }}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}
               maintainVisibleContentPosition={{
                 startRenderingFromBottom: false,
                 autoscrollToBottomThreshold: 0.15,
               }}
-              renderItem={({ item, index }) => (
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    gap: 12,
-                    paddingBottom: index === 0 ? 22 : 4,
-                    borderBottomWidth: index === 0 ? 1 : 0,
-                    borderColor: colors.line,
-                  }}
-                >
-                  <ProfileAvatar
-                    person={item.author}
-                    name={item.author.name}
-                    color={item.author.tint_hex}
-                    agent={item.author.kind === 'Agent'}
-                    size={36}
+              renderItem={({ item: entry, index }) => (
+                <View>
+                  <ConversationMessage
+                    spaceId={space}
+                    entry={entry}
+                    previous={index > 1 ? entries[index - 1] : undefined}
+                    next={index > 0 ? entries[index + 1] : undefined}
+                    groupChat
+                    item={items.find((item) => item.id === messageCard(entry)?.item_id)}
+                    reactionPending={actions.busy}
+                    onReply={actions.reply}
+                    onThread={actions.thread}
+                    onMenu={actions.open}
+                    onReact={(message, emoji) => {
+                      void actions.react(message, emoji);
+                    }}
+                    onQuote={(messageId) => {
+                      const target = entries.findIndex((message) => message.id === messageId);
+                      if (target >= 0)
+                        void list.current
+                          ?.scrollToIndex({ index: target, animated: true, viewPosition: 0.5 })
+                          .catch(() => {});
+                      else
+                        router.push({
+                          pathname: '/chat/[id]',
+                          params: { id: space, jump: messageId },
+                        });
+                    }}
                   />
-                  <View style={{ flex: 1, gap: 7 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-                      <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600' }}>
-                        {item.author.name}
-                      </Text>
-                      <Text style={{ color: colors.secondary, fontSize: 11 }}>
-                        {new Date(Number(item.at_ms)).toLocaleTimeString(formatLocale, {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </Text>
-                    </View>
-                    {!item.voice &&
-                    !('Message' in item.kind && item.kind.Message.card?.kind_id === 'file') ? (
-                      <Text selectable style={{ color: colors.text, fontSize: 17, lineHeight: 25 }}>
-                        {messageText(item)}
-                      </Text>
-                    ) : null}
-                    <MessageMedia entry={item} />
-                    {index === 0 ? (
-                      <Text style={{ color: colors.secondary, fontSize: 12 }}>
-                        {t('chat.originalMessage')}
-                      </Text>
-                    ) : null}
-                  </View>
+                  {index === 0 ? (
+                    <Text
+                      style={{
+                        color: colors.secondary,
+                        fontSize: 12,
+                        textAlign: 'center',
+                        paddingVertical: 18,
+                      }}
+                    >
+                      {t('chat.originalMessage')}
+                    </Text>
+                  ) : null}
                 </View>
               )}
             />
           )
         }
       </ConversationViewport>
+      {actions.panel}
     </KeyboardAvoidingView>
   );
 }
