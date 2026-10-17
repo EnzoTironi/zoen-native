@@ -162,7 +162,9 @@ export type Invite = ReturnType<typeof parseInvite>;
 function parseUpdate(json: string) {
   const value = object(JSON.parse(json));
   return { snapshot: string(value.snapshot), frames: array(value.frames).map(bytes),
-    conversations: array(value.conversations).map(parseConversation) };
+    conversations: array(value.conversations).map(parseConversation),
+    maintenance: value.maintenance_ms==null?null:integer(value.maintenance_ms),
+    historyReady:value.history_ready===true };
 }
 
 /** Core refusals arrive in English; people see plain Portuguese. */
@@ -197,6 +199,8 @@ export class Messages {
   private notice: string | null = null;
   private readonly aborted = new AbortController();
   private historyTimer: ReturnType<typeof setTimeout> | undefined;
+  private maintenanceTimer: ReturnType<typeof setTimeout> | undefined;
+  private maintenanceDue=0;
   private historyRunning = false;
   private historyResult: HistoryResult | null = null;
   private historyError = 'O histórico aguarda o celular conectar.';
@@ -212,7 +216,7 @@ export class Messages {
     this.transport = new AuthenticatedTransport(core, vault, session.account, (connection) => {
       if (this.closed) return;
       this.connection = connection;
-      if (connection.kind !== 'ready') ++this.generation;
+      if (connection.kind !== 'ready') { ++this.generation; clearTimeout(this.maintenanceTimer); }
       if (connection.kind === 'failed') { this.fail(connection.message); return; }
       this.publish();
     }, (frame, raw) => this.received(frame, raw));
@@ -240,17 +244,19 @@ export class Messages {
     const generation = this.generation;
     return this.enqueue(async () => {
       if (generation !== this.generation || this.connection.kind !== 'ready') return;
+      if(frame.kind==='ready'||frame.kind==='pong')await this.core.text({kind:'claim_clock',value:this.transport.claimClock});
       const update = frame.kind === 'ready' ? await this.core.text({ kind: 'bootstrap' }) :
         await this.core.text({ kind: 'receive', bytes: raw, now: Date.now() });
       if (frame.kind === 'rejected' && frame.permanent) this.notice = frame.reason;
       await this.apply(update, generation);
-      if (frame.kind === 'ready') {
+      {
         try { await this.resumeDocumentUploads(generation); }
         catch (error) {
           if (!(error as {documentUploadRetry?: boolean}).documentUploadRetry) throw error;
-          this.notice = 'Uma página aguarda conexão para terminar de enviar. O rascunho foi preservado.'; this.publish();
+          this.notice = 'Uma página aguarda conexão para terminar de enviar. O rascunho foi preservado.';
+          this.scheduleMaintenance(5000,generation,true);this.publish();
         }
-        this.scheduleHistory();
+        if(frame.kind==='ready')this.scheduleHistory();
       }
       if (frame.kind === 'sync_done') this.scheduleHistory();
     });
@@ -266,8 +272,34 @@ export class Messages {
       } });
     if (this.closed) return;
     this.conversations = update.conversations;
+    this.scheduleMaintenance(update.maintenance, generation);
+    if(update.historyReady)this.scheduleHistory();
     this.publish();
   }
+
+  private scheduleMaintenance(delay:number|null,generation:number,onlyEarlier=false):void {
+    const due=delay===null?0:Date.now()+delay;
+    if(onlyEarlier&&this.maintenanceTimer&&this.maintenanceDue<=due)return;
+    clearTimeout(this.maintenanceTimer);
+    this.maintenanceDue=due;
+    if(delay===null||this.closed||this.connection.kind!=='ready'||generation!==this.generation)return;
+    if(delay<1||delay>60_000)throw new Error('Intervalo inválido do núcleo.');
+    this.maintenanceTimer=setTimeout(()=>{
+      this.maintenanceTimer=undefined;
+      this.maintenanceDue=0;
+      void this.enqueue(async()=>{
+        if(this.closed||generation!==this.generation||this.connection.kind!=='ready')return;
+        await this.apply(await this.core.text({kind:'maintenance',now:Date.now()}),generation);
+        try{await this.resumeDocumentUploads(generation);}catch(error){
+          if(!(error as {documentUploadRetry?:boolean}).documentUploadRetry)throw error;
+          this.notice='A conversa aguarda conexão para terminar de enviar.';
+          this.scheduleMaintenance(5000,generation,true);this.publish();
+        }
+      }).catch(()=>{});
+    },delay);
+  }
+
+  membershipRequest(command:unknown):Promise<unknown>{return this.domainRequest(command,'membership_request');}
 
   send({ space, text }: { space: string; text: string }): Promise<void> {
     return this.act(space, { kind: 'queue_message', space, text, now: Date.now() }, true);
@@ -518,6 +550,16 @@ export class Messages {
     finally{this.historyRunning=false;this.scheduleHistory(1_000);}
   }
 
+  async historyStatus():Promise<{initial_pending:boolean;manifest_received:boolean;chunks_received:number;chunks_total:number;receive_active:boolean}>{
+    let status:ReturnType<Messages['historyStatus']> extends Promise<infer T>?T:never;
+    await this.enqueue(async()=>{
+      const value=object(JSON.parse(await this.core.text({kind:'history_status'})));
+      status={initial_pending:boolean(value.initial_pending),manifest_received:boolean(value.manifest_received),
+        chunks_received:integer(value.chunks_received),chunks_total:integer(value.chunks_total),receive_active:this.historyRunning};
+    });
+    return status!;
+  }
+
   receiveHistory(timeoutMs:number):Promise<HistoryResult>{
     if(this.closed)return Promise.reject(new Error('Esta sessão está fechada.'));
     if(this.historyResult)return Promise.resolve(this.historyResult);
@@ -529,7 +571,7 @@ export class Messages {
     });
   }
 
-  private async domainRequest(command: unknown, domain: 'document_request' | 'agent_request' | 'app_request' | 'profile_request'): Promise<unknown> {
+  private async domainRequest(command: unknown, domain: 'document_request' | 'agent_request' | 'app_request' | 'profile_request' | 'membership_request'): Promise<unknown> {
     let result: unknown;
     await this.enqueue(async () => {
       let response: Record<string, unknown>;
@@ -545,7 +587,8 @@ export class Messages {
         try { await this.resumeDocumentUploads(generation); }
         catch (error) {
           if (!(error as {documentUploadRetry?: boolean}).documentUploadRetry) throw error;
-          this.notice = 'A página foi salva neste navegador e aguarda conexão para terminar de enviar.'; this.publish();
+          this.notice = 'A página foi salva neste navegador e aguarda conexão para terminar de enviar.';
+          this.scheduleMaintenance(5000,generation,true);this.publish();
         }
       }
       const downloads = array(response.downloads).map(parseChunk);
@@ -623,7 +666,9 @@ export class Messages {
   async unlinkDevice(device: string): Promise<void> {
     if (this.closed) throw new Error('Esta sessão está fechada.');
     if (device === this.session.account.device) throw new Error('Use Sair para fechar este navegador.');
-    await this.transport.request('unlink', device);
+    const response=object(await this.rpc('unlink',device));
+    if(response.kind!=='done')throw new Error('O servidor não confirmou a remoção deste aparelho.');
+    await this.membershipRequest({op:'refresh_devices'});
   }
 
   async preview(code: string): Promise<Invite> {
@@ -665,6 +710,7 @@ export class Messages {
     this.closed = true;
     this.aborted.abort();
     clearTimeout(this.historyTimer);
+    clearTimeout(this.maintenanceTimer);
     for(const waiter of this.historyWaiters){clearTimeout(waiter.timer);waiter.reject(new Error('Esta sessão está fechada.'));}this.historyWaiters.clear();
     ++this.generation;
     this.transport.stop();

@@ -45,6 +45,17 @@ export function AccountAccess({
     }
   }
   async function history() {
+    const current = await store.driver.request({ op: 'history_status' });
+    if (current.receive_active) {
+      setStatus(
+        'Seu histórico está sendo recebido. Você pode entrar no Zoen e acompanhar em Dispositivos.',
+      );
+      return;
+    }
+    if (!current.initial_pending) {
+      setStatus('Seu histórico já foi recebido. Você pode entrar no Zoen.');
+      return;
+    }
     setStatus('Recebendo seu histórico…');
     const result = await store.driver.request({ op: 'receive_history', timeout_ms: 15_000 });
     setStatus(`${result.messages} mensagens recebidas. Seu histórico está pronto.`);
@@ -94,7 +105,7 @@ export function AccountAccess({
           </Text>
           <Text style={{ color: colors.secondary, lineHeight: 24 }}>
             Mantenha o outro aparelho conectado para receber o histórico. Você também pode continuar
-            agora e recebê-lo depois.
+            agora: a transferência continua automaticamente e pode ser acompanhada em Dispositivos.
           </Text>
           <NativeButton
             label="Receber histórico"

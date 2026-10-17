@@ -218,6 +218,9 @@ export class ClientStore {
       if (generation === this.generation) await this.refresh();
       return result;
     } catch (error) {
+      // Provisioning retains keys before contacting the relay. Even when its
+      // response is lost, the next provider proof must see that pending identity.
+      if (command.op === 'provider_sign_in' && generation === this.generation) await this.refresh();
       if (generation === this.generation) this.publish({ notice: failure(error) });
       throw error;
     }

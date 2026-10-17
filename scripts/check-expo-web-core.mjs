@@ -54,6 +54,9 @@ try {
   globalThis.zoenSign = (payload) => new Uint8Array(sign(null, payload, device.privateKey));
   client = new core.BrowserCore(JSON.stringify(account), '');
   const command = (value) => JSON.parse(client.document_request(JSON.stringify(value), 1000)).result;
+  const mutation = command({ op: 'new_mutation_id' });
+  assert.match(mutation, /^client_edit_[0-9a-hjkmnp-tv-z]{26}$/);
+  assert.notEqual(command({ op: 'new_mutation_id' }), mutation);
   const blocks = command({ op: 'page_parse_markdown', markdown: '# Viagem **junta** 🪴\n\n- [x] Conferir *amanhã*\n' });
   assert.equal(blocks.length, 2);
   assert.equal(blocks[0].kind, 'heading');

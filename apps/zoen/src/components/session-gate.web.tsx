@@ -118,6 +118,11 @@ export function SessionGate({ children }: { children: ReactNode }) {
             <Text style={{ fontSize: 17, lineHeight: 26, color: colors.secondary }}>
               Suas conversas, ideias e agentes, juntos. Entre para começar.
             </Text>
+            {notice && snapshot?.account?.setup_pending ? (
+              <Text accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 22 }}>
+                {notice}
+              </Text>
+            ) : null}
             <SignInButtons
               service={service}
               configuration={configuration}

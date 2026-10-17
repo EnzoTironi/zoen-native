@@ -15,7 +15,7 @@ const BATCH: usize = 500;
 pub(super) struct Journal {
     rows: BTreeMap<String, Row>,
     blocked: BTreeSet<String>,
-    agreement: BTreeMap<String, String>,
+    pub(super) agreement: BTreeMap<String, String>,
     published_agreement: String,
     uploaded: u64,
     upload: Option<Upload>,
@@ -258,6 +258,78 @@ mod tests {
     }
 
     #[test]
+    fn failed_recovery_key_lookup_retries_without_downgrading_blocked_member_to_legacy() {
+        let (mut client, _, author) = client();
+        let other = NativeSigner::from_secret(&[84; 32]);
+        let mut log = SpaceLog::new("sp_key_retry");
+        client
+            .receive(
+                &clear(
+                    &mut log,
+                    &author,
+                    EventBody::SpaceCreated {
+                        title: "Keys".into(),
+                        kind: SpaceKind::Group,
+                        privacy: Privacy::Closed,
+                    },
+                    1,
+                ),
+                2,
+            )
+            .unwrap();
+        client
+            .receive(
+                &clear(
+                    &mut log,
+                    &author,
+                    EventBody::MemberAdded {
+                        identity: other.id(),
+                        role: Role::Member,
+                    },
+                    3,
+                ),
+                4,
+            )
+            .unwrap();
+        client.saved.profile.blocked.insert(other.id());
+        let lookup = |update: &Update| {
+            update.frames.iter().any(|frame|matches!(ClientFrame::decode(frame).unwrap(),ClientFrame::Req{op:Op::AgreementKeys{ids},..} if ids.contains(&other.id())))
+        };
+        assert!(
+            lookup(&synced(&mut client)),
+            "a blocked member still needs an authenticated MLS recovery key"
+        );
+        let failed = client
+            .receive(
+                &ServerFrame::Res {
+                    id: AGREEMENT_LOOKUP,
+                    result: Err("temporary failure".into()),
+                }
+                .encode(),
+                11,
+            )
+            .unwrap();
+        assert!(!client.profile_net.no_agreement.contains(&other.id()));
+        assert!(!lookup(&failed));
+        assert!(!lookup(&client.maintenance(5010).unwrap()));
+        assert!(lookup(&client.maintenance(5011).unwrap()));
+        client
+            .receive(
+                &ServerFrame::Res {
+                    id: AGREEMENT_LOOKUP,
+                    result: Ok(Reply::AgreementKeys(Vec::new())),
+                }
+                .encode(),
+                5012,
+            )
+            .unwrap();
+        assert!(
+            client.profile_net.no_agreement.contains(&other.id()),
+            "only a successful empty answer establishes legacy absence"
+        );
+    }
+
+    #[test]
     fn blocking_rotates_profile_key_and_never_reshares_to_blocked_person() {
         let (mut client, _, author) = client();
         let other = NativeSigner::from_secret(&[76; 32]);
@@ -364,8 +436,10 @@ pub(super) struct Network {
     upload: bool,
     upload_failed: bool,
     agreement: Vec<String>,
+    agreement_retry: i64,
+    agreement_deadline: i64,
     profiles: Vec<String>,
-    no_agreement: BTreeSet<String>,
+    pub(super) no_agreement: BTreeSet<String>,
     fetched: BTreeSet<String>,
 }
 
@@ -466,7 +540,7 @@ impl<S: Signer> Client<S> {
         self.update(Vec::new())
     }
 
-    fn agreement_key(&self) -> Option<AgreementKey> {
+    pub(super) fn agreement_key(&self) -> Option<AgreementKey> {
         let secret: [u8; 32] = hex::decode(&self.account.agreement_secret)
             .ok()?
             .try_into()
@@ -553,11 +627,8 @@ impl<S: Signer> Client<S> {
         })
     }
 
-    pub fn profile_request(
-        &mut self,
-        request: &str,
-        _now: i64,
-    ) -> Result<DocumentResponse, String> {
+    pub fn profile_request(&mut self, request: &str, now: i64) -> Result<DocumentResponse, String> {
+        self.view_now_ms = now;
         if request.len() > 16 * 1024 {
             return Err("Perfil grande demais.".into());
         }
@@ -726,9 +797,13 @@ impl<S: Signer> Client<S> {
             }
             AGREEMENT_LOOKUP => {
                 let asked = std::mem::take(&mut self.profile_net.agreement);
+                self.profile_net.agreement_deadline = 0;
                 let records: &[AgreementKeyRecord] = match result {
                     Ok(Reply::AgreementKeys(records)) => records,
-                    _ => &[],
+                    _ => {
+                        self.profile_net.agreement_retry = self.view_now_ms.saturating_add(5000);
+                        return Ok(true);
+                    }
                 };
                 let mut found = BTreeSet::new();
                 for record in records
@@ -791,6 +866,16 @@ impl<S: Signer> Client<S> {
             _ => return Ok(false),
         }
         Ok(true)
+    }
+
+    pub(super) fn profile_deadline(&self) -> Option<i64> {
+        [
+            self.profile_net.agreement_retry,
+            self.profile_net.agreement_deadline,
+        ]
+        .into_iter()
+        .filter(|deadline| *deadline > self.view_now_ms)
+        .min()
     }
 
     pub(super) fn profile_frames(&mut self, frames: &mut Vec<Vec<u8>>) -> Result<(), String> {
@@ -861,19 +946,22 @@ impl<S: Signer> Client<S> {
             self.profile_net.upload = true;
         }
         self.share_profile_key()?;
-        if self.profile_net.agreement.is_empty() {
+        if !self.profile_net.agreement.is_empty()
+            && self.profile_net.agreement_deadline <= self.view_now_ms
+        {
+            self.profile_net.agreement.clear();
+        }
+        if self.profile_net.agreement.is_empty()
+            && self.profile_net.agreement_retry <= self.view_now_ms
+        {
             let missing = self
                 .logs
                 .keys()
                 .flat_map(|space| self.roster(space).into_keys())
                 .filter(|id| {
                     id != &self.account.identity
-                        && !self.saved.profile.blocked.contains(id)
                         && !self.saved.profile.agreement.contains_key(id)
                         && !self.profile_net.no_agreement.contains(id)
-                        && !self.saved.profiles.get(id).is_some_and(|identity| {
-                            identity.kind == roda_types::IdentityKind::Agent
-                        })
                 })
                 .collect::<BTreeSet<_>>()
                 .into_iter()
@@ -890,6 +978,7 @@ impl<S: Signer> Client<S> {
                     .encode(),
                 );
                 self.profile_net.agreement = missing;
+                self.profile_net.agreement_deadline = self.view_now_ms.saturating_add(15_000);
             }
         }
         if self.profile_net.profiles.is_empty() {
@@ -969,7 +1058,15 @@ impl<S: Signer> Client<S> {
             }
             let mut shares = Vec::new();
             for id in roster.keys() {
-                if id == me || shared.contains(id) || self.saved.profile.blocked.contains(id) {
+                if id == me
+                    || shared.contains(id)
+                    || self.saved.profile.blocked.contains(id)
+                    || self
+                        .saved
+                        .profiles
+                        .get(id)
+                        .is_some_and(|identity| identity.kind == roda_types::IdentityKind::Agent)
+                {
                     continue;
                 }
                 let Some(public) = self.saved.profile.agreement.get(id) else {

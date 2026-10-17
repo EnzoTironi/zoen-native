@@ -33,6 +33,7 @@ public class ZoenCoreModule: Module {
     }
     AsyncFunction("releaseLocalFile") { (uri: String) async in await self.session.releaseLocalFile(uri) }
     AsyncFunction("close") { () async in await self.session.close() }
+    OnAppBecomesActive { [session] in Task { await session.resumePendingHistory() } }
     OnDestroy { Task { await self.session.close() } }
   }
 }
@@ -43,6 +44,8 @@ private actor ZoenSession {
   private let vault = ZoenVault()
   private var listener: ZoenListener?
   private var syncStarted = false
+  private var historyTask: Task<Void, Never>?
+  private var historyRearmRequested = false
   private var generation: UInt64 = 0
   private let mediaFiles = ZoenMediaFiles()
 
@@ -59,9 +62,12 @@ private actor ZoenSession {
     var directory = root
     try directory.setResourceValues(excluded)
     let engine = try RodaEngine.open(path: root.appending(path: mode == "account" ? "roda.sqlite" : "zoen.sqlite").path, locale: Locale.current.identifier)
-    let bridge = ZoenListener(changed)
+    let bridge = ZoenListener(changed) { [weak self] in
+      Task { await self?.resumePendingHistory() }
+    }
     do {
       var started = false
+      if mode == "account" { _ = try engine.resumeProviderSetup(vault: vault) }
       if mode == "demo" { _ = try engine.seedDemoIfEmpty() }
       else if engine.account() != nil {
         guard try engine.unlock(vault: vault) else { throw SessionError.locked }
@@ -78,6 +84,7 @@ private actor ZoenSession {
       self.listener = bridge
       self.mode = mode
       syncStarted = started
+      scheduleInitialHistory()
       return snapshot
     } catch {
       engine.stopSync()
@@ -95,6 +102,7 @@ private actor ZoenSession {
     if !syncStarted, core.account()?.unlocked == true, core.account()?.setupPending != true, let listener {
       try core.startSync(listener: listener)
       syncStarted = true
+      scheduleInitialHistory()
     }
     return result
   }
@@ -147,8 +155,69 @@ private actor ZoenSession {
 
   func releaseLocalFile(_ uri: String) { mediaFiles.release(uri) }
 
+  func resumePendingHistory() {
+    if historyTask != nil {
+      // Coalesce an external wake that raced the last attempt/defer. It must
+      // not disappear merely because the previous bounded pump is finishing.
+      historyRearmRequested = true
+    } else {
+      scheduleInitialHistory()
+    }
+  }
+
+  private func scheduleInitialHistory() {
+    guard mode == "account", syncStarted, historyTask == nil, let engine = core,
+          let bridge = listener, (try? engine.historyStatus())?.initialPending == true else { return }
+    let expectedGeneration = generation
+    historyRearmRequested = false
+    let progress = ZoenHistoryListener(bridge)
+    historyTask = Task { [weak self] in
+      guard let self else { return }
+      await self.resumeInitialHistory(engine: engine, expectedGeneration: expectedGeneration, progress: progress)
+    }
+  }
+
+  private func resumeInitialHistory(engine: RodaEngine, expectedGeneration: UInt64, progress: ZoenHistoryListener) async {
+    defer {
+      if generation == expectedGeneration, core === engine {
+        historyTask = nil
+        if historyRearmRequested {
+          historyRearmRequested = false
+          scheduleInitialHistory()
+        }
+      }
+    }
+    // A bounded foreground resume. The canonical marker survives all failures;
+    // devices UI offers explicit retry after these attempts or a later cold launch.
+    for delay in [0, 2, 5, 15] {
+      guard !Task.isCancelled, generation == expectedGeneration, core === engine else { return }
+      if delay > 0 {
+        do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+      }
+      guard !Task.isCancelled, generation == expectedGeneration, core === engine else { return }
+      do {
+        let status = try engine.historyStatus()
+        if !status.initialPending { return }
+        if status.receiveActive { continue }
+        _ = try await engine.receiveHistory(timeoutMs: 15_000, listener: progress)
+        guard !Task.isCancelled, generation == expectedGeneration, core === engine else { return }
+        listener?.onChange(spaceIds: [])
+        if (try engine.historyStatus()).initialPending == false { return }
+      } catch {
+        guard !Task.isCancelled, generation == expectedGeneration, core === engine else { return }
+        // Keep pending visible without leaking native transport diagnostics or
+        // replacing the account with an empty/failed transfer projection.
+        listener?.onChange(spaceIds: [])
+      }
+    }
+  }
+
   func close() {
     generation &+= 1
+    historyTask?.cancel()
+    historyTask = nil
+    historyRearmRequested = false
+    core?.cancelHistoryReceive()
     core?.stopSync()
     core = nil
     listener = nil
@@ -172,13 +241,34 @@ private enum SessionError: Error, LocalizedError {
 
 private final class ZoenListener: CoreListener, @unchecked Sendable {
   private let changed: @Sendable ([String: Any]) -> Void
-  init(_ changed: @escaping @Sendable ([String: Any]) -> Void) { self.changed = changed }
+  private let resumeHistory: @Sendable () -> Void
+  private let connectionLock = NSLock()
+  private var wasReady = false
+  init(_ changed: @escaping @Sendable ([String: Any]) -> Void, resumeHistory: @escaping @Sendable () -> Void = {}) {
+    self.changed = changed
+    self.resumeHistory = resumeHistory
+  }
   func onChange(spaceIds: [String]) { changed(["kind": "change", "spaceIds": spaceIds]) }
   func onEphemeral(spaceId: String, fromId: String, kind: String, detail: String) {
     changed(["kind": "ephemeral", "spaceId": spaceId, "fromId": fromId, "type": kind, "detail": detail])
+    if kind == "history_ready", spaceId.isEmpty, detail.isEmpty { resumeHistory() }
   }
   func onPresence(identityId: String, online: Bool) { changed(["kind": "presence", "identityId": identityId, "online": online]) }
-  func onConnection(status: ConnectionDto) { changed(["kind": "connection"]) }
+  func onConnection(status: ConnectionDto) {
+    let ready = status.state == "online" && status.synced
+    connectionLock.lock()
+    let becameReady = ready && !wasReady
+    wasReady = ready
+    connectionLock.unlock()
+    changed(["kind": "connection"])
+    if becameReady { resumeHistory() }
+  }
   func onError(message: String) { changed(["kind": "error", "message": message]) }
   func onProfileChanged(identityId: String) { changed(["kind": "profile", "identityId": identityId]) }
+}
+
+private final class ZoenHistoryListener: TransferListener, @unchecked Sendable {
+  private let listener: ZoenListener
+  init(_ listener: ZoenListener) { self.listener = listener }
+  func onProgress(done: UInt32, total: UInt32) { listener.onChange(spaceIds: []) }
 }

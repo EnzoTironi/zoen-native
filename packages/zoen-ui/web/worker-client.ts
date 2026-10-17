@@ -11,11 +11,15 @@ export type CoreOperation =
   | { kind: 'hello'; identity: string; device: string; cert: string }
   | { kind: 'auth_message'; nonce: string; relay: string }
   | { kind: 'device_cert_message'; device: string }
+  | {kind:'ping'}
   | { kind: 'auth'; signature: string }
   | { kind: 'request'; requestId: number; op: string; value: string }
   | { kind: 'decode_server'; bytes: Uint8Array }
   | { kind: 'restore'; account: string; snapshot: string }
   | { kind: 'bootstrap' }
+  | {kind:'claim_clock';value:string}
+  | {kind:'maintenance';now:number}
+  | {kind:'membership_request';request:string;now:number}
   | { kind: 'receive'; bytes: Uint8Array; now: number }
   | { kind: 'queue_message'; space: string; text: string; now: number }
   | { kind: 'queue_post'; space: string; text: string; replyTo: string; thread: boolean; forwarded: boolean; now: number }
@@ -35,6 +39,7 @@ export type CoreOperation =
   | { kind: 'profile_request'; request: string; now: number }
   | {kind:'handle_profile';handle:string}
   | {kind:'handle_confirmed';profile:string;expected:string}
+  | {kind:'history_status'}
   | {kind:'history_start'|'history_finish'|'history_cleaned';now:number}
   | {kind:'history_manifest';sealed:Uint8Array;now:number}
   | {kind:'history_chunk';index:number;sealed:Uint8Array;now:number}

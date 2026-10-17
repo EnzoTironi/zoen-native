@@ -45,7 +45,9 @@ pub mod runtime_core;
 pub use profile::{PhotoChange, ProfileDto};
 mod sync;
 pub use api::*;
-pub use link_api::{DeviceDto, HistoryDto, LinkRequestDto, LinkedDto, OlderDto, TransferListener};
+pub use link_api::{
+    DeviceDto, HistoryDto, HistoryStatusDto, LinkRequestDto, LinkedDto, OlderDto, TransferListener,
+};
 pub use sync::Ingest;
 
 mod approvals;
@@ -82,6 +84,7 @@ pub struct RodaEngine {
     lang: i18n::Lang,
     /// The relay connection, while sync runs.
     net: Mutex<Option<net::Net>>,
+    history_receive: link_api::HistoryControl,
 }
 
 impl RodaEngine {
@@ -127,6 +130,7 @@ impl RodaEngine {
             inner: Arc::new(Mutex::new(Engine::open(&path)?)),
             lang,
             net: Mutex::new(None),
+            history_receive: link_api::HistoryControl::default(),
         }))
     }
 
@@ -651,7 +655,7 @@ impl RodaEngine {
             other => {
                 return Err(CoreError::Invalid {
                     reason: format!("unknown action {other}"),
-                })
+                });
             }
         };
         self.lock()

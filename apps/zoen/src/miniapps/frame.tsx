@@ -11,6 +11,10 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
   useImperativeHandle(
     ref,
     () => ({
+      dispose: () => {
+        view.current?.stopLoading();
+        view.current?.injectJavaScript('window.location.replace("about:blank");true;');
+      },
       send: (message) =>
         view.current?.injectJavaScript(
           `window.__zoenDeliver?.(JSON.parse(${JSON.stringify(JSON.stringify(message))}));true;`,

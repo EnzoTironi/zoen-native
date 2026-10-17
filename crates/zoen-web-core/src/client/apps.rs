@@ -112,10 +112,10 @@ impl<S: Signer> Client<S> {
                 let profile=self.saved.profiles.get(&self.account.identity);
                 let actor=apps::Actor{id:&self.account.identity,name:profile.map(|profile|profile.name.as_str()).unwrap_or(&self.account.name),owner:profile.and_then(|profile|profile.owner.as_deref())};
                 let (title,state)=apps::create_as(spec.id,&args,&actor,now)?;
-                let item=roda_types::new_id("it");
+                let item=browser_id("it", now);
                 self.queue_domain_batch(&space_id,vec![
                     EventBody::ItemCreated{item:item.clone(),kind:ItemKind::App,content:ItemContent::App(AppDoc{app:app_id,resource_uri:spec.resource_uri.into(),title,state_json:state.to_string()}),origin:"Instalado por você".into()},
-                    EventBody::GrantIssued{grant:Grant{id:roda_types::new_id("gr"),grantor:self.account.identity.clone(),grantee:Some(format!("app:{item}")),scope:GrantScope::Item(item.clone()),capability:Capability::Trust(TrustLevel::Act),expires_at_ms:None}},
+                    EventBody::GrantIssued{grant:Grant{id:browser_id("gr", now),grantor:self.account.identity.clone(),grantee:Some(format!("app:{item}")),scope:GrantScope::Item(item.clone()),capability:Capability::Trust(TrustLevel::Act),expires_at_ms:None}},
                     EventBody::MessagePosted{message:roda_types::new_secret_id("msg"),text:"Mini-app adicionado a este Espaço.".into(),attaches:Some(item.clone()),reply:None,forwarded:false},
                 ],now)?;
                 mutated=true;
@@ -291,7 +291,7 @@ impl<S: Signer> Client<S> {
                     .first_mut()
                     .ok_or("O plano não tem uma seção para receber o resultado.")?;
                 section.lines.push(roda_types::PlanLine {
-                    id: roda_types::new_id("ln"),
+                    id: browser_id("ln", now),
                     text: text.clone(),
                     cost_cents: *cost_cents,
                     done: false,

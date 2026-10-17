@@ -76,6 +76,11 @@ export function SessionGate({ children }: { children: ReactNode }) {
                 Pessoas, ideias e agentes. Uma conversa de cada vez.
               </Text>
             </View>
+            {notice && snapshot?.account?.setup_pending ? (
+              <Text accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 22 }}>
+                {notice}
+              </Text>
+            ) : null}
             <SignInButtons
               service={service}
               configuration={configuration}

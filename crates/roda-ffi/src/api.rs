@@ -6,15 +6,15 @@
 use std::{sync::Arc, time::Duration};
 
 use roda_proto::{EphemeralKind, InvitePreview, Op, Reply};
-use roda_types::{new_id, EventBody, Identity, Privacy, Role, SpaceKind};
+use roda_types::{EventBody, Identity, Privacy, Role, SpaceKind, new_id};
 
 use crate::{
+    CoreError, RodaEngine,
     dto::{AgentControl, AgentStatus, GroupKeysDto, Persona, PrivacyDto},
     i18n::t,
     net::{ConnState, Net, NetStatus},
     profile::{PhotoChange, ProfileDto, VAULT_AGREEMENT},
     sync::{VAULT_DEVICE, VAULT_IDENTITY},
-    CoreError, RodaEngine,
 };
 
 /// Where the device's secrets live (Keychain on Apple platforms, a 0600 file in the CLI).
@@ -379,6 +379,11 @@ impl RodaEngine {
     ) -> Result<AccountDto, CoreError> {
         {
             let mut e = self.lock();
+            if crate::provider_auth::ProviderSetup::load(&vault)?.is_some() {
+                return Err(invalid(
+                    "Conclua a entrada já preparada antes de criar outra conta.",
+                ));
+            }
             let (root, device, agreement) = e.create_account(&name, &handle, &relay_url)?;
             if !vault.save(VAULT_IDENTITY.into(), root.to_vec())
                 || !vault.save(VAULT_DEVICE.into(), device.to_vec())
@@ -398,6 +403,7 @@ impl RodaEngine {
 
     /// Loads the device key from `vault`. `false` = no account here yet.
     pub fn unlock(&self, vault: Arc<dyn SecretVault>) -> Result<bool, CoreError> {
+        self.resume_provider_setup(vault.clone())?;
         let mut e = self.lock();
         if e.account().is_none() {
             return Ok(false);
@@ -417,6 +423,18 @@ impl RodaEngine {
                 )));
             }
         }
+        Ok(true)
+    }
+
+    /// Resume an interrupted social signup before checking for an orphaned vault
+    /// or a locked account. All local keys/metadata are validated before the
+    /// staging record is removed; server registration remains pending.
+    pub fn resume_provider_setup(&self, vault: Arc<dyn SecretVault>) -> Result<bool, CoreError> {
+        let mut engine = self.lock();
+        let Some(setup) = crate::provider_auth::ProviderSetup::load(&vault)? else {
+            return Ok(false);
+        };
+        setup.resume(&mut engine, &vault)?;
         Ok(true)
     }
 
@@ -456,10 +474,12 @@ impl RodaEngine {
         vault.delete(VAULT_IDENTITY.into());
         vault.delete(VAULT_DEVICE.into());
         vault.delete(VAULT_AGREEMENT.into());
+        vault.delete(crate::provider_auth::VAULT_SETUP.into());
         Ok(())
     }
 
     pub fn stop_sync(&self) {
+        self.cancel_history_receive();
         let net = self.net.lock().unwrap_or_else(|p| p.into_inner()).take();
         if let Some(n) = net {
             self.lock().net.poke = None;
@@ -851,7 +871,7 @@ impl RodaEngine {
             None => {
                 return Err(CoreError::NotFound {
                     what: t("agente", "agent"),
-                })
+                });
             }
         };
         let mut e = self.lock();

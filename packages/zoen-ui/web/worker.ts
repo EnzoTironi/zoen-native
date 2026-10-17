@@ -21,11 +21,15 @@ function parseOperation(input: unknown): CoreOperation {
     case 'hello': return { kind: 'hello', identity: string(value.identity), device: string(value.device), cert: string(value.cert) };
     case 'auth_message': return { kind: 'auth_message', nonce: string(value.nonce), relay: string(value.relay) };
     case 'device_cert_message': return { kind: 'device_cert_message', device: string(value.device) };
+    case 'ping':return {kind:'ping'};
     case 'auth': return { kind: 'auth', signature: string(value.signature) };
     case 'request': return { kind: 'request', requestId: integer(value.requestId), op: string(value.op), value: string(value.value) };
     case 'decode_server': return { kind: 'decode_server', bytes: bytes(value.bytes) };
     case 'restore': return { kind: 'restore', account: string(value.account), snapshot: string(value.snapshot) };
     case 'bootstrap': return { kind: 'bootstrap' };
+    case 'claim_clock':return {kind:'claim_clock',value:string(value.value)};
+    case 'maintenance':return {kind:'maintenance',now:integer(value.now)};
+    case 'membership_request':return {kind:'membership_request',request:string(value.request),now:integer(value.now)};
     case 'receive': return { kind: 'receive', bytes: bytes(value.bytes), now: integer(value.now) };
     case 'queue_message': return { kind: 'queue_message', space: string(value.space), text: string(value.text), now: integer(value.now) };
     case 'queue_post': return { kind: 'queue_post', space: string(value.space), text: string(value.text), replyTo: string(value.replyTo), thread: value.thread === true, forwarded: value.forwarded === true, now: integer(value.now) };
@@ -44,6 +48,7 @@ function parseOperation(input: unknown): CoreOperation {
     case 'profile_request': return { kind: 'profile_request', request: string(value.request), now: integer(value.now) };
     case 'handle_profile':return {kind:'handle_profile',handle:string(value.handle)};
     case 'handle_confirmed':return {kind:'handle_confirmed',profile:string(value.profile),expected:string(value.expected)};
+    case 'history_status':return {kind:'history_status'};
     case 'history_start':case 'history_finish':case 'history_cleaned':return {kind:value.kind,now:integer(value.now)};
     case 'history_manifest':return {kind:'history_manifest',sealed:bytes(value.sealed),now:integer(value.now)};
     case 'history_chunk':return {kind:'history_chunk',index:integer(value.index),sealed:bytes(value.sealed),now:integer(value.now)};
@@ -102,6 +107,7 @@ async function run(operation: CoreOperation): Promise<string | Uint8Array> {
     case 'hello': return core.hello(operation.identity, operation.device, operation.cert);
     case 'auth_message': return core.auth_message(operation.nonce, operation.relay);
     case 'device_cert_message': return core.device_cert_message(operation.device);
+    case 'ping':return core.ping();
     case 'auth': return core.auth(operation.signature);
     case 'request': return core.request(operation.requestId, operation.op, operation.value);
     case 'decode_server': return core.decode_server(operation.bytes);
@@ -126,11 +132,15 @@ async function run(operation: CoreOperation): Promise<string | Uint8Array> {
     case 'seal_file': return core.seal_file(operation.name, operation.mime, operation.bytes, operation.thumb);
     case 'open_chunk': return core.open_chunk(operation.chunk, operation.sealed);
     case 'blob_put_message': return core.blob_put_message(operation.sha, operation.ts, operation.relay);
+    case 'claim_clock':return restored().claim_clock(operation.value);
+    case 'maintenance':return restored().maintenance(operation.now);
+    case 'membership_request':return restored().membership_request(operation.request,operation.now);
     case 'document_request': return restored().document_request(operation.request, operation.now);
     case 'agent_request': return restored().agent_request(operation.request, operation.now);
     case 'profile_request': return restored().profile_request(operation.request, operation.now);
     case 'handle_profile':return restored().handle_profile(operation.handle);
     case 'handle_confirmed':return restored().handle_confirmed(operation.profile,operation.expected);
+    case 'history_status':return restored().history_status();
     case 'history_start':return restored().history_start(operation.now);
     case 'history_manifest':return restored().history_manifest(operation.sealed,operation.now);
     case 'history_chunk':return restored().history_chunk(operation.index,operation.sealed,operation.now);

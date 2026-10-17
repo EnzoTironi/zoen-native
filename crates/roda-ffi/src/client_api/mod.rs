@@ -372,6 +372,7 @@ enum Command {
     ReceiveHistory {
         timeout_ms: u32,
     },
+    HistoryStatus {},
     LoadOlder {
         space_id: String,
         timeout_ms: u32,
@@ -430,6 +431,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::LinkRequestDto::export_all(&config)?;
     crate::LinkedDto::export_all(&config)?;
     crate::HistoryDto::export_all(&config)?;
+    crate::HistoryStatusDto::export_all(&config)?;
     crate::OlderDto::export_all(&config)?;
     crate::BackupStatusDto::export_all(&config)?;
     crate::InviteDto::export_all(&config)?;
@@ -818,6 +820,7 @@ impl RodaEngine {
                     .receive_history(transfer_timeout(timeout_ms)?, None)
                     .await?,
             ),
+            HistoryStatus {} => encode(&self.history_status()?),
             LoadOlder {
                 space_id,
                 timeout_ms,
@@ -919,12 +922,13 @@ mod tests {
         let core = RodaEngine::open(":memory:".into(), "pt-BR".into()).unwrap();
         let request = serde_json::json!({"op":"link_request","relay_url":"http://127.0.0.1:9000"})
             .to_string();
-        assert!(core
-            .client_request(request.clone())
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("protected native vault"));
+        assert!(
+            core.client_request(request.clone())
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("protected native vault")
+        );
         let vault = Arc::new(Vault::default());
         let result: serde_json::Value = serde_json::from_str(
             &core
@@ -936,10 +940,11 @@ mod tests {
         let code = result["code"].as_str().unwrap();
         assert_eq!(result["check"], core.link_code_check(code.into()).unwrap());
         assert_eq!(result.as_object().unwrap().len(), 2);
-        let keys = vault.0.lock().unwrap();
-        assert_eq!(keys.len(), 1);
-        assert!(keys.contains_key(crate::link::VAULT_PENDING));
-        drop(keys);
+        {
+            let keys = vault.0.lock().unwrap();
+            assert_eq!(keys.len(), 1);
+            assert!(keys.contains_key(crate::link::VAULT_PENDING));
+        }
         let invalid = serde_json::json!({"op":"backup_password","password":"keep-this-secret","vault_key":"arbitrary"}).to_string();
         let error = core
             .client_vault_request(invalid, vault.clone())
@@ -948,10 +953,11 @@ mod tests {
             .to_string();
         assert!(!error.contains("keep-this-secret"));
         assert_eq!(vault.0.lock().unwrap().len(), 1);
-        assert!(core
-            .client_vault_request("x".repeat(MAX_REQUEST_BYTES + 1), vault)
-            .await
-            .is_err());
+        assert!(
+            core.client_vault_request("x".repeat(MAX_REQUEST_BYTES + 1), vault)
+                .await
+                .is_err()
+        );
     }
 
     #[test]
@@ -968,10 +974,12 @@ mod tests {
             serde_json::from_str::<Command>(r#"{"op":"snapshot","database":"/private/keys"}"#)
                 .is_err()
         );
-        assert!(serde_json::from_str::<Command>(
-            r#"{"op":"raise_budget","agent_id":"a","extra_cents":9007199254740993}"#
-        )
-        .is_err());
+        assert!(
+            serde_json::from_str::<Command>(
+                r#"{"op":"raise_budget","agent_id":"a","extra_cents":9007199254740993}"#
+            )
+            .is_err()
+        );
         assert_eq!(cents("9223372036854775807".into()).unwrap(), i64::MAX);
         assert_eq!(cents("-9223372036854775808".into()).unwrap(), i64::MIN);
         assert!(cents("9223372036854775808".into()).is_err());
@@ -996,17 +1004,21 @@ mod tests {
             serde_json::from_str(&core.client_request(request.to_string()).await.unwrap()).unwrap();
         assert!(sent["seq"].is_string());
         let entries = core.timeline(space.into()).unwrap();
-        assert!(entries
-            .iter()
-            .any(|entry| entry.id == sent["id"].as_str().unwrap()));
-        assert!(core
-            .client_request(r#"{"op":"timeline","space_id":"missing","limit":0}"#.into())
-            .await
-            .is_err());
-        assert!(core
-            .client_request("x".repeat(MAX_REQUEST_BYTES + 1))
-            .await
-            .is_err());
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.id == sent["id"].as_str().unwrap())
+        );
+        assert!(
+            core.client_request(r#"{"op":"timeline","space_id":"missing","limit":0}"#.into())
+                .await
+                .is_err()
+        );
+        assert!(
+            core.client_request("x".repeat(MAX_REQUEST_BYTES + 1))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -1027,16 +1039,20 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        assert!(timeline["entries"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|entry| entry["id"] == root.id));
-        assert!(!timeline["entries"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|entry| entry["id"] == reply.id));
+        assert!(
+            timeline["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["id"] == root.id)
+        );
+        assert!(
+            !timeline["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["id"] == reply.id)
+        );
         let exact: serde_json::Value = serde_json::from_str(
             &core
                 .client_request(

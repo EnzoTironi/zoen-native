@@ -7,9 +7,10 @@ import { useTheme } from '../theme';
 import { useDialogs } from '../components/dialogs';
 import { EmptyState, Icon, Loading, NativeButton, Surface } from '../components/primitives';
 import { AuthorizeDevice } from '../components/authorize-device';
+import { HistoryTransfer } from '../components/history-transfer';
 
 export default function Devices() {
-  const { store, mode } = useClient();
+  const { store, mode, snapshot } = useClient();
   const { data, error, retry } = useCoreQuery(mode === 'account' ? { op: 'devices' } : null);
   const { colors } = useTheme();
   const { confirm } = useDialogs();
@@ -43,6 +44,11 @@ export default function Devices() {
     >
       <Stack.Screen options={{ title: 'Dispositivos' }} />
       {mode === 'account' ? <AuthorizeDevice onLinked={retry} /> : null}
+      {mode === 'account' ? (
+        <HistoryTransfer
+          key={`${snapshot?.account?.identity_id}:${snapshot?.account?.device_id}`}
+        />
+      ) : null}
       <Text style={{ color: colors.secondary, lineHeight: 24, fontSize: 16 }}>
         Confira os dispositivos autorizados a acessar sua conta. Revogue o acesso de um dispositivo
         que você não reconhece.

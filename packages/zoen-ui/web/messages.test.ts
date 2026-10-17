@@ -33,6 +33,7 @@ function setup(t: test.TestContext, read: () => Promise<string> = async () => { 
   let closed = false;
   const core = { close() { closed = true; }, bytes: async () => new Uint8Array([1]), text: async (operation: CoreOperation) => {
     if (operation.kind === 'document_uploads') return '[]';
+    if(operation.kind==='claim_clock')return '';
     if (operation.kind === 'restore') return JSON.stringify([conversation]);
     if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
     if (operation.kind === 'bootstrap') return JSON.stringify({ snapshot: 'snapshot', frames: [], conversations: [conversation] });

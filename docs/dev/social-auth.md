@@ -12,6 +12,16 @@ existing secure device-link or encrypted-backup recovery. Email is never an auto
 account-linking key. The provider proof stays in memory until its signed, idempotent
 binding completes. A retry of a pending setup preserves the already generated keys.
 
+Native provisioning first writes one protected vault staging record containing the
+fixed identity, device and agreement keys. It then validates existing key slots and
+installs account/profile metadata atomically. On cold open, `resumeProviderSetup`
+finishes that installation before orphaned-key checks or unlock. Conflicting keys or
+accounts are preserved and rejected. The staging record is removed only after all
+installed keys and metadata have been verified. Eight native regression tests cover
+interrupted vault writes, SQL failures, cold reopen and lost bind responses; the app
+store also refreshes a retained pending identity after a failed request, allowing a
+same-session retry.
+
 ## Public Google configuration confirmed in Chrome
 
 On 2026-10-17, the existing Google Cloud project **Zoen** (`zoen-506921`) was inspected.
@@ -145,6 +155,19 @@ without duplicate keys, and an existing-account new-device recovery. Verify nati
 redirect handling and Web `/sign-in` popups plus the subsequent isolated MLS startup
 in supported browsers. No real provider login or new-device recovery is claimed by
 the console configuration or the unit tests.
+
+The current localhost in-app-browser check renders the official Google button on
+`/sign-in`, but Google reports an unauthorized-origin error and a FedCM token error.
+The client ID shown in the rendered SDK iframe matches the saved Web client. Console
+propagation and a supported standalone browser still need verification; no successful
+Google login is inferred from the rendered button.
+
+A later local browser check on `http://localhost:58704/sign-in` rendered the official
+Google button and obtained a real relay challenge. Google then rejected the origin for
+the configured client and FedCM returned a network error. This is a failed provider
+entry check, pending origin/provider acceptance; no policy relaxation, silent fallback
+or successful sign-in follows from the visible button. The console origins above are
+the earlier observed configuration, not a claim that this browser flow was accepted.
 
 ## Primary references
 

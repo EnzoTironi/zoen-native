@@ -16,17 +16,17 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt};
 use roda_proto::{
-    auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, KeyPackageClaimClock,
-    Op, Reply, ServerFrame, CAPABILITIES, KEY_PACKAGE_CLAIM_TTL_MS, MIN_PROTOCOL_VERSION,
-    PROTOCOL_VERSION,
+    CAPABILITIES, ClientFrame, EphemeralKind, ErrorCode, KEY_PACKAGE_CLAIM_TTL_MS,
+    KeyPackageClaimClock, MIN_PROTOCOL_VERSION, Op, PROTOCOL_VERSION, Reply, ServerFrame,
+    auth_message, blob_put_message,
 };
 use roda_types::Identity;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;
 
+use crate::CoreListener;
 use crate::engine::Engine;
 use crate::sync::Ingest;
-use crate::CoreListener;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnState {
@@ -379,7 +379,7 @@ async fn recv(stream: &mut Stream) -> Result<ServerFrame, String> {
             Ok(None) => return Err("relay closed the connection".into()),
             Ok(Some(Err(e))) => return Err(e.to_string()),
             Ok(Some(Ok(Message::Binary(b)))) => {
-                return ServerFrame::decode(&b).map_err(|e| e.to_string())
+                return ServerFrame::decode(&b).map_err(|e| e.to_string());
             }
             Ok(Some(Ok(Message::Close(_)))) => return Err("relay closed the connection".into()),
             Ok(Some(Ok(_))) => continue,
@@ -522,7 +522,7 @@ async fn session(
         Ok(ServerFrame::Challenge { protocol, .. }) => {
             return Exit::Blocked(format!(
                 "relay protocol {protocol} needs an upgrade before encrypted histories can sync"
-            ))
+            ));
         }
         Ok(ServerFrame::Error { code, message }) => return refused(code, message, backoff),
         Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
@@ -808,7 +808,14 @@ async fn session(
                     }
                     ServerFrame::ProfileChanged { identity, .. } => engine!(|engine| engine.profile_changed(&identity)),
                     ServerFrame::KeyPackagesLow { device, remaining } => engine!(|engine| engine.mls_key_packages_low(&device, remaining)),
-                    ServerFrame::DeviceMessage { from, to, sealed } => engine!(|engine| engine.device_message(&from, &to, &sealed)),
+                    ServerFrame::DeviceMessage { from, to, sealed } => {
+                        engine!(|engine| engine.device_message(&from, &to, &sealed));
+                        if engine!(|engine| engine.take_initial_history_ready()) {
+                            if let Some(listener) = &ctx.listener {
+                                listener.on_ephemeral(String::new(), from, "history_ready".to_owned(), String::new());
+                            }
+                        }
+                    },
                     ServerFrame::Pong { server_time_ms } => {
                         if clock_negotiated {
                             claim_clock = server_time_ms.and_then(KeyPackageClaimClock::from_server_ms).map(ClaimClockSample::new);
@@ -1336,13 +1343,13 @@ async fn fetch_link_attempt(
         ServerFrame::Challenge { protocol, .. } => {
             return Err(PickupError::Fatal(format!(
                 "O servidor precisa ser atualizado antes de conectar (versão {protocol})."
-            )))
+            )));
         }
         ServerFrame::Error { message, .. } => return Err(PickupError::Fatal(message)),
         _ => {
             return Err(PickupError::Fatal(
                 "Resposta inesperada ao conectar.".into(),
-            ))
+            ));
         }
     };
     send(
@@ -1377,7 +1384,7 @@ async fn fetch_link_attempt(
             Ok(_) => {
                 return Err(PickupError::Fatal(
                     "Resposta inesperada ao conectar.".into(),
-                ))
+                ));
             }
             Err(e) => return Err(PickupError::Fatal(e)),
         }
@@ -1465,11 +1472,11 @@ mod tests {
 
     use super::*;
     use roda_log::{
-        chain_hash, content::InnerEvent, content::Sealed, content::SealedKind, Author, Signer,
+        Author, Signer, chain_hash, content::InnerEvent, content::Sealed, content::SealedKind,
     };
-    use roda_mls::{sealed::state_key, Device, Opened, SUITE_ID};
+    use roda_mls::{Device, Opened, SUITE_ID, sealed::state_key};
     use roda_proto::{Envelope, Sequenced};
-    use roda_types::{EventBody, Privacy, Role, Seen, SpaceKind, GENESIS_PREV};
+    use roda_types::{EventBody, GENESIS_PREV, Privacy, Role, Seen, SpaceKind};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         mpsc as channel,

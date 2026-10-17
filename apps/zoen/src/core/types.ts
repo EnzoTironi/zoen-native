@@ -28,6 +28,7 @@ import type { BackupStatusDto } from './generated/BackupStatusDto';
 import type { LinkRequestDto } from './generated/LinkRequestDto';
 import type { LinkedDto } from './generated/LinkedDto';
 import type { HistoryDto } from './generated/HistoryDto';
+import type { HistoryStatusDto } from './generated/HistoryStatusDto';
 import type { OlderDto } from './generated/OlderDto';
 import type { AccountDto } from './generated/AccountDto';
 import type { DecisionPreview } from './generated/DecisionPreview';
@@ -126,6 +127,7 @@ type Results = {
   link_progress: number[];
   send_history: number;
   receive_history: HistoryDto;
+  history_status: HistoryStatusDto;
   load_older: OlderDto;
   restore_backup_password: AccountDto;
   restore_backup_recovery_key: AccountDto;

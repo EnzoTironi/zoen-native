@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ClientStore } from './store.ts';
+import { completeProviderSession } from '../auth/complete-session.ts';
 import type {
   Command,
   CommandResult,
@@ -48,6 +49,60 @@ class Driver implements CoreDriver {
   }
   async close() {}
 }
+
+test('a lost provider bind response refreshes the retained identity so the same session can retry', async () => {
+  const driver = new Driver();
+  const account = {
+    identity_id: 'a'.repeat(64),
+    device_id: 'b'.repeat(64),
+    name: 'Ana',
+    handle: 'zoen_auto',
+    relay_url: 'https://relay.example',
+    registered: false,
+    unlocked: true,
+    setup_pending: true,
+  };
+  let durable = empty;
+  let attempts = 0;
+  driver.operation = async (command) => {
+    if (command.op === 'snapshot') return durable;
+    assert.equal(command.op, 'provider_sign_in');
+    attempts++;
+    if (attempts === 1) {
+      durable = { ...empty, account };
+      throw new Error('Connection lost after server accepted the bind');
+    }
+    durable = { ...empty, account: { ...account, registered: true, setup_pending: false } };
+    return durable.account;
+  };
+  const store = new ClientStore(driver);
+  await store.open();
+  const command = {
+    op: 'provider_sign_in',
+    relay_url: account.relay_url,
+    proof_token: 'c'.repeat(64),
+    name: account.name,
+  } as const;
+  await assert.rejects(() => store.request(command), /Connection lost/);
+  assert.equal(store.getSnapshot().phase, 'onboarding');
+  assert.equal(store.getSnapshot().snapshot?.account?.identity_id, account.identity_id);
+  await completeProviderSession(
+    {
+      provider: 'google',
+      proof_token: 'd'.repeat(64),
+      expires_at_ms: Date.now() + 60_000,
+      account: { kind: 'bound', identity_id: account.identity_id, handle: account.handle },
+    },
+    store.getSnapshot().snapshot?.account?.identity_id,
+    (proof_token, name) => store.request({ ...command, proof_token, name }),
+    () => {
+      throw new Error('must retry the retained keys, not recover another identity');
+    },
+  );
+  assert.equal(attempts, 2);
+  assert.equal(store.getSnapshot().phase, 'ready');
+  assert.equal(store.getSnapshot().snapshot?.account?.device_id, account.device_id);
+});
 
 test('a late account open cannot replace the selected demo session', async () => {
   const driver = new Driver();

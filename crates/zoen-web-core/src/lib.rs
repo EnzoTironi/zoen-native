@@ -256,6 +256,27 @@ mod browser {
         pub fn view(&self) -> Result<String, JsValue> {
             serde_json::to_string(&self.client.conversations()).map_err(error)
         }
+        pub fn claim_clock(&mut self, value: &str) -> Result<String, JsValue> {
+            self.client.claim_clock(value).map_err(error)?;
+            Ok(String::new())
+        }
+        pub fn maintenance(&mut self, now_ms: f64) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.maintenance(time(now_ms)?).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn membership_request(
+            &mut self,
+            request: &str,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .membership_request(request, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
         pub fn document_request(&mut self, request: &str, now_ms: f64) -> Result<String, JsValue> {
             serde_json::to_string(
                 &self
@@ -298,6 +319,9 @@ mod browser {
                     .map_err(error)?,
             )
             .map_err(error)
+        }
+        pub fn history_status(&self) -> String {
+            self.client.history_status()
         }
         pub fn history_start(&mut self, now_ms: f64) -> Result<String, JsValue> {
             serde_json::to_string(&self.client.history_start(time(now_ms)?).map_err(error)?)
@@ -445,6 +469,11 @@ mod browser {
     #[wasm_bindgen]
     pub fn device_cert_message(device: &str) -> Vec<u8> {
         roda_log::device_cert_message(device)
+    }
+
+    #[wasm_bindgen]
+    pub fn ping() -> Vec<u8> {
+        roda_proto::ClientFrame::Ping.encode()
     }
 
     #[wasm_bindgen]

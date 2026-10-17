@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Linking, Modal, ScrollView, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import type { ItemDetail } from '../core/types';
@@ -23,6 +23,8 @@ import { parseMiniappJson, stringifyMiniappRequest } from './json';
 import { callMiniapp } from './actions';
 import { photoArguments } from './photo-tokens';
 import { available, perform, resolvePhoto, releaseItemPhotos } from './native-capabilities';
+import { authorizedNetworkHosts } from './network';
+import { frameAuthority } from './lifetime';
 
 type Choice = 'once' | 'always' | 'deny';
 type Consent = { capability: string; purpose: string; resolve: (choice: Choice) => void };
@@ -52,15 +54,49 @@ function useConsent() {
 }
 
 export function MiniappView({ item, spec }: { item: ItemDetail; spec: AppSpecDto }) {
+  const [focus, setFocus] = useState({ active: false, epoch: 0 });
+  const end = useRef<(() => void) | null>(null);
+  const registerClose = useCallback((close: (() => void) | null) => {
+    end.current = close;
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      setFocus((current) => ({ active: true, epoch: current.epoch + 1 }));
+      return () => {
+        // A covered stack screen can remain mounted/frozen. Close its document
+        // and authority synchronously even before React commits the hidden state.
+        end.current?.();
+        setFocus((current) => ({ ...current, active: false }));
+      };
+    }, []),
+  );
+  return focus.active ? (
+    <FocusedView key={focus.epoch} item={item} spec={spec} registerClose={registerClose} />
+  ) : null;
+}
+
+function FocusedView({
+  item,
+  spec,
+  registerClose,
+}: {
+  item: ItemDetail;
+  spec: AppSpecDto;
+  registerClose: (close: (() => void) | null) => void;
+}) {
   const { store, snapshot, mode } = useClient();
   const { colors } = useTheme();
-  const scope = `${mode}:${snapshot?.me?.id ?? ''}:${item.id}:${spec.resource_uri}`;
+  const scope = `${mode}:${snapshot?.account?.identity_id ?? snapshot?.me?.id ?? ''}:${snapshot?.account?.device_id ?? ''}:${item.id}:${spec.resource_uri}`;
   const [read, setRead] = useState<{ scope: string; resource?: AppResourceDto; error?: string }>({
     scope,
   });
   const [revision, setRevision] = useState(0);
   const grants = useCoreQuery({ op: 'app_device_grants' });
   const [clock, setClock] = useState(Date.now);
+  const [network, setNetwork] = useState<{ key: string; hosts: string[]; error?: string }>({
+    key: '',
+    hosts: [],
+  });
   useEffect(() => {
     let active = true;
     void store.driver
@@ -100,6 +136,8 @@ export function MiniappView({ item, spec }: { item: ItemDetail; spec: AppSpecDto
   const prepared = useMemo(() => {
     if (read.scope !== scope || !read.resource) return null;
     try {
+      if (read.resource.uri !== spec.resource_uri)
+        throw new Error('Este recurso não pertence ao miniapp aberto.');
       return {
         resource: read.resource,
         manifest: verifyMiniappResource(read.resource, spec.id),
@@ -113,7 +151,41 @@ export function MiniappView({ item, spec }: { item: ItemDetail; spec: AppSpecDto
           reason instanceof Error ? reason.message : 'O pacote do miniapp não pôde ser verificado.',
       };
     }
-  }, [read, scope, spec.id]);
+  }, [read, scope, spec.id, spec.resource_uri]);
+  const domainKey = JSON.stringify(prepared?.manifest?.allowedDomains ?? []);
+  const grantKey = JSON.stringify(
+    grants.data?.filter((grant) => grant.item_id === item.id) ?? null,
+  );
+  const authorizationKey = JSON.stringify([scope, domainKey, grantKey, clock, revision]);
+  useEffect(() => {
+    let active = true;
+    setNetwork({ key: authorizationKey, hosts: [] });
+    void authorizedNetworkHosts(
+      JSON.parse(domainKey) as string[],
+      (capability) =>
+        store.driver.request({ op: 'app_device_allowed', item_id: item.id, capability }),
+      () => {
+        if (!active) throw new Error('Esta interface foi fechada.');
+      },
+    )
+      .then((hosts) => {
+        if (active) setNetwork({ key: authorizationKey, hosts });
+      })
+      .catch((reason: unknown) => {
+        if (active)
+          setNetwork({
+            key: authorizationKey,
+            hosts: [],
+            error:
+              reason instanceof Error
+                ? reason.message
+                : 'Não foi possível verificar o acesso à rede.',
+          });
+      });
+    return () => {
+      active = false;
+    };
+  }, [store, item.id, domainKey, authorizationKey]);
   if ((read.scope === scope && read.error) || prepared?.error)
     return (
       <Surface>
@@ -128,24 +200,23 @@ export function MiniappView({ item, spec }: { item: ItemDetail; spec: AppSpecDto
       </Surface>
     );
   if (!prepared) return <Loading />;
-  const network =
-    prepared.manifest?.allowedDomains.filter((host) =>
-      grants.data?.some(
-        (grant) =>
-          grant.item_id === item.id &&
-          grant.capability === `net:${host}` &&
-          (grant.always || BigInt(grant.at_ms) + 60_000n > BigInt(clock)),
-      ),
-    ) ?? [];
+  const networkHosts = network.key === authorizationKey ? network.hosts.join(',') : '';
+  const configuration = JSON.stringify({
+    name: spec.name,
+    tools: spec.tools.filter((tool) => tool.visibility.includes('app')).map((tool) => tool.name),
+  });
   return (
     <ReadyView
-      key={`${scope}:${revision}:${network.join(',')}`}
+      key={`${scope}:${revision}:${networkHosts}:${configuration}`}
       item={item}
       spec={spec}
       resource={prepared.resource}
       manifest={prepared.manifest}
-      networkHosts={network.join(',')}
+      networkHosts={networkHosts}
+      networkError={network.key === authorizationKey ? network.error : undefined}
       onNetworkChange={grants.retry}
+      registerClose={registerClose}
+      onReload={() => setRevision((value) => value + 1)}
     />
   );
 }
@@ -156,14 +227,20 @@ function ReadyView({
   resource,
   manifest,
   networkHosts,
+  networkError,
   onNetworkChange,
+  registerClose,
+  onReload,
 }: {
   item: ItemDetail;
   spec: AppSpecDto;
   resource: AppResourceDto;
   manifest: MiniappManifest | null;
   networkHosts: string;
+  networkError?: string;
   onNetworkChange: () => void;
+  registerClose: (close: (() => void) | null) => void;
+  onReload: () => void;
 }) {
   const { store, snapshot, mode } = useClient();
   const { colors, scheme } = useTheme();
@@ -176,22 +253,38 @@ function ReadyView({
   const [error, setError] = useState<string | null>(null);
   const frame = useRef<MiniappFrameHandle>(null);
   const session = useRef<MiniappSession | null>(null);
-  const active = useRef(true);
-  const initialScope = `${mode}:${snapshot?.me?.id ?? ''}`;
+  const authority = useRef<ReturnType<typeof frameAuthority> | null>(null);
+  const initialScope = `${mode}:${snapshot?.account?.identity_id ?? snapshot?.me?.id ?? ''}:${snapshot?.account?.device_id ?? ''}`;
+  const resourceUri = spec.resource_uri;
+  const appName = spec.name;
+  const encodedTools = JSON.stringify(
+    spec.tools.filter((tool) => tool.visibility.includes('app')).map((tool) => tool.name),
+  );
+  const tools = useMemo(() => new Set<string>(JSON.parse(encodedTools)), [encodedTools]);
   const latest = useRef({ item, snapshot, scheme, colors, width });
   useLayoutEffect(() => {
     latest.current = { item, snapshot, scheme, colors, width };
   }, [item, snapshot, scheme, colors, width]);
-  const check = useCallback(() => {
+  const checkOwner = useCallback(() => {
     const state = store.getSnapshot();
-    if (!active.current || `${state.mode}:${state.snapshot?.me?.id ?? ''}` !== initialScope)
+    if (
+      `${state.mode}:${state.snapshot?.account?.identity_id ?? state.snapshot?.me?.id ?? ''}:${state.snapshot?.account?.device_id ?? ''}` !==
+      initialScope
+    )
       throw new Error('Esta interface foi fechada ou a conta mudou.');
   }, [store, initialScope]);
   const permission = useCallback(
-    async (capability: string, purpose: string) => {
+    async (capability: string, purpose: string, assertActive?: () => void) => {
+      const check = assertActive ?? authority.current?.check;
+      if (!check) throw new Error('Esta interface foi fechada.');
       check();
-      if (await store.driver.request({ op: 'app_device_allowed', item_id: item.id, capability }))
-        return;
+      const allowed = await store.driver.request({
+        op: 'app_device_allowed',
+        item_id: item.id,
+        capability,
+      });
+      check();
+      if (allowed) return;
       const choice = await ask(capability, purpose);
       check();
       if (choice === 'deny') throw new Error('Você não permitiu esse acesso.');
@@ -204,7 +297,7 @@ function ReadyView({
       });
       check();
     },
-    [check, store, item.id, ask],
+    [store, item.id, ask],
   );
   const context = useCallback(() => {
     const current = latest.current;
@@ -242,14 +335,14 @@ function ReadyView({
       zoen: { members },
     };
   }, [item.space_id]);
-  useEffect(() => {
-    active.current = true;
+  useLayoutEffect(() => {
+    const lifetime = frameAuthority(checkOwner);
+    authority.current = lifetime;
+    const check = lifetime.check;
     const current = new MiniappSession({
       send: (message) => frame.current?.send(message),
-      resourceUri: spec.resource_uri,
-      tools: new Set(
-        spec.tools.filter((tool) => tool.visibility.includes('app')).map((tool) => tool.name),
-      ),
+      resourceUri,
+      tools,
       initialize: () => ({
         protocolVersion: '2026-01-26',
         hostInfo: { name: 'zoen', version: '0.1.0' },
@@ -299,7 +392,7 @@ function ReadyView({
           photos.tokens.length &&
           !(await dialogs.confirm({
             title: `Compartilhar ${photos.tokens.length} foto(s) com o grupo?`,
-            message: `Todos em ${item.space_title} verão essas fotos em ${manifest?.name ?? spec.name}. Os dados de localização foram removidos.`,
+            message: `Todos em ${latest.current.item.space_title} verão essas fotos em ${manifest?.name ?? appName}. Os dados de localização foram removidos.`,
             confirmLabel: 'Compartilhar com o grupo',
           }))
         )
@@ -325,10 +418,22 @@ function ReadyView({
         const declared = manifest?.capabilities.find((cap) => cap.id === capability);
         if (!declared || !available().includes(capability))
           throw new Error('Este recurso não está declarado ou não está disponível neste aparelho.');
-        await permission(capability, declared.purpose);
+        await permission(capability, declared.purpose, check);
         check();
         const result = await perform(capability, params, item.id);
         check();
+        const stillAllowed = await store.driver.request({
+          op: 'app_device_allowed',
+          item_id: item.id,
+          capability,
+        });
+        check();
+        if (!stillAllowed) {
+          releaseItemPhotos(item.id);
+          throw new Error(
+            'Esta permissão foi revogada ou expirou. Os dados não foram compartilhados.',
+          );
+        }
         return result;
       },
       openLink: async (input) => {
@@ -350,7 +455,7 @@ function ReadyView({
         check();
         if (
           !(await dialogs.confirm({
-            title: `Enviar mensagem em ${item.space_title}?`,
+            title: `Enviar mensagem em ${latest.current.item.space_title}?`,
             message: text,
             confirmLabel: 'Enviar mensagem',
           }))
@@ -380,24 +485,44 @@ function ReadyView({
       close: () => router.back(),
     });
     session.current = current;
-    return () => {
-      active.current = false;
+    const dispose = () => {
+      lifetime.close();
       current.dispose();
       if (session.current === current) session.current = null;
+      if (authority.current === lifetime) authority.current = null;
       releaseItemPhotos(item.id);
     };
+    const close = () => {
+      dispose();
+      frame.current?.dispose();
+    };
+    registerClose(close);
+    const stop = store.subscribe(() => {
+      try {
+        checkOwner();
+      } catch {
+        close();
+      }
+    });
+    return () => {
+      stop();
+      dispose();
+      registerClose(null);
+    };
   }, [
-    check,
+    checkOwner,
     context,
     dialogs,
     hosts,
     item.id,
     item.space_id,
-    item.space_title,
     manifest,
     permission,
     resource,
-    spec,
+    appName,
+    resourceUri,
+    tools,
+    registerClose,
     store,
   ]);
   useEffect(() => {
@@ -412,23 +537,30 @@ function ReadyView({
   }, []);
   return (
     <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)} style={{ gap: 12 }}>
-      {error ? (
-        <Text selectable accessibilityRole="alert" style={{ color: colors.danger }}>
-          {error}
-        </Text>
+      {error || networkError ? (
+        <View style={{ gap: 8 }}>
+          <Text selectable accessibilityRole="alert" style={{ color: colors.danger }}>
+            {error ?? networkError}
+          </Text>
+          <NativeButton secondary label="Reabrir interface" onPress={onReload} />
+        </View>
       ) : null}
       {manifest?.allowedDomains.some((host) => !hosts.includes(host)) ? (
         <NativeButton
           secondary
           label="Ativar mapas online"
           onPress={() => {
+            const check = authority.current?.check;
+            if (!check) return;
             void (async () => {
               for (const host of manifest.allowedDomains) {
                 await permission(
                   `net:${host}`,
                   manifest.networkPurpose || 'Carregar conteúdo deste domínio.',
+                  check,
                 );
               }
+              check();
               onNetworkChange();
             })().catch((reason: unknown) =>
               setError(

@@ -38,7 +38,7 @@ struct Projection {
     virtual_items: BTreeMap<(String, String), Event>,
 }
 #[derive(PartialEq)]
-enum Current {
+enum RequestScope {
     Current,
     Changed,
     Waiting,
@@ -349,7 +349,7 @@ impl<S: Signer> Client<S> {
                     && self.agent_owner(&request.agent).is_some() =>
             {
                 if request.proposal.is_some()
-                    && self.agent_request_current(state, request, space)? != Current::Current
+                    && self.agent_request_current(state, request, space)? != RequestScope::Current
                 {
                     return Ok(());
                 }
@@ -406,7 +406,7 @@ impl<S: Signer> Client<S> {
                 }
                 if *approved
                     && self.agent_request_current(state, &original.request, space)?
-                        != Current::Current
+                        != RequestScope::Current
                 {
                     return Ok(());
                 }
@@ -525,9 +525,9 @@ impl<S: Signer> Client<S> {
         state: &Projection,
         request: &AgentRequest,
         space: &str,
-    ) -> Result<Current, String> {
+    ) -> Result<RequestScope, String> {
         if !writer(state, space, &request.agent) {
-            return Ok(Current::Changed);
+            return Ok(RequestScope::Changed);
         }
         if let Some(proposal) = &request.proposal {
             let content_valid = match (&proposal.kind, &proposal.content) {
@@ -553,9 +553,9 @@ impl<S: Signer> Client<S> {
                     && !state.items.contains_key(&proposal.item)
                     && request.proposal_hash(space).as_deref() == Some(&request.content_hash)
                 {
-                    Current::Current
+                    RequestScope::Current
                 } else {
-                    Current::Changed
+                    RequestScope::Changed
                 },
             );
         }
@@ -566,20 +566,20 @@ impl<S: Signer> Client<S> {
                     .get(id)
                     .filter(|item| item.space == space && item.kind == ItemKind::Plan)
                 else {
-                    return Ok(Current::Changed);
+                    return Ok(RequestScope::Changed);
                 };
                 let read = self.plan_read(item)?;
                 if !read.ready {
-                    return Ok(Current::Waiting);
+                    return Ok(RequestScope::Waiting);
                 }
                 Ok(
                     if read.document.line(line).is_some_and(|line| {
                         roda_log::content_hash(&(&line.text, line.cost_cents))
                             == request.content_hash
                     }) {
-                        Current::Current
+                        RequestScope::Current
                     } else {
-                        Current::Changed
+                        RequestScope::Changed
                     },
                 )
             }
@@ -588,12 +588,12 @@ impl<S: Signer> Client<S> {
                     || roda_log::content_hash(&(&request.title, &request.detail, &request.audience))
                         == request.content_hash
                 {
-                    Current::Current
+                    RequestScope::Current
                 } else {
-                    Current::Changed
+                    RequestScope::Changed
                 },
             ),
-            _ => Ok(Current::Changed),
+            _ => Ok(RequestScope::Changed),
         }
     }
     fn valid_agent_receipt(
@@ -738,7 +738,8 @@ impl<S: Signer> Client<S> {
             Some(true) => "Approved",
             Some(false) => "Denied",
             None => {
-                if self.agent_request_current(state, request, &read.space)? == Current::Changed {
+                if self.agent_request_current(state, request, &read.space)? == RequestScope::Changed
+                {
                     "Stale"
                 } else {
                     "Pending"
@@ -989,11 +990,11 @@ impl<S: Signer> Client<S> {
         for read in covered {
             if approve {
                 let current = self.agent_request_current(&state, &read.request, &read.space)?;
-                if current != Current::Current {
+                if current != RequestScope::Current {
                     if read.request.id != id {
                         continue;
                     }
-                    return Err(if current == Current::Waiting {
+                    return Err(if current == RequestScope::Waiting {
                         "O conteúdo confirmado ainda está chegando."
                     } else {
                         "O conteúdo ou a autorização mudou. Peça uma nova proposta."

@@ -1,4 +1,4 @@
-import { boolean, integer, object, string, message } from './boundary.ts';
+import { array, boolean, integer, object, string, message } from './boundary.ts';
 import { socketUrl } from './session.ts';
 import type { CoreWorker } from './worker-client.ts';
 import type { BrowserVault } from './vault.ts';
@@ -21,7 +21,17 @@ export function parseFrame(json: string) {
   const value = object(JSON.parse(json));
   const kind = string(value.kind);
   switch (kind) {
-    case 'challenge': return { kind, nonce: string(value.nonce), relay: string(value.relay), protocol: integer(value.protocol) };
+    case 'challenge': {
+      const capabilities=value.capabilities===undefined?[]:array(value.capabilities).map(string);
+      const sample=value.server_time_ms==null?'':string(value.server_time_ms);
+      if(sample&&(!/^[0-9]+$/.test(sample)||BigInt(sample)<1n||BigInt(sample)>0xffffffffffffn))throw new Error('Invalid relay clock.');
+      return {kind,nonce:string(value.nonce),relay:string(value.relay),protocol:integer(value.protocol),capabilities,server_time_ms:sample};
+    }
+    case 'pong': {
+      const sample=value.server_time_ms==null?'':string(value.server_time_ms);
+      if(sample&&(!/^[0-9]+$/.test(sample)||BigInt(sample)<1n||BigInt(sample)>0xffffffffffffn))throw new Error('Invalid relay clock.');
+      return {kind,server_time_ms:sample};
+    }
     case 'ready': return { kind, identity: string(value.identity), registered: boolean(value.registered) };
     case 'response': return { kind, id: integer(value.id), value: value.value };
     case 'request_error': return { kind, id: integer(value.id), message: string(value.message) };
@@ -46,6 +56,9 @@ export class AuthenticatedTransport {
   private socket: WebSocket | undefined;
   private reconnect: ReturnType<typeof setTimeout> | undefined;
   private handshake: ReturnType<typeof setTimeout> | undefined;
+  private heartbeat:ReturnType<typeof setTimeout>|undefined;
+  private pongTimeout:ReturnType<typeof setTimeout>|undefined;
+  private claimReceipts=false;
   private attempt = 0;
   private generation = 0;
   private requestId = 0;
@@ -54,6 +67,7 @@ export class AuthenticatedTransport {
   private readonly pending = new Map<number, Reply>();
   /** The relay's signed name from its challenge: uploads are signed for it. */
   relayName = '';
+  claimClock = '';
   private readonly core: TransportCore;
   private readonly vault: TransportVault;
   private readonly login: Login;
@@ -82,6 +96,8 @@ export class AuthenticatedTransport {
     socket.binaryType = 'arraybuffer';
     this.socket = socket;
     this.ready = false;
+    this.claimClock = '';
+    this.claimReceipts=false;
     let phase: 'hello' | 'challenge' | 'auth' | 'ready' = 'hello';
     let incoming: Promise<void> = Promise.resolve();
     this.stateChanged(this.attempt === 0 ? { kind: 'connecting' } : { kind: 'reconnecting', attempt: this.attempt });
@@ -114,6 +130,8 @@ export class AuthenticatedTransport {
           if (frame.protocol < 4) { this.fatal('This relay needs protocol 4 before a browser can pair.'); return; }
           phase = 'auth';
           this.relayName = frame.relay;
+          this.claimReceipts=frame.capabilities.includes('key-package-claim-receipts');
+          this.claimClock = this.claimReceipts ? frame.server_time_ms : '';
           const payload = await this.core.bytes({ kind: 'auth_message', nonce: frame.nonce, relay: frame.relay });
           const signature = await this.vault.sign(payload);
           const signed = Array.from(signature, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -130,6 +148,7 @@ export class AuthenticatedTransport {
           this.attempt = 0;
           clearTimeout(this.handshake);
           this.stateChanged({ kind: 'ready' });
+          this.schedulePing(generation);
           // Dispatch without awaiting: a Ready handler may itself request a reply.
           void this.received(frame, raw).catch((error: unknown) => {
             if (generation !== this.generation || this.stopped || socket.readyState !== WebSocket.OPEN) return;
@@ -140,6 +159,11 @@ export class AuthenticatedTransport {
         // Native relays may announce presence while Ready is being delivered.
         if (phase === 'auth' && (frame.kind === 'other'||frame.kind==='presence')) return;
         if (phase !== 'ready') throw new Error('The relay sent data before authentication completed.');
+        if(frame.kind==='pong'){
+          clearTimeout(this.pongTimeout);
+          this.claimClock=this.claimReceipts?frame.server_time_ms:'';
+          this.schedulePing(generation);
+        }
         if (frame.kind === 'response' || frame.kind === 'request_error') {
           const request = this.pending.get(frame.id);
           if (!request) { await this.received(frame, raw); return; }
@@ -160,6 +184,7 @@ export class AuthenticatedTransport {
       if (generation !== this.generation) return;
       this.ready = false;
       clearTimeout(this.handshake);
+      clearTimeout(this.heartbeat);clearTimeout(this.pongTimeout);
       this.rejectPending(new Error('Connection closed.'));
       if (this.stopped) return;
       if (event.code === 1008) { this.fatal('This browser device is no longer authorized. Pair it again from your phone.'); return; }
@@ -168,6 +193,20 @@ export class AuthenticatedTransport {
       const delay = Math.min(30_000, 700 * 2 ** Math.min(attempt - 1, 6)) * (0.8 + Math.random() * 0.4);
       this.reconnect = setTimeout(() => this.connect(), delay);
     };
+  }
+
+  private schedulePing(generation:number):void {
+    clearTimeout(this.heartbeat);
+    this.heartbeat=setTimeout(()=>{
+      if(this.stopped||!this.ready||generation!==this.generation)return;
+      void this.core.bytes({kind:'ping'}).then(frame=>{
+        if(this.stopped||!this.ready||generation!==this.generation)return;
+        this.send(frame);
+        this.pongTimeout=setTimeout(()=>{
+          if(generation===this.generation)this.socket?.close(4000,'Heartbeat timeout');
+        },15_000);
+      }).catch(()=>{if(generation===this.generation)this.socket?.close(4000,'Heartbeat failed');});
+    },30_000);
   }
 
   async request(kind: string, value = ''): Promise<unknown> {
@@ -207,6 +246,7 @@ export class AuthenticatedTransport {
     ++this.generation;
     clearTimeout(this.reconnect);
     clearTimeout(this.handshake);
+    clearTimeout(this.heartbeat);clearTimeout(this.pongTimeout);
     this.socket?.close(1000, 'Browser closed');
     this.socket = undefined;
     this.rejectPending(new Error('Connection stopped.'));

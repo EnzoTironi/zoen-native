@@ -18,11 +18,20 @@ mod agents;
 mod apps;
 mod documents;
 mod history;
+mod membership;
 mod profile;
 pub use documents::DocumentResponse;
 
 const PACKAGES_REQUEST: u64 = 0x8000_0001;
 const PROFILES_REQUEST: u64 = 0x8000_0002;
+
+// The host supplies time explicitly: SystemTime is unavailable in browser WASM.
+fn browser_id(prefix: &str, now: i64) -> String {
+    format!(
+        "{prefix}_{}",
+        roda_types::new_ulid(now).to_ascii_lowercase()
+    )
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 struct PendingEnvelope {
@@ -38,6 +47,8 @@ struct PendingEnvelope {
     blob_uploads: Vec<String>,
     #[serde(default)]
     order: Option<u64>,
+    #[serde(default)]
+    after_commit: Option<String>,
 }
 
 impl PendingEnvelope {
@@ -85,6 +96,8 @@ struct SavedClient {
     history: history::Journal,
     #[serde(default)]
     own_handle: Option<String>,
+    #[serde(default)]
+    membership: membership::Journal,
 }
 
 #[derive(Serialize)]
@@ -191,6 +204,8 @@ pub struct Update {
     pub snapshot: String,
     pub frames: Vec<Vec<u8>>,
     pub conversations: Vec<ConversationView>,
+    pub maintenance_ms: Option<u32>,
+    pub history_ready: bool,
 }
 
 /// The same OpenMLS crypto, log verification and binary protocol used by native clients.
@@ -208,6 +223,8 @@ pub struct Client<S> {
     /// Ephemeral receipt announcements are connection-local, never durable acknowledgements.
     announced_receipts: BTreeMap<String, (u64, u64)>,
     profile_net: profile::Network,
+    membership_net: membership::Network,
+    history_ready: bool,
 }
 
 impl<S: Signer> Client<S> {
@@ -262,6 +279,8 @@ impl<S: Signer> Client<S> {
             view_now_ms: 0,
             announced_receipts: BTreeMap::new(),
             profile_net: profile::Network::default(),
+            membership_net: membership::Network::default(),
+            history_ready: false,
         };
         client.device()?;
         client.load_linked_profile();
@@ -360,13 +379,24 @@ impl<S: Signer> Client<S> {
             None => return Err("You are no longer a member of this conversation.".into()),
         }
         let device = self.device()?;
+        if self.membership_waiting(space) {
+            return Err("Waiting for the encrypted membership update…".into());
+        }
         if device.group_state(space).map_err(|e| e.to_string())? != GroupState::Ready {
             return Err(
                 "Waiting for your phone to add this browser to the encrypted conversation…".into(),
             );
         }
         let members = device.roster(space).map_err(|e| e.to_string())?;
-        if members != roster.keys().cloned().collect() {
+        if members
+            .iter()
+            .any(|identity| !roster.contains_key(identity))
+            || (matches!(
+                roster.get(&self.account.identity),
+                Some(Role::Owner | Role::Admin)
+            ) && !self.membership_net.stuck.contains(space)
+                && members != roster.keys().cloned().collect())
+        {
             return Err("Waiting for the encrypted membership update…".into());
         }
         let epoch = device.epoch(space).map_err(|e| e.to_string())?;
@@ -398,6 +428,7 @@ impl<S: Signer> Client<S> {
             invite: None,
             blob_uploads: Vec::new(),
             order: None,
+            after_commit: None,
         };
         pending.envelope()?.verify().map_err(|e| e.to_string())?;
         Ok(pending)
@@ -837,6 +868,7 @@ impl<S: Signer> Client<S> {
         self.announced_receipts.clear();
         self.packages_in_flight = false;
         self.profile_net = profile::Network::default();
+        self.membership_net.restart();
         if !self.saved.packages_published && self.saved.packages.is_none() {
             self.prepare_packages(true)?;
         }
@@ -973,7 +1005,11 @@ impl<S: Signer> Client<S> {
         self.view_now_ms = now_ms;
         let mut extra = Vec::new();
         match ServerFrame::decode(bytes).map_err(|e| e.to_string())? {
+            ServerFrame::Res { id, result } if self.membership_reply(id, &result)? => {}
             ServerFrame::Res { id, result } if self.profile_reply(id, &result)? => {}
+            ServerFrame::DeviceMessage { from, to, sealed } => {
+                self.history_ready |= self.history_hint(&from, &to, &sealed);
+            }
             ServerFrame::ProfileChanged { identity, .. } => {
                 self.profile_changed(&identity);
             }
@@ -1080,6 +1116,9 @@ impl<S: Signer> Client<S> {
                 permanent,
                 ..
             } => {
+                if permanent && self.membership_refused(&client_id)? {
+                    return self.update(extra);
+                }
                 if let Some(pending) = self.saved.outbox.get_mut(&client_id) {
                     if permanent {
                         pending.failure = Some(reason);
@@ -1230,6 +1269,7 @@ impl<S: Signer> Client<S> {
         log.accept(event.clone()).map_err(|e| e.to_string())?;
         self.logs.insert(space.clone(), log);
         self.note_profile_event(&event);
+        self.note_membership_event(&event)?;
         if own.is_some() {
             self.saved.outbox.remove(envelope.client_id());
             self.sent.remove(envelope.client_id());
@@ -1269,8 +1309,14 @@ impl<S: Signer> Client<S> {
         Ok(())
     }
 
+    pub fn maintenance(&mut self, now: i64) -> Result<Update, String> {
+        self.view_now_ms = now;
+        self.update(Vec::new())
+    }
+
     pub fn update(&mut self, mut frames: Vec<Vec<u8>>) -> Result<Update, String> {
         self.profile_frames(&mut frames)?;
+        self.membership_frames(&mut frames)?;
         let reseal = self
             .saved
             .outbox
@@ -1318,6 +1364,12 @@ impl<S: Signer> Client<S> {
             .outbox
             .iter()
             .filter(|(_, pending)| pending.failure.is_none() && pending.blob_uploads.is_empty())
+            .filter(|(_, pending)| {
+                pending
+                    .after_commit
+                    .as_ref()
+                    .is_none_or(|id| !self.saved.outbox.contains_key(id))
+            })
             .collect::<Vec<_>>();
         outgoing.sort_by_key(|(id, pending)| (pending.order.unwrap_or(0), *id));
         for (id, pending) in outgoing {
@@ -1368,7 +1420,14 @@ impl<S: Signer> Client<S> {
         Ok(Update {
             snapshot,
             frames,
+            history_ready: std::mem::take(&mut self.history_ready),
             conversations: self.conversations(),
+            maintenance_ms: self
+                .membership_deadline()
+                .into_iter()
+                .chain(self.profile_deadline())
+                .min()
+                .map(|deadline| deadline.saturating_sub(self.view_now_ms).clamp(50, 60_000) as u32),
         })
     }
 
@@ -1443,7 +1502,7 @@ impl<S: Signer> Client<S> {
 
     pub fn conversations(&self) -> Vec<ConversationView> {
         let preferences = self.chat_preferences();
-        self.logs.keys().filter_map(|space| {
+        let mut conversations = self.logs.keys().filter_map(|space| {
             let (title, kind, privacy) = self.metadata(space)?;
             let roster = self.roster(space);
             if kind == SpaceKind::Personal || !roster.contains_key(&self.account.identity) { return None; }
@@ -1567,7 +1626,9 @@ impl<S: Signer> Client<S> {
                 privacy, profiles, prefs: ChatPreferencesView { pinned: prefs.pinned, archived: prefs.archived, muted_until_ms: prefs.muted_until_ms.map(|time| time.to_string()) },
                 event_count: self.logs.get(space)?.next_seq().to_string(),
                 can_send: waiting.is_none(), waiting, unreadable, unread, mentions, members: roster.len(), roster, messages })
-        }).collect()
+        }).collect::<Vec<_>>();
+        conversations.extend(self.creating_views());
+        conversations
     }
 
     /// Preferences belong to my own personal log. A chat participant cannot set

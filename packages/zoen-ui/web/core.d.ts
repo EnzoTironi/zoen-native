@@ -14,6 +14,7 @@ declare module '*/core/zoen_web_core.js' {
   export function hello(identity: string, device: string, cert: string): Uint8Array;
   export function auth_message(nonce: string, relay: string): Uint8Array;
   export function device_cert_message(device: string): Uint8Array;
+  export function ping():Uint8Array;
   export function auth(signature: string): Uint8Array;
   export function request(id: number, kind: string, value: string): Uint8Array;
   export function decode_server(bytes: Uint8Array): string;
@@ -33,11 +34,15 @@ declare module '*/core/zoen_web_core.js' {
     fail_outbox(client_id: string, reason: string): string;
     queue_file(space: string, doc: string, now: number): string;
     queue_file_record(space: string, doc: string, now: number): string;
+    claim_clock(value:string):string;
+    maintenance(now:number):string;
+    membership_request(request:string, now:number):string;
     document_request(request: string, now: number): string;
     agent_request(request: string, now: number): string;
     profile_request(request: string, now: number): string;
     handle_profile(handle:string):string;
     handle_confirmed(profile:string,expected:string):string;
+    history_status():string;
     history_start(now:number):string;
     history_manifest(sealed:Uint8Array, now:number):string;
     history_chunk(index:number, sealed:Uint8Array, now:number):string;

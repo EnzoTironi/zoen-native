@@ -8,8 +8,9 @@ import { NativeButton } from './primitives';
 
 export function PairingCode({ code, check }: { code: string; check: string }) {
   const { colors } = useTheme();
-  const [copied, setCopied] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [failedCode, setFailedCode] = useState<string | null>(null);
+  const [shownCode, setShownCode] = useState<string | null>(null);
   const uri = useMemo(() => {
     const qr = qrcode(0, 'M');
     qr.addData(code);
@@ -33,20 +34,55 @@ export function PairingCode({ code, check }: { code: string; check: string }) {
       </Text>
       <NativeButton
         secondary
-        label={copied ? 'Código copiado' : 'Copiar código de conexão'}
+        label={copiedCode === code ? 'Código copiado' : 'Copiar código de conexão'}
         onPress={() => {
+          setCopiedCode(null);
+          setFailedCode(null);
           void Clipboard.setStringAsync(code, { android: { isSensitive: true } })
             .then((saved) => {
-              setCopied(saved);
-              setFailure(saved ? null : 'Não foi possível copiar.');
+              // SDK58 returns false on Web when the clipboard write is refused.
+              setCopiedCode(saved === true ? code : null);
+              setFailedCode(saved === true ? null : code);
+              if (saved !== true) setShownCode(code);
             })
-            .catch(() => setFailure('Não foi possível copiar.'));
+            .catch(() => {
+              setCopiedCode(null);
+              setFailedCode(code);
+              setShownCode(code);
+            });
         }}
       />
-      {failure ? (
+      {failedCode === code ? (
         <Text accessibilityRole="alert" style={{ color: colors.danger }}>
-          {failure}
+          Não foi possível copiar. Selecione o código abaixo para copiar manualmente.
         </Text>
+      ) : null}
+      <NativeButton
+        secondary
+        label={shownCode === code ? 'Ocultar código' : 'Mostrar código'}
+        onPress={() => setShownCode((shown) => (shown === code ? null : code))}
+      />
+      {shownCode === code ? (
+        <View style={{ alignSelf: 'stretch', gap: 8 }}>
+          <Text style={{ color: colors.secondary, fontSize: 14, lineHeight: 20 }}>
+            Selecione e copie este código de conexão no seu outro aparelho.
+          </Text>
+          <Text
+            selectable
+            accessibilityLabel="Código de conexão deste dispositivo"
+            style={{
+              color: colors.text,
+              backgroundColor: colors.muted,
+              padding: 14,
+              borderRadius: 14,
+              fontFamily: 'monospace',
+              fontSize: 13,
+              lineHeight: 20,
+            }}
+          >
+            {code}
+          </Text>
+        </View>
       ) : null}
     </View>
   );

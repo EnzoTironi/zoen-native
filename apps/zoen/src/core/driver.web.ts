@@ -446,6 +446,16 @@ class BrowserDriver implements CoreDriver {
           });
           result = this.entries(command.space_id).at(-1);
           break;
+        case 'start_direct':
+        case 'create_group':
+        case 'create_community':
+        case 'add_member':
+        case 'add_admin':
+        case 'remove_member':
+        case 'leave_space':
+        case 'encrypt_chat':
+          result = await messages.membershipRequest(command);
+          break;
         case 'mark_read':
           await messages.markRead(command.space_id);
           break;
@@ -469,6 +479,9 @@ class BrowserDriver implements CoreDriver {
         case 'update_handle':
           await messages.updateHandle(command.handle);
           result = this.snapshot().account;
+          break;
+        case 'history_status':
+          result = await messages.historyStatus();
           break;
         case 'receive_history':
           result = await messages.receiveHistory(Number(command.timeout_ms));

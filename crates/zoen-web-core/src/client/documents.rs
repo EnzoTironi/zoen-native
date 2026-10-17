@@ -778,7 +778,7 @@ impl<S: Signer> Client<S> {
         ))
     }
 
-    fn pending_document_uploads(&self) -> Vec<String> {
+    pub(super) fn pending_document_uploads(&self) -> Vec<String> {
         self.saved
             .outbox
             .values()
@@ -835,7 +835,7 @@ impl<S: Signer> Client<S> {
         let mut downloads = Vec::new();
         let mut mutated = false;
         let result = match command {
-            Command::NewMutationId {} => json!(roda_types::new_id("client_edit")),
+            Command::NewMutationId {} => json!(browser_id("client_edit", now)),
             Command::PageParseMarkdown { markdown } => json!(Page::from_markdown(&markdown)
                 .map_err(error)?
                 .blocks()
@@ -844,7 +844,7 @@ impl<S: Signer> Client<S> {
                 .collect::<Vec<_>>()),
             Command::PageBlockMarkdown { block } => {
                 let page = Page::new();
-                page.apply(&[block.id.clone()], &[block.edit(None)?])
+                page.apply(std::slice::from_ref(&block.id), &[block.edit(None)?])
                     .map_err(error)?;
                 json!(page.canonical_markdown())
             }
@@ -973,9 +973,8 @@ impl<S: Signer> Client<S> {
                     line.done = !line.done;
                     Ok(())
                 })
-                .map(|value| {
+                .inspect(|_| {
                     mutated = true;
-                    value
                 })?,
             Command::EditPlanLine {
                 item_id,
@@ -992,9 +991,8 @@ impl<S: Signer> Client<S> {
                     line.cost_cents = cost;
                     Ok(())
                 })
-                .map(|value| {
+                .inspect(|_| {
                     mutated = true;
-                    value
                 })?
             }
             Command::AddPlanLine {
@@ -1012,16 +1010,15 @@ impl<S: Signer> Client<S> {
                         .ok_or("Seção indisponível.")?
                         .lines
                         .push(roda_types::PlanLine {
-                            id: roda_types::new_id("ln"),
+                            id: browser_id("ln", now),
                             text,
                             cost_cents: cost,
                             done: false,
                         });
                     Ok(())
                 })
-                .map(|value| {
+                .inspect(|_| {
                     mutated = true;
-                    value
                 })?
             }
             Command::RemovePlanLine {
@@ -1034,9 +1031,8 @@ impl<S: Signer> Client<S> {
                     plan.remove_line(&line_id).ok_or("Linha indisponível.")?;
                     Ok(())
                 })
-                .map(|value| {
+                .inspect(|_| {
                     mutated = true;
-                    value
                 })?,
             Command::RestorePlanVersion {
                 item_id,
@@ -1150,7 +1146,7 @@ impl<S: Signer> Client<S> {
             title = "Sem título".into();
         }
         let (content, uploads) = self.page_content(title, path.into(), page.snapshot())?;
-        let item = roda_types::new_id("it");
+        let item = browser_id("it", now);
         self.queue_domain_body(
             space,
             EventBody::ItemCreated {

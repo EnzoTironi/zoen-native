@@ -84,6 +84,37 @@ fn valid_manifest(manifest: &HistoryBox) -> bool {
 }
 
 impl<S: Signer> Client<S> {
+    pub(super) fn history_hint(&self, from: &str, to: &str, sealed: &[u8]) -> bool {
+        if from != self.account.primary
+            || to != self.account.device
+            || self.saved.history.complete.is_some()
+            || self.account.link_secret.is_empty()
+            || sealed.len() > MAX_MANIFEST
+        {
+            return false;
+        }
+        let peer = roda_link::Peer {
+            device: from.into(),
+            their_hpke: self.account.primary_hpke.clone(),
+            my_hpke_secret: self.account.hpke_secret.clone(),
+            secret: self.account.link_secret.clone(),
+        };
+        matches!(peer.open(sealed), Some(roda_link::DeviceMsg::HistoryReady))
+    }
+
+    pub fn history_status(&self) -> String {
+        let transfer = self.saved.history.transfer.as_ref();
+        let complete = self.saved.history.complete.as_ref();
+        serde_json::json!({
+            "initial_pending": !self.account.link_secret.is_empty() && complete.is_none(),
+            "manifest_received": transfer.is_some() || complete.is_some(),
+            "chunks_received": transfer.map(|transfer| transfer.chunks.len() as u32).or_else(|| complete.map(|done| done.chunks)).unwrap_or(0),
+            "chunks_total": transfer.map(|transfer| transfer.manifest.chunks.len() as u32).or_else(|| complete.map(|done| done.chunks)).unwrap_or(0),
+            // The host owns the asynchronous network pump, not this synchronous core.
+            "receive_active": false
+        }).to_string()
+    }
+
     /// Start/retry one initial handover. The host persists every returned Update
     /// before requesting its work, including the one-time manifest mailbox.
     pub fn history_start(&mut self, now: i64) -> Result<HistoryResponse, String> {
@@ -469,10 +500,63 @@ mod tests {
     }
 
     #[test]
+    fn history_ready_only_wakes_from_the_pinned_primary_authenticated_device_channel() {
+        let f = fixture();
+        let peer = roda_link::Peer {
+            device: f.account.device.clone(),
+            their_hpke: hex::encode(&f.public),
+            my_hpke_secret: String::new(),
+            secret: f.account.link_secret.clone(),
+        };
+        let sealed = peer.seal(&roda_link::DeviceMsg::HistoryReady).unwrap();
+        let mut client = Client::new(f.account.clone(), f.signer, "").unwrap();
+        for (from, to) in [
+            ("wrong", f.account.device.as_str()),
+            (f.account.primary.as_str(), "wrong"),
+        ] {
+            let update = client
+                .receive(
+                    &ServerFrame::DeviceMessage {
+                        from: from.into(),
+                        to: to.into(),
+                        sealed: sealed.clone(),
+                    }
+                    .encode(),
+                    1,
+                )
+                .unwrap();
+            assert!(!update.history_ready);
+        }
+        let mut forged = sealed.clone();
+        *forged.last_mut().unwrap() ^= 1;
+        assert!(!client.history_hint(&f.account.primary, &f.account.device, &forged));
+        let update = client
+            .receive(
+                &ServerFrame::DeviceMessage {
+                    from: f.account.primary,
+                    to: f.account.device,
+                    sealed,
+                }
+                .encode(),
+                2,
+            )
+            .unwrap();
+        assert!(update.history_ready);
+        assert!(
+            !client.update(Vec::new()).unwrap().history_ready,
+            "wake hints are transient, not durable restore state"
+        );
+        assert!(client.saved.history.transfer.is_none());
+    }
+
+    #[test]
     fn native_history_resumes_verifies_before_import_and_persists_before_cleanup() {
         let f = fixture();
         let mut client = Client::new(f.account.clone(), f.signer.clone(), "").unwrap();
         client.logs.insert(f.log.space().into(), f.log.clone());
+        let status: serde_json::Value = serde_json::from_str(&client.history_status()).unwrap();
+        assert_eq!(status["initial_pending"], true);
+        assert_eq!(status["manifest_received"], false);
         assert!(matches!(
             client.history_start(5).unwrap().work,
             HistoryWork::FetchManifest { .. }
@@ -524,6 +608,11 @@ mod tests {
             &partial.update.snapshot,
         )
         .unwrap();
+        let status: serde_json::Value = serde_json::from_str(&resumed.history_status()).unwrap();
+        assert_eq!(status["initial_pending"], true);
+        assert_eq!(status["manifest_received"], true);
+        assert_eq!(status["chunks_received"], 1);
+        assert_eq!(status["chunks_total"], 2);
         resumed.history_start(9).unwrap();
         let waiting = resumed.history_chunk(1, &chunks[1], 10).unwrap();
         assert!(matches!(waiting.work, HistoryWork::WaitingSync));
@@ -553,6 +642,9 @@ mod tests {
             matches!(&resumed.logs[f.log.space()].events()[1].body,EventBody::MessagePosted {text,..} if text == "History 2")
         );
         let mut reloaded = Client::new(f.account, f.signer, &restored.update.snapshot).unwrap();
+        let status: serde_json::Value = serde_json::from_str(&reloaded.history_status()).unwrap();
+        assert_eq!(status["initial_pending"], false);
+        assert_eq!(status["chunks_received"], 2);
         assert!(matches!(
             reloaded.history_finish(12).unwrap().work,
             HistoryWork::Complete {

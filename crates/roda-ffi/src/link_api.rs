@@ -6,25 +6,130 @@
 //! [`RodaEngine::link_device`], then [`RodaEngine::send_history`] once the new device is in
 //! every group.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    future::Future,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use base64::Engine as _;
 use roda_log::Signer;
-use roda_proto::{transfer_message, DeviceCertificate, Op, Reply};
+use roda_proto::{DeviceCertificate, Op, Reply, transfer_message};
 
 use crate::{
+    AccountDto, CoreError, RodaEngine,
     api::SecretVault,
     i18n::t,
     link::{self, HistoryBox, IdentityBox, LinkCode, Peer, Pending},
-    linking::META_PRIMARY,
+    linking::{META_INITIAL_HISTORY_PENDING, META_PRIMARY},
     net::http_base,
     profile::VAULT_AGREEMENT,
     sync::{VAULT_DEVICE, VAULT_IDENTITY},
-    AccountDto, CoreError, RodaEngine,
 };
 
 const VAULT_PEERS: &str = "link.peers";
 const META_HISTORY: &str = "link.history";
+const META_HISTORY_COMPLETE: &str = "link.initial_history_complete";
+const MAX_HISTORY_BYTES: usize = 64 << 20;
+const MAX_HISTORY_CHUNK: usize = (1 << 20) + 16;
+const MAX_HISTORY_EVENTS: usize = 100_000;
+
+/// UniFFI's Swift future cancellation isn't sufficient to stop native work. This
+/// control cancels awaits explicitly and refuses overlapping receivers per engine.
+pub(crate) struct HistoryControl {
+    active: Arc<AtomicBool>,
+    cancellation: tokio::sync::watch::Sender<u64>,
+}
+impl Default for HistoryControl {
+    fn default() -> Self {
+        Self {
+            active: Arc::new(AtomicBool::new(false)),
+            cancellation: tokio::sync::watch::channel(0).0,
+        }
+    }
+}
+impl HistoryControl {
+    fn begin(&self, timeout_ms: u64) -> Result<HistoryReceive, CoreError> {
+        if !(1..=120_000).contains(&timeout_ms) {
+            return Err(invalid(
+                "History waits must be between 1 and 120000 milliseconds.",
+            ));
+        }
+        let cancellation = self.cancellation.subscribe();
+        let epoch = *cancellation.borrow();
+        if self
+            .active
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err(invalid(t(
+                "O histórico já está sendo recebido.",
+                "History is already being received.",
+            )));
+        }
+        Ok(HistoryReceive {
+            active: self.active.clone(),
+            cancellation,
+            epoch,
+            deadline: tokio::time::Instant::now() + Duration::from_millis(timeout_ms),
+        })
+    }
+    fn cancel(&self) {
+        self.cancellation
+            .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+    }
+}
+struct HistoryReceive {
+    active: Arc<AtomicBool>,
+    cancellation: tokio::sync::watch::Receiver<u64>,
+    epoch: u64,
+    deadline: tokio::time::Instant,
+}
+impl HistoryReceive {
+    fn check(&self) -> Result<(), CoreError> {
+        if *self.cancellation.borrow() != self.epoch {
+            return Err(invalid("History receive cancelled."));
+        }
+        if tokio::time::Instant::now() >= self.deadline {
+            return Err(invalid(t(
+                "O histórico ainda não chegou. A transferência continuará depois.",
+                "History has not arrived yet. The transfer will continue later.",
+            )));
+        }
+        Ok(())
+    }
+    async fn wait<T>(
+        &mut self,
+        work: impl Future<Output = Result<T, CoreError>>,
+    ) -> Result<T, CoreError> {
+        self.check()?;
+        let result = tokio::select! {
+            _ = self.cancellation.changed() => Err(invalid("History receive cancelled.")),
+            _ = tokio::time::sleep_until(self.deadline) => Err(invalid(t("O histórico ainda não chegou. A transferência continuará depois.", "History has not arrived yet. The transfer will continue later."))),
+            value = work => value,
+        };
+        self.check()?;
+        result
+    }
+}
+impl Drop for HistoryReceive {
+    fn drop(&mut self) {
+        self.active.store(false, Ordering::Release);
+    }
+}
+
+fn valid_history_manifest(manifest: &HistoryBox) -> bool {
+    let hash = |value: &str| value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit());
+    hash(&manifest.transfer)
+        && hash(&manifest.key)
+        && !manifest.chunks.is_empty()
+        && manifest.chunks.len() <= 900
+        && manifest.chunks.iter().all(|value| hash(value))
+}
 
 fn chunk_meta(n: usize) -> String {
     format!("link.chunk:{n}")
@@ -62,7 +167,10 @@ impl ExpectedIdentity {
     }
     pub(crate) fn check(&self, actual: &str) -> Result<(), CoreError> {
         if self.0.as_ref().is_some_and(|expected| expected != actual) {
-            return Err(invalid(t("Este vínculo ou backup pertence a outra conta. Use a conta confirmada no login.","This link or backup belongs to another account. Use the account confirmed during sign in.")));
+            return Err(invalid(t(
+                "Este vínculo ou backup pertence a outra conta. Use a conta confirmada no login.",
+                "This link or backup belongs to another account. Use the account confirmed during sign in.",
+            )));
         }
         Ok(())
     }
@@ -97,6 +205,16 @@ pub struct HistoryDto {
     pub chunks: u32,
     /// Chunks already here from an earlier, interrupted try.
     pub resumed: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct HistoryStatusDto {
+    pub initial_pending: bool,
+    pub manifest_received: bool,
+    pub chunks_received: u32,
+    pub chunks_total: u32,
+    pub receive_active: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
@@ -142,6 +260,48 @@ pub(crate) fn load_peers(vault: &Arc<dyn SecretVault>) -> Vec<Peer> {
 
 fn secret32(b: Option<Vec<u8>>) -> Option<[u8; 32]> {
     b.and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
+}
+
+#[uniffi::export]
+impl RodaEngine {
+    /// Status is derived from the canonical device database; no UI-local completion flag.
+    pub fn history_status(&self) -> Result<HistoryStatusDto, CoreError> {
+        let e = self.lock();
+        let manifest = e
+            .store
+            .meta(META_HISTORY)?
+            .map(|json| {
+                serde_json::from_str::<HistoryBox>(&json)
+                    .map_err(|_| invalid("Invalid retained history manifest."))
+            })
+            .transpose()?;
+        if manifest
+            .as_ref()
+            .is_some_and(|value| !valid_history_manifest(value))
+        {
+            return Err(invalid("Invalid retained history manifest."));
+        }
+        let mut received = 0;
+        if let Some(manifest) = &manifest {
+            for n in 0..manifest.chunks.len() {
+                if e.store.meta(&chunk_meta(n))?.is_some() {
+                    received += 1;
+                }
+            }
+        }
+        Ok(HistoryStatusDto {
+            initial_pending: e.store.meta(META_INITIAL_HISTORY_PENDING)?.is_some()
+                || manifest.is_some(),
+            manifest_received: manifest.is_some(),
+            chunks_received: received,
+            chunks_total: manifest.map_or(0, |value| value.chunks.len() as u32),
+            receive_active: self.history_receive.active.load(Ordering::Acquire),
+        })
+    }
+
+    pub fn cancel_history_receive(&self) {
+        self.history_receive.cancel();
+    }
 }
 
 impl RodaEngine {
@@ -389,7 +549,12 @@ impl RodaEngine {
             })
             .await?
         {
-            Reply::Done => Ok(bundle.events.len() as u32),
+            Reply::Done => {
+                // A best-effort wake only after the manifest exists durably. The
+                // destination's pending marker + foreground/reconnect resume are fallback.
+                self.lock().announce_initial_history(&device_id);
+                Ok(bundle.events.len() as u32)
+            }
             _ => Err(invalid("the relay answered something else")),
         }
     }
@@ -401,7 +566,22 @@ impl RodaEngine {
         timeout_ms: u64,
         listener: Option<Arc<dyn TransferListener>>,
     ) -> Result<HistoryDto, CoreError> {
-        let manifest = self.history_manifest(timeout_ms).await?;
+        let mut receive = self.history_receive.begin(timeout_ms)?;
+        {
+            let e = self.lock();
+            if e.store.meta(META_INITIAL_HISTORY_PENDING)?.is_none() {
+                if let Some(receipt) = e.store.meta(META_HISTORY_COMPLETE)? {
+                    return serde_json::from_str(&receipt)
+                        .map_err(|_| invalid("Invalid history receipt."));
+                }
+            }
+            if e.store.meta(META_PRIMARY)?.is_none() {
+                return Err(invalid("This device was not linked."));
+            }
+            // Legacy manual retries also become resumable before fetching the one-time box.
+            e.store.set_meta(META_INITIAL_HISTORY_PENDING, "1")?;
+        }
+        let manifest = self.history_manifest(&mut receive).await?;
         let key = secret32(hex::decode(&manifest.key).ok()).ok_or_else(|| invalid("history"))?;
         let base = self.relay_base()?;
         let client = http()?;
@@ -413,25 +593,50 @@ impl RodaEngine {
         let mut fetched = 0;
         let b64 = base64::engine::general_purpose::STANDARD;
         for (n, sha) in manifest.chunks.iter().enumerate() {
-            if self.lock().store.meta(&chunk_meta(n))?.is_some() {
-                resumed += 1;
-                continue;
+            receive.check()?;
+            if let Some(retained) = self.lock().store.meta(&chunk_meta(n))? {
+                if b64.decode(retained).ok().is_some_and(|bytes| {
+                    bytes.len() <= MAX_HISTORY_CHUNK && roda_log::sha256_hex(&bytes) == *sha
+                }) {
+                    resumed += 1;
+                    continue;
+                }
+                return Err(invalid("A retained history chunk does not match."));
             }
             if stop_after.is_some_and(|s| fetched >= s) {
                 return Err(invalid(format!("history stopped at {}/{total}", n)));
             }
-            let r = client
-                .get(format!("{base}/v1/transfer/{}/{n}", manifest.transfer))
-                .send()
-                .await
-                .map_err(|e| invalid(e.to_string()))?;
+            let mut r = receive
+                .wait(async {
+                    client
+                        .get(format!("{base}/v1/transfer/{}/{n}", manifest.transfer))
+                        .send()
+                        .await
+                        .map_err(|e| invalid(e.to_string()))
+                })
+                .await?;
             if !r.status().is_success() {
                 return Err(invalid(format!("history download: {}", r.status())));
             }
-            let bytes = r.bytes().await.map_err(|e| invalid(e.to_string()))?;
+            if r.content_length()
+                .is_some_and(|length| length > MAX_HISTORY_CHUNK as u64)
+            {
+                return Err(invalid("A history chunk is too large."));
+            }
+            let mut bytes = Vec::new();
+            while let Some(part) = receive
+                .wait(async { r.chunk().await.map_err(|e| invalid(e.to_string())) })
+                .await?
+            {
+                if bytes.len().saturating_add(part.len()) > MAX_HISTORY_CHUNK {
+                    return Err(invalid("A history chunk is too large."));
+                }
+                bytes.extend_from_slice(&part);
+            }
             if roda_log::sha256_hex(&bytes) != *sha {
                 return Err(invalid("a history chunk doesn't match"));
             }
+            receive.check()?;
             self.lock()
                 .store
                 .set_meta(&chunk_meta(n), &b64.encode(&bytes))?;
@@ -442,42 +647,57 @@ impl RodaEngine {
         }
         let mut plain = Vec::new();
         for n in 0..total {
+            receive.check()?;
             let sealed = self
                 .lock()
                 .store
                 .meta(&chunk_meta(n))?
                 .and_then(|s| b64.decode(s).ok())
                 .ok_or_else(|| invalid("history chunk"))?;
-            plain.extend(
-                link::open_chunk(&key, n as u32, &sealed)
-                    .ok_or_else(|| invalid("a history chunk doesn't open"))?,
-            );
+            if sealed.len() > MAX_HISTORY_CHUNK
+                || roda_log::sha256_hex(&sealed) != manifest.chunks[n]
+            {
+                return Err(invalid("A retained history chunk does not match."));
+            }
+            let opened = link::open_chunk(&key, n as u32, &sealed)
+                .ok_or_else(|| invalid("A history chunk does not open."))?;
+            if plain.len().saturating_add(opened.len()) > MAX_HISTORY_BYTES {
+                return Err(invalid("The history bundle is too large."));
+            }
+            plain.extend(opened);
         }
         let bundle: link::Bundle =
             serde_json::from_slice(&plain).map_err(|e| invalid(e.to_string()))?;
-        let messages = self.lock().import_opened(bundle.events)?;
-        // Gone from the relay once it's here.
+        if bundle.events.len() > MAX_HISTORY_EVENTS {
+            return Err(invalid("The history bundle has too many events."));
+        }
+        // Receiving the box does not mean the authenticated relay chain is already here.
+        while !self.connection().synced {
+            receive
+                .wait(async {
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                    Ok(())
+                })
+                .await?;
+        }
+        let receipt =
+            self.commit_initial_history(bundle.events, total as u32, resumed, &receive)?;
+        // Local completion was committed before this best-effort relay cleanup.
         let (device, ts, sig) =
             self.signed_headers(|ts| transfer_message("delete", &manifest.transfer, "", "", ts))?;
-        let _ = client
-            .delete(format!("{base}/v1/transfer/{}", manifest.transfer))
-            .header("x-zoen-device", device)
-            .header("x-zoen-ts", ts)
-            .header("x-zoen-sig", sig)
-            .send()
+        let _ = receive
+            .wait(async {
+                client
+                    .delete(format!("{base}/v1/transfer/{}", manifest.transfer))
+                    .header("x-zoen-device", device)
+                    .header("x-zoen-ts", ts)
+                    .header("x-zoen-sig", sig)
+                    .send()
+                    .await
+                    .map_err(|e| invalid(e.to_string()))
+            })
             .await;
-        {
-            let e = self.lock();
-            for n in 0..total {
-                let _ = e.store.meta_delete(&chunk_meta(n));
-            }
-            let _ = e.store.meta_delete(META_HISTORY);
-        }
-        Ok(HistoryDto {
-            messages,
-            chunks: total as u32,
-            resumed,
-        })
+        Ok(receipt)
     }
 
     /// New device: asks the device that linked it for an older page of `space_id`.
@@ -557,13 +777,16 @@ impl RodaEngine {
 impl RodaEngine {
     /// The history box: from the device database if an earlier try got it, else from the
     /// relay (one-time), kept until the bundle is in.
-    async fn history_manifest(&self, timeout_ms: u64) -> Result<HistoryBox, CoreError> {
-        if let Some(m) = self
-            .lock()
-            .store
-            .meta(META_HISTORY)?
-            .and_then(|v| serde_json::from_str(&v).ok())
-        {
+    async fn history_manifest(
+        &self,
+        receive: &mut HistoryReceive,
+    ) -> Result<HistoryBox, CoreError> {
+        if let Some(json) = self.lock().store.meta(META_HISTORY)? {
+            let m: HistoryBox = serde_json::from_str(&json)
+                .map_err(|_| invalid("Invalid retained history manifest."))?;
+            if !valid_history_manifest(&m) {
+                return Err(invalid("Invalid retained history manifest."));
+            }
             return Ok(m);
         }
         let peer = {
@@ -583,29 +806,121 @@ impl RodaEngine {
         };
         let secret = peer.secret().ok_or_else(|| invalid("peer"))?;
         let id = link::box_id(&secret, "history");
-        let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
         let sealed = loop {
-            match self.request(Op::FetchLink { id: id.clone() }).await? {
+            match receive
+                .wait(self.request(Op::FetchLink { id: id.clone() }))
+                .await?
+            {
                 Reply::Link(Some(b)) => break b,
                 Reply::Link(None) => {}
                 _ => return Err(invalid("the relay answered something else")),
             }
-            if tokio::time::Instant::now() >= deadline {
-                return Err(invalid(t(
-                    "O histórico ainda não chegou.",
-                    "The history hasn't arrived yet.",
-                )));
-            }
-            tokio::time::sleep(Duration::from_millis(700)).await;
+            receive
+                .wait(async {
+                    tokio::time::sleep(Duration::from_millis(700)).await;
+                    Ok(())
+                })
+                .await?;
         };
+        if sealed.len() > 65_536 {
+            return Err(invalid("The history manifest is too large."));
+        }
         let sk = hex::decode(&peer.my_hpke_secret).unwrap_or_default();
         let plain = link::open(&sk, &secret, "history", &sealed)
             .ok_or_else(|| invalid(t("O histórico não abriu.", "The history didn't open.")))?;
         let m: HistoryBox = serde_json::from_slice(&plain).map_err(|e| invalid(e.to_string()))?;
+        if !valid_history_manifest(&m) {
+            return Err(invalid("Invalid history manifest."));
+        }
+        receive.check()?;
         self.lock()
             .store
             .set_meta(META_HISTORY, &serde_json::to_string(&m).unwrap_or_default())?;
         Ok(m)
+    }
+
+    /// Import and completion marker share one SQLite commit. A missing relay record
+    /// is pending work, never an empty successful history transfer.
+    fn commit_initial_history(
+        &self,
+        events: Vec<roda_types::Event>,
+        chunks: u32,
+        resumed: u32,
+        receive: &HistoryReceive,
+    ) -> Result<HistoryDto, CoreError> {
+        receive.check()?;
+        let mut e = self.lock();
+        let mut positions = BTreeSet::new();
+        let mut opened = Vec::new();
+        for event in events {
+            receive.check()?;
+            if !positions.insert((event.space.clone(), event.seq)) {
+                return Err(invalid("The history repeats a relay position."));
+            }
+            let local = e
+                .logs
+                .get(&event.space)
+                .and_then(|log| {
+                    usize::try_from(event.seq)
+                        .ok()
+                        .and_then(|index| log.events().get(index))
+                })
+                .ok_or_else(|| {
+                    invalid(t(
+                        "O histórico aguarda os registros verificados do servidor.",
+                        "History is waiting for the verified relay records.",
+                    ))
+                })?;
+            if local.sealed_wire.is_some() {
+                // A retry after a former partial import must be the exact same opened event.
+                let mut anchored = event;
+                anchored.prev = local.prev.clone();
+                anchored.hash = local.hash.clone();
+                if &anchored != local {
+                    return Err(invalid("An opened history entry does not match."));
+                }
+                continue;
+            }
+            let event = link::opened_history_event(local, event).ok_or_else(|| {
+                invalid("A history entry does not match the signed relay record.")
+            })?;
+            opened.push(event);
+        }
+        let receipt = HistoryDto {
+            messages: opened.len() as u32,
+            chunks,
+            resumed,
+        };
+        {
+            let tx = e
+                .store
+                .conn()
+                .unchecked_transaction()
+                .map_err(|err| CoreError::Storage {
+                    message: err.to_string(),
+                })?;
+            for event in opened {
+                receive.check()?;
+                if !e.store.replace_event(&event)? {
+                    return Err(invalid("A history relay record disappeared."));
+                }
+            }
+            e.store.set_meta(
+                META_HISTORY_COMPLETE,
+                &serde_json::to_string(&receipt).map_err(|err| invalid(err.to_string()))?,
+            )?;
+            for n in 0..chunks {
+                e.store.meta_delete(&chunk_meta(n as usize))?;
+            }
+            e.store.meta_delete(META_HISTORY)?;
+            e.store.meta_delete(META_INITIAL_HISTORY_PENDING)?;
+            receive.check()?;
+            tx.commit().map_err(|err| CoreError::Storage {
+                message: err.to_string(),
+            })?;
+        }
+        e.reload()?;
+        Ok(receipt)
     }
 }
 
@@ -748,9 +1063,10 @@ mod pin_tests {
             profile_seen_version: 0,
             profile_fields: String::new(),
         };
-        assert!(core
-            .finish_link(pending, device, boxed, vault.clone(), &expected)
-            .is_err());
+        assert!(
+            core.finish_link(pending, device, boxed, vault.clone(), &expected)
+                .is_err()
+        );
         assert!(core.account().is_none());
         assert!(core.lock().store.meta("account").unwrap().is_none());
         assert_eq!(vault.reads.load(Ordering::SeqCst), 0);
@@ -760,12 +1076,13 @@ mod pin_tests {
     async fn malformed_provider_identity_is_refused_before_vault_reads_or_recovery_network() {
         let core = RodaEngine::open(":memory:".into(), "en-US".into()).unwrap();
         let vault = Arc::new(Vault::default());
-        assert!(core
-            .link_wait_expected(vault.clone(), 1, Some("invalid".into()))
-            .await
-            .is_err());
-        assert!(core
-            .restore_backup_expected(
+        assert!(
+            core.link_wait_expected(vault.clone(), 1, Some("invalid".into()))
+                .await
+                .is_err()
+        );
+        assert!(
+            core.restore_backup_expected(
                 "not a URL".into(),
                 "valid_handle".into(),
                 "secret".into(),
@@ -774,9 +1091,329 @@ mod pin_tests {
                 Some("invalid".into())
             )
             .await
-            .is_err());
+            .is_err()
+        );
         assert!(core.account().is_none());
         assert_eq!(vault.reads.load(Ordering::SeqCst), 0);
         assert_eq!(vault.writes.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[cfg(test)]
+mod initial_history_tests {
+    use super::*;
+    use roda_log::{Author, SpaceLog};
+    use roda_types::{EventBody, Privacy, SpaceKind};
+    use std::{collections::HashMap, sync::Mutex};
+
+    #[derive(Default)]
+    struct Vault(Mutex<HashMap<String, Vec<u8>>>);
+    impl SecretVault for Vault {
+        fn load(&self, key: String) -> Option<Vec<u8>> {
+            self.0.lock().unwrap().get(&key).cloned()
+        }
+        fn save(&self, key: String, value: Vec<u8>) -> bool {
+            self.0.lock().unwrap().insert(key, value);
+            true
+        }
+        fn delete(&self, key: String) {
+            self.0.lock().unwrap().remove(&key);
+        }
+    }
+    fn install_link(core: &RodaEngine) -> Arc<Vault> {
+        let vault = Arc::new(Vault::default());
+        let identity = Signer::from_secret(&[21; 32]);
+        let device = Signer::from_secret(&[22; 32]);
+        let (hpke_secret, hpke_public) = link::key_pair();
+        let (_, primary_hpke) = link::key_pair();
+        let pending = Pending {
+            device_secret: hex::encode(device.secret()),
+            hpke_secret: hex::encode(hpke_secret),
+            hpke_public: hex::encode(hpke_public),
+            secret: hex::encode([23; 32]),
+            relay: "http://localhost:8787".into(),
+        };
+        let boxed = IdentityBox {
+            identity_secret: hex::encode(identity.secret()),
+            agreement_secret: hex::encode([24; 32]),
+            cert: identity.sign(&roda_log::device_cert_message(&device.id())),
+            name: "Linked person".into(),
+            handle: "linked_person".into(),
+            relay: pending.relay.clone(),
+            primary: Signer::from_secret(&[25; 32]).id(),
+            primary_hpke: hex::encode(primary_hpke),
+            profile_key: String::new(),
+            profile_key_version: 0,
+            profile_seen_version: 0,
+            profile_fields: String::new(),
+        };
+        core.finish_link(
+            pending,
+            device,
+            boxed,
+            vault.clone(),
+            &ExpectedIdentity::parse(None).unwrap(),
+        )
+        .unwrap();
+        vault
+    }
+    fn path() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "zoen-initial-history-{}.sqlite",
+            roda_types::new_id("test")
+        ))
+    }
+    fn encrypted_record(core: &RodaEngine) -> roda_types::Event {
+        use roda_log::content::{Sealed, SealedKind};
+        let identity = Signer::from_secret(&[21; 32]);
+        let author = Author::device(&identity, Signer::from_secret(&[26; 32]));
+        let mut log = SpaceLog::new("sp_initial_history");
+        let genesis = log
+            .append(
+                &identity,
+                1,
+                EventBody::SpaceCreated {
+                    title: "Private".into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::EndToEnd,
+                },
+            )
+            .clone();
+        let mut opened = author.sign_event(
+            log.space(),
+            "msg_initial",
+            2,
+            log.head(),
+            EventBody::MessagePosted {
+                message: "msg_initial".into(),
+                text: "Actual durable history".into(),
+                attaches: None,
+                reply: None,
+                forwarded: false,
+            },
+        );
+        let (content, sig) = author.sign_sealed(
+            log.space(),
+            "msg_initial",
+            2,
+            log.head().as_ref(),
+            Sealed::new(SealedKind::Application, 1, vec![1, 2, 3]),
+        );
+        let outer = roda_log::event_from_content(
+            content,
+            sig,
+            author.cert.clone(),
+            0,
+            String::new(),
+            String::new(),
+        )
+        .unwrap();
+        let local = log.sequence(outer).clone();
+        opened.seq = local.seq;
+        opened.sealed_wire = Some(roda_log::content_hash_of(&local));
+        let mut e = core.lock();
+        e.store.append_events(&[genesis, local]).unwrap();
+        e.reload().unwrap();
+        opened
+    }
+
+    #[tokio::test]
+    async fn link_then_cold_reopen_before_history_retains_pending_and_same_keys() {
+        let file = path();
+        let core = RodaEngine::open(file.to_string_lossy().into(), "en-US".into()).unwrap();
+        let vault = install_link(&core);
+        let account = core.account().unwrap();
+        let identity_key = vault.load(VAULT_IDENTITY.into());
+        let device_key = vault.load(VAULT_DEVICE.into());
+        assert!(core.history_status().unwrap().initial_pending);
+        drop(core);
+        let reopened = RodaEngine::open(file.to_string_lossy().into(), "en-US".into()).unwrap();
+        assert!(reopened.unlock(vault.clone()).unwrap());
+        assert_eq!(reopened.account().unwrap().identity_id, account.identity_id);
+        let status = reopened.history_status().unwrap();
+        assert!(status.initial_pending);
+        assert!(!status.manifest_received);
+        assert!(reopened.receive_history(20, None).await.is_err());
+        assert!(reopened.history_status().unwrap().initial_pending);
+        assert_eq!(vault.load(VAULT_IDENTITY.into()), identity_key);
+        assert_eq!(vault.load(VAULT_DEVICE.into()), device_key);
+        drop(reopened);
+        let _ = std::fs::remove_file(file);
+    }
+
+    #[tokio::test]
+    async fn missing_or_forged_history_cannot_clear_pending_or_partially_import() {
+        let core = RodaEngine::open(":memory:".into(), "en-US".into()).unwrap();
+        install_link(&core);
+        let opened = encrypted_record(&core);
+        let receive = core.history_receive.begin(5_000).unwrap();
+        let mut missing = opened.clone();
+        missing.space = "sp_not_synced".into();
+        assert!(
+            core.commit_initial_history(vec![opened.clone(), missing], 1, 0, &receive)
+                .is_err()
+        );
+        assert!(core.history_status().unwrap().initial_pending);
+        assert!(matches!(
+            core.lock().logs["sp_initial_history"].events()[1].body,
+            EventBody::Sealed { .. }
+        ));
+        assert!(
+            core.lock()
+                .store
+                .meta(META_HISTORY_COMPLETE)
+                .unwrap()
+                .is_none()
+        );
+        let mut forged = opened.clone();
+        forged.sig = "00".repeat(64);
+        assert!(
+            core.commit_initial_history(vec![forged], 1, 0, &receive)
+                .is_err()
+        );
+        assert!(core.history_status().unwrap().initial_pending);
+        assert_eq!(
+            core.commit_initial_history(vec![opened], 1, 0, &receive)
+                .unwrap()
+                .messages,
+            1
+        );
+        assert!(!core.history_status().unwrap().initial_pending);
+        assert!(matches!(
+            core.lock().logs["sp_initial_history"].events()[1].body,
+            EventBody::MessagePosted { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn durable_import_and_receipt_survive_reopen_before_relay_cleanup_or_ui_ack() {
+        let file = path();
+        let core = RodaEngine::open(file.to_string_lossy().into(), "en-US".into()).unwrap();
+        let vault = install_link(&core);
+        let opened = encrypted_record(&core);
+        let receive = core.history_receive.begin(5_000).unwrap();
+        core.lock()
+            .store
+            .set_meta(META_HISTORY, r#"{"transfer":"old"}"#)
+            .unwrap();
+        core.lock()
+            .store
+            .set_meta(&chunk_meta(0), "retained sealed bytes")
+            .unwrap();
+        let receipt = core
+            .commit_initial_history(vec![opened], 1, 1, &receive)
+            .unwrap();
+        drop(receive);
+        drop(core);
+        let reopened = RodaEngine::open(file.to_string_lossy().into(), "en-US".into()).unwrap();
+        assert!(reopened.unlock(vault).unwrap());
+        assert!(!reopened.history_status().unwrap().initial_pending);
+        assert!(reopened.lock().store.meta(META_HISTORY).unwrap().is_none());
+        assert!(
+            reopened
+                .lock()
+                .store
+                .meta(&chunk_meta(0))
+                .unwrap()
+                .is_none()
+        );
+        // No relay connection exists: a successful replay must use the committed receipt.
+        assert_eq!(
+            reopened.receive_history(5_000, None).await.unwrap(),
+            receipt
+        );
+        assert!(matches!(
+            reopened.lock().logs["sp_initial_history"].events()[1].body,
+            EventBody::MessagePosted { .. }
+        ));
+        drop(reopened);
+        let _ = std::fs::remove_file(file);
+    }
+
+    #[tokio::test]
+    async fn cancellation_deadline_and_single_receiver_guard_leave_pending_retryable() {
+        let control = Arc::new(HistoryControl::default());
+        let mut receive = control.begin(5_000).unwrap();
+        assert!(control.begin(5_000).is_err());
+        let cancel = control.clone();
+        let cancellation = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            cancel.cancel();
+        });
+        assert!(
+            receive
+                .wait(std::future::pending::<Result<(), CoreError>>())
+                .await
+                .is_err()
+        );
+        cancellation.await.unwrap();
+        drop(receive);
+        let mut retry = control.begin(10).unwrap();
+        assert!(
+            retry
+                .wait(std::future::pending::<Result<(), CoreError>>())
+                .await
+                .is_err()
+        );
+        drop(retry);
+        assert!(control.begin(5_000).is_ok());
+        assert!(!valid_history_manifest(&HistoryBox {
+            transfer: "a".repeat(64),
+            key: "b".repeat(64),
+            chunks: vec![]
+        }));
+    }
+
+    #[test]
+    fn history_ready_is_a_content_free_authenticated_primary_hint_only_while_pending() {
+        let core = RodaEngine::open(":memory:".into(), "en-US".into()).unwrap();
+        install_link(&core);
+        let primary = core.lock().store.meta(META_PRIMARY).unwrap().unwrap();
+        let recipient = core.account().unwrap().device_id;
+        let (recipient_secret, recipient_public) = link::key_pair();
+        let (sender_secret, sender_public) = link::key_pair();
+        let secret = hex::encode([41; 32]);
+        core.lock().add_peer(Peer {
+            device: primary.clone(),
+            their_hpke: hex::encode(sender_public),
+            my_hpke_secret: hex::encode(recipient_secret),
+            secret: secret.clone(),
+        });
+        let mut sender = crate::Engine::open(":memory:").unwrap();
+        sender.add_peer(Peer {
+            device: recipient.clone(),
+            their_hpke: hex::encode(recipient_public),
+            my_hpke_secret: hex::encode(sender_secret),
+            secret,
+        });
+        sender.announce_initial_history(&recipient);
+        let queued = sender.take_device_outbox();
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].0, recipient);
+        let sealed = &queued[0].1;
+        assert!(!String::from_utf8_lossy(sealed).contains("HistoryReady"));
+        {
+            let mut e = core.lock();
+            e.device_message("unknown", &recipient, sealed);
+            assert!(!e.take_initial_history_ready());
+            e.device_message(&primary, "another recipient", sealed);
+            assert!(!e.take_initial_history_ready());
+            let mut corrupt = sealed.clone();
+            *corrupt.last_mut().unwrap() ^= 1;
+            e.device_message(&primary, &recipient, &corrupt);
+            assert!(!e.take_initial_history_ready());
+            e.device_message(&primary, &recipient, sealed);
+            assert!(e.take_initial_history_ready());
+            assert!(!e.take_initial_history_ready());
+            e.store
+                .set_meta("devices.revoked", &serde_json::json!([primary]).to_string())
+                .unwrap();
+            e.device_message(&primary, &recipient, sealed);
+            assert!(!e.take_initial_history_ready());
+            e.store.meta_delete("devices.revoked").unwrap();
+            e.store.meta_delete(META_INITIAL_HISTORY_PENDING).unwrap();
+            e.device_message(&primary, &recipient, sealed);
+            assert!(!e.take_initial_history_ready());
+        }
     }
 }

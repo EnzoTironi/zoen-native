@@ -7,6 +7,7 @@ import { EmptyState, Loading, NativeButton, Surface } from '../../components/pri
 import { useDialogs } from '../../components/dialogs';
 import { useTheme } from '../../theme';
 import { MiniappState } from '../../miniapps/state-view';
+import { MiniappView } from '../../miniapps/view-host';
 import { callMiniapp } from '../../miniapps/actions';
 
 export default function Miniapp() {
@@ -98,7 +99,11 @@ export default function Miniapp() {
           {message}
         </Text>
       ) : null}
-      <MiniappState app={app} busy={busy} onCall={call} />
+      {spec?.has_view ? (
+        <MiniappView item={item} spec={spec} />
+      ) : (
+        <MiniappState app={app} busy={busy} onCall={call} />
+      )}
       <Surface>
         <Text
           accessibilityRole="header"

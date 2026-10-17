@@ -212,7 +212,7 @@ pub(crate) fn parse_editor_markdown(markdown: &str) -> R<Vec<PageBlockDto>> {
 pub(crate) fn editor_block_markdown(block: &PageBlockDto) -> R<String> {
     let page = Page::new();
     page.apply(
-        &[block.id.clone()],
+        std::slice::from_ref(&block.id),
         &[roda_docs::BlockEdit {
             id: block.id.clone(),
             kind: kind_from_dto(block, None),

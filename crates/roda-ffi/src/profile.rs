@@ -14,18 +14,18 @@
 use std::collections::HashSet;
 
 use roda_log::profile::{
-    open_profile, open_share, seal_profile, seal_share, share_context, sign_agreement, sign_upload,
-    verify_agreement, verify_upload, AgreementKey, DeviceSigned, ProfileFields, ProfileKey,
-    ProfilePhoto, SealedShare, MAX_CIPHERTEXT,
+    AgreementKey, DeviceSigned, MAX_CIPHERTEXT, ProfileFields, ProfileKey, ProfilePhoto,
+    SealedShare, open_profile, open_share, seal_profile, seal_share, share_context, sign_agreement,
+    sign_upload, verify_agreement, verify_upload,
 };
 use roda_proto::{AgreementKeyRecord, SealedProfile};
 use roda_types::*;
 use sha2::{Digest, Sha256};
 
-use crate::engine::{now_ms, Engine, R};
+use crate::CoreError;
+use crate::engine::{Engine, R, now_ms};
 use crate::i18n::t;
 use crate::media::Wanted;
-use crate::CoreError;
 
 pub(crate) const VAULT_AGREEMENT: &str = "zoen.agreement.v1";
 const META_UPLOADED: &str = "profile:uploaded";
@@ -120,6 +120,15 @@ impl Engine {
     /// A new account's profile key, first version and agreement key. Returns the agreement
     /// secret for the vault.
     pub(crate) fn init_profile(&mut self, me: &str, name: &str) -> R<[u8; 32]> {
+        self.init_profile_with_agreement(me, name, AgreementKey::generate())
+    }
+
+    pub(crate) fn init_profile_with_agreement(
+        &mut self,
+        me: &str,
+        name: &str,
+        agreement: AgreementKey,
+    ) -> R<[u8; 32]> {
         let key = ProfileKey::generate();
         self.store.put_profile_key(me, &key.to_hex(), 1)?;
         let fields = ProfileFields {
@@ -127,7 +136,6 @@ impl Engine {
             ..Default::default()
         };
         self.store.set_profile_fields(me, 1, &fields.to_bytes())?;
-        let agreement = AgreementKey::generate();
         let secret = agreement.secret();
         self.net.profiles.agreement = Some(agreement);
         self.net.profiles.shares_dirty = true;

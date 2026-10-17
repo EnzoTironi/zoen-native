@@ -131,6 +131,7 @@ function messagingCore() {
   return { ...unitCodec(), close() { closed = true; }, get closed() { return closed; },
     text: async (operation: CoreOperation) => {
       if (operation.kind === 'document_uploads') return '[]';
+      if(operation.kind==='claim_clock')return '';
       if (operation.kind === 'restore') return JSON.stringify([conversation]);
       if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
       if (operation.kind === 'bootstrap') return JSON.stringify({ snapshot: 'durable bootstrap', frames: [[7]], conversations: [conversation] });
@@ -687,4 +688,46 @@ test('handle_taken never renames locally and a successful alias waits for Regist
   const changing=messages.updateHandle('@New_Alias');await settle();assert.equal(confirmations,0);
   socket().frame({kind:'response',id:requests[1]!.requestId,value:{kind:'registered',profile}});
   assert.equal(await changing,'new_alias');assert.equal(confirmations,1);assert.equal(session.account.handle,'new_alias');assert.equal(saved.at(-1),'new_alias');
+});
+
+test('claim receipts require the negotiated capability and exact relay clock; reconnect clears it', async (t) => {
+  install(t);
+  const transport=new AuthenticatedTransport(unitCodec(),vault,login,()=>{},async()=>{});
+  t.after(()=>transport.stop());transport.start();socket().open();await settle();
+  socket().frame({...challenge,capabilities:['key-package-claim-receipts'],server_time_ms:'1770000000123'});await settle();
+  socket().frame(ready);await settle();assert.equal(transport.claimClock,'1770000000123');
+  socket().close();t.mock.timers.tick(900);await settle();await authenticate();
+  assert.equal(transport.claimClock,'');
+});
+
+test('scheduled MLS maintenance persists the ratchet before publish and stops on disconnect',async(t)=>{
+  install(t);const base=messagingCore();let ticks=0;let finish=()=>{};
+  const saving=new Promise<void>(resolve=>{finish=resolve;});
+  const core={...base,text:async(operation:CoreOperation)=>{
+    if(operation.kind==='bootstrap')return JSON.stringify({snapshot:'with timer',frames:[],conversations:[conversation],maintenance_ms:1000});
+    if(operation.kind==='maintenance'){ticks++;return JSON.stringify({snapshot:'staged membership',frames:[[88]],conversations:[conversation],maintenance_ms:1000});}
+    return base.text(operation);
+  }};
+  const messages=new Messages({core,session:linked,vault:{...vault,save:async(saved)=>{
+    if(saved.kind==='linked'&&saved.snapshot==='staged membership')await saving;
+  }},changed:()=>{}});t.after(()=>messages.stop());await messages.start();await authenticate();
+  t.mock.timers.tick(1000);await settle();assert.equal(ticks,1);assert.equal(socket().sent.length,2);
+  finish();await settle();assert.equal(socket().sent.at(-1)?.[0],88);
+  socket().close();t.mock.timers.tick(1000);await settle();assert.equal(ticks,1);
+});
+
+test('history status reports retained progress and retries share the one active receive pump',async(t)=>{
+  install(t);const base=messagingCore();let starts=0;
+  const core={...base,text:async(operation:CoreOperation)=>{
+    if(operation.kind==='history_status')return JSON.stringify({initial_pending:true,manifest_received:true,chunks_received:1,chunks_total:3,receive_active:false});
+    if(operation.kind==='history_start'){starts++;return JSON.stringify({update:{snapshot:'history pending',frames:[],conversations:[]},work:{kind:'fetch_manifest',box_id:'aa'.repeat(32)}});}
+    return base.text(operation);
+  }};
+  const session={...linked,account:{...linked.account,link_secret:'ab'.repeat(32),hpke_secret:'cd'.repeat(32)}};
+  const messages=new Messages({core,session,vault:{...vault,save:async()=>{}},changed:()=>{}});t.after(()=>messages.stop());
+  await messages.start();await authenticate();t.mock.timers.tick(1);await settle();
+  assert.equal(starts,1);assert.deepEqual(await messages.historyStatus(),{initial_pending:true,manifest_received:true,chunks_received:1,chunks_total:3,receive_active:true});
+  const one=messages.receiveHistory(30_000).catch(()=>null);const two=messages.receiveHistory(30_000).catch(()=>null);
+  t.mock.timers.tick(1000);await settle();assert.equal(starts,1);
+  messages.stop();await Promise.all([one,two]);
 });

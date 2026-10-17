@@ -122,6 +122,11 @@ pub enum ServerMessage {
         nonce: String,
         relay: String,
         protocol: u32,
+        capabilities: Vec<String>,
+        server_time_ms: Option<String>,
+    },
+    Pong {
+        server_time_ms: Option<String>,
     },
     Ready {
         identity: String,
@@ -179,11 +184,17 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
             nonce,
             relay,
             protocol,
-            ..
+            capabilities,
+            server_time_ms,
         } => ServerMessage::Challenge {
             nonce,
             relay,
             protocol,
+            capabilities,
+            server_time_ms: server_time_ms.map(|time| time.to_string()),
+        },
+        ServerFrame::Pong { server_time_ms } => ServerMessage::Pong {
+            server_time_ms: server_time_ms.map(|time| time.to_string()),
         },
         ServerFrame::Ready {
             identity,

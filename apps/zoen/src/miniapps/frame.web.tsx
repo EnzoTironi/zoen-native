@@ -8,7 +8,12 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
   const frame = useRef<HTMLIFrameElement>(null);
   useImperativeHandle(
     ref,
-    () => ({ send: (message) => frame.current?.contentWindow?.postMessage(message, '*') }),
+    () => ({
+      send: (message) => frame.current?.contentWindow?.postMessage(message, '*'),
+      dispose: () => {
+        if (frame.current) frame.current.srcdoc = '';
+      },
+    }),
     [],
   );
   useEffect(() => {
