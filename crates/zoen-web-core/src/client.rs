@@ -1180,6 +1180,75 @@ impl<S: Signer> Client<S> {
         })
     }
 
+    // Shared ownership-checked manifest fold for cards and attachment posts.
+    fn folded_files<'a>(
+        &'a self,
+        space: &str,
+    ) -> BTreeMap<&'a str, (&'a str, Vec<&'a roda_types::FileDoc>)> {
+        let events = self
+            .logs
+            .get(space)
+            .into_iter()
+            .flat_map(|log| log.events().iter())
+            .chain(
+                self.saved
+                    .outbox
+                    .values()
+                    .filter_map(|pending| pending.inner.as_ref())
+                    .filter(|event| event.space == space),
+            );
+        let mut files: BTreeMap<&str, (&str, Vec<&roda_types::FileDoc>)> = BTreeMap::new();
+        for event in events {
+            match &event.body {
+                EventBody::ItemCreated {
+                    item,
+                    content: roda_types::ItemContent::File(doc),
+                    ..
+                } => {
+                    files
+                        .entry(item)
+                        .or_insert((event.author.as_str(), vec![doc]));
+                }
+                EventBody::ItemVersioned {
+                    item,
+                    content: roda_types::ItemContent::File(doc),
+                    ..
+                } => {
+                    if let Some((author, versions)) = files.get_mut(item.as_str()) {
+                        // Like native, any voice version keeps the original author's ownership.
+                        if *author == event.author
+                            || !versions
+                                .iter()
+                                .copied()
+                                .chain([doc])
+                                .any(roda_types::FileDoc::is_voice)
+                        {
+                            versions.push(doc);
+                        }
+                    }
+                }
+                EventBody::ItemReverted {
+                    item, to_version, ..
+                } => {
+                    if let Some((author, versions)) = files.get_mut(item.as_str()) {
+                        if *author != event.author && versions.iter().any(|doc| doc.is_voice()) {
+                            continue;
+                        }
+                        if let Some(doc) = to_version
+                            .checked_sub(1)
+                            .and_then(|v| versions.get(v as usize))
+                            .copied()
+                        {
+                            versions.push(doc);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        files
+    }
+
     pub fn conversations(&self) -> Vec<ConversationView> {
         self.logs.keys().filter_map(|space| {
             let (title, kind, _) = self.metadata(space)?;
@@ -1187,32 +1256,7 @@ impl<S: Signer> Client<S> {
             if kind == SpaceKind::Personal || !roster.contains_key(&self.account.identity) { return None; }
             let events = self.logs.get(space)?.events();
             let me = &self.account.identity;
-            // Versions (including reverts) replace the manifest on the original post.
-            let mut files: BTreeMap<&str, (&str, Vec<&roda_types::FileDoc>)> = BTreeMap::new();
-            for event in events {
-                match &event.body {
-                    EventBody::ItemCreated { item, content: roda_types::ItemContent::File(doc), .. } => {
-                        files.entry(item).or_insert((event.author.as_str(), vec![doc]));
-                    }
-                    EventBody::ItemVersioned { item, content: roda_types::ItemContent::File(doc), .. } => {
-                        if let Some((author, versions)) = files.get_mut(item.as_str()) {
-                            // Like native, any voice version keeps the original author's ownership.
-                            if *author == event.author || !versions.iter().copied().chain([doc]).any(roda_types::FileDoc::is_voice) {
-                                versions.push(doc);
-                            }
-                        }
-                    }
-                    EventBody::ItemReverted { item, to_version, .. } => {
-                        if let Some((author, versions)) = files.get_mut(item.as_str()) {
-                            if *author != event.author && versions.iter().any(|doc| doc.is_voice()) { continue; }
-                            if let Some(doc) = to_version.checked_sub(1).and_then(|v| versions.get(v as usize)).copied() {
-                                versions.push(doc);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
+            let files = self.folded_files(space);
             // A direct chat is named after the other person, like every messenger.
             let title = match roster.keys().find(|m| *m != me) {
                 Some(other) if kind == SpaceKind::Direct => self.saved.profiles.get(other)
@@ -1374,16 +1418,12 @@ impl<S: Signer> Client<S> {
                 }
                 // Resolve only from this conversation's readable events, never the
                 // global media cache (which may contain another space's files).
-                let file = attaches.as_ref().and_then(|item| {
-                    let matches_item = |candidate: &&Event| candidate.space == event.space
-                        && matches!(&candidate.body, EventBody::ItemCreated { item: id, content: roda_types::ItemContent::File(_), .. } if id == item);
-                    let confirmed = self.logs.get(&event.space).and_then(|log| log.events().iter().find(matches_item));
-                    let pending = self.saved.outbox.values().filter_map(|p| p.inner.as_ref()).find(matches_item);
-                    confirmed.or(pending).and_then(|candidate| match &candidate.body {
-                        EventBody::ItemCreated { content: roda_types::ItemContent::File(doc), .. } => Some(doc.clone()),
-                        _ => None,
-                    })
-                });
+                let files = self.folded_files(&event.space);
+                let file = attaches
+                    .as_ref()
+                    .and_then(|item| files.get(item.as_str()))
+                    .and_then(|(_, versions)| versions.last())
+                    .map(|doc| (*doc).clone());
                 (text.clone(), reply.clone(), *forwarded, file)
             }
             EventBody::ItemCreated {

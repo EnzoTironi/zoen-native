@@ -574,7 +574,30 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     };
     append(&mut log, &author, version(edited.clone()));
     append(&mut log, &other, version(original.clone()));
+    // A retained caption/forward must resolve the same current manifest as the
+    // original card, including ownership-checked versions and reverts.
+    let attachment = author.sign_event(
+        space,
+        "attachment-forward",
+        100,
+        log.head(),
+        EventBody::MessagePosted {
+            message: "legacy-forward".into(),
+            text: "caption".into(),
+            attaches: Some("it_voice".into()),
+            reply: None,
+            forwarded: true,
+        },
+    );
+    let assert_attachment = |client: &Client<HostSigner>, expected: &FileDoc| {
+        let view = client.message_view(&attachment, "confirmed", None).unwrap();
+        assert_eq!(view.text, "caption");
+        assert!(view.forwarded);
+        assert_eq!(view.file.as_ref().unwrap().chunks, expected.chunks);
+        assert_eq!(view.file.as_ref(), Some(expected));
+    };
     client.logs.insert(space.into(), log.clone());
+    assert_attachment(&client, &edited);
     let conversation = &client.conversations()[0];
     let voice = &conversation.messages[1];
     assert_eq!(conversation.messages.len(), 3);
@@ -596,12 +619,14 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
         client.conversations()[0].messages[1].file.as_ref(),
         Some(&edited)
     );
+    assert_attachment(&client, &edited);
     append(&mut log, &author, revert(1)); // Version 3 is a copy of version 1.
     client.logs.insert(space.into(), log.clone());
     assert_eq!(
         client.conversations()[0].messages[1].file.as_ref(),
         Some(&original)
     );
+    assert_attachment(&client, &original);
     append(&mut log, &author, revert(2)); // Version 4 is a copy of version 2.
     append(&mut log, &author, revert(3)); // Reverts can target earlier reverts.
     client.logs.insert(space.into(), log);
