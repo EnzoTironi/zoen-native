@@ -7,9 +7,10 @@ impl<S: Signer> Client<S> {
         // event. A client id can equal another event's authoritative hash.
         self.resolve_post(space, root)
             .map(|e| {
-                if self
-                    .resolve_post(space, &e.client_id)
-                    .is_some_and(|target| target.hash == e.hash)
+                if !e.client_id.is_empty()
+                    && self
+                        .resolve_post(space, &e.client_id)
+                        .is_some_and(|target| target.hash == e.hash)
                 {
                     e.client_id.clone()
                 } else {
@@ -208,11 +209,12 @@ impl<S: Signer> Client<S> {
                 .iter()
                 .map(|event| (event.hash.as_str(), event))
                 .collect();
-            for event in log.events() {
+            for event in log.events().iter().filter(|event| is_post(&event.body)) {
                 references.entry(event.client_id.as_str()).or_insert(event);
             }
             for event in log.events() {
-                let canonical = if !event.client_id.is_empty()
+                let canonical = if is_post(&event.body)
+                    && !event.client_id.is_empty()
                     && references
                         .get(event.client_id.as_str())
                         .is_some_and(|target| target.hash == event.hash)
@@ -223,7 +225,7 @@ impl<S: Signer> Client<S> {
                 };
                 aliases.insert(event.hash.as_str(), canonical);
             }
-            for event in log.events() {
+            for event in log.events().iter().filter(|event| is_post(&event.body)) {
                 if !event.client_id.is_empty() {
                     let canonical = aliases[event.hash.as_str()];
                     aliases.entry(event.client_id.as_str()).or_insert(canonical);

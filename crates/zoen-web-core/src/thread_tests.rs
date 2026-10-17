@@ -662,6 +662,68 @@ fn legacy_snapshot_never_republishes_plaintext_preferences() {
     assert!(!update.frames.iter().any(|frame| matches!(ClientFrame::decode(frame).unwrap(), ClientFrame::Publish { env } if env.plain_event().is_some_and(|event| matches!(event.body, EventBody::ThreadStateSet { .. })))));
 }
 
+fn root_with_alias(client: &mut Client<HostSigner>, author: &Author, alias: &str) -> Event {
+    let log = client.logs.get_mut("chat").unwrap();
+    let event = author.sign_event(
+        "chat",
+        alias,
+        500,
+        log.head(),
+        EventBody::MessagePosted {
+            message: "alias-root".into(),
+            text: "Alias root".into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+        },
+    );
+    Envelope::plain(&event).verify().unwrap();
+    log.sequence(event).clone()
+}
+
+#[test]
+fn reply_aliases_empty_ids_retain_the_authoritative_hash() {
+    let (mut client, _, other, _, _) = fixture();
+    let root = root_with_alias(&mut client, &other, "");
+    assert_eq!(client.thread_root("chat", &root.hash), root.hash);
+    for thread in [false, true] {
+        assert_eq!(
+            client.reply_ref("chat", root.hash.clone(), thread, true).to,
+            root.hash
+        );
+    }
+}
+
+#[test]
+fn reply_aliases_control_client_ids_share_native_follow_and_read_state() {
+    let (mut client, me, other, _, _) = fixture();
+    let alias = client.logs["chat"].events()[0].client_id.clone();
+    let root = root_with_alias(&mut client, &other, &alias);
+    assert_eq!(client.thread_root("chat", &root.hash), alias);
+    assert_eq!(client.resolve_post("chat", &alias).unwrap().hash, root.hash);
+    let last = reply(&mut client, &other, &root.hash, false);
+    append(
+        client.logs.get_mut("personal").unwrap(),
+        &me,
+        EventBody::ThreadStateSet {
+            space: "chat".into(),
+            root: alias,
+            follow: Some(true),
+            read_up_to: last,
+            read_only: false,
+        },
+    );
+    let view = client.conversations().remove(0);
+    let root = view
+        .messages
+        .iter()
+        .find(|m| m.entry.as_deref() == Some(root.hash.as_str()))
+        .unwrap();
+    assert!(root.thread_following);
+    assert_eq!(root.thread_unread, 0);
+    assert_eq!(view.threads_unread, 0);
+}
+
 #[test]
 fn chat_mentions_use_whole_handles_including_broadcast_but_not_hidden_replies() {
     let (mut client, me, other, root, _) = fixture();

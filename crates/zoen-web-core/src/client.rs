@@ -797,7 +797,11 @@ impl<S: Signer> Client<S> {
         events
             .iter()
             .find(|e| e.hash == reference)
-            .or_else(|| events.iter().find(|e| e.client_id == reference))
+            .or_else(|| {
+                events
+                    .iter()
+                    .find(|e| e.client_id == reference && is_post(&e.body))
+            })
             .filter(|e| is_post(&e.body))
     }
 
