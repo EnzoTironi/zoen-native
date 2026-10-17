@@ -286,15 +286,19 @@ class NativeParityTest {
             val existed = preferences.contains(key); val old = preferences.getBoolean(key, false)
             try {
                 preferences.edit().putBoolean(key, true).commit()
-                notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(eventCount = incoming.eventCount + 2uL))), false, null)
+                notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(unread = 2u, eventCount = incoming.eventCount + 2uL))), false, null)
                 assertTrue(manager.activeNotifications.none { it.tag == tag })
             } finally { preferences.edit().apply { if (existed) putBoolean(key, old) else remove(key) }.commit() }
-            notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(eventCount = incoming.eventCount + 3uL))), false, null)
+            // A new unfollowed reply must not re-notify old outstanding unread messages.
+            notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(unread = 2u, eventCount = incoming.eventCount + 3uL))), false, null)
+            assertTrue(manager.activeNotifications.none { it.tag == tag })
+            // A subsequent eligible message increases unread, unlike the reply above.
+            notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(unread = 3u, eventCount = incoming.eventCount + 4uL))), false, null)
             waitUntil { manager.activeNotifications.any { it.tag == tag } }
             notifications.update(AppState(ready = true, me = me), false, null)
             waitUntil { manager.activeNotifications.none { it.tag == tag } }
             preferences.edit().putBoolean("notifications", false).commit()
-            notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(eventCount = incoming.eventCount + 4uL))), false, null)
+            notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(unread = 4u, eventCount = incoming.eventCount + 5uL))), false, null)
             assertTrue(manager.activeNotifications.none { it.tag == tag })
             preferences.edit().putBoolean("notifications", true).commit()
             val foreign = core.requests().first().let { it.copy(id = "foreign-${UUID.randomUUID()}", status = RequestStatus.PENDING, agent = it.agent.copy(isMine = false)) }
