@@ -49,3 +49,34 @@ test('independent translations preserve exact counts and user content', () => {
   assert.equal(en.t('fixture.unread', { count: 2 }), '2 messages');
   assert.equal(pt.t('fixture.unread', { count: 2 }), '2 mensagens');
 });
+
+test('localization starts without Intl.PluralRules and preserves CLDR plural selection', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(Intl, 'PluralRules');
+  try {
+    assert.equal(Reflect.deleteProperty(Intl, 'PluralRules'), true);
+    const fixture = defineFeature(
+      { unread: { one: '%{count} message', other: '%{count} messages' } },
+      { unread: { one: '%{count} mensagem', other: '%{count} mensagens' } },
+    );
+    const en = createLocalization({ fixture }, ['en']);
+    const pt = createLocalization({ fixture }, ['pt-BR']);
+    const counts = [0, 1, 2, 1_000_000];
+    assert.deepEqual(
+      counts.map((count) => en.t('fixture.unread', { count })),
+      ['0 messages', '1 message', '2 messages', '1000000 messages'],
+    );
+    assert.deepEqual(
+      counts.map((count) => pt.t('fixture.unread', { count })),
+      ['0 mensagem', '1 mensagem', '2 mensagens', '1000000 mensagens'],
+    );
+    assert.equal(
+      Reflect.get(Intl, 'PluralRules'),
+      undefined,
+      'startup must not install a polyfill',
+    );
+  } finally {
+    if (descriptor) Object.defineProperty(Intl, 'PluralRules', descriptor);
+    else Reflect.deleteProperty(Intl, 'PluralRules');
+  }
+  assert.deepEqual(Object.getOwnPropertyDescriptor(Intl, 'PluralRules'), descriptor);
+});

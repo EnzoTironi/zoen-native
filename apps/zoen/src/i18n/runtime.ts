@@ -1,4 +1,5 @@
-import { I18n } from 'i18n-js';
+import { I18n, useMakePlural as makePluralRule } from 'i18n-js';
+import { en, pt } from 'make-plural';
 import { assertCatalogParity } from './catalog.ts';
 import type { Args, At, FeatureCatalog, LeafPaths } from './catalog.ts';
 import { resolveLocale } from '../../../../packages/zoen-ui/web/locale.ts';
@@ -24,10 +25,13 @@ export function createLocalization<const C extends Catalogs>(
     enableFallback: true,
     missingBehavior: 'error',
   });
-  for (const tag of ['en', 'pt-BR'] as const) {
-    const rules = new Intl.PluralRules(tag);
-    i18n.pluralization.register(tag, (_instance, count) => [
-      ...new Set([...(count === 0 ? ['zero'] : []), rules.select(count), 'other']),
+  for (const [tag, pluralizer] of [
+    ['en', en],
+    ['pt-BR', pt],
+  ] as const) {
+    const select = makePluralRule({ pluralizer });
+    i18n.pluralization.register(tag, (instance, count) => [
+      ...new Set([...select(instance, count), 'other']),
     ]);
   }
   function t<K extends LeafPaths<English<C>>>(key: K, ...args: Args<At<English<C>, K>>): string {
