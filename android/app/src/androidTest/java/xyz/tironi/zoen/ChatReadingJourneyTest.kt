@@ -22,7 +22,7 @@ import xyz.tironi.zoen.core.*
 import xyz.tironi.zoen.theme.ZoenTheme
 import xyz.tironi.zoen.ui.ChatScreen
 import xyz.tironi.zoen.ui.ChatAppearanceStore
-import xyz.tironi.zoen.ui.ConversationsScreen
+import xyz.tironi.zoen.ui.ZoenApp
 
 @RunWith(AndroidJUnit4::class)
 class ChatReadingJourneyTest {
@@ -106,29 +106,37 @@ class ChatReadingJourneyTest {
 
     @Test fun inboxFiltersUseRealKindsAndSurviveRestorationWithSearch() {
         val restoration = StateRestorationTester(compose)
-        restoration.setContent {
-            val state by model.state.collectAsStateWithLifecycle()
-            ZoenTheme { ConversationsScreen(model, state, {}, false) }
-        }
+        restoration.setContent { ZoenTheme { ZoenApp(model, null) {} } }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("conversation-list").fetchSemanticsNodes().isNotEmpty() }
         val all = repository.state.value.spaces
+        compose.onNodeWithTag("newChat").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("search-results").fetchSemanticsNodes().isNotEmpty() }
         for ((filter, kind) in listOf("direct" to SpaceKindDto.DIRECT, "groups" to SpaceKindDto.GROUP, "communities" to SpaceKindDto.COMMUNITY)) {
-            compose.onNodeWithTag("chat-filter").performScrollTo().performClick()
+            compose.onNodeWithTag("chat-filter").performClick()
             compose.onNodeWithTag("chat-filter-$filter").performClick()
             val included = all.filter { it.kind == kind }
-            for (space in included) compose.onNodeWithTag("conversation-list").performScrollToNode(hasTestTag("chat:${space.counterpart?.handle ?: space.id}"))
-                .also { compose.onNodeWithTag("chat:${space.counterpart?.handle ?: space.id}").assertIsDisplayed() }
-            for (space in all.filter { it.kind != kind }) compose.onNodeWithTag("chat:${space.counterpart?.handle ?: space.id}").assertDoesNotExist()
-            compose.onNodeWithTag("chat-filter").performScrollTo()
-            capture("inbox-$filter")
+            for (space in included) {
+                compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag("search-chat:${space.id}"))
+                compose.onNodeWithTag("search-chat:${space.id}").assertIsDisplayed()
+            }
+            for (space in all.filter { it.kind != kind }) compose.onNodeWithTag("search-chat:${space.id}").assertDoesNotExist()
+            capture("search-inbox-$filter")
         }
         restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithTag("chat-filter").assertIsDisplayed()
-        compose.onNodeWithText(compose.activity.getString(R.string.chat_filter_communities)).assertIsDisplayed()
-        compose.onNodeWithContentDescription(compose.activity.getString(R.string.search)).performClick()
-        val community = all.first { it.kind == SpaceKindDto.COMMUNITY }
-        compose.onNode(hasSetTextAction()).performTextInput(community.title)
-        compose.onNodeWithTag("chat:${community.id}").assertIsDisplayed()
-        for (space in all.filter { it.kind != SpaceKindDto.COMMUNITY }) compose.onNodeWithTag("chat:${space.counterpart?.handle ?: space.id}").assertDoesNotExist()
+        val communities = compose.activity.getString(R.string.chat_filter_communities)
+        compose.onNodeWithTag("chat-filter").assertIsDisplayed().assert(
+            SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, communities)
+        )
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.back)).performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("conversation-list").fetchSemanticsNodes().isNotEmpty() }
+        val included = all.filter { it.kind == SpaceKindDto.COMMUNITY }
+        for (space in included) {
+            val tag = "chat:${space.counterpart?.handle ?: space.id}"
+            compose.onNodeWithTag("conversation-list").performScrollToNode(hasTestTag(tag))
+            compose.onNodeWithTag(tag).assertIsDisplayed()
+        }
+        for (space in all.filter { it.kind != SpaceKindDto.COMMUNITY })
+            compose.onNodeWithTag("chat:${space.counterpart?.handle ?: space.id}").assertDoesNotExist()
     }
 
     private fun openChat(id: String) { compose.setContent {

@@ -198,6 +198,7 @@
   <string name="bio">Um pouco sobre você</string>
   <string name="online">Conectado</string>
   <string name="offline">Sem conexão. As mudanças ficam na fila de envio.</string>
+  <string name="offline_short">Sem conexão</string>
   <string name="connecting">Conectando…</string>
   <string name="key_missing">A chave deste aparelho está indisponível. Sua conta precisa das chaves originais para assinar.</string>
   <string name="notification_settings">Ajustes de notificações</string>
@@ -287,4 +288,9 @@
   <string name="owner_note_booking_cancel_request_body">%1$s pediu para cancelar %2$s, %3$s.</string>
   <string name="owner_note_someone_cap">Alguém</string>
   <string name="mute">Silenciar</string>
+  <string name="chat_attachment_camera">Tirar foto</string>
+  <string name="chat_attachment_library">Fototeca</string>
+  <string name="chat_attachment_files">Escolher arquivos</string>
+  <string name="chat_search_hint">Buscar conversas</string>
+  <string name="chat_search_clear">Limpar busca</string>
 </resources>

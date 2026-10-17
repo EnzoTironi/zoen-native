@@ -12,11 +12,20 @@ import { CoreWorker } from './worker-client.ts';
 import './web.css';
 import './messenger.css';
 import { Messenger } from './messenger.tsx';
+import { NativeOnboarding } from './native-secondary.tsx';
+import { BrowserSettings } from './browser-settings.tsx';
+import { completeWelcome, openWelcomeInvite } from './welcome.ts';
+import { applyAppearance } from './appearance.ts';
+import { browserRootData } from './native-root-data.ts';
+import './appearance.css';
+import { RecoveryHelp } from './recovery.tsx';
 
 type Runtime = { vault: BrowserVault; core: CoreWorker };
 type Boot = { kind: 'loading' } | { kind: 'unavailable'; message: string } |
   { kind: 'ready'; runtime: Runtime; session: StoredSession };
 const invitation = inviteFromPath(location.pathname);
+const savedAppearance = localStorage.getItem('zoen.appearance');
+applyAppearance(savedAppearance === 'light' || savedAppearance === 'dark' ? savedAppearance : 'system');
 
 function Gate({ children }: { children: React.ReactNode }) {
   return <main className="zw-gate"><section className="zw-pair">{children}</section></main>;
@@ -57,6 +66,7 @@ function PairingGate({ runtime, session, linked }: { runtime: Runtime; session: 
   return <Gate>
     <h1>{invitation ? 'Abra seu convite' : 'Zoen no navegador'}</h1>
     <p>{invitation ? 'Conecte este navegador pelo Zoen no seu celular para entrar direto na conversa.' : 'Conecte este navegador pelo Zoen no seu celular. Ele aprova este navegador como mais um aparelho seu.'}</p>
+    {state.kind === 'idle' || state.kind === 'failed' ? <RecoveryHelp /> : null}
     {state.kind === 'idle' || state.kind === 'failed' ? <form onSubmit={(event) => { event.preventDefault(); start(); }}>
       <label>Endereço do servidor<input type="url" placeholder="https://relay.tryzoen.com" value={relay} required autoComplete="url" autoFocus
         onChange={(event) => setRelay(event.target.value)} onBlur={() => { try { setRelay(relayUrl(relay)); } catch { /* Submit reports invalid origins. */ } }} /></label>
@@ -124,6 +134,7 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
   const [selected, setSelected] = useState('');
   const [showInvite, setShowInvite] = useState(invitation !== null);
   const [showDevices, setShowDevices] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const running = useRef<Messages | null>(null);
   useEffect(() => {
     const messages = new Messages({ ...runtime, session, changed: setState });
@@ -133,13 +144,14 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
   }, [runtime, session]);
   const conversations = state.kind === 'loading' ? [] : state.conversations;
   const connected = state.kind === 'active' && state.connection.kind === 'ready';
+  const rootData = browserRootData({ identity: session.account.identity, device: session.account.device, name: session.account.name, handle: session.account.handle },
+    state.kind === 'active' ? state.connection : state.kind === 'failed' ? { kind: 'failed', message: state.message } : { kind: 'connecting' });
+  rootData.contacts = [...new Map(conversations.flatMap(conversation => conversation.counterpart ? [[conversation.counterpart.id, conversation.counterpart] as const] : [])).values()];
   const status = state.kind === 'loading' ? 'Abrindo suas conversas…' : state.kind === 'failed' ? 'Algo deu errado. Recarregue a página.' :
     state.connection.kind === 'ready' ? 'Conectado' : state.connection.kind === 'reconnecting' ? 'Reconectando…' : 'Conectando…';
-  return <Messenger conversations={conversations} identity={session.account.identity} name={session.account.name} connected={connected} status={status}
-    messages={running} selected={selected} select={(id) => { setSelected(id); setShowInvite(false); }}
-    footer={<>{state.kind === 'failed' ? <button className="zw-secondary" onClick={() => location.reload()}>Recarregar</button> : null}
-      <button className="zw-secondary" onClick={() => setShowDevices(true)}>Aparelhos</button>
-      <button className="zw-secondary" onClick={forget}>Sair</button></>}>
+  return <Messenger conversations={conversations} identity={session.account.identity} name={session.account.name} connected={connected} status={status} typing={state.kind === 'active' ? state.typing ?? {} : {}} rootData={rootData}
+    messages={running} selected={selected} select={(id) => { setSelected(id); setShowInvite(false); }} onSettings={() => setShowSettings(true)}
+    footer={null} overlay={showSettings ? <BrowserSettings me={{ name: session.account.name, handle: session.account.handle, initials: session.account.name.slice(0, 1).toUpperCase(), tintHex: '#4F7CFF' }} close={() => setShowSettings(false)} openDevices={() => { setShowSettings(false); setShowDevices(true); }} forget={forget} failed={state.kind === 'failed'} /> : undefined}>
     {showDevices ? <Devices messages={running.current} current={session.account.device} close={() => setShowDevices(false)} /> : showInvite && invitation ? <Invitation code={invitation} messages={running} connected={connected} conversations={conversations}
       notice={state.kind === 'active' ? state.notice : state.kind === 'failed' ? state.message : null}
       opened={(space) => { setSelected(space); setShowInvite(false); }} cancel={() => setShowInvite(false)} /> : undefined}
@@ -147,6 +159,7 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
 }
 
 function App() {
+  const [welcomed, setWelcomed] = useState(() => localStorage.getItem('zoen.welcomed') === 'true');
   const [boot, setBoot] = useState<Boot>({ kind: 'loading' });
   useEffect(() => {
     let closed = false;
@@ -176,14 +189,18 @@ function App() {
   if (boot.kind === 'unavailable') return <Gate><h1>Abra o Zoen no seu celular</h1><p role="alert">{boot.message}</p></Gate>;
   if (boot.session.kind === 'linked') return <Linked runtime={boot.runtime} session={boot.session} forget={() => {
     if (!window.confirm('Sair deste navegador e apagar as conversas guardadas aqui? Remova também em Aparelhos no seu celular.')) return;
+    setBoot({ kind: 'loading' }); // Unmount the composer before database deletion can block.
     boot.runtime.core.close();
     // Chat preferences and followed threads live in localStorage; leave nothing behind.
     localStorage.removeItem('zoen.chat-prefs'); localStorage.removeItem('zoen.thread-follow');
     void boot.runtime.vault.erase().then(() => location.reload()).catch((error: unknown) => setBoot({ kind: 'unavailable', message: message(error) }));
   }} />;
+  if (!welcomed) return <div style={{ height: '100dvh' }}><NativeOnboarding onContinue={() => { completeWelcome(); setWelcomed(true); }} onPasteInvite={openWelcomeInvite} /></div>;
   return <PairingGate runtime={boot.runtime} session={boot.session} linked={(session) => setBoot({ ...boot, session })} />;
 }
 
 const root = document.getElementById('root');
 if (!root) throw new Error('The Zoen root is missing.');
-createRoot(root).render(<App />);
+if (new URLSearchParams(location.search).get('parity') === '1') {
+  void import('./native-parity.tsx').then(({ installNativeParity }) => installNativeParity(root));
+} else createRoot(root).render(<App />);

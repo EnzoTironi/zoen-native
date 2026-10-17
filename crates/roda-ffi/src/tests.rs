@@ -5,6 +5,7 @@ use super::*;
 mod client_api;
 mod file_bounds;
 mod message_search;
+mod unified_search;
 mod voice_notes;
 
 fn seeded() -> Arc<RodaEngine> {

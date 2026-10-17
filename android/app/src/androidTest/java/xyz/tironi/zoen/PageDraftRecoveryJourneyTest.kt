@@ -100,7 +100,11 @@ class PageDraftRecoveryJourneyTest {
         assertEquals(saved.contentHash, fresh.contentHash)
         assertEquals(saved.version, fresh.version)
         compose.onNodeWithTag("page-block:${fresh.blocks.first { it.kind == "paragraph" }.id}").performTextReplacement("Editing resumed after explicit discard")
-        compose.onNodeWithTag("page-save").performClick()
+        // Save must finish an active IME composition before committing the draft.
+        compose.waitUntil(10_000) {
+            runCatching { compose.onNodeWithTag("page-save").assertIsEnabled() }.isSuccess
+        }
+        compose.onNodeWithTag("page-save").assertIsEnabled().performClick()
         compose.waitUntil(10_000) { runBlocking { app.repository.query { it.page(itemId).version > saved.version } } }
         assertTrue(runBlocking { app.repository.query { it.verifyLog(fresh.spaceId).valid } })
     }

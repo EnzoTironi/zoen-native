@@ -26,15 +26,15 @@ const conversation = { id: 'sp_fixture', title: 'Conversa', kind: 'group', can_s
   messages: [{ id: 'message', entry: 'entry', author: other, name: 'Ana', text: 'Oi', at_ms: 1, delivery: 'confirmed', failure: null,
     reactions: [{ emoji: '🧑🏽‍🚀', count: 2, mine: true, participants: [{ identity, name: 'Eu' }, { identity: other, name: 'Ana' }] }] }] };
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
-function setup(t: test.TestContext, read: () => Promise<string> = async () => { throw new Error('Core refused'); }) {
+function setup(t: test.TestContext, read: () => Promise<string> = async () => { throw new Error('Core refused'); }, source: unknown = conversation) {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket');
   Object.defineProperty(globalThis, 'WebSocket', { configurable: true, value: Socket });
   const states: MessagesState[] = [];
   let closed = false;
   const core = { close() { closed = true; }, bytes: async () => new Uint8Array([1]), text: async (operation: CoreOperation) => {
-    if (operation.kind === 'restore') return JSON.stringify([conversation]);
+    if (operation.kind === 'restore') return JSON.stringify([source]);
     if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
-    if (operation.kind === 'bootstrap') return JSON.stringify({ snapshot: 'snapshot', frames: [], conversations: [conversation] });
+    if (operation.kind === 'bootstrap') return JSON.stringify({ snapshot: 'snapshot', frames: [], conversations: [source] });
     if (operation.kind === 'mark_read') return read();
     throw new Error('Unexpected operation');
   } };
@@ -70,4 +70,18 @@ test('read failures reject in Portuguese without closing the core, and can be re
   assert.equal(closed(), false);
   await messages.markRead('sp_fixture');
   assert.equal(attempts, 2);
+});
+
+
+test('message snapshots preserve typed native item card data and counterpart identity', async (t) => {
+  const snapshot = { id: 'item-native', appId: 'hike', template: 'caption', title: 'Trail', accentHex: '#3D7A28', symbol: 'map', deepLink: 'zoen://app/item-native' };
+  const card = { itemId: 'item-native', title: 'Trail', summary: 'Saturday', kindLabel: 'Plan', kindId: 'plan', version: 2, totalCents: null, budgetCents: 10000, lineCount: 2, doneCount: 1, snapshot };
+  const counterpart = { id: other, kind: 'person', name: 'Ana', handle: 'ana', glyph: null, initials: 'A', tintHex: '#FF5C8A' };
+  const source = { ...conversation, counterpart, messages: [{ ...conversation.messages[0], card }] };
+  const { messages, states } = setup(t, undefined, source);
+  await connect(messages);
+  const state = states.at(-1); assert.equal(state?.kind, 'active');
+  if (state?.kind !== 'active') return;
+  assert.deepEqual(state.conversations[0]?.messages[0]?.card, card);
+  assert.deepEqual(state.conversations[0]?.counterpart, counterpart);
 });

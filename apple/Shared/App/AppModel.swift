@@ -11,12 +11,12 @@ enum AppTab: String, Hashable, CaseIterable {
     var title: String {
         switch self {
         case .conversations: String(localized: "Chats")
-        case .files: String(localized: "Files")
-        case .activity: String(localized: "Activity")
+        case .files: String(localized: "Spaces")
+        case .activity: String(localized: "Notifications")
         case .agents: String(localized: "Your agents")
-        case .you: String(localized: "Your context")
+        case .you: String(localized: "Profile")
         case .search: String(localized: "Search")
-        case .store: String(localized: "Store")
+        case .store: String(localized: "Marketplace")
         }
     }
 
@@ -143,6 +143,12 @@ final class AppModel {
     /// Pinned chats (Zoen is pinned until you unpin it).
     /// Mac: Espaço selecionado na barra lateral e Item no inspetor.
     var macSelection: MacSidebarItem? = nil
+    /// Native sidebar/detail routing is shared by regular-width iPad and Mac.
+    #if os(macOS)
+    var usesAdaptiveShell = true
+    #else
+    var usesAdaptiveShell = false
+    #endif
     var inspectorItem: String? = nil
 
     /// Espaço → agente trabalhando agora (estado efêmero, não vai para o log).
@@ -208,7 +214,16 @@ final class AppModel {
     private static func boot() -> (RodaEngine, String?) {
         do {
             Money.locale = AppLocale.tag
+            #if DEBUG
+            // Fixture-only Mac QA must never open or reset a person’s real database.
+            let parityMemory = ProcessInfo.processInfo.environment["ZOEN_PARITY_FIXTURE"] == "native-parity-v1"
+                && UserDefaults.standard.bool(forKey: "RodaParityMemory")
+            let engine = try parityMemory
+                ? RodaEngine.open(path: ":memory:", locale: AppLocale.tag)
+                : RodaEngine.openDefault(locale: AppLocale.tag)
+            #else
             let engine = try RodaEngine.openDefault(locale: AppLocale.tag)
+            #endif
             // The demo story only behind the dev flag (`-RodaDemo YES`); a real install
             // starts empty and creates its account in onboarding.
             if SyncModel.mode == .demo && engine.account() == nil {
@@ -723,14 +738,23 @@ final class AppModel {
     func applyLaunchOptions() async {
         let d = UserDefaults.standard
         applyPendingRevokesFromLastRun()
+        #if DEBUG
+        if d.bool(forKey: "RodaExportNativeWebArt") {
+            guard let fixture = NativeParityClock.appliedManifest(core: core) else {
+                preconditionFailure("Native web art export requires an applied native parity fixture")
+            }
+            do { try NativeWebArtExporter.exportOnce(appliedFixture: fixture) }
+            catch { preconditionFailure("Native web art export failed: \(error)") }
+        }
+        #endif
         if let tab = d.string(forKey: "RodaTab") {
             self.tab = switch tab {
-            case "atividade", "activity": .activity
+            case "atividade", "activity", "notifications": .activity
             case "loja", "store", "explore": .store
-            case "comunidades", "communities", "espacos", "spaces": .conversations
+            case "comunidades", "communities", "espacos", "spaces": .files
             case "arquivos", "files": .files
             case "agentes", "agents": .agents
-            case "voce", "you", "contexto": .you
+            case "voce", "you", "contexto", "profile": .you
             case "busca", "search": .search
             default: .conversations
             }
@@ -1149,6 +1173,21 @@ final class AppModel {
         }
     }
 
+    /// Preserve the selected chat when an iPad window crosses the compact-width boundary.
+    func setAdaptiveNavigation(_ enabled: Bool) {
+        guard usesAdaptiveShell != enabled else { return }
+        usesAdaptiveShell = enabled
+        if case .space(let id)? = macSelection {
+            var detailPath = paths[.conversations] ?? []
+            if enabled {
+                if detailPath.first == .space(id) { detailPath.removeFirst() }
+            } else if detailPath.first != .space(id) {
+                detailPath.insert(.space(id), at: 0)
+            }
+            paths[.conversations] = detailPath
+        }
+    }
+
     func path(_ t: AppTab) -> [Route] { paths[t] ?? [] }
 
     func setPath(_ t: AppTab, _ p: [Route]) { paths[t] = p }
@@ -1158,7 +1197,7 @@ final class AppModel {
     @discardableResult
     func pop() -> Bool {
         #if os(iOS)
-        let key: AppTab = notificationsOpen ? .activity : tab
+        let key: AppTab = usesAdaptiveShell ? .conversations : (notificationsOpen ? .activity : tab)
         #else
         let key: AppTab = .conversations
         #endif
@@ -1171,19 +1210,19 @@ final class AppModel {
 
     /// Empilha uma rota no destino atual.
     func push(_ route: Route) {
-        #if os(macOS)
-        // No Mac há uma pilha só, a da coluna de detalhe.
-        paths[.conversations, default: []].append(route)
-        #else
-        // While the notifications sheet is up, routes stack inside it.
-        paths[notificationsOpen ? .activity : tab, default: []].append(route)
-        #endif
+        if usesAdaptiveShell {
+            paths[.conversations, default: []].append(route)
+        } else {
+            // While the notifications sheet is up, routes stack inside it.
+            paths[notificationsOpen ? .activity : tab, default: []].append(route)
+        }
     }
 
     /// The bell opens approval cards over the current iPhone screen or in the Mac Activity pane.
     func openNotifications() {
         #if os(iOS)
-        approvalsOpen = true
+        if usesAdaptiveShell { select(.activity) }
+        else { approvalsOpen = true }
         #else
         select(.activity)
         #endif
@@ -1285,12 +1324,10 @@ final class AppModel {
     func select(_ t: AppTab) {
         #if os(iOS)
         // On iPhone, search is a full screen over whatever tab you're on, not a tab.
-        if t == .search { searchOpen = true; return }
+        if t == .search && !usesAdaptiveShell { searchOpen = true; return }
         #endif
         if tab == t { paths[t] = [] } else { tab = t }
-        #if os(macOS)
-        paths[.conversations] = []
-        #endif
+        if usesAdaptiveShell { paths[.conversations] = [] }
         macSelection = MacSidebarItem(tab: t) ?? macSelection
     }
 
@@ -1305,24 +1342,13 @@ final class AppModel {
         switch route {
         case .space(let id):
             tab = .conversations
-            #if os(macOS)
-            paths[.conversations] = []
-            #else
-            paths[.conversations] = [.space(id)]
-            #endif
+            paths[.conversations] = usesAdaptiveShell ? [] : [.space(id)]
             macSelection = .space(id)
         case .item(let id):
-            #if os(macOS)
-            inspectorItem = id
-            #else
-            push(.item(id))
-            #endif
+            if usesAdaptiveShell { inspectorItem = id }
+            else { push(.item(id)) }
         default:
-            #if os(macOS)
-            paths[.conversations, default: []].append(route)
-            #else
             push(route)
-            #endif
         }
     }
 }

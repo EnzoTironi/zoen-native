@@ -1,7 +1,9 @@
 //! Browser boundary. Device signing keys belong to nonexportable WebCrypto, never Rust.
 
+mod cards;
 mod client;
 mod link;
+pub mod media;
 mod wire;
 
 pub use client::{Client, Update};
@@ -122,6 +124,52 @@ mod browser {
             )
             .map_err(error)
         }
+        pub fn queue_file(
+            &mut self,
+            space: &str,
+            doc: &str,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            let doc = serde_json::from_str(doc).map_err(error)?;
+            serde_json::to_string(
+                &self
+                    .client
+                    .queue_file(space, doc, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn queue_failed_file(
+            &mut self,
+            space: &str,
+            doc: &str,
+            now_ms: f64,
+            reason: &str,
+            chunks: &str,
+        ) -> Result<String, JsValue> {
+            let doc = serde_json::from_str(doc).map_err(error)?;
+            let chunks = serde_json::from_str(chunks).map_err(error)?;
+            serde_json::to_string(
+                &self
+                    .client
+                    .queue_failed_file(space, doc, time(now_ms)?, reason.into(), chunks)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn local_chunk(&self, blob: &str) -> Vec<u8> {
+            self.client.local_chunk(blob)
+        }
+
+        pub fn fail_outbox(&mut self, client_id: &str, reason: &str) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .fail_outbox(client_id, reason.to_string())
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
         pub fn mark_read(&mut self, space: &str) -> Result<String, JsValue> {
             serde_json::to_string(&self.client.mark_read(space).map_err(error)?).map_err(error)
         }
@@ -142,6 +190,11 @@ mod browser {
             )
             .map_err(error)
         }
+        #[wasm_bindgen(js_name = viewAt)]
+        pub fn view_at(&self, now_ms: f64, english: bool) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.conversations_at(time(now_ms)?, english))
+                .map_err(error)
+        }
         pub fn view(&self) -> Result<String, JsValue> {
             serde_json::to_string(&self.client.conversations()).map_err(error)
         }
@@ -149,6 +202,43 @@ mod browser {
 
     fn error(error: impl std::fmt::Display) -> JsValue {
         JsValue::from_str(&error.to_string())
+    }
+
+    /// `{doc, uploads:[{blob, sealed}]}` for a file the host will upload before queueing.
+    #[wasm_bindgen]
+    pub fn seal_file(
+        name: &str,
+        mime: &str,
+        bytes: &[u8],
+        thumb: &[u8],
+    ) -> Result<Vec<u8>, JsValue> {
+        let thumb = (!thumb.is_empty()).then_some(thumb);
+        let sealed = super::media::seal_file(name, mime, bytes, thumb).map_err(error)?;
+        let uploads: Vec<_> = sealed
+            .uploads
+            .iter()
+            .map(|u| serde_json::json!({"blob": u.blob, "len": u.sealed.len()}))
+            .collect();
+        let head = serde_json::to_vec(&serde_json::json!({"doc": sealed.doc, "uploads": uploads}))
+            .map_err(error)?;
+        let mut out = Vec::with_capacity(4 + head.len());
+        out.extend_from_slice(&(head.len() as u32).to_le_bytes());
+        out.extend_from_slice(&head);
+        for upload in &sealed.uploads {
+            out.extend_from_slice(&upload.sealed);
+        }
+        Ok(out)
+    }
+
+    #[wasm_bindgen]
+    pub fn open_chunk(chunk: &str, sealed: &[u8]) -> Result<Vec<u8>, JsValue> {
+        let chunk = serde_json::from_str(chunk).map_err(error)?;
+        super::media::open_chunk(&chunk, sealed).map_err(error)
+    }
+
+    #[wasm_bindgen]
+    pub fn blob_put_message(sha: &str, ts_ms: f64, relay: &str) -> Vec<u8> {
+        roda_proto::blob_put_message(sha, ts_ms as i64, relay)
     }
 
     #[wasm_bindgen]

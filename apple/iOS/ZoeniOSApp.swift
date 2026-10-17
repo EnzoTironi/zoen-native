@@ -1,6 +1,212 @@
 import SwiftUI
 import RodaCore
 
+/// Observes the owned native bar without replacing its delegates or changing layout.
+/// Ambiguous accessibility/image identity deliberately produces no effect.
+private struct NativeTabImageEffects: UIViewControllerRepresentable {
+    var pendingIDs: Set<String>
+    func makeUIViewController(context: Context) -> Observer { Observer() }
+    func updateUIViewController(_ controller: Observer, context: Context) {
+        controller.observe(pendingIDs: pendingIDs)
+    }
+
+    final class Observer: UIViewController, UIGestureRecognizerDelegate {
+        private weak var observedBar: UITabBar?
+        private var previousPending: Set<String>?
+        private lazy var taps: UITapGestureRecognizer = {
+            let recognizer = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
+            recognizer.cancelsTouchesInView = false
+            recognizer.delaysTouchesBegan = false
+            recognizer.delaysTouchesEnded = false
+            recognizer.delegate = self
+            return recognizer
+        }()
+        override func loadView() {
+            view = UIView()
+            view.isUserInteractionEnabled = false
+        }
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            NotificationCenter.default.addObserver(self, selector: #selector(reduceMotionChanged),
+                name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+        }
+        @objc private func reduceMotionChanged() {
+            guard UIAccessibility.isReduceMotionEnabled, let bar = observedBar else { return }
+            descendants(bar, UIImageView.self).forEach {
+                $0.removeAllSymbolEffects()
+                $0.transform = .identity
+            }
+        }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
+        private func descendants<T: UIView>(_ root: UIView, _: T.Type) -> [T] {
+            root.subviews.flatMap { child in
+                (child as? T).map { [$0] } ?? []
+            } + root.subviews.flatMap { descendants($0, T.self) }
+        }
+        private func bars(_ controller: UIViewController) -> [UITabBar] {
+            let own = (controller as? UITabBarController).map { [$0.tabBar] } ?? []
+            return own + controller.children.flatMap { bars($0) }
+        }
+        private func resolveBar() -> UITabBar? {
+            var root: UIViewController = self
+            while let parent = root.parent { root = parent }
+            let visible = bars(root).filter { !$0.isHidden && $0.alpha > 0 && $0.window != nil }
+            return visible.count == 1 ? visible[0] : nil
+        }
+        private func images(in control: UIControl) -> [UIImageView] {
+            descendants(control, UIImageView.self).filter {
+                !$0.isHidden && $0.alpha > 0 && $0.bounds.width > 0 && $0.bounds.height > 0 && $0.image != nil
+            }
+        }
+        private func title(of control: UIControl, bar: UITabBar) -> String? {
+            let titles = bar.items?.compactMap(\.title) ?? []
+            let visibleLabels = descendants(control, UILabel.self).filter {
+                !$0.isHidden && $0.alpha > 0 && $0.bounds.width > 0
+            }.compactMap(\.text)
+            let matches = titles.filter { $0 == control.accessibilityLabel || visibleLabels.contains($0) }
+            return matches.count == 1 ? matches[0] : nil
+        }
+        private func logicalControls(in bar: UITabBar) -> [UIControl] {
+            let candidates = descendants(bar, UIControl.self).filter { control in
+                guard !control.isHidden, control.alpha > 0, control.isUserInteractionEnabled,
+                      title(of: control, bar: bar) != nil else { return false }
+                let point = control.convert(CGPoint(x: control.bounds.midX, y: control.bounds.midY), to: bar)
+                guard let hit = bar.hitTest(point, with: nil) else { return false }
+                // Liquid Glass keeps a second tab presentation for transitions.
+                // Only the presentation receiving real touches owns the effect.
+                return hit === control || hit.isDescendant(of: control)
+            }
+            // UIKit can nest a title-bearing control inside the tab's control. It
+            // is one logical item, not two ambiguous destinations. Keep its outer
+            // owner, which also contains the selected/unselected native SF images.
+            return candidates.filter { candidate in
+                !candidates.contains { other in other !== candidate && candidate.isDescendant(of: other) }
+            }
+        }
+        private func control(title: String, bar: UITabBar) -> UIControl? {
+            let matches = logicalControls(in: bar).filter { self.title(of: $0, bar: bar) == title }
+            return matches.count == 1 ? matches[0] : nil
+        }
+        private func report(_ value: String) {
+            #if DEBUG
+            NotificationCenter.default.post(name: Notification.Name("NativeParityEffectDiagnostic"), object: value)
+            #endif
+        }
+        func observe(pendingIDs: Set<String>) {
+            // Establish baseline before resolving UIKit: initial fixture requests never wiggle.
+            let added = previousPending.map { pendingIDs.subtracting($0) } ?? []
+            previousPending = pendingIDs
+            // Resolve after SwiftUI has attached the representable to its parent.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                guard let bar = self.resolveBar() else { self.report("bar-identity-unresolved"); return }
+                if self.observedBar !== bar {
+                    self.observedBar?.removeGestureRecognizer(self.taps)
+                    bar.addGestureRecognizer(self.taps)
+                    self.observedBar = bar
+                }
+                guard !added.isEmpty, !UIAccessibility.isReduceMotionEnabled else { return }
+                // Notifications live in the first inbox card, not in the tab bar.
+                guard let title = bar.items?.first(where: { $0.title == String(localized: "Notifications") })?.title,
+                      let control = self.control(title: title, bar: bar) else { return }
+                let symbols = self.images(in: control).filter { $0.image?.isSymbolImage == true }
+                guard !symbols.isEmpty else {
+                    let artwork = self.images(in: control).map { "\($0.bounds.size)/\($0.image?.size ?? .zero)/\($0.image?.isSymbolImage == true)" }
+                    let views = self.descendants(control, UIView.self).map { "\(type(of: $0)):\($0.bounds.size)" }
+                    self.report("bell-no-symbol:\(artwork); views:\(views)")
+                    return
+                }
+                symbols.forEach { $0.addSymbolEffect(.wiggle) }
+                self.report("bell-wiggle-submitted-to-symbol-image")
+            }
+        }
+        @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended, !UIAccessibility.isReduceMotionEnabled,
+                  let bar = observedBar else { return }
+            let point = recognizer.location(in: bar)
+            let controls = logicalControls(in: bar).filter {
+                !$0.isHidden && $0.alpha > 0 && $0.convert($0.bounds, to: bar).contains(point)
+            }
+            guard controls.count == 1, let control = controls.first else {
+                report("tap-control-identity-ambiguous:\(controls.count)"); return
+            }
+            guard let title = title(of: control, bar: bar) else {
+                report("tap-title-or-image-identity-unresolved"); return
+            }
+            let artwork = images(in: control)
+            let symbols = artwork.filter { $0.image?.isSymbolImage == true }
+            if !symbols.isEmpty {
+                symbols.forEach { $0.addSymbolEffect(.bounce, options: .speed(1.5)) }
+                report("\(title)-bounce-submitted-to-symbol-image")
+            } else if title == String(localized: "Profile") {
+                report("Profile-bitmap-feedback-submitted")
+                UIView.animate(withDuration: 0.15, animations: {
+                    artwork.forEach { $0.transform = CGAffineTransform(scaleX: 0.96, y: 0.96) }
+                }, completion: { _ in
+                    UIView.animate(withDuration: 0.15) { artwork.forEach { $0.transform = .identity } }
+                })
+            } else {
+                report("\(title)-image-is-not-symbol")
+            }
+        }
+    }
+}
+
+#if DEBUG
+/// Explicit opt-in real-core event producer; never changes account metadata or animation counters.
+private struct NativeParityMotionDriver: View {
+    @Environment(AppModel.self) private var model
+    @State private var failure = ""
+    @State private var effectDiagnostic = "not-observed"
+    @State private var effectEvents = 0
+    private var enabled: Bool {
+        ProcessInfo.processInfo.environment["ZOEN_PARITY_MOTION_DRIVER"] == "1"
+            && NativeParityClock.appliedManifest(core: model.core) != nil
+    }
+    private var witness: String {
+        let pending = model.requests.filter { $0.status == .pending }.map {
+            ["agentId": $0.agent.id, "spaceId": $0.spaceId, "title": $0.title, "status": "pending"]
+        }.sorted { ($0["spaceId"]!, $0["agentId"]!, $0["title"]!) < ($1["spaceId"]!, $1["agentId"]!, $1["title"]!) }
+        let value: [String: Any] = ["notifications": ["pendingCount": pending.count, "pending": pending],
+                                  "driver_error": failure, "native_effect_diagnostic": effectDiagnostic, "native_effect_event": effectEvents, "reduce_motion": UIAccessibility.isReduceMotionEnabled]
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { return "{}" }
+        return String(decoding: data, as: UTF8.self)
+    }
+    var body: some View {
+        if enabled {
+            VStack {
+                Button {
+                    guard let existing = model.requests.first(where: { $0.agent.isMine }),
+                          let agent = model.agents.first(where: { $0.persona.id == existing.agent.id }) else {
+                        failure = "No owned agent/space request available"; return
+                    }
+                    do {
+                        _ = try model.core.demoOpenRequest(spaceId: existing.spaceId, agentHandle: agent.persona.handle,
+                            title: "Native motion external request", detail: "Explicit parity motion event",
+                            audience: "Parity recipient", action: "external", cents: 0)
+                        model.refresh()
+                    } catch { failure = String(describing: error) }
+                } label: {
+                    Color.clear.frame(width: 44, height: 44).contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open genuine request")
+                .accessibilityIdentifier("parity-open-genuine-request")
+                Color.clear.frame(width: 1, height: 1)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(witness)
+                    .accessibilityIdentifier("parity-motion-state")
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NativeParityEffectDiagnostic"))) {
+                effectDiagnostic = $0.object as? String ?? "invalid-diagnostic"
+                effectEvents += 1
+            }
+        }
+    }
+}
+#endif
+
 @main
 struct ZoeniOSApp: App {
     @UIApplicationDelegateAdaptor(ZoenAppDelegate.self) private var delegate
@@ -10,8 +216,23 @@ struct ZoeniOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            AdaptiveIOSRoot()
                 .environment(model)
+                #if DEBUG
+                .overlay(alignment: .topLeading) {
+                    if let manifest = NativeParityClock.appliedManifest(core: model.core) {
+                        Color.clear.frame(width: 1, height: 1)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityIdentifier("parity-applied-fixture")
+                            .accessibilityLabel(manifest)
+                            .allowsHitTesting(false)
+                        NativeParityMotionDriver().environment(model)
+                        NativeParityGeometryWitness()
+                            .frame(width: 1, height: 1)
+                            .allowsHitTesting(false)
+                    }
+                }
+                #endif
                 .tint(Palette.action)
                 .preferredColorScheme(AppAppearance(rawValue: appearance)?.scheme)
                 .task { await model.applyLaunchOptions(); PushBridge.shared.start(model) }
@@ -29,6 +250,20 @@ struct ZoeniOSApp: App {
     }
 }
 
+/// Regular-width iPad and Mac use the same native sidebar/detail shell.
+/// Compact width keeps the existing iPhone stacks and floating bar unchanged.
+private struct AdaptiveIOSRoot: View {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    var body: some View {
+        if sizeClass == .regular {
+            ZoenAdaptiveShell()
+        } else {
+            RootView()
+        }
+    }
+}
+
 /// iPhone root: one navigation stack per destination, and a floating Liquid Glass bar:
 /// Search on the left, a three-tab pill in the middle, and the dark + on the right that fans
 /// out the radial menu (create and the destinations that aren't tabs).
@@ -36,41 +271,68 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
     @Namespace private var zoom
     @State private var onboarding = OnboardingFlow.shouldShow
-    @State private var size: CGSize = .zero
+    @State private var selectedTab: AppTab = .conversations
+    @State private var previousTab: AppTab = .conversations
 
     private var barVisible: Bool { model.path(model.tab).isEmpty }
+
+    private var searchTabRole: TabRole {
+        // Runtime availability alone cannot hide a symbol from older SDKs.
+        #if compiler(>=6.4)
+        if #available(iOS 27.0, *) {
+            return .prominent
+        }
+        #endif
+        return .search
+    }
+
+    private var rootTabs: some View {
+        TabView(selection: $selectedTab) {
+                Tab(value: AppTab.conversations) { stack(for: .conversations) } label: {
+                    Label("Chats", systemImage: "bubble.left.and.bubble.right")
+                }
+                Tab(value: AppTab.store) { stack(for: .store) } label: {
+                    Label("Marketplace", systemImage: "storefront")
+                }
+                Tab(value: AppTab.you) { stack(for: .you) } label: {
+                    Label { Text("Profile") } icon: { profileTabImage }
+                }
+                Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: searchTabRole) {
+                    Color.clear
+                }
+            }
+            .tabViewStyle(.tabBarOnly)
+            .background(NativeTabImageEffects(pendingIDs: Set(model.requests.filter { $0.status == .pending }.map(\.id))))
+            .overlay(alignment: .bottomLeading) {
+                if barVisible {
+                    ConnectionDot()
+                        .padding(.leading, 28)
+                        .padding(.bottom, 22)
+                        .allowsHitTesting(false)
+                }
+            }
+            .onAppear {
+                selectedTab = model.tab
+                previousTab = model.tab
+            }
+            .onChange(of: selectedTab) { _, tab in
+                if tab == .search {
+                    selectedTab = previousTab
+                    model.newChatOpen = true
+                } else {
+                    previousTab = tab
+                    if model.tab != tab { model.select(tab) }
+                }
+            }
+            .onChange(of: model.tab) { _, tab in
+                if [.conversations, .store, .you].contains(tab) { selectedTab = tab }
+            }
+    }
 
     var body: some View {
         @Bindable var model = model
         ZStack(alignment: .bottom) {
-            ForEach(AppTab.allCases, id: \.self) { t in
-                if (t != .search || model.tab == .search)
-                    && (t != .activity || (model.tab == .activity && !model.approvalsOpen && !model.notificationsOpen)) {
-                    stack(for: t)
-                        .opacity(model.tab == t ? 1 : 0)
-                        .allowsHitTesting(model.tab == t)
-                        .accessibilityHidden(model.tab != t)
-                }
-            }
-
-            if barVisible {
-                // The bar keeps an empty slot for the +; the real trigger sits above the dim
-                // veil so the fan and the + stay bright while everything else dims.
-                ZStack(alignment: .bottomTrailing) {
-                    ZoenBottomBar()
-                    if !model.chatSearch {
-                        RadialBackdrop(isOpen: $model.radialOpen)
-                        FanMenu(isOpen: $model.radialOpen, items: model.radialItems,
-                                triggerSize: ZoenBottomBar.circle, room: (left: size.width - 16 - ZoenBottomBar.circle / 2, right: 16 + ZoenBottomBar.circle / 2)) {
-                            model.handleRadial($0)
-                        }
-                        .padding(.trailing, ZoenBottomBar.inset)
-                        .padding(.bottom, ZoenBottomBar.bottom + (ZoenBottomBar.height - ZoenBottomBar.circle) / 2)
-                        .transition(.scale(scale: 0.6).combined(with: .opacity))
-                    }
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+            rootTabs
 
             if model.searchOpen {
                 SearchReveal(origin: model.searchOrigin)
@@ -83,7 +345,6 @@ struct RootView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .animation(.spring(duration: 0.35), value: barVisible)
         // Nothing under the approvals cover is visible: stop its ink/mascot/globe loops so
         // the cards get the whole main thread (sheets below are outside this and keep theirs).
@@ -132,8 +393,8 @@ struct RootView: View {
     private func stack(for t: AppTab) -> some View {
         NavigationStack(path: Binding(get: { model.path(t) }, set: { model.setPath(t, $0) })) {
             root(t)
-                // Chats reserves the bar directly on its scroll view.
-                .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: t == .conversations ? 0 : 74) }
+                .toolbar(barVisible ? .visible : .hidden, for: .tabBar)
+                .toolbar(model.path(t).isEmpty ? .hidden : .visible, for: .navigationBar)
                 .navigationDestination(for: Route.self) { route in destination(route) }
         }
     }
@@ -142,13 +403,30 @@ struct RootView: View {
     private func root(_ t: AppTab) -> some View {
         switch t {
         case .conversations: ConversationsScreen()
-        case .files: FilesScreen()
-        case .activity: ActivityScreen()
+        case .files: SpacesDirectoryScreen()
+        case .activity: ActivityScreen(initialList: true, onShowCards: { model.openNotifications() })
         case .agents: AgentsLibraryScreen()
         case .you: YouScreen()
         case .search: SearchScreen(onOpenItem: { id in model.push(.item(id)) })
         case .store: StoreScreen()
         }
+    }
+
+    private var profileTabImage: Image {
+        // TabView extracts an Image, not an arbitrary SwiftUI subtree. Flatten the
+        // actual avatar before handing it to the system tab bar.
+        let renderer = ImageRenderer(content: Group {
+            if let me = model.me {
+                if let photo = AvatarPhotoStore.load(me.id) {
+                    Image(uiImage: photo).resizable().scaledToFill()
+                        .frame(width: 26, height: 26).clipShape(.circle)
+                } else {
+                    PersonAvatar(persona: me, size: 26)
+                }
+            }
+        }.frame(width: 26, height: 26))
+        renderer.scale = UIScreen.main.scale
+        return Image(uiImage: (renderer.uiImage ?? UIImage()).withRenderingMode(.alwaysOriginal)).renderingMode(.original)
     }
 
     private func destination(_ route: Route) -> some View { RouteDestination(route: route) }

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run the original Swift rig to produce independent Android geometry test vectors."""
+import argparse
 import gzip
 import hashlib
 import json
@@ -8,10 +9,25 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[1]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--verify-ref", help="Compile the Swift art at this Git ref and require exact equality with the committed corpus")
+parser.add_argument("--equivalence-output", type=Path, help="Save verified source variants without regenerating the reference art")
+args = parser.parse_args()
+if args.equivalence_output and not args.verify_ref:
+    parser.error("--equivalence-output requires --verify-ref")
+
+
+def source_bytes(path):
+    if args.verify_ref:
+        return subprocess.run(["git", "show", args.verify_ref + ":" + str(path.relative_to(root))],
+                              cwd=root, check=True, capture_output=True).stdout
+    return path.read_bytes()
+
+
 hand = root / "apple/Shared/DesignSystem/HandDrawn.swift"
 mascot = root / "apple/Shared/DesignSystem/Mascot.swift"
-hand_source = hand.read_text()
-mascot_source = mascot.read_text()
+hand_source = source_bytes(hand).decode()
+mascot_source = source_bytes(mascot).decode()
 
 # Keep the original equations verbatim. Only the SwiftUI color/path value types
 # are replaced to let this reference run as a standalone macOS Swift program.
@@ -85,8 +101,32 @@ with tempfile.TemporaryDirectory(prefix="zoen-ink-reference-") as directory:
     result = subprocess.run([str(executable)], check=True, capture_output=True)
 
 document = json.loads(result.stdout)
-document["sources"] = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in (hand, mascot)}
 target = root / "android/app/src/test/resources/ink-swift-reference.json.gz"
+if args.verify_ref:
+    reference = json.loads(gzip.decompress(target.read_bytes()))
+    corpus = {key: value for key, value in reference.items() if key != "sources"}
+    if corpus != document:
+        raise SystemExit("The newer Swift source changes the original mascot, doodle or geometry corpus; adapt Android before accepting it")
+    verified = {
+        "verified_ref": subprocess.run(["git", "rev-parse", args.verify_ref], cwd=root, check=True, capture_output=True, text=True).stdout.strip(),
+        "reference_corpus_sha256": hashlib.sha256(json.dumps(document, separators=(",", ":"), sort_keys=True).encode()).hexdigest(),
+        "mascot_frames_compared": len(document["frames"]),
+        "doodle_frames_compared": len(document["doodles"]),
+        "comparison": "Exact independently compiled Swift mascot and doodle strokes, curve/trim/ribbon geometry and RNG samples; existing corpus unchanged",
+        "source_variants": {str(p.relative_to(root)): sorted({reference["sources"][str(p.relative_to(root))], hashlib.sha256(source_bytes(p)).hexdigest()}) for p in (hand, mascot)},
+    }
+    if args.equivalence_output:
+        if args.equivalence_output.exists():
+            previous = json.loads(args.equivalence_output.read_text())
+            if previous["reference_corpus_sha256"] != verified["reference_corpus_sha256"]:
+                raise SystemExit("Existing source equivalence belongs to a different art corpus")
+            for path, variants in verified["source_variants"].items():
+                verified["source_variants"][path] = sorted(set(variants) | set(previous["source_variants"].get(path, [])))
+        args.equivalence_output.write_text(json.dumps(verified, indent=2) + "\n")
+    print(json.dumps(verified, indent=2))
+    raise SystemExit(0)
+
+document["sources"] = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in (hand, mascot)}
 target.parent.mkdir(parents=True, exist_ok=True)
 target.write_bytes(gzip.compress(json.dumps(document, separators=(",", ":"), sort_keys=True).encode(), mtime=0))
 print(f"{len(document['frames'])} mascot and {len(document['doodles'])} doodle frames from original Swift; {target.stat().st_size} compressed bytes; {target.relative_to(root)}")

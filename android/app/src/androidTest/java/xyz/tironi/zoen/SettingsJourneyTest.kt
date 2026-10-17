@@ -68,16 +68,14 @@ class SettingsJourneyTest {
         val stack = open()
         val context = compose.activity
         AppAppearance.set(context, "auto")
-        compose.onNodeWithTag("settings:Preferences").performClick()
-        compose.onNodeWithTag("settings:Theme").performClick()
+        compose.onNodeWithTag("settings:Theme").performScrollTo().performClick()
         compose.onNodeWithTag("theme:dark").assertIsNotSelected().performClick()
         compose.onNodeWithTag("theme:dark").assertIsSelected()
         assertEquals("dark", AppAppearance.mode)
 
         compose.onNodeWithTag("settings:back").performClick()
-        compose.onNodeWithTag("settings:Theme").assertIsDisplayed()  // one pop: Preferências
-        compose.onNodeWithTag("settings:back").performClick()
-        compose.onNodeWithTag("settings:search").assertIsDisplayed() // Ajustes home
+        compose.onNodeWithTag("settings:search").assertIsDisplayed()
+        compose.onNodeWithTag("settings:Theme").performScrollTo().assertIsDisplayed()
 
         compose.onNodeWithTag("settings:search").performTextInput("xyzzy")
         compose.onNodeWithTag("settings:noResults").assertExists()
@@ -89,10 +87,24 @@ class SettingsJourneyTest {
         AppAppearance.set(context, "auto")
     }
 
-    @Test fun restoreIsDisabledWithoutABackupOnThisDevice() {
+    @Test fun recoveryRequiresTheSavedKeyAndDoesNotOfferPassword() {
         open()
         compose.onNodeWithTag("settings:Backup").performClick()
-        compose.onNodeWithTag("settings:restore").assertHasNoClickAction()
+        compose.waitUntil(15_000) { compose.onAllNodesWithTag("settings:backupTurnOn").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("settings:restore").assertDoesNotExist()
+        compose.onNodeWithTag("settings:backupTurnOn").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("recovery-saved").fetchSemanticsNodes().any { SemanticsProperties.Disabled !in it.config } }
+        compose.onNodeWithTag("recovery-key").assertExists()
+        compose.onNodeWithTag("recovery-saved").performClick()
+        // Synthetic incorrect input only: never read/type/log the generated secret.
+        compose.onNodeWithTag("recovery-confirmation").performTextInput("1".repeat(63))
+        compose.onNodeWithTag("recovery-activate").assertIsNotEnabled()
+        compose.onNodeWithTag("recovery-confirmation").performTextInput("1")
+        compose.onNodeWithTag("recovery-activate").assertIsNotEnabled()
+        compose.onNodeWithTag("settings:backupPassword").assertDoesNotExist()
+        compose.onNodeWithText("Fechar").performClick()
+        val app = ApplicationProvider.getApplicationContext<ZoenApplication>()
+        assertTrue(!runBlocking { app.repository.query { it.backupStatus() } }.enabled)
     }
 
     @Test fun invitesShareTheLinkTheCoreMakes() {

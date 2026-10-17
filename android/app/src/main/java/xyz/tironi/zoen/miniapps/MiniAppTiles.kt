@@ -61,6 +61,7 @@ fun MiniAppTileStrip(
     scope: String = MiniAppPins.HOME,
     compact: Boolean = false,
     onOpenItem: (String) -> Unit = {},
+    onOpenNotifications: (() -> Unit)? = null,
 ) {
     val preferences = model.repository.preferences
     val pins = remember(preferences) { MiniAppPins(preferences) }
@@ -109,6 +110,18 @@ fun MiniAppTileStrip(
             TextButton(onClick = { editing = false }) { Text(stringResource(R.string.done)) }
         }
         LazyRow(contentPadding = PaddingValues(horizontal = if (isChat) 16.dp else 24.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (onOpenNotifications != null) item(key = "home-notifications") {
+                Card(onClick = onOpenNotifications,
+                    modifier = Modifier.size(170.dp).testTag("home-notifications")) {
+                    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                        xyz.tironi.zoen.ui.NativeAnimatedSymbol("bell_tab", "Notifications", pendingIds = state.requests.filter {
+                            it.status == xyz.tironi.zoen.core.RequestStatus.PENDING && it.agent.isMine
+                        }.map { it.id }.toSet())
+                        Text("Notifications", style = MaterialTheme.typography.titleMedium)
+                        Text(state.pending.toString(), style = MaterialTheme.typography.headlineMedium)
+                    }
+                }
+            }
             itemsIndexed(tiles, key = { _, tile -> tile.key }) { index, tile ->
                 var bounds by remember(tile.key) { mutableStateOf(Rect.Zero) }
                 var drag by remember(tile.key) { mutableFloatStateOf(0f) }

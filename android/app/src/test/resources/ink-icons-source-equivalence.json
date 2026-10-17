@@ -1,5 +1,5 @@
 {
-  "verified_ref": "27245db8b4164edd198848a2540b8f5edd324a19",
+  "verified_ref": "03ad7a2fef5e09f5678e50694a228ad68f5d0ca9",
   "reference_icons_sha256": "2e49c8626fd4211174a15cf3d3f3c43d9c23307f5ccd62c72d8079974e93e0ff",
   "icons_compared": 35,
   "comparison": "Exact independently compiled Swift control points, paths, partial strokes and animated motion samples; existing corpus unchanged",
@@ -8,10 +8,12 @@
       "13cd1726b651da01b4d16d72d7c0922323528b709ad73a0723a47f36c59ec944"
     ],
     "apple/Shared/DesignSystem/ZoenIcons.swift": [
+      "4267858150a8efe32a049376a059cafc8a81320a0dcc86373eae6cda36ee432c",
       "97211788d726c23dcacfde3ba02a10a7e67e5342c8b7ccefde8ec433daf4aa0c",
       "f942e0caa4e3be6988f65d2ffe81dea517b94ab6a6fd458b761007ee4e06d1b6"
     ],
     "apple/Shared/DesignSystem/HandDrawn.swift": [
+      "3daa4e6df6cc8b9804012e7c13b76af3704401319f03794bb5a94cd504b655eb",
       "e6481c1a4ff73a18459dbfcc19434391188c169174babcf959baa05f53e0b76c"
     ]
   }

@@ -4,7 +4,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -12,7 +11,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -28,9 +26,6 @@ import androidx.navigation3.runtime.NavKey
 import java.text.DateFormat
 import java.util.Date
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import xyz.tironi.zoen.ui.ink.ZoenGlyph
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
@@ -44,27 +39,25 @@ import androidx.compose.ui.window.DialogProperties
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onStore: (() -> Unit)? = null, onSearch: (() -> Unit)? = null) {
-    val haptics = rememberZoenHaptics()
+internal fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onBack: (() -> Unit)? = null) {
+    // Root destinations are entirely bottom navigated, just like the iPhone shell.
+    if (onBack == null) return
     TopAppBar(title = {
-        if (onStore != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            ZoenMascot(Modifier.size(32.dp), headOnly = true, mood = MascotMood.Smirk)
-            Text("zoen", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
-        } else Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }, navigationIcon = {
+        NativeIconButton(onClick = onBack) { MotionVectorIcon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
     }, actions = {
-        if (onStore != null) InkIconButton(ZoenGlyph.Store, stringResource(R.string.miniapp_store), { haptics.perform(ZoenFeedback.Open); onStore() })
-        InkIconButton(ZoenGlyph.Search, stringResource(R.string.search), { haptics.perform(ZoenFeedback.Tap); if (onSearch != null) onSearch() else navigate(Search) })
-        IconButton(onClick = { navigate(Context) }, modifier = Modifier.testTag("open-context")) { Avatar(state.me, size = 34) }
+        if (state.account != null && state.connection.state == "offline") {
+            NativeIconButton(onClick = { navigate(SettingsRoute("Devices")) }, modifier = Modifier.testTag("connection-status")) {
+                MotionVectorIcon(Icons.Rounded.Circle, stringResource(if (state.connection.state == "connecting") R.string.connecting else R.string.offline_short), Modifier.size(8.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
 }
 
 @Composable
-fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, split: Boolean) {
-    var store by rememberSaveable { mutableStateOf(false) }
+internal fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, split: Boolean, filter: ChatInboxFilter = ChatInboxFilter.All) {
     var selectedChat by rememberSaveable { mutableStateOf<String?>(null) }
-    var searching by rememberSaveable { mutableStateOf(false) }
-    var query by rememberSaveable { mutableStateOf("") }
-    var filter by rememberSaveable { mutableStateOf(ChatInboxFilter.All) }
     // Pin, archive and mute are mine on every device: they come from the core.
     val archived = state.spaces.filter { it.archived }.map { it.id }.toSet()
     val muted = state.spaces.filter { it.muted }.map { it.id }.toSet()
@@ -75,36 +68,33 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     val haptics = rememberZoenHaptics()
     val working by model.working.collectAsStateWithLifecycle()
     val archivedChats = state.spaces.filter { it.id in archived }
-    val chats = state.spaces.filter { (it.id in archived) == showArchived && (showArchived || filter.includes(it)) && matchesSpace(it, query) }
+    val chats = state.spaces.filter { (it.id in archived) == showArchived && (showArchived || filter.includes(it)) }
         .sortedByDescending { it.lastAtMs }
         .sortedByDescending { it.pinned }
     val list: @Composable () -> Unit = {
-        Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onStore = { store = true }, onSearch = { searching = !searching }) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+        Scaffold(topBar = { HomeBar(stringResource(R.string.chats), state, navigate) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
             // Bottom: clear the floating tab bar so the last chat is never under it.
-            LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 112.dp)) {
+            Column(Modifier.fillMaxSize().padding(padding)) {
+            LazyColumn(Modifier.weight(1f).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 112.dp)) {
                 if (showArchived) item {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { showArchived = false }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
+                        NativeIconButton(onClick = { showArchived = false }) { MotionVectorIcon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
                         Text(stringResource(R.string.archived), style = MaterialTheme.typography.titleLarge)
                     }
-                }
-                if (searching || query.isNotBlank()) item {
-                    OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), singleLine = true, placeholder = { Text(stringResource(R.string.search)) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
                 }
                 val apps = state.items.filter { item ->
                     item.app?.let { !JSONObject(it.viewJson).optBoolean("released") } == true && WidgetSnapshot.from(item) != null
                 }.asReversed()
-                if (apps.isNotEmpty() && !showArchived) {
+                if (!showArchived) {
                     item {
-                        MiniAppTileStrip(model, state, apps, onOpenItem = { navigate(Item(it)) })
+                        MiniAppTileStrip(model, state, apps, onOpenItem = { navigate(Item(it)) }, onOpenNotifications = { navigate(Activity) })
                     }
                 }
-                if (!showArchived) item { ChatFilterMenu(filter) { filter = it; haptics.perform(ZoenFeedback.Selection) } }
                 // WhatsApp: "Archived" above the chats while there are any.
-                if (!showArchived && archivedChats.isNotEmpty() && query.isBlank()) item(key = "archived") {
+                if (!showArchived && archivedChats.isNotEmpty()) item(key = "archived") {
                     Row(Modifier.fillMaxWidth().testTag("archived-chats").clickable { haptics.perform(ZoenFeedback.Tap); showArchived = true }.padding(horizontal = 20.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Box(Modifier.width(56.dp), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Archive, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Box(Modifier.width(56.dp), contentAlignment = Alignment.Center) { MotionVectorIcon(Icons.Rounded.Archive, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                         Text(stringResource(R.string.archived), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                         val unreadArchived = archivedChats.count { it.unread > 0u }
                         Text(if (unreadArchived > 0) "$unreadArchived" else "${archivedChats.size}", style = MaterialTheme.typography.labelMedium,
@@ -123,12 +113,17 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                     )
                 }
                 if (chats.isEmpty()) item {
-                    EmptyState(stringResource(if (filter != ChatInboxFilter.All) R.string.chat_filter_empty else R.string.chat_empty_title), if (filter != ChatInboxFilter.All) "" else stringResource(R.string.chat_empty_detail)) {
-                        GlassButton(onClick = { navigate(NewChat) }) { Text(stringResource(R.string.new_chat)) }
+                    when {
+                        showArchived -> EmptyState("Nenhuma conversa arquivada", "")
+                        filter != ChatInboxFilter.All -> EmptyState(stringResource(R.string.chat_filter_empty), "")
+                        else -> EmptyState(stringResource(R.string.chat_empty_title), stringResource(R.string.chat_empty_detail)) {
+                            Button(onClick = { navigate(NewChat) }) { Text(stringResource(R.string.new_chat)) }
+                        }
                     }
                 }
             }
         }
+    }
     }
     if (split) Row {
         Box(Modifier.width(340.dp).fillMaxHeight()) { list() }
@@ -139,9 +134,6 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
             else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyState(stringResource(R.string.chat_select_title), stringResource(R.string.chat_select_detail)) }
         }
     } else list()
-    if (store) Dialog(onDismissRequest = { store = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        MiniAppStoreScreen(model, state, onOpenItem = { store = false; navigate(Item(it)) }, back = { store = false }, onOpenAgent = { store = false; navigate(Agent(it)) })
-    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -167,16 +159,16 @@ private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String
                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(chat.lastAtMs)), style = MaterialTheme.typography.labelSmall,
                     color = if (chat.unread > 0u && !muted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (muted) Icon(Icons.Rounded.NotificationsOff, stringResource(R.string.muted), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (pinned) Icon(Icons.Rounded.PushPin, stringResource(R.string.pinned), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (muted) MotionVectorIcon(Icons.Rounded.NotificationsOff, stringResource(R.string.muted), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (pinned) MotionVectorIcon(Icons.Rounded.PushPin, stringResource(R.string.pinned), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     // Muted unread goes grey (WhatsApp); unmuted is the accent.
                     if (chat.unread > 0u) Badge(containerColor = if (muted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text(chat.unread.toString()) }
                 }
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(if (pinned) R.string.unpin else R.string.pin)) }, leadingIcon = { Icon(Icons.Rounded.PushPin, null) }, onClick = { menu = false; onPin() })
-            DropdownMenuItem(text = { Text(stringResource(R.string.chat_mark_read)) }, leadingIcon = { Icon(Icons.Rounded.DoneAll, null) }, onClick = { menu = false; onRead() })
+            DropdownMenuItem(text = { Text(stringResource(if (pinned) R.string.unpin else R.string.pin)) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.PushPin, null) }, onClick = { menu = false; onPin() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.chat_mark_read)) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.DoneAll, null) }, onClick = { menu = false; onRead() })
             DropdownMenuItem(text = { Text(stringResource(if (muted) R.string.unmute else R.string.mute)) }, leadingIcon = { Icon(if (muted) Icons.Rounded.Notifications else Icons.Rounded.NotificationsOff, null) }, onClick = { menu = false; onMute() })
             DropdownMenuItem(text = { Text(stringResource(if (archived) R.string.unarchive else R.string.archive)) }, leadingIcon = { Icon(if (archived) Icons.Rounded.Unarchive else Icons.Rounded.Archive, null) }, onClick = { menu = false; onArchive() })
         }
@@ -198,10 +190,10 @@ private fun matchesSpace(space: SpaceSummary, query: String): Boolean {
 }
 
 @Composable
-fun ActivityScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit) {
-    var showingList by rememberSaveable(state.me?.id) { mutableStateOf(false) }
+fun ActivityScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, back: () -> Unit, root: Boolean = false) {
+    var showingList by rememberSaveable(state.me?.id) { mutableStateOf(root) }
     if (showingList) ActivityList(model, state, navigate) { showingList = false }
-    else Scaffold(topBar = { HomeBar(stringResource(R.string.activity), state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+    else Scaffold(topBar = { HomeBar("Notifications", state, navigate, onBack = back) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
         ApprovalsDeck(model, state, navigate, { model.approvals.flush(); showingList = true }, Modifier.padding(padding))
     }
 }
@@ -216,7 +208,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
     val resolved = state.requests.filter { it.status == RequestStatus.APPROVED || it.status == RequestStatus.DENIED }
     var review by remember { mutableStateOf<List<AgentRequestDto>?>(null) }
     var busy by remember { mutableStateOf(false) }
-    Scaffold(topBar = { HomeBar(stringResource(R.string.activity), state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+    Scaffold(topBar = { HomeBar("Notifications", state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
         LazyColumn(Modifier.padding(padding).testTag("activity-list"), contentPadding = PaddingValues(24.dp, 8.dp, 24.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onShowCards, modifier = Modifier.testTag("activity-show-cards")) { Text(stringResource(R.string.approval_cards)) }
@@ -231,7 +223,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
                 1 -> {
                     if (mentions.isEmpty()) item { EmptyState(stringResource(R.string.activity_no_mentions), "") }
                     items(mentions, key = { it.entry.id }) { mention ->
-                        GlassCard(onClick = { navigate(Chat(mention.spaceId, mention.entry.id)) }) {
+                        Card(onClick = { navigate(Chat(mention.spaceId, mention.entry.id)) }) {
                             ListItem(leadingContent = { Avatar(mention.entry.author, size = 40) }, headlineContent = { Text(stringResource(R.string.activity_mentioned, mention.entry.author.name)) }, supportingContent = {
                                 Column { Text((mention.entry.kind as? EntryKind.Message)?.text.orEmpty(), maxLines = 3, overflow = TextOverflow.Ellipsis); Text(mention.spaceTitle, style = MaterialTheme.typography.labelMedium) }
                             })
@@ -240,11 +232,11 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
                 }
                 2 -> {
                     if (tasks.isEmpty()) item { EmptyState(stringResource(R.string.activity_no_tasks), "") }
-                    items(tasks, key = { it.id }) { task -> GlassCard(onClick = { navigate(Item(task.id)) }) { ListItem(headlineContent = { Text(task.title) }, supportingContent = { Text(task.spaceTitle) }, leadingContent = { Icon(Icons.Rounded.Checklist, null) }) } }
+                    items(tasks, key = { it.id }) { task -> Card(onClick = { navigate(Item(task.id)) }) { ListItem(headlineContent = { Text(task.title) }, supportingContent = { Text(task.spaceTitle) }, leadingContent = { MotionVectorIcon(Icons.Rounded.Checklist, null) }) } }
                 }
                 else -> {
             items(state.agents.filter { it.nearLimit }, key = { "budget:${it.persona.id}" }) { agent ->
-                GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text(stringResource(R.string.activity_near_cap, agent.persona.name), style = MaterialTheme.typography.titleMedium)
                         Text(formatMoney(agent.budgetSpentCents ?: 0, model.repository.locale) + " / " + formatMoney(agent.budgetLimitCents ?: 0, model.repository.locale))
@@ -255,7 +247,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
             item { Text(stringResource(R.string.pending), style = MaterialTheme.typography.headlineMedium) }
             val approvable = pending.filter { it.status == RequestStatus.PENDING }
             if (approvable.size > 1) item {
-                GlassOutlinedButton(onClick = { review = approvable.toList() }, enabled = !busy) { Text(stringResource(R.string.approve_all)) }
+                OutlinedButton(onClick = { review = approvable.toList() }, enabled = !busy) { Text(stringResource(R.string.approve_all)) }
             }
             if (pending.isEmpty()) item { EmptyState(stringResource(R.string.all_clear), stringResource(R.string.all_clear_detail)) }
             items(pending, key = { it.id }) { request -> RequestCard(request, { navigate(Request(request.id)) }) }
@@ -294,7 +286,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
 
 @Composable
 fun RequestCard(request: AgentRequestDto, onClick: () -> Unit) {
-    GlassCard(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Avatar(request.agent, size = 38)

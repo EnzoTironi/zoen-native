@@ -13,6 +13,7 @@ mod agent_notes;
 mod api;
 mod backup;
 mod backup_api;
+mod parity_fixture;
 pub use backup_api::BackupStatusDto;
 mod files;
 mod growth;
@@ -683,5 +684,7 @@ pub fn core_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+#[cfg(test)]
+mod recovery_ui_tests;
 #[cfg(test)]
 mod tests;

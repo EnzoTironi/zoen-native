@@ -60,21 +60,34 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
         }
         return
     }
-    if (state.me == null || !model.repository.preferences.getBoolean("onboarded", false)) {
+    // Preferences are not Compose state. Recovery can finish after `me` was already
+    // refreshed, so explicitly observe completion even when the landing chat is null.
+    // Recovery's in-flight callback must finish this same object after `me.id` changes.
+    val onboardingCompletion = rememberOnboardingCompletion(model, state.demo) {
+        model.repository.preferences.getBoolean("onboarded", false)
+    }
+    if (state.me == null || !onboardingCompletion.completed) {
         Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
-            Onboarding(model, Modifier.padding(padding), deepLink) { onboardingLanding = it }
+            Onboarding(model, Modifier.padding(padding), deepLink) {
+                onboardingCompletion.finish(it) { landing -> onboardingLanding = landing }
+            }
         }
         return
     }
 
     key(state.demo, state.me?.id, LocalConfiguration.current.locales[0].language) {
         var tab by rememberSaveable { mutableStateOf(Tab.Chats) }
+        var chatFilterName by rememberSaveable { mutableStateOf(ChatInboxFilter.All.name) }
+        val chatFilter = ChatInboxFilter.entries.firstOrNull { it.name == chatFilterName } ?: ChatInboxFilter.All
+        val selectChatFilter: (ChatInboxFilter) -> Unit = { chatFilterName = it.name }
         val chats = rememberNavBackStack(Home)
-        val store = rememberNavBackStack(Home)
-        val files = rememberNavBackStack(Home)
-        val activity = rememberNavBackStack(Home)
-        LaunchedEffect(tab) { if (tab == Tab.Spaces) tab = Tab.Chats }
-        val stack = when (tab) { Tab.Chats, Tab.Spaces -> chats; Tab.Store -> store; Tab.Files -> files; Tab.Activity -> activity }
+        val marketplace = rememberNavBackStack(Home)
+        val profile = rememberNavBackStack(Home)
+        val stack = when (tab) {
+            Tab.Chats -> chats
+            Tab.Marketplace -> marketplace
+            Tab.Profile -> profile
+        }
         val navigate: (NavKey) -> Unit = { key ->
             if (key == Home) { while (stack.size > 1) stack.removeLastOrNull() }
             else if (stack.lastOrNull() != key) stack.add(key)
@@ -120,7 +133,14 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             }
             consumed()
         }
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        val productionFanActions = listOf(
+                FanAction(Icons.Rounded.AutoAwesome, stringResource(R.string.ask_zoen)) { state.zoenChat?.let { navigate(Chat(it.id)) } },
+                FanAction(Icons.Rounded.Group, stringResource(R.string.agents)) { navigate(Agents) },
+                FanAction(Icons.Rounded.FolderOpen, stringResource(R.string.files)) { navigate(Files) },
+                FanAction(Icons.Rounded.PersonOutline, stringResource(R.string.context)) { navigate(Context) },
+
+        )
+        ZoenGlassBackdrop { BoxWithConstraints(Modifier.fillMaxSize()) {
             val unread = state.spaces.sumOf { it.unread.toLong() }.coerceAtMost(100L).toInt()
             val rail = maxWidth >= 600.dp
             val split = maxWidth >= 840.dp
@@ -130,51 +150,48 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             val density = LocalDensity.current
             Row {
                 if (rail) NavigationRail(modifier = Modifier.fillMaxHeight(), header = {
-                    ZoenMascot(Modifier.padding(top = 12.dp).size(64.dp))
-                    Spacer(Modifier.height(16.dp))
-                    PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true)
+                    NativeIconButton(onClick = { navigate(Search) }) { MotionVectorIcon(Icons.Rounded.Search, stringResource(R.string.search)) }
                 }) {
                     Spacer(Modifier.height(24.dp))
                     Tab.main.forEach { target ->
-                        NavigationRailItem(selected = tab == target, onClick = { if (tab != target) haptics.perform(ZoenFeedback.Selection); tab = target }, icon = { TabIcon(target, if (target == Tab.Chats) unread else state.pending, tab == target) }, label = { Text(tabName(target)) })
+                        var taps by remember { mutableIntStateOf(0) }
+                        NavigationRailItem(selected = tab == target, onClick = {
+                            taps++
+                            if (tab != target) haptics.perform(ZoenFeedback.Selection)
+                            tab = target
+                        }, icon = {
+                            TabIcon(target, if (target == Tab.Chats) unread else 0,
+                                tab == target, state.me, press = taps,
+                                active = target == Tab.Chats && (state.typing.isNotEmpty() || state.connection.state in setOf("connecting", "reconnecting")))
+                        }, label = { Text(tabName(target)) })
                     }
                     Spacer(Modifier.weight(1f))
-                    IconButton(onClick = { navigate(Search) }) { Icon(Icons.Rounded.Search, stringResource(R.string.search)) }
-                    IconButton(onClick = { navigate(Context) }) { Icon(Icons.Rounded.Person, stringResource(R.string.context)) }
                 }
                 Scaffold(
                     modifier = Modifier.weight(1f),
                     snackbarHost = { if (stack.lastOrNull() !is VersionPreview) SnackbarHost(snackbar,
                         Modifier.padding(bottom = with(density) { snackbarClearance.bottomPx.toDp() }).testTag("app-snackbar")) },
                     bottomBar = {
-                        if (!rail && stack.size == 1) NavigationBar(modifier = Modifier.heightIn(min = navigationHeight), containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                            Tab.main.forEachIndexed { index, target ->
-                                if (index == 2) Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                    PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true)
-                                }
-                                val item: @Composable RowScope.() -> Unit = {
-                                    NavigationBarItem(selected = tab == target, onClick = { if (tab != target) haptics.perform(ZoenFeedback.Selection); tab = target }, icon = { TabIcon(target, if (target == Tab.Chats) unread else state.pending, tab == target) }, label = {
-                                        Text(tabName(target), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                            style = if (largeNavigationText) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium)
-                                    }, alwaysShowLabel = !largeNavigationText, modifier = Modifier.testTag("tab:${target.name}"))
-                                }
-                                if (largeNavigationText) Row(Modifier.weight(if (tab == target) 2.5f else 1f)) { item() }
-                                else item()
-                            }
-                        }
+                        if (!rail && stack.size == 1) AppleBottomBar(tab, unread, state.pending, state.me, { target ->
+                            if (tab != target) haptics.perform(ZoenFeedback.Selection)
+                            tab = target
+                        }, { navigate(Search) }, pendingIds = state.requests.filter {
+                            it.status == xyz.tironi.zoen.core.RequestStatus.PENDING && it.agent.isMine
+                        }.map { it.id }.toSet(), transportActive = state.typing.isNotEmpty() || state.connection.state in setOf("connecting", "reconnecting"),
+                            offline = state.account != null && state.connection.state == "offline")
                     },
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 ) { padding ->
                     CompositionLocalProvider(LocalSnackbarClearance provides snackbarClearance) { NavDisplay(
-                        modifier = Modifier.fillMaxSize().padding(padding), backStack = stack, onBack = back,
+                        modifier = Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()).zoenGlassSource(), backStack = stack, onBack = back,
                         entryProvider = entryProvider {
                             entry<Home> {
-                                when (tab) {
-                                    Tab.Chats -> ConversationsScreen(model, state, navigate, split)
-                                    Tab.Spaces -> ConversationsScreen(model, state, navigate, split)
-                                    Tab.Store -> MiniAppStoreScreen(model, state, { navigate(Item(it)) }, { tab = Tab.Chats }, { navigate(Agent(it)) })
-                                    Tab.Files -> FilesScreen(model, state, navigate, null)
-                                    Tab.Activity -> ActivityScreen(model, state, navigate)
+                                Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                                    when (tab) {
+                                        Tab.Chats -> ConversationsScreen(model, state, navigate, split, chatFilter)
+                                        Tab.Marketplace -> MiniAppStoreScreen(model, state, onOpenItem = { navigate(Item(it)) }, back = back, onOpenAgent = { navigate(Agent(it)) })
+                                        Tab.Profile -> YouScreen(model, state, navigate, { tab = Tab.Chats })
+                                    }
                                 }
                             }
                             entry<Chat> { ChatScreen(model, state, it.id, navigate, back, it.message) }
@@ -183,11 +200,12 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             entry<Person> { ProfileScreen(model, state, it.id, navigate, back) }
                             entry<Participants> { ParticipantsScreen(model, state, it.id, navigate, back) }
                             entry<Thread> { ThreadScreen(model, state, it.space, it.root, navigate, back) }
+                            entry<Activity> { ActivityScreen(model, state, navigate, back) }
                             entry<Files> { FilesScreen(model, state, navigate, back) }
                             entry<Folder> { FilesScreen(model, state, navigate, back, it.space) }
                             entry<Agents> { AgentsScreen(model, state, navigate, back) }
                             entry<Context> { ContextScreen(model, state, navigate, back) }
-                            entry<Search> { SearchScreen(model, state, navigate, back) }
+                            entry<Search> { SearchScreen(model, state, navigate, back, chatFilter, selectChatFilter) }
                             entry<History> { HistoryScreen(model, state, back) }
                             entry<Permissions> { PermissionsScreen(model, state, back) }
                             entry<AgentPermissions> { StandingPermissionsScreen(model, state, back, it.agent, it.space) }
@@ -207,37 +225,29 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
         }
         state.zoenChat?.let { chat ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
-                xyz.tironi.zoen.media.VoiceComposer(model, chat.id, Modifier.padding(end = 16.dp, bottom = 140.dp), startSignal = voiceStart, releaseSignal = voiceRelease, lockSignal = voiceLock, cancelSignal = voiceCancel, showTrigger = false, onSent = { navigate(Chat(chat.id)) })
+                xyz.tironi.zoen.media.VoiceComposer(model, chat.id, Modifier.navigationBarsPadding().padding(end = 16.dp, bottom = 2.dp), startSignal = voiceStart, releaseSignal = voiceRelease, lockSignal = voiceLock, cancelSignal = voiceCancel, showTrigger = false, onSent = { navigate(Chat(chat.id)) })
             }
         }
-        if (quickActions) ModalBottomSheet(onDismissRequest = { quickActions = false }) {
-            Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).testTag("quickActions")) {
-                Text(stringResource(R.string.app_name), Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.headlineMedium)
-                val actions = listOf(
-                    Triple(Icons.Rounded.Search, R.string.search, Search),
-                    Triple(Icons.Rounded.AutoAwesome, R.string.ask_zoen, state.zoenChat?.let { Chat(it.id) }),
-                    Triple(Icons.AutoMirrored.Rounded.Chat, R.string.new_chat, NewChat),
-                    Triple(Icons.Rounded.GroupAdd, R.string.new_space, NewSpace),
-                    Triple(Icons.Rounded.SmartToy, R.string.agents, Agents),
-                    Triple(Icons.Rounded.FolderOpen, R.string.files, Files),
-                    Triple(Icons.Rounded.PersonOutline, R.string.context, Context),
-                    Triple(Icons.Rounded.Widgets, R.string.widgets, Widgets),
-                )
-                actions.forEach { (icon, label, route) ->
-                    if (route != null) SettingsRow(icon, stringResource(label), onClick = { quickActions = false; navigate(route) })
-                }
-                Spacer(Modifier.height(24.dp))
-            }
+
         }
     }
 }
 
 @Composable
-private fun tabName(tab: Tab) = stringResource(when (tab) { Tab.Chats -> R.string.chats; Tab.Spaces -> R.string.spaces; Tab.Store -> R.string.miniapp_store; Tab.Files -> R.string.files; Tab.Activity -> R.string.activity })
+internal fun tabName(tab: Tab): String = when (tab) {
+    Tab.Chats -> stringResource(R.string.chats)
+    Tab.Marketplace -> "Marketplace"
+    Tab.Profile -> "Profile"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TabIcon(tab: Tab, count: Int, selected: Boolean) {
-    val icon = when (tab) { Tab.Chats -> ZoenGlyph.Chats; Tab.Spaces -> ZoenGlyph.Spaces; Tab.Store -> ZoenGlyph.Store; Tab.Files -> ZoenGlyph.Folder; Tab.Activity -> ZoenGlyph.Bell }
-    BadgedBox(badge = { if (tab in listOf(Tab.Chats, Tab.Activity) && count > 0) Badge { Text(if (count > 99) "99+" else count.toString()) } }) { ZoenIcon(icon, tabName(tab), selected = selected) }
+internal fun TabIcon(tab: Tab, count: Int, selected: Boolean, me: xyz.tironi.zoen.core.Persona?, press: Int = 0, pendingIds: Set<String> = emptySet(), active: Boolean = false) {
+    BadgedBox(badge = { if (count > 0 && tab == Tab.Chats) Badge { Text(if (count > 99) "99+" else count.toString()) } }) {
+        when (tab) {
+            Tab.Chats -> NativeAnimatedSymbol("chats_tab", tabName(tab), press = press, active = active)
+            Tab.Marketplace -> MotionVectorIcon(Icons.Rounded.Storefront, tabName(tab))
+            Tab.Profile -> Avatar(me, size = 26)
+        }
+    }
 }

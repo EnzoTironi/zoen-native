@@ -9,6 +9,35 @@ import AppKit
 typealias PlatformColor = NSColor
 #endif
 
+/// Only explicit parity launches override wall time; production rendering is unchanged.
+enum NativeParityClock {
+    /// Attest projected core data, not merely the requested launch environment.
+    @MainActor static func appliedManifest(core: RodaEngine) -> String? {
+        let env = ProcessInfo.processInfo.environment
+        guard env["ZOEN_PARITY_FIXTURE"] == "native-parity-v1",
+              let revision = env["ZOEN_PARITY_REVISION"],
+              revision.range(of: "^[0-9a-f]{40}$", options: .regularExpression) != nil,
+              let me = try? core.me(),
+              me.id == "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+              me.tintHex == "#4F7CFF",
+              let marina = core.spaces().first(where: { $0.id == "sp_01kf0rdqg0000000000000007d" }),
+              marina.lastAtMs == 1_768_475_880_000,
+              now.timeIntervalSince1970 == 1_768_478_400,
+              TimeZone.current.secondsFromGMT() == 0,
+              Locale.current.identifier == "en_US" else { return nil }
+        let manifest: [String: Any] = ["fixture_id": "native-parity-v1",
+            "fixed_time": "2026-01-15T12:00:00Z", "locale": "en_US", "timezone": "UTC",
+            "seed": 128, "source_revision": revision]
+        guard let data = try? JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys]) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static var now: Date {
+        ProcessInfo.processInfo.environment["ZOEN_PARITY_FIXTURE"] == "native-parity-v1"
+            ? Date(timeIntervalSince1970: 1_768_478_400) : Date()
+    }
+}
+
 // MARK: - Cores
 
 extension Color {
@@ -119,8 +148,8 @@ enum RodaTime {
     static func short(_ ms: Int64) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
         let cal = Calendar.current
-        if cal.isDateInToday(date) { return date.formatted(.dateTime.hour().minute()) }
-        if cal.isDateInYesterday(date) { return String(localized: "Yesterday") }
+        if cal.isDate(date, inSameDayAs: NativeParityClock.now) { return date.formatted(.dateTime.hour().minute()) }
+        if cal.isDate(date, inSameDayAs: cal.date(byAdding: .day, value: -1, to: NativeParityClock.now)!) { return String(localized: "Yesterday") }
         if let days = cal.dateComponents([.day], from: date, to: .now).day, days < 7 {
             return date.formatted(.dateTime.weekday(.abbreviated)).capitalized.replacingOccurrences(of: ".", with: "")
         }
@@ -134,7 +163,7 @@ enum RodaTime {
 
     static func relative(_ ms: Int64) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
-        let secs = Date.now.timeIntervalSince(date)
+        let secs = NativeParityClock.now.timeIntervalSince(date)
         if secs < 60 { return String(localized: "now") }
         if secs < 3600 { return "\(Int(secs / 60)) min" }
         if secs < 86_400 { return "\(Int(secs / 3600)) h" }

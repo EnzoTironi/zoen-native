@@ -72,7 +72,7 @@ class ApprovalDeckJourneyTest {
         assertEquals("Viação Costa Verde", request.audience)
         assertFalse("The original money request is a red line", request.canAlwaysApprove)
         val before = runBlocking { app.repository.query { it.logEvents(request.spaceId).size } }
-        compose.onNodeWithText(app.getString(R.string.activity)).performClick()
+        compose.onNodeWithTag("home-notifications").performClick()
         compose.onNodeWithTag("approval-up").assertIsNotEnabled()
         capture("cards-before-drag")
         compose.onNodeWithTag("approval-card-top").performTouchInput {
@@ -141,7 +141,7 @@ class ApprovalDeckJourneyTest {
         shell("settings put global animator_duration_scale 0")
         val ids = createPlanRequests("Native standing approval")
         val reviewed = app.repository.state.value.requests.filter { it.id in ids }.minBy { it.openedMs }.id
-        compose.onNodeWithText(app.getString(R.string.activity)).performClick()
+        compose.onNodeWithTag("home-notifications").performClick()
         compose.onNodeWithTag("approval-up").assertIsEnabled()
         swipe("up")
         compose.waitUntil(10_000) { ids.all { status(it) == RequestStatus.APPROVED } }
@@ -167,7 +167,7 @@ class ApprovalDeckJourneyTest {
     @Test fun finishingActivityStoresItsAcceptedChoiceWithoutBackgroundFeedback() {
         val request = app.repository.state.value.requests.filter { it.agent.isMine && it.status == RequestStatus.PENDING }.minBy { it.openedMs }
         val before = runBlocking { app.repository.query { it.logEvents(request.spaceId).size } }
-        compose.onNodeWithText(app.getString(R.string.activity)).performClick()
+        compose.onNodeWithTag("home-notifications").performClick()
         val confirmed = feedback("Confirm")
         button("approval-left").performClick()
         assertEquals(request.id, model.approvals.state.value.pending?.request?.id)
@@ -193,10 +193,10 @@ class ApprovalDeckJourneyTest {
             compose.waitForIdle()
             val request = app.repository.state.value.requests.filter { it.agent.isMine && it.status == RequestStatus.PENDING }.minBy { it.openedMs }
             val before = runBlocking { app.repository.query { it.logEvents(request.spaceId).size } }
-            compose.onNodeWithTag("tab:Activity").performClick()
-            listOf("Chats", "Store", "Files", "Activity").forEach {
+            listOf("Chats", "Marketplace").forEach {
                 compose.onNodeWithTag("tab:$it").assertIsDisplayed().assertHasClickAction()
             }
+            compose.onNodeWithTag("home-notifications").performClick()
             compose.waitForIdle()
             val rejected = feedback("Reject")
             capture("font200-before-reading-scroll")

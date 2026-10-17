@@ -17,6 +17,13 @@ export type CoreOperation =
   | { kind: 'queue_post'; space: string; text: string; replyTo: string; thread: boolean; forwarded: boolean; now: number }
   | { kind: 'queue_annotation'; space: string; target: string; note: string; now: number }
   | { kind: 'mark_read'; space: string }
+  | { kind: 'queue_file'; space: string; doc: string; now: number }
+  | { kind: 'queue_failed_file'; space: string; doc: string; now: number; reason: string; chunks: string }
+  | { kind: 'local_chunk'; blob: string }
+  | { kind: 'fail_outbox'; client_id: string; reason: string }
+  | { kind: 'seal_file'; name: string; mime: string; bytes: Uint8Array; thumb: Uint8Array }
+  | { kind: 'open_chunk'; chunk: string; sealed: Uint8Array }
+  | { kind: 'blob_put_message'; sha: string; ts: number; relay: string }
   | { kind: 'queue_join'; space: string; role: string; code: string; now: number };
 
 declare const ZOEN_WORKER_INTEGRITY: string;
@@ -96,7 +103,7 @@ export class CoreWorker {
           }
         } catch (error) { this.close(new Error(message(error))); }
       };
-      this.worker.postMessage({ kind: 'init', bridge: this.bridge,
+      this.worker.postMessage({ kind: 'init', bridge: this.bridge, locale: document.documentElement.lang || navigator.language,
         wasmUrl: new URL('/core/zoen_web_core_bg.wasm', window.location.origin).toString() });
     });
   }

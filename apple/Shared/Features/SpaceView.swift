@@ -384,6 +384,7 @@ struct SpaceView: View {
         .navigationTitle(space?.title ?? "")
         #if os(iOS)
         // Our own glass bar replaces the system one (the edge swipe back still works).
+        .toolbar(.hidden, for: .tabBar)
         .toolbar(.hidden, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
         #endif
@@ -653,7 +654,7 @@ struct EntryView: View {
                                 spaceId: entry.id, layout: PhotoBackgroundLayout(dto: dto))
         case .message(let text, _) where model.ownerAgentNote(entry, text: text) != nil:
             OwnerAgentNoteCard(agent: entry.author, note: model.ownerAgentNote(entry, text: text)!,
-                               fresh: Date().timeIntervalSince1970 * 1000 - Double(entry.atMs) < 15_000)
+                               fresh: NativeParityClock.now.timeIntervalSince1970 * 1000 - Double(entry.atMs) < 15_000)
                 .padding(.top, 10)
                 .padding(.leading, 44)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1071,18 +1072,8 @@ struct TypingDots: View {
     @Environment(\.ambientPaused) private var ambientPaused
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        TimelineView(.animation(paused: ambientPaused || reduceMotion)) { ctx in
-            let t = ctx.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 4) {
-                ForEach(0..<3, id: \.self) { i in
-                    let phase = reduceMotion ? 0.5 : (sin((t * 2 * .pi / 1.1) - Double(i) * 0.9) + 1) / 2
-                    Circle().fill(Palette.textSecondary)
-                        .frame(width: 7, height: 7)
-                        .opacity(0.35 + 0.65 * phase)
-                        .offset(y: reduceMotion ? 0 : -2.5 * phase)
-                }
-            }
-        }
+        NativeIconMotion(systemName: "ellipsis", size: 22, active: !ambientPaused && !reduceMotion)
+            .foregroundStyle(Palette.textSecondary)
     }
 }
 
@@ -1090,7 +1081,9 @@ struct TypingDots: View {
 
 struct Composer: View {
     static let height: CGFloat = 48
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.nativeIconReduceMotion) private var appReduceMotion
+    private var reduceMotion: Bool { systemReduceMotion || appReduceMotion }
     @Binding var text: String
     var placeholder: String
     var focused: FocusState<Bool>.Binding
@@ -1215,10 +1208,26 @@ struct Composer: View {
         }
     }
 
-    @ViewBuilder private var trailing: some View {
+    private var trailing: some View {
+        actionSurface
+    }
+
+    private var actionGlyph: some View {
+        NativeIconMotion(systemName: actionSymbol, size: 21, active: busy)
+            .foregroundStyle(recorder.phase == .recording ? AnyShapeStyle(Color.white) : AnyShapeStyle(ActionGlassForeground()))
+            .allowsHitTesting(false)
+    }
+
+    private var actionSymbol: String {
+        if recorder.phase == .locked { return "arrow.up" }
+        if micMode || recorder.phase == .recording { return recorder.phase == .recording ? "mic.fill" : "mic" }
+        return busy ? "ellipsis" : "arrow.up"
+    }
+
+    @ViewBuilder private var actionSurface: some View {
         if recorder.phase == .locked {
             Button(action: finishRecording) {
-                ZoenIcon(.send, size: 21).frame(width: Composer.height, height: Composer.height)
+                actionGlyph.frame(width: Composer.height, height: Composer.height)
             }
             .buttonStyle(IconPressStyle())
             .foregroundStyle(ActionGlassForeground())
@@ -1229,8 +1238,7 @@ struct Composer: View {
             mic
         } else {
             Button(action: send) {
-                ZoenIcon(busy ? .more : .send, size: 21)
-                    .frame(width: Composer.height, height: Composer.height)
+                actionGlyph.frame(width: Composer.height, height: Composer.height)
             }
             .buttonStyle(IconPressStyle())
             .foregroundStyle(ActionGlassForeground())
@@ -1247,7 +1255,7 @@ struct Composer: View {
     /// Hold to record · slide left to cancel · slide up to lock · release to send.
     private var mic: some View {
         let recording = recorder.phase == .recording
-        return ZoenIcon(.mic, selected: recording, size: 21)
+        return actionGlyph
             .foregroundStyle(recording ? AnyShapeStyle(Color.white) : AnyShapeStyle(ActionGlassForeground()))
             .frame(width: Composer.height, height: Composer.height)
             // While recording it's a solid red disc outside the glass (so it doesn't melt

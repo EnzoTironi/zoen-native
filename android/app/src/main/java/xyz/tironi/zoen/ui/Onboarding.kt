@@ -11,7 +11,6 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -21,12 +20,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -50,6 +51,7 @@ import xyz.tironi.zoen.data.FileAccess
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionLink: String? = null, finished: (String?) -> Unit = {}) {
+    val state by model.state.collectAsStateWithLifecycle()
     var route by remember { mutableStateOf(OnboardingRoute()) }
     var position by rememberSaveable { mutableIntStateOf(0) }
     var selected by rememberSaveable { mutableStateOf(listOf<Int>()) }
@@ -59,6 +61,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
     var relay by rememberSaveable { mutableStateOf(BuildConfig.RELAY_URL) }
     var connectionSettings by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var recoverAccount by remember { mutableStateOf(false) }
     var planning by remember { mutableStateOf(false) }
     var savedDraft by rememberSaveable { mutableStateOf<String?>(null) }
     var plan by remember { mutableStateOf(savedDraft?.let(OnboardingDraft::decode)) }
@@ -110,7 +113,12 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
             finally { planning = false }
         }
     }
-    BackHandler(enabled = position > 0 && !busy) { position-- }
+fun goBack() { if (connectionSettings) connectionSettings = false else if (position > 0) position-- }
+    if (recoverAccount) RecoveryKeyRestore(model, { recoverAccount = false }) {
+        model.repository.preferences.edit().putBoolean("onboarded", true).apply()
+        finished(null)
+    }
+    BackHandler(enabled = (position > 0 || connectionSettings) && !busy && !recoverAccount) { goBack() }
     val pose = when (step) {
         OnboardingStep.Hello -> MascotPose.Wave
         OnboardingStep.Profile, OnboardingStep.Notifications -> MascotPose.Phone
@@ -120,11 +128,13 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
         OnboardingStep.Location -> MascotPose.Walk
         OnboardingStep.Done -> MascotPose.Cheer
     }
-    Column(modifier.fillMaxSize().background(if (isSystemInDarkTheme()) MaterialTheme.colorScheme.background else Color(0xFFFFFCF5)).safeDrawingPadding().imePadding().testTag("onboarding:${step.id}")) {
+    // The app's selected appearance can differ from the device's system appearance.
+    val canvas = MaterialTheme.colorScheme.background.let { if (it.luminance() > .5f) Color(0xFFFFFCF5) else it }
+    Column(modifier.fillMaxSize().background(canvas).safeDrawingPadding().imePadding().testTag("onboarding:${step.id}")) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { position-- }, enabled = position > 0 && !busy) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
+            NativeIconButton(onClick = ::goBack, enabled = (position > 0 || connectionSettings) && !busy) { MotionVectorIcon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
             Row(Modifier.weight(1f).padding(end = 28.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                repeat(route.steps.size) { index -> LinearProgressIndicator(progress = { if (index <= position) 1f else 0f }, modifier = Modifier.weight(1f).height(4.dp)) }
+                repeat(route.steps.size) { index -> LinearProgressIndicator(progress = { if (index <= position) 1f else 0f }, modifier = Modifier.weight(1f).height(4.dp), drawStopIndicator = {}) }
             }
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
@@ -138,21 +148,24 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                 val detail = route.text("onboarding.${step.id}.body", language) ?: if (step == OnboardingStep.Profile) null else stringResource(step.detail)
                 detail?.let { Text(it, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
                 when (step) {
-                    OnboardingStep.Hello -> if (route.flow == "default") {
-                        GlassOutlinedButton(onClick = {
-                            val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
-                            val invite = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
-                            if (invite.isNullOrEmpty() || invite.length > 8192 || Uri.parse(invite).scheme !in listOf("https", "zoen")) model.notify(pasteError)
-                            else model.launch {
-                                route = model.repository.query { core ->
-                                    core.growthCaptureLink(invite)
-                                    OnboardingRoute.from(core.growthOnboardingPlan())
+                    OnboardingStep.Hello -> {
+                        if (state.account == null) TextButton(onClick = { recoverAccount = true }, modifier = Modifier.testTag("onboarding-recover")) { Text("Recuperar minha conta") }
+                        if (route.flow == "default") {
+                            OutlinedButton(onClick = {
+                                val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                                val invite = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
+                                if (invite.isNullOrEmpty() || invite.length > 8192 || Uri.parse(invite).scheme !in listOf("https", "zoen")) model.notify(pasteError)
+                                else model.launch {
+                                    route = model.repository.query { core ->
+                                        core.growthCaptureLink(invite)
+                                        OnboardingRoute.from(core.growthOnboardingPlan())
+                                    }
                                 }
+                            }, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("onboarding-paste-invite")) {
+                                MotionVectorIcon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.onboarding_paste_invite))
                             }
-                        }, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("onboarding-paste-invite")) {
-                            Icon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.onboarding_paste_invite))
                         }
                     }
                     OnboardingStep.Profile -> {
@@ -173,12 +186,12 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                     }
                     OnboardingStep.Plan -> if (planning || plan == null) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { CircularProgressIndicator(Modifier.size(24.dp)); Text(stringResource(R.string.onboarding_planning)) }
-                    } else GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    } else Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(plan!!.plan.title, style = MaterialTheme.typography.titleLarge)
                             plan!!.plan.sections.forEach { section ->
                                 Text(section.title, style = MaterialTheme.typography.titleSmall)
-                                section.lines.forEach { line -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Rounded.CheckCircleOutline, null, Modifier.size(18.dp)); Text(line.text) } }
+                                section.lines.forEach { line -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { MotionVectorIcon(Icons.Rounded.CheckCircleOutline, null, Modifier.size(18.dp)); Text(line.text) } }
                             }
                             Text(plan!!.engineLabel, style = MaterialTheme.typography.labelSmall)
                         }
@@ -195,7 +208,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
             }
         }
         Column(Modifier.widthIn(max = 560.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(24.dp), verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            GlassButton(onClick = {
+            Button(onClick = {
                 when (step) {
                     OnboardingStep.Profile -> {
                         busy = true
@@ -242,11 +255,11 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                     }
                     else -> next()
                 }
-            }, enabled = !busy && !planning && (step != OnboardingStep.Profile || (name.isNotBlank() && Regex("[a-z][a-z0-9._]{2,23}").matches(handle) && (relay.startsWith("https://") || BuildConfig.DEBUG && relay.startsWith("http://")))), modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("onboarding-next")) {
+            }, enabled = !busy && !planning && (step != OnboardingStep.Areas || selected.isNotEmpty()) && (step != OnboardingStep.Plan || plan != null) && (step != OnboardingStep.Profile || (name.isNotBlank() && Regex("[a-z][a-z0-9._]{2,23}").matches(handle) && (relay.startsWith("https://") || BuildConfig.DEBUG && relay.startsWith("http://")))), modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("onboarding-next")) {
                 if (busy) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Spacer(Modifier.width(12.dp)) }
                 Text(stringResource(when { busy -> R.string.creating; step == OnboardingStep.Hello -> R.string.onboarding_hi_zoen; step == OnboardingStep.Plan -> R.string.onboarding_looks_good; step == OnboardingStep.Notifications -> R.string.enable_notifications; step == OnboardingStep.Location -> R.string.onboarding_allow_location; step == OnboardingStep.Done -> R.string.finish; else -> R.string.continue_label }))
             }
-            if (step == OnboardingStep.Notifications || step == OnboardingStep.Location) TextButton(onClick = {
+            if (step == OnboardingStep.Notifications || step == OnboardingStep.Location) TextButton(enabled = !busy, onClick = {
                 model.repository.preferences.edit().putBoolean(if (step == OnboardingStep.Notifications) "notifications" else "location", false).apply()
                 next()
             }) { Text(stringResource(R.string.not_now)) }

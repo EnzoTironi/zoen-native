@@ -28,7 +28,7 @@ fun RequestScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (
             item { Text(request.detail, style = MaterialTheme.typography.bodyLarge) }
             item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Rounded.VerifiedUser, null)
+                    MotionVectorIcon(Icons.Rounded.VerifiedUser, null)
                     Text(request.reason)
                     Text(request.audience, style = MaterialTheme.typography.bodyMedium)
                     request.costCents?.let { Text(formatMoney(it, model.repository.locale), style = MaterialTheme.typography.titleLarge) }

@@ -65,7 +65,7 @@ import xyz.tironi.zoen.theme.AppAppearance
 /** Every Ajustes screen. Back pops one; the X closes Ajustes from anywhere. */
 enum class SettingsPage(val title: Int, val icon: ImageVector, val keywords: String) {
     Profile(R.string.st_profile, Icons.Rounded.PersonOutline, "nome name foto photo arroba handle perfil"),
-    Preferences(R.string.st_preferences, Icons.Rounded.Tune, "preferências idioma language"),
+    Language(R.string.st_language, Icons.Rounded.Translate, "idioma language português english"),
     Theme(R.string.st_theme, Icons.Rounded.Contrast, "tema escuro claro dark light aparência appearance"),
     Security(R.string.st_security, Icons.Rounded.Lock, "segurança senha password código code"),
     Devices(R.string.st_devices, Icons.Rounded.Devices, "aparelhos celular computador desconectar"),
@@ -88,7 +88,7 @@ enum class SettingsPage(val title: Int, val icon: ImageVector, val keywords: Str
 /** Tokens: neutral cards, 48dp back/close circles, control outlines ≥ 3:1 on the card. */
 private object SettingsTone {
     @Composable fun darkMode() = when (AppAppearance.mode) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
-    @Composable fun card() = if (darkMode()) Color(0xFF151A24) else Color(0xFFF3F4F7)
+    @Composable fun card() = MaterialTheme.colorScheme.surfaceContainerLow
     @Composable fun edge() = MaterialTheme.colorScheme.outlineVariant
     /** Measured: light #646D80 on the card #F3F4F7 = 4.9:1 (5.4:1 on white); dark #6B7790 on #151A24 = 3.9:1. */
     @Composable fun outline() = if (darkMode()) Color(0xFF6B7790) else Color(0xFF646D80)
@@ -100,7 +100,7 @@ fun SettingsScreen(model: ZoenViewModel, state: AppState, page: String?, navigat
     when (val p = page?.let { runCatching { SettingsPage.valueOf(it) }.getOrNull() }) {
         null -> SettingsHome(state, navigate, close)
         SettingsPage.Profile -> ProfilePage(state, navigate, back, close)
-        SettingsPage.Preferences -> PreferencesPage(state, navigate, back, close)
+        SettingsPage.Language -> LanguagePage(back, close)
         SettingsPage.Theme -> ThemePage(back, close)
         SettingsPage.Security -> SecurityPage(model, state, navigate, back, close)
         SettingsPage.Devices -> DevicesPage(model, state, back, close)
@@ -151,13 +151,12 @@ private fun Modifier.verticalScrollCompat(): Modifier = this.then(Modifier.verti
 @Composable
 private fun CircleButton(icon: ImageVector, description: String, tag: String, onClick: () -> Unit) {
     val interactions = remember { MutableInteractionSource() }
-    val pressed by interactions.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, tween(150), label = "press")
-    Box(
-        Modifier.size(48.dp).scale(scale).clip(CircleShape).background(SettingsTone.card()).border(0.5.dp, SettingsTone.edge(), CircleShape)
-            .clickable(interactions, settingsRipple(), role = Role.Button, onClickLabel = description, onClick = onClick).testTag(tag),
-        contentAlignment = Alignment.Center,
-    ) { Icon(icon, description, Modifier.size(20.dp)) }
+    // Artwork-only feedback observes real press and lifecycle/reduced motion.
+    FilledTonalIconButton(
+        onClick = onClick,
+        modifier = Modifier.size(48.dp).testTag(tag),
+        interactionSource = interactions,
+    ) { MotionVectorIcon(icon, description, Modifier.size(20.dp), interactions = interactions) }
 }
 
 @Composable private fun settingsRipple() = androidx.compose.material3.ripple()
@@ -181,21 +180,22 @@ private fun Caption(text: Int, vararg args: Any) {
 private fun SRow(icon: ImageVector?, title: String, subtitle: String? = null, value: String? = null, tint: Color = Color.Unspecified, chevron: Boolean = true, enabled: Boolean = true, tag: String? = null, onClick: (() -> Unit)? = null) {
     val haptics = rememberZoenHaptics()
     val clickable = onClick != null && enabled
+    val interactions = remember { MutableInteractionSource() }
     Row(
         Modifier.fillMaxWidth().heightIn(min = 52.dp)
-            .then(if (clickable) Modifier.clickable(role = Role.Button) { haptics.perform(ZoenFeedback.Tap); onClick!!() } else Modifier)
+            .then(if (clickable) Modifier.clickable(interactionSource = interactions, indication = settingsRipple(), role = Role.Button) { haptics.perform(ZoenFeedback.Tap); onClick!!() } else Modifier)
             .then(tag?.let { Modifier.testTag(it) } ?: Modifier)
             .padding(horizontal = 16.dp, vertical = if (subtitle != null) 8.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         val alpha = if (enabled) 1f else 0.45f
-        icon?.let { Icon(it, null, Modifier.size(20.dp), tint = (if (tint == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else tint).copy(alpha = alpha)) }
+        icon?.let { MotionVectorIcon(it, null, Modifier.size(20.dp), tint = (if (tint == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else tint).copy(alpha = alpha), interactions = interactions) }
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = (if (tint == Color.Unspecified) MaterialTheme.colorScheme.onSurface else tint).copy(alpha = alpha))
             subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)) }
         }
         value?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha), textAlign = TextAlign.End) }
-        if (chevron && clickable) Icon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (chevron && clickable) MotionVectorIcon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -219,11 +219,7 @@ private fun RadioRow(title: String, selected: Boolean, subtitle: String? = null,
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha))
             subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
-        val dot by animateFloatAsState(if (selected) 1f else 0f, spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMedium), label = "dot")
-        val ring = if (selected) MaterialTheme.colorScheme.onSurface else SettingsTone.outline()
-        Box(Modifier.size(20.dp).border(1.5.dp, ring, CircleShape), contentAlignment = Alignment.Center) {
-            Box(Modifier.size(10.dp).scale(0.25f + 0.75f * dot).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = dot * alpha)))
-        }
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
     }
 }
 
@@ -232,7 +228,7 @@ private fun PrimaryButton(text: String, enabled: Boolean = true, busy: Boolean =
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed && enabled) 0.96f else 1f, tween(150), label = "press")
-    GlassButton(
+    Button(
         onClick, Modifier.fillMaxWidth().height(50.dp).scale(scale).then(tag?.let { Modifier.testTag(it) } ?: Modifier), enabled = enabled && !busy,
         interactionSource = interactions,
         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onSurface, contentColor = MaterialTheme.colorScheme.surface),
@@ -265,7 +261,7 @@ private fun settingsFold(s: String) = Normalizer.normalize(s, Normalizer.Form.NF
 
 private val sections = listOf(
     R.string.st_account to listOf(SettingsPage.Profile, SettingsPage.Security, SettingsPage.Devices, SettingsPage.Backup, SettingsPage.Data),
-    R.string.st_preferences to listOf(SettingsPage.Preferences, SettingsPage.Theme, SettingsPage.Accessibility, SettingsPage.Disappearing),
+    R.string.st_preferences to listOf(SettingsPage.Language, SettingsPage.Theme, SettingsPage.Accessibility, SettingsPage.Disappearing),
     R.string.st_zoen to listOf(SettingsPage.Plans, SettingsPage.Invites, SettingsPage.Wallet, SettingsPage.Discover, SettingsPage.Moderation, SettingsPage.Tasks),
     R.string.st_help to listOf(SettingsPage.Feedback, SettingsPage.Legal, SettingsPage.About),
 )
@@ -282,13 +278,13 @@ private fun SettingsHome(state: AppState, navigate: (NavKey) -> Unit, close: () 
             Modifier.fillMaxWidth().height(48.dp).clip(CircleShape).background(SettingsTone.card()).border(1.dp, SettingsTone.outline(), CircleShape).padding(start = 16.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            MotionVectorIcon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) Text(stringResource(R.string.st_search), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 BasicTextField(query, { query = it }, Modifier.fillMaxWidth().testTag("settings:search"), singleLine = true,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface), cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface))
             }
-            if (query.isNotEmpty()) IconButton({ query = "" }, Modifier.size(48.dp)) { Icon(Icons.Rounded.Cancel, stringResource(R.string.st_clear), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (query.isNotEmpty()) NativeIconButton({ query = "" }, Modifier.size(48.dp)) { MotionVectorIcon(Icons.Rounded.Cancel, stringResource(R.string.st_clear), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         when {
             q.isEmpty() -> {
@@ -298,7 +294,7 @@ private fun SettingsHome(state: AppState, navigate: (NavKey) -> Unit, close: () 
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Avatar(me, size = 52)
                         Column(Modifier.weight(1f)) { Text(me.name, style = MaterialTheme.typography.titleMedium); Text("@${me.handle}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        MotionVectorIcon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 sections.forEach { (header, pages) -> Group(header) { pages.forEachIndexed { i, p -> if (i > 0) RowDivider(); NavRow(p, navigate) } } }
@@ -330,16 +326,13 @@ private fun ProfilePage(state: AppState, navigate: (NavKey) -> Unit, back: () ->
 }
 
 @Composable
-private fun PreferencesPage(state: AppState, navigate: (NavKey) -> Unit, back: () -> Unit, close: () -> Unit) = SettingsScaffold(stringResource(R.string.st_preferences), back, close) {
+private fun LanguagePage(back: () -> Unit, close: () -> Unit) = SettingsScaffold(stringResource(R.string.st_language), back, close) {
     val context = LocalContext.current
     Group {
-        NavRow(SettingsPage.Theme, navigate, stringResource(AppAppearance.label()))
-        RowDivider()
         SRow(Icons.Rounded.Translate, stringResource(R.string.st_language), value = Locale.getDefault().getDisplayLanguage(Locale.getDefault()).replaceFirstChar { it.titlecase() }, tag = "settings:language") {
             runCatching { context.startActivity(Intent(AndroidSettings.ACTION_APP_LOCALE_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null))) }
                 .onFailure { context.startActivity(Intent(AndroidSettings.ACTION_LOCALE_SETTINGS)) }
         }
-        RowDivider(); NavRow(SettingsPage.Data, navigate); RowDivider(); NavRow(SettingsPage.Accessibility, navigate)
     }
     Caption(R.string.st_language_caption)
 }
@@ -415,56 +408,25 @@ private fun BackupPage(model: ZoenViewModel, state: AppState, back: () -> Unit, 
     var ask by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val haptics = rememberZoenHaptics()
-    LaunchedEffect(state.revision) { status = runCatching { model.repository.query { it.backupStatus() } }.getOrNull() }
-    SettingsScaffold(stringResource(R.string.st_backup), back, close) {
+    LaunchedEffect(state.revision, ask) { status = model.repository.query { it.backupStatus() } }
+    SettingsScaffold("Cópia e recuperação", back, close) {
         val s = status
         Group {
             if (s?.enabled == true) {
-                val last = if (s.lastBackupMs > 0) stringResource(R.string.st_backup_last, android.text.format.DateUtils.getRelativeTimeSpanString(s.lastBackupMs).toString()) else stringResource(R.string.st_backup_none)
-                SRow(Icons.Rounded.CloudDone, stringResource(R.string.st_backup_on), last); RowDivider()
-                SRow(Icons.Rounded.CloudSync, stringResource(R.string.st_backup_now), enabled = !busy, tag = "settings:backupNow") {
+                SRow(Icons.Rounded.CloudDone, "Cópia ativada", if (s.lastBackupMs > 0) "Sua última cópia foi enviada." else "O envio ainda não foi concluído."); RowDivider()
+                SRow(Icons.Rounded.CloudSync, "Fazer cópia agora", enabled = !busy, tag = "settings:backupNow") {
                     busy = true
                     model.launch { try { status = model.repository.network { it.backupNow(model.repository.vault) }; haptics.perform(ZoenFeedback.Confirm) } finally { busy = false } }
                 }
             } else {
-                SRow(Icons.Rounded.CloudOff, stringResource(R.string.st_backup_off), stringResource(R.string.st_backup_local))
-                if (state.account != null) { RowDivider(); SRow(Icons.Rounded.Lock, stringResource(R.string.st_backup_turn_on), tag = "settings:backupTurnOn") { ask = true } }
+                SRow(Icons.Rounded.CloudOff, "Cópia desativada", "Suas conversas estão apenas nos seus aparelhos.")
+                if (state.account != null && s != null) { RowDivider(); SRow(Icons.Rounded.Key, "Ativar com chave de recuperação", tag = "settings:backupTurnOn") { ask = true } }
             }
         }
-        Group { SRow(Icons.Rounded.Restore, stringResource(R.string.st_restore), stringResource(R.string.st_restore_unavailable), chevron = false, enabled = false, tag = "settings:restore") }
-        Caption(R.string.st_restore_caption)
+        Text("Para recuperar em um aparelho novo, escolha Recuperar minha conta na tela inicial e use sua chave de 64 números. Guarde a chave fora deste aparelho.", style = MaterialTheme.typography.bodySmall)
+        if (s?.enabled == true && s.mode == "password") Text("Esta cópia usa senha. Ela foi mantida e você pode continuar fazendo cópias. A recuperação por senha não está disponível nesta tela; mantenha um aparelho conectado.", style = MaterialTheme.typography.bodySmall)
     }
-    if (ask) BackupPasswordDialog(model, { ask = false }) { status = it; haptics.perform(ZoenFeedback.Confirm) }
-}
-
-@Composable
-private fun BackupPasswordDialog(model: ZoenViewModel, dismiss: () -> Unit, done: (BackupStatusDto) -> Unit) {
-    var password by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    AlertDialog(
-        onDismissRequest = dismiss,
-        title = { Text(stringResource(R.string.st_backup_password)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.st_backup_password_caption), style = MaterialTheme.typography.bodyMedium)
-                OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth().testTag("settings:backupPassword"), label = { Text(stringResource(R.string.st_password)) },
-                    singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = SettingsTone.outline()))
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = password.length >= 8 && !busy, onClick = {
-                busy = true
-                model.launch {
-                    try { done(model.repository.network { it.backupTurnOnPassword(password, model.repository.vault) }); dismiss() }
-                    catch (e: CoreException) { error = e.message } finally { busy = false }
-                }
-            }) { Text(stringResource(R.string.st_backup_turn_on_btn)) }
-        },
-        dismissButton = { TextButton(dismiss) { Text(stringResource(R.string.st_cancel)) } },
-    )
+    if (ask) RecoveryKeySetup(model, { ask = false }) { status = it; haptics.perform(ZoenFeedback.Confirm) }
 }
 
 // endregion
@@ -559,7 +521,7 @@ private fun InvitesPage(model: ZoenViewModel, state: AppState, back: () -> Unit,
         }
     }) {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(SettingsTone.radius)).background(SettingsTone.card()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Rounded.CardGiftcard, null)
+            MotionVectorIcon(Icons.Rounded.CardGiftcard, null)
             Text(stringResource(R.string.st_invites_title), style = MaterialTheme.typography.titleLarge)
             Text(stringResource(R.string.st_invites_rule), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

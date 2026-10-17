@@ -2,6 +2,7 @@
 import init, * as core from './core/zoen_web_core.js';
 import { bytes, integer, message, object, string } from './boundary.ts';
 import type { CoreOperation } from './worker-client.ts';
+import { projectCurrentConversations, updatesConversations } from './core-view.ts';
 
 declare global {
   var zoenSign: (payload: Uint8Array) => Uint8Array;
@@ -26,12 +27,20 @@ function parseOperation(input: unknown): CoreOperation {
     case 'queue_post': return { kind: 'queue_post', space: string(value.space), text: string(value.text), replyTo: string(value.replyTo), thread: value.thread === true, forwarded: value.forwarded === true, now: integer(value.now) };
     case 'queue_annotation': return { kind: 'queue_annotation', space: string(value.space), target: string(value.target), note: string(value.note), now: integer(value.now) };
     case 'mark_read': return { kind: 'mark_read', space: string(value.space) };
+    case 'queue_file': return { kind: 'queue_file', space: string(value.space), doc: string(value.doc), now: integer(value.now) };
+    case 'queue_failed_file': return { kind: 'queue_failed_file', space: string(value.space), doc: string(value.doc), now: integer(value.now), reason: string(value.reason), chunks: string(value.chunks) };
+    case 'local_chunk': return { kind: 'local_chunk', blob: string(value.blob) };
+    case 'fail_outbox': return { kind: 'fail_outbox', client_id: string(value.client_id), reason: string(value.reason) };
+    case 'seal_file': return { kind: 'seal_file', name: string(value.name), mime: string(value.mime), bytes: bytes(value.bytes), thumb: bytes(value.thumb) };
+    case 'open_chunk': return { kind: 'open_chunk', chunk: string(value.chunk), sealed: bytes(value.sealed) };
+    case 'blob_put_message': return { kind: 'blob_put_message', sha: string(value.sha), ts: integer(value.ts), relay: string(value.relay) };
     case 'queue_join': return { kind: 'queue_join', space: string(value.space), role: string(value.role), code: string(value.code), now: integer(value.now) };
     default: throw new Error('Invalid browser core operation.');
   }
 }
 
 let client: core.BrowserCore | undefined;
+let displayEnglish = false;
 function restored(): core.BrowserCore {
   if (!client) throw new Error('The encrypted session has not been restored.');
   return client;
@@ -51,7 +60,7 @@ function run(operation: CoreOperation): string | Uint8Array {
       client?.free();
       client = undefined;
       client = new core.BrowserCore(operation.account, operation.snapshot);
-      return client.view();
+      return client.viewAt(Date.now(), displayEnglish);
     }
     case 'bootstrap': return restored().bootstrap();
     case 'receive': return restored().receive(operation.bytes, operation.now);
@@ -59,6 +68,13 @@ function run(operation: CoreOperation): string | Uint8Array {
     case 'queue_post': return restored().queue_post(operation.space, operation.text, operation.replyTo || undefined, operation.thread, operation.forwarded, operation.now);
     case 'queue_annotation': return restored().queue_annotation(operation.space, operation.target, operation.note, operation.now);
     case 'mark_read': return restored().mark_read(operation.space);
+    case 'queue_failed_file': return restored().queue_failed_file(operation.space, operation.doc, operation.now, operation.reason, operation.chunks);
+    case 'local_chunk': return restored().local_chunk(operation.blob);
+    case 'fail_outbox': return restored().fail_outbox(operation.client_id, operation.reason);
+    case 'queue_file': return restored().queue_file(operation.space, operation.doc, operation.now);
+    case 'seal_file': return core.seal_file(operation.name, operation.mime, operation.bytes, operation.thumb);
+    case 'open_chunk': return core.open_chunk(operation.chunk, operation.sealed);
+    case 'blob_put_message': return core.blob_put_message(operation.sha, operation.ts, operation.relay);
     case 'queue_join': return restored().queue_join(operation.space, operation.role, operation.code, operation.now);
     default: { const exhaustive: never = operation; throw new Error(`Unknown operation ${exhaustive}`); }
   }
@@ -70,6 +86,7 @@ self.onmessage = (event: MessageEvent<unknown>) => {
   const data = object(event.data);
   if (data.kind === 'init') {
     if (!(data.bridge instanceof SharedArrayBuffer) || ready) throw new Error('Invalid signing bridge.');
+    displayEnglish = string(data.locale).toLowerCase().startsWith('en');
     const bridge = data.bridge;
     const control = new Int32Array(bridge, 0, 4);
     globalThis.zoenSign = (payload) => {
@@ -91,8 +108,11 @@ self.onmessage = (event: MessageEvent<unknown>) => {
   const id = integer(data.id);
   void ready?.then(() => {
     try {
-      const result = run(parseOperation(data.operation));
-      self.postMessage({ kind: 'result', id, result });
+      const operation = parseOperation(data.operation);
+      const result = run(operation);
+      const projected = typeof result === 'string' && updatesConversations(operation.kind)
+        ? projectCurrentConversations(result, restored().viewAt(Date.now(), displayEnglish)) : result;
+      self.postMessage({ kind: 'result', id, result: projected });
     } catch (error) { self.postMessage({ kind: 'error', id, message: message(error) }); }
   });
 };

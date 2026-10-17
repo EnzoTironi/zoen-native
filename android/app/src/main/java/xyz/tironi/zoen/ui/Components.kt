@@ -70,7 +70,7 @@ fun Avatar(persona: Persona?, modifier: Modifier = Modifier, size: Int = 52, onC
         if (photo != null) Image(photo!!.asImageBitmap(), persona?.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else if (persona?.handle == "zoen") ZoenMascot(Modifier.fillMaxSize().padding(2.dp), headOnly = true, mood = if (working) MascotMood.Working else MascotMood.Pout)
         else if (drawing != null) AvatarDrawing(drawing, size)
-        else if (persona?.kind == PersonaKind.AGENT) Icon(Icons.Rounded.AutoAwesome, persona.name, tint = MaterialTheme.colorScheme.primary)
+        else if (persona?.kind == PersonaKind.AGENT) MotionVectorIcon(Icons.Rounded.AutoAwesome, persona.name, tint = MaterialTheme.colorScheme.primary)
         else Text(persona?.initials ?: "Z", style = MaterialTheme.typography.titleMedium,
             fontSize = with(LocalDensity.current) { (size * .44f).dp.toSp() },
             color = if (person) { if (color.luminance() > .5f) Color(0xFF0E1320) else Color.White } else MaterialTheme.colorScheme.onSurface,
@@ -127,7 +127,7 @@ fun SettingsRow(icon: ImageVector, title: String, detail: String? = null, onClic
         headlineContent = { Text(title) },
         supportingContent = detail?.let { { Text(it) } },
         leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
-        trailingContent = trailing ?: { Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        trailingContent = trailing ?: { MotionVectorIcon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
         modifier = Modifier.clickable(onClick = { haptics.perform(ZoenFeedback.Tap); onClick() }),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )

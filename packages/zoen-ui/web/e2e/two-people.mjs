@@ -1,5 +1,8 @@
 // Two people, each with a CLI "phone" that links a headless browser; they chat on the web.
 import { chromium } from 'playwright-core';
+import assert from 'node:assert/strict';
+import { chatRow, openChat, showNarrowChats } from './chat-navigation.mjs';
+const wideViewport = { width: 1280, height: 820 };
 import { spawn, execFileSync } from 'node:child_process';
 const RELAY = process.env.RELAY ?? 'http://127.0.0.1:8790';
 const WEB = process.env.WEB ?? 'http://127.0.0.1:4174';
@@ -11,15 +14,18 @@ const tag = Date.now().toString(36).slice(-5);
 const people = [{ name: 'Ana', handle: `ana${tag}` }, { name: 'Bruno', handle: `bruno${tag}` }];
 for (const p of people) { p.home = `/tmp/zw-${p.handle}`; run(p.home, 'init', '--name', p.name, '--handle', p.handle, '--relay', RELAY); }
 const [ana, bruno] = people;
-const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/google-chrome', args: ['--no-sandbox', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'] });
 const watchers = [];
 const errors = [];
 async function linkWeb(p) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 820 }, deviceScaleFactor: 2, locale: 'pt-BR' });
+  const ctx = await browser.newContext({ viewport: wideViewport, deviceScaleFactor: 2, locale: 'pt-BR', permissions: ['microphone'] });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`${p.name}: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`${p.name}: ${m.text()}`); });
   await page.goto(`${WEB}/?relay=${encodeURIComponent(RELAY)}`);
+  const welcome = page.getByRole('button', { name: 'Hi, Zoen!', exact: true });
+  await Promise.race([welcome.waitFor(), page.getByRole('button', { name: 'Conectar este navegador' }).waitFor()]);
+  if (await welcome.isVisible()) await welcome.click();
   await page.getByRole('button', { name: 'Conectar este navegador' }).waitFor();
   if (p === ana) await page.screenshot({ path: `${SHOTS}/01-conectar.png` });
   await page.getByRole('button', { name: 'Conectar este navegador' }).click();
@@ -36,7 +42,7 @@ const watch = (p) => { p.watcher = spawn(ZOEN, ['--home', p.home, 'watch', '--fo
 const offline = async (p, fn) => { p.watcher?.kill(); await new Promise((r) => setTimeout(r, 1500)); try { fn(); } finally { watch(p); } };
 run(ana.home, 'dm', `@${bruno.handle}`, 'Oi Bruno! Tudo certo pra sexta?');
 people.forEach(watch);
-const ready = async (page) => { try { await page.locator('.zm-chat-open').first().click({ timeout: 90000 }); } catch (e) { await page.screenshot({ path: '/tmp/zw-fail.png' }); console.log('errors:', JSON.stringify(errors)); throw e; } await page.waitForSelector('.zm-composer textarea:not([disabled])', { timeout: 90000 }); };
+const ready = async (page) => { await page.locator('.na-chat-row:visible, .zm-chat-open:visible').first().click({ timeout: 90000 }); await page.waitForSelector('.zm-composer textarea:not([disabled])', { timeout: 90000 }); };
 await Promise.all([ready(ana.page), ready(bruno.page)]);
 const send = async (page, text) => { await page.locator('.zm-composer textarea').first().fill(text); await page.keyboard.press('Enter'); };
 await bruno.page.locator('.zm-main .zm-text', { hasText: 'Oi Bruno! Tudo certo pra sexta?' }).waitFor();
@@ -50,7 +56,7 @@ await ana.page.screenshot({ path: `${SHOTS}/03-ticks-lidos.png` });
 const msg = bruno.page.locator('[data-testid=message]', { hasText: 'Que horas' });
 await msg.hover(); await msg.getByRole('button', { name: 'Reagir' }).click();
 await bruno.page.screenshot({ path: `${SHOTS}/04-reagir.png` });
-await bruno.page.getByRole('menuitem', { name: '❤️' }).click();
+await bruno.page.getByRole('dialog', { name: 'Escolher reação' }).getByRole('button', { name: '❤️', exact: true }).click();
 await ana.page.locator('.zm-reactions button', { hasText: '❤️' }).waitFor({ timeout: 30000 });
 // Inline reply.
 const cake = ana.page.locator('[data-testid=message]', { hasText: 'Levo o bolo' });
@@ -62,8 +68,9 @@ const mine = ana.page.locator('[data-testid=message]', { hasText: 'Você é dema
 await mine.hover(); await mine.getByRole('button', { name: 'Mais ações' }).click();
 await ana.page.screenshot({ path: `${SHOTS}/05-menu-acoes.png` });
 await ana.page.getByRole('menuitem', { name: 'Editar' }).click();
-await ana.page.locator('.zm-composer textarea').first().fill('Você é demais, Bruno!');
-await ana.page.keyboard.press('Enter');
+const editor = ana.page.getByRole('dialog', { name: 'Editar mensagem' });
+await editor.getByRole('textbox').fill('Você é demais, Bruno!');
+await editor.getByRole('button', { name: 'Salvar', exact: true }).click();
 await bruno.page.locator('.zm-main .zm-text', { hasText: 'Você é demais, Bruno!' }).waitFor({ timeout: 30000 });
 await bruno.page.locator('.zm-meta', { hasText: 'editada' }).waitFor();
 // Thread.
@@ -88,13 +95,20 @@ await bruno.page.getByRole('menuitem', { name: 'Apagar para todos' }).click();
 await ana.page.locator('.zm-main .zm-deleted').waitFor({ timeout: 30000 });
 // A second chat, unread + pinned/muted/archived in the list.
 await offline(bruno, () => { run(bruno.home, 'group', 'Churrasco de sexta', `@${ana.handle}`); run(bruno.home, 'send', 'Churrasco de sexta', `@${ana.name.toLowerCase()} traz o carvão?`); });
-await ana.page.locator('.zm-chat-open', { hasText: 'Churrasco de sexta' }).waitFor({ timeout: 60000 });
-await ana.page.locator('.zm-chat', { hasText: 'Churrasco' }).locator('.zm-badge').waitFor({ timeout: 60000 }).catch(() => {});
+await chatRow(ana.page, 'Churrasco de sexta').waitFor({ timeout: 60000 });
+await chatRow(ana.page, 'Churrasco de sexta').locator('.na-row-badge, .zm-badge').waitFor({ timeout: 60000 });
 await ana.page.screenshot({ path: `${SHOTS}/08-lista-nao-lidas.png` });
-const row = ana.page.locator('.zm-chat', { hasText: 'Bruno' }).first();
-await row.hover(); await row.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Fixar' }).click();
-await row.hover(); await row.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Silenciar' }).click();
+// The wide native sidebar is not the hidden phone list. Exercise phone-only
+// list preferences by navigating Back to Chats in the actual narrow layout.
+await showNarrowChats(ana.page);
+const row = chatRow(ana.page, `@${bruno.handle}`);
+await row.hover(); await row.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Fixar', exact: true }).click();
+await row.hover(); await row.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Silenciar', exact: true }).click();
+await row.locator('[aria-label="Fixada"]').waitFor();
+await row.locator('[aria-label="Silenciada"]').waitFor();
 await ana.page.screenshot({ path: `${SHOTS}/09-fixada-silenciada.png` });
+await ana.page.setViewportSize(wideViewport);
+await openChat(ana.page, `@${bruno.handle}`);
 // Forward.
 const fw = ana.page.locator('.zm-main [data-testid=message]', { hasText: 'Levo o bolo' }).first();
 await fw.hover(); await fw.getByRole('button', { name: 'Mais ações' }).click();
@@ -104,17 +118,55 @@ await ana.page.getByRole('dialog').getByRole('button', { name: /Churrasco/ }).cl
 await ana.page.locator('.zm-forwarded').first().waitFor({ timeout: 30000 });
 await ana.page.locator('.zm-main .zm-own .zm-ticks').last().waitFor({ timeout: 30000 }); await ana.page.waitForTimeout(500);
 await ana.page.screenshot({ path: `${SHOTS}/11-encaminhada.png` });
-const crow = ana.page.locator('.zm-chat', { hasText: 'Churrasco' }).first();
-await crow.hover(); await crow.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Arquivar' }).click();
+await showNarrowChats(ana.page);
+const crow = chatRow(ana.page, 'Churrasco de sexta');
+await crow.hover(); await crow.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Arquivar', exact: true }).click();
+await crow.waitFor({ state: 'hidden' });
+await ana.page.locator('.zm-archived-row').waitFor();
 await ana.page.screenshot({ path: `${SHOTS}/12-arquivadas.png` });
-await bruno.page.locator('.zm-chat', { hasText: 'Ana' }).first().click();
+await ana.page.setViewportSize(wideViewport);
+assert.equal(await chatRow(ana.page, 'Churrasco de sexta').count(), 0);
+await openChat(bruno.page, `@${ana.handle}`);
 await bruno.page.waitForTimeout(500); await bruno.page.screenshot({ path: `${SHOTS}/13-bruno-chat.png` });
 // Empty composer shows the mic; typing swaps to send.
 await bruno.page.locator('.zm-main .zm-composer textarea').fill('');
 await bruno.page.locator('.zm-main .zm-composer').screenshot({ path: `${SHOTS}/14-composer-mic.png` });
 await bruno.page.locator('.zm-main .zm-composer textarea').fill('Até sexta!');
 await bruno.page.locator('.zm-main .zm-composer').screenshot({ path: `${SHOTS}/15-composer-enviar.png` });
+// Media: photo, video, file and a voice note, end-to-end encrypted through the relay.
+const fixtures = new URL('./fixtures/', import.meta.url).pathname;
+await openChat(ana.page, `@${bruno.handle}`);
+const attach = async (page, file) => { await page.locator('.zm-main input[type=file]').setInputFiles(fixtures + file, { timeout: 15000 }); };
+await attach(ana.page, 'praia.jpg');
+await bruno.page.locator('.zm-main .zm-visual.zm-image img').last().waitFor({ timeout: 40000 });
+await attach(ana.page, 'video.webm');
+await bruno.page.locator('.zm-main .zm-visual.zm-video').last().waitFor({ timeout: 60000 });
+await attach(ana.page, 'cardapio.pdf');
+await bruno.page.locator('.zm-main .zm-file', { hasText: 'cardapio.pdf' }).waitFor({ timeout: 60000 });
+await bruno.page.waitForTimeout(400);
+await bruno.page.screenshot({ path: `${SHOTS}/16-midia-recebida.png` });
+await bruno.page.locator('.zm-main .zm-visual.zm-image').last().click();
+await bruno.page.locator('.zm-lightbox img').waitFor({ timeout: 30000 }); await bruno.page.waitForTimeout(300);
+await bruno.page.screenshot({ path: `${SHOTS}/17-foto-aberta.png` });
+await bruno.page.locator('.zm-lightbox button', { hasText: 'Fechar' }).click();
+await bruno.page.locator('.zm-main .zm-visual.zm-video').last().click();
+await bruno.page.locator('.zm-lightbox video').waitFor({ timeout: 30000 }); await bruno.page.waitForTimeout(1200);
+await bruno.page.screenshot({ path: `${SHOTS}/18-video-tocando.png` });
+await bruno.page.locator('.zm-lightbox button', { hasText: 'Fechar' }).click();
+await bruno.page.locator('.zm-main .zm-composer textarea').fill('');
+await bruno.page.locator('.zm-main').getByRole('button', { name: 'Gravar mensagem de voz' }).click();
+await bruno.page.waitForTimeout(2500);
+await bruno.page.screenshot({ path: `${SHOTS}/19-gravando-voz.png` });
+await bruno.page.getByRole('button', { name: 'Enviar mensagem de voz' }).click();
+const voice = ana.page.locator('.zm-main [data-testid=voice]').last();
+await voice.waitFor({ timeout: 60000 });
+await voice.getByRole('button', { name: 'Ouvir mensagem de voz' }).click({ timeout: 30000 });
+await ana.page.waitForTimeout(1200);
+await ana.page.screenshot({ path: `${SHOTS}/20-voz-tocando.png` });
+await ana.page.locator('.zm-main .zm-own').last().screenshot({ path: `${SHOTS}/21-arquivo-enviado.png` });
+const fatal = errors;
 console.log('errors:', JSON.stringify(errors));
+if (fatal.length) throw new Error(`Browser errors: ${fatal.join(' | ')}`);
 watchers.forEach((w) => w.kill());
 await browser.close();
 console.log('E2E OK');

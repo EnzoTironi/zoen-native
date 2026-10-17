@@ -102,7 +102,11 @@ fun AvatarDrawing(asset: AvatarAsset, size: Int, animate: Boolean = true, modifi
     val moving = animate && size >= 56 && rememberMotionEnabled()
     val still = remember(asset.id) { context.assets.open("avatars/stills/${asset.name}.png").use(BitmapFactory::decodeStream) }
     if (moving) {
-        val drawable = remember(asset.id) { ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.assets, "avatars/loops/${asset.name}.webp")) }
+        val drawable = remember(asset.id) { if (android.system.Os.getenv("ZOEN_PARITY_FIXTURE") == "native-parity-v1") {
+            // Decode the actual first loop frame, matching iOS frames.first, not the catalog still.
+            android.graphics.drawable.BitmapDrawable(context.resources, ImageDecoder.decodeBitmap(
+                ImageDecoder.createSource(context.assets, "avatars/loops/${asset.name}.webp")))
+        } else ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.assets, "avatars/loops/${asset.name}.webp")) }
         DisposableEffect(drawable) { onDispose { (drawable as? AnimatedImageDrawable)?.stop() } }
         AndroidView(factory = { AvatarLoopView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP; contentDescription = asset.name } },
             update = { it.updatePlayback(drawable, lifecycle.isAtLeast(Lifecycle.State.RESUMED)) },

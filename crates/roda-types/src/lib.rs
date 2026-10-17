@@ -961,3 +961,6 @@ mod tests {
         assert_eq!(VoiceMeta::encode(&[f32::NAN, -1.0, 2.0]), "00f");
     }
 }
+
+/// Pure mini-app widget projection.
+pub mod widget;

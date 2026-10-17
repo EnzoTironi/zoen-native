@@ -88,8 +88,8 @@ struct AgentAvatar: View {
         // Animação dirigida por TimelineView (sem repeatForever em @State): some
         // limpo quando o estado muda, sem transições presas.
         if state == .working {
-            TimelineView(.animation(paused: ambientPaused)) { ctx in
-                let t = ctx.date.timeIntervalSinceReferenceDate
+            TimelineView(.animation(paused: ambientPaused || InkClock.freeze != nil)) { ctx in
+                let t = InkClock.freeze ?? ctx.date.timeIntervalSinceReferenceDate
                 content(angle: .degrees((t.truncatingRemainder(dividingBy: 1.6)) / 1.6 * 360),
                         scale: 0.97 + 0.03 * cos(t * 2 * .pi / 1.8))
             }
