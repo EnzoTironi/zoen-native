@@ -150,7 +150,13 @@ class BrowserDriver implements CoreDriver {
       session: this.session,
       changed: (state) => {
         if (generation !== this.generation) return;
+        const previousConnection = this.state.kind === 'active' ? this.state.connection.kind : null;
         this.state = state;
+        if (
+          (state.kind === 'active' && state.connection.kind !== previousConnection) ||
+          (state.kind === 'failed' && previousConnection !== null)
+        )
+          this.changed({ kind: 'connection' });
         this.changed(
           state.kind === 'failed' ? { kind: 'error', message: state.message } : { kind: 'change' },
         );
@@ -159,7 +165,7 @@ class BrowserDriver implements CoreDriver {
         if (generation !== this.generation) return;
         this.changed(
           frame.kind === 'presence'
-            ? { kind: 'presence', fromId: frame.identity, detail: frame.online ? '1' : '0' }
+            ? { kind: 'presence', identityId: frame.identity, online: frame.online }
             : {
                 kind: 'ephemeral',
                 spaceId: frame.space,

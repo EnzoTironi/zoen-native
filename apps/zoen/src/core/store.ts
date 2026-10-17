@@ -1,3 +1,11 @@
+import {
+  LiveActivity,
+  TypingSender,
+  activityClock,
+  emptyActivity,
+  type ActivityClock,
+  type LiveActivityState,
+} from './live-activity.ts';
 import type {
   Command,
   CommandResult,
@@ -14,6 +22,7 @@ export type ClientState = {
   snapshot: Snapshot | null;
   timelines: Readonly<Record<string, TimelinePage>>;
   notice: string | null;
+  activity: LiveActivityState;
 };
 
 const failure = (error: unknown) =>
@@ -27,9 +36,11 @@ export class ClientStore {
     snapshot: null,
     timelines: {},
     notice: null,
+    activity: emptyActivity(),
   };
   private readonly listeners = new Set<() => void>();
   private generation = 0;
+  private activityGeneration = 0;
   private stopEvents: (() => void) | undefined;
   private refreshTask: Promise<void> | undefined;
   private refreshAgain = false;
@@ -37,9 +48,43 @@ export class ClientStore {
   private readonly timelineVersions = new Map<string, number>();
   private readonly olderTasks = new Map<string, Promise<void>>();
 
+  private readonly live: LiveActivity;
+  private readonly typing: TypingSender;
   readonly driver: CoreDriver;
-  constructor(driver: CoreDriver) {
+  constructor(driver: CoreDriver, clock: ActivityClock = activityClock) {
     this.driver = driver;
+    this.live = new LiveActivity(
+      () => this.state.snapshot,
+      (activity) => this.publish({ activity }),
+      clock,
+    );
+    this.typing = new TypingSender(
+      (space) => {
+        const snapshot = this.state.snapshot;
+        const me = snapshot?.me?.id ?? snapshot?.account?.identity_id;
+        return (
+          this.live.isConnected() &&
+          this.state.phase === 'ready' &&
+          snapshot?.connection.state === 'online' &&
+          snapshot.connection.synced &&
+          snapshot.conversations.some(
+            (chat) => chat.id === space && chat.members.some((person) => person.id === me),
+          )
+        );
+      },
+      (space_id, typing) => this.driver.request({ op: 'set_typing', space_id, typing }),
+      clock,
+    );
+  }
+  setTyping(space: string, typing: boolean) {
+    this.typing.update(space, typing);
+  }
+  private resetActivity(waitForSnapshot = false) {
+    ++this.activityGeneration;
+    if (waitForSnapshot) this.live.beginConnection();
+    else this.live.reset();
+    this.typing.reset();
+    this.publish({ activity: emptyActivity() });
   }
   getSnapshot = (): ClientState => this.state;
   subscribe = (listener: () => void) => {
@@ -56,6 +101,7 @@ export class ClientStore {
   async open(mode: Mode = 'account'): Promise<void> {
     const generation = ++this.generation;
     this.stopEvents?.();
+    this.resetActivity(true);
     this.refreshTask = undefined;
     this.refreshAgain = false;
     this.activeSpace = null;
@@ -70,8 +116,10 @@ export class ClientStore {
       });
       const snapshot = await this.driver.open(mode);
       if (generation !== this.generation) return;
+      this.live.synchronize(snapshot);
       this.publish({
         snapshot,
+        activity: this.live.value(),
         phase:
           (snapshot.account && !snapshot.account.setup_pending) || mode === 'demo'
             ? 'ready'
@@ -85,10 +133,15 @@ export class ClientStore {
 
   private event(event: CoreEvent) {
     if (event.kind === 'error') {
+      this.resetActivity();
       this.publish({ notice: event.message ?? 'Não foi possível sincronizar.' });
       return;
     }
-    if (event.kind === 'ephemeral' || event.kind === 'presence') return;
+    if (event.kind === 'ephemeral' || event.kind === 'presence') {
+      this.live.receive(event);
+      return;
+    }
+    if (event.kind === 'connection') this.resetActivity(true);
     if (this.state.phase === 'opening') {
       this.refreshAgain = true;
       return;
@@ -105,10 +158,16 @@ export class ClientStore {
     const task = (async () => {
       do {
         this.refreshAgain = false;
+        const activityGeneration = this.activityGeneration;
         const snapshot = await this.driver.request({ op: 'snapshot' });
         if (generation !== this.generation) return;
+        if (activityGeneration === this.activityGeneration) this.live.synchronize(snapshot);
+
+        if (snapshot.connection.state !== 'online' || !snapshot.connection.synced)
+          this.typing.reset();
         this.publish({
           snapshot,
+          activity: this.live.value(),
           phase:
             (snapshot.account && !snapshot.account.setup_pending) || this.state.mode === 'demo'
               ? 'ready'
@@ -130,7 +189,10 @@ export class ClientStore {
     const generation = this.generation;
     try {
       const snapshot = await this.driver.createAccount(name, handle, relay);
-      if (generation === this.generation) this.publish({ snapshot, phase: 'ready', notice: null });
+      if (generation === this.generation) {
+        this.live.synchronize(snapshot);
+        this.publish({ snapshot, phase: 'ready', notice: null, activity: this.live.value() });
+      }
     } catch (error) {
       if (generation === this.generation) this.publish({ notice: failure(error) });
       throw error;
@@ -233,6 +295,7 @@ export class ClientStore {
     ++this.generation;
     this.stopEvents?.();
     this.stopEvents = undefined;
+    this.resetActivity();
     await this.driver.close();
   }
 }

@@ -1,6 +1,6 @@
 import { ProfileAvatar } from '../../../profile/profile-avatar';
-import { useState } from 'react';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -16,6 +16,7 @@ import { MessageMedia } from '../../../media/MediaAttachment';
 export default function Thread() {
   const { space, root } = useLocalSearchParams<{ space: string; root: string }>();
   const { store } = useClient();
+  useFocusEffect(useCallback(() => () => store.setTyping(space, false), [space, store]));
   const {
     data: entries,
     error,
@@ -29,6 +30,7 @@ export default function Thread() {
   async function send() {
     if (!draft.trim() || busy) return;
     const text = draft;
+    store.setTyping(space, false);
     setBusy(true);
     setFailure(null);
     try {
@@ -133,7 +135,11 @@ export default function Thread() {
           multiline
           accessibilityLabel="Responder na conversa"
           value={draft}
-          onChangeText={setDraft}
+          onChangeText={(text) => {
+            setDraft(text);
+            store.setTyping(space, !!text.trim());
+          }}
+          onBlur={() => store.setTyping(space, false)}
           placeholder="Continuar a conversa…"
           placeholderTextColor={colors.tertiary}
           style={{

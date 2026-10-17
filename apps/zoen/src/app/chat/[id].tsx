@@ -11,6 +11,7 @@ import { Pressable, Text, TextInput, View, type TextInputInstance } from 'react-
 import { useDialogs } from '../../components/dialogs';
 import { useClient } from '../../core/provider';
 import type { TimelineEntry } from '../../core/types';
+import { chatActivityLabel } from '../../core/live-activity';
 import { messageText } from '../../core/presentation';
 import { useTheme } from '../../theme';
 import { EmptyState, Icon, IconButton, Loading } from '../../components/primitives';
@@ -19,7 +20,7 @@ import { MessageMedia } from '../../media/MediaAttachment';
 
 export default function Chat() {
   const { id, jump } = useLocalSearchParams<{ id: string; jump?: string }>();
-  const { store, snapshot, timelines, notice } = useClient();
+  const { store, snapshot, timelines, notice, activity } = useClient();
   const { colors, scheme } = useTheme();
   const { confirm, inform } = useDialogs();
   const insets = useSafeAreaInsets();
@@ -36,10 +37,14 @@ export default function Chat() {
   const composerText = editing ? editDraft : draft;
   const chat = snapshot?.conversations.find((conversation) => conversation.id === id);
   const page = timelines[id];
+  const activityLabel = chatActivityLabel(snapshot, activity, id);
   useFocusEffect(
     useCallback(() => {
       store.selectSpace(id);
-      return () => store.selectSpace(null);
+      return () => {
+        store.setTyping(id, false);
+        store.selectSpace(null);
+      };
     }, [id, store]),
   );
   const reveal = useCallback(
@@ -93,6 +98,7 @@ export default function Chat() {
   async function send() {
     if (!composerText.trim() || sending) return;
     const text = composerText;
+    store.setTyping(id, false);
     setSending(true);
     try {
       if (editing)
@@ -135,6 +141,21 @@ export default function Chat() {
       <Stack.Screen
         options={{
           title: chat.title,
+          headerTitle: () => (
+            <View style={{ alignItems: 'center', maxWidth: 240 }}>
+              <Text
+                numberOfLines={1}
+                style={{ color: colors.text, fontWeight: '600', fontSize: 17 }}
+              >
+                {chat.title}
+              </Text>
+              {activityLabel ? (
+                <Text numberOfLines={1} style={{ color: colors.secondary, fontSize: 12 }}>
+                  {activityLabel}
+                </Text>
+              ) : null}
+            </View>
+          ),
           headerRight: () => (
             <Pressable
               accessibilityRole="button"
@@ -533,7 +554,16 @@ export default function Chat() {
             placeholderTextColor={colors.tertiary}
             multiline
             value={composerText}
-            onChangeText={editing ? setEditDraft : setDraft}
+            onChangeText={(text) => {
+              if (editing) {
+                setEditDraft(text);
+                store.setTyping(id, false);
+              } else {
+                setDraft(text);
+                store.setTyping(id, !!text.trim());
+              }
+            }}
+            onBlur={() => store.setTyping(id, false)}
             style={{
               flex: 1,
               maxHeight: 160,

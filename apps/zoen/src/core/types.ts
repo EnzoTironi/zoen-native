@@ -45,15 +45,13 @@ export type PairingStatus =
   | { kind: 'starting' }
   | { kind: 'waiting'; code: string; check: string }
   | { kind: 'failed'; message: string };
-export type CoreEvent = {
-  kind: 'change' | 'connection' | 'profile' | 'presence' | 'ephemeral' | 'error';
-  spaceIds?: string[];
-  spaceId?: string;
-  fromId?: string;
-  type?: string;
-  detail?: string;
-  message?: string;
-};
+export type CoreEvent =
+  | { kind: 'change'; spaceIds?: string[] }
+  | { kind: 'connection' }
+  | { kind: 'profile'; identityId?: string }
+  | { kind: 'presence'; identityId: string; online: boolean }
+  | { kind: 'ephemeral'; spaceId: string; fromId: string; type: string; detail: string }
+  | { kind: 'error'; message?: string };
 type Results = {
   snapshot: Snapshot;
   timeline: TimelinePage;
