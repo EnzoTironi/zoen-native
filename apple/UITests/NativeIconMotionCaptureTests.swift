@@ -46,6 +46,11 @@ final class NativeIconMotionCaptureTests: XCTestCase {
                         "button": NSCoder.string(for: button.frame), "search": NSCoder.string(for: search.frame)], name: "microphone-ink-count")
         XCTAssertGreaterThan(white, 10, "Inner microphone glyph must have white ink, excluding the glass edge")
         XCTAssertGreaterThan(searchInk, 10, "Inner Search glyph must have contrasting ink")
+        // A visible glyph is not sufficient: keep the real touch gesture reachable
+        // after moving symbol artwork inside the glass surface.
+        button.press(forDuration: 0.05)
+        XCTAssertTrue(app.staticTexts["Hold to record, release to send"].exists,
+                      "A short microphone press must reach the real gesture handler")
     }
 
     @MainActor func testCanonicalRootDestinations() throws {
