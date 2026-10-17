@@ -39,7 +39,7 @@ const processes = new Map();
 const logs = [];
 const errors = [];
 const evidence = {
-  journey: "expo-linked-browser-release-v1",
+  journey: "expo-linked-browser-release-v2",
   commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
   steps: [],
   passed: false,
@@ -154,6 +154,12 @@ async function freePort() {
     server.close((error) => (error ? reject(error) : accept())),
   );
   return port;
+}
+async function expectMessage(author, text, timeout = 90_000) {
+  // A hidden conversation preview can repeat the text. Require its exact author
+  // and the real interactive message bubble, then the visible body inside it.
+  const bubble = page.getByRole("button", { name: `${author}: ${text}`, exact: true });
+  await bubble.getByText(text, { exact: true }).waitFor({ timeout });
 }
 async function screenshot(name) {
   await page.screenshot({
@@ -301,7 +307,7 @@ try {
   await row.waitFor({ timeout: 120_000 });
   await row.click();
   await page.waitForURL(`**/chat/${space}`);
-  await page.getByText(seed, { exact: true }).waitFor({ timeout: 120_000 });
+  await expectMessage(ana.name, seed, 120_000);
   await screenshot("02-recovered-encrypted-history.png");
   step("normal-device-link-and-encrypted-history-recovery", { checkDigitsMatch: true });
 
@@ -319,7 +325,7 @@ try {
     "peer canonical persisted timeline must contain the browser message",
   );
   await cli(bruno.home, "send", space, reply);
-  await page.getByText(reply, { exact: true }).waitFor({ timeout: 90_000 });
+  await expectMessage(bruno.name, reply);
   assert.ok(sentFrames > 0, "journey must observe actual relay frames");
   assert.equal(plaintextOnWire, false, "private text must not appear in outbound relay frames");
   await screenshot("03-cross-core-message-roundtrip.png");
@@ -329,9 +335,9 @@ try {
   assert.equal(reload?.status(), 200, "direct dynamic chat reload must survive real Pages hosting");
   assert.equal(new URL(page.url()).pathname, `/chat/${space}`);
   await page.getByTestId("message-input").waitFor();
-  await page.getByText(seed, { exact: true }).waitFor({ timeout: 90_000 });
-  await page.getByText(outbound, { exact: true }).waitFor();
-  await page.getByText(reply, { exact: true }).waitFor();
+  await expectMessage(ana.name, seed);
+  await expectMessage(ana.name, outbound);
+  await expectMessage(bruno.name, reply);
   assert.equal(
     await page.getByRole("button", { name: "Conectar com outro aparelho", exact: true }).count(),
     0,
@@ -339,6 +345,37 @@ try {
   );
   await screenshot("04-cold-chat-reload.png");
   step("cold-dynamic-chat-reload-retains-keys-and-history");
+  await page.goto(`${origin}/you`, { waitUntil: "domcontentloaded" });
+  await page.getByText(`@${ana.handle}`, { exact: true }).waitFor();
+  await page.getByTestId("erase-device").click();
+  const confirmation = page.getByRole("dialog", { name: "Sair deste aparelho?", exact: true });
+  await confirmation.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await confirmation.waitFor({ state: "hidden" });
+  await page.goto(`${origin}/chat/${space}`, { waitUntil: "domcontentloaded" });
+  await expectMessage(ana.name, seed);
+  await expectMessage(ana.name, outbound);
+  await expectMessage(bruno.name, reply);
+  step("cancel-local-erasure-retains-account-and-encrypted-history");
+
+  await page.goto(`${origin}/you`, { waitUntil: "domcontentloaded" });
+  await page.getByText(`@${ana.handle}`, { exact: true }).waitFor();
+  await page.getByTestId("erase-device").click();
+  await confirmation.getByRole("button", { name: "Sair e apagar dados", exact: true }).click();
+  await page.waitForURL("**/sign-in", { timeout: 90_000 });
+  await page.getByRole("button", { name: "Conectar com outro aparelho", exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => crossOriginIsolated), false);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Conectar com outro aparelho", exact: true }).waitFor();
+  assert.equal(new URL(page.url()).pathname, "/sign-in");
+  assert.equal(await page.getByTestId("erase-device").count(), 0);
+  assert.equal(await page.getByTestId("message-input").count(), 0);
+  await screenshot("05-erased-browser-cold-onboarding.png");
+  step("confirmed-local-erasure-cold-reload-keeps-onboarding");
+
+  const preserved = await cli(bruno.home, "read", space);
+  for (const text of [seed, outbound, reply])
+    assert.ok(preserved.includes(text), "local browser erase must preserve canonical peer history");
+  step("browser-erasure-preserves-canonical-peer-history");
   assert.deepEqual(errors, [], "uncaught browser errors");
   evidence.passed = true;
 } catch (error) {
@@ -346,6 +383,7 @@ try {
   if (page) await screenshot("failure-redacted.png").catch(() => {});
   throw new Error(evidence.failure);
 } finally {
+  evidence.browserErrors = [...errors];
   await browser?.close().catch(() => {});
   await Promise.allSettled([...children].map((child) => stop(processes.get(child))));
   await mkdir(evidencePath, { recursive: true });

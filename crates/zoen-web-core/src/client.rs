@@ -18,6 +18,7 @@ mod agents;
 mod apps;
 mod documents;
 mod history;
+mod integrity;
 mod linking;
 mod membership;
 mod profile;

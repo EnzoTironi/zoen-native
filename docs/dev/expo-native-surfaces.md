@@ -1,8 +1,9 @@
 # Widgets, Live Activities and App Intents
 
-Source audit: 2026-10-17. Active migration scope is iOS and Web. Native extension
-registration, native compilation and device journeys below remain pending. Installed
-packages alone do not make these features available in a running app.
+Source audit: 2026-10-17. Active migration scope is iOS and Web. The signed ARM64
+iOS simulator Release has compiled the widget extension, Live Activities and App
+Intents metadata. Gallery, Siri and Lock Screen journeys below remain pending.
+Installed packages and successful compilation do not establish those journeys.
 
 ## Apple baseline
 
@@ -156,3 +157,36 @@ Native App Intents metadata extraction, extension entitlements,
 App Group provisioning for device distribution, gallery rendering, Dynamic Island,
 Siri warm/cold delivery and accessibility require runtime verification. No paid build
 or developer portal changes were performed by this source integration.
+
+## Local device erasure
+
+The You screen's **Sair e apagar dados** action captures the current identity and
+device before displaying its destructive confirmation. The store rejects an old
+confirmation after an account change and immediately fences old UI results,
+timelines, live status and new requests while the operation runs.
+
+Before deleting canonical data, it awaits the registered projection cleanup: widget
+content, entity catalogs, activity termination, queued App Intents, donations,
+presentation preferences and device notifications. Notification cleanup drains local
+notification and badge writes already in flight. If any cleanup fails, the operation
+stays retryable and does not delete the account's keys or database. A process restart
+at that preflight stage may restore the unchanged account; erasure has not committed.
+
+The iOS bridge then records a small nonsecret intent scoped to the exact device,
+drains active core requests and history reception, stops sync and calls the existing
+Rust erasure operation. It additionally verifies removal of the account's complete
+Keychain namespace and clears staged previews. The intent is removed last; a cold
+open resumes an interrupted destructive stage before allowing another account to
+open. Neither the account on other devices nor their histories is deleted.
+
+The browser driver uses a strict, atomic IndexedDB transaction to clear the complete
+protected vault while retaining its exclusive account lock. It aborts provider setup,
+stops messaging and pairing, and releases staged files and photos. A failed storage
+transaction remains fenced and retryable; a successful clear removes device keys,
+session and root authority together. The action is not offered on Android until its
+native lifecycle has separate implementation and acceptance.
+
+Store, browser-vault and pure Foundation intent tests cover ordering, stale ownership,
+delayed writes and retry behavior. Installed iOS/Web destructive confirmation,
+post-erasure cold launch and peer-history preservation still require disposable-account
+runtime acceptance. Existing personal accounts must never be reset to produce evidence.

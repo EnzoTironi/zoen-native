@@ -15,7 +15,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void store.open();
     return () => {
-      void store.close();
+      void store.close().catch(() => {});
     };
   }, [store]);
   return <Context value={store}>{children}</Context>;

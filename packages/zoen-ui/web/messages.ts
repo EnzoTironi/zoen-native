@@ -553,6 +553,16 @@ export class Messages {
     return this.domainRequest(command, 'app_request');
   }
 
+  async integrityRequest(command: unknown): Promise<unknown> {
+    let result: unknown;
+    const generation = this.generation;
+    await this.enqueue(async () => {
+      try { result = JSON.parse(await this.core.text({kind: 'integrity_request', request: JSON.stringify(command)})); }
+      catch (error) { throw Object.assign(new Error(message(error)), {soft: true}); }
+    }, () => generation !== this.generation ? 'A conta mudou. Abra este relatório novamente.' : null, false);
+    return result;
+  }
+
   async profileRequest(command: unknown): Promise<unknown> {
     return this.domainRequest(command, 'profile_request');
   }

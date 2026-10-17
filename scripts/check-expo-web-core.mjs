@@ -78,7 +78,10 @@ try {
   assert.ok(update.frames.length > 0);
   restored = new core.BrowserCore(JSON.stringify(account), update.snapshot);
   assert.deepEqual(JSON.parse(restored.view()), []);
-  process.stdout.write(`WASM verified: primary creation/cold retry without SAB, ${blocks.length} rich-text blocks, ${apps.length} shared mini-apps, signed bootstrap/reload, pinned worker (${wasm.byteLength} bytes).\n`);
+  assert.deepEqual(JSON.parse(restored.integrity_request('{"op":"integrity_warnings"}')), {});
+  assert.throws(() => restored.integrity_request('{"op":"verify_log","space_id":"sp_unavailable"}'));
+  assert.deepEqual(JSON.parse(restored.view()), [], 'a refused audit must leave the account usable');
+  process.stdout.write(`WASM verified: primary creation/cold retry without SAB, ${blocks.length} rich-text blocks, ${apps.length} shared mini-apps, signed bootstrap/reload, scoped integrity reads, pinned worker (${wasm.byteLength} bytes).\n`);
 } finally {
   primaryRestored?.free();
   primary?.free();

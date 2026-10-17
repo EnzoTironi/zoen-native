@@ -33,6 +33,15 @@ export async function createSurfacePort(): Promise<SurfacePort | null> {
     return activity.getInstances().find((value) => value.getId() === id);
   }
   return {
+    async eraseMetadata() {
+      const results = await Promise.allSettled([
+        AppIntents.clearPendingInvocationsAsync(),
+        AppIntents.deleteDonationsAsync({ intent: 'zoen.openItem' }),
+        AppIntents.deleteDonationsAsync({ intent: 'zoen.openChat' }),
+      ]);
+      if (results.some((result) => result.status === 'rejected'))
+        throw new Error('Não foi possível apagar os atalhos deste aparelho.');
+    },
     async readPreferences() {
       if (!file.exists || file.size > 8_192) return null;
       return file.text();

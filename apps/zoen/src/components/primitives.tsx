@@ -69,16 +69,25 @@ export function NativeButton({
   onPress,
   disabled = false,
   secondary = false,
+  destructive = false,
+  testID,
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
   secondary?: boolean;
+  destructive?: boolean;
+  testID?: string;
 }) {
   const { colors, scheme } = useTheme();
   return (
-    <Host matchContents colorScheme={scheme} seedColor={colors.accent}>
+    <Host
+      matchContents
+      colorScheme={scheme}
+      seedColor={destructive ? colors.danger : colors.accent}
+    >
       <Button
+        testID={testID}
         label={label}
         onPress={onPress}
         disabled={disabled}
@@ -198,19 +207,24 @@ export function EmptyState({
     </View>
   );
 }
-export function Loading() {
+export function Loading({ label }: { label?: string }) {
   const { colors } = useTheme();
   return (
     <View
-      accessibilityLabel="Carregando"
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={label ?? 'Carregando'}
+      accessibilityState={{ busy: true }}
       style={{
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        gap: 12,
         backgroundColor: colors.background,
       }}
     >
       <ActivityIndicator color={colors.accent} />
+      {label ? <Text style={{ color: colors.secondary, fontSize: 17 }}>{label}</Text> : null}
     </View>
   );
 }

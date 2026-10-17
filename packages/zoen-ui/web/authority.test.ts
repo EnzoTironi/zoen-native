@@ -44,3 +44,16 @@ test('an orphaned primary authority cannot silently generate replacement browser
   transaction.objectStore('vault').put({version:1,identity:'11'.repeat(32),device:'22'.repeat(32),iv:new Uint8Array(12),ciphertext:new Uint8Array(48)},'authority');await done;db.close();
   const generated=t.mock.method(crypto.subtle,'generateKey');await assert.rejects(BrowserVault.open(),/missing its protected keys/);assert.equal(generated.mock.calls.length,0);
 });
+
+test('erasure fences a provider account and authority still waiting for encryption',async(t)=>{
+  storage(t);const vault=await BrowserVault.open();const device=await vault.device();const session=pending(device);
+  const sealed=await sealAuthority(new Uint8Array(32).fill(6),vault.authorityKey(),session.account.identity,device);
+  let resume!:()=>void;let started!:()=>void;
+  const suspended=new Promise<void>(resolve=>{resume=resolve;});const entered=new Promise<void>(resolve=>{started=resolve;});
+  const encrypt=crypto.subtle.encrypt.bind(crypto.subtle);
+  t.mock.method(crypto.subtle,'encrypt',async(...args:Parameters<SubtleCrypto['encrypt']>)=>{started();await suspended;return encrypt(...args);});
+  const preparing=vault.preparePrimary(session,sealed);const refused=assert.rejects(preparing,/vault is closed/);
+  await entered;await vault.erase();resume();await refused;
+  const reopened=await BrowserVault.open();t.after(()=>reopened.close());
+  assert.notEqual(await reopened.device(),device);assert.equal(await reopened.authority(),null);assert.deepEqual(await reopened.load(),{kind:'empty'});
+});

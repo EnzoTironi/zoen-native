@@ -83,3 +83,17 @@ restart with IndexedDB, native-device UI walkthrough and visual confirmation on 
 devices remain required before claiming the whole journey validated. Provider
 login, backup recovery, release signing and production relay deployment are separate
 acceptance items.
+
+## Local browser erasure
+
+`BrowserDriver.eraseDevice` checks the captured identity/device scope before any
+mutation. It cancels pairing/provider work, transport, worker and decrypted media
+access while retaining the exclusive browser lock. `BrowserVault.erase` fences
+new signing and writes synchronously, then clears every protected record in a
+strict durable transaction. An encryption operation that finishes afterward
+cannot recreate a session or provider authority. Clearing records also avoids a
+blocked database deletion when another read connection remains open. The lock
+releases only after successful durable clearing; a failure remains closed to
+ordinary operations and supports an explicit retry with the same captured scope.
+A different live account always rejects an old erasure intent. This deletes local
+data only; it does not delete the account or messages on a peer.

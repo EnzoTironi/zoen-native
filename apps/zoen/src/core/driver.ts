@@ -58,6 +58,9 @@ export function createDriver(): CoreDriver {
       const subscription = core().addListener('onChange', listener);
       return () => subscription.remove();
     },
+    async eraseDevice(expected) {
+      await core().eraseDevice(expected.identity_id, expected.device_id);
+    },
     async close() {
       await NativeCore?.close();
     },

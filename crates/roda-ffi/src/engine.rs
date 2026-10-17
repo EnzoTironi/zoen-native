@@ -4335,7 +4335,7 @@ pub(crate) fn trust_from_dto(l: TrustLevelDto) -> TrustLevel {
     }
 }
 
-fn event_label(b: &EventBody) -> String {
+pub(crate) fn event_label(b: &EventBody) -> String {
     match b {
         EventBody::SpaceCreated { title, .. } => {
             tr!("Espaço criado: {title}", "Space created: {title}")

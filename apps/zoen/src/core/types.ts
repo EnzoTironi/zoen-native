@@ -1,3 +1,4 @@
+import type { LogEventsPage } from './generated/LogEventsPage';
 import type { Command } from './generated/Command';
 import type { Snapshot } from './generated/Snapshot';
 import type { TimelinePage } from './generated/TimelinePage';
@@ -41,6 +42,7 @@ import type { AppResourceDto } from './generated/AppResourceDto';
 
 export type { Command, Snapshot, TimelinePage, TimelineEntry, ItemDetail, PageDto, PlanPageDto };
 export type Mode = 'account' | 'demo';
+export type DeviceScope = Readonly<{ identity_id: string; device_id: string }>;
 export type PairingStatus =
   | { kind: 'starting' }
   | { kind: 'waiting'; code: string; check: string }
@@ -94,6 +96,7 @@ type Results = {
   profile: ProfileDto;
   standing_decisions: StandingDecisionDto[];
   verify_log: LogReport;
+  log_events_page: LogEventsPage;
   log_events: LogEventDto[];
   search_messages: MessageSearchPage;
   page_apply: PageEditResult;
@@ -146,6 +149,8 @@ export interface CoreDriver {
   createAccount(name: string, handle: string, relay: string): Promise<Snapshot>;
   subscribe(listener: (event: CoreEvent) => void): () => void;
   close(): Promise<void>;
+  /** Erase this local device and its keys; never deletes the relay account. */
+  eraseDevice(expected: DeviceScope): Promise<void>;
   pair?(
     relay: string,
     changed: (state: PairingStatus) => void,

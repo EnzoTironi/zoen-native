@@ -13,6 +13,7 @@ import { PushCoordinator } from './coordinator';
 import { validLocalNotification } from './links';
 import { decodeWake } from './wake';
 import { localNotes } from './local';
+import { NotificationJobs } from './jobs';
 import {
   clearDeviceNotifications,
   installNotificationHandler,
@@ -30,6 +31,7 @@ const Context = createContext<PushCoordinator | null>(null);
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { store, snapshot, mode } = useClient();
   const deviceId = mode === 'account' ? (snapshot?.account?.device_id ?? null) : null;
+  const jobs = useMemo(() => (deviceId ? new NotificationJobs() : null), [deviceId]);
   const coordinator = useMemo(
     () =>
       new PushCoordinator(
@@ -58,9 +60,19 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [store, deviceId],
   );
 
+  useEffect(
+    () =>
+      store.registerDeviceCleanup(async () => {
+        coordinator.dispose();
+        await jobs?.drain();
+        if (deviceId) await clearDeviceNotifications(deviceId);
+      }),
+    [store, coordinator, deviceId, jobs],
+  );
+
   useEffect(() => {
     coordinator.activate();
-    if (!deviceId || Platform.OS !== 'ios') return () => coordinator.dispose();
+    if (!deviceId || !jobs || Platform.OS !== 'ios') return () => coordinator.dispose();
     const current = () =>
       store.getSnapshot().mode === 'account' &&
       store.getSnapshot().snapshot?.account?.device_id === deviceId;
@@ -105,14 +117,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         AppState.currentState !== 'active' &&
         coordinator.getSnapshot().permission === 'allowed'
       ) {
-        for (const note of localNotes(before, after)) void showLocalNote(note).catch(() => {});
+        for (const note of localNotes(before, after)) jobs.track(showLocalNote(note));
       }
       before = after;
-      void updateBadge(
-        after.conversations
-          .filter((chat) => !chat.muted && !chat.archived)
-          .reduce((total, chat) => total + chat.unread, 0),
-      ).catch(() => {});
+      jobs.track(
+        updateBadge(
+          after.conversations
+            .filter((chat) => !chat.muted && !chat.archived)
+            .reduce((total, chat) => total + chat.unread, 0),
+        ),
+      );
     });
     const foreground = AppState.addEventListener('change', (state) => {
       if (state === 'active') void coordinator.foreground();
@@ -125,9 +139,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       clearHandler();
       foreground.remove();
       coordinator.dispose();
-      if (!current()) void clearDeviceNotifications(deviceId).catch(() => {});
+      if (!current() && !store.getSnapshot().erasePending)
+        void jobs
+          .drain()
+          .then(() => clearDeviceNotifications(deviceId))
+          .catch(() => {});
     };
-  }, [store, deviceId, coordinator]);
+  }, [store, deviceId, coordinator, jobs]);
   return <Context value={coordinator}>{children}</Context>;
 }
 

@@ -46,4 +46,16 @@ final class ZoenVault: SecretVault, @unchecked Sendable {
     lock.lock(); defer { lock.unlock() }
     SecItemDelete(query(key) as CFDictionary)
   }
+
+  /// The whole service belongs to this account on this device, including backup/link material.
+  /// SecretVault.delete cannot report failure, so the lifecycle verifies deletion explicitly.
+  func eraseAllVerified() throws {
+    lock.lock(); defer { lock.unlock() }
+    let scope: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service, kSecAttrSynchronizable as String: false]
+    let status = SecItemDelete(scope as CFDictionary)
+    guard status == errSecSuccess || status == errSecItemNotFound else { throw ZoenDeviceErasure.Failure.incomplete }
+    guard SecItemCopyMatching(scope as CFDictionary, nil) == errSecItemNotFound else { throw ZoenDeviceErasure.Failure.incomplete }
+  }
+
 }

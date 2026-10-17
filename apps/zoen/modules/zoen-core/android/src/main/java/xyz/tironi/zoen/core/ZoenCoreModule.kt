@@ -112,6 +112,11 @@ class ZoenCoreModule : Module() {
         core.clientRequest("{\"op\":\"snapshot\"}")
       } }
     }
+    // Android local erasure requires its own durable lease-draining lifecycle.
+    // Keep this bridge explicit and fail closed until that milestone is validated.
+    AsyncFunction("eraseDevice") Coroutine { _: String, _: String ->
+      error("A saída deste aparelho ainda não está disponível no Android.")
+    }
     AsyncFunction("close") Coroutine { withContext(Dispatchers.IO) { mutex.withLock { closeCore() } } }
     OnDestroy {
       destroyed.set(true)

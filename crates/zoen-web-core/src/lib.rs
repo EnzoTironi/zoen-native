@@ -264,6 +264,10 @@ mod browser {
             serde_json::to_string(&self.client.maintenance(time(now_ms)?).map_err(error)?)
                 .map_err(error)
         }
+        pub fn integrity_request(&self, request: &str) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.integrity_request(request).map_err(error)?)
+                .map_err(error)
+        }
         pub fn membership_request(
             &mut self,
             request: &str,

@@ -5,6 +5,8 @@ import { useProfilePhoto } from '../../profile/use-profile-photo';
 import { useClient } from '../../core/provider';
 import { useTheme } from '../../theme';
 import { Avatar, NativeButton, Surface } from '../../components/primitives';
+import { DeviceDataActions } from '../../components/device-data-actions';
+import { IntegrityWarnings } from '../../integrity/integrity-warning';
 
 export default function You() {
   const { snapshot, store, mode } = useClient();
@@ -40,6 +42,7 @@ export default function You() {
           onPress={() => router.push('/edit-profile')}
         />
       </Surface>
+      <IntegrityWarnings />
       <Surface>
         <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>Aparência</Text>
         <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
@@ -115,6 +118,7 @@ export default function You() {
           {snapshot?.connection.pending ?? '0'} mensagens aguardando sincronização
         </Text>
       </Surface>
+      <DeviceDataActions />
       {mode === 'demo' ? (
         <NativeButton
           label="Usar uma conta de verdade"

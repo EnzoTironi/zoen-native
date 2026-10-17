@@ -36,6 +36,7 @@ export type CoreOperation =
   | { kind: 'queue_join'; space: string; role: string; code: string; now: number }
   | { kind: 'document_request'; request: string; now: number }
   | { kind: 'agent_request'; request: string; now: number }
+  | { kind: 'integrity_request'; request: string }
   | { kind: 'profile_request'; request: string; now: number }
   | { kind: 'profile_save'; request: string; bytes: Uint8Array; now: number }
   | { kind: 'profile_photo_framed'; identity: string; expected: string }

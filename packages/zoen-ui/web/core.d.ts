@@ -39,6 +39,7 @@ declare module '*/core/zoen_web_core.js' {
     membership_request(request:string, now:number):string;
     document_request(request: string, now: number): string;
     agent_request(request: string, now: number): string;
+    integrity_request(request: string): string;
     profile_request(request: string, now: number): string;
     profile_save(request: string, bytes: Uint8Array, now: number): string;
     profile_photo_framed(identity: string, expected: string): Uint8Array;

@@ -107,6 +107,8 @@ const core = {
         return client.maintenance(op.now);
       case 'membership_request':
         return client.membership_request(op.request, op.now);
+      case 'integrity_request':
+        return client.integrity_request(op.request);
       case 'link_prepare':
         return client.link_prepare(primary, op.code, op.now);
       case 'link_request':
@@ -442,6 +444,26 @@ try {
   assert.equal(actual.length, count);
   assert.deepEqual(actual, texts);
   assert.equal((await nativeCommand({ op: 'history_status' })).initial_pending, false);
+  const report = await messages.integrityRequest({ op: 'verify_log', space_id: space });
+  assert.equal(report.valid, true);
+  assert.equal(report.error, null);
+  assert.ok(BigInt(report.events) >= BigInt(count));
+  assert.match(report.head_hash, /^[0-9a-f]{64}$/);
+  assert.deepEqual(await messages.integrityRequest({ op: 'integrity_warnings' }), {});
+  const audit = await messages.integrityRequest({
+    op: 'log_events_page', space_id: space, before: null, limit: 3,
+  });
+  assert.equal(audit.events.length, 3);
+  assert.equal(typeof audit.before, 'string');
+  const olderAudit = await messages.integrityRequest({
+    op: 'log_events_page', space_id: space, before: audit.before, limit: 3,
+  });
+  assert.equal(olderAudit.events.length, 3);
+  assert.ok(BigInt(audit.events.at(-1).seq) > BigInt(olderAudit.events[0].seq));
+  for (const event of [...audit.events, ...olderAudit.events]) {
+    assert.deepEqual(Object.keys(event).sort(), ['at_ms', 'author', 'hash', 'label', 'prev', 'seq', 'signature']);
+    assert.equal(texts.some((text) => JSON.stringify(event).includes(text)), false);
+  }
   console.log(
     JSON.stringify({
       ok: true,
@@ -452,6 +474,8 @@ try {
       native_interruptions: interruptions,
       native_resumed: result.resumed,
       encrypted_checkpoints: saves,
+      local_log_verified: report.valid,
+      metadata_audit_events: audit.events.length + olderAudit.events.length,
       browser_storage_verified: false,
       wasm_sha256: createHash('sha256').update(wasmBytes).digest('hex'),
       ui_verified: false,

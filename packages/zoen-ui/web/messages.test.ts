@@ -26,11 +26,12 @@ const conversation = { id: 'sp_fixture', title: 'Conversa', kind: 'group', priva
   messages: [{ id: 'message', entry: 'entry', author: other, name: 'Ana', text: 'Oi', at_ms: 1, delivery: 'confirmed', failure: null,
     reactions: [{ emoji: '🧑🏽‍🚀', count: 2, mine: true, participants: [{ identity, name: 'Eu' }, { identity: other, name: 'Ana' }] }] }] };
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
-function setup(t: test.TestContext, read: () => Promise<string> = async () => { throw new Error('Core refused'); }) {
+function setup(t: test.TestContext, read: () => Promise<string> = async () => { throw new Error('Core refused'); }, audit: () => Promise<string> = read) {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket');
   Object.defineProperty(globalThis, 'WebSocket', { configurable: true, value: Socket });
   const states: MessagesState[] = [];
   let closed = false;
+  let saves = 0;
   const core = { close() { closed = true; }, bytes: async () => new Uint8Array([1]), text: async (operation: CoreOperation) => {
     if (operation.kind === 'document_uploads') return '[]';
     if(operation.kind==='claim_clock')return '';
@@ -38,11 +39,12 @@ function setup(t: test.TestContext, read: () => Promise<string> = async () => { 
     if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
     if (operation.kind === 'bootstrap') return JSON.stringify({ snapshot: 'snapshot', frames: [], conversations: [conversation] });
     if (operation.kind === 'mark_read') return read();
+    if (operation.kind === 'integrity_request') return audit();
     throw new Error('Unexpected operation');
   } };
-  const messages = new Messages({ core, session, vault: { save: async () => {}, sign: async () => new Uint8Array(64) }, changed: (state) => states.push(state) });
+  const messages = new Messages({ core, session, vault: { save: async () => { saves++; }, sign: async () => new Uint8Array(64) }, changed: (state) => states.push(state) });
   t.after(() => { messages.stop(); if (descriptor) Object.defineProperty(globalThis, 'WebSocket', descriptor); else Reflect.deleteProperty(globalThis, 'WebSocket'); });
-  return { messages, states, closed: () => closed };
+  return { messages, states, closed: () => closed, saves: () => saves };
 }
 async function connect(messages: Messages) {
   await messages.start();
@@ -97,4 +99,19 @@ test('device projections identify this device and preserve server revocations', 
     [{ device_id: identity, revoked: false, this_device: true }, { device_id: other, revoked: true, this_device: false }]);
   assert.throws(() => parseDevices({ kind: 'done' }, identity));
   assert.throws(() => parseDevices({ kind: 'devices', devices: [{ device: identity, revoked: 'false' }] }, identity));
+});
+
+// An unavailable report is a read failure, not a failed browser account.
+test('integrity refusal is nonfatal and read retries never persist or publish a snapshot', async (t) => {
+  let attempts = 0;
+  const { messages, closed, saves } = setup(t, undefined, async () => {
+    if (++attempts === 1) throw new Error('Invalid audit cursor.');
+    return JSON.stringify({ valid: false, error: 'Conflicting membership' });
+  });
+  await connect(messages);
+  const savedBefore = saves();
+  await assert.rejects(messages.integrityRequest({ op: 'log_events_page' }));
+  assert.equal(closed(), false);
+  assert.deepEqual(await messages.integrityRequest({ op: 'verify_log' }), { valid: false, error: 'Conflicting membership' });
+  assert.equal(saves(), savedBefore);
 });

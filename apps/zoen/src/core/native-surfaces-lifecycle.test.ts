@@ -50,6 +50,7 @@ test('selection rereads canonical versions; lost access and account switches cle
   const publications: unknown[] = [];
   const port: SurfacePort = {
     readPreferences: async () => stored,
+    eraseMetadata: async () => {},
     writePreferences: async (value) => {
       stored = value;
     },
@@ -102,6 +103,7 @@ test('cleanup failures still clear independent surfaces and retire locked or swi
       const attempted: string[] = [];
       const port: SurfacePort = {
         readPreferences: async () => stored,
+        eraseMetadata: async () => {},
         writePreferences: async (value) => {
           if (value === null) {
             attempted.push('preferences');
@@ -166,4 +168,65 @@ test('cleanup failures still clear independent surfaces and retire locked or swi
       coordinator.dispose();
     }
   }
+});
+
+test('explicit device erase waits for old publications and removes pending native metadata before reporting completion', async () => {
+  let current: typeof owner | null = owner;
+  let blockRead = false;
+  let finishRead!: () => void;
+  const read = new Promise<void>((resolve) => {
+    finishRead = resolve;
+  });
+  const publications: (string | null)[] = [];
+  let metadataAttempts = 0;
+  let brokenMetadata = false;
+  const coordinator = new SurfaceCoordinator(
+    {
+      loading: () => false,
+      owner: () => current,
+      spaces: () => new Map([['sp_a', 'Private chat']]),
+      item: async () => {
+        if (blockRead) await read;
+        return item();
+      },
+    },
+    {
+      readPreferences: async () => null,
+      writePreferences: async () => {},
+      widget: (value) => {
+        publications.push(value?.title ?? null);
+      },
+      catalogs: async () => {},
+      activities: () => [],
+      startActivity: () => 'activity_a',
+      updateActivity: async () => {},
+      endActivity: async () => {},
+      eraseMetadata: async () => {
+        metadataAttempts++;
+        if (brokenMetadata) throw Error('intent storage unavailable');
+      },
+    },
+  );
+  coordinator.activate();
+  await coordinator.refresh();
+  await coordinator.selectWidget('it_a', 3, true);
+  publications.length = 0;
+  blockRead = true;
+  const oldRefresh = coordinator.refresh();
+  await Promise.resolve();
+  await Promise.resolve();
+  current = null;
+  brokenMetadata = true;
+  const erasing = coordinator.eraseDevice();
+  const refusal = assert.rejects(erasing, /prévias/);
+  finishRead();
+  await oldRefresh;
+  await refusal;
+  assert.ok(publications.every((value) => value === null));
+  assert.equal(coordinator.getSnapshot().preferences, null);
+  assert.equal(metadataAttempts, 1);
+  brokenMetadata = false;
+  await coordinator.eraseDevice();
+  assert.equal(metadataAttempts, 2);
+  coordinator.dispose();
 });

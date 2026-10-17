@@ -29,6 +29,7 @@ import type {
   CommandResult,
   CoreDriver,
   CoreEvent,
+  DeviceScope,
   Mode,
   PairingStatus,
   Snapshot,
@@ -40,6 +41,9 @@ class BrowserDriver implements CoreDriver {
   readonly media = createBrowserMediaDriver();
   readonly photos = createBrowserProfilePhotoDriver();
   private authorityReady = false;
+  private erasing = false;
+  private erasure: Promise<void> | null = null;
+  private erasedScope: DeviceScope | null = null;
   canAuthorizeDevice() {
     return this.authorityReady && this.session.kind === 'linked';
   }
@@ -78,6 +82,7 @@ class BrowserDriver implements CoreDriver {
   }
 
   async open(mode: Mode): Promise<Snapshot> {
+    if (this.erasing) throw new Error('O apagamento deste navegador precisa ser concluído.');
     if (mode !== 'account')
       throw new Error(
         'A demonstração é executada pelo motor nativo. Use uma conta vinculada neste navegador.',
@@ -184,6 +189,7 @@ class BrowserDriver implements CoreDriver {
   }
 
   pair(relay: string, changed: (state: PairingStatus) => void, expectedIdentityId?: string) {
+    if (this.erasing) throw new Error('Este navegador está sendo apagado.');
     if (!this.vault || !this.worker) throw new Error('Este navegador ainda está abrindo.');
     if (this.session.kind === 'provider_pending')
       throw new Error(
@@ -214,12 +220,13 @@ class BrowserDriver implements CoreDriver {
       else changed({ kind: 'starting' });
     });
     this.pairing = pairing;
-    void pairing.start(relay, this.session, expectedIdentityId).catch((error: unknown) =>
+    void pairing.start(relay, this.session, expectedIdentityId).catch((error: unknown) => {
+      if (generation !== this.generation) return;
       changed({
         kind: 'failed',
         message: error instanceof Error ? error.message : 'Não foi possível vincular.',
-      }),
-    );
+      });
+    });
     return () => pairing.stop();
   }
 
@@ -385,12 +392,14 @@ class BrowserDriver implements CoreDriver {
         error: this.state.kind === 'failed' ? this.state.message : null,
       },
       conversations,
+      integrity_warnings: {},
       requests: [],
       agents: [],
     };
   }
 
   async request<C extends Command>(command: C): Promise<CommandResult<C>> {
+    if (this.erasing) throw new Error('Este navegador está sendo apagado.');
     const requestGeneration = this.generation;
     let result: unknown = null;
     const messages = this.messages;
@@ -429,10 +438,11 @@ class BrowserDriver implements CoreDriver {
     } else if (command.op === 'snapshot') {
       let snapshot = this.snapshot();
       if (messages) {
-        const [agents, requests, profile] = await Promise.all([
+        const [agents, requests, profile, warnings] = await Promise.all([
           messages.agentRequest({ op: 'agents' }),
           messages.agentRequest({ op: 'requests' }),
           messages.profileRequest({ op: 'profile', identity_id: snapshot.account!.identity_id }),
+          messages.integrityRequest({ op: 'integrity_warnings' }),
         ]);
         if (requestGeneration !== this.generation)
           throw new Error('A conta mudou. Abra esta tela novamente.');
@@ -448,6 +458,7 @@ class BrowserDriver implements CoreDriver {
         snapshot = this.snapshot();
         snapshot.agents = agents as Snapshot['agents'];
         snapshot.requests = requests as Snapshot['requests'];
+        snapshot.integrity_warnings = warnings as Snapshot['integrity_warnings'];
       }
       result = snapshot;
     } else if (!messages) throw new Error('Vincule este navegador pelo seu celular primeiro.');
@@ -775,6 +786,10 @@ class BrowserDriver implements CoreDriver {
         case 'app_call_tool':
           result = await messages.appRequest(command);
           break;
+        case 'verify_log':
+        case 'log_events_page':
+          result = await messages.integrityRequest(command);
+          break;
         case 'set_typing':
           await messages.typing(command.space_id, command.typing);
           break;
@@ -797,7 +812,60 @@ class BrowserDriver implements CoreDriver {
   async createAccount(): Promise<Snapshot> {
     throw new Error('Entre com Apple ou Google para continuar.');
   }
+  async eraseDevice(expected: DeviceScope): Promise<void> {
+    const scope = { ...expected };
+    const account =
+      this.session.kind === 'linked' || this.session.kind === 'provider_pending'
+        ? this.session.account
+        : null;
+    if (account && (account.identity !== scope.identity_id || account.device !== scope.device_id))
+      throw new Error('A conta mudou. Confirme o aparelho novamente.');
+    if (!account) {
+      if (
+        this.erasedScope?.identity_id === scope.identity_id &&
+        this.erasedScope.device_id === scope.device_id
+      )
+        return;
+      throw new Error('A conta mudou. Confirme o aparelho novamente.');
+    }
+    if (this.erasure) return this.erasure;
+    const vault = this.vault;
+    if (!vault) throw new Error('Este navegador ainda está abrindo.');
+    this.erasing = true;
+    // Keep the exclusive browser lock until durable storage deletion finishes.
+    this.authorityReady = false;
+    ++this.generation;
+    this.providerAbort?.abort();
+    this.providerAbort = null;
+    this.disposeMedia?.();
+    this.disposeMedia = null;
+    this.pairing?.stop();
+    this.messages?.stop();
+    this.worker?.close();
+    this.pairing = null;
+    this.messages = null;
+    this.worker = null;
+    this.state = { kind: 'loading' };
+    this.selfProfile = null;
+    this.erasure = (async () => {
+      await vault.erase();
+      this.erasedScope = scope;
+      await this.finishClose();
+      this.erasing = false;
+    })().finally(() => {
+      this.erasure = null;
+    });
+    return this.erasure;
+  }
+
   async close() {
+    // Unmounting cannot release the lock while erasure is still pending.
+    if (this.erasure) await this.erasure;
+    if (this.erasing) throw new Error('Tente apagar este navegador novamente.');
+    await this.finishClose();
+  }
+
+  private async finishClose() {
     this.authorityReady = false;
     ++this.generation;
     this.providerAbort?.abort();

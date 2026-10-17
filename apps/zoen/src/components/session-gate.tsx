@@ -12,6 +12,12 @@ import { EmptyState, Field, Loading, NativeButton } from './primitives';
 import { AccountAccess } from './account-access';
 
 export function SessionGate({ children }: { children: ReactNode }) {
+  const { phase } = useClient();
+  if (phase === 'erasing') return <Loading label="Saindo deste aparelho…" />;
+  return <SessionContent>{children}</SessionContent>;
+}
+
+function SessionContent({ children }: { children: ReactNode }) {
   const { phase, store, notice, snapshot } = useClient();
   const { colors } = useTheme();
   const [relay, setRelay] = useState(relayUrl);

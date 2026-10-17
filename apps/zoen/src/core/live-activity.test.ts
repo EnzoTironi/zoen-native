@@ -56,6 +56,7 @@ function snapshot(): Snapshot {
       } as Snapshot['conversations'][number],
     ],
     agents: [],
+    integrity_warnings: {},
     requests: [],
   };
 }

@@ -1,3 +1,4 @@
+import { IntegrityWarning } from '../../integrity/integrity-warning';
 import { ProfileAvatar } from '../../profile/profile-avatar';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
@@ -102,6 +103,7 @@ export default function Space() {
           </Text>
         </View>
       </View>
+      <IntegrityWarning spaceId={id} />
       {error ? (
         <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
           {error}
@@ -136,6 +138,11 @@ export default function Space() {
           secondary
           label="Buscar nesta conversa"
           onPress={() => router.push({ pathname: '/search', params: { space: id } })}
+        />
+        <NativeButton
+          secondary
+          label="Verificar integridade do histórico"
+          onPress={() => router.push({ pathname: '/integrity/[id]', params: { id } })}
         />
         <NativeButton
           secondary

@@ -5,6 +5,7 @@
 //! Every mutation below goes through the same engine methods as the native apps.
 
 mod handle;
+mod integrity;
 mod wire;
 
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,7 @@ struct Snapshot {
     me: Option<Persona>,
     connection: ConnectionDto,
     conversations: Vec<SpaceSummary>,
+    integrity_warnings: std::collections::BTreeMap<String, String>,
     requests: Vec<AgentRequestDto>,
     agents: Vec<AgentProfile>,
 }
@@ -36,6 +38,13 @@ struct TimelinePage {
     entries: Vec<TimelineEntry>,
     before: Option<String>,
     has_more: bool,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+struct LogEventsPage {
+    events: Vec<crate::LogEventDto>,
+    before: Option<String>,
 }
 
 fn page_size() -> u32 {
@@ -349,6 +358,11 @@ enum Command {
     LogEvents {
         space_id: String,
     },
+    LogEventsPage {
+        space_id: String,
+        before: Option<String>,
+        limit: u32,
+    },
     BackupStatus {},
     LinkRequest {
         relay_url: String,
@@ -414,6 +428,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     Command::export_all(&config)?;
     Snapshot::export_all(&config)?;
     TimelinePage::export_all(&config)?;
+    LogEventsPage::export_all(&config)?;
     crate::ItemDetail::export_all(&config)?;
     crate::EditOutcome::export_all(&config)?;
     crate::PageDto::export_all(&config)?;
@@ -793,8 +808,16 @@ impl RodaEngine {
             BlockPerson { identity_id } => encode(&self.block_person(identity_id)?),
             UnblockPerson { identity_id } => encode(&self.unblock_person(identity_id)?),
             BlockedPeople {} => encode(&self.blocked_people()?),
-            VerifyLog { space_id } => encode(&self.verify_log(space_id)),
-            LogEvents { space_id } => encode(&self.log_events(space_id)?),
+            VerifyLog { space_id } => self.client_verify_log(space_id),
+            LogEvents { space_id } => {
+                self.client_verify_log(space_id.clone())?;
+                encode(&self.log_events(space_id)?)
+            }
+            LogEventsPage {
+                space_id,
+                before,
+                limit,
+            } => self.client_log_events_page(space_id, before, limit),
             BackupStatus {} => encode(&self.backup_status()),
             LinkRequest { relay_url } => {
                 encode(&self.link_request(relay_url, account_vault(&vault)?)?)
@@ -891,6 +914,7 @@ impl RodaEngine {
             me: self.me().ok(),
             connection: self.connection(),
             conversations: self.spaces(),
+            integrity_warnings: self.client_integrity_warnings(),
             requests: self.requests(),
             agents: self.agents(),
         }

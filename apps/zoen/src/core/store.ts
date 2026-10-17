@@ -11,13 +11,15 @@ import type {
   CommandResult,
   CoreDriver,
   CoreEvent,
+  DeviceScope,
   Mode,
   Snapshot,
   TimelinePage,
 } from './types';
 
 export type ClientState = {
-  phase: 'opening' | 'onboarding' | 'ready' | 'failed';
+  phase: 'opening' | 'erasing' | 'onboarding' | 'ready' | 'failed';
+  erasePending: boolean;
   mode: Mode;
   snapshot: Snapshot | null;
   timelines: Readonly<Record<string, TimelinePage>>;
@@ -32,6 +34,7 @@ const failure = (error: unknown) =>
 export class ClientStore {
   private state: ClientState = {
     phase: 'opening',
+    erasePending: false,
     mode: 'account',
     snapshot: null,
     timelines: {},
@@ -40,6 +43,10 @@ export class ClientStore {
   };
   private readonly listeners = new Set<() => void>();
   private generation = 0;
+  private erasure: Promise<void> | undefined;
+  private eraseScope: DeviceScope | null = null;
+  private eraseCleanup: readonly (() => Promise<void>)[] | null = null;
+  private readonly deviceCleanup = new Set<() => Promise<void>>();
   private activityGeneration = 0;
   private stopEvents: (() => void) | undefined;
   private refreshTask: Promise<void> | undefined;
@@ -98,7 +105,20 @@ export class ClientStore {
     for (const listener of this.listeners) listener();
   }
 
+  registerDeviceCleanup(cleanup: () => Promise<void>): () => void {
+    this.deviceCleanup.add(cleanup);
+    return () => {
+      this.deviceCleanup.delete(cleanup);
+    };
+  }
+
   async open(mode: Mode = 'account'): Promise<void> {
+    if (this.erasure) return this.erasure;
+    if (this.state.erasePending && this.eraseScope) return this.eraseDevice(this.eraseScope);
+    return this.openSession(mode);
+  }
+
+  private async openSession(mode: Mode): Promise<void> {
     const generation = ++this.generation;
     this.stopEvents?.();
     this.resetActivity(true);
@@ -150,6 +170,7 @@ export class ClientStore {
   }
 
   refresh(): Promise<void> {
+    if (this.state.erasePending) return Promise.resolve();
     if (this.refreshTask) {
       this.refreshAgain = true;
       return this.refreshTask;
@@ -186,13 +207,13 @@ export class ClientStore {
   }
 
   async createAccount(name: string, handle: string, relay: string) {
+    this.requireAvailableSession();
     const generation = this.generation;
     try {
       const snapshot = await this.driver.createAccount(name, handle, relay);
-      if (generation === this.generation) {
-        this.live.synchronize(snapshot);
-        this.publish({ snapshot, phase: 'ready', notice: null, activity: this.live.value() });
-      }
+      if (generation !== this.generation) throw new Error('A sessão mudou.');
+      this.live.synchronize(snapshot);
+      this.publish({ snapshot, phase: 'ready', notice: null, activity: this.live.value() });
     } catch (error) {
       if (generation === this.generation) this.publish({ notice: failure(error) });
       throw error;
@@ -200,6 +221,7 @@ export class ClientStore {
   }
 
   loadTimeline(space: string, older = false): Promise<void> {
+    if (this.state.erasePending) return Promise.reject(new Error('A sessão está sendo apagada.'));
     if (older) {
       const pending = this.olderTasks.get(space);
       if (pending) return pending;
@@ -274,10 +296,13 @@ export class ClientStore {
   }
 
   async request<C extends Command>(command: C): Promise<CommandResult<C>> {
+    this.requireAvailableSession();
     const generation = this.generation;
     try {
       const result = await this.driver.request(command);
-      if (generation === this.generation) await this.refresh();
+      if (generation !== this.generation) throw new Error('A sessão mudou.');
+      await this.refresh();
+      if (generation !== this.generation) throw new Error('A sessão mudou.');
       return result;
     } catch (error) {
       // Provisioning retains keys before contacting the relay. Even when its
@@ -291,7 +316,76 @@ export class ClientStore {
   dismissNotice() {
     this.publish({ notice: null });
   }
+  private requireAvailableSession() {
+    if (this.state.erasePending)
+      throw new Error('Conclua a saída deste aparelho antes de continuar.');
+  }
+
+  eraseDevice(expected: DeviceScope): Promise<void> {
+    const current = this.eraseScope ?? this.state.snapshot?.account;
+    if (
+      this.state.mode !== 'account' ||
+      !current ||
+      current.identity_id !== expected.identity_id ||
+      current.device_id !== expected.device_id
+    )
+      return Promise.reject(new Error('A conta mudou. Abra a confirmação novamente.'));
+    if (this.erasure) return this.erasure;
+    const scope = Object.freeze({ identity_id: current.identity_id, device_id: current.device_id });
+    this.eraseScope = scope;
+    // Clearing the snapshot can unmount account-bound providers. Preserve the
+    // original cleanup owners through every retry, including that publication.
+    const cleanups = (this.eraseCleanup ??= [...this.deviceCleanup]);
+    ++this.generation;
+    this.stopEvents?.();
+    this.stopEvents = undefined;
+    this.refreshTask = undefined;
+    this.refreshAgain = false;
+    this.activeSpace = null;
+    this.olderTasks.clear();
+    this.timelineVersions.clear();
+    this.publish({
+      phase: 'erasing',
+      erasePending: true,
+      snapshot: null,
+      timelines: {},
+      notice: null,
+      activity: emptyActivity(),
+    });
+    this.resetActivity();
+    const task = (async () => {
+      const cleanup = await Promise.allSettled(
+        cleanups.map((work) => Promise.resolve().then(work)),
+      );
+      try {
+        // Preflight removes OS projections before committing canonical erasure.
+        // If interrupted here, the unchanged account may reopen on restart.
+        if (cleanup.some((result) => result.status === 'rejected'))
+          throw new Error(
+            'Não foi possível apagar todas as prévias deste aparelho. Tente sair novamente.',
+          );
+        await this.driver.eraseDevice(scope);
+      } catch (error) {
+        const message = failure(error);
+        this.publish({ phase: 'failed', erasePending: true, notice: message });
+        throw new Error(message);
+      }
+      this.eraseScope = null;
+      this.eraseCleanup = null;
+      this.publish({ erasePending: false });
+      await this.openSession('account');
+    })();
+    this.erasure = task;
+    void task
+      .finally(() => {
+        if (this.erasure === task) this.erasure = undefined;
+      })
+      .catch(() => {});
+    return task;
+  }
+
   async close() {
+    if (this.erasure) await this.erasure.catch(() => {});
     ++this.generation;
     this.stopEvents?.();
     this.stopEvents = undefined;

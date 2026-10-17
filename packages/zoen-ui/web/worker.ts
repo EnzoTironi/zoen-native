@@ -45,6 +45,7 @@ function parseOperation(input: unknown): CoreOperation {
     case 'blob_put_message': return { kind: 'blob_put_message', sha: string(value.sha), ts: integer(value.ts), relay: string(value.relay) };
     case 'document_request': return { kind: 'document_request', request: string(value.request), now: integer(value.now) };
     case 'agent_request': return { kind: 'agent_request', request: string(value.request), now: integer(value.now) };
+    case 'integrity_request': return { kind: 'integrity_request', request: string(value.request) };
     case 'profile_request': return { kind: 'profile_request', request: string(value.request), now: integer(value.now) };
     case 'profile_save': return { kind: 'profile_save', request: string(value.request), bytes: bytes(value.bytes), now: integer(value.now) };
     case 'profile_photo_framed': return { kind: 'profile_photo_framed', identity: string(value.identity), expected: string(value.expected) };
@@ -142,6 +143,7 @@ async function run(operation: CoreOperation): Promise<string | Uint8Array> {
     case 'membership_request':return restored().membership_request(operation.request,operation.now);
     case 'document_request': return restored().document_request(operation.request, operation.now);
     case 'agent_request': return restored().agent_request(operation.request, operation.now);
+    case 'integrity_request': return restored().integrity_request(operation.request);
     case 'profile_request': return restored().profile_request(operation.request, operation.now);
     case 'profile_save': return restored().profile_save(operation.request, operation.bytes, operation.now);
     case 'profile_photo_framed': return restored().profile_photo_framed(operation.identity, operation.expected);

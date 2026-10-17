@@ -53,6 +53,11 @@ export class BrowserVault {
     this.publicSigningKey = publicSigningKey;
     this.sealingKey = sealingKey;
   }
+  private terminal = false;
+  private erasure: Promise<void> | null = null;
+  private active(): void {
+    if (this.terminal) throw new Error('This browser vault is closed.');
+  }
   private readonly db: IDBDatabase;
   private readonly signingKey: CryptoKey;
   private readonly publicSigningKey: CryptoKey;
@@ -88,22 +93,24 @@ export class BrowserVault {
   }
 
   async device(): Promise<string> {
+    this.active();
     return hex(new Uint8Array(await crypto.subtle.exportKey('raw', this.publicSigningKey)));
   }
 
   /** Structured-cloned into the worker; the nonextractable key never becomes bytes. */
-  authorityKey():CryptoKey{return this.sealingKey;}
+  authorityKey():CryptoKey{this.active();return this.sealingKey;}
 
   async authority():Promise<SealedAuthority|null>{
+    this.active();
     const transaction=this.db.transaction('vault','readonly');const done=completed(transaction);
     const value:unknown=await request(transaction.objectStore('vault').get('authority'));await done;
     return value===undefined?null:parseAuthority(value);
   }
 
   async preparePrimary(session:Extract<StoredSession,{kind:'provider_pending'}>,authority:SealedAuthority,signal?:AbortSignal):Promise<void>{
-    signal?.throwIfAborted();const record=parseAuthority(authority);
+    this.active();signal?.throwIfAborted();const record=parseAuthority(authority);
     if(record.device!==await this.device()||record.identity!==session.account.identity||record.device!==session.account.device)throw new Error('A conta mudou durante a entrada.');
-    const encrypted=await sealSession(session,this.sealingKey);signal?.throwIfAborted();
+    const encrypted=await sealSession(session,this.sealingKey);this.active();signal?.throwIfAborted();
     const transaction=this.db.transaction('vault','readwrite',{durability:'strict'});const done=completed(transaction);
     const abort=()=>{try{transaction.abort();}catch{}};signal?.addEventListener('abort',abort,{once:true});
     try{const store=transaction.objectStore('vault');store.add(record,'authority');store.put(encrypted,'session');await done;}
@@ -111,10 +118,14 @@ export class BrowserVault {
   }
 
   async sign(payload: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
-    return new Uint8Array(await crypto.subtle.sign('Ed25519', this.signingKey, Uint8Array.from(payload)));
+    this.active();
+    const signature = new Uint8Array(await crypto.subtle.sign('Ed25519', this.signingKey, Uint8Array.from(payload)));
+    if (this.terminal) { signature.fill(0); this.active(); }
+    return signature;
   }
 
   async load(): Promise<StoredSession> {
+    this.active();
     const transaction = this.db.transaction('vault', 'readonly');
     const done = completed(transaction);
     const encrypted: unknown = await request(transaction.objectStore('vault').get('session'));
@@ -124,8 +135,10 @@ export class BrowserVault {
   }
 
   async save(session: StoredSession, signal?: AbortSignal): Promise<void> {
+    this.active();
     signal?.throwIfAborted();
     const encrypted = await sealSession(session, this.sealingKey);
+    this.active();
     signal?.throwIfAborted();
     const transaction = this.db.transaction('vault', 'readwrite', { durability: 'strict' });
     const done = completed(transaction);
@@ -137,10 +150,20 @@ export class BrowserVault {
     } finally { signal?.removeEventListener('abort', abort); }
   }
 
-  close(): void { this.db.close(); }
+  close(): void { this.terminal = true; this.db.close(); }
 
-  async erase(): Promise<void> {
-    this.db.close();
-    await request(indexedDB.deleteDatabase(DB));
+  erase(): Promise<void> {
+    // Fence encryption already in flight before awaiting any storage work. A
+    // queued write transaction finishes before this clear; a later write is refused.
+    this.terminal = true;
+    if (this.erasure) return this.erasure;
+    this.erasure = (async () => {
+      const transaction = this.db.transaction('vault', 'readwrite', { durability: 'strict' });
+      const done = completed(transaction);
+      transaction.objectStore('vault').clear();
+      await done;
+      this.db.close();
+    })().catch(error => { this.erasure = null; throw error; });
+    return this.erasure;
   }
 }

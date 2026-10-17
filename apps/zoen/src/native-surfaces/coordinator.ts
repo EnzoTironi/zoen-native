@@ -11,6 +11,7 @@ import type { NativeWidgetContent, SurfaceOwner } from './snapshot';
 
 export interface SurfacePort {
   readPreferences(): Promise<string | null>;
+  eraseMetadata(): Promise<void>;
   writePreferences(value: string | null): Promise<void>;
   widget(content: NativeWidgetContent | null): void;
   catalogs(items: AppIntentEntity[], chats: AppIntentEntity[]): Promise<void>;
@@ -42,6 +43,7 @@ export class SurfaceCoordinator {
   private generation = 0;
   private cleanupPending = false;
   private preferencesCleanupPending = false;
+  private metadataCleanupPending = false;
   private readonly source: SurfaceSource;
   private readonly port: SurfacePort;
   constructor(source: SurfaceSource, port: SurfacePort) {
@@ -105,6 +107,7 @@ export class SurfaceCoordinator {
   private async clear(resetPreferences = false): Promise<boolean> {
     this.cleanupPending = true;
     this.preferencesCleanupPending ||= resetPreferences;
+    this.metadataCleanupPending ||= resetPreferences;
     if (this.preferencesCleanupPending) this.publish({ ready: false, preferences: null });
     let failed = false;
     const attempt = async (work: () => void | Promise<void>) => {
@@ -121,6 +124,12 @@ export class SurfaceCoordinator {
       activities = this.port.activities();
     });
     for (const id of activities) await attempt(() => this.port.endActivity(id));
+    if (this.metadataCleanupPending) {
+      await attempt(async () => {
+        await this.port.eraseMetadata();
+        this.metadataCleanupPending = false;
+      });
+    }
     if (this.preferencesCleanupPending) {
       await attempt(async () => {
         await this.port.writePreferences(null);
@@ -129,6 +138,14 @@ export class SurfaceCoordinator {
     }
     this.cleanupPending = failed;
     return !failed;
+  }
+  eraseDevice(): Promise<void> {
+    ++this.generation;
+    this.publish({ ready: false, preferences: null });
+    return this.queue(async () => {
+      if (!(await this.clear(true)))
+        throw new Error('Não foi possível apagar as prévias do iOS. Tente novamente.');
+    });
   }
   private async reconcile() {
     // Unknown session at cold startup is not an authoritative empty account/catalog.

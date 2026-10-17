@@ -17,6 +17,7 @@ export function NativeSurfacesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let disposed = false;
     let active: SurfaceCoordinator | null = null;
+    let unregisterCleanup: (() => void) | undefined;
     const owner = (): SurfaceOwner | null => {
       const state = store.getSnapshot();
       const account = state.snapshot?.account;
@@ -50,6 +51,8 @@ export function NativeSurfacesProvider({ children }: { children: ReactNode }) {
           },
           port,
         );
+        const current = active;
+        unregisterCleanup = store.registerDeviceCleanup(() => current.eraseDevice());
         active.activate();
         setCoordinator(active);
       })
@@ -59,6 +62,7 @@ export function NativeSurfacesProvider({ children }: { children: ReactNode }) {
     return () => {
       disposed = true;
       unsubscribe();
+      unregisterCleanup?.();
       foreground.remove();
       active?.dispose();
     };

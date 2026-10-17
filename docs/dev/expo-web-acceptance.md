@@ -9,6 +9,14 @@ The first journey uses a real loopback Rust relay, disposable Postgres/Foundatio
 3. Create a private DM and a synthetic message before the browser joins. Use the ordinary **Conectar com outro aparelho** and **Mostrar código** flow, authorize through the existing CLI, and compare both sides' verification digits.
 4. Enter the isolated application and read the older encrypted message. Send from the Expo composer and require the real CLI peer's decrypted, persisted timeline to contain it. Send a reply from that peer and read it in Expo. Check outbound relay frames do not contain the private test text.
 5. Reload the actual `/chat/<id>` URL and require the same encrypted session and all three messages without onboarding again.
+6. Open You and cancel **Sair e apagar dados**. Reopen the chat and require all three messages again.
+7. Confirm local erasure, require the nonisolated sign-in document, reload it and require onboarding with no message composer or erasure action.
+8. Read the independent canonical peer and require all three earlier messages to remain present.
+
+Message assertions use the visible message's exact author and accessible button name,
+then its body. A hidden conversation preview can repeat that body; matching only text
+would make the assertion ambiguous. The erasure steps are authored acceptance criteria
+until a successful revision-specific run records them in `acceptance.json`.
 
 No IDB/session injection, fake identity-provider tokens, authentication bypass or production account is involved. The runner refuses a non-loopback relay. Browser evaluation is limited to standard isolation capabilities; account and message assertions use visible UI and the independently running Rust CLI.
 

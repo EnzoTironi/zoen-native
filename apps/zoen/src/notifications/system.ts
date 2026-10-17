@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { pushConfiguration, type PushPermission } from './coordinator';
-import { validLocalNotification } from './links';
+import { clearDeviceNotificationState } from './clear';
 import type { LocalNote } from './local';
 
 function isPushTrigger(
@@ -133,12 +133,13 @@ export async function updateBadge(count: number) {
 }
 
 export async function clearDeviceNotifications(deviceId: string) {
-  const presented = await Notifications.getPresentedNotificationsAsync();
-  await Promise.all(
-    presented
-      .filter((notification) => validLocalNotification(notification.request.content.data, deviceId))
-      .map((notification) =>
-        Notifications.dismissNotificationAsync(notification.request.identifier),
-      ),
-  );
+  await clearDeviceNotificationState(deviceId, {
+    presented: async () =>
+      (await Notifications.getPresentedNotificationsAsync()).map((note) => note.request),
+    scheduled: Notifications.getAllScheduledNotificationsAsync,
+    dismiss: Notifications.dismissNotificationAsync,
+    cancel: Notifications.cancelScheduledNotificationAsync,
+    clearBadge: () => Notifications.setBadgeCountAsync(0),
+    clearResponse: Notifications.clearLastNotificationResponseAsync,
+  });
 }
