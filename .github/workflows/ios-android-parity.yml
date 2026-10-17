@@ -47,6 +47,7 @@ jobs:
           key: parity-ios-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'crates/**/*.rs') }}
       - run: brew install xcodegen
       - name: Fresh iOS native fixture frames
+        id: ios_capture
         run: |
           mkdir -p parity
           set -o pipefail
@@ -56,6 +57,24 @@ jobs:
             xcrun simctl boot "$DEVICE"
             python3 scripts/parity_capture.py ios --device "$DEVICE" --viewport '${{ matrix.viewport }}' --output parity/ios
           ) 2>&1 | tee "parity/ios-${{ matrix.viewport }}.log"
+      - name: Report iOS capture failure
+        if: failure() && steps.ios_capture.outcome == 'failure'
+        env:
+          CAPTURE_LOG: parity/ios-${{ matrix.viewport }}.log
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          log = Path(os.environ['CAPTURE_LOG'])
+          if log.is_file():
+              with log.open('rb') as file:
+                  file.seek(max(0, log.stat().st_size - 8000))
+                  message = file.read(8000).decode(errors='replace')
+          else:
+              message = 'Capture log was not created; inspect the failed capture step.'
+          message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=iOS parity capture failed::{message}')
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:

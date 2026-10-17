@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 import subprocess
+import textwrap
 import time
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -94,6 +95,30 @@ class CaptureSafetyTests(unittest.TestCase):
         self.assertIn('set -o pipefail', ios)
         self.assertIn('2>&1 | tee "parity/ios-${{ matrix.viewport }}.log"', ios)
         self.assertGreaterEqual(ios.count('parity/ios-${{ matrix.viewport }}.log'), 2)
+
+    def test_ios_workflow_reports_failed_capture_log_as_bounded_annotation(self):
+        workflow = (parity_capture.ROOT / '.github/workflows/ios-android-parity.yml').read_text()
+        ios = workflow.split('\n  ios:\n', 1)[1].split('\n  android:\n', 1)[0]
+        self.assertIn('id: ios_capture', ios)
+        report = ios.split('      - name: Report iOS capture failure\n', 1)[1].split('\n      - ', 1)[0]
+        self.assertIn("if: failure() && steps.ios_capture.outcome == 'failure'", report)
+        script = textwrap.dedent(report.split('        run: |\n', 1)[1])
+        with TemporaryDirectory() as directory:
+            log = Path(directory) / 'capture.log'
+            log.write_text('old output\n' * 3000 + 'error: failed 100%\r\n::warning::not a command\n')
+            env = dict(os.environ, CAPTURE_LOG=str(log))
+            result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script],
+                                    env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(result.stdout.startswith('::error title=iOS parity capture failed::'))
+            self.assertIn('error: failed 100%25%0D%0A::warning::not a command%0A', result.stdout)
+            self.assertEqual(result.stdout.count('\n'), 1)
+            self.assertLess(len(result.stdout), 12000)
+            log.unlink()
+            missing = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script],
+                                     env=env, capture_output=True, text=True)
+            self.assertEqual(missing.returncode, 0, missing.stderr)
+            self.assertIn('Capture log was not created', missing.stdout)
 
     def test_ios_status_time_is_iso_with_milliseconds_and_local_noon(self):
         # New runtimes reject HH:MM and ISO timestamps without milliseconds.
