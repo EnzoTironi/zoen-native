@@ -393,21 +393,19 @@ impl Engine {
             .get(item)
             .filter(|it| it.space == space && it.kind == ItemKind::Plan)
             .ok_or_else(|| invalid("the scoped Item is not a Plan"))?;
-        let Some(projection::PlanOrigin::Explicit(origin)) = scoped.plan_origins.get(item) else {
-            return match (&it.current().content, scoped.plan_origins.get(item)) {
-                (ItemContent::Plan(document), Some(projection::PlanOrigin::Proposal)) => {
-                    Ok(PlanSnapshot::legacy(document, it.current()))
-                }
-                _ => Err(invalid("the scoped Plan has no confirmed origin")),
-            };
+        let origin = match scoped.plan_origins.get(item) {
+            Some(projection::PlanOrigin::Explicit(origin)) => Some(origin),
+            Some(projection::PlanOrigin::Proposal) => None,
+            _ => return Err(invalid("the scoped Plan has no confirmed origin")),
         };
         let log = self.logs.get(space);
         let (fold, _) = confirmed::Prefix::from_log(space, log, log.map_or(0, |log| log.len()))?
+            .with_requests(&scoped.requests)
             .fold(item, |page| self.plan_payload(page))?;
         if fold.waiting
             || fold
                 .origin_tag()
-                .is_none_or(|(_, _, creation)| creation != origin)
+                .is_none_or(|(_, _, creation)| origin.is_some_and(|origin| creation != origin))
         {
             return Err(invalid("the scoped Plan history is unavailable"));
         }
@@ -466,7 +464,10 @@ impl Engine {
         let end = log.map_or(0, |log| log.len());
         let pending = self.store.outbox()?;
         let prefix = confirmed::Prefix::from_log(&it.space, log, end)?;
-        let (mut fold, mut version_number) = prefix.fold(item, |page| self.plan_payload(page))?;
+        let scoped = self.space_projections.get(&it.space).unwrap_or(&self.state);
+        let (mut fold, mut version_number) = prefix
+            .with_requests(&scoped.requests)
+            .fold(item, |page| self.plan_payload(page))?;
 
         // No pending source enters the verified tape or freezes its ancestry. Failed
         // intent also remains readable, but no longer blocks a future promotion.

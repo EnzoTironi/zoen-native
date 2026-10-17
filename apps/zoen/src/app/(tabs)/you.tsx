@@ -8,10 +8,11 @@ import { useTheme } from '../../theme';
 import { Avatar, NativeButton, Surface } from '../../components/primitives';
 import { DeviceDataActions } from '../../components/device-data-actions';
 import { IntegrityWarnings } from '../../integrity/integrity-warning';
+import { AppearancePicker } from '../../components/appearance-picker';
 
 export default function You() {
   const { snapshot, store, mode } = useClient();
-  const { colors, preference, setPreference, preferenceError } = useTheme();
+  const { colors, preferenceError } = useTheme();
   const { confirm } = useDialogs();
   const me = snapshot?.me;
   const photo = useProfilePhoto(me?.id, me?.photo_sha256, me?.photo_ready ?? false);
@@ -48,52 +49,38 @@ export default function You() {
         <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
           {t('settings.appearance')}
         </Text>
-        <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-          {(
-            [
-              { value: 'light', label: t('settings.light') },
-              { value: 'system', label: t('settings.system') },
-              { value: 'dark', label: t('settings.dark') },
-            ] as const
-          ).map((item) => (
-            <NativeButton
-              key={item.value}
-              label={item.label}
-              secondary={preference !== item.value}
-              onPress={() => setPreference(item.value)}
-            />
-          ))}
-        </View>
+        <AppearancePicker />
       </Surface>
       {preferenceError ? (
         <Text accessibilityRole="alert" style={{ color: colors.danger }}>
           {preferenceError}
         </Text>
       ) : null}
-      <Surface>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
-          {t('settings.yourAgents')}
-        </Text>
-        {snapshot?.agents.map((agent) => (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('settings.agentPermissions', { name: agent.persona.name })}
-            onPress={() =>
-              router.push({ pathname: '/agent/[id]', params: { id: agent.persona.id } })
-            }
-            key={agent.persona.id}
-            style={{ flexDirection: 'row', gap: 12, alignItems: 'center', paddingVertical: 8 }}
-          >
-            <Avatar name={agent.persona.name} color={agent.persona.tint_hex} agent size={40} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>
-                {agent.persona.name}
-              </Text>
-              <Text style={{ color: colors.secondary, fontSize: 13 }}>{agent.runs_on}</Text>
-            </View>
-          </Pressable>
-        ))}
-      </Surface>
+      {snapshot?.agents.length ? (
+        <Surface>
+          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
+            {t('settings.yourAgents')}
+          </Text>
+          {snapshot?.agents.map((agent) => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('settings.agentPermissions', { name: agent.persona.name })}
+              onPress={() =>
+                router.push({ pathname: '/agent/[id]', params: { id: agent.persona.id } })
+              }
+              key={agent.persona.id}
+              style={{ flexDirection: 'row', gap: 12, alignItems: 'center', paddingVertical: 8 }}
+            >
+              <Avatar name={agent.persona.name} color={agent.persona.tint_hex} agent size={40} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>
+                  {agent.persona.name}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </Surface>
+      ) : null}
       <Surface>
         <Text style={{ color: colors.text, fontWeight: '600', fontSize: 18 }}>
           {t('settings.connection')}

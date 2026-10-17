@@ -63,3 +63,53 @@ test('editable text roundtrips extremes in both languages and supported scales',
         assert.equal(parseMoneyInput(formatMoneyInput(value, options), options), value);
       }
 });
+
+test('Hermes iOS number-only Intl preserves every i64 digit without formatToParts', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(Intl, 'NumberFormat');
+  const NativeNumberFormat = Intl.NumberFormat;
+  class NumberOnlyFormat {
+    readonly format: (value: number) => string;
+    constructor(...args: ConstructorParameters<typeof NativeNumberFormat>) {
+      const native = new NativeNumberFormat(...args);
+      this.format = (value) => {
+        if (typeof value !== 'number') throw new TypeError('Intl accepts only numbers');
+        assert.ok(
+          Number.isFinite(value) && Math.abs(value) <= 1234.5,
+          'only small probes reach Intl',
+        );
+        return native.format(value);
+      };
+    }
+  }
+  try {
+    Object.defineProperty(Intl, 'NumberFormat', { ...descriptor, value: NumberOnlyFormat });
+    assert.equal(Reflect.get(new Intl.NumberFormat('en'), 'formatToParts'), undefined);
+    assert.throws(() => new Intl.NumberFormat('en').format(1n), /only numbers/);
+    const min = -max - 1n;
+    assert.equal(formatMoney(max.toString(), en), '$92,233,720,368,547,758.07');
+    assert.equal(formatMoney(min.toString(), en), '-$92,233,720,368,547,758.08');
+    assert.equal(normalized(formatMoney(max.toString(), pt)), 'R$ 92.233.720.368.547.758,07');
+    assert.equal(normalized(formatMoney(min.toString(), pt)), '-R$ 92.233.720.368.547.758,08');
+    assert.equal(formatMoney('0', en), '$0.00');
+    assert.equal(normalized(formatMoney('-1', pt)), '-R$ 0,01');
+    assert.equal(
+      formatMoney(max.toString(), { ...en, currency: 'JPY', minorUnitDigits: 0 }),
+      '¥9,223,372,036,854,775,807',
+    );
+    for (const locale of ['en', 'pt-BR'] as const)
+      for (const minorUnitDigits of [0, 2, 3, 8])
+        for (const value of [max.toString(), min.toString()]) {
+          const options = { locale, minorUnitDigits, allowNegative: true, min, max };
+          assert.equal(parseMoneyInput(formatMoneyInput(value, options), options), value);
+        }
+    assert.equal(
+      Intl.NumberFormat,
+      NumberOnlyFormat,
+      'formatting must not replace the runtime API',
+    );
+  } finally {
+    if (descriptor) Object.defineProperty(Intl, 'NumberFormat', descriptor);
+    else Reflect.deleteProperty(Intl, 'NumberFormat');
+  }
+  assert.deepEqual(Object.getOwnPropertyDescriptor(Intl, 'NumberFormat'), descriptor);
+});

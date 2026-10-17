@@ -1,6 +1,6 @@
 import { t } from './i18n/index.ts';
 import { createContext, use, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useColorScheme } from 'react-native';
+import { Appearance, Platform, useColorScheme } from 'react-native';
 import { preferences } from './preferences';
 
 const palettes = {
@@ -50,6 +50,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preferenceError, setPreferenceError] = useState<string | null>(null);
   const revision = useRef(0);
   const writes = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      Appearance.setColorScheme(preference === 'system' ? 'auto' : preference);
+    }
+  }, [preference]);
   useEffect(() => {
     let active = true;
     void preferences

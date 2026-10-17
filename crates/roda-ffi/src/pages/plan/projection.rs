@@ -394,6 +394,32 @@ impl<'a> PlanReplay<'a> {
         let origin = state.plan_origins.get(item);
         let log = self.logs.get(space);
         let prefix = Prefix::from_log(space, log, end)?;
+        if matches!(origin, Some(PlanOrigin::Proposal)) && !matches!(mode, Mode::Pending) {
+            // Approved creations carry two accepted signed sources. Do not cache by
+            // ItemVersioned positions: approval resolution itself changes this fold.
+            let (fold, _) = match prefix
+                .with_requests(&state.requests)
+                .fold(item, |page| super::read_plan_payload(self.store, page))
+            {
+                Ok(fold) => fold,
+                Err(CoreError::Invalid { .. }) => return Ok(PlanRead::Changed),
+                Err(error) => return Err(error),
+            };
+            return Ok(if fold.waiting {
+                PlanRead::Waiting
+            } else {
+                match fold.document {
+                    Some(document) => match document.view() {
+                        Ok(view) => PlanRead::Ready {
+                            document: view.to_plan_doc(),
+                            legacy: fold.frozen_at.is_none(),
+                        },
+                        Err(_) => PlanRead::Changed,
+                    },
+                    None => PlanRead::Changed,
+                }
+            });
+        }
         let Some(PlanOrigin::Explicit(origin)) = origin else {
             let proposal = matches!(origin, Some(PlanOrigin::Proposal));
             let pending =

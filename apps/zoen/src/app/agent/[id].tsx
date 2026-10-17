@@ -100,7 +100,6 @@ export default function Agent() {
         <Text style={{ color: colors.text, fontSize: 29, fontWeight: '600' }}>
           {agent.persona.name}
         </Text>
-        <Text style={{ color: colors.secondary }}>{agent.runs_on}</Text>
         {agent.persona.bio ? (
           <Text selectable style={{ color: colors.secondary, lineHeight: 23, textAlign: 'center' }}>
             {agent.persona.bio}

@@ -70,9 +70,9 @@ their JavaScript adapters. The Expo config plugin adds the Google URL scheme. Th
 `ZoenGoogleSignInDelegate: ExpoAppDelegateSubscriber` forwards Google's documented
 `GIDSignIn.handle(url)` callback through Expo's cold and warm URL lifecycle. Its subscriber
 is registered in the local module's Apple configuration, with `GoogleSignIn ~>10.0`
-matching Nitro's native dependency. CNG, pod installation, and cold/warm redirect behavior
-still require validation in the generated app. The upstream compatibility table stops
-at RN0.87; RN0.88 requires build/runtime validation.
+matching Nitro's native dependency. CNG and the signed RN0.88 simulator build pass. The actual native Google confirmation
+opens, and cancellation returns to onboarding without creating an account. Successful
+provider credential return and cold/warm callback completion still require acceptance.
 
 Expo Router also sees incoming URLs. Its native intent handler recognizes only the
 configured Google iOS reverse scheme and `/oauth2callback`, and returns the protected
@@ -82,34 +82,38 @@ authenticates an account. A unit regression covers the callback and foreign sche
 
 ## Apple portal work remains pending
 
-The Apple Developer portal was not inspected or modified. The Chrome tab integration
-was unavailable; native Chrome control could not bind a background window on this Mac.
-When the user returned to their personal window, the tooling stopped the pending UI
-action. Configuration work paused rather than navigating or taking over that window.
-No Apple capability, Services ID, key, agreement, payment or provisioning claim follows
-from the completed Google configuration.
+Apple App ID capability and device provisioning have not been verified. The source
+already declares the native capability; successful simulator signing cannot establish
+physical-device entitlements.
 
-To finish Apple configuration:
+To finish **iPhone** configuration:
 
 1. Inspect the existing paid developer team and explicit App ID `xyz.tironi.zoen`.
    Enable Sign in with Apple on that App ID and update development/distribution
    provisioning through the normal CNG/EAS signing path. The app already declares
    the Expo Apple plugin and `ios.usesAppleSignIn`.
-2. Inspect or create the Web Services ID associated with that primary App ID. Register
-   `app.tryzoen.com` and the exact owned HTTPS return URI. Do not substitute localhost
-   or invent a Services ID without checking existing identifiers.
-3. Supply `EXPO_PUBLIC_APPLE_SERVICE_ID` and `EXPO_PUBLIC_APPLE_REDIRECT_URI` to the app,
-   plus `ZOEN_AUTH_APPLE_IOS_AUDIENCE=xyz.tironi.zoen` and
-   `ZOEN_AUTH_APPLE_WEB_AUDIENCE=<actual Services ID>` to the relay. The popup adapter
-   requires the return URI to share the current page's HTTPS origin.
-4. Any Apple private key / Team ID / Key ID remains backend-only. The present relay
-   verifies ID tokens and discards optional authorization codes; exchange, refresh-token
-   handling and account-deletion token revocation need a separately verified integration
-   before claiming those provider lifecycle features.
+2. Set `ZOEN_AUTH_APPLE_IOS_AUDIENCE=xyz.tironi.zoen` on the chosen relay. Native
+   Apple authentication uses the bundle ID; it needs no Web Services ID or HTTPS
+   browser redirect.
+3. Use a relay reachable from the physical phone. The isolated simulator build uses
+   `http://127.0.0.1:8790`; on a physical phone that address refers to the phone itself.
+   Configure the intended HTTPS relay before building a device release.
+4. Generate matching development/distribution provisioning with the Apple capability
+   enabled. A signed Simulator app does not prove device signing or Apple entitlement
+   availability. Local EAS login/project linking and device credentials remain setup
+   steps; use existing team identifiers and credentials when available.
 
-Portal changes that create sensitive access or accept legal terms require their own
-action-time human confirmation. The Google confirmation above does not authorize
-unreviewed Apple changes, purchases, agreements, or private-key creation.
+Web setup is deferred. Later, inspect or create a Services ID associated with the
+primary App ID, register `app.tryzoen.com` and its exact owned HTTPS return URI, and
+provide `EXPO_PUBLIC_APPLE_SERVICE_ID`, `EXPO_PUBLIC_APPLE_REDIRECT_URI` and relay
+`ZOEN_AUTH_APPLE_WEB_AUDIENCE`. Those values are not prerequisites for native iPhone
+authentication.
+
+Apple private keys remain backend-only. Team identifiers also appear in normal device
+provisioning and are not secrets. The present relay verifies ID tokens and discards
+optional authorization codes; exchange, refresh-token handling and account-deletion
+token revocation need a separately verified integration before claiming those provider
+lifecycle features.
 
 ## Web isolation and entry page
 
@@ -146,9 +150,9 @@ accounts; existing bound identities without matching keys route to recovery.
 Ten client and entry unit tests pass: malformed/expired challenges and credentials, audience/
 nonce/state/issuer mismatches, exact-origin transport and bounded responses, one-use
 owned tickets, late account/unmount results, stale SDK callback rejection, new-device
-recovery before key creation, and pending binding retries without duplicate identities. Native
-adapter/module availability, native branded buttons and provider behavior are source
-checks until exercised on the rebuilt app. Test command:
+recovery before key creation, and pending binding retries without duplicate identities. Actual signed simulator acceptance covers native module loading, the branded Google
+control, provider presentation and cancellation. Real credentials and account creation
+remain outside that evidence. Test command:
 
 ```sh
 cd apps/zoen
@@ -162,18 +166,9 @@ redirect handling and Web `/sign-in` popups plus the subsequent isolated MLS sta
 in supported browsers. No real provider login or new-device recovery is claimed by
 the console configuration or the unit tests.
 
-The current localhost in-app-browser check renders the official Google button on
-`/sign-in`, but Google reports an unauthorized-origin error and a FedCM token error.
-The client ID shown in the rendered SDK iframe matches the saved Web client. Console
-propagation and a supported standalone browser still need verification; no successful
-Google login is inferred from the rendered button.
-
-A later local browser check on `http://localhost:58704/sign-in` rendered the official
-Google button and obtained a real relay challenge. Google then rejected the origin for
-the configured client and FedCM returned a network error. This is a failed provider
-entry check, pending origin/provider acceptance; no policy relaxation, silent fallback
-or successful sign-in follows from the visible button. The console origins above are
-the earlier observed configuration, not a claim that this browser flow was accepted.
+Further Web provider acceptance is deferred. The earlier browser entry check failed
+origin/FedCM validation; the acceptance ledger records it. Console configuration
+and a visible provider button do not establish successful authentication.
 
 ## Primary references
 

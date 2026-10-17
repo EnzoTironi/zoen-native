@@ -20,13 +20,16 @@ function amount(value: string): bigint {
   return BigInt(value);
 }
 function separators(locale: AppLocale) {
-  const parts = new Intl.NumberFormat(formatLocale(locale), {
+  // Both supported locales use Latin digits and groups of three. A small exact
+  // probe reads the native separators without Apple's unsupported formatToParts.
+  const punctuation = new Intl.NumberFormat(formatLocale(locale), {
     minimumFractionDigits: 1,
-  }).formatToParts(1234);
-  return {
-    decimal: parts.find((part) => part.type === 'decimal')!.value,
-    group: parts.find((part) => part.type === 'group')!.value,
-  };
+    maximumFractionDigits: 1,
+    useGrouping: true,
+  })
+    .format(1234.5)
+    .replace(/[0-9]/g, '');
+  return { group: punctuation[0]!, decimal: punctuation[1]! };
 }
 
 /** No exchange rates, implicit currency or Number(cents). Caller supplies currency and scale.
@@ -38,27 +41,21 @@ export function formatMoney(value: string, options: MoneyOptions): string {
   if (!/^[A-Z]{3}$/.test(options.currency)) throw new AmountError('invalid_currency');
   const minor = amount(value),
     absolute = minor < 0n ? -minor : minor;
-  const integer = new Intl.NumberFormat(formatLocale(options.locale), {
-    maximumFractionDigits: 0,
-  }).format(absolute / factor);
+  const punctuation = separators(options.locale);
+  const integer = (absolute / factor)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, punctuation.group);
   const fraction = (absolute % factor).toString().padStart(options.minorUnitDigits, '0');
+  const numeric = options.minorUnitDigits ? `${integer}${punctuation.decimal}${fraction}` : integer;
+  // Only the exactly representable ±1 is passed to Intl. Native formatting owns
+  // currency/sign placement; every displayed amount digit comes from BigInt.
   const template = new Intl.NumberFormat(formatLocale(options.locale), {
     style: 'currency',
     currency: options.currency,
     minimumFractionDigits: options.minorUnitDigits,
     maximumFractionDigits: options.minorUnitDigits,
-  }).formatToParts(minor < 0n ? -1n : 1n);
-  let inserted = false;
-  return template
-    .map((part) => {
-      if (part.type === 'integer' || part.type === 'group') {
-        if (inserted) return '';
-        inserted = true;
-        return integer;
-      }
-      return part.type === 'fraction' ? fraction : part.value;
-    })
-    .join('');
+  }).format(minor < 0n ? -1 : 1);
+  return template.replace(/1(?:[.,]0+)?/, numeric);
 }
 /** Editable decimal text has no currency/grouping; the visible field label names its currency. */
 export function formatMoneyInput(value: string, options: Scale): string {

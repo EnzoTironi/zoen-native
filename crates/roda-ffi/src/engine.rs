@@ -219,6 +219,8 @@ pub(crate) struct RequestState {
     pub req: AgentRequest,
     pub space: SpaceId,
     pub opened_ms: i64,
+    pub opened_content_hash: String,
+    pub resolved_content_hash: Option<String>,
     pub status: ReqStatus,
     pub resolved_ms: Option<i64>,
     pub resolution: Option<RequestResolution>,
@@ -570,6 +572,8 @@ impl State {
                         req: request.clone(),
                         space: e.space.clone(),
                         opened_ms: e.at_ms,
+                        opened_content_hash: roda_log::content_hash_of(e),
+                        resolved_content_hash: None,
                         status: ReqStatus::Pending,
                         resolved_ms: None,
                         resolution: None,
@@ -600,6 +604,7 @@ impl State {
                     };
                     r.resolved_ms = Some(e.at_ms);
                     r.resolution = resolution.clone();
+                    r.resolved_content_hash = Some(roda_log::content_hash_of(e));
                 }
                 if let Some(s) = self.spaces.get_mut(&e.space) {
                     s.entries.push(entry(EntryBody::RequestResolved {

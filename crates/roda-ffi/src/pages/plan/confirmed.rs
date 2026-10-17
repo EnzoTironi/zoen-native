@@ -14,6 +14,7 @@ use super::{
 pub(super) struct Prefix<'a> {
     space: &'a str,
     events: &'a [Event],
+    requests: Option<&'a std::collections::HashMap<String, crate::engine::RequestState>>,
 }
 
 impl<'a> Prefix<'a> {
@@ -24,7 +25,19 @@ impl<'a> Prefix<'a> {
             _ => None,
         }
         .ok_or_else(|| invalid("Plan prefix is outside the authenticated Space history"))?;
-        Ok(Self { space, events })
+        Ok(Self {
+            space,
+            events,
+            requests: None,
+        })
+    }
+
+    pub(super) fn with_requests(
+        mut self,
+        requests: &'a std::collections::HashMap<String, crate::engine::RequestState>,
+    ) -> Self {
+        self.requests = Some(requests);
+        self
     }
 
     pub(super) fn fold(
@@ -44,8 +57,18 @@ impl<'a> Prefix<'a> {
             prefixes: Vec::new(),
         };
         let mut roster = BTreeMap::new();
+        let proposal_origin = self.requests.is_some_and(|requests| {
+            requests.values().any(|request| {
+                request.space == self.space
+                    && request.status == crate::engine::ReqStatus::Approved
+                    && request.req.proposal.as_ref().is_some_and(|proposal| {
+                        proposal.item == item && proposal.kind == ItemKind::Plan
+                    })
+            })
+        });
         let mut creation_seen = false;
         let mut version_number = 0_u32;
+        let mut accepted_openings = std::collections::HashMap::new();
         for event in self.events {
             match &event.body {
                 EventBody::SpaceCreated { .. } => {
@@ -59,15 +82,64 @@ impl<'a> Prefix<'a> {
                 }
                 _ => {}
             }
-            if !item_event(event, item) {
+            // Projection records only events which passed canonical approval admission.
+            // Require both exact signed sources inside this prefix, in order; final
+            // projection state must never lend provenance to an earlier frontier.
+            if let EventBody::RequestOpened { request } = &event.body {
+                if self
+                    .requests
+                    .and_then(|requests| requests.get(&request.id))
+                    .is_some_and(|accepted| {
+                        accepted.space == self.space
+                            && accepted.opened_content_hash == roda_log::content_hash_of(event)
+                    })
+                {
+                    accepted_openings.insert(request.id.clone(), event);
+                }
+            }
+            let approved = match &event.body {
+                EventBody::RequestResolved {
+                    request,
+                    approved: true,
+                    ..
+                } => self
+                    .requests
+                    .and_then(|requests| requests.get(request))
+                    .filter(|accepted| {
+                        accepted.space == self.space
+                            && accepted.status == crate::engine::ReqStatus::Approved
+                            && accepted_openings.contains_key(request)
+                            && accepted.resolved_content_hash.as_ref()
+                                == Some(&roda_log::content_hash_of(event))
+                    })
+                    .and_then(|accepted| {
+                        accepted
+                            .req
+                            .proposal
+                            .as_ref()
+                            .zip(accepted_openings.get(request).copied())
+                    })
+                    .filter(|(proposal, _)| {
+                        proposal.item == item && proposal.kind == ItemKind::Plan
+                    }),
+                _ => None,
+            };
+            if !item_event(event, item) && approved.is_none() {
                 continue;
             }
             let source = source(self.space, item, event, true);
-            let (content, reverted_to) = event_content(event, &fold.slots);
+            let (content, reverted_to) = if let Some((proposal, _)) = approved {
+                (Some(proposal.content.clone()), None)
+            } else {
+                event_content(event, &fold.slots)
+            };
             // Match legacy version addresses: an unresolved undo never created a
             // Version in ItemState. Refused versions still have a read-only slot.
-            let created = matches!(event.body, EventBody::ItemCreated { .. });
-            let duplicate = created && creation_seen;
+            let created = approved.is_some() || matches!(event.body, EventBody::ItemCreated { .. });
+            // A refused raw creation cannot reserve an identity subsequently
+            // admitted through a genuine proposal and owner resolution.
+            let refused_raw_creation = proposal_origin && approved.is_none() && created;
+            let duplicate = created && (creation_seen || refused_raw_creation);
             let has_number = !duplicate
                 && (created || creation_seen && (reverted_to.is_none() || content.is_some()));
             let number = if has_number {
@@ -81,7 +153,7 @@ impl<'a> Prefix<'a> {
             let writer = roster
                 .get(&event.author)
                 .is_some_and(|role| *role != Role::Reader);
-            creation_seen |= created;
+            creation_seen |= created && !refused_raw_creation;
             let acceptance = if fold.waiting {
                 Acceptance::Waiting("an earlier Plan payload is still arriving".into())
             } else if !writer {
@@ -89,6 +161,7 @@ impl<'a> Prefix<'a> {
             } else if duplicate {
                 Acceptance::Refused("the Plan's creation identity is immutable".into())
             } else if created
+                && approved.is_none()
                 && !matches!(
                     event.body,
                     EventBody::ItemCreated {
@@ -108,6 +181,10 @@ impl<'a> Prefix<'a> {
             } else {
                 match &content {
                     Some(ItemContent::Plan(document)) => {
+                        if let Some((_, opening)) = approved {
+                            // Bind the accepted original proposal and the owner receipt.
+                            super::digest_field(&mut tape.digest, &opening.content);
+                        }
                         tape.push(event, &source, document)?;
                         fold.document = None;
                         fold.accepted_current = number;

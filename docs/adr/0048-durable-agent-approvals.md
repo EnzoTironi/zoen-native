@@ -23,6 +23,14 @@ and chat card are effects of one durable event, so another reader cannot observe
 card without its retained output. The same decision returns its receipt without another
 append. A conflicting decision fails.
 
+The PlanDoc editor uses that same authenticated origin. Replay metadata retains the
+content hashes of the accepted opening and resolution. Both exact signed sources must
+occur in order inside the confirmed Space prefix before it admits the approved Plan;
+pending, refused or later decisions cannot supply an earlier origin. Its lineage binds
+the original proposal bytes and the real owner receipt, without manufacturing an
+`ItemCreated` event. The legacy item's author remains the proposing Agent. These hashes
+are derived replay metadata and introduce no wire event or duplicate durable record.
+
 A standing grant is part of the first resolution receipt. Each covered request settles
 atomically. A failed covered write returns an error; retry resumes the remaining requests
 without repeating settled effects. The original grant must remain the current standing
