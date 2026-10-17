@@ -89,10 +89,24 @@ class SettingsJourneyTest {
         AppAppearance.set(context, "auto")
     }
 
-    @Test fun restoreIsDisabledWithoutABackupOnThisDevice() {
+    @Test fun recoveryRequiresTheSavedKeyAndDoesNotOfferPassword() {
         open()
         compose.onNodeWithTag("settings:Backup").performClick()
-        compose.onNodeWithTag("settings:restore").assertHasNoClickAction()
+        compose.waitUntil(15_000) { compose.onAllNodesWithTag("settings:backupTurnOn").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("settings:restore").assertDoesNotExist()
+        compose.onNodeWithTag("settings:backupTurnOn").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("recovery-saved").fetchSemanticsNodes().any { SemanticsProperties.Disabled !in it.config } }
+        compose.onNodeWithTag("recovery-key").assertExists()
+        compose.onNodeWithTag("recovery-saved").performClick()
+        // Synthetic incorrect input only: never read/type/log the generated secret.
+        compose.onNodeWithTag("recovery-confirmation").performTextInput("1".repeat(63))
+        compose.onNodeWithTag("recovery-activate").assertIsNotEnabled()
+        compose.onNodeWithTag("recovery-confirmation").performTextInput("1")
+        compose.onNodeWithTag("recovery-activate").assertIsNotEnabled()
+        compose.onNodeWithTag("settings:backupPassword").assertDoesNotExist()
+        compose.onNodeWithText("Fechar").performClick()
+        val app = ApplicationProvider.getApplicationContext<ZoenApplication>()
+        assertTrue(!runBlocking { app.repository.query { it.backupStatus() } }.enabled)
     }
 
     @Test fun invitesShareTheLinkTheCoreMakes() {
