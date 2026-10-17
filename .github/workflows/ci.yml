@@ -97,4 +97,17 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Tests and journeys
-        run: cargo test --workspace --no-fail-fast
+        run: |
+          # Cargo summarizes only failed targets at the very end. Preserve the
+          # actual panic contexts there too, so bounded check-log readers can
+          # diagnose a failure without weakening or rerunning the suite.
+          set +e
+          cargo test --workspace --no-fail-fast 2>&1 | tee /tmp/cargo-test.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if (( status != 0 )); then
+            echo "Failure contexts (repeated at end of job):"
+            grep -n -B 4 -A 12 -E 'panicked at|test result: FAILED|error: [0-9]+ targets failed' /tmp/cargo-test.log \
+              | tail -n 1200 || true
+          fi
+          exit "$status"

@@ -9,6 +9,7 @@
 mod common;
 use common::*;
 use roda_proto::SealedKind;
+use roda_types::{EventBody, Privacy, SpaceKind};
 use std::{path::PathBuf, process::Child, time::Duration};
 
 struct Watch {
@@ -75,11 +76,29 @@ async fn dm_roundtrip_survives_relaunch_and_verifies() {
     // Both devices re-verify every signature and the relay's chain from disk.
     assert!(!w.zoen("ana", &["verify"]).contains("BROKEN"));
     assert!(!w.zoen("bruno", &["verify"]).contains("BROKEN"));
+    let events = w.events().await;
     assert_eq!(
-        w.events().await.len(),
-        10,
-        "SpaceCreated, MemberAdded, a profile key share each way, the commit and Welcome, \
-         a checkpoint each, 2 sealed messages"
+        events
+            .iter()
+            .filter(|entry| {
+                matches!(
+                    entry.env.body(),
+                    Some(EventBody::SpaceCreated {
+                        kind: SpaceKind::Personal,
+                        privacy: Privacy::EndToEnd,
+                        ..
+                    })
+                )
+            })
+            .count(),
+        2,
+        "each account publishes one encrypted Personal genesis"
+    );
+    assert_eq!(
+        events.len(),
+        12,
+        "2 encrypted Personal genesis, SpaceCreated, MemberAdded, a profile key share each way, \
+         the commit and Welcome, a checkpoint each, 2 sealed messages"
     );
 }
 
