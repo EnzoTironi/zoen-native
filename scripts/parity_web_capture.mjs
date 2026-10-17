@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Current-source mobile WebKit rendering. The application owns deterministic fixtures.
 import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
@@ -14,6 +14,7 @@ if (!args.url || !args.output || !args.playwright) {
 }
 const { webkit } = await import(pathToFileURL(resolve(args.playwright)).href);
 const output = resolve(args.output);
+await mkdir(dirname(output), { recursive: true });
 await mkdir(output); // EEXIST is intentional: old frames must never survive a render failure.
 const fixture = {
   fixture_id: 'native-parity-v1', fixed_time: '2026-01-15T12:00:00Z',

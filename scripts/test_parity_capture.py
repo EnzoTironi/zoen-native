@@ -3,6 +3,7 @@
 from datetime import datetime
 import os
 from pathlib import Path
+import subprocess
 import time
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -40,6 +41,30 @@ class CaptureSafetyTests(unittest.TestCase):
         android = workflow.split('\n  android:\n', 1)[1].split('\n  fixtures:\n', 1)[0]
         setup = android.split('uses: android-actions/setup-android@v3', 1)[1].split('      - ', 1)[0]
         self.assertIn('packages: platform-tools', setup)
+
+    def test_web_capture_creates_parent_but_rejects_stale_output(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            playwright = root / 'fake-playwright.mjs'
+            playwright.write_text(
+                "export const webkit = { launch() { throw new Error('browser launch reached'); } };\n"
+            )
+            output = root / 'missing-parent' / 'web'
+            command = (
+                'node', str(parity_capture.ROOT / 'scripts/parity_web_capture.mjs'),
+                '--url', 'http://127.0.0.1:1/', '--output', str(output),
+                '--playwright', str(playwright), '--viewport', 'narrow',
+            )
+
+            first = subprocess.run(command, cwd=parity_capture.ROOT, capture_output=True, text=True)
+            self.assertNotEqual(first.returncode, 0)
+            self.assertIn('browser launch reached', first.stderr)
+            self.assertTrue(output.is_dir())
+
+            second = subprocess.run(command, cwd=parity_capture.ROOT, capture_output=True, text=True)
+            self.assertNotEqual(second.returncode, 0)
+            self.assertIn('EEXIST', second.stderr)
+            self.assertNotIn('browser launch reached', second.stderr)
 
     def test_android_timezone_uses_supported_alarm_shell_command(self):
         adb = ('adb', '-s', 'emulator-5554')
