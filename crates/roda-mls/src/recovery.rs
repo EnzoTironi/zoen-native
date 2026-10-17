@@ -9,13 +9,15 @@ use openmls::{
 };
 use openmls_rust_crypto::OpenMlsRustCrypto;
 
-use crate::{leaf_of, mls, MlsError, SUITE};
+use crate::{leaf_of, mls, Leaf, MlsError, SUITE};
 
 pub const MAX_GROUP_INFO_BYTES: usize = roda_log::recovery::MAX_CONTEXT_BYTES;
 
 pub struct GroupInfoSummary {
     pub epoch: u64,
     pub identities: BTreeSet<String>,
+    /// Authenticated device credentials in the public ratchet tree.
+    pub leaves: BTreeSet<Leaf>,
 }
 
 /// Verify the signature, complete public tree, device certificates and group.
@@ -56,12 +58,14 @@ pub fn verify_group_info(
         ProposalStore::new(),
     )
     .map_err(mls)?;
-    let identities = group
+    let leaves: BTreeSet<Leaf> = group
         .members()
-        .map(|member| leaf_of(&member.credential, &member.signature_key).map(|leaf| leaf.identity))
+        .map(|member| leaf_of(&member.credential, &member.signature_key))
         .collect::<Result<_, MlsError>>()?;
+    let identities = leaves.iter().map(|leaf| leaf.identity.clone()).collect();
     Ok(GroupInfoSummary {
         epoch: group.group_context().epoch().as_u64(),
         identities,
+        leaves,
     })
 }
