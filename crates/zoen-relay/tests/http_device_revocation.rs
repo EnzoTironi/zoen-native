@@ -115,6 +115,7 @@ impl TestRelay {
                 .unwrap()
         };
         let state = Arc::new(AppState {
+            auth: zoen_relay::auth::Service::disabled(),
             analytics: analytics::Analytics::load(&pool).await.unwrap(),
             pool,
             session_auth: auth_pool(),

@@ -126,6 +126,9 @@ pub struct Limits {
     pub connect_ip: Limiter,
     /// New accounts per client IP.
     pub register_ip: Limiter,
+    pub auth_challenge_ip: Limiter,
+    pub auth_verify_ip: Limiter,
+    pub auth_bind_ip: Limiter,
     /// Events per device, and per account across all of its devices.
     pub publish_device: Limiter,
     pub publish_account: Limiter,
@@ -153,6 +156,9 @@ impl Limits {
         Self {
             connect_ip: Limiter::new("connect_ip", Quota::per_minute(60, 60)),
             register_ip: Limiter::new("register_ip", Quota::per_hour(10, 10)),
+            auth_challenge_ip: Limiter::new("auth_challenge_ip", Quota::per_hour(30, 10)),
+            auth_verify_ip: Limiter::new("auth_verify_ip", Quota::per_hour(60, 20)),
+            auth_bind_ip: Limiter::new("auth_bind_ip", Quota::per_hour(30, 10)),
             publish_device: Limiter::new("publish_device", Quota::per_second(20, 60)),
             publish_account: Limiter::new("publish_account", Quota::per_second(40, 120)),
             ephemeral_device: Limiter::new("ephemeral_device", Quota::per_second(10, 30)),
@@ -194,6 +200,9 @@ impl Limits {
         vec![
             &mut self.connect_ip,
             &mut self.register_ip,
+            &mut self.auth_challenge_ip,
+            &mut self.auth_verify_ip,
+            &mut self.auth_bind_ip,
             &mut self.publish_device,
             &mut self.publish_account,
             &mut self.ephemeral_device,
@@ -208,10 +217,13 @@ impl Limits {
         ]
     }
 
-    fn all(&self) -> [&Limiter; 13] {
+    fn all(&self) -> [&Limiter; 16] {
         [
             &self.connect_ip,
             &self.register_ip,
+            &self.auth_challenge_ip,
+            &self.auth_verify_ip,
+            &self.auth_bind_ip,
             &self.publish_device,
             &self.publish_account,
             &self.ephemeral_device,
