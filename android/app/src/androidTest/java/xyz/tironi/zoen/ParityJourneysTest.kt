@@ -52,10 +52,14 @@ class ParityJourneysTest {
         CommittedWindowCapture.save(activity, "pages", name)
     }
 
-    @Test fun filesOpenFromQuickActionsAndFolderBackReturnsToFiles() {
+    @Test fun filesOpenFromProfileAndFolderBackReturnsToFiles() {
         val item = application.repository.state.value.items.first()
-        compose.onNodeWithTag("home-plus").performClick()
-        compose.onNodeWithText(application.getString(R.string.files)).performClick()
+        fun openFiles() {
+            compose.onNodeWithTag("tab:Profile").performClick()
+            compose.onNodeWithTag("profile-list").performScrollToNode(hasText("Items"))
+            compose.onNode(hasText("Items") and hasClickAction()).performClick()
+        }
+        openFiles()
         compose.onNodeWithTag("files-list").assertExists()
         compose.onNodeWithContentDescription(application.getString(R.string.back)).assertIsDisplayed()
         compose.onNodeWithTag("files-list").performScrollToNode(hasTestTag("folder:${item.spaceId}"))
@@ -67,10 +71,10 @@ class ParityJourneysTest {
         compose.onNodeWithTag("files-list").assertExists()
         capturePageHistory("files-after-folder-back")
         compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
+        compose.onNodeWithTag("profile-list").assertExists()
+        compose.onNodeWithTag("tab:Chats").performClick()
         compose.onNodeWithTag("conversation-list").assertExists()
-        compose.onNodeWithTag("home-plus").assertIsDisplayed()
-        compose.onNodeWithTag("home-plus").performClick()
-        compose.onNodeWithText(application.getString(R.string.files)).performClick()
+        openFiles()
         compose.onNodeWithTag("files-list").assertExists()
     }
 
@@ -83,9 +87,11 @@ class ParityJourneysTest {
         scenario.onActivity { it.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("composer").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
-        compose.onNodeWithTag("home-plus").assertExists()
+        compose.onNodeWithTag("bottom-bar").assertExists()
+        compose.onNodeWithTag("newChat").assertExists()
         scenario.recreate()
-        compose.onNodeWithTag("home-plus").assertExists()
+        compose.onNodeWithTag("bottom-bar").assertExists()
+        compose.onNodeWithTag("newChat").assertExists()
         compose.onNodeWithTag("composer").assertDoesNotExist()
 
         var identity = 0
@@ -101,7 +107,8 @@ class ParityJourneysTest {
         assertTrue(application.repository.appVisible)
         compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
         scenario.recreate()
-        compose.onNodeWithTag("home-plus").assertExists()
+        compose.onNodeWithTag("bottom-bar").assertExists()
+        compose.onNodeWithTag("newChat").assertExists()
         compose.onNodeWithTag("composer").assertDoesNotExist()
         scenario.close()
         assertEquals(Lifecycle.State.DESTROYED, scenario.state)
@@ -263,22 +270,15 @@ class ParityJourneysTest {
         capturePageHistory("historical-version-restored-v3")
     }
 
-    @Test fun homeLongHoldRecordsAndReleaseSendsToZoenWithoutOpeningTheActionSheet() {
-        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("pm grant ${application.packageName} android.permission.RECORD_AUDIO").use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }
-        val chat = application.repository.state.value.zoenChat!!
-        val before = application.repository.state.value.items.size
-        compose.onNodeWithTag("home-plus").performTouchInput { down(center) }
+    @Test fun homeSearchLongHoldDoesNotCreateLegacyVoiceAndReleaseOpensSearch() {
+        val before = application.repository.state.value.items.map { it.id }.toSet()
+        compose.onNodeWithTag("newChat").performTouchInput { down(center) }
         compose.mainClock.advanceTimeBy(800)
-        val timerPrefix = application.getString(R.string.media_recording, "0:00").substringBefore("0:00")
-        compose.waitUntil(20_000) { compose.onAllNodes(hasText(timerPrefix, substring = true) and !hasText("0:00", substring = true)).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText(application.getString(R.string.new_chat), substring = false).assertDoesNotExist()
-        compose.onNodeWithTag("home-plus").performTouchInput { up() }
-        compose.waitUntil(20_000) { application.repository.state.value.items.size > before && application.repository.state.value.items.any { it.file?.path?.startsWith("VoiceNotes/") == true } }
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("composer").fetchSemanticsNodes().isNotEmpty() }
-        val entries = runBlocking { application.repository.query { it.timeline(chat.id) } }
-        assertTrue(entries.any { entry -> entry.voice != null })
-        assertTrue(runBlocking { application.repository.query { it.verifyAll().all { log -> log.valid } } })
-        compose.onNodeWithText(application.getString(R.string.new_chat), substring = false).assertDoesNotExist()
+        assertEquals(before, application.repository.state.value.items.map { it.id }.toSet())
+        compose.onNodeWithTag("newChat").performTouchInput { up() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("search").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("search").assertIsDisplayed()
+        assertEquals(before, application.repository.state.value.items.map { it.id }.toSet())
     }
 
     @Test fun chatMicrophoneStationaryHoldReleaseSendsRealAudio() {
@@ -306,22 +306,24 @@ class ParityJourneysTest {
     }
 
     @Test fun languageIsDirectInSettingsAndBackPopsOneScreen() {
-        compose.onNodeWithTag("open-context").performClick()
-        compose.onNode(hasText(application.getString(R.string.st_settings)) and hasClickAction()).performClick()
+        compose.onNodeWithTag("tab:Profile").performClick()
+        compose.onNodeWithTag("profile-list").performScrollToNode(hasText("Settings"))
+        compose.onNode(hasText("Settings") and hasClickAction()).performClick()
         compose.onNodeWithTag("settings:search").assertExists()
-        compose.onNodeWithTag("settings:Language").performClick()
+        compose.onNodeWithTag("settings:Language").performScrollTo().performClick()
         compose.onNodeWithTag("settings:language").assertIsDisplayed()
         compose.onNodeWithTag("settings:back").performClick()
         compose.onNodeWithTag("settings:search").assertIsDisplayed()
-        compose.onNodeWithTag("settings:Language").assertIsDisplayed()
+        compose.onNodeWithTag("settings:Language").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("settings:close").performClick()
         compose.onNodeWithTag("settings:search").assertDoesNotExist()
+        compose.onNodeWithTag("profile-list").assertExists()
     }
 
     @Test fun ActivityMentionsTasksAndChatAppearanceAreReachableAndPersist() {
         val mention = runBlocking { application.repository.query { it.mentions().first() } }
         val task = application.repository.state.value.items.first { it.plan?.sections?.any { section -> section.lines.any { !it.done } } == true }
-        compose.onNodeWithTag("open-activity").performClick()
+        compose.onNodeWithTag("home-notifications").performClick()
         compose.onNodeWithTag("activity-show-list").performClick()
         compose.onNodeWithTag("activity-tabs").performScrollToNode(hasText(application.getString(R.string.activity_mentions), substring = true))
         compose.onNodeWithText(application.getString(R.string.activity_mentions), substring = true).performClick()

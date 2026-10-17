@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
@@ -19,8 +20,6 @@ import android.view.WindowInsets
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -107,19 +106,11 @@ class LauncherWidgetJourneyTest {
             assertTrue("The observed launcher must advertise a HOME activity", launcher in homePackages)
             trace.put(JSONObject().put("observedLauncher", launcher).put("resolvedHome", ComponentName(homeActivity.packageName, homeActivity.name).flattenToString()).put("homePackages", JSONArray(homePackages.toList())))
             repository.preferences.edit().putBoolean("onboarded", true).putBoolean("miniapps.html:pet", false).putBoolean("miniapps.html:list", false).commit()
-            scenario = ActivityScenario.launch(Intent(application, MainActivity::class.java).putExtra("demo", true))
+            step("Reach Widgets through the supported app link")
+            scenario = ActivityScenario.launch(Intent(application, MainActivity::class.java).putExtra("demo", true)
+                .setAction(Intent.ACTION_VIEW).setData(Uri.parse("zoen://widgets")))
             scenario.onActivity { it.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
-            compose.waitUntil(20_000) { compose.onAllNodesWithTag("home-plus").fetchSemanticsNodes().size == 1 }
-
-            step("Reach Home widgets through the native action sheet")
-            compose.onNodeWithTag("home-plus").performTouchInput { click() }
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("quickActions").fetchSemanticsNodes().size == 1 }
-            // Expand the actual Material3 handle before scrolling the bounded action body.
-            compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.Expand))
-                .performSemanticsAction(SemanticsActions.Expand) { assertTrue(it()) }
-            compose.onNodeWithTag("quickActions").assert(hasScrollAction())
-            assertTrue(compose.onNodeWithTag("quickActions").fetchSemanticsNode().config.contains(SemanticsProperties.VerticalScrollAxisRange))
-            compose.onNodeWithText(application.getString(R.string.widgets)).performScrollTo().assertIsDisplayed().performClick()
+            compose.waitUntil(20_000) { compose.onAllNodesWithText(application.getString(R.string.widget_instructions)).fetchSemanticsNodes().size == 1 }
 
             val reconfigurable = Build.VERSION.SDK_INT >= 31
             val initial = if (reconfigurable) list else pet
@@ -267,8 +258,11 @@ class LauncherWidgetJourneyTest {
             compose.waitUntil(10_000) {
                 readUi()?.packageName == application.packageName &&
                     compose.onAllNodesWithText(petTitle).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() &&
-                    compose.onAllNodesWithTag("pet-app-content").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() &&
-                    compose.onAllNodesWithTag("pet-unboxing").fetchSemanticsNodes(atLeastOneRootRequired = false).isEmpty()
+                    compose.onAllNodesWithTag("pet-app-content").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+            }
+            if (compose.onAllNodesWithTag("pet-unboxing").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()) {
+                compose.onNodeWithTag("pet-unboxing").performClick()
+                compose.onNodeWithTag("pet-unboxing").assertDoesNotExist()
             }
             compose.onNodeWithTag("pet-app-content").performScrollToNode(hasText("${afterFullness.toInt()}%"))
             compose.waitForIdle()
@@ -409,17 +403,67 @@ class LauncherWidgetJourneyTest {
     private fun awaitWidget(title: String, until: Long = SystemClock.uptimeMillis() + 10_000): WidgetUi {
         var result: WidgetUi? = null
         var previous: WidgetUi? = null
+        var pageMoves = 0
         await("Launcher renders widget $title at stable workspace bounds", until) {
             // Sample only once the launcher's accessibility stream has gone quiet, so two equal
             // samples mean the RemoteViews really settled rather than landing mid-relayout.
             runCatching { automation.waitForIdle(100, (until - SystemClock.uptimeMillis()).coerceIn(1, 2_000)) }
             result = findWidget(title)
+            if (result == null && pageMoves < 4 && revealWidgetPage(title)) {
+                pageMoves++
+                previous = null
+                result = findWidget(title)
+            }
             val settled = result != null && result?.geometry() == previous?.geometry()
             previous = result
             settled
         }
         trace.put(JSONObject().put("settledWidget", checkNotNull(result).toJson()).put("uptimeMs", SystemClock.uptimeMillis()))
         return checkNotNull(result)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun revealWidgetPage(title: String): Boolean {
+        val snapshot = readUi() ?: return false
+        val workspace = homeWorkspace(snapshot) ?: return false
+        val headings = snapshot.descendants().filter {
+            it.id == "${application.packageName}:id/widget_title" && it.text == title
+        }
+        check(headings.size <= 1) { "The test Item appears in more than one launcher widget" }
+        val heading = headings.singleOrNull() ?: return false
+        val action = when {
+            heading.bounds.left >= workspace.bounds.right -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            heading.bounds.right <= workspace.bounds.left -> AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+            else -> return false
+        }
+        val root = automation.rootInActiveWindow ?: return false
+        var target: AccessibilityNodeInfo? = null
+        var remaining = 512
+        fun visit(node: AccessibilityNodeInfo) {
+            check(remaining-- > 0) { "Accessibility tree exceeds the bounded widget probe" }
+            if (node.packageName?.toString() == launcher && node.viewIdResourceName == "$launcher:id/workspace") {
+                check(target == null) { "Launcher exposes more than one workspace" }
+                target = AccessibilityNodeInfo.obtain(node)
+            }
+            for (index in 0 until node.childCount) {
+                node.getChild(index)?.let { child -> try { visit(child) } finally { child.recycle() } }
+            }
+        }
+        return try {
+            visit(root)
+            val current = target ?: return false
+            if (current.actionList.none { it.id == action }) return false
+            val moved = current.performAction(action)
+            if (moved) {
+                trace.put(JSONObject().put("workspacePageAction", action).put("widgetTitle", title)
+                    .put("offscreenBounds", heading.bounds.toShortString()).put("uptimeMs", SystemClock.uptimeMillis()))
+                runCatching { automation.waitForIdle(100, 1_000) }
+            }
+            moved
+        } finally {
+            target?.recycle()
+            root.recycle()
+        }
     }
 
     private fun touch(node: UiNode) = gesture(node, 80)

@@ -69,6 +69,9 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
 
     key(state.demo, state.me?.id, LocalConfiguration.current.locales[0].language) {
         var tab by rememberSaveable { mutableStateOf(Tab.Chats) }
+        var chatFilterName by rememberSaveable { mutableStateOf(ChatInboxFilter.All.name) }
+        val chatFilter = ChatInboxFilter.entries.firstOrNull { it.name == chatFilterName } ?: ChatInboxFilter.All
+        val selectChatFilter: (ChatInboxFilter) -> Unit = { chatFilterName = it.name }
         val chats = rememberNavBackStack(Home)
         val marketplace = rememberNavBackStack(Home)
         val profile = rememberNavBackStack(Home)
@@ -177,7 +180,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             entry<Home> {
                                 Box(Modifier.fillMaxSize().statusBarsPadding()) {
                                     when (tab) {
-                                        Tab.Chats -> ConversationsScreen(model, state, navigate, split)
+                                        Tab.Chats -> ConversationsScreen(model, state, navigate, split, chatFilter)
                                         Tab.Marketplace -> MiniAppStoreScreen(model, state, onOpenItem = { navigate(Item(it)) }, back = back, onOpenAgent = { navigate(Agent(it)) })
                                         Tab.Profile -> YouScreen(model, state, navigate, { tab = Tab.Chats })
                                     }
@@ -194,7 +197,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             entry<Folder> { FilesScreen(model, state, navigate, back, it.space) }
                             entry<Agents> { AgentsScreen(model, state, navigate, back) }
                             entry<Context> { ContextScreen(model, state, navigate, back) }
-                            entry<Search> { SearchScreen(model, state, navigate, back) }
+                            entry<Search> { SearchScreen(model, state, navigate, back, chatFilter, selectChatFilter) }
                             entry<History> { HistoryScreen(model, state, back) }
                             entry<Permissions> { PermissionsScreen(model, state, back) }
                             entry<AgentPermissions> { StandingPermissionsScreen(model, state, back, it.agent, it.space) }

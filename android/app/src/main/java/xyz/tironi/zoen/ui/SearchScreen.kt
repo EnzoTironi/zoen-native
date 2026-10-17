@@ -112,7 +112,14 @@ private data class SearchOutcome(
 )
 
 @Composable
-fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, back: () -> Unit) {
+internal fun SearchScreen(
+    model: ZoenViewModel,
+    state: AppState,
+    navigate: (NavKey) -> Unit,
+    back: () -> Unit,
+    chatFilter: ChatInboxFilter = ChatInboxFilter.All,
+    selectChatFilter: (ChatInboxFilter) -> Unit = {},
+) {
     var query by rememberSaveable { mutableStateOf("") }
     var scopeName by rememberSaveable { mutableStateOf(SearchScope.All.name) }
     val scope = SearchScope.valueOf(scopeName)
@@ -181,7 +188,8 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
     val people = (knownPeople + state.spaces.flatMap { it.members } + remotePeople).filterNot { it.isMe }.distinctBy { it.id }
     val matchingPeople = people.filter { it.kind == PersonaKind.PERSON &&
         (trimmedQuery.isEmpty() || it.name.contains(trimmedQuery, true) || it.handle.contains(trimmedQuery, true)) }
-    val matchingChats = state.spaces.filter { trimmedQuery.isEmpty() || it.title.contains(trimmedQuery, true) }.sortedByDescending { it.lastAtMs }
+    val matchingChats = state.spaces.filter { chatFilter.includes(it) && (trimmedQuery.isEmpty() || it.title.contains(trimmedQuery, true)) }
+        .sortedByDescending { it.lastAtMs }
     var startingPerson by remember { mutableStateOf<String?>(null) }
     var createOpen by remember { mutableStateOf(false) }
     val suggested = people.filter { it.kind == PersonaKind.PERSON }.take(4) +
@@ -245,8 +253,11 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { saveQuery(); keyboard?.hide() }),
                 trailingIcon = {
-                    if (query.isNotEmpty()) NativeIconButton(onClick = { query = ""; focus.requestFocus() }) {
-                        MotionVectorIcon(Icons.Rounded.Close, stringResource(R.string.search_clear_query))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (query.isNotEmpty()) NativeIconButton(onClick = { query = ""; focus.requestFocus() }) {
+                            MotionVectorIcon(Icons.Rounded.Close, stringResource(R.string.search_clear_query))
+                        }
+                        ChatFilterMenu(chatFilter, compact = true, select = selectChatFilter)
                     }
                 },
             )

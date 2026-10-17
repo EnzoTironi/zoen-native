@@ -42,6 +42,9 @@ jobs:
         with:
           targets: aarch64-apple-ios-sim
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Restored target mtimes can otherwise hide Rust modules added after the cache was saved.
+          key: parity-ios-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'crates/**/*.rs') }}
       - run: brew install xcodegen
       - name: Fresh iOS native fixture frames
         run: |

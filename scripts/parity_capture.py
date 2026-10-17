@@ -160,6 +160,23 @@ def set_android_timezone(adb, timezone='UTC'):
     run(*adb, 'shell', 'cmd', 'alarm', 'set-timezone', timezone)
 
 
+def read_android_file(adb, path, attempts=3):
+    """Read one sandbox file, tolerating only a transient offline ADB transport."""
+    for attempt in range(attempts):
+        result = subprocess.run([*adb, 'exec-out', 'run-as', 'xyz.tironi.zoen',
+            'cat', path], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode == 0:
+            return result.stdout
+        detail = result.stderr.decode(errors='replace').strip().lower()
+        if detail not in ('device offline', 'error: device offline') or attempt + 1 == attempts:
+            result.check_returncode()
+        # The emulator can briefly drop its ADB transport as instrumentation exits.
+        # Wait for that exact serial; missing files and app/test failures never retry.
+        subprocess.run([*adb, 'wait-for-device'], check=True, cwd=ROOT,
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30)
+    raise AssertionError('unreachable')
+
+
 def capture_android(args, output):
     serial = android_emulator_serial(args.device)
     adb = ('adb', '-s', serial)
@@ -190,8 +207,8 @@ def capture_android(args, output):
     # Test app owns these files; run-as only reads its debug sandbox after testing.
     for key in (*KEYS, 'manifest'):
         filename = 'manifest.json' if key == 'manifest' else key+'.png'
-        with (output/filename).open('wb') as file:
-            run(*adb, 'exec-out', 'run-as', 'xyz.tironi.zoen', 'cat', 'cache/device-evidence/android-parity/'+filename, stdout=file)
+        (output/filename).write_bytes(read_android_file(
+            adb, 'cache/device-evidence/android-parity/'+filename))
 
 
 def main():

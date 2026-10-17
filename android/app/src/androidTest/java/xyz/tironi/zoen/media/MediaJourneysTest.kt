@@ -147,8 +147,9 @@ class MediaJourneysTest {
             val original = try { ByteArrayOutputStream().use { output -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, output); output.toByteArray() } } finally { bitmap.recycle() }
             val name = "markup-${UUID.randomUUID()}.png"
             val item = runBlocking { application.repository.change { it.fileAdd(checkNotNull(application.repository.state.value.zoenChat).id, name, name, "image/png", original, null) } }
-            compose.onNodeWithTag("home-plus").performClick()
-            compose.onNodeWithText(application.getString(R.string.files)).performClick()
+            compose.onNodeWithTag("tab:Profile").performClick()
+            compose.onNodeWithTag("profile-list").performScrollToNode(hasText("Items"))
+            compose.onNode(hasText("Items") and hasClickAction()).performClick()
             compose.onNodeWithTag("files-list").performScrollToNode(hasText(item.title))
             compose.onNodeWithText(item.title, useUnmergedTree = true).performScrollTo().assertIsDisplayed().performClick()
             compose.waitUntil(15_000) { compose.onAllNodesWithTag("file-markup", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }

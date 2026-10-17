@@ -36,6 +36,7 @@ class OnboardingConnectionJourneyTest {
         val wasDemo = repository.preferences.getBoolean("demo", false)
         val wasOnboarded = repository.preferences.getBoolean("onboarded", false)
         val wasBackground = repository.preferences.getBoolean(MessagingService.PREFERENCE, false)
+        val wasNotifications = repository.preferences.getBoolean("notifications", false)
         val suffix = UUID.randomUUID().toString().replace("-", "").take(10)
         var ownIdentity: String? = null
         val peerFolder = File(application.noBackupFilesDir, "onboard-peer-$suffix").apply { mkdirs() }
@@ -105,9 +106,15 @@ class OnboardingConnectionJourneyTest {
             assertEquals(areaResources.map(application::getString), made.plan!!.sections.map { it.title })
             compose.waitUntil(30_000) { repository.state.value.account?.registered == true && repository.state.value.connection.state == "online" }
             compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
-            compose.onNodeWithTag("open-context").performClick()
-            compose.onNodeWithTag("background-connection").performScrollTo().performClick()
-            compose.onNodeWithTag("background-connection").assertIsOn()
+            compose.onNodeWithTag("tab:Profile").performClick()
+            compose.onNodeWithTag("profile-list").performScrollToNode(hasText("Settings"))
+            compose.onNode(hasText("Settings") and hasClickAction()).performClick()
+            compose.onNodeWithTag("settings:search").assertIsDisplayed()
+            compose.onNodeWithTag("background-connection").assertDoesNotExist()
+            compose.onNodeWithTag("settings:close").performClick()
+            compose.onNodeWithTag("tab:Chats").performClick()
+            repository.preferences.edit().putBoolean(MessagingService.PREFERENCE, true).putBoolean("notifications", true).commit()
+            MessagingService.start(application)
             val notifications = application.getSystemService(NotificationManager::class.java)
             compose.waitUntil(10_000) { notifications.activeNotifications.any { it.id == 1001 && it.notification.flags and Notification.FLAG_ONGOING_EVENT != 0 } }
             val peerAccount = peer.createAccount("Native Peer", "op_$suffix", relay, peerVault)
@@ -133,7 +140,8 @@ class OnboardingConnectionJourneyTest {
             scenario.onActivity { assertEquals(activityIdentity, System.identityHashCode(it)); assertEquals(task, it.taskId) }
             compose.waitUntil(10_000) { notifications.activeNotifications.none { it.tag == "chat:$direct" } }
             compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
-            compose.onNodeWithTag("background-connection").performScrollTo().performClick()
+            repository.preferences.edit().putBoolean(MessagingService.PREFERENCE, false).commit()
+            MessagingService.stop(application)
             compose.waitUntil(10_000) { notifications.activeNotifications.none { it.id == 1001 } }
             assertFalse(repository.preferences.getBoolean(MessagingService.PREFERENCE, false))
             scenario.moveToState(Lifecycle.State.CREATED)
@@ -157,7 +165,8 @@ class OnboardingConnectionJourneyTest {
                 if (ownsCurrent) runBlocking { repository.signOut() }
                 try { scenario?.close() }
                 finally {
-                    repository.preferences.edit().putBoolean("demo", wasDemo).putBoolean("onboarded", wasOnboarded).putBoolean(MessagingService.PREFERENCE, wasBackground).commit()
+                    repository.preferences.edit().putBoolean("demo", wasDemo).putBoolean("onboarded", wasOnboarded)
+                        .putBoolean(MessagingService.PREFERENCE, wasBackground).putBoolean("notifications", wasNotifications).commit()
                     if (wasDemo && !repository.state.value.demo) runBlocking { repository.useDemo() }
                 }
             } catch (cleanupFailure: Throwable) {

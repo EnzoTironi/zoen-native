@@ -8,7 +8,7 @@ import time
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import parity_capture
 
@@ -57,6 +57,34 @@ class CaptureSafetyTests(unittest.TestCase):
         ios = workflow.split('\n  ios:\n', 1)[1].split('\n  android:\n', 1)[0]
         target_line = next(line.strip() for line in ios.splitlines() if line.strip().startswith('targets:'))
         self.assertEqual(target_line, 'targets: aarch64-apple-ios-sim')
+
+    def test_ios_rust_cache_is_keyed_by_current_sources(self):
+        workflow = (parity_capture.ROOT / '.github/workflows/ios-android-parity.yml').read_text()
+        ios = workflow.split('\n  ios:\n', 1)[1].split('\n  android:\n', 1)[0]
+        self.assertIn(
+            "key: parity-ios-${{ hashFiles('Cargo.lock', 'Cargo.toml', "
+            "'crates/**/Cargo.toml', 'crates/**/*.rs') }}",
+            ios,
+        )
+
+    def test_ios_capture_uses_current_home_routes_for_community_and_notifications(self):
+        source = (parity_capture.ROOT / 'apple/UITests/AndroidParityCaptureTests.swift').read_text()
+        self.assertNotIn('["-RodaTab", "files"]', source)
+        self.assertNotIn('["-RodaTab", "activity"]', source)
+        self.assertIn('"Coastal Travelers"', source)
+        self.assertIn('"home-notifications-card"', source)
+        self.assertIn('"notifications-list-view"', source)
+
+    def test_ios_capture_waits_for_current_search_controls(self):
+        screens = (parity_capture.ROOT / 'apple/UITests/AndroidParityCaptureTests.swift').read_text()
+        composer = (parity_capture.ROOT / 'apple/UITests/BottomComposerParityCaptureTests.swift').read_text()
+        self.assertNotIn('buttons["New message"]', screens)
+        self.assertNotIn('buttons["New message"]', composer)
+        self.assertIn('app.buttons["Search"]', screens)
+        self.assertIn('bottomBar.buttons["Search"]', screens)
+        self.assertIn('bottomBar.buttons["Search"]', composer)
+        self.assertIn('textFields["unified-search-field"]', composer)
+        self.assertNotIn('navigationBars["New chat"]', composer)
 
     def test_ios_workflow_preserves_capture_log_without_precreating_output(self):
         workflow = (parity_capture.ROOT / '.github/workflows/ios-android-parity.yml').read_text()
@@ -125,6 +153,38 @@ class CaptureSafetyTests(unittest.TestCase):
             parity_capture.set_android_timezone(adb)
         run.assert_called_once_with(*adb, 'shell', 'cmd', 'alarm', 'set-timezone', 'UTC')
         self.assertNotIn('setprop', run.call_args.args)
+
+    def test_android_file_read_waits_for_same_device_after_offline_transport(self):
+        adb = ('adb', '-s', 'emulator-5554')
+        path = 'cache/device-evidence/android-parity/chats-light.png'
+        read = [*adb, 'exec-out', 'run-as', 'xyz.tironi.zoen', 'cat', path]
+        wait = [*adb, 'wait-for-device']
+        offline = subprocess.CompletedProcess(read, 1, b'', b'error: device offline\n')
+        ready = subprocess.CompletedProcess(wait, 0, b'', b'')
+        success = subprocess.CompletedProcess(read, 0, b'fresh-png', b'')
+
+        with patch.object(parity_capture.subprocess, 'run', side_effect=(offline, ready, success)) as run:
+            self.assertEqual(parity_capture.read_android_file(adb, path), b'fresh-png')
+
+        self.assertEqual(run.call_args_list, [
+            call(read, cwd=parity_capture.ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE),
+            call(wait, check=True, cwd=parity_capture.ROOT, stdout=subprocess.DEVNULL,
+                 stderr=subprocess.PIPE, timeout=30),
+            call(read, cwd=parity_capture.ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE),
+        ])
+
+    def test_android_file_read_does_not_retry_missing_file(self):
+        adb = ('adb', '-s', 'emulator-5554')
+        path = 'cache/device-evidence/android-parity/missing.png'
+        read = [*adb, 'exec-out', 'run-as', 'xyz.tironi.zoen', 'cat', path]
+        missing = subprocess.CompletedProcess(read, 1, b'', b'cat: missing.png: No such file or directory\n')
+
+        with patch.object(parity_capture.subprocess, 'run', return_value=missing) as run, \
+                self.assertRaises(subprocess.CalledProcessError):
+            parity_capture.read_android_file(adb, path)
+
+        run.assert_called_once_with(read, cwd=parity_capture.ROOT,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def test_capture_rejects_physical_phone_before_any_command(self):
         with TemporaryDirectory() as directory, patch.object(parity_capture, 'run') as run:

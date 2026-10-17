@@ -32,8 +32,6 @@ final class AndroidParityCaptureTests: XCTestCase {
                 app.launchArguments += ["-RodaOnboarding", "YES"]
             } else {
                 app.launchArguments += ["-RodaDemo", "YES"]
-                if screen == "spaces" { app.launchArguments += ["-RodaTab", "files"] }
-                if screen == "notifications" { app.launchArguments += ["-RodaTab", "activity"] }
                 if screen == "settings" || screen == "profile" { app.launchArguments += ["-RodaTab", "you"] }
             }
             app.launch()
@@ -73,13 +71,30 @@ final class AndroidParityCaptureTests: XCTestCase {
                     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
                 }
             } else if screen == "spaces" {
-                XCTAssertTrue(app.descendants(matching: .any)["spaces-directory"].firstMatch.waitForExistence(timeout: 30))
+                // Capture the current seeded community journey; the Files/Spaces root tab
+                // was removed when compact navigation moved to Chats, Marketplace and Profile.
+                let community = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Coastal Travelers")).firstMatch
+                XCTAssertTrue(community.waitForExistence(timeout: 30), "The seeded community must be reachable from the current Chats root")
+                community.tap()
+                XCTAssertTrue(app.buttons["chat-title"].waitForExistence(timeout: 10))
             } else if screen == "profile" {
                 XCTAssertTrue(app.buttons["openSettings"].waitForExistence(timeout: 30))
             } else if screen == "notifications" {
-                XCTAssertTrue(app.staticTexts["Notifications"].firstMatch.waitForExistence(timeout: 30))
+                let notifications = app.descendants(matching: .any)["home-notifications-card"].firstMatch
+                XCTAssertTrue(notifications.waitForExistence(timeout: 30), "Notifications must remain reachable from the first Home card")
+                notifications.tap()
+                XCTAssertTrue(app.descendants(matching: .any)["notifications-list-view"].firstMatch.waitForExistence(timeout: 10))
             } else {
-                XCTAssertTrue(app.buttons["New message"].firstMatch.waitForExistence(timeout: 30))
+                let searchAction: XCUIElement
+                if environment["ZOEN_PARITY_VIEWPORT"] == "wide" {
+                    searchAction = app.buttons["Search"].firstMatch
+                } else {
+                    let bottomBar = app.tabBars.firstMatch
+                    XCTAssertTrue(bottomBar.waitForExistence(timeout: 30), "Compact root navigation must stay in the bottom bar")
+                    searchAction = bottomBar.buttons["Search"].firstMatch
+                }
+                XCTAssertTrue(searchAction.waitForExistence(timeout: 30), "The bottom/rail Search action must remain available")
+                XCTAssertFalse(app.navigationBars.buttons["Search"].exists, "Root actions must not return to the top bar")
             }
             // Await app idleness and one settled animation before recording the actual app frame.
             Thread.sleep(forTimeInterval: screen == "onboarding" ? 8 : 2)

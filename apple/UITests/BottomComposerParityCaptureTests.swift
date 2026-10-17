@@ -35,8 +35,11 @@ final class BottomComposerParityCaptureTests: XCTestCase {
             XCTAssertEqual(metadata["fixture_id"] as? String, fixture)
             XCTAssertEqual(metadata["source_revision"] as? String, revision)
             XCTAssertEqual(metadata["fixed_time"] as? String, "2026-01-15T12:00:00Z")
-            let newMessage = app.buttons["New message"].firstMatch
-            XCTAssertTrue(newMessage.waitForExistence(timeout: 30))
+            let bottomBar = app.tabBars.firstMatch
+            XCTAssertTrue(bottomBar.waitForExistence(timeout: 30), "Compact root navigation must stay in the bottom bar")
+            let searchAction = bottomBar.buttons["Search"].firstMatch
+            XCTAssertTrue(searchAction.waitForExistence(timeout: 30), "The bottom Search action must remain available")
+            XCTAssertFalse(app.navigationBars.buttons["Search"].exists, "Root actions must not return to the top bar")
             let geometry = app.descendants(matching: .any)["parity-window-geometry"].firstMatch
             XCTAssertTrue(geometry.waitForExistence(timeout: 10))
             var measured: [String: Any] = ["window": try JSONSerialization.jsonObject(with: Data(geometry.label.utf8))]
@@ -50,8 +53,8 @@ final class BottomComposerParityCaptureTests: XCTestCase {
             geometryAttachment.lifetime = .keepAlways
             add(geometryAttachment)
             if frame == "new-message" {
-                newMessage.tap()
-                XCTAssertTrue(app.navigationBars["New chat"].waitForExistence(timeout: 10), "The native prominent action must present the real recipient picker")
+                searchAction.tap()
+                XCTAssertTrue(app.textFields["unified-search-field"].waitForExistence(timeout: 10), "The bottom Search action must present the real search sheet")
             } else if frame != "chats" {
                 let marina = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Marina")).firstMatch
                 XCTAssertTrue(marina.waitForExistence(timeout: 20))
