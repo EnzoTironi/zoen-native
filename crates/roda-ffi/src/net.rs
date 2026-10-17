@@ -2063,6 +2063,7 @@ mod tests {
                 ClientFrame::Sync { all: true, .. }
             ));
             let mut current_copies = HashMap::new();
+            let mut held_commit = None;
             if matches!(
                 catch_up,
                 CatchUp::HandshakeCollision | CatchUp::StorageRefusal
@@ -2134,13 +2135,19 @@ mod tests {
                     )
                     .await;
                 }
-                reply(
-                    &mut socket,
-                    ServerFrame::Event {
-                        ev: missed_commit.clone(),
-                    },
-                )
-                .await;
+                if matches!(catch_up, CatchUp::StorageRefusal) {
+                    // Exercise the real gap after retry succeeds but before the winning
+                    // commit arrives: the relay must refuse an old-epoch application.
+                    held_commit = Some(missed_commit.clone());
+                } else {
+                    reply(
+                        &mut socket,
+                        ServerFrame::Event {
+                            ev: missed_commit.clone(),
+                        },
+                    )
+                    .await;
+                }
             }
             if matches!(catch_up, CatchUp::PermissionRefusal) {
                 reply(
@@ -2328,7 +2335,31 @@ mod tests {
                             continue;
                         }
                         let (_, bytes) = env.sealed_data().unwrap();
-                        assert_eq!(roda_mls::application_epoch(bytes), Some(2));
+                        let epoch = roda_mls::application_epoch(bytes);
+                        if epoch == Some(1)
+                            && matches!(
+                                catch_up,
+                                CatchUp::HandshakeCollision | CatchUp::StorageRefusal
+                            )
+                        {
+                            // `original` above restricts this to the same two queued IDs.
+                            // A sent copy can precede catch-up even after its server reply.
+                            reply(
+                                &mut socket,
+                                ServerFrame::Rejected {
+                                    space: space.into(),
+                                    client_id: env.client_id().into(),
+                                    reason: roda_proto::STALE_SEAL.into(),
+                                    permanent: true,
+                                },
+                            )
+                            .await;
+                            if let Some(ev) = held_commit.take() {
+                                reply(&mut socket, ServerFrame::Event { ev }).await;
+                            }
+                            continue;
+                        }
+                        assert_eq!(epoch, Some(2));
                         let Opened::Application { plaintext, .. } = peer
                             .open(
                                 space,
@@ -2374,6 +2405,7 @@ mod tests {
                     other => panic!("unexpected {other:?}"),
                 }
             }
+            assert!(held_commit.is_none(), "the old-epoch gap was not exercised");
             // A response ordered after both event echoes confirms that the client
             // applied them and cleared their pending records before stopping.
             let (marker, marked) = oneshot::channel();
