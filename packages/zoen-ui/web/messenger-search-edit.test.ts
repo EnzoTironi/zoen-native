@@ -25,12 +25,26 @@ async function input(el: HTMLInputElement | HTMLTextAreaElement, value: string) 
 }
 async function click(el: Element | undefined | null) { assert.ok(el); await act(async () => (el as HTMLElement).click()); }
 function button(label: string) { return [...document.querySelectorAll('button')].find((b) => b.textContent === label || b.getAttribute('aria-label') === label); }
-async function mount(annotate = async () => {}) {
+async function mount(annotate = async () => {}, items: unknown[] = conversations) {
   const calls: unknown[] = [];
   const root = createRoot(document.getElementById('root')!);
-  await act(async () => root.render(h(Messenger, { conversations, identity: own, name: 'Ana', connected: true, status: 'Conectado', messages: { current: { annotate, post: async (v: unknown) => { calls.push(v); }, sendFile: async (...args: unknown[]) => { calls.push(args); } } }, footer: null, selected: 'chat', select: () => {} })));
+  await act(async () => root.render(h(Messenger, { conversations: items, identity: own, name: 'Ana', connected: true, status: 'Conectado', messages: { current: { annotate, post: async (v: unknown) => { calls.push(v); }, sendFile: async (...args: unknown[]) => { calls.push(args); } } }, footer: null, selected: 'chat', select: () => {} })));
   return { calls, close: async () => { await act(async () => root.unmount()); } };
 }
+
+test('attachment post renders file payload and caption alongside forward and reply context', async () => {
+  const file = { name: 'report.txt', mime: 'text/plain', bytes: 6, chunks: [{ blob: 'blob-id', bytes: 6 }], key: 'key' };
+  const entry = { ...msg('attachment', 'Meaningful caption'), file, forwarded: true, quote: { id: 'root', name: 'Bea', text: 'Original question' } };
+  const ui = await mount(undefined, [{ ...conversations[0], messages: [entry] }]);
+  try {
+    const row = document.getElementById('message-attachment')!;
+    assert.ok(row.querySelector('.zm-file'), 'actual file component must render');
+    assert.match(row.textContent!, /report.txt/);
+    assert.equal(row.querySelector('.zm-text')?.textContent, 'Meaningful caption');
+    assert.match(row.textContent!, /Original question/);
+    assert.match(row.textContent!, /Encaminhada/);
+  } finally { await ui.close(); }
+});
 
 test('sidebar finds message bodies, not only conversation titles', async () => {
   const ui = await mount();
