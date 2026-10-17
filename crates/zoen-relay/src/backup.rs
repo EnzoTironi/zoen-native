@@ -317,14 +317,8 @@ async fn signed_identity(
     }
     let mut tx = begin(st).await?;
     // Unlink waits for this authorization lock. A write cannot commit after revocation.
-    let identity: Option<String> = match sqlx::query_scalar(
-        "SELECT identity FROM devices WHERE device = $1 AND revoked_at IS NULL FOR SHARE",
-    )
-    .bind(&device)
-    .fetch_optional(&mut *tx)
-    .await
-    {
-        Ok(i) => i,
+    let identity = match crate::db::active_device_on(&mut tx, &device).await {
+        Ok(row) => row.map(|(identity, _)| identity),
         Err(_) => return Err(unavailable()),
     };
     let Some(identity) = identity else {

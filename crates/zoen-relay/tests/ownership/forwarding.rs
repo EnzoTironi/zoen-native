@@ -476,7 +476,7 @@ pub async fn late_delivery(
         loop {
             sqlx::query("SELECT pg_stat_clear_snapshot()")
                 .execute(&mut lock).await.unwrap();
-            let blocked = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE 'SELECT identity = $1,%'")
+            let blocked = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query = 'SELECT identity, cert FROM devices WHERE device = $1 AND revoked_at IS NULL FOR SHARE'")
                 .fetch_one(&mut lock).await.unwrap();
             if blocked >= 1 { break }
             tokio::time::sleep(Duration::from_millis(10)).await;

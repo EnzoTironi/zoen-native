@@ -10,10 +10,13 @@ use roda_log::{
     Author, Signer,
 };
 use roda_proto::{
-    auth_message, AgreementKeyRecord, ClientFrame, DeviceCertificate, Envelope, ErrorCode,
-    InviteCreated, Op, Reply, SealedProfile, Sequenced, ServerFrame, PROTOCOL_VERSION,
+    auth_message, backup_message, blob_put_message, experiments::report_message, transfer_message,
+    AgentAction, AgentRequest, AgreementKeyRecord, ClientFrame, DeviceCertificate, Envelope,
+    EphemeralKind, ErrorCode, InviteCreated, Op, Reply, SealedProfile, Sequenced, ServerFrame,
+    PROTOCOL_VERSION,
 };
 use roda_types::{Identity, IdentityKind, Role};
+use sha2::{Digest, Sha256};
 use sqlx::{postgres::PgPoolOptions, Connection, PgConnection};
 use std::{
     sync::{
@@ -199,6 +202,23 @@ async fn connect(url: &str, author: &Author) -> Socket {
     socket
 }
 
+// The HTTP tests exercise device authorization, not the production HSM boundary.
+struct TestVault;
+impl zoen_relay::backup::Vault for TestVault {
+    fn new_key(&self, _: &str) -> anyhow::Result<Vec<u8>> {
+        Ok(vec![1; 32])
+    }
+    fn evaluate(&self, _: &[u8], _: &str, _: &[u8; 32]) -> Option<[u8; 32]> {
+        Some([2; 32])
+    }
+    fn evaluate_decoy(&self, _: &str, _: &[u8; 32]) -> Option<[u8; 32]> {
+        Some([3; 32])
+    }
+    fn decoy_metadata(&self, _: &str) -> ([u8; 32], [u8; 32]) {
+        ([4; 32], [5; 32])
+    }
+}
+
 struct TestRelay {
     state: Arc<AppState>,
     log: Arc<BlockedLog>,
@@ -210,6 +230,10 @@ struct TestRelay {
 
 impl TestRelay {
     async fn new() -> Self {
+        Self::with_backup(false).await
+    }
+
+    async fn with_backup(enabled: bool) -> Self {
         let admin_url = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
         let database = format!(
             "zoen_t_read_revoke_{}",
@@ -257,8 +281,12 @@ impl TestRelay {
             relay_name: "test-relay".into(),
             metrics: metrics::Metrics::default(),
             blobs: Arc::new(object_store::memory::InMemory::new()),
-            backup_vault: None,
-            backup_settings: Default::default(),
+            backup_vault: enabled
+                .then(|| Arc::new(TestVault) as Arc<dyn zoen_relay::backup::Vault>),
+            backup_settings: zoen_relay::backup::Settings {
+                dev_allow_unauthenticated_password_backup: enabled,
+                ..Default::default()
+            },
             apple_app_ids: Vec::new(),
             android_packages: Vec::new(),
             android_store_url: None,
@@ -284,6 +312,18 @@ impl TestRelay {
             database,
             admin,
         }
+    }
+
+    fn http_url(&self, path: &str) -> String {
+        format!(
+            "http://{}{}",
+            self.ws_url
+                .strip_prefix("ws://")
+                .unwrap()
+                .strip_suffix("/v1/sync")
+                .unwrap(),
+            path
+        )
     }
 
     async fn close(mut self) {
@@ -336,13 +376,22 @@ fn link_op(author: &Author, id: &str) -> Op {
     }
 }
 
-async fn assert_device_absent(test: &TestRelay, author: &Author) {
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM devices WHERE device = $1)")
-        .bind(author.device.as_deref().unwrap())
-        .fetch_one(&test.state.pool)
+// Query tombstones explicitly: these assertions must work both before and after the
+// centralized authorization helper replaces the old device-existence helpers.
+async fn device_known(pool: &sqlx::PgPool, device: &str) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM devices WHERE device = $1)")
+        .bind(device)
+        .fetch_one(pool)
         .await
-        .unwrap();
-    assert!(!exists, "device row survived refused enrollment");
+}
+
+async fn device_revoked(pool: &sqlx::PgPool, device: &str) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM devices WHERE device = $1 AND revoked_at IS NOT NULL)",
+    )
+    .bind(device)
+    .fetch_one(pool)
+    .await
 }
 
 async fn stalled_operation_revocation(publish: bool) {
@@ -434,11 +483,9 @@ async fn stalled_operation_revocation(publish: bool) {
     tokio::time::timeout(Duration::from_secs(3), log.cancelled.notified())
         .await
         .unwrap();
-    assert!(
-        zoen_relay::db::device_revoked(&state.pool, lost.device.as_ref().unwrap())
-            .await
-            .unwrap()
-    );
+    assert!(device_revoked(&state.pool, lost.device.as_ref().unwrap())
+        .await
+        .unwrap());
     assert!(
         !log.reading.load(Ordering::Acquire),
         "blocked read future survived closure"
@@ -617,7 +664,11 @@ async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
         "{result:?}"
     );
     assert!(recv(&mut attempted).await.is_none());
-    assert_device_absent(&test, &fresh).await;
+    assert!(
+        !device_known(&test.state.pool, fresh.device.as_ref().unwrap())
+            .await
+            .unwrap()
+    );
     while let Some(frame) = recv(&mut target).await {
         assert!(matches!(
             frame,
@@ -633,7 +684,7 @@ async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
         .await
         .is_err());
     assert!(
-        zoen_relay::db::device_revoked(&test.state.pool, lost.device.as_ref().unwrap())
+        device_revoked(&test.state.pool, lost.device.as_ref().unwrap())
             .await
             .unwrap()
     );
@@ -701,7 +752,7 @@ async fn embedded_payloads_must_be_signed_by_the_authorized_session_device() {
             .unwrap();
         }
         assert_eq!(
-            zoen_relay::db::device_revoked(&test.state.pool, lost.device.as_deref().unwrap())
+            device_revoked(&test.state.pool, lost.device.as_deref().unwrap())
                 .await
                 .unwrap(),
             revoked
@@ -885,7 +936,11 @@ async fn a_preopened_unregistered_socket_cannot_enroll_after_registration() {
         .await
         .unwrap();
     assert_eq!(handle, "ana");
-    assert_device_absent(&test, &late).await;
+    assert!(
+        !device_known(&test.state.pool, late.device.as_ref().unwrap())
+            .await
+            .unwrap()
+    );
     let _ = controller.close(None).await;
     test.close().await;
 }
@@ -960,7 +1015,11 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
     assert!(request(&mut controller, 4, link_op(&third, &occupied_id))
         .await
         .is_err());
-    assert_device_absent(&test, &third).await;
+    assert!(
+        !device_known(&test.state.pool, third.device.as_ref().unwrap())
+            .await
+            .unwrap()
+    );
     assert_eq!(
         zoen_relay::db::take_link_box(&test.state.pool, &occupied_id)
             .await
@@ -976,7 +1035,11 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
         .await
         .unwrap()
         .is_none());
-    assert_device_absent(&test, &bad_cert).await;
+    assert!(
+        !device_known(&test.state.pool, bad_cert.device.as_ref().unwrap())
+            .await
+            .unwrap()
+    );
     // History manifests still work without a certificate and do not enroll any key.
     let history_id = Signer::generate().id();
     request(
@@ -1133,5 +1196,703 @@ async fn an_enrollment_retry_can_finish_while_a_backup_writer_waits_for_its_vaul
         after, last_seen,
         "an enrollment retry mutated the device row"
     );
+    test.close().await;
+}
+
+fn signed_http(
+    test: &TestRelay,
+    author: &Author,
+    method: reqwest::Method,
+    path: &str,
+    body: &[u8],
+    message: impl FnOnce(i64) -> Vec<u8>,
+) -> reqwest::RequestBuilder {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    reqwest::Client::new()
+        .request(method, test.http_url(path))
+        .header("x-zoen-device", author.device.as_ref().unwrap())
+        .header("x-zoen-ts", ts.to_string())
+        .header("x-zoen-sig", author.key.sign(&message(ts)))
+        .body(body.to_vec())
+}
+
+fn blob_put(test: &TestRelay, author: &Author, body: &[u8]) -> reqwest::RequestBuilder {
+    let sha = hex::encode(Sha256::digest(body));
+    signed_http(
+        test,
+        author,
+        reqwest::Method::PUT,
+        &format!("/v1/blobs/{sha}"),
+        body,
+        |ts| blob_put_message(&sha, ts, &test.state.relay_name),
+    )
+}
+
+async fn enrolled_pair(test: &TestRelay) -> (Author, Author, Socket) {
+    let root = Signer::generate();
+    let first = Author::device(&root, Signer::generate());
+    let lost = Author::device(&root, Signer::generate());
+    let mut controller = connect(&test.ws_url, &first).await;
+    request(
+        &mut controller,
+        1,
+        Op::Register {
+            profile: profile(&first, "ana"),
+        },
+    )
+    .await
+    .unwrap();
+    request(&mut controller, 2, link_op(&lost, &Signer::generate().id()))
+        .await
+        .unwrap();
+    (first, lost, controller)
+}
+
+async fn unlink(controller: &mut Socket, author: &Author) {
+    assert_eq!(
+        request(
+            controller,
+            3,
+            Op::Unlink {
+                device: author.device.clone().unwrap()
+            }
+        )
+        .await
+        .unwrap(),
+        Reply::Done
+    );
+}
+
+fn assert_device_denied(status: reqwest::StatusCode) {
+    assert!(
+        matches!(
+            status,
+            reqwest::StatusCode::FORBIDDEN | reqwest::StatusCode::UNAUTHORIZED
+        ),
+        "expected a device authorization refusal, got {status}"
+    );
+}
+
+#[tokio::test]
+async fn a_revoked_device_cannot_put_blobs_but_ciphertext_get_stays_public() {
+    let test = TestRelay::new().await;
+    let (first, lost, mut controller) = enrolled_pair(&test).await;
+    let before = b"ciphertext uploaded by an enrolled device";
+    let before_sha = hex::encode(Sha256::digest(before));
+    assert_eq!(
+        blob_put(&test, &lost, before)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        reqwest::StatusCode::CREATED
+    );
+    // A real, correctly signed key is not sufficient without enrollment.
+    let unknown = Author::device(&Signer::generate(), Signer::generate());
+    assert_device_denied(
+        blob_put(&test, &unknown, b"unknown uploader")
+            .send()
+            .await
+            .unwrap()
+            .status(),
+    );
+    unlink(&mut controller, &lost).await;
+    // Sign a fresh request after unlink, rather than replaying a stale timestamp.
+    let after = b"ciphertext attempted after revocation";
+    assert_device_denied(blob_put(&test, &lost, after).send().await.unwrap().status());
+    // Even an already-present object cannot turn an unauthorized PUT into a 200.
+    assert_device_denied(
+        blob_put(&test, &lost, before)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+    );
+    let client = reqwest::Client::new();
+    let public = client
+        .get(test.http_url(&format!("/v1/blobs/{before_sha}")))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(public.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        public.headers()["cache-control"],
+        "public, max-age=31536000, immutable"
+    );
+    assert_eq!(public.bytes().await.unwrap().as_ref(), before);
+    let after_sha = hex::encode(Sha256::digest(after));
+    assert_eq!(
+        client
+            .get(test.http_url(&format!("/v1/blobs/{after_sha}")))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        reqwest::StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        blob_put(&test, &first, b"surviving device still uploads")
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        reqwest::StatusCode::CREATED
+    );
+    let _ = controller.close(None).await;
+    test.close().await;
+}
+
+#[tokio::test]
+async fn a_revoked_device_cannot_put_or_delete_transfer_chunks() {
+    let test = TestRelay::new().await;
+    let (_, lost, mut controller) = enrolled_pair(&test).await;
+    let id = hex::encode(Sha256::digest(b"transfer capability"));
+    let body = b"encrypted history chunk";
+    let sha = hex::encode(Sha256::digest(body));
+    let put = |n: u32| {
+        signed_http(
+            &test,
+            &lost,
+            reqwest::Method::PUT,
+            &format!("/v1/transfer/{id}/{n}"),
+            body,
+            |ts| transfer_message("put", &id, &n.to_string(), &sha, ts),
+        )
+    };
+    assert_eq!(
+        put(0).send().await.unwrap().status(),
+        reqwest::StatusCode::CREATED
+    );
+    unlink(&mut controller, &lost).await;
+    assert_device_denied(put(1).send().await.unwrap().status());
+    assert_device_denied(
+        signed_http(
+            &test,
+            &lost,
+            reqwest::Method::DELETE,
+            &format!("/v1/transfer/{id}"),
+            b"",
+            |ts| transfer_message("delete", &id, "", "", ts),
+        )
+        .send()
+        .await
+        .unwrap()
+        .status(),
+    );
+    let client = reqwest::Client::new();
+    let public = client
+        .get(test.http_url(&format!("/v1/transfer/{id}/0")))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(public.status(), reqwest::StatusCode::OK);
+    assert_eq!(public.bytes().await.unwrap().as_ref(), body);
+    assert_eq!(
+        client
+            .get(test.http_url(&format!("/v1/transfer/{id}/1")))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        reqwest::StatusCode::NOT_FOUND
+    );
+    let _ = controller.close(None).await;
+    test.close().await;
+}
+
+#[tokio::test]
+async fn a_revoked_device_cannot_submit_fresh_client_reports() {
+    let test = TestRelay::new().await;
+    let (_, lost, mut controller) = enrolled_pair(&test).await;
+    let body =
+        br#"{"unit":"0123456789abcdef0123456789abcdef","health":{"sessions":1,"crashes":0}}"#;
+    let sha = hex::encode(Sha256::digest(body));
+    let report = || {
+        signed_http(
+            &test,
+            &lost,
+            reqwest::Method::POST,
+            "/v1/report",
+            body,
+            |ts| report_message(&sha, ts, &test.state.relay_name),
+        )
+    };
+    assert_eq!(
+        report().send().await.unwrap().status(),
+        reqwest::StatusCode::OK
+    );
+    unlink(&mut controller, &lost).await;
+    assert_device_denied(report().send().await.unwrap().status());
+    let _ = controller.close(None).await;
+    test.close().await;
+}
+
+#[tokio::test]
+async fn a_revoked_device_cannot_write_backup_oprf_vault_blob_or_delete() {
+    let test = TestRelay::with_backup(true).await;
+    let (_, lost, mut controller) = enrolled_pair(&test).await;
+    let vault = format!(
+        r#"{{"generation":"{}","mode":"recovery_key","verifier":"{}","wrapped_key":"01","kdf":{{}}}}"#,
+        "12".repeat(32),
+        "34".repeat(32)
+    );
+    let backup = |method, path: &str, op: &str, body: &[u8]| {
+        let sha = hex::encode(Sha256::digest(body));
+        signed_http(&test, &lost, method, path, body, |ts| {
+            backup_message(&test.state.relay_name, &lost.identity, op, &sha, ts)
+        })
+    };
+    let oprf = format!(
+        r#"{{"blinded":"{}","generation":"{}"}}"#,
+        "56".repeat(32),
+        "12".repeat(32)
+    );
+    let blob = [
+        roda_proto::BACKUP_UPLOAD_MAGIC.as_slice(),
+        &[0x12; 32],
+        b"sealed backup",
+    ]
+    .concat();
+    // Each identical payload succeeds before revocation. In particular, backup blob
+    // uploads include the generation prefix, so a malformed-body 4xx cannot mask auth.
+    for (method, path, op, body, expected) in [
+        (
+            reqwest::Method::POST,
+            "/v1/backup/oprf",
+            "oprf",
+            oprf.as_bytes(),
+            reqwest::StatusCode::OK,
+        ),
+        (
+            reqwest::Method::PUT,
+            "/v1/backup/vault",
+            "vault",
+            vault.as_bytes(),
+            reqwest::StatusCode::NO_CONTENT,
+        ),
+        (
+            reqwest::Method::PUT,
+            "/v1/backup/blob",
+            "blob",
+            blob.as_slice(),
+            reqwest::StatusCode::CREATED,
+        ),
+        (
+            reqwest::Method::DELETE,
+            "/v1/backup",
+            "delete",
+            b"".as_slice(),
+            reqwest::StatusCode::NO_CONTENT,
+        ),
+        (
+            reqwest::Method::PUT,
+            "/v1/backup/vault",
+            "vault",
+            vault.as_bytes(),
+            reqwest::StatusCode::NO_CONTENT,
+        ),
+        (
+            reqwest::Method::PUT,
+            "/v1/backup/blob",
+            "blob",
+            blob.as_slice(),
+            reqwest::StatusCode::CREATED,
+        ),
+    ] {
+        assert_eq!(
+            backup(method, path, op, body)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            expected,
+            "active {op}"
+        );
+    }
+    unlink(&mut controller, &lost).await;
+    for (method, path, op, body) in [
+        (
+            reqwest::Method::POST,
+            "/v1/backup/oprf",
+            "oprf",
+            oprf.as_bytes(),
+        ),
+        (
+            reqwest::Method::PUT,
+            "/v1/backup/vault",
+            "vault",
+            vault.as_bytes(),
+        ),
+        (
+            reqwest::Method::PUT,
+            "/v1/backup/blob",
+            "blob",
+            blob.as_slice(),
+        ),
+        (
+            reqwest::Method::DELETE,
+            "/v1/backup",
+            "delete",
+            b"".as_slice(),
+        ),
+    ] {
+        assert_device_denied(
+            backup(method, path, op, body)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+        );
+    }
+    let retained: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM backup_vaults WHERE identity = $1)")
+            .bind(&lost.identity)
+            .fetch_one(&test.state.pool)
+            .await
+            .unwrap();
+    assert!(
+        retained,
+        "revoked DELETE removed the previously uploaded backup"
+    );
+    let _ = controller.close(None).await;
+    test.close().await;
+}
+
+#[tokio::test]
+async fn an_active_caller_cannot_forward_fresh_payloads_signed_by_a_revoked_sibling() {
+    let test = TestRelay::new().await;
+    let (_, lost, mut controller) = enrolled_pair(&test).await;
+    let public = "12".repeat(32);
+    let signed = roda_log::profile::sign_agreement(&lost, &public).unwrap();
+    let historical = SealedProfile {
+        identity: lost.identity.clone(),
+        version: 1,
+        ciphertext: vec![1],
+        signed: roda_log::profile::sign_upload(&lost, 1, &[1]).unwrap(),
+    };
+    // Historical statements are published by their authorized session device.
+    let mut signer = connect(&test.ws_url, &lost).await;
+    request(
+        &mut signer,
+        10,
+        Op::PublishAgreementKey {
+            public: public.clone(),
+            signed: signed.clone(),
+        },
+    )
+    .await
+    .unwrap();
+    request(
+        &mut signer,
+        11,
+        Op::PutProfile {
+            profile: historical.clone(),
+        },
+    )
+    .await
+    .unwrap();
+    let _ = signer.close(None).await;
+    unlink(&mut controller, &lost).await;
+    let fresh_public = "34".repeat(32);
+    let fresh_signed = roda_log::profile::sign_agreement(&lost, &fresh_public).unwrap();
+    assert!(
+        request(
+            &mut controller,
+            12,
+            Op::PublishAgreementKey {
+                public: fresh_public,
+                signed: fresh_signed,
+            }
+        )
+        .await
+        .is_err(),
+        "active caller forwarded a freshly signed revoked agreement key"
+    );
+    let fresh = SealedProfile {
+        identity: lost.identity.clone(),
+        version: 2,
+        ciphertext: vec![2],
+        signed: roda_log::profile::sign_upload(&lost, 2, &[2]).unwrap(),
+    };
+    assert!(
+        request(&mut controller, 13, Op::PutProfile { profile: fresh })
+            .await
+            .is_err(),
+        "active caller forwarded a freshly signed revoked profile"
+    );
+    // Revocation denies new writes, not historical reads or signature verification.
+    let keys =
+        zoen_relay::db::agreement_keys(&test.state.pool, std::slice::from_ref(&lost.identity))
+            .await
+            .unwrap();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].public, public);
+    assert_eq!(keys[0].signed, signed);
+    assert_eq!(
+        zoen_relay::db::sealed_profiles(&test.state.pool, std::slice::from_ref(&lost.identity))
+            .await
+            .unwrap(),
+        vec![historical]
+    );
+    let _ = controller.close(None).await;
+    test.close().await;
+}
+
+#[tokio::test]
+async fn a_revocation_winning_the_row_lock_refuses_a_concurrent_blob_put() {
+    let mut test = TestRelay::new().await;
+    let (_, lost, mut controller) = enrolled_pair(&test).await;
+    let admin_url = std::env::var("ZOEN_TEST_PG").unwrap();
+    let url = format!(
+        "{}/{}",
+        admin_url.rsplit_once('/').unwrap().0,
+        test.database
+    );
+    let mut revoker = PgConnection::connect(&url).await.unwrap();
+    let mut tx = revoker.begin().await.unwrap();
+    let revoker_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    assert!(
+        zoen_relay::db::revoke_device(&mut tx, &lost.identity, lost.device.as_ref().unwrap())
+            .await
+            .unwrap()
+    );
+    let body = b"PUT queued behind a revocation transaction";
+    let put = tokio::spawn(blob_put(&test, &lost, body).send());
+    // Observe the actual admission query waiting on the revocation row lock, not a
+    // timing-dependent sleep or an object-store write that was already admitted.
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            assert!(!put.is_finished(), "PUT bypassed the held revocation fence");
+            let waiting: bool = sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = $1 AND $2 = ANY(pg_blocking_pids(pid)))")
+                .bind(&test.database).bind(revoker_pid).fetch_one(&mut test.admin).await.unwrap();
+            if waiting { break; }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }).await.expect("PUT admission did not wait for concurrent revocation");
+    tx.commit().await.unwrap();
+    assert_device_denied(
+        tokio::time::timeout(Duration::from_secs(3), put)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap()
+            .status(),
+    );
+    let sha = hex::encode(Sha256::digest(body));
+    assert_eq!(
+        reqwest::Client::new()
+            .get(test.http_url(&format!("/v1/blobs/{sha}")))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        reqwest::StatusCode::NOT_FOUND
+    );
+    let _ = controller.close(None).await;
+    test.close().await;
+}
+
+fn revoked_requests(author: &Author) -> Vec<Op> {
+    let id = author.identity.clone();
+    let space = "revoked-action-space".to_string();
+    let signed = roda_log::profile::sign_agreement(author, &"12".repeat(32)).unwrap();
+    vec![
+        Op::Register {
+            profile: profile(author, "hijacked"),
+        },
+        Op::Lookup {
+            handle: "ana".into(),
+            prefix: false,
+        },
+        Op::Profiles {
+            ids: vec![id.clone()],
+        },
+        Op::CreateInvite {
+            space: space.clone(),
+            agent: None,
+            role: Role::Member,
+            max_uses: 1,
+            ttl_secs: 60,
+        },
+        Op::PreviewInvite {
+            code: "UNKNOWN".into(),
+        },
+        Op::RedeemAgentInvite {
+            code: "UNKNOWN".into(),
+        },
+        Op::RevokeAgentInvite { agent: id.clone() },
+        Op::RegisterPush {
+            platform: "fcm".into(),
+            token: "revoked-token".into(),
+        },
+        Op::PublishAgreementKey {
+            public: "12".repeat(32),
+            signed,
+        },
+        Op::AgreementKeys {
+            ids: vec![id.clone()],
+        },
+        Op::PutProfile {
+            profile: SealedProfile {
+                identity: id.clone(),
+                version: 1,
+                ciphertext: vec![1],
+                signed: roda_log::profile::sign_upload(author, 1, &[1]).unwrap(),
+            },
+        },
+        Op::GetProfiles {
+            ids: vec![id.clone()],
+        },
+        Op::PublishKeyPackages {
+            packages: Vec::new(),
+            last_resort: None,
+        },
+        Op::ClaimKeyPackages {
+            ids: vec![id.clone()],
+            operation_id: None,
+        },
+        link_op(author, &Signer::generate().id()),
+        Op::FetchLink {
+            id: Signer::generate().id(),
+        },
+        Op::Devices,
+        Op::Unlink {
+            device: author.device.clone().unwrap(),
+        },
+        Op::SendDevice {
+            to: author.device.clone().unwrap(),
+            sealed: vec![1],
+        },
+        Op::Agent(AgentRequest::State),
+        Op::Agent(AgentRequest::Advance { space, seq: 1 }),
+        Op::Agent(AgentRequest::Define {
+            agent: id.clone(),
+            version: 1,
+            kind: "User".into(),
+            definition: vec![1],
+        }),
+        Op::Agent(AgentRequest::Status { agent: id.clone() }),
+        Op::Agent(AgentRequest::Control {
+            agent: id,
+            action: AgentAction::Pause,
+        }),
+    ]
+}
+
+#[tokio::test]
+async fn committed_revocation_gates_every_websocket_action_without_a_fanout_kick() {
+    let test = TestRelay::new().await;
+    let (first, lost, mut controller) = enrolled_pair(&test).await;
+    let mut frames: Vec<_> = revoked_requests(&lost)
+        .into_iter()
+        .enumerate()
+        .map(|(n, op)| {
+            (
+                op.name().to_string(),
+                ClientFrame::Req {
+                    id: n as u64 + 10,
+                    op,
+                },
+            )
+        })
+        .collect();
+    frames.extend([
+        ("ping".into(), ClientFrame::Ping),
+        (
+            "sync".into(),
+            ClientFrame::Sync {
+                cursors: Vec::new(),
+                all: true,
+            },
+        ),
+        (
+            "publish".into(),
+            ClientFrame::Publish {
+                env: Envelope::plain(&lost.sign_event(
+                    "revoked-action-space",
+                    "must-not-be-admitted",
+                    1,
+                    None,
+                    roda_types::EventBody::SpaceCreated {
+                        title: "No".into(),
+                        kind: roda_types::SpaceKind::Group,
+                        privacy: roda_types::Privacy::Closed,
+                    },
+                )),
+            },
+        ),
+        (
+            "ephemeral".into(),
+            ClientFrame::Ephemeral {
+                space: "revoked-action-space".into(),
+                kind: EphemeralKind::Typing,
+            },
+        ),
+        (
+            "hello".into(),
+            ClientFrame::Hello {
+                protocol: PROTOCOL_VERSION,
+                capabilities: Vec::new(),
+                identity: lost.identity.clone(),
+                device: lost.device.clone().unwrap(),
+                cert: lost.cert.clone().unwrap(),
+            },
+        ),
+        (
+            "auth".into(),
+            ClientFrame::Auth {
+                sig: lost.key.sign(b"already authenticated"),
+            },
+        ),
+    ]);
+    // Authenticate one socket per action before revoking the shared device. Reusing a
+    // closed socket would only test its first action. No fanout kick is issued here:
+    // every server must consult committed directory state at fresh request admission.
+    let mut sockets = Vec::new();
+    for _ in &frames {
+        sockets.push(connect(&test.ws_url, &lost).await);
+    }
+    let mut tx = test.state.pool.begin().await.unwrap();
+    assert!(
+        zoen_relay::db::revoke_device(&mut tx, &lost.identity, lost.device.as_ref().unwrap())
+            .await
+            .unwrap()
+    );
+    tx.commit().await.unwrap();
+    for ((name, frame), mut socket) in frames.into_iter().zip(sockets) {
+        send(&mut socket, frame).await;
+        while let Some(frame) = recv(&mut socket).await {
+            assert!(
+                matches!(
+                    frame,
+                    ServerFrame::Error {
+                        code: ErrorCode::Unauthorized,
+                        ..
+                    }
+                ),
+                "revoked {name} produced a response: {frame:?}"
+            );
+        }
+    }
+    assert!(
+        !test.log.reading.load(Ordering::Acquire),
+        "revoked sync or publish reached the log"
+    );
+    assert!(test.log.saved.lock().unwrap().is_empty());
+    let handle: String = sqlx::query_scalar("SELECT handle FROM identities WHERE id = $1")
+        .bind(&first.identity)
+        .fetch_one(&test.state.pool)
+        .await
+        .unwrap();
+    assert_eq!(handle, "ana");
+    request(&mut controller, 100, Op::Devices).await.unwrap();
+    let _ = controller.close(None).await;
     test.close().await;
 }

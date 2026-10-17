@@ -20,17 +20,21 @@ pub async fn authorize_device(
     )
         .execute(&mut *tx)
         .await?;
-    let enrolled = sqlx::query_as::<_, (bool, bool)>(
-        "SELECT identity = $1, revoked_at IS NOT NULL FROM devices WHERE device = $2 FOR SHARE",
-    )
-    .bind(identity)
-    .bind(device)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let enrolled = active_device_on(&mut tx, device).await?;
+    // An absent active row may be either a new key or a durable revocation tombstone.
+    // Only the former may enter the provisional registration/link flow.
+    let known = if enrolled.is_none() {
+        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM devices WHERE device = $1)")
+            .bind(device)
+            .fetch_one(&mut *tx)
+            .await?
+    } else {
+        true
+    };
     // A pending link polls as its own key until it opens its identity box. Enrollment
     // can assign that key to the account before this provisional fetch completes.
     let provisional = !require_device
-        && enrolled.is_none_or(|(_, revoked)| !revoked)
+        && (enrolled.is_some() || !known)
         && (enrolled.is_none() || identity == device);
     let unregistered = if provisional {
         !sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM identities WHERE id = $1)")
@@ -40,7 +44,11 @@ pub async fn authorize_device(
     } else {
         false
     };
-    if enrolled == Some((true, false)) || unregistered {
+    if enrolled
+        .as_ref()
+        .is_some_and(|(owner, _)| owner == identity)
+        || unregistered
+    {
         Ok(Some(tx))
     } else {
         tx.rollback().await?;
@@ -60,15 +68,33 @@ pub async fn is_registered(pool: &PgPool, id: &str) -> Result<bool, sqlx::Error>
     }).await.map_err(|_| sqlx::Error::PoolTimedOut)?
 }
 
-/// Whether a device is enrolled and has not been revoked.
-pub async fn device_active(pool: &PgPool, device: &str) -> Result<bool, sqlx::Error> {
-    Ok(sqlx::query_scalar::<_, i32>(
-        "SELECT 1 FROM devices WHERE device = $1 AND revoked_at IS NULL",
+/// The durable device-authority rule: enrollment alone is insufficient. Hold the
+/// active row through the caller's fence so revocation cannot race authorization.
+/// Returns (identity, certificate); this result is never cached between actions.
+pub async fn active_device_on(
+    connection: &mut PgConnection,
+    device: &str,
+) -> Result<Option<(String, String)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT identity, cert FROM devices WHERE device = $1 AND revoked_at IS NULL FOR SHARE",
     )
     .bind(device)
-    .fetch_optional(pool)
-    .await?
-    .is_some())
+    .fetch_optional(connection)
+    .await
+}
+
+/// Request-admission check for signed HTTP actions without an account header.
+/// Work admitted before revocation may finish; later actions must query again.
+pub async fn active_device(pool: &PgPool, device: &str) -> Result<Option<String>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "SELECT set_config('lock_timeout', '5s', true), set_config('statement_timeout', '5s', true)",
+    )
+    .execute(&mut *tx)
+    .await?;
+    let identity = active_device_on(&mut tx, device).await?.map(|(id, _)| id);
+    tx.commit().await?;
+    Ok(identity)
 }
 
 pub async fn touch_device(
@@ -77,6 +103,8 @@ pub async fn touch_device(
     device: &str,
     cert: &str,
 ) -> Result<bool, sqlx::Error> {
+    // Conditional bookkeeping only; session authority is checked by authorize_device.
+    // Keep this atomic UPDATE: upgrading concurrent SHARE locks would deadlock.
     let changed = sqlx::query(
         "UPDATE devices SET last_seen = now()
          WHERE device = $1 AND identity = $2 AND cert = $3 AND revoked_at IS NULL",
@@ -144,17 +172,10 @@ pub async fn enroll_device(
         // Recovery already holds the vault row. An ordinary backup write holds the
         // device FOR SHARE before acquiring that vault row, so a retry must share
         // this existing row too rather than update it and reverse the lock order.
-        let active = sqlx::query_scalar::<_, i32>(
-            "SELECT 1 FROM devices WHERE device = $1 AND identity = $2 AND cert = $3
-               AND revoked_at IS NULL FOR SHARE",
-        )
-        .bind(device)
-        .bind(identity)
-        .bind(cert)
-        .fetch_optional(&mut **tx)
-        .await
-        .map_err(EnrollmentError::Database)?;
-        if active.is_none() {
+        let active = active_device_on(tx, device)
+            .await
+            .map_err(EnrollmentError::Database)?;
+        if !active.is_some_and(|(owner, stored)| owner == identity && stored == cert) {
             return Err(EnrollmentError::Conflict);
         }
     }
@@ -217,15 +238,10 @@ pub async fn register(
             .map_err(|e| e.to_string())?;
         }
     } else {
-        let active = sqlx::query_scalar::<_, bool>(
-            "SELECT identity = $1 AND revoked_at IS NULL FROM devices WHERE device = $2 FOR SHARE",
-        )
-        .bind(&profile.id)
-        .bind(device)
-        .fetch_optional(&mut **tx)
-        .await
-        .map_err(directory_error)?;
-        if active != Some(true) {
+        let active = active_device_on(tx, device)
+            .await
+            .map_err(directory_error)?;
+        if !active.is_some_and(|(owner, _)| owner == profile.id) {
             return Err("link this device first".into());
         }
         let Some((stored_kind, stored_owner, stored_json)) =
@@ -285,17 +301,10 @@ async fn authorize_agent_owner(
     if person != Some(true) {
         return Err("an agent owner must be a registered person".into());
     }
-    let active = sqlx::query_scalar::<_, bool>(
-        "SELECT identity = $1 AND cert = $3 AND revoked_at IS NULL
-         FROM devices WHERE device = $2 FOR SHARE",
-    )
-    .bind(owner)
-    .bind(&proof.device)
-    .bind(&proof.cert)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(directory_error)?;
-    if active != Some(true) {
+    let active = active_device_on(tx, &proof.device)
+        .await
+        .map_err(directory_error)?;
+    if !active.is_some_and(|(identity, cert)| identity == *owner && cert == proof.cert) {
         return Err("agent authorization device is not enrolled or is revoked".into());
     }
     Ok(())
@@ -603,16 +612,6 @@ pub(crate) async fn claim_key_packages_on(
 /// Largest sealed link box (identity keys, a certificate, a history manifest).
 pub const MAX_LINK_BOX: usize = 64 * 1024;
 
-pub async fn device_revoked(pool: &PgPool, device: &str) -> Result<bool, sqlx::Error> {
-    Ok(sqlx::query_scalar::<_, i32>(
-        "SELECT 1 FROM devices WHERE device = $1 AND revoked_at IS NOT NULL",
-    )
-    .bind(device)
-    .fetch_optional(pool)
-    .await?
-    .is_some())
-}
-
 /// Leaves a box; a second one under the same id is refused (they are one-time).
 pub async fn put_link_box(
     tx: &mut Transaction<'_, Postgres>,
@@ -680,14 +679,7 @@ pub async fn device_linked(
     identity: &str,
     device: &str,
 ) -> Result<bool, sqlx::Error> {
-    Ok(sqlx::query_scalar::<_, i32>(
-        "SELECT 1 FROM devices WHERE identity = $1 AND device = $2 AND revoked_at IS NULL",
-    )
-    .bind(identity)
-    .bind(device)
-    .fetch_optional(pool)
-    .await?
-    .is_some())
+    Ok(active_device(pool, device).await?.as_deref() == Some(identity))
 }
 
 /// Unlinks one of `identity`'s devices and drops its key packages. `false` if it isn't

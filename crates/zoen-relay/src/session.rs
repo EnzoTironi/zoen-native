@@ -416,12 +416,19 @@ async fn handshake(
         )
         .await;
     }
-    match db::device_revoked(&st.pool, &device).await {
-        Ok(false) => {}
-        Ok(true) => {
+    let Ok(registered) = db::is_registered(&st.pool, &identity).await else {
+        return refuse(
+            "unavailable",
+            ServerFrame::error(ErrorCode::Unavailable, "database unavailable"),
+        )
+        .await;
+    };
+    match db::authorize_device(&st.session_auth, &identity, &device, registered).await {
+        Ok(Some(authorization)) => drop(authorization),
+        Ok(None) => {
             return refuse(
-                "unlinked",
-                ServerFrame::error(ErrorCode::Unauthorized, "this device was unlinked"),
+                "not_enrolled",
+                ServerFrame::error(ErrorCode::Unauthorized, "link this device first"),
             )
             .await;
         }
@@ -431,32 +438,6 @@ async fn handshake(
                 ServerFrame::error(ErrorCode::Unavailable, "database unavailable"),
             )
             .await;
-        }
-    }
-    let Ok(registered) = db::is_registered(&st.pool, &identity).await else {
-        return refuse(
-            "unavailable",
-            ServerFrame::error(ErrorCode::Unavailable, "database unavailable"),
-        )
-        .await;
-    };
-    if registered {
-        match db::device_linked(&st.pool, &identity, &device).await {
-            Ok(true) => {}
-            Ok(false) => {
-                return refuse(
-                    "not_enrolled",
-                    ServerFrame::error(ErrorCode::Unauthorized, "link this device first"),
-                )
-                .await;
-            }
-            Err(_) => {
-                return refuse(
-                    "unavailable",
-                    ServerFrame::error(ErrorCode::Unavailable, "database unavailable"),
-                )
-                .await;
-            }
         }
     }
     let span = tracing::Span::current();

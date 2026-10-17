@@ -64,14 +64,8 @@ pub async fn claim_citizen(
         Some((k, Some(owner))) if k == "Agent" => owner,
         _ => return Err(AgentCitizenError::NotAgent),
     };
-    let device_ok: Option<(String,)> = sqlx::query_as(
-        "SELECT device FROM devices WHERE device = $1 AND identity = $2 AND revoked_at IS NULL FOR SHARE",
-    )
-    .bind(&claim.device)
-    .bind(&claim.agent)
-    .fetch_optional(&mut **tx)
-    .await?;
-    if device_ok.is_none() {
+    let device = crate::db::active_device_on(tx, &claim.device).await?;
+    if !device.is_some_and(|(identity, _)| identity == claim.agent) {
         return Err(AgentCitizenError::Device);
     }
     let r = sqlx::query(
