@@ -14,6 +14,59 @@ import parity_capture
 
 
 class CaptureSafetyTests(unittest.TestCase):
+    def test_ios_core_build_uses_only_the_required_simulator_slice(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            library = root / 'target/aarch64-apple-ios-sim/release'
+            library.mkdir(parents=True)
+            (library / 'libroda_ffi.a').write_bytes(b'archive')
+            (library / 'libroda_ffi.dylib').write_bytes(b'dylib')
+            (root / 'apple/Packages/RodaCore/Sources/RodaCore').mkdir(parents=True)
+            commands = []
+
+            def fake_run(*args, **kwargs):
+                commands.append((args, kwargs))
+                if args[:2] == ('cargo', 'run'):
+                    bindings = root / 'build/bindings'
+                    bindings.mkdir(parents=True, exist_ok=True)
+                    (bindings / 'roda_ffi.swift').write_text('swift')
+                    (bindings / 'roda_ffiFFI.h').write_text('header')
+                    (bindings / 'roda_ffiFFI.modulemap').write_text('module')
+                elif args[:2] == ('xcodebuild', '-create-xcframework'):
+                    Path(args[args.index('-output') + 1]).mkdir(parents=True)
+
+            with patch.object(parity_capture, 'ROOT', root), \
+                    patch.object(parity_capture, 'run', side_effect=fake_run), \
+                    patch.object(parity_capture.subprocess, 'check_output', return_value='/Simulator.sdk\n'), \
+                    patch.dict(os.environ, {'PROFILE': 'release', 'MACOSX_DEPLOYMENT_TARGET': '99.0'}):
+                parity_capture.build_ios_core()
+
+            build = next(entry for entry in commands if entry[0][:2] == ('cargo', 'build'))
+            self.assertIn('aarch64-apple-ios-sim', build[0])
+            self.assertNotIn('aarch64-apple-ios', build[0])
+            self.assertNotIn('aarch64-apple-darwin', build[0])
+            self.assertEqual(build[1]['env']['SDKROOT'], '/Simulator.sdk')
+            self.assertNotIn('MACOSX_DEPLOYMENT_TARGET', build[1]['env'])
+            framework = next(entry[0] for entry in commands if entry[0][:2] == ('xcodebuild', '-create-xcframework'))
+            self.assertEqual(framework.count('-library'), 1)
+            self.assertIn(str(library / 'libroda_ffi.a'), framework)
+            self.assertEqual((root / 'apple/Packages/RodaCore/Sources/RodaCore/RodaFFI.generated.swift').read_text(), 'swift')
+
+    def test_ios_workflow_installs_only_the_simulator_rust_target(self):
+        workflow = (parity_capture.ROOT / '.github/workflows/ios-android-parity.yml').read_text()
+        ios = workflow.split('\n  ios:\n', 1)[1].split('\n  android:\n', 1)[0]
+        target_line = next(line.strip() for line in ios.splitlines() if line.strip().startswith('targets:'))
+        self.assertEqual(target_line, 'targets: aarch64-apple-ios-sim')
+
+    def test_ios_workflow_preserves_capture_log_without_precreating_output(self):
+        workflow = (parity_capture.ROOT / '.github/workflows/ios-android-parity.yml').read_text()
+        ios = workflow.split('\n  ios:\n', 1)[1].split('\n  android:\n', 1)[0]
+        self.assertIn('mkdir -p parity', ios)
+        self.assertNotIn('mkdir -p parity/ios', ios)
+        self.assertIn('set -o pipefail', ios)
+        self.assertIn('2>&1 | tee "parity/ios-${{ matrix.viewport }}.log"', ios)
+        self.assertGreaterEqual(ios.count('parity/ios-${{ matrix.viewport }}.log'), 2)
+
     def test_ios_status_time_is_iso_with_milliseconds_and_local_noon(self):
         # New runtimes reject HH:MM and ISO timestamps without milliseconds.
         # The offset keeps noon unchanged on runners in different time zones.

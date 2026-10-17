@@ -54,11 +54,45 @@ def ios_status_time():
     return datetime(2026, 1, 1, 12).astimezone().isoformat(timespec='milliseconds')
 
 
+def build_ios_core():
+    """Build the one FFI slice consumed by iOS Simulator parity tests."""
+    profile = os.environ.get('PROFILE', 'release')
+    directory = 'debug' if profile == 'dev' else profile
+    target = 'aarch64-apple-ios-sim'
+    sdk = subprocess.check_output(
+        ['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-path'],
+        cwd=ROOT, text=True).strip()
+    build_env = dict(os.environ, SDKROOT=sdk, IPHONEOS_DEPLOYMENT_TARGET='26.0')
+    build_env.pop('MACOSX_DEPLOYMENT_TARGET', None)
+    run('cargo', 'build', '-q', '-p', 'roda-ffi', '--profile', profile,
+        '--target', target, env=build_env)
+
+    bindings = ROOT/'build/bindings'
+    shutil.rmtree(bindings, ignore_errors=True)
+    headers = bindings/'headers'
+    headers.mkdir(parents=True)
+    library = ROOT/'target'/target/directory
+    run('cargo', 'run', '-q', '-p', 'uniffi-bindgen', '--', 'generate',
+        '--library', str(library/'libroda_ffi.dylib'), '--language', 'swift',
+        '--out-dir', str(bindings))
+    shutil.copyfile(bindings/'roda_ffiFFI.h', headers/'roda_ffiFFI.h')
+    shutil.copyfile(bindings/'roda_ffiFFI.modulemap', headers/'module.modulemap')
+
+    package = ROOT/'apple/Packages/RodaCore'
+    framework = package/'RodaFFI.xcframework'
+    shutil.rmtree(framework, ignore_errors=True)
+    run('xcodebuild', '-create-xcframework',
+        '-library', str(library/'libroda_ffi.a'), '-headers', str(headers),
+        '-output', str(framework))
+    shutil.copyfile(bindings/'roda_ffi.swift',
+                    package/'Sources/RodaCore/RodaFFI.generated.swift')
+
+
 def capture_ios(args, output):
     device = args.device
     run('xcrun', 'simctl', 'bootstatus', device, '-b')
     run('xcrun', 'simctl', 'status_bar', device, 'override', '--time', ios_status_time(), '--dataNetwork', 'wifi', '--wifiMode', 'active', '--wifiBars', '3', '--batteryState', 'charged', '--batteryLevel', '100')
-    run('bash', 'scripts/build-core.sh')
+    build_ios_core()
     run('xcodegen', 'generate', '--spec', 'apple/project.yml')
     result = output/'native.xcresult'
     env = dict(os.environ, TZ='UTC', SIMCTL_CHILD_TZ='UTC', SIMCTL_CHILD_ZOEN_PARITY_FIXTURE='native-parity-v1', SIMCTL_CHILD_ZOEN_PARITY_REVISION=args.revision)

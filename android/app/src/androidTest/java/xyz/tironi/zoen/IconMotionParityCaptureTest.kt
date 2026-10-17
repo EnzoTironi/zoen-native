@@ -38,6 +38,7 @@ class IconMotionParityCaptureTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun captureActualEvent() {
+        NativeParityFixtureSetup.assumeOptedIn()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val args = InstrumentationRegistry.getArguments()
         val event = requireNotNull(args.getString("iconEvent"))

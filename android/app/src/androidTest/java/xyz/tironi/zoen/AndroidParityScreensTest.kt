@@ -1,5 +1,7 @@
 package xyz.tironi.zoen
 
+import android.app.Dialog
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
@@ -25,6 +27,8 @@ import xyz.tironi.zoen.ui.*
 @RunWith(AndroidJUnit4::class)
 class AndroidParityScreensTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @org.junit.Before fun requireParityOptIn() = NativeParityFixtureSetup.assumeOptedIn()
 
     private fun capture(screen: String, dark: Boolean = false) {
         val app = ApplicationProvider.getApplicationContext<ZoenApplication>()
@@ -52,6 +56,7 @@ class AndroidParityScreensTest {
                             "onboarding" -> Onboarding(model)
                             "chats" -> ZoenApp(model, null, {})
                             "spaces" -> ChatScreen(model, current, community, {}, {})
+                            "notifications" -> ActivityScreen(model, current, {}, {}, root = true)
                             "chat" -> ChatScreen(model, current, direct, {}, {})
                             "group" -> ChatScreen(model, current, group, {}, {})
                             "thread" -> ThreadScreen(model, current, group, root, {}, {})
@@ -72,10 +77,7 @@ class AndroidParityScreensTest {
             CommittedWindowCapture.save(compose.activity, "android-parity", "$name-window")
             val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
             compose.waitUntil(10_000) {
-                automation.rootInActiveWindow?.packageName?.toString() == app.packageName
-            }
-            check(automation.rootInActiveWindow?.packageName?.toString() == app.packageName) {
-                "Capture blocked by a non-app foreground window: ${automation.rootInActiveWindow}"
+                NativeParityFixtureSetup.captureWindowReady(compose.activity, automation.rootInActiveWindow?.packageName)
             }
             val screenshot = checkNotNull(automation.takeScreenshot())
             try {
@@ -103,6 +105,8 @@ class AndroidParityScreensTest {
     @Test fun threadDark() = capture("thread", true)
     @Test fun spacesLight() = capture("spaces")
     @Test fun spacesDark() = capture("spaces", true)
+    @Test fun notificationsLight() = capture("notifications")
+    @Test fun notificationsDark() = capture("notifications", true)
     @Test fun profileLight() = capture("profile")
     @Test fun profileDark() = capture("profile", true)
     @Test fun settingsLight() = capture("settings")
@@ -111,4 +115,27 @@ class AndroidParityScreensTest {
     @Test fun devicesDark() = capture("devices", true)
     @Test fun searchLight() = capture("search")
     @Test fun searchDark() = capture("search", true)
+
+    @Test fun captureReadinessAcceptsOwnedDialogsAndRejectsForeignWindows() {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        compose.waitUntil(10_000) { NativeParityFixtureSetup.captureWindowReady(compose.activity) }
+        lateinit var dialog: Dialog
+        compose.runOnUiThread {
+            dialog = Dialog(compose.activity).apply {
+                setContentView(TextView(context).apply { text = "App-owned window" })
+                show()
+            }
+        }
+        try {
+            compose.waitUntil(10_000) {
+                !compose.activity.window.decorView.hasWindowFocus() &&
+                    automation.rootInActiveWindow?.packageName?.toString() == compose.activity.packageName
+            }
+            check(NativeParityFixtureSetup.captureWindowReady(compose.activity, automation.rootInActiveWindow?.packageName))
+            check(!NativeParityFixtureSetup.captureWindowReady(compose.activity, "android"))
+        } finally {
+            compose.runOnUiThread { dialog.dismiss() }
+        }
+        compose.waitUntil(10_000) { NativeParityFixtureSetup.captureWindowReady(compose.activity) }
+    }
 }
