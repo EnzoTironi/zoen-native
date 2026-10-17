@@ -172,7 +172,31 @@ async function freePort() {
 async function expectMessage(author, text, timeout = 90_000) {
   // A hidden conversation preview can repeat the text. Require its exact author
   // and the real interactive message bubble, then the visible body inside it.
-  const bubble = page.getByRole("button", { name: `${author}: ${text}`, exact: true });
+  // Own messages append one localized delivery label to the accessible name.
+  // Keep this acceptance copy independent of the production translation catalog.
+  const receipts =
+    locale === "en-US"
+      ? [
+          "Saved on this device only",
+          "Sending",
+          "Sent",
+          "Delivered to everyone",
+          "Read by everyone",
+          "Could not send",
+        ]
+      : [
+          "Salva apenas neste dispositivo",
+          "Enviando",
+          "Enviada",
+          "Entregue a todos",
+          "Lida por todos",
+          "Falha no envio",
+        ];
+  const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const name = new RegExp(
+    `^${escape(`${author}: ${text}`)}(?:, (?:${receipts.map(escape).join("|")}))?$`,
+  );
+  const bubble = page.getByTestId(/^message-bubble-/).and(page.getByRole("button", { name }));
   await bubble.getByText(text, { exact: true }).waitFor({ timeout });
 }
 async function screenshot(name) {
