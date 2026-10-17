@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Capture orchestration safety checks; never contact an actual device."""
+from datetime import datetime
+import os
 from pathlib import Path
+import time
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
@@ -10,6 +13,34 @@ import parity_capture
 
 
 class CaptureSafetyTests(unittest.TestCase):
+    def test_ios_status_time_is_iso_with_milliseconds_and_local_noon(self):
+        # New runtimes reject HH:MM and ISO timestamps without milliseconds.
+        # The offset keeps noon unchanged on runners in different time zones.
+        try:
+            for zone in ('UTC', 'America/Sao_Paulo'):
+                with self.subTest(zone=zone), patch.dict(os.environ, TZ=zone):
+                    time.tzset()
+                    value = parity_capture.ios_status_time()
+                    self.assertRegex(value, r'^2026-01-01T12:00:00\.000[+-]\d{2}:\d{2}$')
+                    self.assertEqual(datetime.fromisoformat(value).astimezone().hour, 12)
+        finally:
+            # patch.dict has restored TZ, including on assertion failures.
+            time.tzset()
+
+    def test_parity_workflow_installs_wasm_target_before_web_build(self):
+        workflow = (parity_capture.ROOT / '.github/workflows/ios-android-parity.yml').read_text()
+        web = workflow.split('\n  web:\n', 1)[1].split('\n  compare:\n', 1)[0]
+        self.assertIn('targets: wasm32-unknown-unknown', web)
+        self.assertLess(web.index('targets: wasm32-unknown-unknown'), web.index('npm run build:web'))
+        self.assertLess(web.index('cargo install wasm-bindgen-cli --version 0.2.129 --locked'),
+                        web.index('npm run build:web'))
+
+    def test_parity_android_sdk_setup_avoids_obsolete_tools(self):
+        workflow = (parity_capture.ROOT / '.github/workflows/ios-android-parity.yml').read_text()
+        android = workflow.split('\n  android:\n', 1)[1].split('\n  fixtures:\n', 1)[0]
+        setup = android.split('uses: android-actions/setup-android@v3', 1)[1].split('      - ', 1)[0]
+        self.assertIn('packages: platform-tools', setup)
+
     def test_capture_rejects_physical_phone_before_any_command(self):
         with TemporaryDirectory() as directory, patch.object(parity_capture, 'run') as run:
             with self.assertRaisesRegex(ValueError, 'only supports emulator'):

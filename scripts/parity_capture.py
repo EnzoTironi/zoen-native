@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Render current native sources; never import historical screenshot baselines."""
 import argparse
+from datetime import datetime
 import json
 import os
 import plistlib
@@ -46,10 +47,17 @@ def export_ios(exported, output):
         shutil.copyfile(found[key], output/('manifest.json' if key == 'manifest' else key+'.png'))
 
 
+def ios_status_time():
+    # New simctl runtimes require an ISO timestamp including milliseconds.
+    # Simulators inherit the runner's time zone: encode local noon with its
+    # offset so the status bar remains 12:00 on both UTC CI and local Macs.
+    return datetime(2026, 1, 1, 12).astimezone().isoformat(timespec='milliseconds')
+
+
 def capture_ios(args, output):
     device = args.device
     run('xcrun', 'simctl', 'bootstatus', device, '-b')
-    run('xcrun', 'simctl', 'status_bar', device, 'override', '--time', '12:00', '--dataNetwork', 'wifi', '--wifiMode', 'active', '--wifiBars', '3', '--batteryState', 'charged', '--batteryLevel', '100')
+    run('xcrun', 'simctl', 'status_bar', device, 'override', '--time', ios_status_time(), '--dataNetwork', 'wifi', '--wifiMode', 'active', '--wifiBars', '3', '--batteryState', 'charged', '--batteryLevel', '100')
     run('bash', 'scripts/build-core.sh')
     run('xcodegen', 'generate', '--spec', 'apple/project.yml')
     result = output/'native.xcresult'

@@ -72,6 +72,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.1.12297006'
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -137,6 +140,14 @@ jobs:
         with:
           name: parity-canonical-fixture
           path: packages/zoen-ui/web/fixtures
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: parity-web
+      - name: Install matching WASM binding generator
+        run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - name: Build current web sources and install isolated capture dependency
         run: |
           npm ci --prefix packages/zoen-ui
