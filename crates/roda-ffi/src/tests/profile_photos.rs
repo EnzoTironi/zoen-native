@@ -71,7 +71,8 @@ fn photo_edit_is_atomic_and_publication_waits_for_encrypted_upload() {
     let (blob, sealed) = e.lock().pending_uploads(1).pop().unwrap();
     {
         let mut engine = e.lock();
-        engine.net.profiles.supported = true;
+        engine.profiles_session_start(true);
+        engine.sealed_profiles_arrived(Vec::new(), std::slice::from_ref(&id));
         assert!(engine.profile_to_upload().is_none());
         engine.upload_done(&blob);
         assert!(engine.profile_to_upload().is_some());

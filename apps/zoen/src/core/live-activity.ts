@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import type { CoreEvent, Snapshot } from './types.ts';
 
 export const TYPING_TTL_MS = 6000;
@@ -276,25 +277,33 @@ export function chatActivityLabel(
     (person) => person.id !== ownId(snapshot) && activity.typing[space]?.[person.id] !== undefined,
   );
   if (people.length === 1)
-    return chat.kind === 'Direct' ? 'Digitando…' : `${people[0]!.name} está digitando…`;
-  if (people.length === 2) return `${people[0]!.name} e ${people[1]!.name} estão digitando…`;
-  if (people.length > 2) return `${people.length} pessoas estão digitando…`;
+    return chat.kind === 'Direct'
+      ? t('presentation.activityTyping')
+      : t('presentation.activityPersonTyping', { name: people[0]!.name });
+  if (people.length === 2)
+    return t('presentation.activityPairTyping', {
+      first: people[0]!.name,
+      second: people[1]!.name,
+    });
+  if (people.length > 2) return t('presentation.activityPeopleTyping', { count: people.length });
   const active = chat.members.find(
     (person) => person.id !== ownId(snapshot) && activity.statuses[space]?.[person.id],
   );
   if (active) {
     const status = activity.statuses[space]![active.id]!;
-    const prefix = chat.kind === 'Direct' ? '' : `${active.name} `;
-    return (
-      prefix +
-      {
-        processing: chat.kind === 'Direct' ? 'Processando…' : 'está processando…',
-        building: chat.kind === 'Direct' ? 'Criando um app…' : 'está criando um app…',
-        call: chat.kind === 'Direct' ? 'Em uma chamada' : 'está em uma chamada',
-      }[status.kind]
-    );
+    if (chat.kind === 'Direct')
+      return {
+        processing: t('presentation.activityProcessing'),
+        building: t('presentation.activityBuilding'),
+        call: t('presentation.activityCall'),
+      }[status.kind];
+    return {
+      processing: t('presentation.activityPersonProcessing', { name: active.name }),
+      building: t('presentation.activityPersonBuilding', { name: active.name }),
+      call: t('presentation.activityPersonCall', { name: active.name }),
+    }[status.kind];
   }
   return chat.kind === 'Direct' && chat.counterpart && activity.online[chat.counterpart.id]
-    ? 'Online'
+    ? t('presentation.activityOnline')
     : null;
 }

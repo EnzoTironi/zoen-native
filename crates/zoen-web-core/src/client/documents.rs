@@ -5,6 +5,7 @@
 use super::*;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use roda_docs::{BlockEdit, Frontiers, Kind, Page};
+use roda_i18n::{t, tr};
 use roda_types::{ChunkRef, ItemContent, ItemKind, PageContent, PlanDoc};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -708,12 +709,12 @@ impl<S: Signer> Client<S> {
             _ => {}
         }
         let (kind_id, kind_label) = match item.kind {
-            ItemKind::Plan => ("plan", "Plano"),
-            ItemKind::Task => ("task", "Tarefa"),
-            ItemKind::Note => ("note", "Nota"),
-            ItemKind::Page => ("page", "Página"),
-            ItemKind::File => ("file", "Arquivo"),
-            ItemKind::App => ("app", "Miniapp"),
+            ItemKind::Plan => ("plan", t("Plano", "Plan")),
+            ItemKind::Task => ("task", t("Tarefa", "Task")),
+            ItemKind::Note => ("note", t("Nota", "Note")),
+            ItemKind::Page => ("page", t("Página", "Page")),
+            ItemKind::File => ("file", t("Arquivo", "File")),
+            ItemKind::App => ("app", t("Miniapp", "Miniapp")),
         };
         Ok(json!({ "id": item.id, "space_id": item.space,
             "space_title": self.metadata(&item.space).map(|metadata| metadata.0).unwrap_or_default(),
@@ -911,7 +912,7 @@ impl<S: Signer> Client<S> {
                     format!("# {}\n", title.trim())
                 })
                 .map_err(error)?;
-                let item = self.create_page(&space_id, "", page, "Criado", now)?;
+                let item = self.create_page(&space_id, "", page, &t("Criado", "Created"), now)?;
                 mutated = true;
                 self.item_value(&self.document_item(&item)?, None, &mut downloads)?
             }
@@ -928,7 +929,8 @@ impl<S: Signer> Client<S> {
                     return Err("Caminho inválido.".into());
                 }
                 let page = Page::from_markdown(&markdown).map_err(error)?;
-                let item = self.create_page(&space_id, &path, page, "Importado", now)?;
+                let item =
+                    self.create_page(&space_id, &path, page, &t("Importado", "Imported"), now)?;
                 mutated = true;
                 self.item_value(&self.document_item(&item)?, None, &mut downloads)?
             }
@@ -973,11 +975,17 @@ impl<S: Signer> Client<S> {
                 line_id,
                 observed_hash,
             } => self
-                .edit_plan_document(&item_id, &observed_hash, "Alterou conclusão", now, |plan| {
-                    let line = unique_line_mut(plan, &line_id)?;
-                    line.done = !line.done;
-                    Ok(())
-                })
+                .edit_plan_document(
+                    &item_id,
+                    &observed_hash,
+                    &t("Alterou conclusão", "Changed completion"),
+                    now,
+                    |plan| {
+                        let line = unique_line_mut(plan, &line_id)?;
+                        line.done = !line.done;
+                        Ok(())
+                    },
+                )
                 .inspect(|_| {
                     mutated = true;
                 })?,
@@ -990,12 +998,18 @@ impl<S: Signer> Client<S> {
             } => {
                 let cost = cents(&cost_cents)?;
                 let text = valid_line(text, cost)?;
-                self.edit_plan_document(&item_id, &observed_hash, "Editou linha", now, |plan| {
-                    let line = unique_line_mut(plan, &line_id)?;
-                    line.text = text;
-                    line.cost_cents = cost;
-                    Ok(())
-                })
+                self.edit_plan_document(
+                    &item_id,
+                    &observed_hash,
+                    &t("Editou linha", "Edited line"),
+                    now,
+                    |plan| {
+                        let line = unique_line_mut(plan, &line_id)?;
+                        line.text = text;
+                        line.cost_cents = cost;
+                        Ok(())
+                    },
+                )
                 .inspect(|_| {
                     mutated = true;
                 })?
@@ -1009,19 +1023,25 @@ impl<S: Signer> Client<S> {
             } => {
                 let cost = cents(&cost_cents)?;
                 let text = valid_line(text, cost)?;
-                self.edit_plan_document(&item_id, &observed_hash, "Adicionou linha", now, |plan| {
-                    plan.sections
-                        .get_mut(section_index as usize)
-                        .ok_or("Seção indisponível.")?
-                        .lines
-                        .push(roda_types::PlanLine {
-                            id: browser_id("ln", now),
-                            text,
-                            cost_cents: cost,
-                            done: false,
-                        });
-                    Ok(())
-                })
+                self.edit_plan_document(
+                    &item_id,
+                    &observed_hash,
+                    &t("Adicionou linha", "Added line"),
+                    now,
+                    |plan| {
+                        plan.sections
+                            .get_mut(section_index as usize)
+                            .ok_or("Seção indisponível.")?
+                            .lines
+                            .push(roda_types::PlanLine {
+                                id: browser_id("ln", now),
+                                text,
+                                cost_cents: cost,
+                                done: false,
+                            });
+                        Ok(())
+                    },
+                )
                 .inspect(|_| {
                     mutated = true;
                 })?
@@ -1031,11 +1051,17 @@ impl<S: Signer> Client<S> {
                 line_id,
                 observed_hash,
             } => self
-                .edit_plan_document(&item_id, &observed_hash, "Removeu linha", now, |plan| {
-                    unique_line_mut(plan, &line_id)?;
-                    plan.remove_line(&line_id).ok_or("Linha indisponível.")?;
-                    Ok(())
-                })
+                .edit_plan_document(
+                    &item_id,
+                    &observed_hash,
+                    &t("Removeu linha", "Removed line"),
+                    now,
+                    |plan| {
+                        unique_line_mut(plan, &line_id)?;
+                        plan.remove_line(&line_id).ok_or("Linha indisponível.")?;
+                        Ok(())
+                    },
+                )
                 .inspect(|_| {
                     mutated = true;
                 })?,
@@ -1044,7 +1070,13 @@ impl<S: Signer> Client<S> {
                 version,
                 observed_hash,
             } => {
-                self.restore_plan(&item_id, version, &observed_hash, "Restaurou versão", now)?;
+                self.restore_plan(
+                    &item_id,
+                    version,
+                    &observed_hash,
+                    &t("Restaurou versão", "Restored version"),
+                    now,
+                )?;
                 mutated = true;
                 self.item_value(&self.document_item(&item_id)?, None, &mut downloads)?
             }
@@ -1057,7 +1089,7 @@ impl<S: Signer> Client<S> {
                     &token.item_id,
                     token.restore_version,
                     &token.observed_hash,
-                    &format!("Desfez: {}", token.label),
+                    &tr!("Desfez: {}", "Undid: {}", token.label),
                     now,
                 )?;
                 mutated = true;
@@ -1094,14 +1126,18 @@ impl<S: Signer> Client<S> {
                         .or_default();
                     draft.origin = item.origin_hash();
                     draft.snapshot = read.live.snapshot();
-                    self.commit_page(&item, &format!("Restaurou a v{version}"), now)?;
+                    self.commit_page(
+                        &item,
+                        &tr!("Restaurou a v{version}", "Restored v{version}"),
+                        now,
+                    )?;
                 } else {
                     self.queue_domain_body(
                         &item.space,
                         EventBody::ItemReverted {
                             item: item_id.clone(),
                             to_version: version,
-                            note: format!("Restaurou a v{version}"),
+                            note: tr!("Restaurou a v{version}", "Restored v{version}"),
                         },
                         now,
                         Vec::new(),
@@ -1148,7 +1184,7 @@ impl<S: Signer> Client<S> {
                 .to_owned();
         }
         if title.is_empty() {
-            title = "Sem título".into();
+            title = t("Sem título", "Untitled");
         }
         let (content, uploads) = self.page_content(title, path.into(), page.snapshot())?;
         let item = browser_id("it", now);
@@ -1311,7 +1347,7 @@ impl<S: Signer> Client<S> {
                 item: item.id.clone(),
                 content: ItemContent::Page(content),
                 note: if note.trim().is_empty() {
-                    "Editou".into()
+                    t("Editou", "Edited")
                 } else {
                     note.into()
                 },

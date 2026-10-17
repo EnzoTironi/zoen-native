@@ -107,6 +107,7 @@ impl Engine {
                     .set_profile_fields(&me.id, b.profile_seen_version, &fields)?;
             }
         }
+        self.initialize_linked_profile_sync()?;
         self.save_linked_account(AccountMeta {
             identity: me.id.clone(),
             device: device.id(),

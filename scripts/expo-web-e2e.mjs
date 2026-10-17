@@ -131,18 +131,26 @@ async function until(predicate, message, timeout = 60_000) {
   throw new Error(message);
 }
 async function cli(home, ...args) {
-  const process = start(cliPath, ["--home", home, "--timeout", "30000", ...args]);
+  const started = new Date().toISOString();
+  const process = start(cliPath, ["--home", home, "--timeout", "30000", ...args], {
+    env: { ...globalThis.process.env, ZOEN_NET_DEBUG: "1" },
+  });
   const result = await Promise.race([process.done, delay(150_000, null, { ref: false })]);
   if (!result) {
     await stop(process);
     throw new Error(`CLI ${args[0]} timed out`);
   }
-  logs.push(`CLI ${args[0]}: ${scrub(result.stdout + result.stderr)}`);
+  logs.push(
+    `CLI ${args[0]} [${started} → ${new Date().toISOString()}]: ${scrub(result.stdout + result.stderr)}`,
+  );
   assert.equal(result.code, 0, `CLI ${args[0]} failed: ${scrub(result.stderr)}`);
   return result.stdout;
 }
 async function watcher(home) {
-  const process = start(cliPath, ["--home", home, "--timeout", "30000", "watch", "--for", "600"]);
+  const process = start(cliPath, ["--home", home, "--timeout", "30000", "watch", "--for", "600"], {
+    env: { ...globalThis.process.env, ZOEN_NET_DEBUG: "1" },
+  });
+  process.watcherStarted = new Date().toISOString();
   await until(() => {
     if (process.child.exitCode !== null) throw new Error(`Peer exited: ${scrub(process.output())}`);
     return /watching as @/.test(process.output());
@@ -241,14 +249,45 @@ try {
       "--relay",
       relay.origin,
     );
-  const peer = await watcher(bruno.home);
+  let peer = await watcher(bruno.home);
   const dm = await cli(ana.home, "dm", `@${bruno.handle}`, seed);
   const space = dm
     .trim()
     .split(/\s+/)
     .findLast((value) => /^sp_[a-z0-9]+$/.test(value));
   assert.ok(space, "CLI did not return a canonical DM id");
-  step("synthetic-encrypted-history-created");
+  // Establish the peer's durable baseline before linking or erasure. A sender's
+  // local timeline alone does not prove that the first MLS message reached its peer.
+  // Do not resend a missing seed: that would conceal a bootstrap/delivery failure.
+  await until(
+    () => {
+      if (peer.child.exitCode !== null)
+        throw new Error(`Peer exited before receiving the seed: ${scrub(peer.output())}`);
+      return peer.output().includes(`${ana.name}: ${seed}`);
+    },
+    "canonical peer did not receive the original DM seed before linking",
+    30_000,
+  );
+  await stop(peer);
+  for (const person of [ana, bruno]) {
+    const sync = await cli(person.home, "sync");
+    assert.match(
+      sync,
+      /connection=online synced=true pending=0(?:\s|$)/,
+      `${person.name} must confirm the canonical seed before linking`,
+    );
+    const history = await cli(person.home, "read", space);
+    assert.ok(
+      history.includes(seed),
+      `${person.name} cold read must retain the original seed before linking`,
+    );
+    assert.ok(
+      !history.includes(`${seed} (sending)`) && !history.includes(`${seed} (failed)`),
+      `${person.name} seed must be confirmed, not pending or failed`,
+    );
+  }
+  peer = await watcher(bruno.home);
+  step("synthetic-encrypted-history-created", { peerSeedConfirmedBeforeLink: true });
 
   browser = await chromium.launch({
     executablePath: process.env.CHROME ?? "/usr/bin/google-chrome",
@@ -408,6 +447,9 @@ try {
   evidence.browserErrors = [...errors];
   await browser?.close().catch(() => {});
   await Promise.allSettled([...children].map((child) => stop(processes.get(child))));
+  for (const process of processes.values())
+    if (process.watcherStarted)
+      logs.push(`Peer watcher [${process.watcherStarted}]: ${scrub(process.output())}`);
   await mkdir(evidencePath, { recursive: true });
   await writeFile(join(evidencePath, "acceptance.json"), JSON.stringify(evidence, null, 2));
   await writeFile(join(evidencePath, "sanitized.log"), logs.map(scrub).join("\n"));

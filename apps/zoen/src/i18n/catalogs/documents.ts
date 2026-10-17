@@ -2,6 +2,7 @@ import { defineFeature } from '../catalog.ts';
 
 export const documents = defineFeature(
   {
+    defaultMarkdownBasename: 'page',
     yourFilesCouldNotBeOpened: 'Your files could not be opened.',
     madeToStay: 'Made to stay.',
     plansPagesAndFilesFromYourChats: 'Plans, pages and files from your chats.',
@@ -168,6 +169,7 @@ export const documents = defineFeature(
     amountPlaceholder: '0.00',
   },
   {
+    defaultMarkdownBasename: 'pagina',
     yourFilesCouldNotBeOpened: 'Não foi possível abrir seus arquivos.',
     madeToStay: 'Feito para ficar.',
     plansPagesAndFilesFromYourChats: 'Planos, páginas e arquivos das suas conversas.',

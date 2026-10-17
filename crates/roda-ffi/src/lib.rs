@@ -426,8 +426,11 @@ impl RodaEngine {
     }
 
     pub fn restore_version(&self, item_id: String, version: u32) -> Result<ItemDetail, CoreError> {
-        self.lock()
-            .restore_version(&item_id, version, &format!("Restaurou a v{version}"))
+        self.lock().restore_version(
+            &item_id,
+            version,
+            &tr!("Restaurou a v{version}", "Restored v{version}"),
+        )
     }
 
     pub fn requests(&self) -> Vec<AgentRequestDto> {

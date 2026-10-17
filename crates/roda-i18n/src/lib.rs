@@ -165,17 +165,11 @@ mod scope_tests {
     use super::*;
     use std::{
         pin::Pin,
-        sync::Arc,
-        task::{Context, Poll, Wake, Waker},
+        task::{Context, Poll, Waker},
     };
 
-    struct Noop;
-    impl Wake for Noop {
-        fn wake(self: Arc<Self>) {}
-    }
     fn poll<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
-        let waker = Waker::from(Arc::new(Noop));
-        future.poll(&mut Context::from_waker(&waker))
+        future.poll(&mut Context::from_waker(Waker::noop()))
     }
 
     #[test]

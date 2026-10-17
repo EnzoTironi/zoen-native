@@ -45,7 +45,8 @@ class AgentCitizenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     private fun persona(id: String, name: String, mine: Boolean, owner: String? = if (mine) null else "Bruno") =
-        Persona(id, PersonaKind.AGENT, name, id, name.take(1), "#19B5A5", null, "", owner?.lowercase(), owner, null, false, mine)
+        Persona(id, PersonaKind.AGENT, name, id, name.take(1), "#19B5A5", null, "", owner?.lowercase(), owner, null,
+            photoSha256 = null, photoReady = false, photoMime = null, isMe = false, isMine = mine)
 
     private fun profile(p: Persona, pending: UInt = 0u, chats: Int = 1) = AgentProfile(
         p, null, null, false,

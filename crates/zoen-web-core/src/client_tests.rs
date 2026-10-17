@@ -1046,6 +1046,92 @@ fn confirm_documents(
 }
 
 #[test]
+fn browser_new_document_notes_follow_language_without_rewriting_received_history() {
+    for (language, created, imported, untitled, page_label, restore_note) in [
+        (
+            roda_i18n::Lang::En,
+            "Created",
+            "Imported",
+            "Untitled",
+            "Page",
+            "Restored v1",
+        ),
+        (
+            roda_i18n::Lang::Pt,
+            "Criado",
+            "Importado",
+            "Sem título",
+            "Página",
+            "Restaurou a v1",
+        ),
+    ] {
+        let _language = roda_i18n::enter(language);
+        let (mut client, author, mut log) = document_fixture();
+        let made = doc(
+            &mut client,
+            serde_json::json!({"op":"page_create","space_id":log.space(),"title":""}),
+            10,
+        );
+        assert_eq!(made.result["origin"], created);
+        assert_eq!(made.result["title"], untitled);
+        assert_eq!(made.result["kind_id"], "page");
+        assert_eq!(made.result["kind_label"], page_label);
+        confirm_documents(&mut client, &mut log, made.update.unwrap(), 11);
+        let made = doc(
+            &mut client,
+            serde_json::json!({"op":"page_import_markdown","space_id":log.space(),"path":"notas/original.md","markdown":"# Título em português 🪴\n"}),
+            12,
+        );
+        assert_eq!(made.result["origin"], imported);
+        assert_eq!(made.result["title"], "Título em português 🪴");
+        assert_eq!(made.result["path"], "notas/original.md");
+        confirm_documents(&mut client, &mut log, made.update.unwrap(), 13);
+        let received = clear(
+            &mut log,
+            &author,
+            EventBody::ItemCreated {
+                item: "it_literal_history".into(),
+                kind: roda_types::ItemKind::Note,
+                content: roda_types::ItemContent::Text {
+                    text: "Texto original em português".into(),
+                },
+                origin: "Criado no iOS — manter literal".into(),
+            },
+            14,
+        );
+        client.receive(&received, 15).unwrap();
+        let received = clear(
+            &mut log,
+            &author,
+            EventBody::ItemVersioned {
+                item: "it_literal_history".into(),
+                content: roda_types::ItemContent::Text {
+                    text: "Outra versão em português".into(),
+                },
+                note: "Editou no iOS — manter literal".into(),
+            },
+            16,
+        );
+        client.receive(&received, 17).unwrap();
+        let restored = doc(
+            &mut client,
+            serde_json::json!({"op":"restore_version","item_id":"it_literal_history","version":1}),
+            18,
+        );
+        assert_eq!(restored.result["versions"][0]["note"], restore_note);
+        assert_eq!(
+            restored.result["versions"][1]["note"],
+            "Editou no iOS — manter literal"
+        );
+        assert_eq!(
+            restored.result["versions"][2]["note"],
+            "Criado no iOS — manter literal"
+        );
+        assert_eq!(restored.result["text"], "Texto original em português");
+    }
+}
+
+#[test]
 fn browser_pages_share_native_codec_persist_drafts_and_replay_receipts() {
     let (mut client, _, mut log) = document_fixture();
     let made = doc(

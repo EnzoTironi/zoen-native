@@ -19,6 +19,9 @@ import { NotificationProvider } from '../notifications/provider';
 import { NativeSurfacesProvider } from '../native-surfaces/provider';
 import { NativeIntentConsumer } from '../native-surfaces/intent-consumer';
 
+// Cold links keep the real tabs beneath their destination, including on iOS.
+export const unstable_settings = { anchor: '(tabs)' };
+
 void SplashScreen.preventAutoHideAsync();
 function Navigation() {
   const { scheme, colors } = useTheme();

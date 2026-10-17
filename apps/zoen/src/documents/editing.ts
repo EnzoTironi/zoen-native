@@ -95,7 +95,7 @@ export function markdownFilename(title: string): string {
     .replace(/^\.+|[ .]+$/g, '')
     .trim()
     .slice(0, 96);
-  return `${safe || 'pagina'}.md`;
+  return `${safe || t('documents.defaultMarkdownBasename')}.md`;
 }
 
 export function validateMarkdown(markdown: string): string {

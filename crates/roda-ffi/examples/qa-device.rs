@@ -9,7 +9,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use roda_ffi::{RodaEngine, SecretVault};
+use roda_ffi::{PhotoChange, RodaEngine, SecretVault};
 use serde_json::{json, Value};
 use zeroize::Zeroize;
 
@@ -126,6 +126,45 @@ fn options(
     ))
 }
 
+// Existing E2E-generated gradient JPEG: public synthetic pixels, fixed at compile time.
+// There is deliberately no caller-supplied path, URI, MIME or photo byte argument.
+const PROFILE_PHOTO: &[u8] = include_bytes!("../../../packages/zoen-ui/web/e2e/fixtures/praia.jpg");
+
+fn qa_photo_operation(value: &Value) -> bool {
+    value.as_object().is_some_and(|fields| {
+        fields.len() == 1
+            && fields.get("op").and_then(Value::as_str) == Some("qa_set_profile_photo")
+    })
+}
+
+fn set_fixture_profile_photo(
+    core: &RodaEngine,
+    identity: &str,
+    device: &str,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let account = core
+        .account()
+        .ok_or("The disposable account is unavailable.")?;
+    if account.identity_id != identity
+        || account.device_id != device
+        || !synthetic_handle(&account.handle)
+        || !account.unlocked
+        || account.setup_pending
+    {
+        return Err("The disposable account context changed.".into());
+    }
+    let profile = core.update_my_profile(
+        "QA reverse profile photo".into(),
+        "Synthetic profile convergence QA.".into(),
+        PhotoChange::Set {
+            bytes: PROFILE_PHOTO.to_vec(),
+            mime: "image/jpeg".into(),
+        },
+    )?;
+    Ok(json!({ "version": profile.version.to_string(),
+        "photo_sha256": profile.photo_sha256, "photo_ready": profile.photo_ready }))
+}
+
 /// This fixture forwards real operations, not an engine/storage bypass. Exclude
 /// social auth and recovery/key operations so credentials can never become output.
 fn allowed_operation(value: &Value) -> bool {
@@ -170,6 +209,7 @@ fn allowed_operation(value: &Value) -> bool {
             | "item_at"
             | "page"
             | "page_at"
+            | "plan_page"
             | "page_create"
             | "page_import_markdown"
             | "page_parse_markdown"
@@ -227,7 +267,10 @@ async fn run(
         core.stop_sync();
         return Err("The disposable account did not register and sync with the local relay. Use a running relay and a fresh qa_ handle.".into());
     }
-    emit(json!({ "event": "ready", "disposable": true, "account": core.account() }))?;
+    let owned_account = core
+        .account()
+        .ok_or("The disposable account is unavailable.")?;
+    emit(json!({ "event": "ready", "disposable": true, "account": &owned_account }))?;
 
     let mut input = io::stdin().lock();
     loop {
@@ -248,6 +291,19 @@ async fn run(
             continue;
         }
         let command = serde_json::from_slice::<Value>(&bytes);
+        if command.as_ref().is_ok_and(qa_photo_operation) {
+            match set_fixture_profile_photo(
+                &core,
+                &owned_account.identity_id,
+                &owned_account.device_id,
+            ) {
+                Ok(result) => emit(json!({ "ok": true, "result": result }))?,
+                Err(_) => emit(
+                    json!({ "ok": false, "error": "The synthetic profile photo operation failed." }),
+                )?,
+            }
+            continue;
+        }
         if !command.as_ref().is_ok_and(allowed_operation) {
             emit(
                 json!({ "ok": false, "error": "Invalid or unavailable QA operation. Social auth, vault and recovery operations are excluded." }),
@@ -298,6 +354,58 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn photo_operation_has_no_arbitrary_inputs_and_uses_a_fixed_bounded_jpeg() {
+        assert!(qa_photo_operation(&json!({"op":"qa_set_profile_photo"})));
+        for value in [
+            json!({"op":"qa_set_profile_photo","path":"/private/photo.jpg"}),
+            json!({"op":"qa_set_profile_photo","bytes":[1,2]}),
+            json!({"op":"qa_set_profile_photo","identity":"another"}),
+            json!({"op":"update_profile"}),
+            Value::Null,
+        ] {
+            assert!(!qa_photo_operation(&value));
+        }
+        assert!(PROFILE_PHOTO.len() < 5 * 1024 * 1024);
+        assert!(PROFILE_PHOTO.starts_with(&[0xff, 0xd8]));
+        assert!(PROFILE_PHOTO.ends_with(&[0xff, 0xd9]));
+        use sha2::{Digest, Sha256};
+        assert_eq!(
+            hex::encode(Sha256::digest(PROFILE_PHOTO)),
+            "9d1e61801b349f3308d543998db013ff8220e713fd5977ad35f8ae7844fb1b56"
+        );
+    }
+
+    #[test]
+    fn photo_operation_uses_canonical_profile_and_refuses_another_owner() {
+        let core = RodaEngine::open(":memory:".into(), "en".into()).unwrap();
+        core.create_account(
+            "QA disposable device".into(),
+            "qa_photo_boundary".into(),
+            "http://127.0.0.1:9".into(),
+            Arc::new(VolatileVault::default()),
+        )
+        .unwrap();
+        let account = core.account().unwrap();
+        assert!(set_fixture_profile_photo(&core, "different", &account.device_id).is_err());
+        assert!(core
+            .get_profile(account.identity_id.clone())
+            .unwrap()
+            .photo_sha256
+            .is_none());
+        let result =
+            set_fixture_profile_photo(&core, &account.identity_id, &account.device_id).unwrap();
+        assert_eq!(result["photo_ready"], true);
+        assert_eq!(result.as_object().unwrap().len(), 3);
+        let hash = result["photo_sha256"].as_str().unwrap();
+        let photo = core
+            .profile_photo(account.identity_id, hash.into())
+            .unwrap()
+            .unwrap();
+        assert_eq!(photo.mime, "image/jpeg");
+        assert_eq!(photo.bytes, PROFILE_PHOTO);
+    }
 
     #[test]
     fn fixture_requires_explicit_loopback_origin_and_synthetic_account() {
@@ -360,6 +468,9 @@ mod tests {
         assert!(allowed_operation(&json!({"op":"send_message"})));
         assert!(allowed_operation(&json!({"op":"receive_history"})));
         assert!(allowed_operation(&json!({"op":"load_older"})));
+        assert!(allowed_operation(
+            &json!({"op":"plan_page","item_id":"synthetic"})
+        ));
         for op in [
             "provider_sign_in",
             "backup_create_recovery_key",

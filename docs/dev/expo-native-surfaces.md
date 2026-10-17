@@ -133,13 +133,14 @@ Apply CNG and generate the Rust simulator framework:
 ```sh
 cd apps/zoen
 npx expo prebuild --platform ios
-node ../../scripts/build-expo-core.mjs ios --simulator
+env -u SDKROOT DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  node ../../scripts/build-expo-core.mjs ios --simulator
 ```
 
 Build the generated workspace for the simulator UDID selected through Argent:
 
 ```sh
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
+env -u SDKROOT DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
   -workspace ios/Zoen.xcworkspace -configuration Debug -scheme Zoen \
   -destination "id=$ZOEN_SIMULATOR_UDID" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
   COMPILER_INDEX_STORE_ENABLE=NO

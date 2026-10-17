@@ -409,6 +409,21 @@ enum Waiting {
     Ignored,
 }
 
+/// Only the current retry may consume a profile response or settle its deadline.
+/// A timed-out request can still reply after the replacement was sent.
+fn remember_waiting(waiting: &mut HashMap<u64, Waiting>, id: u64, next: Waiting) {
+    match &next {
+        Waiting::SealedProfiles(_) => {
+            waiting.retain(|_, entry| !matches!(entry, Waiting::SealedProfiles(_)))
+        }
+        Waiting::ProfileUploaded(_) => {
+            waiting.retain(|_, entry| !matches!(entry, Waiting::ProfileUploaded(_)))
+        }
+        _ => {}
+    }
+    waiting.insert(id, next);
+}
+
 /// Encrypted-profile requests: free (`None`), or in flight / backing off until a deadline.
 #[derive(Default)]
 struct ProfileTraffic {
@@ -784,13 +799,17 @@ async fn session(
                             Some(Waiting::SealedProfiles(asked)) => {
                                 opening = None;
                                 let ok = if let Ok(Reply::SealedProfiles(list)) = result {
-                                    let changed = engine!(|engine| engine.sealed_profiles_arrived(list, &asked));
+                                    let (changed, complete) = engine!(|engine| {
+                                        let changed=engine.sealed_profiles_arrived(list,&asked);
+                                        let complete=engine.profiles_answer_complete(&asked);
+                                        (changed,complete)
+                                    });
                                     if !changed.is_empty() {
                                         dirty.insert(String::new());
                                         media_kick.notify_one();
                                         if let Some(l) = &ctx.listener { for id in changed { l.on_profile_changed(id); } }
                                     }
-                                    true
+                                    complete
                                 } else { false };
                                 settle(&mut traffic.profiles, ok);
                             }
@@ -955,7 +974,7 @@ async fn session(
                 for (op, w) in reqs {
                     let id = next_id; next_id += 1;
                     if let Err(e) = send(&mut sink, &ClientFrame::Req { id, op }).await { failed = Some(e); break }
-                    waiting.insert(id, w);
+                    remember_waiting(&mut waiting,id,w);
                 }
                 if let Some(e) = failed { break Exit::Retry(e) }
                 // Hold UI updates briefly while we learn who new authors are, so the
@@ -2584,5 +2603,42 @@ mod tests {
             Some("Members see different groups in this chat (the server may have forked it).")
         );
         assert!(!stored, "the refused event was appended");
+    }
+    #[test]
+    fn superseded_profile_query_cannot_consume_current_batch_or_its_backoff() {
+        let mut waiting = HashMap::new();
+        remember_waiting(
+            &mut waiting,
+            1,
+            Waiting::SealedProfiles(vec!["self".into()]),
+        );
+        remember_waiting(
+            &mut waiting,
+            2,
+            Waiting::AgreementKeys(vec!["contact".into()]),
+        );
+        remember_waiting(
+            &mut waiting,
+            3,
+            Waiting::SealedProfiles(vec!["self".into()]),
+        );
+        assert!(
+            waiting.remove(&1).is_none(),
+            "late Q1 must never reach sealed_profiles_arrived"
+        );
+        assert!(
+            matches!(waiting.get(&3),Some(Waiting::SealedProfiles(ids)) if ids==&vec!["self".to_owned()])
+        );
+        assert!(
+            waiting.contains_key(&2),
+            "independent agreement request remains tracked"
+        );
+        remember_waiting(&mut waiting, 4, Waiting::ProfileUploaded(2));
+        remember_waiting(&mut waiting, 5, Waiting::ProfileUploaded(3));
+        assert!(
+            waiting.remove(&4).is_none(),
+            "old upload ACK must not settle current request deadline"
+        );
+        assert!(matches!(waiting.get(&5), Some(Waiting::ProfileUploaded(3))));
     }
 }

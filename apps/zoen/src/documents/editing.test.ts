@@ -65,5 +65,5 @@ test('plan costs round-trip exact signed i64 domain without Number coercion', ()
 });
 test('export filenames cannot escape their cache directory', () => {
   assert.equal(markdownFilename('../../Meu: diário\u0000'), '-..-Meu- diário-.md');
-  assert.equal(markdownFilename('...'), 'pagina.md');
+  assert.equal(markdownFilename('...'), 'page.md');
 });

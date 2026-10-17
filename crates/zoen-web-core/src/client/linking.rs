@@ -95,6 +95,24 @@ enum Command {
 }
 
 impl<S: Signer> Client<S> {
+    /// One durable namespace for retained profile/link/history protocol requests.
+    /// Keep the existing journal sequence so in-flight saved links never collide
+    /// with a new profile lookup across reconnect or process reopen.
+    pub(super) fn next_retained_request_id(&mut self) -> Result<u64, String> {
+        let sequence = self
+            .saved
+            .linking
+            .request_sequence
+            .checked_add(1)
+            .ok_or("Request identifier limit reached.")?;
+        let id = LINK_REQUEST_BASE
+            .checked_add(sequence)
+            .filter(|id| *id <= u64::from(u32::MAX))
+            .ok_or("Request identifier limit reached.")?;
+        self.saved.linking.request_sequence = sequence;
+        Ok(id)
+    }
+
     pub fn link_prepare(
         &mut self,
         primary: &Primary,
@@ -124,17 +142,10 @@ impl<S: Signer> Client<S> {
         account.profile_fields = fields;
         let sealed = primary.seal_link(&parsed, &account)?;
         let device = sealed.device.clone();
+        let request_id = self.next_retained_request_id()?;
         self.saved.linking.peers.insert(device.clone(), sealed.peer);
-        self.saved.linking.request_sequence = self
-            .saved
-            .linking
-            .request_sequence
-            .checked_add(1)
-            .ok_or("Limite de pedidos de vínculo.")?;
         self.saved.linking.handover = Some(Handover {
-            request_id: LINK_REQUEST_BASE
-                .checked_add(self.saved.linking.request_sequence)
-                .ok_or("Limite de pedidos de vínculo.")?,
+            request_id,
             device: device.clone(),
             code: parsed.encode(),
             check: parsed.check_digits(),
@@ -451,15 +462,7 @@ impl<S: Signer> Client<S> {
             &manifest,
         )
         .ok_or("Não foi possível proteger o histórico.")?;
-        self.saved.linking.request_sequence = self
-            .saved
-            .linking
-            .request_sequence
-            .checked_add(1)
-            .ok_or("Limite de pedidos de vínculo.")?;
-        let request_id = LINK_REQUEST_BASE
-            .checked_add(self.saved.linking.request_sequence)
-            .ok_or("Limite de pedidos de vínculo.")?;
+        let request_id = self.next_retained_request_id()?;
         self.saved.linking.sending = Some(Sending {
             request_id,
             device: device.into(),
@@ -865,6 +868,22 @@ mod tests {
         client.synced = true;
         (primary, client)
     }
+    #[test]
+    fn retained_request_allocator_is_exact_u32_and_refuses_exhaustion_without_mutation() {
+        let (_, mut client) = source();
+        client.saved.linking.request_sequence = u64::from(u32::MAX) - LINK_REQUEST_BASE - 1;
+        assert_eq!(
+            client.next_retained_request_id().unwrap(),
+            u64::from(u32::MAX)
+        );
+        let before = client.saved.linking.request_sequence;
+        assert!(client.next_retained_request_id().is_err());
+        assert_eq!(client.saved.linking.request_sequence, before);
+        client.saved.linking.request_sequence = u64::MAX;
+        assert!(client.next_retained_request_id().is_err());
+        assert_eq!(client.saved.linking.request_sequence, u64::MAX);
+    }
+
     fn prepare(
         primary: &Primary,
         client: &mut Client<HostSigner>,

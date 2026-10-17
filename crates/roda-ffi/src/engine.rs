@@ -2484,7 +2484,7 @@ impl Engine {
             item,
             version,
             observed_hash,
-            &format!("Restaurou a v{version}"),
+            &tr!("Restaurou a v{version}", "Restored v{version}"),
         )
     }
 
@@ -4515,6 +4515,64 @@ pub(crate) fn plan_to_dto(p: &PlanDoc, total_cents: i64) -> PlanDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_new_restore_notes_follow_session_language_and_preserve_history() {
+        for (locale, restore_note) in [("en", "Restored v1"), ("pt-BR", "Restaurou a v1")] {
+            let engine = crate::RodaEngine::open(":memory:".into(), locale.into()).unwrap();
+            engine.seed_demo_if_empty().unwrap();
+            let plan = engine
+                .items()
+                .into_iter()
+                .find(|item| item.kind_id == "plan" && item.title.contains("Paraty"))
+                .unwrap();
+            let before = engine.item(plan.id.clone()).unwrap();
+            let restored = engine
+                .restore_plan_version(
+                    plan.id.clone(),
+                    1,
+                    engine.plan_page(plan.id).unwrap().content_hash,
+                )
+                .unwrap();
+            assert_eq!(restored.versions[0].note, restore_note);
+            assert_eq!(
+                restored
+                    .versions
+                    .iter()
+                    .skip(1)
+                    .map(|version| &version.note)
+                    .collect::<Vec<_>>(),
+                before
+                    .versions
+                    .iter()
+                    .map(|version| &version.note)
+                    .collect::<Vec<_>>()
+            );
+            let note = engine
+                .items()
+                .into_iter()
+                .find(|item| item.kind_id == "note")
+                .unwrap();
+            let before = engine.item(note.id.clone()).unwrap();
+            let restored = engine.restore_version(note.id, 1).unwrap();
+            assert_eq!(restored.versions[0].note, restore_note);
+            assert_eq!(
+                restored
+                    .versions
+                    .iter()
+                    .skip(1)
+                    .map(|version| &version.note)
+                    .collect::<Vec<_>>(),
+                before
+                    .versions
+                    .iter()
+                    .map(|version| &version.note)
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(restored.text, before.text);
+            assert!(engine.verify_all().iter().all(|report| report.valid));
+        }
+    }
 
     #[test]
     fn reopening_v3_history_and_pending_ciphertext_preserves_the_database() {

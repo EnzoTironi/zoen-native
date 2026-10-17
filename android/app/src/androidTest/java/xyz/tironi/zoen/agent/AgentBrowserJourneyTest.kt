@@ -30,7 +30,8 @@ class AgentBrowserJourneyTest {
         val namespace = "browser-${UUID.randomUUID()}"
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         val browser = AgentBrowser(context, scope, AndroidSecretVault(context, namespace))
-        val agent = Persona("test-agent", PersonaKind.AGENT, "Zoen", "zoen", "Z", "#6B8F71", null, "", "test-owner", "Owner", null, false, true)
+        val agent = Persona("test-agent", PersonaKind.AGENT, "Zoen", "zoen", "Z", "#6B8F71", null, "", "test-owner", "Owner", null,
+            photoSha256 = null, photoReady = false, photoMime = null, isMe = false, isMine = true)
         var closed = 0
         try {
             compose.setContent { ZoenTheme { AgentBrowserScreen(browser) { closed++ } } }

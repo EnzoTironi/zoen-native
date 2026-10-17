@@ -21,6 +21,7 @@ pub mod content;
 pub mod media;
 pub mod owner_budget;
 pub mod profile;
+pub mod profile_sync;
 pub mod recovery;
 
 use content::{Payload, SignedContent};

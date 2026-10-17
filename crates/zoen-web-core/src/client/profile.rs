@@ -2,13 +2,12 @@
 //! shared with native; the host persists every update before sending its frames.
 use super::*;
 use roda_log::profile::{self, AgreementKey, DeviceSigned, ProfileFields, ProfileKey, SealedShare};
+use roda_log::profile_sync::{Observe, OwnProfileSync};
 use roda_proto::{AgreementKeyRecord, SealedProfile};
 use serde_json::{json, Value};
 
 const AGREEMENT_PUBLISH: u64 = 0x8000_0010;
-const PROFILE_UPLOAD: u64 = 0x8000_0011;
 const AGREEMENT_LOOKUP: u64 = 0x8000_0012;
-const PROFILE_LOOKUP: u64 = 0x8000_0013;
 const BATCH: usize = 500;
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -17,7 +16,10 @@ pub(super) struct Journal {
     blocked: BTreeSet<String>,
     pub(super) agreement: BTreeMap<String, String>,
     published_agreement: String,
-    uploaded: u64,
+    #[serde(default, skip_serializing)]
+    uploaded: u64, // read once when migrating an existing journal
+    #[serde(default)]
+    own_sync: Option<OwnProfileSync>,
     upload: Option<Upload>,
     #[serde(default)]
     pub(super) photos: BTreeMap<String, Vec<u8>>,
@@ -56,11 +58,614 @@ mod tests {
     }
 
     fn synced(client: &mut Client<HostSigner>) -> Update {
-        client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap()
+        let mut first = client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
+        if !client.profile_net.profiles.is_empty() {
+            let sync = client.saved.profile.own_sync.as_ref().unwrap();
+            let records = if sync.published == 0 && sync.pending.is_some() {
+                Vec::new()
+            } else {
+                vec![remote_profile(
+                    client,
+                    sync.published.max(1),
+                    "Antes",
+                    false,
+                )]
+            };
+            client
+                .profile_reply(
+                    client.profile_net.profiles_request.unwrap(),
+                    &Ok(Reply::SealedProfiles(records)),
+                )
+                .unwrap();
+            let mut next = client.update(Vec::new()).unwrap();
+            first.frames.append(&mut next.frames);
+            next.frames = first.frames;
+            next
+        } else {
+            first
+        }
     }
 
     fn request(client: &mut Client<HostSigner>, command: Value) -> DocumentResponse {
         client.profile_request(&command.to_string(), 20).unwrap()
+    }
+
+    fn remote_profile(
+        client: &Client<HostSigner>,
+        version: u64,
+        name: &str,
+        different_key: bool,
+    ) -> SealedProfile {
+        let identity = NativeSigner::from_secret(&[71; 32]);
+        let author = Author::device(&identity, NativeSigner::from_secret(&[92; 32]));
+        let key = if different_key {
+            ProfileKey::generate()
+        } else {
+            client.my_profile_fields().unwrap().0
+        };
+        let ciphertext = profile::seal_profile(
+            &key,
+            &identity.id(),
+            version,
+            &ProfileFields {
+                name: name.into(),
+                ..Default::default()
+            },
+        );
+        SealedProfile {
+            identity: identity.id(),
+            version,
+            signed: profile::sign_upload(&author, version, &ciphertext).unwrap(),
+            ciphertext,
+        }
+    }
+
+    fn receive_own(client: &mut Client<HostSigner>, record: SealedProfile) -> Update {
+        client.profile_net.profiles = vec![client.account.identity.clone()];
+        client.profile_net.profiles_request = Some(client.next_retained_request_id().unwrap());
+        client
+            .profile_reply(
+                client.profile_net.profiles_request.unwrap(),
+                &Ok(Reply::SealedProfiles(vec![record])),
+            )
+            .unwrap();
+        client.update(Vec::new()).unwrap()
+    }
+
+    fn reply_upload(client: &mut Client<HostSigner>, version: u64) {
+        let id = client.next_retained_request_id().unwrap();
+        client.profile_net.upload_version = Some(version);
+        client.profile_net.upload_request = Some(id);
+        client.profile_reply(id, &Ok(Reply::Done)).unwrap();
+    }
+
+    fn is_profile_upload(frame: &[u8]) -> bool {
+        matches!(
+            ClientFrame::decode(frame),
+            Ok(ClientFrame::Req {
+                op: Op::PutProfile { .. },
+                ..
+            })
+        )
+    }
+
+    #[test]
+    fn own_remote_update_adopts_without_echo_and_refreshes_on_reconnect() {
+        let (mut client, _, _) = client();
+        client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
+        let initial = client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
+        assert!(initial.frames.iter().any(|frame| matches!(ClientFrame::decode(frame),Ok(ClientFrame::Req{op:Op::GetProfiles{ids},..}) if ids.contains(&client.account.identity))));
+        let (photo, photo_bytes) =
+            profile::ProfilePhoto::seal(b"synthetic peer photo", "image/jpeg").unwrap();
+        let fields = ProfileFields {
+            name: "Other device".into(),
+            photo: Some(photo.clone()),
+            ..Default::default()
+        };
+        let mut remote = remote_profile(&client, 2, "Other device", false);
+        remote.ciphertext = profile::seal_profile(
+            &client.my_profile_fields().unwrap().0,
+            &client.account.identity,
+            2,
+            &fields,
+        );
+        remote.signed = profile::sign_upload(
+            &Author::device(
+                &NativeSigner::from_secret(&[71; 32]),
+                NativeSigner::from_secret(&[92; 32]),
+            ),
+            2,
+            &remote.ciphertext,
+        )
+        .unwrap();
+        let applied = receive_own(&mut client, remote);
+        assert_eq!(client.my_profile_fields().unwrap().2.name, "Other device");
+        assert_eq!(client.saved.profile.own_sync.as_ref().unwrap().published, 2);
+        assert!(!applied.frames.iter().any(|frame| is_profile_upload(frame)));
+        assert_eq!(
+            client.my_profile_fields().unwrap().2.photo,
+            Some(photo.clone())
+        );
+        assert!(!client.profile_photo_cached(&photo));
+        let cached = client
+            .profile_photo_received(&client.account.identity.clone(), &photo.sha256, photo_bytes)
+            .unwrap();
+        assert!(client.profile_photo_cached(&photo));
+        assert!(!cached.frames.iter().any(|frame| is_profile_upload(frame)));
+        let mut reload = Client::new(
+            client.account.clone(),
+            client.signer.clone(),
+            &applied.snapshot,
+        )
+        .unwrap();
+        let reconnect = reload.receive(&ServerFrame::SyncDone.encode(), 20).unwrap();
+        assert!(reconnect.frames.iter().any(|frame| matches!(
+            ClientFrame::decode(frame),
+            Ok(ClientFrame::Req {
+                op: Op::GetProfiles { .. },
+                ..
+            })
+        )));
+        assert_eq!(reload.my_profile_fields().unwrap().2.name, "Other device");
+        assert!(reload
+            .saved
+            .profile
+            .own_sync
+            .as_ref()
+            .unwrap()
+            .pending
+            .is_none());
+    }
+
+    #[test]
+    fn pending_local_profile_rebases_and_late_ack_preserves_it() {
+        let (mut client, _, _) = client();
+        client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
+        request(
+            &mut client,
+            json!({"op":"update_profile","name":"Pending local","bio":"local"}),
+        );
+        let remote = remote_profile(&client, 4, "Remote newer", false);
+        let applied = receive_own(&mut client, remote);
+        assert_eq!(client.my_profile_fields().unwrap().1, 5);
+        assert_eq!(client.my_profile_fields().unwrap().2.name, "Pending local");
+        reply_upload(&mut client, 2);
+        assert_eq!(
+            client.saved.profile.own_sync.as_ref().unwrap().pending,
+            Some(5)
+        );
+        assert_eq!(client.saved.profile.own_sync.as_ref().unwrap().published, 4);
+        let reload = Client::new(
+            client.account.clone(),
+            client.signer.clone(),
+            &applied.snapshot,
+        )
+        .unwrap();
+        assert_eq!(
+            reload.saved.profile.own_sync.as_ref().unwrap().pending,
+            Some(5)
+        );
+    }
+
+    #[test]
+    fn unknown_rotated_key_blocks_old_key_publication_without_losing_local_intent() {
+        let (mut client, _, _) = client();
+        client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
+        request(
+            &mut client,
+            json!({"op":"update_profile","name":"Pending local","bio":"local"}),
+        );
+        client
+            .saved
+            .profile
+            .rows
+            .get_mut(&client.account.identity)
+            .unwrap()
+            .seen_version = 100;
+        client.saved.profile.own_sync.as_mut().unwrap().pending = Some(100);
+        client.synced = true;
+        let remote = remote_profile(&client, 8, "Rotated", true);
+        let update = receive_own(&mut client, remote);
+        assert!(client
+            .saved
+            .profile
+            .own_sync
+            .as_ref()
+            .unwrap()
+            .key_unavailable());
+        assert_eq!(client.my_profile_fields().unwrap().2.name, "Pending local");
+        assert!(!update.frames.iter().any(|frame| is_profile_upload(frame)));
+        let old = remote_profile(&client, 2, "Old key", false);
+        receive_own(&mut client, old);
+        reply_upload(&mut client, 2);
+        reply_upload(&mut client, 100);
+        let higher_old_key = remote_profile(&client, 101, "Higher old key", false);
+        let update = receive_own(&mut client, higher_old_key);
+        let state = client.saved.profile.own_sync.as_ref().unwrap();
+        assert_eq!(state.blocked_at_version, Some(8));
+        assert_eq!(state.pending, Some(100));
+        assert_eq!(client.my_profile_fields().unwrap().2.name, "Pending local");
+        assert!(!update.frames.iter().any(|frame| is_profile_upload(frame)));
+        let reload = Client::new(
+            client.account.clone(),
+            client.signer.clone(),
+            &update.snapshot,
+        )
+        .unwrap();
+        assert!(reload
+            .saved
+            .profile
+            .own_sync
+            .as_ref()
+            .unwrap()
+            .key_unavailable());
+    }
+
+    #[test]
+    fn failed_own_lookup_retains_work_and_uses_bounded_retry() {
+        let (mut client, _, _) = client();
+        client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
+        client
+            .profile_reply(
+                client.profile_net.profiles_request.unwrap(),
+                &Err("offline".into()),
+            )
+            .unwrap();
+        assert!(!client
+            .profile_net
+            .fetched
+            .contains(&client.account.identity));
+        assert_eq!(client.profile_deadline(), Some(5010));
+        assert!(!client
+            .update(Vec::new())
+            .unwrap()
+            .frames
+            .iter()
+            .any(|frame| is_profile_upload(frame)));
+    }
+
+    #[test]
+    fn profile_lookup_timeout_ignores_late_replies_across_retry_and_cold_reopen() {
+        let (mut client, _, _) = client();
+        client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
+        client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
+        let first = client.profile_net.profiles_request.unwrap();
+        client.profile_changed(&client.account.identity.clone());
+        client.view_now_ms = 15_011;
+        let second_update = client.update(Vec::new()).unwrap();
+        let second = client.profile_net.profiles_request.unwrap();
+        assert_ne!(first, second);
+        let old = remote_profile(&client, 2, "Stale query result", false);
+        client
+            .receive(
+                &ServerFrame::Res {
+                    id: first,
+                    result: Ok(Reply::SealedProfiles(vec![old.clone()])),
+                }
+                .encode(),
+                15_012,
+            )
+            .unwrap();
+        assert_eq!(client.profile_net.profiles_request, Some(second));
+        assert!(!client
+            .profile_net
+            .fetched
+            .contains(&client.account.identity));
+        assert_eq!(client.my_profile_fields().unwrap().2.name, "Antes");
+        let mut reload = Client::new(
+            client.account.clone(),
+            client.signer.clone(),
+            &second_update.snapshot,
+        )
+        .unwrap();
+        reload
+            .receive(&ServerFrame::SyncDone.encode(), 20_000)
+            .unwrap();
+        let third = reload.profile_net.profiles_request.unwrap();
+        assert!(third > second);
+        reload
+            .receive(
+                &ServerFrame::Res {
+                    id: second,
+                    result: Ok(Reply::SealedProfiles(vec![old])),
+                }
+                .encode(),
+                20_001,
+            )
+            .unwrap();
+        assert_eq!(reload.profile_net.profiles_request, Some(third));
+        assert!(!reload
+            .profile_net
+            .fetched
+            .contains(&reload.account.identity));
+        let fresh = remote_profile(&reload, 3, "Current query result", false);
+        reload
+            .receive(
+                &ServerFrame::Res {
+                    id: third,
+                    result: Ok(Reply::SealedProfiles(vec![fresh])),
+                }
+                .encode(),
+                20_002,
+            )
+            .unwrap();
+        assert_eq!(
+            reload.my_profile_fields().unwrap().2.name,
+            "Current query result"
+        );
+        assert_eq!(reload.saved.profile.own_sync.as_ref().unwrap().published, 3);
+        assert!(reload
+            .saved
+            .profile
+            .own_sync
+            .as_ref()
+            .unwrap()
+            .pending
+            .is_none());
+    }
+
+    #[test]
+    fn upload_timeout_retries_exact_bytes_and_late_ack_cannot_confirm_a_new_edit() {
+        let (mut client, _, _) = client();
+        client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
+        synced(&mut client);
+        let update = request(
+            &mut client,
+            json!({"op":"update_profile","name":"Pending two","bio":"bio"}),
+        )
+        .update
+        .unwrap();
+        let upload = update
+            .frames
+            .iter()
+            .find_map(|frame| match ClientFrame::decode(frame).unwrap() {
+                ClientFrame::Req {
+                    op: Op::PutProfile { profile },
+                    ..
+                } => Some(profile),
+                _ => None,
+            })
+            .unwrap();
+        let first = client.profile_net.upload_request.unwrap();
+        client.view_now_ms = 15_021;
+        let retry = client.update(Vec::new()).unwrap();
+        let second = client.profile_net.upload_request.unwrap();
+        assert_ne!(first, second);
+        let retried = retry
+            .frames
+            .iter()
+            .find_map(|frame| match ClientFrame::decode(frame).unwrap() {
+                ClientFrame::Req {
+                    op: Op::PutProfile { profile },
+                    ..
+                } => Some(profile),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(retried, upload);
+        client
+            .receive(
+                &ServerFrame::Res {
+                    id: first,
+                    result: Ok(Reply::Done),
+                }
+                .encode(),
+                15_022,
+            )
+            .unwrap();
+        assert_eq!(client.profile_net.upload_request, Some(second));
+        assert_eq!(
+            client.saved.profile.own_sync.as_ref().unwrap().pending,
+            Some(2)
+        );
+        client.profile_changed(&client.account.identity.clone());
+        client.update(Vec::new()).unwrap();
+        let lookup = client.profile_net.profiles_request.unwrap();
+        client
+            .receive(
+                &ServerFrame::Res {
+                    id: lookup,
+                    result: Ok(Reply::SealedProfiles(vec![upload])),
+                }
+                .encode(),
+                15_023,
+            )
+            .unwrap();
+        assert!(client
+            .saved
+            .profile
+            .own_sync
+            .as_ref()
+            .unwrap()
+            .pending
+            .is_none());
+        assert!(!client.profile_net.upload);
+        client
+            .profile_request(
+                &json!({"op":"update_profile","name":"Pending three","bio":"bio"}).to_string(),
+                20_000,
+            )
+            .unwrap();
+        let third = client.profile_net.upload_request.unwrap();
+        assert_ne!(second, third);
+        client
+            .receive(
+                &ServerFrame::Res {
+                    id: second,
+                    result: Ok(Reply::Done),
+                }
+                .encode(),
+                20_001,
+            )
+            .unwrap();
+        assert_eq!(client.profile_net.upload_request, Some(third));
+        assert_eq!(
+            client.saved.profile.own_sync.as_ref().unwrap().pending,
+            Some(3)
+        );
+        client
+            .receive(
+                &ServerFrame::Res {
+                    id: third,
+                    result: Ok(Reply::Done),
+                }
+                .encode(),
+                20_002,
+            )
+            .unwrap();
+        assert!(client
+            .saved
+            .profile
+            .own_sync
+            .as_ref()
+            .unwrap()
+            .pending
+            .is_none());
+        assert_eq!(client.saved.profile.own_sync.as_ref().unwrap().published, 3);
+    }
+
+    #[test]
+    fn invalid_own_lookup_retries_without_releasing_pending_profile() {
+        let (mut client, _, _) = client();
+        client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
+        request(
+            &mut client,
+            json!({"op":"update_profile","name":"Local pending","bio":"bio"}),
+        );
+        client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
+        let lookup = client.profile_net.profiles_request.unwrap();
+        let before = client.my_profile_fields().unwrap();
+        let state = client.saved.profile.own_sync.clone();
+        let mut forged = remote_profile(&client, 2, "Forged", false);
+        forged.signed.sig = "00".repeat(64);
+        let update = client
+            .receive(
+                &ServerFrame::Res {
+                    id: lookup,
+                    result: Ok(Reply::SealedProfiles(vec![forged])),
+                }
+                .encode(),
+                11,
+            )
+            .unwrap();
+        assert_eq!(client.my_profile_fields().unwrap(), before);
+        assert_eq!(client.saved.profile.own_sync, state);
+        assert!(!client
+            .profile_net
+            .fetched
+            .contains(&client.account.identity));
+        assert_eq!(client.profile_net.profiles_retry, 5011);
+        assert!(!update.frames.iter().any(|frame| is_profile_upload(frame)));
+    }
+
+    #[test]
+    fn missing_known_publication_retains_own_work_and_pending_intent() {
+        let (mut client, _, _) = client();
+        client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
+        request(
+            &mut client,
+            json!({"op":"update_profile","name":"Local pending","bio":"bio"}),
+        );
+        client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
+        let lookup = client.profile_net.profiles_request.unwrap();
+        let update = client
+            .receive(
+                &ServerFrame::Res {
+                    id: lookup,
+                    result: Ok(Reply::SealedProfiles(Vec::new())),
+                }
+                .encode(),
+                11,
+            )
+            .unwrap();
+        assert!(!client
+            .profile_net
+            .fetched
+            .contains(&client.account.identity));
+        assert_eq!(client.profile_net.profiles_retry, 5011);
+        assert_eq!(client.saved.profile.own_sync.as_ref().unwrap().published, 1);
+        assert_eq!(
+            client.saved.profile.own_sync.as_ref().unwrap().pending,
+            Some(2)
+        );
+        assert!(!update.frames.iter().any(|frame| is_profile_upload(frame)));
+    }
+
+    #[test]
+    fn missing_profile_bootstrap_and_clean_linked_seed_have_distinct_completion() {
+        let (mut client, _, _) = client();
+        client.saved.profile.own_sync = Some(OwnProfileSync::migrate(1, 0));
+        client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
+        let lookup = client.profile_net.profiles_request.unwrap();
+        let update = client
+            .receive(
+                &ServerFrame::Res {
+                    id: lookup,
+                    result: Ok(Reply::SealedProfiles(Vec::new())),
+                }
+                .encode(),
+                11,
+            )
+            .unwrap();
+        assert!(client
+            .profile_net
+            .fetched
+            .contains(&client.account.identity));
+        assert!(update.frames.iter().any(|frame| is_profile_upload(frame)));
+        let (mut linked, _, _) = self::client();
+        linked.saved.profile.own_sync = Some(OwnProfileSync::default());
+        linked.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
+        let lookup = linked.profile_net.profiles_request.unwrap();
+        let update = linked
+            .receive(
+                &ServerFrame::Res {
+                    id: lookup,
+                    result: Ok(Reply::SealedProfiles(Vec::new())),
+                }
+                .encode(),
+                11,
+            )
+            .unwrap();
+        assert!(!linked
+            .profile_net
+            .fetched
+            .contains(&linked.account.identity));
+        assert_eq!(linked.profile_net.profiles_retry, 5011);
+        assert!(!update.frames.iter().any(|frame| is_profile_upload(frame)));
+    }
+
+    #[test]
+    fn stale_signed_own_record_cannot_satisfy_publication_floor() {
+        let (mut client, _, _) = client();
+        client.saved.profile.own_sync = Some(OwnProfileSync::clean(1));
+        request(
+            &mut client,
+            json!({"op":"update_profile","name":"Local pending","bio":"bio"}),
+        );
+        client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
+        let lookup = client.profile_net.profiles_request.unwrap();
+        let old = remote_profile(&client, 0, "Old", false);
+        let update = client
+            .receive(
+                &ServerFrame::Res {
+                    id: lookup,
+                    result: Ok(Reply::SealedProfiles(vec![old])),
+                }
+                .encode(),
+                11,
+            )
+            .unwrap();
+        assert!(!client
+            .profile_net
+            .fetched
+            .contains(&client.account.identity));
+        assert_eq!(client.profile_net.profiles_retry, 5011);
+        assert_eq!(client.saved.profile.own_sync.as_ref().unwrap().published, 1);
+        assert_eq!(
+            client.saved.profile.own_sync.as_ref().unwrap().pending,
+            Some(2)
+        );
+        assert!(!update.frames.iter().any(|frame| is_profile_upload(frame)));
     }
 
     #[test]
@@ -292,7 +897,7 @@ mod tests {
             3,
         );
         client.receive(&share, 4).unwrap();
-        let update = synced(&mut client);
+        let update = client.receive(&ServerFrame::SyncDone.encode(), 10).unwrap();
         assert!(update.frames.iter().any(|frame| matches!(
             ClientFrame::decode(frame),
             Ok(ClientFrame::Req {
@@ -316,8 +921,11 @@ mod tests {
         client
             .receive(
                 &ServerFrame::Res {
-                    id: PROFILE_LOOKUP,
-                    result: Ok(Reply::SealedProfiles(vec![forged.clone()])),
+                    id: client.profile_net.profiles_request.unwrap(),
+                    result: Ok(Reply::SealedProfiles(vec![
+                        forged.clone(),
+                        remote_profile(&client, 1, "Antes", false),
+                    ])),
                 }
                 .encode(),
                 11,
@@ -330,7 +938,7 @@ mod tests {
         let update = client
             .receive(
                 &ServerFrame::Res {
-                    id: PROFILE_LOOKUP,
+                    id: client.profile_net.profiles_request.unwrap(),
                     result: Ok(Reply::SealedProfiles(vec![forged])),
                 }
                 .encode(),
@@ -538,6 +1146,13 @@ pub(super) struct Network {
     profiles: Vec<String>,
     pub(super) no_agreement: BTreeSet<String>,
     fetched: BTreeSet<String>,
+    profiles_request: Option<u64>,
+    profiles_retry: i64,
+    profiles_deadline: i64,
+    refetch: BTreeSet<String>,
+    upload_version: Option<u64>,
+    upload_request: Option<u64>,
+    upload_deadline: i64,
 }
 
 #[derive(Deserialize)]
@@ -552,9 +1167,10 @@ enum Command {
 
 impl<S: Signer> Client<S> {
     pub(super) fn profile_changed(&mut self, identity: &str) {
-        if identity != self.account.identity {
-            self.profile_net.fetched.remove(identity);
+        if self.profile_net.profiles.iter().any(|id| id == identity) {
+            self.profile_net.refetch.insert(identity.into());
         }
+        self.profile_net.fetched.remove(identity);
     }
     pub(super) fn load_linked_profile(&mut self) {
         if let Some(handle) = &self.saved.own_handle {
@@ -573,6 +1189,11 @@ impl<S: Signer> Client<S> {
                     }
                     .to_bytes()
                 });
+            self.saved.profile.own_sync = Some(if self.account.primary == self.account.device {
+                OwnProfileSync::migrate(self.account.profile_seen_version, 0)
+            } else {
+                OwnProfileSync::default()
+            });
             self.saved.profile.rows.insert(
                 self.account.identity.clone(),
                 Row {
@@ -582,6 +1203,14 @@ impl<S: Signer> Client<S> {
                     fields: Some(fields),
                 },
             );
+        }
+        if self.saved.profile.own_sync.is_none() {
+            if let Some(row) = self.saved.profile.rows.get(&self.account.identity) {
+                self.saved.profile.own_sync = Some(OwnProfileSync::migrate(
+                    row.seen_version,
+                    self.saved.profile.uploaded,
+                ));
+            }
         }
         self.overlay_saved_profiles();
     }
@@ -718,9 +1347,14 @@ impl<S: Signer> Client<S> {
             .rows
             .get_mut(&me)
             .ok_or("Perfil indisponível.")?;
-        let next = row
-            .seen_version
-            .checked_add(1)
+        let sync = self
+            .saved
+            .profile
+            .own_sync
+            .as_mut()
+            .ok_or("Estado do perfil indisponível.")?;
+        let next = sync
+            .edit(row.seen_version)
             .ok_or("O perfil atingiu o limite de versões.")?;
         if rotate {
             row.key = ProfileKey::generate().to_hex();
@@ -728,7 +1362,9 @@ impl<S: Signer> Client<S> {
         }
         row.seen_version = next;
         row.fields = Some(fields.to_bytes());
-        self.saved.profile.upload = None;
+        if !self.profile_net.upload {
+            self.saved.profile.upload = None;
+        }
         self.profile_net.upload_failed = false;
         self.overlay_saved_profiles();
         Ok(())
@@ -897,21 +1533,37 @@ impl<S: Signer> Client<S> {
                     self.profile_net.publish = true;
                 }
             }
-            PROFILE_UPLOAD => {
+            request if self.profile_net.upload_request == Some(request) => {
+                self.profile_net.upload_request = None;
+                self.profile_net.upload_deadline = 0;
                 self.profile_net.upload = false;
+                let sent_version = self.profile_net.upload_version.take();
                 if matches!(result, Ok(Reply::Done)) {
-                    if let Some(upload) = self.saved.profile.upload.take() {
-                        self.saved.profile.uploaded = upload.version;
+                    if let Some(version) = sent_version {
+                        if let Some(sync) = self.saved.profile.own_sync.as_mut() {
+                            sync.acknowledge(version);
+                        }
+                        if self
+                            .saved
+                            .profile
+                            .upload
+                            .as_ref()
+                            .is_some_and(|upload| upload.version == version)
+                        {
+                            self.saved.profile.upload = None;
+                        }
                     }
                 } else if result
                     .as_ref()
                     .err()
                     .is_some_and(|error| error.contains("stale profile version"))
                 {
-                    let (_, _, fields) = self.my_profile_fields()?;
-                    self.write_profile_fields(fields, false)?;
+                    self.profile_net.fetched.remove(&self.account.identity);
+                    // Retain exact ciphertext until the authenticated lookup can
+                    // distinguish lost ACK from another device's publication.
                 } else {
                     self.profile_net.upload_failed = true;
+                    self.profile_net.upload_deadline = self.view_now_ms.saturating_add(5000);
                 }
             }
             AGREEMENT_LOOKUP => {
@@ -941,23 +1593,35 @@ impl<S: Signer> Client<S> {
                     .no_agreement
                     .extend(asked.into_iter().filter(|id| !found.contains(id)));
             }
-            PROFILE_LOOKUP => {
+            request if self.profile_net.profiles_request == Some(request) => {
+                self.profile_net.profiles_request = None;
                 let asked = std::mem::take(&mut self.profile_net.profiles);
-                self.profile_net.fetched.extend(asked.iter().cloned());
+                self.profile_net.profiles_deadline = 0;
                 let records: &[SealedProfile] = match result {
                     Ok(Reply::SealedProfiles(records)) => records,
-                    _ => &[],
+                    _ => {
+                        self.profile_net.profiles_retry = self.view_now_ms.saturating_add(5000);
+                        return Ok(true);
+                    }
                 };
+                let own_asked = asked.contains(&self.account.identity);
+                let own_present = records
+                    .iter()
+                    .any(|record| record.identity == self.account.identity);
+                let own_sync = self.saved.profile.own_sync.clone();
+                let mut own_verified = false;
+                self.profile_net.fetched.extend(asked.iter().cloned());
+                for id in &asked {
+                    if self.profile_net.refetch.remove(id) {
+                        self.profile_net.fetched.remove(id);
+                    }
+                }
                 for record in records
                     .iter()
                     .filter(|record| asked.contains(&record.identity))
                 {
-                    let Some(row) = self.saved.profile.rows.get_mut(&record.identity) else {
-                        continue;
-                    };
-                    if record.ciphertext.len() > profile::MAX_CIPHERTEXT
-                        || record.version <= row.seen_version
-                        || record.version < row.key_version
+                    if record.version == 0
+                        || record.ciphertext.len() > profile::MAX_CIPHERTEXT
                         || !profile::verify_upload(
                             &record.identity,
                             record.version,
@@ -965,6 +1629,19 @@ impl<S: Signer> Client<S> {
                             &record.signed,
                         )
                     {
+                        continue;
+                    }
+                    if record.identity == self.account.identity {
+                        own_verified |= own_sync
+                            .as_ref()
+                            .is_some_and(|sync| record.version >= sync.published);
+                        self.open_own_profile(record)?;
+                        continue;
+                    }
+                    let Some(row) = self.saved.profile.rows.get_mut(&record.identity) else {
+                        continue;
+                    };
+                    if record.version <= row.seen_version || record.version < row.key_version {
                         continue;
                     }
                     let Some(key) = ProfileKey::from_hex(&row.key) else {
@@ -980,6 +1657,16 @@ impl<S: Signer> Client<S> {
                         row.fields = Some(fields.to_bytes());
                     }
                 }
+                if own_asked {
+                    let bootstrap_absent = !own_present
+                        && own_sync.as_ref().is_some_and(|sync| {
+                            sync.published == 0 && sync.pending.is_some() && !sync.key_unavailable()
+                        });
+                    if !own_verified && !bootstrap_absent {
+                        self.profile_net.fetched.remove(&self.account.identity);
+                        self.profile_net.profiles_retry = self.view_now_ms.saturating_add(5000);
+                    }
+                }
                 self.overlay_saved_profiles();
             }
             _ => return Ok(false),
@@ -987,10 +1674,84 @@ impl<S: Signer> Client<S> {
         Ok(true)
     }
 
+    fn open_own_profile(&mut self, record: &SealedProfile) -> Result<(), String> {
+        let (key, local_version, local_fields) = self.my_profile_fields()?;
+        let row = self
+            .saved
+            .profile
+            .rows
+            .get(&self.account.identity)
+            .ok_or("Perfil indisponível.")?;
+        let mut sync = self
+            .saved
+            .profile
+            .own_sync
+            .clone()
+            .ok_or("Estado do perfil indisponível.")?;
+        if record.version < sync.published || record.version < row.key_version {
+            return Ok(());
+        }
+        let Some(fields) =
+            profile::open_profile(&key, &record.identity, record.version, &record.ciphertext)
+        else {
+            sync.cannot_open(record.version);
+            self.saved.profile.own_sync = Some(sync);
+            return Ok(());
+        };
+        let exact = self.saved.profile.upload.as_ref().is_some_and(|upload| {
+            upload.version == record.version
+                && upload.ciphertext == record.ciphertext
+                && upload.signature == record.signed.sig
+                && record.signed.device == self.account.device
+                && record.signed.cert == self.account.cert
+        });
+        let outcome = sync
+            .observe_opened(record.version, exact)
+            .ok_or("O perfil atingiu o limite de versões.")?;
+        if matches!(outcome, Observe::Acknowledged)
+            && self.profile_net.upload_version == Some(record.version)
+        {
+            self.profile_net.upload = false;
+            self.profile_net.upload_request = None;
+            self.profile_net.upload_version = None;
+            self.profile_net.upload_deadline = 0;
+        }
+        let changed = match outcome {
+            Observe::Adopt => Some((record.version, fields)),
+            Observe::Preserve { version } => Some((version.max(local_version), local_fields)),
+            Observe::Acknowledged | Observe::Ignore => None,
+        };
+        if let Some((version, fields)) = changed {
+            let row = self
+                .saved
+                .profile
+                .rows
+                .get_mut(&self.account.identity)
+                .expect("checked");
+            row.seen_version = version;
+            row.fields = Some(fields.to_bytes());
+        }
+        if self
+            .saved
+            .profile
+            .upload
+            .as_ref()
+            .is_some_and(|upload| Some(upload.version) != sync.pending)
+        {
+            self.saved.profile.upload = None;
+        }
+        self.saved.profile.own_sync = Some(sync);
+        self.profile_net.upload_failed = false;
+        Ok(())
+    }
+
     pub(super) fn profile_deadline(&self) -> Option<i64> {
         [
             self.profile_net.agreement_retry,
             self.profile_net.agreement_deadline,
+            self.profile_net.profiles_retry,
+            self.profile_net.profiles_deadline,
+            self.profile_net.upload_deadline,
         ]
         .into_iter()
         .filter(|deadline| *deadline > self.view_now_ms)
@@ -1018,11 +1779,26 @@ impl<S: Signer> Client<S> {
                 self.profile_net.publish = true;
             }
         }
+        if self.profile_net.upload_deadline > 0
+            && self.profile_net.upload_deadline <= self.view_now_ms
+        {
+            self.profile_net.upload = false;
+            self.profile_net.upload_failed = false;
+            self.profile_net.upload_request = None;
+            self.profile_net.upload_version = None;
+            self.profile_net.upload_deadline = 0;
+        }
         let (key, version, fields) = self.my_profile_fields()?;
         if self.saved.profile.photo_uploads.is_empty()
             && !self.profile_net.upload
             && !self.profile_net.upload_failed
-            && version > self.saved.profile.uploaded
+            && self.profile_net.fetched.contains(&self.account.identity)
+            && self
+                .saved
+                .profile
+                .own_sync
+                .as_ref()
+                .is_some_and(|sync| sync.pending == Some(version) && !sync.key_unavailable())
         {
             if self
                 .saved
@@ -1044,10 +1820,11 @@ impl<S: Signer> Client<S> {
                     signature: signed.sig,
                 });
             }
+            let request = self.next_retained_request_id()?;
             let upload = self.saved.profile.upload.as_ref().expect("prepared");
             frames.push(
                 ClientFrame::Req {
-                    id: PROFILE_UPLOAD,
+                    id: request,
                     op: Op::PutProfile {
                         profile: SealedProfile {
                             identity: self.account.identity.clone(),
@@ -1064,6 +1841,9 @@ impl<S: Signer> Client<S> {
                 .encode(),
             );
             self.profile_net.upload = true;
+            self.profile_net.upload_version = Some(version);
+            self.profile_net.upload_request = Some(request);
+            self.profile_net.upload_deadline = self.view_now_ms.saturating_add(15_000);
         }
         self.share_profile_key()?;
         if !self.profile_net.agreement.is_empty()
@@ -1101,29 +1881,41 @@ impl<S: Signer> Client<S> {
                 self.profile_net.agreement_deadline = self.view_now_ms.saturating_add(15_000);
             }
         }
-        if self.profile_net.profiles.is_empty() {
+        if !self.profile_net.profiles.is_empty()
+            && self.profile_net.profiles_deadline <= self.view_now_ms
+        {
+            self.profile_net.profiles.clear();
+            self.profile_net.profiles_request = None;
+        }
+        if self.profile_net.profiles.is_empty()
+            && self.profile_net.profiles_retry <= self.view_now_ms
+        {
             let missing = self
                 .saved
                 .profile
                 .rows
                 .keys()
-                .filter(|id| {
-                    *id != &self.account.identity && !self.profile_net.fetched.contains(*id)
-                })
+                .filter(|id| !self.profile_net.fetched.contains(*id))
                 .take(BATCH)
                 .cloned()
                 .collect::<Vec<_>>();
             if !missing.is_empty() {
+                let request = self.next_retained_request_id()?;
+                self.profile_net.profiles_request = Some(request);
                 frames.push(
                     ClientFrame::Req {
-                        id: PROFILE_LOOKUP,
+                        id: request,
                         op: Op::GetProfiles {
                             ids: missing.clone(),
                         },
                     }
                     .encode(),
                 );
+                for id in &missing {
+                    self.profile_net.refetch.remove(id);
+                }
                 self.profile_net.profiles = missing;
+                self.profile_net.profiles_deadline = self.view_now_ms.saturating_add(15_000);
             }
         }
         Ok(())

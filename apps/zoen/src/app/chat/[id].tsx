@@ -264,9 +264,16 @@ export default function Chat() {
                     void Haptics.selectionAsync().catch(() => {});
                     setSelected(entry);
                   }}
+                  onAccessibilityTap={
+                    process.env.EXPO_OS === 'ios' ? () => setSelected(entry) : undefined
+                  }
                   accessibilityRole="button"
                   accessibilityLabel={`${entry.author.name}: ${text}`}
-                  accessibilityHint={t('chat.touchAndHoldToReplyOrSeeActions')}
+                  accessibilityHint={
+                    process.env.EXPO_OS === 'ios'
+                      ? t('chat.messageActions', { name: entry.author.name })
+                      : t('chat.touchAndHoldToReplyOrSeeActions')
+                  }
                   style={{
                     maxWidth: '87%',
                     borderRadius: 23,
@@ -400,7 +407,6 @@ export default function Chat() {
                     <Text
                       style={{
                         color: mine ? colors.onMine : colors.secondary,
-                        opacity: 0.65,
                         fontSize: 10,
                       }}
                     >
