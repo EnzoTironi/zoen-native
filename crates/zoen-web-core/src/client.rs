@@ -391,26 +391,18 @@ impl<S: Signer> Client<S> {
         Ok(pending)
     }
 
-    pub fn queue_message(
-        &mut self,
+    fn reply_ref(
+        &self,
         space: &str,
-        text: &str,
-        now_ms: i64,
-    ) -> Result<Update, String> {
-        self.queue_post(space, text, None, false, now_ms)
-    }
-
-    /// A message, optionally an inline reply (`thread == false`) or a thread reply to
-    /// `reply`, or forwarded. Thread replies always point at the root, like native.
-    pub fn queue_post(
-        &mut self,
-        space: &str,
-        text: &str,
-        reply: Option<(String, bool)>,
-        forwarded: bool,
-        now_ms: i64,
-    ) -> Result<Update, String> {
-        self.queue_post_with_chat(space, text, reply, forwarded, false, now_ms)
+        to: String,
+        thread: bool,
+        also_in_chat: bool,
+    ) -> roda_types::ReplyRef {
+        roda_types::ReplyRef {
+            to: self.thread_root(space, &to),
+            thread,
+            also_in_chat: thread && also_in_chat,
+        }
     }
 
     pub fn queue_post_with_chat(
@@ -431,12 +423,69 @@ impl<S: Signer> Client<S> {
                     Some(root) if thread && root.thread => root.to,
                     _ => to,
                 };
-                let to = self.thread_root(space, &to);
-                Some(roda_types::ReplyRef {
-                    to,
-                    thread,
-                    also_in_chat: thread && also_in_chat,
-                })
+                let to = self
+                    .resolve_post(space, &to)
+                    .map(|event| event.hash.clone())
+                    .unwrap_or(to);
+                Some(self.reply_ref(space, to, thread, also_in_chat))
+            }
+            None => None,
+        };
+        if text.trim().is_empty() || text.len() > 32_768 {
+            return Err("Write a message of up to 32 KB.".into());
+        }
+        let epoch = self.ready_epoch(space)?;
+        let inner = self.clear_event(
+            space,
+            EventBody::MessagePosted {
+                message: roda_types::new_secret_id("msg"),
+                text: text.into(),
+                attaches: None,
+                reply,
+                forwarded,
+            },
+            now_ms,
+        )?;
+        let envelope = inner.envelope()?;
+        let event = envelope.plain_event().ok_or("invalid inner message")?;
+        let pending = self.seal_inner(&event, epoch)?;
+        self.saved.outbox.insert(event.client_id.clone(), pending);
+        self.update(Vec::new())
+    }
+
+    pub fn queue_message(
+        &mut self,
+        space: &str,
+        text: &str,
+        now_ms: i64,
+    ) -> Result<Update, String> {
+        self.queue_post(space, text, None, false, now_ms)
+    }
+
+    /// A message, optionally an inline reply (`thread == false`) or a thread reply to
+    /// `reply`, or forwarded. Thread replies always point at the root, like native.
+    pub fn queue_post(
+        &mut self,
+        space: &str,
+        text: &str,
+        reply: Option<(String, bool)>,
+        forwarded: bool,
+        now_ms: i64,
+    ) -> Result<Update, String> {
+        let reply = match reply {
+            Some((to, thread)) => {
+                let target = self
+                    .posted(space, &to)
+                    .ok_or("That message is no longer available.")?;
+                let to = match target {
+                    Some(root) if thread && root.thread => root.to,
+                    _ => to,
+                };
+                let to = self
+                    .resolve_post(space, &to)
+                    .map(|event| event.hash.clone())
+                    .unwrap_or(to);
+                Some(self.reply_ref(space, to, thread, false))
             }
             None => None,
         };
@@ -750,14 +799,20 @@ impl<S: Signer> Client<S> {
 
     /// The reply link of the message with this entry id in `space`, if it is a message.
     fn posted(&self, space: &str, entry: &str) -> Option<Option<roda_types::ReplyRef>> {
-        self.resolve_post(space, entry).and_then(|e| match &e.body {
-            EventBody::MessagePosted { reply, .. } => Some(reply.clone()),
-            EventBody::ItemCreated {
-                content: roda_types::ItemContent::File(doc),
-                ..
-            } => Some(doc.voice.as_ref().and_then(|v| v.reply.clone())),
-            _ => None,
-        })
+        self.logs
+            .get(space)?
+            .events()
+            .iter()
+            .find(|e| e.hash == entry)
+            .or_else(|| self.resolve_post(space, entry))
+            .and_then(|e| match &e.body {
+                EventBody::MessagePosted { reply, .. } => Some(reply.clone()),
+                EventBody::ItemCreated {
+                    content: roda_types::ItemContent::File(doc),
+                    ..
+                } => Some(doc.voice.as_ref().and_then(|v| v.reply.clone())),
+                _ => None,
+            })
     }
 
     pub fn bootstrap(&mut self) -> Result<Update, String> {

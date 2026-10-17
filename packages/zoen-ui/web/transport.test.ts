@@ -144,10 +144,14 @@ test('thread actions preserve synced DTOs and send follow, read and also-in-chat
   const base = messagingCore();
   const operations: CoreOperation[] = [];
   const states: MessagesState[] = [];
-  const threaded = { ...conversation, threads_unread: 1, messages: [{
+  const root = {
     id: 'root-client', entry: 'root-hash', author: login.identity, name: 'Fixture', text: 'Root', at_ms: 1,
     delivery: 'confirmed', failure: null, thread: null, thread_following: true, thread_unread: 1, also_in_chat: false,
-  }] };
+  };
+  const voice = { ...await attachment(), voice: {
+    ms: 1200, levels: '08ff', transcript: '', reply: { to: 'root-hash', thread: true, also_in_chat: true },
+  } };
+  const threaded = { ...conversation, threads_unread: 1, messages: [root, { ...root, id: 'voice', entry: 'voice-hash', text: '', file: voice }] };
   const core = { ...base, text: async (operation: CoreOperation) => {
     operations.push(operation);
     if (operation.kind === 'restore') return JSON.stringify([threaded]);
@@ -171,6 +175,8 @@ test('thread actions preserve synced DTOs and send follow, read and also-in-chat
   assert.equal(state.conversations[0]?.threads_unread, 1);
   assert.equal(state.conversations[0]?.messages[0]?.thread_following, true);
   assert.equal(state.conversations[0]?.messages[0]?.thread_unread, 1);
+  assert.deepEqual(state.conversations[0]?.messages[1]?.file?.voice?.reply,
+    { to: 'root-hash', thread: true, also_in_chat: true });
 });
 
 test('production message controller terminates the core and emits nothing when IndexedDB save fails', async (t) => {
@@ -273,7 +279,7 @@ async function attachment(data = new Uint8Array([1, 2, 3])): Promise<FileDoc> {
 test('native voice metadata and legacy paths survive parsing; forwarding clears only the reply', async (t) => {
   install(t);
   const file = { ...await attachment(), path: 'VoiceNotes/native.webm',
-    voice: { ms: 3400, levels: '08ff80', transcript: 'Bring the tent', reply: { to: 'source-entry', thread: true, also_in_chat: true } } };
+    voice: { ms: 3400, levels: '08ff80', transcript: 'Bring the tent', reply: { to: 'source-entry', thread: true } } };
   const { voice: _, ...legacy } = file;
   const entry = { id: 'voice', entry: 'ordered', author: login.identity, name: 'Member', text: '',
     at_ms: 1, delivery: 'confirmed', failure: null };
@@ -305,7 +311,7 @@ test('native voice metadata and legacy paths survive parsing; forwarding clears 
   await messages.forwardFile('sp_fixture', files[1]!);
   assert.deepEqual(queued[0], { ...file, voice: { ...file.voice, reply: null } });
   assert.deepEqual(queued[1], files[1]);
-  assert.deepEqual(files[0]?.voice?.reply, { to: 'source-entry', thread: true, also_in_chat: true });
+  assert.deepEqual(files[0]?.voice?.reply, { to: 'source-entry', thread: true });
 });
 
 test('web recordings post a FileDoc with native voice metadata after uploading', async (t) => {

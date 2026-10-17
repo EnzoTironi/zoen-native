@@ -16,9 +16,9 @@ export type CoreOperation =
   | { kind: 'queue_message'; space: string; text: string; now: number }
   | { kind: 'queue_post'; space: string; text: string; replyTo: string; thread: boolean; forwarded: boolean; alsoInChat: boolean; now: number }
   | { kind: 'queue_annotation'; space: string; target: string; note: string; now: number }
-  | { kind: 'mark_read'; space: string }
   | { kind: 'set_thread_follow'; space: string; root: string; follow: boolean | null; now: number }
   | { kind: 'mark_thread_read'; space: string; root: string; now: number }
+  | { kind: 'mark_read'; space: string }
   | { kind: 'queue_file'; space: string; doc: string; now: number }
   | { kind: 'queue_failed_file'; space: string; doc: string; now: number; reason: string; chunks: string }
   | { kind: 'local_chunk'; blob: string }

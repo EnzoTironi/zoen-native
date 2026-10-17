@@ -262,21 +262,13 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         ("caption", None, false, item.clone()),
         (
             "",
-            Some(roda_types::ReplyRef {
-                to: "root".into(),
-                thread: false,
-                also_in_chat: false,
-            }),
+            Some(roda_types::ReplyRef::inline("root")),
             false,
             item.clone(),
         ),
         (
             "",
-            Some(roda_types::ReplyRef {
-                to: "root".into(),
-                thread: true,
-                also_in_chat: false,
-            }),
+            Some(roda_types::ReplyRef::thread("root")),
             false,
             item.clone(),
         ),
@@ -328,11 +320,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         .unwrap()
         .doc;
     voice.voice = Some(roda_types::VoiceMeta {
-        reply: Some(roda_types::ReplyRef {
-            to: target,
-            thread: false,
-            also_in_chat: false,
-        }),
+        reply: Some(roda_types::ReplyRef::inline(target)),
         ..Default::default()
     });
     client.queue_file(space, voice, 11).unwrap();
@@ -537,12 +525,7 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     append(&mut log, &author, post("it_voice", original.clone()));
     let entry = log.events().last().unwrap().hash.clone();
     let mut threaded = original.clone();
-    let threaded_reply = ReplyRef {
-        to: root_alias.clone(),
-        thread: true,
-        also_in_chat: true,
-    };
-    threaded.voice.as_mut().unwrap().reply = Some(threaded_reply.clone());
+    threaded.voice.as_mut().unwrap().reply = Some(ReplyRef::thread(&root_alias));
     append(&mut log, &author, post("it_thread", threaded));
     let thread_entry = log.events().last().unwrap().hash.clone();
     client.logs.insert(space.into(), log.clone());
@@ -560,7 +543,6 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
         Some(root.as_str())
     );
     assert!(conversation.messages[2].quote.is_none());
-    assert!(conversation.messages[2].also_in_chat);
     assert_eq!(conversation.messages[0].replies, 1);
     assert_eq!(
         client.posted(space, &entry),
@@ -568,7 +550,7 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     );
     assert_eq!(
         client.posted(space, &thread_entry),
-        Some(Some(threaded_reply))
+        Some(Some(ReplyRef::thread(&root_alias)))
     );
 
     let mut edited = crate::media::seal_file("voice.webm", "audio/webm", b"edited", None)
@@ -831,4 +813,42 @@ fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect() {
         );
         assert!(restored.delivered().is_empty());
     }
+}
+
+#[test]
+fn thread_reply_alias_keeps_the_root_and_also_in_chat_projection() {
+    let (mut client, author, _, mut log, root) = web_fixture();
+    let space = log.space().to_owned();
+    let root_alias = log.events().last().unwrap().client_id.clone();
+    let mut reply = roda_types::ReplyRef::thread(&root_alias);
+    reply.also_in_chat = true;
+    clear(
+        &mut log,
+        &author,
+        EventBody::MessagePosted {
+            message: "msg_thread_reply".into(),
+            text: "Thread reply".into(),
+            attaches: None,
+            reply: Some(reply),
+            forwarded: false,
+        },
+        3,
+    );
+    let response = log.events().last().unwrap().hash.clone();
+    client.logs.insert(space, log);
+
+    let conversation = &client.conversations()[0];
+    let root_view = conversation
+        .messages
+        .iter()
+        .find(|message| message.entry.as_deref() == Some(root.as_str()))
+        .unwrap();
+    let reply_view = conversation
+        .messages
+        .iter()
+        .find(|message| message.entry.as_deref() == Some(response.as_str()))
+        .unwrap();
+    assert_eq!(reply_view.thread.as_deref(), Some(root.as_str()));
+    assert!(reply_view.also_in_chat);
+    assert_eq!(root_view.replies, 1);
 }

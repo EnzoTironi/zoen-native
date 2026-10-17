@@ -32,6 +32,31 @@ async function mount(annotate = async () => {}, items: unknown[] = conversations
   return { calls, close: async () => { await act(async () => root.unmount()); } };
 }
 
+test('attachment post renders file payload and caption alongside forward and reply context', async () => {
+  const file = { name: 'report.txt', mime: 'text/plain', bytes: 6, chunks: [{ blob: 'blob-id', bytes: 6 }], key: 'key' };
+  const entry = { ...msg('attachment', 'Meaningful caption'), file, forwarded: true, quote: { id: 'root', name: 'Bea', text: 'Original question' } };
+  const ui = await mount(undefined, [{ ...conversations[0], messages: [entry] }]);
+  try {
+    const row = document.getElementById('message-attachment')!;
+    assert.ok(row.querySelector('.zm-file'), 'actual file component must render');
+    assert.match(row.textContent!, /report.txt/);
+    assert.equal(row.querySelector('.zm-text')?.textContent, 'Meaningful caption');
+    assert.match(row.textContent!, /Original question/);
+    assert.match(row.textContent!, /Encaminhada/);
+  } finally { await ui.close(); }
+});
+
+test('sidebar finds message bodies, not only conversation titles', async () => {
+  const ui = await mount();
+  try {
+    await input(document.querySelector('input[type=search]')!, 'pousada');
+    assert.ok(document.querySelector('[aria-label="Resultados de mensagens"]'), 'message results must be visible');
+    assert.match(document.querySelector('[aria-label="Resultados de mensagens"]')!.textContent!, /pousada antiga/);
+    await click(document.querySelector('[aria-label="Resultados de mensagens"] li button'));
+    assert.equal(document.activeElement?.id, 'message-first');
+  } finally { await ui.close(); }
+});
+
 test('merged replies inbox keeps synced state, message search, broadcasts and account isolation', async () => {
   const calls: unknown[] = [];
   const rootMessage = { ...msg('root', 'Passeio combinado'), replies: 1, thread_following: true, thread_unread: 1, thread_mentions: 1 };
@@ -76,31 +101,6 @@ test('merged replies inbox keeps synced state, message search, broadcasts and ac
     document.hasFocus = originalFocus;
     await act(async () => root.unmount());
   }
-});
-
-test('attachment post renders file payload and caption alongside forward and reply context', async () => {
-  const file = { name: 'report.txt', mime: 'text/plain', bytes: 6, chunks: [{ blob: 'blob-id', bytes: 6 }], key: 'key' };
-  const entry = { ...msg('attachment', 'Meaningful caption'), file, forwarded: true, quote: { id: 'root', name: 'Bea', text: 'Original question' } };
-  const ui = await mount(undefined, [{ ...conversations[0], messages: [entry] }]);
-  try {
-    const row = document.getElementById('message-attachment')!;
-    assert.ok(row.querySelector('.zm-file'), 'actual file component must render');
-    assert.match(row.textContent!, /report.txt/);
-    assert.equal(row.querySelector('.zm-text')?.textContent, 'Meaningful caption');
-    assert.match(row.textContent!, /Original question/);
-    assert.match(row.textContent!, /Encaminhada/);
-  } finally { await ui.close(); }
-});
-
-test('sidebar finds message bodies, not only conversation titles', async () => {
-  const ui = await mount();
-  try {
-    await input(document.querySelector('input[type=search]')!, 'pousada');
-    assert.ok(document.querySelector('[aria-label="Resultados de mensagens"]'), 'message results must be visible');
-    assert.match(document.querySelector('[aria-label="Resultados de mensagens"]')!.textContent!, /pousada antiga/);
-    await click(document.querySelector('[aria-label="Resultados de mensagens"] li button'));
-    assert.equal(document.activeElement?.id, 'message-first');
-  } finally { await ui.close(); }
 });
 
 test('successful edit sends the exact replacement once, closes the dialog and preserves the send draft', async () => {

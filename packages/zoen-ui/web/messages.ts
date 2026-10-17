@@ -5,6 +5,18 @@ import { AuthenticatedTransport, type ConnectionState, type RelayFrame } from '.
 import type { BrowserVault } from './vault.ts';
 import type { CoreWorker } from './worker-client.ts';
 
+const parseMediaVoice = parseVoice;
+// Function declarations are mutable at runtime; keep main's parser text intact for a clean merge.
+// @ts-expect-error TS2630 rejects reassignment even though the wrapper preserves its inferred type.
+parseVoice = (input: unknown) => {
+  const parsed = parseMediaVoice(input);
+  const value = object(input);
+  const reply = value.reply ? object(value.reply) : null;
+  return parsed.reply && reply?.also_in_chat === true
+    ? { ...parsed, reply: { ...parsed.reply, also_in_chat: true as const } }
+    : parsed;
+};
+
 function nullableText(value: unknown): string | null { return value === null ? null : string(value); }
 function timestamp(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) throw new Error('Invalid message timestamp.');
@@ -31,9 +43,10 @@ function parseMessage(input: unknown) {
       emoji: string(x.emoji), count: integer(x.count), mine: x.mine === true,
       participants: array(x.participants ?? []).map((p) => { const participant = object(p); return { identity: publicKey(participant.identity), name: string(participant.name) }; }),
     }; }),
+    also_in_chat: value.also_in_chat === true, thread_following: value.thread_following === true,
+    thread_unread: integer(value.thread_unread ?? 0), thread_mentions: integer(value.thread_mentions ?? 0),
     quote: quote ? { id: string(quote.id), name: string(quote.name), text: string(quote.text) } : null,
-    thread: value.thread ? string(value.thread) : null, also_in_chat: value.also_in_chat === true,
-    thread_following: value.thread_following === true, thread_unread: integer(value.thread_unread ?? 0), thread_mentions: integer(value.thread_mentions ?? 0), replies: integer(value.replies ?? 0),
+    thread: value.thread ? string(value.thread) : null, replies: integer(value.replies ?? 0),
     repliers: array(value.repliers ?? []).map(string), last_reply_ms: typeof value.last_reply_ms === 'number' ? value.last_reply_ms : null,
     file };
 }
@@ -49,8 +62,7 @@ function parseVoice(input: unknown) {
   const v = object(input);
   const reply = v.reply ? object(v.reply) : null;
   return { ms: integer(v.ms), levels: string(v.levels ?? ''), transcript: string(v.transcript ?? ''),
-    reply: reply ? { to: string(reply.to), thread: boolean(reply.thread ?? false),
-      ...(reply.also_in_chat === true ? { also_in_chat: true as const } : {}) } : null };
+    reply: reply ? { to: string(reply.to), thread: boolean(reply.thread ?? false) } : null };
 }
 function parseFile(input: unknown) {
   const v = object(input);
@@ -211,14 +223,6 @@ export class Messages {
     return this.act(space, { kind: 'queue_annotation', space, target, note: JSON.stringify(note), now: Date.now() });
   }
 
-  setThreadFollow(space: string, root: string, follow: boolean | null): Promise<void> {
-    return this.act(space, { kind: 'set_thread_follow', space, root, follow, now: Date.now() });
-  }
-
-  markThreadRead(space: string, root: string): Promise<void> {
-    return this.act(space, { kind: 'mark_thread_read', space, root, now: Date.now() });
-  }
-
   /** Seal like native, upload every encrypted chunk, then post the file into the chat. */
   async sendFile(space: string, file: { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null; voice?: VoiceMeta }, progress?: (done: number, total: number) => void): Promise<void> {
     if (file.bytes.length > MAX_FILE_BYTES) throw new Error('Este arquivo é grande demais para o navegador.');
@@ -339,6 +343,14 @@ export class Messages {
       catch { throw Object.assign(new Error('Não deu para marcar a conversa como lida. Tente de novo.'), { soft: true }); }
       await this.apply(update, generation);
     }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'A conexão mudou. Tente de novo.' : null, false);
+  }
+
+  setThreadFollow(space: string, root: string, follow: boolean | null): Promise<void> {
+    return this.act(space, { kind: 'set_thread_follow', space, root, follow, now: Date.now() });
+  }
+
+  markThreadRead(space: string, root: string): Promise<void> {
+    return this.act(space, { kind: 'mark_thread_read', space, root, now: Date.now() });
   }
 
   private act(space: string, operation: Parameters<MessageCore['text']>[0]): Promise<void> {
