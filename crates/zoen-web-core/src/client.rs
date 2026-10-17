@@ -640,14 +640,8 @@ impl<S: Signer> Client<S> {
             }
         }
         let epoch = self.ready_epoch(space)?;
-        let inner = self.clear_event(
-            space,
-            EventBody::MessageAnnotated {
-                target,
-                note,
-            },
-            now_ms,
-        )?;
+        let inner =
+            self.clear_event(space, EventBody::MessageAnnotated { target, note }, now_ms)?;
         let event = inner
             .envelope()?
             .plain_event()
@@ -1342,18 +1336,35 @@ impl<S: Signer> Client<S> {
                 text,
                 reply,
                 forwarded,
+                attaches,
                 ..
             } => {
-                // The file Item already supplies the web card; its companion post is
-                // required by native timelines, not a second empty web bubble.
-                if matches!(
-                    &event.body,
-                    EventBody::MessagePosted {
-                        attaches: Some(_),
-                        ..
+                // Hide only an empty, context-free companion whose same-author
+                // file card is actually present. Other attachment posts are real
+                // timeline entries (including non-file items and forwards).
+                if text.is_empty() && reply.is_none() && !forwarded {
+                    if let Some(item) = attaches {
+                        let is_file_card = |candidate: &Event| {
+                            candidate.space == event.space
+                                && candidate.author == event.author
+                                && matches!(&candidate.body, EventBody::ItemCreated {
+                                    item: id, content: roda_types::ItemContent::File(_), ..
+                                } if id == item)
+                        };
+                        let confirmed = self
+                            .logs
+                            .get(&event.space)
+                            .is_some_and(|log| log.events().iter().any(is_file_card));
+                        let pending = self
+                            .saved
+                            .outbox
+                            .values()
+                            .filter_map(|p| p.inner.as_ref())
+                            .any(is_file_card);
+                        if confirmed || pending {
+                            return None;
+                        }
                     }
-                ) {
-                    return None;
                 }
                 (text.clone(), reply.clone(), *forwarded, None)
             }

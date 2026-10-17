@@ -228,6 +228,69 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
             .count(),
         1
     );
+    // Only the redundant empty file companion may disappear. Attachment posts
+    // carrying text, reply/thread context, forwards, or non-file items are posts.
+    let companion = events
+        .iter()
+        .find(|e| matches!(e.body, EventBody::MessagePosted { .. }))
+        .unwrap();
+    assert!(client.message_view(companion, "sending", None).is_none());
+    assert_eq!(client.conversations()[0].messages.len(), 2);
+    let mut other_author = companion.clone();
+    other_author.author = "another-author".into();
+    assert!(client
+        .message_view(&other_author, "sending", None)
+        .is_some());
+    let mut other_space = companion.clone();
+    other_space.space = "another-space".into();
+    assert!(client.message_view(&other_space, "sending", None).is_some());
+    for (text, reply, forwarded, attachment) in [
+        ("caption", None, false, item.clone()),
+        (
+            "",
+            Some(roda_types::ReplyRef {
+                to: "root".into(),
+                thread: false,
+            }),
+            false,
+            item.clone(),
+        ),
+        (
+            "",
+            Some(roda_types::ReplyRef {
+                to: "root".into(),
+                thread: true,
+            }),
+            false,
+            item.clone(),
+        ),
+        ("", None, true, item.clone()),
+        ("", None, false, "non-file-item".into()),
+    ] {
+        let mut post = companion.clone();
+        if let EventBody::MessagePosted {
+            text: t,
+            reply: r,
+            forwarded: f,
+            attaches,
+            ..
+        } = &mut post.body
+        {
+            *t = text.into();
+            *r = reply.clone();
+            *f = forwarded;
+            *attaches = Some(attachment);
+        }
+        let view = client
+            .message_view(&post, "sending", None)
+            .expect("meaningful attachment post must survive");
+        assert_eq!(view.text, text);
+        assert_eq!(view.forwarded, forwarded);
+        assert_eq!(
+            view.quote.is_some() || view.thread.is_some(),
+            reply.is_some()
+        );
+    }
     client.saved.outbox = before_media.clone();
     let target = client.conversations()[0].messages[0].entry.clone().unwrap();
     let expected = client
