@@ -16,7 +16,7 @@ enum AppTab: String, Hashable, CaseIterable {
         case .agents: String(localized: "Your agents")
         case .you: String(localized: "Profile")
         case .search: String(localized: "Search")
-        case .store: String(localized: "Store")
+        case .store: String(localized: "Marketplace")
         }
     }
 

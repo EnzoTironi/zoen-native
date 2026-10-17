@@ -56,52 +56,6 @@ struct ChatInboxFilterMenu: View {
     }
 }
 
-/// Search and scope share one native glass surface; navigation stays in the tab bar.
-struct ChatInboxSearchBar: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        @Bindable var model = model
-        HStack(spacing: 10) {
-            NativeIconMotion(systemName: "magnifyingglass", size: 17)
-                .foregroundStyle(Palette.textSecondary)
-            TextField("Search chats", text: $model.chatQuery)
-                .font(.body)
-                .textFieldStyle(.plain)
-                .focused($focused)
-                .submitLabel(.search)
-                .onSubmit { focused = false }
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("chat-search-field")
-            if !model.chatQuery.isEmpty {
-                Button { model.chatQuery = ""; focused = true } label: {
-                    NativeIconMotion(systemName: "xmark.circle.fill", size: 17)
-                        .foregroundStyle(Palette.textTertiary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(IconPressStyle())
-                .accessibilityLabel("Clear search")
-            }
-            Rectangle().fill(Palette.hairline).frame(width: 0.5, height: 22)
-                .accessibilityHidden(true)
-            ChatInboxFilterMenu(showsLabel: !focused && model.chatQuery.isEmpty, touchSize: 44)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-        .padding(.leading, 16)
-        .padding(.trailing, 12)
-        .frame(minHeight: 52)
-        .glassEffect(.regular.interactive(), in: .capsule)
-        .accessibilityIdentifier("chat-search-bar")
-        .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: focused)
-        .onChange(of: focused) { _, value in model.chatSearch = value }
-        .onChange(of: model.chatSearch) { _, value in focused = value }
-        .onDisappear { model.chatSearch = false }
-    }
-}
-
 /// Every conversation shares one inbox, pinned first and then by recency.
 struct ConversationsList: View {
     @Environment(AppModel.self) private var model
@@ -383,10 +337,6 @@ struct ConversationsScreen: View {
     var body: some View {
         let searching = model.chatSearch || !model.chatQuery.isEmpty
         VStack(spacing: 0) {
-            ChatInboxSearchBar()
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if !searching {
@@ -461,6 +411,52 @@ struct HomeHeader: View {
     }
 }
 
+/// Notifications are a permanent first card, not a destination competing with chats.
+struct NotificationInboxCard: View {
+    @Environment(AppModel.self) private var model
+    var side: CGFloat = 170
+    @State private var taps = 0
+    private var pendingIDs: Set<String> {
+        Set(model.requests.filter { $0.status == .pending && $0.agent.isMine }.map(\.id))
+    }
+
+    var body: some View {
+        Button {
+            taps += 1
+            Haptics.open()
+            if model.usesAdaptiveShell { model.select(.activity) }
+            else { model.notificationsOpen = true }
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    NativeNavigationSymbol(name: "bell.fill", tap: taps, notificationIDs: pendingIDs, diagnosticName: "notification-card")
+                        .font(.system(size: 25, weight: .semibold))
+                    Spacer()
+                    Image(systemName: "arrow.up.right").font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Palette.textTertiary)
+                }
+                Spacer(minLength: 0)
+                Text(model.pendingCount > 99 ? "99+" : "\(model.pendingCount)")
+                    .font(.system(size: 46, weight: .bold, design: .rounded)).monospacedDigit()
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Notifications").font(.subheadline.weight(.semibold))
+                    Text(model.pendingCount == 0 ? String(localized: "View activity") : String(localized: "Pending requests"))
+                        .font(.caption).foregroundStyle(Palette.textSecondary)
+                }
+            }
+            .foregroundStyle(Palette.textPrimary)
+            .padding(16)
+            .frame(width: side, height: side)
+            .background(Palette.action.opacity(0.1), in: .rect(cornerRadius: 26))
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 26))
+        }
+        .buttonStyle(NativeIconPressStyle())
+        .accessibilityLabel("Notifications")
+        .accessibilityValue(String(localized: "\(model.pendingCount) pending requests"))
+        .accessibilityIdentifier("home-notifications-card")
+    }
+}
+
 /// The live mini-app cards (the same snapshot the widgets show). Tap opens; long-press to
 /// move or unpin.
 struct HomeStrip: View {
@@ -475,7 +471,12 @@ struct HomeStrip: View {
     var body: some View {
         let cards = model.homeApps.compactMap { item in WidgetSnapshot.from(item).map { Card(id: item.id, item: item, snap: $0) } }
         if cards.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) { PinHereCard(side: Self.side) }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    NotificationInboxCard(side: Self.side)
+                    PinHereCard(side: Self.side)
+                }
+            }
                 .contentMargins(.horizontal, 20, for: .scrollContent)
                 .scrollClipDisabled()
                 .frame(height: Self.side)
@@ -490,7 +491,9 @@ struct HomeStrip: View {
                 remove: { c in model.unpinFromHome(c.id) },
                 removeTitle: { c in String(localized: "Unpin “\(c.snap.title)” from Home?") },
                 removeMessage: "It stays in its chat; you can pin it again from there.",
-                removeAction: "Unpin from Home"
+                removeAction: "Unpin from Home",
+                leadingCard: AnyView(NotificationInboxCard(side: Self.side)),
+                leadingCardID: "home-notifications-card"
             ) { c in
                 SnapshotCard(snap: c.snap, side: Self.side)
                     .appZoomSource(c.id, zoom)

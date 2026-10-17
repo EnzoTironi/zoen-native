@@ -8,20 +8,19 @@ struct MacSearchCommands: Equatable {
     let field: FocusState<Bool>.Binding
     let sidebar: Binding<Bool>
     let reduceMotion: Bool
+    let openSearch: @MainActor () -> Void
+    let closeSearch: @MainActor () -> Void
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.scope == rhs.scope && lhs.reduceMotion == rhs.reduceMotion
     }
 
     @MainActor func focus() {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22), completionCriteria: .removed) {
-            sidebar.wrappedValue = true
-        } completion: {
-            field.wrappedValue = true
-        }
+        openSearch()
     }
 
     @MainActor func reset() {
+        closeSearch()
         query.wrappedValue = ""
         field.wrappedValue = false
     }

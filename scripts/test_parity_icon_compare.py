@@ -27,7 +27,7 @@ class IconContractTests(unittest.TestCase):
         (folder/'manifest.json').write_text(json.dumps({'icon_states': states}))
 
     def test_requires_all_forty_matching_state_keys(self):
-        self.assertEqual(len(validate_states(*self.folders)), 40)
+        self.assertEqual(len(validate_states(*self.folders)), 36)
 
     def test_missing_frame_is_not_a_pass(self):
         (self.folders[1]/f'{next(iter(STATES))}.png').unlink()

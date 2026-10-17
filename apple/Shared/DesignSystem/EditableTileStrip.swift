@@ -31,6 +31,9 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
     var removeAction: LocalizedStringKey = "Unpin"
     /// Screenshots: show the last tile shortly after appearing.
     var scrollToEnd = false
+    /// A fixed, non-editable leading card (for example the inbox's Notifications).
+    var leadingCard: AnyView? = nil
+    var leadingCardID: String? = nil
     @ViewBuilder let tile: (Item) -> Tile
     @Environment(AppModel.self) private var model
     /// Where each tile sits on screen, kept off the render path (scrolling writes it).
@@ -107,6 +110,10 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: spacing) {
+                    if let leadingCard {
+                        leadingCard.frame(width: tileWidth, height: tileWidth)
+                            .id(leadingCardID ?? "fixed-leading-card")
+                    }
                     ForEach(Array(shown.enumerated()), id: \.element.id) { i, item in
                         cell(item, index: i)
                             .id(item.id)
@@ -123,11 +130,11 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
             .scrollPosition(id: $leadingId, anchor: .leading)
             .scrollClipDisabled()
             .scrollDisabled(dragging != nil)
-            .onAppear { if leadingId == nil { leadingId = items.first?.id } }
+            .onAppear { if leadingId == nil { leadingId = leadingCardID ?? items.first?.id } }
             // A new card arriving at the front (live order) must not leave the strip scrolled
             // past it: outside edit mode the strip always starts at its first card.
             .onChange(of: items.first?.id) { _, first in
-                if !editing, dragging == nil { leadingId = first }
+                if !editing, dragging == nil { leadingId = leadingCardID ?? first }
             }
             .task(id: items.count) {
                 guard scrollToEnd, items.count > 2 else { return }

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from parity_compare import compare
 
-EVENTS = ('tab-chats-tap', 'tab-spaces-tap', 'tab-notifications-tap', 'tab-profile-tap',
+EVENTS = ('tab-chats-tap', 'tab-marketplace-tap', 'tab-profile-tap',
           'composer-mic', 'composer-send', 'bell-new', 'typing-active',
           'connecting-active', 'icons-draw-on')
 STATES = {f'{event}-{appearance}-{motion}':

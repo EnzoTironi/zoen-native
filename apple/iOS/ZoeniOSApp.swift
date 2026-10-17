@@ -107,10 +107,9 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
                     self.observedBar = bar
                 }
                 guard !added.isEmpty, !UIAccessibility.isReduceMotionEnabled else { return }
+                // Notifications live in the first inbox card, not in the tab bar.
                 guard let title = bar.items?.first(where: { $0.title == String(localized: "Notifications") })?.title,
-                      let control = self.control(title: title, bar: bar) else {
-                    self.report("bell-control-unresolved:\(self.logicalControls(in: bar).compactMap { self.title(of: $0, bar: bar) })"); return
-                }
+                      let control = self.control(title: title, bar: bar) else { return }
                 let symbols = self.images(in: control).filter { $0.image?.isSymbolImage == true }
                 guard !symbols.isEmpty else {
                     let artwork = self.images(in: control).map { "\($0.bounds.size)/\($0.image?.size ?? .zero)/\($0.image?.isSymbolImage == true)" }
@@ -284,22 +283,18 @@ struct RootView: View {
                 Tab(value: AppTab.conversations) { stack(for: .conversations) } label: {
                     Label("Chats", systemImage: "bubble.left.and.bubble.right")
                 }
-                Tab(value: AppTab.files) { stack(for: .files) } label: {
-                    Label("Spaces", systemImage: "square.grid.2x2")
+                Tab(value: AppTab.store) { stack(for: .store) } label: {
+                    Label("Marketplace", systemImage: "storefront")
                 }
-                Tab(value: AppTab.activity) { stack(for: .activity) } label: {
-                    Label("Notifications", systemImage: "bell")
-                }
-                    .badge(model.pendingCount)
                 Tab(value: AppTab.you) { stack(for: .you) } label: {
                     Label { Text("Profile") } icon: { profileTabImage }
                 }
                 if #available(iOS 27.0, *) {
-                    Tab("New message", systemImage: "square.and.pencil", value: AppTab.search, role: .prominent) {
+                    Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: .prominent) {
                         Color.clear
                     }
                 } else {
-                    Tab("New message", systemImage: "square.and.pencil", value: AppTab.search, role: .search) {
+                    Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: .search) {
                         Color.clear
                     }
                 }
@@ -328,7 +323,7 @@ struct RootView: View {
                 }
             }
             .onChange(of: model.tab) { _, tab in
-                if [.conversations, .files, .activity, .you].contains(tab) { selectedTab = tab }
+                if [.conversations, .store, .you].contains(tab) { selectedTab = tab }
             }
 
             if model.searchOpen {

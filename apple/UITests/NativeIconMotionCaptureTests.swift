@@ -8,12 +8,13 @@ import UIKit
 final class NativeIconMotionCaptureTests: XCTestCase {
     @MainActor func testLightActionSequence() throws { try sequence(appearance: "light") }
     @MainActor func testDarkActionSequence() throws { try sequence(appearance: "dark") }
-    @MainActor func testLightSearchFilterJourney() throws { try searchJourney(appearance: "light") }
-    @MainActor func testDarkSearchFilterJourney() throws { try searchJourney(appearance: "dark") }
+    @MainActor func testLightUnifiedSearchJourney() throws { try searchJourney(appearance: "light") }
+    @MainActor func testDarkUnifiedSearchJourney() throws { try searchJourney(appearance: "dark") }
 
     @MainActor private func searchJourney(appearance: String) throws {
         let env = ProcessInfo.processInfo.environment
         guard env["ZOEN_PARITY_FIXTURE"] == "native-parity-v1" else { throw XCTSkip("Requires native parity fixture") }
+        continueAfterFailure = false
         let app = XCUIApplication()
         app.launchEnvironment["ZOEN_PARITY_FIXTURE"] = "native-parity-v1"
         app.launchEnvironment["ZOEN_PARITY_REVISION"] = try XCTUnwrap(env["ZOEN_PARITY_REVISION"])
@@ -21,35 +22,43 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         app.launchArguments = ["-RodaFreshStart", "YES", "-RodaResetDemo", "YES", "-RodaDemo", "YES",
             "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-RodaAppearance", appearance]
         app.launch()
-        let search = app.textFields["chat-search-field"]
-        XCTAssertTrue(search.waitForExistence(timeout: 40))
-        XCTAssertEqual(app.navigationBars.count, 0)
-        let filter = app.buttons["chat-filter"]
-        XCTAssertTrue(filter.exists)
-        XCTAssertEqual(filter.value as? String, "All chats")
-        XCTAssertLessThan(abs(search.frame.midY - filter.frame.midY), 4, "Search and scope share one surface")
+        let card = app.buttons["home-notifications-card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 40))
+        XCTAssertFalse(app.textFields["chat-search-field"].exists)
+        XCTAssertFalse(app.tabBars.buttons["Spaces"].exists)
+        XCTAssertFalse(app.tabBars.buttons["Notifications"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Marketplace"].exists)
         let tile = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "home-tile-")).firstMatch
-        if tile.exists { XCTAssertLessThan(search.frame.maxY, tile.frame.minY) }
-        attach(app.screenshot(), name: "search-glass-top-\(appearance)")
-        search.tap()
+        if tile.exists { XCTAssertLessThan(card.frame.minX, tile.frame.minX) }
+        attach(app.screenshot(), name: "home-notifications-first-\(appearance)")
+        card.tap()
+        XCTAssertTrue(app.buttons["notifications-cards"].waitForExistence(timeout: 10))
+        app.buttons["Close"].firstMatch.tap()
+        app.tabBars.buttons["Marketplace"].tap()
+        XCTAssertTrue(app.tabBars.buttons["Marketplace"].isSelected)
+        attach(app.screenshot(), name: "marketplace-\(appearance)")
+        app.tabBars.buttons["Chats"].tap()
+        app.tabBars.buttons["Search"].tap()
+        let search = app.textFields["unified-search-field"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.typeText("inn")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "unified-search-message-")).firstMatch.waitForExistence(timeout: 10))
+        attach(app.screenshot(), name: "unified-message-search-\(appearance)")
+        search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3))
         search.typeText("Marina")
-        filter.tap()
-        let direct = app.buttons["Direct chats"].firstMatch
-        XCTAssertTrue(direct.waitForExistence(timeout: 5))
-        direct.tap()
-        XCTAssertEqual(filter.value as? String, "Direct chats")
-        let marina = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Marina")).firstMatch
+        let marina = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@", "unified-search-chat-", "Marina")).firstMatch
         XCTAssertTrue(marina.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Paraty with Marina")).firstMatch.exists)
-        attach(app.screenshot(), name: "search-glass-filtered-\(appearance)")
-        app.buttons["Clear search"].tap()
-        XCTAssertEqual(search.value as? String, "Search chats")
-        filter.tap()
-        app.buttons["All chats"].firstMatch.tap()
-        app.keyboards.buttons["Search"].firstMatch.tap()
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Paraty with Marina")).firstMatch.waitForExistence(timeout: 5))
-        XCTAssertEqual(filter.value as? String, "All chats")
-        attach(app.screenshot(), name: "search-glass-reset-\(appearance)")
+        marina.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["composer"].firstMatch.waitForExistence(timeout: 10))
+        app.buttons["zoenBack"].tap()
+        app.tabBars.buttons["Search"].tap()
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.typeText("Lucas")
+        let lucas = app.buttons["unified-search-person-lucas"]
+        XCTAssertTrue(lucas.waitForExistence(timeout: 5))
+        attach(app.screenshot(), name: "unified-start-chat-\(appearance)")
+        lucas.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["composer"].firstMatch.waitForExistence(timeout: 10), "Selecting a known person creates/opens a real direct chat")
     }
 
     @MainActor private func sequence(appearance: String) throws {
@@ -74,9 +83,9 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         XCTAssertTrue(fixture.waitForExistence(timeout: 40))
         let applied = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(fixture.label.utf8)) as? [String: Any])
         XCTAssertEqual(applied["source_revision"] as? String, revision)
-        XCTAssertTrue(app.buttons["New message"].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["Search"].firstMatch.waitForExistence(timeout: 20))
         XCTAssertEqual(app.navigationBars.count, 0, "Root navigation has no top chrome")
-        for title in ["Chats", "Spaces", "Notifications", "Profile", "New message"] {
+        for title in ["Chats", "Marketplace", "Profile", "Search"] {
             XCTAssertGreaterThan(app.buttons[title].firstMatch.frame.midY, app.frame.midY,
                                  "Every root destination/action belongs in the bottom bar")
         }
@@ -117,7 +126,7 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         }
         expectation(for: increased, evaluatedWith: state)
         waitForExpectations(timeout: 10)
-        assertEffect("bell-wiggle-submitted-to-symbol-image", after: beforeBell)
+        assertEffect("notification-card-wiggle-submitted-to-symbol-image", after: beforeBell)
         actions.append(["event": "bell-new", "before": baseline, "after": try pendingWitness(),
                         "native_driver_witness": state.label])
         try attachJSON(try XCTUnwrap(actions.last), name: "bell-new-witness-\(appearance)")
@@ -125,9 +134,8 @@ final class NativeIconMotionCaptureTests: XCTestCase {
 
         // Chats starts selected: first visit another tab so both selection-changing
         // and repeat-selected Chats taps are real UI events.
-        app.tabBars.buttons["Spaces"].firstMatch.tap()
-        for (label, semantic) in [("Chats", "chats"), ("Spaces", "spaces"),
-                                  ("Notifications", "notifications"), ("Profile", "profile")] {
+        app.tabBars.buttons["Marketplace"].firstMatch.tap()
+        for (label, semantic) in [("Chats", "chats"), ("Marketplace", "marketplace"), ("Profile", "profile")] {
             let button = app.tabBars.buttons[label].firstMatch
             XCTAssertTrue(button.waitForExistence(timeout: 10))
             for repetition in ["first", "repeat"] {

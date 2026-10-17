@@ -20,6 +20,7 @@ struct ZoenAdaptiveShell: View {
     @State private var search = ""
     @State private var sidebarTap = 0
     @State private var newMessageTap = 0
+    @State private var railTaps: [AppTab: Int] = [:]
     @FocusState private var searchFocused: Bool
     @State private var searchCommandScope = UUID()
     @State private var lastChat: String?
@@ -65,7 +66,9 @@ struct ZoenAdaptiveShell: View {
         .toolbarBackground(.hidden, for: .windowToolbar)
         .focusedSceneValue(\.macSearch, MacSearchCommands(scope: searchCommandScope, query: $search,
                                                        field: $searchFocused, sidebar: $sidebarExpanded,
-                                                       reduceMotion: reduceMotion))
+                                                       reduceMotion: reduceMotion,
+                                                       openSearch: { model.newChatOpen = true },
+                                                       closeSearch: { model.newChatOpen = false }))
         #endif
         .inspector(isPresented: Binding(get: { model.inspectorItem != nil }, set: { if !$0 { closeInspector() } })) {
             if let id = model.inspectorItem {
@@ -118,6 +121,9 @@ struct ZoenAdaptiveShell: View {
         .sheet(isPresented: $model.newChatOpen) {
             NewChatSheet().environment(model)
         }
+        .onChange(of: searchFocused) { _, focused in
+            if focused { model.newChatOpen = true; searchFocused = false }
+        }
         .overlay {
             if onboarding || model.sync.needsAccount {
                 OnboardingFlow { withAnimation(.easeInOut(duration: 0.4)) { onboarding = false } }
@@ -129,7 +135,7 @@ struct ZoenAdaptiveShell: View {
 
     private var activeTab: AppTab {
         switch model.macSelection {
-        case .activity: .activity
+        case .activity: .conversations
         case .store: .store
         case .files: .files
         case .agents: .agents
@@ -160,18 +166,18 @@ struct ZoenAdaptiveShell: View {
         return VStack(spacing: 6) {
             sidebarToggle
                 .padding(.bottom, 4)
-            ForEach([AppTab.conversations, .files, .activity, .you], id: \.self) { tab in
+            ForEach([AppTab.conversations, .store, .you], id: \.self) { tab in
                 railButton(tab)
             }
             Spacer(minLength: 8)
             appearanceControl
             Button { newMessageTap += 1; model.newChatOpen = true } label: {
-                NativeIconMotion(systemName: "square.and.pencil", bounce: newMessageTap, drawOn: true)
+                NativeIconMotion(systemName: "magnifyingglass", bounce: newMessageTap, drawOn: true)
                     .frame(width: 44, height: 44)
                     .glassEffect(.regular.interactive(), in: .circle)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("New message")
+            .accessibilityLabel("Search")
             .padding(.top, 8)
         }
         .padding(.vertical, 12)
@@ -181,10 +187,10 @@ struct ZoenAdaptiveShell: View {
     private func railButton(_ tab: AppTab) -> some View {
         let selected = activeTab == tab
         let badge = tab == .activity ? model.pendingCount : tab == .conversations ? model.spaces.reduce(0) { $0 + Int($1.unread) } : 0
-        return Button { select(tab) } label: {
+        return Button { railTaps[tab, default: 0] += 1; select(tab) } label: {
             Group {
                 if tab == .you, let me = model.me { PersonAvatar(persona: me, size: 26) }
-                else { NativeNavigationSymbol(name: tab == .files ? "square.grid.2x2" : tab.symbol, selected: selected, notificationIDs: tab == .activity ? Set(model.requests.filter { $0.status == .pending }.map(\.id)) : []) }
+                else { NativeNavigationSymbol(name: tab == .files ? "square.grid.2x2" : tab.symbol, selected: selected, tap: railTaps[tab, default: 0], notificationIDs: tab == .activity ? Set(model.requests.filter { $0.status == .pending }.map(\.id)) : []) }
             }
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(selected ? Palette.action : Palette.textSecondary)
@@ -223,33 +229,6 @@ struct ZoenAdaptiveShell: View {
         .accessibilityIdentifier("mac-sidebar-toggle")
     }
 
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            NativeIconMotion(systemName: "magnifyingglass", size: 15)
-            TextField("Search chats", text: $search)
-                .textFieldStyle(.plain)
-                .focused($searchFocused)
-                .onDisappear { searchFocused = false }
-                .accessibilityIdentifier("mac-search-field")
-            if !search.isEmpty {
-                Button { search = ""; searchFocused = true } label: { NativeIconMotion(systemName: "xmark.circle.fill", size: 15) }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text("Clear search"))
-            }
-            Rectangle().fill(Palette.hairline).frame(width: 0.5, height: 22)
-                .accessibilityHidden(true)
-            ChatInboxFilterMenu(showsLabel: !searchFocused && search.isEmpty, touchSize: 44)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-        .font(.system(size: 14))
-        .foregroundStyle(Palette.textSecondary)
-        .padding(.leading, 12).padding(.trailing, 8)
-        .frame(minHeight: 52)
-        .glassEffect(.regular.interactive(), in: .capsule)
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
-    }
-
     private var appearanceControl: some View {
         AdaptiveAppearanceControl(appearance: $appearance)
     }
@@ -270,7 +249,7 @@ struct ZoenAdaptiveShell: View {
             }
             .foregroundStyle(Palette.textPrimary)
             .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
-            searchField
+            HomeStrip().padding(.bottom, 12)
             List(selection: Binding(get: { model.macSelection }, set: { selection in
                 if case .space(let id)? = selection {
                     search = ""

@@ -10,7 +10,7 @@ struct NewChatSheet: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .chat: String(localized: "Chat")
+            case .chat: String(localized: "Search")
             case .group: String(localized: "Group")
             case .community: String(localized: "Community")
             case .join: String(localized: "Join")
@@ -23,6 +23,8 @@ struct NewChatSheet: View {
     @State var mode: Mode = .chat
     @State private var query = ""
     @State private var results: [Persona] = []
+    @State private var localHits: [UniversalHit] = []
+    @State private var knownPeople: [Persona] = []
     @State private var searching = false
     @State private var searchError: String?
     @State private var picked: [Persona] = []
@@ -31,9 +33,22 @@ struct NewChatSheet: View {
     @State private var preview: InvitePreviewDto?
     @State private var working = false
     @State private var failure: String?
+    @FocusState private var queryFocused: Bool
 
     init(mode: Mode = .chat) {
         _mode = State(initialValue: mode)
+    }
+
+    private var matchingChats: [SpaceSummary] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Array(model.orderedSpaces.filter { model.chatFilter.includes($0) && (q.isEmpty || $0.title.localizedCaseInsensitiveContains(q)) }.prefix(8))
+    }
+    private var matchingPeople: [Persona] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "@"))
+        var seen = Set<String>()
+        return Array((results + knownPeople + model.spaces.flatMap(\.members)).filter {
+            !$0.isMe && seen.insert($0.id).inserted && (q.isEmpty || $0.name.localizedCaseInsensitiveContains(q) || $0.handle.localizedCaseInsensitiveContains(q))
+        }.prefix(15))
     }
 
     var body: some View {
@@ -46,7 +61,7 @@ struct NewChatSheet: View {
                 .listRowBackground(Color.clear)
 
                 if !model.sync.isOnline {
-                    Label { Text("You’re offline. Finding people and invites need a connection; chats you start still go out when you’re back.") } icon: { Image(systemName: "wifi.slash") }
+                    Label { Text(mode == .chat ? String(localized: "Offline. Search this device or start a chat with someone you know.") : String(localized: "You’re offline. Finding people and invites need a connection; chats you start still go out when you’re back.")) } icon: { Image(systemName: "wifi.slash") }
                         .font(.footnote)
                         .foregroundStyle(Palette.textSecondary)
                 }
@@ -62,7 +77,7 @@ struct NewChatSheet: View {
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle(mode == .join ? String(localized: "Join a chat") : String(localized: "New chat"))
+            .navigationTitle(mode == .chat ? String(localized: "Search") : mode == .join ? String(localized: "Join a chat") : String(localized: "New chat"))
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -82,7 +97,12 @@ struct NewChatSheet: View {
                     }
                 }
             }
-            .task(id: query) { await search() }
+            .task(id: mode.rawValue + ":" + query) { await search() }
+            .task(id: model.revision) { knownPeople = model.core.personas() }
+            .onAppear {
+                if let seed = model.searchSeed { query = seed; model.searchSeed = nil }
+                if mode == .chat { queryFocused = true }
+            }
             .task(id: code) { await loadPreview() }
         }
         #if os(macOS)
@@ -140,15 +160,36 @@ struct NewChatSheet: View {
         }
         Section {
             HStack {
-                Text(verbatim: "@").foregroundStyle(Palette.textTertiary)
-                TextField(String(localized: "Search by @handle"), text: $query)
+                NativeIconMotion(systemName: "magnifyingglass", size: 17).foregroundStyle(Palette.textTertiary)
+                TextField(mode == .chat ? String(localized: "Chats, messages or @handle") : String(localized: "Search by @handle"), text: $query)
+                    .accessibilityIdentifier("unified-search-field")
+                    .focused($queryFocused)
                     .autocorrectionDisabled()
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     #endif
                 if searching { ProgressView().controlSize(.small) }
+                if mode == .chat { ChatInboxFilterMenu(showsLabel: false, touchSize: 44) }
             }
-            ForEach(results) { p in
+        }
+        if mode == .chat, !matchingChats.isEmpty {
+            Section("Chats") {
+                ForEach(matchingChats) { space in
+                    Button { open(space.id) } label: {
+                        HStack(spacing: 12) {
+                            SpaceAvatar(space: space, size: 36)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(space.title).foregroundStyle(Palette.textPrimary)
+                                Text(space.lastPreview).font(.caption).foregroundStyle(Palette.textSecondary).lineLimit(1)
+                            }
+                        }
+                    }
+                    .accessibilityIdentifier("unified-search-chat-\(space.id)")
+                }
+            }
+        }
+        Section {
+            ForEach(matchingPeople) { p in
                 Button { tapped(p) } label: {
                     HStack(spacing: 12) {
                         Avatar(persona: p, size: 36)
@@ -165,22 +206,45 @@ struct NewChatSheet: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(working)
+                .accessibilityIdentifier("unified-search-person-\(p.handle)")
             }
             if let searchError {
                 Text(searchError).font(.footnote).foregroundStyle(Palette.textSecondary)
-            } else if !query.isEmpty && !searching && results.isEmpty {
+            } else if !query.isEmpty && !searching && matchingPeople.isEmpty {
                 Text("Nobody with that @ yet.").font(.footnote).foregroundStyle(Palette.textSecondary)
             }
+        } header: {
+            Text("People and agents")
         } footer: {
             if let me = model.sync.account {
                 Text("People find you as @\(me.handle).")
+            }
+        }
+        if mode == .chat, !localHits.isEmpty {
+            Section("Messages and items") {
+                ForEach(localHits, id: \.refId) { hit in
+                    Button { openHit(hit) } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(hit.title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textPrimary)
+                            Text(hit.snippet).font(.subheadline).foregroundStyle(Palette.textSecondary).lineLimit(2)
+                            Text(hit.spaceTitle ?? "").font(.caption).foregroundStyle(Palette.textTertiary)
+                        }
+                    }
+                    .accessibilityIdentifier("unified-search-\(hit.kind)-\(hit.refId)")
+                }
             }
         }
     }
 
     private func search() async {
         let q = query.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "@"))
-        guard q.count >= 2 else { results = []; searchError = nil; return }
+        localHits = []
+        failure = nil
+        if mode == .chat, !q.isEmpty {
+            do { localHits = try model.core.universalSearch(query: q, kinds: ["message", "item"], limit: 30).hits }
+            catch { failure = (error as? CoreError)?.message ?? error.localizedDescription }
+        }
+        guard q.count >= 2, model.sync.isOnline else { results = []; searchError = nil; return }
         try? await Task.sleep(for: .milliseconds(250))
         guard !Task.isCancelled else { return }
         searching = true
@@ -193,6 +257,19 @@ struct NewChatSheet: View {
         } catch {
             results = []
             searchError = (error as? CoreError)?.message ?? error.localizedDescription
+        }
+    }
+
+    private func openHit(_ hit: UniversalHit) {
+        if hit.kind == "item" {
+            dismiss()
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(350))
+                model.go(.item(hit.refId))
+            }
+        } else if let space = hit.spaceId {
+            model.jumpTarget = JumpTarget(space: space, entry: hit.refId)
+            open(space)
         }
     }
 
