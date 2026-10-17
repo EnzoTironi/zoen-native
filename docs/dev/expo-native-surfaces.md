@@ -177,48 +177,131 @@ interaction. Earlier v17 independently confirmed fixed frames across one bounded
 automated swipe. Final keyboard/jump, isolated pin/unpin and cold acceptance remain
 pending.
 
-## Message interaction source checkpoint — v26 build pending
+## Message interaction checkpoint — signed v29, bounded runtime passes
 
-The current installed artifact remains signed v25. The following changes are
-implemented in source and passed TypeScript, Oxlint, Oxfmt and all 226 app tests;
-the v26 signed build, artifact hashes and installed gesture acceptance are pending.
-This checkpoint does not claim full iMessage, WhatsApp, Slack or prior Swift parity.
+The installed signed v29 artifact was built from source checkpoint `d450e37d`.
+Its signed Release build,
+strict signature verification and preserving public Xcode installation on isolated
+388CA passed. Installed executable/JavaScript and the archived app match the stable
+742-input artifact. Exact hashes appear in
+`apps/zoen/acceptance.json → currentIphoneArtifact`; earlier v27 and v28 artifacts
+remain separately recorded. Restart retained the certified synthetic
+`qa_msg_1017d` profile and group. Human-operated E2B now has the same verified v29
+archive through a preserving update after the user confirmed it was idle. Fresh
+preflight showed Chats without an active composer, capture or modal. Installed
+executable/JavaScript and strict signature checks passed; normal restart retained
+four canonical Home cards/progress and the Bilingual QA conversation/history. The
+anchored + Menu opened/dismissed without selection, imports, sends or account
+mutations. One stale-transport Chats tap was explicitly not delivered; scoped E2B
+transport recovery required no app reset. The original v26 human artifact remains
+historical evidence. Personal B9 is untouched. Delivery evidence is
+`/private/tmp/zoen-iphone-release-v29-verification.json → human_installation` and
+`/private/tmp/zoen-message-polish-qa/v29/human-native-menu.png`. This bounded delivery
+check does not replace isolated media acceptance or full product acceptance.
 
-Main chat and threads now share `ConversationMessage`, `useMessageActions` and the
-same canonical mutations. Bubble grouping respects author, time continuity and
-system boundaries; deleted messages do not reveal retained attachments or actions.
-Horizontal reply/thread gestures distinguish intentional movement from vertical
-scroll, multitouch and the system Back edge. Press/threshold feedback respects
-reduced motion. Audio scrubbing explicitly wins before row swipes. The anchored
-message-action modal waits for native dismissal before focus, navigation or share
-callbacks; fresh account/device/Space/message checks fence deferred actions.
-Text accessibility actions and a separate media-action control preserve access
-without swallowing playback controls. Actual VoiceOver, nested player gestures,
-interactive scrolling and dismissal timing still require installed iPhone QA.
+Controlled v29 establishes these bounded results:
 
-A shared revision-based draft reducer consumes only the accepted send/edit attempt.
-Typing during a delayed save, changing the edit target or selecting another reply
-survives an earlier completion. A failed mutation preserves the draft. Pending
-reactions release their latch across scope changes, and external sharing rechecks
-scope after asynchronous availability/materialization, releasing decrypted copies
-on completion or refusal. Highlight rings overlay the finished message instead
-of changing attachment layout.
+- The + opens an anchored native SwiftUI Menu with Photos and videos, Camera,
+  Import audio and File. The initial attachment chooser is no longer a modal.
+  Import audio opens the ordinary Files picker, and the known synthetic 5.54-second
+  fixture enters the compact 0:05 dock.
+- The detailed native editor opens. A start trim of 0.98 seconds and Apply show
+  edited 4.56 seconds; Undo restores 5.54 seconds and Redo restores 4.56 seconds.
+  Collapse shows compact 0:04, and reexpansion retains 4.56 seconds. Preview changes
+  the native control from Play to Pause; that state alone does not establish completed
+  playback or independent decoding.
+- One Send creates compact 0:04 main-conversation message
+  `01M563DF8196SHDFMV81RYCYKF` with one Sent check. The ID comes from read-only native
+  UIView inspection. Canonical edited metadata and independent decrypted voice
+  decoding also passed: current signed v1
+  contains 129,409 bytes, canonical 4,557 milliseconds and SHA256
+  `bb338b462571c16cb028f9cce2b35fe8f03c0bfbce111e0122e235de4b4de9bd`.
+  Full AAC mono 44.1kHz decode yields 200,985 sample frames/4.557482993 seconds,
+  0.483 milliseconds from native metadata; the original fixture hash is unchanged.
+  This establishes decode/playability, without human listening or transcription.
+- One known synthetic photo reply `01M563VC1D3NBEANE3B1H7PY7Q` to the edited voice
+  was sent once. The native image card and one-reply count are visible. A normally
+  linked independent peer verified signed current v1 item
+  `it_01m563vc1cz9bfgqq8dgz5jsws`, exact `in_thread` binding to the voice root,
+  and decrypted JPEG 8,530 bytes/SHA256
+  `9d1e61801b349f3308d543998db013ff8220e713fd5977ad35f8ae7844fb1b56`.
+  Strict full decode passes 1200×800/one RGB frame; the original fixture is unchanged.
+  Tapping the image opens native QuickLook and closes normally without reactions.
+  This proves the selected thread-photo journey, not all thread media. No microphone
+  or human media was used.
 
-Photo/video messages use version-pinned decrypted media, proportionate rounded
-previews, native playback/QuickLook and release-owned temporary copies. Miniapp
-messages reuse the Home snapshot/artwork renderer with an integrated real Open
-action. The canonical embedded `ItemCard.app` works without a per-row fetch; a live
-`ItemDetail` supersedes it only for the same item, scope and app with a nonolder
-version. Other nonfile items retain their actual summary and exact Plan amounts.
-There are no fabricated unread markers, counts, hearts or app mutations in previews.
+The actual runtime record and named root-reviewed images are under
+`/private/tmp/zoen-message-polish-qa/v29/`: `runtime.json`,
+`attachment-native-menu.png`, `attachment-native-menu-settled.png` and
+`voice-send-once.png`, alongside the individual trim/Apply/Undo/Redo captures.
+`voice-peer-export.json` and `voice-peer-decode.json` establish the independent
+current-version voice proof. `thread-photo-peer-metadata.json`,
+`thread-photo-peer-export.json` and `thread-photo-peer-decode.json` establish the
+selected reply and full JPEG decode; `thread-photo-send-once.png` and
+`thread-photo-quicklook.png` capture its native card and preview.
 
-The 14 new deterministic tests cover four draft-completion races, three
-presentation/deletion policies, three swipe-admission/threshold policies and four
-miniapp projection/scope regressions. They prove those model boundaries rather
-than gesture feel, native player arbitration or a completed media/peer journey.
-The full check log is `/private/tmp/zoen-message-polish-check.log`. A new isolated
-simulator is being prepared for installed validation; creation/boot or a v25 install
-alone is not acceptance of this pending v26 source.
+The earlier controlled v28 run establishes native video tap and vertical scrolling
+without parent reactions, a visible anchored reaction capsule/action plate, long
+press without UIKit Copy, and correct quoted Reply after menu dismissal. Native
+video controls appeared; exact seek correctness was not verified. Precise voice
+trim/Undo remained inconclusive because screenshot/AX targets and queued touches
+did not reliably agree. The read-only transport audit compared public-Xcode and
+Argent captures 35 milliseconds apart with zero differing pixels out of 3,162,132;
+it established no wrong-device or stale-capture cause. These observations supersede
+the earlier whole-v28-runtime pending label, without claiming complete acceptance.
+Evidence remains `/private/tmp/zoen-message-polish-qa/v28/runtime.json` and
+`transport-audit/comparison.json` beneath that directory. No separate Slider fix is
+inferred from the historical inconclusive inputs.
+
+Controlled v27 established LEFT reply without reactions, RIGHT exact thread, text
+tap reactions, long press without UIKit Copy and post-dismiss quoted Reply. A known
+synthetic photo and video each became one chat message; an independent normally
+linked peer verified signed logs, decrypted current File versions, matched exact
+hashes and fully decoded both. The JPEG is 8,530 bytes/1200×800; H264 MP4 is
+13,609 bytes/640×426/3.000 seconds. Photo QuickLook passed. Historical v27 failures
+were video taps also opening reactions, invisible action glass and a handled
+concurrent-device rejection shown as raw `stale_epoch`. No edited voice was sent
+in that run. These failures keep their v27 attribution.
+
+The v27 peer evidence is `photo-peer-export.json`, `photo-peer-decode.json`,
+`video-peer-export.json` and `video-peer-decode.json` under
+`/private/tmp/zoen-message-polish-qa/v27/`. Those files supersede its runtime record's
+earlier pending-helper marker. Earlier v20/v22/v23 observations retain their
+original attribution; v26 failures are not retroactively reported as passing.
+
+The current full app check passes TypeScript, Oxlint, Oxfmt and 239/239 tests
+(`/private/tmp/zoen-v29-final-app-check.log`). Eleven new shared playback-owner tests
+cover explicit intent, late/native resume refusal, pause acknowledgements, rapid
+replay and disposed-player ownership. Mounted audio/video share playback ownership;
+native audio failure exposes localized Retry while retaining its decrypted lease.
+The frozen v28 native production core passed 378/378 and MLS18/18 plus strict Clippy. Its
+16-test real WebSocket suite covers handled commit reconciliation without listener
+errors, permanent application refusal with failed delivery, and rollback/retry plus
+a localized notice after injected storage failure. Exact refusal diagnostics stay
+in the outbox/log. v29 adds no wire event or UniFFI ABI change.
+
+After the v29 build, test-only commit `e7097337` changes the `cfg(test)` module of
+`crates/roda-ffi/src/net.rs` to model old-epoch application refusal before the winning
+commit arrives during retry. Focused net16/16 passes
+(`/private/tmp/zoen-v29-net-test-ordering.log`). Independent comparison confirms this
+is the only changed input among 742 and its production prefix is byte-identical to
+the built source. Installed v29 production is unchanged; no runtime rebuild is
+needed. Because the manifest includes Rust tests, its immutable hash identifies
+the `d450e37d` artifact rather than the later whole workspace. Full 378+18/Clippy
+evidence belongs to those frozen inputs. Exact comparison evidence is
+`/private/tmp/zoen-message-polish-qa/v29/post-artifact-test-delta.json`.
+
+Canonical atomic `send_file_message` and durable exact-intent receipts retain six
+Rust regressions for destinations, denied/failed writes, cold deduplication and
+encrypted chunk replay. Body text avoids UIKit selection menus; native voice
+sliders use a continuous 0…1 domain rounded only at the original-frame boundary.
+The authenticated exact-device recovery gate preserves the original first DM
+through live Welcome/context ordering and cold reopen; fresh-device recovery
+remains supported. These source proofs do not replace installed acceptance.
+
+VoiceOver, native media arbitration runtime, waveform/word editing, async drafts,
+remaining thread media and comparative quality
+remain pending. No full iMessage, WhatsApp, Slack or prior Swift parity is claimed.
 
 ## Voice editing checkpoint
 
@@ -229,7 +312,7 @@ encodes and decodes exactly66,150 retained frames at44.1kHz (1,500ms): synthetic
 440/880Hz regions survive, the removed1,200Hz region does not, and contained15ms
 fades preserve frame counts and original hashes. The real Swift module compiled in
 signed iOS v17 and updated v21/v22. Current source checks pass TypeScript, Oxlint,
-Oxfmt and212/212 tests, including16 owner-lifecycle,6 scoped-search and9 temporary
+Oxfmt and239/239 tests, including16 owner-lifecycle,6 scoped-search and9 temporary
 conversation lifecycle regressions in addition to the37 edit/session/suggestion tests.
 
 The 37 pure checks comprise 15 edit, 14 session and 8 suggestion tests. Native
@@ -241,17 +324,27 @@ original-adjacent timing gaps over 1.2 seconds and retain 300 milliseconds. Such
 gaps may contain other sounds. Nothing is removed automatically, proposals are
 revalidated and each accepted batch is one undo step.
 
-Signed v22 imports the known synthetic 5.54-second Portuguese audio through the
-ordinary file picker and mounts the real editor. The attachment menu now uses the
-direct SwiftUI sheet's fully-finished dismissal callback before presenting another
-picker. Earlier v21 stopped before the picker; no causal UIKit warning was captured.
+Signed v22 imported the known synthetic 5.54-second Portuguese audio through the
+ordinary file picker. Its attachment chooser used a sheet with a finished-dismissal
+callback before presenting another picker. Signed v29 replaces the initial iOS
+chooser with a native SwiftUI Menu anchored to +, keeping the existing permissions,
+file picker, review, encrypted send and draft-target guards. The root-reviewed v29
+menu and ordinary audio import passed; subsequent native media pickers and detailed
+editing retain their appropriate platform presentations.
+
 Current source defaults to a compact audio strip above the normal input. Dragging
-up or using its accessible expand control opens the detailed editor; collapsing
-preserves the same draft/edits, while explicit discard releases its owned files.
-Recording and preview retain the same send/cleanup fences. No transcription or
-removal starts automatically. Installed gestures, retained preview, on-device
-transcription, edited encrypted send and independent-peer playback remain pending;
-these checkpoints do not establish full parity with the previous Swift editor.
+up or its accessible expand control opens the detailed editor; collapsing preserves
+the same draft/edits, while explicit discard releases owned files. Recording and
+preview retain their send/cleanup fences. No transcription or removal starts
+automatically. Controlled signed v29 passed visible 0.98-second start trim and Apply
+to 4.56 seconds from the 5.54-second fixture, Undo/Redo, compact/detail retention,
+native preview control and one compact edited-voice Send. Independent current signed
+metadata/decryption/full AAC decoding passed: 4,557 milliseconds and 200,985 sample
+frames/4.557482993 seconds at44.1kHz, with original hash unchanged. No human listening
+or transcript access was performed. On-device recognition, waveform/word gestures,
+thread audio and full comparative Swift parity are not
+established. Historical v27/v28 trim/Undo input targeting remained inconclusive;
+no separate Slider correction is inferred from the later controlled pass.
 
 ## In-app Home and miniapp cards
 
