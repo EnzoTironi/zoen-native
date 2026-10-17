@@ -8,13 +8,16 @@ import {
 } from 'react';
 import { createDriver } from './driver';
 import { ClientStore } from './store';
+import { attachDeviceCacheCleanup } from '../media/device-cache';
 
 const Context = createContext<ClientStore | null>(null);
 export function ClientProvider({ children }: { children: ReactNode }) {
   const [store] = useState(() => new ClientStore(createDriver()));
   useEffect(() => {
+    const detachCacheCleanup = attachDeviceCacheCleanup(store);
     void store.open();
     return () => {
+      detachCacheCleanup();
       void store.close().catch(() => {});
     };
   }, [store]);

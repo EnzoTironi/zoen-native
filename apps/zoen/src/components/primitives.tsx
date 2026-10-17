@@ -1,9 +1,9 @@
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { Host, Button } from '@expo/ui';
+import { Image } from 'expo-image';
 import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   Text,
   TextInput,
@@ -151,6 +151,7 @@ export function Avatar({
       {uri ? (
         <Image
           source={{ uri }}
+          cachePolicy="none"
           style={{ width: size, height: size, borderRadius: agent ? size * 0.32 : size / 2 }}
         />
       ) : (

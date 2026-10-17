@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { inspectExpoWebArtifact } from "./expo-web-artifact.mjs";
 import { verifyExpoWebHosting } from "./expo-web-hosting.mjs";
+import { acceptMarkdownJourney } from "./expo-web-markdown-journey.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = resolve(process.env.ZOEN_EXPO_DIST ?? join(root, "apps/zoen/dist"));
@@ -39,7 +40,7 @@ const processes = new Map();
 const logs = [];
 const errors = [];
 const evidence = {
-  journey: "expo-linked-browser-release-v2",
+  journey: "expo-linked-browser-release-v3",
   commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
   steps: [],
   passed: false,
@@ -343,8 +344,24 @@ try {
     0,
     "cold reload must retain the encrypted browser session",
   );
+  assert.equal(
+    await page.getByRole("alert").count(),
+    0,
+    "a valid cold-reloaded synthetic chat must not show a session or integrity error",
+  );
   await screenshot("04-cold-chat-reload.png");
   step("cold-dynamic-chat-reload-retains-keys-and-history");
+  await acceptMarkdownJourney({
+    page,
+    origin,
+    space,
+    tag,
+    privateRoot,
+    peerHome: bruno.home,
+    cli,
+    screenshot,
+    step,
+  });
   await page.goto(`${origin}/you`, { waitUntil: "domcontentloaded" });
   await page.getByText(`@${ana.handle}`, { exact: true }).waitFor();
   await page.getByTestId("erase-device").click();

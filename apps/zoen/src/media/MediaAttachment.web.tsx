@@ -253,6 +253,7 @@ function WebFile({ itemId, version, title, voice, expectedHash }: Props) {
             </View>
             {local && safeImages.has(local.info.mime) ? (
               <Image
+                cachePolicy="none"
                 source={{ uri: local.uri }}
                 style={{ width: '100%', height: 480 }}
                 contentFit="contain"

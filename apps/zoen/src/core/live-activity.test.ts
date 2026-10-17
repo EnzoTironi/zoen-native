@@ -57,6 +57,7 @@ function snapshot(): Snapshot {
     ],
     agents: [],
     integrity_warnings: {},
+    has_unreadable_local_history: false,
     requests: [],
   };
 }

@@ -56,8 +56,10 @@ the compact content, never `view_json`, page bodies, account keys or database pa
 
 `catalog.ts` publishes at most 50 explicitly selected, currently accessible item IDs and
 titles, with account/device/version metadata. The default selection is empty and
-`hideInSpotlight` remains true. Callers must replace catalogs with an empty catalog and
-remove applicable donations on sign-out or access loss.
+`hideInSpotlight` remains true. Callers must replace catalogs with an empty catalog on
+sign-out or access loss. These navigation intents are not donation-enabled, so there
+are no registered donations to remove. Calling the SDK's donation deletion API for
+their names fails even on a fresh install.
 
 `intents.ts` accepts only `zoen.openItem` and `zoen.openChat`. It validates the invocation
 age, exact parameter shape, current account/device, item version and current Space
@@ -166,7 +168,7 @@ confirmation after an account change and immediately fences old UI results,
 timelines, live status and new requests while the operation runs.
 
 Before deleting canonical data, it awaits the registered projection cleanup: widget
-content, entity catalogs, activity termination, queued App Intents, donations,
+content, entity catalogs, activity termination, queued App Intents,
 presentation preferences and device notifications. Notification cleanup drains local
 notification and badge writes already in flight. If any cleanup fails, the operation
 stays retryable and does not delete the account's keys or database. A process restart
@@ -175,7 +177,13 @@ at that preflight stage may restore the unchanged account; erasure has not commi
 The iOS bridge then records a small nonsecret intent scoped to the exact device,
 drains active core requests and history reception, stops sync and calls the existing
 Rust erasure operation. It additionally verifies removal of the account's complete
-Keychain namespace and clears staged previews. The intent is removed last; a cold
+Keychain namespace and clears the six owned cache namespaces: `ZoenMedia`,
+`ImagePicker`, `ImageManipulator`, `DocumentPicker`, `ExpoAudio` and `zoen-exports`.
+The preflight also drains active SDK file writers and clears image memory/disk caches
+through the public Expo Image APIs. Private image views disable caching. Picker
+originals are disposed after profile processing, including failure paths. Cleanup
+preserves photo-library originals, Documents, assets, fonts and update caches; re-audit
+the owned namespace list when upgrading the SDK packages. The intent is removed last; a cold
 open resumes an interrupted destructive stage before allowing another account to
 open. Neither the account on other devices nor their histories is deleted.
 

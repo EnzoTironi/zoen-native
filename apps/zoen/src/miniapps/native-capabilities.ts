@@ -15,6 +15,7 @@ import {
   type PhotoPreview,
 } from './capability-data';
 import { jpegPreview } from './photo-preview';
+import { sensitiveCacheWork } from '../media/cache-work';
 
 const photos = new PhotoVault();
 let presenting = false;
@@ -226,10 +227,12 @@ export async function perform(
     let result: unknown;
     switch (cap) {
       case 'photos.pick':
-        result = await pickPhoto(params, lease, false);
+        result = await sensitiveCacheWork.run(() => pickPhoto(params, lease, false));
         break;
       case 'camera.capture': {
-        const selection = await pickPhoto({ max: 1, maxSide: 1024 }, lease, true);
+        const selection = await sensitiveCacheWork.run(() =>
+          pickPhoto({ max: 1, maxSide: 1024 }, lease, true),
+        );
         if (!selection[0]) throw new Error('Você não tirou uma foto.');
         result = selection[0];
         break;

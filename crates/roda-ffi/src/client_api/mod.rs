@@ -28,6 +28,7 @@ struct Snapshot {
     connection: ConnectionDto,
     conversations: Vec<SpaceSummary>,
     integrity_warnings: std::collections::BTreeMap<String, String>,
+    has_unreadable_local_history: bool,
     requests: Vec<AgentRequestDto>,
     agents: Vec<AgentProfile>,
 }
@@ -909,12 +910,16 @@ impl RodaEngine {
 
 impl RodaEngine {
     fn client_snapshot(&self) -> Snapshot {
+        // A broken signed log has no trusted membership to expose. Report only
+        // its presence, without deriving names or audit access from bad events.
+        let has_unreadable_local_history = !self.lock().broken_spaces.is_empty();
         Snapshot {
             account: self.account(),
             me: self.me().ok(),
             connection: self.connection(),
             conversations: self.spaces(),
             integrity_warnings: self.client_integrity_warnings(),
+            has_unreadable_local_history,
             requests: self.requests(),
             agents: self.agents(),
         }

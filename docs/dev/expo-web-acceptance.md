@@ -8,15 +8,18 @@ The first journey uses a real loopback Rust relay, disposable Postgres/Foundatio
 2. Check exact COOP/COEP values on sign-in aliases, root and worker routes; verify the WASM MIME type and an arbitrary dynamic chat URL returns application HTML.
 3. Create a private DM and a synthetic message before the browser joins. Use the ordinary **Conectar com outro aparelho** and **Mostrar código** flow, authorize through the existing CLI, and compare both sides' verification digits.
 4. Enter the isolated application and read the older encrypted message. Send from the Expo composer and require the real CLI peer's decrypted, persisted timeline to contain it. Send a reply from that peer and read it in Expo. Check outbound relay frames do not contain the private test text.
-5. Reload the actual `/chat/<id>` URL and require the same encrypted session and all three messages without onboarding again.
-6. Open You and cancel **Sair e apagar dados**. Reopen the chat and require all three messages again.
-7. Confirm local erasure, require the nonisolated sign-in document, reload it and require onboarding with no message composer or erasure action.
-8. Read the independent canonical peer and require all three earlier messages to remain present.
+5. Reload the actual `/chat/<id>` URL and require the same encrypted session and all three messages without onboarding or error alerts.
+6. Import a synthetic UTF-8 Markdown file through the real file chooser into that encrypted conversation. Edit a body block and require the local draft to survive a dynamic-route reload. Publish the edit, reload again, download the real Markdown export and compare its exact bytes with an export decrypted by the independent canonical CLI peer.
+7. Open You and cancel **Sair e apagar dados**. Reopen the chat and require all three messages again.
+8. Confirm local erasure, require the nonisolated sign-in document, reload it and require onboarding with no message composer or erasure action.
+9. Read the independent canonical peer and require all three earlier messages to remain present.
 
 Message assertions use the visible message's exact author and accessible button name,
 then its body. A hidden conversation preview can repeat that body; matching only text
-would make the assertion ambiguous. The erasure steps are authored acceptance criteria
-until a successful revision-specific run records them in `acceptance.json`.
+would make the assertion ambiguous. Checkpoint `03d787f` passed the messaging and
+erasure journey, but screenshot review found a false account-change banner. The
+reconnect correction, stricter zero-alert assertion and new Markdown journey need
+their own successful revision-specific run before being accepted.
 
 No IDB/session injection, fake identity-provider tokens, authentication bypass or production account is involved. The runner refuses a non-loopback relay. Browser evaluation is limited to standard isolation capabilities; account and message assertions use visible UI and the independently running Rust CLI.
 
@@ -51,4 +54,4 @@ The test uses the exported `_headers` with Cloudflare Pages itself. It does not 
 
 The retained artifact contains a revision, hashes and sizes of the actual export, completed steps, browser version, sanitized diagnostics, and screenshots after onboarding/history/roundtrip/reload. Failure screenshots mask the QR, link text and verification digits. No HAR, trace, raw WebSocket frames, IndexedDB dumps, CLI homes, identity keys, provider tokens or relay logs are uploaded. Private fixture homes and Pages state are removed after the run. Screenshots contain only the journey's explicitly synthetic content.
 
-An authored runner or passing syntax/type checks do not count as a passed journey. Use `acceptance.json`'s `passed` flag and completed steps from a successful CI run for revision-specific evidence. Broader media, pages, account recovery, provider login, Safari/WebKit, accessibility, offline/resume and performance acceptance remain additional work.
+An authored runner or passing syntax/type checks do not count as a passed journey. Use `acceptance.json`'s `passed` flag and completed steps from a successful CI run for revision-specific evidence. Broader media, collaborative document/conflict/history journeys, account recovery, provider login, Safari/WebKit, accessibility, offline/resume and performance acceptance remain additional work.

@@ -114,6 +114,51 @@ mod tests {
     use serde_json::{json, Value};
 
     #[tokio::test]
+    async fn cold_open_warns_about_unreadable_history_without_trusting_its_membership() {
+        let directory = std::env::temp_dir().join(roda_types::new_id("integrity-cold-open"));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory
+            .join("account.sqlite")
+            .to_string_lossy()
+            .into_owned();
+        let space = {
+            let core = RodaEngine::open(path.clone(), "en".into()).unwrap();
+            core.seed_demo_if_empty().unwrap();
+            let snapshot = core.client_snapshot();
+            assert!(!snapshot.has_unreadable_local_history);
+            let space = snapshot.conversations[0].id.clone();
+            let engine = core.lock();
+            let mut event = engine.store.events(&space).unwrap().remove(0);
+            // The JSON remains readable, but its signed log is no longer valid.
+            event.hash = "0".repeat(64);
+            engine
+                .store
+                .conn()
+                .execute(
+                    "UPDATE events SET json = ?1 WHERE space = ?2 AND seq = ?3",
+                    rusqlite::params![serde_json::to_string(&event).unwrap(), space, event.seq],
+                )
+                .unwrap();
+            space
+        };
+        let core = RodaEngine::open(path, "en".into()).unwrap();
+        let snapshot = core.client_snapshot();
+        assert!(snapshot.has_unreadable_local_history);
+        assert!(!snapshot.integrity_warnings.contains_key(&space));
+        assert!(core.lock().broken_spaces[&space].members.is_empty());
+        assert!(matches!(
+            core.client_verify_log(space.clone()),
+            Err(CoreError::Forbidden { .. })
+        ));
+        assert!(matches!(
+            core.client_log_events_page(space, None, 10),
+            Err(CoreError::Forbidden { .. })
+        ));
+        drop(core);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
     async fn integrity_reads_disk_and_pages_authorized_metadata_only() {
         let core = RodaEngine::open(":memory:".into(), "en".into()).unwrap();
         core.seed_demo_if_empty().unwrap();

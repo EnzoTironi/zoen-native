@@ -72,6 +72,7 @@ function notificationSnapshot(): Snapshot {
     me,
     connection: { state: 'online', synced: true, pending: '0', error: null },
     integrity_warnings: {},
+    has_unreadable_local_history: false,
     requests: [],
     agents: [],
     conversations: [

@@ -18,6 +18,7 @@ const empty: Snapshot = {
   connection: { state: 'offline', synced: false, pending: '0', error: null },
   conversations: [],
   integrity_warnings: {},
+  has_unreadable_local_history: false,
   requests: [],
   agents: [],
 };

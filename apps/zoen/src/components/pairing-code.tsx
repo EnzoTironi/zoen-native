@@ -20,6 +20,7 @@ export function PairingCode({ code, check }: { code: string; check: string }) {
   return (
     <View style={{ gap: 18, alignItems: 'center' }}>
       <Image
+        cachePolicy="none"
         source={{ uri }}
         accessibilityLabel="QR code para conectar este dispositivo"
         style={{ width: 248, height: 248, backgroundColor: '#FFFFFF', borderRadius: 16 }}

@@ -77,7 +77,7 @@ test('conversation projections preserve real privacy, roles, profiles and exact 
   }
   assert.throws(() => parseConversation({ ...conversation, privacy: 'Unknown' }), /privacy/);
   assert.throws(() => parseConversation({ ...conversation, privacy: undefined }), /text/);
-  assert.throws(() => parseConversation({ ...conversation, prefs: { pinned: false, archived: false, muted_until_ms: 9223372036854775807 } }), /text/);
+  assert.throws(() => parseConversation({ ...conversation, prefs: { pinned: false, archived: false, muted_until_ms: Number('9223372036854775807') } }), /text/);
   assert.throws(() => parseConversation({ ...conversation, event_count: '18446744073709551616' }), /integer/);
 });
 
@@ -114,4 +114,44 @@ test('integrity refusal is nonfatal and read retries never persist or publish a 
   assert.equal(closed(), false);
   assert.deepEqual(await messages.integrityRequest({ op: 'verify_log' }), { valid: false, error: 'Conflicting membership' });
   assert.equal(saves(), savedBefore);
+});
+
+test('a queued local integrity read survives the initial transport generation change', async (t) => {
+  let reads = 0;
+  const report = { valid: true, error: null };
+  const { messages, closed, saves, states } = setup(t, undefined, async () => {
+    reads++;
+    return JSON.stringify(report);
+  });
+  // Queue before start has restored the account and announced connecting. The
+  // transport generation changes while this local read waits behind restore.
+  const starting = messages.start();
+  const reading = messages.integrityRequest({ op: 'verify_log', space_id: 'sp_fixture' });
+  await starting;
+  assert.deepEqual(await reading, report);
+  assert.equal(reads, 1);
+  assert.equal(saves(), 0);
+  assert.equal(closed(), false);
+  assert.equal(states.some(state => state.kind === 'failed'), false);
+});
+
+test('an integrity read suspended in the core rejects its late response after session stop', async (t) => {
+  let finish!: (value: string) => void;
+  let entered!: () => void;
+  const waiting = new Promise<string>(resolve => { finish = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const { messages, saves, states } = setup(t, undefined, async () => {
+    entered();
+    return waiting;
+  });
+  await messages.start();
+  const reading = messages.integrityRequest({ op: 'verify_log', space_id: 'sp_fixture' });
+  const refused = assert.rejects(reading, /sessão foi encerrada/);
+  await started;
+  messages.stop();
+  const emittedBefore = states.length;
+  finish(JSON.stringify({ valid: true, error: null }));
+  await refused;
+  assert.equal(states.length, emittedBefore);
+  assert.equal(saves(), 0);
 });

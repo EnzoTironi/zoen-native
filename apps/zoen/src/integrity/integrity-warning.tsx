@@ -31,7 +31,24 @@ export function IntegrityWarning({ spaceId }: { spaceId: string }) {
 /** Optional account overview entry: only warnings are rendered. */
 export function IntegrityWarnings() {
   const { snapshot } = useClient();
-  return snapshot?.conversations
-    .filter((chat) => snapshot.integrity_warnings[chat.id])
-    .map((chat) => <IntegrityWarning key={chat.id} spaceId={chat.id} />);
+  const { colors } = useTheme();
+  return (
+    <>
+      {snapshot?.has_unreadable_local_history ? (
+        <Surface>
+          <Text accessibilityRole="alert" style={{ color: colors.danger, fontWeight: '600' }}>
+            Parte do histórico não pôde ser validada
+          </Text>
+          <Text style={{ color: colors.secondary }}>
+            Confira o histórico em outro aparelho antes de confiar nesta cópia.
+          </Text>
+        </Surface>
+      ) : null}
+      {snapshot?.conversations
+        .filter((chat) => snapshot.integrity_warnings[chat.id])
+        .map((chat) => (
+          <IntegrityWarning key={chat.id} spaceId={chat.id} />
+        ))}
+    </>
+  );
 }

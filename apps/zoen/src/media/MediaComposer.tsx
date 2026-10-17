@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Modal, Platform, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
-import { File } from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -20,6 +19,8 @@ import { useDialogs } from '../components/dialogs';
 import { useClient } from '../core/provider';
 import { AudioClip, clipTime, pauseAudioPlayback } from './AudioClip';
 import type { FileSelection } from './types';
+import { discardCacheCopy } from './cache-files';
+import { sensitiveCacheWork } from './cache-work';
 import { MAX_SELECTED_BYTES } from './types';
 import { VideoClip } from './VideoClip';
 
@@ -31,10 +32,8 @@ async function discard(uri: string | undefined) {
     if (uri?.startsWith('blob:')) URL.revokeObjectURL(uri);
     return;
   }
-  if (!uri?.startsWith('file:')) return;
   try {
-    const file = new File(uri);
-    if (file.exists) await file.delete();
+    discardCacheCopy(uri);
   } catch {
     /* Cache eviction also disposes a staged selection. */
   }
@@ -123,8 +122,22 @@ export function MediaComposer({
       }
     })();
     stopTask.current = task;
-    return task;
+    return sensitiveCacheWork.track(task);
   }, [recorder, inform]);
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    return store.registerDeviceCleanup(async () => {
+      const uri = mounted.current ? recorder.uri : undefined;
+      await stop();
+      // SDK58 releases this SharedObject on unmount and synchronously stops
+      // its native recorder. A retained retry must never call that released object.
+      if (mounted.current && recorder.getStatus().isRecording) await recorder.stop();
+      if (mounted.current && recorder.getStatus().isRecording)
+        throw new Error('Não foi possível encerrar a gravação deste aparelho.');
+      discardCacheCopy(uriToDiscard.current);
+      discardCacheCopy(uri ?? undefined);
+    });
+  }, [store, stop, recorder]);
   useFocusEffect(
     useCallback(() => {
       focused.current = true;
@@ -145,6 +158,13 @@ export function MediaComposer({
   }, [recorderState.isRecording, recorderState.durationMillis, stop]);
 
   async function pick(kind: 'document' | 'photo' | 'camera') {
+    try {
+      await sensitiveCacheWork.run(() => pickSelection(kind));
+    } catch (reason) {
+      if (mounted.current) setFailure(failureMessage(reason));
+    }
+  }
+  async function pickSelection(kind: 'document' | 'photo' | 'camera') {
     if (!media || busy || disabled || selecting.current || !focused.current) return;
     selecting.current = true;
     setBusy(true);
@@ -223,6 +243,13 @@ export function MediaComposer({
     }
   }
   async function start() {
+    try {
+      await sensitiveCacheWork.run(startRecording);
+    } catch (reason) {
+      if (mounted.current) setFailure(failureMessage(reason));
+    }
+  }
+  async function startRecording() {
     if (!media || busy || disabled || recording.current) return;
     setBusy(true);
     setFailure(null);
@@ -387,6 +414,7 @@ export function MediaComposer({
           </View>
           {selection?.mime.startsWith('image/') ? (
             <Image
+              cachePolicy="none"
               source={{ uri: selection.uri }}
               style={{ width: '100%', height: 320, borderRadius: 18 }}
               contentFit="contain"

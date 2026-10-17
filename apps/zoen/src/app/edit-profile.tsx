@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Stack, router } from 'expo-router';
-import { Image, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { useClient } from '../core/provider';
 import { pickProfilePhoto } from '../profile/picker';
 import { useProfilePhoto } from '../profile/use-profile-photo';
@@ -44,6 +45,7 @@ export default function EditProfile() {
         {(photo === 'set' ? draft?.uri : photo === 'keep' ? currentPhoto : undefined) ? (
           <Image
             accessibilityLabel="Prévia da sua foto de perfil"
+            cachePolicy="none"
             source={{ uri: photo === 'set' ? draft?.uri : currentPhoto }}
             style={{ width: 104, height: 104, borderRadius: 52 }}
           />

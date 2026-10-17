@@ -191,6 +191,7 @@ function FileAttachmentContent({
       )}
       {local?.info.mime.startsWith('image/') ? (
         <Image
+          cachePolicy="none"
           source={{ uri: local.uri }}
           style={{ width: '100%', height: 180, borderRadius: 12 }}
           contentFit="contain"

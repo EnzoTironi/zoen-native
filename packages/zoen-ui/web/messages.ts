@@ -555,11 +555,16 @@ export class Messages {
 
   async integrityRequest(command: unknown): Promise<unknown> {
     let result: unknown;
-    const generation = this.generation;
+    // This is a local, nonpersistent read. Reconnecting the same account does
+    // not invalidate its log; stopping this Messages instance does.
     await this.enqueue(async () => {
-      try { result = JSON.parse(await this.core.text({kind: 'integrity_request', request: JSON.stringify(command)})); }
+      try {
+        const response = await this.core.text({kind: 'integrity_request', request: JSON.stringify(command)});
+        if (this.closed) throw new Error('Esta sessão foi encerrada. Abra o relatório novamente.');
+        result = JSON.parse(response);
+      }
       catch (error) { throw Object.assign(new Error(message(error)), {soft: true}); }
-    }, () => generation !== this.generation ? 'A conta mudou. Abra este relatório novamente.' : null, false);
+    }, undefined, false);
     return result;
   }
 

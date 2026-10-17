@@ -393,6 +393,7 @@ class BrowserDriver implements CoreDriver {
       },
       conversations,
       integrity_warnings: {},
+      has_unreadable_local_history: false,
       requests: [],
       agents: [],
     };

@@ -48,8 +48,17 @@ final class ZoenDeviceErasure {
   func complete() throws {
     if FileManager.default.fileExists(atPath: marker.path) { try FileManager.default.removeItem(at: marker) }
   }
-  static func erasePreviewCache() throws {
-    let root = URL.cachesDirectory.appending(path: "ZoenMedia", directoryHint: .isDirectory)
-    if FileManager.default.fileExists(atPath: root.path) { try FileManager.default.removeItem(at: root) }
+  /// SDK58-owned copies only. Assets, fonts, updates, Documents and Photos stay untouched.
+  static func erasePreviewCache(cacheRoot: URL = .cachesDirectory) throws {
+    let owned = ["ZoenMedia", "ImagePicker", "ImageManipulator", "DocumentPicker", "ExpoAudio", "zoen-exports"]
+    var failed = false
+    for name in owned {
+      let directory = cacheRoot.appending(path: name, directoryHint: .isDirectory)
+      do {
+        if FileManager.default.fileExists(atPath: directory.path) { try FileManager.default.removeItem(at: directory) }
+        if FileManager.default.fileExists(atPath: directory.path) { failed = true }
+      } catch { failed = true }
+    }
+    if failed { throw Failure.incomplete }
   }
 }

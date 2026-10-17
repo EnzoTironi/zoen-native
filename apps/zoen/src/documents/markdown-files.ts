@@ -2,8 +2,13 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { markdownFilename, validateMarkdown } from './editing';
+import { sensitiveCacheWork } from '../media/cache-work';
 
-export async function pickMarkdown(): Promise<{ path: string; markdown: string } | null> {
+export function pickMarkdown(): Promise<{ path: string; markdown: string } | null> {
+  return sensitiveCacheWork.run(pickMarkdownCopy);
+}
+
+async function pickMarkdownCopy(): Promise<{ path: string; markdown: string } | null> {
   const result = await DocumentPicker.getDocumentAsync({
     type: ['text/markdown', 'text/plain', 'text/x-markdown'],
     copyToCacheDirectory: true,
@@ -20,7 +25,11 @@ export async function pickMarkdown(): Promise<{ path: string; markdown: string }
   }
 }
 
-export async function exportMarkdown(title: string, markdown: string): Promise<void> {
+export function exportMarkdown(title: string, markdown: string): Promise<void> {
+  return sensitiveCacheWork.run(() => shareMarkdownCopy(title, markdown));
+}
+
+async function shareMarkdownCopy(title: string, markdown: string): Promise<void> {
   if (!(await Sharing.isAvailableAsync()))
     throw new Error('Este aparelho não oferece compartilhamento de arquivos.');
   const directory = new Directory(
