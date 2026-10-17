@@ -276,6 +276,16 @@ struct RootView: View {
 
     private var barVisible: Bool { model.path(model.tab).isEmpty }
 
+    private var searchTabRole: TabRole {
+        // Runtime availability alone cannot hide a symbol from older SDKs.
+        #if compiler(>=6.4)
+        if #available(iOS 27.0, *) {
+            return .prominent
+        }
+        #endif
+        return .search
+    }
+
     private var rootTabs: some View {
         TabView(selection: $selectedTab) {
                 Tab(value: AppTab.conversations) { stack(for: .conversations) } label: {
@@ -287,14 +297,8 @@ struct RootView: View {
                 Tab(value: AppTab.you) { stack(for: .you) } label: {
                     Label { Text("Profile") } icon: { profileTabImage }
                 }
-                if #available(iOS 27.0, *) {
-                    Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: .prominent) {
-                        Color.clear
-                    }
-                } else {
-                    Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: .search) {
-                        Color.clear
-                    }
+                Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: searchTabRole) {
+                    Color.clear
                 }
             }
             .tabViewStyle(.tabBarOnly)
