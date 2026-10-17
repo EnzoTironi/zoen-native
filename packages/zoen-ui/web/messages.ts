@@ -356,7 +356,10 @@ export class Messages {
   private act(space: string, operation: Parameters<MessageCore['text']>[0]): Promise<void> {
     if (this.closed) return Promise.reject(new Error('Recarregue o Zoen para abrir esta sessão de novo.'));
     if (this.connection.kind !== 'ready') return Promise.reject(new Error('Sem conexão agora. Tente de novo em instantes.'));
-    if (!this.conversations.find((conversation) => conversation.id === space)?.can_send) {
+    const conversation = this.conversations.find((conversation) => conversation.id === space);
+    // These operations write only the member's Personal Space, not the read-only chat.
+    const personal = operation.kind === 'set_thread_follow' || operation.kind === 'mark_thread_read';
+    if (!conversation || (!personal && !conversation.can_send)) {
       return Promise.reject(new Error('Esta conversa ainda está sendo preparada no seu celular.'));
     }
     const generation = this.generation;

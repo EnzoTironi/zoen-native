@@ -35,7 +35,7 @@ function setup(t: test.TestContext, read: () => Promise<string> = async () => { 
     if (operation.kind === 'restore') return JSON.stringify([conversation]);
     if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
     if (operation.kind === 'bootstrap') return JSON.stringify({ snapshot: 'snapshot', frames: [], conversations: [conversation] });
-    if (operation.kind === 'mark_read') return read();
+    if (operation.kind === 'mark_read' || operation.kind === 'mark_thread_read' || operation.kind === 'set_thread_follow') return read();
     throw new Error('Unexpected operation');
   } };
   const messages = new Messages({ core, session, vault: { save: async () => {}, sign: async () => new Uint8Array(64) }, changed: (state) => states.push(state) });
@@ -49,6 +49,27 @@ async function connect(messages: Messages) {
   socket.frame({ kind: 'challenge', nonce: 'nonce', relay: 'relay.example', protocol: 4 }); await settle();
   socket.frame({ kind: 'ready', identity, registered: true }); await settle();
 }
+
+test('read-only members can update personal thread state without gaining send permission', async (t) => {
+  const original = conversation.can_send;
+  conversation.can_send = false;
+  t.after(() => { conversation.can_send = original; });
+  let updates = 0;
+  const { messages } = setup(t, async () => {
+    updates++;
+    return JSON.stringify({ snapshot: 'personal', frames: [], conversations: [conversation] });
+  });
+  await connect(messages);
+  await messages.setThreadFollow(conversation.id, 'root', false);
+  await messages.markThreadRead(conversation.id, 'root');
+  assert.equal(updates, 2);
+  await assert.rejects(messages.send({ space: conversation.id, text: 'not allowed' }));
+  await assert.rejects(messages.post({ space: conversation.id, text: 'not allowed' }), /Esta conversa ainda/);
+  await assert.rejects(messages.annotate(conversation.id, 'root', { Edit: { text: 'not allowed' } }), /Esta conversa ainda/);
+  await assert.rejects(messages.markThreadRead('unknown-space', 'root'));
+  messages.stop();
+  await assert.rejects(messages.markThreadRead(conversation.id, 'root'));
+});
 
 test('message snapshots preserve reaction participant identities and compound emoji', async (t) => {
   const { messages, states } = setup(t);

@@ -35,7 +35,8 @@ class ActivityNotifications(private val context: Context) {
             // Thread replies notify only people in the thread (they count in threadsUnread).
             if (space.unread == 0u && space.threadsUnread == 0u) { manager.cancel("chat:${space.id}", 1); return@forEach }
             val former = oldSpaces[space.id]
-            if (former != null && space.eventCount <= former.eventCount || space.lastAuthor?.isMe != false) return@forEach
+            if (!hasNewUnreadActivity(space.unread, space.threadsUnread, space.eventCount,
+                    former?.unread ?: 0u, former?.threadsUnread ?: 0u, former?.eventCount ?: 0uL) || space.lastAuthor?.isMe != false) return@forEach
             if (context.getSharedPreferences("zoen", Context.MODE_PRIVATE).getBoolean("muted.person:${state.me.id}:${space.lastAuthor?.id}", false)) return@forEach
             if (space.muted) return@forEach
             if (visible && activeSpace == space.id) return@forEach
