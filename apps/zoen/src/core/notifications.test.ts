@@ -64,6 +64,7 @@ function notificationSnapshot(): Snapshot {
       relay_url: 'https://relay.tryzoen.com',
       registered: true,
       unlocked: true,
+      setup_pending: false,
     },
     me,
     connection: { state: 'online', synced: true, pending: '0', error: null },
