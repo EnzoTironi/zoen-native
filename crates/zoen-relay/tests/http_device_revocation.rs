@@ -203,6 +203,7 @@ impl TestRelay {
             .as_millis() as i64;
         self.client
             .request(method, format!("{}{path}", self.url))
+            .header("origin", "https://app.tryzoen.com")
             .header("x-zoen-device", author.device.as_deref().unwrap())
             .header("x-zoen-ts", ts.to_string())
             .header("x-zoen-sig", author.key.sign(&message(ts)))
@@ -233,6 +234,34 @@ async fn revoked_device_cannot_upload_or_delete_or_report_with_valid_signatures(
     let test = TestRelay::new().await;
     let author = test.register().await;
     let transfer = Signer::generate().id();
+
+    for (path, method) in [
+        (format!("/v1/transfer/{transfer}/0"), "PUT"),
+        (format!("/v1/transfer/{transfer}"), "DELETE"),
+    ] {
+        let preflight = test
+            .client
+            .request(Method::OPTIONS, format!("{}{path}", test.url))
+            .header("origin", "https://app.tryzoen.com")
+            .header("access-control-request-method", method)
+            .header(
+                "access-control-request-headers",
+                "content-type,x-zoen-device,x-zoen-ts,x-zoen-sig",
+            )
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(preflight.status(), StatusCode::OK);
+        assert_eq!(preflight.headers()["access-control-allow-origin"], "*");
+        assert!(preflight.headers()["access-control-allow-methods"]
+            .to_str()
+            .unwrap()
+            .contains(method));
+        assert!(preflight
+            .headers()
+            .get("access-control-allow-credentials")
+            .is_none());
+    }
 
     for revoked in [false, true] {
         if revoked {
@@ -310,6 +339,9 @@ async fn revoked_device_cannot_upload_or_delete_or_report_with_valid_signatures(
             ("report POST", report, StatusCode::OK),
             ("transfer DELETE", delete, StatusCode::NO_CONTENT),
         ] {
+            if endpoint.starts_with("transfer") {
+                assert_eq!(response.headers()["access-control-allow-origin"], "*");
+            }
             assert_eq!(
                 response.status(),
                 if revoked {
@@ -327,10 +359,12 @@ async fn revoked_device_cannot_upload_or_delete_or_report_with_valid_signatures(
     let retained = test
         .client
         .get(format!("{}/v1/transfer/{transfer}/0", test.url))
+        .header("origin", "https://app.tryzoen.com")
         .send()
         .await
         .unwrap();
     assert_eq!(retained.status(), StatusCode::OK);
+    assert_eq!(retained.headers()["access-control-allow-origin"], "*");
     assert_eq!(
         retained.bytes().await.unwrap().as_ref(),
         b"ciphertext before revocation"

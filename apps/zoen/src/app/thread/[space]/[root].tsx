@@ -1,3 +1,4 @@
+import { ProfileAvatar } from '../../../profile/profile-avatar';
 import { useState } from 'react';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
@@ -7,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCoreQuery } from '../../../core/query';
 import { useClient } from '../../../core/provider';
 import { messageText } from '../../../core/presentation';
-import { Avatar, EmptyState, Loading, NativeButton } from '../../../components/primitives';
+import { EmptyState, Loading, NativeButton } from '../../../components/primitives';
 import { useTheme } from '../../../theme';
 import { MediaComposer } from '../../../media/MediaComposer';
 import { MessageMedia } from '../../../media/MediaAttachment';
@@ -79,7 +80,8 @@ export default function Thread() {
                 borderColor: colors.line,
               }}
             >
-              <Avatar
+              <ProfileAvatar
+                person={item.author}
                 name={item.author.name}
                 color={item.author.tint_hex}
                 agent={item.author.kind === 'Agent'}

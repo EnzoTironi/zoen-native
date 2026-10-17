@@ -85,7 +85,7 @@ export function MiniappWidget(props: NativeWidgetContent, environment: WidgetEnv
   );
 }
 
-export default createWidget('ZoenMiniapp', MiniappWidget, {
+export default createWidget<NativeWidgetContent>('ZoenMiniapp', MiniappWidget, {
   redacted: true,
   title: 'Zoen',
   detail: 'Escolha um miniapp no Zoen',

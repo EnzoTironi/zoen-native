@@ -60,6 +60,52 @@ pub struct ProfilePhoto {
     pub mime: String,
 }
 
+/// Bound profile images on both sides of every binary bridge.
+pub const MAX_PHOTO_BYTES: usize = 5 * 1024 * 1024;
+
+impl ProfilePhoto {
+    pub fn valid(&self) -> bool {
+        [&self.sha256, &self.blob, &self.key].iter().all(|value| {
+            value.len() == 64
+                && value
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        }) && matches!(
+            self.mime.as_str(),
+            "image/jpeg" | "image/png" | "image/heic" | "image/webp"
+        )
+    }
+
+    pub fn seal(bytes: &[u8], mime: &str) -> Option<(Self, Vec<u8>)> {
+        if bytes.is_empty() || bytes.len() > MAX_PHOTO_BYTES {
+            return None;
+        }
+        let (key, sealed) = crate::media::seal(bytes);
+        let photo = Self {
+            sha256: hex::encode(Sha256::digest(bytes)),
+            blob: hex::encode(Sha256::digest(&sealed)),
+            key: hex::encode(key),
+            mime: mime.into(),
+        };
+        photo.valid().then_some((photo, sealed))
+    }
+
+    /// Both hashes are checked; no caller can relabel someone else's blob.
+    pub fn open(&self, sealed: &[u8]) -> Option<Vec<u8>> {
+        if !self.valid()
+            || sealed.len() > MAX_PHOTO_BYTES + 40
+            || hex::encode(Sha256::digest(sealed)) != self.blob
+        {
+            return None;
+        }
+        let bytes = crate::media::open(&hex::decode(&self.key).ok()?, sealed)?;
+        (!bytes.is_empty()
+            && bytes.len() <= MAX_PHOTO_BYTES
+            && hex::encode(Sha256::digest(&bytes)) == self.sha256)
+            .then_some(bytes)
+    }
+}
+
 impl ProfileFields {
     pub fn to_bytes(&self) -> Vec<u8> {
         self.encode_to_vec()

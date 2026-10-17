@@ -74,6 +74,12 @@ matching Nitro's native dependency. CNG, pod installation, and cold/warm redirec
 still require validation in the generated app. The upstream compatibility table stops
 at RN0.87; RN0.88 requires build/runtime validation.
 
+Expo Router also sees incoming URLs. Its native intent handler recognizes only the
+configured Google iOS reverse scheme and `/oauth2callback`, and returns the protected
+root route without forwarding the authorization code or state into screen parameters.
+The native Google SDK remains the only credential handler; this navigation hint never
+authenticates an account. A unit regression covers the callback and foreign schemes.
+
 ## Apple portal work remains pending
 
 The Apple Developer portal was not inspected or modified. The Chrome tab integration

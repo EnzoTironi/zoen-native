@@ -9,7 +9,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? providers.googleWebClientId;
   const appleServiceId = process.env.EXPO_PUBLIC_APPLE_SERVICE_ID?.trim();
   const appleRedirectUri = process.env.EXPO_PUBLIC_APPLE_REDIRECT_URI?.trim();
-  const plugins = [...(config.plugins ?? [])];
+  const plugins = [...(config.plugins ?? []), './plugins/with-native-surfaces.cjs'];
   if (googleIosClientId) {
     const suffix = '.apps.googleusercontent.com';
     if (!googleIosClientId.endsWith(suffix)) throw new Error('Invalid Google iOS client ID.');

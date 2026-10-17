@@ -10,18 +10,17 @@ use std::{
     collections::BTreeSet,
     future::Future,
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
+        Arc,
     },
     time::Duration,
 };
 
 use base64::Engine as _;
 use roda_log::Signer;
-use roda_proto::{DeviceCertificate, Op, Reply, transfer_message};
+use roda_proto::{transfer_message, DeviceCertificate, Op, Reply};
 
 use crate::{
-    AccountDto, CoreError, RodaEngine,
     api::SecretVault,
     i18n::t,
     link::{self, HistoryBox, IdentityBox, LinkCode, Peer, Pending},
@@ -29,6 +28,7 @@ use crate::{
     net::http_base,
     profile::VAULT_AGREEMENT,
     sync::{VAULT_DEVICE, VAULT_IDENTITY},
+    AccountDto, CoreError, RodaEngine,
 };
 
 const VAULT_PEERS: &str = "link.peers";
@@ -1063,10 +1063,9 @@ mod pin_tests {
             profile_seen_version: 0,
             profile_fields: String::new(),
         };
-        assert!(
-            core.finish_link(pending, device, boxed, vault.clone(), &expected)
-                .is_err()
-        );
+        assert!(core
+            .finish_link(pending, device, boxed, vault.clone(), &expected)
+            .is_err());
         assert!(core.account().is_none());
         assert!(core.lock().store.meta("account").unwrap().is_none());
         assert_eq!(vault.reads.load(Ordering::SeqCst), 0);
@@ -1076,13 +1075,12 @@ mod pin_tests {
     async fn malformed_provider_identity_is_refused_before_vault_reads_or_recovery_network() {
         let core = RodaEngine::open(":memory:".into(), "en-US".into()).unwrap();
         let vault = Arc::new(Vault::default());
-        assert!(
-            core.link_wait_expected(vault.clone(), 1, Some("invalid".into()))
-                .await
-                .is_err()
-        );
-        assert!(
-            core.restore_backup_expected(
+        assert!(core
+            .link_wait_expected(vault.clone(), 1, Some("invalid".into()))
+            .await
+            .is_err());
+        assert!(core
+            .restore_backup_expected(
                 "not a URL".into(),
                 "valid_handle".into(),
                 "secret".into(),
@@ -1091,8 +1089,7 @@ mod pin_tests {
                 Some("invalid".into())
             )
             .await
-            .is_err()
-        );
+            .is_err());
         assert!(core.account().is_none());
         assert_eq!(vault.reads.load(Ordering::SeqCst), 0);
         assert_eq!(vault.writes.load(Ordering::SeqCst), 0);
@@ -1249,28 +1246,25 @@ mod initial_history_tests {
         let receive = core.history_receive.begin(5_000).unwrap();
         let mut missing = opened.clone();
         missing.space = "sp_not_synced".into();
-        assert!(
-            core.commit_initial_history(vec![opened.clone(), missing], 1, 0, &receive)
-                .is_err()
-        );
+        assert!(core
+            .commit_initial_history(vec![opened.clone(), missing], 1, 0, &receive)
+            .is_err());
         assert!(core.history_status().unwrap().initial_pending);
         assert!(matches!(
             core.lock().logs["sp_initial_history"].events()[1].body,
             EventBody::Sealed { .. }
         ));
-        assert!(
-            core.lock()
-                .store
-                .meta(META_HISTORY_COMPLETE)
-                .unwrap()
-                .is_none()
-        );
+        assert!(core
+            .lock()
+            .store
+            .meta(META_HISTORY_COMPLETE)
+            .unwrap()
+            .is_none());
         let mut forged = opened.clone();
         forged.sig = "00".repeat(64);
-        assert!(
-            core.commit_initial_history(vec![forged], 1, 0, &receive)
-                .is_err()
-        );
+        assert!(core
+            .commit_initial_history(vec![forged], 1, 0, &receive)
+            .is_err());
         assert!(core.history_status().unwrap().initial_pending);
         assert_eq!(
             core.commit_initial_history(vec![opened], 1, 0, &receive)
@@ -1309,14 +1303,12 @@ mod initial_history_tests {
         assert!(reopened.unlock(vault).unwrap());
         assert!(!reopened.history_status().unwrap().initial_pending);
         assert!(reopened.lock().store.meta(META_HISTORY).unwrap().is_none());
-        assert!(
-            reopened
-                .lock()
-                .store
-                .meta(&chunk_meta(0))
-                .unwrap()
-                .is_none()
-        );
+        assert!(reopened
+            .lock()
+            .store
+            .meta(&chunk_meta(0))
+            .unwrap()
+            .is_none());
         // No relay connection exists: a successful replay must use the committed receipt.
         assert_eq!(
             reopened.receive_history(5_000, None).await.unwrap(),
@@ -1340,21 +1332,17 @@ mod initial_history_tests {
             tokio::time::sleep(Duration::from_millis(10)).await;
             cancel.cancel();
         });
-        assert!(
-            receive
-                .wait(std::future::pending::<Result<(), CoreError>>())
-                .await
-                .is_err()
-        );
+        assert!(receive
+            .wait(std::future::pending::<Result<(), CoreError>>())
+            .await
+            .is_err());
         cancellation.await.unwrap();
         drop(receive);
         let mut retry = control.begin(10).unwrap();
-        assert!(
-            retry
-                .wait(std::future::pending::<Result<(), CoreError>>())
-                .await
-                .is_err()
-        );
+        assert!(retry
+            .wait(std::future::pending::<Result<(), CoreError>>())
+            .await
+            .is_err());
         drop(retry);
         assert!(control.begin(5_000).is_ok());
         assert!(!valid_history_manifest(&HistoryBox {

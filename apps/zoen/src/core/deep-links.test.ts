@@ -49,3 +49,15 @@ test('notification taps are account-bound local navigation hints and preserve fu
   ])
     assert.equal(validLocalNotification(invalid, 'current'), null);
 });
+
+test('local Metro development launches open the entry screen without becoming invalid invitations', () => {
+  const launch = 'exp+zoen://?__expo_url=http%3A%2F%2Flocalhost%3A58704';
+  assert.equal(nativeLinkPath(launch, true), '/');
+  assert.equal(nativeLinkPath(launch, false), '/open-link?invalid=1');
+  for (const value of [
+    'foreign://?__expo_url=http%3A%2F%2Flocalhost%3A58704',
+    'exp+zoen://?__expo_url=https%3A%2F%2Fforeign.test',
+    'exp+zoen://chat/private?__expo_url=http%3A%2F%2Flocalhost%3A58704',
+  ])
+    assert.equal(nativeLinkPath(value, true), '/open-link?invalid=1');
+});

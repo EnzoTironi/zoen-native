@@ -639,6 +639,7 @@ impl<S: Signer> Client<S> {
             });
         let owner = profile.and_then(|profile| profile.owner.as_ref());
         let owner_profile = owner.and_then(|id| self.saved.profiles.get(id));
+        let photo = self.fields_of(id).and_then(|(_, fields)| fields.photo);
         json!({ "id": id, "kind": profile.map(|profile| profile.kind).unwrap_or(roda_types::IdentityKind::Person),
             "name": name, "handle": profile.map(|profile| profile.handle.as_str()).unwrap_or(if id==self.account.identity {&self.account.handle}else{""}),
             "initials": name.split_whitespace().take(2).filter_map(|part| part.chars().next()).collect::<String>().to_uppercase(),
@@ -646,6 +647,8 @@ impl<S: Signer> Client<S> {
             "glyph": profile.and_then(|profile| profile.glyph.as_ref()), "bio": profile.map(|profile| profile.bio.as_str()).unwrap_or(""),
             "owner_id": owner, "owner_name": owner_profile.map(|profile| &profile.name),
             "owner_tint_hex": owner_profile.map(|profile| &profile.tint_hex),
+            "photo_sha256": photo.as_ref().map(|photo| &photo.sha256), "photo_mime": photo.as_ref().map(|photo| &photo.mime),
+            "photo_ready": photo.as_ref().is_some_and(|photo| self.profile_photo_cached(photo)),
             "is_me": id == self.account.identity, "is_mine": owner.is_some_and(|owner| *owner == self.account.identity) })
     }
 
@@ -784,9 +787,10 @@ impl<S: Signer> Client<S> {
             .values()
             .filter(|pending| pending.failure.is_none())
             .flat_map(|pending| &pending.blob_uploads)
+            .cloned()
+            .chain(self.pending_profile_uploads())
             .collect::<BTreeSet<_>>()
             .into_iter()
-            .cloned()
             .collect()
     }
 
@@ -804,6 +808,7 @@ impl<S: Signer> Client<S> {
         for pending in self.saved.outbox.values_mut() {
             pending.blob_uploads.retain(|blob| !blobs.contains(blob));
         }
+        self.mark_profile_uploaded(blobs);
         self.update(Vec::new())
     }
 

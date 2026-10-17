@@ -32,6 +32,11 @@ public class ZoenCoreModule: Module {
       try await self.session.materializeFile(itemId: itemId, version: version)
     }
     AsyncFunction("releaseLocalFile") { (uri: String) async in await self.session.releaseLocalFile(uri) }
+    AsyncFunction("saveProfile") { (request: String) async throws in try await self.session.saveProfile(request) }
+    AsyncFunction("materializeProfilePhoto") { (ownerId: String, deviceId: String, identityId: String, expectedSha256: String) async throws -> String in
+      try await self.session.materializeProfilePhoto(ownerId: ownerId, deviceId: deviceId, identityId: identityId, expectedSha256: expectedSha256)
+    }
+    AsyncFunction("releaseProfilePhoto") { (uri: String) async in await self.session.releaseProfilePhoto(uri) }
     AsyncFunction("close") { () async in await self.session.close() }
     OnAppBecomesActive { [session] in Task { await session.resumePendingHistory() } }
     OnDestroy { Task { await self.session.close() } }
@@ -48,6 +53,7 @@ private actor ZoenSession {
   private var historyRearmRequested = false
   private var generation: UInt64 = 0
   private let mediaFiles = ZoenMediaFiles()
+  private let profilePhotos = ZoenProfilePhotos()
 
   func open(mode: String, changed: @escaping @Sendable ([String: Any]) -> Void) async throws -> String {
     guard ["account", "demo"].contains(mode) else { throw SessionError.invalidMode }
@@ -155,6 +161,22 @@ private actor ZoenSession {
 
   func releaseLocalFile(_ uri: String) { mediaFiles.release(uri) }
 
+  func saveProfile(_ request: String) throws {
+    guard request.utf8.count <= 8192, let core else { throw SessionError.closed }
+    let save = try JSONDecoder().decode(ZoenProfilePhotos.Save.self, from: Data(request.utf8))
+    guard let account = core.account(), account.unlocked, !account.setupPending, account.identityId == save.ownerId, account.deviceId == save.deviceId else { throw ZoenProfilePhotos.Failure.changedSession }
+    _ = try core.updateMyProfile(name: save.name, bio: save.bio, photo: profilePhotos.change(save))
+    listener?.onChange(spaceIds: [])
+  }
+
+  func materializeProfilePhoto(ownerId: String, deviceId: String, identityId: String, expectedSha256: String) throws -> String {
+    guard let core, let account = core.account(), account.unlocked, !account.setupPending, account.identityId == ownerId, account.deviceId == deviceId else { throw ZoenProfilePhotos.Failure.changedSession }
+    guard let photo = try core.profilePhoto(identityId: identityId, expectedSha256: expectedSha256) else { return "null" }
+    return try profilePhotos.stage(photo)
+  }
+
+  func releaseProfilePhoto(_ uri: String) { profilePhotos.release(uri) }
+
   func resumePendingHistory() {
     if historyTask != nil {
       // Coalesce an external wake that raced the last attempt/defer. It must
@@ -223,6 +245,7 @@ private actor ZoenSession {
     listener = nil
     syncStarted = false
     mediaFiles.removeAll()
+    profilePhotos.removeAll()
   }
 }
 

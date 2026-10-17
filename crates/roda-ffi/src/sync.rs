@@ -24,16 +24,16 @@
 use std::collections::{HashMap, HashSet};
 
 use roda_log::content::SealedKind;
-use roda_log::{Author, Signer, SpaceLog, chain_hash, content_hash_of};
-use roda_proto::{Cursor, Envelope, Sequenced, normalize_handle};
+use roda_log::{chain_hash, content_hash_of, Author, Signer, SpaceLog};
+use roda_proto::{normalize_handle, Cursor, Envelope, Sequenced};
 use roda_types::*;
 use serde::{Deserialize, Serialize};
 
-use crate::CoreError;
 use crate::dto::Delivery;
 use crate::engine::{Engine, Entry, State};
 use crate::i18n::t;
 use crate::pages::{PlanReplay, Projection};
+use crate::CoreError;
 
 type R<T> = Result<T, CoreError>;
 

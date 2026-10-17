@@ -1,6 +1,6 @@
 //! Root authority for a browser that creates its own account. This object lives only
 //! in the worker. Its seed is encrypted into a separate vault record, never a client
-//! snapshot, linked-device box or public command result.
+//! snapshot or public command result. Device handover seals it inside this worker.
 use crate::LinkedAccount;
 use openmls_traits::signatures::Signer;
 use roda_log::{
@@ -9,7 +9,15 @@ use roda_log::{
 };
 use roda_proto::provider_auth::{provider_bind_message, ProviderBindRequest};
 use roda_types::{Identity, IdentityKind};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
+
+pub(crate) struct SealedLink {
+    pub device: String,
+    pub cert: String,
+    pub box_id: String,
+    pub sealed: Vec<u8>,
+    pub peer: roda_link::Peer,
+}
 
 pub struct Primary {
     seed: Zeroizing<[u8; 32]>,
@@ -82,6 +90,65 @@ impl Primary {
             return Err("This authority does not belong to the saved browser account.".into());
         }
         Ok(Self { seed, account })
+    }
+
+    /// The account seed is encoded only into the authenticated recipient's HPKE
+    /// ciphertext. Both temporary plaintext representations are explicitly erased.
+    pub(crate) fn seal_link(
+        &self,
+        code: &roda_link::LinkCode,
+        current: &LinkedAccount,
+    ) -> Result<SealedLink, String> {
+        let root = RootSigner::from_secret(&self.seed);
+        if current.identity != root.id()
+            || current.device != self.account.device
+            || current.primary != current.device
+        {
+            return Err("Este navegador não tem a autoridade desta conta.".into());
+        }
+        if code.device == current.device {
+            return Err("Este já é o aparelho atual.".into());
+        }
+        let (private, public) = roda_link::key_pair();
+        let private = Zeroizing::new(private);
+        let cert = root.sign(&roda_log::device_cert_message(&code.device));
+        let mut identity = roda_link::IdentityBox {
+            identity_secret: hex::encode(self.seed.as_ref()),
+            agreement_secret: current.agreement_secret.clone(),
+            cert: cert.clone(),
+            name: current.name.clone(),
+            handle: current.handle.clone(),
+            relay: current.relay.clone(),
+            primary: current.device.clone(),
+            primary_hpke: hex::encode(public),
+            profile_key: current.profile_key.clone(),
+            profile_key_version: current.profile_key_version,
+            profile_seen_version: current.profile_seen_version,
+            profile_fields: current.profile_fields.clone(),
+        };
+        let encoded = serde_json::to_vec(&identity).map(Zeroizing::new);
+        identity.identity_secret.zeroize();
+        identity.agreement_secret.zeroize();
+        identity.profile_key.zeroize();
+        identity.profile_fields.zeroize();
+        let plain = encoded.map_err(|_| "Não foi possível preparar o vínculo.")?;
+        let sealed = roda_link::seal(&code.hpke, &code.secret, "identity", &plain)
+            .ok_or("Não foi possível proteger o vínculo.")?;
+        if sealed.len() > 65_536 {
+            return Err("Perfil grande demais para vincular este aparelho.".into());
+        }
+        Ok(SealedLink {
+            device: code.device.clone(),
+            cert,
+            box_id: roda_link::box_id(&code.secret, "identity"),
+            sealed,
+            peer: roda_link::Peer {
+                device: code.device.clone(),
+                their_hpke: hex::encode(&code.hpke),
+                my_hpke_secret: hex::encode(private.as_slice()),
+                secret: hex::encode(code.secret),
+            },
+        })
     }
 
     pub fn account(&self) -> &LinkedAccount {

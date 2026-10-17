@@ -7,13 +7,13 @@
 //! only the device that showed it can open what was sealed. The relay carries bytes.
 
 use chacha20poly1305::{
-    ChaCha20Poly1305, Nonce,
     aead::{Aead, KeyInit, Payload},
+    ChaCha20Poly1305, Nonce,
 };
 use hpke_rs::{
-    Hpke, HpkePrivateKey, HpkePublicKey, Mode,
     hpke_types::{AeadAlgorithm, KdfAlgorithm, KemAlgorithm},
     rustcrypto::HpkeRustCrypto,
+    Hpke, HpkePrivateKey, HpkePublicKey, Mode,
 };
 use roda_types::{Event, EventBody};
 use serde::{Deserialize, Serialize};

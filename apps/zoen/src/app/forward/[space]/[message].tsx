@@ -1,10 +1,11 @@
+import { ProfileAvatar } from '../../../profile/profile-avatar';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { useClient } from '../../../core/provider';
 import { useTheme } from '../../../theme';
-import { Avatar, EmptyState } from '../../../components/primitives';
+import { EmptyState } from '../../../components/primitives';
 
 export default function Forward() {
   const { space, message } = useLocalSearchParams<{ space: string; message: string }>();
@@ -84,7 +85,11 @@ export default function Forward() {
               opacity: busy ? 0.5 : 1,
             }}
           >
-            <Avatar name={item.title} color={item.counterpart?.tint_hex} />
+            <ProfileAvatar
+              person={item.counterpart}
+              name={item.title}
+              color={item.counterpart?.tint_hex}
+            />
             <Text style={{ color: colors.text, fontSize: 17, flex: 1 }}>{item.title}</Text>
           </Pressable>
         )}

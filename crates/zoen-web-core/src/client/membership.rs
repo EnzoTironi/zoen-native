@@ -19,7 +19,7 @@ pub(super) struct Journal {
     joins: BTreeMap<String, BTreeMap<String, String>>,
     stranded: BTreeMap<String, BTreeSet<String>>,
     welcomes: BTreeMap<String, BTreeSet<String>>,
-    revoked: BTreeSet<String>,
+    pub(super) revoked: BTreeSet<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct Claim {
@@ -99,7 +99,12 @@ impl<S: Signer> Client<S> {
         Ok(())
     }
 
-    fn enqueue_control(&mut self, space: &str, body: EventBody, now: i64) -> Result<(), String> {
+    pub(super) fn enqueue_control(
+        &mut self,
+        space: &str,
+        body: EventBody,
+        now: i64,
+    ) -> Result<(), String> {
         let pending = self.clear_event(space, body, now)?;
         self.enqueue_handshake(pending)
     }
@@ -733,7 +738,7 @@ impl<S: Signer> Client<S> {
                     privacy,
                     profiles: roster
                         .keys()
-                        .filter_map(|id| self.saved.profiles.get(id).cloned())
+                        .filter_map(|id| self.conversation_profile(id))
                         .collect(),
                     members: roster.len(),
                     roster,

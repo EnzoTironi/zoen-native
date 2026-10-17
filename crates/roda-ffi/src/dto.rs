@@ -21,6 +21,9 @@ pub struct Persona {
     pub owner_id: Option<String>,
     pub owner_name: Option<String>,
     pub owner_tint_hex: Option<String>,
+    pub photo_sha256: Option<String>,
+    pub photo_ready: bool,
+    pub photo_mime: Option<String>,
     pub is_me: bool,
     /// O agente é meu (eu pago, eu configuro).
     pub is_mine: bool,

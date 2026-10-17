@@ -19,6 +19,10 @@ pub(super) struct Journal {
     published_agreement: String,
     uploaded: u64,
     upload: Option<Upload>,
+    #[serde(default)]
+    pub(super) photos: BTreeMap<String, Vec<u8>>,
+    #[serde(default)]
+    pub(super) photo_uploads: BTreeSet<String>,
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -122,6 +126,99 @@ mod tests {
             )
             .result["version"],
             "2"
+        );
+    }
+
+    #[test]
+    fn profile_photo_binary_cache_and_upload_barrier_survive_reload() {
+        let (mut client, identity, _) = client();
+        synced(&mut client);
+        let response = client
+            .profile_save(
+                r#"{"name":"Photo","bio":"Private","photo":"set","mime":"image/jpeg"}"#,
+                b"image pixels".to_vec(),
+                20,
+            )
+            .unwrap();
+        assert_eq!(response.uploads.len(), 1);
+        assert!(!response
+            .update
+            .as_ref()
+            .unwrap()
+            .frames
+            .iter()
+            .any(|frame| matches!(
+                ClientFrame::decode(frame),
+                Ok(ClientFrame::Req {
+                    op: Op::PutProfile { .. },
+                    ..
+                })
+            )));
+        let photo = client.my_profile_fields().unwrap().2.photo.unwrap();
+        assert_eq!(
+            photo.open(&client.saved.local_chunks[&photo.blob]),
+            Some(b"image pixels".to_vec())
+        );
+        let snapshot = response.update.unwrap().snapshot;
+        let mut reload =
+            Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
+        assert_eq!(reload.pending_profile_uploads(), vec![photo.blob.clone()]);
+        let update = synced(&mut reload);
+        assert!(!update.frames.iter().any(|frame| matches!(
+            ClientFrame::decode(frame),
+            Ok(ClientFrame::Req {
+                op: Op::PutProfile { .. },
+                ..
+            })
+        )));
+        let framed = reload
+            .profile_photo_framed(&identity.id(), &photo.sha256)
+            .unwrap();
+        let length = u32::from_le_bytes(framed[..4].try_into().unwrap()) as usize;
+        assert_eq!(&framed[4 + length..], b"image pixels");
+        assert!(reload
+            .profile_photo_framed(&identity.id(), &"00".repeat(32))
+            .is_err());
+        assert!(reload
+            .profile_photo_framed("other identity", &photo.sha256)
+            .is_err());
+        let uploaded = reload
+            .document_uploaded(std::slice::from_ref(&photo.blob))
+            .unwrap();
+        assert!(uploaded.frames.iter().any(|frame| matches!(
+            ClientFrame::decode(frame),
+            Ok(ClientFrame::Req {
+                op: Op::PutProfile { .. },
+                ..
+            })
+        )));
+        reload.saved.profile.photos.clear();
+        let mut tampered = reload.saved.local_chunks[&photo.blob].clone();
+        tampered[25] ^= 1;
+        assert!(reload
+            .profile_photo_received(&identity.id(), &photo.sha256, tampered)
+            .is_err());
+        assert!(!reload.profile_photo_cached(&photo));
+        reload
+            .profile_photo_received(
+                &identity.id(),
+                &photo.sha256,
+                reload.saved.local_chunks[&photo.blob].clone(),
+            )
+            .unwrap();
+        assert!(reload.profile_photo_cached(&photo));
+        reload
+            .profile_save(
+                r#"{"name":"Photo","bio":"Private","photo":"remove"}"#,
+                Vec::new(),
+                30,
+            )
+            .unwrap();
+        assert!(
+            reload
+                .profile_photo_framed(&identity.id(), &photo.sha256)
+                .is_err(),
+            "a disposable cache cannot resurrect a removed photo"
         );
     }
 
@@ -556,7 +653,25 @@ impl<S: Signer> Client<S> {
         ))
     }
 
-    fn my_profile_fields(&self) -> Result<(ProfileKey, u64, ProfileFields), String> {
+    pub(super) fn profile_link_fields(&self) -> Result<(String, u64, u64, String), String> {
+        let row = self
+            .saved
+            .profile
+            .rows
+            .get(&self.account.identity)
+            .ok_or("Perfil indisponível.")?;
+        ProfileKey::from_hex(&row.key).ok_or("Chave de perfil inválida.")?;
+        let fields = row.fields.as_deref().ok_or("Perfil indisponível.")?;
+        ProfileFields::from_bytes(fields).ok_or("Perfil inválido.")?;
+        Ok((
+            row.key.clone(),
+            row.key_version,
+            row.seen_version,
+            hex::encode(fields),
+        ))
+    }
+
+    pub(super) fn my_profile_fields(&self) -> Result<(ProfileKey, u64, ProfileFields), String> {
         let row = self
             .saved
             .profile
@@ -591,7 +706,11 @@ impl<S: Signer> Client<S> {
         }
     }
 
-    fn write_profile_fields(&mut self, fields: ProfileFields, rotate: bool) -> Result<(), String> {
+    pub(super) fn write_profile_fields(
+        &mut self,
+        fields: ProfileFields,
+        rotate: bool,
+    ) -> Result<(), String> {
         let me = self.account.identity.clone();
         let row = self
             .saved
@@ -708,7 +827,7 @@ impl<S: Signer> Client<S> {
         };
         Ok(
             json!({"identity_id":id,"handle":identity.map(|identity|identity.handle.as_str()).unwrap_or(if id==self.account.identity {&self.account.handle} else {""}),
-            "name":name,"bio":bio,"photo_sha256":photo.map(|photo|photo.sha256),"photo_ready":false,"version":version.to_string(),
+            "name":name,"bio":bio,"photo_sha256":photo.as_ref().map(|photo|photo.sha256.clone()),"photo_mime":photo.as_ref().map(|photo|photo.mime.clone()),"photo_ready":photo.as_ref().is_some_and(|photo| self.profile_photo_cached(photo)),"version":version.to_string(),
             "tint_hex":identity.map(|identity|identity.tint_hex.as_str()).unwrap_or("#8E8E93"),"is_me":id==self.account.identity,"blocked":self.saved.profile.blocked.contains(id)}),
         )
     }
@@ -900,7 +1019,8 @@ impl<S: Signer> Client<S> {
             }
         }
         let (key, version, fields) = self.my_profile_fields()?;
-        if !self.profile_net.upload
+        if self.saved.profile.photo_uploads.is_empty()
+            && !self.profile_net.upload
             && !self.profile_net.upload_failed
             && version > self.saved.profile.uploaded
         {

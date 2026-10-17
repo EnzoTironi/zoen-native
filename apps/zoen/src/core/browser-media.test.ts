@@ -19,6 +19,14 @@ function fixture() {
   const calls: Parameters<BrowserMediaHost['sendFile']>[] = [];
   const host: BrowserMediaHost = {
     closed: controller.signal,
+    ownerId: 'owner',
+    deviceId: 'device',
+    async saveProfile() {
+      throw new Error('not used');
+    },
+    async profilePhoto() {
+      throw new Error('not used');
+    },
     async sendFile(...args) {
       calls.push(args);
       return { itemId: 'it_signed', messageId: 'msg_signed' };

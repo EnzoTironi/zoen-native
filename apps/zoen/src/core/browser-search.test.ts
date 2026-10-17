@@ -19,6 +19,9 @@ function person(id: string, name: string): Persona {
     owner_id: null,
     owner_name: null,
     owner_tint_hex: null,
+    photo_sha256: null,
+    photo_ready: false,
+    photo_mime: null,
     is_me: false,
     is_mine: false,
   };

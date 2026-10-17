@@ -15,6 +15,8 @@ import { ThemeProvider, useTheme } from '../theme';
 import { SessionGate } from '../components/session-gate';
 import { DialogsProvider } from '../components/dialogs';
 import { NotificationProvider } from '../notifications/provider';
+import { NativeSurfacesProvider } from '../native-surfaces/provider';
+import { NativeIntentConsumer } from '../native-surfaces/intent-consumer';
 
 void SplashScreen.preventAutoHideAsync();
 function Navigation() {
@@ -39,6 +41,7 @@ function Navigation() {
     >
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <SessionGate>
+        <NativeIntentConsumer />
         <Stack
           screenOptions={{
             headerBackButtonDisplayMode: 'minimal',
@@ -70,9 +73,11 @@ export default function RootLayout() {
           <ThemeProvider>
             <DialogsProvider>
               <ClientProvider>
-                <NotificationProvider>
-                  <Navigation />
-                </NotificationProvider>
+                <NativeSurfacesProvider>
+                  <NotificationProvider>
+                    <Navigation />
+                  </NotificationProvider>
+                </NativeSurfacesProvider>
               </ClientProvider>
             </DialogsProvider>
           </ThemeProvider>

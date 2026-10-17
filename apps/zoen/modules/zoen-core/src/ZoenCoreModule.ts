@@ -18,6 +18,14 @@ declare class ZoenCoreModule extends NativeModule<{ onChange: (event: CoreEvent)
   fileInfo(itemId: string, version: number | null): Promise<string>;
   materializeFile(itemId: string, version: number | null): Promise<string>;
   releaseLocalFile(uri: string): Promise<void>;
+  saveProfile(request: string): Promise<void>;
+  materializeProfilePhoto(
+    ownerId: string,
+    deviceId: string,
+    identityId: string,
+    expectedSha256: string,
+  ): Promise<string>;
+  releaseProfilePhoto(uri: string): Promise<void>;
   close(): Promise<void>;
 }
 

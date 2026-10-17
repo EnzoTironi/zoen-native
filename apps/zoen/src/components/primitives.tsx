@@ -3,6 +3,7 @@ import { Host, Button } from '@expo/ui';
 import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   Text,
   TextInput,
@@ -117,11 +118,13 @@ export function Avatar({
   color,
   size = 48,
   agent = false,
+  uri,
 }: {
   name: string;
   color?: string;
   size?: number;
   agent?: boolean;
+  uri?: string;
 }) {
   const { colors } = useTheme();
   return (
@@ -136,14 +139,21 @@ export function Avatar({
         backgroundColor: color ?? colors.accent,
       }}
     >
-      <Text style={{ fontSize: size * 0.32, fontWeight: '600', color: '#FFFFFF' }}>
-        {name
-          .split(/\s+/)
-          .slice(0, 2)
-          .map((part) => part[0])
-          .join('')
-          .toUpperCase()}
-      </Text>
+      {uri ? (
+        <Image
+          source={{ uri }}
+          style={{ width: size, height: size, borderRadius: agent ? size * 0.32 : size / 2 }}
+        />
+      ) : (
+        <Text style={{ fontSize: size * 0.32, fontWeight: '600', color: '#FFFFFF' }}>
+          {name
+            .split(/\s+/)
+            .slice(0, 2)
+            .map((part) => part[0])
+            .join('')
+            .toUpperCase()}
+        </Text>
+      )}
     </View>
   );
 }

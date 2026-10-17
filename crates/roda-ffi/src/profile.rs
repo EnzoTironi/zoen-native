@@ -14,18 +14,18 @@
 use std::collections::HashSet;
 
 use roda_log::profile::{
-    AgreementKey, DeviceSigned, MAX_CIPHERTEXT, ProfileFields, ProfileKey, ProfilePhoto,
-    SealedShare, open_profile, open_share, seal_profile, seal_share, share_context, sign_agreement,
-    sign_upload, verify_agreement, verify_upload,
+    open_profile, open_share, seal_profile, seal_share, share_context, sign_agreement, sign_upload,
+    verify_agreement, verify_upload, AgreementKey, DeviceSigned, ProfileFields, ProfileKey,
+    ProfilePhoto, SealedShare, MAX_CIPHERTEXT,
 };
 use roda_proto::{AgreementKeyRecord, SealedProfile};
 use roda_types::*;
 use sha2::{Digest, Sha256};
 
-use crate::CoreError;
-use crate::engine::{Engine, R, now_ms};
+use crate::engine::{now_ms, Engine, R};
 use crate::i18n::t;
 use crate::media::Wanted;
+use crate::CoreError;
 
 pub(crate) const VAULT_AGREEMENT: &str = "zoen.agreement.v1";
 const META_UPLOADED: &str = "profile:uploaded";
@@ -34,7 +34,7 @@ const META_AGREEMENT: &str = "agreement:published";
 const SHARES_PER_EVENT: usize = 200;
 const MAX_NAME: usize = 64;
 const MAX_BIO: usize = 280;
-const MAX_PHOTO_BYTES: usize = 5 * 1024 * 1024;
+use roda_log::profile::MAX_PHOTO_BYTES;
 const BATCH: usize = 500;
 
 /// Profile bookkeeping for the network task.
@@ -80,14 +80,24 @@ pub struct ProfileDto {
     /// `None` when this device holds no key for them (not a contact): show `@handle`.
     pub name: Option<String>,
     pub bio: Option<String>,
-    /// The photo's sha256; its bytes come from `media(sha256)` once `photo_ready`.
+    /// The photo's sha256; read using `profile_photo(identity, expected_sha256)`.
     pub photo_sha256: Option<String>,
     pub photo_ready: bool,
+    pub photo_mime: Option<String>,
     /// The profile version shown (0 = none readable yet).
     pub version: u64,
     pub tint_hex: String,
     pub is_me: bool,
     pub blocked: bool,
+}
+
+/// A bounded disposable view of the exact photo currently readable for an identity.
+#[derive(Clone, uniffi::Record)]
+pub struct ProfilePhotoBytes {
+    pub identity_id: String,
+    pub sha256: String,
+    pub mime: String,
+    pub bytes: Vec<u8>,
 }
 
 fn invalid(reason: String) -> CoreError {
@@ -111,7 +121,7 @@ impl Engine {
         Ok((key, row.key_version, row.seen_version, fields))
     }
 
-    fn fields_of(&self, id: &str) -> Option<(u64, ProfileFields)> {
+    pub(crate) fn fields_of(&self, id: &str) -> Option<(u64, ProfileFields)> {
         let row = self.store.profile_key(id).ok()??;
         let fields = ProfileFields::from_bytes(row.fields.as_deref()?)?;
         Some((row.seen_version, fields))
@@ -198,14 +208,39 @@ impl Engine {
         }
         fields.name = name.to_string();
         fields.bio = bio.to_string();
-        match photo {
-            PhotoChange::Keep => {}
-            PhotoChange::Remove => fields.photo = None,
-            PhotoChange::Set { bytes, mime } => {
-                fields.photo = Some(self.profile_photo(&bytes, &mime)?)
+        let next = version
+            .checked_add(1)
+            .ok_or_else(|| invalid("profile version".into()))?;
+        self.store.raw_execute("SAVEPOINT profile_edit")?;
+        let edited = (|| -> R<()> {
+            match photo {
+                PhotoChange::Keep => {}
+                PhotoChange::Remove => fields.photo = None,
+                PhotoChange::Set { bytes, mime } => {
+                    fields.photo = Some(self.profile_photo(&bytes, &mime)?)
+                }
             }
+            self.store
+                .set_profile_fields(&me, next, &fields.to_bytes())?;
+            if let Some(mut ident) = self.identities.get(&me).cloned() {
+                ident.name = fields.name.clone();
+                ident.bio = fields.bio.clone();
+                self.store.put_identity(&ident, None)?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = edited {
+            self.store.raw_execute("ROLLBACK TO profile_edit")?;
+            self.store.raw_execute("RELEASE profile_edit")?;
+            return Err(error);
         }
-        self.write_my_fields(&me, version + 1, &fields)?;
+        self.store.raw_execute("RELEASE profile_edit")?;
+        if let Some(ident) = self.identities.get_mut(&me) {
+            ident.name = fields.name;
+            ident.bio = fields.bio;
+        }
+        self.index_dirty = true;
+        self.net.profiles.sealed = None;
         self.net.wake();
         Ok(())
     }
@@ -242,7 +277,8 @@ impl Engine {
             )));
         }
         let sha = hex::encode(Sha256::digest(bytes));
-        self.import_media(&sha, bytes, mime)?;
+        self.store
+            .cache_imported_media(&sha, mime, bytes, now_ms())?;
         let mut m = MediaRef {
             sha256: sha.clone(),
             mime: mime.to_string(),
@@ -342,12 +378,13 @@ impl Engine {
         };
         let photo_ready = photo
             .as_ref()
-            .is_some_and(|p| matches!(self.store.media(&p.sha256), Ok(Some(_))));
+            .is_some_and(|p| p.valid() && matches!(self.store.media_bytes_len(&p.sha256), Ok(Some(size)) if size > 0 && size <= MAX_PHOTO_BYTES as u64));
         Ok(ProfileDto {
             identity_id: id.to_string(),
             handle: ident.map(|i| i.handle.clone()).unwrap_or_default(),
             name,
             bio,
+            photo_mime: photo.as_ref().map(|p| p.mime.clone()),
             photo_sha256: photo.map(|p| p.sha256),
             photo_ready,
             version,
@@ -355,6 +392,34 @@ impl Engine {
             is_me,
             blocked: self.store.blocked()?.iter().any(|b| b == id),
         })
+    }
+
+    pub(crate) fn profile_photo_bytes(
+        &self,
+        id: &str,
+        expected: &str,
+    ) -> R<Option<ProfilePhotoBytes>> {
+        let Some((_, fields)) = self.fields_of(id) else {
+            return Ok(None);
+        };
+        let Some(photo) = fields.photo.filter(|p| p.sha256 == expected && p.valid()) else {
+            return Ok(None);
+        };
+        let Some(bytes) = self.store.media_bytes_bounded(expected, MAX_PHOTO_BYTES)? else {
+            return Ok(None);
+        };
+        if bytes.is_empty()
+            || bytes.len() > MAX_PHOTO_BYTES
+            || hex::encode(Sha256::digest(&bytes)) != expected
+        {
+            return Ok(None);
+        }
+        Ok(Some(ProfilePhotoBytes {
+            identity_id: id.into(),
+            sha256: expected.into(),
+            mime: photo.mime,
+            bytes,
+        }))
     }
 
     /// What the directory says about a person, with the name and bio this device can
@@ -619,6 +684,14 @@ impl Engine {
         }
         let me = self.me.clone()?;
         let (key, _, version, fields) = self.my_fields(&me).ok()?;
+        // Publishing the reference before its encrypted blob would strand contacts.
+        if fields
+            .photo
+            .as_ref()
+            .is_some_and(|photo| self.store.upload_pending(&photo.blob).unwrap_or(true))
+        {
+            return None;
+        }
         if let Some(s) = &self.net.profiles.sealed {
             if s.version == version {
                 return Some(s.clone());

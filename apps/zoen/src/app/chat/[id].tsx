@@ -1,3 +1,4 @@
+import { ProfileAvatar } from '../../profile/profile-avatar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
@@ -12,7 +13,7 @@ import { useClient } from '../../core/provider';
 import type { TimelineEntry } from '../../core/types';
 import { messageText } from '../../core/presentation';
 import { useTheme } from '../../theme';
-import { Avatar, EmptyState, Icon, IconButton, Loading } from '../../components/primitives';
+import { EmptyState, Icon, IconButton, Loading } from '../../components/primitives';
 import { MediaComposer } from '../../media/MediaComposer';
 import { MessageMedia } from '../../media/MediaAttachment';
 
@@ -140,7 +141,12 @@ export default function Chat() {
               accessibilityLabel="Detalhes da conversa"
               onPress={() => router.push({ pathname: '/space/[id]', params: { id } })}
             >
-              <Avatar name={chat.title} size={34} color={chat.counterpart?.tint_hex} />
+              <ProfileAvatar
+                person={chat.counterpart}
+                name={chat.title}
+                size={34}
+                color={chat.counterpart?.tint_hex}
+              />
             </Pressable>
           ),
         }}

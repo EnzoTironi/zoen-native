@@ -350,7 +350,7 @@ impl<S: Signer> Client<S> {
         Ok(())
     }
 
-    fn import_history_events(&mut self, events: Vec<Event>) -> Result<u32, String> {
+    pub(super) fn import_history_events(&mut self, events: Vec<Event>) -> Result<u32, String> {
         let mut changed: BTreeMap<String, Vec<Event>> = BTreeMap::new();
         let mut positions = BTreeSet::new();
         let mut messages = 0u32;

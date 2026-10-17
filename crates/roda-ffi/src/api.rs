@@ -6,15 +6,15 @@
 use std::{sync::Arc, time::Duration};
 
 use roda_proto::{EphemeralKind, InvitePreview, Op, Reply};
-use roda_types::{EventBody, Identity, Privacy, Role, SpaceKind, new_id};
+use roda_types::{new_id, EventBody, Identity, Privacy, Role, SpaceKind};
 
 use crate::{
-    CoreError, RodaEngine,
     dto::{AgentControl, AgentStatus, GroupKeysDto, Persona, PrivacyDto},
     i18n::t,
     net::{ConnState, Net, NetStatus},
     profile::{PhotoChange, ProfileDto, VAULT_AGREEMENT},
     sync::{VAULT_DEVICE, VAULT_IDENTITY},
+    CoreError, RodaEngine,
 };
 
 /// Where the device's secrets live (Keychain on Apple platforms, a 0600 file in the CLI).
@@ -677,6 +677,16 @@ impl RodaEngine {
     /// (people you share a chat or Space with), only the @handle for everyone else.
     pub fn get_profile(&self, identity_id: String) -> Result<ProfileDto, CoreError> {
         self.lock().profile_view(&identity_id)
+    }
+
+    /// Reads only the exact currently authorized profile photo, bounded to 5 MB.
+    pub fn profile_photo(
+        &self,
+        identity_id: String,
+        expected_sha256: String,
+    ) -> Result<Option<crate::ProfilePhotoBytes>, CoreError> {
+        self.lock()
+            .profile_photo_bytes(&identity_id, &expected_sha256)
     }
 
     /// Edits your encrypted profile. The relay stores only ciphertext; your contacts

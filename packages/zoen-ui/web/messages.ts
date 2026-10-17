@@ -115,7 +115,10 @@ function parseProfile(input: unknown) {
   if (kind !== 'Person' && kind !== 'Agent') throw new Error('Invalid identity kind.');
   return { id: publicKey(value.id), kind: kind as 'Person' | 'Agent', name: string(value.name), handle: string(value.handle),
     tint_hex: string(value.tint_hex), glyph: nullableText(value.glyph), bio: string(value.bio),
-    owner: value.owner === null ? null : publicKey(value.owner) };
+    owner: value.owner === null ? null : publicKey(value.owner),
+    photo_sha256: value.photo_sha256 === undefined || value.photo_sha256 === null ? null : publicKey(value.photo_sha256),
+    photo_ready: value.photo_ready === undefined ? false : boolean(value.photo_ready),
+    photo_mime: value.photo_mime === undefined || value.photo_mime === null ? null : string(value.photo_mime) };
 }
 export type Profile = ReturnType<typeof parseProfile>;
 
@@ -256,6 +259,7 @@ export class Messages {
           this.notice = 'Uma página aguarda conexão para terminar de enviar. O rascunho foi preservado.';
           this.scheduleMaintenance(5000,generation,true);this.publish();
         }
+        await this.resumeOutgoingHistory(generation);
         if(frame.kind==='ready')this.scheduleHistory();
       }
       if (frame.kind === 'sync_done') this.scheduleHistory();
@@ -290,6 +294,7 @@ export class Messages {
       void this.enqueue(async()=>{
         if(this.closed||generation!==this.generation||this.connection.kind!=='ready')return;
         await this.apply(await this.core.text({kind:'maintenance',now:Date.now()}),generation);
+        await this.resumeOutgoingHistory(generation);
         try{await this.resumeDocumentUploads(generation);}catch(error){
           if(!(error as {documentUploadRetry?:boolean}).documentUploadRetry)throw error;
           this.notice='A conversa aguarda conexão para terminar de enviar.';
@@ -371,6 +376,60 @@ export class Messages {
       await this.apply(JSON.stringify(response.update), generation);
     }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'A conexão mudou. Tente de novo.' : null, false);
     if (!result) throw new Error('Não foi possível enviar o arquivo.');
+    return result;
+  }
+
+  async saveProfile(request: {name:string;bio:string;photo:'keep'|'remove'|'set';mime?:string}, bytes:Uint8Array):Promise<void> {
+    if(bytes.length>5*1024*1024)throw new Error('A foto precisa ter até 5 MB.');
+    const generation=this.generation;
+    await this.enqueue(async()=>{
+      let response:Record<string,unknown>;
+      try {response=object(JSON.parse(await this.core.text({kind:'profile_save',request:JSON.stringify(request),bytes,now:Date.now()})));}
+      catch(error){throw Object.assign(new Error(plain(message(error))),{soft:true});}
+      await this.apply(JSON.stringify(response.update),generation);
+      if(this.connection.kind==='ready') {
+        try {await this.resumeDocumentUploads(generation);}
+        catch(error) {
+          if(!(error as {documentUploadRetry?:boolean}).documentUploadRetry)throw error;
+          this.notice='Seu perfil foi salvo e aguarda conexão para enviar a foto.';
+          this.scheduleMaintenance(5000,generation,true);this.publish();
+        }
+      }
+    },()=>this.closed||generation!==this.generation?'Esta sessão está fechada.':null,false);
+  }
+
+  async profilePhoto(identity:string,expected:string):Promise<{bytes:Uint8Array;mime:string;sha256:string}> {
+    if(!/^[a-f0-9]{64}$/.test(identity)||!/^[a-f0-9]{64}$/.test(expected))throw new Error('Foto inválida.');
+    let result:{bytes:Uint8Array;mime:string;sha256:string}|undefined;
+    const generation=this.generation;
+    await this.enqueue(async()=>{
+      const read=async()=>{
+        const framed=await this.core.bytes({kind:'profile_photo_framed',identity,expected}).catch(error=>{throw Object.assign(new Error(plain(message(error))),{soft:true});});
+        if(framed.length<4||framed.length>5*1024*1024+4100)throw new Error('Foto inválida.');
+        const length=new DataView(framed.buffer,framed.byteOffset,framed.byteLength).getUint32(0,true);
+        if(length>4096||length>framed.length-4)throw new Error('Foto inválida.');
+        const header=object(JSON.parse(new TextDecoder().decode(framed.subarray(4,4+length))));
+        if(header.identity_id!==identity||header.sha256!==expected||!['image/jpeg','image/png','image/heic','image/webp'].includes(string(header.mime)))throw new Error('Esta foto não corresponde ao perfil.');
+        return {header,bytes:framed.slice(4+length)};
+      };
+      let photo=await read();
+      if(!boolean(photo.header.cached)) {
+        const blob=string(photo.header.blob);
+        if(!/^[a-f0-9]{64}$/.test(blob))throw new Error('Foto inválida.');
+        const response=await fetch(`${this.base()}/v1/blobs/${blob}`,{signal:this.aborted.signal});
+        if(!response.ok||!response.body){await response.body?.cancel();throw Object.assign(new Error('A foto ainda está chegando. Tente novamente.'),{soft:true});}
+        const reader=response.body.getReader();const chunks:Uint8Array[]=[];let size=0;
+        try {for(;;){const {done,value}=await reader.read();if(done)break;if(value.length>5*1024*1024+40-size)throw new Error('Foto grande demais.');size+=value.length;chunks.push(value);}}
+        finally{await reader.cancel().catch(()=>{});}
+        if(this.closed||generation!==this.generation)throw new Error('Esta sessão está fechada.');
+        const sealed=new Uint8Array(size);let offset=0;for(const chunk of chunks){sealed.set(chunk,offset);offset+=chunk.length;}
+        const update=await this.core.text({kind:'profile_photo_received',identity,expected,sealed});
+        await this.apply(update,generation);photo=await read();
+      }
+      if(!boolean(photo.header.cached)||!photo.bytes.length)throw Object.assign(new Error('A foto ainda não está disponível.'),{soft:true});
+      result={bytes:photo.bytes,mime:string(photo.header.mime),sha256:expected};
+    },()=>this.closed||generation!==this.generation?'Esta sessão está fechada.':null,false);
+    if(!result)throw new Error('A foto ainda não está disponível.');
     return result;
   }
 
@@ -571,7 +630,7 @@ export class Messages {
     });
   }
 
-  private async domainRequest(command: unknown, domain: 'document_request' | 'agent_request' | 'app_request' | 'profile_request' | 'membership_request'): Promise<unknown> {
+  private async domainRequest(command: unknown, domain: 'document_request' | 'agent_request' | 'app_request' | 'profile_request' | 'membership_request' | 'link_request'): Promise<unknown> {
     let result: unknown;
     await this.enqueue(async () => {
       let response: Record<string, unknown>;
@@ -631,6 +690,106 @@ export class Messages {
       const update = await this.core.text({ kind: 'document_uploaded', blobs: JSON.stringify([blob]) });
       await this.apply(update, generation);
     }
+  }
+
+  private async linkWork(command:unknown,generation:number):Promise<Record<string,unknown>> {
+    let response:Record<string,unknown>;
+    try {response=object(JSON.parse(await this.core.text({kind:'link_request',request:JSON.stringify(command),now:Date.now()})));}
+    catch(error){throw Object.assign(new Error(message(error)),{soft:true});}
+    if(response.update!==null)await this.apply(JSON.stringify(response.update),generation);
+    return object(response.result);
+  }
+
+  /** Retained ciphertext is saved before PUT, and the same bytes survive a cold retry. */
+  private async resumeOutgoingHistory(generation:number):Promise<void> {
+    if(this.closed||generation!==this.generation||this.connection.kind!=='ready')return;
+    try {
+      let work=await this.linkWork({op:'history_send_resume'},generation);
+      while(work.kind==='upload') {
+        if(this.closed||generation!==this.generation||this.connection.kind!=='ready')return;
+        const transfer=publicKey(work.transfer),index=integer(work.index),sha=publicKey(work.sha256);
+        const sealed=bytes(work.bytes);
+        if(index>899||sealed.length<16||sealed.length>(1<<20)+16)throw new Error('Parte inválida do histórico.');
+        const abort=new AbortController();
+        const stopped=()=>abort.abort(this.aborted.signal.reason);
+        this.aborted.signal.addEventListener('abort',stopped,{once:true});
+        const timer=setTimeout(()=>abort.abort(new Error('O envio do histórico demorou demais.')),15_000);
+        let response:Response;
+        try {
+          response=await fetch(`${this.base()}/v1/transfer/${transfer}/${index}`,{method:'PUT',
+            headers:{'x-zoen-device':publicKey(work.device),'x-zoen-ts':string(work.timestamp),'x-zoen-sig':string(work.signature)},
+            body:sealed,signal:abort.signal}).catch(error=>{throw Object.assign(new Error(message(error)),{historyUploadRetry:true});});
+        }finally{clearTimeout(timer);this.aborted.signal.removeEventListener('abort',stopped);}
+        await response.body?.cancel();
+        if(!response.ok){
+          const retry=response.status===429||response.status>=500;
+          if(!retry)await this.linkWork({op:'history_failed',transfer,message:'O servidor recusou o envio do histórico. Confira o dispositivo e tente novamente.'},generation);
+          throw Object.assign(new Error(retry?'O histórico aguarda conexão para terminar de enviar.':'O servidor recusou o envio do histórico. Confira o dispositivo e tente novamente.'),{historyUploadRetry:retry,soft:true});
+        }
+        if(this.closed||generation!==this.generation||this.connection.kind!=='ready')return;
+        work=await this.linkWork({op:'history_uploaded',transfer,index,sha256:sha},generation);
+        // Yield the canonical queue between chunks so sync/receipts stay responsive.
+        if(work.kind==='upload'){this.scheduleMaintenance(50,generation,true);return;}
+      }
+    }catch(error){
+      if(this.closed)return;
+      if(!(error as {historyUploadRetry?:boolean;soft?:boolean}).historyUploadRetry&&!(error as {soft?:boolean}).soft)throw error;
+      this.notice=message(error);
+      if((error as {historyUploadRetry?:boolean}).historyUploadRetry)this.scheduleMaintenance(5000,generation,true);
+      this.publish();
+    }
+  }
+
+  linkRequest(command:unknown):Promise<unknown>{return this.domainRequest(command,'link_request');}
+
+  async linkDevice(code:string):Promise<{device_id:string;check:string}> {
+    let linked:{device_id:string;check:string}|undefined;
+    await this.enqueue(async()=>{
+      let response:Record<string,unknown>;
+      try{response=object(JSON.parse(await this.core.text({kind:'link_prepare',code,now:Date.now()})));}
+      catch(error){throw Object.assign(new Error(message(error)),{soft:true});}
+      const result=object(response.result);
+      linked={device_id:publicKey(result.device_id),check:string(result.check)};
+      await this.apply(JSON.stringify(response.update),this.generation);
+    },()=>this.connection.kind==='ready'?null:'Aguarde a conexão para vincular o aparelho.',false);
+    const end=Date.now()+30_000;
+    while(Date.now()<end&&!this.closed){
+      const status=object(await this.linkRequest({op:'link_status',device_id:linked!.device_id}));
+      if(status.failure!==null)throw new Error(string(status.failure));
+      if(status.delivered===true)return linked!;
+      await new Promise((resolve)=>setTimeout(resolve,100));
+    }
+    throw new Error('O vínculo foi preparado e aguarda confirmação do servidor. Tente novamente com o mesmo código.');
+  }
+
+  async linkProgress(device:string):Promise<number[]>{
+    return array(await this.linkRequest({op:'link_progress',device_id:device})).map(integer);
+  }
+
+  async sendHistory(device:string):Promise<number>{
+    await this.linkRequest({op:'history_send',device_id:device});
+    await this.enqueue(()=>this.resumeOutgoingHistory(this.generation));
+    const end=Date.now()+60_000;
+    while(Date.now()<end&&!this.closed){
+      const work=object(await this.linkRequest({op:'history_send_resume'}));
+      if(work.kind==='complete')return integer(work.messages);
+      await new Promise((resolve)=>setTimeout(resolve,200));
+    }
+    throw new Error('O histórico foi preservado e continuará a ser enviado quando houver conexão.');
+  }
+
+  async loadOlder(space:string,timeoutMs:number):Promise<{loaded:number;more:boolean;primary_offline:boolean;message:string|null}>{
+    if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>300_000)throw new Error('Tempo de carregamento inválido.');
+    const request=object(await this.linkRequest({op:'load_older',space_id:space}));
+    if(request.request_id===null)return {loaded:0,more:false,primary_offline:false,message:null};
+    const id=string(request.request_id),end=Date.now()+timeoutMs;
+    while(Date.now()<end&&!this.closed){
+      const answer=object(await this.linkRequest({op:'older_status',space_id:space,request_id:id}));
+      if(typeof answer.failure==='string')throw new Error(answer.failure);
+      if(answer.pending===false)return {loaded:integer(answer.loaded),more:boolean(answer.more),primary_offline:false,message:null};
+      await new Promise((resolve)=>setTimeout(resolve,100));
+    }
+    return {loaded:0,more:true,primary_offline:true,message:'Abra o Zoen no aparelho que vinculou este navegador para carregar mensagens antigas.'};
   }
 
   async devices(): Promise<unknown> {

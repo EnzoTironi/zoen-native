@@ -49,7 +49,9 @@ export default function OpenLink() {
         <EmptyState
           title="Este link não é válido"
           detail="Peça um novo convite à pessoa que compartilhou este link."
-        />
+        >
+          <NativeButton label="Ir para conversas" onPress={() => router.replace('/')} />
+        </EmptyState>
       ) : link.kind === 'invite' && !preview && !error ? (
         <Loading />
       ) : error && !preview ? (

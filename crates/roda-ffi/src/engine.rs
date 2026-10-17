@@ -986,6 +986,7 @@ impl Engine {
                     .take(2)
                     .collect::<String>()
                     .to_uppercase();
+                let photo = self.profile_view(id).ok();
                 Persona {
                     id: i.id.clone(),
                     kind: match i.kind {
@@ -1001,6 +1002,9 @@ impl Engine {
                     owner_id: i.owner.clone(),
                     owner_name: owner.map(|o| o.name.clone()),
                     owner_tint_hex: owner.map(|o| o.tint_hex.clone()),
+                    photo_sha256: photo.as_ref().and_then(|p| p.photo_sha256.clone()),
+                    photo_ready: photo.as_ref().is_some_and(|p| p.photo_ready),
+                    photo_mime: photo.and_then(|p| p.photo_mime),
                     is_me: Some(id) == me,
                     is_mine: i.owner.as_deref() == me && me.is_some(),
                 }
@@ -1017,6 +1021,9 @@ impl Engine {
                 owner_id: None,
                 owner_name: None,
                 owner_tint_hex: None,
+                photo_sha256: None,
+                photo_ready: false,
+                photo_mime: None,
                 is_me: false,
                 is_mine: false,
             },
@@ -1964,9 +1971,25 @@ impl Engine {
         })?;
         let title = doc.title.clone();
         let message = match doc.budget_cents {
-            Some(b) if total <= b => tr!("Montei “{title}”: {} de {} · sobra {}. Toque para editar.", "Here’s “{title}”: {} of {} · {} left. Tap to edit.", money(total), money(b), money(b - total)),
-            Some(b) => tr!("Montei “{title}”, mas deu {} — passou {} do teto de {}. Quer que eu corte algo?", "Here’s “{title}”, but it came to {} — {} over the {} cap. Want me to cut something?", money(total), money(total - b), money(b)),
-            None => tr!("Montei “{title}” · total {}. Toque para editar.", "Here’s “{title}” · total {}. Tap to edit.", money(total)),
+            Some(b) if total <= b => tr!(
+                "Montei “{title}”: {} de {} · sobra {}. Toque para editar.",
+                "Here’s “{title}”: {} of {} · {} left. Tap to edit.",
+                money(total),
+                money(b),
+                money(b - total)
+            ),
+            Some(b) => tr!(
+                "Montei “{title}”, mas deu {} — passou {} do teto de {}. Quer que eu corte algo?",
+                "Here’s “{title}”, but it came to {} — {} over the {} cap. Want me to cut something?",
+                money(total),
+                money(total - b),
+                money(b)
+            ),
+            None => tr!(
+                "Montei “{title}” · total {}. Toque para editar.",
+                "Here’s “{title}” · total {}. Tap to edit.",
+                money(total)
+            ),
         };
         let proposal = ItemProposal {
             item: new_id("it"),
@@ -2224,9 +2247,24 @@ impl Engine {
                 });
             if let Some(agent) = watcher {
                 let text = match budget {
-                    Some(b) if new_total <= b => tr!("Recalculei: {} de {} · sobra {}.", "Recalculated: {} of {} · {} left.", money(new_total), money(b), money(b - new_total)),
-                    Some(b) => tr!("Atenção: o plano passou {} do teto de {}. Quer que eu ache algo mais barato?", "Heads up: the plan is {} over the {} cap. Want me to find something cheaper?", money(new_total - b), money(b)),
-                    None => tr!("Recalculei: total {}.", "Recalculated: total {}.", money(new_total)),
+                    Some(b) if new_total <= b => tr!(
+                        "Recalculei: {} de {} · sobra {}.",
+                        "Recalculated: {} of {} · {} left.",
+                        money(new_total),
+                        money(b),
+                        money(b - new_total)
+                    ),
+                    Some(b) => tr!(
+                        "Atenção: o plano passou {} do teto de {}. Quer que eu ache algo mais barato?",
+                        "Heads up: the plan is {} over the {} cap. Want me to find something cheaper?",
+                        money(new_total - b),
+                        money(b)
+                    ),
+                    None => tr!(
+                        "Recalculei: total {}.",
+                        "Recalculated: total {}.",
+                        money(new_total)
+                    ),
                 };
                 if self.agent_say(&space, &agent, &text, 0).is_ok() {
                     reaction = Some(text);
@@ -2297,7 +2335,7 @@ impl Engine {
                 _ => {
                     return Err(CoreError::Invalid {
                         reason: t("não é um plano", "not a plan"),
-                    })
+                    });
                 }
             }
         };
@@ -2393,7 +2431,7 @@ impl Engine {
             _ => {
                 return Err(CoreError::Invalid {
                     reason: t("não é um plano", "not a plan"),
-                })
+                });
             }
         };
         // "Apagar" uma linha é reversível: a versão anterior continua no log.
@@ -3679,13 +3717,32 @@ impl Engine {
             state_json: state.to_string(),
         };
         let message = match spec.id {
-            "pet" => t("Ele mora aqui agora. Dá para dar comida, jogar a Corrida do Jumento e revezar quem cuida dele.", "He lives here now. You can feed him, play Donkey Dash and take turns looking after him."),
-            "maptap" => t("MapTap. Os mesmos lugares para todo mundo. Um toque cada.", "MapTap. Same places for everyone. One tap each."),
-            "recipe" => tr!("Salvei a {}: vegetariana, 35 minutos, dá para ajustar as porções.", "Saved the {}: vegetarian, 35 minutes, servings adjustable.", title.to_lowercase_first()),
-            "hike" => t("Separei três trilhas boas pra sábado, com mapa e fotos. Comparem e votem: quando fechar, eu monto o roteiro com as caronas.", "Found three good trails for Saturday, with maps and photos. Compare and vote: once it’s locked in, I’ll plan the day and the rides."),
+            "pet" => t(
+                "Ele mora aqui agora. Dá para dar comida, jogar a Corrida do Jumento e revezar quem cuida dele.",
+                "He lives here now. You can feed him, play Donkey Dash and take turns looking after him.",
+            ),
+            "maptap" => t(
+                "MapTap. Os mesmos lugares para todo mundo. Um toque cada.",
+                "MapTap. Same places for everyone. One tap each.",
+            ),
+            "recipe" => tr!(
+                "Salvei a {}: vegetariana, 35 minutos, dá para ajustar as porções.",
+                "Saved the {}: vegetarian, 35 minutes, servings adjustable.",
+                title.to_lowercase_first()
+            ),
+            "hike" => t(
+                "Separei três trilhas boas pra sábado, com mapa e fotos. Comparem e votem: quando fechar, eu monto o roteiro com as caronas.",
+                "Found three good trails for Saturday, with maps and photos. Compare and vote: once it’s locked in, I’ll plan the day and the rides.",
+            ),
             "countdown" => t("Contagem regressiva criada.", "Countdown’s up."),
-            "poll" => t("Abri uma enquete. Quando fechar, a vencedora entra no plano.", "Poll’s open. When it closes, the winner goes into the plan."),
-            _ => tr!("Criei a lista “{title}”. Marquem o que vocês levam.", "Made the list “{title}”. Check off what you’re bringing."),
+            "poll" => t(
+                "Abri uma enquete. Quando fechar, a vencedora entra no plano.",
+                "Poll’s open. When it closes, the winner goes into the plan.",
+            ),
+            _ => tr!(
+                "Criei a lista “{title}”. Marquem o que vocês levam.",
+                "Made the list “{title}”. Check off what you’re bringing."
+            ),
         };
         let proposal = ItemProposal {
             item: new_id("it"),
@@ -3978,7 +4035,7 @@ impl Engine {
                         reason_label(&reason, &self.policy)
                     )),
                     item: None,
-                })
+                });
             }
             _ => {}
         }

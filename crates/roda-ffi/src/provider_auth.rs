@@ -4,16 +4,16 @@
 
 use std::{sync::Arc, time::Duration};
 
-use roda_log::{Signer, profile::AgreementKey};
-use roda_proto::provider_auth::{ProviderBindRequest, ProviderBindResponse, provider_bind_message};
+use roda_log::{profile::AgreementKey, Signer};
+use roda_proto::provider_auth::{provider_bind_message, ProviderBindRequest, ProviderBindResponse};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
-    AccountDto, CoreError, RodaEngine, SecretVault,
     api::invalid,
     profile::VAULT_AGREEMENT,
     sync::{VAULT_DEVICE, VAULT_IDENTITY},
+    AccountDto, CoreError, RodaEngine, SecretVault,
 };
 
 const PENDING: &str = "provider_signup_pending";
@@ -313,8 +313,8 @@ mod tests {
         io::{Read, Write},
         net::TcpListener,
         sync::{
-            Mutex,
             atomic::{AtomicUsize, Ordering},
+            Mutex,
         },
     };
 
@@ -390,12 +390,10 @@ mod tests {
                 } else {
                     held.stop_delete.store(true, Ordering::SeqCst);
                 }
-                assert!(
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-                        || core.resume_provider_setup(vault.clone())
-                    ))
-                    .is_err()
-                );
+                assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                    || core.resume_provider_setup(vault.clone())
+                ))
+                .is_err());
             }
             drop(core);
             held.stop_after.store(0, Ordering::SeqCst);
@@ -704,29 +702,27 @@ mod tests {
             refuse: true,
             ..Default::default()
         });
-        assert!(
-            core.provider_sign_in(
+        assert!(core
+            .provider_sign_in(
                 "http://127.0.0.1:1".into(),
                 "a".repeat(64),
                 "Name".into(),
                 vault.clone()
             )
             .await
-            .is_err()
-        );
+            .is_err());
         assert!(core.account().is_none());
         assert!(!core.lock().provider_setup_pending());
         assert!(vault.keys.lock().unwrap().is_empty());
-        assert!(
-            core.provider_sign_in(
+        assert!(core
+            .provider_sign_in(
                 "http://127.0.0.1:1".into(),
                 "invalid".into(),
                 "Name".into(),
                 vault
             )
             .await
-            .is_err()
-        );
+            .is_err());
         assert!(core.account().is_none());
     }
 
@@ -735,16 +731,15 @@ mod tests {
         let core = RodaEngine::open(":memory:".into(), "en".into()).unwrap();
         let vault = Arc::new(Vault::default());
         vault.save(VAULT_IDENTITY.into(), vec![7; 32]);
-        assert!(
-            core.provider_sign_in(
+        assert!(core
+            .provider_sign_in(
                 "http://127.0.0.1:1".into(),
                 "a".repeat(64),
                 "Name".into(),
                 vault.clone()
             )
             .await
-            .is_err()
-        );
+            .is_err());
         assert!(core.account().is_none());
         assert_eq!(vault.load(VAULT_IDENTITY.into()), Some(vec![7; 32]));
     }

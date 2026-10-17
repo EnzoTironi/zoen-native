@@ -1,10 +1,11 @@
+import { ProfileAvatar } from '../../../profile/profile-avatar';
 import { Stack, router } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useClient } from '../../../core/provider';
 import { useTheme } from '../../../theme';
-import { Avatar, EmptyState, IconButton } from '../../../components/primitives';
+import { EmptyState, IconButton } from '../../../components/primitives';
 
 const filters = [
   { id: 'all', label: 'Todas' },
@@ -143,7 +144,8 @@ export default function Chats() {
               backgroundColor: pressed ? colors.muted : colors.surface,
             })}
           >
-            <Avatar
+            <ProfileAvatar
+              person={chat.counterpart}
               name={chat.title}
               color={chat.counterpart?.tint_hex}
               size={54}

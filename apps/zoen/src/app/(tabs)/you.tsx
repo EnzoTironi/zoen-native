@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useDialogs } from '../../components/dialogs';
 import { router } from 'expo-router';
+import { useProfilePhoto } from '../../profile/use-profile-photo';
 import { useClient } from '../../core/provider';
 import { useTheme } from '../../theme';
 import { Avatar, NativeButton, Surface } from '../../components/primitives';
@@ -10,6 +11,7 @@ export default function You() {
   const { colors, preference, setPreference, preferenceError } = useTheme();
   const { confirm } = useDialogs();
   const me = snapshot?.me;
+  const photo = useProfilePhoto(me?.id, me?.photo_sha256, me?.photo_ready ?? false);
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
@@ -23,7 +25,7 @@ export default function You() {
       </Text>
       <Surface>
         <View style={{ flexDirection: 'row', gap: 18, alignItems: 'center' }}>
-          <Avatar name={me?.name ?? 'Você'} color={me?.tint_hex} size={66} />
+          <Avatar uri={photo} name={me?.name ?? 'Você'} color={me?.tint_hex} size={66} />
           <View style={{ flex: 1, gap: 5 }}>
             <Text style={{ fontSize: 23, fontWeight: '600', color: colors.text }}>
               {me?.name ?? 'Sua conta'}

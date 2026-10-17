@@ -16,17 +16,17 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt};
 use roda_proto::{
-    CAPABILITIES, ClientFrame, EphemeralKind, ErrorCode, KEY_PACKAGE_CLAIM_TTL_MS,
-    KeyPackageClaimClock, MIN_PROTOCOL_VERSION, Op, PROTOCOL_VERSION, Reply, ServerFrame,
-    auth_message, blob_put_message,
+    auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, KeyPackageClaimClock,
+    Op, Reply, ServerFrame, CAPABILITIES, KEY_PACKAGE_CLAIM_TTL_MS, MIN_PROTOCOL_VERSION,
+    PROTOCOL_VERSION,
 };
 use roda_types::Identity;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::CoreListener;
 use crate::engine::Engine;
 use crate::sync::Ingest;
+use crate::CoreListener;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnState {
@@ -1472,11 +1472,11 @@ mod tests {
 
     use super::*;
     use roda_log::{
-        Author, Signer, chain_hash, content::InnerEvent, content::Sealed, content::SealedKind,
+        chain_hash, content::InnerEvent, content::Sealed, content::SealedKind, Author, Signer,
     };
-    use roda_mls::{Device, Opened, SUITE_ID, sealed::state_key};
+    use roda_mls::{sealed::state_key, Device, Opened, SUITE_ID};
     use roda_proto::{Envelope, Sequenced};
-    use roda_types::{EventBody, GENESIS_PREV, Privacy, Role, Seen, SpaceKind};
+    use roda_types::{EventBody, Privacy, Role, Seen, SpaceKind, GENESIS_PREV};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         mpsc as channel,

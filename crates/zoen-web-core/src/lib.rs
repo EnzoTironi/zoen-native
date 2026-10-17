@@ -304,6 +304,43 @@ mod browser {
             )
             .map_err(error)
         }
+        pub fn profile_save(
+            &mut self,
+            request: &str,
+            bytes: Vec<u8>,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .profile_save(request, bytes, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn profile_photo_framed(
+            &self,
+            identity: &str,
+            expected: &str,
+        ) -> Result<Vec<u8>, JsValue> {
+            self.client
+                .profile_photo_framed(identity, expected)
+                .map_err(error)
+        }
+        pub fn profile_photo_received(
+            &mut self,
+            identity: &str,
+            expected: &str,
+            sealed: Vec<u8>,
+        ) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .profile_photo_received(identity, expected, sealed)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
         pub fn handle_profile(&self, handle: &str) -> Result<String, JsValue> {
             self.client.handle_profile(handle).map_err(error)
         }
@@ -316,6 +353,29 @@ mod browser {
                 &self
                     .client
                     .handle_confirmed(profile, expected)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn link_prepare(
+            &mut self,
+            primary: &BrowserPrimary,
+            code: &str,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .link_prepare(&primary.primary, code, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn link_request(&mut self, request: &str, now_ms: f64) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .link_request(request, time(now_ms)?)
                     .map_err(error)?,
             )
             .map_err(error)

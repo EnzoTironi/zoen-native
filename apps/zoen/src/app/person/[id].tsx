@@ -3,6 +3,7 @@ import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { useDialogs } from '../../components/dialogs';
 import { useCoreQuery } from '../../core/query';
+import { useProfilePhoto } from '../../profile/use-profile-photo';
 import { useClient } from '../../core/provider';
 import { Avatar, EmptyState, Loading, NativeButton, Surface } from '../../components/primitives';
 import { useTheme } from '../../theme';
@@ -13,6 +14,7 @@ export default function Person() {
   const { data: person, error, retry } = useCoreQuery({ op: 'profile', identity_id: id });
   const { colors } = useTheme();
   const { confirm } = useDialogs();
+  const photo = useProfilePhoto(id, person?.photo_sha256, person?.photo_ready ?? false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   if (!person)
@@ -45,6 +47,7 @@ export default function Person() {
       <Stack.Screen options={{ title: person.name ?? `@${person.handle}` }} />
       <View style={{ alignItems: 'center', gap: 14, paddingVertical: 24 }}>
         <Avatar
+          uri={photo}
           name={person.name ?? person.handle}
           color={person.tint_hex}
           size={104}

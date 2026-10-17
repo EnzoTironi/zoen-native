@@ -3,6 +3,16 @@ import type { FileDto } from './generated/FileDto';
 
 export interface BrowserMediaHost {
   readonly closed: AbortSignal;
+  readonly ownerId: string;
+  readonly deviceId: string;
+  saveProfile(
+    request: { name: string; bio: string; photo: 'keep' | 'remove' | 'set'; mime?: string },
+    bytes: Uint8Array,
+  ): Promise<void>;
+  profilePhoto(
+    identityId: string,
+    expectedSha: string,
+  ): Promise<{ bytes: Uint8Array; mime: string; sha256: string }>;
   sendFile(
     space: string,
     file: {
@@ -34,12 +44,20 @@ export function getBrowserMediaHost(): BrowserMediaHost {
 }
 
 /** The account session owns media access; closing it invalidates every outstanding read. */
-export function activateBrowserMediaHost(messages: Messages): () => void {
+export function activateBrowserMediaHost(
+  messages: Messages,
+  ownerId: string,
+  deviceId: string,
+): () => void {
   const controller = new AbortController();
   activeController?.abort();
   activeController = controller;
   const host: BrowserMediaHost = {
     closed: controller.signal,
+    ownerId,
+    deviceId,
+    saveProfile: (request, bytes) => messages.saveProfile(request, bytes),
+    profilePhoto: (identity, sha) => messages.profilePhoto(identity, sha),
     sendFile: (space, file) => messages.sendFile(space, file),
     file: async (itemId, version) => {
       const result = await messages.fileManifest(itemId, version);

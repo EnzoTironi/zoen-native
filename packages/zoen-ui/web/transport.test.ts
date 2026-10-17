@@ -131,6 +131,7 @@ function messagingCore() {
   return { ...unitCodec(), close() { closed = true; }, get closed() { return closed; },
     text: async (operation: CoreOperation) => {
       if (operation.kind === 'document_uploads') return '[]';
+      if (operation.kind === 'link_request') return JSON.stringify({result:{kind:'idle'},update:null,downloads:[],uploads:[]});
       if(operation.kind==='claim_clock')return '';
       if (operation.kind === 'restore') return JSON.stringify([conversation]);
       if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
@@ -730,4 +731,59 @@ test('history status reports retained progress and retries share the one active 
   const one=messages.receiveHistory(30_000).catch(()=>null);const two=messages.receiveHistory(30_000).catch(()=>null);
   t.mock.timers.tick(1000);await settle();assert.equal(starts,1);
   messages.stop();await Promise.all([one,two]);
+});
+
+test('outgoing linked history waits for encrypted persistence before signed PUT and saves the acknowledgement', async (t) => {
+  install(t);
+  const codec=messagingCore();
+  let retained=false,uploaded=false;
+  const sealed=[4,5,6,...new Array<number>(16).fill(7)];
+  const work=()=>uploaded?{kind:'complete',messages:2}:retained?{kind:'upload',transfer:'ab'.repeat(32),index:0,sha256:'cd'.repeat(32),bytes:sealed,device:login.device,timestamp:'123',signature:'ef'.repeat(64)}:{kind:'idle'};
+  const core={...codec,text:async(op:CoreOperation)=>{
+    if(op.kind!=='link_request')return codec.text(op);
+    const request=JSON.parse(op.request);
+    if(request.op==='history_send')retained=true;
+    if(request.op==='history_uploaded'){
+      assert.equal(request.transfer,'ab'.repeat(32));assert.equal(request.sha256,'cd'.repeat(32));assert.equal(request.index,0);uploaded=true;
+    }
+    return JSON.stringify({result:work(),update:retained?{snapshot:uploaded?'history-ack':'history-prepared',frames:[],conversations:[conversation]}:null,downloads:[],uploads:[]});
+  }};
+  const events:string[]=[];
+  let release=()=>{};const saved=new Promise<void>(resolve=>{release=resolve;});
+  const messages=new Messages({core,session:linked,vault:{...vault,save:async(session)=>{
+    if(session.kind!=='linked')return;
+    events.push(session.snapshot);
+    if(session.snapshot==='history-prepared')await saved;
+  }},changed:()=>{}});
+  t.after(()=>messages.stop());
+  const fetching=t.mock.method(globalThis,'fetch',async(url,options)=>{
+    events.push('PUT');assert.equal(String(url),'https://relay.example/v1/transfer/'+ 'ab'.repeat(32)+'/0');
+    assert.equal(options?.method,'PUT');assert.deepEqual(Array.from(options?.body as Uint8Array),sealed);
+    assert.deepEqual(options?.headers,{'x-zoen-device':login.device,'x-zoen-ts':'123','x-zoen-sig':'ef'.repeat(64)});
+    return new Response(null,{status:200});
+  });
+  await messages.start();await authenticate();
+  const sending=messages.sendHistory('11'.repeat(32));await settle();
+  assert.equal(fetching.mock.callCount(),0);
+  release();assert.equal(await sending,2);
+  assert.equal(fetching.mock.callCount(),1);
+  assert.ok(events.indexOf('history-prepared')<events.indexOf('PUT'));
+  assert.ok(events.indexOf('history-ack')>events.indexOf('PUT'));
+});
+
+test('outgoing linked history never uploads when encrypted persistence fails', async (t) => {
+  install(t);
+  const codec=messagingCore();
+  const core={...codec,text:async(op:CoreOperation)=>{
+    if(op.kind!=='link_request'||JSON.parse(op.request).op!=='history_send')return codec.text(op);
+    return JSON.stringify({result:{kind:'waiting'},update:{snapshot:'history-prepared',frames:[],conversations:[conversation]},downloads:[],uploads:[]});
+  }};
+  const messages=new Messages({core,session:linked,vault:{...vault,save:async(session)=>{
+    if(session.kind==='linked'&&session.snapshot==='history-prepared')throw new Error('QuotaExceededError');
+  }},changed:()=>{}});
+  t.after(()=>messages.stop());
+  const fetching=t.mock.method(globalThis,'fetch',async()=>new Response(null,{status:200}));
+  await messages.start();await authenticate();
+  await assert.rejects(messages.sendHistory('11'.repeat(32)),/QuotaExceededError/);
+  assert.equal(fetching.mock.callCount(),0);assert.equal(codec.closed,true);
 });

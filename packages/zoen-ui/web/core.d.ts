@@ -40,8 +40,13 @@ declare module '*/core/zoen_web_core.js' {
     document_request(request: string, now: number): string;
     agent_request(request: string, now: number): string;
     profile_request(request: string, now: number): string;
+    profile_save(request: string, bytes: Uint8Array, now: number): string;
+    profile_photo_framed(identity: string, expected: string): Uint8Array;
+    profile_photo_received(identity: string, expected: string, sealed: Uint8Array): string;
     handle_profile(handle:string):string;
     handle_confirmed(profile:string,expected:string):string;
+    link_prepare(primary:BrowserPrimary,code:string,now:number):string;
+    link_request(request:string,now:number):string;
     history_status():string;
     history_start(now:number):string;
     history_manifest(sealed:Uint8Array, now:number):string;

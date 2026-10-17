@@ -42,7 +42,7 @@ mod profile;
 mod provider_auth;
 mod replies;
 pub mod runtime_core;
-pub use profile::{PhotoChange, ProfileDto};
+pub use profile::{PhotoChange, ProfileDto, ProfilePhotoBytes};
 mod sync;
 pub use api::*;
 pub use link_api::{

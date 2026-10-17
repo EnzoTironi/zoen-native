@@ -1,3 +1,4 @@
+import { ProfileAvatar } from '../profile/profile-avatar';
 import { useEffect, useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
@@ -6,7 +7,7 @@ import { useCoreQuery } from '../core/query';
 import { useClient } from '../core/provider';
 import type { UniversalHit } from '../core/generated/UniversalHit';
 import { useTheme } from '../theme';
-import { Avatar, EmptyState, Loading, NativeButton } from '../components/primitives';
+import { EmptyState, Loading, NativeButton } from '../components/primitives';
 
 const plain = (text: string) => text.replace(/\[\[|\]\]/g, '');
 export default function Search() {
@@ -136,7 +137,8 @@ export default function Search() {
               }}
             >
               {item.persona ? (
-                <Avatar
+                <ProfileAvatar
+                  person={item.persona}
                   name={item.persona.name}
                   color={item.persona.tint_hex}
                   agent={item.persona.kind === 'Agent'}

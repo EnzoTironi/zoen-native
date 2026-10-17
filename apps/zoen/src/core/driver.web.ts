@@ -14,6 +14,7 @@ import { unavailableCapability } from '../../../../packages/zoen-ui/web/capabili
 import type { StoredSession } from '../../../../packages/zoen-ui/web/session';
 import { enrollPrimary } from '../../../../packages/zoen-ui/web/primary';
 import { authorityJson } from '../../../../packages/zoen-ui/web/authority';
+import type { ProfileDto } from './generated/ProfileDto';
 import type { Persona } from './generated/Persona';
 import type { SpaceSummary } from './generated/SpaceSummary';
 import assets from './generated/web-assets.json';
@@ -21,6 +22,7 @@ import { searchBrowser, searchBrowserMessages } from './browser-search';
 import { activateBrowserMediaHost } from './browser-media';
 import { browserMediaEntry } from './browser-media-entry';
 import { createBrowserMediaDriver } from '../media/driver.web';
+import { createBrowserProfilePhotoDriver } from '../profile/driver.web';
 import { array, integer, object, string } from '../../../../packages/zoen-ui/web/boundary';
 import type {
   Command,
@@ -36,6 +38,11 @@ import type {
 /** Browser storage and signing remain in the existing authenticated WASM runtime. */
 class BrowserDriver implements CoreDriver {
   readonly media = createBrowserMediaDriver();
+  readonly photos = createBrowserProfilePhotoDriver();
+  private authorityReady = false;
+  canAuthorizeDevice() {
+    return this.authorityReady && this.session.kind === 'linked';
+  }
   private vault: BrowserVault | null = null;
   private worker: CoreWorker | null = null;
   private messages: Messages | null = null;
@@ -48,7 +55,13 @@ class BrowserDriver implements CoreDriver {
   private generation = 0;
   private disposeMedia: (() => void) | null = null;
   private providerAbort: AbortController | null = null;
-  private selfProfile: { name: string; bio: string } | null = null;
+  private selfProfile: {
+    name: string;
+    bio: string;
+    photo_sha256: string | null;
+    photo_ready: boolean;
+    photo_mime: string | null;
+  } | null = null;
 
   private authRoute() {
     return window.location.pathname.replace(/\/$/, '') === '/sign-in';
@@ -103,13 +116,15 @@ class BrowserDriver implements CoreDriver {
             this.session = session;
             if (session.kind === 'linked') {
               const authority = await vault.authority();
-              if (authority)
+              if (authority) {
                 await worker.text({
                   kind: 'primary_restore',
                   device: await vault.device(),
                   account: JSON.stringify(session.account),
                   authority: authorityJson(authority),
                 });
+                this.authorityReady = true;
+              }
             }
             if (session.kind === 'linked') await this.startMessages();
             resolve();
@@ -128,6 +143,7 @@ class BrowserDriver implements CoreDriver {
     if (this.session.kind !== 'linked' || !this.vault || !this.worker)
       throw new Error('Este navegador ainda não foi vinculado.');
     const generation = this.generation;
+    const account = this.session.account;
     this.messages = new Messages({
       core: this.worker,
       vault: this.vault,
@@ -157,7 +173,7 @@ class BrowserDriver implements CoreDriver {
     await this.messages.start();
     if (generation === this.generation) {
       this.disposeMedia?.();
-      this.disposeMedia = activateBrowserMediaHost(this.messages);
+      this.disposeMedia = activateBrowserMediaHost(this.messages, account.identity, account.device);
     }
   }
 
@@ -225,6 +241,9 @@ class BrowserDriver implements CoreDriver {
       owner_id: profile?.owner ?? null,
       owner_name: owner?.name ?? null,
       owner_tint_hex: owner?.tint_hex ?? null,
+      photo_sha256: own?.photo_sha256 ?? profile?.photo_sha256 ?? null,
+      photo_ready: own?.photo_ready ?? profile?.photo_ready ?? false,
+      photo_mime: own?.photo_mime ?? profile?.photo_mime ?? null,
       is_me: identity === account?.identity,
       is_mine: !!account && profile?.owner === account.identity,
     };
@@ -411,8 +430,15 @@ class BrowserDriver implements CoreDriver {
         ]);
         if (requestGeneration !== this.generation)
           throw new Error('A conta mudou. Abra esta tela novamente.');
-        const me = profile as { name: string | null; bio: string | null };
-        if (me.name) this.selfProfile = { name: me.name, bio: me.bio ?? '' };
+        const me = profile as ProfileDto;
+        if (me.name)
+          this.selfProfile = {
+            name: me.name,
+            bio: me.bio ?? '',
+            photo_sha256: me.photo_sha256,
+            photo_ready: me.photo_ready,
+            photo_mime: me.photo_mime,
+          };
         snapshot = this.snapshot();
         snapshot.agents = agents as Snapshot['agents'];
         snapshot.requests = requests as Snapshot['requests'];
@@ -469,16 +495,38 @@ class BrowserDriver implements CoreDriver {
             const own = (await messages.profileRequest({
               op: 'profile',
               identity_id: this.session.account.identity,
-            })) as { name: string | null; bio: string | null };
+            })) as ProfileDto;
             if (requestGeneration !== this.generation)
               throw new Error('A conta mudou. Abra esta tela novamente.');
-            if (own.name) this.selfProfile = { name: own.name, bio: own.bio ?? '' };
+            if (own.name)
+              this.selfProfile = {
+                name: own.name,
+                bio: own.bio ?? '',
+                photo_sha256: own.photo_sha256,
+                photo_ready: own.photo_ready,
+                photo_mime: own.photo_mime,
+              };
             this.changed();
           }
           break;
         case 'update_handle':
           await messages.updateHandle(command.handle);
           result = this.snapshot().account;
+          break;
+        case 'link_code_check':
+          result = await messages.linkRequest({ op: 'link_code_check', code: command.code });
+          break;
+        case 'link_device':
+          result = await messages.linkDevice(command.code);
+          break;
+        case 'link_progress':
+          result = await messages.linkProgress(command.device_id);
+          break;
+        case 'send_history':
+          result = await messages.sendHistory(command.device_id);
+          break;
+        case 'load_older':
+          result = await messages.loadOlder(command.space_id, Number(command.timeout_ms));
           break;
         case 'history_status':
           result = await messages.historyStatus();
@@ -744,6 +792,7 @@ class BrowserDriver implements CoreDriver {
     throw new Error('Entre com Apple ou Google para continuar.');
   }
   async close() {
+    this.authorityReady = false;
     ++this.generation;
     this.providerAbort?.abort();
     this.providerAbort = null;

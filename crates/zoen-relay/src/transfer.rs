@@ -29,6 +29,22 @@ pub const MAX_CHUNK: usize = 4 * 1024 * 1024;
 const MAX_CHUNKS: u32 = 4096;
 const MAX_SKEW_MS: i64 = 5 * 60 * 1000;
 
+/// Ciphertext downloads use an unguessable capability; mutations still require
+/// a linked device signature. Browser clients never send ambient credentials.
+pub fn cors() -> tower_http::cors::CorsLayer {
+    use axum::http::{HeaderName, Method};
+    tower_http::cors::CorsLayer::new()
+        .allow_origin(tower_http::cors::Any)
+        .allow_methods([Method::GET, Method::PUT, Method::DELETE])
+        .allow_headers([
+            header::CONTENT_TYPE,
+            HeaderName::from_static("x-zoen-device"),
+            HeaderName::from_static("x-zoen-ts"),
+            HeaderName::from_static("x-zoen-sig"),
+        ])
+        .max_age(std::time::Duration::from_secs(86_400))
+}
+
 fn valid_id(s: &str) -> bool {
     s.len() == 64
         && s.bytes()

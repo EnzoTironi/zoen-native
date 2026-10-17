@@ -23,6 +23,7 @@ import type { AgentStatus } from './generated/AgentStatus';
 import type { UniversalResults } from './generated/UniversalResults';
 import type { PageBlockDto } from './generated/PageBlockDto';
 import type { MediaDriver } from '../media/types';
+import type { ProfilePhotoDriver } from '../profile/types';
 import type { EditOutcome } from './generated/EditOutcome';
 import type { BackupStatusDto } from './generated/BackupStatusDto';
 import type { LinkRequestDto } from './generated/LinkRequestDto';
@@ -139,7 +140,9 @@ export type CommandResult<C extends Command> = C['op'] extends keyof Results
   : unknown;
 
 export interface CoreDriver {
+  canAuthorizeDevice?(): boolean;
   media?: MediaDriver;
+  photos?: ProfilePhotoDriver;
   open(mode: Mode): Promise<Snapshot>;
   request<C extends Command>(command: C): Promise<CommandResult<C>>;
   createAccount(name: string, handle: string, relay: string): Promise<Snapshot>;

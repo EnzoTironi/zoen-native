@@ -206,7 +206,7 @@ impl<S: Signer> Client<S> {
                         false,
                     ),
                     false,
-                ))
+                ));
             }
             Decision::Request(_) if !confirmed => {
                 return Ok((
@@ -219,7 +219,7 @@ impl<S: Signer> Client<S> {
                         true,
                     ),
                     false,
-                ))
+                ));
             }
             _ => {}
         }
@@ -252,7 +252,7 @@ impl<S: Signer> Client<S> {
                         false,
                     ),
                     false,
-                ))
+                ));
             }
         };
         let next = AppDoc {

@@ -157,9 +157,15 @@ pub fn router(state: Shared) -> Router {
             "/v1/transfer/{id}/{n}",
             put(transfer::put)
                 .get(transfer::get)
-                .layer(DefaultBodyLimit::max(transfer::MAX_CHUNK + 1024)),
+                .layer::<_, std::convert::Infallible>(DefaultBodyLimit::max(
+                    transfer::MAX_CHUNK + 1024,
+                ))
+                .layer::<_, std::convert::Infallible>(transfer::cors()),
         )
-        .route("/v1/transfer/{id}", delete(transfer::delete))
+        .route(
+            "/v1/transfer/{id}",
+            delete(transfer::delete).layer(transfer::cors()),
+        )
         .route(
             "/.well-known/apple-app-site-association",
             get(apple_app_site_association),

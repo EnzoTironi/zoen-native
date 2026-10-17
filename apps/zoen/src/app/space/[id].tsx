@@ -1,3 +1,4 @@
+import { ProfileAvatar } from '../../profile/profile-avatar';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { Host, Column, Switch } from '@expo/ui';
@@ -155,7 +156,8 @@ export default function Space() {
               onPress={() => router.push({ pathname: '/person/[id]', params: { id: person.id } })}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 13, paddingVertical: 9 }}
             >
-              <Avatar
+              <ProfileAvatar
+                person={person}
                 name={person.name}
                 color={person.tint_hex}
                 agent={person.kind === 'Agent'}

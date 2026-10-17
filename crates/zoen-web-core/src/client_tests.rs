@@ -845,7 +845,14 @@ fn conversation_metadata_comes_from_logs_and_only_my_personal_log_controls_prefe
     let conversation = &conversations[0];
     assert_eq!(conversation.privacy, Privacy::EndToEnd);
     assert_eq!(conversation.roster[&other.identity], Role::Reader);
-    assert_eq!(conversation.profiles, vec![profile]);
+    assert_eq!(
+        conversation
+            .profiles
+            .iter()
+            .map(|profile| profile.identity.clone())
+            .collect::<Vec<_>>(),
+        vec![profile]
+    );
     assert_eq!(conversation.event_count, chat.next_seq().to_string());
     assert!(conversation.prefs.pinned && conversation.prefs.archived);
     assert_eq!(

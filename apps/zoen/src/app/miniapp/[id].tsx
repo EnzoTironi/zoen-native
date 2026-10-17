@@ -9,6 +9,7 @@ import { useTheme } from '../../theme';
 import { MiniappState } from '../../miniapps/state-view';
 import { MiniappView } from '../../miniapps/view-host';
 import { callMiniapp } from '../../miniapps/actions';
+import { MiniappSurfaceControls } from '../../native-surfaces/controls';
 
 export default function Miniapp() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -104,6 +105,7 @@ export default function Miniapp() {
       ) : (
         <MiniappState app={app} busy={busy} onCall={call} />
       )}
+      <MiniappSurfaceControls item={item} />
       <Surface>
         <Text
           accessibilityRole="header"

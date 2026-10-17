@@ -51,6 +51,9 @@ function notificationSnapshot(): Snapshot {
     owner_id: null,
     owner_name: null,
     owner_tint_hex: null,
+    photo_sha256: null,
+    photo_ready: false,
+    photo_mime: null,
     is_me: true,
     is_mine: false,
   };

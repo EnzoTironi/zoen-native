@@ -37,8 +37,13 @@ export type CoreOperation =
   | { kind: 'document_request'; request: string; now: number }
   | { kind: 'agent_request'; request: string; now: number }
   | { kind: 'profile_request'; request: string; now: number }
+  | { kind: 'profile_save'; request: string; bytes: Uint8Array; now: number }
+  | { kind: 'profile_photo_framed'; identity: string; expected: string }
+  | { kind: 'profile_photo_received'; identity: string; expected: string; sealed: Uint8Array }
   | {kind:'handle_profile';handle:string}
   | {kind:'handle_confirmed';profile:string;expected:string}
+  | {kind:'link_prepare';code:string;now:number}
+  | {kind:'link_request';request:string;now:number}
   | {kind:'history_status'}
   | {kind:'history_start'|'history_finish'|'history_cleaned';now:number}
   | {kind:'history_manifest';sealed:Uint8Array;now:number}

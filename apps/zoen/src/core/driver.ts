@@ -1,5 +1,6 @@
 import NativeCore from '../../modules/zoen-core/src/ZoenCoreModule';
 import type { Command, CommandResult, CoreDriver, Snapshot } from './types';
+import { createNativeProfilePhotoDriver } from '../profile/native-driver';
 import type { MediaDriver } from '../media/types';
 import { Platform } from 'react-native';
 
@@ -43,6 +44,7 @@ export function createDriver(): CoreDriver {
   };
   return {
     media: Platform.OS === 'ios' ? media : undefined,
+    photos: Platform.OS === 'ios' ? createNativeProfilePhotoDriver() : undefined,
     async open(mode) {
       return JSON.parse(await core().open(mode)) as Snapshot;
     },

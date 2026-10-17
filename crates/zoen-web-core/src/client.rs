@@ -18,8 +18,10 @@ mod agents;
 mod apps;
 mod documents;
 mod history;
+mod linking;
 mod membership;
 mod profile;
+mod profile_photo;
 pub use documents::DocumentResponse;
 
 const PACKAGES_REQUEST: u64 = 0x8000_0001;
@@ -97,6 +99,8 @@ struct SavedClient {
     #[serde(default)]
     own_handle: Option<String>,
     #[serde(default)]
+    linking: linking::Journal,
+    #[serde(default)]
     membership: membership::Journal,
 }
 
@@ -171,13 +175,22 @@ pub struct ChatPreferencesView {
 }
 
 #[derive(Serialize)]
+struct ConversationProfile {
+    #[serde(flatten)]
+    identity: Identity,
+    photo_sha256: Option<String>,
+    photo_ready: bool,
+    photo_mime: Option<String>,
+}
+
+#[derive(Serialize)]
 pub struct ConversationView {
     id: String,
     title: String,
     kind: &'static str,
     privacy: Privacy,
     roster: BTreeMap<String, Role>,
-    profiles: Vec<Identity>,
+    profiles: Vec<ConversationProfile>,
     prefs: ChatPreferencesView,
     event_count: String,
     can_send: bool,
@@ -224,6 +237,7 @@ pub struct Client<S> {
     announced_receipts: BTreeMap<String, (u64, u64)>,
     profile_net: profile::Network,
     membership_net: membership::Network,
+    linking_net: linking::Network,
     history_ready: bool,
 }
 
@@ -280,6 +294,7 @@ impl<S: Signer> Client<S> {
             announced_receipts: BTreeMap::new(),
             profile_net: profile::Network::default(),
             membership_net: membership::Network::default(),
+            linking_net: linking::Network::default(),
             history_ready: false,
         };
         client.device()?;
@@ -869,6 +884,7 @@ impl<S: Signer> Client<S> {
         self.packages_in_flight = false;
         self.profile_net = profile::Network::default();
         self.membership_net.restart();
+        self.linking_net = linking::Network::default();
         if !self.saved.packages_published && self.saved.packages.is_none() {
             self.prepare_packages(true)?;
         }
@@ -1005,10 +1021,12 @@ impl<S: Signer> Client<S> {
         self.view_now_ms = now_ms;
         let mut extra = Vec::new();
         match ServerFrame::decode(bytes).map_err(|e| e.to_string())? {
+            ServerFrame::Res { id, result } if self.linking_reply(id, &result)? => {}
             ServerFrame::Res { id, result } if self.membership_reply(id, &result)? => {}
             ServerFrame::Res { id, result } if self.profile_reply(id, &result)? => {}
             ServerFrame::DeviceMessage { from, to, sealed } => {
                 self.history_ready |= self.history_hint(&from, &to, &sealed);
+                self.linked_device_message(&from, &to, &sealed, &mut extra)?;
             }
             ServerFrame::ProfileChanged { identity, .. } => {
                 self.profile_changed(&identity);
@@ -1317,6 +1335,7 @@ impl<S: Signer> Client<S> {
     pub fn update(&mut self, mut frames: Vec<Vec<u8>>) -> Result<Update, String> {
         self.profile_frames(&mut frames)?;
         self.membership_frames(&mut frames)?;
+        self.linking_frames(&mut frames)?;
         let reseal = self
             .saved
             .outbox
@@ -1426,6 +1445,7 @@ impl<S: Signer> Client<S> {
                 .membership_deadline()
                 .into_iter()
                 .chain(self.profile_deadline())
+                .chain(self.linking_deadline())
                 .min()
                 .map(|deadline| deadline.saturating_sub(self.view_now_ms).clamp(50, 60_000) as u32),
         })
@@ -1498,6 +1518,19 @@ impl<S: Signer> Client<S> {
             }
         }
         files
+    }
+
+    fn conversation_profile(&self, id: &str) -> Option<ConversationProfile> {
+        let identity = self.saved.profiles.get(id)?.clone();
+        let photo = self.fields_of(id).and_then(|(_, fields)| fields.photo);
+        Some(ConversationProfile {
+            photo_sha256: photo.as_ref().map(|photo| photo.sha256.clone()),
+            photo_ready: photo
+                .as_ref()
+                .is_some_and(|photo| self.profile_photo_cached(photo)),
+            photo_mime: photo.as_ref().map(|photo| photo.mime.clone()),
+            identity,
+        })
     }
 
     pub fn conversations(&self) -> Vec<ConversationView> {
@@ -1621,7 +1654,7 @@ impl<S: Signer> Client<S> {
             let mut people: BTreeSet<_> = roster.keys().cloned().chain(events.iter().map(|event| event.author.clone())).collect();
             let owners: Vec<_> = people.iter().filter_map(|id| self.saved.profiles.get(id)?.owner.clone()).collect();
             people.extend(owners);
-            let profiles = people.iter().filter_map(|id| self.saved.profiles.get(id).cloned()).collect();
+            let profiles = people.iter().filter_map(|id| self.conversation_profile(id)).collect();
             Some(ConversationView { id: space.clone(), title, kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
                 privacy, profiles, prefs: ChatPreferencesView { pinned: prefs.pinned, archived: prefs.archived, muted_until_ms: prefs.muted_until_ms.map(|time| time.to_string()) },
                 event_count: self.logs.get(space)?.next_seq().to_string(),

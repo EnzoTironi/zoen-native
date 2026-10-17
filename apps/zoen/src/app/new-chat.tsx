@@ -1,10 +1,11 @@
+import { ProfileAvatar } from '../profile/profile-avatar';
 import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useClient } from '../core/provider';
 import type { Persona } from '../core/generated/Persona';
 import { useTheme } from '../theme';
-import { Avatar, Field, NativeButton } from '../components/primitives';
+import { Field, NativeButton } from '../components/primitives';
 
 export default function NewChat() {
   const { store, snapshot } = useClient();
@@ -152,7 +153,7 @@ export default function NewChat() {
                 kind === 'group' ? { checked: selected.includes(person.id) } : undefined
               }
             >
-              <Avatar name={person.name} color={person.tint_hex} />
+              <ProfileAvatar person={person} name={person.name} color={person.tint_hex} />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 17, fontWeight: '600', color: colors.text }}>
                   {person.name}

@@ -46,8 +46,13 @@ function parseOperation(input: unknown): CoreOperation {
     case 'document_request': return { kind: 'document_request', request: string(value.request), now: integer(value.now) };
     case 'agent_request': return { kind: 'agent_request', request: string(value.request), now: integer(value.now) };
     case 'profile_request': return { kind: 'profile_request', request: string(value.request), now: integer(value.now) };
+    case 'profile_save': return { kind: 'profile_save', request: string(value.request), bytes: bytes(value.bytes), now: integer(value.now) };
+    case 'profile_photo_framed': return { kind: 'profile_photo_framed', identity: string(value.identity), expected: string(value.expected) };
+    case 'profile_photo_received': return { kind: 'profile_photo_received', identity: string(value.identity), expected: string(value.expected), sealed: bytes(value.sealed) };
     case 'handle_profile':return {kind:'handle_profile',handle:string(value.handle)};
     case 'handle_confirmed':return {kind:'handle_confirmed',profile:string(value.profile),expected:string(value.expected)};
+    case 'link_prepare':return {kind:'link_prepare',code:string(value.code),now:integer(value.now)};
+    case 'link_request':return {kind:'link_request',request:string(value.request),now:integer(value.now)};
     case 'history_status':return {kind:'history_status'};
     case 'history_start':case 'history_finish':case 'history_cleaned':return {kind:value.kind,now:integer(value.now)};
     case 'history_manifest':return {kind:'history_manifest',sealed:bytes(value.sealed),now:integer(value.now)};
@@ -138,8 +143,16 @@ async function run(operation: CoreOperation): Promise<string | Uint8Array> {
     case 'document_request': return restored().document_request(operation.request, operation.now);
     case 'agent_request': return restored().agent_request(operation.request, operation.now);
     case 'profile_request': return restored().profile_request(operation.request, operation.now);
+    case 'profile_save': return restored().profile_save(operation.request, operation.bytes, operation.now);
+    case 'profile_photo_framed': return restored().profile_photo_framed(operation.identity, operation.expected);
+    case 'profile_photo_received': return restored().profile_photo_received(operation.identity, operation.expected, operation.sealed);
     case 'handle_profile':return restored().handle_profile(operation.handle);
     case 'handle_confirmed':return restored().handle_confirmed(operation.profile,operation.expected);
+    case 'link_prepare':{
+      if(!primary)throw new Error('A chave da conta não está neste navegador. Vincule o aparelho pelo dispositivo principal.');
+      return restored().link_prepare(primary,operation.code,operation.now);
+    }
+    case 'link_request':return restored().link_request(operation.request,operation.now);
     case 'history_status':return restored().history_status();
     case 'history_start':return restored().history_start(operation.now);
     case 'history_manifest':return restored().history_manifest(operation.sealed,operation.now);

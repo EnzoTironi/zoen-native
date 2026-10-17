@@ -54,8 +54,27 @@ export function parseZoenLink(value: string): ZoenLink | null {
   }
 }
 
-export function nativeLinkPath(path: string): string {
+export function nativeLinkPath(path: string, development = false): string {
   if (path.startsWith('/') && !path.startsWith('//')) return path;
+  if (development) {
+    try {
+      const launch = new URL(path);
+      const metro = new URL(launch.searchParams.get('__expo_url') ?? '');
+      if (
+        ['zoen:', 'exp+zoen:'].includes(launch.protocol) &&
+        !launch.host &&
+        ['', '/'].includes(launch.pathname) &&
+        !launch.hash &&
+        ['http:', 'https:'].includes(metro.protocol) &&
+        ['localhost', '127.0.0.1', '[::1]'].includes(metro.hostname) &&
+        !metro.username &&
+        !metro.password
+      )
+        return '/';
+    } catch {
+      // Ordinary application links continue through the strict parser below.
+    }
+  }
   const link = parseZoenLink(path);
   if (!link) return '/open-link?invalid=1';
   switch (link.kind) {

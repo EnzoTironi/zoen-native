@@ -315,6 +315,14 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    pub fn upload_pending(&self, blob: &str) -> Result<bool> {
+        Ok(self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM blob_uploads WHERE blob_sha = ?1)",
+            [blob],
+            |row| row.get(0),
+        )?)
+    }
+
     pub fn uploads_pending(&self) -> Result<u64> {
         Ok(self
             .conn

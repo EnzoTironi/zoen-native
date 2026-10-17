@@ -11,7 +11,7 @@ name: string | null, bio: string | null,
 /**
  * The photo's sha256; its bytes come from `media(sha256)` once `photo_ready`.
  */
-photo_sha256: string | null, photo_ready: boolean, 
+photo_sha256: string | null, photo_ready: boolean, photo_mime: string | null, 
 /**
  * The profile version shown (0 = none readable yet).
  */
