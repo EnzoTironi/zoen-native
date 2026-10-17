@@ -1,8 +1,7 @@
 export type MediaPickKind = 'document' | 'photo' | 'camera' | 'audio';
 
 export type MediaActionsProps = Readonly<{
-  visible: boolean;
+  disabled: boolean;
   hasVoiceEditor: boolean;
-  onClose: () => void;
   onChoose: (kind: MediaPickKind) => void;
 }>;

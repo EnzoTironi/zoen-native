@@ -81,7 +81,6 @@ export function MediaComposer({
     isMeteringEnabled: true,
   });
   const recorderState = useAudioRecorderState(recorder, 100);
-  const [menu, setMenu] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [selection, setSelection] = useState<FileDraft | null>(null);
   const [clip, setClip] = useState<Recording | null>(null);
@@ -233,7 +232,6 @@ export function MediaComposer({
       return;
     selecting.current = true;
     setBusy(true);
-    setMenu(false);
     setFailure(null);
     async function stage(file: FileSelection) {
       if (!mounted.current || !focused.current) {
@@ -504,12 +502,12 @@ export function MediaComposer({
       />
     ) : null;
   const attachment = (
-    <ComposerAction
-      testID="add-attachment"
-      label={t('media.addAttachment')}
-      name="plus"
+    <MediaActions
       disabled={disabled || busy || presented}
-      onPress={() => setMenu(true)}
+      hasVoiceEditor={Boolean(media.voiceEditor)}
+      onChoose={(kind) => {
+        void pick(kind);
+      }}
     />
   );
   const voice = (
@@ -535,14 +533,6 @@ export function MediaComposer({
           {voice}
         </>
       )}
-      <MediaActions
-        visible={menu}
-        hasVoiceEditor={Boolean(media.voiceEditor)}
-        onClose={() => setMenu(false)}
-        onChoose={(kind) => {
-          void pick(kind);
-        }}
-      />
       <MediaSheet
         visible={sheetVisible}
         locked={busy}
