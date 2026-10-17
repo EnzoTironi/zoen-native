@@ -67,10 +67,17 @@ class UnifiedSearchJourneyTest {
             !it.isMe && it.kind == PersonaKind.PERSON && state.spaces.none { chat -> chat.counterpart?.id == it.id }
         }
         var destination: NavKey? = null
-        compose.setContent { ZoenTheme { Surface { SearchScreen(model, state, { destination = it }, {}) } } }
+        val errors = java.util.concurrent.CopyOnWriteArrayList<String>()
+        compose.setContent { ZoenTheme { Surface {
+            androidx.compose.runtime.LaunchedEffect(model) { model.notices.collect { errors.add(it.text) } }
+            SearchScreen(model, state, { destination = it }, {})
+        } } }
         compose.onNodeWithTag("search").performTextInput(person.handle)
         selectRecipient(person.id, person.handle)
-        compose.waitUntil(10_000) { destination != null }
+        try { compose.waitUntil(10_000) { destination != null } }
+        catch (error: ComposeTimeoutException) {
+            throw AssertionError("Direct creation for ${person.id} (@${person.handle}) failed: $errors", error)
+        }
         val created = model.repository.state.value.spaces.single { it.counterpart?.id == person.id }
         compose.runOnIdle { assertEquals(Chat(created.id), destination) }
         assertFalse(state.spaces.any { it.id == created.id })
