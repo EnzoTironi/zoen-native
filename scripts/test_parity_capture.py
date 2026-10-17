@@ -70,6 +70,22 @@ class CaptureSafetyTests(unittest.TestCase):
         archive_root = Path(os.path.commonpath(roots))
         manifest_member = Path('parity/ios/manifest.json').relative_to(archive_root)
         self.assertEqual(manifest_member, Path('manifest.json'))
+        compare = workflow.split('\n  compare:\n', 1)[1]
+        for viewport in ('narrow', 'wide'):
+            with self.subTest(viewport=viewport), TemporaryDirectory() as directory:
+                download = compare.split(f'name: parity-ios-{viewport}\n', 1)[1]
+                destination = download.split('path: ', 1)[1].splitlines()[0].strip()
+                self.assertEqual(destination, f'parity/ios-{viewport}')
+                # Model extraction beneath the named download destination. A sibling
+                # log changes the upload LCA to parity/, nesting this at ios/manifest.json.
+                extracted = Path(directory) / destination / manifest_member
+                extracted.parent.mkdir(parents=True)
+                extracted.write_text('{}')
+                self.assertTrue((Path(directory) / destination / 'manifest.json').is_file())
+                broken_root = Path(os.path.commonpath([*roots, 'parity']))
+                broken_member = Path('parity/ios/manifest.json').relative_to(broken_root)
+                self.assertEqual(broken_member, Path('ios/manifest.json'))
+                self.assertNotEqual(broken_member, manifest_member)
         self.assertIn('name: parity-ios-log-${{ matrix.viewport }}', ios)
         self.assertIn('path: parity/ios-${{ matrix.viewport }}.log', ios)
 
