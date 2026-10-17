@@ -9,7 +9,7 @@ export type ProfileDto = { identity_id: string, handle: string,
  */
 name: string | null, bio: string | null, 
 /**
- * The photo's sha256; its bytes come from `media(sha256)` once `photo_ready`.
+ * The photo's sha256; read using `profile_photo(identity, expected_sha256)`.
  */
 photo_sha256: string | null, photo_ready: boolean, photo_mime: string | null, 
 /**

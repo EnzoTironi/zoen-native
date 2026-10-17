@@ -128,7 +128,7 @@ impl Service {
         &self,
         headers: &HeaderMap,
         client: Option<Client>,
-    ) -> Result<Option<String>, Response> {
+    ) -> Result<Option<String>, Failure> {
         match headers.get(header::ORIGIN) {
             Some(origin) if self.settings.origins.contains(origin) => Ok(Some(
                 origin
@@ -169,6 +169,7 @@ async fn response_policy(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "authentication_unavailable",
             )
+            .into_response()
         });
     response
         .headers_mut()
@@ -238,7 +239,7 @@ fn now() -> i64 {
         .try_into()
         .unwrap_or(i64::MAX)
 }
-fn random() -> Result<String, Response> {
+fn random() -> Result<String, Failure> {
     let mut bytes = [0; 32];
     getrandom::getrandom(&mut bytes)
         .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE, "random_unavailable"))?;
@@ -253,23 +254,42 @@ fn token(value: &str) -> bool {
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
-fn error(status: StatusCode, code: &'static str) -> Response {
-    (status, Json(serde_json::json!({"error":code}))).into_response()
+#[derive(Debug)]
+struct Failure {
+    status: StatusCode,
+    code: &'static str,
+    retry_after: Option<u64>,
 }
-fn unavailable(_: impl std::fmt::Display) -> Response {
+impl IntoResponse for Failure {
+    fn into_response(self) -> Response {
+        let mut response =
+            (self.status, Json(serde_json::json!({"error":self.code}))).into_response();
+        if let Some(seconds) = self.retry_after {
+            response
+                .headers_mut()
+                .insert(header::RETRY_AFTER, HeaderValue::from(seconds));
+        }
+        response
+    }
+}
+fn error(status: StatusCode, code: &'static str) -> Failure {
+    Failure {
+        status,
+        code,
+        retry_after: None,
+    }
+}
+fn unavailable(_: impl std::fmt::Display) -> Failure {
     error(
         StatusCode::SERVICE_UNAVAILABLE,
         "authentication_unavailable",
     )
 }
-fn limited(result: Result<(), std::time::Duration>) -> Result<(), Response> {
-    result.map_err(|wait| {
-        (
-            StatusCode::TOO_MANY_REQUESTS,
-            [("retry-after", wait.as_secs().max(1).to_string())],
-            Json(serde_json::json!({"error":"rate_limited"})),
-        )
-            .into_response()
+fn limited(result: Result<(), std::time::Duration>) -> Result<(), Failure> {
+    result.map_err(|wait| Failure {
+        status: StatusCode::TOO_MANY_REQUESTS,
+        code: "rate_limited",
+        retry_after: Some(wait.as_secs().max(1)),
     })
 }
 
@@ -300,7 +320,7 @@ async fn challenge(
             .map_err(unavailable)?;
         sqlx::query("INSERT INTO provider_challenges(id,provider,client,audience,presenter,origin,nonce,state,created_ms,expires_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)")
             .bind(&id).bind(request.provider.name()).bind(request.client.name()).bind(&audience.id).bind(&audience.presenter).bind(origin).bind(&nonce).bind(&state).bind(created).bind(expires).execute(&st.pool).await.map_err(unavailable)?;
-        Ok::<_, Response>(
+        Ok::<_, Failure>(
             Json(ChallengeResponse {
                 id,
                 nonce,
@@ -311,7 +331,7 @@ async fn challenge(
             .into_response(),
         )
     };
-    run.await.unwrap_or_else(|response| response)
+    run.await.unwrap_or_else(IntoResponse::into_response)
 }
 async fn verify(
     State(st): State<Shared>,
@@ -367,7 +387,7 @@ async fn verify(
             now(),
         )
         .await?;
-        Ok::<_, Response>(
+        Ok::<_, Failure>(
             Json(VerifyResponse {
                 proof_token: proof,
                 expires_ms: expires,
@@ -377,7 +397,7 @@ async fn verify(
             .into_response(),
         )
     };
-    run.await.unwrap_or_else(|response| response)
+    run.await.unwrap_or_else(IntoResponse::into_response)
 }
 async fn bind(
     State(st): State<Shared>,
@@ -395,9 +415,9 @@ async fn bind(
         }
         let origin = st.auth.origin(&headers, None)?;
         let result = storage::bind(&st.pool, &request, origin.as_deref(), now()).await?;
-        Ok::<_, Response>(Json(result).into_response())
+        Ok::<_, Failure>(Json(result).into_response())
     };
-    run.await.unwrap_or_else(|response| response)
+    run.await.unwrap_or_else(IntoResponse::into_response)
 }
 
 #[cfg(test)]

@@ -97,7 +97,9 @@ const hash = await sourceHash();
 const stamp = join(moduleRoot, 'generated', `${platform}.json`);
 try {
   const previous = JSON.parse(await readFile(stamp, 'utf8'));
-  if (previous.sha256 === hash) {
+  // TypeScript is checked in and can drift independently from the Rust inputs.
+  // Always rerun its inexpensive exporter; Cargo already caches the executable.
+  if (platform !== 'types' && previous.sha256 === hash) {
     await Promise.all(previous.outputs.map((path) => stat(path)));
     process.exit(0);
   }

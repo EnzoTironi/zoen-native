@@ -39,7 +39,7 @@ pub(super) async fn issue(
     proof: &str,
     expires: i64,
     now: i64,
-) -> Result<Account, Response> {
+) -> Result<Account, Failure> {
     let mut tx = pool.begin().await.map_err(unavailable)?;
     let consumed=sqlx::query("UPDATE provider_challenges SET consumed_ms=$2 WHERE id=$1 AND consumed_ms IS NULL AND expires_ms>$2 AND state=$3")
         .bind(id).bind(now).bind(&challenge.state).execute(&mut *tx).await.map_err(unavailable)?;
@@ -65,7 +65,7 @@ pub(super) async fn bind(
     request: &ProviderBindRequest,
     origin: Option<&str>,
     now: i64,
-) -> Result<ProviderBindResponse, Response> {
+) -> Result<ProviderBindResponse, Failure> {
     let profile = &request.profile;
     let handle = roda_proto::normalize_handle(&profile.handle)
         .ok_or_else(|| error(StatusCode::BAD_REQUEST, "invalid_handle"))?;
@@ -350,7 +350,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            bind(&pool, winner, None, 4).await.err().unwrap().status(),
+            bind(&pool, winner, None, 4).await.err().unwrap().status,
             StatusCode::FORBIDDEN
         );
         assert!(sqlx::query_scalar::<_, bool>(
