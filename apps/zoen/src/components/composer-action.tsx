@@ -3,12 +3,21 @@ import { useTheme } from '../theme';
 import { Icon } from './primitives';
 
 export type ComposerActionProps = {
-  name: 'plus' | 'mic' | 'arrow.up' | 'checkmark' | 'stop.fill';
+  name:
+    | 'plus'
+    | 'mic'
+    | 'arrow.up'
+    | 'checkmark'
+    | 'stop.fill'
+    | 'xmark'
+    | 'chevron.up'
+    | 'chevron.down';
   label: string;
   onPress: () => void;
   disabled?: boolean;
   prominent?: boolean;
   testID?: string;
+  size?: 44 | 52;
 };
 const material = {
   plus: 'add',
@@ -16,6 +25,9 @@ const material = {
   'arrow.up': 'arrow_upward',
   checkmark: 'check',
   'stop.fill': 'stop',
+  xmark: 'close',
+  'chevron.up': 'expand_less',
+  'chevron.down': 'expand_more',
 } as const;
 export function ComposerAction({
   name,
@@ -24,6 +36,7 @@ export function ComposerAction({
   disabled = false,
   prominent = false,
   testID,
+  size = 52,
 }: ComposerActionProps) {
   const { colors } = useTheme();
   return (
@@ -35,9 +48,9 @@ export function ComposerAction({
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => ({
-        width: 52,
-        height: 52,
-        borderRadius: 26,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: prominent ? colors.accent : colors.surface,

@@ -139,12 +139,15 @@ preserving horizontal position; their matching list spacer collapses with them.
 Hidden cards lose touch/accessibility targets, reduced motion removes the extra
 slide/fade, and notices remain visible.
 
-Conversation search replaces the title/action HUD with a native SwiftUI field and
-older/newer arrows. Canonical paginated results reveal exact message IDs, including
-thread replies rendered temporarily in the same conversation. Closing restores
-the main timeline and draft. A completed empty search swaps the magnifier for an
-explicit Ask Zoen action; loading, failures and stale results never trigger AI.
-Only an opaque ticket enters navigation; the question remains in memory.
+Conversation search reuses the actual message input rather than replacing the
+header. The header magnifier switches that same field into search; the microphone
+slot becomes older/newer arrows, and a completed empty query offers Send to Ask
+Zoen. Loading, failures and stale results never admit AI. Canonical paginated hits
+reveal exact message IDs, including thread replies temporarily rendered in the
+same conversation. Closing restores the normal field, saved text and audio owner.
+Only an opaque ticket enters navigation; the question remains in memory. The
+earlier v23 header-search observation is historical and does not validate this
+new composer layout.
 
 Ask Zoen uses real Apple Foundation Models when the current iPhone supports and
 enables the model and language. It is a bounded, read-only temporary conversation,

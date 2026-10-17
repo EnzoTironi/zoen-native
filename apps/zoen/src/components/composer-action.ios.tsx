@@ -21,11 +21,12 @@ export function ComposerAction({
   disabled: isDisabled = false,
   prominent = false,
   testID,
+  size = 52,
 }: ComposerActionProps) {
   const { colors, scheme } = useTheme();
   const glass = isLiquidGlassAvailable();
   return (
-    <Host style={{ width: 52, height: 52 }} colorScheme={scheme}>
+    <Host style={{ width: size, height: size }} colorScheme={scheme}>
       <Button
         testID={testID}
         label={label}
@@ -42,12 +43,12 @@ export function ComposerAction({
                 : 'bordered',
           ),
           buttonBorderShape('circle'),
-          controlSize('large'),
+          controlSize(size === 44 ? 'regular' : 'large'),
           labelStyle('iconOnly'),
           tint(prominent ? colors.accent : colors.text),
           foregroundStyle(prominent ? colors.onAccent : colors.text),
           disabled(isDisabled),
-          frame({ width: 52, height: 52 }),
+          frame({ width: size, height: size }),
         ]}
       />
     </Host>

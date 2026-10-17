@@ -242,6 +242,7 @@ export default function Chat() {
   );
 
   async function send() {
+    if (search.getSnapshot().active) return;
     if (!composerText.trim() || sending) return;
     const text = composerText;
     store.setTyping(id, false);
@@ -290,132 +291,132 @@ export default function Chat() {
         counterpart={chat.counterpart}
         activityLabel={activityLabel}
         search={{
-          state: searchState,
-          onOpen: () => {
-            input.current?.blur();
+          active: searchState.active,
+          onToggle: () => {
             store.setTyping(id, false);
-            search.open();
-          },
-          onClose: () => {
-            setScrollTarget(null);
-            search.close();
-          },
-          onChange: (query) => search.setQuery(query),
-          onSearch: () => {
-            void search.search();
-          },
-          onMove: (direction) => {
-            void search.move(direction);
-          },
-          onAsk: () => {
-            const current = search.getSnapshot();
-            if (
-              search.isCurrent() &&
-              current.completed &&
-              !current.loading &&
-              !current.error &&
-              !current.hits.length &&
-              !current.cursor &&
-              current.query.trim() &&
-              conversationQueryFits(current.query.trim())
-            )
-              launchConversationAssistant(id, current.query.trim());
+            if (searchState.active) {
+              setScrollTarget(null);
+              search.close();
+            } else search.open();
+            input.current?.focus();
           },
         }}
       />
       <ConversationViewport
         composer={
           <>
-            {searchState.active ? (
-              <View style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 6 }}>
-                <Text accessibilityLiveRegion="polite" style={{ color: colors.text, fontSize: 14 }}>
-                  {!conversationQueryFits(searchState.query.trim())
-                    ? t('chat.searchQueryTooLong')
-                    : searchState.loading || searchRevealBusy
-                      ? t('chat.searchingMessages')
-                      : searchState.error ||
-                        searchRevealError ||
-                        (searchState.completed
-                          ? searchState.hits.length
-                            ? t('chat.searchPosition', {
-                                position: searchState.index + 1,
-                                count: searchState.hits.length,
-                                more: searchState.cursor ? '+' : '',
-                              })
-                            : t('chat.noResults')
-                          : t('chat.searchUsesTheHistoryAvailableOnThisDevice'))}
-                </Text>
-                {searchThread ? (
-                  <Text style={{ color: colors.secondary, fontSize: 12 }}>
-                    {t('chat.searchThreadResult')}
+            {!searchState.active && (reply || editing) ? (
+              <View
+                style={{
+                  marginHorizontal: 16,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderRadius: 18,
+                  backgroundColor: colors.muted,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                }}
+              >
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>
+                    {editing
+                      ? t('chat.editMessage')
+                      : t('chat.replyingTo', { name: reply?.author.name ?? '' })}
                   </Text>
-                ) : null}
+                  <Text numberOfLines={1} style={{ color: colors.secondary, fontSize: 13 }}>
+                    {messageText((editing ?? reply)!)}
+                  </Text>
+                </View>
+                <IconButton
+                  label={t('chat.cancel')}
+                  name={{ ios: 'xmark', android: 'close', web: 'close' }}
+                  onPress={() => {
+                    if (editing) {
+                      setEditing(null);
+                      setEditDraft('');
+                    } else setReply(null);
+                  }}
+                />
               </View>
             ) : null}
-            <View
-              style={{ display: searchState.active ? 'none' : 'flex' }}
-              pointerEvents={searchState.active ? 'none' : 'box-none'}
-              accessibilityElementsHidden={searchState.active}
-              importantForAccessibility={searchState.active ? 'no-hide-descendants' : 'auto'}
-            >
-              {reply || editing ? (
-                <View
-                  style={{
-                    marginHorizontal: 16,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    borderRadius: 18,
-                    backgroundColor: colors.muted,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                  }}
-                >
-                  <View style={{ flex: 1, gap: 4 }}>
-                    <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>
-                      {editing
-                        ? t('chat.editMessage')
-                        : t('chat.replyingTo', { name: reply?.author.name ?? '' })}
-                    </Text>
-                    <Text numberOfLines={1} style={{ color: colors.secondary, fontSize: 13 }}>
-                      {messageText((editing ?? reply)!)}
-                    </Text>
-                  </View>
-                  <IconButton
-                    label={t('chat.cancel')}
-                    name={{ ios: 'xmark', android: 'close', web: 'close' }}
-                    onPress={() => {
-                      if (editing) {
-                        setEditing(null);
-                        setEditDraft('');
-                      } else setReply(null);
-                    }}
-                  />
-                </View>
-              ) : null}
-              <MessageComposer
-                spaceId={id}
-                suspended={searchState.active}
-                inputRef={input}
-                value={composerText}
-                sending={sending}
-                editing={Boolean(editing)}
-                replyTo={reply?.id ?? null}
-                onChangeText={(text) => {
-                  if (editing) {
-                    setEditDraft(text);
-                    store.setTyping(id, false);
-                  } else {
-                    setDraft(text);
-                    store.setTyping(id, Boolean(text.trim()));
-                  }
-                }}
-                onBlur={() => store.setTyping(id, false)}
-                onSend={() => {
-                  void send();
-                }}
-                onMediaSent={() => setReply(null)}
-              />
-            </View>
+            <MessageComposer
+              spaceId={id}
+              suspended={searchState.active}
+              inputRef={input}
+              value={searchState.active ? searchState.query : composerText}
+              sending={sending}
+              editing={Boolean(editing) && !searchState.active}
+              replyTo={reply?.id ?? null}
+              onChangeText={(text) => {
+                if (searchState.active) {
+                  search.setQuery(text);
+                  store.setTyping(id, false);
+                } else if (editing) {
+                  setEditDraft(text);
+                  store.setTyping(id, false);
+                } else {
+                  setDraft(text);
+                  store.setTyping(id, Boolean(text.trim()));
+                }
+              }}
+              onBlur={() => store.setTyping(id, false)}
+              onSend={() => {
+                if (!searchState.active) void send();
+              }}
+              search={
+                searchState.active
+                  ? {
+                      state: searchState,
+                      status: [
+                        !conversationQueryFits(searchState.query.trim())
+                          ? t('chat.searchQueryTooLong')
+                          : searchState.loading || searchRevealBusy
+                            ? t('chat.searchingMessages')
+                            : searchState.error ||
+                              searchRevealError ||
+                              (searchState.completed
+                                ? searchState.hits.length
+                                  ? t('chat.searchPosition', {
+                                      position: searchState.index + 1,
+                                      count: searchState.hits.length,
+                                      more: searchState.cursor ? '+' : '',
+                                    })
+                                  : t('chat.noResults')
+                                : t('chat.searchUsesTheHistoryAvailableOnThisDevice')),
+                        searchThread ? t('chat.searchThreadResult') : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · '),
+                      onClose: () => {
+                        setScrollTarget(null);
+                        search.close();
+                        input.current?.focus();
+                      },
+                      onMove: (direction) => {
+                        void search.move(direction);
+                      },
+                      onSearch: () => {
+                        void search.search();
+                      },
+                      onAsk: () => {
+                        const current = search.getSnapshot();
+                        if (
+                          search.isCurrent() &&
+                          current.completed &&
+                          !current.loading &&
+                          !current.error &&
+                          !current.hits.length &&
+                          !current.cursor &&
+                          current.query.trim() &&
+                          conversationQueryFits(current.query.trim())
+                        )
+                          launchConversationAssistant(id, current.query.trim());
+                      },
+                    }
+                  : undefined
+              }
+              onMediaSent={() => setReply(null)}
+            />
           </>
         }
         overlay={
