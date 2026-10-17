@@ -119,6 +119,7 @@ fn synced_follow_read_and_also_in_chat_project_native_roots() {
             root: root.clone(),
             follow: Some(false),
             read_up_to: first,
+            read_only: false,
         },
     );
     reply(&mut client, &other, &root, true);
@@ -132,6 +133,7 @@ fn synced_follow_read_and_also_in_chat_project_native_roots() {
             root: root.clone(),
             follow: Some(true),
             read_up_to: first,
+            read_only: false,
         },
     );
     assert_eq!(client.conversations()[0].threads_unread, 1); // only after watermark
@@ -143,6 +145,7 @@ fn synced_follow_read_and_also_in_chat_project_native_roots() {
             root: root.clone(),
             follow: None,
             read_up_to: 0,
+            read_only: false,
         },
     );
     assert_eq!(client.conversations()[0].threads_unread, 1); // stale device must not regress the read watermark
@@ -155,6 +158,7 @@ fn synced_follow_read_and_also_in_chat_project_native_roots() {
             root: root.clone(),
             follow: Some(false),
             read_up_to: 0,
+            read_only: false,
         },
     );
     assert_eq!(client.conversations()[0].threads_unread, 1);
@@ -210,7 +214,16 @@ fn deliver(client: &mut Client<HostSigner>, log: &mut SpaceLog, env: Envelope) {
 #[test]
 fn personal_thread_state_is_encrypted_and_native_can_receive_it() {
     let (mut client, _, other, root, hash) = fixture();
-    let last = reply(&mut client, &other, &root, false);
+    reply(&mut client, &other, &root, false);
+    let mut voice = crate::media::seal_file("voice.webm", "audio/webm", b"voice", None).unwrap().doc;
+    voice.voice = Some(roda_types::VoiceMeta {
+        reply: Some(roda_types::ReplyRef { to: root.clone(), thread: true, also_in_chat: false }),
+        ..Default::default()
+    });
+    let last = append(client.logs.get_mut("chat").unwrap(), &other, EventBody::ItemCreated {
+        item: "voice_reply".into(), kind: roda_types::ItemKind::File,
+        content: roda_types::ItemContent::File(voice), origin: String::new(),
+    }).seq;
     let package = client
         .bootstrap()
         .unwrap()
@@ -306,7 +319,7 @@ fn personal_thread_state_is_encrypted_and_native_can_receive_it() {
     let event = inner_event(&sequenced, &plaintext, &from).unwrap();
     roda_log::verify_author(&event).unwrap();
     assert!(
-        matches!(&event.body, EventBody::ThreadStateSet { root: r, read_up_to, follow: None, .. } if r == &root && *read_up_to == last)
+        matches!(&event.body, EventBody::ThreadStateSet { root: r, read_up_to, follow: None, read_only: true, .. } if r == &root && *read_up_to == last)
     );
     deliver(&mut client, &mut log, env);
     // The phone explicitly unfollows after reading. Browser must consume the same state.
@@ -320,6 +333,7 @@ fn personal_thread_state_is_encrypted_and_native_can_receive_it() {
             root: root.clone(),
             follow: Some(false),
             read_up_to: last,
+            read_only: false,
         },
     );
     let ciphertext = native
@@ -454,6 +468,7 @@ fn thread_mentions_only_count_unseen_incoming_whole_handles() {
             root: root.clone(),
             follow: Some(true),
             read_up_to: old,
+            read_only: false,
         },
     );
     for (author, text) in [
@@ -493,6 +508,7 @@ fn thread_mentions_only_count_unseen_incoming_whole_handles() {
             root,
             follow: Some(true),
             read_up_to: last,
+            read_only: false,
         },
     );
     let view = client.conversations().remove(0);
@@ -529,6 +545,7 @@ fn personal_follow_uses_timestamp_not_log_order_and_read_never_regresses() {
                     root: root.clone(),
                     follow,
                     read_up_to: read,
+                    read_only: false,
                 },
             );
             log.sequence(event);
@@ -553,6 +570,7 @@ fn legacy_snapshot_never_republishes_plaintext_preferences() {
                 root,
                 follow: Some(false),
                 read_up_to: 4,
+                read_only: false,
             },
             400,
         )
@@ -569,4 +587,15 @@ fn legacy_snapshot_never_republishes_plaintext_preferences() {
     .unwrap();
     let update = restored.update(Vec::new()).unwrap();
     assert!(!update.frames.iter().any(|frame| matches!(ClientFrame::decode(frame).unwrap(), ClientFrame::Publish { env } if env.plain_event().is_some_and(|event| matches!(event.body, EventBody::ThreadStateSet { .. })))));
+}
+
+#[test]
+fn read_only_thread_events_do_not_restore_following() {
+    let (mut client, me, _, root, _) = fixture();
+    for (follow, read_only, read_up_to) in [(Some(false), false, 1), (Some(true), true, 99)] {
+        append(client.logs.get_mut("personal").unwrap(), &me, EventBody::ThreadStateSet {
+            space: "chat".into(), root: root.clone(), follow, read_up_to, read_only,
+        });
+    }
+    assert_eq!(client.thread_state("chat", &root), (Some(false), 99));
 }

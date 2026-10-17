@@ -58,11 +58,13 @@ impl<S: Signer> Client<S> {
                 root,
                 follow,
                 read_up_to,
+                read_only,
             } = &event.body
             {
                 if s == space {
                     let state = states.entry(canonical(root)).or_insert((None, 0u64));
-                    *state = (*follow, state.1.max(*read_up_to));
+                    state.1 = state.1.max(*read_up_to);
+                    if !read_only { state.0 = *follow; }
                 }
             }
         }
@@ -76,6 +78,7 @@ impl<S: Signer> Client<S> {
         follow: Option<bool>,
         read_up_to: u64,
         now: i64,
+        read_only: bool,
     ) -> Result<Update, String> {
         self.posted(space, root)
             .ok_or("That message is no longer available.")?;
@@ -103,6 +106,7 @@ impl<S: Signer> Client<S> {
                 root: self.thread_root(space, root),
                 follow,
                 read_up_to,
+                read_only,
             },
             now,
         )?;
@@ -124,7 +128,7 @@ impl<S: Signer> Client<S> {
         now: i64,
     ) -> Result<Update, String> {
         let read = self.thread_state(space, root).1;
-        self.put_thread_state(space, root, follow, read, now)
+        self.put_thread_state(space, root, follow, read, now, false)
     }
 
     pub fn mark_thread_read(
@@ -135,13 +139,21 @@ impl<S: Signer> Client<S> {
     ) -> Result<Update, String> {
         let canonical = self.thread_root(space, root);
         let last = self.logs.get(space).ok_or("That message is no longer available.")?.events().iter()
-            .filter(|e| matches!(&e.body, EventBody::MessagePosted { reply: Some(r), .. } if r.thread && self.thread_root(space, &r.to) == canonical))
+            .filter(|e| {
+                let reply = match &e.body {
+                    EventBody::MessagePosted { reply, .. } => reply.as_ref(),
+                    EventBody::ItemCreated { content: roda_types::ItemContent::File(doc), .. } =>
+                        doc.voice.as_ref().and_then(|voice| voice.reply.as_ref()),
+                    _ => None,
+                };
+                reply.is_some_and(|r| r.thread && self.thread_root(space, &r.to) == canonical)
+            })
             .map(|e| e.seq).max().unwrap_or(0);
         let (follow, read) = self.thread_state(space, root);
         if last <= read {
             return self.update(Vec::new());
         }
-        self.put_thread_state(space, root, follow, last, now)
+        self.put_thread_state(space, root, follow, last, now, true)
     }
 
     pub(super) fn fill_threads(&self, space: &str, messages: &mut [MessageView]) {

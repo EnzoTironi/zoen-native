@@ -410,6 +410,7 @@ mod tests {
             root: "root".into(),
             follow: Some(true),
             read_up_to: 7,
+            read_only: false,
         };
         assert_eq!(
             admit(&env(&a, seen.clone(), preference), &f)

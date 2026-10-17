@@ -203,6 +203,7 @@ impl Engine {
         root: &str,
         follow: Option<bool>,
         read: u64,
+        read_only: bool,
     ) -> R<()> {
         let me = self.me_id()?;
         let personal = self
@@ -216,6 +217,7 @@ impl Engine {
                 root: root.to_string(),
                 follow,
                 read_up_to: read,
+                read_only,
             },
         )?;
         Ok(())
@@ -225,7 +227,7 @@ impl Engine {
     pub fn set_thread_follow(&mut self, space: &str, root: &str, follow: Option<bool>) -> R<()> {
         self.space_state(space)?;
         let read = self.thread_read(space, root);
-        self.put_thread_state(space, root, follow, read)
+        self.put_thread_state(space, root, follow, read, false)
     }
 
     /// I saw the thread up to its last reply. Syncs to my devices only when it moved past
@@ -248,7 +250,7 @@ impl Engine {
                 .thread_state
                 .get(&(space.to_string(), root.to_string()))
                 .and_then(|s| s.0);
-            self.put_thread_state(space, root, follow, last)?;
+            self.put_thread_state(space, root, follow, last, true)?;
         }
         self.store
             .set_meta(&format!("tread:{space}:{root}"), &last.to_string())?;

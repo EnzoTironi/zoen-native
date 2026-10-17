@@ -249,6 +249,7 @@ pub(crate) struct State {
     /// My state per thread, (space, root) → (follow override, read up to).
     pub(crate) thread_state: HashMap<(SpaceId, String), (Option<bool>, u64)>,
     /// Cross-Personal-log last-writer ordering; relay sequences are only per Space.
+    chat_pref_versions: HashMap<SpaceId, (i64, u64, String)>,
     thread_versions: HashMap<(SpaceId, String), (i64, u64, String)>,
 }
 
@@ -439,6 +440,7 @@ impl State {
                 root,
                 follow,
                 read_up_to,
+                read_only,
             } => {
                 let mine = self.spaces.get(&e.space).is_some_and(|s| {
                     s.kind == SpaceKind::Personal && s.members.iter().any(|(m, _)| *m == e.author)
@@ -448,7 +450,7 @@ impl State {
                     let version = (e.at_ms, e.seq, e.client_id.clone());
                     let slot = self.thread_state.entry(key.clone()).or_insert((None, 0));
                     slot.1 = slot.1.max(*read_up_to);
-                    if self
+                    if !read_only && self
                         .thread_versions
                         .get(&key)
                         .is_none_or(|old| version > *old)
@@ -464,7 +466,11 @@ impl State {
                     s.kind == SpaceKind::Personal && s.members.iter().any(|(m, _)| *m == e.author)
                 });
                 if mine {
-                    self.chat_prefs.insert(space.clone(), prefs.clone());
+                    let version = (e.at_ms, e.seq, e.client_id.clone());
+                    if self.chat_pref_versions.get(space).is_none_or(|old| version > *old) {
+                        self.chat_prefs.insert(space.clone(), prefs.clone());
+                        self.chat_pref_versions.insert(space.clone(), version);
+                    }
                 }
             }
             EventBody::MessageAnnotated { target, note } => {
@@ -747,12 +753,14 @@ impl Engine {
                 state.spaces.insert(space.clone(), projected.clone());
             }
             // Only a Personal Space projects prefs (checked when applied).
-            state.chat_prefs.extend(
-                scoped
-                    .chat_prefs
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone())),
-            );
+            for (key, prefs) in &scoped.chat_prefs {
+                if let Some(version) = scoped.chat_pref_versions.get(key) {
+                    if state.chat_pref_versions.get(key).is_none_or(|old| version > old) {
+                        state.chat_prefs.insert(key.clone(), prefs.clone());
+                        state.chat_pref_versions.insert(key.clone(), version.clone());
+                    }
+                }
+            }
             for (key, (follow, read)) in &scoped.thread_state {
                 let slot = state.thread_state.entry(key.clone()).or_insert((None, 0));
                 slot.1 = slot.1.max(*read);

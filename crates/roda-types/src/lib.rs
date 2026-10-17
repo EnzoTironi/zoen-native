@@ -597,6 +597,9 @@ pub enum EventBody {
         follow: Option<bool>,
         #[serde(default)]
         read_up_to: u64,
+        /// Read-only updates must never change the independent follow register.
+        #[serde(default)]
+        read_only: bool,
     },
     /// An edit, delete for everyone or reaction on an earlier message (see [`annotation`]).
     MessageAnnotated {

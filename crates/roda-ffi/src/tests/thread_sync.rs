@@ -131,6 +131,7 @@ fn thread_follow_and_read_watermarks_replay_on_another_device() {
                 root: root.id.clone(),
                 follow: Some(true),
                 read_up_to: read,
+                read_only: false,
             },
         )
         .unwrap();
