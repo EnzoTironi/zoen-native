@@ -60,7 +60,7 @@ final class ZoenDeviceErasure {
   }
   /// SDK58-owned copies only. Assets, fonts, updates, Documents and Photos stay untouched.
   static func erasePreviewCache(cacheRoot: URL = .cachesDirectory) throws {
-    let owned = ["ZoenMedia", "ImagePicker", "ImageManipulator", "DocumentPicker", "ExpoAudio", "zoen-exports"]
+    let owned = ["ZoenMedia", "ZoenVoiceEditor", "ImagePicker", "ImageManipulator", "DocumentPicker", "ExpoAudio", "zoen-exports"]
     var failed = false
     for name in owned {
       let directory = cacheRoot.appending(path: name, directoryHint: .isDirectory)

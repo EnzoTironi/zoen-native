@@ -22,9 +22,15 @@ public class ZoenCoreModule: Module {
     AsyncFunction("sendFile") { (spaceId: String, uri: String, name: String, mime: String) async throws -> String in
       try await self.session.sendFile(spaceId: spaceId, uri: uri, name: name, mime: mime)
     }
-    AsyncFunction("sendVoice") { (spaceId: String, uri: String, mime: String, durationMs: Double, levels: [Double], replyTo: String?, thread: Bool) async throws -> String in
-      try await self.session.sendVoice(spaceId: spaceId, uri: uri, mime: mime, durationMs: durationMs, levels: levels, replyTo: replyTo, thread: thread)
+    AsyncFunction("sendVoice") { (spaceId: String, uri: String, mime: String, durationMs: Double, levels: [Double], replyTo: String?, thread: Bool, transcript: String) async throws -> String in
+      try await self.session.sendVoice(spaceId: spaceId, uri: uri, mime: mime, durationMs: durationMs, levels: levels, replyTo: replyTo, thread: thread, transcript: transcript)
     }
+    AsyncFunction("prepareVoice") { (uri: String) async throws -> String in try await self.session.prepareVoice(uri) }
+    AsyncFunction("renderVoice") { (sourceId: String, ranges: String) async throws -> String in try await self.session.renderVoice(sourceId, ranges: ranges) }
+    AsyncFunction("transcribeVoice") { (sourceId: String, locale: String) async throws -> String in try await self.session.transcribeVoice(sourceId, locale: locale) }
+    AsyncFunction("releaseVoiceRender") { (sourceId: String, uri: String) async throws in try await self.session.releaseVoiceRender(sourceId, uri: uri) }
+    AsyncFunction("cancelVoice") { (sourceId: String) async in await self.session.cancelVoice(sourceId) }
+    AsyncFunction("releaseVoice") { (sourceId: String) async throws in try await self.session.releaseVoice(sourceId) }
     AsyncFunction("fileInfo") { (itemId: String, version: Int?) async throws -> String in
       try await self.session.fileInfo(itemId: itemId, version: version)
     }
@@ -65,6 +71,7 @@ private actor ZoenSession {
   private var requestDrain: [CheckedContinuation<Void, Never>] = []
   private let mediaFiles = ZoenMediaFiles()
   private let profilePhotos = ZoenProfilePhotos()
+  private let voiceEditor = ZoenVoiceEditor()
 
   func open(mode: String, locale: String, changed: @escaping @Sendable ([String: Any]) -> Void) async throws -> String {
     guard ["account", "demo"].contains(mode) else { throw SessionError.invalidMode }
@@ -76,8 +83,9 @@ private actor ZoenSession {
       try await eraseDevice(expected: pending)
     }
     guard !erasing else { throw ZoenDeviceErasure.Failure.incomplete }
-    close()
-    let openingGeneration = generation
+    let openingGeneration = generation &+ 1
+    await close()
+    guard generation == openingGeneration else { throw SessionError.closed }
     // The shared app keeps the engine's existing primary store, rather than creating
     // a second account database beside the same Keychain identity.
     let root = URL.applicationSupportDirectory.appending(path: mode == "account" ? "Roda" : "Zoen/demo", directoryHint: .isDirectory)
@@ -153,17 +161,49 @@ private actor ZoenSession {
     return try ZoenMediaFiles.json(["itemId": item.id])
   }
 
-  func sendVoice(spaceId: String, uri: String, mime: String, durationMs: Double, levels: [Double], replyTo: String?, thread: Bool) throws -> String {
+  func sendVoice(spaceId: String, uri: String, mime: String, durationMs: Double, levels: [Double], replyTo: String?, thread: Bool, transcript: String) throws -> String {
     guard !erasing, let core else { throw SessionError.closed }
     guard durationMs.isFinite, durationMs >= 250, durationMs <= 3_600_000,
           levels.count <= 1800, levels.allSatisfy({ $0.isFinite && $0 >= 0 && $0 <= 1 }),
-          mime.hasPrefix("audio/") else { throw ZoenMediaFiles.Failure.invalidRecording }
+          transcript.utf8.count <= 65_536, mime.hasPrefix("audio/") else { throw ZoenMediaFiles.Failure.invalidRecording }
     let selection = try mediaFiles.readSelection(uri: uri, name: "voice.m4a", mime: mime)
     let entry = try core.sendVoiceNote(spaceId: spaceId, bytes: selection.data, mime: selection.mime,
-      ms: UInt64(durationMs.rounded()), levels: levels.map(Float.init), transcript: "", replyTo: replyTo, thread: thread)
+      ms: UInt64(durationMs.rounded()), levels: levels.map(Float.init), transcript: transcript, replyTo: replyTo, thread: thread)
     guard let voice = entry.voice else { throw ZoenMediaFiles.Failure.invalidRecording }
     return try ZoenMediaFiles.json(["messageId": entry.id, "itemId": voice.itemId])
   }
+
+  private func voiceJSON<T: Encodable>(_ value: T) throws -> String {
+    String(decoding: try JSONEncoder().encode(value), as: UTF8.self)
+  }
+  func prepareVoice(_ uri: String) async throws -> String {
+    guard !erasing, core != nil else { throw SessionError.closed }
+    let expected = generation
+    let source = try await voiceEditor.prepare(uri: uri)
+    guard !erasing, generation == expected, core != nil else {
+      try await voiceEditor.release(source.id)
+      throw SessionError.closed
+    }
+    return try voiceJSON(source)
+  }
+  func renderVoice(_ sourceId: String, ranges: String) async throws -> String {
+    guard !erasing, core != nil, ranges.utf8.count <= 262_144 else { throw SessionError.closed }
+    let expected = generation
+    let ranges = try JSONDecoder().decode([ZoenVoiceEditor.Range].self, from: Data(ranges.utf8))
+    let result = try await voiceEditor.render(sourceId: sourceId, ranges: ranges)
+    guard !erasing, generation == expected, core != nil else { throw SessionError.closed }
+    return try voiceJSON(result)
+  }
+  func transcribeVoice(_ sourceId: String, locale: String) async throws -> String {
+    guard !erasing, core != nil, ["en", "pt-BR"].contains(locale) else { throw SessionError.closed }
+    let expected = generation
+    let result = try await voiceEditor.transcribe(sourceId: sourceId, locale: locale)
+    guard !erasing, generation == expected, core != nil else { throw SessionError.closed }
+    return try voiceJSON(result)
+  }
+  func releaseVoiceRender(_ sourceId: String, uri: String) async throws { try await voiceEditor.releaseOutput(sourceId: sourceId, uri: uri) }
+  func cancelVoice(_ sourceId: String) async { await voiceEditor.cancel(sourceId) }
+  func releaseVoice(_ sourceId: String) async throws { try await voiceEditor.release(sourceId) }
 
   func fileInfo(itemId: String, version: Int?) throws -> String {
     guard !erasing, let core else { throw SessionError.closed }
@@ -297,6 +337,7 @@ private actor ZoenSession {
       if let account = engine.account() {
         guard account.identityId == expected.identityId, account.deviceId == expected.deviceId else { throw ZoenDeviceErasure.Failure.changed }
       }
+      try await voiceEditor.releaseAll()
       try engine.eraseDevice(vault: vault)
       try vault.eraseAllVerified()
       mediaFiles.removeAll()
@@ -313,7 +354,7 @@ private actor ZoenSession {
     try await task.value
   }
 
-  func close() {
+  func close() async {
     generation &+= 1
     historyTask?.cancel()
     historyTask = nil
@@ -325,6 +366,7 @@ private actor ZoenSession {
     syncStarted = false
     mediaFiles.removeAll()
     profilePhotos.removeAll()
+    try? await voiceEditor.releaseAll()
   }
 }
 

@@ -31,7 +31,11 @@
       "The recording is empty or invalid. Record it again.": "The recording is empty or invalid. Record it again.",
       "This file version is unavailable.": "This file version is unavailable.",
       "Select a JPEG photo up to 5 MB again.": "Select a JPEG photo up to 5 MB again.",
-      "The session changed. Open your profile again.": "The session changed. Open your profile again."
+      "The session changed. Open your profile again.": "The session changed. Open your profile again.",
+      "This recording could not be opened. Record it again.": "This recording could not be opened. Record it again.",
+      "Keep at least a quarter of a second of this recording.": "Keep at least a quarter of a second of this recording.",
+      "This voice review has closed. Open it again.": "This voice review has closed. Open it again.",
+      "The edited recording could not be prepared. Try again.": "The edited recording could not be prepared. Try again."
     },
     "NSFaceIDUsageDescription": "Allow $(PRODUCT_NAME) to use Face ID to confirm your identity.",
     "NSLocalNetworkUsageDescription": "Expo Dev Launcher uses the local network to discover and connect to development servers running on your computer."

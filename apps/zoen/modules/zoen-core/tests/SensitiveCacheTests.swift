@@ -6,7 +6,7 @@ import Foundation
     let sandbox = manager.temporaryDirectory.appendingPathComponent("zoen-sensitive-cache-fixture-\(UUID().uuidString)", isDirectory: true)
     defer { try? manager.removeItem(at: sandbox) }
     let cache = sandbox.appendingPathComponent("Library/Caches", isDirectory: true)
-    let owned = ["ZoenMedia", "ImagePicker", "ImageManipulator", "DocumentPicker", "ExpoAudio", "zoen-exports"]
+    let owned = ["ZoenMedia", "ZoenVoiceEditor", "ImagePicker", "ImageManipulator", "DocumentPicker", "ExpoAudio", "zoen-exports"]
     let preserved = ["ExpoAsset", "ExponentAsset", "expo-updates", "fonts", "com.apple.WebKit"]
     for name in owned + preserved {
       let directory = cache.appendingPathComponent(name, isDirectory: true)
@@ -65,6 +65,6 @@ import Foundation
     try ZoenDeviceErasure.erasePreviewCache(cacheRoot: cache)
     do { _ = try manager.attributesOfItem(atPath: dangling.path); fatalError("dangling cache link retained") }
     catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile {}
-    print("Synthetic cache sweep passed: six namespaces, external originals/assets preserved, symlinks, denied child/root inspection and retry.")
+    print("Synthetic cache sweep passed: seven namespaces including voice originals/exports, external originals/assets preserved, symlinks, denied child/root inspection and retry.")
   }
 }

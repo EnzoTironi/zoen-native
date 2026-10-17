@@ -15,6 +15,29 @@ function core() {
 
 export function createDriver(): CoreDriver {
   const media: MediaDriver = {
+    voiceEditor:
+      Platform.OS === 'ios' && typeof NativeCore?.prepareVoice === 'function'
+        ? {
+            async prepare(uri) {
+              return JSON.parse(await core().prepareVoice(uri));
+            },
+            async render(sourceId, ranges) {
+              return JSON.parse(await core().renderVoice(sourceId, JSON.stringify(ranges)));
+            },
+            async transcribe(sourceId, locale) {
+              return JSON.parse(await core().transcribeVoice(sourceId, locale));
+            },
+            async releaseRender(sourceId, uri) {
+              await core().releaseVoiceRender(sourceId, uri);
+            },
+            async cancel(sourceId) {
+              await core().cancelVoice(sourceId);
+            },
+            async release(sourceId) {
+              await core().releaseVoice(sourceId);
+            },
+          }
+        : undefined,
     async sendFile(selection) {
       return JSON.parse(
         await core().sendFile(selection.spaceId, selection.uri, selection.name, selection.mime),
@@ -30,6 +53,7 @@ export function createDriver(): CoreDriver {
           recording.levels,
           recording.replyTo,
           recording.thread,
+          recording.transcript ?? '',
         ),
       );
     },

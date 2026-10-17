@@ -14,7 +14,14 @@ declare class ZoenCoreModule extends NativeModule<{ onChange: (event: CoreEvent)
     levels: number[],
     replyTo: string | null,
     thread: boolean,
+    transcript: string,
   ): Promise<string>;
+  prepareVoice(uri: string): Promise<string>;
+  renderVoice(sourceId: string, ranges: string): Promise<string>;
+  transcribeVoice(sourceId: string, locale: string): Promise<string>;
+  releaseVoiceRender(sourceId: string, uri: string): Promise<void>;
+  cancelVoice(sourceId: string): Promise<void>;
+  releaseVoice(sourceId: string): Promise<void>;
   fileInfo(itemId: string, version: number | null): Promise<string>;
   materializeFile(itemId: string, version: number | null): Promise<string>;
   releaseLocalFile(uri: string): Promise<void>;
