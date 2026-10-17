@@ -29,6 +29,24 @@ class UnifiedSearchJourneyTest {
         return ViewModelProvider(compose.activity)[ZoenViewModel::class.java]
     }
 
+    private fun selectRecipient(personId: String, handle: String) {
+        val tag = "search-recipient:$personId"
+        try {
+            // Lazy rows outside the viewport do not have semantics nodes yet.
+            // Scroll the actual result list, without changing the query or person.
+            compose.waitUntil(10_000) {
+                try {
+                    compose.onNodeWithTag("search-results").performScrollToNode(hasTestTag(tag))
+                    compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+                } catch (_: AssertionError) { false }
+            }
+        } catch (error: ComposeTimeoutException) {
+            throw AssertionError("Missing actual recipient $personId (@$handle).\n" +
+                compose.onRoot(useUnmergedTree = true).printToString(), error)
+        }
+        compose.onNodeWithTag(tag).assertIsDisplayed().performClick()
+    }
+
     @Test fun selectingKnownPersonReusesTheirDirectConversation() {
         val model = setup()
         val state = model.repository.state.value
@@ -37,8 +55,7 @@ class UnifiedSearchJourneyTest {
         var destination: NavKey? = null
         compose.setContent { ZoenTheme { Surface { SearchScreen(model, state, { destination = it }, {}) } } }
         compose.onNodeWithTag("search").performTextInput(person.handle)
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("search-recipient:${person.id}").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("search-recipient:${person.id}").performScrollTo().performClick()
+        selectRecipient(person.id, person.handle)
         compose.waitUntil(10_000) { destination != null }
         compose.runOnIdle { assertEquals(Chat(direct.id), destination) }
     }
@@ -52,8 +69,7 @@ class UnifiedSearchJourneyTest {
         var destination: NavKey? = null
         compose.setContent { ZoenTheme { Surface { SearchScreen(model, state, { destination = it }, {}) } } }
         compose.onNodeWithTag("search").performTextInput(person.handle)
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("search-recipient:${person.id}").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("search-recipient:${person.id}").performScrollTo().performClick()
+        selectRecipient(person.id, person.handle)
         compose.waitUntil(10_000) { destination != null }
         val created = model.repository.state.value.spaces.single { it.counterpart?.id == person.id }
         compose.runOnIdle { assertEquals(Chat(created.id), destination) }
