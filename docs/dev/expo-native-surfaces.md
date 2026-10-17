@@ -116,6 +116,32 @@ Delivery marks use vector symbols and canonical core acknowledgements: pending
 clock, one sent check, two delivered checks, and blue checks only after Read.
 Local-only and failed messages have distinct device/warning symbols.
 
+Conversation miniapps stay fixed below the measured native header, with 6-point
+rail padding. Their wrapper is a transparent absolute overlay; messages scroll
+behind the cards and remain visible in their gaps, without a fade, mask or painted
+background. The list reserves the measured rail height only at its content start,
+and message jumps offset below that overlay. In signed v19, two actual screenshots
+during human scrolling show timeline96%→27% while all three card frames stay at
+normalized y0.140/height0.174. No automation swipe was performed during that user
+interaction. Earlier v17 independently confirmed fixed frames across one bounded
+automated swipe. Final keyboard/jump, isolated pin/unpin and cold acceptance remain
+pending.
+
+## Voice editing checkpoint
+
+The immutable original-frame edit model and session coordinator pass 29 focused
+tests covering trim/cuts, restoration, transcript rebasing, undo/redo, obsolete
+exports, cancellation and cleanup ownership. The actual macOS AVFoundation harness
+encodes and decodes exactly66,150 retained frames at44.1kHz (1,500ms): synthetic
+440/880Hz regions survive, the removed1,200Hz region does not, and contained15ms
+fades preserve frame counts and original hashes. The real Swift module compiled in
+signed iOS v17. Source checks pass TypeScript, Oxlint, Oxfmt and173/173 tests.
+
+The installed app does not mount the new editing UI. Actual waveform/word controls,
+on-device transcription, edited preview, cancellation, encrypted edited send and
+independent-peer playback remain pending. These foundations do not establish full
+parity with the previous Swift editor.
+
 ## In-app Home and miniapp cards
 
 The source now defines four native tabs: Home (`/`), Chats (`/chats`), Files and You.
@@ -137,6 +163,12 @@ Compact cards render the canonical snapshot using bundled Zoen artwork and open
 `/miniapp/[id]`. Invalid snapshots have a bounded title/headline fallback. These
 in-app cards do not require external widget-content consent and do not donate titles,
 start Live Activities or publish anything to the system launcher.
+
+Photographic cards preserve a clear image hero and place every caption/value in a
+lower68–82% black gradient region. A contrast regression checks primary/secondary
+inks against arbitrary image pixels, including pure white. Photo press feedback
+uses scale rather than alpha to preserve text contrast. Installed visual acceptance
+on actual photographic cards remains pending.
 
 Favorites persist only Item IDs in a versioned device-local preference namespace
 bound to identity and device. There are no implicit default pins. Restore/read/write

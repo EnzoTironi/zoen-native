@@ -7,18 +7,20 @@ export function MiniappRail({
   items,
   label,
   size = 152,
+  paddingVertical = 12,
   onLongPress,
 }: {
   items: readonly ItemDetail[];
   label?: string;
   size?: number;
+  paddingVertical?: number;
   onLongPress?: (item: ItemDetail) => void;
 }) {
   const { colors } = useTheme();
   const miniapps = items.filter((item) => item.app !== null);
   if (!miniapps.length) return null;
   return (
-    <View style={{ gap: 10, paddingVertical: 12, backgroundColor: 'transparent' }}>
+    <View style={{ gap: 10, paddingVertical, backgroundColor: 'transparent' }}>
       {label ? (
         <Text
           accessibilityRole="header"

@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { PHOTO_CARD_TEXT, PHOTO_CARD_SECONDARY, PHOTO_CARD_TEXT_GRADIENT } from './photo-card';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
@@ -61,8 +62,8 @@ export function CompactMiniappCard({
   const photo = snapshot?.photo as keyof typeof photos | undefined;
   const photoSource = photo ? photos[photo] : undefined;
   const dark = !!photoSource || art === 'globe';
-  const ink = dark ? '#FFFFFF' : '#202733';
-  const secondary = dark ? '#E1EAF0' : '#465263';
+  const ink = dark ? PHOTO_CARD_TEXT : '#202733';
+  const secondary = dark ? PHOTO_CARD_SECONDARY : '#465263';
   const title = snapshot?.title ?? item.title;
   const detail = snapshot?.detail ?? (!snapshot ? item.app?.headline : undefined);
   const date =
@@ -103,10 +104,11 @@ export function CompactMiniappCard({
           borderRadius: 24,
           borderCurve: 'continuous',
           overflow: 'hidden',
-          padding: 12,
-          gap: 6,
+          padding: photoSource ? 0 : 12,
+          gap: photoSource ? 0 : 6,
           backgroundColor: art ? (papers[art] ?? '#F5F4EF') : '#F5F4EF',
-          opacity: pressed ? 0.75 : 1,
+          opacity: pressed && !photoSource ? 0.75 : 1,
+          transform: [{ scale: pressed && photoSource ? 0.985 : 1 }],
         })}
       >
         {photoSource ? (
@@ -117,146 +119,147 @@ export function CompactMiniappCard({
               accessible={false}
               style={{ position: 'absolute', inset: 0 }}
             />
-            <View
-              style={{
-                position: 'absolute',
-                inset: 0,
-                experimental_backgroundImage:
-                  'linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.72) 100%)',
-              }}
-            />
+            <View style={{ minHeight: side * 0.38 }} />
           </>
         ) : null}
-        <View style={{ paddingRight: accessory ? 44 : 0, gap: 6 }}>
-          {snapshot?.eyebrow ? (
-            <Text numberOfLines={1} style={{ color: secondary, fontSize: 11, fontWeight: '600' }}>
-              {snapshot.eyebrow}
-            </Text>
-          ) : null}
-          {snapshot?.template === 'ticket' ? (
-            <>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-                {snapshot.codes.map((code, index) => (
-                  <Text
-                    key={index}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.7}
-                    style={{ flex: 1, minWidth: 0, color: ink, fontSize: 24, fontWeight: '700' }}
-                  >
-                    {code}
-                  </Text>
-                ))}
-              </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-                {snapshot.times.map((time, index) => (
-                  <Text key={index} style={{ color: secondary, fontSize: 12 }}>
-                    {time}
-                  </Text>
-                ))}
-              </View>
-            </>
-          ) : (
-            <View
-              style={{
-                minHeight: photoSource ? side * 0.42 : 48,
-                flexDirection: accessory && value ? 'column' : 'row',
-                alignItems: accessory && value ? 'flex-start' : 'center',
-                gap: 3,
-              }}
-            >
-              {value ? (
-                <Text
-                  numberOfLines={2}
-                  style={{
-                    flex: accessory ? undefined : 1,
-                    color: ink,
-                    fontSize: date ? 25 : 32,
-                    fontWeight: '700',
-                    fontVariant: ['tabular-nums'],
-                  }}
-                >
-                  {value}
-                </Text>
-              ) : null}
-              {!photoSource && art && artwork[art] ? (
-                <Image
-                  source={artwork[art]}
-                  accessible={false}
-                  contentFit="contain"
-                  style={{
-                    width: value ? (accessory ? 38 : 54) : side - 36 - (accessory ? 44 : 0),
-                    height: value ? (accessory ? 38 : 54) : 52,
-                  }}
-                />
-              ) : !photoSource ? (
-                <Icon
-                  name={{
-                    ios: (snapshot?.symbol ?? 'square.grid.2x2') as SFSymbol,
-                    android: 'widgets',
-                    web: 'widgets',
-                  }}
-                  size={34}
-                  color={ink}
-                />
-              ) : null}
-            </View>
-          )}
-        </View>
-        <Text
-          numberOfLines={fontScale > 1.3 ? 3 : 2}
-          style={{ color: ink, fontSize: 14, lineHeight: 17, fontWeight: '600' }}
+        <View
+          style={{
+            gap: 6,
+            padding: photoSource ? 12 : 0,
+            experimental_backgroundImage: photoSource ? PHOTO_CARD_TEXT_GRADIENT : undefined,
+          }}
         >
-          {title}
-        </Text>
-        {snapshot?.bars.length ? (
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            {snapshot.bars.slice(0, 3).map((bar) => (
-              <View key={bar.label} style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                <Text numberOfLines={1} style={{ color: secondary, fontSize: 10 }}>
-                  {bar.label}
-                </Text>
-                <View
-                  style={{
-                    height: 4,
-                    borderRadius: 2,
-                    backgroundColor: '#20273315',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <View
+          <View style={{ paddingRight: accessory && !photoSource ? 44 : 0, gap: 6 }}>
+            {snapshot?.eyebrow ? (
+              <Text numberOfLines={1} style={{ color: secondary, fontSize: 11, fontWeight: '600' }}>
+                {snapshot.eyebrow}
+              </Text>
+            ) : null}
+            {snapshot?.template === 'ticket' ? (
+              <>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                  {snapshot.codes.map((code, index) => (
+                    <Text
+                      key={index}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.7}
+                      style={{ flex: 1, minWidth: 0, color: ink, fontSize: 24, fontWeight: '700' }}
+                    >
+                      {code}
+                    </Text>
+                  ))}
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                  {snapshot.times.map((time, index) => (
+                    <Text key={index} style={{ color: secondary, fontSize: 12 }}>
+                      {time}
+                    </Text>
+                  ))}
+                </View>
+              </>
+            ) : (
+              <View
+                style={{
+                  minHeight: value || !photoSource ? 48 : 0,
+                  flexDirection: accessory && value ? 'column' : 'row',
+                  alignItems: accessory && value ? 'flex-start' : 'center',
+                  gap: 3,
+                }}
+              >
+                {value ? (
+                  <Text
+                    numberOfLines={2}
                     style={{
-                      width: `${bar.value * 100}%`,
-                      height: 4,
-                      backgroundColor: snapshot.accentHex,
+                      flex: accessory ? undefined : 1,
+                      color: ink,
+                      fontSize: date ? 25 : 32,
+                      fontWeight: '700',
+                      fontVariant: ['tabular-nums'],
+                    }}
+                  >
+                    {value}
+                  </Text>
+                ) : null}
+                {!photoSource && art && artwork[art] ? (
+                  <Image
+                    source={artwork[art]}
+                    accessible={false}
+                    contentFit="contain"
+                    style={{
+                      width: value ? (accessory ? 38 : 54) : side - 36 - (accessory ? 44 : 0),
+                      height: value ? (accessory ? 38 : 54) : 52,
                     }}
                   />
-                </View>
+                ) : !photoSource ? (
+                  <Icon
+                    name={{
+                      ios: (snapshot?.symbol ?? 'square.grid.2x2') as SFSymbol,
+                      android: 'widgets',
+                      web: 'widgets',
+                    }}
+                    size={34}
+                    color={ink}
+                  />
+                ) : null}
               </View>
-            ))}
+            )}
           </View>
-        ) : null}
-        {snapshot?.rows.slice(0, 1).map((row, index) => (
-          <View key={index} style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
-            <Icon
-              name={{
-                ios: row.done ? 'checkmark.circle.fill' : 'circle',
-                android: row.done ? 'check_circle' : 'circle',
-                web: row.done ? 'check_circle' : 'circle',
-              }}
-              size={12}
-              color={secondary}
-            />
-            <Text numberOfLines={1} style={{ flex: 1, fontSize: 11, color: secondary }}>
-              {row.text}
-            </Text>
-          </View>
-        ))}
-        {detail && !snapshot?.bars.length ? (
-          <Text numberOfLines={1} style={{ color: secondary, fontSize: 11, lineHeight: 15 }}>
-            {detail}
+          <Text
+            numberOfLines={fontScale > 1.3 ? 3 : 2}
+            style={{ color: ink, fontSize: 14, lineHeight: 17, fontWeight: '600' }}
+          >
+            {title}
           </Text>
-        ) : null}
+          {snapshot?.bars.length ? (
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {snapshot.bars.slice(0, 3).map((bar) => (
+                <View key={bar.label} style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                  <Text numberOfLines={1} style={{ color: secondary, fontSize: 10 }}>
+                    {bar.label}
+                  </Text>
+                  <View
+                    style={{
+                      height: 4,
+                      borderRadius: 2,
+                      backgroundColor: '#20273315',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: `${bar.value * 100}%`,
+                        height: 4,
+                        backgroundColor: snapshot.accentHex,
+                      }}
+                    />
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {snapshot?.rows.slice(0, 1).map((row, index) => (
+            <View key={index} style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
+              <Icon
+                name={{
+                  ios: row.done ? 'checkmark.circle.fill' : 'circle',
+                  android: row.done ? 'check_circle' : 'circle',
+                  web: row.done ? 'check_circle' : 'circle',
+                }}
+                size={12}
+                color={secondary}
+              />
+              <Text numberOfLines={1} style={{ flex: 1, fontSize: 11, color: secondary }}>
+                {row.text}
+              </Text>
+            </View>
+          ))}
+          {detail && !snapshot?.bars.length ? (
+            <Text numberOfLines={1} style={{ color: secondary, fontSize: 11, lineHeight: 15 }}>
+              {detail}
+            </Text>
+          ) : null}
+        </View>
       </Pressable>
       {accessory ? (
         <View style={{ position: 'absolute', right: 8, top: 8 }}>{accessory}</View>

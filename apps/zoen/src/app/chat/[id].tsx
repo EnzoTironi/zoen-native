@@ -1,6 +1,7 @@
 import { t, formatLocale } from '../../i18n/index.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useHeaderHeight } from 'expo-router/react-navigation';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Host, BottomSheet, Column, Button } from '@expo/ui';
 import * as Clipboard from 'expo-clipboard';
@@ -26,6 +27,8 @@ export default function Chat() {
   const { store, snapshot, timelines, notice, activity } = useClient();
   const { colors, scheme } = useTheme();
   const { items } = useHome();
+  const headerHeight = useHeaderHeight();
+  const conversationMiniapps = items.filter((item) => item.space_id === id);
   const { confirm, inform } = useDialogs();
   const input = useRef<TextInputInstance>(null);
   const list = useRef<FlashListRef<TimelineEntry>>(null);
@@ -37,6 +40,7 @@ export default function Chat() {
   const [editDraft, setEditDraft] = useState('');
   const [loadedSpace, setLoadedSpace] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
+  const [railHeight, setRailHeight] = useState(0);
   const composerText = editing ? editDraft : draft;
   const chat = snapshot?.conversations.find((conversation) => conversation.id === id);
   const page = timelines[id];
@@ -79,18 +83,40 @@ export default function Chat() {
     }, [jump, reveal, inform]),
   );
   useEffect(() => {
-    if (!scrollTarget || loadedSpace !== id || !page) return;
+    if (
+      !scrollTarget ||
+      loadedSpace !== id ||
+      !page ||
+      (conversationMiniapps.length > 0 && railHeight === 0)
+    )
+      return;
     const index = page.entries.findIndex((entry) => entry.id === scrollTarget);
     if (index < 0) return;
     // Wait until the loaded history has committed before addressing list indices.
     const frame = requestAnimationFrame(() => {
-      void list.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 }).catch(() => {
-        void inform(t('chat.theMessageCouldNotBeOpened'), t('chat.tryAgain'));
-      });
+      void list.current
+        ?.scrollToIndex({
+          index,
+          animated: true,
+          viewPosition: 0,
+          viewOffset: -(headerHeight + railHeight + 8),
+        })
+        .catch(() => {
+          void inform(t('chat.theMessageCouldNotBeOpened'), t('chat.tryAgain'));
+        });
       setScrollTarget(null);
     });
     return () => cancelAnimationFrame(frame);
-  }, [scrollTarget, loadedSpace, id, page, inform]);
+  }, [
+    scrollTarget,
+    loadedSpace,
+    id,
+    page,
+    inform,
+    headerHeight,
+    railHeight,
+    conversationMiniapps.length,
+  ]);
   const last = page?.entries.at(-1)?.id;
   useFocusEffect(
     useCallback(() => {
@@ -147,335 +173,350 @@ export default function Chat() {
         counterpart={chat.counterpart}
         activityLabel={activityLabel}
       />
-      {notice ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('chat.dismissNotice', { notice })}
-          onPress={() => store.dismissNotice()}
-          style={{ padding: 12, backgroundColor: colors.muted }}
-        >
-          <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 13 }}>
-            {notice}
-          </Text>
-        </Pressable>
-      ) : null}
       {!page ? (
         <Loading />
       ) : (
-        <FlashList
-          key={id}
-          ref={list}
-          onLoad={() => setLoadedSpace(id)}
-          data={page.entries}
-          keyExtractor={(entry) => entry.id}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 12 }}
-          ListHeaderComponent={
-            <View style={{ marginHorizontal: -16 }}>
-              <MiniappRail items={items.filter((item) => item.space_id === id)} />
-            </View>
-          }
-          maintainVisibleContentPosition={{
-            startRenderingFromBottom: true,
-            autoscrollToBottomThreshold: 0.12,
-          }}
-          onStartReached={() => {
-            if (page.has_more) void store.loadTimeline(id, true).catch(() => {});
-          }}
-          onStartReachedThreshold={0.1}
-          ListEmptyComponent={
-            <EmptyState
-              title={t('chat.theStartOfSomethingGood')}
-              detail={t('chat.writeTheFirstMessageInThisChat')}
-            />
-          }
-          renderItem={({ item: entry, index }) => {
-            const mine = entry.author.is_me;
-            const text = messageText(entry);
-            const previous = page.entries[index - 1];
-            const next = page.entries[index + 1];
-            const grouped =
-              previous?.author.id === entry.author.id &&
-              Number(entry.at_ms) - Number(previous.at_ms) < 180_000;
-            const lastInGroup = next?.author.id !== entry.author.id;
-            const card = 'Message' in entry.kind ? entry.kind.Message.card : null;
-            const system = 'System' in entry.kind || 'Background' in entry.kind;
-            if (system)
-              return (
-                <Text
-                  selectable
-                  style={{
-                    fontSize: 12,
-                    lineHeight: 19,
-                    color: colors.secondary,
-                    textAlign: 'center',
-                    marginVertical: 14,
-                    alignSelf: 'center',
-                    maxWidth: '95%',
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                  }}
-                >
-                  {text}
-                </Text>
-              );
-            return (
-              <View
-                style={{
-                  alignItems: mine ? 'flex-end' : 'flex-start',
-                  marginTop: grouped ? 3 : 16,
-                  marginBottom: lastInGroup ? 5 : 0,
-                }}
-              >
-                {!mine && !grouped && chat.kind !== 'Direct' ? (
+        <View style={{ flex: 1 }}>
+          <FlashList
+            key={id}
+            ref={list}
+            onLoad={() => setLoadedSpace(id)}
+            data={page.entries}
+            keyExtractor={(entry) => entry.id}
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
+            contentInsetAdjustmentBehavior="never"
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingTop: headerHeight + railHeight + 8,
+              paddingBottom: 12,
+            }}
+            maintainVisibleContentPosition={{
+              startRenderingFromBottom: true,
+              autoscrollToBottomThreshold: 0.12,
+            }}
+            onStartReached={() => {
+              if (page.has_more) void store.loadTimeline(id, true).catch(() => {});
+            }}
+            onStartReachedThreshold={0.1}
+            ListEmptyComponent={
+              <EmptyState
+                title={t('chat.theStartOfSomethingGood')}
+                detail={t('chat.writeTheFirstMessageInThisChat')}
+              />
+            }
+            renderItem={({ item: entry, index }) => {
+              const mine = entry.author.is_me;
+              const text = messageText(entry);
+              const previous = page.entries[index - 1];
+              const next = page.entries[index + 1];
+              const grouped =
+                previous?.author.id === entry.author.id &&
+                Number(entry.at_ms) - Number(previous.at_ms) < 180_000;
+              const lastInGroup = next?.author.id !== entry.author.id;
+              const card = 'Message' in entry.kind ? entry.kind.Message.card : null;
+              const system = 'System' in entry.kind || 'Background' in entry.kind;
+              if (system)
+                return (
                   <Text
+                    selectable
                     style={{
-                      color: colors.secondary,
-                      fontWeight: '600',
                       fontSize: 12,
-                      marginBottom: 5,
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
+                      lineHeight: 19,
+                      color: colors.secondary,
+                      textAlign: 'center',
+                      marginVertical: 14,
+                      alignSelf: 'center',
+                      maxWidth: '95%',
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
                     }}
                   >
-                    {entry.author.name}
+                    {text}
                   </Text>
-                ) : null}
-                <Pressable
-                  accessible={!entry.voice && card?.kind_id !== 'file'}
-                  onLongPress={() => {
-                    void Haptics.selectionAsync().catch(() => {});
-                    setSelected(entry);
-                  }}
-                  onAccessibilityTap={
-                    process.env.EXPO_OS === 'ios' ? () => setSelected(entry) : undefined
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    `${entry.author.name}: ${text}` +
-                    (mine ? `, ${messageDeliveryLabel(entry.delivery)}` : '')
-                  }
-                  accessibilityHint={
-                    process.env.EXPO_OS === 'ios'
-                      ? t('chat.messageActions', { name: entry.author.name })
-                      : t('chat.touchAndHoldToReplyOrSeeActions')
-                  }
+                );
+              return (
+                <View
                   style={{
-                    maxWidth: '87%',
-                    borderRadius: 23,
-                    borderCurve: 'continuous',
-                    paddingHorizontal: 15,
-                    paddingTop: 11,
-                    paddingBottom: 8,
-                    backgroundColor: mine ? colors.mine : colors.theirs,
+                    alignItems: mine ? 'flex-end' : 'flex-start',
+                    marginTop: grouped ? 3 : 16,
+                    marginBottom: lastInGroup ? 5 : 0,
                   }}
                 >
-                  {entry.reply_to ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={t('chat.goToQuotedMessage')}
-                      onPress={() => {
-                        void reveal(entry.reply_to!.id)
-                          .then((target) => {
-                            setScrollTarget(target);
-                          })
-                          .catch(
-                            () =>
-                              void inform(
-                                t('chat.theMessageCouldNotBeOpened'),
-                                t('chat.tryAgainInAMoment'),
-                              ),
-                          );
-                      }}
-                      style={{
-                        borderLeftWidth: 3,
-                        borderLeftColor: colors.accent,
-                        paddingLeft: 9,
-                        paddingVertical: 5,
-                        marginBottom: 7,
-                        opacity: 0.8,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: mine ? colors.onMine : colors.text,
-                          fontWeight: '600',
-                          fontSize: 12,
-                        }}
-                      >
-                        {entry.reply_to.author.name}
-                      </Text>
-                      <Text
-                        numberOfLines={2}
-                        style={{ color: mine ? colors.onMine : colors.secondary, fontSize: 13 }}
-                      >
-                        {entry.reply_to.text}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                  {entry.forwarded ? (
+                  {!mine && !grouped && chat.kind !== 'Direct' ? (
                     <Text
                       style={{
-                        color: mine ? colors.onMine : colors.secondary,
+                        color: colors.secondary,
+                        fontWeight: '600',
                         fontSize: 12,
-                        fontStyle: 'italic',
                         marginBottom: 5,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
                       }}
                     >
-                      {t('chat.forwarded')}
+                      {entry.author.name}
                     </Text>
                   ) : null}
-                  {!entry.voice && card?.kind_id !== 'file' ? (
-                    <Text
-                      selectable
-                      style={{
-                        fontSize: 16,
-                        lineHeight: 23,
-                        color: mine ? colors.onMine : colors.text,
-                        fontStyle: entry.deleted ? 'italic' : 'normal',
-                      }}
-                    >
-                      {entry.deleted ? t('chat.deletedMessage') : text}
-                    </Text>
-                  ) : null}
-                  <MessageMedia entry={entry} />
-                  {entry.voice || card?.kind_id === 'file' ? (
-                    <IconButton
-                      label={t('chat.messageActions', { name: entry.author.name })}
-                      name={{ ios: 'ellipsis', android: 'more_horiz', web: 'more_horiz' }}
-                      onPress={() => setSelected(entry)}
-                    />
-                  ) : null}
-                  {card && card.kind_id !== 'file' ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={t('chat.openNamedItem', { title: card.title })}
-                      onPress={() =>
-                        router.push({ pathname: '/item/[id]', params: { id: card.item_id } })
-                      }
-                      style={{
-                        padding: 14,
-                        marginTop: 10,
-                        borderRadius: 16,
-                        backgroundColor: colors.surface,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: colors.accent,
-                          fontSize: 12,
-                          fontWeight: '700',
-                          marginBottom: 4,
-                        }}
-                      >
-                        {card.kind_label}
-                      </Text>
-                      <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>
-                        {card.title}
-                      </Text>
-                      <Text
-                        numberOfLines={3}
-                        style={{ color: colors.secondary, lineHeight: 20, marginTop: 5 }}
-                      >
-                        {card.summary}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent: 'flex-end',
-                      alignItems: 'center',
-                      gap: 5,
-                      marginTop: 5,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: mine ? colors.onMine : colors.secondary,
-                        fontSize: 11,
-                        fontVariant: ['tabular-nums'],
-                      }}
-                    >
-                      {entry.edited
-                        ? t('chat.editedAt', {
-                            time: new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            }),
-                          })
-                        : new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                    </Text>
-                    {mine ? <MessageReceipt delivery={entry.delivery} /> : null}
-                  </View>
-                </Pressable>
-                {entry.reactions.length ? (
-                  <View style={{ flexDirection: 'row', gap: 5, marginTop: 4 }}>
-                    {entry.reactions.map((reaction) => (
-                      <Pressable
-                        key={reaction.emoji}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('chat.reactionPeople', {
-                          emoji: reaction.emoji,
-                          count: reaction.people.length,
-                        })}
-                        onPress={() => {
-                          void store
-                            .request({
-                              op: 'react',
-                              space_id: id,
-                              message_id: entry.id,
-                              emoji: reaction.mine ? null : reaction.emoji,
-                            })
-                            .catch(() => {});
-                        }}
-                        style={{
-                          borderRadius: 14,
-                          backgroundColor: colors.muted,
-                          borderWidth: reaction.mine ? 1 : 0,
-                          borderColor: colors.accent,
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
-                        }}
-                      >
-                        <Text style={{ fontSize: 13, color: colors.text }}>
-                          {reaction.emoji} {reaction.people.length}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                ) : null}
-                {entry.thread_replies > 0 ? (
                   <Pressable
+                    accessible={!entry.voice && card?.kind_id !== 'file'}
+                    onLongPress={() => {
+                      void Haptics.selectionAsync().catch(() => {});
+                      setSelected(entry);
+                    }}
+                    onAccessibilityTap={
+                      process.env.EXPO_OS === 'ios' ? () => setSelected(entry) : undefined
+                    }
                     accessibilityRole="button"
-                    accessibilityLabel={t('chat.viewReplies', { count: entry.thread_replies })}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/thread/[space]/[root]',
-                        params: { space: id, root: entry.id },
-                      })
+                    accessibilityLabel={
+                      `${entry.author.name}: ${text}` +
+                      (mine ? `, ${messageDeliveryLabel(entry.delivery)}` : '')
+                    }
+                    accessibilityHint={
+                      process.env.EXPO_OS === 'ios'
+                        ? t('chat.messageActions', { name: entry.author.name })
+                        : t('chat.touchAndHoldToReplyOrSeeActions')
                     }
                     style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      marginTop: 4,
+                      maxWidth: '87%',
+                      borderRadius: 23,
+                      borderCurve: 'continuous',
+                      paddingHorizontal: 15,
+                      paddingTop: 11,
+                      paddingBottom: 8,
+                      backgroundColor: mine ? colors.mine : colors.theirs,
                     }}
                   >
-                    <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
-                      {t('chat.replyCount', { count: entry.thread_replies })} →
-                    </Text>
+                    {entry.reply_to ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t('chat.goToQuotedMessage')}
+                        onPress={() => {
+                          void reveal(entry.reply_to!.id)
+                            .then((target) => {
+                              setScrollTarget(target);
+                            })
+                            .catch(
+                              () =>
+                                void inform(
+                                  t('chat.theMessageCouldNotBeOpened'),
+                                  t('chat.tryAgainInAMoment'),
+                                ),
+                            );
+                        }}
+                        style={{
+                          borderLeftWidth: 3,
+                          borderLeftColor: colors.accent,
+                          paddingLeft: 9,
+                          paddingVertical: 5,
+                          marginBottom: 7,
+                          opacity: 0.8,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: mine ? colors.onMine : colors.text,
+                            fontWeight: '600',
+                            fontSize: 12,
+                          }}
+                        >
+                          {entry.reply_to.author.name}
+                        </Text>
+                        <Text
+                          numberOfLines={2}
+                          style={{ color: mine ? colors.onMine : colors.secondary, fontSize: 13 }}
+                        >
+                          {entry.reply_to.text}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                    {entry.forwarded ? (
+                      <Text
+                        style={{
+                          color: mine ? colors.onMine : colors.secondary,
+                          fontSize: 12,
+                          fontStyle: 'italic',
+                          marginBottom: 5,
+                        }}
+                      >
+                        {t('chat.forwarded')}
+                      </Text>
+                    ) : null}
+                    {!entry.voice && card?.kind_id !== 'file' ? (
+                      <Text
+                        selectable
+                        style={{
+                          fontSize: 16,
+                          lineHeight: 23,
+                          color: mine ? colors.onMine : colors.text,
+                          fontStyle: entry.deleted ? 'italic' : 'normal',
+                        }}
+                      >
+                        {entry.deleted ? t('chat.deletedMessage') : text}
+                      </Text>
+                    ) : null}
+                    <MessageMedia entry={entry} />
+                    {entry.voice || card?.kind_id === 'file' ? (
+                      <IconButton
+                        label={t('chat.messageActions', { name: entry.author.name })}
+                        name={{ ios: 'ellipsis', android: 'more_horiz', web: 'more_horiz' }}
+                        onPress={() => setSelected(entry)}
+                      />
+                    ) : null}
+                    {card && card.kind_id !== 'file' ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t('chat.openNamedItem', { title: card.title })}
+                        onPress={() =>
+                          router.push({ pathname: '/item/[id]', params: { id: card.item_id } })
+                        }
+                        style={{
+                          padding: 14,
+                          marginTop: 10,
+                          borderRadius: 16,
+                          backgroundColor: colors.surface,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: colors.accent,
+                            fontSize: 12,
+                            fontWeight: '700',
+                            marginBottom: 4,
+                          }}
+                        >
+                          {card.kind_label}
+                        </Text>
+                        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>
+                          {card.title}
+                        </Text>
+                        <Text
+                          numberOfLines={3}
+                          style={{ color: colors.secondary, lineHeight: 20, marginTop: 5 }}
+                        >
+                          {card.summary}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'flex-end',
+                        alignItems: 'center',
+                        gap: 5,
+                        marginTop: 5,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: mine ? colors.onMine : colors.secondary,
+                          fontSize: 11,
+                          fontVariant: ['tabular-nums'],
+                        }}
+                      >
+                        {entry.edited
+                          ? t('chat.editedAt', {
+                              time: new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              }),
+                            })
+                          : new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                      </Text>
+                      {mine ? <MessageReceipt delivery={entry.delivery} /> : null}
+                    </View>
                   </Pressable>
-                ) : null}
-              </View>
-            );
-          }}
-        />
+                  {entry.reactions.length ? (
+                    <View style={{ flexDirection: 'row', gap: 5, marginTop: 4 }}>
+                      {entry.reactions.map((reaction) => (
+                        <Pressable
+                          key={reaction.emoji}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('chat.reactionPeople', {
+                            emoji: reaction.emoji,
+                            count: reaction.people.length,
+                          })}
+                          onPress={() => {
+                            void store
+                              .request({
+                                op: 'react',
+                                space_id: id,
+                                message_id: entry.id,
+                                emoji: reaction.mine ? null : reaction.emoji,
+                              })
+                              .catch(() => {});
+                          }}
+                          style={{
+                            borderRadius: 14,
+                            backgroundColor: colors.muted,
+                            borderWidth: reaction.mine ? 1 : 0,
+                            borderColor: colors.accent,
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, color: colors.text }}>
+                            {reaction.emoji} {reaction.people.length}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                  {entry.thread_replies > 0 ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={t('chat.viewReplies', { count: entry.thread_replies })}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/thread/[space]/[root]',
+                          params: { space: id, root: entry.id },
+                        })
+                      }
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        marginTop: 4,
+                      }}
+                    >
+                      <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
+                        {t('chat.replyCount', { count: entry.thread_replies })} →
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              );
+            }}
+          />
+        </View>
       )}
+      <View
+        pointerEvents="box-none"
+        onLayout={({ nativeEvent }) => setRailHeight(nativeEvent.layout.height)}
+        style={{
+          position: 'absolute',
+          top: headerHeight,
+          left: 0,
+          right: 0,
+          zIndex: 1,
+          backgroundColor: 'transparent',
+        }}
+      >
+        <MiniappRail items={conversationMiniapps} paddingVertical={6} />
+        {notice ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('chat.dismissNotice', { notice })}
+            onPress={() => store.dismissNotice()}
+            style={{ padding: 12, backgroundColor: colors.muted }}
+          >
+            <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 13 }}>
+              {notice}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
       {reply || editing ? (
         <View
           style={{
