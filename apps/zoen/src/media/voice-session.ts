@@ -241,13 +241,33 @@ export class VoiceSession {
     });
     void this.retryPreview();
   }
-  private readyDraft(): VoiceDraft {
-    if (this.state.phase !== 'ready' || !this.state.draft || this.state.attempted)
+  private readyDraft(allowPendingTrim = false): VoiceDraft {
+    if (
+      this.state.phase !== 'ready' ||
+      !this.state.draft ||
+      this.state.attempted ||
+      (!allowPendingTrim && this.state.pendingTrim)
+    )
       throw new VoiceSessionFailure('not_ready');
     return this.state.draft;
   }
+  canEdit = (commands: VoiceEditCommand | readonly VoiceEditCommand[]): boolean => {
+    if (this.state.phase !== 'ready' || !this.state.draft || this.state.attempted) return false;
+    const pending = this.state.pendingTrim;
+    if (!pending) return true;
+    const edits = Array.isArray(commands) ? commands : [commands];
+    const command = edits.length === 1 ? edits[0] : null;
+    // A precision preview is a transaction: only its exact Apply may replace
+    // canonical edits. Other commands wait for explicit Apply or Discard.
+    return (
+      command?.type === 'trim' &&
+      command.range.startFrame === pending.startFrame &&
+      command.range.endFrame === pending.endFrame
+    );
+  };
   edit = (commands: VoiceEditCommand | readonly VoiceEditCommand[]) => {
-    this.change(editVoiceDraft(this.readyDraft(), commands));
+    if (!this.canEdit(commands)) throw new VoiceSessionFailure('not_ready');
+    this.change(editVoiceDraft(this.readyDraft(true), commands));
   };
   undo = () => {
     this.change(undoVoiceEdit(this.readyDraft()));

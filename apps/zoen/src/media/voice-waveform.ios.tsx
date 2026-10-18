@@ -413,26 +413,30 @@ export function VoiceWaveform({
               <Button
                 label={t('media.voiceCutSelection')}
                 onPress={() => {
-                  if (!disabled && selected.endFrame > selected.startFrame)
+                  if (!disabled && !trimChanged && selected.endFrame > selected.startFrame)
                     onEdit({ type: 'cut', range: selected });
                 }}
                 modifiers={[
                   buttonStyle('bordered'),
                   frame({ minHeight: 44 }),
-                  disabledModifier(disabled || selected.endFrame <= selected.startFrame),
+                  disabledModifier(
+                    disabled || trimChanged || selected.endFrame <= selected.startFrame,
+                  ),
                   foregroundStyle(colors.accent),
                 ]}
               />
               <Button
                 label={t('media.voiceRestoreSelection')}
                 onPress={() => {
-                  if (!disabled && selected.endFrame > selected.startFrame)
+                  if (!disabled && !trimChanged && selected.endFrame > selected.startFrame)
                     onEdit({ type: 'restore', range: selected });
                 }}
                 modifiers={[
                   buttonStyle('bordered'),
                   frame({ minHeight: 44 }),
-                  disabledModifier(disabled || selected.endFrame <= selected.startFrame),
+                  disabledModifier(
+                    disabled || trimChanged || selected.endFrame <= selected.startFrame,
+                  ),
                   foregroundStyle(colors.accent),
                 ]}
               />

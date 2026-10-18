@@ -171,6 +171,74 @@ test('a saved editor cannot be rebound to different decoded source frames', asyn
   await changed.session.close();
 });
 
+test('a pending precision transaction blocks unrelated cuts and history until exact Apply or Discard', async () => {
+  const f = fixture();
+  await f.session.prepare('capture');
+  await f.session.transcribe('en');
+  f.session.edit({ type: 'trim', range: { startFrame: 0, endFrame: 3500 } });
+  f.session.edit(cut(2000, 2200));
+  f.session.undo();
+  await f.session.retryPreview();
+  const applied = f.session.getSnapshot();
+  const pending = { startFrame: 200, endFrame: 3200 };
+  f.session.setPendingTrim(applied.draft!, pending);
+  for (const action of [
+    () => f.session.undo(),
+    () => f.session.redo(),
+    () => f.session.edit(cut(1000, 2000)),
+    () => f.session.edit({ type: 'setWordRemoved', wordId: 'secret', removed: true }),
+    () => f.session.edit({ type: 'restore', range: { startFrame: 0, endFrame: 4000 } }),
+    () => f.session.edit({ type: 'trim', range: { startFrame: 100, endFrame: 3000 } }),
+    () => f.session.edit([{ type: 'trim', range: pending }, cut(1000, 2000)]),
+  ]) {
+    assert.throws(action, VoiceSessionFailure);
+    assert.strictEqual(f.session.getSnapshot().draft, applied.draft);
+    assert.strictEqual(f.session.getSnapshot().source, applied.source);
+    assert.deepEqual(f.session.getSnapshot().pendingTrim, pending);
+  }
+  f.session.edit({ type: 'trim', range: pending });
+  await f.session.retryPreview();
+  assert.equal(f.session.getSnapshot().pendingTrim, null);
+  assert.deepEqual(f.session.getSnapshot().draft!.edit.trim, pending);
+  f.session.undo();
+  await f.session.retryPreview();
+  assert.deepEqual(f.session.getSnapshot().draft!.edit, applied.draft!.edit);
+  f.session.setPendingTrim(f.session.getSnapshot().draft!, pending);
+  f.session.setPendingTrim(f.session.getSnapshot().draft!, null);
+  f.session.redo();
+  await f.session.retryPreview();
+  assert.equal(f.session.getSnapshot().pendingTrim, null);
+  assert.deepEqual(f.session.getSnapshot().draft!.edit.trim, pending);
+  await f.session.close();
+});
+
+test('transcript metadata completion preserves an unapplied precision range and retires old discard callbacks', async () => {
+  const f = fixture();
+  const recognition = deferred<VoiceTranscription>();
+  f.port.transcribe = async () => recognition.promise;
+  await f.session.prepare('capture');
+  f.session.edit({ type: 'trim', range: { startFrame: 0, endFrame: 3500 } });
+  await f.session.retryPreview();
+  const oldDraft = f.session.getSnapshot().draft!;
+  const pending = { startFrame: 200, endFrame: 3200 };
+  const transcribing = f.session.transcribe('en');
+  f.session.setPendingTrim(oldDraft, pending);
+  recognition.resolve(transcript);
+  await transcribing;
+  const current = f.session.getSnapshot();
+  assert.notStrictEqual(current.draft, oldDraft);
+  assert.equal(current.draft!.transcript!.words.length, 3);
+  assert.deepEqual(current.pendingTrim, pending);
+  f.session.setPendingTrim(oldDraft, null);
+  assert.deepEqual(f.session.getSnapshot().pendingTrim, pending);
+  assert.throws(() => f.session.undo(), VoiceSessionFailure);
+  f.session.edit({ type: 'trim', range: pending });
+  await f.session.retryPreview();
+  assert.equal(f.session.getSnapshot().pendingTrim, null);
+  assert.equal(f.session.getSnapshot().draft!.transcript!.words.length, 3);
+  await f.session.close();
+});
+
 test('prepare keeps an immutable native descriptor and only a current validated preview is sendable', async () => {
   const f = fixture();
   const input = { ...source(), levels: [0.2, 0.7] };

@@ -268,6 +268,10 @@ test('pending precision range is durably distinct from the applied edit and cann
   const saved = JSON.parse(f.value.content_json);
   assert.deepEqual(saved.editor.pendingTrim, { startFrame: 100, endFrame: 3000 });
   assert.deepEqual(saved.editor.draft.edit.trim, { startFrame: 0, endFrame: 4000 });
+  assert.throws(() => session.undo());
+  assert.throws(() => session.edit({ type: 'cut', range: { startFrame: 1000, endFrame: 2000 } }));
+  await f.channel.flush();
+  assert.deepEqual(JSON.parse(f.value.content_json).editor.pendingTrim, saved.editor.pendingTrim);
   await assert.rejects(f.draft.send(before));
   assert.equal(f.publications, 0);
   session.edit({ type: 'trim', range: { startFrame: 100, endFrame: 3000 } });

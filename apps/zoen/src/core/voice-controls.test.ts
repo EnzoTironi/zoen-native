@@ -985,6 +985,80 @@ test('precision slider blocks an already-rendered Send handler before React comm
   await session.close();
 });
 
+test('unapplied precision blocks stale word, suggestion, selection and history actions before React commits', async () => {
+  const native = voicePort();
+  native.transcribe = async () => ({
+    status: 'ready',
+    text: 'Keep um after',
+    words: [
+      { id: 'keep', text: 'Keep', startFrame: 0, endFrame: 500 },
+      { id: 'um', text: 'um', startFrame: 500, endFrame: 800 },
+      { id: 'after', text: 'after', startFrame: 2500, endFrame: 3500 },
+    ],
+  });
+  const session = new VoiceSession(native);
+  await session.prepare('file:///voice/capture.m4a');
+  await session.transcribe('en');
+  session.edit({ type: 'trim', range: { startFrame: 0, endFrame: 3500 } });
+  session.edit({ type: 'cut', range: { startFrame: 1500, endFrame: 1600 } });
+  session.undo();
+  await session.retryPreview();
+  const applied = session.getSnapshot();
+  const review = component('voice-review.ios', {});
+  const waveform = component('voice-waveform.ios', {});
+  const props = { session, initiallyEditing: true, onSend: async () => {} };
+  const tree = review.render(props);
+  const waveProps = find(tree, 'VoiceWaveform').props;
+  const initialWave = waveform.render(waveProps);
+  nodes(initialWave)
+    .filter((node) => node.type === 'Slider')[2]!
+    .props.onValueChange(0.24);
+  const selectedWave = waveform.render(waveProps);
+  const staleSelection = find(selectedWave, 'Button', 'media.voiceCutSelection');
+  const staleUndo = find(tree, 'Button', 'media.voiceUndo');
+  const staleRedo = find(tree, 'Button', 'media.voiceRedo');
+  const staleFillers = find(tree, 'NativeButton', 'media.voiceRemoveFillers');
+  const stalePauses = find(tree, 'NativeButton', 'media.voiceShortenPauses');
+  const staleWords = find(tree, 'VoiceWords');
+  find(selectedWave, 'Slider').props.onValueChange(0.1);
+  const pending = session.getSnapshot().pendingTrim;
+  assert.ok(pending);
+
+  staleUndo.props.onPress();
+  staleRedo.props.onPress();
+  staleWords.props.onEdit({ type: 'setWordRemoved', wordId: 'um', removed: true });
+  staleFillers.props.onPress();
+  stalePauses.props.onPress();
+  staleSelection.props.onPress();
+  assert.strictEqual(session.getSnapshot().draft, applied.draft);
+  assert.strictEqual(session.getSnapshot().source, applied.source);
+  assert.deepEqual(session.getSnapshot().pendingTrim, pending);
+  assert.equal(session.getSnapshot().error, null);
+
+  const current = review.render(props);
+  assert.equal(find(current, 'VoiceWords').props.disabled, true);
+  assert.equal(find(current, 'NativeButton', 'media.voiceRemoveFillers').props.disabled, true);
+  assert.equal(find(current, 'NativeButton', 'media.voiceShortenPauses').props.disabled, true);
+  for (const key of ['media.voiceUndo', 'media.voiceRedo'])
+    assert.ok(
+      find(current, 'Button', key).props.modifiers.some(
+        ([name, disabled]: [string, boolean]) => name === 'disabled' && disabled,
+      ),
+    );
+  const pendingWave = waveform.render(waveProps);
+  assert.ok(
+    find(pendingWave, 'Button', 'media.voiceCutSelection').props.modifiers.some(
+      ([name, disabled]: [string, boolean]) => name === 'disabled' && disabled,
+    ),
+  );
+  find(pendingWave, 'Button', 'media.voiceDiscardTrim').props.onPress();
+  assert.equal(session.getSnapshot().pendingTrim, null);
+  staleSelection.props.onPress();
+  assert.notStrictEqual(session.getSnapshot().draft, applied.draft);
+  assert.equal(session.getSnapshot().draft!.edit.cuts.length, 1);
+  await session.close();
+});
+
 test('pending trim blocks parent send and stale sheet collapse until explicit discard', async () => {
   const f = recording(true);
   find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
@@ -1027,6 +1101,7 @@ test('canonical draft changes invalidate old previews without letting delayed ca
   };
   const old = find(review.render(props), 'VoiceWaveform').props;
   find(waveform.render(old), 'Slider').props.onValueChange(0.25);
+  find(waveform.render(old), 'Button', 'media.voiceDiscardTrim').props.onPress();
   session.edit({ type: 'trim', range: { startFrame: 0, endFrame: 3500 } });
   await tick();
   const current = find(review.render(props), 'VoiceWaveform').props;

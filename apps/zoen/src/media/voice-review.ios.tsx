@@ -101,8 +101,11 @@ export function VoiceReview({
     () => (draft ? getVoiceSuggestions(draft, formatLocale) : null),
     [draft],
   );
+  function pendingTransaction() {
+    return !!session.getSnapshot().pendingTrim || hasPendingVoiceTrim(trimNow.current, session);
+  }
   function acceptSuggestions(ids: readonly string[]) {
-    if (busy || state.attempted || pendingSend.current.has(session)) return;
+    if (busy || state.attempted || pendingSend.current.has(session) || pendingTransaction()) return;
     const current = session.getSnapshot();
     if (current.phase !== 'ready' || !current.draft) return;
     // IDs include the immutable source and exact original ranges. Revalidate the
@@ -117,7 +120,9 @@ export function VoiceReview({
       live.current.busy ||
       session.getSnapshot().attempted ||
       pendingSend.current.has(session) ||
-      session.getSnapshot().phase !== 'ready'
+      session.getSnapshot().phase !== 'ready' ||
+      !session.canEdit(commands) ||
+      (hasPendingVoiceTrim(trimNow.current, session) && !session.getSnapshot().pendingTrim)
     )
       return;
     const before = session.getSnapshot().draft;
@@ -136,7 +141,8 @@ export function VoiceReview({
       live.current.busy ||
       session.getSnapshot().attempted ||
       pendingSend.current.has(session) ||
-      session.getSnapshot().phase !== 'ready'
+      session.getSnapshot().phase !== 'ready' ||
+      pendingTransaction()
     )
       return;
     const before = session.getSnapshot().draft;
@@ -287,7 +293,7 @@ export function VoiceReview({
                       buttonStyle('bordered'),
                       labelStyle('iconOnly'),
                       frame({ width: 44, height: 44 }),
-                      disabledModifier(editLocked || draft[direction].length === 0),
+                      disabledModifier(editLocked || trimPending || draft[direction].length === 0),
                     ]}
                     onPress={() => history(direction)}
                   />
@@ -344,7 +350,7 @@ export function VoiceReview({
                 />
               </>
             ) : editable && draft.transcript.words.length ? (
-              <VoiceWords draft={draft} disabled={editLocked} onEdit={edit} />
+              <VoiceWords draft={draft} disabled={editLocked || trimPending} onEdit={edit} />
             ) : state.projection?.transcript ? (
               <Text selectable style={{ color: colors.text, fontSize: 17, lineHeight: 24 }}>
                 {state.projection.transcript}
@@ -377,7 +383,7 @@ export function VoiceReview({
                 <NativeButton
                   secondary
                   label={t('media.voiceRemoveFillers', { count: suggestions.fillers.length })}
-                  disabled={editLocked}
+                  disabled={editLocked || trimPending}
                   onPress={() =>
                     acceptSuggestions(suggestions.fillers.map((suggestion) => suggestion.id))
                   }
@@ -387,7 +393,7 @@ export function VoiceReview({
                 <NativeButton
                   secondary
                   label={t('media.voiceShortenPauses', { count: suggestions.pauses.length })}
-                  disabled={editLocked}
+                  disabled={editLocked || trimPending}
                   onPress={() =>
                     acceptSuggestions(suggestions.pauses.map((suggestion) => suggestion.id))
                   }
