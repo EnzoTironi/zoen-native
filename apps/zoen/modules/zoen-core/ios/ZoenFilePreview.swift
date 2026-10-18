@@ -304,7 +304,6 @@ extension ZoenFilePreviewPresentation {
           guard let self, let session, self.active === session, session.forced == nil else { return }
           session.recoveryShown = false
           session.failure = nil
-          session.captureFailure = nil
           self.startWorker(session)
         }
       }

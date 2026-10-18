@@ -17,6 +17,8 @@ import Foundation
   var discard: (() -> Void)?
   var capturesFailed = 0
   var changesSaved = false
+  var recoveryCount = 0
+  var onRecovery: (() -> Void)?
   var dismissCount = 0
   func show(file: URL, title: String, ended: @escaping @MainActor (Error?) -> Void) throws {
     self.ended = ended; shown.emit()
@@ -26,7 +28,9 @@ import Foundation
   }
   func recover(error: Error, changesSaved: Bool, retry: (@MainActor () -> Void)?, discard: @escaping @MainActor () -> Void) {
     self.changesSaved = changesSaved
+    recoveryCount += 1
     self.retry = retry; self.discard = discard; recoveryRequested.emit()
+    onRecovery?()
   }
   func captureFailed(error: Error) { capturesFailed += 1 }
 }
@@ -34,8 +38,10 @@ import Foundation
 @MainActor private final class EditResult {
   var result: Result<Void, Error>?
   var editing: ZoenFilePreview.Editing?
+  var onCompletion: (() -> Void)?
   func run(_ action: () async throws -> Void) async {
     do { try await action(); result = .success(()) } catch { result = .failure(error) }
+    onCompletion?()
   }
   func success() { guard case .success? = result else { preconditionFailure("Expected successful completion: \(String(describing: result))") } }
 }
@@ -109,8 +115,9 @@ private actor EditStore {
     try await rowCancellationDoesNotDiscardMarkup()
     try await acceptedSaveCleanupRetryDoesNotSaveAgain()
     try await captureFailureRequiresAcknowledgedDiscard()
+    try await retryOlderCopyPreservesNewerCaptureFailure()
     try captureRejectsUnsafeOrUnboundedSources()
-    print("Synthetic PDF edit tests passed: 8 scenarios; synchronous capture, serialized expected bases, row-independent retry/discard, graceful close, forced worker drain, cancellation, accepted-save cleanup retry and bounded regular PDF staging.")
+    print("Synthetic PDF edit tests passed: 9 scenarios; synchronous capture, serialized expected bases, row-independent retry/discard, graceful close, forced worker drain, cancellation, accepted-save cleanup retry, newer capture-loss acknowledgment across older-save retry and bounded regular PDF staging.")
   }
 
   private static func serialSavesOwnTheirCopiesAndAdvanceBase() async throws {
@@ -229,5 +236,34 @@ private actor EditStore {
       precondition(error.retained == nil)
     }
     precondition(FileManager.default.fileExists(atPath: good.url.path), "Capture modified the framework-owned original")
+  }
+
+  private static func retryOlderCopyPreservesNewerCaptureFailure() async throws {
+    let fixture = try EditFixture(); defer { fixture.remove() }
+    let owner = ZoenFilePreview(), store = EditStore(failures: 1, held: true)
+    let presentation = EditPresentation(), result = EditResult()
+    let task = begin(owner, file: try fixture.file("original"), store: store, presentation: presentation, result: result)
+    await presentation.shown.wait()
+    result.editing!.receive(try fixture.file("older-valid-edit").url)
+    await store.waitForCalls(1)
+    result.editing!.receive(try fixture.file("newer-failed-edit", content: "not a retained PDF").url)
+    precondition(presentation.capturesFailed == 1)
+    await store.release()
+    presentation.ended?(nil)
+    await presentation.recoveryRequested.wait()
+    precondition(presentation.retry != nil && result.result == nil)
+    let changed = EditSignal()
+    presentation.onRecovery = { changed.emit() }
+    result.onCompletion = { changed.emit() }
+    presentation.retry?()
+    await changed.wait()
+    precondition(result.result == nil && presentation.recoveryCount == 2,
+                 "Retrying an older save silently acknowledged a newer edit that was never captured")
+    precondition(presentation.retry == nil, "No staged copy exists for the newer failed edit")
+    let callCount = await store.bases.count
+    precondition(callCount == 2)
+    presentation.discard?()
+    await task.value
+    result.success()
   }
 }

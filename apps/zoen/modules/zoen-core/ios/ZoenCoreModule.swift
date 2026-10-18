@@ -235,7 +235,7 @@ private actor ZoenSession {
     sessionLocale = locale
     if let pending = try erasure.pending() {
       self.mode = "account"
-      try await eraseDevice(expected: pending)
+      try await eraseDevice(expected: pending, preservingOpening: attempt)
     }
     guard !erasing else { throw ZoenDeviceErasure.Failure.incomplete }
     try await close(cancelOpening: false)
@@ -581,9 +581,12 @@ private actor ZoenSession {
     }
   }
 
-  func eraseDevice(expected: ZoenDeviceScope) async throws {
+  func eraseDevice(expected: ZoenDeviceScope, preservingOpening: UUID? = nil) async throws {
     if let erasureTask {
       guard erasureScope == expected else { throw ZoenDeviceErasure.Failure.changed }
+      if let preservingOpening {
+        guard openingAttempt == preservingOpening else { throw SessionError.closed }
+      } else { openingAttempt = nil }
       try await erasureTask.value
       return
     }
@@ -596,6 +599,11 @@ private actor ZoenSession {
     } else {
       guard pending == expected || completedErasure == expected else { throw ZoenDeviceErasure.Failure.changed }
     }
+    // A confirmed erase supersedes any older suspended open. Only open's own
+    // pending-erasure recovery may keep its exact ticket across this boundary.
+    if let preservingOpening {
+      guard openingAttempt == preservingOpening else { throw SessionError.closed }
+    } else { openingAttempt = nil }
     try erasure.begin(expected)
     erasing = true
     voiceSources.removeAll()
