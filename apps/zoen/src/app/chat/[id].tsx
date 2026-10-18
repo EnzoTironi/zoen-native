@@ -649,6 +649,7 @@ export default function Chat() {
                   reactionPending={actions.busy}
                   onReply={actions.reply}
                   onThread={actions.thread}
+                  onAuthor={actions.profile}
                   onMenu={actions.open}
                   onReact={(message, emoji) => {
                     void actions.react(message, emoji);

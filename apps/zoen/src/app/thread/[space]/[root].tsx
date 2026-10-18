@@ -29,7 +29,9 @@ import { useMessageActions } from '../../../components/use-message-actions';
 
 export default function Thread() {
   const { space, root } = useLocalSearchParams<{ space: string; root: string }>();
-  const { store, notice } = useClient();
+  const { store, snapshot, notice } = useClient();
+  const groupChat =
+    snapshot?.conversations.some((chat) => chat.id === space && chat.kind !== 'Direct') ?? false;
   const headerHeight = useHeaderHeight();
   const { top: statusBarHeight } = useSafeAreaInsets();
   const { items } = useHome();
@@ -182,11 +184,12 @@ export default function Thread() {
                     entry={entry}
                     previous={index > 1 ? entries[index - 1] : undefined}
                     next={index > 0 ? entries[index + 1] : undefined}
-                    groupChat
+                    groupChat={groupChat}
                     item={items.find((item) => item.id === messageCard(entry)?.item_id)}
                     reactionPending={actions.busy}
                     onReply={actions.reply}
                     onThread={actions.thread}
+                    onAuthor={actions.profile}
                     onMenu={actions.open}
                     onReact={(message, emoji) => {
                       void actions.react(message, emoji);

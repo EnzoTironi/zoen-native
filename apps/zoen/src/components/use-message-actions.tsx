@@ -39,12 +39,15 @@ export function useMessageActions({
   const focused = useRef(true);
   const mounted = useRef(false);
   const pending = useRef(false);
+  const profileEpoch = useRef(0);
+  const profileAttempt = useRef<{ epoch: number; scope: string; messageId: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<{ scope: string; id: string; text: string } | null>(null);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      profileAttempt.current = null;
     };
   }, []);
   const [selection, setSelection] = useState<{
@@ -56,33 +59,57 @@ export function useMessageActions({
     fromParticipants?: boolean;
   } | null>(null);
   useLayoutEffect(() => {
+    if (latest.current.scope !== scope || (disabled && !latest.current.disabled)) {
+      ++profileEpoch.current;
+      profileAttempt.current = null;
+    }
     latest.current = { entries, disabled, scope };
   }, [entries, disabled, scope]);
   useFocusEffect(
     useCallback(() => {
       focused.current = true;
+      ++profileEpoch.current;
+      profileAttempt.current = null;
       setBusy(pending.current);
       return () => {
         focused.current = false;
+        ++profileEpoch.current;
+        profileAttempt.current = null;
         setSelection(null);
       };
     }, []),
   );
-  const current = (entry: TimelineEntry) => {
-    const state = store.getSnapshot();
-    if (
-      !focused.current ||
-      latest.current.disabled ||
-      latest.current.scope !== scope ||
-      state.phase !== 'ready' ||
-      !homeSpacesFor(state).has(spaceId) ||
-      `${state.mode}:${state.snapshot?.account?.identity_id ?? state.snapshot?.me?.id}:${state.snapshot?.account?.device_id}:${spaceId}` !==
-        scope
-    )
-      return undefined;
-    const value = latest.current.entries.find((value) => value.id === entry.id);
-    return value && messageCanInteract(value) ? value : undefined;
-  };
+  const current = useCallback(
+    (entry: TimelineEntry) => {
+      const state = store.getSnapshot();
+      if (
+        !focused.current ||
+        latest.current.disabled ||
+        latest.current.scope !== scope ||
+        state.phase !== 'ready' ||
+        !homeSpacesFor(state).has(spaceId) ||
+        `${state.mode}:${state.snapshot?.account?.identity_id ?? state.snapshot?.me?.id}:${state.snapshot?.account?.device_id}:${spaceId}` !==
+          scope
+      )
+        return undefined;
+      const value = latest.current.entries.find((value) => value.id === entry.id);
+      return value && messageCanInteract(value) ? value : undefined;
+    },
+    [scope, spaceId, store],
+  );
+  useEffect(
+    () =>
+      store.subscribe(() => {
+        const attempt = profileAttempt.current;
+        if (!attempt || attempt.scope !== scope) return;
+        const value = latest.current.entries.find((entry) => entry.id === attempt.messageId);
+        if (!value || !current(value)) {
+          ++profileEpoch.current;
+          profileAttempt.current = null;
+        }
+      }),
+    [current, scope, store],
+  );
   const candidate =
     !disabled && selection?.scope === scope
       ? (entries.find((entry) => entry.id === selection.id) ?? null)
@@ -104,6 +131,45 @@ export function useMessageActions({
         pathname: '/thread/[space]/[root]',
         params: { space: spaceId, root: value.in_thread ?? value.id },
       });
+  };
+  const profile = async (entry: TimelineEntry) => {
+    const value = current(entry);
+    if (!mounted.current || !value || pending.current || profileAttempt.current) return;
+    const attempt = { epoch: profileEpoch.current, scope, messageId: value.id };
+    profileAttempt.current = attempt;
+    const active = () =>
+      mounted.current &&
+      profileAttempt.current === attempt &&
+      profileEpoch.current === attempt.epoch &&
+      Boolean(current(value));
+    let navigated = false;
+    try {
+      // A recycled row supplies only message identity. Resolve the signed current
+      // author again, and keep late reads from opening a different account's route.
+      const canonical = await store.driver.request({
+        op: 'message',
+        space_id: spaceId,
+        message_id: attempt.messageId,
+      });
+      if (!active()) return;
+      if (
+        canonical.id !== attempt.messageId ||
+        !messageCanInteract(canonical) ||
+        !canonical.author.id.trim()
+      )
+        throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
+      close();
+      router.push({ pathname: '/person/[id]', params: { id: canonical.author.id } });
+      navigated = true;
+    } catch (reason) {
+      if (active())
+        void inform(
+          t('chat.profileUnavailable'),
+          reason instanceof Error ? reason.message : t('chat.tryAgainInAMoment'),
+        );
+    } finally {
+      if (profileAttempt.current === attempt && !navigated) profileAttempt.current = null;
+    }
   };
   async function react(entry: TimelineEntry, emoji: string | null) {
     const value = current(entry);
@@ -146,6 +212,7 @@ export function useMessageActions({
     close,
     reply,
     thread,
+    profile,
     react,
     panel:
       selection?.mode === 'participants' || selection?.mode === 'emoji' ? (
