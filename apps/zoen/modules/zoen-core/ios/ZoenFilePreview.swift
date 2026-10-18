@@ -44,11 +44,15 @@ struct ZoenPreviewFile: Sendable {
   /// Completion covers the viewer and any activity/share controller it presented.
   func dismiss(completion: @escaping @MainActor () -> Void)
   func recover(error: Error, changesSaved: Bool, retry: (@MainActor () -> Void)?, discard: @escaping @MainActor () -> Void)
+  func recover(error: Error, changesSaved: Bool, retry: (@MainActor () -> Void)?, keep: (@MainActor () -> Void)?, discard: @escaping @MainActor () -> Void)
   func captureFailed(error: Error)
 }
 
 extension ZoenFilePreviewPresentation {
   func recover(error: Error, changesSaved: Bool, retry: (@MainActor () -> Void)?, discard: @escaping @MainActor () -> Void) {}
+  func recover(error: Error, changesSaved: Bool, retry: (@MainActor () -> Void)?, keep: (@MainActor () -> Void)?, discard: @escaping @MainActor () -> Void) {
+    recover(error: error, changesSaved: changesSaved, retry: retry, discard: discard)
+  }
   func captureFailed(error: Error) {}
 }
 
@@ -56,7 +60,7 @@ extension ZoenFilePreviewPresentation {
 /// Promise. Its continuation ends only after actual dismissal and copy deletion.
 @MainActor final class ZoenFilePreview {
   enum Failure: Error, LocalizedError {
-    case changed, busy, unavailable, cleanup, editedPDF
+    case changed, busy, unavailable, cleanup, editedPDF, recovered
     var errorDescription: String? {
       switch self {
       case .changed: NSLocalizedString("This preview is no longer available.", comment: "Native preview session changed")
@@ -64,6 +68,7 @@ extension ZoenFilePreviewPresentation {
       case .unavailable: NSLocalizedString("This file could not be previewed. Try again.", comment: "Native file preview unavailable")
       case .cleanup: NSLocalizedString("The temporary preview could not be removed. Try again.", comment: "Native preview cleanup failed")
       case .editedPDF: NSLocalizedString("The edited PDF could not be read. Try saving your changes again.", comment: "Native PDF edit could not be retained")
+      case .recovered: NSLocalizedString("These changes are only on this device. Save them to update the shared file.", comment: "Recovered private PDF edit has not been published")
       }
     }
   }
@@ -76,28 +81,48 @@ extension ZoenFilePreviewPresentation {
   struct EditContext: Sendable {
     let base: EditBase
     let maximumBytes: UInt64
+    let canCapture: Bool
+    let retain: (@Sendable (ZoenPreviewFile) throws -> Void)?
+    let discard: (@Sendable () async throws -> Void)?
     let save: @Sendable (ZoenPreviewFile, EditBase) async throws -> EditBase
+
+    init(base: EditBase, maximumBytes: UInt64, canCapture: Bool = true,
+         retain: (@Sendable (ZoenPreviewFile) throws -> Void)? = nil,
+         discard: (@Sendable () async throws -> Void)? = nil,
+         save: @escaping @Sendable (ZoenPreviewFile, EditBase) async throws -> EditBase) {
+      self.base = base; self.maximumBytes = maximumBytes
+      self.canCapture = canCapture
+      self.retain = retain; self.discard = discard; self.save = save
+    }
   }
 
   @MainActor final class Editing {
     private let maximumBytes: UInt64
+    let allowsEditing: Bool
     fileprivate var captured: ((Result<ZoenPreviewFile, ZoenPDFEditCapture.Failure>) -> Void)?
-    fileprivate init(maximumBytes: UInt64) { self.maximumBytes = maximumBytes }
-    func receive(_ url: URL) { captured?(ZoenPDFEditCapture.stage(url, maximumBytes: maximumBytes)) }
+    fileprivate init(maximumBytes: UInt64, allowsEditing: Bool) {
+      self.maximumBytes = maximumBytes; self.allowsEditing = allowsEditing
+    }
+    func receive(_ url: URL) {
+      guard allowsEditing else { return }
+      captured?(ZoenPDFEditCapture.stage(url, maximumBytes: maximumBytes))
+    }
   }
 
   private final class Scope: @unchecked Sendable {
     struct Transfer: Sendable {
       let generation: UInt64
       let file: ZoenPreviewFile
+      let recovered: [ZoenPreviewFile]
+      var files: [ZoenPreviewFile] { [file] + recovered }
     }
     private let lock = NSLock()
     private var floor: UInt64 = 0
     private var pending: [UUID: Transfer] = [:]
-    func register(file: ZoenPreviewFile, generation: UInt64) -> UUID {
+    func register(file: ZoenPreviewFile, generation: UInt64, recovered: [ZoenPreviewFile]) -> UUID {
       lock.lock(); defer { lock.unlock() }
       let id = UUID()
-      pending[id] = Transfer(generation: generation, file: file)
+      pending[id] = Transfer(generation: generation, file: file, recovered: recovered)
       return id
     }
     func take(_ id: UUID) -> Transfer? {
@@ -145,13 +170,17 @@ extension ZoenFilePreviewPresentation {
     var cleanupFailure: Error?
     var failedCaptureCopies: [ZoenPreviewFile] = []
     var recoveryShown = false
+    var discardRequested = false
+    var keepRequested = false
     var viewerGone = false
     var forced: Error?
     init(id: UUID, generation: UInt64, file: ZoenPreviewFile, presentation: any ZoenFilePreviewPresentation,
-         continuation: CheckedContinuation<Void, Error>, edit: EditContext?, editing: Editing?) {
+         continuation: CheckedContinuation<Void, Error>, edit: EditContext?, editing: Editing?, recovered: [ZoenPreviewFile]) {
       self.id = id; self.generation = generation; self.file = file; self.presentation = presentation
       self.continuation = continuation
       self.edit = edit; self.editing = editing; self.base = edit?.base
+      pending = recovered.map { Edit(file: $0) }
+      if !recovered.isEmpty { failure = Failure.recovered }
     }
   }
 
@@ -166,8 +195,20 @@ extension ZoenFilePreviewPresentation {
 
   /// Register on ZoenSession BEFORE leaving its actor. Cleanup can therefore own
   /// a transferred file even if its queued main-actor presentation never starts.
-  nonisolated func register(file: ZoenPreviewFile, generation: UInt64) -> UUID {
-    scope.register(file: file, generation: generation)
+  nonisolated func register(file: ZoenPreviewFile, generation: UInt64, recovered: [ZoenPreviewFile] = []) -> UUID {
+    scope.register(file: file, generation: generation, recovered: recovered)
+  }
+
+  /// Return an unpresented transfer after partial native preparation fails.
+  /// A concurrent clear may already own it; taking once prevents double cleanup.
+  func abandon(id: UUID) throws {
+    guard let transfer = scope.take(id) else { return }
+    var failure: Error?
+    for file in transfer.files {
+      do { try file.remove() }
+      catch { retained.append(file); failure = error }
+    }
+    if let failure { throw failure }
   }
 
   func open(id: UUID, title: String,
@@ -181,21 +222,26 @@ extension ZoenFilePreviewPresentation {
     let file = transfer.file
     let generation = transfer.generation
     let presentation: any ZoenFilePreviewPresentation
-    let editing = edit.map { Editing(maximumBytes: $0.maximumBytes) }
+    let editing = edit.map { Editing(maximumBytes: $0.maximumBytes, allowsEditing: $0.canCapture) }
     do {
       guard !Task.isCancelled else { throw Failure.changed }
       guard active == nil, retained.isEmpty else { throw Failure.busy }
+      guard transfer.recovered.isEmpty || edit != nil else { throw Failure.unavailable }
       guard !title.contains("\0"), title.utf8.count <= 1024 else { throw Failure.unavailable }
       presentation = try makePresentation(editing)
     } catch {
-      do { try file.remove() } catch { retained.append(file); throw error }
+      var cleanupFailure: Error?
+      for file in transfer.files {
+        do { try file.remove() } catch { retained.append(file); cleanupFailure = error }
+      }
+      if let cleanupFailure { throw cleanupFailure }
       throw error
     }
     let id = UUID()
     try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
         let session = Session(id: id, generation: generation, file: file, presentation: presentation,
-                              continuation: continuation, edit: edit, editing: editing)
+                              continuation: continuation, edit: edit, editing: editing, recovered: transfer.recovered)
         active = session
         editing?.captured = { [weak self, weak session] result in
           guard let self, let session else { return }
@@ -238,15 +284,25 @@ extension ZoenFilePreviewPresentation {
   private func capture(_ result: Result<ZoenPreviewFile, ZoenPDFEditCapture.Failure>, session: Session) {
     switch result {
     case .success(let file):
-      guard active === session, session.forced == nil else {
+      guard active === session, session.forced == nil, !session.discardRequested else {
         do { try file.remove() } catch { retained.append(file) }
         return
       }
       session.pending.append(Session.Edit(file: file))
       session.captureFailure = nil
+      do {
+        if let retain = session.edit?.retain {
+          try scope.admit(session.generation) { try retain(file) }
+        }
+      } catch {
+        // Retain the owned copy for explicit retry. The save adapter can retry
+        // private ingestion before publishing; this is not a durable ACK.
+        session.failure = error
+      }
       if session.failure == nil { startWorker(session) }
+      else { completeEditing(session) }
     case .failure(let failure):
-      guard active === session, session.forced == nil else {
+      guard active === session, session.forced == nil, !session.discardRequested else {
         if let file = failure.retained { retained.append(file) }
         return
       }
@@ -259,9 +315,11 @@ extension ZoenFilePreviewPresentation {
 
   private func startWorker(_ session: Session) {
     guard active === session, session.worker == nil, session.failure == nil,
-          session.forced == nil, !session.pending.isEmpty, let context = session.edit else { return }
+          session.forced == nil, !session.discardRequested, !session.keepRequested,
+          !session.pending.isEmpty, let context = session.edit else { return }
     session.worker = Task { @MainActor [self, session] in
-      while !session.pending.isEmpty, session.forced == nil {
+      while !session.pending.isEmpty, session.forced == nil, session.failure == nil,
+            !session.discardRequested, !session.keepRequested {
         do {
           if !session.pending[0].accepted {
             guard let base = session.base else { throw Failure.changed }
@@ -277,6 +335,46 @@ extension ZoenFilePreviewPresentation {
         }
       }
       session.worker = nil
+      completeEditing(session)
+    }
+  }
+
+  private func startDiscard(_ session: Session) {
+    guard active === session, session.discardRequested, session.worker == nil,
+          session.forced == nil, let context = session.edit else { return }
+    session.worker = Task { @MainActor [self, session] in
+      do {
+        // Keep every plaintext lease until the canonical private discard ACK.
+        // A failed/ambiguous discard can only retry this operation, never save.
+        try await context.discard?()
+        if session.forced == nil {
+          for edit in session.pending {
+            do { try edit.file.remove() } catch { retained.append(edit.file); session.cleanupFailure = error }
+          }
+          session.pending.removeAll()
+          session.failure = nil
+          session.captureFailure = nil
+        }
+      } catch { session.failure = error }
+      session.worker = nil
+      completeEditing(session)
+    }
+  }
+
+  private func keepForLater(_ session: Session) {
+    guard active === session, session.worker == nil, session.forced == nil,
+          !session.discardRequested,
+          session.pending.contains(where: { !$0.accepted }), let retain = session.edit?.retain else { return }
+    // A newer unreadable callback cannot be acknowledged as privately retained.
+    guard session.captureFailure == nil else { completeEditing(session); return }
+    session.keepRequested = true
+    do {
+      // These copies were admitted before ordinary close retired presentation.
+      // Reconcile their exact private ACKs without admitting any new capture.
+      for edit in session.pending where !edit.accepted { try retain(edit.file) }
+      finish(session, error: nil)
+    } catch {
+      session.failure = error
       completeEditing(session)
     }
   }
@@ -301,24 +399,39 @@ extension ZoenFilePreviewPresentation {
       guard !session.recoveryShown else { return }
       session.recoveryShown = true
       let retry: (@MainActor () -> Void)?
-      if session.pending.isEmpty { retry = nil }
+      if (session.pending.isEmpty && !session.discardRequested)
+        || (session.keepRequested && session.captureFailure != nil) { retry = nil }
       else {
         retry = { @MainActor [weak self, weak session] in
-          guard let self, let session, self.active === session, session.forced == nil else { return }
+          guard let self, let session, self.active === session, session.forced == nil,
+                session.recoveryShown, session.worker == nil else { return }
           session.recoveryShown = false
           session.failure = nil
-          self.startWorker(session)
+          if session.discardRequested { self.startDiscard(session) }
+          else if session.keepRequested { self.keepForLater(session) }
+          else { self.startWorker(session) }
         }
       }
       let changesSaved = !session.pending.isEmpty && session.pending.allSatisfy(\.accepted) && session.captureFailure == nil
-      session.presentation.recover(error: changesSaved ? Failure.cleanup : failure, changesSaved: changesSaved, retry: retry) { [weak self, weak session] in
-        guard let self, let session, self.active === session, session.forced == nil else { return }
-        for edit in session.pending {
-          do { try edit.file.remove() } catch { self.retained.append(edit.file); session.cleanupFailure = error }
+      let keep: (@MainActor () -> Void)?
+      if session.edit?.retain != nil, session.pending.contains(where: { !$0.accepted }),
+         session.captureFailure == nil, !session.discardRequested {
+        keep = { @MainActor [weak self, weak session] in
+          guard let self, let session, self.active === session, session.forced == nil,
+                session.recoveryShown, session.worker == nil else { return }
+          session.recoveryShown = false
+          session.failure = nil
+          self.keepForLater(session)
         }
-        session.pending.removeAll()
+      } else { keep = nil }
+      session.presentation.recover(error: changesSaved ? Failure.cleanup : failure, changesSaved: changesSaved, retry: retry, keep: keep) { [weak self, weak session] in
+        guard let self, let session, self.active === session, session.forced == nil,
+              session.recoveryShown, session.worker == nil else { return }
+        session.discardRequested = true
+        session.keepRequested = false
+        session.recoveryShown = false
         session.failure = nil
-        self.finish(session, error: nil)
+        self.startDiscard(session)
       }
     } else if session.pending.isEmpty { finish(session, error: nil) }
   }
@@ -326,7 +439,7 @@ extension ZoenFilePreviewPresentation {
   /// Cleanup waits for UIKit's real hierarchy dismissal and verified deletion.
   func clear(before generation: UInt64) async throws {
     invalidate(before: generation)
-    for transfer in scope.drain(before: generation) { retained.append(transfer.file) }
+    for transfer in scope.drain(before: generation) { retained.append(contentsOf: transfer.files) }
     if let active, active.generation < generation {
       try await withCheckedThrowingContinuation { continuation in
         active.waiters.append(continuation)
@@ -356,6 +469,12 @@ extension ZoenFilePreviewPresentation {
 
   private func finish(_ session: Session, error: Error?) {
     guard active === session else { return }
+    // Includes a recovered FIFO whose presentation failed before any worker ran.
+    for edit in session.pending {
+      do { try edit.file.remove() }
+      catch { retained.append(edit.file); session.cleanupFailure = error }
+    }
+    session.pending.removeAll()
     for file in session.failedCaptureCopies {
       do { try file.remove() }
       catch { retained.append(file); session.cleanupFailure = error }

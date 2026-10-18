@@ -49,7 +49,11 @@
       "Continue Editing": "Continue Editing",
       "Marked up": "Marked up",
       "Your changes were saved.": "Your changes were saved.",
-      "Close": "Close"
+      "Close": "Close",
+      "Recovered changes": "Recovered changes",
+      "These changes are only on this device. Save them to update the shared file.": "These changes are only on this device. Save them to update the shared file.",
+      "Save Changes": "Save Changes",
+      "Keep for Later": "Keep for Later"
     },
     "NSFaceIDUsageDescription": "Allow $(PRODUCT_NAME) to use Face ID to confirm your identity.",
     "NSLocalNetworkUsageDescription": "Expo Dev Launcher uses the local network to discover and connect to development servers running on your computer."

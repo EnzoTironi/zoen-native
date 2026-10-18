@@ -149,15 +149,31 @@ import UIKit
   }
 
   func recover(error: Error, changesSaved: Bool, retry: (@MainActor () -> Void)?, discard: @escaping @MainActor () -> Void) {
+    recover(error: error, changesSaved: changesSaved, retry: retry, keep: nil, discard: discard)
+  }
+
+  func recover(error: Error, changesSaved: Bool, retry: (@MainActor () -> Void)?, keep: (@MainActor () -> Void)?, discard: @escaping @MainActor () -> Void) {
+    let recovered: Bool
+    if case .recovered? = error as? ZoenFilePreview.Failure { recovered = true }
+    else { recovered = false }
     let alert = UIAlertController(
       title: changesSaved
         ? NSLocalizedString("Your changes were saved.", comment: "Native PDF edit saved before temporary cleanup failure")
-        : NSLocalizedString("Could not save your changes.", comment: "Native PDF edit recovery title"),
+        : recovered
+          ? NSLocalizedString("Recovered changes", comment: "Private PDF edits recovered after restart")
+          : NSLocalizedString("Could not save your changes.", comment: "Native PDF edit recovery title"),
       message: error.localizedDescription, preferredStyle: .alert)
     let id = UUID()
     if let retry {
-      alert.addAction(UIAlertAction(title: NSLocalizedString("Try Again", comment: "Retry native PDF edit save"), style: .default) { [weak self, weak alert] _ in
+      alert.addAction(UIAlertAction(title: recovered
+        ? NSLocalizedString("Save Changes", comment: "Publish recovered private PDF changes")
+        : NSLocalizedString("Try Again", comment: "Retry native PDF edit save"), style: .default) { [weak self, weak alert] _ in
         self?.completeRecovery(alert, id: id, action: retry)
+      })
+    }
+    if let keep {
+      alert.addAction(UIAlertAction(title: NSLocalizedString("Keep for Later", comment: "Keep private PDF changes on this device without publishing"), style: .cancel) { [weak self, weak alert] _ in
+        self?.completeRecovery(alert, id: id, action: keep)
       })
     }
     let discardTitle = changesSaved
@@ -211,7 +227,7 @@ import UIKit
   }
   func previewControllerDidDismiss(_ controller: QLPreviewController) { notifyEnded(nil) }
   func previewController(_ controller: QLPreviewController, editingModeFor previewItem: any QLPreviewItem) -> QLPreviewItemEditingMode {
-    editing == nil ? .disabled : .createCopy
+    editing?.allowsEditing == true ? .createCopy : .disabled
   }
   func previewController(_ controller: QLPreviewController, didSaveEditedCopyOf previewItem: any QLPreviewItem, at modifiedContentsURL: URL) {
     editing?.receive(modifiedContentsURL)

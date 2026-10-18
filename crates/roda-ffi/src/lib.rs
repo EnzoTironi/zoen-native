@@ -21,6 +21,11 @@ mod files;
 mod growth;
 pub use growth::{AcquisitionDto, GrowthSyncDto, OnboardingPlanDto};
 mod file_demand;
+mod file_edit_drafts;
+pub use file_edit_drafts::{
+    FileEditDraftCapture, FileEditDraftCommitResult, FileEditDraftDto, FileEditDraftSaveResult,
+    FileEditDraftScope,
+};
 mod files_api;
 mod liveview;
 pub use liveview::{LiveViewDemoVm, LiveViewInput, LiveViewKey, LiveViewSession};

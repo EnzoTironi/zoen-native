@@ -49,7 +49,11 @@
       "Continue Editing": "Continuar editando",
       "Marked up": "Anotações",
       "Your changes were saved.": "Suas alterações foram salvas.",
-      "Close": "Fechar"
+      "Close": "Fechar",
+      "Recovered changes": "Alterações recuperadas",
+      "These changes are only on this device. Save them to update the shared file.": "Estas alterações estão apenas neste dispositivo. Salve para atualizar o arquivo compartilhado.",
+      "Save Changes": "Salvar alterações",
+      "Keep for Later": "Guardar para depois"
     },
     "NSFaceIDUsageDescription": "Permita que $(PRODUCT_NAME) use o Face ID para confirmar sua identidade.",
     "NSLocalNetworkUsageDescription": "O Expo Dev Launcher usa a rede local para encontrar e conectar aos servidores de desenvolvimento do seu computador."
