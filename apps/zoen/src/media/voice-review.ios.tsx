@@ -1,5 +1,13 @@
 import { useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
+import { Host } from '@expo/ui';
+import { Button } from '@expo/ui/swift-ui';
+import {
+  buttonStyle,
+  disabled as disabledModifier,
+  frame,
+  labelStyle,
+} from '@expo/ui/swift-ui/modifiers';
 import { NativeButton } from '../components/primitives';
 import { formatLocale, locale, t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
@@ -36,7 +44,7 @@ export function VoiceReview({
   onRetryPrepare,
 }: VoiceReviewProps) {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const [local, setLocal] = useState<LocalState>({ session, sending: false, error: null });
   const [editor, setEditor] = useState({ session, open: initiallyEditing });
   const pendingSend = useRef(new Set<VoiceSession>());
@@ -115,7 +123,7 @@ export function VoiceReview({
   }
 
   return (
-    <View style={{ gap: 20, width: '100%', minWidth: 0 }}>
+    <View style={{ gap: 16, width: '100%', minWidth: 0 }}>
       {state.source && state.projection ? (
         <Text selectable style={{ color: colors.secondary, fontSize: 14 }}>
           {t('media.voiceOriginalEdited', {
@@ -172,7 +180,15 @@ export function VoiceReview({
 
       {draft ? (
         <>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
             <NativeButton
               secondary
               label={t(editable ? 'media.voiceDoneEditing' : 'media.voiceEdit')}
@@ -184,21 +200,87 @@ export function VoiceReview({
                 }
               }}
             />
-            <NativeButton
-              secondary
-              label={t('media.voiceUndo')}
-              disabled={locked || draft.undo.length === 0}
-              onPress={() => history('undo')}
-            />
-            <NativeButton
-              secondary
-              label={t('media.voiceRedo')}
-              disabled={locked || draft.redo.length === 0}
-              onPress={() => history('redo')}
-            />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['undo', 'redo'] as const).map((direction) => (
+                <Host
+                  key={direction}
+                  testID={`voice-${direction}-host`}
+                  style={{ width: 44, height: 44 }}
+                  colorScheme={scheme}
+                  seedColor={colors.accent}
+                >
+                  <Button
+                    testID={`voice-${direction}`}
+                    label={t(direction === 'undo' ? 'media.voiceUndo' : 'media.voiceRedo')}
+                    systemImage={
+                      direction === 'undo' ? 'arrow.uturn.backward' : 'arrow.uturn.forward'
+                    }
+                    modifiers={[
+                      buttonStyle('bordered'),
+                      labelStyle('iconOnly'),
+                      frame({ width: 44, height: 44 }),
+                      disabledModifier(locked || draft[direction].length === 0),
+                    ]}
+                    onPress={() => history(direction)}
+                  />
+                </Host>
+              ))}
+            </View>
           </View>
 
           {editable ? <VoiceWaveform draft={draft} disabled={locked} onEdit={edit} /> : null}
+
+          <View style={{ gap: 12 }}>
+            <Text
+              accessibilityRole="header"
+              style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
+            >
+              {t('media.voiceTranscript')}
+            </Text>
+            {state.transcribing ? (
+              <Text accessibilityRole="progressbar" style={{ color: colors.secondary }}>
+                {t('media.voiceTranscribing')}
+              </Text>
+            ) : null}
+            {!draft.transcript ? (
+              <>
+                <Text style={{ color: colors.secondary }}>
+                  {t('media.voiceTranscriptionDetail')}
+                </Text>
+                <NativeButton
+                  secondary
+                  testID="voice-transcribe"
+                  label={t('media.voiceTranscribe')}
+                  disabled={locked || state.transcribing}
+                  onPress={() => {
+                    if (!busy && !pendingSend.current.has(session)) {
+                      pauseAudioPlayback();
+                      setEditor({ session, open: true });
+                      void session.transcribe(locale);
+                    }
+                  }}
+                />
+              </>
+            ) : editable && draft.transcript.words.length ? (
+              <VoiceWords draft={draft} disabled={locked} onEdit={edit} />
+            ) : state.projection?.transcript ? (
+              <Text selectable style={{ color: colors.text, fontSize: 17, lineHeight: 24 }}>
+                {state.projection.transcript}
+              </Text>
+            ) : !draft.transcript.text.trim() ? (
+              <Text style={{ color: colors.secondary }}>{t('media.voiceNoSpeech')}</Text>
+            ) : null}
+            {editable && draft.transcript?.text.trim() && !draft.transcript.words.length ? (
+              <Text style={{ color: colors.secondary }}>
+                {t('media.voiceWordTimingUnavailable')}
+              </Text>
+            ) : null}
+            {state.transcription === 'unavailable' ? (
+              <Text style={{ color: colors.secondary }}>
+                {t('media.voiceTranscriptionUnavailable')}
+              </Text>
+            ) : null}
+          </View>
 
           {suggestions && (suggestions.fillers.length > 0 || suggestions.pauses.length > 0) ? (
             <View style={{ gap: 12 }}>
@@ -231,51 +313,6 @@ export function VoiceReview({
               ) : null}
             </View>
           ) : null}
-
-          <View style={{ gap: 12 }}>
-            <Text
-              accessibilityRole="header"
-              style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
-            >
-              {t('media.voiceTranscript')}
-            </Text>
-            {state.transcribing ? (
-              <Text accessibilityRole="progressbar" style={{ color: colors.secondary }}>
-                {t('media.voiceTranscribing')}
-              </Text>
-            ) : null}
-            {!draft.transcript ? (
-              <>
-                <Text style={{ color: colors.secondary }}>
-                  {t('media.voiceTranscriptionDetail')}
-                </Text>
-                <NativeButton
-                  secondary
-                  label={t('media.voiceTranscribe')}
-                  disabled={locked || state.transcribing}
-                  onPress={() => {
-                    if (!busy && !pendingSend.current.has(session)) {
-                      pauseAudioPlayback();
-                      void session.transcribe(locale);
-                    }
-                  }}
-                />
-              </>
-            ) : editable && draft.transcript.words.length ? (
-              <VoiceWords draft={draft} disabled={locked} onEdit={edit} />
-            ) : state.projection?.transcript ? (
-              <Text selectable style={{ color: colors.text, fontSize: 17, lineHeight: 24 }}>
-                {state.projection.transcript}
-              </Text>
-            ) : !draft.transcript.text.trim() ? (
-              <Text style={{ color: colors.secondary }}>{t('media.voiceNoSpeech')}</Text>
-            ) : null}
-            {state.transcription === 'unavailable' ? (
-              <Text style={{ color: colors.secondary }}>
-                {t('media.voiceTranscriptionUnavailable')}
-              </Text>
-            ) : null}
-          </View>
         </>
       ) : null}
 

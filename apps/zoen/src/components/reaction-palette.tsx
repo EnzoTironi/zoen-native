@@ -72,7 +72,9 @@ export function ReactionButton({
         easing: Easing.bezier(0.23, 1, 0.32, 1),
       }),
     );
-  const motion = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
+  const motion = useAnimatedStyle(() => ({
+    transform: [{ scale: reducedMotion || pending ? 1 : scale.get() }],
+  }));
   return (
     <Animated.View style={motion}>
       <Pressable
@@ -83,7 +85,8 @@ export function ReactionButton({
         onPressIn={() => press(true)}
         onPressOut={() => press(false)}
         onPress={() => {
-          if (process.env.EXPO_OS === 'ios') void Haptics.selectionAsync().catch(() => {});
+          if (process.env.EXPO_OS === 'ios' && !reducedMotion)
+            void Haptics.selectionAsync().catch(() => {});
           onReact(mine ? null : emoji);
         }}
         style={{

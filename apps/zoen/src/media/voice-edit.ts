@@ -30,6 +30,7 @@ export type VoiceEditCommand =
   | Readonly<{ type: 'trim'; range: FrameRange }>
   | Readonly<{ type: 'cut'; range: FrameRange }>
   | Readonly<{ type: 'restore'; range: FrameRange }>
+  | Readonly<{ type: 'setWordRemoved'; wordId: string; removed: boolean }>
   | Readonly<{ type: 'toggleWord'; wordId: string }>;
 export type VoiceProjection = Readonly<{
   keptRanges: readonly FrameRange[];
@@ -249,12 +250,15 @@ function changedEdit(draft: VoiceDraft, edit: VoiceEdit, command: VoiceEditComma
       );
     case 'restore':
       return restoredEdit(draft, edit, checkedRange(command.range, frames));
+    case 'setWordRemoved':
     case 'toggleWord': {
       const word = draft.transcript?.words.find((candidate) => candidate.id === command.wordId);
       if (!word) return fail('unknown_word');
-      if (wordVisible(keptRanges(draft, edit), word))
-        return frozenEdit(edit.trim, edit.cuts, [...edit.removedWords, word.id]);
-      return restoredEdit(draft, edit, word);
+      const visible = wordVisible(keptRanges(draft, edit), word);
+      const remove = command.type === 'setWordRemoved' ? command.removed : visible;
+      if (remove)
+        return visible ? frozenEdit(edit.trim, edit.cuts, [...edit.removedWords, word.id]) : edit;
+      return visible ? edit : restoredEdit(draft, edit, word);
     }
   }
 }

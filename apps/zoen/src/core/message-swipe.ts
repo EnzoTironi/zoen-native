@@ -2,6 +2,22 @@ export const MESSAGE_SWIPE_THRESHOLD = 64;
 export const MESSAGE_EDGE_ZONE = 24;
 export type MessageSwipeIntent = 'reply' | 'thread';
 
+/** A retreat or cancellation disarms the gesture; a new directional crossing ticks again. */
+export function messageSwipeFeedback(
+  previous: MessageSwipeIntent | null,
+  distance: number | null,
+  reducedMotion: boolean,
+): { armed: MessageSwipeIntent | null; tick: boolean } {
+  'worklet';
+  const armed =
+    distance !== null && Number.isFinite(distance) && Math.abs(distance) >= MESSAGE_SWIPE_THRESHOLD
+      ? distance < 0
+        ? 'reply'
+        : 'thread'
+      : null;
+  return { armed, tick: !reducedMotion && armed !== null && armed !== previous };
+}
+
 /** Release semantics match the original iPhone editor, including a deliberate short flick. */
 export function messageSwipeIntent(distance: number, velocity: number): MessageSwipeIntent | null {
   'worklet';

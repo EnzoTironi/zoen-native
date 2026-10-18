@@ -20,6 +20,7 @@ export const media = defineFeature(
     voiceWaveform: 'Original recording',
     voiceTrimGroup: 'Trim',
     voiceSelectionGroup: 'Selection',
+    voicePrecisionAdjustments: 'Precise adjustments',
     voiceTrimStart: 'Trim start',
     voiceTrimEnd: 'Trim end',
     voiceSelectionStart: 'Selection start',
@@ -45,9 +46,11 @@ export const media = defineFeature(
     voiceTranscriptionDetail:
       'Transcription happens on this iPhone. A language download may be needed.',
     voiceTranscriptionUnavailable:
-      'Transcription is unavailable for this language on this iPhone. You can still edit and send the audio.',
+      'Transcription is unavailable on this iPhone. You can still edit and send the audio.',
     voiceTranscriptionFailed:
       'Transcription could not be completed. You can try again or send the audio.',
+    voiceWordTimingUnavailable:
+      'Word timing is unavailable for this recording. You can still edit the waveform.',
     voiceNoSpeech: 'No speech was found in this recording.',
     voiceUndo: 'Undo edit',
     voiceRedo: 'Redo edit',
@@ -140,6 +143,7 @@ export const media = defineFeature(
     voiceWaveform: 'Gravação original',
     voiceTrimGroup: 'Recorte',
     voiceSelectionGroup: 'Seleção',
+    voicePrecisionAdjustments: 'Ajustes precisos',
     voiceTrimStart: 'Início do recorte',
     voiceTrimEnd: 'Fim do recorte',
     voiceSelectionStart: 'Início da seleção',
@@ -166,9 +170,11 @@ export const media = defineFeature(
     voiceTranscriptionDetail:
       'A transcrição acontece neste iPhone. Pode ser necessário baixar o idioma.',
     voiceTranscriptionUnavailable:
-      'A transcrição não está disponível para este idioma neste iPhone. Você ainda pode editar e enviar o áudio.',
+      'A transcrição não está disponível neste iPhone. Você ainda pode editar e enviar o áudio.',
     voiceTranscriptionFailed:
       'Não foi possível concluir a transcrição. Você pode tentar novamente ou enviar o áudio.',
+    voiceWordTimingUnavailable:
+      'Os tempos das palavras não estão disponíveis nesta gravação. Você ainda pode editar a forma de onda.',
     voiceNoSpeech: 'Nenhuma fala foi encontrada nesta gravação.',
     voiceUndo: 'Desfazer edição',
     voiceRedo: 'Refazer edição',

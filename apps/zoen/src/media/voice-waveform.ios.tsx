@@ -1,6 +1,12 @@
 import { Host } from '@expo/ui';
-import { Button, Slider, Text as NativeText, VStack } from '@expo/ui/swift-ui';
-import { disabled as disabledModifier, font, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
+import { Button, DisclosureGroup, Slider, Text as NativeText, VStack } from '@expo/ui/swift-ui';
+import {
+  buttonStyle,
+  disabled as disabledModifier,
+  font,
+  foregroundStyle,
+  frame,
+} from '@expo/ui/swift-ui/modifiers';
 import { useMemo, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import {
@@ -42,6 +48,7 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
   const [width, setWidth] = useState(0);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [selection, setSelection] = useState<Preview | null>(null);
+  const [precision, setPrecision] = useState({ source: draft.original.id, open: false });
   const drag = useRef<Drag | null>(null);
   const tapping = useRef<{ draft: VoiceDraft; width: number } | null>(null);
   const frames = draft.original.frameCount;
@@ -315,76 +322,128 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
         <Text style={{ color: colors.secondary }}>{time(trim.endFrame)}</Text>
       </View>
       <Host
+        testID="voice-precision-host"
         matchContents={{ vertical: true }}
         style={{ width: '100%' }}
         colorScheme={scheme}
         seedColor={colors.accent}
       >
-        <VStack alignment="leading" spacing={24}>
-          <VStack alignment="leading" spacing={16}>
-            <NativeText modifiers={[font({ textStyle: 'headline' }), foregroundStyle(colors.text)]}>
-              {t('media.voiceTrimGroup')}
-            </NativeText>
-            {slider(t('media.voiceTrimStart'), trim.startFrame, 0, trim.endFrame, (startFrame) =>
-              setPreview({ draft, range: { startFrame, endFrame: trim.endFrame } }),
-            )}
-            {slider(t('media.voiceTrimEnd'), trim.endFrame, trim.startFrame, frames, (endFrame) =>
-              setPreview({ draft, range: { startFrame: trim.startFrame, endFrame } }),
-            )}
+        <VStack alignment="leading" spacing={12}>
+          {trimChanged ? (
             <Button
               label={t('media.voiceApplyTrim')}
               onPress={() => {
                 if (!disabled && trimChanged) onEdit({ type: 'trim', range: trim });
               }}
               modifiers={[
-                disabledModifier(disabled || !trimChanged),
+                buttonStyle('bordered'),
+                frame({ minHeight: 44 }),
+                disabledModifier(disabled),
                 foregroundStyle(colors.accent),
               ]}
             />
-          </VStack>
-          <VStack alignment="leading" spacing={16}>
-            <NativeText modifiers={[font({ textStyle: 'headline' }), foregroundStyle(colors.text)]}>
-              {t('media.voiceSelectionGroup')}
-            </NativeText>
-            {slider(
-              t('media.voiceSelectionStart'),
-              selectedRange.startFrame,
-              0,
-              selectedRange.endFrame,
-              (startFrame) =>
-                setSelection({ draft, range: { startFrame, endFrame: selectedRange.endFrame } }),
-            )}
-            {slider(
-              t('media.voiceSelectionEnd'),
-              selectedRange.endFrame,
-              selectedRange.startFrame,
-              frames,
-              (endFrame) =>
-                setSelection({ draft, range: { startFrame: selectedRange.startFrame, endFrame } }),
-            )}
-            <Button
-              label={t('media.voiceCutSelection')}
-              onPress={() => {
-                if (!disabled && selected && selected.endFrame > selected.startFrame)
-                  onEdit({ type: 'cut', range: selected });
-              }}
-              modifiers={[
-                disabledModifier(disabled || !selected || selected.endFrame <= selected.startFrame),
-                foregroundStyle(colors.accent),
-              ]}
-            />
-            <Button
-              label={t('media.voiceRestoreSelection')}
-              onPress={() => {
-                if (!disabled && selected && selected.endFrame > selected.startFrame)
-                  onEdit({ type: 'restore', range: selected });
-              }}
-              modifiers={[
-                disabledModifier(disabled || !selected || selected.endFrame <= selected.startFrame),
-                foregroundStyle(colors.accent),
-              ]}
-            />
-          </VStack>
+          ) : null}
+          {selected ? (
+            <VStack alignment="leading" spacing={8}>
+              <Button
+                label={t('media.voiceCutSelection')}
+                onPress={() => {
+                  if (!disabled && selected.endFrame > selected.startFrame)
+                    onEdit({ type: 'cut', range: selected });
+                }}
+                modifiers={[
+                  buttonStyle('bordered'),
+                  frame({ minHeight: 44 }),
+                  disabledModifier(disabled || selected.endFrame <= selected.startFrame),
+                  foregroundStyle(colors.accent),
+                ]}
+              />
+              <Button
+                label={t('media.voiceRestoreSelection')}
+                onPress={() => {
+                  if (!disabled && selected.endFrame > selected.startFrame)
+                    onEdit({ type: 'restore', range: selected });
+                }}
+                modifiers={[
+                  buttonStyle('bordered'),
+                  frame({ minHeight: 44 }),
+                  disabledModifier(disabled || selected.endFrame <= selected.startFrame),
+                  foregroundStyle(colors.accent),
+                ]}
+              />
+            </VStack>
+          ) : null}
+          <DisclosureGroup
+            testID="voice-precision"
+            isExpanded={precision.source === draft.original.id && precision.open}
+            onIsExpandedChange={(open) => setPrecision({ source: draft.original.id, open })}
+          >
+            <DisclosureGroup.Label>
+              <NativeText
+                modifiers={[
+                  font({ textStyle: 'subheadline' }),
+                  foregroundStyle(colors.secondary),
+                  frame({ minHeight: 44, alignment: 'leading' }),
+                ]}
+              >
+                {t('media.voicePrecisionAdjustments')}
+              </NativeText>
+            </DisclosureGroup.Label>
+            <VStack alignment="leading" spacing={20}>
+              <VStack alignment="leading" spacing={16}>
+                <NativeText
+                  modifiers={[font({ textStyle: 'headline' }), foregroundStyle(colors.text)]}
+                >
+                  {t('media.voiceTrimGroup')}
+                </NativeText>
+                {slider(
+                  t('media.voiceTrimStart'),
+                  trim.startFrame,
+                  0,
+                  trim.endFrame,
+                  (startFrame) =>
+                    setPreview({ draft, range: { startFrame, endFrame: trim.endFrame } }),
+                )}
+                {slider(
+                  t('media.voiceTrimEnd'),
+                  trim.endFrame,
+                  trim.startFrame,
+                  frames,
+                  (endFrame) =>
+                    setPreview({ draft, range: { startFrame: trim.startFrame, endFrame } }),
+                )}
+              </VStack>
+              <VStack alignment="leading" spacing={16}>
+                <NativeText
+                  modifiers={[font({ textStyle: 'headline' }), foregroundStyle(colors.text)]}
+                >
+                  {t('media.voiceSelectionGroup')}
+                </NativeText>
+                {slider(
+                  t('media.voiceSelectionStart'),
+                  selectedRange.startFrame,
+                  0,
+                  selectedRange.endFrame,
+                  (startFrame) =>
+                    setSelection({
+                      draft,
+                      range: { startFrame, endFrame: selectedRange.endFrame },
+                    }),
+                )}
+                {slider(
+                  t('media.voiceSelectionEnd'),
+                  selectedRange.endFrame,
+                  selectedRange.startFrame,
+                  frames,
+                  (endFrame) =>
+                    setSelection({
+                      draft,
+                      range: { startFrame: selectedRange.startFrame, endFrame },
+                    }),
+                )}
+              </VStack>
+            </VStack>
+          </DisclosureGroup>
         </VStack>
       </Host>
     </View>

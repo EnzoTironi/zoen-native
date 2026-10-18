@@ -19,9 +19,10 @@ import { t } from '../i18n/index.ts';
 import {
   MESSAGE_EDGE_ZONE,
   messageSwipeAdmission,
-  MESSAGE_SWIPE_THRESHOLD,
+  messageSwipeFeedback,
   messageSwipeIntent,
   messageSwipeOffset,
+  type MessageSwipeIntent,
 } from '../core/message-swipe.ts';
 import { Icon } from './primitives';
 import type { MessageInteractionProps } from './message-interaction.types';
@@ -107,7 +108,7 @@ export function MessageInteraction({
   const originY = useSharedValue(0);
   const active = useSharedValue(false);
   const didPan = useSharedValue(false);
-  const ticked = useSharedValue(false);
+  const armed = useSharedValue<MessageSwipeIntent | null>(null);
   const fired = useSharedValue(false);
   const pull = useSharedValue(0);
   useEffect(() => {
@@ -115,7 +116,8 @@ export function MessageInteraction({
     active.set(false);
     fired.set(false);
     didPan.set(false);
-  }, [messageId, disabled, pull, active, fired, didPan]);
+    armed.set(null);
+  }, [messageId, disabled, pull, active, fired, didPan, armed]);
   function finish(intent: 'reply' | 'thread') {
     if (!disabled) (intent === 'reply' ? onReply : onThread)();
   }
@@ -128,7 +130,7 @@ export function MessageInteraction({
       // A completed pan suppresses its trailing RN press until a genuinely new touch begins.
       if (event.numberOfTouches === 1) didPan.set(false);
       active.set(false);
-      ticked.set(false);
+      armed.set(null);
       fired.set(false);
       const first = event.allTouches[0];
       if (!first || event.numberOfTouches !== 1 || first.absoluteX < MESSAGE_EDGE_ZONE) {
@@ -162,10 +164,9 @@ export function MessageInteraction({
     onUpdate: (event) => {
       'worklet';
       pull.set(messageSwipeOffset(event.translationX));
-      if (Math.abs(event.translationX) >= MESSAGE_SWIPE_THRESHOLD && !ticked.get()) {
-        ticked.set(true);
-        scheduleOnRN(thresholdHaptic);
-      }
+      const feedback = messageSwipeFeedback(armed.get(), event.translationX, reducedMotion);
+      armed.set(feedback.armed);
+      if (feedback.tick) scheduleOnRN(thresholdHaptic);
     },
     onDeactivate: (event) => {
       'worklet';
@@ -181,6 +182,7 @@ export function MessageInteraction({
     onFinalize: () => {
       'worklet';
       active.set(false);
+      armed.set(messageSwipeFeedback(armed.get(), null, reducedMotion).armed);
       pull.set(reducedMotion ? 0 : withSpring(0, { damping: 22, stiffness: 240 }));
     },
   });

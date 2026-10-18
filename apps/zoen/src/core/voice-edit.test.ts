@@ -37,6 +37,11 @@ const trim = (startFrame: number, endFrame: number) => ({
   range: { startFrame, endFrame },
 });
 const toggle = (wordId: string) => ({ type: 'toggleWord' as const, wordId });
+const setWordRemoved = (wordId: string, removed: boolean) => ({
+  type: 'setWordRemoved' as const,
+  wordId,
+  removed,
+});
 const restore = (startFrame: number, endFrame: number) => ({
   type: 'restore' as const,
   range: { startFrame, endFrame },
@@ -171,6 +176,73 @@ test('word toggle restores only that original word through waveform cuts and tri
   assert.equal(projectVoiceDraft(draft).transcript, 'Keep, secret. Bye!');
   assert.deepEqual(draft.edit.cuts, [{ startFrame: 7000, endFrame: 8000 }]);
   assert.throws(() => editVoiceDraft(draft, toggle('missing')), hasCode('unknown_word'));
+});
+
+test('a queued word removal cannot restore a filler that a suggestion already cut', () => {
+  const initial = createVoiceDraft(source(), {
+    text: 'Keep, um Bye!',
+    words: [
+      { id: 'keep', text: 'Keep,', startFrame: 0, endFrame: 500 },
+      { id: 'um', text: 'um', startFrame: 500, endFrame: 800 },
+      { id: 'bye', text: 'Bye!', startFrame: 1000, endFrame: 1500 },
+    ],
+  });
+  const accepted = editVoiceDraft(initial, cut(500, 800));
+  const queued = editVoiceDraft(accepted, setWordRemoved('um', true));
+  assert.strictEqual(queued, accepted);
+  assert.equal(queued.undo.length, 1);
+  assert.equal(projectVoiceDraft(queued).transcript, 'Keep, Bye!');
+  assert.equal(projectVoiceDraft(queued).frameCount, 9700);
+
+  const partial = editVoiceDraft(initial, cut(600, 700));
+  assert.strictEqual(editVoiceDraft(partial, setWordRemoved('um', true)), partial);
+  assert.equal(projectVoiceDraft(partial).frameCount, 9900);
+  assert.equal(projectVoiceDraft(partial).transcript, 'Keep, Bye!');
+});
+
+test('desired word removal and restoration are idempotent without extra undo steps', () => {
+  const initial = createVoiceDraft(source(), transcript);
+  assert.strictEqual(editVoiceDraft(initial, setWordRemoved('secret', false)), initial);
+  const removed = editVoiceDraft(initial, setWordRemoved('secret', true));
+  assert.equal(removed.undo.length, 1);
+  assert.equal(projectVoiceDraft(removed).transcript, 'Keep, Bye!');
+  assert.strictEqual(editVoiceDraft(removed, setWordRemoved('secret', true)), removed);
+  const restored = editVoiceDraft(removed, setWordRemoved('secret', false));
+  assert.equal(restored.undo.length, 2);
+  assert.equal(projectVoiceDraft(restored).transcript, transcript.text);
+  assert.strictEqual(editVoiceDraft(restored, setWordRemoved('secret', false)), restored);
+  assert.deepEqual(projectVoiceDraft(undoVoiceEdit(restored)), projectVoiceDraft(removed));
+  assert.deepEqual(
+    projectVoiceDraft(redoVoiceEdit(undoVoiceEdit(restored))),
+    projectVoiceDraft(restored),
+  );
+  assert.throws(
+    () => editVoiceDraft(initial, setWordRemoved('missing', true)),
+    hasCode('unknown_word'),
+  );
+});
+
+test('desired word restoration repairs cuts and trims while preserving unrelated removed audio', () => {
+  const initial = createVoiceDraft(source(), transcript);
+  const cutDraft = editVoiceDraft(initial, [cut(1200, 1800), cut(7000, 8000)]);
+  const restoredCut = editVoiceDraft(cutDraft, setWordRemoved('secret', false));
+  assert.equal(projectVoiceDraft(restoredCut).transcript, transcript.text);
+  assert.deepEqual(restoredCut.edit.cuts, [{ startFrame: 7000, endFrame: 8000 }]);
+  assert.strictEqual(editVoiceDraft(restoredCut, setWordRemoved('secret', false)), restoredCut);
+
+  const trimmed = editVoiceDraft(initial, [trim(5000, 9000), cut(7000, 8000)]);
+  const restoredTrim = editVoiceDraft(trimmed, setWordRemoved('secret', false));
+  assert.deepEqual(projectVoiceDraft(restoredTrim).keptRanges, [
+    { startFrame: 1000, endFrame: 2000 },
+    { startFrame: 5000, endFrame: 7000 },
+    { startFrame: 8000, endFrame: 9000 },
+  ]);
+  assert.equal(projectVoiceDraft(restoredTrim).transcript, 'secret.');
+  assert.deepEqual(restoredTrim.edit.cuts, [
+    { startFrame: 2000, endFrame: 5000 },
+    { startFrame: 7000, endFrame: 8000 },
+  ]);
+  assert.deepEqual(projectVoiceDraft(undoVoiceEdit(restoredTrim)), projectVoiceDraft(trimmed));
 });
 
 test('restoring a word outside the trim never restores intervening removed audio or words', () => {

@@ -11,6 +11,7 @@ import {
   strikethrough,
   fixedSize,
   multilineTextAlignment,
+  cornerRadius,
 } from '@expo/ui/swift-ui/modifiers';
 import { useMemo, useRef, useState } from 'react';
 import { Text, View, useWindowDimensions } from 'react-native';
@@ -40,7 +41,8 @@ export function VoiceWords({ draft, onEdit, disabled = false }: Props) {
   const { colors, scheme } = useTheme();
   const [pagination, setPagination] = useState({ source: draft.original.id, page: 0 });
   const [preview, setPreview] = useState<WordDrag | null>(null);
-  const { fontScale } = useWindowDimensions();
+  const { fontScale, width: windowWidth } = useWindowDimensions();
+  const [width, setWidth] = useState(0);
   const layoutVersion = useRef(0);
   const layouts = useRef(new Map<string, Rect>());
   const dragging = useRef<WordDrag | null>(null);
@@ -130,7 +132,7 @@ export function VoiceWords({ draft, onEdit, disabled = false }: Props) {
       const commands: VoiceEditCommand[] = pageWords
         .slice(firstIndex, lastIndex + 1)
         .filter((word) => kept.has(word.id) === context.remove)
-        .map((word) => ({ type: 'toggleWord', wordId: word.id }));
+        .map((word) => ({ type: 'setWordRemoved', wordId: word.id, removed: context.remove }));
       if (commands.length) onEdit(commands);
     },
     onFinalize: () => {
@@ -150,7 +152,18 @@ export function VoiceWords({ draft, onEdit, disabled = false }: Props) {
     <View style={{ gap: 12 }}>
       <Text style={{ color: colors.secondary, fontSize: 13 }}>{t('media.voiceWordsHint')}</Text>
       <GestureDetector gesture={pan}>
-        <View collapsable={false} style={{ gap: 4 }}>
+        <View
+          testID="voice-words"
+          collapsable={false}
+          onLayout={({ nativeEvent }) => {
+            const next = nativeEvent.layout.width;
+            if (next !== width) {
+              ++layoutVersion.current;
+              setWidth(next);
+            }
+          }}
+          style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 4 }}
+        >
           {pageWords.map((word, index) => {
             const selected =
               !!active &&
@@ -174,16 +187,17 @@ export function VoiceWords({ draft, onEdit, disabled = false }: Props) {
                     ++layoutVersion.current;
                   layouts.current.set(key, next);
                 }}
-                style={{ width: '100%' }}
+                style={{ maxWidth: '100%' }}
               >
-                <Host
-                  matchContents={{ vertical: true }}
-                  style={{ width: '100%' }}
-                  colorScheme={scheme}
-                >
+                <Host matchContents colorScheme={scheme}>
                   <Button
                     onPress={() => {
-                      if (!disabled) onEdit({ type: 'toggleWord', wordId: word.id });
+                      if (!disabled)
+                        onEdit({
+                          type: 'setWordRemoved',
+                          wordId: word.id,
+                          removed: kept.has(word.id),
+                        });
                     }}
                     modifiers={[
                       buttonStyle('plain'),
@@ -201,9 +215,15 @@ export function VoiceWords({ draft, onEdit, disabled = false }: Props) {
                         strikethrough({ isActive: removed, pattern: 'solid' }),
                         padding({ horizontal: 7, vertical: 5 }),
                         fixedSize({ horizontal: false, vertical: true }),
-                        frame({ maxWidth: Infinity, minHeight: 44, alignment: 'leading' }),
+                        frame({
+                          maxWidth: Math.max(44, width || windowWidth - 48),
+                          minWidth: 44,
+                          minHeight: 44,
+                          alignment: 'leading',
+                        }),
                         multilineTextAlignment('leading'),
-                        background(selected ? colors.muted : 'transparent'),
+                        background(selected || removed ? colors.muted : 'transparent'),
+                        cornerRadius(10),
                       ]}
                     >
                       {word.text}
