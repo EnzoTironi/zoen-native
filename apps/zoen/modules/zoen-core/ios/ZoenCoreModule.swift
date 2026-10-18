@@ -517,7 +517,7 @@ private actor ZoenSession {
     } catch let error as CoreError {
       let message: String
       switch error {
-      case .Storage(let reason), .Forbidden(let reason), .Invalid(let reason), .Stale(let reason): message = reason
+      case .Storage(let reason), .Forbidden(let reason), .Invalid(let reason), .Stale(let reason), .DraftRejected(let reason): message = reason
       case .NotFound: message = NSLocalizedString("This file version is unavailable.", comment: "Edited PDF was removed")
       }
       throw NSError(domain: "Zoen.FileEdit", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
