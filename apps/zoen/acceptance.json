@@ -1,8 +1,6 @@
 {
   "objective": "Finish the iPhone application first, with a complete and polished Expo experience that improves on the existing iOS client. Web, Android and desktop product acceptance are deferred by explicit user request.",
-  "platforms": [
-    "ios"
-  ],
+  "platforms": ["ios"],
   "sdk": 58,
   "policy": "Prelaunch: one coherent product model, no compatibility shims or duplicate durable state.",
   "completion": "Required iPhone journeys work on the current signed Release without Metro, with native interactions, accessibility and comparative evidence. Prepared code for other platforms does not gate the current iPhone milestone.",
@@ -903,16 +901,8 @@
         "recordedSteps": 25,
         "pngs": 27,
         "nativeEditor": "0x110e78c00",
-        "oneLineEditCancelHeightsPoints": [
-          52,
-          73,
-          52
-        ],
-        "wrappedWithoutNewlineEditCancelHeightsPoints": [
-          95,
-          73,
-          95
-        ],
+        "oneLineEditCancelHeightsPoints": [52, 73, 52],
+        "wrappedWithoutNewlineEditCancelHeightsPoints": [95, 73, 95],
         "quote": "Actual swipe-left quote follows target edit/deletion; clear retains normal draft.",
         "syntheticMutation": {
           "spaceId": "sp_01m576xayyv6j68vpbsk025j3z",
@@ -929,11 +919,7 @@
         "pngs": 11,
         "query": "Cilantro",
         "actualItemEditedNoteResults": 4,
-        "selectedIndices": [
-          1,
-          2,
-          1
-        ],
+        "selectedIndices": [1, 2, 1],
         "positioning": "Selected green bubble fully above keyboard/composer and below top HUD.",
         "searchCloseEditor": "0x115a2cc00",
         "preserved": "Home 4 cards, recipe 6/8, original six-page history and existing Delivered 11-second voice.",
@@ -1179,16 +1165,8 @@
       },
       "correction": "The native SwiftUI search Button Label child now owns its configured 44 × 44 pt frame; the noninteractive receipt exposes StaticText rather than a generic 14 pt actionable element.",
       "geometry": {
-        "configuredLabelFramePoints": [
-          44,
-          44
-        ],
-        "nativeSearchAXNormalizedFrame": [
-          0.841,
-          0.071,
-          0.109,
-          0.05
-        ],
+        "configuredLabelFramePoints": [44, 44],
+        "nativeSearchAXNormalizedFrame": [0.841, 0.071, 0.109, 0.05],
         "scope": "Normalized native AX geometry and passing hit-region audit support the configured label frame. No separately exported exact CGRect measurement."
       },
       "nativeAudit": {
@@ -1455,14 +1433,8 @@
       },
       "nativeVoiceScope": "Recovered the 3.37-second edited draft retained after partial v81c failed Send, then one compact Send and actual cold return. Fresh pending-trim cold/Apply/Discard is not rerun or reattributed to v81d.",
       "nativeAttachments": {
-        "orderedFiles": [
-          "QA1018v65-beach.jpeg",
-          "QA1018v65-sky.mp4"
-        ],
-        "captions": [
-          "QA v81d photo recovery",
-          "QA v81d video recovery"
-        ],
+        "orderedFiles": ["QA1018v65-beach.jpeg", "QA1018v65-sky.mp4"],
+        "captions": ["QA v81d photo recovery", "QA v81d video recovery"],
         "coldUnsentPreviewsAndSeparateCaptions": "PASS",
         "oneSendProjectsExactlyTwoCaptionRows": [
           "01M5806ZXHTMKMS48XQT9XS7AM",
@@ -1578,10 +1550,7 @@
         "device": "388CA707-A103-4845-B5FE-BAA9526D3D57",
         "originalSeconds": 3.72,
         "appliedASeconds": 3.45,
-        "pendingBOriginalRangeSeconds": [
-          0.27,
-          3.54
-        ],
+        "pendingBOriginalRangeSeconds": [0.27, 3.54],
         "pendingUndoTapInertBeforeCold": true,
         "actualColdRestoresPendingBAndAppliedA": true,
         "pendingUndoAndSendTapsInertAfterCold": true,
@@ -1711,16 +1680,8 @@
         "attachmentBatchSendActions": 1,
         "resendActions": 0,
         "offlineColdPreservesThreeQueuedIdsAndNoDraft": true,
-        "onlineColdMatchingRows": [
-          1,
-          1,
-          1
-        ],
-        "canonicalOrder": [
-          "voice",
-          "photo",
-          "video"
-        ],
+        "onlineColdMatchingRows": [1, 1, 1],
+        "canonicalOrder": ["voice", "photo", "video"],
         "captions": {
           "photo": "QA v82a offline photo",
           "video": "QA v82a offline video"
@@ -1728,29 +1689,15 @@
         "automaticReconnectFirstDeliveredGateMilliseconds": 24060,
         "performanceClaimed": false,
         "explicitReadRequests": 1,
-        "finalReceipts": [
-          "Read by all",
-          "Read by all",
-          "Read by all"
-        ],
+        "finalReceipts": ["Read by all", "Read by all", "Read by all"],
         "finalDraftAbsent": true,
         "finalComposerEmpty": true,
         "finalKeyboardClosed": true,
         "finalTimelinePercent": 100
       },
       "independentRecipient": {
-        "phaseOrder": [
-          "pre",
-          "offline",
-          "post",
-          "cold"
-        ],
-        "receivedCounts": [
-          0,
-          0,
-          3,
-          3
-        ],
+        "phaseOrder": ["pre", "offline", "post", "cold"],
+        "receivedCounts": [0, 0, 3, 3],
         "canonicalMedia": [
           {
             "bytes": 116346,
@@ -1842,10 +1789,7 @@
         "copiedPngs": 35,
         "screens": "/private/tmp/zoen-offline-media-qa-v82/native/screens",
         "retiredRecordings": "/private/tmp/zoen-offline-media-qa-v82/native/retired-diagnostics.json",
-        "rawSteps": [
-          3,
-          61
-        ],
+        "rawSteps": [3, 61],
         "formalReplayE2e": false,
         "warnings": [
           "Initial empty-Home/photo-caption waits were corrected; overlay/cross-tree selector warnings are retained.",
@@ -1902,19 +1846,12 @@
       "nativeAudition": {
         "sameRetainedFailedWavRecoveredWithoutReimport": true,
         "originalVisibleSeconds": 24,
-        "continuousCompactDetailCompactClockSeconds": [
-          6,
-          12,
-          18
-        ],
+        "continuousCompactDetailCompactClockSeconds": [6, 12, 18],
         "clockScope": "Expanded native clock 0:06, compact after collapse 0:12, then paused 0:18; not elapsed-time or perceptual-output measurement.",
         "pausedRateRetainedAcrossExpansion": 1.5,
         "pausedOriginalSeekSeconds": 12,
         "pausedEditedSeekBeforeCutSeconds": 12,
-        "nativeSelectedOriginalRangeSeconds": [
-          6.01,
-          10
-        ],
+        "nativeSelectedOriginalRangeSeconds": [6.01, 10],
         "playFromSelectionStartsAndAdvances": true,
         "cutDuringPlaybackStopsOldPreview": true,
         "visibleEditedAfterCutSeconds": 20,
@@ -1938,12 +1875,7 @@
       "nativeCodec": {
         "scope": "Separate root-executed host AVFoundation encoder/decoder proof; actual v84 simulator draft recovery is recorded above.",
         "sourceCommit": "e35d2fb3a38ef62f2161483f345e1ba2016bc556",
-        "testedMonoWavSampleRatesHz": [
-          8000,
-          16000,
-          24000,
-          44100
-        ],
+        "testedMonoWavSampleRatesHz": [8000, 16000, 24000, 44100],
         "assertions": "Full and disjoint-cut renders preserve exact decoded frames/rate/duration, kept/excluded tones, fades, finite waveform, immutable source and owned cleanup.",
         "fixedBitrateOldProductionNegative": {
           "compiled": true,
@@ -2054,11 +1986,7 @@
         },
         "coldRecoveredSameBlackInkStroke": true,
         "nativeRecoveryTitle": "Alterações recuperadas",
-        "nativeChoices": [
-          "Salvar alterações",
-          "Descartar alterações",
-          "Guardar para depois"
-        ],
+        "nativeChoices": ["Salvar alterações", "Descartar alterações", "Guardar para depois"],
         "keepForLater": "Returns to chat without publication; file history remains exactly v1/v2.",
         "secondCold": "The same private copy and recovery choice remain available.",
         "explicitSave": {
@@ -2117,12 +2045,7 @@
           "journalScenarios": 14,
           "pdfOwnerScenarios": 21,
           "previewOwnerScenarios": 11,
-          "fourSeparateCorePhases": [
-            "seed",
-            "recover-save",
-            "seed-conflict",
-            "recover-keep"
-          ],
+          "fourSeparateCorePhases": ["seed", "recover-save", "seed-conflict", "recover-keep"],
           "coreReceipt": "/private/tmp/zoen-pdf-edit-journal-qa-v85/native/core-four-phases-final.json",
           "coreTestSourceCommit": "c40d162baeb04d03c5176ab993d7e6da0ef2dd4f",
           "coreTestSourceSha256": "6af43e5a17ed8cf76d51e096c218e197ed87fa636128eb5b40d0fe775da9482e",
@@ -2264,12 +2187,7 @@
       "humanPreservingInstall": "/private/tmp/zoen-excalidraw-canonical-iphone-qa-v89/human-v89-install.json",
       "boundedSmoke": {
         "scope": "Human v87 to v89 preserving update; public executable, JavaScript and strict signature verified. Bounded Home inspection only, with no full-app reacceptance.",
-        "retainedCards": [
-          "Plantain moqueca 6/8",
-          "Zo QA",
-          "Praia do Sono",
-          "Exact BRL QA"
-        ],
+        "retainedCards": ["Plantain moqueca 6/8", "Zo QA", "Praia do Sono", "Exact BRL QA"],
         "largerTextRetained": true,
         "diagnostic": "The initial Fixados wait assumed the wrong Home label; actual Miniapps and the retained cards were visible. This was an automation assumption, not a product failure."
       },
@@ -2334,13 +2252,7 @@
       ]
     }
   },
-  "deferredPlatforms": [
-    "web",
-    "android",
-    "macos",
-    "windows",
-    "linux"
-  ],
+  "deferredPlatforms": ["web", "android", "macos", "windows", "linux"],
   "knownParityGaps": [
     "Unknown rotated-key profile recovery UX remains pending; common own-profile photo convergence passed both directions in signed v6.",
     "Selected Widget content/refresh, Shortcut and broader Dynamic Type/VoiceOver acceptance remain pending. Signed v40 actual private native Live Activity start, warm/cold compact taps, Lock Screen tap and End passed; canonical-version-update-to-OS-tap remains pending. Earlier signed v7 Portuguese redacted Widget gallery preview and Appearance selected traits retain attribution.",
