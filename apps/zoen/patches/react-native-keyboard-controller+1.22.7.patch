@@ -1,0 +1,45 @@
+diff --git a/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Interactive.swift b/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Interactive.swift
+index 7f2cb909ab..014f1d5451 100644
+--- a/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Interactive.swift
++++ b/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Interactive.swift
+@@ -25,10 +25,6 @@ extension KeyboardMovementObserver {
+     if UIResponder.isKeyboardPreloading {
+       return
+     }
+-    // if we are currently animating keyboard -> we need to ignore values from KVO
+-    if !displayLink.isPaused {
+-      return
+-    }
+ 
+     if KeyboardEventsIgnorer.shared.shouldIgnore {
+       return
+@@ -47,6 +43,15 @@ extension KeyboardMovementObserver {
+       return
+     }
+ 
++    if !displayLink.isPaused {
++      // UIKit switched from the opening animation to interactive movement.
++      // Stop the display-link stream before emitting the observed position so
++      // only one tracker remains authoritative.
++      removeKeyboardWatcher()
++      onCancelAnimation()
++      animation = nil
++    }
++
+     prevKeyboardPosition = position
+ 
+     keyboardDidTask?.cancel()
+diff --git a/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Listeners.swift b/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Listeners.swift
+index 60ae5de6a3..f07c6b796c 100644
+--- a/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Listeners.swift
++++ b/node_modules/react-native-keyboard-controller/ios/observers/movement/observer/KeyboardMovementObserver+Listeners.swift
+@@ -28,6 +28,9 @@ extension KeyboardMovementObserver {
+       onNotify("KeyboardController::keyboardWillShow", buildEventParams(self.keyboardHeight, duration, tag))
+ 
+       setupKeyboardWatcher()
++      // Observe interactive movement while the opening animation is active so
++      // a user-driven interruption can hand off from display-link tracking.
++      setupKVObserver()
+       initializeAnimation(fromValue: prevKeyboardPosition, toValue: self.keyboardHeight)
+       scheduleDidEvent(height: self.keyboardHeight, duration: animation?.duration ?? CGFloat(duration) / 1000)
+     }

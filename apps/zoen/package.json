@@ -4,6 +4,7 @@
   "private": true,
   "main": "index.ts",
   "scripts": {
+    "postinstall": "patch-package --error-on-fail",
     "start": "expo start --dev-client",
     "ios": "node ../../scripts/build-expo-core.mjs ios --simulator && expo run:ios",
     "ios:device": "node ../../scripts/build-expo-core.mjs ios && expo run:ios --device",
@@ -87,6 +88,7 @@
     "@types/react-dom": "~19.2.3",
     "oxfmt": "^0.73.0",
     "oxlint": "^1.88.0",
+    "patch-package": "8.0.1",
     "typescript": "~6.0.3"
   },
   "allowScripts": {
