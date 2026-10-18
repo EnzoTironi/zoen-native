@@ -253,17 +253,13 @@ export class ConversationCardsController {
     const work = this.writes.then(async () => {
       if (!owner || !this.current(owner, generation))
         throw new ConversationCardsFailure('accountChanged');
-      let stage = 'readiness';
       try {
         if (!this.restored || !validId(spaceId) || !this.source.spaces().has(spaceId))
           throw new ConversationCardsFailure('save');
         const preference = this.state.preferences[spaceId] ?? { hiddenIds: [], orderedIds: [] };
-        stage = 'projection';
         const cards = this.cards(spaceId);
-        stage = 'update';
         const next = update(cards, preference);
         if (!next) return;
-        stage = 'validation';
         if (!validIds(next.hiddenIds) || !validIds(next.orderedIds))
           throw new ConversationCardsFailure('save');
         const preferences: Record<string, ConversationCardPreference> = Object.assign(
@@ -272,22 +268,14 @@ export class ConversationCardsController {
         );
         if (next.hiddenIds.length || next.orderedIds.length) preferences[spaceId] = next;
         else delete preferences[spaceId];
-        stage = 'serialize';
         const serialized = JSON.stringify(preferences);
         if (Object.keys(preferences).length > MAX_SPACES || serialized.length > MAX_LENGTH)
           throw new ConversationCardsFailure('save');
-        stage = 'storage';
         if (owner.mode === 'account') await this.port.set(conversationOwnerKey(owner)!, serialized);
-        stage = 'commit';
         if (!this.current(owner, generation)) throw new ConversationCardsFailure('accountChanged');
         this.publish({ preferences, error: null });
       } catch (cause) {
         if (!this.current(owner, generation)) throw new ConversationCardsFailure('accountChanged');
-        console.warn(
-          '[ConversationCards] Save failed',
-          stage,
-          cause instanceof Error ? `${cause.name}: ${cause.message}` : typeof cause,
-        );
         const error =
           cause instanceof ConversationCardsFailure
             ? cause
