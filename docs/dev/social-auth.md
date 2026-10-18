@@ -115,6 +115,94 @@ optional authorization codes; exchange, refresh-token handling and account-delet
 token revocation need a separately verified integration before claiming those provider
 lifecycle features.
 
+## Relay preflight and bounded repair
+
+Read-only observation at **2026-10-18 01:14 UTC** (17 October in São Paulo):
+`relay.tryzoen.com` retains its CNAME to `zoen-staging-relay.fly.dev`, but public
+Cloudflare DNS queries for that target return `NXDOMAIN` for both A and AAAA.
+The system resolver also cannot resolve the relay. `app.tryzoen.com` resolves,
+but that does not establish a working relay or successful provider login.
+
+Fly CLI 0.4.118 is installed on this host. Both `flyctl auth whoami` and
+`flyctl apps list --json` report no access token; no login was initiated. The
+authenticated app inventory, machine health, allocated IPs, certificates and live
+provider configuration therefore remain unknown. The old deployment record is
+historical: DNS alone cannot distinguish an absent app, a renamed app, an app
+without public addresses, or access through a different account or organization.
+
+Once the existing owner session is available, inspect without changing resources:
+
+```sh
+flyctl auth whoami
+flyctl orgs list --json
+flyctl apps list --json
+flyctl status --app zoen-staging-relay
+flyctl machine list --app zoen-staging-relay
+flyctl ips list --app zoen-staging-relay
+flyctl checks list --app zoen-staging-relay
+flyctl certs list --app zoen-staging-relay
+flyctl secrets list --app zoen-staging-relay
+```
+
+`apps list` includes all organizations visible to the signed-in user. If the named
+app is absent, stop before provisioning and reconcile the owner/organization and
+the historical deployment in [the relay release record](android-relay-release.md).
+If it exists, inspect its existing PostgreSQL/FoundationDB dependencies, current
+image, addresses and certificate/check status before choosing a repair. Secret
+listing exposes names and digests, not values; do not dump the process environment,
+credentials or private keys to diagnose public OAuth configuration.
+
+Do **not** run `infra/fly/deploy.sh` as a diagnostic or blind recovery command.
+Its default path can create missing relay/PostgreSQL/FoundationDB apps and volumes,
+create a Tigris bucket, generate/stage database, backup-vault, metrics and admin
+secrets, deploy images, and add certificates. Even its `relay` path can create the
+relay app and new durable secrets. The previous `has_secret` check treated a failed
+inventory request as absence: a transient failure
+could stage a replacement `ZOEN_BACKUP_VAULT_KEY`, making existing password backups
+unreadable after deployment. The script now aborts on failed app, secret, volume or
+certificate inventory reads instead of selecting that read's provisioning branch.
+A successful inventory that confirms absence still permits initial provisioning;
+this guard does not make the broad script an existing-resource-only repair command.
+Preserve the existing vault, database and storage credentials. None of those remote
+changes was performed in this preflight. The production script's failed-read,
+confirmed-missing and already-existing paths are exercised without network access:
+
+```sh
+bash -n infra/fly/deploy.sh scripts/test-fly-deploy-inventory.sh
+bash scripts/test-fly-deploy-inventory.sh
+```
+
+Choose the smallest repair from the authenticated inventory: repair the existing
+app's health/address/certificate issue, or repoint only the four existing relay
+aliases to an independently verified existing deployment if its name changed.
+The aliases are `relay`, `api`, `media` and `id.tryzoen.com`; preserve the zone root
+and `app.tryzoen.com`. Do not invent an app name or replace data volumes. A server
+image rollout needs the separate migration/client-compatibility review in the
+relay release record; `/healthz` alone does not prove protocol compatibility.
+
+For native sign-in, verify the live relay has these exact public bindings before
+the real provider journey:
+
+| Relay setting | Required public value |
+| --- | --- |
+| `ZOEN_AUTH_APPLE_IOS_AUDIENCE` | `xyz.tironi.zoen` |
+| `ZOEN_AUTH_GOOGLE_IOS_AUDIENCE` | `googleWebClientId` in `apps/zoen/config/identity-providers.json` |
+| `ZOEN_AUTH_GOOGLE_IOS_PRESENTER` | `googleIosClientId` in the same file |
+
+The checked-in Fly configuration and deployment script do not supply these auth
+settings. Their live presence/values are unverified, rather than known absent.
+Missing audience configuration returns `provider_not_configured`; a mismatched
+Google presenter rejects the returned native assertion. Native ID-token verification
+needs no client secret or Apple Web Services ID. Web audience/origin setup remains
+the separate `app.tryzoen.com` flow described above.
+
+After the bounded repair, verify DNS, TLS, `/healthz`, `/readyz`, the existing
+readiness check and the current unauthenticated protocol handshake. Creating an auth
+challenge writes temporary server state, so that POST belongs to the subsequent
+explicit login acceptance, not this read-only inspection. Then exercise actual
+Apple/Google credential return, binding, restart and recovery before calling login
+ready.
+
 ## Web isolation and entry page
 
 The main app retains `COOP: same-origin` and `COEP: require-corp` for the Rust MLS

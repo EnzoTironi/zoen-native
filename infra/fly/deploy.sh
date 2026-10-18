@@ -18,13 +18,37 @@ FDB=zoen-staging-fdb
 BUCKET="${ZOEN_S3_BUCKET:-zoen-staging-media}"
 HOSTS=(relay.tryzoen.com api.tryzoen.com media.tryzoen.com id.tryzoen.com)
 
-has_app() { fly apps list --json | grep -qiE "\"(name|Name)\": *\"$1\""; }
-has_secret() { fly secrets list -a "$1" --json | grep -qiE "\"(name|Name)\": *\"$2\""; }
+read_inventory() {
+  local inventory_target="$1" inventory_contents
+  shift
+  if ! inventory_contents="$("$@")"; then
+    echo "Could not read Fly inventory; refusing to infer missing resources or secrets." >&2
+    # Predicates run inside !/|| conditions, where errexit is disabled. A plain
+    # nonzero return would still select the caller's provisioning branch.
+    exit 1
+  fi
+  printf -v "$inventory_target" '%s' "$inventory_contents"
+}
+has_app() {
+  local listing
+  read_inventory listing fly apps list --json
+  grep -qiE "\"(name|Name)\": *\"$1\"" <<< "$listing"
+}
+has_secret() {
+  local listing
+  read_inventory listing fly secrets list -a "$1" --json
+  grep -qiE "\"(name|Name)\": *\"$2\"" <<< "$listing"
+}
+has_volume() {
+  local listing
+  read_inventory listing fly volumes list -a "$1" --json
+  grep -qiE "\"(name|Name)\": *\"$2\"" <<< "$listing"
+}
 ensure_app() { has_app "$1" || fly apps create "$1" --org "$ORG"; }
 
 postgres() {
   ensure_app "$PG"
-  fly volumes list -a "$PG" --json | grep -q '"name": *"pgdata"' \
+  has_volume "$PG" pgdata \
     || fly volumes create pgdata -a "$PG" -r "$REGION" -s 1 -y
   if ! has_secret "$PG" POSTGRES_PASSWORD; then
     local pw; pw="$(openssl rand -hex 24)"
@@ -37,7 +61,7 @@ postgres() {
 
 fdb() {
   ensure_app "$FDB"
-  fly volumes list -a "$FDB" --json | grep -q '"name": *"fdbdata"' \
+  has_volume "$FDB" fdbdata \
     || fly volumes create fdbdata -a "$FDB" -r "$REGION" -s 2 -y
   (cd ../.. && fly deploy . -c infra/fly/fdb.toml --dockerfile infra/fly/fdb.Dockerfile -a "$FDB" --ha=false --remote-only --yes)
 }
@@ -67,7 +91,11 @@ relay() {
     || fly secrets set -a "$RELAY" --stage ZOEN_BACKUP_VAULT_KEY="$(openssl rand -hex 32)" >/dev/null
   metrics_secrets
   (cd ../.. && fly deploy . -c infra/fly/relay.toml --dockerfile infra/fly/relay.Dockerfile -a "$RELAY" --ha=false --remote-only --yes)
-  for h in "${HOSTS[@]}"; do fly certs show "$h" -a "$RELAY" >/dev/null 2>&1 || fly certs add "$h" -a "$RELAY" >/dev/null; done
+  local certificates
+  read_inventory certificates fly certs list -a "$RELAY" --json
+  for h in "${HOSTS[@]}"; do
+    grep -qF "\"$h\"" <<< "$certificates" || fly certs add "$h" -a "$RELAY" >/dev/null
+  done
 }
 
 # Agent sandbox (ADR 0028 P3): one empty app on its OWN private network, so sandbox VMs
