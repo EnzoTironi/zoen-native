@@ -95,6 +95,7 @@ export function MessageComposer({
     review?: ReactNode;
     files?: AttachmentComposerField;
   }) {
+    const fieldText = files ? files.value : value;
     const field = (
       <TextInput
         ref={inputRef}
@@ -123,13 +124,17 @@ export function MessageComposer({
         submitBehavior={search ? 'submit' : undefined}
         onSubmitEditing={search?.onSearch}
         editable={files ? files.editable : draft?.ready !== false}
-        value={files ? files.value : value}
+        value={fieldText}
         onChangeText={files ? files.onChange : onChangeText}
         onFocus={onFocus}
         onBlur={onBlur}
         style={{
           minHeight: 52,
           maxHeight: 160,
+          // UIKit can retain the previous multiline intrinsic height after a
+          // controlled clear. Keep the empty field compact without remounting
+          // it, so an open keyboard and its first responder are preserved.
+          height: fieldText.length === 0 ? 52 : undefined,
           paddingHorizontal: 18,
           paddingTop: 15,
           paddingBottom: 14,

@@ -185,6 +185,10 @@ test('a sent file caption can be cleared without allowing empty ordinary text ed
   const f = fixture();
   const emptyCaption = f.render(undefined, { value: '', editing: true, allowEmptyEdit: true });
   assert.equal(find(emptyCaption, byId('send-message')).props.disabled, false);
+  assert.equal(
+    (find(emptyCaption, byId('message-input')).props.style as { height: number }).height,
+    52,
+  );
   const emptyText = f.render(undefined, { value: '', editing: true });
   assert.equal(find(emptyText, byId('send-message')).props.disabled, true);
 });
