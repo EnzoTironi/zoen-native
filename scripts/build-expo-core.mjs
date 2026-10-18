@@ -143,13 +143,30 @@ if (platform === 'types') {
   await mkdir(binding, { recursive: true });
   await mkdir(join(binding, 'headers'), { recursive: true });
   await mkdir(out, { recursive: true });
-  await run('cargo', ['build', '--locked', '-p', 'roda-ffi', '--profile', profile]);
+  async function appleSdk(name) {
+    const { stdout } = await promisify(execFile)('xcrun', ['--sdk', name, '--show-sdk-path'], {
+      cwd: root,
+      env,
+    });
+    const path = stdout.trim();
+    if (!path) throw new Error(`Missing Apple SDK: ${name}`);
+    return path;
+  }
+  // Xcode and shell sessions can export a different SDKROOT. The host binding
+  // generator and each Apple target must link against their own SDK explicitly.
+  const hostSdk = await appleSdk('macosx');
+  await run('cargo', ['build', '--locked', '-p', 'roda-ffi', '--profile', profile], root, {
+    SDKROOT: hostSdk,
+  });
   for (const architecture of iosArchitectures) {
     await run(
       'cargo',
       ['build', '--locked', '-p', 'roda-ffi', '--profile', profile, '--target', architecture],
       root,
-      { IPHONEOS_DEPLOYMENT_TARGET: '26.0' },
+      {
+        IPHONEOS_DEPLOYMENT_TARGET: '26.0',
+        SDKROOT: await appleSdk(architecture.endsWith('-sim') ? 'iphonesimulator' : 'iphoneos'),
+      },
     );
   }
   await run('cargo', [
@@ -165,7 +182,7 @@ if (platform === 'types') {
     'swift',
     '--out-dir',
     binding,
-  ]);
+  ], root, { SDKROOT: hostSdk });
   await cp(join(binding, 'roda_ffiFFI.h'), join(binding, 'headers/roda_ffiFFI.h'));
   await cp(join(binding, 'roda_ffiFFI.modulemap'), join(binding, 'headers/module.modulemap'));
   const framework = join(out, 'RodaFFI.xcframework');
