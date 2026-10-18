@@ -12,7 +12,6 @@ import { View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'reac
 import {
   KeyboardAvoidingView,
   KeyboardChatScrollView,
-  KeyboardStickyView,
   type KeyboardChatScrollViewRef,
 } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +20,7 @@ import Animated, {
   useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated';
+import { useKeyboardMotion } from './keyboard-motion';
 
 type NativeScrollContextValue = {
   padding: SharedValue<number>;
@@ -115,6 +115,15 @@ function NativeConversationViewport({
   const composerHeight = useSharedValue(0);
   const { bottom } = useSafeAreaInsets();
   const correction = Math.max(bottom, 12) - 8;
+  const { height: keyboardHeight, progress: keyboardProgress } = useKeyboardMotion();
+  const composerMotion = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY:
+          -keyboardHeight.value + correction * Math.min(1, Math.max(0, keyboardProgress.value)),
+      },
+    ],
+  }));
   // The composer keeps a stable layout. Its safe-area adjustment is a transform,
   // so native inset/offset updates never wait for a JS onLayout on keyboard frames.
   // Subtract the same adjustment from the keyboard contribution, leaving the
@@ -135,11 +144,10 @@ function NativeConversationViewport({
         {measured ? children(undefined, NativeConversationScrollView) : null}
       </NativeScrollContext>
       {overlay}
-      <KeyboardStickyView
+      <Animated.View
         testID="conversation-composer"
         pointerEvents="box-none"
-        offset={{ opened: correction }}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 2 }}
+        style={[{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 2 }, composerMotion]}
       >
         <View
           pointerEvents="box-none"
@@ -152,7 +160,7 @@ function NativeConversationViewport({
         >
           {composer}
         </View>
-      </KeyboardStickyView>
+      </Animated.View>
     </View>
   );
 }
