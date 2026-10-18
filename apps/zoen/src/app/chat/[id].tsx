@@ -2,6 +2,7 @@ import { t } from '../../i18n/index.ts';
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -16,7 +17,13 @@ import {
   KeyboardAvoidingView,
   useReanimatedKeyboardAnimation,
 } from 'react-native-keyboard-controller';
-import { Pressable, Text, View, type TextInputInstance } from 'react-native';
+import {
+  Pressable,
+  Text,
+  View,
+  type ScrollViewInstance,
+  type TextInputInstance,
+} from 'react-native';
 import { useDialogs } from '../../components/dialogs';
 import { useClient } from '../../core/provider';
 import type { TimelineEntry } from '../../core/types';
@@ -42,6 +49,7 @@ import { useHome } from '../../home/provider';
 import { MiniappRail } from '../../miniapps/rail';
 import { ConversationSearch, conversationQueryFits } from '../../core/conversation-search';
 import { launchConversationAssistant } from '../../assistant/launch';
+import { InitialTimelineEnd } from '../../core/initial-timeline-end';
 
 export default function Chat() {
   const { id, jump } = useLocalSearchParams<{ id: string; jump?: string }>();
@@ -55,6 +63,7 @@ export default function Chat() {
   const { inform } = useDialogs();
   const input = useRef<TextInputInstance>(null);
   const list = useRef<FlashListRef<TimelineEntry>>(null);
+  const focused = useRef(false);
   const [messageDraft, updateDraft] = useReducer(
     messageDraftReducer,
     undefined,
@@ -122,6 +131,56 @@ export default function Chat() {
     [searchThread, timelines, id],
   );
   const timelineKey = searchState.active && searchThread ? `${id}:${searchThread.root}` : id;
+  const initialEnd = useMemo(() => new InitialTimelineEnd(`${id}:${owner}`), [id, owner]);
+  useLayoutEffect(() => {
+    initialEnd.connect({
+      current: () => {
+        const current = store.getSnapshot();
+        return (
+          focused.current &&
+          !jump &&
+          !reply &&
+          !editing &&
+          !scrollTarget &&
+          !search.getSnapshot().active &&
+          current.phase === 'ready' &&
+          Boolean(current.snapshot?.conversations.some((conversation) => conversation.id === id)) &&
+          [
+            current.mode,
+            current.snapshot?.account?.identity_id ?? current.snapshot?.me?.id,
+            current.snapshot?.account?.device_id,
+          ].join(':') === owner
+        );
+      },
+      frame: (work) => {
+        const frame = requestAnimationFrame(work);
+        return () => cancelAnimationFrame(frame);
+      },
+      scroll: () => {
+        // FlashList 2.3's declaration names the component instead of its instance.
+        const native = list.current?.getNativeScrollRef() as unknown as
+          | ScrollViewInstance
+          | null
+          | undefined;
+        if (!native) return false;
+        native.scrollToEnd({ animated: false });
+        return true;
+      },
+    });
+    if (jump || reply || editing || scrollTarget || searchState.active) initialEnd.cancel();
+  }, [
+    initialEnd,
+    id,
+    owner,
+    jump,
+    search,
+    store,
+    reply,
+    editing,
+    scrollTarget,
+    searchState.active,
+  ]);
+  useLayoutEffect(() => () => initialEnd.cancel(), [initialEnd]);
   useEffect(() => {
     if (!searchState.active || !searchState.query.trim()) return;
     const timer = setTimeout(() => {
@@ -133,20 +192,24 @@ export default function Chat() {
   const activityLabel = chatActivityLabel(snapshot, activity, id);
   useFocusEffect(
     useCallback(() => {
+      focused.current = true;
       store.selectSpace(id);
       return () => {
+        focused.current = false;
+        initialEnd.cancel();
         store.setTyping(id, false);
         store.selectSpace(null);
       };
-    }, [id, store]),
+    }, [id, store, initialEnd]),
   );
   const reveal = useCallback(
     async (messageId: string) => {
+      initialEnd.cancel();
       const index = await store.revealMessage(id, messageId);
       if (index < 0) throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
       return messageId;
     },
-    [id, store],
+    [id, store, initialEnd],
   );
   useEffect(() => {
     let active = true;
@@ -297,10 +360,12 @@ export default function Chat() {
     entries: page?.entries ?? [],
     disabled: searchState.active,
     onReply: (entry) => {
+      initialEnd.cancel();
       updateDraft({ type: 'reply', entry });
       input.current?.focus();
     },
     onEdit: (entry) => {
+      initialEnd.cancel();
       updateDraft({ type: 'edit', entry, text: messageText(entry) });
       input.current?.focus();
     },
@@ -327,6 +392,7 @@ export default function Chat() {
         search={{
           active: searchState.active,
           onToggle: () => {
+            initialEnd.cancel();
             store.setTyping(id, false);
             if (searchState.active) {
               setScrollTarget(null);
@@ -337,6 +403,8 @@ export default function Chat() {
         }}
       />
       <ConversationViewport
+        initialFooterKey={initialEnd.scope}
+        onInitialFooterLayout={initialEnd.onFooterLayout}
         composer={
           <>
             {!searchState.active && (reply || editing) ? (
@@ -473,7 +541,13 @@ export default function Chat() {
               style={{ flex: 1, marginTop: statusBarHeight, overflow: 'hidden' }}
               key={timelineKey}
               ref={list}
-              onLoad={() => setLoadedSpace(timelineKey)}
+              onLoad={() => {
+                setLoadedSpace(timelineKey);
+                initialEnd.onLoad();
+              }}
+              onContentSizeChange={initialEnd.onContentSizeChange}
+              onCommitLayoutEffect={initialEnd.onCommitLayoutEffect}
+              onScrollBeginDrag={initialEnd.cancel}
               data={page.entries}
               keyExtractor={(entry) => entry.id}
               keyboardDismissMode="interactive"
