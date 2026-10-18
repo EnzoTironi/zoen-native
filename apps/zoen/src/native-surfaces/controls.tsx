@@ -8,6 +8,7 @@ import { activityContent } from './activity';
 import type { SurfaceCoordinator } from './coordinator';
 import { useNativeSurfaces } from './provider';
 import { miniappSnapshot } from './snapshot';
+import { privateWidgetTitle } from './widget-catalog';
 
 function Controls({ coordinator, item }: { coordinator: SurfaceCoordinator; item: ItemDetail }) {
   const state = useSyncExternalStore(
@@ -18,7 +19,9 @@ function Controls({ coordinator, item }: { coordinator: SurfaceCoordinator; item
   const { colors } = useTheme();
   const preferences = state.preferences;
   if (!state.ready || !preferences) return null;
-  const selected = preferences.widget?.itemId === item.id;
+  const widgetIndex = preferences.widgets.findIndex((selection) => selection.itemId === item.id);
+  const widget = preferences.widgets[widgetIndex];
+  const selected = !!widget;
   const shortcut = preferences.shortcutItems.includes(item.id);
   const activity = preferences.activity?.itemId === item.id;
   const canStart = !!activityContent(item, preferences.owner);
@@ -41,7 +44,7 @@ function Controls({ coordinator, item }: { coordinator: SurfaceCoordinator; item
           onPress={() =>
             run(
               selected
-                ? coordinator.removeWidget()
+                ? coordinator.removeWidget(item.id)
                 : coordinator.selectWidget(item.id, item.version, false),
             )
           }
@@ -51,14 +54,21 @@ function Controls({ coordinator, item }: { coordinator: SurfaceCoordinator; item
             secondary
             disabled={state.busy}
             label={
-              preferences.widget?.showContent
+              widget?.showContent
                 ? t('nativeSurfaces.hideWidgetContent')
                 : t('nativeSurfaces.showWidgetContent')
             }
             onPress={() =>
-              run(coordinator.selectWidget(item.id, item.version, !preferences.widget?.showContent))
+              run(coordinator.selectWidget(item.id, item.version, !widget?.showContent))
             }
           />
+        ) : null}
+        {widget && !widget.showContent ? (
+          <Text selectable style={{ color: colors.secondary }}>
+            {t('nativeSurfaces.privateWidgetExplanation', {
+              name: privateWidgetTitle(widgetIndex + 1),
+            })}
+          </Text>
         ) : null}
         <Text style={{ color: colors.secondary }}>
           {t('nativeSurfaces.addZoenMiniappFromTheIPhoneWidgetGallery')}

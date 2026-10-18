@@ -5,8 +5,8 @@ import * as AppIntents from 'expo-app-intents';
 import { randomUUID } from 'expo-crypto';
 import type { SurfacePort } from './coordinator';
 import type { MiniappActivityContent } from './activity';
-import type { NativeWidgetContent } from './snapshot';
 import { surfaceActivityURL } from './links';
+import { publishWidgetCatalog } from './widget-publication';
 
 export function surfacesAvailable(): boolean {
   return (
@@ -22,16 +22,7 @@ export async function createSurfacePort(): Promise<SurfacePort | null> {
     import('./miniapp-widget.ios'),
     import('./miniapp-activity.ios'),
   ]);
-  const file = new File(Paths.document, 'native-surfaces-v1.json');
-  const redacted: NativeWidgetContent = {
-    redacted: true,
-    title: 'Zoen',
-    detail: t('nativeSurfaces.chooseAMiniappInZoen'),
-    bars: [],
-    rows: [],
-    accentHex: '#5B8DEF',
-    symbol: 'lock.fill',
-  };
+  const file = new File(Paths.document, 'native-surfaces.json');
   function findActivity(id: string) {
     return activity.getInstances().find((value) => value.getId() === id);
   }
@@ -54,19 +45,7 @@ export async function createSurfacePort(): Promise<SurfacePort | null> {
       file.write(value);
     },
     widget(content) {
-      const now = Date.now();
-      // WidgetKit owns actual refresh scheduling. A future redacted entry limits cached exposure.
-      widget.updateTimeline(
-        content
-          ? [
-              { date: new Date(now), props: content },
-              {
-                date: new Date(now + 15 * 60_000),
-                props: { ...redacted, deepLink: content.deepLink },
-              },
-            ]
-          : [{ date: new Date(now), props: redacted }],
-      );
+      publishWidgetCatalog(widget, content);
     },
     async catalogs(items, chats) {
       const results = await Promise.allSettled([

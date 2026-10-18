@@ -8,6 +8,7 @@ import { common } from './catalogs/common.ts';
 import { documents } from './catalogs/documents.ts';
 import { home } from './catalogs/home.ts';
 import { conversationCards } from './catalogs/conversation-cards.ts';
+import { connectedApps } from './catalogs/connected-apps.ts';
 import { integrity } from './catalogs/integrity.ts';
 import { media } from './catalogs/media.ts';
 import { messageReactions } from './catalogs/message-reactions.ts';
@@ -38,6 +39,7 @@ const catalogs = {
   documents,
   home,
   conversationCards,
+  connectedApps,
   integrity,
   media,
   messageReactions,

@@ -9,12 +9,25 @@ import {
   widgetURL,
 } from '@expo/ui/swift-ui/modifiers';
 import { createWidget, type WidgetEnvironment } from 'expo-widgets';
-import type { NativeWidgetContent } from './snapshot';
+import type { WidgetConfiguration, WidgetTimelineCatalog } from './widget-publication';
 
 /** Pure extension layout. Do not import until CNG registers the matching ZoenMiniapp kind. */
-export function MiniappWidget(props: NativeWidgetContent, environment: WidgetEnvironment) {
+export function MiniappWidget(
+  catalog: WidgetTimelineCatalog,
+  environment: WidgetEnvironment<WidgetConfiguration>,
+) {
   'widget';
   // Everything used by this runtime must come from props/environment or be declared here.
+  const selection = environment.configuration?.miniapp;
+  const props = catalog.entries?.find((entry) => entry.selectionId === selection)?.content ??
+    catalog.placeholder ?? {
+      redacted: true,
+      title: 'Zoen',
+      bars: [],
+      rows: [],
+      accentHex: '#5B8DEF',
+      symbol: 'lock.fill',
+    };
   const dark = environment.colorScheme === 'dark';
   const accent =
     environment.widgetRenderingMode === 'vibrant' || environment.isLuminanceReduced
@@ -85,11 +98,18 @@ export function MiniappWidget(props: NativeWidgetContent, environment: WidgetEnv
   );
 }
 
-export default createWidget<NativeWidgetContent>('ZoenMiniapp', MiniappWidget, {
-  redacted: true,
-  title: 'Zoen',
-  bars: [],
-  rows: [],
-  accentHex: '#5B8DEF',
-  symbol: 'lock.fill',
-});
+export default createWidget<WidgetTimelineCatalog, WidgetConfiguration>(
+  'ZoenMiniapp',
+  MiniappWidget,
+  {
+    entries: [],
+    placeholder: {
+      redacted: true,
+      title: 'Zoen',
+      bars: [],
+      rows: [],
+      accentHex: '#5B8DEF',
+      symbol: 'lock.fill',
+    },
+  },
+);

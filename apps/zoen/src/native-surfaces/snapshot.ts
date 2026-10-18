@@ -1,8 +1,10 @@
 import { t } from '../i18n/index.ts';
-import type { ItemDetail } from '../core/generated/ItemDetail';
+import type { NativeSurfaceItemDto } from '../core/generated/NativeSurfaceItemDto';
 
 export type SurfaceOwner = Readonly<{ identityId: string; deviceId: string }>;
-export type SnapshotItem = Pick<ItemDetail, 'id' | 'space_id' | 'version' | 'app'>;
+export type SnapshotItem = Omit<NativeSurfaceItemDto, 'title' | 'app'> & {
+  app: NativeSurfaceItemDto['app'] | null;
+};
 export type MiniappSnapshot = Readonly<{
   id: string;
   appId: string;
@@ -38,15 +40,6 @@ export type NativeWidgetContent = Readonly<{
   symbol: string;
   deepLink?: string;
 }>;
-export type WidgetProjection = Readonly<{
-  schemaVersion: 1;
-  owner: SurfaceOwner;
-  itemId: string;
-  spaceId: string;
-  version: number;
-  content: NativeWidgetContent;
-}>;
-
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 export const surfaceId = (value: unknown): value is string =>
@@ -192,7 +185,7 @@ export function widgetProjection(
   item: SnapshotItem,
   owner: SurfaceOwner,
   showContent = false,
-): WidgetProjection | null {
+): NativeWidgetContent | null {
   if (!validSurfaceOwner(owner)) return null;
   const snapshot = miniappSnapshot(item);
   if (!snapshot) return null;
@@ -220,12 +213,5 @@ export function widgetProjection(
         symbol: 'lock.fill',
         deepLink: snapshot.deepLink,
       };
-  return Object.freeze({
-    schemaVersion: 1,
-    owner: Object.freeze({ ...owner }),
-    itemId: item.id,
-    spaceId: item.space_id,
-    version: item.version,
-    content: Object.freeze(content),
-  });
+  return Object.freeze(content);
 }

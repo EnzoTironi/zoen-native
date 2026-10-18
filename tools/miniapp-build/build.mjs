@@ -25,37 +25,88 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
 const pinnedRequire = createRequire(import.meta.url);
 const REACT_RUNTIME = new Set(['react', 'react-dom', 'scheduler']);
-const ALLOW = ['react', 'react-dom', 'react-dom/client', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'scheduler', 'zustand', 'zustand/middleware', 'date-fns', 'maplibre-gl', 'maplibre-gl/dist/maplibre-gl.css'];
+const MCP_RUNTIME = '@modelcontextprotocol/ext-apps/app-with-deps';
+const ALLOW = [
+  'react',
+  'react-dom',
+  'react-dom/client',
+  'react/jsx-runtime',
+  'react/jsx-dev-runtime',
+  'scheduler',
+  'zustand',
+  'zustand/middleware',
+  'date-fns',
+  'maplibre-gl',
+  'maplibre-gl/dist/maplibre-gl.css',
+  MCP_RUNTIME,
+];
 const ALLOW_PREFIX = ['date-fns/', 'zustand/'];
-const CAPS = new Set(['photos.pick', 'camera.capture', 'location', 'location.approximate', 'calendar.freebusy', 'calendar.events', 'calendar.add', 'contacts.pick', 'health.steps']);
+const CAPS = new Set([
+  'photos.pick',
+  'camera.capture',
+  'location',
+  'location.approximate',
+  'calendar.freebusy',
+  'calendar.events',
+  'calendar.add',
+  'contacts.pick',
+  'health.steps',
+]);
 const ALIAS = {
   '@zoen/miniapp-sdk': join(root, 'packages/zoen-miniapp-sdk/src/index.ts'),
   '@zoen/ui': join(root, 'packages/zoen-ui/src/index.tsx'),
   '@zoen/ui/tokens.css': join(root, 'packages/zoen-ui/src/tokens.css'),
 };
 
-const fail = (m) => { console.error(`✗ ${m}`); process.exit(1); };
+const fail = (m) => {
+  console.error(`✗ ${m}`);
+  process.exit(1);
+};
 
 export function validateManifest(m) {
   const errs = [];
-  if (!/^[a-z][a-z0-9-]{1,31}$/.test(m.id ?? '')) errs.push('id: lowercase letters, digits, dashes (2–32)');
-  if (typeof m.name !== 'string' || !m.name.trim() || m.name.length > 40) errs.push('name: 1–40 chars');
-  if (typeof m.entry !== 'string' || !/^[\w./-]+\.(tsx?|jsx?)$/.test(m.entry)) errs.push('entry: a .ts/.tsx/.js/.jsx file in the app folder');
+  if (!/^[a-z][a-z0-9-]{1,31}$/.test(m.id ?? ''))
+    errs.push('id: lowercase letters, digits, dashes (2–32)');
+  if (typeof m.name !== 'string' || !m.name.trim() || m.name.length > 40)
+    errs.push('name: 1–40 chars');
+  if (typeof m.entry !== 'string' || !/^[\w./-]+\.(tsx?|jsx?)$/.test(m.entry))
+    errs.push('entry: a .ts/.tsx/.js/.jsx file in the app folder');
   const caps = m.capabilities ?? [];
   if (!Array.isArray(caps) || caps.length > 8) errs.push('capabilities: array (≤ 8)');
   for (const c of Array.isArray(caps) ? caps : []) {
     if (!CAPS.has(c?.id)) errs.push(`capabilities: unknown "${c?.id}"`);
-    if (typeof c?.purpose !== 'string' || c.purpose.trim().length < 8 || c.purpose.length > 160) errs.push(`capabilities.${c?.id}: purpose 8–160 chars (the user reads it)`);
+    if (typeof c?.purpose !== 'string' || c.purpose.trim().length < 8 || c.purpose.length > 160)
+      errs.push(`capabilities.${c?.id}: purpose 8–160 chars (the user reads it)`);
   }
   const doms = m.allowedDomains ?? [];
   if (!Array.isArray(doms) || doms.length > 3) errs.push('allowedDomains: array (≤ 3)');
-  for (const d of Array.isArray(doms) ? doms : []) if (!/^(?=.{4,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/.test(d)) errs.push(`allowedDomains: "${d}" must be a bare hostname (no scheme, path or wildcard)`);
-  if (doms.length && (typeof m.networkPurpose !== 'string' || m.networkPurpose.length < 8)) errs.push('networkPurpose: required when allowedDomains is set');
+  for (const d of Array.isArray(doms) ? doms : [])
+    if (!/^(?=.{4,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/.test(d))
+      errs.push(`allowedDomains: "${d}" must be a bare hostname (no scheme, path or wildcard)`);
+  if (doms.length && (typeof m.networkPurpose !== 'string' || m.networkPurpose.length < 8))
+    errs.push('networkPurpose: required when allowedDomains is set');
   const links = m.linkDomains ?? [];
   if (!Array.isArray(links) || links.length > 6) errs.push('linkDomains: array (≤ 6)');
-  for (const d of Array.isArray(links) ? links : []) if (!/^(?=.{4,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/.test(d)) errs.push(`linkDomains: "${d}" must be a bare hostname`);
-  if (m.maxKB != null && !(Number.isInteger(m.maxKB) && m.maxKB > 0 && m.maxKB <= 2048)) errs.push('maxKB: integer ≤ 2048');
-  const extra = Object.keys(m).filter((k) => !['id', 'name', 'description', 'entry', 'capabilities', 'allowedDomains', 'networkPurpose', 'linkDomains', 'maxKB', 'title'].includes(k));
+  for (const d of Array.isArray(links) ? links : [])
+    if (!/^(?=.{4,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/.test(d))
+      errs.push(`linkDomains: "${d}" must be a bare hostname`);
+  if (m.maxKB != null && !(Number.isInteger(m.maxKB) && m.maxKB > 0 && m.maxKB <= 2048))
+    errs.push('maxKB: integer ≤ 2048');
+  const extra = Object.keys(m).filter(
+    (k) =>
+      ![
+        'id',
+        'name',
+        'description',
+        'entry',
+        'capabilities',
+        'allowedDomains',
+        'networkPurpose',
+        'linkDomains',
+        'maxKB',
+        'title',
+      ].includes(k),
+  );
   if (extra.length) errs.push(`unknown keys: ${extra.join(', ')}`);
   return errs;
 }
@@ -65,21 +116,34 @@ const guard = (appDir) => ({
   setup(b) {
     b.onResolve({ filter: /^[^./]/ }, (args) => {
       if (ALIAS[args.path]) return { path: ALIAS[args.path] };
-      if (args.path.startsWith('@zoen/')) return { errors: [{ text: `Unknown Zoen package ${args.path}` }] };
+      if (args.path.startsWith('@zoen/'))
+        return { errors: [{ text: `Unknown Zoen package ${args.path}` }] };
       const vendored = args.importer.includes('/node_modules/');
-      if (vendored || ALLOW.includes(args.path) || ALLOW_PREFIX.some((p) => args.path.startsWith(p))) {
+      if (
+        vendored ||
+        ALLOW.includes(args.path) ||
+        ALLOW_PREFIX.some((p) => args.path.startsWith(p))
+      ) {
         // A shared UI package may have its own development React installation.
         // Its hooks and the renderer must still use this builder's pinned runtime.
-        if (REACT_RUNTIME.has(args.path.split('/')[0])) return { path: pinnedRequire.resolve(args.path) };
+        if (REACT_RUNTIME.has(args.path.split('/')[0]) || args.path === MCP_RUNTIME)
+          return { path: pinnedRequire.resolve(args.path) };
         return undefined;
       }
-      return { errors: [{ text: `"${args.path}" is not on the mini-app allowlist (${ALLOW.slice(0, 8).join(', ')}, …)` }] };
+      return {
+        errors: [
+          {
+            text: `"${args.path}" is not on the mini-app allowlist (${ALLOW.slice(0, 8).join(', ')}, …)`,
+          },
+        ],
+      };
     });
     b.onResolve({ filter: /^\.\.?\// }, (args) => {
       if (args.importer.includes('/node_modules/')) return undefined;
       const p = resolve(args.resolveDir, args.path);
       const okRoots = [appDir, join(root, 'packages')];
-      if (!okRoots.some((r) => p.startsWith(r))) return { errors: [{ text: `Import escapes the app folder: ${args.path}` }] };
+      if (!okRoots.some((r) => p.startsWith(r)))
+        return { errors: [{ text: `Import escapes the app folder: ${args.path}` }] };
       return undefined;
     });
   },
@@ -89,8 +153,9 @@ function ownSources(dir) {
   const out = [];
   for (const f of readdirSync(dir)) {
     const p = join(dir, f);
-    if (statSync(p).isDirectory()) { if (!['node_modules', 'dist'].includes(f)) out.push(...ownSources(p)); }
-    else if (/\.(tsx?|jsx?|css|html)$/.test(f)) out.push(p);
+    if (statSync(p).isDirectory()) {
+      if (!['node_modules', 'dist'].includes(f)) out.push(...ownSources(p));
+    } else if (/\.(tsx?|jsx?|css|html)$/.test(f)) out.push(p);
   }
   return out;
 }
@@ -110,17 +175,38 @@ export async function buildApp(appDir, outDir) {
       const host = m[1].toLowerCase();
       // allowedDomains may be fetched (after consent); linkDomains are only ever opened
       // outside through ui/open-link, which the host confirms.
-      if (![...(manifest.allowedDomains ?? []), ...(manifest.linkDomains ?? [])].includes(host) && !['www.w3.org'].includes(host)) fail(`${relative(root, f)}: remote URL to undeclared host "${host}"`);
+      if (
+        ![...(manifest.allowedDomains ?? []), ...(manifest.linkDomains ?? [])].includes(host) &&
+        !['www.w3.org'].includes(host)
+      )
+        fail(`${relative(root, f)}: remote URL to undeclared host "${host}"`);
     }
   }
 
   const t0 = performance.now();
   const r = await build({
     entryPoints: [join(appDir, manifest.entry)],
-    bundle: true, write: false, minify: true, format: 'iife', target: ['safari18'],
-    jsx: 'automatic', outdir: 'out', legalComments: 'none', metafile: true, logLevel: 'silent',
+    bundle: true,
+    write: false,
+    minify: true,
+    format: 'iife',
+    target: ['safari18'],
+    // Preserve literal contents while keeping generated HTML free of whitespace-only lines.
+    supported: { 'template-literal': false },
+    jsx: 'automatic',
+    outdir: 'out',
+    legalComments: 'none',
+    metafile: true,
+    logLevel: 'silent',
     define: { 'process.env.NODE_ENV': '"production"' },
-    loader: { '.svg': 'dataurl', '.png': 'dataurl', '.jpg': 'dataurl', '.jpeg': 'dataurl', '.webp': 'dataurl', '.woff2': 'dataurl' },
+    loader: {
+      '.svg': 'dataurl',
+      '.png': 'dataurl',
+      '.jpg': 'dataurl',
+      '.jpeg': 'dataurl',
+      '.webp': 'dataurl',
+      '.woff2': 'dataurl',
+    },
     nodePaths: [join(here, 'node_modules')],
     plugins: [guard(appDir)],
   }).catch((e) => fail(e.errors?.map((x) => x.text).join('\n') ?? e.message));
@@ -138,17 +224,44 @@ export async function buildApp(appDir, outDir) {
   if (bytes > maxKB * 1024) fail(`bundle is ${(bytes / 1024).toFixed(0)} KB > budget ${maxKB} KB`);
 
   const sha256 = createHash('sha256').update(html).digest('hex');
-  const deps = Object.fromEntries(Object.keys(r.metafile.inputs).map((p) => p.match(/node_modules\/((?:@[^/]+\/)?[^/]+)/)?.[1]).filter(Boolean).map((n) => [n, JSON.parse(readFileSync(join(here, 'node_modules', n, 'package.json'), 'utf8')).version]));
-  const out = { id: manifest.id, name: manifest.name, description: manifest.description ?? '', capabilities: manifest.capabilities ?? [], allowedDomains: manifest.allowedDomains ?? [], networkPurpose: manifest.networkPurpose ?? '', linkDomains: manifest.linkDomains ?? [], sha256, bytes, deps };
+  const deps = Object.fromEntries(
+    Object.keys(r.metafile.inputs)
+      .map((p) => p.match(/node_modules\/((?:@[^/]+\/)?[^/]+)/)?.[1])
+      .filter(Boolean)
+      .map((n) => [
+        n,
+        JSON.parse(readFileSync(join(here, 'node_modules', n, 'package.json'), 'utf8')).version,
+      ]),
+  );
+  const out = {
+    id: manifest.id,
+    name: manifest.name,
+    description: manifest.description ?? '',
+    capabilities: manifest.capabilities ?? [],
+    allowedDomains: manifest.allowedDomains ?? [],
+    networkPurpose: manifest.networkPurpose ?? '',
+    linkDomains: manifest.linkDomains ?? [],
+    sha256,
+    bytes,
+    deps,
+  };
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, `${manifest.id}.html`), html);
   writeFileSync(join(outDir, `${manifest.id}.manifest.json`), JSON.stringify(out, null, 2) + '\n');
-  console.log(`✓ ${manifest.id}: ${(bytes / 1024).toFixed(1)} KB (gzip ~${(gzipSize(html) / 1024).toFixed(1)} KB) · sha256 ${sha256.slice(0, 12)}… · ${(performance.now() - t0).toFixed(0)} ms · deps ${Object.entries(deps).map(([k, v]) => `${k}@${v}`).join(', ') || 'none'}`);
+  console.log(
+    `✓ ${manifest.id}: ${(bytes / 1024).toFixed(1)} KB (gzip ~${(gzipSize(html) / 1024).toFixed(1)} KB) · sha256 ${sha256.slice(0, 12)}… · ${(performance.now() - t0).toFixed(0)} ms · deps ${
+      Object.entries(deps)
+        .map(([k, v]) => `${k}@${v}`)
+        .join(', ') || 'none'
+    }`,
+  );
   return out;
 }
 
 import { gzipSync } from 'node:zlib';
-function gzipSize(s) { return gzipSync(s).length; }
+function gzipSize(s) {
+  return gzipSync(s).length;
+}
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);

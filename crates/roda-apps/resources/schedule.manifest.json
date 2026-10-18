@@ -15,11 +15,12 @@
   "allowedDomains": [],
   "networkPurpose": "",
   "linkDomains": [],
-  "sha256": "95eac0a7febd3d9eff156d2f42d111051dedba402c3328f314490f76d82a0b3d",
-  "bytes": 222891,
+  "sha256": "bf0809e67d04b933fc490cea5c51d0b1f65046fc3a2dcbe98d2a8f404564e5c5",
+  "bytes": 691206,
   "deps": {
     "scheduler": "0.26.0",
     "react": "19.1.1",
-    "react-dom": "19.1.1"
+    "react-dom": "19.1.1",
+    "@modelcontextprotocol/ext-apps": "2.0.3"
   }
 }

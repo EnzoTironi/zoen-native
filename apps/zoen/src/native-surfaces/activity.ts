@@ -23,10 +23,10 @@ export function activityContent(
     snapshot.targetMs > now + MAX_ACTIVITY_MS
   )
     return null;
-  const projection = widgetProjection(item, owner, showContent);
-  return projection
+  const content = widgetProjection(item, owner, showContent);
+  return content
     ? {
-        ...projection.content,
+        ...content,
         endsAt: snapshot.targetMs,
         labels: {
           refresh: t('nativeSurfaces.openToUpdate'),

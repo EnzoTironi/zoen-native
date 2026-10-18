@@ -37,6 +37,7 @@ pub use media_drafts::{
     MediaDraftSendResult,
 };
 mod message_drafts;
+mod native_surfaces;
 pub use message_drafts::{MessageDraftDto, MessageDraftSendResult};
 mod pages;
 pub use files::FileDto;

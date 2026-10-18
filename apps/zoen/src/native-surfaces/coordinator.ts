@@ -4,17 +4,19 @@ import type { ItemDetail } from '../core/generated/ItemDetail';
 import { activityContent } from './activity.ts';
 import type { MiniappActivityContent } from './activity';
 import { itemEntityCatalog } from './catalog.ts';
-import { surfaceActivityURL, surfaceItemURL } from './links.ts';
+import { surfaceActivityURL } from './links.ts';
 import { parsePreferences } from './preferences.ts';
 import type { SurfacePreferences } from './preferences';
 import { sameSurfaceOwner, widgetProjection } from './snapshot.ts';
-import type { NativeWidgetContent, SnapshotItem, SurfaceOwner } from './snapshot';
+import type { SnapshotItem, SurfaceOwner } from './snapshot';
+import { MAX_WIDGET_SELECTIONS, widgetCatalog } from './widget-catalog.ts';
+import type { NativeWidgetCatalog } from './widget-catalog';
 
 export interface SurfacePort {
   readPreferences(): Promise<string | null>;
   eraseMetadata(): Promise<void>;
   writePreferences(value: string | null): Promise<void>;
-  widget(content: NativeWidgetContent | null): void;
+  widget(content: NativeWidgetCatalog | null): void;
   catalogs(items: AppIntentEntity[], chats: AppIntentEntity[]): Promise<void>;
   activities(): string[];
   startActivity(
@@ -25,10 +27,12 @@ export interface SurfacePort {
   updateActivity(id: string, content: MiniappActivityContent): Promise<void>;
   endActivity(id: string): Promise<void>;
 }
+export type SurfaceSnapshotItem = SnapshotItem & Pick<ItemDetail, 'title'>;
 export interface SurfaceSource {
   loading(): boolean;
   owner(): SurfaceOwner | null;
   spaces(): ReadonlyMap<string, string>;
+  items(ids: readonly string[], owner: SurfaceOwner): Promise<readonly SurfaceSnapshotItem[]>;
   item(id: string): Promise<ItemDetail>;
 }
 export type SurfaceState = Readonly<{
@@ -202,38 +206,25 @@ export class SurfaceCoordinator {
       if (id !== preferences.activity?.id) await this.port.endActivity(id);
       if (!this.current(owner, generation)) return;
     }
-    const spaces = this.source.spaces();
     const ids = [
       ...new Set([
         ...preferences.shortcutItems,
-        ...(preferences.widget ? [preferences.widget.itemId] : []),
+        ...preferences.widgets.map((selection) => selection.itemId),
         ...(preferences.activity ? [preferences.activity.itemId] : []),
       ]),
     ];
-    const items: ItemDetail[] = [];
-    for (const id of ids) {
-      let item: ItemDetail;
-      try {
-        item = await this.source.item(id);
-      } catch {
-        continue;
-      }
-      if (!this.current(owner, generation)) return;
-      if (item.id === id && spaces.has(item.space_id)) items.push(item);
-    }
+    const loaded = await this.source.items(ids, owner);
     if (!this.current(owner, generation)) return;
+    const spaces = this.source.spaces();
+    const requested = new Set(ids);
+    const seen = new Set<string>();
+    const items = loaded.filter((item) => {
+      if (!requested.has(item.id) || seen.has(item.id) || !spaces.has(item.space_id)) return false;
+      seen.add(item.id);
+      return true;
+    });
     const byId = new Map(items.map((item) => [item.id, item]));
-    const widgetItem = preferences.widget && byId.get(preferences.widget.itemId);
-    const projection =
-      widgetItem && widgetProjection(widgetItem, owner, preferences.widget!.showContent);
-    this.port.widget(
-      projection
-        ? {
-            ...projection.content,
-            deepLink: surfaceItemURL(owner, projection.itemId, projection.version),
-          }
-        : null,
-    );
+    this.port.widget(widgetCatalog(items, owner, preferences.widgets, new Set(spaces.keys())));
     const selected = new Set(preferences.shortcutItems);
     const catalog = itemEntityCatalog(items, owner, selected, new Set(spaces.keys()));
     const chatIds = new Set(
@@ -312,11 +303,24 @@ export class SurfaceCoordinator {
   selectWidget(id: string, version: number, showContent: boolean) {
     return this.change(async (preferences) => {
       await this.checkedItem(id, version, preferences.owner);
-      await this.save({ ...preferences, widget: { itemId: id, showContent } });
+      const widgets = [...preferences.widgets];
+      const index = widgets.findIndex((selection) => selection.itemId === id);
+      if (index >= 0) widgets[index] = { itemId: id, showContent };
+      else {
+        if (widgets.length >= MAX_WIDGET_SELECTIONS)
+          throw new Error(t('nativeSurfaces.removeOneOfThe20Widgets'));
+        widgets.push({ itemId: id, showContent });
+      }
+      await this.save({ ...preferences, widgets });
     });
   }
-  removeWidget() {
-    return this.change(async (preferences) => this.save({ ...preferences, widget: null }));
+  removeWidget(itemId: string) {
+    return this.change(async (preferences) =>
+      this.save({
+        ...preferences,
+        widgets: preferences.widgets.filter((selection) => selection.itemId !== itemId),
+      }),
+    );
   }
   selectShortcut(id: string, version: number, enabled: boolean) {
     return this.change(async (preferences) => {

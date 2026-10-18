@@ -1,10 +1,12 @@
 import { sameSurfaceOwner, surfaceId, validSurfaceOwner } from './snapshot.ts';
 import type { SurfaceOwner } from './snapshot';
+import { MAX_WIDGET_SELECTIONS } from './widget-catalog.ts';
 
+export type WidgetSelection = { itemId: string; showContent: boolean };
 export type SurfacePreferences = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   owner: SurfaceOwner;
-  widget: { itemId: string; showContent: boolean } | null;
+  widgets: WidgetSelection[];
   shortcutItems: string[];
   activity: {
     id: string;
@@ -16,58 +18,80 @@ export type SurfacePreferences = {
 };
 
 export function emptyPreferences(owner: SurfaceOwner): SurfacePreferences {
-  return { schemaVersion: 1, owner: { ...owner }, widget: null, shortcutItems: [], activity: null };
+  return { schemaVersion: 2, owner: { ...owner }, widgets: [], shortcutItems: [], activity: null };
 }
+
+const record = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
 
 /** Device preferences only. No domain state, content, crypto material or provider credentials. */
 export function parsePreferences(json: string | null, owner: SurfaceOwner): SurfacePreferences {
   const empty = emptyPreferences(owner);
-  if (!validSurfaceOwner(owner) || !json || json.length > 8_192) return empty;
+  if (!owner || !validSurfaceOwner(owner) || !json || json.length > 8_192) return empty;
   try {
-    const value = JSON.parse(json) as SurfacePreferences;
+    const value: unknown = JSON.parse(json);
     if (
-      value?.schemaVersion !== 1 ||
-      !value.owner ||
-      !sameSurfaceOwner(value.owner, owner) ||
+      !record(value) ||
+      value.schemaVersion !== 2 ||
+      !record(value.owner) ||
+      typeof value.owner.identityId !== 'string' ||
+      typeof value.owner.deviceId !== 'string' ||
+      !sameSurfaceOwner(
+        { identityId: value.owner.identityId, deviceId: value.owner.deviceId },
+        owner,
+      ) ||
       !Array.isArray(value.shortcutItems) ||
       value.shortcutItems.length > 20 ||
       value.shortcutItems.some((id) => !surfaceId(id))
     )
       return empty;
-    const widget = value.widget;
+    const selections = value.widgets;
     if (
-      widget !== null &&
-      (!widget || !surfaceId(widget.itemId) || typeof widget.showContent !== 'boolean')
+      !Array.isArray(selections) ||
+      selections.length > MAX_WIDGET_SELECTIONS ||
+      selections.some(
+        (selection) =>
+          !record(selection) ||
+          !surfaceId(selection.itemId) ||
+          typeof selection.showContent !== 'boolean',
+      )
     )
       return empty;
+    const widgets: WidgetSelection[] = [];
+    const seen = new Set<string>();
+    for (const selection of selections) {
+      const { itemId, showContent } = selection as WidgetSelection;
+      if (seen.has(itemId)) continue;
+      seen.add(itemId);
+      widgets.push({ itemId, showContent });
+    }
     const activity = value.activity;
     if (
       activity !== null &&
-      (!activity ||
+      (!record(activity) ||
         !surfaceId(activity.id) ||
+        !surfaceId(activity.linkId) ||
         !surfaceId(activity.itemId) ||
+        typeof activity.endsAt !== 'number' ||
         !Number.isSafeInteger(activity.endsAt) ||
         activity.endsAt < 0 ||
         typeof activity.showContent !== 'boolean')
     )
       return empty;
-    // Explicit reconstruction also drops any unexpected stored fields.
+    // Explicit reconstruction drops unexpected stored fields.
     return {
       ...empty,
-      widget: widget ? { itemId: widget.itemId, showContent: widget.showContent } : null,
-      shortcutItems: [...new Set(value.shortcutItems)],
-      // Old SDK URLs were version-bound and cannot be repaired in place. Retire
-      // only that legacy activity; retain the owner's widget and shortcut opt-ins.
-      activity:
-        activity && surfaceId(activity.linkId)
-          ? {
-              id: activity.id,
-              linkId: activity.linkId,
-              itemId: activity.itemId,
-              endsAt: activity.endsAt,
-              showContent: activity.showContent,
-            }
-          : null,
+      widgets,
+      shortcutItems: [...new Set(value.shortcutItems as string[])],
+      activity: record(activity)
+        ? {
+            id: activity.id as string,
+            linkId: activity.linkId as string,
+            itemId: activity.itemId as string,
+            endsAt: activity.endsAt as number,
+            showContent: activity.showContent as boolean,
+          }
+        : null,
     };
   } catch {
     return empty;

@@ -83,14 +83,13 @@ export function miniappCsp(allowed: readonly string[]): string {
   const network = allowed.map((host) => `https://${host}`).join(' ');
   return `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob: ${network}; media-src data:; font-src data:; connect-src ${network || "'none'"}; worker-src blob:; child-src blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
 }
-export function sandboxHtml(html: string, allowed: readonly string[], native: boolean): string {
-  const security = `<meta http-equiv="Content-Security-Policy" content="${miniappCsp(allowed)}"><meta name="referrer" content="no-referrer"><script>${native ? NATIVE_SHIM : ''}${NETWORK_HARDENING}</script>`;
+export function sandboxHtml(html: string, allowed: readonly string[]): string {
+  const security = `<meta http-equiv="Content-Security-Policy" content="${miniappCsp(allowed)}"><meta name="referrer" content="no-referrer"><script>${NETWORK_HARDENING}</script>`;
   return /<head(?:\s[^>]*)?>/i.test(html)
     ? html.replace(/<head(?:\s[^>]*)?>/i, (match) => `${match}${security}`)
     : `${security}${html}`;
 }
 const NETWORK_HARDENING = `(()=>{for(const key of ['RTCPeerConnection','webkitRTCPeerConnection']){try{Object.defineProperty(window,key,{value:undefined,writable:false,configurable:false})}catch{}}window.open=()=>null;})();`;
-const NATIVE_SHIM = `(()=>{const bridge=window.ReactNativeWebView;const host={postMessage:(message)=>bridge.postMessage(JSON.stringify(message))};try{Object.defineProperty(window,'parent',{get:()=>host,configurable:false})}catch{}window.__zoenDeliver=(message)=>window.dispatchEvent(new MessageEvent('message',{data:message}));})();`;
 
 export function safeMiniappLink(input: unknown, manifest: MiniappManifest | null): string {
   if (typeof input !== 'string' || input.length > 4096) throw new Error(t('miniapps.invalidLink'));

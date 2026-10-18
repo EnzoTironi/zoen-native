@@ -24,12 +24,13 @@
     "www.nps.gov",
     "www.parks.ca.gov"
   ],
-  "sha256": "98b280a3010aa3f2d8b33b91ec3052df29201913b115c8239beaa7e5efc424b8",
-  "bytes": 1244309,
+  "sha256": "67e38497bfcc64a0fed1cad13d27fddc3d07c6f76459233a6d186e7561422c1a",
+  "bytes": 1720968,
   "deps": {
     "scheduler": "0.26.0",
     "react": "19.1.1",
     "react-dom": "19.1.1",
-    "maplibre-gl": "5.7.1"
+    "maplibre-gl": "5.7.1",
+    "@modelcontextprotocol/ext-apps": "2.0.3"
   }
 }

@@ -34,6 +34,19 @@ function withNativeSurfaces(config) {
                 'accessoryRectangular',
               ],
               initialLayout: 'src/native-surfaces/miniapp-widget.ios.tsx',
+              configuration: {
+                title: 'Miniapp',
+                description: 'Choose a different miniapp for each widget.',
+                parameters: {
+                  miniapp: {
+                    title: 'Miniapp',
+                    type: 'enum',
+                    default: 'none',
+                    values: [{ name: 'Choose a miniapp', value: 'none' }],
+                    dynamic: true,
+                  },
+                },
+              },
             },
             android: null,
           },

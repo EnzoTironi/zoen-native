@@ -347,6 +347,7 @@ function ReadyView({
         hostInfo: { name: 'zoen', version: '0.1.0' },
         hostCapabilities: {
           openLinks: {},
+          message: { text: {} },
           serverTools: {},
           serverResources: {},
           sandbox: {
@@ -534,10 +535,7 @@ function ReadyView({
   useEffect(() => {
     session.current?.sync();
   }, [item.version, scheme, snapshot, width]);
-  const html = useMemo(
-    () => sandboxHtml(resource.text, hosts, process.env.EXPO_OS !== 'web'),
-    [resource.text, hosts],
-  );
+  const html = useMemo(() => sandboxHtml(resource.text, hosts), [resource.text, hosts]);
   const receive = useCallback((message: string) => {
     void session.current?.receive(message);
   }, []);

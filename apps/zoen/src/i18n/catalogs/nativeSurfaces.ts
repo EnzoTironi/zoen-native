@@ -5,12 +5,17 @@ export const nativeSurfaces = defineFeature(
     onYourIPhone: 'On your iPhone',
     chooseWhatAppearsOutsideZoenTheWidgetKeeps:
       'Choose what appears outside Zoen. The widget keeps content hidden until you choose to show it.',
-    removeFromWidget: 'Remove from widget',
-    useInWidget: 'Use in widget',
-    hideWidgetContent: 'Hide widget content',
-    showWidgetContent: 'Show widget content',
+    removeFromWidget: 'Remove from widgets',
+    useInWidget: 'Make available in widgets',
+    hideWidgetContent: 'Hide name and content',
+    showWidgetContent: 'Show name and content',
     addZoenMiniappFromTheIPhoneWidgetGallery:
-      'Add “Zoen Miniapp” from the iPhone widget gallery. This selection applies to Zoen widgets on this device.',
+      'Add “Zoen miniapp” from the iPhone widget gallery. Edit each widget to choose its miniapp.',
+    privateWidgetTitle: 'Private widget %{number}',
+    privateWidgetExplanation:
+      'Listed as “%{name}” in the iPhone widget editor. Show its name and content to identify it there.',
+    removeOneOfThe20Widgets: 'Remove one of the 20 available miniapps from widgets first.',
+    chooseAMiniapp: 'Choose a miniapp',
     removeFromShortcuts: 'Remove from shortcuts',
     makeAvailableInShortcutsAndSiri: 'Make available in Shortcuts and Siri',
     selectedShortcutsIncludeTheMiniappAndChatNames:
@@ -28,7 +33,7 @@ export const nativeSurfaces = defineFeature(
     thisMiniappHasNoCompatiblePreview: 'This miniapp has no compatible preview.',
     removeOneOfThe20MiniappsFromShortcuts: 'Remove one of the 20 miniapps from shortcuts first.',
     useACountdownThatEndsWithinTheNext: 'Use a countdown that ends within the next 8 hours.',
-    chooseAMiniappInZoen: 'Choose a miniapp in Zoen',
+    chooseAMiniappInZoen: 'Choose in Zoen, then edit this widget',
     thisDeviceSShortcutsCouldNotBeUpdated: "This device's shortcuts could not be updated.",
     openToSeeYourMiniapp: 'Open to see your miniapp',
     openToUpdate: 'Open to update',
@@ -41,12 +46,17 @@ export const nativeSurfaces = defineFeature(
     onYourIPhone: 'No seu iPhone',
     chooseWhatAppearsOutsideZoenTheWidgetKeeps:
       'Escolha o que aparece fora do Zoen. O widget mantém o conteúdo oculto até você escolher mostrá-lo.',
-    removeFromWidget: 'Remover do widget',
-    useInWidget: 'Usar no widget',
-    hideWidgetContent: 'Ocultar conteúdo do widget',
-    showWidgetContent: 'Mostrar conteúdo do widget',
+    removeFromWidget: 'Remover dos widgets',
+    useInWidget: 'Disponibilizar nos widgets',
+    hideWidgetContent: 'Ocultar nome e conteúdo',
+    showWidgetContent: 'Mostrar nome e conteúdo',
     addZoenMiniappFromTheIPhoneWidgetGallery:
-      'Adicione “Miniapp do Zoen” pela galeria de widgets do iPhone. Esta seleção vale para os widgets do Zoen neste aparelho.',
+      'Adicione “Zoen miniapp” pela galeria de widgets do iPhone. Edite cada widget para escolher seu miniapp.',
+    privateWidgetTitle: 'Widget privado %{number}',
+    privateWidgetExplanation:
+      'Aparece como “%{name}” no editor de widgets do iPhone. Mostre o nome e conteúdo para identificá-lo lá.',
+    removeOneOfThe20Widgets: 'Remova um dos 20 miniapps disponíveis nos widgets primeiro.',
+    chooseAMiniapp: 'Escolha um miniapp',
     removeFromShortcuts: 'Remover dos atalhos',
     makeAvailableInShortcutsAndSiri: 'Disponibilizar nos Atalhos e Siri',
     selectedShortcutsIncludeTheMiniappAndChatNames:
@@ -64,7 +74,7 @@ export const nativeSurfaces = defineFeature(
     thisMiniappHasNoCompatiblePreview: 'Este miniapp não possui uma prévia compatível.',
     removeOneOfThe20MiniappsFromShortcuts: 'Remova um dos 20 miniapps dos atalhos primeiro.',
     useACountdownThatEndsWithinTheNext: 'Use uma contagem que termine nas próximas 8 horas.',
-    chooseAMiniappInZoen: 'Escolha um miniapp no Zoen',
+    chooseAMiniappInZoen: 'Escolha no Zoen e edite este widget',
     thisDeviceSShortcutsCouldNotBeUpdated: 'Não foi possível atualizar os atalhos deste aparelho.',
     openToSeeYourMiniapp: 'Abra para ver seu miniapp',
     openToUpdate: 'Abra para atualizar',

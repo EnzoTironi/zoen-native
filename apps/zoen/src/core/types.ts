@@ -42,6 +42,7 @@ import type { DecideOutcome } from './generated/DecideOutcome';
 import type { AppResourceDto } from './generated/AppResourceDto';
 import type { MessageDraftDto } from './generated/MessageDraftDto';
 import type { MessageDraftSendResult } from './generated/MessageDraftSendResult';
+import type { NativeSurfaceItemDto } from './generated/NativeSurfaceItemDto';
 
 export type { Command, Snapshot, TimelinePage, TimelineEntry, ItemDetail, PageDto, PlanPageDto };
 export type Mode = 'account' | 'demo';
@@ -67,6 +68,7 @@ type Results = {
   thread: TimelineEntry[];
   items: ItemDetail[];
   item: ItemDetail;
+  native_surface_items: NativeSurfaceItemDto[];
   item_at: ItemDetail;
   page: PageDto;
   page_at: PageDto;

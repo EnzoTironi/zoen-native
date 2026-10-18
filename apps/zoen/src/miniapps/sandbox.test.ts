@@ -31,7 +31,7 @@ test('resource identity, exact bytes and manifest hash are checked before script
   assert.equal(safeMiniappLink('https://www.nps.gov/path', verified), 'https://www.nps.gov/path');
   assert.throws(() => safeMiniappLink('https://evil.example/path', verified));
   assert.throws(() => safeMiniappLink('javascript:alert(1)', null));
-  const secured = sandboxHtml(text, [], true);
+  const secured = sandboxHtml(text, []);
   assert.ok(secured.indexOf('Content-Security-Policy') < secured.indexOf('<title>'));
 });
 test('CSP opens only exact declared hosts and rejects directive injection', () => {

@@ -43,6 +43,13 @@ export function NativeSurfacesProvider({ children }: { children: ReactNode }) {
             owner,
             spaces: () => surfaceSpaces(store.getSnapshot()),
             item: (id) => store.driver.request({ op: 'item', item_id: id }),
+            items: (ids, currentOwner) =>
+              store.driver.request({
+                op: 'native_surface_items',
+                expected_identity_id: currentOwner.identityId,
+                expected_device_id: currentOwner.deviceId,
+                item_ids: [...ids],
+              }),
           },
           port,
         );

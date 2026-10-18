@@ -29,21 +29,22 @@ const snapshot = {
   deepLink: 'zoen://app/it_pet',
 };
 function item(changes: Record<string, unknown> = {}): SnapshotItem {
+  const app = {
+    app_id: 'pet',
+    resource_uri: 'zoen://apps/pet',
+    name: 'Pet',
+    view_json: '{"private":"not for extension"}',
+    headline: 'Private headline',
+    metrics: [],
+    last_action: 'Private action',
+    trust: 'Suggest',
+    snapshot_json: JSON.stringify({ ...snapshot, ...changes }),
+  };
   return {
     id: 'it_pet',
     space_id: 'sp_family',
     version: 3,
-    app: {
-      app_id: 'pet',
-      resource_uri: 'zoen://apps/pet',
-      name: 'Pet',
-      view_json: '{"private":"not for extension"}',
-      headline: 'Private headline',
-      metrics: [],
-      last_action: 'Private action',
-      trust: 'Suggest',
-      snapshot_json: JSON.stringify({ ...snapshot, ...changes }),
-    },
+    app,
   };
 }
 const now = 1_800_000_000_000;
@@ -140,22 +141,19 @@ test('bounded snapshot projection preserves canonical content without interpreti
   assert.equal(projected?.art, undefined);
   assert.ok(Object.isFrozen(projected));
   const visible = widgetProjection(item(), owner, true)!;
-  assert.equal(visible.version, 3);
-  assert.equal(visible.content.title, 'Peanut');
-  assert.equal('actions' in visible.content, false);
-  assert.equal('view_json' in visible.content, false);
+  assert.equal(visible.title, 'Peanut');
+  assert.ok(Object.isFrozen(visible));
+  assert.equal('actions' in visible, false);
+  assert.equal('view_json' in visible, false);
   assert.equal(JSON.stringify(visible).includes('not for extension'), false);
   assert.equal(JSON.stringify(visible).includes('Private headline'), false);
 });
 
-test('widget content is redacted until explicitly selected and owns a copied account/device scope', () => {
-  const mutableOwner = { ...owner };
-  const redacted = widgetProjection(item(), mutableOwner)!;
-  mutableOwner.identityId = 'other';
-  assert.deepEqual(redacted.owner, owner);
-  assert.equal(redacted.content.redacted, true);
-  assert.equal(redacted.content.title, 'Zoen');
-  assert.deepEqual(redacted.content.bars, []);
+test('widget content is redacted until explicitly selected and rejects an invalid account/device scope', () => {
+  const redacted = widgetProjection(item(), owner)!;
+  assert.equal(redacted.redacted, true);
+  assert.equal(redacted.title, 'Zoen');
+  assert.deepEqual(redacted.bars, []);
   assert.equal(JSON.stringify(redacted).includes('Peanut'), false);
   assert.equal(JSON.stringify(redacted).includes('pet_feed'), false);
   assert.equal(widgetProjection(item(), { ...owner, deviceId: '../other' }), null);

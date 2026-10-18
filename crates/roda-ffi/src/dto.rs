@@ -394,6 +394,24 @@ pub struct AppStateDto {
     pub snapshot_json: String,
 }
 
+/// The canonical, content-only projection used by native widgets and shortcuts.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct NativeSurfaceAppDto {
+    pub app_id: String,
+    pub snapshot_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct NativeSurfaceItemDto {
+    pub id: String,
+    pub space_id: String,
+    pub title: String,
+    pub version: u32,
+    pub app: NativeSurfaceAppDto,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum AppCallStatus {

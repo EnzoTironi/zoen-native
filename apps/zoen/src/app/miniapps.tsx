@@ -184,6 +184,20 @@ export default function Miniapps() {
             label={t('miniapps.miniappPermissions')}
             onPress={() => router.push('/miniapp-permissions')}
           />
+          <Surface>
+            <Text style={{ color: colors.text, fontSize: 23, fontWeight: '600' }}>Excalidraw</Text>
+            <Text style={{ color: colors.secondary, fontSize: 15, lineHeight: 23 }}>
+              {t('connectedApps.excalidrawDescription')}
+            </Text>
+            <NativeButton
+              secondary
+              testID="open-excalidraw"
+              label={t('connectedApps.openExcalidraw')}
+              onPress={() =>
+                router.push({ pathname: '/connected-app/[id]', params: { id: 'excalidraw' } })
+              }
+            />
+          </Surface>
           {!read.data ? (
             read.error ? (
               <EmptyState title={t('miniapps.theCatalogCouldNotBeOpened')} detail={read.error}>
