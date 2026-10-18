@@ -71,6 +71,7 @@ function DrawingSession({
   const starting = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [ended, setEnded] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [leaving, setLeaving] = useState(false);
   const confirming = useRef(false);
   const [dimensions, setDimensions] = useState({ width: 360, height: 640 });
@@ -240,6 +241,9 @@ function DrawingSession({
     const check = authority.current?.check;
     const connection = remote.current;
     if (!check || !connection) return;
+    // Checkpoint writes preserve edit order even on a slow connection.
+    let saveTail: Promise<unknown> = Promise.resolve();
+    let latestSave = 0;
     const current = new MiniappSession({
       send: (message) => frame.current?.send(message),
       initialize: () => ({
@@ -297,6 +301,38 @@ function DrawingSession({
         )
           throw new Error(t('miniapps.youCanceledThisAction'));
         check();
+        if (name === 'save_checkpoint') {
+          const revision = ++latestSave;
+          setSaveStatus('saving');
+          const save = saveTail.then(async () => {
+            check();
+            const result = await connection.call(name, args);
+            check();
+            if (result.isError) throw new Error(t('connectedApps.saveFailed'));
+            return result;
+          });
+          saveTail = save.catch(() => {});
+          try {
+            const result = await save;
+            check();
+            if (revision === latestSave) {
+              setSaveStatus('saved');
+              setError(null);
+            }
+            return result;
+          } catch (reason) {
+            check();
+            if (revision === latestSave) {
+              setSaveStatus('error');
+              setError(t('connectedApps.saveFailed'));
+            }
+            throw reason;
+          }
+        }
+        if (name === 'read_checkpoint') {
+          await saveTail;
+          check();
+        }
         return connection.call(name, args);
       },
       updateModelContext: async (params) => {
@@ -369,6 +405,8 @@ function DrawingSession({
       ) : drawing ? (
         <>
           <Text
+            testID="connected-app-save-status"
+            accessibilityLiveRegion="polite"
             style={{
               color: colors.secondary,
               fontSize: 12,
@@ -376,7 +414,13 @@ function DrawingSession({
               paddingVertical: 8,
             }}
           >
-            {t('connectedApps.sessionDrawing')}
+            {saveStatus === 'saved'
+              ? t('connectedApps.saved')
+              : saveStatus === 'saving'
+                ? t('connectedApps.saving')
+                : saveStatus === 'error'
+                  ? t('connectedApps.saveFailed')
+                  : t('connectedApps.sessionDrawing')}
           </Text>
           {error ? (
             <Text

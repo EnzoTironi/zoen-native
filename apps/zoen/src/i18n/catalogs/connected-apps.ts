@@ -6,6 +6,9 @@ export const connectedApps = defineFeature(
     openExcalidraw: 'Open Excalidraw',
     startDrawing: 'Start drawing',
     sessionDrawing: 'Session drawing',
+    saved: 'Saved in Excalidraw',
+    saving: 'Saving drawing…',
+    saveFailed: 'The drawing could not be saved. Keep this session open and try again.',
     externalDrawingDetails:
       'Excalidraw processes and saves your drawing on its server. This session is separate from your conversations.',
     connecting: 'Opening your canvas…',
@@ -35,6 +38,9 @@ export const connectedApps = defineFeature(
     openExcalidraw: 'Abrir Excalidraw',
     startDrawing: 'Começar a desenhar',
     sessionDrawing: 'Desenho desta sessão',
+    saved: 'Salvo no Excalidraw',
+    saving: 'Salvando desenho…',
+    saveFailed: 'Não foi possível salvar o desenho. Mantenha esta sessão aberta e tente novamente.',
     externalDrawingDetails:
       'O Excalidraw processa e salva seu desenho no servidor dele. Esta sessão fica separada das suas conversas.',
     connecting: 'Abrindo seu quadro…',
