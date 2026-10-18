@@ -1,14 +1,16 @@
 import { Stack } from 'expo-router';
 import { Host } from '@expo/ui';
-import { Button, HStack } from '@expo/ui/swift-ui';
+import { Button, HStack, Label } from '@expo/ui/swift-ui';
 import {
   buttonStyle,
+  contentShape,
   disabled,
   font,
   foregroundStyle,
   frame,
   labelStyle,
   opacity,
+  shapes,
 } from '@expo/ui/swift-ui/modifiers';
 import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
@@ -40,19 +42,26 @@ export function ChatHeader(props: ChatHeaderProps) {
               ).map(({ icon, label, unavailable }) => (
                 <Button
                   key={icon}
-                  systemImage={icon}
-                  label={label}
                   onPress={unavailable ? undefined : search?.onToggle}
                   modifiers={[
                     buttonStyle('plain'),
-                    labelStyle('iconOnly'),
-                    font({ size: 19 }),
-                    foregroundStyle(!unavailable && search?.active ? colors.accent : colors.text),
                     disabled(unavailable),
                     opacity(unavailable ? 0.35 : 1),
-                    frame({ width: 44, height: 44 }),
                   ]}
-                />
+                >
+                  <Label
+                    title={label}
+                    systemImage={icon}
+                    modifiers={[
+                      labelStyle('iconOnly'),
+                      font({ size: 19 }),
+                      foregroundStyle(!unavailable && search?.active ? colors.accent : colors.text),
+                      // Size the action's label, not an outer Button wrapper.
+                      frame({ width: 44, height: 44 }),
+                      contentShape(shapes.rectangle(), ['interaction', 'accessibility']),
+                    ]}
+                  />
+                </Button>
               ))}
             </HStack>
           </Host>

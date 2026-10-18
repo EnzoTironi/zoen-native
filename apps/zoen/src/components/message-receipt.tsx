@@ -56,6 +56,7 @@ export function MessageReceipt({
   return (
     <View
       accessible
+      accessibilityRole="text"
       accessibilityLabel={messageDeliveryLabel(delivery)}
       testID={`message-receipt-${delivery.toLowerCase()}`}
       style={{ width: doubled ? 19 : 14, height: 14 }}
