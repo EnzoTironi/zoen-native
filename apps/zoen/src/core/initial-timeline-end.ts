@@ -42,6 +42,7 @@ export class InitialTimelineEnd {
   private loaded = false;
   private footerReady = false;
   private contentReady = false;
+  private focused: boolean;
   private retired = false;
   private revision = 0;
   private cancelFrame: (() => void) | undefined;
@@ -59,6 +60,7 @@ export class InitialTimelineEnd {
     this.scope = scope;
     this.port = port;
     this.options = options;
+    this.focused = !options.anchorUntilInteraction;
   }
 
   connect(port: Port) {
@@ -118,22 +120,41 @@ export class InitialTimelineEnd {
     this.schedule();
   };
 
-  cancel = () => {
-    this.retired = true;
+  focus = () => {
+    if (this.retired) return;
+    this.focused = true;
+    this.schedule();
+  };
+
+  blur = () => {
+    this.focused = false;
     this.revision++;
     this.cancelFrame?.();
     this.cancelFrame = undefined;
   };
 
+  cancel = () => {
+    this.retired = true;
+    this.blur();
+  };
+
   private schedule() {
-    if (this.retired || !this.port || !this.loaded || !this.footerReady || !this.contentReady)
+    if (
+      this.retired ||
+      !this.focused ||
+      !this.port ||
+      !this.loaded ||
+      !this.footerReady ||
+      !this.contentReady ||
+      (this.options.anchorUntilInteraction && this.viewportHeight <= 0)
+    )
       return;
     this.cancelFrame?.();
     this.cancelFrame = undefined;
     const revision = ++this.revision;
     if (this.options.anchorUntilInteraction && this.isAtEnd()) return;
     this.cancelFrame = this.port.frame(() => {
-      if (this.retired || revision !== this.revision) return;
+      if (this.retired || !this.focused || revision !== this.revision) return;
       this.cancelFrame = undefined;
       if (!this.port?.current()) {
         this.cancel();

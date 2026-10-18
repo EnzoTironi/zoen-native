@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated';
@@ -36,14 +37,25 @@ const NativeConversationScrollView = forwardRef<KeyboardChatScrollViewRef, Scrol
   (props, ref) => {
     const context = use(NativeScrollContext);
     if (!context) throw new Error('ConversationViewport is required.');
+    const viewportReady = useSharedValue(false);
+    const contentReady = useSharedValue(false);
+    const insetReady = useSharedValue(false);
+    // Start the SDK's padding reaction at zero, then let its own atomic inset
+    // and scroll correction reserve the composer after native geometry exists.
+    // Its first inset callback also fences callbacks arriving before mapper setup.
+    const padding = useDerivedValue(() =>
+      viewportReady.value && contentReady.value && insetReady.value ? context.padding.value : 0,
+    );
     const onInset = useCallback(
       ({ bottom }: { bottom: number }) => {
-        if (!Number.isFinite(bottom) || bottom <= 0) return;
+        if (!Number.isFinite(bottom) || bottom < 0) return;
+        insetReady.set(true);
+        if (bottom === 0) return;
         // The SDK produced a positive reservation. Initial positioning also
         // waits for loaded rows, native content measurement and its next frame.
         context.onInitialInset?.(bottom);
       },
-      [context],
+      [context, insetReady],
     );
     return (
       <KeyboardChatScrollView
@@ -55,8 +67,8 @@ const NativeConversationScrollView = forwardRef<KeyboardChatScrollViewRef, Scrol
         contentInsetAdjustmentBehavior="never"
         keyboardDismissMode="interactive"
         offset={context.offset}
-        extraContentPadding={context.padding}
-        onContentInsetChange={context.onInitialInset ? onInset : undefined}
+        extraContentPadding={padding}
+        onContentInsetChange={onInset}
         onScroll={(event) => {
           // FlashList may suppress its own scroll handler during correction.
           // Observe native geometry before forwarding the original event.
@@ -64,8 +76,16 @@ const NativeConversationScrollView = forwardRef<KeyboardChatScrollViewRef, Scrol
           props.onScroll?.(event);
         }}
         onLayout={(event) => {
-          context.onNativeLayout?.(event.nativeEvent.layout.height);
+          const { width, height } = event.nativeEvent.layout;
+          if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0)
+            viewportReady.set(true);
+          context.onNativeLayout?.(height);
           props.onLayout?.(event);
+        }}
+        onContentSizeChange={(width, height) => {
+          if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0)
+            contentReady.set(true);
+          props.onContentSizeChange?.(width, height);
         }}
       />
     );

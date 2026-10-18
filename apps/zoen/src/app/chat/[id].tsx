@@ -205,14 +205,15 @@ export default function Chat() {
   useFocusEffect(
     useCallback(() => {
       focused.current = true;
+      initialEnd.focus();
       store.selectSpace(id);
       return () => {
         focused.current = false;
-        cancelInitialEnd();
+        initialEnd.blur();
         store.setTyping(id, false);
         store.selectSpace(null);
       };
-    }, [id, store, cancelInitialEnd]),
+    }, [id, store, initialEnd]),
   );
   const reveal = useCallback(
     async (messageId: string) => {

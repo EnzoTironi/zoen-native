@@ -68,6 +68,10 @@ function fixture(options: { anchorUntilInteraction?: boolean } = {}) {
       nativeReady = value;
     },
     ready: (contentHeight = 2763) => {
+      if (options.anchorUntilInteraction) {
+        controller.focus();
+        controller.onViewportLayout(812);
+      }
       controller.onLoad();
       controller.onFooterLayout(96);
       controller.onContentSizeChange(390, contentHeight);
@@ -114,6 +118,88 @@ function nativeGeometry(
     contentInset: { bottom: bottomInset },
   };
 }
+
+test('native first positioning waits for focus and actual viewport in either readiness order', () => {
+  for (const order of [
+    ['focus', 'viewport'],
+    ['viewport', 'focus'],
+  ] as const) {
+    const f = fixture({ anchorUntilInteraction: true });
+    f.controller.onLoad();
+    f.controller.onFooterLayout(96);
+    f.controller.onContentSizeChange(390, 824);
+    f.controller.onCommitLayoutEffect();
+    assert.equal(f.frames.length, 0, 'desired inset and content do not prove a native viewport');
+    const signals = {
+      focus: f.controller.focus,
+      viewport: () => f.controller.onViewportLayout(812),
+    };
+    signals[order[0]]();
+    assert.equal(f.frames.length, 0);
+    signals[order[1]]();
+    assert.equal(f.frames.length, 1);
+    f.frames[0].work();
+    assert.equal(f.scrolled(), 1);
+    f.controller.onNativeScroll(nativeGeometry(108, 824));
+    f.controller.onCommitLayoutEffect();
+    assert.equal(f.frames.length, 1, 'the first short attachment is already at its real end');
+  }
+});
+
+test('blur pauses an idle native anchor and refocus reconciles measurements received while away', () => {
+  const f = fixture({ anchorUntilInteraction: true });
+  f.ready(824);
+  const beforeBlur = f.frames[0];
+  f.controller.blur();
+  assert.equal(beforeBlur.cancelled, true);
+  f.controller.onContentSizeChange(390, 900);
+  f.controller.onFooterLayout(120);
+  f.controller.onViewportLayout(700);
+  f.controller.onCommitLayoutEffect();
+  beforeBlur.work();
+  assert.equal(f.scrolled(), 0);
+  assert.equal(f.frames.length, 1, 'background layout never queues a scroll command');
+  f.controller.focus();
+  assert.equal(f.frames.length, 2);
+  beforeBlur.work();
+  assert.equal(f.scrolled(), 0, 'a late frame from the previous focus stays invalid');
+  f.frames[1].work();
+  assert.equal(f.scrolled(), 1);
+  f.controller.onNativeScroll(nativeGeometry(320, 900, 700, 120));
+  f.controller.blur();
+  f.controller.focus();
+  assert.equal(f.frames.length, 2, 'a known current end does not jump again on focus');
+});
+
+test('a previously empty chat can acquire its first file while blurred without losing its initial anchor', () => {
+  const f = fixture({ anchorUntilInteraction: true });
+  f.controller.focus();
+  f.controller.onViewportLayout(812);
+  f.controller.onLoad();
+  f.controller.onFooterLayout(96);
+  f.controller.blur();
+  f.controller.onContentSizeChange(390, 824);
+  f.controller.onCommitLayoutEffect();
+  assert.equal(f.frames.length, 0);
+  f.controller.focus();
+  f.frames[0].work();
+  assert.equal(f.scrolled(), 1);
+});
+
+test('focus changes never rearm a native anchor retired by user intent', () => {
+  const f = fixture({ anchorUntilInteraction: true });
+  f.ready(824);
+  f.frames[0].work();
+  f.controller.cancel();
+  f.controller.blur();
+  f.controller.onContentSizeChange(390, 900);
+  f.controller.onFooterLayout(120);
+  f.controller.focus();
+  f.controller.onNativeScroll(nativeGeometry(12, 900, 812, 120));
+  f.controller.onCommitLayoutEffect();
+  assert.equal(f.frames.length, 1);
+  assert.equal(f.scrolled(), 1, 'returning to history preserves the user-selected position');
+});
 
 test('an idle native anchor repairs later SDK deviations and dedupes actual end observations', () => {
   const f = fixture({ anchorUntilInteraction: true });
