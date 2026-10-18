@@ -22,6 +22,7 @@ import { NativeSurfacesProvider } from '../native-surfaces/provider';
 import { NativeIntentConsumer } from '../native-surfaces/intent-consumer';
 import { SkyBackground } from '../components/sky-background';
 import { HomeProvider } from '../home/provider';
+import { ConversationCardsProvider } from '../miniapps/conversation-provider';
 
 // Cold links keep the real tabs beneath their destination, including on iOS.
 export const unstable_settings = { anchor: '(tabs)' };
@@ -95,11 +96,13 @@ export default function RootLayout() {
               <DialogsProvider>
                 <ClientProvider>
                   <HomeProvider>
-                    <NativeSurfacesProvider>
-                      <NotificationProvider>
-                        <Navigation />
-                      </NotificationProvider>
-                    </NativeSurfacesProvider>
+                    <ConversationCardsProvider>
+                      <NativeSurfacesProvider>
+                        <NotificationProvider>
+                          <Navigation />
+                        </NotificationProvider>
+                      </NativeSurfacesProvider>
+                    </ConversationCardsProvider>
                   </HomeProvider>
                 </ClientProvider>
               </DialogsProvider>

@@ -137,6 +137,11 @@ export default function Space() {
       <Surface>
         <NativeButton
           secondary
+          label={t('conversationCards.manage')}
+          onPress={() => router.push({ pathname: '/conversation-cards/[id]', params: { id } })}
+        />
+        <NativeButton
+          secondary
           label={t('chat.searchThisChat2')}
           onPress={() => router.push({ pathname: '/search', params: { space: id } })}
         />

@@ -7,6 +7,7 @@ import { chat } from './catalogs/chat.ts';
 import { common } from './catalogs/common.ts';
 import { documents } from './catalogs/documents.ts';
 import { home } from './catalogs/home.ts';
+import { conversationCards } from './catalogs/conversation-cards.ts';
 import { integrity } from './catalogs/integrity.ts';
 import { media } from './catalogs/media.ts';
 import { miniappFields } from './catalogs/miniappFields.ts';
@@ -35,6 +36,7 @@ const catalogs = {
   common,
   documents,
   home,
+  conversationCards,
   integrity,
   media,
   miniappFields,

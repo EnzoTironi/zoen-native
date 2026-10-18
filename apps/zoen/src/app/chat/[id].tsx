@@ -9,7 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
@@ -46,6 +46,8 @@ import {
 } from '../../core/message-draft';
 import { ChatHeader } from '../../components/chat-header';
 import { useHome } from '../../home/provider';
+import { HomeCardMenu } from '../../home/menus';
+import { useConversationCards } from '../../miniapps/conversation-provider';
 import { MiniappRail } from '../../miniapps/rail';
 import { ConversationSearch, conversationQueryFits } from '../../core/conversation-search';
 import { launchConversationAssistant } from '../../assistant/launch';
@@ -55,11 +57,13 @@ export default function Chat() {
   const { id, jump } = useLocalSearchParams<{ id: string; jump?: string }>();
   const { store, snapshot, timelines, notice, activity } = useClient();
   const { colors } = useTheme();
-  const { items } = useHome();
+  const home = useHome();
+  const { items } = home;
+  const cards = useConversationCards(id);
   const headerHeight = useHeaderHeight();
   const { top: statusBarHeight } = useSafeAreaInsets();
   const { progress: keyboardProgress } = useKeyboardMotion();
-  const conversationMiniapps = items.filter((item) => item.space_id === id);
+  const conversationMiniapps = cards.visible;
   const { inform } = useDialogs();
   const input = useRef<TextInputInstance>(null);
   const list = useRef<FlashListRef<TimelineEntry>>(null);
@@ -283,6 +287,7 @@ export default function Chat() {
       !scrollTarget ||
       loadedSpace !== timelineKey ||
       !page ||
+      cards.loading ||
       (conversationMiniapps.length > 0 && railHeight === 0)
     )
       return;
@@ -322,6 +327,7 @@ export default function Chat() {
     noticeHeight,
     keyboardProgress,
     conversationMiniapps.length,
+    cards.loading,
   ]);
   const last = page?.entries.at(-1)?.id;
   useFocusEffect(
@@ -521,9 +527,50 @@ export default function Chat() {
             }}
           >
             <ConversationRail onHeight={setRailHeight}>
-              <MiniappRail items={conversationMiniapps} paddingVertical={6} />
+              <MiniappRail
+                items={conversationMiniapps}
+                paddingVertical={6}
+                renderAccessory={
+                  process.env.EXPO_OS === 'ios'
+                    ? (item) => (
+                        <HomeCardMenu
+                          name={item.title}
+                          testID={`conversation-card-menu-${item.id}`}
+                          pinned={home.isPinned(item.id)}
+                          onToggle={() => {
+                            void (
+                              home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)
+                            ).catch(() => {});
+                          }}
+                          conversationPinned
+                          onToggleConversation={() => {
+                            void cards.setPinned(item.id, false).catch(() => {});
+                          }}
+                          onOrganizeConversation={() =>
+                            router.push({ pathname: '/conversation-cards/[id]', params: { id } })
+                          }
+                        />
+                      )
+                    : undefined
+                }
+              />
             </ConversationRail>
             <View onLayout={({ nativeEvent }) => setNoticeHeight(nativeEvent.layout.height)}>
+              {cards.error ? (
+                <Pressable
+                  accessibilityRole={cards.retryable ? 'button' : 'text'}
+                  accessibilityLabel={
+                    cards.retryable ? t('conversationCards.tryAgain') : cards.error
+                  }
+                  disabled={!cards.retryable}
+                  onPress={cards.retry}
+                  style={{ padding: 12 }}
+                >
+                  <Text accessibilityRole="alert" style={{ color: colors.danger }}>
+                    {cards.error}
+                  </Text>
+                </Pressable>
+              ) : null}
               {notice ? (
                 <Pressable
                   accessibilityRole="button"

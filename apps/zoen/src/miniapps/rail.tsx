@@ -1,4 +1,5 @@
 import { ScrollView, Text, View } from 'react-native';
+import type { ReactNode } from 'react';
 import type { ItemDetail } from '../core/generated/ItemDetail';
 import { useTheme } from '../theme';
 import { CompactMiniappCard } from './compact-card';
@@ -9,12 +10,14 @@ export function MiniappRail({
   size = 152,
   paddingVertical = 12,
   onLongPress,
+  renderAccessory,
 }: {
   items: readonly ItemDetail[];
   label?: string;
   size?: number;
   paddingVertical?: number;
   onLongPress?: (item: ItemDetail) => void;
+  renderAccessory?: (item: ItemDetail) => ReactNode;
 }) {
   const { colors } = useTheme();
   const miniapps = items.filter((item) => item.app !== null);
@@ -41,6 +44,7 @@ export function MiniappRail({
             item={item}
             size={size}
             onLongPress={onLongPress ? () => onLongPress(item) : undefined}
+            accessory={renderAccessory?.(item)}
           />
         ))}
       </ScrollView>

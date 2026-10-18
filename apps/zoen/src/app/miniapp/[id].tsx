@@ -13,6 +13,7 @@ import { callMiniapp } from '../../miniapps/actions';
 import { MiniappSurfaceControls } from '../../native-surfaces/controls';
 import { useHome } from '../../home/provider';
 import { HomeCardMenu } from '../../home/menus';
+import { useConversationCards } from '../../miniapps/conversation-provider';
 
 export default function Miniapp() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,6 +27,7 @@ export default function Miniapp() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const item = read.data;
+  const cards = useConversationCards(item?.space_id ?? '');
   const app = item?.app;
   if (!item)
     return read.error ? (
@@ -90,6 +92,20 @@ export default function Miniapp() {
                     () => {},
                   );
                 }}
+                conversationPinned={cards.isPinned(item.id)}
+                onToggleConversation={
+                  !cards.loading && cards.items.some((candidate) => candidate.id === item.id)
+                    ? () => {
+                        void cards.setPinned(item.id, !cards.isPinned(item.id)).catch(() => {});
+                      }
+                    : undefined
+                }
+                onOrganizeConversation={() =>
+                  router.push({
+                    pathname: '/conversation-cards/[id]',
+                    params: { id: item.space_id },
+                  })
+                }
                 onHistory={() =>
                   router.push({ pathname: '/item/[id]', params: { id, history: '1' } })
                 }
@@ -114,9 +130,9 @@ export default function Miniapp() {
       >
         {item.title}
       </Text>
-      {error || read.error || specs.error || home.error ? (
+      {error || read.error || specs.error || home.error || cards.error ? (
         <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
-          {error ?? read.error ?? specs.error ?? home.error}
+          {error ?? read.error ?? specs.error ?? home.error ?? cards.error}
         </Text>
       ) : null}
       {message ? (

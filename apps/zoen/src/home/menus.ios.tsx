@@ -59,6 +59,9 @@ export function HomeCardMenu({
   onMoveLater,
   onHistory,
   testID,
+  conversationPinned,
+  onToggleConversation,
+  onOrganizeConversation,
 }: HomeCardMenuProps) {
   const { scheme } = useTheme();
   return (
@@ -77,6 +80,20 @@ export function HomeCardMenu({
           systemImage={pinned ? 'pin.slash' : 'pin'}
           onPress={onToggle}
         />
+        {onToggleConversation ? (
+          <Button
+            label={t(conversationPinned ? 'conversationCards.unpin' : 'conversationCards.pin')}
+            systemImage={conversationPinned ? 'pin.slash' : 'pin'}
+            onPress={onToggleConversation}
+          />
+        ) : null}
+        {onOrganizeConversation ? (
+          <Button
+            label={t('conversationCards.manage')}
+            systemImage="arrow.up.arrow.down"
+            onPress={onOrganizeConversation}
+          />
+        ) : null}
         {onMoveEarlier ? (
           <Button label={t('home.moveEarlier')} systemImage="arrow.up" onPress={onMoveEarlier} />
         ) : null}

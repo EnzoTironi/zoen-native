@@ -7,25 +7,12 @@ import {
   type ReactNode,
 } from 'react';
 import { useClient } from '../core/provider';
-import type { ClientState } from '../core/store';
 import { t } from '../i18n';
 import { preferences } from '../preferences';
-import { HomeController, homeOwnerKey, type HomeOwner } from './preferences';
+import { HomeController, homeOwnerKey } from './preferences';
+import { homeOwnerFor, homeSpacesFor } from './access';
 
 const Context = createContext<HomeController | null>(null);
-function ownerFor(state: ClientState): HomeOwner | null {
-  if (state.phase !== 'ready' || state.erasePending || !state.snapshot) return null;
-  const account = state.snapshot.account;
-  if (state.mode === 'demo')
-    return {
-      mode: 'demo',
-      identityId: state.snapshot.me?.id ?? 'demo',
-      deviceId: 'demo',
-    };
-  return account?.unlocked && !account.setup_pending
-    ? { mode: 'account', identityId: account.identity_id, deviceId: account.device_id }
-    : null;
-}
 
 export function HomeProvider({ children }: { children: ReactNode }) {
   const { store } = useClient();
@@ -33,19 +20,8 @@ export function HomeProvider({ children }: { children: ReactNode }) {
     () =>
       new HomeController(
         {
-          owner: () => ownerFor(store.getSnapshot()),
-          spaces: () => {
-            // Snapshot omits Personal spaces. Until core exposes their authenticated scope,
-            // Home includes only conversations where the current identity is still a member.
-            // Unknown cached spaces must never become implicit Home access grants.
-            const snapshot = store.getSnapshot().snapshot;
-            const me = snapshot?.me?.id ?? snapshot?.account?.identity_id;
-            return new Set(
-              snapshot?.conversations
-                .filter((space) => space.members.some((member) => member.id === me))
-                .map((space) => space.id) ?? [],
-            );
-          },
+          owner: () => homeOwnerFor(store.getSnapshot()),
+          spaces: () => homeSpacesFor(store.getSnapshot()),
           items: () => store.driver.request({ op: 'items' }),
         },
         preferences,
@@ -58,7 +34,8 @@ export function HomeProvider({ children }: { children: ReactNode }) {
       // Presence, typing and timeline-only changes do not reread every miniapp.
       if (
         next !== snapshot ||
-        homeOwnerKey(ownerFor(store.getSnapshot())) !== homeOwnerKey(controller.getSnapshot().owner)
+        homeOwnerKey(homeOwnerFor(store.getSnapshot())) !==
+          homeOwnerKey(controller.getSnapshot().owner)
       ) {
         snapshot = next;
         void controller.refresh();
@@ -75,23 +52,22 @@ export function HomeProvider({ children }: { children: ReactNode }) {
   return <Context value={controller}>{children}</Context>;
 }
 
-export function useHome() {
+export function useHomeController() {
   const controller = use(Context);
   if (!controller) throw new Error('HomeProvider is missing.');
+  return controller;
+}
+
+export function useHome() {
+  const controller = useHomeController();
   const client = useClient();
   const state = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
     controller.getSnapshot,
   );
-  const current = homeOwnerKey(ownerFor(client)) === homeOwnerKey(state.owner);
-  const snapshot = client.snapshot;
-  const me = snapshot?.me?.id ?? snapshot?.account?.identity_id;
-  const spaces = new Set(
-    snapshot?.conversations
-      .filter((space) => space.members.some((member) => member.id === me))
-      .map((space) => space.id),
-  );
+  const current = homeOwnerKey(homeOwnerFor(client)) === homeOwnerKey(state.owner);
+  const spaces = homeSpacesFor(client);
   const items = current ? state.items.filter((item) => spaces.has(item.space_id)) : [];
   const pinnedIds = current ? state.pinnedIds : [];
   const byId = new Map(items.map((item) => [item.id, item]));

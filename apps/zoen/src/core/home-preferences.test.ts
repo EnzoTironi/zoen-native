@@ -248,6 +248,42 @@ test('an old-account write cannot publish into a new account, while both device-
   assert.equal(f.saved.get(homeOwnerKey(ownerB)!), '["it_two"]');
 });
 
+test('returning to the same owner waits its old write queue before restoring durable favorites', async () => {
+  const f = fixture();
+  await f.home.activate();
+  const pending = deferred<void>();
+  const originalSet = f.port.set;
+  f.port.set = async (key, value) => {
+    await pending.promise;
+    await originalSet(key, value);
+  };
+  const first = assert.rejects(
+    f.home.pin('it_one'),
+    (error: unknown) => error instanceof HomeFailure && error.kind === 'accountChanged',
+  );
+  const queued = assert.rejects(
+    f.home.pin('it_two'),
+    (error: unknown) => error instanceof HomeFailure && error.kind === 'accountChanged',
+  );
+  await Promise.resolve();
+  f.owner(null);
+  await f.home.refresh();
+  f.owner(ownerA);
+  const returning = f.home.refresh();
+  assert.equal(f.home.getSnapshot().loading, true);
+  assert.deepEqual(f.home.getSnapshot().pinnedIds, []);
+  // The accepted old write commits only to its original key. The old queued
+  // callback is rejected; restoration then reads that settled durable result.
+  pending.resolve();
+  await Promise.all([first, queued, returning]);
+  assert.deepEqual(f.home.getSnapshot().pinnedIds, ['it_one']);
+  assert.equal(f.saved.get(homeOwnerKey(ownerA)!), '["it_one"]');
+  assert.equal(f.home.getSnapshot().error, null);
+  f.home.dispose();
+  await f.home.activate();
+  assert.deepEqual(f.home.getSnapshot().pinnedIds, ['it_one']);
+});
+
 test('a delayed menu from a previous account cannot pin an item shared with the current account', async () => {
   const f = fixture();
   await f.home.activate();

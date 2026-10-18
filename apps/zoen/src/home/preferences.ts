@@ -68,6 +68,7 @@ export class HomeController {
   private itemsDirty = false;
   private itemsTask: Promise<void> | null = null;
   private writes: Promise<void> = Promise.resolve();
+  private readonly ownerWrites = new Map<string, Promise<void>>();
   private readonly source: HomeSource;
   private readonly port: HomePreferencesPort;
 
@@ -117,8 +118,13 @@ export class HomeController {
     if (accessible.length !== this.state.items.length) this.publish({ items: accessible });
     const generation = this.generation;
     if (!this.restored && !this.restoreTask) {
+      const priorWrites = this.ownerWrites.get(homeOwnerKey(owner)!);
       const restore = (async () => {
         try {
+          // A previous session's accepted write may still finish for this device.
+          // Read after it settles so returning to that owner cannot restore stale IDs.
+          if (priorWrites) await priorWrites;
+          if (!this.current(owner, generation)) return;
           // Demo selections are intentionally volatile, even on a signed-in device.
           const value = owner.mode === 'account' ? await this.port.get(homeOwnerKey(owner)!) : null;
           if (!this.current(owner, generation)) return;
@@ -197,6 +203,14 @@ export class HomeController {
       }
     });
     this.writes = work.catch(() => {});
+    if (owner) {
+      const key = homeOwnerKey(owner)!;
+      const settled = this.writes;
+      this.ownerWrites.set(key, settled);
+      void settled.then(() => {
+        if (this.ownerWrites.get(key) === settled) this.ownerWrites.delete(key);
+      });
+    }
     return work;
   }
   private change(id: string, pinned: boolean, owner: HomeOwner | null): Promise<void> {
