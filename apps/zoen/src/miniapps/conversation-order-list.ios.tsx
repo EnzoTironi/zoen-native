@@ -38,6 +38,7 @@ export function ConversationOrderList({
   const live = useRef({ mounted: false, signature });
   useLayoutEffect(() => {
     live.current = { mounted: true, signature };
+    console.warn('[CardsMoveQA] ready');
     return () => {
       live.current.mounted = false;
     };
@@ -55,6 +56,12 @@ export function ConversationOrderList({
   }, [items, pinnedIds]);
   const perform = useCallback(
     (action: () => Promise<void>) => {
+      console.warn(
+        '[CardsMoveQA] perform',
+        pending.current,
+        live.current.mounted,
+        live.current.signature === signature,
+      );
       // Keep native row editability stable across inserts; serialize saves here.
       if (pending.current || !live.current.mounted || live.current.signature !== signature) return;
       pending.current = true;
@@ -77,12 +84,20 @@ export function ConversationOrderList({
   );
   const move = useCallback(
     (sources: number[], destination: number) => {
+      console.warn(
+        '[CardsMoveQA] move',
+        sources.length,
+        destination,
+        pending.current,
+        live.current.mounted,
+        live.current.signature === signature,
+      );
       const ids = pinned.map((item) => item.id);
       const order = moveHomeOrder(ids, sources, destination);
       if (!order || order.every((id, index) => id === ids[index])) return;
       perform(() => onReorder(order));
     },
-    [pinned, perform, onReorder],
+    [pinned, perform, onReorder, signature],
   );
   const renderPinned = useCallback(
     ({ item }: { item: ItemDetail }) => (
