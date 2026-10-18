@@ -12,7 +12,7 @@ import { View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'reac
 import {
   KeyboardAvoidingView,
   KeyboardChatScrollView,
-  KeyboardStickyView,
+  useReanimatedKeyboardAnimation,
   type KeyboardChatScrollViewRef,
 } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -113,12 +113,16 @@ function NativeConversationViewport({
 }: ViewportProps) {
   const [measured, setMeasured] = useState(false);
   const composerHeight = useSharedValue(0);
+  const { height, progress } = useReanimatedKeyboardAnimation();
   const { bottom } = useSafeAreaInsets();
   const correction = Math.max(bottom, 12) - 8;
-  // The composer keeps a stable layout. Its safe-area adjustment is a transform,
-  // so native inset/offset updates never wait for a JS onLayout on keyboard frames.
-  // Subtract the same adjustment from the keyboard contribution, leaving the
-  // full measured composer reservation constant throughout keyboard gestures.
+  // Use the SDK's keyboard clock and offsets to move native layout rather than
+  // only its layer transform, so hosted SwiftUI controls can observe their position.
+  // The composer size and its native scroll reservation remain constant, with no
+  // per-frame JavaScript measurement or separate keyboard animation.
+  const composerPosition = useAnimatedStyle(() => ({
+    bottom: -(height.value + correction * progress.value),
+  }));
   const context = useMemo(
     () => ({
       padding: composerHeight,
@@ -135,11 +139,10 @@ function NativeConversationViewport({
         {measured ? children(undefined, NativeConversationScrollView) : null}
       </NativeScrollContext>
       {overlay}
-      <KeyboardStickyView
+      <Animated.View
         testID="conversation-composer"
         pointerEvents="box-none"
-        offset={{ opened: correction }}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 2 }}
+        style={[{ position: 'absolute', left: 0, right: 0, zIndex: 2 }, composerPosition]}
       >
         <View
           pointerEvents="box-none"
@@ -152,7 +155,7 @@ function NativeConversationViewport({
         >
           {composer}
         </View>
-      </KeyboardStickyView>
+      </Animated.View>
     </View>
   );
 }
