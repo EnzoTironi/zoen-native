@@ -118,26 +118,22 @@ Local-only and failed messages have distinct device/warning symbols.
 
 The composer overlays the full timeline in main chat and threads. Its wrapper is
 transparent, with no full-width blur or painted panel; the existing native glass
-input and controls retain their own material. A shared flex viewport shrinks with
-the keyboard avoider's padding, while the absolute composer measures its height
-for list bottom padding. The latest message can clear the controls, and older
-history can scroll behind them. The composer is above the fixed rail in stacking
-order. Own bubbles are white/black text in light skies and black/white text in dark
-skies; received bubbles use neutral #E9E9EB/#262628. Actual signed v20 light-sky
+input and controls retain their own material. On iOS, the native chat scroller
+reserves the measured composer height while the sticky composer follows the
+keyboard; the current architecture is detailed below. Older history can scroll
+behind the controls. The composer is above the fixed rail in stacking order. Own
+bubbles are white/black text in light skies and black/white text in dark skies; received bubbles use neutral #E9E9EB/#262628. Actual signed v20 light-sky
 capture confirms own white bubbles, gray received messages and history behind the
 transparent footer. A later signed v22 capture confirms black own bubbles with
 white text on the night sky, hidden cards while typing and approximately 8.7 points
 between the composer and keyboard. Interactive restoration, multiline/thread and
 cold acceptance remain separate from that bounded screenshot.
 
-Keyboard motion now follows actual `useKeyboardHandler` move/interactive/end
-frames shared by the input and card rail. The keyboard avoider remains the sole
-owner of keyboard overlap. The input reduces home-indicator padding to 8 points
-above the keyboard, and a measured native animated list footer reserves its real
-height without setting React state on each animation frame. Cards stay mounted,
-preserving horizontal position; their matching list spacer collapses with them.
-Hidden cards lose touch/accessibility targets, reduced motion removes the extra
-slide/fade, and notices remain visible.
+The card rail follows actual keyboard move/interactive/end frames. Cards stay
+mounted, preserving horizontal position; hidden cards lose touch/accessibility
+targets. Reduced motion removes their extra slide/fade, and notices remain visible.
+The earlier keyboard-avoider/footer implementation and its v20/v22 screenshots
+are historical observations, not acceptance of the current iOS keyboard layout.
 
 Conversation search reuses the actual message input rather than replacing the
 header. The header magnifier switches that same field into search; the microphone
@@ -177,7 +173,79 @@ interaction. Earlier v17 independently confirmed fixed frames across one bounded
 automated swipe. Final keyboard/jump, isolated pin/unpin and cold acceptance remain
 pending.
 
-## Initial conversation position — signed v32, targeted runtime pass
+## iOS keyboard checkpoint — signed v38, bounded runtime pass
+
+On iOS, `KeyboardChatScrollView` owns native keyboard insets and reserves the full
+measured composer height: 96 points in the controlled fixture. Supported
+`KeyboardStickyView` movement, the 26-point safe-area correction and inline Expo UI
+Hosts ignoring the keyboard safe area keep layout stable without per-frame
+JavaScript measurement. The initial end anchor observes native content/viewport/
+inset/Y before FlashList suppression, deduplicates within one point and cancels
+on first focus, drag, native user scroll, search, reply/edit/jump, blur or scope
+change. It uses layout/scroll events and cancellable frames, with no fixed timer
+or private API. Other platforms retain their fallback.
+
+Signed v38 source `f7682098` has 749 verified inputs, manifest SHA256
+`d54125cc4742b81ec7318f520797c41f25f03d18ad725f8959bd151ec6219d34`.
+Build, archive, strict signature and exact preserving-installed executable/JS
+verification passed on isolated 388CA and human E2B. JavaScript is exactly v36's
+6,406,723-byte bundle, SHA256
+`9b5853ec029bd5f3edaf2b477df4cc9577c86bd8c856fc1d6eaf42d80ccb092d`.
+The full 254-test app check, TypeScript, Oxlint and Oxfmt passed
+(`/private/tmp/zoen-v38-pr1608-app-check.log`). Actual bounded outcomes:
+
+- Two fresh entries without swiping reached 100%; reply badge bottom 0.870 cleared
+  input top 0.902. Portrait field Y was 486 points, height 52 and keyboard top 546:
+  an 8-point gap. Landscape field Y was 118 points, height 52 and keyboard top 178,
+  giving the same gap.
+- Normal opening/hiding and immediate interactive dismissal passed observation.
+  Reviewed video `1792284820127` shows continuous field/keyboard progression
+  without the earlier fixed-field/jump. Video `1792284864960` supports two settled
+  partial/reverse trials, including a repeat after 20 seconds, with the keyboard
+  remaining open; settled dismissal passed the structural flow. Keyboard-open
+  landscape rotation and portrait return passed. Transient 15–25-point gaps remain;
+  no perfect timing or full motion/performance claim is made.
+- After user gestures and rotation, 96% is the retained reading position, not a
+  latest-message assertion. Actual zero-result search/fragment replay belongs to
+  v36: `qazxv36missing` exposed AI without invocation or send, and closing restored
+  the empty draft. The identical v38 JavaScript does not make this a v38 rerun.
+
+Exact metrics, recording paths/hashes and limitations are in
+`/private/tmp/zoen-message-polish-qa/v38/runtime.json`; signed artifact and delivery
+proof is `/private/tmp/zoen-iphone-release-v38-verification.json`. Human E2B received
+a preserving verified v38 update after a fresh, user-confirmed idle preflight.
+Restart retained four Home cards, 6/8 progress and Bilingual QA history. Fresh chat
+without a swipe reached 100%; existing audio/receipt bottom 0.856 cleared input top
+0.897 by about 36 points. The native anchored Menu opened/dismissed without selection,
+imports, sends or account mutations. Its v32 delivery is now a preserved historical
+receipt, not the current human artifact. Original encrypted edited-voice and selected
+thread-photo proof still belongs to v29; those media were not resent here.
+
+The earlier isolated trials retain their bounded attribution: v33 failed with a
+shrinking composer; v34 passed one fresh entry and a 49–50-point opening message
+gap but native controls double-avoided the keyboard; v35 passed control alignment
+and Menu opening but failed fresh entry at 86%. V36 passed three fresh entries,
+8-point open-keyboard geometry and the search fragment, then failed interactive
+dismissal. V37's custom `Animated.View` consumer of existing move/interactive/end
+events reproduced that stall and was rejected. Card opacity contributed to late
+reappearance; those videos alone do not prove frozen native keyboard events.
+
+V38 retains precisely the two Swift files from open, unreviewed upstream
+[PR #1608](https://github.com/kirillzyusko/react-native-keyboard-controller/pull/1608),
+commit `daf3c0081c891d442cf84cccda6ef36226276de1`, related to
+[issue #1563](https://github.com/kirillzyusko/react-native-keyboard-controller/issues/1563).
+Patch SHA256 is `cfd86881125882e3f46edb8f501af748b6dfb30b79d463b85111f6dbe7f1439a`.
+Pinned `patch-package` 8.0.1 applies it via `postinstall` command
+`patch-package --error-on-fail`; exact application/reverse/reapplication were verified.
+No extra position math or private API was added. These observed paths support
+retaining the pinned native backport, without establishing the application's exact
+root cause or upstream approval. Physical devices and future upgrades still need
+verification. SwiftUI virtual accessibility frames can be stale after ancestor
+transforms despite working Host hit tests/Menu; actual VoiceOver impact remains
+unconfirmed. Full accessibility, motion/performance, thread/multiline/cold and
+comparative product acceptance remain pending, with no blanket parity or CI claim.
+
+## Historical initial-position checkpoint — signed v32, targeted runtime pass
 
 Root observed initial latest-message/composer overlap in v29 on both QA accounts.
 Signed v30's first-positive-composer gate and v31's positive initial footer spacer
@@ -187,8 +255,8 @@ visible/AX frames differed by 54 points; that difference and source ordering do 
 establish the full cause. These remain historical failed attempts, with evidence in
 `/private/tmp/zoen-message-polish-qa/v31/runtime.json` and their artifact records.
 
-Source `994ec452` admits one cancellable animation-frame native nonanimated end
-request after the actual native footer, list load and content size are ready, only
+Historical v32 source `994ec452` admits one cancellable animation-frame native
+nonanimated end request after the actual native footer, list load and content size are ready, only
 on normal fresh main-chat entry. User drag, search, reveal/jump, reply/edit, owner or
 scope changes and unmount skip or cancel it. There is no fixed timer; ongoing
 Reanimated footer updates, keyboard ownership and message/search anchors remain.
@@ -202,7 +270,7 @@ Signed v32 build, strict signature, stable 743-input verification, archive and
 preserving isolated installation passed; installed executable/JavaScript match.
 Manifest SHA256 is
 `38b119b0e852645114b94726a690785efa1337ee72141fdedaaf74c7b166a038`;
-exact hashes are under `apps/zoen/acceptance.json → currentIphoneArtifact`, with
+exact hashes are under `apps/zoen/acceptance.json → previousControlledV32IphoneArtifact`, with
 `/private/tmp/zoen-iphone-release-v32-verification.json` as build/install evidence.
 
 Actual same-history main-chat fresh entry without a swipe reaches 100%. The final
