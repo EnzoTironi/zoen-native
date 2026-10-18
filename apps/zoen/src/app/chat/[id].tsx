@@ -37,7 +37,6 @@ import { ConversationRail, ConversationRailSpacer } from '../../components/conve
 import { ConversationMessage } from '../../components/conversation-message';
 import { useMessageActions } from '../../components/use-message-actions';
 import { messageCard } from '../../core/message-presentation';
-import { captureMessageDraft } from '../../core/message-draft';
 import { useMessageDraft } from '../../core/use-message-draft';
 import { ChatHeader } from '../../components/chat-header';
 import { useHome } from '../../home/provider';
@@ -431,14 +430,12 @@ export default function Chat() {
   );
 
   async function send() {
-    if (search.getSnapshot().active) return;
-    if (
-      (!composerText.trim() && !(editing && messageCard(editing)?.kind_id === 'file')) ||
-      sendingNow.current
-    )
-      return;
-    const attempt = captureMessageDraft(messageDraft);
+    if (search.getSnapshot().active || sendingNow.current) return;
+    const attempt = normalDraft.capture();
+    if (!attempt) return;
     const text = attempt.text;
+    if (!text.trim() && !(attempt.editingId && editing && messageCard(editing)?.kind_id === 'file'))
+      return;
     sendingNow.current = true;
     store.setTyping(id, false);
     setSending(true);

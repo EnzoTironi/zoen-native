@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 
@@ -23,8 +26,114 @@ const output = await build({
     },
   ],
 });
+const require = createRequire(import.meta.url);
+const { transformSync } = require('@babel/core') as {
+  transformSync(source: string, options: Record<string, unknown>): { code: string };
+};
+const fieldPath = fileURLToPath(new URL('../components/composer-text-field.tsx', import.meta.url));
+const compiledField = transformSync(readFileSync(fieldPath, 'utf8'), {
+  filename: fieldPath,
+  configFile: false,
+  babelrc: false,
+  presets: [require.resolve('babel-preset-expo')],
+  caller: {
+    name: 'metro',
+    platform: 'ios',
+    engine: 'hermes',
+    isDev: false,
+    supportsReactCompiler: true,
+  },
+}).code;
+const fieldPorts = new Set([
+  'react',
+  'react/compiler-runtime',
+  'react/jsx-runtime',
+  'react-native',
+  '../../modules/zoen-core/src/ZoenCoreModule',
+]);
+const fieldOutput = await build({
+  stdin: { contents: compiledField, resolveDir: dirname(fieldPath), loader: 'js' },
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  write: false,
+  plugins: [
+    {
+      name: 'actual-composer-field-native-ports',
+      setup(builder) {
+        builder.onResolve({ filter: /./ }, ({ path }) =>
+          fieldPorts.has(path) ? { path, external: true } : undefined,
+        );
+      },
+    },
+  ],
+});
 function fixture() {
-  const jsx = (type: unknown, props: Record<string, unknown>): Element => ({ type, props });
+  type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
+  type Effect = () => void | (() => void);
+  const slots: Slot[] = [];
+  const caches: unknown[][] = [];
+  let cursor = 0;
+  let cacheCursor = 0;
+  let effects: (() => void)[] = [];
+  let dirty = false;
+  const measurements: {
+    tag: number;
+    text: string;
+    label: string;
+    placeholder: string;
+    width: number;
+    fontSize: number;
+    nonce: number;
+  }[] = [];
+  const nativeField = { focus() {}, blur() {} };
+  const slot = () => (slots[cursor++] ??= {});
+  const same = (left?: readonly unknown[], right?: readonly unknown[]) =>
+    Boolean(
+      left &&
+      right &&
+      left.length === right.length &&
+      left.every((value, index) => Object.is(value, right[index])),
+    );
+  const memo = (read: () => unknown, deps: readonly unknown[]) => {
+    const current = slot();
+    if (!same(current.deps, deps)) {
+      current.deps = deps;
+      current.value = read();
+    }
+    return current.value;
+  };
+  const effect = (read: Effect, deps?: readonly unknown[]) => {
+    const current = slot();
+    if (same(current.deps, deps)) return;
+    current.deps = deps;
+    effects.push(() => {
+      current.cleanup?.();
+      current.cleanup = read() ?? undefined;
+    });
+  };
+  const fieldModule = {
+    exports: {} as { ComposerTextField: (props: Record<string, unknown>) => Element },
+  };
+  function renderField(props: Record<string, unknown>): Element {
+    let result!: Element;
+    let passes = 0;
+    do {
+      assert.ok(++passes <= 5, 'actual field mounting must settle');
+      cursor = 0;
+      cacheCursor = 0;
+      effects = [];
+      dirty = false;
+      result = fieldModule.exports.ComposerTextField(props);
+      assert.equal(result.type, 'TextInput');
+      (result.props.ref as (node: unknown) => void)(nativeField);
+      (result.props.onLayout as Handler)({ nativeEvent: { layout: { width: 264, height: 52 } } });
+      for (const commit of effects) commit();
+    } while (dirty);
+    return result;
+  }
+  const jsx = (type: unknown, props: Record<string, unknown>): Element =>
+    type === fieldModule.exports.ComposerTextField ? renderField(props) : { type, props };
   const scope = {
     mode: 'account',
     identityId: 'me',
@@ -48,8 +157,71 @@ function fixture() {
     onSend: () => calls.push('send-files'),
   };
   const ports: Record<string, unknown> = {
+    react: {
+      useRef: (value: unknown) => {
+        const current = slot();
+        current.value ??= { current: value };
+        return current.value;
+      },
+      useState: (initial: unknown) => {
+        const current = slot();
+        if (!Object.hasOwn(current, 'value'))
+          current.value = typeof initial === 'function' ? initial() : initial;
+        return [
+          current.value,
+          (next: unknown) => {
+            const value = typeof next === 'function' ? next(current.value) : next;
+            if (!Object.is(value, current.value)) {
+              current.value = value;
+              dirty = true;
+            }
+          },
+        ];
+      },
+      useMemo: memo,
+      useCallback: (callback: unknown, deps: readonly unknown[]) => memo(() => callback, deps),
+      useLayoutEffect: effect,
+      useImperativeHandle: (
+        ref: { current: unknown } | undefined,
+        create: () => unknown,
+        deps?: readonly unknown[],
+      ) =>
+        effect(() => {
+          if (ref) ref.current = create();
+          return () => {
+            if (ref) ref.current = null;
+          };
+        }, deps),
+    },
+    'react/compiler-runtime': {
+      c: (size: number) =>
+        (caches[cacheCursor++] ??= Array(size).fill(Symbol.for('react.memo_cache_sentinel'))),
+    },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
-    'react-native': { Text: 'Text', View: 'View', TextInput: 'TextInput' },
+    'react-native': {
+      Text: 'Text',
+      View: 'View',
+      TextInput: 'TextInput',
+      findNodeHandle: () => 101,
+      useWindowDimensions: () => ({ fontScale: 1 }),
+    },
+    '../../modules/zoen-core/src/ZoenCoreModule': {
+      __esModule: true,
+      default: {
+        measureComposer: async (
+          tag: number,
+          text: string,
+          label: string,
+          placeholder: string,
+          width: number,
+          fontSize: number,
+          nonce: number,
+        ) => {
+          measurements.push({ tag, text, label, placeholder, width, fontSize, nonce });
+          return { tag, nonce, width, height: text ? 74 : 52, fontSize };
+        },
+      },
+    },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34 }) },
     'react-native-reanimated': {
       default: { View: 'AnimatedView' },
@@ -66,6 +238,18 @@ function fixture() {
     './composer-action': { ComposerAction: 'ComposerAction' },
     './primitives': { NativeButton: 'NativeButton' },
   };
+  runInNewContext(fieldOutput.outputFiles[0]!.text, {
+    exports: fieldModule.exports,
+    module: fieldModule,
+    process: { env: { EXPO_OS: 'ios' } },
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame: () => {},
+    require: (path: string) => {
+      assert.ok(path in ports, path);
+      return ports[path];
+    },
+  });
+  ports['./composer-text-field'] = fieldModule.exports;
   const module = {
     exports: {} as { MessageComposer: (props: Record<string, unknown>) => Element },
   };
@@ -98,6 +282,7 @@ function fixture() {
   return {
     file,
     calls,
+    measurements,
     render,
     renderRoot: (patch: Record<string, unknown>) =>
       module.exports.MessageComposer({ ...props, ...patch }),
@@ -122,6 +307,11 @@ test('native attachment mode uses the real message field and send button without
   const input = find(root, byId('message-input'));
   assert.equal(input.props.value, '');
   assert.equal(input.props.editable, true);
+  assert.equal(
+    f.measurements.at(-1)!.text,
+    '',
+    'actual compiled field requests native caption fitting',
+  );
   (input.props.onChangeText as Handler)('First photo caption');
   const send = find(root, byId('send-attachments'));
   assert.equal(send.props.disabled, false, 'an attachment is sendable without a caption');
@@ -186,7 +376,7 @@ test('a sent file caption can be cleared without allowing empty ordinary text ed
   const emptyCaption = f.render(undefined, { value: '', editing: true, allowEmptyEdit: true });
   assert.equal(find(emptyCaption, byId('send-message')).props.disabled, false);
   assert.equal(
-    (find(emptyCaption, byId('message-input')).props.style as { height: number }).height,
+    (find(emptyCaption, byId('message-input')).props.style as { height?: number }[]).at(-1)!.height,
     52,
   );
   const emptyText = f.render(undefined, { value: '', editing: true });

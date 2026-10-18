@@ -1,7 +1,24 @@
 import { type NativeModule, requireOptionalNativeModule } from 'expo';
 import type { CoreEvent } from '../../../src/core/types';
 
+export type ComposerMeasurement = {
+  tag: number;
+  nonce: number;
+  width: number;
+  height: number;
+  fontSize: number;
+};
+
 declare class ZoenCoreModule extends NativeModule<{ onChange: (event: CoreEvent) => void }> {
+  measureComposer?(
+    tag: number,
+    expectedText: string,
+    expectedLabel: string,
+    expectedPlaceholder: string,
+    width: number,
+    expectedFontSize: number,
+    nonce: number,
+  ): Promise<ComposerMeasurement | null>;
   open(mode: 'account' | 'demo', locale: 'en' | 'pt-BR'): Promise<string>;
   request(command: string): Promise<string>;
   openAssistant(spaceId: string, locale: 'en' | 'pt-BR'): Promise<string>;

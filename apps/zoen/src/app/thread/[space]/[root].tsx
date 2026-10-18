@@ -10,7 +10,6 @@ import { useClient } from '../../../core/provider';
 import type { TimelineEntry } from '../../../core/types';
 import { messageText } from '../../../core/presentation';
 import { messageCard } from '../../../core/message-presentation';
-import { captureMessageDraft } from '../../../core/message-draft';
 import { useMessageDraft } from '../../../core/use-message-draft';
 import { EmptyState, Loading, NativeButton } from '../../../components/primitives';
 import { useTheme } from '../../../theme';
@@ -60,7 +59,8 @@ export default function Thread() {
     onThread: () => input.current?.focus(),
   });
   async function send() {
-    const attempt = captureMessageDraft(messageDraft);
+    const attempt = normalDraft.capture();
+    if (!attempt) return;
     const text = attempt.text;
     if ((!text.trim() && !(editing && messageCard(editing)?.kind_id === 'file')) || sending.current)
       return;

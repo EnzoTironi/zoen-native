@@ -17,8 +17,9 @@ import {
   messageDraftReducer,
   projectMessageDraft,
   type MessageDraftAction,
+  type MessageDraftAttempt,
 } from './message-draft';
-import type { TimelineEntry } from './types';
+import type { TimelineEntry, TimelinePage } from './types';
 
 const empty = initialMessageDraft();
 const subscribeEmpty = () => () => {};
@@ -26,7 +27,7 @@ const readEmpty = () => null;
 
 /** Normal text is durable; edit/search/caption/recording state remains independent. */
 export function useMessageDraft(spaceId: string, threadRootId: string | null = null) {
-  const { store } = useClient();
+  const { store, snapshot, timelines } = useClient();
   const channel = store.messageDrafts.channel(spaceId, threadRootId);
   const normal = useSyncExternalStore(
     channel?.controller.subscribe ?? subscribeEmpty,
@@ -54,16 +55,31 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
   const [quote, setQuote] = useState<{
     channel: typeof channel;
     id: string;
-    entry: TimelineEntry;
+    revision: number;
+    page: TimelinePage | undefined;
+    entry: TimelineEntry | null;
   } | null>(null);
   const replyTo = normal?.replyTo ?? null;
+  const replyRevision = normal?.replyRevision ?? 0;
+  const page = timelines[spaceId];
+  const cachedReply = replyTo ? page?.entries.find((entry) => entry.id === replyTo) : undefined;
   const errorCause = normal?.error?.cause;
   const rejected =
     typeof errorCause === 'object' &&
     errorCause !== null &&
     'code' in errorCause &&
     errorCause.code === 'ERR_ZOEN_DRAFT_REJECTED';
-  const reply = quote?.channel === channel && quote.id === replyTo ? quote.entry : null;
+  const selectedQuote =
+    quote?.channel === channel && quote.id === replyTo && quote.revision === replyRevision
+      ? quote
+      : null;
+  const preview =
+    selectedQuote && selectedQuote.page === page
+      ? selectedQuote.entry
+      : (cachedReply ?? selectedQuote?.entry ?? null);
+  // A cached tombstone takes effect in the same render, even if a canonical
+  // read is still pending. The durable quote target remains independently set.
+  const reply = cachedReply?.deleted || preview?.deleted ? null : preview;
   const messageDraft = useMemo(
     () =>
       projectMessageDraft(edit, {
@@ -95,17 +111,34 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
   useEffect(() => {
     if (!channel || !replyTo || !store.messageDrafts.isCurrent(channel)) return;
     let active = true;
+    const current = () => {
+      if (!active || !store.messageDrafts.isCurrent(channel)) return false;
+      const state = store.getSnapshot();
+      const draft = channel.controller.getSnapshot(channel.scope);
+      return (
+        state.snapshot === snapshot &&
+        state.timelines[spaceId] === page &&
+        draft.replyTo === replyTo &&
+        draft.replyRevision === replyRevision
+      );
+    };
+    // Capture transient owner/access/source loss even if it changes back before
+    // React renders again; an old read must not revive through that round trip.
+    const detach = store.subscribe(() => {
+      if (!current()) active = false;
+    });
+    const publish = (entry: TimelineEntry | null) => {
+      if (current()) setQuote({ channel, id: replyTo, revision: replyRevision, page, entry });
+    };
     void store.driver
       .request({ op: 'message', space_id: spaceId, message_id: replyTo })
-      .then((entry) => {
-        if (active && store.messageDrafts.isCurrent(channel))
-          setQuote({ channel, id: replyTo, entry });
-      })
-      .catch(() => {});
+      .then((entry) => publish(entry.deleted ? null : entry))
+      .catch(() => publish(null));
     return () => {
       active = false;
+      detach();
     };
-  }, [channel, replyTo, spaceId, store]);
+  }, [channel, replyTo, replyRevision, snapshot, page, spaceId, store]);
 
   function updateDraft(action: MessageDraftAction) {
     if (!channel || !store.messageDrafts.isCurrent(channel)) return;
@@ -127,7 +160,14 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
         break;
       case 'reply':
         if (channel.controller.setReply(channel.scope, action.entry.id)) {
-          setQuote({ channel, id: action.entry.id, entry: action.entry });
+          const current = store.getSnapshot();
+          setQuote({
+            channel,
+            id: action.entry.id,
+            revision: channel.controller.getSnapshot(channel.scope).replyRevision,
+            page: current.timelines[spaceId],
+            entry: action.entry.deleted ? null : action.entry,
+          });
           changeTransient({ type: 'cancel' });
         }
         break;
@@ -151,6 +191,21 @@ export function useMessageDraft(spaceId: string, threadRootId: string | null = n
     messageDraft,
     updateDraft,
     replyTo,
+    capture: (): MessageDraftAttempt | null => {
+      if (!channel || !store.messageDrafts.isCurrent(channel)) return null;
+      const transient = transientNow.current;
+      if (transient.channel !== channel) return null;
+      const normal = channel.controller.getSnapshot(channel.scope);
+      if (!normal.loaded) return null;
+      return {
+        text: transient.value.editing ? transient.value.editText : normal.text,
+        editingId: transient.value.editing?.id ?? null,
+        replyId: normal.replyTo,
+        contextRevision: transient.value.contextRevision,
+        textRevision: normal.textRevision,
+        editRevision: transient.value.editRevision,
+      };
+    },
     mediaAccepted: () => {
       if (!channel || !normal || !store.messageDrafts.isCurrent(channel)) return;
       const current = channel.controller.getSnapshot(channel.scope);

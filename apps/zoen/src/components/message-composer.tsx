@@ -1,6 +1,6 @@
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import type { ReactNode, Ref } from 'react';
-import { Text, TextInput, View, type TextInputInstance } from 'react-native';
+import { Text, View, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardMotion } from './keyboard-motion';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
@@ -13,6 +13,7 @@ import type { TimelineEntry } from '../core/types';
 import { MessageContext } from './message-context';
 import { useTheme } from '../theme';
 import { ComposerAction } from './composer-action';
+import { ComposerTextField } from './composer-text-field';
 import { NativeButton } from './primitives';
 
 export type ComposerSearchMode = {
@@ -97,8 +98,9 @@ export function MessageComposer({
   }) {
     const fieldText = files ? files.value : value;
     const field = (
-      <TextInput
-        ref={inputRef}
+      <ComposerTextField
+        inputRef={inputRef}
+        context={`${spaceId}:${threadRootId ?? ''}:${search ? 'search' : files ? `caption:${files.position}` : editing ? 'edit' : 'normal'}`}
         testID="message-input"
         accessibilityLabel={
           search
@@ -131,10 +133,6 @@ export function MessageComposer({
         style={{
           minHeight: 52,
           maxHeight: 160,
-          // UIKit can retain the previous multiline intrinsic height after a
-          // controlled clear. Keep the empty field compact without remounting
-          // it, so an open keyboard and its first responder are preserved.
-          height: fieldText.length === 0 ? 52 : undefined,
           paddingHorizontal: 18,
           paddingTop: 15,
           paddingBottom: 14,

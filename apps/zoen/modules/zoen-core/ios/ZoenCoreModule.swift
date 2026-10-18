@@ -13,6 +13,12 @@ public class ZoenCoreModule: Module {
     Name("ZoenCore")
     Events("onChange")
 
+    AsyncFunction("measureComposer") { (tag: Int, expectedText: String, expectedLabel: String, expectedPlaceholder: String, width: Double, expectedFontSize: Double, nonce: Int) async -> [String: Double]? in
+      await MainActor.run {
+        guard let root = self.appContext?.findView(withTag: tag, ofType: UIView.self) else { return nil }
+        return ZoenComposerSizing.measure(root: root, tag: tag, expectedText: expectedText, expectedLabel: expectedLabel, expectedPlaceholder: expectedPlaceholder, width: width, expectedFontSize: expectedFontSize, nonce: nonce)
+      }
+    }
     AsyncFunction("open") { [session, weak self] (mode: String, locale: String) async throws -> String in
       try await session.open(mode: mode, locale: locale) { [weak self] event in
         self?.sendEvent("onChange", event)

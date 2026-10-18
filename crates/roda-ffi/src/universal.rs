@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 
 use crate::apps;
 use crate::dto::*;
-use crate::engine::{now_ms, Engine, EntryBody, R};
+use crate::engine::{now_ms, Engine, Entry, EntryBody, R};
 use crate::i18n::t;
 use crate::CoreError;
 
@@ -134,6 +134,38 @@ impl Engine {
         Ok(())
     }
 
+    /// Search the readable conversation entry, never opaque app state or the
+    /// referenced item's mutable title. Activity notes keep their historical text.
+    fn searchable_entry_text(&self, entry: &Entry) -> Option<String> {
+        let body = match &entry.body {
+            EntryBody::Message {
+                text,
+                attaches,
+                marks,
+                ..
+            } => {
+                if marks.deleted {
+                    return None;
+                }
+                let mut body = searchable_text(text);
+                if let Some(voice) = attaches
+                    .as_deref()
+                    .and_then(|item| self.voice_of(&entry.space, item))
+                {
+                    body.push('\n');
+                    body.push_str(&voice.transcript);
+                }
+                body
+            }
+            EntryBody::ItemEdited { note, .. } => note.clone(),
+            EntryBody::Request { .. }
+            | EntryBody::RequestResolved { .. }
+            | EntryBody::System { .. }
+            | EntryBody::Background { .. } => return None,
+        };
+        (!body.trim().is_empty()).then_some(body)
+    }
+
     fn fill_index(&self) -> R<()> {
         let st = &self.store;
         st.index_clear()?;
@@ -179,29 +211,9 @@ impl Engine {
                 &names.join(", "),
             )?;
             for e in &s.entries {
-                let EntryBody::Message {
-                    text,
-                    attaches,
-                    marks,
-                    ..
-                } = &e.body
-                else {
+                let Some(body) = self.searchable_entry_text(e) else {
                     continue;
                 };
-                if marks.deleted {
-                    continue;
-                }
-                let mut body = searchable_text(text);
-                if let Some(voice) = attaches
-                    .as_deref()
-                    .and_then(|item| self.voice_of(&s.id, item))
-                {
-                    body.push('\n');
-                    body.push_str(&voice.transcript);
-                }
-                if body.trim().is_empty() {
-                    continue;
-                }
                 let who = self
                     .identities
                     .get(&e.author)
