@@ -480,6 +480,38 @@
       "formalFlowReplayPassed": false,
       "nativeOfflineProved": false,
       "fullProductAccepted": false
+    },
+    "nativeEditedPdfPeerV62": {
+      "artifact": "Unchanged signed v61, source d722963055a324ce0bc2c18571d1d38d66804ed3; v62 is an additional journey label, not a new build.",
+      "runtime": "/private/tmp/zoen-pdf-peer-qa/v62/runtime.json",
+      "status": "PARTIAL: independent edited-PDF transfer/version/read proof PASS; initial first-attachment layout FAIL; full product incomplete.",
+      "forward": "Native ForwardQA source PDF visibly has prior title/subtitle underlines. One ordinary forward to fresh exact two-person E2E group sp_01m56xhx32nwvbanrrbkgth35r creates one message01M56XMMV3PBH86C4BHDXV27VN/seq9 and itemit_01m56xmmv3pbh86c4bhdxv27vj. Fresh destination starts atv1; sourcev3 history is intentionally not cloned.",
+      "versions": [
+        {
+          "number": 1,
+          "bytes": 14836,
+          "sha256": "f4cbd40345cdcc9a6041b32e12a9fbf1ab007faf9953d0344e1a9aa1ad7dc86b",
+          "note": "Criado"
+        },
+        {
+          "number": 2,
+          "bytes": 30126,
+          "sha256": "1e8cbca2235a8ee51ad90bd9aaa47fa9386bb5e114d03fc93b3229be9d5895b3",
+          "note": "Anotações"
+        }
+      ],
+      "edit": "One real native black-pen underline beneath Fixture phrase saves destinationv2, event01M56XS2BXN6R1SZN9BPPQYMTH. Independent normally registered peer verifies signed canonical history/current, fetches/decrypts each explicit bounded version and validates sizes/whole SHA; v1 was fully exported before edit and remains unchanged. No duplicate attachment card.",
+      "pdfKit": "Both received versions decode/render as2completepages with totals53/161 and identical page text hashes. Renderedv1 preserves2visible underlines; v2 preserves those and adds the third. Apple serializes each as one Stamp annotation, not one annotation per stroke; count is not interpreted as stroke count. Root inspects renderedv1page1 andv2pages1/2.",
+      "read": "Peer explicit mark_read after revalidatingv2/history yields original file and version event Lida por todos. Peer stops exit0 and discards volatile keys; namespace qa_pdf_1018_v62a must not restart.",
+      "failure": "Fresh first-ever destination navigation with one forwarded PDF remains11%scrolled about30s: file y0.854to0.941 overlaps composer top0.902 and receipt y0.953. Adding the version event later reaches100%, which does not fix the first-entry case. Native screenshot/full AX preserved; correction pending.",
+      "diagnostic": "27steps/5cross-tree warnings/0unmet; raw footer/target/visible-card coordinates, incorrect underlying Encaminhar export and AX-anchored ink. One-use assisted export retired; no formal replay.",
+      "isolation": "Only disposable iPhone simulator used. Human simulator untouched; no existing-account/preference changes, import, capture, reaction or restoration. Native final empty composer/closed keyboard/idle audio; exact executable/JS/strict signature and772frozeninputs verified before source work resumed.",
+      "limits": [
+        "No new native/peer cold, physical-device or offline proof.",
+        "V1 was preloaded beforev2. Source audit confirms no current demand route for uncached historical File versions; that separate gap is being corrected.",
+        "Original historical v59/v60 self-only group version-event evidence remains unchanged; new transfer proof uses a fresh destination."
+      ],
+      "fullProductAccepted": false
     }
   },
   "deferredPlatforms": ["web", "android", "macos", "windows", "linux"],
@@ -494,7 +526,8 @@
     "Cross-chat file/voice copying has current source proof and bounded v53 native voice/photo acceptance. Signed v56 video and isolated v57 document forwarding retain their original bounded evidence; v57's early QuickLook-copy release remains a historical failure. Signed v58 corrects preview lifetime and passes isolated native PDF/photo open, Share-to-SaveFiles, close/reopen and cold exact video/PDF/caption retention. Human v58 delivery passed and retains its original attribution. Signedv59/v60 add bounded native PDF Markup/version-history/cold acceptance and preserving installs. Onv60 the priorv59event projects Enviada and the newv60event Enviando; edited-byte peer and recipient-delivery proof remain pending. Historical humanv60 immediate/~30s delivered-to-sent observation is preserved; later v60 relay recovery and bounded v61 cold receipt retention are recorded separately. Induced native close/erase while sharing, storage/access races and physical-device runtime remain pending. Cross-chat miniapp cloning is unsupported and rejects before writes. Selected canonical human/agent name/avatar profile entry passes bounded v54/v55 native checks; broader accessibility/performance and comparative author-entry acceptance remain pending.",
     "Signed v52 native participants/More/skin-tone/invalid-input/cold-retention and human read-only delivery pass; only one participant was inspected. Multi-person, broader VoiceOver/Dynamic Type/performance and formal portable replay remain pending. Delayed-forward race evidence is25 production-helper tests rather than an induced native delay.",
     "Signedv59/v60 native PDF Markup saves the same canonical file asv2 thenv3, retainsv1/v2/v3 history and both underlines across cold restart. Originalv1 unmarked/readonly preview keepsv59 attribution. Full Markup parity remains incomplete: newv60event remains Enviando without independent edited-byte peer/recipient-delivery proof; induced native UI close/erase/conflict/storage/permission failure, physical-device and broad accessibility/performance remain pending. Active/queued close has source proof only. Unsaved edited-copy recovery is in-session only; process-death draft recovery is not implemented.",
-    "Historical humanv60 cold reconnect changed preflight Delivered to Sent/onecheck immediately and about30s later; later v60 preflight recovers Delivered. V61 persists accepted peer watermarks before publication and restores before snapshots; full414FFI source tests prove offline cold text+voice and native healthy-relay QA proves fresh text Delivered→Read→cold Read plus two human text/voice Delivered cold starts. No permanent-loss, nativeoffline, old-watermark reconstruction or changed all-current-members policy claim. Relay query error/deadline fixes are tested isolated; running app relay unchanged. Broader native network/storage/membership failure, physical-device and comparative receipt acceptance remain pending."
+    "Historical humanv60 cold reconnect changed preflight Delivered to Sent/onecheck immediately and about30s later; later v60 preflight recovers Delivered. V61 persists accepted peer watermarks before publication and restores before snapshots; full414FFI source tests prove offline cold text+voice and native healthy-relay QA proves fresh text Delivered→Read→cold Read plus two human text/voice Delivered cold starts. No permanent-loss, nativeoffline, old-watermark reconstruction or changed all-current-members policy claim. Relay query error/deadline fixes are tested isolated; running app relay unchanged. Broader native network/storage/membership failure, physical-device and comparative receipt acceptance remain pending.",
+    "Additional unchangedv61 edited-PDF peer journeyv62 proves normal forward and subsequent native Markup delivery as fresh destinationv1/v2 with exact signed/decrypted bytes, complete pages and retained underlines. Fresh first attachment remains partly behind composer at11% until a second event; correction pending. Source audit also finds uncached historical File previews cannot request older chunks; on-demand correction pending. No full media/layout acceptance."
   ],
   "currentIphoneArtifact": {
     "checkpoint": "v61",
