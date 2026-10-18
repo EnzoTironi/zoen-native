@@ -2207,6 +2207,8 @@
       "sourceInputs": 904,
       "signedArtifactVerification": "/private/tmp/zoen-iphone-release-v90-verification.json",
       "evidenceRoot": "/private/tmp/zoen-excalidraw-native-image-v90",
+      "evidenceManifest": "/private/tmp/zoen-excalidraw-native-image-v90/evidence-manifest.json",
+      "evidenceManifestSha256": "5feaa50a8676ce4607aca75b3673aee560748916d370379a86524618d83a249a",
       "nativeProof": "/private/tmp/zoen-excalidraw-native-image-v90/native-v90-acceptance.json",
       "video": {
         "path": ".argent/recordings/excalidraw-photo-iphone-v90-proof.mp4",
@@ -2234,8 +2236,11 @@
         "unchangedSecondCheck": true,
         "jpegBytesEach": 21025,
         "jpegSha256": "8e2f41bdd949d7def08785a747000c129cf0dfb533d4d3071a451e7dd670bbe0",
-        "stoppedAndOwnedVolatileVaultCleared": true
+        "stoppedAndOwnedVolatileVaultCleared": true,
+        "ownedDeviceRevokedThroughNativeUi": true,
+        "cleanupReceipt": "/private/tmp/zoen-excalidraw-native-image-v90/owned-device-cleanup.json"
       },
+      "chatCards": "Exact conversation opened with one message-input; both pinned drawing cards show6 elements and the copy inline card also shows6. No message or item mutation.",
       "checks": {
         "macAppPassed": 776,
         "rendererPassed": 24,

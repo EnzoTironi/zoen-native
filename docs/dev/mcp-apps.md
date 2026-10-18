@@ -163,7 +163,9 @@ owned scene manifests and embedded image bytes. Each drawing contained six live
 elements and one 21,025-byte JPEG; the two JPEG hashes matched. A second check
 retained both version/scene/image pins. This is another device of the same
 synthetic identity, not a separate recipient or a cryptographic author-device
-proof. The helper was stopped and its owned volatile vault cleared afterward.
+proof. The helper was stopped, its owned volatile vault cleared and its exact
+temporary device revoked through native Devices UI. The chat retained both
+six-element pinned cards and the copy's six-element inline card.
 
 The [47.23-second native recording](../../.argent/recordings/excalidraw-photo-iphone-v90-proof.mp4)
 joins the import and restart takes without recoding their video packets. The
