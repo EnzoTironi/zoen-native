@@ -333,7 +333,7 @@ export default function Chat() {
   const last = page?.entries.at(-1)?.id;
   useFocusEffect(
     useCallback(() => {
-      if (last) void store.driver.request({ op: 'mark_read', space_id: id }).catch(() => {});
+      if (last) void store.request({ op: 'mark_read', space_id: id }).catch(() => {});
     }, [last, id, store]),
   );
 
