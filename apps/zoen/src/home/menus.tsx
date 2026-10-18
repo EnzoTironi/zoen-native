@@ -5,7 +5,11 @@ import type { HomeActionsProps, HomeCardMenuProps } from './menus.types';
 export function HomeActions(_props: HomeActionsProps) {
   return <NativeButton label={t('home.addMiniapp')} onPress={() => router.push('/miniapps')} />;
 }
-export function HomeCardMenu({ name, pinned, onToggle, testID }: HomeCardMenuProps) {
+export function HomeCardMenu({ name, pinned, onToggle, onHistory, testID }: HomeCardMenuProps) {
+  if (!onToggle)
+    return onHistory ? (
+      <NativeButton testID={testID} label={t('miniapps.history')} onPress={onHistory} />
+    ) : null;
   return (
     <NativeButton
       testID={testID}

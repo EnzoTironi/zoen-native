@@ -1,7 +1,7 @@
 import { t, locale } from '../i18n/index.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
-import { Linking, Modal, ScrollView, Text, View } from 'react-native';
+import { Linking, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import type { ItemDetail } from '../core/types';
 import type { AppSpecDto } from '../core/generated/AppSpecDto';
@@ -26,35 +26,18 @@ import { photoArguments } from './photo-tokens';
 import { available, perform, resolvePhoto, releaseItemPhotos } from './native-capabilities';
 import { authorizedNetworkHosts } from './network';
 import { frameAuthority } from './lifetime';
+import { DeviceConsent } from './device-consent';
+import { useDeviceConsent } from './use-device-consent';
 
-type Choice = 'once' | 'always' | 'deny';
-type Consent = { capability: string; purpose: string; resolve: (choice: Choice) => void };
-function useConsent() {
-  const queue = useRef<Consent[]>([]);
-  const [consent, setConsent] = useState<Consent | null>(null);
-  const ask = useCallback(
-    (capability: string, purpose: string) =>
-      new Promise<Choice>((resolve) => {
-        const next = { capability, purpose, resolve };
-        queue.current.push(next);
-        if (queue.current.length === 1) setConsent(next);
-      }),
-    [],
-  );
-  const finish = useCallback((choice: Choice) => {
-    queue.current.shift()?.resolve(choice);
-    setConsent(queue.current[0] ?? null);
-  }, []);
-  useEffect(
-    () => () => {
-      for (const request of queue.current.splice(0)) request.resolve('deny');
-    },
-    [],
-  );
-  return { consent, ask, finish };
-}
-
-export function MiniappView({ item, spec }: { item: ItemDetail; spec: AppSpecDto }) {
+export function MiniappView({
+  item,
+  spec,
+  fill = false,
+}: {
+  item: ItemDetail;
+  spec: AppSpecDto;
+  fill?: boolean;
+}) {
   const [focus, setFocus] = useState({ active: false, epoch: 0 });
   const end = useRef<(() => void) | null>(null);
   const registerClose = useCallback((close: (() => void) | null) => {
@@ -72,17 +55,25 @@ export function MiniappView({ item, spec }: { item: ItemDetail; spec: AppSpecDto
     }, []),
   );
   return focus.active ? (
-    <FocusedView key={focus.epoch} item={item} spec={spec} registerClose={registerClose} />
+    <FocusedView
+      key={focus.epoch}
+      item={item}
+      spec={spec}
+      fill={fill}
+      registerClose={registerClose}
+    />
   ) : null;
 }
 
 function FocusedView({
   item,
   spec,
+  fill,
   registerClose,
 }: {
   item: ItemDetail;
   spec: AppSpecDto;
+  fill: boolean;
   registerClose: (close: (() => void) | null) => void;
 }) {
   const { store, snapshot, mode } = useClient();
@@ -214,6 +205,7 @@ function FocusedView({
       key={`${scope}:${revision}:${networkHosts}:${configuration}`}
       item={item}
       spec={spec}
+      fill={fill}
       resource={prepared.resource}
       manifest={prepared.manifest}
       networkHosts={networkHosts}
@@ -228,6 +220,7 @@ function FocusedView({
 function ReadyView({
   item,
   spec,
+  fill,
   resource,
   manifest,
   networkHosts,
@@ -238,6 +231,7 @@ function ReadyView({
 }: {
   item: ItemDetail;
   spec: AppSpecDto;
+  fill: boolean;
   resource: AppResourceDto;
   manifest: MiniappManifest | null;
   networkHosts: string;
@@ -249,8 +243,9 @@ function ReadyView({
   const { store, snapshot, mode } = useClient();
   const { colors, scheme } = useTheme();
   const dialogs = useDialogs();
-  const consent = useConsent();
+  const consent = useDeviceConsent();
   const ask = consent.ask;
+  const cancelConsent = consent.cancelAll;
   const hosts = useMemo(() => networkHosts.split(',').filter(Boolean), [networkHosts]);
   const [height, setHeight] = useState(680);
   const [width, setWidth] = useState(360);
@@ -486,12 +481,16 @@ function ReadyView({
               : Haptics.selectionAsync()
         ).catch(() => {});
       },
-      resize: setHeight,
+      resize: (nextHeight) => {
+        // Native fullscreen owns the viewport; HTML content must not grow an outer scroll view.
+        if (!fill) setHeight(nextHeight);
+      },
       close: () => router.back(),
     });
     session.current = current;
     const dispose = () => {
       lifetime.close();
+      cancelConsent();
       current.dispose();
       if (session.current === current) session.current = null;
       if (authority.current === lifetime) authority.current = null;
@@ -515,8 +514,10 @@ function ReadyView({
       registerClose(null);
     };
   }, [
+    cancelConsent,
     checkOwner,
     context,
+    fill,
     dialogs,
     hosts,
     item.id,
@@ -541,7 +542,10 @@ function ReadyView({
     void session.current?.receive(message);
   }, []);
   return (
-    <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)} style={{ gap: 12 }}>
+    <View
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      style={fill ? { flex: 1, minHeight: 0, gap: 12 } : { gap: 12 }}
+    >
       {error || networkError ? (
         <View style={{ gap: 8 }}>
           <Text selectable accessibilityRole="alert" style={{ color: colors.danger }}>
@@ -582,60 +586,19 @@ function ReadyView({
         html={html}
         title={item.title}
         height={height}
-        blocked={!!consent.consent}
+        fill={fill}
+        blocked={!!consent.current}
         onMessage={receive}
         onError={setError}
       />
-      <Modal
-        visible={!!consent.consent}
-        transparent
-        animationType="fade"
-        onRequestClose={() => consent.finish('deny')}
-      >
-        <View
-          accessibilityViewIsModal
-          style={{ flex: 1, backgroundColor: '#0007', justifyContent: 'center', padding: 24 }}
-        >
-          <ScrollView
-            contentContainerStyle={{
-              maxWidth: 460,
-              width: '100%',
-              alignSelf: 'center',
-              flexGrow: 1,
-              justifyContent: 'center',
-            }}
-          >
-            <Surface>
-              <Text
-                accessibilityRole="header"
-                style={{ color: colors.text, fontSize: 23, fontWeight: '600' }}
-              >
-                {t('miniapps.allowAccessToApp', { app: manifest?.name ?? spec.name })}
-              </Text>
-              <Text selectable style={{ color: colors.secondary, lineHeight: 23 }}>
-                {consent.consent?.purpose}
-              </Text>
-              <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 20 }}>
-                {t('miniapps.accessScope', { chat: item.space_title })}
-              </Text>
-              <NativeButton
-                label={t('miniapps.allowOnce')}
-                onPress={() => consent.finish('once')}
-              />
-              <NativeButton
-                secondary
-                label={t('miniapps.allowUntilIRevoke')}
-                onPress={() => consent.finish('always')}
-              />
-              <NativeButton
-                secondary
-                label={t('miniapps.doNotAllow')}
-                onPress={() => consent.finish('deny')}
-              />
-            </Surface>
-          </ScrollView>
-        </View>
-      </Modal>
+      <DeviceConsent
+        request={consent.current}
+        phase={consent.phase}
+        title={t('miniapps.allowAccessToApp', { app: manifest?.name ?? spec.name })}
+        scope={t('miniapps.accessScope', { chat: item.space_title })}
+        onChoose={consent.choose}
+        onDismiss={consent.dismissed}
+      />
     </View>
   );
 }

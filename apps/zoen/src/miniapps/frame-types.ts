@@ -6,4 +6,5 @@ export type MiniappFrameProps = {
   height: number;
   title: string;
   blocked: boolean;
+  fill?: boolean;
 };

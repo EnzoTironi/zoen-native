@@ -5,7 +5,7 @@ import { WebView } from 'react-native-webview';
 import type { MiniappFrameHandle, MiniappFrameProps } from './frame-types';
 
 export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(function MiniappFrame(
-  { html, onMessage, onError, height, title, blocked },
+  { html, onMessage, onError, height, title, blocked, fill = false },
   ref,
 ) {
   const view = useRef<WebView<object>>(null);
@@ -27,7 +27,8 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
     <View
       pointerEvents={blocked ? 'none' : 'auto'}
       accessibilityElementsHidden={blocked}
-      style={{ height, minHeight: 400 }}
+      testID="miniapp-native-frame"
+      style={fill ? { flex: 1, minHeight: 0 } : { height, minHeight: 400 }}
     >
       <WebView<object>
         ref={view}

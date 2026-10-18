@@ -75,11 +75,13 @@ export function HomeCardMenu({
           frame({ minWidth: 44, minHeight: 44 }),
         ]}
       >
-        <Button
-          label={t(pinned ? 'home.unpin' : 'home.pin')}
-          systemImage={pinned ? 'pin.slash' : 'pin'}
-          onPress={onToggle}
-        />
+        {onToggle ? (
+          <Button
+            label={t(pinned ? 'home.unpin' : 'home.pin')}
+            systemImage={pinned ? 'pin.slash' : 'pin'}
+            onPress={onToggle}
+          />
+        ) : null}
         {onToggleConversation ? (
           <Button
             label={t(conversationPinned ? 'conversationCards.unpin' : 'conversationCards.pin')}
