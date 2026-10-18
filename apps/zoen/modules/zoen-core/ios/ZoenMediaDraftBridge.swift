@@ -70,7 +70,9 @@ enum ZoenMediaDraftBridge {
     guard value["mime"] as? String == render.mime,
           let duration = value["duration_ms"] as? NSNumber,
           duration.doubleValue.isFinite, abs(duration.doubleValue - render.durationMs) < 0.001,
-          let levels = value["levels"] as? [Double], levels == render.levels
+          let received = levels(value["levels"]), let actual = levels(render.levels),
+          received.count == actual.count,
+          zip(received, actual).allSatisfy({ Float($0.0) == Float($0.1) })
           else { throw ZoenMediaFiles.Failure.invalidRecording }
   }
   private static func levels(_ value: Any?) -> [Double]? {
