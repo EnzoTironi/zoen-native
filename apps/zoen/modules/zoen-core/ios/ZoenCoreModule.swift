@@ -428,17 +428,34 @@ private actor ZoenSession {
     return try ZoenMediaFiles.json(ZoenMediaFiles.info(try core.fileInfoAt(itemId: itemId, version: ZoenMediaFiles.version(version))))
   }
 
-  func materializeFile(itemId: String, version: Int?) throws -> String {
+  func materializeFile(itemId: String, version: Int?) async throws -> String {
     guard !erasing, !closing, let core else { throw SessionError.closed }
-    // Select the version once. An incoming edit cannot swap the description and
-    // payload between these reads, even while the sync engine runs concurrently.
+    // Pin metadata, version and account before any suspension. History opens
+    // demand only this version; they never restore it or prefetch all history.
+    let expectedGeneration = generation
+    let expectedMode = mode
     let item = try core.item(itemId: itemId)
+    let scope = try fileScope(spaceId: item.spaceId, engine: core)
     let pinned = try ZoenMediaFiles.version(version) ?? item.version
-    let info = try core.fileInfoAt(itemId: itemId, version: pinned)
-    guard let bytes = try core.fileBytesBounded(itemId: itemId, version: pinned, maxBytes: ZoenMediaFiles.maximumBytes) else { return "null" }
+    var info = try core.fileInfoAt(itemId: itemId, version: pinned)
+    let expectedSHA256 = info.sha256
+    var bytes = try core.fileBytesBounded(itemId: itemId, version: pinned, maxBytes: ZoenMediaFiles.maximumBytes)
+    if bytes == nil {
+      _ = try await core.ensureFileVersion(itemId: itemId, version: pinned,
+        maxBytes: ZoenMediaFiles.maximumBytes, timeoutMs: 30_000)
+      guard !erasing, !closing, self.core === core, generation == expectedGeneration, mode == expectedMode,
+            try fileScope(spaceId: item.spaceId, engine: core) == scope else { throw SessionError.closed }
+      info = try core.fileInfoAt(itemId: itemId, version: pinned)
+      bytes = try core.fileBytesBounded(itemId: itemId, version: pinned, maxBytes: ZoenMediaFiles.maximumBytes)
+    }
+    guard !erasing, !closing, self.core === core, generation == expectedGeneration, mode == expectedMode,
+          try fileScope(spaceId: item.spaceId, engine: core) == scope else { throw SessionError.closed }
+    guard let bytes else { throw ZoenMediaFiles.Failure.invalidFile }
+    info = try core.fileInfoAt(itemId: itemId, version: pinned)
+    guard info.sha256 == expectedSHA256 else { throw ZoenMediaFiles.Failure.invalidVersion }
     let uri = try mediaFiles.stage(bytes, name: info.name)
     previewBindings[uri] = PreviewBinding(engine: core, generation: generation, mode: mode,
-      scope: try? fileScope(spaceId: item.spaceId, engine: core), itemId: itemId, spaceId: item.spaceId,
+      scope: scope, itemId: itemId, spaceId: item.spaceId,
       version: pinned, sha256: info.sha256, name: info.name, mime: info.mime)
     return try ZoenMediaFiles.json(["uri": uri, "itemId": itemId, "version": pinned, "info": ZoenMediaFiles.info(info)])
   }

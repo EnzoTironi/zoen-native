@@ -20,6 +20,7 @@ pub use client_api::export_typescript;
 mod files;
 mod growth;
 pub use growth::{AcquisitionDto, GrowthSyncDto, OnboardingPlanDto};
+mod file_demand;
 mod files_api;
 mod liveview;
 pub use liveview::{LiveViewDemoVm, LiveViewInput, LiveViewKey, LiveViewSession};

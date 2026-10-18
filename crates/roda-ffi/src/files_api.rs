@@ -277,3 +277,60 @@ impl RodaEngine {
         self.lock().file_info_at(&item_id, version)
     }
 }
+
+#[uniffi::export(async_runtime = "tokio")]
+impl RodaEngine {
+    /// Fetches only this explicitly selected version. Dropping/canceling the
+    /// future, stopping sync or reaching the deadline releases its local demand.
+    pub async fn ensure_file_version(
+        &self,
+        item_id: String,
+        version: u32,
+        max_bytes: u64,
+        timeout_ms: u64,
+    ) -> Result<FileDto, CoreError> {
+        crate::i18n::scope(self.lang, async {
+            if timeout_ms == 0 || timeout_ms > 60_000 {
+                return Err(CoreError::Invalid {
+                    reason: crate::i18n::t("Prazo de download inválido.", "Invalid download deadline."),
+                });
+            }
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+            let (key, lease) = {
+                let e = self.lock();
+                let key = e.file_demand_key(&item_id, version, max_bytes)?;
+                let info = e.file_demand_info(&key, max_bytes)?;
+                if info.ready {
+                    return Ok(info);
+                }
+                let lease = e.net.file_demands.acquire(key.clone(), max_bytes, deadline)
+                    .ok_or_else(|| CoreError::Invalid {
+                        reason: crate::i18n::t(
+                            "Espere os outros downloads terminarem.",
+                            "Wait for the other downloads to finish.",
+                        ),
+                    })?;
+                e.net.wake();
+                (key, lease)
+            };
+            loop {
+                {
+                    let e = self.lock();
+                    let info = e.file_demand_info(&key, max_bytes)?;
+                    if info.ready {
+                        return Ok(info);
+                    }
+                }
+                if !lease.active() || std::time::Instant::now() >= deadline {
+                    return Err(CoreError::Invalid {
+                        reason: crate::i18n::t(
+                            "Não foi possível baixar esta versão. Tente novamente quando estiver conectado.",
+                            "Could not download this version. Try again when connected.",
+                        ),
+                    });
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            }
+        }).await
+    }
+}

@@ -488,8 +488,14 @@ impl RodaEngine {
         let _language = crate::i18n::enter(self.lang);
         self.cancel_history_receive();
         let net = self.net.lock().unwrap_or_else(|p| p.into_inner()).take();
+        {
+            let mut engine = self.lock();
+            engine.net.poke = None;
+            // Historical opens may be awaiting a connection that never started.
+            // Stop invalidates them even when there is no Net object to drop.
+            engine.net.file_demands.clear();
+        }
         if let Some(n) = net {
-            self.lock().net.poke = None;
             drop(n);
         }
     }

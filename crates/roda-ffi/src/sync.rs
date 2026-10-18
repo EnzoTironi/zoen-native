@@ -57,6 +57,7 @@ pub struct AccountMeta {
 
 #[derive(Default)]
 pub struct NetState {
+    pub(crate) file_demands: crate::file_demand::FileDemands,
     pub account: Option<AccountMeta>,
     /// The unlocked device key (loaded from the vault).
     pub author: Option<Author>,

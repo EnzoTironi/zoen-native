@@ -21,6 +21,8 @@ pub struct Wanted {
     pub space: String,
     /// Whose profile photo it is.
     pub profile: Option<IdentityId>,
+    /// File manifests bound ciphertext before HTTP allocation (24-byte nonce + tag).
+    pub maximum_sealed_bytes: Option<u64>,
 }
 
 impl Engine {
@@ -94,6 +96,7 @@ impl Engine {
                 mime: m.mime.clone(),
                 space: sid.clone(),
                 profile: None,
+                maximum_sealed_bytes: None,
             });
         }
         out.extend(self.wanted_profile_photos());

@@ -114,6 +114,7 @@ fn missing_blob(
         mime: "application/json".into(),
         space: fixture.space.clone(),
         profile: None,
+        maximum_sealed_bytes: None,
     };
     (content, bytes, wanted, sealed, result)
 }

@@ -568,6 +568,7 @@ impl Engine {
                     mime: photo.mime,
                     space: String::new(),
                     profile: Some(row.identity),
+                    maximum_sealed_bytes: None,
                 })
             })
             .collect()
