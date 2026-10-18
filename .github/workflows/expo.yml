@@ -57,10 +57,18 @@ jobs:
           cache-dependency-path: |
             tools/miniapp-build/package-lock.json
             packages/zoen-ui/package-lock.json
-      - name: Install pinned miniapp and DOM test dependencies
+            apps/zoen/package-lock.json
+            miniapps/excalidraw-ui/package-lock.json
+      - name: Install pinned miniapp, host and DOM test dependencies
         run: |
           npm ci --prefix tools/miniapp-build
           npm ci --prefix packages/zoen-ui
+          npm ci --prefix apps/zoen
+          npm ci --prefix miniapps/excalidraw-ui
+      - name: Verify pinned Excalidraw UI and early MCP event delivery
+        run: |
+          npm test --prefix miniapps/excalidraw-ui
+          node miniapps/excalidraw-ui/build.mjs --check
       - name: Real bundled UI, opt-in calendar and stale-booking regressions
         run: node --test tools/miniapp-build/shared-react.test.mjs miniapps/schedule/src/availability.test.ts miniapps/schedule/src/availability-ui.test.mjs
       - name: Verify embedded resource matches source and capability manifest

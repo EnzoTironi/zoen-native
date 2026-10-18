@@ -1,0 +1,80 @@
+{
+  "resourceUri": "ui://zoen/excalidraw.html",
+  "mimeType": "text/html;profile=mcp-app",
+  "presentation": "pinned-upstream-patched-build",
+  "sha256": "41f246bf6b140d916fd0e620b68709337d1dacdcf024f87302553f583d8e2938",
+  "bytes": 583988,
+  "csp": {
+    "connectDomains": ["https://esm.sh"],
+    "resourceDomains": ["https://esm.sh"],
+    "frameDomains": [],
+    "baseUriDomains": []
+  },
+  "permissions": {},
+  "provenance": {
+    "repository": "https://github.com/excalidraw/excalidraw-mcp",
+    "upstreamCommit": "157aa23ceb1976008aadc89eb05e3444060f09d6",
+    "upstreamVersion": "0.3.2",
+    "patchPullRequest": "https://github.com/excalidraw/excalidraw-mcp/pull/89",
+    "patchCommit": "aafc247efb8ba0689e193557749784ea80ee4996",
+    "patchSha256": "1449b6a7176c032ea36e3d6a1cf293ce05ea353063b009c568bef69999f93675",
+    "sourceSha256": {
+      "src/mcp-app.tsx": "639e149adbac6e863ea762d7d1a2c908747a1a7bc43969aba6e4baca760aa29e",
+      "src/mcp-entry.tsx": "41314dcc1fbbdccc32e38bcd3431f55c210b198aa55d4c3cae70dac36639dc8a",
+      "src/mcp-app.html": "be7f7457a602100feaf13f37c5dc1f22f8e30ff2469d210708542aa7be2cf179",
+      "src/edit-context.ts": "de7d1aa4032455ff3e012b3b16c3fdc086bc6324f8cd7697d0e2ded5b94474f2",
+      "src/pencil-audio.ts": "13f6ff769d5d2140faeeffa4b49d5a9f7a85b357b20d0c2603e53bdd288b98bf",
+      "src/sounds.ts": "c197a890a699a9ed3348cc5ff12d676b2e9923ab25fcb80045cdad10f4baff4f",
+      "src/global.css": "83e489fda4be44ee7358fba2e39484158edf8997222a0dd443a73fa9c2742357"
+    },
+    "licenseDeclaration": {
+      "upstreamPackageJson": "MIT",
+      "upstreamReadme": "MIT",
+      "upstreamLicenseFile": null
+    },
+    "modifications": [
+      "PR89: buffer initial MCP tool notifications before App.connect, drain after React handler registration.",
+      "Initialize fullscreen from the negotiated host context and buffer early context changes until React handler registration."
+    ],
+    "externalResources": ["https://esm.sh"],
+    "prSourceSha256": "e311cfa69aa3c67a0dbfecdbc3005857c12590de3c1d871afe7c853703acd928",
+    "localPatchSha256": "c1e576a21d82e7a976a09b69c653d2d079b86cd1a08fecf9e814232b54a428ae",
+    "sourceInputs": {
+      "build.mjs": "72e2f590919817e54c20365863c6b7c28285022dd05d6f90fb53542049cb24f7",
+      "package-lock.json": "fd45f84e0dfd60dd386c049fad31265e5f77db2976c54a8d5f7a30c14290d5a8",
+      "package.json": "f62410ab66be34781fa1aab2edfc6e20cae538fbbc6d92fcbf5770568dc21b8e",
+      "patches/89-buffer-initial-events.diff": "1449b6a7176c032ea36e3d6a1cf293ce05ea353063b009c568bef69999f93675",
+      "patches/90-initial-host-context.diff": "c1e576a21d82e7a976a09b69c653d2d079b86cd1a08fecf9e814232b54a428ae",
+      "src/edit-context.ts": "de7d1aa4032455ff3e012b3b16c3fdc086bc6324f8cd7697d0e2ded5b94474f2",
+      "src/global.css": "83e489fda4be44ee7358fba2e39484158edf8997222a0dd443a73fa9c2742357",
+      "src/mcp-app.html": "be7f7457a602100feaf13f37c5dc1f22f8e30ff2469d210708542aa7be2cf179",
+      "src/mcp-app.tsx": "639e149adbac6e863ea762d7d1a2c908747a1a7bc43969aba6e4baca760aa29e",
+      "src/mcp-entry.tsx": "41314dcc1fbbdccc32e38bcd3431f55c210b198aa55d4c3cae70dac36639dc8a",
+      "src/pencil-audio.ts": "13f6ff769d5d2140faeeffa4b49d5a9f7a85b357b20d0c2603e53bdd288b98bf",
+      "src/sounds.ts": "c197a890a699a9ed3348cc5ff12d676b2e9923ab25fcb80045cdad10f4baff4f",
+      "upstream.json": "f7ae636b084468427f373620be957b389e8eed408d53d58beefaea6d4edbe6c2"
+    },
+    "bundledDependencies": [
+      {
+        "name": "@modelcontextprotocol/ext-apps",
+        "version": "0.4.2",
+        "license": "MIT"
+      },
+      {
+        "name": "@modelcontextprotocol/sdk",
+        "version": "1.25.2",
+        "license": "MIT"
+      },
+      {
+        "name": "zod",
+        "version": "4.3.6",
+        "license": "MIT"
+      },
+      {
+        "name": "zod-to-json-schema",
+        "version": "3.25.2",
+        "license": "ISC"
+      }
+    ]
+  }
+}

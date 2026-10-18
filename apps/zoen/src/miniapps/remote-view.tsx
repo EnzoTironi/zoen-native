@@ -16,6 +16,7 @@ import { frameAuthority } from './lifetime';
 import { MiniappSession } from './protocol';
 import { remoteAppHtml } from './remote-sandbox';
 import { excalidrawActionDecision } from './remote-grants';
+import { excalidrawPresentation } from './excalidraw-presentation';
 import {
   createRemoteMcpSession,
   type RemoteAppResource,
@@ -181,8 +182,9 @@ function DrawingSession({
       remote.current = connection;
       const descriptor = await connection.connect();
       check();
-      const resource = await connection.readApp();
+      const upstreamResource = await connection.readApp();
       check();
+      const resource = excalidrawPresentation(descriptor, upstreamResource);
       // Excalidraw's official editor needs an initial element. This is ordinary
       // tool input; the provider's resource and its editor are never rewritten.
       const args = {

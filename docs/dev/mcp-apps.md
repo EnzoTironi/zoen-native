@@ -31,6 +31,31 @@ permissions are not automatically granted. Resource-declared origins constrain
 network and asset access; the current remote-session parser supports bounded
 exact HTTPS origins, a subset of the standard's possible policies.
 
+## Pinned Excalidraw presentation
+
+The deployed Excalidraw resource registers initial tool handlers after its
+handshake. A normal iPhone opening lost those events and showed a blank preview;
+slower diagnostic delivery rendered the initial rectangle. Its editor also
+assumes `inline` on first mount even when the host's initial context is fullscreen.
+The failed v86 walkthrough is retained separately from acceptance evidence.
+
+Zoen therefore uses an explicitly pinned, patched upstream UI build, rather than
+rewriting downloaded HTML or delaying host notifications. The source, dependency
+lock, patches, MIT license and reproducible build live in
+[`miniapps/excalidraw-ui`](../../miniapps/excalidraw-ui/). The initial-event fix is
+based on [upstream PR 89](https://github.com/excalidraw/excalidraw-mcp/pull/89),
+with initial host context handling corrected as well. This is a patched build,
+not the unmodified HTML currently served by Excalidraw.
+
+`remote-session.readApp()` still returns the actual remote resource and its actual
+SHA. A provider-specific presentation adapter binds the known server, launch tool
+and upstream resource URI to `ui://zoen/excalidraw.html`. The presented bytes have
+their own SHA and provenance manifest. They cannot add an origin beyond the
+remote resource's policy and receive no browser permissions. Discovery, tool
+calls, checkpoint ownership and saving continue through the same live official
+Excalidraw MCP connection. The generic host has no timing workaround or launch
+data replay on layout changes.
+
 ## Current remote-session authority
 
 The registry currently allows only `https://mcp.excalidraw.com/mcp`. Redirects,
