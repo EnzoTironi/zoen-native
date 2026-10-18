@@ -26,7 +26,7 @@ export function ComposerAction({
   const { colors, scheme } = useTheme();
   const glass = isLiquidGlassAvailable();
   return (
-    <Host style={{ width: size, height: size }} colorScheme={scheme}>
+    <Host style={{ width: size, height: size }} colorScheme={scheme} ignoreSafeArea="keyboard">
       <Button
         testID={testID}
         label={label}

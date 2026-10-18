@@ -23,7 +23,7 @@ export function MediaActions({
   const { scheme, colors } = useTheme();
   const glass = isLiquidGlassAvailable();
   return (
-    <Host style={{ width: 52, height: 52 }} colorScheme={scheme}>
+    <Host style={{ width: 52, height: 52 }} colorScheme={scheme} ignoreSafeArea="keyboard">
       <Menu
         testID="add-attachment"
         label={t('media.addAttachment')}
