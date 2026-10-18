@@ -57,11 +57,7 @@ export function MessageComposer({
   const { progress } = useKeyboardMotion();
   const restingBottom = Math.max(insets.bottom, 12);
   const keyboardPadding = useAnimatedStyle(() => ({
-    // The iOS viewport moves this stable layout and reserves it with native insets.
-    paddingBottom:
-      process.env.EXPO_OS === 'ios'
-        ? restingBottom
-        : restingBottom + (8 - restingBottom) * Math.min(1, Math.max(0, progress.value)),
+    paddingBottom: restingBottom + (8 - restingBottom) * Math.min(1, Math.max(0, progress.value)),
   }));
   const hasText = Boolean(value.trim());
   const canAsk = Boolean(
@@ -217,7 +213,8 @@ export function MessageComposer({
           paddingTop: 10,
           gap: 8,
         },
-        keyboardPadding,
+        // Choose the native layout on JS, outside the UI-runtime worklet.
+        process.env.EXPO_OS === 'ios' ? { paddingBottom: restingBottom } : keyboardPadding,
       ]}
     >
       {mediaEnabled ? (

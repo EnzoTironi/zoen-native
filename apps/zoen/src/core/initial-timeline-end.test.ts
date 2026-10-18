@@ -1,6 +1,37 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { InitialTimelineEnd } from './initial-timeline-end.ts';
+import { InitialTimelineEnd, initialTimelineEndOffset } from './initial-timeline-end.ts';
+
+test('native initial end adds the composer inset once and clamps short conversations', () => {
+  assert.equal(
+    initialTimelineEndOffset({ contentHeight: 2667, viewportHeight: 812, bottomInset: 96 }),
+    1951,
+  );
+  assert.equal(
+    initialTimelineEndOffset({ contentHeight: 200, viewportHeight: 812, bottomInset: 96 }),
+    0,
+  );
+  assert.equal(
+    initialTimelineEndOffset({ contentHeight: 800, viewportHeight: 812, bottomInset: 96 }),
+    84,
+  );
+});
+
+test('native initial end rejects missing, invalid and overflowing geometry', () => {
+  const measured = { contentHeight: 2667, viewportHeight: 812, bottomInset: 96 };
+  for (const key of ['contentHeight', 'viewportHeight', 'bottomInset'] as const) {
+    for (const value of [0, -1, NaN, Infinity, -Infinity])
+      assert.equal(initialTimelineEndOffset({ ...measured, [key]: value }), null);
+  }
+  assert.equal(
+    initialTimelineEndOffset({
+      contentHeight: Number.MAX_VALUE,
+      viewportHeight: 1,
+      bottomInset: Number.MAX_VALUE,
+    }),
+    null,
+  );
+});
 
 function fixture() {
   const frames: { work: () => void; cancelled: boolean }[] = [];

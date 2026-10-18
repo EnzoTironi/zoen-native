@@ -34,14 +34,12 @@ const NativeConversationScrollView = forwardRef<KeyboardChatScrollViewRef, Scrol
   (props, ref) => {
     const context = use(NativeScrollContext);
     if (!context) throw new Error('ConversationViewport is required.');
-    const [reported, setReported] = useState(false);
     const onInset = useCallback(
       ({ bottom }: { bottom: number }) => {
         if (!Number.isFinite(bottom) || bottom <= 0) return;
         // The SDK produced a positive reservation. Initial positioning also
         // waits for loaded rows, native content measurement and its next frame.
         context.onInitialInset?.(bottom);
-        setReported(true);
       },
       [context],
     );
@@ -56,7 +54,7 @@ const NativeConversationScrollView = forwardRef<KeyboardChatScrollViewRef, Scrol
         keyboardDismissMode="interactive"
         offset={context.offset}
         extraContentPadding={context.padding}
-        onContentInsetChange={!reported && context.onInitialInset ? onInset : undefined}
+        onContentInsetChange={context.onInitialInset ? onInset : undefined}
       />
     );
   },

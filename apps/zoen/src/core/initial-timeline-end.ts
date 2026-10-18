@@ -4,6 +4,29 @@ type Port = Readonly<{
   scroll: () => boolean;
 }>;
 
+/** Native content excludes its inset; reserve the composer once at the end. */
+export function initialTimelineEndOffset({
+  contentHeight,
+  viewportHeight,
+  bottomInset,
+}: {
+  contentHeight: number;
+  viewportHeight: number;
+  bottomInset: number;
+}): number | null {
+  if (
+    !Number.isFinite(contentHeight) ||
+    !Number.isFinite(viewportHeight) ||
+    !Number.isFinite(bottomInset) ||
+    contentHeight <= 0 ||
+    viewportHeight <= 0 ||
+    bottomInset <= 0
+  )
+    return null;
+  const offset = contentHeight - viewportHeight + bottomInset;
+  return Number.isFinite(offset) ? Math.max(0, offset) : null;
+}
+
 /** Reconcile the first native end after the list and composer reservation are ready. */
 export class InitialTimelineEnd {
   readonly scope: string;

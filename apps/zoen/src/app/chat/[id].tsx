@@ -49,7 +49,7 @@ import { useHome } from '../../home/provider';
 import { MiniappRail } from '../../miniapps/rail';
 import { ConversationSearch, conversationQueryFits } from '../../core/conversation-search';
 import { launchConversationAssistant } from '../../assistant/launch';
-import { InitialTimelineEnd } from '../../core/initial-timeline-end';
+import { InitialTimelineEnd, initialTimelineEndOffset } from '../../core/initial-timeline-end';
 
 export default function Chat() {
   const { id, jump } = useLocalSearchParams<{ id: string; jump?: string }>();
@@ -73,6 +73,19 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const sendingNow = useRef(false);
   const [loadedSpace, setLoadedSpace] = useState<string | null>(null);
+  const [initialOffset, setInitialOffset] = useState<{
+    owner: InitialTimelineEnd;
+    y: number;
+  } | null>(null);
+  const committedInitialOffset = useRef<typeof initialOffset>(null);
+  useLayoutEffect(() => {
+    committedInitialOffset.current = initialOffset;
+  }, [initialOffset]);
+  const initialGeometry = useRef<{
+    owner: InitialTimelineEnd | null;
+    contentHeight: number;
+    bottomInset: number;
+  }>({ owner: null, contentHeight: 0, bottomInset: 0 });
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
   const [railHeight, setRailHeight] = useState(0);
   const [noticeHeight, setNoticeHeight] = useState(0);
@@ -132,6 +145,47 @@ export default function Chat() {
   );
   const timelineKey = searchState.active && searchThread ? `${id}:${searchThread.root}` : id;
   const initialEnd = useMemo(() => new InitialTimelineEnd(`${id}:${owner}`), [id, owner]);
+  const cancelInitialEnd = useCallback(() => {
+    initialEnd.cancel();
+    const committed = committedInitialOffset.current;
+    // A user action can overtake the queued React publication. Retract only
+    // pending work; clearing an applied KCS offset would reset its target to 0.
+    setInitialOffset((current) =>
+      current?.owner === initialEnd && current !== committed
+        ? committed?.owner === initialEnd
+          ? committed
+          : null
+        : current,
+    );
+  }, [initialEnd]);
+  useLayoutEffect(() => {
+    initialGeometry.current = { owner: initialEnd, contentHeight: 0, bottomInset: 0 };
+  }, [initialEnd]);
+  const onInitialReservation = useCallback(
+    (height: number) => {
+      const geometry = initialGeometry.current;
+      if (geometry.owner !== initialEnd || !Number.isFinite(height) || height <= 0) return;
+      geometry.bottomInset = height;
+      initialEnd.onFooterLayout(height);
+    },
+    [initialEnd],
+  );
+  const onContentSizeChange = useCallback(
+    (width: number, height: number) => {
+      const geometry = initialGeometry.current;
+      if (
+        geometry.owner !== initialEnd ||
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width <= 0 ||
+        height <= 0
+      )
+        return;
+      geometry.contentHeight = height;
+      initialEnd.onContentSizeChange(width, height);
+    },
+    [initialEnd],
+  );
   useLayoutEffect(() => {
     initialEnd.connect({
       current: () => {
@@ -157,6 +211,24 @@ export default function Chat() {
         return () => cancelAnimationFrame(frame);
       },
       scroll: () => {
+        if (process.env.EXPO_OS === 'ios') {
+          const geometry = initialGeometry.current;
+          const viewportHeight = list.current?.getWindowSize().height ?? 0;
+          if (geometry.owner !== initialEnd) return false;
+          const y = initialTimelineEndOffset({
+            contentHeight: geometry.contentHeight,
+            viewportHeight,
+            bottomInset: geometry.bottomInset,
+          });
+          if (y === null) return false;
+          // KCS applies this target together with its effective native inset.
+          // A native end command can otherwise run before that inset commits.
+          setInitialOffset({
+            owner: initialEnd,
+            y,
+          });
+          return true;
+        }
         // FlashList 2.3's declaration names the component instead of its instance.
         const native = list.current?.getNativeScrollRef() as unknown as
           | ScrollViewInstance
@@ -167,7 +239,7 @@ export default function Chat() {
         return true;
       },
     });
-    if (jump || reply || editing || scrollTarget || searchState.active) initialEnd.cancel();
+    if (jump || reply || editing || scrollTarget || searchState.active) cancelInitialEnd();
   }, [
     initialEnd,
     id,
@@ -179,6 +251,7 @@ export default function Chat() {
     editing,
     scrollTarget,
     searchState.active,
+    cancelInitialEnd,
   ]);
   useLayoutEffect(() => () => initialEnd.cancel(), [initialEnd]);
   useEffect(() => {
@@ -196,20 +269,20 @@ export default function Chat() {
       store.selectSpace(id);
       return () => {
         focused.current = false;
-        initialEnd.cancel();
+        cancelInitialEnd();
         store.setTyping(id, false);
         store.selectSpace(null);
       };
-    }, [id, store, initialEnd]),
+    }, [id, store, cancelInitialEnd]),
   );
   const reveal = useCallback(
     async (messageId: string) => {
-      initialEnd.cancel();
+      cancelInitialEnd();
       const index = await store.revealMessage(id, messageId);
       if (index < 0) throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
       return messageId;
     },
-    [id, store, initialEnd],
+    [id, store, cancelInitialEnd],
   );
   useEffect(() => {
     let active = true;
@@ -360,12 +433,12 @@ export default function Chat() {
     entries: page?.entries ?? [],
     disabled: searchState.active,
     onReply: (entry) => {
-      initialEnd.cancel();
+      cancelInitialEnd();
       updateDraft({ type: 'reply', entry });
       input.current?.focus();
     },
     onEdit: (entry) => {
-      initialEnd.cancel();
+      cancelInitialEnd();
       updateDraft({ type: 'edit', entry, text: messageText(entry) });
       input.current?.focus();
     },
@@ -388,7 +461,7 @@ export default function Chat() {
         search={{
           active: searchState.active,
           onToggle: () => {
-            initialEnd.cancel();
+            cancelInitialEnd();
             store.setTyping(id, false);
             if (searchState.active) {
               setScrollTarget(null);
@@ -400,7 +473,7 @@ export default function Chat() {
       />
       <ConversationViewport
         initialFooterKey={initialEnd.scope}
-        onInitialFooterLayout={initialEnd.onFooterLayout}
+        onInitialFooterLayout={onInitialReservation}
         composer={
           <>
             {!searchState.active && (reply || editing) ? (
@@ -539,18 +612,23 @@ export default function Chat() {
               ref={list}
               testID="conversation-timeline"
               renderScrollComponent={ScrollComponent}
+              contentOffset={
+                process.env.EXPO_OS === 'ios' && initialOffset?.owner === initialEnd
+                  ? { x: 0, y: initialOffset.y }
+                  : undefined
+              }
               onLoad={() => {
                 setLoadedSpace(timelineKey);
                 initialEnd.onLoad();
               }}
-              onContentSizeChange={initialEnd.onContentSizeChange}
+              onContentSizeChange={onContentSizeChange}
               onCommitLayoutEffect={() => {
                 initialEnd.onCommitLayoutEffect();
                 // Preserve the native keyboard scroller when search changes the
                 // timeline, and address its new indices only after SDK commit.
                 if (loadedSpace !== timelineKey) setLoadedSpace(timelineKey);
               }}
-              onScrollBeginDrag={initialEnd.cancel}
+              onScrollBeginDrag={cancelInitialEnd}
               data={page.entries}
               keyExtractor={(entry) => entry.id}
               keyboardDismissMode="interactive"
