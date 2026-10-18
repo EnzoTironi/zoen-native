@@ -1,7 +1,6 @@
 import { t } from '../i18n/index.ts';
 import { miniappSnapshot, widgetProjection } from './snapshot.ts';
 import type { NativeWidgetContent, SnapshotItem, SurfaceOwner } from './snapshot';
-import { surfaceItemURL } from './links.ts';
 
 export type MiniappActivityContent = NativeWidgetContent & {
   endsAt: number;
@@ -34,7 +33,6 @@ export function activityContent(
           countdown: t('nativeSurfaces.countdownInProgress'),
           inProgress: t('nativeSurfaces.inProgress'),
         },
-        deepLink: surfaceItemURL(owner, item.id, item.version),
       }
     : null;
 }

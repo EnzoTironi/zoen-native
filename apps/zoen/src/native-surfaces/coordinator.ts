@@ -4,11 +4,11 @@ import type { ItemDetail } from '../core/generated/ItemDetail';
 import { activityContent } from './activity.ts';
 import type { MiniappActivityContent } from './activity';
 import { itemEntityCatalog } from './catalog.ts';
-import { surfaceItemURL } from './links.ts';
+import { surfaceActivityURL, surfaceItemURL } from './links.ts';
 import { parsePreferences } from './preferences.ts';
 import type { SurfacePreferences } from './preferences';
 import { sameSurfaceOwner, widgetProjection } from './snapshot.ts';
-import type { NativeWidgetContent, SurfaceOwner } from './snapshot';
+import type { NativeWidgetContent, SnapshotItem, SurfaceOwner } from './snapshot';
 
 export interface SurfacePort {
   readPreferences(): Promise<string | null>;
@@ -17,7 +17,11 @@ export interface SurfacePort {
   widget(content: NativeWidgetContent | null): void;
   catalogs(items: AppIntentEntity[], chats: AppIntentEntity[]): Promise<void>;
   activities(): string[];
-  startActivity(content: MiniappActivityContent): string;
+  startActivity(
+    content: MiniappActivityContent,
+    owner: SurfaceOwner,
+    itemId: string,
+  ): { id: string; linkId: string };
   updateActivity(id: string, content: MiniappActivityContent): Promise<void>;
   endActivity(id: string): Promise<void>;
 }
@@ -75,6 +79,30 @@ export class SurfaceCoordinator {
       this.active && generation === this.generation && sameSurfaceOwner(this.source.owner(), owner)
     );
   }
+  /** Only the still-running selected session may follow its current canonical item. */
+  canOpenActivity = (item: SnapshotItem, linkId: string): boolean => {
+    const preferences = this.state.preferences;
+    const activity = preferences?.activity;
+    if (
+      !preferences ||
+      !activity ||
+      !this.state.ready ||
+      this.state.busy ||
+      this.cleanupPending ||
+      this.source.loading() ||
+      !this.current(preferences.owner) ||
+      activity.linkId !== linkId ||
+      activity.itemId !== item.id ||
+      !this.source.spaces().has(item.space_id)
+    )
+      return false;
+    const content = activityContent(item, preferences.owner);
+    return (
+      !!content &&
+      content.endsAt === activity.endsAt &&
+      this.port.activities().includes(activity.id)
+    );
+  };
   private queue<T>(work: () => Promise<T>): Promise<T> {
     const task = this.tail.then(work);
     this.tail = task.then(
@@ -234,7 +262,11 @@ export class SurfaceCoordinator {
       if (!content || content.endsAt !== activity.endsAt || !running.includes(activity.id)) {
         if (running.includes(activity.id)) await this.port.endActivity(activity.id);
         if (this.current(owner, generation)) await this.save({ ...preferences, activity: null });
-      } else await this.port.updateActivity(activity.id, content);
+      } else
+        await this.port.updateActivity(activity.id, {
+          ...content,
+          deepLink: surfaceActivityURL(owner, activity.itemId, activity.linkId),
+        });
     }
     if (this.current(owner, generation)) this.publish({ ready: true, error: null });
   }
@@ -304,14 +336,14 @@ export class SurfaceCoordinator {
       for (const existing of this.port.activities()) await this.port.endActivity(existing);
       if (!this.current(preferences.owner))
         throw new Error(t('nativeSurfaces.theAccountHasChanged'));
-      const activityId = this.port.startActivity(content);
+      const activity = this.port.startActivity(content, preferences.owner, id);
       try {
         await this.save({
           ...preferences,
-          activity: { id: activityId, itemId: id, endsAt: content.endsAt, showContent },
+          activity: { ...activity, itemId: id, endsAt: content.endsAt, showContent },
         });
       } catch (error) {
-        await this.port.endActivity(activityId);
+        await this.port.endActivity(activity.id);
         throw error;
       }
     });

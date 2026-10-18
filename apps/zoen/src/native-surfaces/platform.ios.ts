@@ -2,9 +2,11 @@ import { t } from '../i18n/index.ts';
 import { requireOptionalNativeModule } from 'expo';
 import { File, Paths } from 'expo-file-system';
 import * as AppIntents from 'expo-app-intents';
+import { randomUUID } from 'expo-crypto';
 import type { SurfacePort } from './coordinator';
 import type { MiniappActivityContent } from './activity';
 import type { NativeWidgetContent } from './snapshot';
+import { surfaceActivityURL } from './links';
 
 export function surfacesAvailable(): boolean {
   return (
@@ -75,8 +77,16 @@ export async function createSurfacePort(): Promise<SurfacePort | null> {
         throw new Error(t('nativeSurfaces.thisDeviceSShortcutsCouldNotBeUpdated'));
     },
     activities: () => activity.getInstances().map((value) => value.getId()),
-    startActivity: (content: MiniappActivityContent) =>
-      activity.start(content, content.deepLink, new Date(content.endsAt)).getId(),
+    startActivity(content: MiniappActivityContent, owner, itemId) {
+      const linkId = randomUUID();
+      // ActivityKit attributes (including this URL) are immutable. Content and
+      // item versions can update without invalidating this selected session.
+      const deepLink = surfaceActivityURL(owner, itemId, linkId);
+      const id = activity
+        .start({ ...content, deepLink }, deepLink, new Date(content.endsAt))
+        .getId();
+      return { id, linkId };
+    },
     async updateActivity(id, content) {
       const instance = findActivity(id);
       if (!instance) throw new Error(t('nativeSurfaces.activityEnded'));

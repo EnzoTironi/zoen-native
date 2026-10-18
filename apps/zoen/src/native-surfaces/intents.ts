@@ -9,6 +9,7 @@ export type SurfaceInvocation = Readonly<{
 }>;
 export type SurfaceNavigation =
   | Readonly<{ kind: 'item'; owner: SurfaceOwner; itemId: string; version: number }>
+  | Readonly<{ kind: 'activity'; owner: SurfaceOwner; itemId: string; linkId: string }>
   | Readonly<{ kind: 'chat'; owner: SurfaceOwner; spaceId: string }>;
 export type SurfaceInvocationResult =
   | { status: 'opened'; path: string }
@@ -17,6 +18,7 @@ export interface SurfaceAccess {
   currentOwner(): SurfaceOwner | null;
   item(itemId: string): Promise<SnapshotItem>;
   canOpenSpace(spaceId: string): Promise<boolean>;
+  canOpenActivity?(item: SnapshotItem, linkId: string): boolean;
   open(path: string): void;
 }
 
@@ -44,6 +46,18 @@ export function surfaceNavigation(
   )
     return null;
   const boundOwner: SurfaceOwner = Object.freeze(owner as SurfaceOwner);
+  if (
+    invocation.name === 'zoen.openActivity' &&
+    Object.keys(params).sort().join(',') === 'deviceId,identityId,itemId,linkId' &&
+    surfaceId(params.itemId) &&
+    surfaceId(params.linkId)
+  )
+    return Object.freeze({
+      kind: 'activity',
+      owner: boundOwner,
+      itemId: params.itemId,
+      linkId: params.linkId,
+    });
   if (
     invocation.name === 'zoen.openItem' &&
     Object.keys(params).sort().join(',') === 'deviceId,identityId,itemId,version' &&
@@ -73,7 +87,7 @@ export async function openSurfaceInvocation(
   access: SurfaceAccess,
   now = Date.now(),
 ): Promise<SurfaceInvocationResult> {
-  if (!['zoen.openItem', 'zoen.openChat'].includes(invocation.name))
+  if (!['zoen.openItem', 'zoen.openChat', 'zoen.openActivity'].includes(invocation.name))
     return { status: 'unsupported' };
   const navigation = surfaceNavigation(invocation, now);
   if (!navigation) return { status: 'invalid' };
@@ -81,11 +95,17 @@ export async function openSurfaceInvocation(
     return { status: 'owner_changed' };
   try {
     let path: string;
-    if (navigation.kind === 'item') {
+    let activityItem: SnapshotItem | undefined;
+    if (navigation.kind !== 'chat') {
       const item = await access.item(navigation.itemId);
       if (item.id !== navigation.itemId || !surfaceId(item.space_id))
         return { status: 'unavailable' };
-      if (item.version !== navigation.version) return { status: 'stale' };
+      if (navigation.kind === 'item' && item.version !== navigation.version)
+        return { status: 'stale' };
+      if (navigation.kind === 'activity') {
+        if (!access.canOpenActivity?.(item, navigation.linkId)) return { status: 'stale' };
+        activityItem = item;
+      }
       if (!(await access.canOpenSpace(item.space_id))) return { status: 'unavailable' };
       path = `/item/${encodeURIComponent(item.id)}`;
     } else {
@@ -94,6 +114,12 @@ export async function openSurfaceInvocation(
     }
     if (!sameSurfaceOwner(access.currentOwner(), navigation.owner))
       return { status: 'owner_changed' };
+    // Selection/access may change while the membership check is pending.
+    if (
+      navigation.kind === 'activity' &&
+      (!activityItem || !access.canOpenActivity?.(activityItem, navigation.linkId))
+    )
+      return { status: 'stale' };
     access.open(path);
     return { status: 'opened', path };
   } catch {

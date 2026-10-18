@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useClient } from '../core/provider';
 import { openSurfaceInvocation } from './intents';
 import { surfacesAvailable } from './platform';
+import { surfaceOwner, surfaceSpaces } from './access';
 
 function ReadyConsumer() {
   const { store } = useClient();
@@ -10,16 +11,9 @@ function ReadyConsumer() {
     for (const invocation of pending) {
       try {
         const result = await openSurfaceInvocation(invocation, {
-          currentOwner: () => {
-            const state = store.getSnapshot();
-            const account = state.snapshot?.account;
-            return state.phase === 'ready' && state.mode === 'account' && account?.unlocked
-              ? { identityId: account.identity_id, deviceId: account.device_id }
-              : null;
-          },
+          currentOwner: () => surfaceOwner(store.getSnapshot()),
           item: (id) => store.driver.request({ op: 'item', item_id: id }),
-          canOpenSpace: async (id) =>
-            !!store.getSnapshot().snapshot?.conversations.some((space) => space.id === id),
+          canOpenSpace: async (id) => surfaceSpaces(store.getSnapshot()).has(id),
           open: (path) => router.push(path as '/'),
         });
         // Navigation is safe to replay. Transient reads and another account remain pending.
@@ -34,9 +28,9 @@ function ReadyConsumer() {
   return null;
 }
 export function NativeIntentConsumer() {
-  const { phase, mode, snapshot } = useClient();
-  const account = snapshot?.account;
-  return surfacesAvailable() && phase === 'ready' && mode === 'account' && account?.unlocked ? (
-    <ReadyConsumer key={`${account.identity_id}:${account.device_id}`} />
+  const state = useClient();
+  const owner = surfaceOwner(state);
+  return surfacesAvailable() && owner ? (
+    <ReadyConsumer key={`${owner.identityId}:${owner.deviceId}`} />
   ) : null;
 }

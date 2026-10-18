@@ -3,31 +3,27 @@ import { AppState } from 'react-native';
 import { useClient } from '../core/provider';
 import { SurfaceCoordinator } from './coordinator';
 import { createSurfacePort } from './platform';
-import type { SurfaceOwner } from './snapshot';
+import { surfaceOwner, surfaceSpaces } from './access';
 
 const Context = createContext<SurfaceCoordinator | null>(null);
+const InitializationContext = createContext(false);
 export function useNativeSurfaces() {
   return use(Context);
+}
+export function useNativeSurfacesInitialized() {
+  return use(InitializationContext);
 }
 
 /** App-only coordinator: extensions receive compact projections, never an engine or vault. */
 export function NativeSurfacesProvider({ children }: { children: ReactNode }) {
   const { store } = useClient();
   const [coordinator, setCoordinator] = useState<SurfaceCoordinator | null>(null);
+  const [initialized, setInitialized] = useState(false);
   useEffect(() => {
     let disposed = false;
     let active: SurfaceCoordinator | null = null;
     let unregisterCleanup: (() => void) | undefined;
-    const owner = (): SurfaceOwner | null => {
-      const state = store.getSnapshot();
-      const account = state.snapshot?.account;
-      return state.mode === 'account' &&
-        state.phase === 'ready' &&
-        account?.unlocked &&
-        !account.setup_pending
-        ? { identityId: account.identity_id, deviceId: account.device_id }
-        : null;
-    };
+    const owner = () => surfaceOwner(store.getSnapshot());
     const unsubscribe = store.subscribe(() => {
       void active?.refresh();
     });
@@ -36,17 +32,16 @@ export function NativeSurfacesProvider({ children }: { children: ReactNode }) {
     });
     void createSurfacePort()
       .then((port) => {
-        if (!port || disposed) return;
+        if (disposed) return;
+        if (!port) {
+          setInitialized(true);
+          return;
+        }
         active = new SurfaceCoordinator(
           {
             loading: () => store.getSnapshot().phase === 'opening',
             owner,
-            spaces: () =>
-              new Map(
-                store
-                  .getSnapshot()
-                  .snapshot?.conversations.map((space) => [space.id, space.title]) ?? [],
-              ),
+            spaces: () => surfaceSpaces(store.getSnapshot()),
             item: (id) => store.driver.request({ op: 'item', item_id: id }),
           },
           port,
@@ -55,9 +50,11 @@ export function NativeSurfacesProvider({ children }: { children: ReactNode }) {
         unregisterCleanup = store.registerDeviceCleanup(() => current.eraseDevice());
         active.activate();
         setCoordinator(active);
+        setInitialized(true);
       })
       .catch(() => {
         /* Unsupported development binaries do not expose these controls. */
+        if (!disposed) setInitialized(true);
       });
     return () => {
       disposed = true;
@@ -67,5 +64,9 @@ export function NativeSurfacesProvider({ children }: { children: ReactNode }) {
       active?.dispose();
     };
   }, [store]);
-  return <Context value={coordinator}>{children}</Context>;
+  return (
+    <InitializationContext value={initialized}>
+      <Context value={coordinator}>{children}</Context>
+    </InitializationContext>
+  );
 }

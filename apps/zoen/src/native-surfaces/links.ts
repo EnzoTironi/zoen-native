@@ -14,6 +14,13 @@ export function surfaceItemURL(owner: SurfaceOwner, itemId: string, version: num
   return `zoen://surface/${itemId}?${query}`;
 }
 
+/** Activity taps follow their selected session, while widget/shortcut links remain version-bound. */
+export function surfaceActivityURL(owner: SurfaceOwner, itemId: string, linkId: string): string {
+  if (!validSurfaceOwner(owner) || !surfaceId(itemId) || !surfaceId(linkId))
+    throw new Error('Invalid activity scope');
+  return `zoen://activity/${itemId}?${new URLSearchParams({ ...owner, linkId })}`;
+}
+
 /** An extension can request navigation, never a mutation or another account's content. */
 export function surfaceLinkPath(value: string): string | null {
   if (value.length > 2_048) return null;
@@ -21,7 +28,7 @@ export function surfaceLinkPath(value: string): string | null {
     const url = new URL(value);
     if (
       url.protocol !== 'zoen:' ||
-      url.hostname !== 'surface' ||
+      !['surface', 'activity'].includes(url.hostname) ||
       url.username ||
       url.password ||
       url.port ||
@@ -34,10 +41,14 @@ export function surfaceLinkPath(value: string): string | null {
       identityId: url.searchParams.get('identityId') ?? '',
       deviceId: url.searchParams.get('deviceId') ?? '',
     };
+    if (!surfaceId(itemId) || !validSurfaceOwner(owner)) return null;
+    if (url.hostname === 'activity') {
+      const linkId = url.searchParams.get('linkId');
+      if (keys !== 'deviceId,identityId,linkId' || !surfaceId(linkId)) return null;
+      return `/surface?${new URLSearchParams({ ...owner, itemId, linkId })}`;
+    }
     const version = url.searchParams.get('version') ?? '';
     if (
-      !surfaceId(itemId) ||
-      !validSurfaceOwner(owner) ||
       keys !== 'deviceId,identityId,version' ||
       !/^(0|[1-9][0-9]{0,15})$/.test(version) ||
       !Number.isSafeInteger(Number(version))
@@ -50,18 +61,30 @@ export function surfaceLinkPath(value: string): string | null {
 }
 
 export function surfaceRouteInvocation(params: Record<string, unknown>): SurfaceInvocation {
+  const activity = Object.hasOwn(params, 'linkId');
+  const expected = activity
+    ? 'deviceId,identityId,itemId,linkId'
+    : 'deviceId,identityId,itemId,version';
   return {
     id: 'surface-navigation',
-    name: 'zoen.openItem',
+    name: activity ? 'zoen.openActivity' : 'zoen.openItem',
     createdAt: Date.now(),
-    params: {
-      identityId: params.identityId,
-      deviceId: params.deviceId,
-      itemId: params.itemId,
-      version:
-        typeof params.version === 'string' && /^(0|[1-9][0-9]{0,15})$/.test(params.version)
-          ? Number(params.version)
-          : NaN,
-    },
+    params:
+      Object.keys(params).sort().join(',') !== expected
+        ? {}
+        : {
+            identityId: params.identityId,
+            deviceId: params.deviceId,
+            itemId: params.itemId,
+            ...(activity
+              ? { linkId: params.linkId }
+              : {
+                  version:
+                    typeof params.version === 'string' &&
+                    /^(0|[1-9][0-9]{0,15})$/.test(params.version)
+                      ? Number(params.version)
+                      : NaN,
+                }),
+          },
   };
 }

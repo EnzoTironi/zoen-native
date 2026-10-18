@@ -8,6 +8,7 @@ export type SurfacePreferences = {
   shortcutItems: string[];
   activity: {
     id: string;
+    linkId: string;
     itemId: string;
     endsAt: number;
     showContent: boolean;
@@ -55,14 +56,18 @@ export function parsePreferences(json: string | null, owner: SurfaceOwner): Surf
       ...empty,
       widget: widget ? { itemId: widget.itemId, showContent: widget.showContent } : null,
       shortcutItems: [...new Set(value.shortcutItems)],
-      activity: activity
-        ? {
-            id: activity.id,
-            itemId: activity.itemId,
-            endsAt: activity.endsAt,
-            showContent: activity.showContent,
-          }
-        : null,
+      // Old SDK URLs were version-bound and cannot be repaired in place. Retire
+      // only that legacy activity; retain the owner's widget and shortcut opt-ins.
+      activity:
+        activity && surfaceId(activity.linkId)
+          ? {
+              id: activity.id,
+              linkId: activity.linkId,
+              itemId: activity.itemId,
+              endsAt: activity.endsAt,
+              showContent: activity.showContent,
+            }
+          : null,
     };
   } catch {
     return empty;
