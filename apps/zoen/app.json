@@ -13,7 +13,8 @@
       "usesAppleSignIn": true,
       "deploymentTarget": "26.0",
       "infoPlist": {
-        "CFBundleAllowMixedLocalizations": true
+        "CFBundleAllowMixedLocalizations": true,
+        "NSCalendarsWriteOnlyAccessUsageDescription": "Add events you confirm in Zoen to your calendar."
       }
     },
     "android": {
@@ -106,9 +107,7 @@
       [
         "expo-calendar",
         {
-          "writeOnlyAccess": true,
-          "writeOnlyCalendarPermission": "Add events you confirm in Zoen to your calendar.",
-          "calendarPermission": false,
+          "calendarPermission": "Allow Zoen to read your calendars to find free times. Miniapps receive only busy time blocks, without event names or details.",
           "remindersPermission": false
         }
       ],

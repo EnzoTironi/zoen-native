@@ -34,6 +34,10 @@ import type { MediaPickKind } from './media-actions.types';
 import { useAttachmentComposer, type AttachmentComposerField } from './attachment-composer';
 
 type Recording = { uri: string; durationMs: number; levels: number[]; owner?: VoiceReviewOwner };
+// A departing route retains the audio session until its preparation/restore
+// drains. A newly mounted composer must not be interrupted by that old restore.
+type CaptureLease = { owner: object; recover: () => Promise<void> };
+let nativeCaptureLease: CaptureLease | null = null;
 const failureMessage = (reason: unknown) =>
   reason instanceof Error ? reason.message : t('media.thisCouldNotBeCompletedTryAgain');
 async function discard(uri: string | undefined) {
@@ -82,6 +86,18 @@ export function MediaComposer({
     isMeteringEnabled: true,
   });
   const recorderState = useAudioRecorderState(recorder, 100);
+  const [captureOwner] = useState(() => ({}));
+  const webCaptureLease = useRef<CaptureLease | null>(null);
+  const getCaptureLease = useCallback(
+    () => (Platform.OS === 'web' ? webCaptureLease.current : nativeCaptureLease),
+    [],
+  );
+  const setCaptureLease = useCallback((lease: CaptureLease | null) => {
+    // Web has independent MediaRecorders and no shared native audio mode. A
+    // failed Web preparation must not lock microphones in future route instances.
+    if (Platform.OS === 'web') webCaptureLease.current = lease;
+    else nativeCaptureLease = lease;
+  }, []);
   const [expanded, setExpanded] = useState(false);
   const [clip, setClip] = useState<Recording | null>(null);
   const [busy, setBusy] = useState(false);
@@ -89,6 +105,17 @@ export function MediaComposer({
   const levels = useRef<number[]>([]);
   const [recordingLevels, setRecordingLevels] = useState<readonly number[]>([]);
   const stopTask = useRef<Promise<void> | null>(null);
+  const startTask = useRef<Promise<void> | null>(null);
+  const startEpoch = useRef({ value: 0 });
+  const appState = useRef(AppState.currentState);
+  const disabledNow = useRef(disabled);
+  const prepared = useRef(false);
+  const preparedUri = useRef<string | undefined>(undefined);
+  const stoppedCapture = useRef<{
+    uri: string | undefined;
+    durationMs: number;
+    stopped: boolean;
+  } | null>(null);
   const recording = useRef(false);
   const audioModeNeedsRestore = useRef(false);
   const trimNow = useRef<PendingVoiceTrim>(null);
@@ -153,8 +180,10 @@ export function MediaComposer({
   useEffect(() => {
     mounted.current = true;
     const retainedOwners = owners.current;
+    const epoch = startEpoch.current;
     return () => {
       mounted.current = false;
+      ++epoch.value;
       for (const owner of retainedOwners) void closeOwner(owner).catch(() => {});
       void discard(uriToDiscard.current);
     };
@@ -169,25 +198,62 @@ export function MediaComposer({
 
   const stop = useCallback(() => {
     if (stopTask.current) return stopTask.current;
-    if (!recording.current && !audioModeNeedsRestore.current) return Promise.resolve();
-    audioModeNeedsRestore.current = true;
-    const task = (async () => {
+    const starting = startTask.current;
+    if (
+      !starting &&
+      !recording.current &&
+      !prepared.current &&
+      !preparedUri.current &&
+      !audioModeNeedsRestore.current
+    )
+      return Promise.resolve();
+    if (starting) ++startEpoch.current.value;
+    // Register before SDK callbacks, and drain an interrupted preparation before
+    // restoring the audio mode. A newer capture cannot overtake this cleanup.
+    const task = Promise.resolve().then(async () => {
+      if (starting) await starting.catch(() => {});
+      if (
+        !recording.current &&
+        !prepared.current &&
+        !preparedUri.current &&
+        !audioModeNeedsRestore.current
+      )
+        return;
+      audioModeNeedsRestore.current = true;
       let failure: unknown;
       let failed = false;
       try {
         // SDK58 releases/stops this SharedObject on unmount; retained cleanup must not touch it.
-        if (!mounted.current) recording.current = false;
+        if (!mounted.current) {
+          recording.current = false;
+          prepared.current = false;
+          preparedUri.current = undefined;
+        }
         if (recording.current) {
-          const status = recorder.getStatus();
-          const durationMs = status.durationMillis;
-          const captureUri = recorder.uri;
-          // A previous stop may have completed before a status/restoration failure.
-          if (status.isRecording) await recorder.stop();
-          if (mounted.current && recorder.getStatus().isRecording)
+          const capture = (stoppedCapture.current ??= {
+            uri: recorder.uri ?? undefined,
+            durationMs: recorder.getStatus().durationMillis,
+            stopped: false,
+          });
+          // iOS can pause the recorder before AppState reaches JS. isRecording
+          // false does not mean its M4A is finalized; SDK58 stop also closes paused audio.
+          if (!capture.stopped) {
+            await recorder.stop();
+            capture.stopped = true;
+          }
+          // Web publishes its recording URI only after stop. Read the final URI
+          // while this SharedObject is still mounted, retaining it across retries.
+          if (mounted.current) capture.uri = recorder.uri ?? capture.uri;
+          if (mounted.current && recorder.getStatus().isRecording) {
+            capture.stopped = false;
             throw new Error(t('media.theRecordingOnThisDeviceCouldNotBe'));
+          }
           // A failed stop retains capture ownership and can be retried; never discard live audio.
           recording.current = false;
-          const uri = mounted.current ? recorder.uri : captureUri;
+          prepared.current = false;
+          preparedUri.current = undefined;
+          const { durationMs } = capture;
+          const uri = capture.uri;
           if (uri && durationMs >= 250 && mounted.current && focused.current) {
             const stride = Math.max(1, Math.ceil(levels.current.length / 160));
             stageVoice(
@@ -203,6 +269,13 @@ export function MediaComposer({
             if (mounted.current && focused.current && durationMs < 250)
               void inform(t('media.recordingTooShort'), t('media.recordForAtLeastOneSecondToSend'));
           }
+          stoppedCapture.current = null;
+        } else if ((prepared.current || preparedUri.current) && mounted.current) {
+          if (prepared.current) await recorder.stop();
+          if (mounted.current) preparedUri.current = recorder.uri ?? preparedUri.current;
+          await discard(preparedUri.current);
+          prepared.current = false;
+          preparedUri.current = undefined;
         }
       } catch (reason) {
         failure = reason;
@@ -219,16 +292,24 @@ export function MediaComposer({
         if (mounted.current) setFailure(failureMessage(failure));
         throw failure;
       }
-    })();
+    });
     stopTask.current = task;
     // Releasing the single-flight latch must not depend on successful audio-session restoration.
     void task
       .finally(() => {
         if (stopTask.current === task) stopTask.current = null;
+        if (
+          getCaptureLease()?.owner === captureOwner &&
+          !recording.current &&
+          !prepared.current &&
+          !preparedUri.current &&
+          !audioModeNeedsRestore.current
+        )
+          setCaptureLease(null);
       })
       .catch(() => {});
     return sensitiveCacheWork.track(task);
-  }, [recorder, inform, stageVoice]);
+  }, [recorder, inform, stageVoice, captureOwner, getCaptureLease, setCaptureLease]);
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
     return store.registerDeviceCleanup(async () => {
@@ -249,13 +330,18 @@ export function MediaComposer({
       focused.current = true;
       return () => {
         focused.current = false;
+        ++startEpoch.current.value;
         void stop().catch(() => {});
       };
     }, [stop]),
   );
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') void stop().catch(() => {});
+      appState.current = state;
+      if (state !== 'active') {
+        ++startEpoch.current.value;
+        void stop().catch(() => {});
+      }
     });
     return () => subscription.remove();
   }, [stop]);
@@ -263,8 +349,12 @@ export function MediaComposer({
     // Search keeps this owner mounted. End a live capture into its retained draft
     // before hiding the recording controls; returning restores the same edits.
     suspendedNow.current = suspended;
-    if (suspended) void stop().catch(() => {});
-  }, [suspended, stop]);
+    disabledNow.current = disabled;
+    if (suspended || disabled) {
+      ++startEpoch.current.value;
+      void stop().catch(() => {});
+    }
+  }, [disabled, suspended, stop]);
   useEffect(() => {
     if (recorderState.isRecording && recorderState.durationMillis >= 3_600_000)
       void stop().catch(() => {});
@@ -310,32 +400,77 @@ export function MediaComposer({
       if (mounted.current) setBusy(false);
     }
   }
-  async function start() {
-    try {
-      await sensitiveCacheWork.run(startRecording);
-    } catch (reason) {
-      if (mounted.current) setFailure(failureMessage(reason));
-    }
+  function start() {
+    if (
+      busy ||
+      startTask.current ||
+      stopTask.current ||
+      recording.current ||
+      clipNow.current ||
+      disabledNow.current ||
+      suspendedNow.current ||
+      !focused.current ||
+      appState.current !== 'active'
+    )
+      return;
+    const epoch = startEpoch.current.value;
+    setBusy(true);
+    setFailure(null);
+    // Capture recovery before assigning this attempt: its stop must never await
+    // the new start that is itself waiting for that old cleanup.
+    const recovery = getCaptureLease()?.recover();
+    const task = sensitiveCacheWork.run(() =>
+      Promise.resolve().then(async () => {
+        await recovery;
+        if (epoch !== startEpoch.current.value || !mounted.current || getCaptureLease()) return;
+        setCaptureLease({ owner: captureOwner, recover: stop });
+        await startRecording(epoch);
+      }),
+    );
+    startTask.current = task;
+    void task
+      .catch((reason: unknown) => {
+        if (mounted.current) setFailure(failureMessage(reason));
+      })
+      .finally(() => {
+        if (startTask.current === task) {
+          startTask.current = null;
+          if (mounted.current) setBusy(false);
+        }
+        if (
+          getCaptureLease()?.owner === captureOwner &&
+          !recording.current &&
+          !prepared.current &&
+          !preparedUri.current &&
+          !audioModeNeedsRestore.current
+        )
+          setCaptureLease(null);
+      });
   }
-  async function startRecording() {
+  async function startRecording(epoch: number) {
+    const current = () =>
+      epoch === startEpoch.current.value &&
+      getCaptureLease()?.owner === captureOwner &&
+      mounted.current &&
+      focused.current &&
+      appState.current === 'active' &&
+      !disabledNow.current &&
+      !suspendedNow.current;
     if (
       !media ||
-      busy ||
       attachments.active ||
       attachments.busy ||
-      disabled ||
-      suspendedNow.current ||
+      !current() ||
       recording.current ||
       stopTask.current ||
       audioModeNeedsRestore.current ||
       clipNow.current
     )
       return;
-    setBusy(true);
-    setFailure(null);
+    let started = false;
     try {
       const permission = await AudioModule.requestRecordingPermissionsAsync();
-      if (!mounted.current || !focused.current || suspendedNow.current) return;
+      if (!current()) return;
       if (!permission.granted) {
         await inform(
           t('media.allowMicrophone'),
@@ -344,6 +479,7 @@ export function MediaComposer({
         return;
       }
       pauseAudioPlayback();
+      audioModeNeedsRestore.current = true;
       await setAudioModeAsync({
         playsInSilentMode: true,
         allowsRecording: true,
@@ -351,28 +487,38 @@ export function MediaComposer({
         allowsBackgroundRecording: false,
         interruptionMode: 'doNotMix',
       });
-      if (!mounted.current || !focused.current || suspendedNow.current) {
-        await setAudioModeAsync({ allowsRecording: false });
-        return;
+      if (!current()) return;
+      try {
+        await recorder.prepareToRecordAsync();
+        if (mounted.current) prepared.current = true;
+      } finally {
+        if (mounted.current) preparedUri.current = recorder.uri ?? undefined;
       }
-      await recorder.prepareToRecordAsync();
-      if (!mounted.current || !focused.current || suspendedNow.current) {
-        await recorder.stop();
-        await discard(recorder.uri ?? undefined);
-        await setAudioModeAsync({ allowsRecording: false });
-        return;
-      }
+      if (!current()) return;
       levels.current = [];
       setRecordingLevels([]);
       setExpanded(false);
       recorder.record();
       recording.current = true;
+      stoppedCapture.current = null;
+      started = true;
       uriToDiscard.current = recorder.uri ?? undefined;
     } catch (reason) {
-      await inform(t('media.couldNotRecord'), failureMessage(reason));
-      await setAudioModeAsync({ allowsRecording: false });
+      if (current()) void inform(t('media.couldNotRecord'), failureMessage(reason));
     } finally {
-      setBusy(false);
+      if (!started && audioModeNeedsRestore.current) {
+        // An unmounted SDK SharedObject is already stopped/released. Never read it
+        // from a late prepare continuation; the remaining session restore is independent.
+        if (mounted.current && (prepared.current || preparedUri.current)) {
+          if (prepared.current) await recorder.stop();
+          if (mounted.current) preparedUri.current = recorder.uri ?? preparedUri.current;
+          await discard(preparedUri.current);
+          prepared.current = false;
+          preparedUri.current = undefined;
+        }
+        await setAudioModeAsync({ allowsRecording: false });
+        audioModeNeedsRestore.current = false;
+      }
     }
   }
   async function sendEdited(owner: VoiceReviewOwner, captured: VoiceSendable) {
@@ -465,6 +611,8 @@ export function MediaComposer({
   }
   async function retryVoice() {
     // Restore the audio session first, without throwing away a successfully staged capture.
+    const lease = getCaptureLease();
+    if (lease?.owner !== captureOwner) await lease?.recover();
     await stop();
     if (!mounted.current || !focused.current) return;
     setFailure(null);

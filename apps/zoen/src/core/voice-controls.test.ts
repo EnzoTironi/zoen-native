@@ -40,7 +40,14 @@ const compiled = Object.fromEntries(
   ),
 );
 function component(name: (typeof files)[number], ports: Record<string, unknown>) {
-  const slots: Slot[] = [];
+  let slots: Slot[] = [];
+  type Instance = {
+    slots: Slot[];
+    focused: boolean;
+    focusEffect?: () => void | (() => void);
+    focusCleanup?: () => void;
+  };
+  let instance: Instance;
   let cursor = 0;
   let effects: (() => void)[] = [];
   const next = () => (slots[cursor++] ??= {});
@@ -93,7 +100,21 @@ function component(name: (typeof files)[number], ports: Record<string, unknown>)
       ScrollView: 'ScrollView',
       ActivityIndicator: 'ActivityIndicator',
       Platform: { OS: 'ios' },
-      AppState: { addEventListener: () => ({ remove() {} }) },
+      AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+    },
+    'expo-router': {
+      useFocusEffect(read: () => void | (() => void)) {
+        const owner = instance;
+        effect(() => {
+          owner.focusEffect = read;
+          if (owner.focused) owner.focusCleanup = read() ?? undefined;
+          return () => {
+            owner.focusCleanup?.();
+            owner.focusCleanup = undefined;
+            owner.focusEffect = undefined;
+          };
+        }, [read]);
+      },
     },
     '@expo/ui': { Host: 'Host' },
     '@expo/ui/swift-ui': Object.fromEntries(
@@ -137,18 +158,34 @@ function component(name: (typeof files)[number], ports: Record<string, unknown>)
     },
   });
   const render = Object.values(module.exports)[0]!;
-  return {
-    render(props: Element['props']) {
-      cursor = 0;
-      effects = [];
-      const tree = render(props);
-      effects.forEach((commit) => commit());
-      return tree;
-    },
-    unmount() {
-      slots.forEach((slot) => slot.cleanup?.());
-    },
-  };
+  function mount() {
+    const owner: Instance = { slots: [], focused: true };
+    return {
+      render(props: Element['props']) {
+        instance = owner;
+        slots = owner.slots;
+        cursor = 0;
+        effects = [];
+        const tree = render(props);
+        effects.forEach((commit) => commit());
+        return tree;
+      },
+      blur() {
+        owner.focused = false;
+        owner.focusCleanup?.();
+        owner.focusCleanup = undefined;
+      },
+      focus() {
+        owner.focused = true;
+        owner.focusCleanup = owner.focusEffect?.() ?? undefined;
+      },
+      unmount() {
+        owner.slots.forEach((slot) => slot.cleanup?.());
+      },
+      fork: mount,
+    };
+  }
+  return mount();
 }
 function nodes(tree: unknown): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
@@ -164,6 +201,15 @@ function find(tree: Element, type: string, label?: string): Element {
   return node;
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
 function voicePort(): VoiceNativePort {
   let renders = 0;
   return {
@@ -191,43 +237,125 @@ function voicePort(): VoiceNativePort {
     release: async () => {},
   };
 }
-function recording(editable = false) {
-  const state = { isRecording: false, durationMillis: 4000 };
+function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
   let stopFailure = false;
   let restoreFailure = false;
-  let stops = 0;
   let confirmationFailure = false;
-  let released = false;
+  let statusFailure = false;
+  let ineffectiveStop = false;
   let releasedCalls = 0;
+  let permission: Promise<{ granted: boolean }> | undefined;
+  let preparation: Promise<void> | undefined;
+  let restoration: Promise<void> | undefined;
+  let permissionCalls = 0;
+  let prepares = 0;
+  let records = 0;
+  const events: string[] = [];
   const discarded: string[] = [];
   const sent: number[] = [];
+  const appListeners = new Set<(state: string) => void>();
   const cleanups = new Set<() => Promise<void>>();
   const work = new SensitiveCacheWork();
-  const recorder = {
-    uri: 'file:///voice/capture.m4a',
-    getStatus: () => {
-      if (released) {
-        ++releasedCalls;
-        throw new Error('synthetic released recorder');
-      }
-      if (confirmationFailure && stops > 0 && !state.isRecording) {
-        confirmationFailure = false;
-        throw new Error('synthetic stop confirmation failure');
-      }
-      return state;
-    },
-    prepareToRecordAsync: async () => {},
-    record: () => (state.isRecording = true),
-    stop: async () => {
-      ++stops;
-      if (stopFailure) throw new Error('synthetic recorder stop failure');
-      state.isRecording = false;
+  function makeRecorder(name: string) {
+    const state = { isRecording: false, durationMillis: 4000 };
+    let released = false;
+    let finalized = true;
+    let uriAvailable = true;
+    let recorded = false;
+    let stops = 0;
+    function admitted() {
+      if (!released) return;
+      ++releasedCalls;
+      throw new Error('synthetic released recorder');
+    }
+    return {
+      state,
+      isFinalized: () => finalized,
+      publishUriOnStop: () => (uriAvailable = false),
+      stops: () => stops,
+      pause() {
+        events.push(`pause:${name}`);
+        state.isRecording = false;
+      },
+      release() {
+        released = true;
+        finalized = true;
+        state.isRecording = false;
+      },
+      sdk: {
+        get uri() {
+          admitted();
+          return uriAvailable ? `file:///voice/${name}.m4a` : null;
+        },
+        getStatus() {
+          admitted();
+          if (statusFailure) {
+            statusFailure = false;
+            throw new Error('synthetic initial status failure');
+          }
+          if (confirmationFailure && stops > 0 && !state.isRecording) {
+            confirmationFailure = false;
+            throw new Error('synthetic stop confirmation failure');
+          }
+          return state;
+        },
+        async prepareToRecordAsync() {
+          admitted();
+          ++prepares;
+          events.push(`prepare:${name}`);
+          await preparation;
+          if (!released) finalized = false;
+        },
+        record() {
+          admitted();
+          events.push(`record:${name}`);
+          ++records;
+          recorded = true;
+          finalized = false;
+          state.durationMillis = 4000;
+          state.isRecording = true;
+        },
+        async stop() {
+          admitted();
+          ++stops;
+          events.push(`stop:${name}`);
+          if (stopFailure) throw new Error('synthetic recorder stop failure');
+          if (platform === 'web' && !recorded)
+            throw new Error('synthetic Web MediaRecorder inactive');
+          if (ineffectiveStop) {
+            ineffectiveStop = false;
+            return;
+          }
+          state.isRecording = false;
+          finalized = true;
+          uriAvailable = true;
+          // SDK58 resets duration on stop. A retry must retain the pre-stop metadata.
+          state.durationMillis = 0;
+        },
+      },
+    };
+  }
+  const recorder = makeRecorder('capture');
+  let activeRecorder = recorder;
+  const voice = voicePort();
+  const prepareVoice = voice.prepare;
+  voice.prepare = async (uri) => {
+    events.push('copy');
+    assert.equal(recorder.isFinalized(), true, 'editor must never copy an unfinished M4A');
+    return prepareVoice(uri);
+  };
+  const inform = async () => {};
+  const appState = {
+    currentState: 'active',
+    addEventListener(_name: string, listener: (state: string) => void) {
+      appListeners.add(listener);
+      return { remove: () => appListeners.delete(listener) };
     },
   };
   const store = {
     driver: {
       media: {
-        voiceEditor: editable ? voicePort() : undefined,
+        voiceEditor: editable ? voice : undefined,
         sendVoice: async (value: { durationMs: number }) => sent.push(value.durationMs),
       },
     },
@@ -238,25 +366,43 @@ function recording(editable = false) {
     refresh: async () => {},
   };
   const app = component('MediaComposer', {
-    'expo-router': { useFocusEffect: (focus: () => void) => focus() },
+    'react-native': {
+      Text: 'Text',
+      View: 'View',
+      ScrollView: 'ScrollView',
+      Platform: { OS: platform },
+      AppState: appState,
+    },
     'expo-document-picker': {},
     'expo-audio': {
-      AudioModule: { requestRecordingPermissionsAsync: async () => ({ granted: true }) },
+      AudioModule: {
+        requestRecordingPermissionsAsync: () => {
+          ++permissionCalls;
+          events.push('permission');
+          return permission ?? Promise.resolve({ granted: true });
+        },
+      },
       RecordingPresets: { HIGH_QUALITY: {} },
-      useAudioRecorder: () => recorder,
-      useAudioRecorderState: () => state,
+      useAudioRecorder: () => activeRecorder.sdk,
+      useAudioRecorderState: () => activeRecorder.state,
       setAudioModeAsync: async (mode: { allowsRecording: boolean }) => {
-        if (mode.allowsRecording === false && restoreFailure)
-          throw new Error('synthetic audio mode restore failure');
+        events.push(`mode:${mode.allowsRecording}`);
+        if (mode.allowsRecording === false) {
+          await restoration;
+          if (restoreFailure) throw new Error('synthetic audio mode restore failure');
+        }
       },
     },
-    '../components/dialogs': { useDialogs: () => ({ inform: async () => {} }) },
+    '../components/dialogs': { useDialogs: () => ({ inform }) },
     '../core/provider': {
       useClient: () => ({ store }),
     },
     './cache-files': {
       discardCacheCopy: (uri?: string) => {
-        if (uri) discarded.push(uri);
+        if (uri) {
+          events.push('discard');
+          discarded.push(uri);
+        }
       },
     },
     './cache-work': { sensitiveCacheWork: work },
@@ -269,21 +415,48 @@ function recording(editable = false) {
     './attachment-composer': { useAttachmentComposer: () => ({ canAdd: true }) },
   });
   return {
-    state,
+    state: recorder.state,
     discarded,
     sent,
+    events,
     cleanups,
     app,
-    render: () => app.render({ spaceId: 'synthetic-space' }),
+    render: (props: Element['props'] = {}) => {
+      activeRecorder = recorder;
+      return app.render({ spaceId: 'synthetic-space', ...props });
+    },
+    nextMount() {
+      const next = makeRecorder('next');
+      const mounted = app.fork();
+      return {
+        render() {
+          activeRecorder = next;
+          return mounted.render({ spaceId: 'another-synthetic-space' });
+        },
+        state: next.state,
+        unmount: mounted.unmount,
+      };
+    },
+    background(state = 'background') {
+      appState.currentState = state;
+      appListeners.forEach((listener) => listener(state));
+    },
+    waitPermission: (value: Promise<{ granted: boolean }> | undefined) => (permission = value),
+    waitPrepare: (value: Promise<void> | undefined) => (preparation = value),
+    waitRestore: (value: Promise<void> | undefined) => (restoration = value),
+    permissionCalls: () => permissionCalls,
+    prepares: () => prepares,
+    records: () => records,
+    pauseRecorder: recorder.pause,
+    publishUriOnStop: recorder.publishUriOnStop,
     failRestore: (value: boolean) => (restoreFailure = value),
     failStop: (value: boolean) => (stopFailure = value),
     failConfirmation: () => (confirmationFailure = true),
-    releaseRecorder: () => {
-      released = true;
-      state.isRecording = false;
-    },
+    failStatus: () => (statusFailure = true),
+    ineffectiveStop: () => (ineffectiveStop = true),
+    releaseRecorder: recorder.release,
     releasedCalls: () => releasedCalls,
-    stops: () => stops,
+    stops: recorder.stops,
   };
 }
 
@@ -374,6 +547,377 @@ test('the actual dock exposes non-destructive audio-mode recovery beside a playa
   await recovered.onSend(session.getSendable());
   assert.deepEqual(f.sent, [4000]);
   await tick();
+});
+
+test('a system-paused recorder is finalized before its retained voice is prepared', async () => {
+  const f = recording(true);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  f.pauseRecorder();
+  f.background();
+  await tick();
+  const dock = find(f.render(), 'VoiceDock');
+  assert.equal(f.stops(), 1);
+  assert.ok(f.events.indexOf('stop:capture') < f.events.indexOf('copy'));
+  assert.equal(dock.props.session.getSnapshot().phase, 'ready');
+  assert.deepEqual(f.sent, [], 'interruption retains a draft and never posts it');
+  f.background('active');
+  await dock.props.onSend(dock.props.session.getSendable());
+  assert.deepEqual(f.sent, [4000]);
+});
+
+test('the Web recorder URI published only by stop is retained as one sendable review', async () => {
+  const f = recording(false, 'web');
+  f.publishUriOnStop();
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  const recordingDock = find(f.render(), 'VoiceDock');
+  assert.equal(recordingDock.props.uri, undefined);
+  await recordingDock.props.onStop();
+  const tree = f.render();
+  assert.equal(nodes(tree).filter((node) => node.type === 'VoiceDock').length, 1);
+  const review = find(tree, 'VoiceDock');
+  assert.equal(review.props.uri, 'file:///voice/capture.m4a');
+  assert.equal(review.props.durationMs, 4000);
+  assert.equal(f.stops(), 1);
+  await review.props.onSend();
+  assert.deepEqual(f.sent, [4000]);
+});
+
+test('unsupported Web prepared cancellation cannot create a shared microphone lock for a new route', async () => {
+  const f = recording(false, 'web');
+  const prepare = deferred<void>();
+  f.waitPrepare(prepare.promise);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  interrupt(f, 'focus');
+  prepare.resolve();
+  await tick();
+  assert.equal(f.records(), 0);
+  assert.ok(f.stops() > 0, 'the actual Web contract rejects stop before ever recording');
+  const next = f.nextMount();
+  // Keep the failed owner alive: another Web route still owns an independent
+  // MediaRecorder, even before the old route has unmounted or cleaned up.
+  find(next.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  assert.equal(next.state.isRecording, true);
+  assert.equal(f.records(), 1);
+  f.releaseRecorder();
+  f.app.unmount();
+  await find(next.render(), 'VoiceDock').props.onCancel();
+  next.unmount();
+});
+
+test('failed preparation restores the session without finalizing an unprepared recorder or locking retry', async () => {
+  const f = recording();
+  const prepare = deferred<void>();
+  f.waitPrepare(prepare.promise);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  prepare.reject(new Error('synthetic prepare failure'));
+  await tick();
+  assert.equal(f.records(), 0);
+  assert.equal(f.stops(), 0);
+  assert.equal(f.events.filter((event) => event === 'mode:false').length, 1);
+  f.waitPrepare(undefined);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  assert.equal(f.records(), 1);
+  await find(f.render(), 'VoiceDock').props.onCancel();
+});
+
+test('failed paused finalization retains ownership and retries before editor copy', async () => {
+  const f = recording(true);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  f.pauseRecorder();
+  f.failStop(true);
+  f.background();
+  await tick();
+  assert.equal(f.events.includes('copy'), false);
+  assert.deepEqual(f.discarded, []);
+  f.failStop(false);
+  f.background('active');
+  find(f.render(), 'NativeButton', 'media.voiceTryAgain').props.onPress();
+  await tick();
+  const dock = find(f.render(), 'VoiceDock');
+  assert.equal(f.stops(), 2);
+  assert.equal(dock.props.session.getSnapshot().phase, 'ready');
+  await dock.props.onCancel();
+});
+
+test('post-stop status failure retains original duration and does not stop twice on retry', async () => {
+  const f = recording(true);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  f.failConfirmation();
+  await assert.rejects(find(f.render(), 'VoiceDock').props.onStop(), /confirmation failure/);
+  assert.equal(f.state.durationMillis, 0, 'the real SDK no longer exposes pre-stop duration');
+  find(f.render(), 'NativeButton', 'media.voiceTryAgain').props.onPress();
+  await tick();
+  const dock = find(f.render(), 'VoiceDock');
+  assert.equal(dock.props.durationMs, 4000);
+  assert.equal(f.stops(), 1);
+  await dock.props.onCancel();
+});
+
+test('a failed initial status read keeps the source owned for a later successful stop', async () => {
+  const f = recording(true);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  f.failStatus();
+  await assert.rejects(find(f.render(), 'VoiceDock').props.onStop(), /initial status failure/);
+  assert.equal(f.stops(), 0);
+  assert.equal(f.events.includes('copy'), false);
+  assert.deepEqual(f.discarded, []);
+  find(f.render(), 'NativeButton', 'media.voiceTryAgain').props.onPress();
+  await tick();
+  const dock = find(f.render(), 'VoiceDock');
+  assert.equal(dock.props.durationMs, 4000);
+  assert.equal(dock.props.session.getSnapshot().phase, 'ready');
+  await dock.props.onCancel();
+});
+
+test('a resolved stop with native capture still active re-arms finalization for a real retry', async () => {
+  const f = recording(true);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  f.ineffectiveStop();
+  await assert.rejects(
+    find(f.render(), 'VoiceDock').props.onStop(),
+    /media.theRecordingOnThisDeviceCouldNotBe/,
+  );
+  assert.equal(f.events.includes('copy'), false);
+  assert.equal(f.state.isRecording, true);
+  await find(f.render(), 'VoiceDock').props.onRetry();
+  await tick();
+  const dock = find(f.render(), 'VoiceDock');
+  assert.equal(f.stops(), 2);
+  assert.equal(f.state.isRecording, false);
+  assert.equal(dock.props.session.getSnapshot().phase, 'ready');
+  assert.equal(dock.props.durationMs, 4000);
+  await dock.props.onCancel();
+});
+
+test('two microphone presses before React commits admit only one permission and preparation', async () => {
+  const f = recording();
+  const permission = deferred<{ granted: boolean }>();
+  f.waitPermission(permission.promise);
+  const mic = find(f.render(), 'ComposerAction', 'media.recordVoiceMessage');
+  mic.props.onPress();
+  mic.props.onPress();
+  assert.equal(find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.disabled, true);
+  await tick();
+  assert.equal(f.permissionCalls(), 1);
+  permission.resolve({ granted: true });
+  await tick();
+  assert.equal(f.prepares(), 1);
+  assert.equal(f.records(), 1);
+  await find(f.render(), 'VoiceDock').props.onCancel();
+});
+
+const interruptions = ['inactive', 'background', 'focus', 'suspension', 'disabled'] as const;
+function interrupt(f: ReturnType<typeof recording>, kind: (typeof interruptions)[number]) {
+  if (kind === 'focus') {
+    f.app.blur();
+    f.app.focus();
+  } else if (kind === 'suspension' || kind === 'disabled') {
+    f.render(kind === 'suspension' ? { suspended: true } : { disabled: true });
+    f.render();
+  } else {
+    f.background(kind);
+    f.background('active');
+  }
+}
+for (const kind of interruptions) {
+  test(`permission pending across ${kind} cannot revive without a fresh microphone press`, async () => {
+    const f = recording();
+    const permission = deferred<{ granted: boolean }>();
+    f.waitPermission(permission.promise);
+    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    await tick();
+    interrupt(f, kind);
+    permission.resolve({ granted: true });
+    await tick();
+    assert.equal(f.prepares(), 0);
+    assert.equal(f.records(), 0);
+    assert.equal(f.events.includes('mode:true'), false);
+    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    await tick();
+    assert.equal(f.records(), 1, 'a new explicit intent can record after cleanup');
+    await find(f.render(), 'VoiceDock').props.onCancel();
+  });
+  test(`native preparation pending across ${kind} finalizes and discards instead of starting`, async () => {
+    const f = recording();
+    const prepare = deferred<void>();
+    f.waitPrepare(prepare.promise);
+    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    await tick();
+    assert.equal(f.prepares(), 1);
+    interrupt(f, kind);
+    prepare.resolve();
+    await tick();
+    assert.equal(f.records(), 0);
+    assert.equal(f.stops(), 1);
+    assert.deepEqual(f.discarded, ['file:///voice/capture.m4a']);
+    assert.equal(f.events.filter((event) => event === 'mode:false').length, 1);
+    assert.ok(f.events.indexOf('stop:capture') < f.events.indexOf('mode:false'));
+    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    await tick();
+    assert.equal(f.records(), 1);
+    await find(f.render(), 'VoiceDock').props.onCancel();
+  });
+}
+
+test('unmount during preparation drains audio restoration without touching the released SharedObject', async () => {
+  const f = recording();
+  const prepare = deferred<void>();
+  f.waitPrepare(prepare.promise);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  const cleanup = [...f.cleanups][0]!;
+  f.releaseRecorder();
+  f.app.unmount();
+  const drained = cleanup();
+  prepare.resolve();
+  await drained;
+  assert.equal(f.records(), 0);
+  assert.equal(f.releasedCalls(), 0);
+  assert.equal(f.events.filter((event) => event === 'mode:false').length, 1);
+});
+
+test('unmount while permission is pending never prepares or restores an unused audio session', async () => {
+  const f = recording();
+  const permission = deferred<{ granted: boolean }>();
+  f.waitPermission(permission.promise);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  f.releaseRecorder();
+  f.app.unmount();
+  permission.resolve({ granted: true });
+  await tick();
+  assert.equal(f.prepares(), 0);
+  assert.equal(f.records(), 0);
+  assert.equal(f.releasedCalls(), 0);
+  assert.equal(f.events.includes('mode:true'), false);
+  assert.equal(f.events.includes('mode:false'), false);
+});
+
+for (const intent of ['device cleanup', 'Cancel'] as const) {
+  test(`${intent} during native preparation retires the pending microphone intent before drain`, async () => {
+    const f = recording(true);
+    const prepare = deferred<void>();
+    f.waitPrepare(prepare.promise);
+    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    await tick();
+    let cleanup: Promise<void> | undefined;
+    if (intent === 'device cleanup') cleanup = [...f.cleanups][0]!();
+    else find(f.render(), 'IconButton', 'media.cancelAttachment').props.onPress();
+    prepare.resolve();
+    await cleanup;
+    await tick();
+    assert.equal(f.records(), 0);
+    assert.equal(f.stops(), 1);
+    assert.equal(f.events.includes('copy'), false);
+    assert.ok(f.discarded.includes('file:///voice/capture.m4a'));
+    assert.equal(
+      nodes(f.render()).some((node) => node.type === 'VoiceDock'),
+      false,
+    );
+    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    await tick();
+    assert.equal(f.records(), 1, 'only a new explicit press can start after cancellation');
+    await find(f.render(), 'VoiceDock').props.onCancel();
+  });
+}
+
+test('a failed same-composer restoration can recover without deadlocking its next recording', async () => {
+  const f = recording();
+  const prepare = deferred<void>();
+  f.waitPrepare(prepare.promise);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  f.failRestore(true);
+  interrupt(f, 'focus');
+  prepare.resolve();
+  await tick();
+  assert.equal(f.records(), 0);
+  assert.equal(find(f.render(), 'NativeButton', 'media.voiceTryAgain').props.disabled, false);
+  f.failRestore(false);
+  find(f.render(), 'NativeButton', 'media.voiceTryAgain').props.onPress();
+  await tick();
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  assert.equal(f.records(), 1);
+  await find(f.render(), 'VoiceDock').props.onCancel();
+});
+
+test('new route explicitly recovers departed cleanup before admission and exposes pending immediately', async () => {
+  const f = recording();
+  const prepare = deferred<void>();
+  f.waitPrepare(prepare.promise);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  f.failRestore(true);
+  f.releaseRecorder();
+  f.app.unmount();
+  prepare.resolve();
+  await tick();
+  const next = f.nextMount();
+  const restore = deferred<void>();
+  f.waitRestore(restore.promise);
+  f.failRestore(false);
+  const mic = find(next.render(), 'ComposerAction', 'media.recordVoiceMessage');
+  mic.props.onPress();
+  mic.props.onPress();
+  assert.equal(
+    find(next.render(), 'ComposerAction', 'media.recordVoiceMessage').props.disabled,
+    true,
+  );
+  await tick();
+  assert.equal(f.permissionCalls(), 1, 'no new preparation can overtake an old restore');
+  restore.resolve();
+  await tick();
+  assert.equal(f.records(), 1);
+  assert.equal(next.state.isRecording, true);
+  assert.equal(f.releasedCalls(), 0);
+  const newRecord = f.events.indexOf('record:next');
+  await tick();
+  assert.equal(f.events.slice(newRecord + 1).includes('mode:false'), false);
+  await find(next.render(), 'VoiceDock').props.onCancel();
+  next.unmount();
+});
+
+test('new route cleanup failure stays retryable through its own visible recovery control', async () => {
+  const f = recording();
+  const prepare = deferred<void>();
+  f.waitPrepare(prepare.promise);
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  f.failRestore(true);
+  f.releaseRecorder();
+  f.app.unmount();
+  prepare.resolve();
+  await tick();
+  const next = f.nextMount();
+  find(next.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  assert.equal(f.records(), 0);
+  const retry = find(next.render(), 'NativeButton', 'media.voiceTryAgain');
+  assert.equal(
+    retry.props.disabled,
+    false,
+    'a departed owner cannot leave an opaque permanent lock',
+  );
+  f.failRestore(false);
+  retry.props.onPress();
+  await tick();
+  find(next.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  assert.equal(f.records(), 1);
+  assert.equal(f.releasedCalls(), 0);
+  await find(next.render(), 'VoiceDock').props.onCancel();
+  next.unmount();
 });
 
 test('Send cannot bypass failed audio restoration and retries preserve the exact capture', async () => {

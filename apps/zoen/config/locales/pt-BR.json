@@ -5,6 +5,8 @@
     "NSCameraUsageDescription": "Permita que o Zoen use a câmera para escanear códigos de conexão e criar fotos ou vídeos que você escolher compartilhar.",
     "NSPhotoLibraryUsageDescription": "Escolha fotos e vídeos para compartilhar nas suas conversas do Zoen.",
     "NSLocationWhenInUseUsageDescription": "Compartilhe sua localização com um miniapp somente quando você escolher.",
+    "NSCalendarsUsageDescription": "Permita que o Zoen leia seus calendários para encontrar horários livres. Os miniapps recebem apenas intervalos ocupados, sem nomes ou detalhes dos eventos.",
+    "NSCalendarsFullAccessUsageDescription": "Permita que o Zoen leia seus calendários para encontrar horários livres. Os miniapps recebem apenas intervalos ocupados, sem nomes ou detalhes dos eventos.",
     "NSCalendarsWriteOnlyAccessUsageDescription": "Adicione à sua agenda os eventos que você confirmar no Zoen.",
     "NSContactsUsageDescription": "Escolha o contato que você deseja compartilhar com um miniapp.",
     "Localizable.strings": {
