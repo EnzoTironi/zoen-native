@@ -94,15 +94,11 @@ final class ZoenMediaFiles {
   }
 
   func takeForPreview(_ uri: String) throws -> ZoenPreviewFile {
-    guard let directory = owned[uri], let url = URL(string: uri), url.isFileURL,
-          url.standardizedFileURL == url.resolvingSymlinksInPath().standardizedFileURL,
-          directory.standardizedFileURL == directory.resolvingSymlinksInPath().standardizedFileURL,
-          url.deletingLastPathComponent().standardizedFileURL == directory.standardizedFileURL else { throw Failure.invalidFile }
-    let values = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-    guard values.isRegularFile == true, let size = values.fileSize, size > 0,
-          UInt64(size) <= Self.maximumBytes else { throw Failure.invalidFile }
+    guard let directory = owned[uri], let url = URL(string: uri) else { throw Failure.invalidFile }
+    let file = try ZoenPreviewFile.validated(url: url, directory: directory,
+      cacheRoot: .cachesDirectory, maximumBytes: Self.maximumBytes)
     owned.removeValue(forKey: uri)
-    return ZoenPreviewFile(url: url, directory: directory)
+    return file
   }
 
   func removeAll() { Array(owned.keys).forEach(release) }

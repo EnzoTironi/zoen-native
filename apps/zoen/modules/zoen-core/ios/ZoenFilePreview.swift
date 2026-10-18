@@ -5,6 +5,29 @@ struct ZoenPreviewFile: Sendable {
   let url: URL
   let directory: URL
 
+  static func validated(url: URL, directory: URL, cacheRoot: URL, maximumBytes: UInt64) throws -> Self {
+    let manager = FileManager.default
+    guard url.isFileURL, directory.isFileURL, cacheRoot.isFileURL,
+          UUID(uuidString: directory.lastPathComponent) != nil,
+          url.deletingLastPathComponent().standardizedFileURL == directory.standardizedFileURL else {
+      throw ZoenFilePreview.Failure.unavailable
+    }
+    // iOS may spell an OS-owned cache ancestor as /var or /private/var. Resolve
+    // those aliases, but never follow a substituted preview directory or file.
+    let folderAttributes = try manager.attributesOfItem(atPath: directory.path)
+    let fileAttributes = try manager.attributesOfItem(atPath: url.path)
+    let folder = directory.resolvingSymlinksInPath().standardizedFileURL
+    let file = url.resolvingSymlinksInPath().standardizedFileURL
+    let namespace = cacheRoot.resolvingSymlinksInPath().standardizedFileURL.appendingPathComponent("ZoenMedia", isDirectory: true)
+    guard folderAttributes[.type] as? FileAttributeType == .typeDirectory,
+          fileAttributes[.type] as? FileAttributeType == .typeRegular,
+          folder.deletingLastPathComponent() == namespace,
+          file.deletingLastPathComponent() == folder,
+          let size = fileAttributes[.size] as? NSNumber, size.uint64Value > 0,
+          size.uint64Value <= maximumBytes else { throw ZoenFilePreview.Failure.unavailable }
+    return Self(url: file, directory: folder)
+  }
+
   func remove() throws {
     do { try FileManager.default.removeItem(at: directory) }
     catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile { return }
