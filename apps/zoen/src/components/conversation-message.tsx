@@ -84,6 +84,7 @@ export const ConversationMessage = memo(function ConversationMessage({
   const showAvatar = !mine && (lastInGroup || entry.author.kind === 'Agent');
   const authorDisabled = disabled || !messageCanInteract(entry);
   const text = messageText(entry);
+  const fileCaption = !voice && card?.kind_id === 'file' && text.trim() ? text : null;
   const ink = mine ? colors.onMine : colors.text;
   const paper = mine ? colors.mine : colors.theirs;
   const availableWidth = Math.max(0, width - 32 - authorGutter);
@@ -383,6 +384,36 @@ export const ConversationMessage = memo(function ConversationMessage({
                   </Text>
                 ) : null}
                 <MessageMedia entry={entry} onActions={() => open('actions')} />
+                {fileCaption ? (
+                  <Pressable
+                    testID={`message-caption-${entry.id}`}
+                    accessible
+                    accessibilityRole="button"
+                    accessibilityLabel={`${entry.author.name}: ${fileCaption}`}
+                    accessibilityHint={
+                      disabled ? undefined : t('chat.touchAndHoldToReplyOrSeeActions')
+                    }
+                    disabled={disabled}
+                    onPress={() => open('reactions')}
+                    onLongPress={() => open('actions')}
+                    onAccessibilityTap={() => open('actions')}
+                    delayLongPress={350}
+                    style={({ pressed }) => ({
+                      backgroundColor: paper,
+                      borderRadius: 22,
+                      borderCurve: 'continuous',
+                      borderBottomRightRadius: mine && lastInGroup ? 6 : 22,
+                      borderBottomLeftRadius: !mine && lastInGroup ? 6 : 22,
+                      marginTop: 6,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      minHeight: 44,
+                      opacity: pressed ? 0.8 : 1,
+                    })}
+                  >
+                    <Text style={{ color: ink, fontSize: 17, lineHeight: 23 }}>{fileCaption}</Text>
+                  </Pressable>
+                ) : null}
                 {card && card.kind_id !== 'file' ? (
                   <MiniappMessageCard
                     card={card}
