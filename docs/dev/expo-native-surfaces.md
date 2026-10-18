@@ -1,12 +1,16 @@
 # Widgets, Live Activities and App Intents
 
-Source audit: 2026-10-17. Current acceptance priority is iPhone; Web and Android follow later. The signed ARM64
+Source audit: 2026-10-18. Current acceptance priority is iPhone; Web and Android follow later. The signed ARM64
 iOS simulator Release has compiled the widget extension, Live Activities and App
 Intents metadata. Signed v7 accepts the redacted Portuguese Widget gallery preview. Signed v40
 accepts a private Live Activity on the Dynamic Island and Lock Screen, warm and process-terminated
 cold compact taps, Lock Screen navigation and explicit ending on the isolated QA simulator.
 Signed v50 accepts the bounded conversation-card journeys and preserving simulator
 delivery described below; its installed hashes and strict signatures match the archive.
+Signed v51 adds bounded isolated reaction-participant, Unicode emoji and text-forwarding
+acceptance. Signed v52 accepts the subsequent native contrast polish, skin-tone reaction
+and cold retention on the isolated simulator. The human simulator also has verified v52
+through a preserving install, with bounded retention and native emoji-sheet acceptance.
 Selected widget content, Siri and canonical-version-update-to-OS-tap remain pending.
 Installed packages and successful compilation do not establish those journeys.
 
@@ -63,7 +67,7 @@ the movable rows. The conversation's movable `ForEach` is a direct child of `Lis
 its native section heading above the list; hidden cards use a separate static section.
 Only failed saves change the native List key to restore its committed visual order. Busy
 buttons and queued owner/scope guards serialize edits without transient row move metadata.
-The latest full check passes 320 application tests, TypeScript, Oxlint and Oxfmt. Two
+That checkpoint's full check passes 320 application tests, TypeScript, Oxlint and Oxfmt. Two
 actual compiled-hook regressions fail against v42 and pass with the immutable projection.
 
 Earlier signed candidates exposed distinct native failures: v41/v42 could retain stale
@@ -80,7 +84,7 @@ A cold restart retained Home's `[Recipe, Pet, Trip]` order. Final cold-conversat
 checks retained Recipe left of Pet, while the hidden QA countdown remained visible as a
 canonical message card in history. The conversation opened at 100% with an empty composer.
 
-The user's simulator now has v50 through a preserving install after an idle/empty-draft
+The user's simulator received v50 through a preserving install after an idle/empty-draft
 preflight. Installed executable/JavaScript hashes and strict signature match the archive.
 Normal restart retained four Home cards, Recipe's 6/8 progress and existing chat history.
 Fresh chat entry retained its audio/receipt above the composer by approximately 36 points.
@@ -93,6 +97,91 @@ by a passing corrected menu-label wait, and four cross-tree warnings. It is not 
 formal full-flow replay. Installed failure-injection rollback remains unverified. The v40
 Live Activity evidence keeps its original attribution, and full product parity remains
 unproven.
+
+## Message care — signed v52, bounded native acceptance and delivery
+
+Source `8905754e` changes a reaction-chip tap from an immediate mutation to canonical
+participant details. The native sheet shows the selected emoji's people and identifies
+the current person as You / Você. Adding, replacing or removing a reaction requires an
+explicit action. Participant details and full emoji entry share one sheet, retaining
+the current message, owner and access checks across the transition.
+
+The emoji field accepts a single Unicode emoji sequence through the system keyboard
+or paste, including flags, skin tones and joined sequences. The OSS `emoji-regex` parser
+preserves the selected sequence and enforces the core's 32-byte UTF-8 annotation limit;
+it does not split a reaction into code points or silently truncate it. The existing
+quick palette remains available.
+
+Forwarding now captures identity, device, mode and source message, lists only current
+member destinations and rereads the canonical source message before issuing the command.
+A synchronous latch prevents duplicate callbacks within the current focus. Source and
+target membership are rechecked before delivery and completion. Back, unmount, refocus
+and access changes retire the navigation intent; a forward already accepted by the
+core continues, while its late completion cannot navigate or update an obsolete view.
+Twenty-five focused tests cover delayed preflight/completion, duplicate taps, owner and
+membership changes, canonical deletion and retries. Three emoji tests cover complete
+Unicode sequences and the byte bound. These are source proofs, not native induced-delay
+acceptance. Source `ef7acda9` passes the final 348-test check with TypeScript, Oxlint and
+Oxfmt (`/private/tmp/zoen-message-care-v52-app-check.log`).
+
+Signed isolated v51, built from `8905754e` with 769 frozen inputs, passed installed
+executable/JavaScript hash and strict-signature checks. Actual ordinary native UI accepted:
+
+- Tapping the existing own 👍 chip opened its canonical participant name and Você without
+  changing the reaction. Choosing another reaction switched that same sheet to emoji entry.
+- Pasting 🇧🇷 through the native TextField's ordinary Colar action and selecting Reagir
+  replaced 👍 with the flag chip in the conversation.
+- Tapping the flag chip and explicitly choosing Remove returned to the conversation with
+  no reaction chip.
+- Long press, Forward and destination selection created one new visible forwarded text
+  message `01M56G8580P27Y5XNWSJ4V0YK0` from source
+  `01M56FKDP28Q8SEK4BZYDEABDY` in the new self-only `Forward QA 1018` conversation.
+  No other members or contacts were selected. This establishes the bounded text-forward
+  journey, without claiming cross-chat media or independent peer-byte verification.
+
+V51 also exposed poor native emoji-field contrast and white text on the lime filled
+button. Source `ef7acda9` gives the field explicit theme ink, placeholder and surface,
+and the filled action its semantic contrast color. Signed v52 from that source has 769
+frozen inputs; exact installed executable/JavaScript hashes and strict signature passed
+on the isolated simulator. Actual bounded native checks accepted:
+
+- Text tap opened the quick palette; More waited for the real UIKit dismissal before
+  opening the native emoji sheet. The semantic field surface, placeholder, 22-point typed
+  text and filled-button contrast rendered correctly.
+- Invalid `hi` exposed the unsupported-input error. Clearing it, then using the ordinary
+  system Colar action to paste 👍🏽 and selecting Reagir produced that own skin-tone chip.
+- Tapping the chip opened its canonical people and You / Você. Closing the sheet left
+  the reaction unchanged.
+- Cold restart, Home, Chats and `Forward QA 1018` retained the exact single forwarded
+  message `01M56G8580P27Y5XNWSJ4V0YK0`. Returning to Message Studio retained its original
+  root message and 👍🏽, opened at 100%, and kept the composer empty.
+
+The 34-step v52 diagnostic has eight cross-tree warnings and no failed waits. It is a
+bounded native observation, without a polished formal-replay claim. V52 captures and
+records are under `/private/tmp/zoen-message-care-qa/v52/`; build verification is
+`/private/tmp/zoen-iphone-release-v52-verification.json`.
+
+Human E2B received v52 after a fresh known-idle, empty-draft preflight on v50. Preserving
+installation exited successfully, and exact installed executable/JavaScript hashes and
+strict signature passed. Normal restart retained four Home cards and Recipe's 6/8 progress.
+Chats to Bilingual QA reached the latest history at 100%; the existing audio/receipt ended
+at 0.854 above input top 0.897, approximately 36 points clear. Its audio actions, More and
+native emoji sheet opened, then closed without typing, reacting, sending, importing or
+changing preferences or account data. Return retained 100%, an empty composer and the
+audio clearance. The 12-step human diagnostic has three cross-tree warnings and no failed
+waits; it is bounded delivery evidence rather than a clean formal replay. The isolated
+and human simulators now both run accepted v52; earlier v50 delivery retains its original
+historical attribution.
+
+Native captures and accessibility records are under `/private/tmp/zoen-message-care-qa/v51/`,
+including `reaction-participants.png`, `flag-input-before-polish.png`, `forward-success.png`
+and their text records. The 28-step diagnostic in `flow-summary.txt` retains raw steps and
+cross-tree warnings; it is not a clean formal replay. The signed build receipt is
+`/private/tmp/zoen-iphone-release-v51-verification.json`. Deliberately delayed native
+forwarding races remain untested; their 25 regressions are source proof. Cross-chat voice
+forwarding remains unsupported by the core. Successful supported-device Speech,
+group-message sender profile entry, VoiceOver, performance, broader message journeys and
+complete Swift/WhatsApp/Slack parity remain pending.
 
 ## Apple baseline
 
@@ -645,15 +734,15 @@ plus preserving delivery and menu/organizer inspection on the user's simulator.
 
 ## Integration and command map
 
-| Journey                                              | Existing authoritative operations                                                         | Remaining integration                                                                                                                                                                          |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Read a miniapp widget                                | `items`, `item`, `item_at`, `app.snapshot_json`                                           | CNG widget kind/App Group, per-instance item selection, active-account publisher, freshness and cleanup on access loss.                                                                        |
-| In-app Home favorites and miniapp rails | Canonical `items`, `app.snapshot_json`; identity/device-scoped local Item-ID preferences | Signed v50 accepts isolated Home/conversation swap-and-restore, all-hidden/restore with retained drag handles, cold order and preserving primary delivery. The primary menu/organizer opens without preference mutations. Installed failure-injection rollback and clean formal replay remain unverified. No conversation preference command is repurposed. |
-| Open an item/chat through Siri                       | `item` plus current conversation membership                                               | Swift entities/query and read-only intents, app-target setup, local device authentication, single queue consumer, catalog update/clear lifecycle and actual Shortcuts/Siri QA.                 |
-| Perform a miniapp tool from a widget/intent          | `app_specs`, `app_call_tool`; Rust grant/confirmation checks                              | Durable invocation-ID deduplication atomic with the mutation and outcome, then native result/confirmation semantics. No props-only Feed/Nap/vote simulation.                                   |
-| Send a message or decide a request through an intent | `send_message`, `decide_request`                                                          | Persistent idempotency for invocation replay; approval/account/access checks and honest queued/acknowledged/refused results. These actions are not accepted by this router.                    |
-| Live countdown or current operation                  | Rust-derived item state and target time                                                   | Explicit start/stop UX, system availability, bounded duration/staleDate, activity ownership/recovery and immediate end on sign-out or access loss; actual Dynamic Island/Lock Screen checks.   |
-| Remote Live Activity updates                         | Existing `register_push` is a content-free message-wake registration                      | Separate token purpose/ownership/provider contract for push-to-start and per-activity tokens. Do not treat a notification token as an activity token or send private E2E content through APNs. |
+| Journey                                              | Existing authoritative operations                                                        | Remaining integration                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read a miniapp widget                                | `items`, `item`, `item_at`, `app.snapshot_json`                                          | CNG widget kind/App Group, per-instance item selection, active-account publisher, freshness and cleanup on access loss.                                                                                                                                                                                                                                     |
+| In-app Home favorites and miniapp rails              | Canonical `items`, `app.snapshot_json`; identity/device-scoped local Item-ID preferences | Signed v50 accepts isolated Home/conversation swap-and-restore, all-hidden/restore with retained drag handles, cold order and preserving primary delivery. The primary menu/organizer opens without preference mutations. Installed failure-injection rollback and clean formal replay remain unverified. No conversation preference command is repurposed. |
+| Open an item/chat through Siri                       | `item` plus current conversation membership                                              | Swift entities/query and read-only intents, app-target setup, local device authentication, single queue consumer, catalog update/clear lifecycle and actual Shortcuts/Siri QA.                                                                                                                                                                              |
+| Perform a miniapp tool from a widget/intent          | `app_specs`, `app_call_tool`; Rust grant/confirmation checks                             | Durable invocation-ID deduplication atomic with the mutation and outcome, then native result/confirmation semantics. No props-only Feed/Nap/vote simulation.                                                                                                                                                                                                |
+| Send a message or decide a request through an intent | `send_message`, `decide_request`                                                         | Persistent idempotency for invocation replay; approval/account/access checks and honest queued/acknowledged/refused results. These actions are not accepted by this router.                                                                                                                                                                                 |
+| Live countdown or current operation                  | Rust-derived item state and target time                                                  | Explicit start/stop UX, system availability, bounded duration/staleDate, activity ownership/recovery and immediate end on sign-out or access loss; actual Dynamic Island/Lock Screen checks.                                                                                                                                                                |
+| Remote Live Activity updates                         | Existing `register_push` is a content-free message-wake registration                     | Separate token purpose/ownership/provider contract for push-to-start and per-activity tokens. Do not treat a notification token as an activity token or send private E2E content through APNs.                                                                                                                                                              |
 
 Before the next CNG integration, register only actual home/Lock Screen widget kinds with
 supported families. A Live Activity uses `createLiveActivity` and must not receive an
