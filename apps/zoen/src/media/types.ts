@@ -46,5 +46,7 @@ export interface MediaDriver {
   sendVoice(recording: SendVoice): Promise<{ messageId: string; itemId: string }>;
   fileInfo(itemId: string, version?: number): Promise<FileDto>;
   materializeFile(itemId: string, version?: number): Promise<LocalMediaFile | null>;
+  /** Resolves after the native viewer closes, while retaining its own preview copy. */
+  previewFile?(file: LocalMediaFile): Promise<void>;
   releaseLocalFile(uri: string): Promise<void>;
 }

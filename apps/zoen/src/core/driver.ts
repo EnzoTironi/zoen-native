@@ -76,6 +76,12 @@ export function createDriver(): CoreDriver {
     async materializeFile(itemId, version) {
       return JSON.parse(await core().materializeFile(itemId, version ?? null));
     },
+    previewFile:
+      Platform.OS === 'ios' && typeof NativeCore?.previewLocalFile === 'function'
+        ? async (file) => {
+            await core().previewLocalFile(file.uri, file.info.name);
+          }
+        : undefined,
     async releaseLocalFile(uri) {
       await core().releaseLocalFile(uri);
     },

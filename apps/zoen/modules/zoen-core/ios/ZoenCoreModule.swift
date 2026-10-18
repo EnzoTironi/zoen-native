@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import Foundation
+import UIKit
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -47,6 +48,10 @@ public class ZoenCoreModule: Module {
     AsyncFunction("materializeFile") { (itemId: String, version: Int?) async throws -> String in
       try await self.session.materializeFile(itemId: itemId, version: version)
     }
+    AsyncFunction("previewLocalFile") { (uri: String, title: String) async throws in
+      let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
+      try await self.session.previewLocalFile(uri, title: title, presenter: presenter)
+    }
     AsyncFunction("releaseLocalFile") { (uri: String) async in await self.session.releaseLocalFile(uri) }
     AsyncFunction("saveProfile") { (request: String) async throws in try await self.session.saveProfile(request) }
     AsyncFunction("materializeProfilePhoto") { (ownerId: String, deviceId: String, identityId: String, expectedSha256: String) async throws -> String in
@@ -56,9 +61,9 @@ public class ZoenCoreModule: Module {
     AsyncFunction("eraseDevice") { (identityId: String, deviceId: String) async throws in
       try await self.session.eraseDevice(expected: ZoenDeviceScope(identityId: identityId, deviceId: deviceId))
     }
-    AsyncFunction("close") { () async in await self.session.close() }
+    AsyncFunction("close") { () async throws in try await self.session.close() }
     OnAppBecomesActive { [session] in Task { await session.resumePendingHistory() } }
-    OnDestroy { Task { await self.session.close() } }
+    OnDestroy { Task { try? await self.session.close() } }
   }
 }
 
@@ -80,6 +85,7 @@ private actor ZoenSession {
   private var requests = 0
   private var requestDrain: [CheckedContinuation<Void, Never>] = []
   private let mediaFiles = ZoenMediaFiles()
+  private let filePreview = ZoenFilePreview()
   private let profilePhotos = ZoenProfilePhotos()
   private let voiceEditor = ZoenVoiceEditor()
   private var voiceSources: [String: UInt64] = [:]
@@ -190,7 +196,7 @@ private actor ZoenSession {
     }
     guard !erasing else { throw ZoenDeviceErasure.Failure.incomplete }
     let openingGeneration = generation &+ 1
-    await close()
+    try await close()
     guard generation == openingGeneration else { throw SessionError.closed }
     // The shared app keeps the engine's existing primary store, rather than creating
     // a second account database beside the same Keychain identity.
@@ -392,6 +398,15 @@ private actor ZoenSession {
 
   func releaseLocalFile(_ uri: String) { mediaFiles.release(uri) }
 
+  func previewLocalFile(_ uri: String, title: String, presenter: UIViewController?) async throws {
+    guard !erasing, core != nil else { throw SessionError.closed }
+    let file = try mediaFiles.takeForPreview(uri)
+    let id = filePreview.register(file: file, generation: generation)
+    try await filePreview.open(id: id, title: title) {
+      ZoenQuickLookPreview(presenter: presenter)
+    }
+  }
+
   func saveProfile(_ request: String) throws {
     guard !erasing, request.utf8.count <= 8192, let core else { throw SessionError.closed }
     let save = try JSONDecoder().decode(ZoenProfilePhotos.Save.self, from: Data(request.utf8))
@@ -495,6 +510,8 @@ private actor ZoenSession {
     voiceRenderAttempts.removeAll()
     erasureScope = expected
     generation &+= 1
+    let clearingGeneration = generation
+    filePreview.invalidate(before: clearingGeneration)
     let history = historyTask
     history?.cancel()
     historyTask = nil
@@ -503,6 +520,7 @@ private actor ZoenSession {
     engine.stopSync()
     syncStarted = false
     let task = Task {
+      try await filePreview.clear(before: clearingGeneration)
       await closeAssistants()
       if requests > 0 { await withCheckedContinuation { requestDrain.append($0) } }
       await history?.value
@@ -527,11 +545,13 @@ private actor ZoenSession {
     try await task.value
   }
 
-  func close() async {
+  func close() async throws {
     voiceSources.removeAll()
     voiceRenders.removeAll()
     voiceRenderAttempts.removeAll()
     generation &+= 1
+    let closingGeneration = generation
+    filePreview.invalidate(before: closingGeneration)
     historyTask?.cancel()
     historyTask = nil
     historyRearmRequested = false
@@ -544,6 +564,7 @@ private actor ZoenSession {
     profilePhotos.removeAll()
     await closeAssistants()
     try? await voiceEditor.releaseAll()
+    try await filePreview.clear(before: closingGeneration)
   }
 }
 

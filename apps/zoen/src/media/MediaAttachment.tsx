@@ -2,7 +2,6 @@ import { t, formatLocale } from '../i18n/index.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { MessagePressable as Pressable } from '../components/message-interaction';
-import { File } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Image } from 'expo-image';
 import type { MediaDriver, LocalMediaFile } from './types';
@@ -14,6 +13,7 @@ import { Icon } from '../components/primitives';
 import { AudioClip, clipTime } from './AudioClip';
 import { AudioWaveform } from './audio-progress';
 import { VideoClip } from './VideoClip';
+import { previewMediaFile } from './preview-file';
 
 function sizeLabel(bytes: string) {
   const value = Number(bytes);
@@ -167,11 +167,9 @@ function FileAttachmentContent({
           dialogTitle: file.info.name,
         });
       } else {
-        const preview = new File(file.uri);
-        const canPreview = await preview.canPreview({ mimeType: file.info.mime });
-        if (!mounted.current || expectedGeneration !== generation.current) return;
-        if (!canPreview) throw new Error(t('media.thisFormatCannotBePreviewedOnThisDevice'));
-        await preview.preview({ title: file.info.name, mimeType: file.info.mime });
+        const preview = file;
+        file = null;
+        await previewMediaFile(driver, preview);
       }
     } catch (reason) {
       if (mounted.current && expectedGeneration === generation.current)
@@ -198,7 +196,9 @@ function FileAttachmentContent({
       // A separate lease stays alive for QuickLook even if its message scrolls away.
       file = await materialize(driver);
       if (!mounted.current || expectedGeneration !== generation.current) return;
-      await new File(file.uri).preview({ title: file.info.name, mimeType: file.info.mime });
+      const preview = file;
+      file = null;
+      await previewMediaFile(driver, preview);
     } catch (reason) {
       if (mounted.current && expectedGeneration === generation.current)
         setError(reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'));
