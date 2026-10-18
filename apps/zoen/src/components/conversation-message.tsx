@@ -30,7 +30,12 @@ type Props = {
   reactionPending?: boolean;
   onReply: (entry: TimelineEntry) => void;
   onThread: (entry: TimelineEntry) => void;
-  onMenu: (entry: TimelineEntry, mode: MessageActionMode, anchor?: MessageAnchor) => void;
+  onMenu: (
+    entry: TimelineEntry,
+    mode: MessageActionMode,
+    anchor?: MessageAnchor,
+    emoji?: string,
+  ) => void;
   onReact: (entry: TimelineEntry, emoji: string | null) => void;
   onQuote: (id: string) => void;
 };
@@ -49,7 +54,6 @@ export const ConversationMessage = memo(function ConversationMessage({
   onReply,
   onThread,
   onMenu,
-  onReact,
   onQuote,
 }: Props) {
   const { colors } = useTheme();
@@ -69,14 +73,14 @@ export const ConversationMessage = memo(function ConversationMessage({
     hour: '2-digit',
     minute: '2-digit',
   });
-  const open = (mode: MessageActionMode) => {
+  const open = (mode: MessageActionMode, emoji?: string) => {
     if (disabled || !messageCanInteract(entry)) return;
     const view = bubble.current;
     if (view)
       view.measureInWindow((x, y, measuredWidth, height) =>
-        onMenu(entry, mode, { x, y, width: measuredWidth, height }),
+        onMenu(entry, mode, { x, y, width: measuredWidth, height }, emoji),
       );
-    else onMenu(entry, mode);
+    else onMenu(entry, mode, undefined, emoji);
   };
   // Native media owns its touch stream; a Pressable ancestor can still receive
   // AVKit taps even when the row pan is correctly fenced by a native gesture.
@@ -331,36 +335,45 @@ export const ConversationMessage = memo(function ConversationMessage({
           {entry.reactions.map((reaction) => (
             <Pressable
               key={reaction.emoji}
+              testID={`message-reaction-${entry.id}-${reaction.emoji}`}
               accessibilityRole="button"
               accessibilityState={{
                 selected: reaction.mine,
                 disabled: disabled || reactionPending,
               }}
-              accessibilityLabel={t('chat.reactionPeople', {
+              accessibilityLabel={t('messageReactions.participants', {
                 emoji: reaction.emoji,
                 count: reaction.people.length,
               })}
               disabled={disabled || reactionPending}
-              hitSlop={5}
-              onPress={() => onReact(entry, reaction.mine ? null : reaction.emoji)}
+              onPress={() => open('participants', reaction.emoji)}
               onLongPress={() => open('reactions')}
               style={({ pressed }) => ({
-                minWidth: 38,
-                minHeight: 32,
-                paddingHorizontal: 9,
+                minWidth: 44,
+                minHeight: 44,
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderRadius: 17,
-                borderWidth: 1,
-                borderColor: reaction.mine ? colors.accent : colors.line,
-                backgroundColor: colors.surface,
                 opacity: pressed || reactionPending ? 0.6 : 1,
               })}
             >
-              <Text style={{ color: colors.text, fontSize: 14 }}>
-                {reaction.emoji}
-                {reaction.people.length > 1 ? ` ${reaction.people.length}` : ''}
-              </Text>
+              <View
+                style={{
+                  minWidth: 38,
+                  minHeight: 32,
+                  paddingHorizontal: 9,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 17,
+                  borderWidth: 1,
+                  borderColor: reaction.mine ? colors.accent : colors.line,
+                  backgroundColor: colors.surface,
+                }}
+              >
+                <Text style={{ color: colors.text, fontSize: 14 }}>
+                  {reaction.emoji}
+                  {reaction.people.length > 1 ? ` ${reaction.people.length}` : ''}
+                </Text>
+              </View>
             </Pressable>
           ))}
         </View>

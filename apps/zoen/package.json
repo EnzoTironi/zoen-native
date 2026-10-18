@@ -25,6 +25,7 @@
     "@expo/ui": "~58.0.20",
     "@noble/hashes": "^2.4.0",
     "@shopify/flash-list": "2.3.2",
+    "emoji-regex": "^11.0.0",
     "esbuild": "^0.28.2",
     "expo": "~58.0.14",
     "expo-app-intents": "~0.5.9",

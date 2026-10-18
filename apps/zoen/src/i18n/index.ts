@@ -10,6 +10,7 @@ import { home } from './catalogs/home.ts';
 import { conversationCards } from './catalogs/conversation-cards.ts';
 import { integrity } from './catalogs/integrity.ts';
 import { media } from './catalogs/media.ts';
+import { messageReactions } from './catalogs/message-reactions.ts';
 import { miniappFields } from './catalogs/miniappFields.ts';
 import { miniapps } from './catalogs/miniapps.ts';
 import { nativeSurfaces } from './catalogs/nativeSurfaces.ts';
@@ -39,6 +40,7 @@ const catalogs = {
   conversationCards,
   integrity,
   media,
+  messageReactions,
   miniappFields,
   miniapps,
   nativeSurfaces,
