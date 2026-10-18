@@ -181,6 +181,7 @@ async function fixture(initial = scene("initial")) {
 test("actual canvas teardown freezes before latest capture, waits ACK, and only explicit resume restores editing", async () => {
   const f = await fixture();
   try {
+    assert.equal(f.dom.window.qaProps.langCode, "en");
     assert.equal(f.calls.filter((c) => c.name === "app_scene_commit").length, 0);
     f.edit("latest before navigation");
     f.dom.window.qaHoldFreeze = true;

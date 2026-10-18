@@ -79,3 +79,39 @@ fn native_and_portable_rules_use_the_same_language_context() {
     .unwrap_err()
     .contains("question"));
 }
+
+#[test]
+fn drawing_headline_and_card_use_the_localized_element_count() {
+    for (language, cases) in [
+        (
+            Lang::En,
+            [
+                (0, "0 elements"),
+                (1, "1 element"),
+                (2, "2 elements"),
+                (10_000, "10000 elements"),
+            ],
+        ),
+        (
+            Lang::Pt,
+            [
+                (0, "0 elementos"),
+                (1, "1 elemento"),
+                (2, "2 elementos"),
+                (10_000, "10000 elementos"),
+            ],
+        ),
+    ] {
+        let _language = roda_i18n::enter(language);
+        for (count, expected) in cases {
+            let state = json!({"title":"Canvas", "elementCount":count, "textCount":0});
+            let (label, metrics) = headline("excalidraw", &state, 0);
+            assert_eq!(label, expected);
+            assert!(metrics.is_empty());
+            let card = snapshot("excalidraw", &state, "it_canvas", 0).unwrap();
+            assert_eq!(card["detail"], expected);
+            assert_eq!(card["title"], "Canvas");
+            assert_eq!(card["deepLink"], "zoen://app/it_canvas");
+        }
+    }
+}

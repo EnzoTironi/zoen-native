@@ -325,6 +325,9 @@ function CanonicalCanvas({
           }}
           initialData={{ ...scene, scrollToContent: true }}
           onChange={capture}
+          langCode={
+            (app.getHostContext()?.locale ?? "").toLowerCase().startsWith("pt") ? "pt-BR" : "en"
+          }
           theme={app.getHostContext()?.theme === "dark" ? "dark" : "light"}
           aiEnabled={false}
           viewModeEnabled={frozen}

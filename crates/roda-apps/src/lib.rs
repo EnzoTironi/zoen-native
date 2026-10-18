@@ -757,14 +757,15 @@ fn pet_mood(v: &Value) -> &'static str {
 pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64)>) {
     let v = view(app, state, now);
     match app {
-        "excalidraw" => (
-            tr!(
-                "{} elementos",
-                "{} elements",
-                state["elementCount"].as_u64().unwrap_or(0)
-            ),
-            vec![],
-        ),
+        "excalidraw" => {
+            let count = state["elementCount"].as_u64().unwrap_or(0);
+            let label = if count == 1 {
+                t("1 elemento", "1 element")
+            } else {
+                tr!("{} elementos", "{} elements", count)
+            };
+            (label, vec![])
+        }
         "pet" => (
             format!(
                 "{} · {}",
