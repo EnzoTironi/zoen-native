@@ -108,7 +108,7 @@ export function HomeOrderList({
             environment('editMode', 'active'),
           ]}
         >
-          <List.ForEach key={signature} data={ids} keyExtractor={keyExtractor} onMove={move}>
+          <List.ForEach data={ids} keyExtractor={keyExtractor} onMove={move}>
             {row}
           </List.ForEach>
         </List>

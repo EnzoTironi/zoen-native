@@ -1,6 +1,7 @@
 import { Host } from '@expo/ui';
-import { Button, HStack, List, Section, Text as NativeText } from '@expo/ui/swift-ui';
+import { Button, HStack, List, Section, Text as NativeText, VStack } from '@expo/ui/swift-ui';
 import {
+  accessibilityAddTraits,
   buttonStyle,
   contentShape,
   disabled,
@@ -11,6 +12,7 @@ import {
   labelStyle,
   listRowBackground,
   listStyle,
+  padding,
   scrollContentBackground,
   shapes,
 } from '@expo/ui/swift-ui/modifiers';
@@ -182,22 +184,27 @@ export function ConversationOrderList({
         colorScheme={scheme}
         seedColor={colors.accent}
       >
-        <List
-          key={nativeReset}
-          modifiers={[
-            listStyle('insetGrouped'),
-            scrollContentBackground('hidden'),
-            environment('editMode', 'active'),
-          ]}
-        >
-          <Section title={t('conversationCards.pinned')}>
+        <VStack alignment="leading" spacing={0}>
+          <NativeText
+            modifiers={[
+              font({ textStyle: 'subheadline', weight: 'medium' }),
+              foregroundStyle(colors.secondary),
+              padding({ horizontal: 16 }),
+              accessibilityAddTraits(['isHeader']),
+            ]}
+          >
+            {t('conversationCards.pinned')}
+          </NativeText>
+          <List
+            key={nativeReset}
+            modifiers={[
+              listStyle('insetGrouped'),
+              scrollContentBackground('hidden'),
+              environment('editMode', 'active'),
+            ]}
+          >
             {pinned.length ? (
-              <List.ForEach
-                key={signature}
-                data={pinned}
-                keyExtractor={pinnedKeyExtractor}
-                onMove={move}
-              >
+              <List.ForEach data={pinned} keyExtractor={pinnedKeyExtractor} onMove={move}>
                 {renderPinned}
               </List.ForEach>
             ) : (
@@ -207,26 +214,26 @@ export function ConversationOrderList({
                 {t('conversationCards.noPinned')}
               </NativeText>
             )}
-          </Section>
-          <Section title={t('conversationCards.hidden')}>
-            {hidden.length ? (
-              <List.ForEach
-                key={signature}
-                data={hidden}
-                keyExtractor={keyExtractor}
-                recycling={false}
-              >
-                {renderHidden}
-              </List.ForEach>
-            ) : (
-              <NativeText
-                modifiers={[foregroundStyle(colors.secondary), listRowBackground(colors.surface)]}
-              >
-                {t('conversationCards.noHidden')}
-              </NativeText>
-            )}
-          </Section>
-        </List>
+            <Section title={t('conversationCards.hidden')}>
+              {hidden.length ? (
+                <List.ForEach
+                  key={signature}
+                  data={hidden}
+                  keyExtractor={keyExtractor}
+                  recycling={false}
+                >
+                  {renderHidden}
+                </List.ForEach>
+              ) : (
+                <NativeText
+                  modifiers={[foregroundStyle(colors.secondary), listRowBackground(colors.surface)]}
+                >
+                  {t('conversationCards.noHidden')}
+                </NativeText>
+              )}
+            </Section>
+          </List>
+        </VStack>
       </Host>
       {busy ? (
         <ActivityIndicator
