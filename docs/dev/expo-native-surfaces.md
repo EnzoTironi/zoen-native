@@ -1,5 +1,15 @@
 # iPhone native surfaces and acceptance
 
+Current signed checkpoint, 18 October: **v81d**, source `aeb4127f`, is preserving-installed
+and exactly verified on both iPhone QA simulators with 832 frozen inputs. Recovered
+edited-voice Send/cold and new photo/video caption-draft cold/send/cold pass;
+human Home/history/Delivered voice retention passes. App 666/666,
+TypeScript/Oxlint/Oxfmt and all three exact-source Expo jobs pass separately.
+Unchanged Rust 463/463 retains `6c338bcf` attribution. V81b/v81c remain partial
+diagnostics; independent recipient/offline media and full product parity remain open.
+
+**Historical accepted-v80 preface (verbatim):**
+
 Current signed checkpoint, 18 October: **v80**, source `131e81de`, is preserving-installed
 and exactly verified on both iPhone QA simulators with 822 frozen inputs. Bounded
 native fullscreen/Details, opaque consent dismissal and item-sheet-to-OS-calendar
@@ -1090,6 +1100,44 @@ checks are `/private/tmp/zoen-v68-app-check.log` and
 `/private/tmp/zoen-v68-xcode-build-attempt1-disk.{json,log}`. Final build receipt is
 `/private/tmp/zoen-v68-xcode-build.json`; binary recovery is
 `/private/tmp/zoen-dev-binary-restore-v68/restore.json`. PR 136 stays open/draft.
+
+## Durable unsent media — signed v81d, bounded native acceptance
+
+Source `aeb4127f7e4311f7d55fa358c5182e60f02b2dfd` adds encrypted device-local
+attachment/voice drafts scoped by account/device/chat/thread, with CAS save ACKs
+and atomic idempotent Send receipts. Rust owns durable bytes/metadata; JS holds
+projections and disposable leases. Drafts are excluded from backup/history/link.
+
+Isolated v81d recovers the edited **3.37-second** draft retained after v81c failed
+Send. One compact Send projects `01M57ZXME73TF49F4CJZKCAXVS`; actual cold return
+shows exactly one matching native row and no draft. A fresh ordered photo/video
+batch restores both previews and separate “QA v81d photo recovery” / “QA v81d video
+recovery” captions after cold. One Send projects two IDs recorded in the ledger;
+another cold retains those IDs/no draft, with timeline 100% and the final receipt
+above composer. These are local native rows, not independent delivery/byte proof.
+
+Both preserving installs and public executable/JavaScript/strict-signature checks
+pass before/after. Human Home four cards / recipe 6/8, six-page chat history at 100%,
+old 0:11 Delivered voice and empty composer/closed keyboard remain. No human content
+mutation, calendar read or permission change occurs. App 666/666 (zero skips,
+including the macOS Foundation/Node actual-Swift codec regression) and
+TypeScript/Oxlint/Oxfmt pass. All three exact-source Expo jobs pass separately;
+unchanged Rust 463/463, including 19 media cases, keeps `6c338bcf` attribution.
+
+V81b false prepare-error/reopen and v81c pending-trim cold/Apply/Discard followed by
+invalidRecording Send remain partial diagnostics, never accepted candidates or a
+fresh v81d trim replay. Final recordings have 24 isolated / 3 human steps, with
+62 / 13 observations and 26 / 6 copied PNGs. Four owned flows were archived/retired.
+The unmatched human Fixados wait and corrected Miniapps wait, plus overlay-selector
+warnings, remain visible; no formal replay/E2E claim. Scoped tool servers stopped
+only on the two QA targets.
+
+Independent recipient/payload decode, offline media, microphone/ASR, induced native
+storage/owner/erase/ambiguous-ACK failures, edited-PDF process-death recovery,
+physical/provider/Push, broader accessibility/performance and full parity remain open.
+Evidence: `/private/tmp/zoen-media-draft-native-qa-v81/runtime.json`,
+`accepted-artifact-verification.json`, `final-checks.json` and `source-ci.json` in
+that QA root. Earlier media/draft/offline/miniapp proofs retain exact attribution.
 
 ## Fullscreen miniapps and native consent — signed v80
 

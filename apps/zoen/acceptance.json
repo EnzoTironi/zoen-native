@@ -1354,6 +1354,151 @@
       "runtime": "/private/tmp/zoen-miniapp-native-ui-qa-v80/runtime.json",
       "sourceInputs": 822,
       "sourceSha256": "0bae46d2814e74282b0453ed76ecd4abd868dc50d83323d3c96d0d73fcc0271c"
+    },
+    "nativeUnsentMediaDraftsV81": {
+      "status": "BOUNDED_PASS_NATIVE_DURABLE_UNSENT_VOICE_AND_ATTACHMENT_RECOVERY",
+      "checkpoint": "v81d",
+      "installedPublicProof": "Both preserving installs and public executable/JavaScript hashes/strict signatures pass before/after; isolated upgrades v81c to v81d, human upgrades accepted v80 to v81d.",
+      "preservingInstallReceipts": {
+        "isolated": "/private/tmp/zoen-media-draft-native-qa-v81/isolated-v81d-install.json",
+        "human": "/private/tmp/zoen-media-draft-native-qa-v81/human-v81d-install.json"
+      },
+      "postRuntimePublicReceipts": {
+        "isolated": "/private/tmp/zoen-media-draft-native-qa-v81/isolated-v81d-verify-after.json",
+        "human": "/private/tmp/zoen-media-draft-native-qa-v81/human-v81d-verify-after.json"
+      },
+      "sourceChecks": {
+        "application": {
+          "sourceCommit": "aeb4127f7e4311f7d55fa358c5182e60f02b2dfd",
+          "passed": 666,
+          "failed": 0,
+          "skipped": 0,
+          "typecheck": "PASS",
+          "oxlint": "PASS",
+          "oxfmt": "PASS",
+          "receipt": "/private/tmp/zoen-media-draft-native-qa-v81/zoen-v81-finald-app.json"
+        },
+        "rustFfi": {
+          "sourceCommit": "6c338bcf921704f83e1149556460b4b2d480a204",
+          "passed": 463,
+          "mediaDraftSubset": 19,
+          "unchangedAtFinalCommit": true,
+          "receipt": "/private/tmp/zoen-media-draft-native-qa-v81/source-checks/final/zoen-v81-ack-rust.json",
+          "scope": "463/463 including 19 media cases retains source 6c338bcf attribution; Rust is unchanged at final Swift-only guard commit. No fresh v81d Rust suite."
+        },
+        "foundationCodec": {
+          "passed": 1,
+          "rejectionCases": 8,
+          "meaningfulNegativeControls": 1,
+          "subsetOfApp666": true,
+          "localMacSkipped": 0,
+          "receipt": "/private/tmp/zoen-media-draft-native-qa-v81/source-checks/foundation-render-probe/checks.json",
+          "scope": "Persistent macOS Foundation/Node test against the actual production Swift helper; not native iOS fault injection."
+        },
+        "channelService": {
+          "passed": 18,
+          "meaningfulNegativeControls": 2,
+          "subsetOfApp666": true,
+          "receipt": "/private/tmp/zoen-media-draft-save-ack-checks/receipt.json"
+        },
+        "actualAttachmentHook": {
+          "passed": 5,
+          "subsetOfApp666": true,
+          "scope": "Compiled production hook regressions, including stale Remove versus newer caption; source proof, not induced native callback delay."
+        },
+        "subsetCountsAreNotAdditionalTotals": true,
+        "finalChecks": "/private/tmp/zoen-media-draft-native-qa-v81/final-checks.json"
+      },
+      "sourceHeadExpoCi": {
+        "head": "aeb4127f7e4311f7d55fa358c5182e60f02b2dfd",
+        "jobs": {
+          "client": "success",
+          "release-web-e2e": "success",
+          "schedule-miniapp": "success"
+        },
+        "runUrl": "https://github.com/EnzoTironi/zoen-native/actions/runs/39148175936",
+        "receipt": "/private/tmp/zoen-media-draft-native-qa-v81/source-ci.json",
+        "scope": "All three exact-source Expo jobs only; separate from manual native proof and other workflows/future documentation commits."
+      },
+      "deviceLocalJournal": "Rust owns encrypted attachment/voice draft metadata and bytes for account/device/chat/thread. CAS save acknowledgements and idempotent atomic Send receipts preserve newer drafts; JS holds disposable projections/leases. Drafts are excluded from backup/history/link. Typed ACK and Float32-domain metadata guards accept canonical codec normalization while retaining source/byte ownership checks.",
+      "nativeVoice": {
+        "originalSecondsVisible": 3.72,
+        "editedSecondsVisible": 3.37,
+        "recoveredFailedSendDraftWithoutLoss": true,
+        "oneCompactSend": true,
+        "nativeProjectedMessageId": "01M57ZXME73TF49F4CJZKCAXVS",
+        "postColdMatchingNativeRows": 1,
+        "receipt": "Sent; not independent recipient delivery proof",
+        "postColdEmptyComposerNoDraft": true
+      },
+      "nativeVoiceScope": "Recovered the 3.37-second edited draft retained after partial v81c failed Send, then one compact Send and actual cold return. Fresh pending-trim cold/Apply/Discard is not rerun or reattributed to v81d.",
+      "nativeAttachments": {
+        "orderedFiles": ["QA1018v65-beach.jpeg", "QA1018v65-sky.mp4"],
+        "captions": ["QA v81d photo recovery", "QA v81d video recovery"],
+        "coldUnsentPreviewsAndSeparateCaptions": "PASS",
+        "oneSendProjectsExactlyTwoCaptionRows": [
+          "01M5806ZXHTMKMS48XQT9XS7AM",
+          "01M5806ZXKWRC37A5K5EX0QG6N"
+        ],
+        "postSendColdSameTwoIdsAndNoDraft": "PASS",
+        "settledTimeline": "100%; final media receipt above composer"
+      },
+      "humanRetention": "Preserving v80 to v81d retains Home four cards / recipe 6/8, six-page chat history at 100%, old 0:11 Delivered voice, empty composer/no media strip and closed keyboard. No human content mutations, calendar reads or permission changes.",
+      "historicalPartialCandidates": {
+        "v81": {
+          "status": "PREREVIEW_RESTART_HOME_ONLY_NOT_ACCEPTED",
+          "path": "/private/tmp/zoen-media-draft-native-qa-v81/prereview-v81"
+        },
+        "v81b": {
+          "status": "PARTIAL_NOT_ACCEPTED",
+          "diagnosis": "/private/tmp/zoen-media-draft-native-qa-v81/v81b-runtime-diagnosis.json",
+          "scope": "Attachment caption cold/send passed; initial voice prepare error after normalized save was false. Back/reopen recovered Ready 0:03; no voice Send in that diagnostic."
+        },
+        "v81c": {
+          "status": "PARTIAL_NOT_ACCEPTED",
+          "diagnosis": "/private/tmp/zoen-media-draft-native-qa-v81/v81c-runtime-diagnosis.json",
+          "scope": "Fresh 3.72-second import, pending start 0.36 s cold restore, inert pending Send, Apply 3.37 s and pending end 3.38 s/Discard passed; compact Send failed invalidRecording and retained draft. Foundation codec probe isolated 26 Double mismatches with zero Float32 mismatches."
+        }
+      },
+      "diagnostics": {
+        "isolatedObservations": "/private/tmp/zoen-media-draft-native-qa-v81/isolated-ui-observations.json",
+        "isolatedObservationCount": 62,
+        "isolatedCopiedPngs": 26,
+        "humanObservations": "/private/tmp/zoen-media-draft-native-qa-v81/human-ui-observations.json",
+        "humanObservationCount": 13,
+        "humanCopiedPngs": 6,
+        "screenshots": "/private/tmp/zoen-media-draft-native-qa-v81/v81d-screens",
+        "retiredRecordings": "/private/tmp/zoen-media-draft-native-qa-v81/retired-diagnostics.json",
+        "finalIsolatedSteps": 24,
+        "finalHumanSteps": 3,
+        "taskOwnedCompletedFlowsRetired": 4,
+        "formalReplayE2e": false,
+        "warnings": [
+          "Overlay taps can be retargeted to underlying UIKit selectors; traces are retired one-use diagnostics.",
+          "A direct human Home wait for isolated-only Fixados did not match. Actual main Home has Miniapps; corrected Miniapps wait and observed four-card Home passed.",
+          "Source fault/retry/lease cases are not induced native OS/storage/account/erase/offline proof."
+        ]
+      },
+      "nativeBuild": {
+        "elapsedSeconds": 47.23,
+        "minimumFreeBytes": 5563809792,
+        "receipt": "/private/tmp/zoen-media-draft-native-qa-v81/zoen-v81-finald-xcode.json"
+      },
+      "cleanup": "Root reports scoped tool servers stopped only for the two QA targets; four task-owned completed flows were archived and retired. This is not a broad device cleanup.",
+      "limits": [
+        "No new independent recipient, encrypted payload decode or offline media proof.",
+        "No native microphone capture or ASR success, VoiceOver/rotor, physical/provider/Push or performance/comparative/full-parity acceptance.",
+        "Unsent PDF Markup process-death recovery remains separate.",
+        "Fault/retry/CAS/cleanup/close/erase cases are source tests, not induced native OS/storage/account/erase or ambiguous-ACK acceptance.",
+        "Native IDs and post-cold row counts are local projections, not independent recipient delivery or encrypted-byte hash/decode proof.",
+        "Earlier v66 media, v68 normal drafts, v75 voice, v76 offline text and v80 miniapp/consent evidence remain artifact-specific."
+      ],
+      "fullAppParityAccepted": false,
+      "sourceCommit": "aeb4127f7e4311f7d55fa358c5182e60f02b2dfd",
+      "artifactVerification": "/private/tmp/zoen-media-draft-native-qa-v81/accepted-artifact-verification.json",
+      "runtime": "/private/tmp/zoen-media-draft-native-qa-v81/runtime.json",
+      "sourceInputs": 832,
+      "sourceSha256": "85e2424b480ca3c76f3c00f3c6034725cfd04b65ea2b81286532b31e669a3f39"
     }
   },
   "deferredPlatforms": ["web", "android", "macos", "windows", "linux"],
@@ -1380,57 +1525,58 @@
     "Dedicated signed v76 narrowly proves ordinary native text offline Send → actual offline cold with the same ID/queue 1 and zero recipient copies → automatic reconnect/Delivered/queue 0 → independent exactly one same ID/seq 14/valid log → online cold exact-one retention → explicit recipient Read shown natively. The immediate post-online-cold capture is transitional Chats, not settled Delivered proof. This addresses only that text lifecycle on the fresh 18776-to-8790 loopback fault path; accepted human/isolated v75 pointers and all 19 prior gap statements remain unchanged. Voice/media offline, long outages, native storage/account/membership/OS failures, author-device cryptographic attribution, physical/provider/accessibility/performance and full comparative parity remain open. No formal replay/E2E or new full-suite claim.",
     "Signed v78 narrowly resolves the actual v77 conversation Search hit-region and generic receipt audit failures: configured native Button Label 44 × 44 pt, normalized AX geometry and seven-category native audit with zero issues/no whitelist. Actual public iOS 27 VoiceOver speech reaches the expected message/audio, receipt Enviada, message actions and attachment control in 18 moves, then restores OFF. V77 actual microphone Deny/localized explanation/ordinary-composer recovery passes without capture; v78 preserves human Home/history/Delivered voice/empty composer. All 20 prior gaps retain exact historical attribution. Rotor, named custom-action execution, playback activation, broader routes/fonts/themes, physical/provider/native calendar read, paused-recorder fault injection, durable unsent media and full comparative acceptance remain open; recordings are retired diagnostics, not formal E2E.",
     "Signed v79 narrowly resolves the prior native-calendar-read gap through the first-party Schedule: explicit per-item consent, actual OS Deny/error and permission-only reset followed by Allow Full Access; the owned Monday 11:00–12:00 event blocks 11:00/11:30, 09:00 selects, removal restores slots, and Tuesday clears the selection before an explicit new query finds no business-time conflicts. No whole-day-free or zero-EventKit-interval claim. Both preserving v78-to-v79 installs and human Home/recipe/BRL plan/closed poll/six-page chat history/Delivered voice/empty composer retention pass, with no human calendar reads or content mutations. All 21 prior gaps retain exact historical attribution. Native all-day/DST/no-calendar/fault integration, booking/calendar.add, Push/providers/physical/full comparative parity remain open; existing nested miniapp scrolling and transparent-consent legibility need separate UI work. Recordings are retired one-use diagnostics, not formal replay/E2E.",
-    "Signed v80 narrowly resolves the observed v79 nested native miniapp scrolling and low-legibility consent surface for the tested Schedule: full-width safe portrait viewport/one WK scroll, oriented landscape safe insets, separate Details with retained controls, opaque native Deny/retry, already-presented background/return and swipe dismissal deny, and explicit Allow once read succeed. After isolated Calendar-permission-only reset/restart, real item-sheet dismissal precedes the actual OS full-access prompt and successful read. Back retires private conflict state; both preserving installs and human Home/chat/Delivered voice/empty composer retention pass. All 22 prior gaps retain exact historical attribution. Preappearance/queued/stale native races remain source-only, and foreground may briefly show an inert denied sheet. Fresh HTML keyboard/VoiceOver/physical/Android-Web manual/performance/full FFI, providers/Push and full comparative parity remain open; recordings are retired diagnostics, not formal replay/E2E."
+    "Signed v80 narrowly resolves the observed v79 nested native miniapp scrolling and low-legibility consent surface for the tested Schedule: full-width safe portrait viewport/one WK scroll, oriented landscape safe insets, separate Details with retained controls, opaque native Deny/retry, already-presented background/return and swipe dismissal deny, and explicit Allow once read succeed. After isolated Calendar-permission-only reset/restart, real item-sheet dismissal precedes the actual OS full-access prompt and successful read. Back retires private conflict state; both preserving installs and human Home/chat/Delivered voice/empty composer retention pass. All 22 prior gaps retain exact historical attribution. Preappearance/queued/stale native races remain source-only, and foreground may briefly show an inert denied sheet. Fresh HTML keyboard/VoiceOver/physical/Android-Web manual/performance/full FFI, providers/Push and full comparative parity remain open; recordings are retired diagnostics, not formal replay/E2E.",
+    "Signed v81d narrowly addresses historical unsent attachment/audio recovery for the tested native paths: the edited 3.37-second voice retained after v81c failed Send recovers, one compact Send yields one native ID and cold returns one matching row/no draft. A fresh ordered photo/video batch restores both previews and separate captions after cold; one Send yields two native IDs, retained after another cold with no draft and timeline 100%. Both preserving installs and human Home/recipe/six-page chat history/old Delivered voice/empty composer retention pass. All 23 prior gaps keep exact historical attribution; v81b/v81c remain partial diagnostics, and v81c pending-trim/Apply/Discard is not a fresh v81d replay. No independent recipient/payload decode, offline media, microphone/ASR, induced native storage/owner/erase/ambiguous-ACK, PDF Markup process-death recovery, physical/provider/Push/accessibility/performance/formal E2E or full-parity acceptance is claimed."
   ],
   "currentIphoneArtifact": {
-    "checkpoint": "v80",
-    "commit": "131e81dea72f7aec846be5a66f229a80b4cda40d",
+    "checkpoint": "v81d",
+    "commit": "aeb4127f7e4311f7d55fa358c5182e60f02b2dfd",
     "configuration": "signed Release ARM64",
     "preservingInstall": true,
-    "inputs": 822,
-    "sourceSha256": "0bae46d2814e74282b0453ed76ecd4abd868dc50d83323d3c96d0d73fcc0271c",
-    "bundleSha256": "e94c0a80bfb28f2713acb273142dc011ba75655ea5be75733869c2df35c65032",
-    "bundleBytes": 6663719,
-    "executableSha256": "08bda6dc8b7c1229590c6e19439b2d704f2f5d78b97b9a6f72a7c383122b69c9",
-    "appTreeSha256": "7a8e75a9a0f261b073eaa0d6d6572817e2c93797679ea6a0230f83b89fb177e9",
+    "inputs": 832,
+    "sourceSha256": "85e2424b480ca3c76f3c00f3c6034725cfd04b65ea2b81286532b31e669a3f39",
+    "bundleSha256": "5754f21770c99f03a307d8eff7b78f3a53f5f49a572531a3a2b1779a017f420f",
+    "bundleBytes": 6760770,
+    "executableSha256": "a0916ccccd85764c45810e726d22c6833096179ce126f455540e1de276b91574",
+    "appTreeSha256": "9534b0b6e9f791cb0e002e2ef8e716bf49818a6207358390562700c7524ddcf1",
     "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
-    "appBytes": 131896277,
-    "archivePath": "/private/tmp/zoen-iphone-artifacts/v80/Zoen.app",
+    "appBytes": 138772288,
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v81d/Zoen.app",
     "installedExecutableVerified": true,
     "installedJavascriptVerified": true,
     "strictSignatureVerified": true,
-    "buildVerification": "/private/tmp/zoen-iphone-release-v80-verification.json",
+    "buildVerification": "/private/tmp/zoen-media-draft-native-qa-v81/accepted-artifact-verification.json",
     "device": "isolated iPhone18 Pro / iOS27 simulator",
     "deviceUdid": "388CA707-A103-4845-B5FE-BAA9526D3D57",
-    "status": "BOUNDED PASS native fullscreen/Details, real opaque consent dismissal and calendar prompt sequencing with preserving retention; full product parity remains open.",
-    "runtimeAcceptance": "Native full-width portrait/one WK scroll and oriented landscape safe insets pass. Real sheet Deny/retry, already-presented background/return denial, swipe dismissal denial and explicit Allow once read pass; existing 11:00/11:30 fixture conflicts appear. Calendar-permission-only reset/restart proves real item-sheet dismissal before OS prompt/Allow Full Access. Details retains controls without setting changes; Back clears private availability state. Existing five Home miniapps/recipe 0/8 and fixtures remain, with no new messages/bookings/events. Public executable/JavaScript/strict signatures pass before/after. Preappearance/queued races and fresh keyboard/VoiceOver/physical/full parity remain open. /private/tmp/zoen-miniapp-native-ui-qa-v80/runtime.json",
+    "status": "BOUNDED PASS recovered edited voice and ordered photo/video draft cold restore/send/cold; full product parity remains open.",
+    "runtimeAcceptance": "Preserving v81c to v81d recovers the edited 3.37-second draft after its earlier failed Send. One compact Send projects native ID 01M57ZXME73TF49F4CJZKCAXVS; cold shows exactly one matching local row and no draft. A new ordered photo/video batch with separate captions restores cold, one Send projects two native IDs and another cold retains both/no draft at timeline 100%. Public executable/JavaScript/strict signatures pass before/after. Voice is Sent; no independent recipient, payload-decode or offline-media proof. Earlier pending-trim/Apply/Discard remains partial v81c evidence. /private/tmp/zoen-media-draft-native-qa-v81/runtime.json",
     "fullAppParityAccepted": false,
-    "installedPublicVerification": "/private/tmp/zoen-miniapp-native-ui-qa-v80/runtime.json"
+    "installedPublicVerification": "/private/tmp/zoen-media-draft-native-qa-v81/runtime.json"
   },
   "humanIphoneArtifact": {
-    "checkpoint": "v80",
-    "commit": "131e81dea72f7aec846be5a66f229a80b4cda40d",
+    "checkpoint": "v81d",
+    "commit": "aeb4127f7e4311f7d55fa358c5182e60f02b2dfd",
     "configuration": "signed Release ARM64",
     "preservingInstall": true,
-    "inputs": 822,
-    "sourceSha256": "0bae46d2814e74282b0453ed76ecd4abd868dc50d83323d3c96d0d73fcc0271c",
-    "bundleSha256": "e94c0a80bfb28f2713acb273142dc011ba75655ea5be75733869c2df35c65032",
-    "bundleBytes": 6663719,
-    "executableSha256": "08bda6dc8b7c1229590c6e19439b2d704f2f5d78b97b9a6f72a7c383122b69c9",
-    "appTreeSha256": "7a8e75a9a0f261b073eaa0d6d6572817e2c93797679ea6a0230f83b89fb177e9",
+    "inputs": 832,
+    "sourceSha256": "85e2424b480ca3c76f3c00f3c6034725cfd04b65ea2b81286532b31e669a3f39",
+    "bundleSha256": "5754f21770c99f03a307d8eff7b78f3a53f5f49a572531a3a2b1779a017f420f",
+    "bundleBytes": 6760770,
+    "executableSha256": "a0916ccccd85764c45810e726d22c6833096179ce126f455540e1de276b91574",
+    "appTreeSha256": "9534b0b6e9f791cb0e002e2ef8e716bf49818a6207358390562700c7524ddcf1",
     "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
-    "appBytes": 131896277,
-    "archivePath": "/private/tmp/zoen-iphone-artifacts/v80/Zoen.app",
+    "appBytes": 138772288,
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v81d/Zoen.app",
     "installedExecutableVerified": true,
     "installedJavascriptVerified": true,
     "strictSignatureVerified": true,
-    "buildVerification": "/private/tmp/zoen-iphone-release-v80-verification.json",
+    "buildVerification": "/private/tmp/zoen-media-draft-native-qa-v81/accepted-artifact-verification.json",
     "device": "human iPhone18 Pro / iOS27 simulator",
     "deviceUdid": "E2B33D1A-D73F-4793-96E7-5FC43E64053F",
-    "status": "BOUNDED PASS preserving v79-to-v80 installation and unchanged Home/cards/six-page chat history/Delivered voice/empty composer; no human calendar access or permission changes.",
-    "runtimeAcceptance": "Same signed v80 retains Home four original miniapps / recipe 6/8 / Exact BRL QA card, original pinned miniapps/conversations and six-page Bilingual chat history at 100%. Old 0:11 voice and prior texts remain Delivered, with empty composer, retained larger-text setting and closed keyboard. No human calendar access or permission changes. Public executable/JavaScript/strict signatures pass before/after. Isolated fullscreen/consent proof is separate. /private/tmp/zoen-miniapp-native-ui-qa-v80/runtime.json",
+    "status": "BOUNDED PASS preserving v80-to-v81d installation and unchanged Home/cards/six-page chat history/Delivered voice/empty composer; no human content or calendar mutations.",
+    "runtimeAcceptance": "Same signed v81d retains Home four cards / recipe 6/8 and six-page Bilingual chat history at 100%, old 0:11 Delivered voice, empty composer/no unsent media strip and closed keyboard. No human content mutations, calendar reads or permission changes. Public executable/JavaScript/strict signatures pass before/after. Isolated recovered-media acceptance is separate. /private/tmp/zoen-media-draft-native-qa-v81/runtime.json",
     "fullAppParityAccepted": false,
-    "installedPublicVerification": "/private/tmp/zoen-miniapp-native-ui-qa-v80/runtime.json"
+    "installedPublicVerification": "/private/tmp/zoen-media-draft-native-qa-v81/runtime.json"
   },
   "previousControlledV60IphoneArtifact": {
     "checkpoint": "v60",
@@ -2339,7 +2485,7 @@
     "status": "BOUNDED PASS preserving v66→v68 first cold Home4cards/recipe6of8→Chats→Bilingual100%, existing Delivered text/voice and empty52pt/keyboard-closed/audio-idle composer. No human content/preferences mutation; full product acceptance remains incomplete.",
     "runtimeAcceptance": "Same accepted v68 archive preserving-installed without uninstall/reset/erase; exact public executable/JavaScript/strict signature verified before and after UI,788 source manifest stable after runtime. First ordinary cold launch retains four Home cards/recipe6of8, existing Bilingual history at100%, prior Delivered text and voice, empty native52pt composer, closed keyboard and idle audio. No content/preferences mutation. Partial4-step recorder+2 direct actions, retired external YAML/copied PNGs; no formal reusable replay. /private/tmp/zoen-message-draft-qa-v68/human-preserving-runtime.json"
   },
-  "currentAcceptanceSummary": "Current isolated and human signed artifact is v80 source 131e81dea72f7aec846be5a66f229a80b4cda40d with 822 frozen inputs. Bounded native fullscreen/safe geometry, separate Details, opaque real consent Deny/retry/background/swipe/Allow once, sheet-to-OS calendar prompt sequencing and preserving retention pass in evidence.nativeMiniappUiV80. App 629/629 plus TS/Oxlint/Oxfmt and 17 consent subset tests/eight meaningful source negatives pass; exact-source Expo schedule-miniapp/client/release-web-e2e jobs pass separately. Rust is unchanged, with no fresh full FFI claim. Exact v79 current objects are archived; all 49 prior historical objects, 76 evidence values and 22 ordered gaps remain unchanged. Preappearance/queued native races, possible briefly inert foreground sheet, fresh HTML keyboard/VoiceOver/physical/performance and complete product parity remain open; older proofs retain exact artifact attribution.",
+  "currentAcceptanceSummary": "Current isolated and human signed artifact is v81d source aeb4127f7e4311f7d55fa358c5182e60f02b2dfd with 832 frozen inputs. Bounded recovered edited-voice Send/cold and new ordered photo/video caption-draft cold/send/cold pass in evidence.nativeUnsentMediaDraftsV81; human Home/history/old Delivered voice/empty composer retention passes. Local app 666/666 plus TS/Oxlint/Oxfmt and all three exact-source Expo jobs pass separately. Unchanged Rust 463/463 retains source 6c338bcf attribution. Exact v80 current objects are archived; all 51 prior historical objects, 77 evidence values and 23 ordered gaps remain unchanged. V81b/v81c partial failures remain diagnostic; independent recipient/offline media, native induced faults, edited-PDF recovery and full product parity remain open.",
   "previousControlledV73IphoneArtifact": {
     "checkpoint": "v73",
     "commit": "04451232f631372db81eaee35cecd79d780a605a",
@@ -2597,5 +2743,55 @@
     "runtimeAcceptance": "Same signed v79 retains Home 4 cards / recipe 6/8, existing BRL plan v3 / R$123,45, closed poll v3 / 1 versus 0, Bilingual six-page chat history at 100%, old 0:11 voice Delivered, empty composer at current larger text and closed keyboard. Public executable/JavaScript/strict signatures pass before/after. Eight retired one-use diagnostic steps; no human calendar reads/permission requests or content/account/preference mutations. /private/tmp/zoen-calendar-availability-qa-v79/runtime.json",
     "fullAppParityAccepted": false,
     "installedPublicVerification": "/private/tmp/zoen-calendar-availability-qa-v79/runtime.json"
+  },
+  "previousControlledV80IphoneArtifact": {
+    "checkpoint": "v80",
+    "commit": "131e81dea72f7aec846be5a66f229a80b4cda40d",
+    "configuration": "signed Release ARM64",
+    "preservingInstall": true,
+    "inputs": 822,
+    "sourceSha256": "0bae46d2814e74282b0453ed76ecd4abd868dc50d83323d3c96d0d73fcc0271c",
+    "bundleSha256": "e94c0a80bfb28f2713acb273142dc011ba75655ea5be75733869c2df35c65032",
+    "bundleBytes": 6663719,
+    "executableSha256": "08bda6dc8b7c1229590c6e19439b2d704f2f5d78b97b9a6f72a7c383122b69c9",
+    "appTreeSha256": "7a8e75a9a0f261b073eaa0d6d6572817e2c93797679ea6a0230f83b89fb177e9",
+    "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
+    "appBytes": 131896277,
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v80/Zoen.app",
+    "installedExecutableVerified": true,
+    "installedJavascriptVerified": true,
+    "strictSignatureVerified": true,
+    "buildVerification": "/private/tmp/zoen-iphone-release-v80-verification.json",
+    "device": "isolated iPhone18 Pro / iOS27 simulator",
+    "deviceUdid": "388CA707-A103-4845-B5FE-BAA9526D3D57",
+    "status": "BOUNDED PASS native fullscreen/Details, real opaque consent dismissal and calendar prompt sequencing with preserving retention; full product parity remains open.",
+    "runtimeAcceptance": "Native full-width portrait/one WK scroll and oriented landscape safe insets pass. Real sheet Deny/retry, already-presented background/return denial, swipe dismissal denial and explicit Allow once read pass; existing 11:00/11:30 fixture conflicts appear. Calendar-permission-only reset/restart proves real item-sheet dismissal before OS prompt/Allow Full Access. Details retains controls without setting changes; Back clears private availability state. Existing five Home miniapps/recipe 0/8 and fixtures remain, with no new messages/bookings/events. Public executable/JavaScript/strict signatures pass before/after. Preappearance/queued races and fresh keyboard/VoiceOver/physical/full parity remain open. /private/tmp/zoen-miniapp-native-ui-qa-v80/runtime.json",
+    "fullAppParityAccepted": false,
+    "installedPublicVerification": "/private/tmp/zoen-miniapp-native-ui-qa-v80/runtime.json"
+  },
+  "previousHumanV80IphoneArtifact": {
+    "checkpoint": "v80",
+    "commit": "131e81dea72f7aec846be5a66f229a80b4cda40d",
+    "configuration": "signed Release ARM64",
+    "preservingInstall": true,
+    "inputs": 822,
+    "sourceSha256": "0bae46d2814e74282b0453ed76ecd4abd868dc50d83323d3c96d0d73fcc0271c",
+    "bundleSha256": "e94c0a80bfb28f2713acb273142dc011ba75655ea5be75733869c2df35c65032",
+    "bundleBytes": 6663719,
+    "executableSha256": "08bda6dc8b7c1229590c6e19439b2d704f2f5d78b97b9a6f72a7c383122b69c9",
+    "appTreeSha256": "7a8e75a9a0f261b073eaa0d6d6572817e2c93797679ea6a0230f83b89fb177e9",
+    "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
+    "appBytes": 131896277,
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v80/Zoen.app",
+    "installedExecutableVerified": true,
+    "installedJavascriptVerified": true,
+    "strictSignatureVerified": true,
+    "buildVerification": "/private/tmp/zoen-iphone-release-v80-verification.json",
+    "device": "human iPhone18 Pro / iOS27 simulator",
+    "deviceUdid": "E2B33D1A-D73F-4793-96E7-5FC43E64053F",
+    "status": "BOUNDED PASS preserving v79-to-v80 installation and unchanged Home/cards/six-page chat history/Delivered voice/empty composer; no human calendar access or permission changes.",
+    "runtimeAcceptance": "Same signed v80 retains Home four original miniapps / recipe 6/8 / Exact BRL QA card, original pinned miniapps/conversations and six-page Bilingual chat history at 100%. Old 0:11 voice and prior texts remain Delivered, with empty composer, retained larger-text setting and closed keyboard. No human calendar access or permission changes. Public executable/JavaScript/strict signatures pass before/after. Isolated fullscreen/consent proof is separate. /private/tmp/zoen-miniapp-native-ui-qa-v80/runtime.json",
+    "fullAppParityAccepted": false,
+    "installedPublicVerification": "/private/tmp/zoen-miniapp-native-ui-qa-v80/runtime.json"
   }
 }
