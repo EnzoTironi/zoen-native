@@ -1615,6 +1615,214 @@
       "runtime": "/private/tmp/zoen-pending-trim-native-qa-v82/runtime.json",
       "sourceInputs": 832,
       "sourceSha256": "c382ce71f58b29403c5ba2a30e4ad113dd650842f7b2689fbea78eb0854db7d5"
+    },
+    "nativeOfflineMediaV82a": {
+      "status": "BOUNDED_PASS_DEDICATED_NATIVE_OFFLINE_VOICE_PHOTO_VIDEO_COLD_RECONNECT_READ",
+      "checkpoint": "v82a-offline",
+      "sourceCommit": "c71383a7891951adfd39600be5a2a14a076ea2cc",
+      "sourceInputs": 832,
+      "sourceSha256": "c382ce71f58b29403c5ba2a30e4ad113dd650842f7b2689fbea78eb0854db7d5",
+      "runtime": "/private/tmp/zoen-offline-media-qa-v82/native/runtime.json",
+      "artifactVerification": "/private/tmp/zoen-offline-media-qa-v82/native/accepted-artifact-verification.json",
+      "dedicatedArtifact": {
+        "checkpoint": "v82a-offline",
+        "source_manifest": "/private/tmp/zoen-iphone-release-v82a-offline-inputs.json",
+        "source_sha256": "c382ce71f58b29403c5ba2a30e4ad113dd650842f7b2689fbea78eb0854db7d5",
+        "source_input_count": 832,
+        "app_path": "/private/tmp/zoen-iphone-artifacts/v82a-offline/Zoen.app",
+        "app_bytes": 138773363,
+        "app_tree_sha256": "8fb5ac6e7cf5c9f7af189c3f9ad24c5f7b20279c4d2246340cebd0a5521b3586",
+        "executable_sha256": "1b954cc5b42ba071069c1a0f32f8c804b4831a1df0251fa5fd8d474b981d43a9",
+        "javascript": {
+          "bytes": 6761844,
+          "sha256": "e3591abedee221aa96ba3bfc32107975264c072c5f94ec48e3efd4de4c260b5d"
+        },
+        "public_relay_url": "http://127.0.0.1:18782",
+        "build_environment": {
+          "path": "/private/tmp/zoen-iphone-release-v82a-offline-build-environment.json",
+          "sha256": "a1ace17bda7595e56e8efdf98ac834c1d9f84e41b380c054508ae16995a7a31c",
+          "contract_sha256": "623da77e0ce740f75f420034a01810d6b5b1336344932515da9cb00ff6047856",
+          "public_values": {
+            "EXPO_PUBLIC_ZOEN_RELAY_URL": "http://127.0.0.1:18782",
+            "EXPO_PUBLIC_ZOEN_REVEAL_QA": "0",
+            "FORCE_BUNDLING": "1"
+          }
+        },
+        "endpoint_literal_in_compiled_bundle": true
+      },
+      "mainAndHumanV82ArtifactsPromotedOrChanged": false,
+      "scope": "Dedicated signed fault-proxy artifact on fresh DCD25F2B only. Main/human accepted v82 pointers and all previous proofs remain unchanged. Native app uses 18782; independent canonical peers use existing 8790. Same source/832-input hash, distinct environment/executable/JS/app tree.",
+      "device": "DCD25F2B-B969-4596-8296-A40B269B8EF3",
+      "publicPostRuntimeVerification": "/private/tmp/zoen-offline-media-qa-v82/native/installed-verify-after.json",
+      "publicLinkSetup": {
+        "freshBlankDevice": true,
+        "identities": 2,
+        "devicesAfterLink": 3,
+        "initialHistorySeedVisible": true,
+        "pairingCodesRetainedInQaEvidence": false,
+        "disposableClipboardCleared": true,
+        "authCleanupReceipt": "/private/tmp/zoen-offline-media-qa-v82/native/ephemeral-link-cleanup.json",
+        "scope": "Actual public linking/history seed journey; no general historical-data or provider-entry claim."
+      },
+      "fault": {
+        "nativeRelay": "http://127.0.0.1:18782",
+        "peerRelay": "http://127.0.0.1:8790",
+        "outage": "Task-owned loopback listener and existing HTTP/WS sockets cut/drained before the offline acknowledgment; zero active/upstream/downstream sockets and tasks. This is not a system-wide Airplane Mode or production-relay outage.",
+        "outageOfflineCutCounter": 1,
+        "finalStopCounterIncludesSeparateTeardownCut": 2,
+        "fixtureHttpStoppedBeforeFault": true,
+        "offlineProof": "/private/tmp/zoen-offline-media-qa-v82/native/proxy-offline.json",
+        "offlineColdProof": "/private/tmp/zoen-offline-media-qa-v82/native/proxy-after-offline-cold.json",
+        "finalStopProof": "/private/tmp/zoen-offline-media-qa-v82/native/proxy-stop.json"
+      },
+      "nativeJourney": {
+        "voiceSendActions": 1,
+        "attachmentBatchSendActions": 1,
+        "resendActions": 0,
+        "offlineColdPreservesThreeQueuedIdsAndNoDraft": true,
+        "onlineColdMatchingRows": [1, 1, 1],
+        "canonicalOrder": ["voice", "photo", "video"],
+        "captions": {
+          "photo": "QA v82a offline photo",
+          "video": "QA v82a offline video"
+        },
+        "automaticReconnectFirstDeliveredGateMilliseconds": 24060,
+        "performanceClaimed": false,
+        "explicitReadRequests": 1,
+        "finalReceipts": ["Read by all", "Read by all", "Read by all"],
+        "finalDraftAbsent": true,
+        "finalComposerEmpty": true,
+        "finalKeyboardClosed": true,
+        "finalTimelinePercent": 100
+      },
+      "independentRecipient": {
+        "phaseOrder": ["pre", "offline", "post", "cold"],
+        "receivedCounts": [0, 0, 3, 3],
+        "canonicalMedia": [
+          {
+            "bytes": 116346,
+            "canonical_duration_ms": 3725,
+            "canonical_waveform_sha256": "d5c0c784a76cb6111db74235b4719074348da7707cdd4ebefe5683c645097728",
+            "caption_sha256": null,
+            "decrypted_bytes_verified": true,
+            "duration_independently_decoded": false,
+            "item_id": "it_01m582w295d46sdsw3r8svyywx",
+            "kind": "voice",
+            "message_id": "01M582W297ZSG8VYGBYGETHW1B",
+            "mime": "audio/mp4",
+            "name": "voice-it_01m582w295d46sdsw3r8svyywx.m4a",
+            "received_plaintext_sha256": "2ce109007e2fa2efc8281b35754d5695d36ea9d2e92d29d433a0688489a29c1b",
+            "seq": 14,
+            "signed_canonical_sha256": "2ce109007e2fa2efc8281b35754d5695d36ea9d2e92d29d433a0688489a29c1b",
+            "source_byte_identity_asserted": false,
+            "version": 1
+          },
+          {
+            "bytes": 8530,
+            "canonical_duration_ms": null,
+            "canonical_waveform_sha256": null,
+            "caption_sha256": "eb21e8f32d671d4f8a584dc5063b2935ab56141edc2abb12b69eb609016b03a1",
+            "decrypted_bytes_verified": true,
+            "duration_independently_decoded": false,
+            "item_id": "it_01m58310ekv3grk1r13vmmrw6a",
+            "kind": "photo",
+            "message_id": "01M58310ENKYX8NFZYA7RBNB6D",
+            "mime": "image/jpeg",
+            "name": "QA1018v65-beach.jpeg",
+            "received_plaintext_sha256": "9d1e61801b349f3308d543998db013ff8220e713fd5977ad35f8ae7844fb1b56",
+            "seq": 16,
+            "signed_canonical_sha256": "9d1e61801b349f3308d543998db013ff8220e713fd5977ad35f8ae7844fb1b56",
+            "source_byte_identity_asserted": true,
+            "version": 1
+          },
+          {
+            "bytes": 3306,
+            "canonical_duration_ms": null,
+            "canonical_waveform_sha256": null,
+            "caption_sha256": "58f54e96c3fcf670bd403841017517943e24dfa77393cd870b1f22c24476e21c",
+            "decrypted_bytes_verified": true,
+            "duration_independently_decoded": false,
+            "item_id": "it_01m58310enkyx8nfzya7rbnb6e",
+            "kind": "video",
+            "message_id": "01M58310EPW0FTRZV9EKFKM1MH",
+            "mime": "video/mp4",
+            "name": "QA1018v65-sky.mp4",
+            "received_plaintext_sha256": "5e20b8cb916831f4f7de715fe9b213e864132633f2e2ce4515a1df809e2c295b",
+            "seq": 18,
+            "signed_canonical_sha256": "5e20b8cb916831f4f7de715fe9b213e864132633f2e2ce4515a1df809e2c295b",
+            "source_byte_identity_asserted": true,
+            "version": 1
+          }
+        ],
+        "crossPhasePinsIdentical": true,
+        "nativeIdsMatchCanonical": true,
+        "postAndColdSignedLog": {
+          "events": 19,
+          "head_hash": "bb6f03774dd29d0dab4e71b9ce288ef9758a4877e42460e3024ad785e47ba43c",
+          "valid": true
+        },
+        "totalGroupMessagesPostAndCold": 4,
+        "seedMessages": 1,
+        "editsOrDuplicatesObserved": false,
+        "voiceWaveformBarsPinned": 160,
+        "checkpoints": "/private/tmp/zoen-offline-media-qa-v82/native/peer-checkpoints.json",
+        "scope": "Authenticated canonical IDs/items/v1/order, signed log and decrypted received byte digests stable post/cold. Photo/video equal original fixture hashes; voice is a full AAC render and is not asserted byte-identical to its import. Signed 3,725 ms duration and waveform hash are metadata, without independent full decode or physical-duration proof."
+      },
+      "originAttribution": "Fresh namespace, public native UI journey, pinned linked device and bootstrap path that never sends group media support bounded native-origin inference. Public DTOs do not cryptographically certify the author device.",
+      "sourceChecks": {
+        "appTests": 669,
+        "skipped": 0,
+        "typeScriptOxlintOxfmt": "PASS",
+        "focusedVoiceSubset": 86,
+        "rust": {
+          "passed": 463,
+          "sourceCommit": "6c338bcf921704f83e1149556460b4b2d480a204",
+          "unchanged": true
+        },
+        "noNewProductCodeOrTests": true,
+        "scope": "Existing same-source v82 checks and exact-source Expo jobs retain their attribution; no new app/Rust suite for this dedicated journey.",
+        "sourceCi": "/private/tmp/zoen-pending-trim-native-qa-v82/source-ci.json"
+      },
+      "diagnostics": {
+        "nativeObservations": "/private/tmp/zoen-offline-media-qa-v82/native/native-ui-observations.json",
+        "nativeObservationCount": 41,
+        "copiedPngs": 35,
+        "screens": "/private/tmp/zoen-offline-media-qa-v82/native/screens",
+        "retiredRecordings": "/private/tmp/zoen-offline-media-qa-v82/native/retired-diagnostics.json",
+        "rawSteps": [3, 61],
+        "formalReplayE2e": false,
+        "warnings": [
+          "Initial empty-Home/photo-caption waits were corrected; overlay/cross-tree selector warnings are retained.",
+          "Keyboard autocorrect inserted off-line; manual cursor corrections and exact checks of both captions completed before the single Send.",
+          "An early warm-keyboard capture showed 85% with transient overlap; later settled 100% and final receipt above composer. Transition timing/performance was not measured."
+        ]
+      },
+      "cleanup": {
+        "peerExit": 0,
+        "peerReportsVolatileStateDiscarded": true,
+        "consumedLatchRetained": "/private/tmp/zoen-offline-media-peer-v82a/v82a-consumed.once",
+        "fixtureServerStoppedBeforeFault": true,
+        "proxyStoppedDrained": true,
+        "sharedRelayNeverRestarted": true,
+        "deviceDataNotErased": true,
+        "deviceServerStopAndShutdown": "PASS scoped stop and shutdown of DCD25F2B only; data preserved, no uninstall/erase",
+        "sharedRelayLivePid": 19737,
+        "faultProxyAndFixturePortsClosed": true,
+        "controlSocketRemovedByOwnedService": true
+      },
+      "cleanupReceipts": {
+        "peerCompletion": "/private/tmp/zoen-offline-media-qa-v82/native/peer-completion.json",
+        "processFacts": "/private/tmp/zoen-offline-media-qa-v82/native/runtime-process-facts.json",
+        "scopedStop": "/private/tmp/zoen-offline-media-qa-v82/native/scoped-server-stop.json",
+        "fixtureHttpStopped": "/private/tmp/zoen-offline-media-qa-v82/native/audio-fixture-server-stopped.json"
+      },
+      "limits": [
+        "Bounded loopback transport cut only; no claim for long outages, every network/OS/storage/account/erase/revocation failure or permanent loss.",
+        "No independent complete AAC/video decode, physical-duration measurement or cryptographic author-device certification.",
+        "No fresh microphone/ASR, physical/provider/Push/accessibility/performance/comparative or full product-parity acceptance.",
+        "Unsent edited-PDF Markup recovery and earlier gaps remain separately open. Earlier preparation-only statements retain their original v82 historical attribution."
+      ],
+      "fullAppParityAccepted": false
     }
   },
   "deferredPlatforms": ["web", "android", "macos", "windows", "linux"],
@@ -1643,7 +1851,8 @@
     "Signed v79 narrowly resolves the prior native-calendar-read gap through the first-party Schedule: explicit per-item consent, actual OS Deny/error and permission-only reset followed by Allow Full Access; the owned Monday 11:00–12:00 event blocks 11:00/11:30, 09:00 selects, removal restores slots, and Tuesday clears the selection before an explicit new query finds no business-time conflicts. No whole-day-free or zero-EventKit-interval claim. Both preserving v78-to-v79 installs and human Home/recipe/BRL plan/closed poll/six-page chat history/Delivered voice/empty composer retention pass, with no human calendar reads or content mutations. All 21 prior gaps retain exact historical attribution. Native all-day/DST/no-calendar/fault integration, booking/calendar.add, Push/providers/physical/full comparative parity remain open; existing nested miniapp scrolling and transparent-consent legibility need separate UI work. Recordings are retired one-use diagnostics, not formal replay/E2E.",
     "Signed v80 narrowly resolves the observed v79 nested native miniapp scrolling and low-legibility consent surface for the tested Schedule: full-width safe portrait viewport/one WK scroll, oriented landscape safe insets, separate Details with retained controls, opaque native Deny/retry, already-presented background/return and swipe dismissal deny, and explicit Allow once read succeed. After isolated Calendar-permission-only reset/restart, real item-sheet dismissal precedes the actual OS full-access prompt and successful read. Back retires private conflict state; both preserving installs and human Home/chat/Delivered voice/empty composer retention pass. All 22 prior gaps retain exact historical attribution. Preappearance/queued/stale native races remain source-only, and foreground may briefly show an inert denied sheet. Fresh HTML keyboard/VoiceOver/physical/Android-Web manual/performance/full FFI, providers/Push and full comparative parity remain open; recordings are retired diagnostics, not formal replay/E2E.",
     "Signed v81d narrowly addresses historical unsent attachment/audio recovery for the tested native paths: the edited 3.37-second voice retained after v81c failed Send recovers, one compact Send yields one native ID and cold returns one matching row/no draft. A fresh ordered photo/video batch restores both previews and separate captions after cold; one Send yields two native IDs, retained after another cold with no draft and timeline 100%. Both preserving installs and human Home/recipe/six-page chat history/old Delivered voice/empty composer retention pass. All 23 prior gaps keep exact historical attribution; v81b/v81c remain partial diagnostics, and v81c pending-trim/Apply/Discard is not a fresh v81d replay. No independent recipient/payload decode, offline media, microphone/ASR, induced native storage/owner/erase/ambiguous-ACK, PDF Markup process-death recovery, physical/provider/Push/accessibility/performance/formal E2E or full-parity acceptance is claimed.",
-    "Signed v82 narrowly resolves pending precision trim being silently replaced by history in the tested native path: applied A 3.45 s from a 3.72 s original and pending B 0.27–3.54 s survive an inert Undo tap and cold restart; restored B blocks Undo and Send. Explicit Discard retains A, after which Undo 3.72 s and Redo 3.45 s work; a second explicit Apply produces 3.27 s. One compact Send and cold return retain exactly one matching native ID/no draft at 100%. Both preserving installs and human Home/recipe/six-page history/old Delivered voice/empty composer retention pass. All 24 prior gaps keep exact history. Word/filler/pause/selection/ASR and late-callback boundaries remain source-only; no independent peer/decode, mic/ASR/accessibility/physical/provider/Push/performance or full-parity acceptance is claimed. Separate v82a offline-media preparation is not offline native proof."
+    "Signed v82 narrowly resolves pending precision trim being silently replaced by history in the tested native path: applied A 3.45 s from a 3.72 s original and pending B 0.27–3.54 s survive an inert Undo tap and cold restart; restored B blocks Undo and Send. Explicit Discard retains A, after which Undo 3.72 s and Redo 3.45 s work; a second explicit Apply produces 3.27 s. One compact Send and cold return retain exactly one matching native ID/no draft at 100%. Both preserving installs and human Home/recipe/six-page history/old Delivered voice/empty composer retention pass. All 24 prior gaps keep exact history. Word/filler/pause/selection/ASR and late-callback boundaries remain source-only; no independent peer/decode, mic/ASR/accessibility/physical/provider/Push/performance or full-parity acceptance is claimed. Separate v82a offline-media preparation is not offline native proof.",
+    "Dedicated signed v82a-offline narrowly resolves the tested native voice/photo/video offline lifecycle: one voice Send and one two-file caption-batch Send, actual offline cold with three same queued IDs/no draft, automatic reconnect without resend, independent counts 0/0/3/3 pre/offline/post/cold, stable canonical IDs/items/v1/order and authenticated received byte digests, then one explicit recipient Read reflected on all three native rows. Photo/video equal original fixture hashes; voice duration/waveform are canonical metadata, not independent decode or original-import byte identity. Main/human v82 objects and all 25 prior gaps remain exact; earlier v82a preparation-only notes are historical. This proves only the fresh-device 18782-to-8790 loopback fault path, not cryptographic author-device attribution, long/other network or native storage failures, full media decoding, microphone/ASR/physical/provider/Push/accessibility/performance or full parity. Transient warm-keyboard overlap remains an unmeasured diagnostic."
   ],
   "currentIphoneArtifact": {
     "checkpoint": "v82",
@@ -2602,7 +2811,7 @@
     "status": "BOUNDED PASS preserving v66→v68 first cold Home4cards/recipe6of8→Chats→Bilingual100%, existing Delivered text/voice and empty52pt/keyboard-closed/audio-idle composer. No human content/preferences mutation; full product acceptance remains incomplete.",
     "runtimeAcceptance": "Same accepted v68 archive preserving-installed without uninstall/reset/erase; exact public executable/JavaScript/strict signature verified before and after UI,788 source manifest stable after runtime. First ordinary cold launch retains four Home cards/recipe6of8, existing Bilingual history at100%, prior Delivered text and voice, empty native52pt composer, closed keyboard and idle audio. No content/preferences mutation. Partial4-step recorder+2 direct actions, retired external YAML/copied PNGs; no formal reusable replay. /private/tmp/zoen-message-draft-qa-v68/human-preserving-runtime.json"
   },
-  "currentAcceptanceSummary": "Current isolated and human signed artifact is v82 source c71383a7891951adfd39600be5a2a14a076ea2cc with 832 frozen inputs. Bounded applied-A/pending-B Undo blocking, actual cold restore, explicit Discard/history/Apply, one compact Send and cold same-ID/no-draft retention pass in evidence.nativePendingTrimV82; human retention passes. App 669/669 plus TS/Oxlint/Oxfmt and all three exact-source Expo jobs pass separately; 86 focused voice tests are an overlapping subset with three prior-source failures retained. Unchanged Rust 463/463 retains 6c338bcf attribution. Both v81d current objects are archived raw-exact; all 53 old historical objects, 78 evidence values and 24 ordered gaps remain unchanged. Offline v82a is preparation only, with no independent peer/decode, fresh ASR/microphone/accessibility or full product parity claim.",
+  "currentAcceptanceSummary": "Accepted main and human artifacts remain v82 source c71383a7891951adfd39600be5a2a14a076ea2cc with 832 inputs; their bounded pending-trim/human-retention proof is unchanged. Separate evidence.nativeOfflineMediaV82a now records dedicated signed v82a-offline on fresh DCD25F2B: native voice/two-file caption batch Send once each, offline cold, automatic reconnect, independent exact three-ID/received-digest retention after online cold, then native Read after explicit recipient Read. Source/test attribution remains v82 app 669/669 and prior unchanged Rust 463/463 at 6c338bcf; no new product code/tests. All 55 historical objects, 79 prior evidence values, 25 ordered gaps and both v82 pointers remain exact. Earlier preparation-only notes are historical; independent full media decoding/physical duration, cryptographic author-device certification and full product parity remain open.",
   "previousControlledV73IphoneArtifact": {
     "checkpoint": "v73",
     "commit": "04451232f631372db81eaee35cecd79d780a605a",
