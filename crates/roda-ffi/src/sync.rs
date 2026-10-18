@@ -21,7 +21,10 @@
 //! - **Reopen:** confirmed events are re-verified from disk, then the outbox is replayed
 //!   on top. Kill the app mid-send and nothing is lost or duplicated.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+};
 
 use roda_log::content::SealedKind;
 use roda_log::{chain_hash, content_hash_of, Author, Signer, SpaceLog};
@@ -67,8 +70,8 @@ pub struct NetState {
     /// Identities seen in logs whose profile this device doesn't have yet.
     pub unknown: HashSet<IdentityId>,
     pub presence: HashMap<IdentityId, bool>,
-    /// Space → member → (delivered up to, read up to). Aggregated watermarks, never per
-    /// message; the relay replays the newest on every sync, so nothing is stored here.
+    /// Space → member → (delivered up to, read up to). Restored from the device-local
+    /// receipt cache before publishing a snapshot; relay replay can only raise it.
     pub receipts: HashMap<SpaceId, HashMap<IdentityId, (u64, u64)>>,
     /// Space → the highest seq this device already said it has (so `Delivered` goes out
     /// once per new head, not once per event).
@@ -207,6 +210,7 @@ impl Engine {
             }
         }
         self.reproject_approval_overlay()?;
+        self.restore_peer_receipts()?;
         self.recompute_unknown();
         self.reload_mls();
         Ok(())
@@ -1613,23 +1617,158 @@ impl Engine {
         }
     }
 
-    /// A member's receipt arrived (live or replayed). From my own identity it is another of
-    /// my devices: a read there is a read here. Returns whether anything changed.
-    pub fn receipt(&mut self, space: &str, from: &str, delivered: u64, read: u64) -> bool {
-        if self.me.as_deref() == Some(from) {
-            return read > 0 && self.raise_read(space, read);
+    fn receipt_members(&self, space: &str) -> R<Cow<'_, [(IdentityId, Role)]>> {
+        let pending_membership = self.net.pending.values().any(|s| s == space)
+            && self.store.outbox()?.iter().any(|pending| {
+                !pending.failed
+                    && pending.event.space == space
+                    && matches!(
+                        pending.event.body,
+                        EventBody::SpaceCreated { .. }
+                            | EventBody::MemberAdded { .. }
+                            | EventBody::MemberRemoved { .. }
+                    )
+                    && !self.logs.get(space).is_some_and(|log| {
+                        log.events()
+                            .iter()
+                            .any(|e| e.client_id == pending.event.client_id)
+                    })
+            });
+        if !pending_membership {
+            return Ok(Cow::Borrowed(
+                self.state
+                    .spaces
+                    .get(space)
+                    .map(|s| s.members.as_slice())
+                    .unwrap_or_default(),
+            ));
         }
-        let mark = self
+        // Optimistic membership is for UI feedback, not admission of relay marks.
+        // Reuse the confirmed authority projection only while such an overlay exists.
+        let mut confirmed = State::default();
+        let mut plans = PlanReplay::new(&self.store, &self.logs);
+        if let Some(log) = self.logs.get(space) {
+            for (end, event) in log.events().iter().enumerate() {
+                let context = plans.before(&confirmed, &self.identities, event, end)?;
+                confirmed.apply_checked(event, &self.identities, &context);
+            }
+        }
+        Ok(Cow::Owned(
+            confirmed
+                .spaces
+                .remove(space)
+                .map(|s| s.members)
+                .unwrap_or_default(),
+        ))
+    }
+
+    pub(crate) fn receipt_scope(&self, space: &str, from: &str) -> R<bool> {
+        let Some(me) = self.me.as_deref() else {
+            return Ok(false);
+        };
+        let members = self.receipt_members(space)?;
+        Ok(members.iter().any(|(member, _)| member == me)
+            && members.iter().any(|(member, _)| member == from))
+    }
+
+    fn restore_peer_receipts(&mut self) -> R<()> {
+        // Older demo databases kept sample ticks in one special metadata blob.
+        // Migrate only canonical members, atomically, then use the ordinary cache.
+        if let Some(legacy) = self.store.meta("seed_receipts")? {
+            let storage_error = |error: rusqlite::Error| CoreError::Storage {
+                message: error.to_string(),
+            };
+            let tx = self
+                .store
+                .conn()
+                .unchecked_transaction()
+                .map_err(storage_error)?;
+            if let Ok(legacy) =
+                serde_json::from_str::<HashMap<SpaceId, HashMap<IdentityId, (u64, u64)>>>(&legacy)
+            {
+                for (space, peers) in legacy {
+                    for (peer, (delivered, read)) in peers {
+                        if self.me.as_deref() != Some(&peer)
+                            && self.receipt_scope(&space, &peer)?
+                            && delivered.max(read) > 0
+                        {
+                            self.store
+                                .raise_peer_receipt(&space, &peer, delivered, read)?;
+                        }
+                    }
+                }
+            }
+            self.store.meta_delete("seed_receipts")?;
+            tx.commit().map_err(storage_error)?;
+        }
+        let saved = self.store.peer_receipts()?;
+        let mut receipts: HashMap<SpaceId, HashMap<IdentityId, (u64, u64)>> = HashMap::new();
+        for (space, peers) in &self.net.receipts {
+            for (peer, mark) in peers {
+                if self.me.as_deref() != Some(peer) && self.receipt_scope(space, peer)? {
+                    receipts
+                        .entry(space.clone())
+                        .or_default()
+                        .insert(peer.clone(), *mark);
+                }
+            }
+        }
+        for row in saved {
+            if self.me.as_deref() != Some(&row.identity)
+                && self.receipt_scope(&row.space, &row.identity)?
+            {
+                let mark = receipts
+                    .entry(row.space)
+                    .or_default()
+                    .entry(row.identity)
+                    .or_insert((0, 0));
+                *mark = (
+                    mark.0.max(row.delivered).max(row.read),
+                    mark.1.max(row.read),
+                );
+            }
+        }
+        self.net.receipts = receipts;
+        Ok(())
+    }
+
+    /// A current member's receipt arrived (live or replayed). Persist before publishing
+    /// a higher mark so reconnect or cold/offline reopen cannot lower observed ticks.
+    /// From my own identity, a read on another device is a read here too.
+    pub fn receipt(&mut self, space: &str, from: &str, delivered: u64, read: u64) -> R<bool> {
+        if !self.receipt_scope(space, from)? {
+            return Ok(false);
+        }
+        if self.me.as_deref() == Some(from) {
+            if read == 0 {
+                return Ok(false);
+            }
+            let key = format!("read:{space}");
+            let previous = self.store.meta(&key)?.and_then(|v| v.parse::<u64>().ok());
+            if previous.is_some_and(|seq| seq >= read) {
+                return Ok(false);
+            }
+            self.store.set_meta(&key, &read.to_string())?;
+            return Ok(true);
+        }
+        let previous = self
             .net
+            .receipts
+            .get(space)
+            .and_then(|peers| peers.get(from))
+            .copied()
+            .unwrap_or((0, 0));
+        let next = (previous.0.max(delivered).max(read), previous.1.max(read));
+        if next == previous {
+            return Ok(false);
+        }
+        let saved = self.store.raise_peer_receipt(space, from, next.0, next.1)?;
+        self.net
             .receipts
             .entry(space.to_string())
             .or_default()
-            .entry(from.to_string())
-            .or_insert((0, 0));
-        let next = (mark.0.max(delivered).max(read), mark.1.max(read));
-        let changed = next != *mark;
-        *mark = next;
-        changed
+            .insert(from.to_string(), saved);
+        Ok(saved != previous)
     }
 
     /// The `Delivered` watermark to announce for `space`, when its head moved past the last

@@ -21,6 +21,72 @@ mod tests {
     use super::*;
 
     #[test]
+    fn peer_watermarks_merge_exact_unsigned_maxima_without_duplicate_updates() {
+        let store = Store::in_memory().unwrap();
+        assert_eq!(
+            store.raise_peer_receipt("s", "p", u64::MAX, 1).unwrap(),
+            (u64::MAX, 1)
+        );
+        assert_eq!(
+            store.raise_peer_receipt("s", "p", 2, u64::MAX - 1).unwrap(),
+            (u64::MAX, u64::MAX - 1)
+        );
+        store.conn().execute_batch("CREATE TEMP TRIGGER reject_receipt_update BEFORE UPDATE ON peer_receipts BEGIN SELECT RAISE(ABORT, 'no redundant updates'); END;").unwrap();
+        assert_eq!(
+            store.raise_peer_receipt("s", "p", 1, 1).unwrap(),
+            (u64::MAX, u64::MAX - 1)
+        );
+        store
+            .conn()
+            .execute_batch("DROP TRIGGER reject_receipt_update;")
+            .unwrap();
+        assert_eq!(
+            store.raise_peer_receipt("s", "p", 0, u64::MAX).unwrap(),
+            (u64::MAX, u64::MAX)
+        );
+        assert_eq!(
+            store.raise_peer_receipt("s", "other", 0, 7).unwrap(),
+            (7, 7)
+        );
+        assert_eq!(
+            store.raise_peer_receipt("other", "p", 8, 0).unwrap(),
+            (8, 0)
+        );
+        let rows = store.peer_receipts().unwrap();
+        assert_eq!(rows.len(), 3);
+        assert!(rows.contains(&PeerReceipt {
+            space: "s".into(),
+            identity: "p".into(),
+            delivered: u64::MAX,
+            read: u64::MAX
+        }));
+        store.wipe_sync().unwrap();
+        assert!(store.peer_receipts().unwrap().is_empty());
+    }
+
+    #[test]
+    fn peer_receipt_schema_rejects_lossy_or_noncanonical_sequence_encodings() {
+        let store = Store::in_memory().unwrap();
+        for value in [
+            "1",
+            "-0000000000000000001",
+            "18446744073709551616",
+            "0000000000000000000x",
+        ] {
+            assert!(store.conn().execute(
+                "INSERT INTO peer_receipts VALUES ('space', 'peer', ?1, '00000000000000000000')", [value]
+            ).is_err(), "{value}");
+        }
+        assert!(store.conn().execute(
+            "INSERT INTO peer_receipts VALUES ('space', 'peer', '00000000000000000001', '00000000000000000002')", []
+        ).is_err());
+        assert!(store.peer_receipts().unwrap().is_empty());
+        store.raise_peer_receipt("space", "peer", 2, 1).unwrap();
+        store.wipe().unwrap();
+        assert!(store.peer_receipts().unwrap().is_empty());
+    }
+
+    #[test]
     fn recovery_upload_requires_success_and_rolls_back_with_its_commit() {
         let store = Store::in_memory().unwrap();
         {
@@ -62,6 +128,22 @@ pub struct OutboxHead {
     pub failed: bool,
 }
 
+/// Device-local knowledge received from a peer, separate from the signed history.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerReceipt {
+    pub space: String,
+    pub identity: String,
+    pub delivered: u64,
+    pub read: u64,
+}
+
+fn receipt_seq(row: &rusqlite::Row<'_>, column: usize) -> rusqlite::Result<u64> {
+    let value: String = row.get(column)?;
+    value.parse().map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(column, rusqlite::types::Type::Text, Box::new(e))
+    })
+}
+
 impl Store {
     pub(crate) fn migrate_sync(&self) -> Result<()> {
         self.conn.execute_batch(
@@ -79,6 +161,19 @@ impl Store {
             CREATE TABLE IF NOT EXISTS synced_spaces (
                 space TEXT PRIMARY KEY
             );
+            -- Fixed-width decimal TEXT preserves the complete protocol u64 range and
+            -- makes BINARY lexical MAX an exact unsigned numeric maximum.
+            CREATE TABLE IF NOT EXISTS peer_receipts (
+                space TEXT NOT NULL,
+                identity TEXT NOT NULL,
+                delivered TEXT NOT NULL COLLATE BINARY
+                    CHECK(length(delivered) = 20 AND delivered NOT GLOB '*[^0-9]*'
+                        AND delivered <= '18446744073709551615'),
+                read TEXT NOT NULL COLLATE BINARY
+                    CHECK(length(read) = 20 AND read NOT GLOB '*[^0-9]*'
+                        AND read <= '18446744073709551615' AND read <= delivered),
+                PRIMARY KEY (space, identity)
+            ) WITHOUT ROWID;
             -- The key and relay address of each attachment's encrypted copy.
             CREATE TABLE IF NOT EXISTS media_keys (
                 plain_sha TEXT PRIMARY KEY,
@@ -243,6 +338,47 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    /// Raise each peer watermark independently, atomically. A read also proves delivery.
+    /// Callers validate room membership before admitting untrusted relay frames here.
+    pub fn raise_peer_receipt(
+        &self,
+        space: &str,
+        identity: &str,
+        delivered: u64,
+        read: u64,
+    ) -> Result<(u64, u64)> {
+        let delivered = format!("{:020}", delivered.max(read));
+        let read = format!("{read:020}");
+        self.conn.execute(
+            "INSERT INTO peer_receipts (space, identity, delivered, read) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(space, identity) DO UPDATE SET
+                delivered = MAX(peer_receipts.delivered, excluded.delivered),
+                read = MAX(peer_receipts.read, excluded.read)
+             WHERE excluded.delivered > peer_receipts.delivered OR excluded.read > peer_receipts.read",
+            params![space, identity, delivered, read],
+        )?;
+        Ok(self.conn.query_row(
+            "SELECT delivered, read FROM peer_receipts WHERE space = ?1 AND identity = ?2",
+            params![space, identity],
+            |r| Ok((receipt_seq(r, 0)?, receipt_seq(r, 1)?)),
+        )?)
+    }
+
+    pub fn peer_receipts(&self) -> Result<Vec<PeerReceipt>> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT space, identity, delivered, read FROM peer_receipts")?;
+        let rows = statement.query_map([], |r| {
+            Ok(PeerReceipt {
+                space: r.get(0)?,
+                identity: r.get(1)?,
+                delivered: receipt_seq(r, 2)?,
+                read: receipt_seq(r, 3)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
     /// Next sequence number this device is missing for each relay-ordered Space.
     pub fn cursors(&self) -> Result<Vec<(String, u64)>> {
         let mut st = self.conn.prepare(
@@ -261,7 +397,7 @@ impl Store {
     }
 
     pub fn wipe_sync(&self) -> Result<()> {
-        self.conn.execute_batch("DELETE FROM outbox; DELETE FROM synced_spaces; DELETE FROM media_keys; DELETE FROM blob_uploads; DELETE FROM mls_recovery_uploads; DELETE FROM mls_recovery_blobs;")?;
+        self.conn.execute_batch("DELETE FROM outbox; DELETE FROM synced_spaces; DELETE FROM peer_receipts; DELETE FROM media_keys; DELETE FROM blob_uploads; DELETE FROM mls_recovery_uploads; DELETE FROM mls_recovery_blobs;")?;
         Ok(())
     }
 

@@ -28,6 +28,84 @@ use crate::engine::Engine;
 use crate::sync::{Ingest, RejectionOutcome};
 use crate::CoreListener;
 
+/// Live fan-out can race a room's membership history during catch-up. Hold only a
+/// bounded set of unvalidated pairs on this socket, never in the durable cache.
+#[derive(Default)]
+pub(crate) struct DeferredReceipts(HashMap<(String, String), (u64, u64)>);
+
+impl DeferredReceipts {
+    pub(crate) fn device_message(
+        &mut self,
+        engine: &mut Engine,
+        from: &str,
+        to: &str,
+        sealed: &[u8],
+        dirty: &mut HashSet<String>,
+    ) -> Result<(), crate::CoreError> {
+        engine.device_message(from, to, sealed);
+        // Opened history can release membership held behind a waiting approval.
+        self.flush(engine, dirty)
+    }
+
+    pub(crate) fn receive(
+        &mut self,
+        engine: &mut Engine,
+        space: &str,
+        from: &str,
+        delivered: u64,
+        read: u64,
+    ) -> Result<bool, crate::CoreError> {
+        if engine.receipt_scope(space, from)? {
+            return engine.receipt(space, from, delivered, read);
+        }
+        if delivered == 0 && read == 0 {
+            return Ok(false);
+        }
+        // Space IDs are bounded to 128 bytes by the push protocol; identity IDs
+        // are 64-byte hex. Preserve that upper bound for deferred frame strings.
+        let key = (space.to_string(), from.to_string());
+        if space.is_empty()
+            || space.len() > 128
+            || from.is_empty()
+            || from.len() > 128
+            || (self.0.len() >= 1024 && !self.0.contains_key(&key))
+        {
+            // The caller reconnects and catches up: overflow never silently
+            // discards a potentially legitimate latest watermark.
+            return Err(crate::CoreError::Invalid {
+                reason: "receipt catch-up buffer exceeded".into(),
+            });
+        }
+        let mark = self.0.entry(key).or_default();
+        *mark = (mark.0.max(delivered).max(read), mark.1.max(read));
+        Ok(false)
+    }
+
+    pub(crate) fn flush(
+        &mut self,
+        engine: &mut Engine,
+        dirty: &mut HashSet<String>,
+    ) -> Result<(), crate::CoreError> {
+        let mut ready = Vec::new();
+        for (space, from) in self.0.keys() {
+            if engine.receipt_scope(space, from)? {
+                ready.push((space.clone(), from.clone()));
+            }
+        }
+        for (space, from) in ready {
+            let (delivered, read) = self.0[&(space.clone(), from.clone())];
+            if engine.receipt(&space, &from, delivered, read)? {
+                dirty.insert(space.clone());
+            }
+            self.0.remove(&(space, from));
+        }
+        // SyncDone also acknowledges partial gap/join requests, so it cannot
+        // prove unrelated membership complete. Keep unresolved pairs bounded
+        // until canonical history admits them or this socket is discarded.
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnState {
     Offline,
@@ -641,6 +719,7 @@ async fn session(
     let mut waiting: HashMap<u64, Waiting> = HashMap::new();
     let mut next_id: u64 = 1;
     let mut dirty: HashSet<String> = HashSet::new();
+    let mut deferred_receipts = DeferredReceipts::default();
     let tick = tokio::time::sleep(Duration::ZERO);
     tokio::pin!(tick);
     let mut ping = tokio::time::interval(Duration::from_secs(25));
@@ -702,6 +781,9 @@ async fn session(
                                 tracing_like(&format!("refused event in {space}: {reason}"));
                             }
                         }
+                        if let Err(e) = engine!(|engine| deferred_receipts.flush(engine, &mut dirty)) {
+                            break Exit::Retry(e.to_string());
+                        }
                     }
                     ServerFrame::Accepted { .. } => {}
                     ServerFrame::Rejected { space, client_id, reason, permanent } => {
@@ -728,7 +810,11 @@ async fn session(
                             _ => None,
                         };
                         if let Some((d, r)) = mark {
-                            if engine!(|engine| engine.receipt(&space, &from, d, r)) { dirty.insert(space.clone()); }
+                            match engine!(|engine| deferred_receipts.receive(engine, &space, &from, d, r)) {
+                                Ok(true) => { dirty.insert(space.clone()); }
+                                Ok(false) => {}
+                                Err(e) => break Exit::Retry(e.to_string()),
+                            }
                         }
                         if let Some(l) = &ctx.listener {
                             let (k, detail) = match kind {
@@ -751,6 +837,9 @@ async fn session(
                         if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors: c, all: false }).await { break Exit::Retry(e) }
                     }
                     ServerFrame::SyncDone => {
+                        if let Err(e) = engine!(|engine| deferred_receipts.flush(engine, &mut dirty)) {
+                            break Exit::Retry(e.to_string());
+                        }
                         let first = !ctx.status.borrow().synced;
                         if first {
                             // Authentication can succeed while catch-up dependencies fail.
@@ -853,7 +942,9 @@ async fn session(
                     ServerFrame::ProfileChanged { identity, .. } => engine!(|engine| engine.profile_changed(&identity)),
                     ServerFrame::KeyPackagesLow { device, remaining } => engine!(|engine| engine.mls_key_packages_low(&device, remaining)),
                     ServerFrame::DeviceMessage { from, to, sealed } => {
-                        engine!(|engine| engine.device_message(&from, &to, &sealed));
+                        if let Err(e) = engine!(|engine| deferred_receipts.device_message(engine, &from, &to, &sealed, &mut dirty)) {
+                            break Exit::Retry(e.to_string());
+                        }
                         if engine!(|engine| engine.take_initial_history_ready()) {
                             if let Some(listener) = &ctx.listener {
                                 listener.on_ephemeral(String::new(), from, "history_ready".to_owned(), String::new());

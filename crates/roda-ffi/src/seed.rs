@@ -980,13 +980,9 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
     // Keep these chats local: marking them synced would queue demo edits for a relay.
     e.net.receipts.clear();
     for member in [&marina, &lucas, &ana, &zoen] {
-        e.receipt(&turma, member, group_delivered.seq, group_read.seq);
+        e.receipt(&turma, member, group_delivered.seq, group_read.seq)?;
     }
-    e.receipt(&dm_marina, &marina, marina_delivered.seq, sunscreen.seq);
-    e.store.set_meta(
-        "seed_receipts",
-        &serde_json::json!(&e.net.receipts).to_string(),
-    )?;
+    e.receipt(&dm_marina, &marina, marina_delivered.seq, sunscreen.seq)?;
 
     // Tudo lido, menos o que chegou nos últimos minutos.
     for s in [&com, &team, &dm_zoen] {

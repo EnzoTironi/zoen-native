@@ -28,7 +28,8 @@ pub(crate) const VAULT_BACKUP_GENERATION: &str = "zoen.backup.generation.v1";
 const MAGIC: &[u8; 8] = b"ZOENBK1\0";
 const PAYLOAD_VERSION: u32 = 1;
 /// Tables a new device can use. Everything else in the device database belongs to the old
-/// device (its MLS groups, outbox, uploads in flight) or is rebuilt (the search index).
+/// device (its MLS groups, outbox, uploads in flight) or is rebuilt (the search index,
+/// peer receipt cache). A new device learns peer watermarks from relay catch-up.
 const KEEP_TABLES: &[&str] = &[
     "identities",
     "events",

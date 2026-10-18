@@ -14,7 +14,7 @@ mod search_tests;
 mod sync;
 pub use image::MAX_MEMORY_IMAGE_BYTES;
 pub use profiles::ProfileKeyRow;
-pub use sync::{OutboxHead, Pending};
+pub use sync::{OutboxHead, PeerReceipt, Pending};
 
 use roda_types::{Event, Identity};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -506,7 +506,7 @@ impl Store {
 
     /// Apaga tudo (usado por "Recomeçar demo").
     pub fn wipe(&self) -> Result<()> {
-        self.conn.execute_batch("DELETE FROM events; DELETE FROM identities; DELETE FROM meta; DELETE FROM search; DELETE FROM media;")?;
+        self.conn.execute_batch("DELETE FROM events; DELETE FROM identities; DELETE FROM meta; DELETE FROM search; DELETE FROM media; DELETE FROM peer_receipts;")?;
         Ok(())
     }
 

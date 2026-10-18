@@ -119,6 +119,160 @@ fn missing_blob(
 }
 
 #[test]
+fn device_history_recovery_releases_waiting_membership_and_its_deferred_receipt() {
+    use crate::link::{DeviceMsg, Peer};
+    use roda_log::content::{Sealed, SealedKind};
+    use roda_log::content_hash_of;
+    use std::collections::HashSet;
+
+    let mut fixture = Fixture::new();
+    let agent = agent(&mut fixture);
+    let newcomer = add_identity(&mut fixture.engine, "Recovered member");
+    let (page, _, _, _, document) = missing_blob(&fixture, LinePatch::default());
+    fixture.ordered(fixture.version(ItemContent::Page(page)));
+    let request = linked(&fixture, &agent, &document);
+
+    // Retain a real authenticated opaque application, as a linked device does
+    // before its sibling sends opened history. Membership itself stays clear.
+    let mut earlier = request.clone();
+    earlier.content_hash = content_hash(&"earlier request binding");
+    let author = fixture.engine.author_for(&agent).unwrap();
+    let client = new_id("opaque-request");
+    let at = 1_800_000_000_000;
+    let seen = fixture.engine.logs[&fixture.space].head();
+    let mut opened = author.sign_event(
+        &fixture.space,
+        &client,
+        at,
+        seen.clone(),
+        EventBody::RequestOpened {
+            request: earlier.clone(),
+        },
+    );
+    let (content, sig) = author.sign_sealed(
+        &fixture.space,
+        &client,
+        at,
+        seen.as_ref(),
+        Sealed::new(SealedKind::Application, 1, vec![1, 2, 3]),
+    );
+    let outer = roda_log::event_from_content(
+        content,
+        sig,
+        author.cert.clone(),
+        0,
+        String::new(),
+        String::new(),
+    )
+    .unwrap();
+    let retained = fixture
+        .engine
+        .logs
+        .get_mut(&fixture.space)
+        .unwrap()
+        .sequence(outer)
+        .clone();
+    fixture.engine.store.append_event(&retained).unwrap();
+    fixture.engine.reload().unwrap();
+    opened.seq = retained.seq;
+    opened.sealed_wire = Some(content_hash_of(&retained));
+
+    fixture.ordered_as(
+        &agent,
+        EventBody::RequestOpened {
+            request: request.clone(),
+        },
+    );
+    fixture.ordered(decision(&request, true));
+    assert!(fixture.engine.state.waiting_spaces.contains(&fixture.space));
+    fixture.ordered(EventBody::MemberAdded {
+        identity: newcomer.clone(),
+        role: Role::Member,
+    });
+    assert!(!fixture
+        .engine
+        .receipt_scope(&fixture.space, &newcomer)
+        .unwrap());
+    let mut receipts = crate::net::DeferredReceipts::default();
+    let mut dirty = HashSet::new();
+    assert!(!receipts
+        .receive(
+            &mut fixture.engine,
+            &fixture.space,
+            &newcomer,
+            0,
+            retained.seq
+        )
+        .unwrap());
+    receipts.flush(&mut fixture.engine, &mut dirty).unwrap();
+    assert!(dirty.is_empty());
+    assert!(fixture.engine.store.peer_receipts().unwrap().is_empty());
+
+    let receiver = roda_log::Signer::generate();
+    let sender = roda_log::Signer::generate();
+    let owner = fixture.engine.signers[&fixture.owner].clone();
+    let device_author = roda_log::Author::device(&owner, receiver.clone());
+    fixture
+        .engine
+        .save_linked_account(crate::sync::AccountMeta {
+            identity: fixture.owner.clone(),
+            device: receiver.id(),
+            cert: device_author.cert.unwrap(),
+            relay_url: "https://synthetic.invalid".into(),
+            registered: true,
+        })
+        .unwrap();
+    let (receiver_secret, receiver_public) = crate::link::key_pair();
+    let (sender_secret, sender_public) = crate::link::key_pair();
+    let secret = hex::encode(crate::link::random::<32>());
+    fixture.engine.add_peer(Peer {
+        device: sender.id(),
+        their_hpke: hex::encode(sender_public),
+        my_hpke_secret: hex::encode(receiver_secret),
+        secret: secret.clone(),
+    });
+    let sender_peer = Peer {
+        device: receiver.id(),
+        their_hpke: hex::encode(receiver_public),
+        my_hpke_secret: hex::encode(sender_secret),
+        secret,
+    };
+    let page = sender_peer
+        .seal(&DeviceMsg::Page {
+            req: new_id("history-page"),
+            space: fixture.space.clone(),
+            events: vec![opened],
+            more: false,
+        })
+        .unwrap();
+    receipts
+        .device_message(
+            &mut fixture.engine,
+            &sender.id(),
+            &receiver.id(),
+            &page,
+            &mut dirty,
+        )
+        .unwrap();
+    assert!(!fixture.engine.state.waiting_spaces.contains(&fixture.space));
+    assert_eq!(
+        fixture.engine.state.requests[&request.id].req.content_hash,
+        earlier.content_hash
+    );
+    assert!(fixture
+        .engine
+        .receipt_scope(&fixture.space, &newcomer)
+        .unwrap());
+    assert_eq!(dirty, HashSet::from([fixture.space.clone()]));
+    assert_eq!(
+        fixture.engine.net.receipts[&fixture.space][&newcomer],
+        (retained.seq, retained.seq)
+    );
+    assert_eq!(fixture.engine.store.peer_receipts().unwrap().len(), 1);
+    assert!(fixture.engine.logs[&fixture.space].verify().is_ok());
+}
+
+#[test]
 fn canonical_linked_approval_matches_live_and_cold_replay_before_later_edits() {
     let mut fixture = Fixture::new();
     let agent = agent(&mut fixture);

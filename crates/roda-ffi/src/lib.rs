@@ -153,9 +153,6 @@ impl RodaEngine {
                 .flatten()
                 .unwrap_or_else(|| "pt-BR".into());
             if seeded_in == self.lang.tag() {
-                if let Some(saved) = e.store.meta("seed_receipts")? {
-                    e.net.receipts = serde_json::from_str(&saved).unwrap_or_default();
-                }
                 return Ok(false);
             }
             e.wipe()?;

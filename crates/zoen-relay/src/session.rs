@@ -1612,12 +1612,19 @@ impl Session {
             .filter(|(_, _, through)| through.is_none())
             .map(|(s, ..)| s.clone())
             .collect();
-        let mut marks = self
-            .st
-            .receipts
-            .of_spaces(&self.st.pool, &heads)
-            .await
-            .unwrap_or_default();
+        let Ok(Ok(mut marks)) = tokio::time::timeout(
+            Duration::from_secs(5),
+            self.st.receipts.of_spaces(&self.st.pool, &heads),
+        )
+        .await
+        else {
+            self.send_sync(ServerFrame::error(
+                ErrorCode::Unavailable,
+                "database unavailable",
+            ))
+            .await;
+            return;
+        };
         for (space, mut next, through) in plan {
             #[cfg(debug_assertions)]
             if crate::log::sequencer::fork_histories::armed(&space) {

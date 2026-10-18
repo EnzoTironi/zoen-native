@@ -31,6 +31,7 @@ use zoen_relay::{
 };
 
 struct BlockedLog {
+    sync_spaces: std::sync::Mutex<Option<Vec<String>>>,
     block_presence: AtomicBool,
     presence_entered: Notify,
     entered: Notify,
@@ -85,6 +86,9 @@ impl LogStore for BlockedLog {
         answer.await.unwrap_or_else(|_| Err(Reject::unavailable()))
     }
     async fn read(&self, _: &str, _: u64, _: usize) -> Result<Vec<Sequenced>, StoreError> {
+        if self.sync_spaces.lock().unwrap().is_some() {
+            return Ok(Vec::new());
+        }
         unreachable!("spaces_of never returns")
     }
     async fn role(&self, _: &str, _: &str) -> Result<Option<Role>, StoreError> {
@@ -97,6 +101,9 @@ impl LogStore for BlockedLog {
         Ok(Vec::new())
     }
     async fn spaces_of(&self, _: &str) -> Result<Vec<String>, StoreError> {
+        if let Some(spaces) = self.sync_spaces.lock().unwrap().as_ref() {
+            return Ok(spaces.clone());
+        }
         self.reading.store(true, Ordering::Release);
         let _reading = Reading(&self.reading, &self.cancelled);
         self.entered.notify_one();
@@ -149,8 +156,12 @@ async fn send(socket: &mut Socket, frame: ClientFrame) {
 }
 
 async fn recv(socket: &mut Socket) -> Option<ServerFrame> {
+    recv_with_timeout(socket, Duration::from_secs(3)).await
+}
+
+async fn recv_with_timeout(socket: &mut Socket, timeout: Duration) -> Option<ServerFrame> {
     loop {
-        match tokio::time::timeout(Duration::from_secs(3), socket.next())
+        match tokio::time::timeout(timeout, socket.next())
             .await
             .expect("socket stalled")
         {
@@ -205,6 +216,7 @@ struct TestRelay {
     ws_url: String,
     server: tokio::task::JoinHandle<()>,
     database: String,
+    database_url: String,
     admin: PgConnection,
 }
 
@@ -236,6 +248,7 @@ impl TestRelay {
                 .unwrap()
         };
         let log = Arc::new(BlockedLog {
+            sync_spaces: Default::default(),
             block_presence: AtomicBool::new(false),
             presence_entered: Notify::new(),
             entered: Notify::new(),
@@ -283,6 +296,7 @@ impl TestRelay {
             ws_url: format!("ws://{address}/v1/sync"),
             server,
             database,
+            database_url: url,
             admin,
         }
     }
@@ -300,6 +314,162 @@ impl TestRelay {
         .await
         .unwrap();
     }
+}
+
+const RECEIPT_SPACE: &str = "sp_receipt_replay";
+const EMPTY_RECEIPT_SPACE: &str = "sp_receipt_empty";
+
+async fn receipt_sync_fixture() -> (TestRelay, Author, String, Socket) {
+    let test = TestRelay::new().await;
+    *test.log.sync_spaces.lock().unwrap() =
+        Some(vec![RECEIPT_SPACE.into(), EMPTY_RECEIPT_SPACE.into()]);
+    let author = Author::device(&Signer::generate(), Signer::generate());
+    let mut socket = connect(&test.ws_url, &author).await;
+    request(
+        &mut socket,
+        1,
+        Op::Register {
+            profile: profile(&author, "qa_receipt_replay"),
+        },
+    )
+    .await
+    .unwrap();
+    let peer = Signer::generate().id();
+    test.state.receipts.raise(RECEIPT_SPACE, &peer, 9, 7);
+    assert_eq!(
+        test.state
+            .receipts
+            .flush(&test.state.pool, &test.state.metrics)
+            .await
+            .unwrap(),
+        1
+    );
+    (test, author, peer, socket)
+}
+
+async fn assert_sync_receipt_failure(socket: &mut Socket, timeout: Duration) {
+    assert!(
+        matches!(
+            recv_with_timeout(socket, timeout).await,
+            Some(ServerFrame::Error {
+                code: ErrorCode::Unavailable,
+                ..
+            })
+        ),
+        "receipt-query failure must be typed Unavailable, never SyncDone"
+    );
+    // This is an ordered frame barrier, not a sleep-based absence assertion: Sync
+    // returns before the same session handles Ping, and the writer preserves order.
+    send(socket, ClientFrame::Ping).await;
+    assert!(
+        matches!(recv(socket).await, Some(ServerFrame::Pong { .. })),
+        "failed receipt replay must not enqueue SyncDone before Pong"
+    );
+}
+
+async fn assert_healthy_receipt_replay(socket: &mut Socket, peer: &str) {
+    send(
+        socket,
+        ClientFrame::Sync {
+            cursors: Vec::new(),
+            all: true,
+        },
+    )
+    .await;
+    for kind in [
+        roda_proto::EphemeralKind::Delivered { seq: 9 },
+        roda_proto::EphemeralKind::Read { seq: 7 },
+    ] {
+        let frame = recv(socket).await.expect("receipt replay closed");
+        assert!(
+            matches!(frame,
+                ServerFrame::Ephemeral { space, from, kind: actual }
+                    if space == RECEIPT_SPACE && from == peer && actual == kind
+            ),
+            "healthy retry must replay each exact receipt before SyncDone"
+        );
+    }
+    assert!(matches!(recv(socket).await, Some(ServerFrame::SyncDone)));
+}
+
+#[tokio::test]
+async fn sync_receipt_query_failure_is_unavailable_then_reconnect_replays() {
+    let (test, author, peer, mut socket) = receipt_sync_fixture().await;
+    // No receipt SELECT has run on this fresh pool, so renaming the table makes
+    // the real query fail independently of statement-cache invalidation behavior.
+    sqlx::query("ALTER TABLE space_receipts RENAME TO receipt_replay_unavailable")
+        .execute(&test.state.pool)
+        .await
+        .unwrap();
+    send(
+        &mut socket,
+        ClientFrame::Sync {
+            cursors: Vec::new(),
+            all: true,
+        },
+    )
+    .await;
+    assert_sync_receipt_failure(&mut socket, Duration::from_secs(3)).await;
+    sqlx::query("ALTER TABLE receipt_replay_unavailable RENAME TO space_receipts")
+        .execute(&test.state.pool)
+        .await
+        .unwrap();
+    socket.close(None).await.unwrap();
+    let mut recovered = connect(&test.ws_url, &author).await;
+    assert_healthy_receipt_replay(&mut recovered, &peer).await;
+
+    // A known Space with no stored or pending rows is a successful empty replay.
+    send(
+        &mut recovered,
+        ClientFrame::Sync {
+            cursors: vec![roda_proto::Cursor {
+                space: EMPTY_RECEIPT_SPACE.into(),
+                next_seq: 0,
+            }],
+            all: false,
+        },
+    )
+    .await;
+    assert!(matches!(
+        recv(&mut recovered).await,
+        Some(ServerFrame::SyncDone)
+    ));
+    recovered.close(None).await.unwrap();
+    test.close().await;
+}
+
+#[tokio::test]
+async fn sync_receipt_query_deadline_is_unavailable_then_reconnect_replays() {
+    let (test, author, peer, mut socket) = receipt_sync_fixture().await;
+    // A separate connection blocks only the receipt SELECT. Request admission
+    // and outgoing delivery keep their ordinary independent authorization pools.
+    let mut lock = PgConnection::connect(&test.database_url).await.unwrap();
+    let mut transaction = lock.begin().await.unwrap();
+    sqlx::query("LOCK TABLE space_receipts IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+    let started = std::time::Instant::now();
+    send(
+        &mut socket,
+        ClientFrame::Sync {
+            cursors: Vec::new(),
+            all: true,
+        },
+    )
+    .await;
+    assert_sync_receipt_failure(&mut socket, Duration::from_secs(8)).await;
+    assert!(
+        started.elapsed() >= Duration::from_secs(4),
+        "the real SELECT should wait for the sync deadline"
+    );
+    transaction.rollback().await.unwrap();
+    socket.close(None).await.unwrap();
+    let mut recovered = connect(&test.ws_url, &author).await;
+    assert_healthy_receipt_replay(&mut recovered, &peer).await;
+    recovered.close(None).await.unwrap();
+    drop(lock);
+    test.close().await;
 }
 
 async fn request(socket: &mut Socket, id: u64, op: Op) -> Result<Reply, String> {

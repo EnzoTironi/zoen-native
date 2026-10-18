@@ -7,6 +7,7 @@ mod file_bounds;
 mod file_edits;
 mod file_messages;
 mod message_search;
+mod peer_receipts;
 mod profile_photos;
 mod voice_notes;
 
@@ -2487,27 +2488,29 @@ fn ticks_follow_the_lowest_read_up_to_watermark() {
     let seq = last(&e).seq;
     assert_eq!(last(&e).delivery, Delivery::Sent);
     for o in &others {
-        assert!(e.lock().receipt(&s.id, o, seq, 0));
+        assert!(e.lock().receipt(&s.id, o, seq, 0).unwrap());
     }
     assert_eq!(last(&e).delivery, Delivery::Delivered);
     assert_eq!(
         e.lock().space_summary(&s.id).unwrap().last_delivery,
         Some(Delivery::Delivered)
     );
-    e.lock().receipt(&s.id, &others[0], 0, seq);
+    e.lock().receipt(&s.id, &others[0], 0, seq).unwrap();
     assert_eq!(
         last(&e).delivery,
         Delivery::Delivered,
         "a group is read only when everyone read"
     );
     for o in &others[1..] {
-        e.lock().receipt(&s.id, o, 0, seq);
+        e.lock().receipt(&s.id, o, 0, seq).unwrap();
     }
     assert_eq!(last(&e).delivery, Delivery::Read);
     for o in &others {
-        assert!(!e.lock().receipt(&s.id, o, seq, seq), "duplicate");
+        assert!(!e.lock().receipt(&s.id, o, seq, seq).unwrap(), "duplicate");
         assert!(
-            !e.lock().receipt(&s.id, o, seq.saturating_sub(1), 0),
+            !e.lock()
+                .receipt(&s.id, o, seq.saturating_sub(1), 0)
+                .unwrap(),
             "stale"
         );
     }
@@ -2519,14 +2522,20 @@ fn ticks_follow_the_lowest_read_up_to_watermark() {
         .find(|x| x.unread > 0)
         .expect("unread chat");
     let unread = other_space.unread;
-    assert!(!e.lock().receipt(&other_space.id, &me, u64::MAX / 2, 0));
+    assert!(!e
+        .lock()
+        .receipt(&other_space.id, &me, u64::MAX / 2, 0)
+        .unwrap());
     assert_eq!(
         e.lock().space_summary(&other_space.id).unwrap().unread,
         unread,
         "own-device delivered is not read"
     );
-    assert!(e.lock().receipt(&other_space.id, &me, 0, u64::MAX / 2));
-    assert!(!e.lock().receipt(&other_space.id, &me, 0, 1));
+    assert!(e
+        .lock()
+        .receipt(&other_space.id, &me, 0, u64::MAX / 2)
+        .unwrap());
+    assert!(!e.lock().receipt(&other_space.id, &me, 0, 1).unwrap());
     assert_eq!(e.lock().space_summary(&other_space.id).unwrap().unread, 0);
 }
 
