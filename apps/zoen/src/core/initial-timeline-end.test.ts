@@ -33,26 +33,30 @@ test('native initial end rejects missing, invalid and overflowing geometry', () 
   );
 });
 
-function fixture() {
+function fixture(options: { anchorUntilInteraction?: boolean } = {}) {
   const frames: { work: () => void; cancelled: boolean }[] = [];
   let current = true;
   let nativeReady = true;
   let scrolled = 0;
-  const controller = new InitialTimelineEnd('chat:owner', {
-    current: () => current,
-    frame: (work) => {
-      const frame = { work, cancelled: false };
-      frames.push(frame);
-      return () => {
-        frame.cancelled = true;
-      };
+  const controller = new InitialTimelineEnd(
+    'chat:owner',
+    {
+      current: () => current,
+      frame: (work) => {
+        const frame = { work, cancelled: false };
+        frames.push(frame);
+        return () => {
+          frame.cancelled = true;
+        };
+      },
+      scroll: () => {
+        if (!nativeReady) return false;
+        scrolled++;
+        return true;
+      },
     },
-    scroll: () => {
-      if (!nativeReady) return false;
-      scrolled++;
-      return true;
-    },
-  });
+    options,
+  );
   return {
     controller,
     frames,
@@ -63,10 +67,10 @@ function fixture() {
     setNativeReady: (value: boolean) => {
       nativeReady = value;
     },
-    ready: () => {
+    ready: (contentHeight = 2763) => {
       controller.onLoad();
       controller.onFooterLayout(96);
-      controller.onContentSizeChange(390, 2763);
+      controller.onContentSizeChange(390, contentHeight);
     },
   };
 }
@@ -95,6 +99,139 @@ test('initial end waits for actual footer, loaded rows and native content in eve
     f.frames[0].work();
     assert.equal(f.scrolled(), 1);
   }
+});
+
+function nativeGeometry(
+  offset: number,
+  contentHeight = 2667,
+  viewportHeight = 812,
+  bottomInset = 96,
+) {
+  return {
+    contentOffset: { y: offset },
+    contentSize: { height: contentHeight },
+    layoutMeasurement: { height: viewportHeight },
+    contentInset: { bottom: bottomInset },
+  };
+}
+
+test('an idle native anchor repairs later SDK deviations and dedupes actual end observations', () => {
+  const f = fixture({ anchorUntilInteraction: true });
+  f.ready(2667);
+  f.frames[0].work();
+  assert.equal(f.scrolled(), 1);
+  f.controller.onNativeScroll(nativeGeometry(1951));
+  f.controller.onCommitLayoutEffect();
+  f.controller.onNativeScroll(nativeGeometry(1950.5));
+  assert.equal(f.frames.length, 1, 'native end and subpoint rounding do not enqueue commands');
+
+  f.controller.onNativeScroll(nativeGeometry(1684.333));
+  f.frames[1].work();
+  assert.equal(f.scrolled(), 2, 'a later initial-index overwrite is reconciled');
+  f.controller.onNativeScroll(nativeGeometry(1951));
+  f.controller.onCommitLayoutEffect();
+  assert.equal(f.frames.length, 2, 'our own scroll event cannot create a follow loop');
+  f.controller.onNativeScroll(nativeGeometry(1684.333));
+  f.frames[2].work();
+  assert.equal(f.scrolled(), 3, 'the same offset can be a new deviation after reaching the end');
+});
+
+test('programmatic and unspecified native scroll markers remain eligible for reconciliation', () => {
+  for (const responderIgnoreScroll of [true, undefined]) {
+    const f = fixture({ anchorUntilInteraction: true });
+    f.ready(2667);
+    f.controller.onNativeScroll({ ...nativeGeometry(1684.333), responderIgnoreScroll });
+    f.frames.at(-1)!.work();
+    assert.equal(f.scrolled(), 1);
+    f.controller.onNativeScroll({ ...nativeGeometry(1951), responderIgnoreScroll });
+    f.controller.onCommitLayoutEffect();
+    assert.equal(f.frames.length, 2, 'an actual end observation stops further correction');
+  }
+});
+
+test('an explicit native user scroll cancels queued correction before geometry validation', () => {
+  const f = fixture({ anchorUntilInteraction: true });
+  f.ready(2667);
+  f.frames[0].work();
+  f.controller.onNativeScroll({ ...nativeGeometry(1684.333), responderIgnoreScroll: true });
+  const late = f.frames.at(-1)!;
+  f.controller.onNativeScroll({ ...nativeGeometry(NaN), responderIgnoreScroll: false });
+  assert.equal(late.cancelled, true);
+  late.work();
+  f.controller.onNativeScroll({ ...nativeGeometry(1500), responderIgnoreScroll: true });
+  f.controller.onNativeScroll(nativeGeometry(1500));
+  f.controller.onContentSizeChange(390, 3000);
+  f.controller.onFooterLayout(120);
+  f.controller.onCommitLayoutEffect();
+  assert.equal(f.scrolled(), 1, 'the user scroll cannot be followed by a queued end jump');
+  assert.equal(f.frames.length, 2, 'late programmatic events cannot revive the anchor');
+});
+
+test('an anchor invalidates old end observations when native content, inset or viewport changes', () => {
+  const f = fixture({ anchorUntilInteraction: true });
+  f.ready(2300);
+  f.controller.onViewportLayout(812);
+  f.controller.onNativeScroll(nativeGeometry(1584, 2300));
+  for (const frame of f.frames) frame.work();
+  assert.equal(f.scrolled(), 0, 'an end observation cancels older queued corrections');
+
+  f.controller.onContentSizeChange(390, 2667);
+  f.frames.at(-1)!.work();
+  assert.equal(f.scrolled(), 1, 'the previous smaller content end no longer authorizes dedupe');
+  f.controller.onNativeScroll(nativeGeometry(1951));
+  f.controller.onFooterLayout(120);
+  f.frames.at(-1)!.work();
+  assert.equal(f.scrolled(), 2, 'a new composer inset invalidates the previous end');
+  f.controller.onNativeScroll(nativeGeometry(1975, 2667, 812, 120));
+  f.controller.onViewportLayout(700);
+  f.frames.at(-1)!.work();
+  assert.equal(f.scrolled(), 3, 'a new viewport also invalidates the previous end');
+});
+
+test('invalid native observations and a zero initial inset cannot stall a measured anchor', () => {
+  const f = fixture({ anchorUntilInteraction: true });
+  f.ready(2667);
+  f.controller.onNativeScroll(nativeGeometry(1855, 2667, 812, 0));
+  f.controller.onNativeScroll(nativeGeometry(NaN));
+  f.controller.onNativeScroll(nativeGeometry(1951, Infinity));
+  f.frames[0].work();
+  assert.equal(f.scrolled(), 1);
+  f.controller.onNativeScroll(nativeGeometry(1951));
+  f.controller.onNativeScroll(nativeGeometry(Infinity));
+  f.controller.onCommitLayoutEffect();
+  assert.equal(f.frames.length, 1, 'invalid observations do not overwrite a valid native end');
+});
+
+test('first user intent permanently releases an anchor even after successful initial positioning', () => {
+  const f = fixture({ anchorUntilInteraction: true });
+  f.ready(2667);
+  f.frames[0].work();
+  f.controller.onNativeScroll(nativeGeometry(1684.333));
+  const late = f.frames.at(-1)!;
+  f.controller.cancel();
+  assert.equal(late.cancelled, true);
+  late.work();
+  f.controller.onNativeScroll(nativeGeometry(1500));
+  f.controller.onContentSizeChange(390, 3000);
+  f.controller.onViewportLayout(700);
+  f.controller.onFooterLayout(120);
+  f.controller.onCommitLayoutEffect();
+  assert.equal(f.scrolled(), 1);
+  assert.equal(f.frames.length, 2);
+});
+
+test('an active anchor rechecks live ownership and cannot revive when the old scope returns', () => {
+  const f = fixture({ anchorUntilInteraction: true });
+  f.ready(2667);
+  f.frames[0].work();
+  f.setCurrent(false);
+  f.controller.onNativeScroll(nativeGeometry(1684.333));
+  f.frames.at(-1)!.work();
+  f.setCurrent(true);
+  f.controller.onNativeScroll(nativeGeometry(1500));
+  f.controller.onCommitLayoutEffect();
+  assert.equal(f.scrolled(), 1);
+  assert.equal(f.frames.length, 2);
 });
 
 test('zero or invalid geometry cannot authorize initial positioning', () => {

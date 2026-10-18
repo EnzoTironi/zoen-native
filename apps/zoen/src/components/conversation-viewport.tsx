@@ -26,6 +26,8 @@ type NativeScrollContextValue = {
   padding: SharedValue<number>;
   offset: number;
   onInitialInset?: (height: number) => void;
+  onNativeScroll?: ScrollViewProps['onScroll'];
+  onNativeLayout?: (height: number) => void;
 };
 const NativeScrollContext = createContext<NativeScrollContextValue | null>(null);
 
@@ -55,6 +57,16 @@ const NativeConversationScrollView = forwardRef<KeyboardChatScrollViewRef, Scrol
         offset={context.offset}
         extraContentPadding={context.padding}
         onContentInsetChange={context.onInitialInset ? onInset : undefined}
+        onScroll={(event) => {
+          // FlashList may suppress its own scroll handler during correction.
+          // Observe native geometry before forwarding the original event.
+          context.onNativeScroll?.(event);
+          props.onScroll?.(event);
+        }}
+        onLayout={(event) => {
+          context.onNativeLayout?.(event.nativeEvent.layout.height);
+          props.onLayout?.(event);
+        }}
       />
     );
   },
@@ -69,6 +81,8 @@ type ViewportProps = {
   overlay?: ReactNode;
   initialFooterKey?: string;
   onInitialFooterLayout?: (height: number) => void;
+  onNativeScroll?: ScrollViewProps['onScroll'];
+  onNativeLayout?: (height: number) => void;
 };
 
 /** iOS owns keyboard insets natively; other platforms retain their existing layout. */
@@ -94,6 +108,8 @@ function NativeConversationViewport({
   overlay,
   initialFooterKey,
   onInitialFooterLayout,
+  onNativeScroll,
+  onNativeLayout,
 }: ViewportProps) {
   const [measured, setMeasured] = useState(false);
   const composerHeight = useSharedValue(0);
@@ -104,8 +120,14 @@ function NativeConversationViewport({
   // Subtract the same adjustment from the keyboard contribution, leaving the
   // full measured composer reservation constant throughout keyboard gestures.
   const context = useMemo(
-    () => ({ padding: composerHeight, offset: correction, onInitialInset: onInitialFooterLayout }),
-    [composerHeight, correction, onInitialFooterLayout],
+    () => ({
+      padding: composerHeight,
+      offset: correction,
+      onInitialInset: onInitialFooterLayout,
+      onNativeScroll,
+      onNativeLayout,
+    }),
+    [composerHeight, correction, onInitialFooterLayout, onNativeScroll, onNativeLayout],
   );
   return (
     <View style={{ flex: 1, backgroundColor: 'transparent' }}>

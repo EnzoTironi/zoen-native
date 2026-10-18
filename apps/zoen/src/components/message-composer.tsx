@@ -23,6 +23,7 @@ export function MessageComposer({
   spaceId,
   value,
   onChangeText,
+  onFocus,
   onBlur,
   onSend,
   onMediaSent,
@@ -39,6 +40,7 @@ export function MessageComposer({
   spaceId: string;
   value: string;
   onChangeText: (text: string) => void;
+  onFocus?: () => void;
   onBlur: () => void;
   onSend: () => void;
   onMediaSent?: () => void;
@@ -92,6 +94,7 @@ export function MessageComposer({
       onSubmitEditing={search?.onSearch}
       value={value}
       onChangeText={onChangeText}
+      onFocus={onFocus}
       onBlur={onBlur}
       style={{
         minHeight: 52,
