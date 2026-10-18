@@ -1958,6 +1958,142 @@
         "Remaining provider/recovery, calls, Push/integrations, unsent edited-PDF, other native faults and overall comparative parity remain open; PR stays open/draft."
       ],
       "fullAppParityAccepted": false
+    },
+    "nativePdfEditDraftRecoveryV85": {
+      "status": "BOUNDED_PASS_ISOLATED_PDF_RECOVERY_AND_HUMAN_RETENTION",
+      "checkpoint": "v85",
+      "sourceCommit": "7245d02aa4d4230f504c0aedcde2bef16a67d112",
+      "sourceInputs": 839,
+      "sourceSha256": "9101e92963c880a0fb70e2fda8164c17a48ee44da50af3e88cd80105bb851320",
+      "runtime": "/private/tmp/zoen-pdf-edit-journal-qa-v85/native-acceptance.json",
+      "documentationFacts": "/private/tmp/zoen-pdf-edit-journal-qa-v85/documentation/promotion-facts.json",
+      "artifactVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/accepted-artifact-verification.json",
+      "preQaBuildVerification": "/private/tmp/zoen-iphone-release-v85-verification.json",
+      "nativePdfRecovery": {
+        "device": "388CA707-A103-4845-B5FE-BAA9526D3D57",
+        "file": "Zoen-QA-document.pdf",
+        "chat": "History download QA1018v63b",
+        "baselineCanonicalVersion": 2,
+        "processDeath": {
+          "receipt": "/private/tmp/zoen-pdf-edit-journal-qa-v85/lldb-process-death-proof.json",
+          "imageUuid": "55693106-7732-38EA-8CDB-B1E17BF4070D",
+          "pid": 26087,
+          "source": "ZoenCoreModule.swift:688",
+          "resolvedLocations": 1,
+          "hitCount": 1,
+          "killedWhileStoppedExit": 9,
+          "scope": "After synchronous encrypted retention; before canonical journal.save. No variable/expression commands, private-store reads or core dump requested."
+        },
+        "coldRecoveredSameBlackInkStroke": true,
+        "nativeRecoveryTitle": "Alterações recuperadas",
+        "nativeChoices": ["Salvar alterações", "Descartar alterações", "Guardar para depois"],
+        "keepForLater": "Returns to chat without publication; file history remains exactly v1/v2.",
+        "secondCold": "The same private copy and recovery choice remain available.",
+        "explicitSave": {
+          "newVersion": 3,
+          "eventId": "01M589BT5VQZE6BYZXNBPXZ41B",
+          "visibleEvent": "Anotações",
+          "receiptTransition": "Enviando → Enviada"
+        },
+        "thirdCold": "Exactly v1/v2/v3; plain canonical viewer title and the same black stroke. Close returns to file detail without a recovery choice.",
+        "visualStrokeScope": "Root visual inspection of the actual native screenshots; AX independently records titles, choices, event receipt and version rows.",
+        "observations": "/private/tmp/zoen-pdf-edit-journal-qa-v85/native-ui-observations.json"
+      },
+      "humanRetention": {
+        "device": "E2B33D1A-D73F-4793-96E7-5FC43E64053F",
+        "preservingUpdate": "accepted v84 → v85",
+        "homeCards": 4,
+        "recipe": "Plantain moqueca 6/8; inner 75%; VERSION 16",
+        "zoSleepPercent": 100,
+        "largerFontRetained": true,
+        "chatHistoryPages": 6,
+        "timelinePercent": 100,
+        "existingVoice": "Old Delivered 0:11 voice plays from native 0:00 to 0:11; explicit Pause leaves Reproduzir áudio and 0:11 / 0:11.",
+        "composerEmpty": true,
+        "microphoneControlRetained": true,
+        "keyboardClosed": true,
+        "newContentOrDraftSend": false,
+        "observations": "/private/tmp/zoen-pdf-edit-journal-qa-v85/human-ui-observations.json"
+      },
+      "preservingInstall": {
+        "uninstallEraseOrReset": false,
+        "isolated": "Successful preserving install, followed by receipt-write failure at an obsolete external QA path; helper path/installedV85 field corrected and verify-after passed before first launch, without reinstall. There is no isolated-v85-install.json.",
+        "human": "/private/tmp/zoen-pdf-edit-journal-qa-v85/human-v85-install.json",
+        "postUiPublicProofs": [
+          "/private/tmp/zoen-pdf-edit-journal-qa-v85/isolated-v85-verify-after.json",
+          "/private/tmp/zoen-pdf-edit-journal-qa-v85/human-v85-verify-after.json"
+        ],
+        "scope": "Installed public executable/JavaScript/strict signature; no private account storage read."
+      },
+      "sourceChecks": {
+        "app": {
+          "passed": 696,
+          "failed": 0,
+          "skipped": 0,
+          "typeScriptOxlintOxfmt": "PASS",
+          "receipt": "/private/tmp/zoen-v81-v85-app-check-correctcwd.json"
+        },
+        "rust": {
+          "passed": 476,
+          "failed": 0,
+          "ignored": 0,
+          "pdfJournalSubset": 13,
+          "receipt": "/private/tmp/zoen-v81-v85-rust-full.json",
+          "subsetReceipt": "/private/tmp/zoen-v81-v85-rust-check.json"
+        },
+        "swift": {
+          "journalScenarios": 14,
+          "pdfOwnerScenarios": 21,
+          "previewOwnerScenarios": 11,
+          "fourSeparateCorePhases": ["seed", "recover-save", "seed-conflict", "recover-keep"],
+          "coreReceipt": "/private/tmp/zoen-pdf-edit-journal-qa-v85/native/core-four-phases-final.json",
+          "coreTestSourceCommit": "c40d162baeb04d03c5176ab993d7e6da0ef2dd4f",
+          "coreTestSourceSha256": "6af43e5a17ed8cf76d51e096c218e197ed87fa636128eb5b40d0fe775da9482e",
+          "scope": "Separate host fixtures; counts are not additions to the app or Rust totals. Receipt replay occurs within recover-save, not an additional cold commit-ACK replay. Root cleanup separately removes the synthetic vault/database."
+        },
+        "initialWrongCwd": "Earlier root-directory npm ENOENT ran no tests; corrected app-directory run above is authoritative.",
+        "hashIndex": "/private/tmp/zoen-pdf-edit-journal-qa-v85/documentation/source-checks.json"
+      },
+      "sourceHeadExpoCi": {
+        "head": "7245d02aa4d4230f504c0aedcde2bef16a67d112",
+        "run": 39159913407,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39159913407",
+        "jobs": {
+          "release-web-e2e": "success",
+          "schedule-miniapp": "success",
+          "client": "success"
+        },
+        "receipt": "/private/tmp/zoen-pdf-edit-journal-qa-v85/documentation/source-ci.json",
+        "scope": "Exact-source Expo jobs only, separate from native UI. Web 39159913405 and messenger-search-edit 39159913406 also succeed; no blanket claim about other workflows."
+      },
+      "diagnostics": {
+        "isolatedObservations": 35,
+        "humanObservations": 9,
+        "copiedPngs": 46,
+        "isolatedRawSteps": 59,
+        "humanRawSteps": 16,
+        "isolatedCrossTreeWarnings": 15,
+        "humanCrossTreeWarnings": 3,
+        "formalReplayE2e": false,
+        "rawCopyReceipts": [
+          "/private/tmp/zoen-pdf-edit-journal-qa-v85/native-ui-copy-receipt.json",
+          "/private/tmp/zoen-pdf-edit-journal-qa-v85/human-ui-copy-receipt.json"
+        ],
+        "notes": [
+          "Raw one-use isolated diagnostics include ambiguous coordinates/host selectors; actual LLDB process-death injection is separately recorded.",
+          "Human initial Fixados gate was an incorrect root assumption: actual Home uses Miniapps. The exact recipe 6/8 gate then passed. No product change was made for that diagnostic."
+        ]
+      },
+      "cleanup": {
+        "scope": "Only the two task devices’ NativeDevtools, AXService and SimulatorServer services were stopped. Isolated shutdown preserves data; human remains booted. Shared xcodebuild PID 14181 and relay PID 19737 on 8790 are untouched. LLDB exited after the controlled kill; owned host fixtures were cleaned. No HTTP fixture server or screen recording started.",
+        "receipt": "/private/tmp/zoen-pdf-edit-journal-qa-v85/cleanup-receipt.json"
+      },
+      "limits": [
+        "Recovery begins after Quick Look delivers a complete edited copy and synchronous encrypted retention acknowledges it. Strokes not yet delivered by Quick Look are not promised recoverable.",
+        "Actual iOS Simulator acceptance covers one writable existing PDF, Keep across cold reopen and explicit Save to one new version. Remote-conflict/MIME-changed recovery UI, multi-capture fault interleavings and backup exclusion are covered by source/host tests where recorded, not equivalent native UI journeys.",
+        "No physical iPhone, independent recipient or edited-PDF byte comparison, backup/restore UI, performance/allocation boundary, broader accessibility/provider/Push/calls or complete comparative product-parity claim."
+      ],
+      "fullAppParityAccepted": false
     }
   },
   "deferredPlatforms": ["web", "android", "macos", "windows", "linux"],
@@ -1988,9 +2124,10 @@
     "Signed v81d narrowly addresses historical unsent attachment/audio recovery for the tested native paths: the edited 3.37-second voice retained after v81c failed Send recovers, one compact Send yields one native ID and cold returns one matching row/no draft. A fresh ordered photo/video batch restores both previews and separate captions after cold; one Send yields two native IDs, retained after another cold with no draft and timeline 100%. Both preserving installs and human Home/recipe/six-page chat history/old Delivered voice/empty composer retention pass. All 23 prior gaps keep exact historical attribution; v81b/v81c remain partial diagnostics, and v81c pending-trim/Apply/Discard is not a fresh v81d replay. No independent recipient/payload decode, offline media, microphone/ASR, induced native storage/owner/erase/ambiguous-ACK, PDF Markup process-death recovery, physical/provider/Push/accessibility/performance/formal E2E or full-parity acceptance is claimed.",
     "Signed v82 narrowly resolves pending precision trim being silently replaced by history in the tested native path: applied A 3.45 s from a 3.72 s original and pending B 0.27–3.54 s survive an inert Undo tap and cold restart; restored B blocks Undo and Send. Explicit Discard retains A, after which Undo 3.72 s and Redo 3.45 s work; a second explicit Apply produces 3.27 s. One compact Send and cold return retain exactly one matching native ID/no draft at 100%. Both preserving installs and human Home/recipe/six-page history/old Delivered voice/empty composer retention pass. All 24 prior gaps keep exact history. Word/filler/pause/selection/ASR and late-callback boundaries remain source-only; no independent peer/decode, mic/ASR/accessibility/physical/provider/Push/performance or full-parity acceptance is claimed. Separate v82a offline-media preparation is not offline native proof.",
     "Dedicated signed v82a-offline narrowly resolves the tested native voice/photo/video offline lifecycle: one voice Send and one two-file caption-batch Send, actual offline cold with three same queued IDs/no draft, automatic reconnect without resend, independent counts 0/0/3/3 pre/offline/post/cold, stable canonical IDs/items/v1/order and authenticated received byte digests, then one explicit recipient Read reflected on all three native rows. Photo/video equal original fixture hashes; voice duration/waveform are canonical metadata, not independent decode or original-import byte identity. Main/human v82 objects and all 25 prior gaps remain exact; earlier v82a preparation-only notes are historical. This proves only the fresh-device 18782-to-8790 loopback fault path, not cryptographic author-device attribution, long/other network or native storage failures, full media decoding, microphone/ASR/physical/provider/Push/accessibility/performance or full parity. Transient warm-keyboard overlap remains an unmeasured diagnostic.",
-    "Signed v84 narrowly resolves tested voice-audition continuity and the imported-WAV render regression: the same retained failed 24 s/16 kHz draft recovers without reimport; compact/detail share a native clock and retain paused position/rate. Paused original-frame seek maps through a cut, Play from selection starts the retained selection, cut/restore/Undo/Redo pause, and Cancel/cold leaves no draft while retaining prior history. Both preserving installs and human Home/recipe/six-page history/old Delivered voice retention pass. Separate host AVFoundation 8/16/24/44.1 kHz full/cut decode assertions and the compiled old-source bitrate failure remain correctly attributed; failed v83 was never main-accepted. All 26 earlier gaps remain exact. No new Send/recipient, mic/ASR, fresh VoiceOver/physical/audio-output/perceptual/performance or full-parity claim; v82 pending-trim and v82a offline proofs were not repeated."
+    "Signed v84 narrowly resolves tested voice-audition continuity and the imported-WAV render regression: the same retained failed 24 s/16 kHz draft recovers without reimport; compact/detail share a native clock and retain paused position/rate. Paused original-frame seek maps through a cut, Play from selection starts the retained selection, cut/restore/Undo/Redo pause, and Cancel/cold leaves no draft while retaining prior history. Both preserving installs and human Home/recipe/six-page history/old Delivered voice retention pass. Separate host AVFoundation 8/16/24/44.1 kHz full/cut decode assertions and the compiled old-source bitrate failure remain correctly attributed; failed v83 was never main-accepted. All 26 earlier gaps remain exact. No new Send/recipient, mic/ASR, fresh VoiceOver/physical/audio-output/perceptual/performance or full-parity claim; v82 pending-trim and v82a offline proofs were not repeated.",
+    "Signed v85 narrowly resolves the tested private PDF Markup process-death gap: after Quick Look delivers a complete edited copy and encrypted retention acknowledges it, a controlled isolated-process kill before canonical save recovers the same stroke. Keep and cold reopen leave canonical history at v2; explicit Save creates one Anotações event and the next cold shows exactly v1/v2/v3 with no recovery choice. Both preserving updates and human Home/recipe/larger text/six-page history/old Delivered voice retention pass. All 27 earlier gaps remain exact historical evidence. Undelivered Quick Look edits, native remote-conflict/MIME-changed recovery UI, multi-capture faults, backup/restore UI, independent edited-byte/recipient, physical iPhone and full comparative parity remain open; host/source tests do not imply those native journeys."
   ],
-  "currentIphoneArtifact": {
+  "previousControlledV84IphoneArtifact": {
     "checkpoint": "v84",
     "commit": "e35d2fb3a38ef62f2161483f345e1ba2016bc556",
     "configuration": "signed Release ARM64",
@@ -2015,7 +2152,32 @@
     "fullAppParityAccepted": false,
     "installedPublicVerification": "/private/tmp/zoen-voice-audition-qa-v84/isolated-v84-verify-after.json"
   },
-  "humanIphoneArtifact": {
+  "currentIphoneArtifact": {
+    "checkpoint": "v85",
+    "commit": "7245d02aa4d4230f504c0aedcde2bef16a67d112",
+    "configuration": "signed Release ARM64",
+    "preservingInstall": true,
+    "inputs": 839,
+    "sourceSha256": "9101e92963c880a0fb70e2fda8164c17a48ee44da50af3e88cd80105bb851320",
+    "bundleSha256": "002f520906148ed3062044977a363e2a38b8454f051ce00c36fd9a8838802aae",
+    "bundleBytes": 6784644,
+    "executableSha256": "c5418d45fc45bcfbf5b743c1c2c4852330c01865ea6c4fc83ae2d7a3f2efd542",
+    "appTreeSha256": "a1b2e6cc21a5c381c7ecb66956f6495f941bdb79a67d3769f0b0bcd28a0166ac",
+    "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
+    "appBytes": 175786540,
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v85/Zoen.app",
+    "installedExecutableVerified": true,
+    "installedJavascriptVerified": true,
+    "strictSignatureVerified": true,
+    "buildVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/accepted-artifact-verification.json",
+    "device": "isolated iPhone18 Pro / iOS27 simulator",
+    "deviceUdid": "388CA707-A103-4845-B5FE-BAA9526D3D57",
+    "status": "BOUNDED PASS private PDF capture after process death, Keep without publication and explicit Save/cold exactly one v3; full parity remains open.",
+    "runtimeAcceptance": "Existing History download QA1018v63b PDF starts at v2. Controlled kill after synchronous encrypted capture and before canonical save recovers the same black ink stroke. Keep returns to chat with exactly v1/v2; a second cold then explicit Save produces one Anotações event Enviando → Enviada. Third cold shows exactly v1/v2/v3, the same stroke and no private recovery choice. /private/tmp/zoen-pdf-edit-journal-qa-v85/native-acceptance.json",
+    "fullAppParityAccepted": false,
+    "installedPublicVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/isolated-v85-verify-after.json"
+  },
+  "previousHumanV84IphoneArtifact": {
     "checkpoint": "v84",
     "commit": "e35d2fb3a38ef62f2161483f345e1ba2016bc556",
     "configuration": "signed Release ARM64",
@@ -2039,6 +2201,31 @@
     "runtimeAcceptance": "Preserving v82-to-v84 installation retains Home four cards / recipe 6/8, six-page Bilingual history at 100%, larger text and old 0:11 Delivered voice. Existing voice opens at native 0:02 and is paused at 0:07; final composer is empty with keyboard closed. No new Send, content, calendar or preference mutations. Public executable/JavaScript/strict signatures match after installation and after runtime. /private/tmp/zoen-voice-audition-qa-v84/runtime.json",
     "fullAppParityAccepted": false,
     "installedPublicVerification": "/private/tmp/zoen-voice-audition-qa-v84/human-v84-verify-after.json"
+  },
+  "humanIphoneArtifact": {
+    "checkpoint": "v85",
+    "commit": "7245d02aa4d4230f504c0aedcde2bef16a67d112",
+    "configuration": "signed Release ARM64",
+    "preservingInstall": true,
+    "inputs": 839,
+    "sourceSha256": "9101e92963c880a0fb70e2fda8164c17a48ee44da50af3e88cd80105bb851320",
+    "bundleSha256": "002f520906148ed3062044977a363e2a38b8454f051ce00c36fd9a8838802aae",
+    "bundleBytes": 6784644,
+    "executableSha256": "c5418d45fc45bcfbf5b743c1c2c4852330c01865ea6c4fc83ae2d7a3f2efd542",
+    "appTreeSha256": "a1b2e6cc21a5c381c7ecb66956f6495f941bdb79a67d3769f0b0bcd28a0166ac",
+    "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
+    "appBytes": 175786540,
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v85/Zoen.app",
+    "installedExecutableVerified": true,
+    "installedJavascriptVerified": true,
+    "strictSignatureVerified": true,
+    "buildVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/accepted-artifact-verification.json",
+    "device": "human iPhone18 Pro / iOS27 simulator",
+    "deviceUdid": "E2B33D1A-D73F-4793-96E7-5FC43E64053F",
+    "status": "BOUNDED PASS preserving v84-to-v85 update, Home/recipe/larger text/six-page history and existing Delivered voice; no human content changes.",
+    "runtimeAcceptance": "Preserving update retains four Home cards, Plantain 6/8 with inner 75%/VERSION 16, Zo sleep 100%, larger text and Bilingual six-page history at 100%. Old Delivered 0:11 voice plays 0:00 → 0:11; explicit Pause leaves Reproduzir áudio at 0:11 / 0:11. Composer is empty with microphone control and keyboard closed; no new content/draft Send. Public executable/JavaScript/strict signatures match after runtime. /private/tmp/zoen-pdf-edit-journal-qa-v85/native-acceptance.json",
+    "fullAppParityAccepted": false,
+    "installedPublicVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/human-v85-verify-after.json"
   },
   "previousControlledV60IphoneArtifact": {
     "checkpoint": "v60",
@@ -2947,7 +3134,7 @@
     "status": "BOUNDED PASS preserving v66→v68 first cold Home4cards/recipe6of8→Chats→Bilingual100%, existing Delivered text/voice and empty52pt/keyboard-closed/audio-idle composer. No human content/preferences mutation; full product acceptance remains incomplete.",
     "runtimeAcceptance": "Same accepted v68 archive preserving-installed without uninstall/reset/erase; exact public executable/JavaScript/strict signature verified before and after UI,788 source manifest stable after runtime. First ordinary cold launch retains four Home cards/recipe6of8, existing Bilingual history at100%, prior Delivered text and voice, empty native52pt composer, closed keyboard and idle audio. No content/preferences mutation. Partial4-step recorder+2 direct actions, retired external YAML/copied PNGs; no formal reusable replay. /private/tmp/zoen-message-draft-qa-v68/human-preserving-runtime.json"
   },
-  "currentAcceptanceSummary": "Accepted main and human artifacts are v84 source e35d2fb3a38ef62f2161483f345e1ba2016bc556 with 835 inputs. Same retained failed 24 s WAV recovery, shared compact/detail native audition continuity, mapped seek/cut/restore/history, Cancel/cold and human retention pass bounded native checks. Separate host codec matrix and app 696/696 plus exact-source Expo three-job CI pass; unchanged Rust 463 remains attributed to 6c338bcf. Failed v83 stays diagnostic. Original v82 objects are archived byte-exactly; prior v82 pending-trim/Send and dedicated v82a offline proofs retain original attribution. No new Send, mic/ASR, physical/audio-output benchmark or full product-parity claim; broader goal remains open.",
+  "currentAcceptanceSummary": "Accepted main and human artifacts are v85 source 7245d02aa4d4230f504c0aedcde2bef16a67d112 with 839 inputs. Controlled isolated PDF process death after private encrypted capture recovers the same stroke; Keep/cold preserves v2 and explicit Save/cold yields exactly one v3. Human Home/recipe/larger text/six-page history/old Delivered voice retention and both public installed bundles/signatures pass. App 696/696, Rust 476/476 including PDF journal 13, separate Swift/host checks and exact-source Expo three-job CI pass. Both prior v84 artifact objects and all older evidence/gaps remain exact. Undelivered Markup, untested recovery/fault/backup/physical journeys and full product parity remain open.",
   "previousControlledV73IphoneArtifact": {
     "checkpoint": "v73",
     "commit": "04451232f631372db81eaee35cecd79d780a605a",
