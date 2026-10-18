@@ -260,9 +260,11 @@ actor ZoenVoiceEditor {
     let file = try AVAudioFile(forReading: input, commonFormat: .pcmFormatFloat32, interleaved: false)
     guard file.length == source.frameCount, file.processingFormat.sampleRate == source.sampleRate,
           let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 8_192) else { throw Failure.invalidAudio }
+    // AAC chooses a valid bitrate for this original rate/channel format. A
+    // fixed capture-preset bitrate can reject otherwise supported imports.
     var writer: AVAudioFile? = try AVAudioFile(forWriting: output, settings: [
       AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: source.sampleRate,
-      AVNumberOfChannelsKey: file.processingFormat.channelCount, AVEncoderBitRateKey: 128_000,
+      AVNumberOfChannelsKey: file.processingFormat.channelCount,
     ], commonFormat: .pcmFormatFloat32, interleaved: false)
     defer { writer = nil }
     for range in ranges {

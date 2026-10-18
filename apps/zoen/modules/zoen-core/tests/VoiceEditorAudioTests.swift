@@ -28,6 +28,59 @@ enum ZoenMediaFiles { static let maximumBytes: UInt64 = 64 << 20 }
     do { _ = try await editor.admitSend(sourceId: sourceId, uri: uri); fatalError("stale/unowned render admitted") }
     catch ZoenVoiceEditor.Failure.closed { }
   }
+  static func importedSampleRates(root: URL) async throws {
+    // These are actual imported PCM16 WAVs. No encoder, decoder, frame mapping
+    // or editor behavior is mocked, including low-rate mono AAC constraints.
+    for rate in [8_000.0, 16_000.0, 24_000.0, 44_100.0] {
+      let input = root.appendingPathComponent("import-\(Int(rate)).wav")
+      let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1)!
+      let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(rate * 3))!
+      buffer.frameLength = buffer.frameCapacity
+      for frame in 0..<Int(buffer.frameLength) {
+        let second = Double(frame) / rate
+        let frequency = second < 1 ? 440.0 : second < 2 ? 1_200.0 : 880.0
+        buffer.floatChannelData![0][frame] = Float(0.6 * sin(2 * Double.pi * frequency * second))
+      }
+      var file: AVAudioFile? = try AVAudioFile(forWriting: input, settings: [
+        AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: rate, AVNumberOfChannelsKey: 1,
+        AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+      ], commonFormat: .pcmFormatFloat32, interleaved: false)
+      try file!.write(from: buffer)
+      file = nil
+      let originalHash = try digest(input.absoluteString)
+      let editor = ZoenVoiceEditor(cacheRoot: root.appendingPathComponent("import-leases-\(Int(rate))"))
+      let source = try await editor.prepare(uri: input.absoluteString)
+      precondition(source.sampleRate == rate && source.frameCount == Int64(rate * 3))
+      precondition(source.durationMs == 3_000 && source.levels.count == 160)
+      let full = try await editor.render(sourceId: source.id,
+        ranges: [.init(startFrame: 0, endFrame: source.frameCount)])
+      let decodedFull = try AVAudioFile(forReading: URL(string: full.uri)!, commonFormat: .pcmFormatFloat32, interleaved: false)
+      precondition(decodedFull.processingFormat.sampleRate == rate && decodedFull.length == source.frameCount)
+      precondition(full.frameCount == source.frameCount && full.durationMs == 3_000 && full.mime == "audio/mp4")
+      let ranges = [ZoenVoiceEditor.Range(startFrame: Int64(rate * 0.125), endFrame: Int64(rate * 0.875)),
+        ZoenVoiceEditor.Range(startFrame: Int64(rate * 2.125), endFrame: Int64(rate * 2.875))]
+      let cut = try await editor.render(sourceId: source.id, ranges: ranges)
+      let decoded = try AVAudioFile(forReading: URL(string: cut.uri)!, commonFormat: .pcmFormatFloat32, interleaved: false)
+      let expected = ranges.reduce(Int64(0)) { $0 + $1.endFrame - $1.startFrame }
+      precondition(decoded.processingFormat.sampleRate == rate && decoded.length == expected)
+      precondition(cut.frameCount == expected && abs(cut.durationMs - Double(expected) / rate * 1_000) < 0.001)
+      precondition(cut.levels.count == 160 && cut.levels.allSatisfy { $0.isFinite && (0...1).contains($0) })
+      let values = try samples(cut.uri)
+      let first = values[Int(rate * 0.15)..<Int(rate * 0.35)]
+      let second = values[Int(rate * 0.9)..<Int(rate * 1.1)]
+      precondition(tonePower(first, frequency: 440, rate: rate) > 100 * tonePower(first, frequency: 1_200, rate: rate))
+      precondition(tonePower(second, frequency: 880, rate: rate) > 100 * tonePower(second, frequency: 1_200, rate: rate))
+      let edgeFrames = max(1, Int(rate * 0.0015))
+      let edge = values.prefix(edgeFrames).reduce(0.0) { $0 + Double(abs($1)) } / Double(edgeFrames)
+      let body = first.reduce(0.0) { $0 + Double(abs($1)) } / Double(first.count)
+      precondition(edge < body * 0.2, "15ms fade must preserve physical time at every source rate")
+      expect(try digest(source.uri).elementsEqual(originalHash))
+      expect(try digest(input.absoluteString).elementsEqual(originalHash))
+      _ = try await editor.admitSend(sourceId: source.id, uri: cut.uri)
+      try await editor.releaseAll()
+      print("Imported PCM16 WAV→AAC PASS: \(Int(rate))Hz mono; full and disjoint cuts preserve exact original frames/rate, kept tones, removed middle tone, fades, waveform, immutable source and owned cleanup.")
+    }
+  }
   static func main() async throws {
     let root = URL.temporaryDirectory.appendingPathComponent("zoen-voice-audio-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -124,6 +177,7 @@ enum ZoenMediaFiles { static let maximumBytes: UInt64 = 64 << 20 }
     try await refused(editor, sourceId: source.id, uri: replacement.uri)
     precondition(!FileManager.default.fileExists(atPath: URL(string: source.uri)!.deletingLastPathComponent().path))
     expect(try digest(input.absoluteString).elementsEqual(originalHash))
+    try await importedSampleRates(root: root)
     print("Native voice PCM→AAC PASS: 66150 decoded frames,1500ms; disjoint440/880Hz kept,1200Hz excluded;15ms fades; immutable source; invalid edits refused; cancellation and owned cleanup; extreme/invalid Speech times and duration-aware processing budgets; only current completed render admitted, stale/foreign/cancelled/released/failed-cleanup renders refused.")
   }
 }
