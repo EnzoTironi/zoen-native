@@ -19,16 +19,13 @@ export function hostname(value: unknown): value is string {
     /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(value)
   );
 }
-export function verifyMiniappResource(
-  resource: AppResourceDto,
-  appId: string,
-): MiniappManifest | null {
+export function verifyMiniappResource(resource: AppResourceDto, appId: string): MiniappManifest {
   if (
     resource.mime_type !== 'text/html;profile=mcp-app' ||
     new TextEncoder().encode(resource.text).length > 8 * 1024 * 1024
   )
     throw new Error(t('miniapps.thisMiniappSResourceCannotBeOpened'));
-  if (!resource.manifest_json) return null; // Only core-bundled legacy views have no manifest.
+  if (!resource.manifest_json) throw new Error(t('miniapps.theMiniappManifestIsInvalid'));
   const value: unknown = JSON.parse(resource.manifest_json);
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error(t('miniapps.theMiniappManifestIsInvalid'));
@@ -91,14 +88,14 @@ export function sandboxHtml(html: string, allowed: readonly string[]): string {
 }
 const NETWORK_HARDENING = `(()=>{for(const key of ['RTCPeerConnection','webkitRTCPeerConnection']){try{Object.defineProperty(window,key,{value:undefined,writable:false,configurable:false})}catch{}}window.open=()=>null;})();`;
 
-export function safeMiniappLink(input: unknown, manifest: MiniappManifest | null): string {
+export function safeMiniappLink(input: unknown, manifest: MiniappManifest): string {
   if (typeof input !== 'string' || input.length > 4096) throw new Error(t('miniapps.invalidLink'));
   const url = new URL(input);
   if (
     !['https:', 'mailto:'].includes(url.protocol) ||
     url.username ||
     url.password ||
-    (manifest && url.protocol === 'https:' && !manifest.linkDomains.includes(url.hostname))
+    (url.protocol === 'https:' && !manifest.linkDomains.includes(url.hostname))
   )
     throw new Error(t('miniapps.thisMiniappDidNotDeclarePermissionToOpen'));
   return url.href;

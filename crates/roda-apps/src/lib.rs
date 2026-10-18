@@ -1,7 +1,7 @@
 //! # Servidor MCP local dos mini-apps embutidos
 //!
 //! Implementa o lado *servidor* do MCP Apps (SEP-1865, versão `2026-01-26`) para
-//! três mini-apps que vêm dentro do app, sem rede nem chaves:
+//! os mini-apps que vêm dentro do app, com estado canônico no núcleo:
 //!
 //! - **pet**: um bichinho do grupo (o burro do Wabi, em pixel art). Comer, dormir, brincar.
 //! - **poll**: enquete que, ao fechar, vira uma linha do plano do Espaço.
@@ -10,9 +10,8 @@
 //! - **recipe**: receita do jantar com porções e modo cozinhar.
 //! - **countdown**: contagem regressiva do grupo (viagem, show).
 //!
-//! pet, maptap e recipe são desenhados em SwiftUI nativo pelo Roda (o recurso `ui://`
-//! do pet continua servido, para qualquer host MCP); poll e list rodam como View MCP
-//! no WKWebView isolado.
+//! As interfaces usam o SDK oficial MCP Apps em recursos HTML íntegros e isolados.
+//! Ferramentas e Concessões continuam autoritativas no núcleo.
 //!
 //! Cada mini-app declara um recurso `ui://roda/<app>` (`text/html;profile=mcp-app`)
 //! e ferramentas com `_meta.ui.resourceUri` e `visibility` (`model` = o agente cria,
@@ -45,7 +44,7 @@ pub struct AppSpec {
     pub name: &'static str,
     pub description: &'static str,
     pub resource_uri: &'static str,
-    /// View MCP (HTML). `None` = só interface nativa no Roda.
+    /// View MCP Apps (HTML) empacotada e verificada pelo host.
     pub html: Option<&'static str>,
     /// Built bundles (tools/miniapp-build) ship a manifest with their sha256.
     pub manifest: Option<&'static str>,
@@ -127,7 +126,7 @@ pub fn specs() -> Vec<AppSpec> {
             description: ts("Um jumento em pixel art que mora no grupo: comer, cochilar, brincar e a Corrida do Jumento, com placar do grupo. Todo mundo vê o mesmo bicho e quem fez o quê.", "A pixel-art donkey that lives in the group: eat, nap, play and Donkey Dash, with a group leaderboard. Everyone sees the same pet and who did what."),
             resource_uri: "ui://roda/pet",
             html: Some(include_str!("../resources/pet.html")),
-            manifest: None,
+            manifest: Some(include_str!("../resources/pet.manifest.json")),
             tools: vec![
                 tool("adopt_pet", ts("Adotar um bichinho", "Adopt a pet"), ts("Cria o bichinho compartilhado do grupo.", "Creates the group’s shared pet."), json!({"type":"object","properties":{"name":{"type":"string"},"species":{"type":"string","enum":["jumento"]}}}), &["model"], Reversible, false),
                 tool("pet_feed", ts("Dar comida", "Feed"), ts("Dá uma cenoura ao bichinho (não dá se ele estiver dormindo).", "Gives the pet a carrot (not while it’s asleep)."), empty(), &["app"], Reversible, false),
@@ -145,8 +144,8 @@ pub fn specs() -> Vec<AppSpec> {
             name: "MapTap",
             description: ts("Jogo de geografia por turnos: os mesmos 5 lugares para todo mundo, um toque no globo por rodada.", "Turn-based geography game: the same 5 places for everyone, one tap on the globe per round."),
             resource_uri: "ui://roda/maptap",
-            html: None,
-            manifest: None,
+            html: Some(include_str!("../resources/maptap.html")),
+            manifest: Some(include_str!("../resources/maptap.manifest.json")),
             tools: vec![
                 tool("start_maptap", ts("Começar MapTap", "Start MapTap"), ts("Abre uma partida de MapTap no grupo.", "Opens a MapTap game in the group."), empty(), &["model"], Reversible, false),
                 tool("maptap_guess", ts("Cravar palpite", "Lock in guess"), ts("Crava o palpite da rodada (latitude/longitude) e calcula a distância.", "Locks in the round’s guess (latitude/longitude) and computes the distance."), json!({"type":"object","properties":{"round":{"type":"integer"},"lat":{"type":"number"},"lon":{"type":"number"}},"required":["round","lat","lon"]}), &["app"], Reversible, false),
@@ -158,8 +157,8 @@ pub fn specs() -> Vec<AppSpec> {
             name: ts("Jantar", "Dinner"),
             description: ts("Receita compartilhada: porções que recalculam os ingredientes, checklist e modo cozinhar.", "Shared recipe: servings that rescale the ingredients, a checklist and cooking mode."),
             resource_uri: "ui://roda/recipe",
-            html: None,
-            manifest: None,
+            html: Some(include_str!("../resources/recipe.html")),
+            manifest: Some(include_str!("../resources/recipe.manifest.json")),
             tools: vec![
                 tool("start_recipe", ts("Salvar receita", "Save recipe"), ts("Salva uma receita no grupo.", "Saves a recipe in the group."), json!({"type":"object","properties":{"dish":{"type":"string"},"servings":{"type":"integer"}}}), &["model"], Reversible, false),
                 tool("recipe_servings", ts("Porções", "Servings"), ts("Muda o número de porções.", "Changes the number of servings."), json!({"type":"object","properties":{"servings":{"type":"integer","minimum":1,"maximum":12}},"required":["servings"]}), &["app"], Reversible, false),
@@ -174,7 +173,7 @@ pub fn specs() -> Vec<AppSpec> {
             description: ts("Votação rápida no grupo. Ao fechar, a opção vencedora entra no plano do Espaço.", "Quick group vote. When it closes, the winning option goes into the Space’s plan."),
             resource_uri: "ui://roda/poll",
             html: Some(include_str!("../resources/poll.html")),
-            manifest: None,
+            manifest: Some(include_str!("../resources/poll.manifest.json")),
             tools: vec![
                 tool("start_poll", ts("Abrir enquete", "Open poll"), ts("Abre uma enquete no grupo.", "Opens a poll in the group."), json!({"type":"object","properties":{"question":{"type":"string"},"options":{"type":"array","items":{"type":"string"}}},"required":["question","options"]}), &["model"], Reversible, false),
                 tool("poll_vote", ts("Votar", "Vote"), ts("Vota numa opção (troca o voto se já votou).", "Votes for an option (changes the vote if you already voted)."), json!({"type":"object","properties":{"option":{"type":"string"}},"required":["option"]}), &["app"], Reversible, false),
@@ -189,13 +188,12 @@ pub fn specs() -> Vec<AppSpec> {
             description: ts("Lista compartilhada: quem marcou cada coisa fica registrado.", "Shared list: who checked off each thing is recorded."),
             resource_uri: "ui://roda/list",
             html: Some(include_str!("../resources/list.html")),
-            manifest: None,
+            manifest: Some(include_str!("../resources/list.manifest.json")),
             tools: vec![
                 tool("start_list", ts("Criar lista", "Create list"), ts("Cria uma lista compartilhada.", "Creates a shared list."), json!({"type":"object","properties":{"title":{"type":"string"},"items":{"type":"array","items":{"type":"string"}}},"required":["title"]}), &["model"], Reversible, false),
                 tool("list_add", ts("Adicionar", "Add"), ts("Adiciona um item.", "Adds an item."), json!({"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}), &["app"], Reversible, false),
                 tool("list_toggle", ts("Marcar", "Check"), ts("Marca ou desmarca um item.", "Checks or unchecks an item."), json!({"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}), &["app"], Reversible, false),
                 tool("list_get_state", ts("Ver estado", "Get state"), ts("Lê a lista (sem mudar nada).", "Reads the list (changes nothing)."), empty(), &["app"], Reversible, true),
-                tool("list_send_whatsapp", ts("Mandar no WhatsApp", "Send on WhatsApp"), ts("Manda a lista para fora do Zoen, pelo WhatsApp.", "Sends the list outside Zoen, via WhatsApp."), empty(), &["app"], External, false),
             ],
         },
         AppSpec {
@@ -203,8 +201,8 @@ pub fn specs() -> Vec<AppSpec> {
             name: ts("Contagem", "Countdown"),
             description: ts("Contagem regressiva do grupo para uma data (viagem, show, aniversário).", "The group’s countdown to a date (a trip, a show, a birthday)."),
             resource_uri: "ui://roda/countdown",
-            html: None,
-            manifest: None,
+            html: Some(include_str!("../resources/countdown.html")),
+            manifest: Some(include_str!("../resources/countdown.manifest.json")),
             tools: vec![
                 tool("start_countdown", ts("Criar contagem", "Start countdown"), ts("Cria uma contagem regressiva no grupo.", "Creates a countdown in the group."), json!({"type":"object","properties":{"title":{"type":"string","maxLength":32},"place":{"type":"string","maxLength":32},"target_ms":{"type":"integer"}},"required":["title","target_ms"]}), &["model"], Reversible, false),
                 tool("countdown_get_state", ts("Ver estado", "Get state"), ts("Lê a contagem (sem mudar nada).", "Reads the countdown (changes nothing)."), empty(), &["app"], Reversible, true),
@@ -544,8 +542,7 @@ pub fn create(app: &str, args: &Value, actor: &str, now: i64) -> Result<(String,
         "list" => {
             let title = s(args, "title").unwrap_or_else(|| t("O que levar", "What to bring"));
             let items: Vec<Value> = args["items"].as_array().map(|a| a.iter().filter_map(|x| x.as_str()).enumerate().map(|(i, t)| json!({ "id": format!("l{}", i + 1), "text": t, "done": false, "by": null })).collect()).unwrap_or_default();
-            let mut st =
-                json!({ "title": title, "items": items, "next": 100, "sent": false, "log": [] });
+            let mut st = json!({ "title": title, "items": items, "next": 100, "log": [] });
             push_log(&mut st, actor, &t("criou a lista", "created the list"), now);
             Ok((title, st))
         }
@@ -1437,6 +1434,9 @@ pub fn apply(
             ))
         }
         ("poll", "poll_close") => {
+            if st["closed"].as_bool().unwrap_or(false) {
+                return Err(t("a enquete já fechou", "the poll is already closed"));
+            }
             let opts = st["options"].as_array().cloned().unwrap_or_default();
             let best = opts
                 .iter()
@@ -1532,19 +1532,6 @@ pub fn apply(
                     }
                 ),
             ))
-        }
-        ("list", "list_send_whatsapp") => {
-            st["sent"] = json!(true);
-            push_log(
-                &mut st,
-                actor,
-                &t(
-                    "mandou no WhatsApp (simulação)",
-                    "sent it on WhatsApp (simulated)",
-                ),
-                now,
-            );
-            Ok(Applied::new(st, tr!("{actor} mandou a lista no WhatsApp (simulação)", "{actor} sent the list on WhatsApp (simulated)"), t("Simulação: nada saiu do aparelho. No produto, isto abriria o WhatsApp com a lista.", "Simulated: nothing left the device. In the product, this would open WhatsApp with the list.")))
         }
         ("hike", "hike_vote") => {
             if st["decided"].as_str().is_some() {

@@ -1,0 +1,10 @@
+{
+  "id": "countdown",
+  "name": "Contagem",
+  "description": "A data do grupo, em uma contagem regressiva.",
+  "entry": "src/entries/countdown.tsx",
+  "capabilities": [],
+  "allowedDomains": [],
+  "linkDomains": [],
+  "maxKB": 768
+}

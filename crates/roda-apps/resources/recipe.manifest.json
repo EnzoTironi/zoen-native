@@ -1,0 +1,17 @@
+{
+  "id": "recipe",
+  "name": "Jantar",
+  "description": "Ingredientes, porções e modo cozinhar.",
+  "capabilities": [],
+  "allowedDomains": [],
+  "networkPurpose": "",
+  "linkDomains": [],
+  "sha256": "f03c3f5c5bbebe2ead84222decbb808414ec46a1627a20a9506f3abdbc67cb02",
+  "bytes": 674116,
+  "deps": {
+    "react": "19.1.1",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "scheduler": "0.26.0",
+    "react-dom": "19.1.1"
+  }
+}

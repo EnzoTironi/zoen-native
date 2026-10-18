@@ -114,27 +114,6 @@ export function MiniappState({
             {text(state.name)}
           </Text>
           <Text style={{ color: colors.secondary, textAlign: 'center' }}>{text(state.mood)}</Text>
-          {!state.released ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-              <NativeButton
-                label={t('miniapps.feed')}
-                disabled={busy || state.asleep === true}
-                onPress={() => onCall('pet_feed', {})}
-              />
-              <NativeButton
-                secondary
-                label={state.asleep ? t('miniapps.wakeUp') : t('miniapps.nap')}
-                disabled={busy}
-                onPress={() => onCall(state.asleep ? 'pet_wake' : 'pet_nap', {})}
-              />
-              <NativeButton
-                secondary
-                label={t('miniapps.play')}
-                disabled={busy || state.asleep === true}
-                onPress={() => onCall('pet_play', {})}
-              />
-            </View>
-          ) : null}
         </Surface>
       ) : null}
       {app.app_id === 'poll' ? (
@@ -146,15 +125,10 @@ export function MiniappState({
             {text(state.question)}
           </Text>
           {list(state.options).map((option) => (
-            <Pressable
+            <View
               key={text(option.id)}
-              disabled={busy || state.closed === true}
-              accessibilityRole="button"
-              accessibilityLabel={t('miniapps.voteForOption', {
-                option: text(option.text),
-                count: count(option.votes),
-              })}
-              onPress={() => onCall('poll_vote', { option: text(option.id) })}
+              accessibilityRole="text"
+              accessibilityLabel={`${text(option.text)} · ${t('miniapps.voteCount', { count: count(option.votes) })}`}
               style={{
                 minHeight: 56,
                 padding: 16,
@@ -167,32 +141,24 @@ export function MiniappState({
               <Text style={{ color: colors.secondary, fontSize: 12 }}>
                 {t('miniapps.voteCount', { count: count(option.votes) })}
               </Text>
-            </Pressable>
+            </View>
           ))}
           {state.closed ? (
             <Text style={{ color: colors.accent, fontWeight: '600' }}>
               {t('miniapps.pollDecided', { winner: text(state.winner) })}
             </Text>
-          ) : (
-            <NativeButton
-              secondary
-              label={t('miniapps.closePollAndAddToPlan')}
-              disabled={busy}
-              onPress={() => onCall('poll_close', {})}
-            />
-          )}
+          ) : null}
         </Surface>
       ) : null}
       {app.app_id === 'list' ? (
         <Surface>
           {list(state.items).map((item) => (
-            <Pressable
+            <View
               key={text(item.id)}
-              disabled={busy}
+              accessible
               accessibilityRole="checkbox"
-              aria-checked={item.done === true}
-              accessibilityLabel={text(item.text)}
-              onPress={() => onCall('list_toggle', { id: text(item.id) })}
+              accessibilityState={{ checked: item.done === true, disabled: true }}
+              accessibilityLabel={[text(item.text), text(item.by)].filter(Boolean).join(' · ')}
               style={{
                 minHeight: 52,
                 flexDirection: 'row',
@@ -201,7 +167,13 @@ export function MiniappState({
                 paddingVertical: 10,
               }}
             >
-              <Text style={{ color: colors.accent, fontSize: 23 }}>{item.done ? '✓' : '○'}</Text>
+              <Text
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+                style={{ color: colors.accent, fontSize: 23 }}
+              >
+                {item.done ? '✓' : '○'}
+              </Text>
               <View style={{ flex: 1, gap: 4 }}>
                 <Text
                   selectable
@@ -217,7 +189,7 @@ export function MiniappState({
                   <Text style={{ color: colors.secondary, fontSize: 12 }}>{text(item.by)}</Text>
                 ) : null}
               </View>
-            </Pressable>
+            </View>
           ))}
         </Surface>
       ) : null}
@@ -233,24 +205,35 @@ export function MiniappState({
             <Text style={{ color: colors.secondary }}>
               {t('miniapps.servingsCount', { total: String(state.servings ?? '—') })}
             </Text>
-            {list(state.ingredients).map((ingredient) => (
-              <Pressable
-                key={text(ingredient.id)}
-                accessibilityRole="checkbox"
-                aria-checked={ingredient.done === true}
-                disabled={busy}
-                onPress={() => onCall('recipe_check', { id: text(ingredient.id) })}
-                style={{ minHeight: 48, flexDirection: 'row', gap: 12, alignItems: 'center' }}
-              >
-                <Text style={{ color: colors.accent }}>{ingredient.done ? '✓' : '○'}</Text>
-                <Text style={{ color: colors.text, flex: 1 }}>
-                  {text(ingredient.name) || text(ingredient.text)}
-                  {ingredient.qty === undefined
-                    ? ''
-                    : ` · ${typeof ingredient.qty === 'number' && typeof state.servings === 'number' && typeof state.baseServings === 'number' && state.baseServings > 0 ? ((ingredient.qty * state.servings) / state.baseServings).toLocaleString(formatLocale, { maximumFractionDigits: 2 }) : String(ingredient.qty)} ${text(ingredient.unit)}`}
-                </Text>
-              </Pressable>
-            ))}
+            {list(state.ingredients).map((ingredient) => {
+              const name = text(ingredient.name) || text(ingredient.text);
+              const amount =
+                ingredient.qty === undefined
+                  ? ''
+                  : `${typeof ingredient.qty === 'number' && typeof state.servings === 'number' && typeof state.baseServings === 'number' && state.baseServings > 0 ? ((ingredient.qty * state.servings) / state.baseServings).toLocaleString(formatLocale, { maximumFractionDigits: 2 }) : String(ingredient.qty)} ${text(ingredient.unit)}`;
+              return (
+                <View
+                  key={text(ingredient.id)}
+                  accessible
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: ingredient.done === true, disabled: true }}
+                  accessibilityLabel={[name, amount].filter(Boolean).join(' · ')}
+                  style={{ minHeight: 48, flexDirection: 'row', gap: 12, alignItems: 'center' }}
+                >
+                  <Text
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                    style={{ color: colors.accent }}
+                  >
+                    {ingredient.done ? '✓' : '○'}
+                  </Text>
+                  <Text style={{ color: colors.text, flex: 1 }}>
+                    {name}
+                    {amount ? ` · ${amount}` : ''}
+                  </Text>
+                </View>
+              );
+            })}
           </Surface>
           {Array.isArray(state.steps) ? (
             <Surface>
@@ -258,11 +241,9 @@ export function MiniappState({
                 {t('miniapps.cookingMode')}
               </Text>
               {state.steps.map((step, index) => (
-                <Pressable
+                <View
                   key={index}
-                  disabled={busy}
-                  accessibilityRole="button"
-                  onPress={() => onCall('recipe_cook', { step: index })}
+                  accessibilityRole="text"
                   style={{ minHeight: 48, gap: 6, paddingVertical: 10 }}
                 >
                   <Text style={{ color: colors.accent, fontWeight: '600' }}>
@@ -271,7 +252,7 @@ export function MiniappState({
                   <Text style={{ color: colors.text, lineHeight: 23 }}>
                     {typeof step === 'string' ? step : text(object(step).text)}
                   </Text>
-                </Pressable>
+                </View>
               ))}
             </Surface>
           ) : null}

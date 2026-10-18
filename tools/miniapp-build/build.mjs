@@ -16,8 +16,8 @@
 // after the user agreed.
 import { build } from 'esbuild';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
-import { resolve, join, relative, dirname, extname } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, realpathSync } from 'node:fs';
+import { resolve, join, relative, dirname, isAbsolute, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -59,8 +59,12 @@ const ALIAS = {
 };
 
 const fail = (m) => {
-  console.error(`✗ ${m}`);
-  process.exit(1);
+  throw new Error(m);
+};
+
+const inside = (path, folder) => {
+  const from = relative(folder, path);
+  return from === '' || (!isAbsolute(from) && from !== '..' && !from.startsWith(`..${sep}`));
 };
 
 export function validateManifest(m) {
@@ -142,50 +146,31 @@ const guard = (appDir) => ({
       if (args.importer.includes('/node_modules/')) return undefined;
       const p = resolve(args.resolveDir, args.path);
       const okRoots = [appDir, join(root, 'packages')];
-      if (!okRoots.some((r) => p.startsWith(r)))
+      if (!okRoots.some((r) => inside(p, r)))
         return { errors: [{ text: `Import escapes the app folder: ${args.path}` }] };
       return undefined;
     });
   },
 });
 
-function ownSources(dir) {
-  const out = [];
-  for (const f of readdirSync(dir)) {
-    const p = join(dir, f);
-    if (statSync(p).isDirectory()) {
-      if (!['node_modules', 'dist'].includes(f)) out.push(...ownSources(p));
-    } else if (/\.(tsx?|jsx?|css|html)$/.test(f)) out.push(p);
-  }
-  return out;
-}
-
-export async function buildApp(appDir, outDir) {
-  appDir = resolve(appDir);
-  const mPath = join(appDir, 'manifest.json');
+export async function buildApp(appDir, outDir, { manifestPath = 'manifest.json' } = {}) {
+  appDir = realpathSync(appDir);
+  let mPath = resolve(appDir, manifestPath);
+  if (!inside(mPath, appDir)) fail('Manifest must stay inside the app folder');
   if (!existsSync(mPath)) fail(`${relative(root, appDir)}: no manifest.json`);
+  mPath = realpathSync(mPath);
+  if (!inside(mPath, appDir)) fail('Manifest must stay inside the app folder');
   const manifest = JSON.parse(readFileSync(mPath, 'utf8'));
   const errs = validateManifest(manifest);
   if (errs.length) fail(`manifest:\n  - ${errs.join('\n  - ')}`);
-
-  // Remote URLs in the app's own code must be declared.
-  for (const f of ownSources(appDir)) {
-    const src = readFileSync(f, 'utf8');
-    for (const m of src.matchAll(/\b(?:https?|wss?):\/\/([a-z0-9.-]+)/gi)) {
-      const host = m[1].toLowerCase();
-      // allowedDomains may be fetched (after consent); linkDomains are only ever opened
-      // outside through ui/open-link, which the host confirms.
-      if (
-        ![...(manifest.allowedDomains ?? []), ...(manifest.linkDomains ?? [])].includes(host) &&
-        !['www.w3.org'].includes(host)
-      )
-        fail(`${relative(root, f)}: remote URL to undeclared host "${host}"`);
-    }
-  }
+  let entry = resolve(appDir, manifest.entry);
+  if (!inside(entry, appDir)) fail('Entry must stay inside the app folder');
+  entry = realpathSync(entry);
+  if (!inside(entry, appDir)) fail('Entry must stay inside the app folder');
 
   const t0 = performance.now();
   const r = await build({
-    entryPoints: [join(appDir, manifest.entry)],
+    entryPoints: [entry],
     bundle: true,
     write: false,
     minify: true,
@@ -210,6 +195,37 @@ export async function buildApp(appDir, outDir) {
     nodePaths: [join(here, 'node_modules')],
     plugins: [guard(appDir)],
   }).catch((e) => fail(e.errors?.map((x) => x.text).join('\n') ?? e.message));
+
+  // Check the selected source graph: sibling miniapps can declare different links.
+  // Unused source files cannot add authority to this bundle.
+  const sourceRoots = [
+    appDir,
+    realpathSync(join(root, 'packages')),
+    realpathSync(join(here, 'node_modules')),
+  ];
+  for (const source of Object.keys(r.metafile.inputs)) {
+    // esbuild resolves extensions and symlinks. Validate its actual inputs before
+    // exempting dependencies or scanning app URLs, including non-code assets.
+    const file = realpathSync(resolve(source));
+    if (!sourceRoots.some((folder) => inside(file, folder)))
+      fail(`Source escapes the approved mini-app roots: ${relative(root, file)}`);
+    if (
+      !inside(file, appDir) ||
+      file.split(sep).includes('node_modules') ||
+      !/\.(tsx?|jsx?|css|html)$/.test(file)
+    )
+      continue;
+    for (const url of readFileSync(file, 'utf8').matchAll(
+      /\b(?:https?|wss?):\/\/([a-z0-9.-]+)/gi,
+    )) {
+      const host = url[1].toLowerCase();
+      if (
+        ![...(manifest.allowedDomains ?? []), ...(manifest.linkDomains ?? [])].includes(host) &&
+        host !== 'www.w3.org'
+      )
+        fail(`${relative(root, file)}: remote URL to undeclared host "${host}"`);
+    }
+  }
 
   const js = r.outputFiles.find((f) => f.path.endsWith('.js'))?.text ?? '';
   const css = r.outputFiles.find((f) => f.path.endsWith('.css'))?.text ?? '';
@@ -266,8 +282,24 @@ function gzipSize(s) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const oi = args.indexOf('--out');
-  const outDir = resolve(oi >= 0 ? args[oi + 1] : join(root, 'crates/roda-apps/resources'));
-  const apps = args.filter((a, i) => a !== '--out' && (oi < 0 || i !== oi + 1));
-  if (!apps.length) fail('usage: build.mjs <app-dir>… [--out dir]');
-  for (const a of apps) await buildApp(a, outDir);
+  const mi = args.indexOf('--manifest');
+  const apps = args.filter(
+    (a, i) =>
+      !['--out', '--manifest'].includes(a) && (oi < 0 || i !== oi + 1) && (mi < 0 || i !== mi + 1),
+  );
+  try {
+    if (
+      !apps.length ||
+      (mi >= 0 && apps.length !== 1) ||
+      (oi >= 0 && !args[oi + 1]) ||
+      (mi >= 0 && !args[mi + 1])
+    )
+      fail('usage: build.mjs <app-dir>… [--out dir] [--manifest relative.json]');
+    const outDir = resolve(oi >= 0 ? args[oi + 1] : join(root, 'crates/roda-apps/resources'));
+    for (const app of apps)
+      await buildApp(app, outDir, mi >= 0 ? { manifestPath: args[mi + 1] } : undefined);
+  } catch (error) {
+    console.error(`✗ ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  }
 }

@@ -7,7 +7,7 @@ on:
         'apps/zoen/**',
         'packages/zoen-ui/**',
         'packages/zoen-miniapp-sdk/**',
-        'miniapps/schedule/**',
+        'miniapps/**',
         'tools/miniapp-build/**',
         'crates/**',
         'Cargo.toml',
@@ -24,7 +24,7 @@ on:
         'apps/zoen/**',
         'packages/zoen-ui/**',
         'packages/zoen-miniapp-sdk/**',
-        'miniapps/schedule/**',
+        'miniapps/**',
         'tools/miniapp-build/**',
         'crates/**',
         'Cargo.toml',
@@ -43,7 +43,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  schedule-miniapp:
+  miniapp-resources:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -69,10 +69,17 @@ jobs:
         run: |
           npm test --prefix miniapps/excalidraw-ui
           node miniapps/excalidraw-ui/build.mjs --check
-      - name: Real bundled UI, opt-in calendar and stale-booking regressions
-        run: node --test tools/miniapp-build/shared-react.test.mjs miniapps/schedule/src/availability.test.ts miniapps/schedule/src/availability-ui.test.mjs
-      - name: Verify embedded resource matches source and capability manifest
-        run: node tools/miniapp-build/check.mjs miniapps/schedule
+      - name: Strict types for built-in MCP Apps sources and shared SDK
+        run: apps/zoen/node_modules/.bin/tsc -p miniapps/builtins/tsconfig.json
+      - name: Real bundled UI, canonical builtin tools and opt-in calendar regressions
+        run: node --test tools/miniapp-build/*.test.mjs miniapps/builtins/test/*.test.mjs miniapps/schedule/src/availability.test.ts miniapps/schedule/src/availability-ui.test.mjs
+      - name: Verify embedded resources match source and capability manifests
+        run: |
+          node tools/miniapp-build/check.mjs miniapps/schedule
+          node tools/miniapp-build/check.mjs miniapps/hike
+          for app in pet poll list maptap recipe countdown; do
+            node tools/miniapp-build/check.mjs miniapps/builtins crates/roda-apps/resources "manifests/$app.json"
+          done
 
   client:
     runs-on: ubuntu-24.04

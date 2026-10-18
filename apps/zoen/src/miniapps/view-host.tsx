@@ -208,11 +208,11 @@ function FocusedView({
       active = false;
     };
   }, [store, item.id, domainKey, authorizationKey]);
-  if ((read.scope === scope && read.error) || prepared?.error)
+  if ((read.scope === scope && read.error) || prepared?.error || prepared?.manifest === null)
     return (
       <Surface>
         <Text selectable accessibilityRole="alert" style={{ color: colors.danger }}>
-          {read.error ?? prepared?.error}
+          {read.error || prepared?.error || t('miniapps.theMiniappPackageCouldNotBeVerified')}
         </Text>
         <NativeButton
           secondary
@@ -260,7 +260,7 @@ function ReadyView({
   spec: AppSpecDto;
   fill: boolean;
   resource: AppResourceDto;
-  manifest: MiniappManifest | null;
+  manifest: MiniappManifest;
   networkHosts: string;
   networkError?: string;
   onNetworkChange: () => void;
@@ -282,7 +282,6 @@ function ReadyView({
   const authority = useRef<ReturnType<typeof frameAuthority> | null>(null);
   const initialScope = `${mode}:${snapshot?.account?.identity_id ?? snapshot?.me?.id ?? ''}:${snapshot?.account?.device_id ?? ''}`;
   const resourceUri = spec.resource_uri;
-  const appName = spec.name;
   const encodedTools = JSON.stringify(
     spec.tools.filter((tool) => tool.visibility.includes('app')).map((tool) => tool.name),
   );
@@ -384,7 +383,7 @@ function ReadyView({
           experimental: {
             zoen: {
               native: available().filter((capability) =>
-                manifest?.capabilities.some((cap) => cap.id === capability),
+                manifest.capabilities.some((cap) => cap.id === capability),
               ),
               services: [
                 'state',
@@ -421,7 +420,7 @@ function ReadyView({
             title: t('miniapps.sharePhotoCount', { count: photos.tokens.length }),
             message: t('miniapps.sharePhotoDetails', {
               chat: latest.current.item.space_title,
-              app: manifest?.name ?? appName,
+              app: manifest.name,
             }),
             confirmLabel: t('miniapps.shareWithGroup'),
           }))
@@ -445,7 +444,7 @@ function ReadyView({
       },
       native: async (capability, params) => {
         check();
-        const declared = manifest?.capabilities.find((cap) => cap.id === capability);
+        const declared = manifest.capabilities.find((cap) => cap.id === capability);
         if (!declared || !available().includes(capability))
           throw new Error(t('miniapps.thisFeatureIsNotDeclaredOrIsNot'));
         await permission(capability, declared.purpose, check);
@@ -553,7 +552,6 @@ function ReadyView({
     manifest,
     permission,
     resource,
-    appName,
     resourceUri,
     tools,
     registerClose,
@@ -579,7 +577,7 @@ function ReadyView({
           <NativeButton secondary label={t('miniapps.reopenInterface')} onPress={onReload} />
         </View>
       ) : null}
-      {manifest?.allowedDomains.some((host) => !hosts.includes(host)) ? (
+      {manifest.allowedDomains.some((host) => !hosts.includes(host)) ? (
         <NativeButton
           secondary
           label={t('miniapps.enableOnlineMaps')}
@@ -619,7 +617,7 @@ function ReadyView({
       <DeviceConsent
         request={consent.current}
         phase={consent.phase}
-        title={t('miniapps.allowAccessToApp', { app: manifest?.name ?? spec.name })}
+        title={t('miniapps.allowAccessToApp', { app: manifest.name })}
         scope={t('miniapps.accessScope', { chat: item.space_title })}
         onChoose={consent.choose}
         onDismiss={consent.dismissed}

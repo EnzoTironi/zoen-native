@@ -7,11 +7,19 @@ import { fileURLToPath } from 'node:url';
 import { buildApp } from './build.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const [app, resourceFolder = join(root, 'crates/roda-apps/resources')] = process.argv.slice(2);
-assert.ok(app, 'Usage: check.mjs <miniapp-directory> [embedded-resource-directory]');
+const [app, resourceFolder = join(root, 'crates/roda-apps/resources'), manifestPath] =
+  process.argv.slice(2);
+assert.ok(
+  app,
+  'Usage: check.mjs <miniapp-directory> [embedded-resource-directory] [manifest-path]',
+);
 const temporary = await mkdtemp(join(tmpdir(), 'zoen-miniapp-check-'));
 try {
-  const manifest = await buildApp(resolve(app), temporary);
+  const manifest = await buildApp(
+    resolve(app),
+    temporary,
+    manifestPath ? { manifestPath } : undefined,
+  );
   const htmlName = `${manifest.id}.html`;
   const manifestName = `${manifest.id}.manifest.json`;
   const [generated, embedded, committedManifest] = await Promise.all([

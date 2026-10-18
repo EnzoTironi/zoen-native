@@ -1,0 +1,10 @@
+{
+  "id": "list",
+  "name": "Lista do grupo",
+  "description": "Marcar, adicionar e compartilhar a lista.",
+  "entry": "src/entries/list.tsx",
+  "capabilities": [],
+  "allowedDomains": [],
+  "linkDomains": ["wa.me"],
+  "maxKB": 768
+}

@@ -1,0 +1,17 @@
+{
+  "id": "maptap",
+  "name": "MapTap",
+  "description": "Cinco lugares, um palpite por rodada.",
+  "capabilities": [],
+  "allowedDomains": [],
+  "networkPurpose": "",
+  "linkDomains": [],
+  "sha256": "5c5c114d004a7f1d7d231308d236d0de90235b44b69828c49c2469486a931f29",
+  "bytes": 735353,
+  "deps": {
+    "react": "19.1.1",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "scheduler": "0.26.0",
+    "react-dom": "19.1.1"
+  }
+}

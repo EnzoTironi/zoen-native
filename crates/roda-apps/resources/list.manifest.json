@@ -1,0 +1,19 @@
+{
+  "id": "list",
+  "name": "Lista do grupo",
+  "description": "Marcar, adicionar e compartilhar a lista.",
+  "capabilities": [],
+  "allowedDomains": [],
+  "networkPurpose": "",
+  "linkDomains": [
+    "wa.me"
+  ],
+  "sha256": "ce095cfa34592242305718763284b211c4659ba0fe2c22143be99da4ad402f22",
+  "bytes": 671742,
+  "deps": {
+    "react": "19.1.1",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "scheduler": "0.26.0",
+    "react-dom": "19.1.1"
+  }
+}

@@ -24,8 +24,8 @@
     "www.nps.gov",
     "www.parks.ca.gov"
   ],
-  "sha256": "67e38497bfcc64a0fed1cad13d27fddc3d07c6f76459233a6d186e7561422c1a",
-  "bytes": 1720968,
+  "sha256": "74dd4a4636c3deca45ee8f00a3df21dcf52b265684bbe82f5756bcd4561e2094",
+  "bytes": 1720991,
   "deps": {
     "scheduler": "0.26.0",
     "react": "19.1.1",

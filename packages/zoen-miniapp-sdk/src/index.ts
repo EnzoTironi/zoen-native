@@ -224,7 +224,10 @@ export const zoen = {
     async call<T = any>(tool: string, args: Record<string, Json> = {}): Promise<T> {
       await ready();
       const r = await bridge.app.callServerTool({ name: tool, arguments: args });
-      if (r?.isError) throw new ZoenError(r?.content?.[0]?.text ?? 'Tool failed');
+      if (r?.isError) {
+        const first = r.content?.[0];
+        throw new ZoenError(first?.type === 'text' ? first.text : 'Tool failed');
+      }
       if (r?.structuredContent !== undefined) stateStore.set(r.structuredContent);
       return r?.structuredContent as T;
     },

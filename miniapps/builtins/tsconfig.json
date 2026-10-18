@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "react": ["../../apps/zoen/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["../../apps/zoen/node_modules/@types/react/jsx-runtime.d.ts"],
+      "react-dom/client": ["../../apps/zoen/node_modules/@types/react-dom/client.d.ts"],
+      "@zoen/ui": ["../../packages/zoen-ui/src/index.tsx"],
+      "@zoen/miniapp-sdk": ["../../packages/zoen-miniapp-sdk/src/index.ts"],
+      "@modelcontextprotocol/ext-apps/app-with-deps": [
+        "../../tools/miniapp-build/node_modules/@modelcontextprotocol/ext-apps/dist/src/app.d.ts"
+      ]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

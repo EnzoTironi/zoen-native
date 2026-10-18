@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sha256 } from '@noble/hashes/sha2.js';
+import { readFileSync } from 'node:fs';
 import { miniappCsp, safeMiniappLink, sandboxHtml, verifyMiniappResource } from './sandbox.ts';
 import { photoArguments } from './photo-tokens.ts';
 
@@ -24,15 +25,40 @@ test('resource identity, exact bytes and manifest hash are checked before script
     prefers_border: false,
   };
   const verified = verifyMiniappResource(resource, 'hike');
-  assert.equal(verified?.bytes, bytes.length);
+  assert.equal(verified.bytes, bytes.length);
   assert.throws(() => verifyMiniappResource({ ...resource, text: `${text} ` }, 'hike'));
   assert.throws(() => verifyMiniappResource(resource, 'another'));
   assert.throws(() => verifyMiniappResource({ ...resource, manifest_json: '{' }, 'hike'));
+  assert.throws(() => verifyMiniappResource({ ...resource, manifest_json: '' }, 'hike'));
   assert.equal(safeMiniappLink('https://www.nps.gov/path', verified), 'https://www.nps.gov/path');
   assert.throws(() => safeMiniappLink('https://evil.example/path', verified));
-  assert.throws(() => safeMiniappLink('javascript:alert(1)', null));
+  assert.throws(() => safeMiniappLink('https://www.nps.gov.evil.example/path', verified));
+  assert.throws(() => safeMiniappLink('javascript:alert(1)', verified));
   const secured = sandboxHtml(text, []);
   assert.ok(secured.indexOf('Content-Security-Policy') < secured.indexOf('<title>'));
+});
+test('all eight built-in view resources carry verified manifests and exact link authority', () => {
+  for (const id of ['pet', 'poll', 'list', 'maptap', 'recipe', 'countdown', 'hike', 'schedule']) {
+    const resource = {
+      uri: `ui://fixture/${id}`,
+      mime_type: 'text/html;profile=mcp-app',
+      text: readFileSync(
+        new URL(`../../../../crates/roda-apps/resources/${id}.html`, import.meta.url),
+        'utf8',
+      ),
+      manifest_json: readFileSync(
+        new URL(`../../../../crates/roda-apps/resources/${id}.manifest.json`, import.meta.url),
+        'utf8',
+      ),
+      prefers_border: false,
+    };
+    const manifest = verifyMiniappResource(resource, id);
+    assert.equal(manifest.id, id);
+    if (id === 'list')
+      assert.equal(safeMiniappLink('https://wa.me/?text=QA', manifest), 'https://wa.me/?text=QA');
+    else assert.throws(() => safeMiniappLink('https://wa.me/?text=QA', manifest));
+    assert.throws(() => verifyMiniappResource({ ...resource, manifest_json: '' }, id));
+  }
 });
 test('CSP opens only exact declared hosts and rejects directive injection', () => {
   assert.match(miniappCsp([]), /connect-src 'none'/);

@@ -668,10 +668,28 @@ fn poll_closing_writes_the_winner_into_the_plan() {
     assert_eq!(closed.status, AppCallStatus::Done);
     let plan = paraty_plan(&e);
     assert_eq!(plan.version, before + 1);
-    assert!(plan.plan.unwrap().sections[0]
+    assert!(plan.plan.as_ref().unwrap().sections[0]
         .lines
         .iter()
         .any(|l| l.text.contains("Pousada do Ouro")));
+    let poll_after_close = e.item(poll.id.clone()).unwrap();
+    let log_after_close = e.verify_log(paraty.id.clone());
+    let repeated = e
+        .app_call_tool(poll.id.clone(), "poll_close".into(), "{}".into(), false)
+        .unwrap();
+    let result: serde_json::Value = serde_json::from_str(&repeated.result_json).unwrap();
+    assert_eq!(result["isError"], true);
+    assert!(repeated.result_json.contains("já fechou"));
+    assert_eq!(
+        paraty_plan(&e),
+        plan,
+        "repeated close must not add another plan line"
+    );
+    assert_eq!(e.item(poll.id).unwrap(), poll_after_close);
+    let unchanged_log = e.verify_log(paraty.id.clone());
+    assert!(unchanged_log.valid);
+    assert_eq!(unchanged_log.events, log_after_close.events);
+    assert_eq!(unchanged_log.head_hash, log_after_close.head_hash);
     assert!(e
         .agent_create_app(
             paraty.id,
@@ -685,12 +703,12 @@ fn poll_closing_writes_the_winner_into_the_plan() {
 }
 
 #[test]
-fn list_sending_outside_needs_confirmation() {
+fn list_shared_updates_do_not_expose_simulated_external_delivery() {
     let e = seeded();
     let paraty = find_space(&e, "Paraty com a Marina");
     let list = e
         .agent_create_app(
-            paraty.id,
+            paraty.id.clone(),
             zoen(&e).id,
             "start_list".into(),
             r#"{"title":"O que levar","items":["Protetor","Carregador"]}"#.into(),
@@ -709,19 +727,26 @@ fn list_sending_outside_needs_confirmation() {
         )
         .unwrap();
     assert!(t.item.unwrap().app.unwrap().headline.starts_with("1 de 2"));
-    let ask = e
-        .app_call_tool(
-            list.id.clone(),
-            "list_send_whatsapp".into(),
-            "{}".into(),
-            false,
-        )
-        .unwrap();
-    assert_eq!(ask.status, AppCallStatus::NeedsConfirmation);
-    let sent = e
-        .app_call_tool(list.id, "list_send_whatsapp".into(), "{}".into(), true)
-        .unwrap();
-    assert!(sent.message.contains("Simulação"));
+    let before = e.item(list.id.clone()).unwrap();
+    let state: serde_json::Value =
+        serde_json::from_str(&before.app.as_ref().unwrap().view_json).unwrap();
+    assert!(state.get("sent").is_none());
+    let log = e.verify_log(paraty.id.clone());
+    for confirmed in [false, true] {
+        assert!(e
+            .app_call_tool(
+                list.id.clone(),
+                "list_send_whatsapp".into(),
+                "{}".into(),
+                confirmed,
+            )
+            .is_err());
+        assert_eq!(e.item(list.id.clone()).unwrap(), before);
+        let unchanged_log = e.verify_log(paraty.id.clone());
+        assert!(unchanged_log.valid);
+        assert_eq!(unchanged_log.events, log.events);
+        assert_eq!(unchanged_log.head_hash, log.head_hash);
+    }
 }
 
 #[test]

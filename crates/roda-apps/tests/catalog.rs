@@ -36,14 +36,18 @@ fn portable_catalog_keeps_resource_integrity_and_instance_identity() {
             assert!(!headline(entry.id, &state, 1_000_000).0.is_empty());
             let widget = snapshot(entry.id, &state, "it_portable", 1_000_000).unwrap();
             assert_eq!(widget["deepLink"], "zoen://app/it_portable");
-            if let Some(manifest) = entry.manifest {
-                let manifest: Value = serde_json::from_str(manifest).unwrap();
-                let html = entry.html.expect("manifest requires an embedded resource");
-                assert_eq!(
-                    manifest["sha256"],
-                    format!("{:x}", Sha256::digest(html.as_bytes()))
-                );
-            }
+            let manifest: Value = serde_json::from_str(
+                entry
+                    .manifest
+                    .expect("every built-in ships its integrity manifest"),
+            )
+            .unwrap();
+            let html = entry.html.expect("every built-in has an MCP Apps resource");
+            assert_eq!(
+                manifest["sha256"],
+                format!("{:x}", Sha256::digest(html.as_bytes()))
+            );
+            assert_eq!(manifest["bytes"].as_u64(), Some(html.len() as u64));
         }
     }
 }
