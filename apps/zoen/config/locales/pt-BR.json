@@ -39,7 +39,15 @@
       "This recording could not be opened. Record it again.": "Não foi possível abrir esta gravação. Grave novamente.",
       "Keep at least a quarter of a second of this recording.": "Mantenha pelo menos um quarto de segundo desta gravação.",
       "This voice review has closed. Open it again.": "Esta revisão de voz foi encerrada. Abra novamente.",
-      "The edited recording could not be prepared. Try again.": "Não foi possível preparar a gravação editada. Tente novamente."
+      "The edited recording could not be prepared. Try again.": "Não foi possível preparar a gravação editada. Tente novamente.",
+      "Could not save your changes.": "Não foi possível salvar as alterações.",
+      "Try Again": "Tentar novamente",
+      "Discard Changes": "Descartar alterações",
+      "The edited PDF could not be read. Try saving your changes again.": "Não foi possível ler o PDF editado. Tente salvar as alterações novamente.",
+      "Continue Editing": "Continuar editando",
+      "Marked up": "Anotações",
+      "Your changes were saved.": "Suas alterações foram salvas.",
+      "Close": "Fechar"
     },
     "NSFaceIDUsageDescription": "Permita que $(PRODUCT_NAME) use o Face ID para confirmar sua identidade.",
     "NSLocalNetworkUsageDescription": "O Expo Dev Launcher usa a rede local para encontrar e conectar aos servidores de desenvolvimento do seu computador."

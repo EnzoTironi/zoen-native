@@ -47,6 +47,12 @@ pub struct FileDto {
     pub has_thumbnail: bool,
 }
 
+enum FileEditStatus {
+    Allowed,
+    Changed,
+    Forbidden,
+}
+
 fn invalid(pt: &str, en: &str) -> CoreError {
     CoreError::Invalid { reason: t(pt, en) }
 }
@@ -600,6 +606,69 @@ impl Engine {
         self.index_dirty = true;
         let s = self.space_state(space)?;
         Ok(self.entry_dto(s.entries.last().expect("just appended")))
+    }
+
+    fn file_edit_status(
+        &self,
+        item: &str,
+        expected_version: u32,
+        expected_sha256: &str,
+    ) -> R<FileEditStatus> {
+        let me = self.me_id()?;
+        let (it, current) = self.file_item(item)?;
+        if !self.state.writer(&it.space, &me) || !it.voice_edit_allowed(&me, None) {
+            return Ok(FileEditStatus::Forbidden);
+        }
+        if it.current().number != expected_version || current.sha256 != expected_sha256 {
+            return Ok(FileEditStatus::Changed);
+        }
+        Ok(FileEditStatus::Allowed)
+    }
+
+    /// A current, writable file at exactly the version and hash the editor saw.
+    /// This is a read-only affordance; the checked mutation revalidates it.
+    pub fn file_edit_allowed(
+        &self,
+        item: &str,
+        expected_version: u32,
+        expected_sha256: &str,
+    ) -> R<bool> {
+        Ok(matches!(
+            self.file_edit_status(item, expected_version, expected_sha256)?,
+            FileEditStatus::Allowed
+        ))
+    }
+
+    /// Commit only against the observed base. The FFI keeps this check and the
+    /// mutation under one engine lock; chunks and the signed version commit together.
+    pub fn file_new_version_checked(
+        &mut self,
+        item: &str,
+        expected_version: u32,
+        expected_sha256: &str,
+        bytes: &[u8],
+        thumbnail: Option<&[u8]>,
+        note: &str,
+    ) -> R<()> {
+        match self.file_edit_status(item, expected_version, expected_sha256)? {
+            FileEditStatus::Allowed => {}
+            FileEditStatus::Changed => {
+                return Err(CoreError::Stale {
+                    reason: t(
+                        "o arquivo mudou; reabra a versão atual antes de salvar",
+                        "the file changed; reopen the current version before saving",
+                    ),
+                });
+            }
+            FileEditStatus::Forbidden => {
+                return Err(CoreError::Forbidden {
+                    reason: t("edição de arquivo não autorizada", "unauthorized file edit"),
+                });
+            }
+        }
+        self.atomic_agent_action(|engine| {
+            engine.file_new_version_inner(item, bytes, thumbnail, note, None)
+        })
     }
 
     /// A new version of a file (an edit, a markup, a trim). Unchanged chunks are re-used.

@@ -79,7 +79,7 @@ export function createDriver(): CoreDriver {
     previewFile:
       Platform.OS === 'ios' && typeof NativeCore?.previewLocalFile === 'function'
         ? async (file) => {
-            await core().previewLocalFile(file.uri, file.info.name);
+            await core().previewLocalFile(file.uri);
           }
         : undefined,
     async releaseLocalFile(uri) {

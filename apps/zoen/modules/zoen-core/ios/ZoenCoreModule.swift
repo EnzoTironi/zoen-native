@@ -1,6 +1,7 @@
 import ExpoModulesCore
 import Foundation
 import UIKit
+import PDFKit
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -48,9 +49,9 @@ public class ZoenCoreModule: Module {
     AsyncFunction("materializeFile") { (itemId: String, version: Int?) async throws -> String in
       try await self.session.materializeFile(itemId: itemId, version: version)
     }
-    AsyncFunction("previewLocalFile") { (uri: String, title: String) async throws in
+    AsyncFunction("previewLocalFile") { (uri: String) async throws in
       let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
-      try await self.session.previewLocalFile(uri, title: title, presenter: presenter)
+      try await self.session.previewLocalFile(uri, presenter: presenter)
     }
     AsyncFunction("releaseLocalFile") { (uri: String) async in await self.session.releaseLocalFile(uri) }
     AsyncFunction("saveProfile") { (request: String) async throws in try await self.session.saveProfile(request) }
@@ -63,7 +64,7 @@ public class ZoenCoreModule: Module {
     }
     AsyncFunction("close") { () async throws in try await self.session.close() }
     OnAppBecomesActive { [session] in Task { await session.resumePendingHistory() } }
-    OnDestroy { Task { try? await self.session.close() } }
+    OnDestroy { Task { try? await self.session.close(discardEdits: true) } }
   }
 }
 
@@ -77,6 +78,9 @@ private actor ZoenSession {
   private var historyTask: Task<Void, Never>?
   private var historyRearmRequested = false
   private var generation: UInt64 = 0
+  private var openingAttempt: UUID?
+  private var closing = false
+  private var closeTask: Task<Void, Error>?
   private let erasure = ZoenDeviceErasure()
   private var erasing = false
   private var erasureTask: Task<Void, Error>?
@@ -86,6 +90,7 @@ private actor ZoenSession {
   private var requestDrain: [CheckedContinuation<Void, Never>] = []
   private let mediaFiles = ZoenMediaFiles()
   private let filePreview = ZoenFilePreview()
+  private var previewBindings: [String: PreviewBinding] = [:]
   private let profilePhotos = ZoenProfilePhotos()
   private let voiceEditor = ZoenVoiceEditor()
   private var voiceSources: [String: UInt64] = [:]
@@ -94,8 +99,44 @@ private actor ZoenSession {
   private var assistants: [String: ZoenAssistantLease] = [:]
   private var assistantDrains: [String: Task<Void, Never>] = [:]
 
+  private struct FileScope: Equatable, Sendable {
+    let identity: String
+    let device: String
+  }
+  private struct PreviewBinding: Sendable {
+    let engine: RodaEngine
+    let generation: UInt64
+    let mode: String
+    let scope: FileScope?
+    let itemId: String
+    let spaceId: String
+    let version: UInt32
+    let sha256: String
+    let name: String
+    let mime: String
+  }
+
+  private func fileScope(spaceId: String, engine: RodaEngine) throws -> FileScope {
+    guard !erasing, self.core === engine else { throw SessionError.closed }
+    let space = try engine.space(spaceId: spaceId)
+    guard let member = space.members.first(where: { $0.isMe }) else { throw SessionError.closed }
+    if let account = engine.account() {
+      guard account.unlocked, !account.setupPending, account.identityId == member.id else { throw SessionError.closed }
+      return FileScope(identity: account.identityId, device: account.deviceId)
+    }
+    guard mode == "demo" else { throw SessionError.closed }
+    return FileScope(identity: member.id, device: "demo")
+  }
+
+  private func bindingIsCurrent(_ binding: PreviewBinding) -> Bool {
+    guard !erasing, core === binding.engine, generation == binding.generation,
+          mode == binding.mode, let expected = binding.scope,
+          let current = try? fileScope(spaceId: binding.spaceId, engine: binding.engine) else { return false }
+    return current == expected
+  }
+
   private func assistantMember(_ spaceId: String, core engine: RodaEngine) throws -> (String, String) {
-    guard !erasing, self.core === engine, spaceId.utf8.count <= 256 else { throw ZoenAssistantFailure.closed }
+    guard !erasing, !closing, self.core === engine, spaceId.utf8.count <= 256 else { throw ZoenAssistantFailure.closed }
     let space = try engine.space(spaceId: spaceId)
     guard let member = space.members.first(where: { $0.isMe }) else { throw ZoenAssistantFailure.closed }
     if let account = engine.account() {
@@ -113,7 +154,7 @@ private actor ZoenSession {
   }
 
   func openAssistant(spaceId: String, locale: String) throws -> String {
-    guard locale == sessionLocale, ["en", "pt-BR"].contains(locale), let core else { throw ZoenAssistantFailure.closed }
+    guard !closing, locale == sessionLocale, ["en", "pt-BR"].contains(locale), let core else { throw ZoenAssistantFailure.closed }
     let member = try assistantMember(spaceId, core: core)
     if let reason = ZoenAssistantModel.unavailable(locale: locale) {
       return try ZoenMediaFiles.json(["available": false, "reason": reason])
@@ -188,6 +229,8 @@ private actor ZoenSession {
   func open(mode: String, locale: String, changed: @escaping @Sendable ([String: Any]) -> Void) async throws -> String {
     guard ["account", "demo"].contains(mode) else { throw SessionError.invalidMode }
     guard ["en", "pt-BR"].contains(locale) else { throw SessionError.invalidLocale }
+    let attempt = UUID()
+    openingAttempt = attempt
     if erasureTask != nil { throw ZoenDeviceErasure.Failure.incomplete }
     sessionLocale = locale
     if let pending = try erasure.pending() {
@@ -195,9 +238,9 @@ private actor ZoenSession {
       try await eraseDevice(expected: pending)
     }
     guard !erasing else { throw ZoenDeviceErasure.Failure.incomplete }
-    let openingGeneration = generation &+ 1
-    try await close()
-    guard generation == openingGeneration else { throw SessionError.closed }
+    try await close(cancelOpening: false)
+    guard openingAttempt == attempt, !erasing else { throw SessionError.closed }
+    let openingGeneration = generation
     // The shared app keeps the engine's existing primary store, rather than creating
     // a second account database beside the same Keychain identity.
     let root = URL.applicationSupportDirectory.appending(path: mode == "account" ? "Roda" : "Zoen/demo", directoryHint: .isDirectory)
@@ -222,7 +265,7 @@ private actor ZoenSession {
         }
       } else if vault.hasAccountMaterial() { throw SessionError.orphanedKeys }
       let snapshot = try await engine.clientRequest(request: #"{"op":"snapshot"}"#)
-      guard generation == openingGeneration else { throw SessionError.closed }
+      guard generation == openingGeneration, openingAttempt == attempt else { throw SessionError.closed }
       // Publish only the fully validated session. A rejected unlock must leave
       // no callable engine behind; an older async open cannot replace a newer one.
       self.core = engine
@@ -238,13 +281,13 @@ private actor ZoenSession {
   }
 
   func request(_ request: String) async throws -> String {
-    guard !erasing, let core else { throw SessionError.closed }
+    guard !erasing, !closing, let core else { throw SessionError.closed }
     requests += 1
     defer { retireRequest() }
     let result = mode == "demo"
       ? try await core.clientRequest(request: request)
       : try await core.clientVaultRequest(request: request, vault: vault)
-    guard !erasing, self.core === core else { throw SessionError.closed }
+    guard !erasing, !closing, self.core === core else { throw SessionError.closed }
     // A linking/recovery command can install the first account. Its secrets stay
     // inside this actor/vault boundary and sync starts only after unlock succeeds.
     if !syncStarted, core.account()?.unlocked == true, core.account()?.setupPending != true, let listener {
@@ -256,7 +299,7 @@ private actor ZoenSession {
   }
 
   func createAccount(name: String, handle: String, relay: String) async throws -> String {
-    guard !erasing, mode == "account", let core, let listener else { throw SessionError.closed }
+    guard !erasing, !closing, mode == "account", let core, let listener else { throw SessionError.closed }
     guard core.account() == nil else { throw SessionError.accountExists }
     guard !vault.hasAccountMaterial() else { throw SessionError.orphanedKeys }
     _ = try core.createAccount(name: name, handle: handle, relayUrl: relay, vault: vault)
@@ -275,7 +318,7 @@ private actor ZoenSession {
     let mutationId: String
   }
   func sendFile(_ request: String) throws -> String {
-    guard !erasing, let core else { throw SessionError.closed }
+    guard !erasing, !closing, let core else { throw SessionError.closed }
     guard request.utf8.count <= 32_768 else { throw ZoenMediaFiles.Failure.invalidFile }
     let save = try JSONDecoder().decode(FileSend.self, from: Data(request.utf8))
     guard !save.spaceId.isEmpty, save.spaceId.utf8.count <= 256,
@@ -304,7 +347,7 @@ private actor ZoenSession {
     let transcript: String
   }
   func sendVoice(_ request: String) async throws -> String {
-    guard !erasing, let core else { throw SessionError.closed }
+    guard !erasing, !closing, let core else { throw SessionError.closed }
     guard request.utf8.count <= 131_072 else { throw ZoenMediaFiles.Failure.invalidRecording }
     let save = try JSONDecoder().decode(VoiceSend.self, from: Data(request.utf8))
     guard let sourceId = save.sourceId, !sourceId.isEmpty, voiceSources[sourceId] == generation,
@@ -314,7 +357,7 @@ private actor ZoenSession {
     let render = try await voiceEditor.admitSend(sourceId: sourceId, uri: save.uri)
     // The awaited actor boundary may have allowed lock/close/open/erase. The
     // actual Rust mutation below stays synchronous after this final fence.
-    guard !erasing, generation == expected, self.core === core,
+    guard !erasing, !closing, generation == expected, self.core === core,
           voiceSources[sourceId] == expected, voiceRenders[sourceId] == save.uri else { throw SessionError.closed }
     let selection = try mediaFiles.readSelection(uri: render.uri, name: "voice.m4a", mime: render.mime)
     let entry = try core.sendVoiceNote(spaceId: save.spaceId, bytes: selection.data, mime: render.mime,
@@ -331,10 +374,10 @@ private actor ZoenSession {
     String(decoding: try JSONEncoder().encode(value), as: UTF8.self)
   }
   func prepareVoice(_ uri: String) async throws -> String {
-    guard !erasing, core != nil else { throw SessionError.closed }
+    guard !erasing, !closing, core != nil else { throw SessionError.closed }
     let expected = generation
     let source = try await voiceEditor.prepare(uri: uri)
-    guard !erasing, generation == expected, core != nil else {
+    guard !erasing, !closing, generation == expected, core != nil else {
       try await voiceEditor.release(source.id)
       throw SessionError.closed
     }
@@ -342,14 +385,14 @@ private actor ZoenSession {
     return try voiceJSON(source)
   }
   func renderVoice(_ sourceId: String, ranges: String) async throws -> String {
-    guard !erasing, core != nil, voiceSources[sourceId] == generation, ranges.utf8.count <= 262_144 else { throw SessionError.closed }
+    guard !erasing, !closing, core != nil, voiceSources[sourceId] == generation, ranges.utf8.count <= 262_144 else { throw SessionError.closed }
     let expected = generation
     let attempt = UUID()
     voiceRenderAttempts[sourceId] = attempt
     voiceRenders.removeValue(forKey: sourceId)
     let ranges = try JSONDecoder().decode([ZoenVoiceEditor.Range].self, from: Data(ranges.utf8))
     let result = try await voiceEditor.render(sourceId: sourceId, ranges: ranges)
-    guard !erasing, generation == expected, core != nil, voiceSources[sourceId] == expected,
+    guard !erasing, !closing, generation == expected, core != nil, voiceSources[sourceId] == expected,
           voiceRenderAttempts[sourceId] == attempt else {
       try await voiceEditor.releaseOutput(sourceId: sourceId, uri: result.uri)
       throw SessionError.closed
@@ -358,10 +401,10 @@ private actor ZoenSession {
     return try voiceJSON(result)
   }
   func transcribeVoice(_ sourceId: String, locale: String) async throws -> String {
-    guard !erasing, core != nil, voiceSources[sourceId] == generation, ["en", "pt-BR"].contains(locale) else { throw SessionError.closed }
+    guard !erasing, !closing, core != nil, voiceSources[sourceId] == generation, ["en", "pt-BR"].contains(locale) else { throw SessionError.closed }
     let expected = generation
     let result = try await voiceEditor.transcribe(sourceId: sourceId, locale: locale)
-    guard !erasing, generation == expected, core != nil else { throw SessionError.closed }
+    guard !erasing, !closing, generation == expected, core != nil else { throw SessionError.closed }
     return try voiceJSON(result)
   }
   func releaseVoiceRender(_ sourceId: String, uri: String) async throws {
@@ -381,34 +424,84 @@ private actor ZoenSession {
   }
 
   func fileInfo(itemId: String, version: Int?) throws -> String {
-    guard !erasing, let core else { throw SessionError.closed }
+    guard !erasing, !closing, let core else { throw SessionError.closed }
     return try ZoenMediaFiles.json(ZoenMediaFiles.info(try core.fileInfoAt(itemId: itemId, version: ZoenMediaFiles.version(version))))
   }
 
   func materializeFile(itemId: String, version: Int?) throws -> String {
-    guard !erasing, let core else { throw SessionError.closed }
+    guard !erasing, !closing, let core else { throw SessionError.closed }
     // Select the version once. An incoming edit cannot swap the description and
     // payload between these reads, even while the sync engine runs concurrently.
-    let pinned = try ZoenMediaFiles.version(version) ?? core.item(itemId: itemId).version
+    let item = try core.item(itemId: itemId)
+    let pinned = try ZoenMediaFiles.version(version) ?? item.version
     let info = try core.fileInfoAt(itemId: itemId, version: pinned)
     guard let bytes = try core.fileBytesBounded(itemId: itemId, version: pinned, maxBytes: ZoenMediaFiles.maximumBytes) else { return "null" }
     let uri = try mediaFiles.stage(bytes, name: info.name)
+    previewBindings[uri] = PreviewBinding(engine: core, generation: generation, mode: mode,
+      scope: try? fileScope(spaceId: item.spaceId, engine: core), itemId: itemId, spaceId: item.spaceId,
+      version: pinned, sha256: info.sha256, name: info.name, mime: info.mime)
     return try ZoenMediaFiles.json(["uri": uri, "itemId": itemId, "version": pinned, "info": ZoenMediaFiles.info(info)])
   }
 
-  func releaseLocalFile(_ uri: String) { mediaFiles.release(uri) }
+  func releaseLocalFile(_ uri: String) {
+    previewBindings.removeValue(forKey: uri)
+    mediaFiles.release(uri)
+  }
 
-  func previewLocalFile(_ uri: String, title: String, presenter: UIViewController?) async throws {
-    guard !erasing, core != nil else { throw SessionError.closed }
+  func previewLocalFile(_ uri: String, presenter: UIViewController?) async throws {
+    guard !erasing, !closing, let binding = previewBindings[uri], bindingIsCurrent(binding) else { throw SessionError.closed }
+    let edit: ZoenFilePreview.EditContext?
+    if binding.mime == "application/pdf",
+       try binding.engine.fileEditAllowed(itemId: binding.itemId, expectedVersion: binding.version,
+         expectedSha256: binding.sha256) {
+      edit = ZoenFilePreview.EditContext(
+        base: .init(version: binding.version, sha256: binding.sha256),
+        maximumBytes: ZoenMediaFiles.maximumBytes,
+        save: { [weak self] file, base in
+          guard let self else { throw SessionError.closed }
+          return try await self.savePreviewEdit(file, base: base, binding: binding)
+        })
+    } else { edit = nil }
     let file = try mediaFiles.takeForPreview(uri)
+    previewBindings.removeValue(forKey: uri)
     let id = filePreview.register(file: file, generation: generation)
-    try await filePreview.open(id: id, title: title) {
-      ZoenQuickLookPreview(presenter: presenter)
+    try await filePreview.open(id: id, title: binding.name, edit: edit) { editing in
+      ZoenQuickLookPreview(presenter: presenter, editing: editing)
     }
   }
 
+  private func savePreviewEdit(_ file: ZoenPreviewFile, base: ZoenFilePreview.EditBase,
+                               binding: PreviewBinding) throws -> ZoenFilePreview.EditBase {
+    // An admitted edit may finish while plain close waits for this viewer. Erase
+    // and account replacement still fence it; the checked core mutation owns the
+    // definitive version/hash/access comparison and append in one transaction.
+    guard bindingIsCurrent(binding), binding.mime == "application/pdf" else { throw SessionError.closed }
+    let selection = try mediaFiles.readSelection(uri: file.url.absoluteString,
+      name: binding.name, mime: "application/pdf")
+    guard selection.data.starts(with: Data("%PDF-".utf8)),
+          let document = PDFDocument(data: selection.data), !document.isLocked,
+          document.pageCount > 0 else { throw ZoenMediaFiles.Failure.invalidFile }
+    let saved: ItemDetail
+    do {
+      saved = try binding.engine.fileNewVersionChecked(itemId: binding.itemId,
+        expectedVersion: base.version, expectedSha256: base.sha256,
+        bytes: selection.data, thumbnail: nil,
+        note: NSLocalizedString("Marked up", comment: "PDF file version history note"))
+    } catch let error as CoreError {
+      let message: String
+      switch error {
+      case .Storage(let reason), .Forbidden(let reason), .Invalid(let reason), .Stale(let reason): message = reason
+      case .NotFound: message = NSLocalizedString("This file version is unavailable.", comment: "Edited PDF was removed")
+      }
+      throw NSError(domain: "Zoen.FileEdit", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+    guard let file = saved.file else { throw ZoenMediaFiles.Failure.invalidFile }
+    listener?.onChange(spaceIds: [binding.spaceId])
+    return .init(version: saved.version, sha256: file.sha256)
+  }
+
   func saveProfile(_ request: String) throws {
-    guard !erasing, request.utf8.count <= 8192, let core else { throw SessionError.closed }
+    guard !erasing, !closing, request.utf8.count <= 8192, let core else { throw SessionError.closed }
     let save = try JSONDecoder().decode(ZoenProfilePhotos.Save.self, from: Data(request.utf8))
     guard let account = core.account(), account.unlocked, !account.setupPending, account.identityId == save.ownerId, account.deviceId == save.deviceId else { throw ZoenProfilePhotos.Failure.changedSession }
     _ = try core.updateMyProfile(name: save.name, bio: save.bio, photo: profilePhotos.change(save))
@@ -416,7 +509,7 @@ private actor ZoenSession {
   }
 
   func materializeProfilePhoto(ownerId: String, deviceId: String, identityId: String, expectedSha256: String) throws -> String {
-    guard !erasing, let core, let account = core.account(), account.unlocked, !account.setupPending, account.identityId == ownerId, account.deviceId == deviceId else { throw ZoenProfilePhotos.Failure.changedSession }
+    guard !erasing, !closing, let core, let account = core.account(), account.unlocked, !account.setupPending, account.identityId == ownerId, account.deviceId == deviceId else { throw ZoenProfilePhotos.Failure.changedSession }
     guard let photo = try core.profilePhoto(identityId: identityId, expectedSha256: expectedSha256) else { return "null" }
     return try profilePhotos.stage(photo)
   }
@@ -434,7 +527,7 @@ private actor ZoenSession {
   }
 
   private func scheduleInitialHistory() {
-    guard !erasing, mode == "account", syncStarted, historyTask == nil, let engine = core,
+    guard !erasing, !closing, mode == "account", syncStarted, historyTask == nil, let engine = core,
           let bridge = listener, (try? engine.historyStatus())?.initialPending == true else { return }
     let expectedGeneration = generation
     historyRearmRequested = false
@@ -532,6 +625,7 @@ private actor ZoenSession {
       try engine.eraseDevice(vault: vault)
       try vault.eraseAllVerified()
       mediaFiles.removeAll()
+      previewBindings.removeAll()
       profilePhotos.removeAll()
       try ZoenDeviceErasure.erasePreviewCache()
       try erasure.complete()
@@ -545,7 +639,47 @@ private actor ZoenSession {
     try await task.value
   }
 
-  func close() async throws {
+  func close(discardEdits: Bool = false, cancelOpening: Bool = true) async throws {
+    if cancelOpening { openingAttempt = nil }
+    if let closeTask {
+      if discardEdits {
+        // Escalate a graceful close that is already waiting on the editor.
+        // Its admission fence is in place before this suspension.
+        generation &+= 1
+        filePreview.invalidate(before: generation)
+        try await filePreview.clear(before: generation)
+      }
+      try await closeTask.value
+      return
+    }
+    // Fence new work and publish the coalesced task BEFORE its first await,
+    // including forced teardown; a new preview cannot enter while clear drains.
+    closing = true
+    let task = Task {
+      defer { self.closing = false; self.closeTask = nil }
+      if discardEdits {
+        // Module destruction drains accepted workers and discards temporary edits.
+        self.generation &+= 1
+        self.filePreview.invalidate(before: self.generation)
+        try await self.filePreview.clear(before: self.generation)
+      }
+      if let erasureTask = self.erasureTask { try await erasureTask.value }
+      await self.closeAssistants()
+      // Keep the exact engine/account live for already admitted edited copies.
+      // New bridge operations are fenced by `closing`; a save failure stays
+      // recoverable in native UI instead of turning account change into data loss.
+      try await self.filePreview.prepareForClose()
+      if self.requests > 0 {
+        await withCheckedContinuation { self.requestDrain.append($0) }
+      }
+      guard !self.erasing else { throw SessionError.closed }
+      try await self.finishClose()
+    }
+    closeTask = task
+    try await task.value
+  }
+
+  private func finishClose() async throws {
     voiceSources.removeAll()
     voiceRenders.removeAll()
     voiceRenderAttempts.removeAll()
@@ -561,6 +695,7 @@ private actor ZoenSession {
     listener = nil
     syncStarted = false
     mediaFiles.removeAll()
+    previewBindings.removeAll()
     profilePhotos.removeAll()
     await closeAssistants()
     try? await voiceEditor.releaseAll()

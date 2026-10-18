@@ -39,7 +39,15 @@
       "This recording could not be opened. Record it again.": "This recording could not be opened. Record it again.",
       "Keep at least a quarter of a second of this recording.": "Keep at least a quarter of a second of this recording.",
       "This voice review has closed. Open it again.": "This voice review has closed. Open it again.",
-      "The edited recording could not be prepared. Try again.": "The edited recording could not be prepared. Try again."
+      "The edited recording could not be prepared. Try again.": "The edited recording could not be prepared. Try again.",
+      "Could not save your changes.": "Could not save your changes.",
+      "Try Again": "Try Again",
+      "Discard Changes": "Discard Changes",
+      "The edited PDF could not be read. Try saving your changes again.": "The edited PDF could not be read. Try saving your changes again.",
+      "Continue Editing": "Continue Editing",
+      "Marked up": "Marked up",
+      "Your changes were saved.": "Your changes were saved.",
+      "Close": "Close"
     },
     "NSFaceIDUsageDescription": "Allow $(PRODUCT_NAME) to use Face ID to confirm your identity.",
     "NSLocalNetworkUsageDescription": "Expo Dev Launcher uses the local network to discover and connect to development servers running on your computer."

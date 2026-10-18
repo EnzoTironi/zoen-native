@@ -172,6 +172,43 @@ impl RodaEngine {
         )
     }
 
+    /// Whether this exact observed file base is still writable. The eventual
+    /// checked save independently revalidates the base and permissions.
+    pub fn file_edit_allowed(
+        &self,
+        item_id: String,
+        expected_version: u32,
+        expected_sha256: String,
+    ) -> Result<bool, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
+        self.lock()
+            .file_edit_allowed(&item_id, expected_version, &expected_sha256)
+    }
+
+    /// Atomically saves new file bytes only if the current version, hash and
+    /// permissions still match the editor's observed base.
+    pub fn file_new_version_checked(
+        &self,
+        item_id: String,
+        expected_version: u32,
+        expected_sha256: String,
+        bytes: Vec<u8>,
+        thumbnail: Option<Vec<u8>>,
+        note: String,
+    ) -> Result<ItemDetail, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
+        let mut e = self.lock();
+        e.file_new_version_checked(
+            &item_id,
+            expected_version,
+            &expected_sha256,
+            &bytes,
+            thumbnail.as_deref(),
+            &note,
+        )?;
+        e.item(&item_id)
+    }
+
     /// Saves new bytes for a file as its next version (markup, crop, trim…).
     pub fn file_new_version(
         &self,

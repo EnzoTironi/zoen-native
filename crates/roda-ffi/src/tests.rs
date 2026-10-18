@@ -4,6 +4,7 @@ use super::*;
 
 mod client_api;
 mod file_bounds;
+mod file_edits;
 mod file_messages;
 mod message_search;
 mod profile_photos;

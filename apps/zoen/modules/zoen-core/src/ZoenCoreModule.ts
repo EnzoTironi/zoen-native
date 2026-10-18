@@ -18,7 +18,7 @@ declare class ZoenCoreModule extends NativeModule<{ onChange: (event: CoreEvent)
   releaseVoice(sourceId: string): Promise<void>;
   fileInfo(itemId: string, version: number | null): Promise<string>;
   materializeFile(itemId: string, version: number | null): Promise<string>;
-  previewLocalFile(uri: string, title: string): Promise<void>;
+  previewLocalFile(uri: string): Promise<void>;
   releaseLocalFile(uri: string): Promise<void>;
   saveProfile(request: string): Promise<void>;
   materializeProfilePhoto(
