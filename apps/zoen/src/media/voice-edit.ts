@@ -309,6 +309,51 @@ function originalToEdited(ranges: readonly FrameRange[], originalFrame: number):
   }
   return offset;
 }
+/** Removed source positions map to the next kept boundary; the output end is a sentinel. */
+export function originalToEditedFrame(
+  projection: VoiceProjection,
+  originalFrame: number,
+): number | null {
+  if (!Number.isFinite(originalFrame) || !projection.frameCount) return null;
+  return originalToEdited(projection.keptRanges, originalFrame);
+}
+/** At a cut join choose the next kept source frame, never a removed source interval. */
+export function editedToOriginalFrame(
+  projection: VoiceProjection,
+  editedFrame: number,
+): number | null {
+  if (!Number.isFinite(editedFrame) || !projection.frameCount) return null;
+  let remaining = Math.max(0, Math.min(projection.frameCount, editedFrame));
+  for (const kept of projection.keptRanges) {
+    const length = kept.endFrame - kept.startFrame;
+    if (remaining < length) return kept.startFrame + remaining;
+    remaining -= length;
+  }
+  return projection.keptRanges.at(-1)?.endFrame ?? null;
+}
+/** Project only the retained intersection of an original selection; an empty selection is silent. */
+export function voiceSelectionToEditedRange(
+  projection: VoiceProjection,
+  selection: FrameRange,
+): FrameRange | null {
+  if (
+    !Number.isFinite(selection.startFrame) ||
+    !Number.isFinite(selection.endFrame) ||
+    selection.endFrame <= selection.startFrame ||
+    !projection.frameCount
+  )
+    return null;
+  let first: number | null = null;
+  let last: number | null = null;
+  for (const kept of projection.keptRanges) {
+    const start = Math.max(kept.startFrame, selection.startFrame);
+    const end = Math.min(kept.endFrame, selection.endFrame);
+    if (start >= end) continue;
+    first ??= originalToEdited(projection.keptRanges, start);
+    last = originalToEdited(projection.keptRanges, end);
+  }
+  return first !== null && last !== null ? range(first, last) : null;
+}
 export function projectVoiceDraft(draft: VoiceDraft): VoiceProjection {
   const ranges = keptRanges(draft, draft.edit);
   const frames = ranges.reduce((sum, r) => sum + r.endFrame - r.startFrame, 0);

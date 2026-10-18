@@ -39,6 +39,7 @@ import {
 } from './voice-trim-preview';
 import { VoiceReview } from './voice-review';
 import { VoiceDock } from './voice-dock';
+import { VoicePreviewPlayback } from './voice-preview-playback';
 import { MediaSheet } from './media-sheet';
 import { MediaActions } from './media-actions';
 import type { MediaPickKind } from './media-actions.types';
@@ -165,6 +166,7 @@ export function MediaComposer({
   const suspendedNow = useRef(suspended);
   const uriToDiscard = useRef<string | undefined>(undefined);
   const mounted = useRef(true);
+  const playbackRetired = useRef(false);
   const focused = useRef(false);
   const selecting = useRef(false);
   const busyNow = useRef(false);
@@ -248,6 +250,7 @@ export function MediaComposer({
     const epoch = startEpoch.current;
     return () => {
       mounted.current = false;
+      pauseAudioPlayback();
       ++epoch.value;
       for (const owner of retainedOwners) {
         const durable = retainedDurable.get(owner);
@@ -327,8 +330,9 @@ export function MediaComposer({
   useLayoutEffect(() => {
     const previous = clipNow.current;
     if (previous?.durable && previous.durable.channel !== channel) {
-      previous.durable.retire();
+      pauseAudioPlayback();
       clipNow.current = null;
+      previous.durable.retire();
       setClip(null);
       setExpanded(false);
     }
@@ -458,6 +462,8 @@ export function MediaComposer({
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
     return store.registerDeviceCleanup(async () => {
+      playbackRetired.current = true;
+      pauseAudioPlayback();
       const uri = mounted.current ? recorder.uri : undefined;
       await stop();
       // SDK58 releases this SharedObject on unmount and synchronously stops
@@ -475,6 +481,7 @@ export function MediaComposer({
       focused.current = true;
       return () => {
         focused.current = false;
+        pauseAudioPlayback();
         ++startEpoch.current.value;
         void stop().catch(() => {});
       };
@@ -484,6 +491,7 @@ export function MediaComposer({
     const subscription = AppState.addEventListener('change', (state) => {
       appState.current = state;
       if (state !== 'active') {
+        pauseAudioPlayback();
         ++startEpoch.current.value;
         void stop().catch(() => {});
       }
@@ -496,10 +504,24 @@ export function MediaComposer({
     suspendedNow.current = suspended;
     disabledNow.current = disabled;
     if (suspended || disabled) {
+      pauseAudioPlayback();
       ++startEpoch.current.value;
       void stop().catch(() => {});
     }
   }, [disabled, suspended, stop]);
+  const previewIsCurrent = useCallback(
+    (session: VoiceSession) =>
+      mounted.current &&
+      !playbackRetired.current &&
+      focused.current &&
+      appState.current === 'active' &&
+      !disabledNow.current &&
+      !suspendedNow.current &&
+      !busyNow.current &&
+      clipNow.current?.owner?.session === session &&
+      (!clipNow.current.durable || store.mediaDrafts.isCurrent(clipNow.current.durable.channel)),
+    [store],
+  );
   useEffect(() => {
     if (recorderState.isRecording && recorderState.durationMillis >= 3_600_000)
       void stop().catch(() => {});
@@ -673,6 +695,7 @@ export function MediaComposer({
     if (clipNow.current?.owner !== owner || hasPendingVoiceTrim(trimNow.current, owner.session))
       throw new Error(t('media.voiceRecordingUnavailable'));
     busyNow.current = true;
+    pauseAudioPlayback();
     setBusy(true);
     setFailure(null);
     try {
@@ -741,6 +764,7 @@ export function MediaComposer({
   async function cancel() {
     if (busyNow.current) return;
     busyNow.current = true;
+    pauseAudioPlayback();
     setBusy(true);
     try {
       await stop();
@@ -815,7 +839,6 @@ export function MediaComposer({
           clip.owner.session.getSnapshot().pendingTrim))
     )
       return;
-    pauseAudioPlayback();
     setExpanded(false);
   }
   const review =
@@ -833,7 +856,6 @@ export function MediaComposer({
         onStop={stop}
         onRetry={failure || clip?.owner ? retryVoice : undefined}
         onExpand={() => {
-          pauseAudioPlayback();
           setExpanded(true);
         }}
         onSend={async (value) => {
@@ -877,7 +899,12 @@ export function MediaComposer({
     />
   );
   return (
-    <>
+    <VoicePreviewPlayback
+      session={clip?.owner?.session ?? null}
+      ownerKey={clip?.uri}
+      disabled={busy || disabled || suspended}
+      isCurrent={previewIsCurrent}
+    >
       {renderControls ? (
         renderControls({
           attachment,
@@ -1012,6 +1039,6 @@ export function MediaComposer({
           </Text>
         </ScrollView>
       </MediaSheet>
-    </>
+    </VoicePreviewPlayback>
   );
 }

@@ -1,11 +1,10 @@
 import { t, formatLocale } from '../i18n/index.ts';
-import { useEventListener } from 'expo';
-import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { MessagePressable as Pressable } from '../components/message-interaction';
 import { Icon, NativeButton } from '../components/primitives';
-import { mediaPlayback, type PlaybackOwner } from './playback-owner.ts';
+import { mediaPlayback } from './playback-owner.ts';
+import { useAudioClipPlayback, type AudioClipPlayback } from './audio-clip-playback.ts';
 import { useTheme } from '../theme';
 import { AudioProgress } from './audio-progress';
 
@@ -50,99 +49,59 @@ function AudioClipContent({
   onLongPress,
   onRetry,
 }: Props & { onRetry: () => void }) {
+  const playback = useAudioClipPlayback({ uri, durationMs });
+  const status = useSyncExternalStore(
+    playback.subscribe,
+    playback.getSnapshot,
+    playback.getSnapshot,
+  );
+  const autoplay = useRef(autoPlay);
+  useEffect(() => {
+    if (!autoplay.current || !status.loaded) return;
+    autoplay.current = false;
+    void playback.playFrom().catch(() => {});
+  }, [playback, status.loaded]);
+  return (
+    <AudioClipControls
+      playback={playback}
+      levels={levels}
+      compact={compact}
+      appearance={appearance}
+      onLongPress={onLongPress}
+      onRetry={onRetry}
+    />
+  );
+}
+
+/** Controls only: compact and detailed presentations never allocate another player. */
+export function AudioClipControls({
+  playback,
+  levels = [],
+  compact = false,
+  appearance = 'default',
+  onLongPress,
+  onRetry,
+}: {
+  playback: AudioClipPlayback;
+  levels?: readonly number[];
+  compact?: boolean;
+  appearance?: Props['appearance'];
+  onLongPress?: () => void;
+  onRetry?: () => void;
+}) {
   const { colors } = useTheme();
   const ink = appearance === 'mine' ? colors.onMine : colors.text;
-  const player = useAudioPlayer({ uri }, { updateInterval: 100, allowsExternalPlayback: false });
-  const status = useAudioPlayerStatus(player);
-  const [failure, setFailure] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
-  const [seeking, setSeeking] = useState<number | null>(null);
-  const mounted = useRef(false);
-  const autoplay = useRef(autoPlay);
-  const seekTarget = useRef<number | null>(null);
-  const seekRunning = useRef(false);
-  const playback = useRef<{ player: typeof player; owner: PlaybackOwner } | null>(null);
-  const pause = useCallback(() => player.pause(), [player]);
-  useEffect(() => {
-    mounted.current = true;
-    const owner = mediaPlayback.register(pause, () => player.playing);
-    playback.current = { player, owner };
-    return () => {
-      mounted.current = false;
-      seekTarget.current = null;
-      if (playback.current?.owner === owner) playback.current = null;
-      owner.dispose();
-    };
-  }, [pause, player]);
-  useEventListener(player, 'playbackStatusUpdate', () => {
-    const current = playback.current;
-    if (mounted.current && current?.player === player) current.owner.observeExplicitPlayback();
-  });
-  const total =
-    Number.isFinite(status.duration) && status.duration > 0
-      ? status.duration
-      : Math.max(0, durationMs / 1000);
-  const current = Math.min(total, Math.max(0, seeking ?? status.currentTime));
+  const status = useSyncExternalStore(
+    playback.subscribe,
+    playback.getSnapshot,
+    playback.getSnapshot,
+  );
+  const total = status.durationSeconds;
+  const current = status.currentSeconds;
   const progress = total > 0 ? current / total : 0;
-  const loadFailed = Boolean(status.error) || status.playbackState === 'failed';
-  const failureMessage = loadFailed ? t('media.thisAudioCouldNotBePlayed') : failure;
-  const report = useCallback((_reason: unknown) => {
-    if (mounted.current) setFailure(t('media.thisAudioCouldNotBePlayed'));
-  }, []);
-  const play = useCallback(async () => {
-    const currentOwner = playback.current;
-    const owner = currentOwner?.player === player ? currentOwner.owner : null;
-    if (!player.isLoaded || !mounted.current || !owner) return;
-    const intent = owner.begin();
-    if (!intent) return;
-    setStarting(true);
-    try {
-      await setAudioModeAsync({
-        playsInSilentMode: true,
-        allowsRecording: false,
-        shouldPlayInBackground: false,
-        interruptionMode: 'doNotMix',
-      });
-      if (!mounted.current || !owner.isCurrent(intent)) return;
-      if (player.duration > 0 && player.currentTime >= player.duration - 0.05)
-        await player.seekTo(0);
-      if (mounted.current && owner.isCurrent(intent)) player.play();
-    } catch (reason) {
-      owner.release(intent);
-      throw reason;
-    } finally {
-      if (mounted.current) setStarting(false);
-    }
-  }, [player]);
-  useEffect(() => {
-    if (!autoplay.current || !status.isLoaded) return;
-    autoplay.current = false;
-    void play().catch(report);
-  }, [status.isLoaded, play, report]);
-
-  function seek(fraction: number) {
-    if (!status.isLoaded || !total) return;
-    const seconds = Math.min(total, Math.max(0, fraction * total));
-    seekTarget.current = seconds;
-    setSeeking(seconds);
-    if (seekRunning.current) return;
-    seekRunning.current = true;
-    void (async () => {
-      try {
-        while (mounted.current && seekTarget.current !== null) {
-          const target = seekTarget.current;
-          seekTarget.current = null;
-          await player.seekTo(target);
-        }
-      } catch (reason) {
-        report(reason);
-      } finally {
-        seekRunning.current = false;
-        if (mounted.current) setSeeking(null);
-      }
-    })();
-  }
-  const rate = status.playbackRate || 1;
+  const rate = status.rate;
+  const loadFailed = status.loadFailed;
+  const failureMessage = status.error ? t('media.thisAudioCouldNotBePlayed') : null;
   return (
     <View style={{ width: '100%', minWidth: 0, gap: compact ? 2 : 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 6 : 10 }}>
@@ -150,16 +109,17 @@ function AudioClipContent({
           onLongPress={onLongPress}
           delayLongPress={350}
           accessibilityRole="button"
-          accessibilityLabel={status.playing ? t('media.pauseAudio') : t('media.playAudio')}
+          accessibilityLabel={
+            status.playing || status.busy ? t('media.pauseAudio') : t('media.playAudio')
+          }
           accessibilityState={{
-            disabled: !status.isLoaded || starting || loadFailed,
-            busy: starting || status.isBuffering,
+            disabled: !status.loaded || loadFailed,
+            busy: status.busy || status.buffering,
           }}
-          disabled={!status.isLoaded || starting || loadFailed}
+          disabled={!status.loaded || loadFailed}
           onPress={() => {
-            setFailure(null);
-            if (status.playing) pauseAudioPlayback();
-            else void play().catch(report);
+            if (status.playing || status.busy) playback.pause();
+            else void playback.playFrom().catch(() => {});
           }}
           style={({ pressed }) => ({
             width: 44,
@@ -170,7 +130,7 @@ function AudioClipContent({
             opacity: pressed ? 0.6 : 1,
           })}
         >
-          {!loadFailed && (!status.isLoaded || starting || status.isBuffering) ? (
+          {!loadFailed && (!status.loaded || status.busy || status.buffering) ? (
             <ActivityIndicator color={ink} size="small" />
           ) : (
             <Icon
@@ -196,8 +156,10 @@ function AudioClipContent({
           duration={total}
           ink={ink}
           compact={compact}
-          disabled={!status.isLoaded}
-          onSeek={seek}
+          disabled={!status.loaded}
+          onSeek={(fraction) => {
+            void playback.seekSeconds(fraction * total).catch(() => {});
+          }}
         />
         <View style={{ alignItems: 'flex-end', justifyContent: 'center', minWidth: 44 }}>
           <Text style={{ color: ink, opacity: 0.72, fontSize: 12, fontVariant: ['tabular-nums'] }}>
@@ -211,13 +173,9 @@ function AudioClipContent({
             accessibilityLabel={t('media.playbackRateLabel', {
               rate: new Intl.NumberFormat(formatLocale, { maximumFractionDigits: 1 }).format(rate),
             })}
-            disabled={!status.isLoaded}
+            disabled={!status.loaded}
             onPress={() => {
-              try {
-                player.setPlaybackRate(rate === 1 ? 1.5 : rate === 1.5 ? 2 : 1);
-              } catch (reason) {
-                report(reason);
-              }
+              playback.setRate(rate === 1 ? 1.5 : rate === 1.5 ? 2 : 1);
             }}
             style={({ pressed }) => ({
               minHeight: 32,
@@ -241,7 +199,7 @@ function AudioClipContent({
         </Text>
       ) : null}
       {loadFailed ? (
-        <NativeButton secondary label={t('media.retryAudio')} onPress={onRetry} />
+        <NativeButton secondary label={t('media.retryAudio')} onPress={onRetry ?? playback.retry} />
       ) : null}
     </View>
   );

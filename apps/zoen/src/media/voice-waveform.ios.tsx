@@ -25,7 +25,10 @@ import {
 import { formatLocale, t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import {
+  editedToOriginalFrame,
+  originalToEditedFrame,
   projectVoiceDraft,
+  voiceSelectionToEditedRange,
   type FrameRange,
   type VoiceDraft,
   type VoiceEditCommand,
@@ -37,6 +40,17 @@ type Props = {
   onTrimPreviewChange: (draft: VoiceDraft, pending: boolean, range: FrameRange | null) => void;
   pendingTrim?: FrameRange | null;
   disabled?: boolean;
+  playheadOriginalFrame?: number | null;
+  onSeekOriginal?: (observedDraft: VoiceDraft, frame: number) => void;
+  onPlayFromSelection?: (observedDraft: VoiceDraft, range: FrameRange) => void;
+  auditionDisabled?: boolean;
+  auditionLabels?: {
+    position: string;
+    hint: string;
+    playFromSelection: string;
+    seekBackward: string;
+    seekForward: string;
+  };
 };
 type Preview = { draft: VoiceDraft; range: FrameRange };
 type Drag = {
@@ -58,12 +72,18 @@ export function VoiceWaveform({
   onTrimPreviewChange,
   pendingTrim = null,
   disabled = false,
+  playheadOriginalFrame = null,
+  onSeekOriginal,
+  onPlayFromSelection,
+  auditionDisabled = false,
+  auditionLabels,
 }: Props) {
   const { colors, scheme } = useTheme();
   const [width, setWidth] = useState(0);
   const [preview, setPreview] = useState<Preview | null>(null);
   const previewNow = useRef<Preview | null>(null);
   const [selection, setSelection] = useState<Preview | null>(null);
+  const selectionNow = useRef<Preview | null>(null);
   const [precision, setPrecision] = useState({ source: draft.original.id, open: false });
   const drag = useRef<Drag | null>(null);
   const tapping = useRef<{ draft: VoiceDraft; width: number } | null>(null);
@@ -94,6 +114,16 @@ export function VoiceWaveform({
     return previewNow.current?.draft === draft
       ? previewNow.current.range
       : (pendingTrim ?? draft.edit.trim);
+  }
+  function hasPendingTrim() {
+    const range = latestTrim();
+    return (
+      range.startFrame !== draft.edit.trim.startFrame || range.endFrame !== draft.edit.trim.endFrame
+    );
+  }
+  function previewSelection(range: FrameRange) {
+    selectionNow.current = { draft, range };
+    setSelection({ draft, range });
   }
   const projection = useMemo(
     () =>
@@ -126,7 +156,7 @@ export function VoiceWaveform({
               startFrame: Math.min(frame, context.origin),
               endFrame: Math.max(frame, context.origin),
             };
-    if (context.kind === 'selection') setSelection({ draft, range });
+    if (context.kind === 'selection') previewSelection(range);
     else previewTrim(range);
     return range;
   }
@@ -169,6 +199,7 @@ export function VoiceWaveform({
       drag.current = null;
       if (context?.draft === draft) {
         previewTrim(context.trim);
+        selectionNow.current = context.selection;
         setSelection(context.selection);
       }
     },
@@ -183,6 +214,7 @@ export function VoiceWaveform({
       if (
         event.canceled ||
         disabled ||
+        hasPendingTrim() ||
         tapping.current?.draft !== draft ||
         tapping.current.width !== width
       )
@@ -199,6 +231,7 @@ export function VoiceWaveform({
       }
       if (startFrame <= frame && frame < frames)
         onEdit({ type: 'restore', range: { startFrame, endFrame: frames } });
+      else if (!auditionDisabled) onSeekOriginal?.(draft, frame);
     },
     onFinalize: () => {
       tapping.current = null;
@@ -217,12 +250,21 @@ export function VoiceWaveform({
   const trimChanged =
     trim.startFrame !== draft.edit.trim.startFrame || trim.endFrame !== draft.edit.trim.endFrame;
   const selectedRange = selected ?? trim;
+  const playhead =
+    playheadOriginalFrame !== null && Number.isFinite(playheadOriginalFrame)
+      ? Math.max(0, Math.min(frames, playheadOriginalFrame))
+      : null;
+  const auditionReady =
+    !disabled && !auditionDisabled && !trimChanged && canonicalProjection.frameCount > 0;
+  const seekable = Boolean(onSeekOriginal && auditionLabels);
+  const selectionPlayable =
+    selected !== null && voiceSelectionToEditedRange(canonicalProjection, selected) !== null;
   function slider(
     label: string,
     value: number,
     min: number,
     max: number,
-    change: ((value: number) => void) | 'start' | 'end',
+    change: 'start' | 'end' | 'selectionStart' | 'selectionEnd',
   ) {
     return (
       <VStack alignment="leading" spacing={4}>
@@ -242,8 +284,18 @@ export function VoiceWaveform({
           onValueChange={(fraction) => {
             if (disabled || !Number.isFinite(fraction)) return;
             const value = clamp(min + Math.max(0, Math.min(1, fraction)) * (max - min), min, max);
-            if (typeof change === 'function') change(value);
-            else {
+            if (change === 'selectionStart' || change === 'selectionEnd') {
+              const current =
+                selectionNow.current?.draft === draft ? selectionNow.current.range : selectedRange;
+              previewSelection(
+                change === 'selectionStart'
+                  ? { startFrame: Math.min(value, current.endFrame), endFrame: current.endFrame }
+                  : {
+                      startFrame: current.startFrame,
+                      endFrame: Math.max(current.startFrame, value),
+                    },
+              );
+            } else {
               const current = latestTrim();
               previewTrim(
                 change === 'start'
@@ -268,14 +320,50 @@ export function VoiceWaveform({
       >
         {t('media.voiceWaveform')}
       </Text>
-      <Text style={{ color: colors.secondary, fontSize: 13 }}>{t('media.voiceWaveformHint')}</Text>
+      <Text style={{ color: colors.secondary, fontSize: 13 }}>
+        {seekable ? auditionLabels!.hint : t('media.voiceWaveformHint')}
+      </Text>
       <GestureDetector gesture={gesture}>
         <View
           collapsable={false}
           accessible
-          accessibilityRole="image"
-          accessibilityLabel={t('media.voiceWaveform')}
-          accessibilityHint={t('media.voiceWaveformHint')}
+          accessibilityRole={seekable ? 'adjustable' : 'image'}
+          accessibilityLabel={seekable ? auditionLabels!.position : t('media.voiceWaveform')}
+          accessibilityHint={seekable ? auditionLabels!.hint : t('media.voiceWaveformHint')}
+          accessibilityState={seekable ? { disabled: !auditionReady } : undefined}
+          accessibilityValue={
+            seekable
+              ? {
+                  min: 0,
+                  max: frames,
+                  now: playhead ?? canonicalProjection.keptRanges[0]?.startFrame ?? 0,
+                  text: `${time(playhead ?? canonicalProjection.keptRanges[0]?.startFrame ?? 0)} / ${time(frames)}`,
+                }
+              : undefined
+          }
+          accessibilityActions={
+            seekable
+              ? [
+                  { name: 'decrement', label: auditionLabels!.seekBackward },
+                  { name: 'increment', label: auditionLabels!.seekForward },
+                ]
+              : undefined
+          }
+          onAccessibilityAction={(event) => {
+            if (disabled || auditionDisabled || hasPendingTrim() || !onSeekOriginal) return;
+            const action = event.nativeEvent.actionName;
+            if (action !== 'increment' && action !== 'decrement') return;
+            const current = originalToEditedFrame(
+              canonicalProjection,
+              playhead ?? canonicalProjection.keptRanges[0]?.startFrame ?? 0,
+            );
+            if (current === null) return;
+            const frame = editedToOriginalFrame(
+              canonicalProjection,
+              current + (action === 'increment' ? 5 : -5) * draft.original.sampleRate,
+            );
+            if (frame !== null) onSeekOriginal(draft, frame);
+          }}
           onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
           style={{
             height: 104,
@@ -345,6 +433,21 @@ export function VoiceWaveform({
               }}
             />
           ) : null}
+          {playhead !== null && auditionReady ? (
+            <View
+              testID="voice-editor-playhead"
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: position(playhead) - 1,
+                top: 12,
+                width: 2,
+                height: 80,
+                borderRadius: 1,
+                backgroundColor: colors.text,
+              }}
+            />
+          ) : null}
           {[trim.startFrame, trim.endFrame].map((frame, index) => (
             <View
               key={index}
@@ -410,6 +513,29 @@ export function VoiceWaveform({
           ) : null}
           {selected ? (
             <VStack alignment="leading" spacing={8}>
+              {onPlayFromSelection && auditionLabels ? (
+                <Button
+                  label={auditionLabels.playFromSelection}
+                  systemImage="play.fill"
+                  onPress={() => {
+                    const range =
+                      selectionNow.current?.draft === draft ? selectionNow.current.range : selected;
+                    if (
+                      !disabled &&
+                      !auditionDisabled &&
+                      !hasPendingTrim() &&
+                      voiceSelectionToEditedRange(canonicalProjection, range)
+                    )
+                      onPlayFromSelection(draft, range);
+                  }}
+                  modifiers={[
+                    buttonStyle('bordered'),
+                    frame({ minHeight: 44 }),
+                    disabledModifier(!auditionReady || !selectionPlayable),
+                    foregroundStyle(colors.accent),
+                  ]}
+                />
+              ) : null}
               <Button
                 label={t('media.voiceCutSelection')}
                 onPress={() => {
@@ -479,22 +605,14 @@ export function VoiceWaveform({
                   selectedRange.startFrame,
                   0,
                   selectedRange.endFrame,
-                  (startFrame) =>
-                    setSelection({
-                      draft,
-                      range: { startFrame, endFrame: selectedRange.endFrame },
-                    }),
+                  'selectionStart',
                 )}
                 {slider(
                   t('media.voiceSelectionEnd'),
                   selectedRange.endFrame,
                   selectedRange.startFrame,
                   frames,
-                  (endFrame) =>
-                    setSelection({
-                      draft,
-                      range: { startFrame: selectedRange.startFrame, endFrame },
-                    }),
+                  'selectionEnd',
                 )}
               </VStack>
             </VStack>

@@ -12,7 +12,12 @@ import * as voiceSuggestions from '../media/voice-suggestions.ts';
 import * as voiceTrimPreview from '../media/voice-trim-preview.ts';
 
 type Element = { type: unknown; props: Record<string, any> };
-type Slot = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
+type Slot = {
+  value?: any;
+  deps?: readonly unknown[];
+  cleanup?: () => void;
+  effect?: () => void | (() => void);
+};
 const files = ['MediaComposer', 'voice-review.ios', 'voice-waveform.ios', 'voice-dock'] as const;
 const compiled = Object.fromEntries(
   await Promise.all(
@@ -64,6 +69,7 @@ function component(name: (typeof files)[number], ports: Record<string, unknown>)
     const slot = next();
     if (slot.deps && deps.every((value, index) => Object.is(value, slot.deps![index]))) return;
     slot.deps = deps;
+    slot.effect = read;
     effects.push(() => {
       slot.cleanup?.();
       slot.cleanup = read() ?? undefined;
@@ -145,10 +151,20 @@ function component(name: (typeof files)[number], ports: Record<string, unknown>)
     '../theme': { useTheme: () => ({ colors: {}, scheme: 'light' }) },
     '../components/primitives': { NativeButton: 'NativeButton', IconButton: 'IconButton' },
     '../components/composer-action': { ComposerAction: 'ComposerAction' },
-    './AudioClip': { AudioClip: 'AudioClip', clipTime: String, pauseAudioPlayback() {} },
+    './AudioClip': {
+      AudioClip: 'AudioClip',
+      AudioClipControls: 'AudioClipControls',
+      clipTime: String,
+      pauseAudioPlayback() {},
+    },
+    './voice-preview-playback': {
+      VoicePreviewPlayback: 'VoicePreviewPlayback',
+      useVoicePreviewPlayback: () => null,
+    },
     './voice-waveform.ios': { VoiceWaveform: 'VoiceWaveform' },
     './voice-words.ios': { VoiceWords: 'VoiceWords' },
     './voice-edit.ts': voiceEdit,
+    './voice-edit': voiceEdit,
     './voice-suggestions.ts': voiceSuggestions,
     './voice-trim-preview': voiceTrimPreview,
     ...ports,
@@ -182,6 +198,14 @@ function component(name: (typeof files)[number], ports: Record<string, unknown>)
       focus() {
         owner.focused = true;
         owner.focusCleanup = owner.focusEffect?.() ?? undefined;
+      },
+      replayEffects() {
+        const committed = owner.slots.filter((slot) => slot.effect);
+        for (const slot of committed) {
+          slot.cleanup?.();
+          slot.cleanup = undefined;
+        }
+        for (const slot of committed) slot.cleanup = slot.effect!() ?? undefined;
       },
       unmount() {
         owner.slots.forEach((slot) => slot.cleanup?.());
@@ -410,6 +434,12 @@ function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
       },
     },
     './cache-work': { sensitiveCacheWork: work },
+    './AudioClip': {
+      AudioClip: 'AudioClip',
+      AudioClipControls: 'AudioClipControls',
+      clipTime: String,
+      pauseAudioPlayback: () => events.push('playback:pause'),
+    },
     '../components/composer-action': { ComposerAction: 'ComposerAction' },
     './voice-review-owner': { VoiceReviewOwner },
     './voice-review': { VoiceReview: 'VoiceReview' },
@@ -463,6 +493,125 @@ function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
     stops: recorder.stops,
   };
 }
+
+async function stagedPreview(f: ReturnType<typeof recording>) {
+  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  await tick();
+  await find(f.render(), 'VoiceDock').props.onStop();
+  await tick();
+  const tree = f.render();
+  const preview = find(tree, 'VoicePreviewPlayback');
+  const session = preview.props.session as VoiceSession;
+  assert.ok(session?.getSendable(), 'the real native prepare/render boundary must be ready');
+  return { tree, preview, session };
+}
+
+test('ordinary StrictMode effect replay allows a fresh capture and current shared preview', async () => {
+  const f = recording(true);
+  f.render();
+  f.app.replayEffects();
+  const { preview, session } = await stagedPreview(f);
+  assert.equal(f.records(), 1);
+  assert.equal(preview.props.isCurrent(session), true);
+  assert.equal(preview.props.isCurrent(new VoiceSession(voicePort())), false);
+  await find(f.render(), 'VoiceDock').props.onCancel();
+});
+
+test('actual parent preview gate observes focus, AppState and suspension without stale rendered admission', async () => {
+  const f = recording(true);
+  const { preview, session } = await stagedPreview(f);
+  const current = preview.props.isCurrent;
+  assert.equal(current(session), true);
+  f.app.blur();
+  assert.equal(current(session), false, 'blur revokes before another React render');
+  f.app.focus();
+  assert.equal(current(session), true);
+  f.background();
+  assert.equal(current(session), false, 'background revokes before another React render');
+  f.background('active');
+  assert.equal(current(session), true);
+  for (const flag of ['suspended', 'disabled']) {
+    const blocked = find(f.render({ [flag]: true }), 'VoicePreviewPlayback');
+    assert.strictEqual(blocked.props.session, session);
+    assert.equal(current(session), false);
+    assert.equal(blocked.props.disabled, true);
+    f.render({ [flag]: false });
+    assert.equal(current(session), true);
+  }
+  await find(f.render(), 'VoiceDock').props.onCancel();
+});
+
+test('device cleanup permanently retires parent playback before await and survives rerender/effect replay', async () => {
+  const f = recording(true);
+  const { preview, session } = await stagedPreview(f);
+  assert.equal(preview.props.isCurrent(session), true);
+  const cleanup = [...f.cleanups][0]!;
+  const draining = cleanup();
+  assert.equal(preview.props.isCurrent(session), false, 'retirement is synchronous');
+  const next = find(f.render(), 'VoicePreviewPlayback');
+  assert.strictEqual(next.props.session, session);
+  assert.equal(next.props.isCurrent(session), false);
+  f.app.replayEffects();
+  f.app.focus();
+  const replayed = find(f.render(), 'VoicePreviewPlayback');
+  assert.equal(
+    replayed.props.isCurrent(session),
+    false,
+    'effect setup cannot undo device retirement',
+  );
+  await draining;
+  await tick();
+  assert.equal(find(f.render(), 'VoicePreviewPlayback').props.isCurrent(session), false);
+  f.app.unmount();
+  await tick();
+});
+
+test('expanding and collapsing the actual composer and dock do not pause the shared preview', async () => {
+  const f = recording(true);
+  const { tree, preview, session } = await stagedPreview(f);
+  const before = f.events.filter((event) => event === 'playback:pause').length;
+  const dock = component('voice-dock', {
+    './AudioClip': {
+      AudioClip: 'AudioClip',
+      AudioClipControls: 'AudioClipControls',
+      clipTime: String,
+      pauseAudioPlayback: () => f.events.push('playback:pause'),
+    },
+  });
+  const compact = dock.render(find(tree, 'VoiceDock').props);
+  find(compact, 'IconButton', 'media.voiceExpand').props.onPress();
+  const expanded = f.render();
+  assert.equal(find(expanded, 'MediaSheet').props.visible, true);
+  assert.strictEqual(find(expanded, 'VoicePreviewPlayback').props.session, session);
+  assert.equal(preview.props.isCurrent(session), true);
+  find(expanded, 'IconButton', 'media.voiceCollapse').props.onPress();
+  const collapsed = f.render();
+  assert.equal(find(collapsed, 'MediaSheet').props.visible, false);
+  assert.ok(find(collapsed, 'VoiceDock'));
+  assert.strictEqual(find(collapsed, 'VoicePreviewPlayback').props.session, session);
+  assert.equal(f.events.filter((event) => event === 'playback:pause').length, before);
+  await find(collapsed, 'VoiceDock').props.onCancel();
+});
+
+for (const action of ['Send', 'Cancel'] as const)
+  test(`${action} immediately pauses and blocks the actual parent preview before React commits`, async () => {
+    const f = recording(true);
+    const { tree, preview, session } = await stagedPreview(f);
+    const before = f.events.filter((event) => event === 'playback:pause').length;
+    const props = find(tree, 'VoiceDock').props;
+    const pending = action === 'Send' ? props.onSend(session.getSendable()) : props.onCancel();
+    assert.equal(f.events.filter((event) => event === 'playback:pause').length, before + 1);
+    assert.equal(
+      preview.props.isCurrent(session),
+      false,
+      'busy admission closes before stop awaits',
+    );
+    await pending;
+    assert.equal(find(f.render(), 'VoicePreviewPlayback').props.session, null);
+    assert.deepEqual(f.sent, action === 'Send' ? [4000] : []);
+    f.app.unmount();
+    await tick();
+  });
 
 test('audio mode restore failure does not poison stop or prevent retrying discard', async () => {
   const f = recording();
@@ -537,9 +686,13 @@ test('the actual dock exposes non-destructive audio-mode recovery beside a playa
   const props = find(f.render(), 'VoiceDock').props;
   const session = props.session;
   const captured = session.getSendable();
-  const dock = component('voice-dock', {});
+  const dock = component('voice-dock', {
+    './voice-preview-playback': {
+      useVoicePreviewPlayback: () => ({ session, preview: captured.preview, playback: {} }),
+    },
+  });
   const tree = dock.render(props);
-  assert.ok(find(tree, 'AudioClip'));
+  assert.ok(find(tree, 'AudioClipControls'));
   f.failRestore(false);
   find(tree, 'IconButton', 'media.voiceTryAgain').props.onPress();
   await tick();
@@ -1234,4 +1387,194 @@ test('start and end slider events in one render preserve both latest endpoints',
   assert.deepEqual(session.getSnapshot().draft?.edit.trim, { startFrame: 1000, endFrame: 3000 });
   assert.equal(session.getSendable()?.preview.durationMs, 2000);
   await session.close();
+});
+
+const auditionLabels = {
+  position: 'Original audio position',
+  hint: 'Seek in kept audio. Removed audio can be restored by tapping.',
+  playFromSelection: 'Play from selection',
+  seekBackward: 'Back five seconds in edited audio',
+  seekForward: 'Forward five seconds in edited audio',
+};
+function auditionWave(props: Element['props']) {
+  const waveform = component('voice-waveform.ios', {});
+  const initial = waveform.render(props);
+  const track = nodes(initial).find((node) => node.props.accessibilityRole === 'adjustable');
+  assert.ok(track);
+  track.props.onLayout({ nativeEvent: { layout: { width: 244 } } });
+  return { waveform, tree: waveform.render(props) };
+}
+
+test('retained waveform taps seek the edited player without edits; removed taps still restore', () => {
+  const draft = voiceEdit.editVoiceDraft(
+    voiceEdit.createVoiceDraft({
+      id: 'audition-original',
+      sampleRate: 1000,
+      frameCount: 10_000,
+      levels: [0.2, 0.8],
+    }),
+    { type: 'cut', range: { startFrame: 2000, endFrame: 3000 } },
+  );
+  const edits: unknown[] = [];
+  const seeks: [voiceEdit.VoiceDraft, number][] = [];
+  const props = {
+    draft,
+    onEdit: (command: unknown) => edits.push(command),
+    onTrimPreviewChange() {},
+    onSeekOriginal: (observed: voiceEdit.VoiceDraft, frame: number) =>
+      seeks.push([observed, frame]),
+    auditionLabels,
+  };
+  const { tree } = auditionWave(props);
+  const tap = find(tree, 'GestureDetector').props.gesture[1];
+  tap.onBegin();
+  tap.onDeactivate({ canceled: false, x: 22 + (3200 / 10_000) * 200 });
+  assert.equal(seeks.length, 1);
+  assert.strictEqual(seeks[0]![0], draft);
+  assert.equal(seeks[0]![1], 3200);
+  assert.deepEqual(edits, []);
+  assert.equal(draft.undo.length, 1);
+  tap.onBegin();
+  tap.onDeactivate({ canceled: false, x: 22 + (2500 / 10_000) * 200 });
+  assert.deepEqual(JSON.parse(JSON.stringify(edits)), [
+    { type: 'restore', range: { startFrame: 2000, endFrame: 3000 } },
+  ]);
+  assert.equal(seeks.length, 1);
+  tap.onBegin();
+  tap.onDeactivate({ canceled: true, x: 100 });
+  assert.equal(seeks.length, 1, 'a canceled/vertical gesture cannot become an audition');
+});
+
+test('pending trim blocks stale retained tap, selection play and accessibility seek until Discard', () => {
+  const draft = voiceEdit.createVoiceDraft({
+    id: 'pending-audition',
+    sampleRate: 1000,
+    frameCount: 10_000,
+    levels: [0.4],
+  });
+  const seeks: number[] = [];
+  const plays: voiceEdit.FrameRange[] = [];
+  const edits: unknown[] = [];
+  const props = {
+    draft,
+    onEdit: (command: unknown) => edits.push(command),
+    onTrimPreviewChange() {},
+    onSeekOriginal: (_observed: voiceEdit.VoiceDraft, frame: number) => seeks.push(frame),
+    onPlayFromSelection: (_observed: voiceEdit.VoiceDraft, range: voiceEdit.FrameRange) =>
+      plays.push(range),
+    playheadOriginalFrame: 1000,
+    auditionLabels,
+  };
+  const { waveform, tree } = auditionWave(props);
+  nodes(tree)
+    .filter((node) => node.type === 'Slider')[2]!
+    .props.onValueChange(0.1);
+  const selected = waveform.render(props);
+  const stalePlay = find(selected, 'Button', auditionLabels.playFromSelection);
+  const staleTrack = nodes(selected).find((node) => node.props.accessibilityRole === 'adjustable')!;
+  const staleTap = find(selected, 'GestureDetector').props.gesture[1];
+  staleTap.onBegin();
+  find(selected, 'Slider').props.onValueChange(0.2);
+  staleTap.onDeactivate({ canceled: false, x: 100 });
+  stalePlay.props.onPress();
+  staleTrack.props.onAccessibilityAction({ nativeEvent: { actionName: 'increment' } });
+  assert.deepEqual(seeks, []);
+  assert.deepEqual(plays, []);
+  assert.deepEqual(edits, []);
+  const pending = waveform.render(props);
+  assert.ok(
+    find(pending, 'Button', auditionLabels.playFromSelection).props.modifiers.some(
+      ([name, value]: [string, boolean]) => name === 'disabled' && value,
+    ),
+  );
+  assert.equal(
+    nodes(pending).some((node) => node.props.testID === 'voice-editor-playhead'),
+    false,
+  );
+  find(pending, 'Button', 'media.voiceDiscardTrim').props.onPress();
+  stalePlay.props.onPress();
+  assert.deepEqual(JSON.parse(JSON.stringify(plays)), [{ startFrame: 1000, endFrame: 10_000 }]);
+  assert.deepEqual(edits, []);
+});
+
+test('selection audition uses the latest native endpoints and refuses a fully removed selection', () => {
+  const draft = voiceEdit.editVoiceDraft(
+    voiceEdit.createVoiceDraft({
+      id: 'selection-audition',
+      sampleRate: 1000,
+      frameCount: 10_000,
+      levels: [0.4],
+    }),
+    { type: 'cut', range: { startFrame: 2000, endFrame: 3000 } },
+  );
+  const plays: voiceEdit.FrameRange[] = [];
+  const props = {
+    draft,
+    onEdit() {},
+    onTrimPreviewChange() {},
+    onSeekOriginal() {},
+    onPlayFromSelection: (_observed: voiceEdit.VoiceDraft, range: voiceEdit.FrameRange) =>
+      plays.push(range),
+    auditionLabels,
+  };
+  const { waveform, tree } = auditionWave(props);
+  nodes(tree)
+    .filter((node) => node.type === 'Slider')[2]!
+    .props.onValueChange(0.1);
+  const selected = waveform.render(props);
+  const stalePlay = find(selected, 'Button', auditionLabels.playFromSelection);
+  const sliders = nodes(selected).filter((node) => node.type === 'Slider');
+  sliders[2]!.props.onValueChange(0.2);
+  sliders[3]!.props.onValueChange(7 / 9);
+  stalePlay.props.onPress();
+  assert.deepEqual(JSON.parse(JSON.stringify(plays)), [{ startFrame: 2000, endFrame: 8000 }]);
+  const current = waveform.render(props);
+  const end = nodes(current).filter((node) => node.type === 'Slider')[3]!;
+  end.props.onValueChange(1 / 8);
+  // The current slider domain is [2000,10000], so this selects exactly [2000,3000).
+  stalePlay.props.onPress();
+  assert.equal(plays.length, 1);
+  const removed = waveform.render(props);
+  assert.ok(
+    find(removed, 'Button', auditionLabels.playFromSelection).props.modifiers.some(
+      ([name, value]: [string, boolean]) => name === 'disabled' && value,
+    ),
+  );
+});
+
+test('original waveform accessibility seeks edited time across cuts and displays the mapped playhead', () => {
+  const draft = voiceEdit.editVoiceDraft(
+    voiceEdit.createVoiceDraft({
+      id: 'accessible-audition',
+      sampleRate: 1000,
+      frameCount: 10_000,
+      levels: [0.3],
+    }),
+    { type: 'cut', range: { startFrame: 2000, endFrame: 3000 } },
+  );
+  const seeks: number[] = [];
+  const props = {
+    draft,
+    onEdit() {},
+    onTrimPreviewChange() {},
+    onSeekOriginal: (observed: voiceEdit.VoiceDraft, frame: number) => {
+      assert.strictEqual(observed, draft);
+      seeks.push(frame);
+    },
+    playheadOriginalFrame: 1500,
+    auditionLabels,
+  };
+  const { waveform, tree } = auditionWave(props);
+  const track = nodes(tree).find((node) => node.props.accessibilityRole === 'adjustable')!;
+  track.props.onAccessibilityAction({ nativeEvent: { actionName: 'increment' } });
+  assert.deepEqual(seeks, [7500]);
+  assert.equal(
+    nodes(tree).find((node) => node.props.testID === 'voice-editor-playhead')!.props.style.left,
+    51,
+  );
+  const locked = waveform.render({ ...props, auditionDisabled: true });
+  const lockedTrack = nodes(locked).find((node) => node.props.accessibilityRole === 'adjustable')!;
+  assert.equal(lockedTrack.props.accessibilityState.disabled, true);
+  lockedTrack.props.onAccessibilityAction({ nativeEvent: { actionName: 'decrement' } });
+  assert.deepEqual(seeks, [7500]);
 });

@@ -4,11 +4,14 @@ import {
   attachVoiceTranscript,
   createVoiceDraft,
   editVoiceDraft,
+  editedToOriginalFrame,
+  originalToEditedFrame,
   projectVoiceDraft,
   redoVoiceEdit,
   remapVoiceWaveform,
   undoVoiceEdit,
   voiceRenderPlan,
+  voiceSelectionToEditedRange,
   VoiceEditError,
   type VoiceEditErrorCode,
   type VoiceSource,
@@ -48,6 +51,87 @@ const restore = (startFrame: number, endFrame: number) => ({
 });
 const hasCode = (code: VoiceEditErrorCode) => (error: unknown) =>
   error instanceof VoiceEditError && error.code === code;
+
+test('audition maps retained frames and selections through trim, cuts and a removed word', () => {
+  const draft = editVoiceDraft(
+    createVoiceDraft(source(), {
+      text: 'removed',
+      words: [{ id: 'removed', text: 'removed', startFrame: 7000, endFrame: 7500 }],
+    }),
+    [trim(1000, 9000), cut(2000, 3000), cut(5000, 6000), setWordRemoved('removed', true)],
+  );
+  const projection = projectVoiceDraft(draft);
+  assert.equal(projection.frameCount, 5500);
+  assert.equal(originalToEditedFrame(projection, 3200), 1200);
+  assert.equal(originalToEditedFrame(projection, 2500), 1000);
+  assert.equal(originalToEditedFrame(projection, -10), 0);
+  assert.equal(originalToEditedFrame(projection, 20_000), 5500);
+  for (const [edited, original] of [
+    [0, 1000],
+    [999, 1999],
+    [1000, 3000],
+    [3000, 6000],
+    [4000, 7500],
+    [5500, 9000],
+    [20_000, 9000],
+    [-1, 1000],
+    [1000.5, 3000.5],
+  ])
+    assert.equal(editedToOriginalFrame(projection, edited!), original);
+  assert.deepEqual(voiceSelectionToEditedRange(projection, { startFrame: 1800, endFrame: 6200 }), {
+    startFrame: 800,
+    endFrame: 3200,
+  });
+  assert.deepEqual(voiceSelectionToEditedRange(projection, { startFrame: 2100, endFrame: 3500 }), {
+    startFrame: 1000,
+    endFrame: 1500,
+  });
+  assert.equal(voiceSelectionToEditedRange(projection, { startFrame: 2100, endFrame: 2900 }), null);
+  assert.equal(voiceSelectionToEditedRange(projection, { startFrame: 2000, endFrame: 3000 }), null);
+});
+
+test('audition round trips never land inside removed audio and follow a restored fragment', () => {
+  const initial = createVoiceDraft(source(), transcript);
+  const cutDraft = editVoiceDraft(initial, [trim(500, 8000), cut(1200, 1800)]);
+  const restored = editVoiceDraft(cutDraft, setWordRemoved('secret', false));
+  for (const draft of [cutDraft, restored, editVoiceDraft(restored, trim(0, 10_000))]) {
+    const projection = projectVoiceDraft(draft);
+    for (let output = 0; output < projection.frameCount; output += 13) {
+      const original = editedToOriginalFrame(projection, output)!;
+      assert.ok(
+        projection.keptRanges.some(
+          (kept) => kept.startFrame <= original && original < kept.endFrame,
+        ),
+      );
+      assert.equal(originalToEditedFrame(projection, original), output);
+    }
+  }
+  assert.equal(editedToOriginalFrame(projectVoiceDraft(cutDraft), 700), 1800);
+  assert.equal(editedToOriginalFrame(projectVoiceDraft(restored), 700), 1200);
+});
+
+test('empty edits and nonfinite audition inputs have no seekable or playable position', () => {
+  const full = projectVoiceDraft(createVoiceDraft(source()));
+  const empty = projectVoiceDraft(editVoiceDraft(createVoiceDraft(source()), cut(0, 10_000)));
+  for (const projection of [full, empty])
+    for (const value of [NaN, Infinity, -Infinity]) {
+      assert.equal(originalToEditedFrame(projection, value), null);
+      assert.equal(editedToOriginalFrame(projection, value), null);
+      assert.equal(
+        voiceSelectionToEditedRange(projection, { startFrame: value, endFrame: 5000 }),
+        null,
+      );
+    }
+  assert.equal(originalToEditedFrame(empty, 0), null);
+  assert.equal(editedToOriginalFrame(empty, 0), null);
+  assert.equal(voiceSelectionToEditedRange(empty, { startFrame: 0, endFrame: 5000 }), null);
+  for (const selection of [
+    { startFrame: 5000, endFrame: 5000 },
+    { startFrame: 6000, endFrame: 5000 },
+    { startFrame: 11_000, endFrame: 12_000 },
+  ])
+    assert.equal(voiceSelectionToEditedRange(full, selection), null);
+});
 
 test('audio descriptor, transcript and edit history are defensive immutable copies', () => {
   const input = { ...source(), levels: [0.2, 0.4] };

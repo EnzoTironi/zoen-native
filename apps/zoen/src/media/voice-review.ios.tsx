@@ -11,8 +11,14 @@ import {
 import { NativeButton } from '../components/primitives';
 import { formatLocale, locale, t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
-import { AudioClip, pauseAudioPlayback } from './AudioClip';
-import type { FrameRange, VoiceDraft, VoiceEditCommand } from './voice-edit';
+import { AudioClipControls, pauseAudioPlayback } from './AudioClip';
+import {
+  editedToOriginalFrame,
+  type FrameRange,
+  type VoiceDraft,
+  type VoiceEditCommand,
+} from './voice-edit';
+import { useVoicePreviewPlayback } from './voice-preview-playback';
 import {
   hasPendingVoiceTrim,
   updatePendingVoiceTrim,
@@ -25,6 +31,8 @@ import { getVoiceSuggestions, voiceSuggestionCommands } from './voice-suggestion
 import type { VoiceReviewProps } from './voice-review.types';
 
 type LocalState = { session: VoiceSession; sending: boolean; error: string | null };
+const subscribeNoPlayback = () => () => {};
+const noPlaybackSnapshot = () => null;
 
 function durationLabel(milliseconds: number): string {
   return `${new Intl.NumberFormat(formatLocale, {
@@ -49,6 +57,12 @@ export function VoiceReview({
   onRetryPrepare,
   onPendingTrimChange,
 }: VoiceReviewProps) {
+  const sharedPreview = useVoicePreviewPlayback();
+  const playbackState = useSyncExternalStore(
+    sharedPreview?.playback.subscribe ?? subscribeNoPlayback,
+    sharedPreview?.playback.getSnapshot ?? noPlaybackSnapshot,
+    sharedPreview?.playback.getSnapshot ?? noPlaybackSnapshot,
+  );
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const { colors, scheme } = useTheme();
   const [local, setLocal] = useState<LocalState>({ session, sending: false, error: null });
@@ -75,9 +89,24 @@ export function VoiceReview({
   const draft = state.draft;
   const trimPending =
     !!state.pendingTrim || (pendingTrim?.session === session && pendingTrim.draft === draft);
-  // A previous export is never offered as the preview of a new edit. Unmounting AudioClip
-  // also releases its Expo player; we pause synchronously before any committed edit/send.
+  // A previous export is never offered as the preview of a new edit. Both views
+  // control the parent's player; edits revoke it synchronously before retiring a render.
   const preview = !locked && !trimPending && !state.rendering && sendable ? sendable.preview : null;
+  const auditionReady = Boolean(
+    preview &&
+    draft &&
+    sharedPreview?.session === session &&
+    sharedPreview.preview === preview &&
+    sharedPreview.isCurrent(draft) &&
+    playbackState?.loaded,
+  );
+  const playheadOriginalFrame =
+    auditionReady && state.projection && state.source && playbackState
+      ? editedToOriginalFrame(
+          state.projection,
+          Math.round(playbackState.currentSeconds * state.source.sampleRate),
+        )
+      : null;
   function trimPreviewChanged(observed: VoiceDraft, pending: boolean, range?: FrameRange | null) {
     if (live.current?.session !== session) return;
     if (range !== undefined) session.setPendingTrim(observed, range);
@@ -207,13 +236,8 @@ export function VoiceReview({
           <Text style={{ color: colors.secondary }}>{t('media.voicePreparing')}</Text>
         </View>
       ) : null}
-      {preview ? (
-        <AudioClip
-          key={preview.uri}
-          uri={preview.uri}
-          durationMs={preview.durationMs}
-          levels={[...preview.levels]}
-        />
+      {preview && sharedPreview?.session === session && sharedPreview.preview === preview ? (
+        <AudioClipControls playback={sharedPreview.playback} levels={preview.levels} />
       ) : null}
       {state.phase === 'ready' && state.projection && !state.projection.canSend ? (
         <Text accessibilityRole="alert" style={{ color: colors.secondary }}>
@@ -269,7 +293,6 @@ export function VoiceReview({
                   !pendingSend.current.has(session) &&
                   !hasPendingVoiceTrim(trimNow.current, session)
                 ) {
-                  pauseAudioPlayback();
                   setEditor({ session, open: !editable });
                 }
               }}
@@ -308,6 +331,22 @@ export function VoiceReview({
               disabled={editLocked}
               onTrimPreviewChange={trimPreviewChanged}
               pendingTrim={state.pendingTrim}
+              playheadOriginalFrame={playheadOriginalFrame}
+              auditionDisabled={!auditionReady}
+              auditionLabels={{
+                position: t('media.voiceOriginalPosition'),
+                hint: t('media.voiceAuditionHint'),
+                playFromSelection: t('media.voicePlayFromSelection'),
+                seekBackward: t('media.voiceSeekBackward'),
+                seekForward: t('media.voiceSeekForward'),
+              }}
+              onSeekOriginal={(observed, frame) => {
+                if (!locked && !pendingTransaction()) sharedPreview?.seekOriginal(observed, frame);
+              }}
+              onPlayFromSelection={(observed, range) => {
+                if (!locked && !pendingTransaction())
+                  sharedPreview?.playFromSelection(observed, range);
+              }}
               onEdit={(commands) => {
                 if (session.getSnapshot().draft === draft) edit(commands);
               }}

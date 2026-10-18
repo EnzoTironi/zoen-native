@@ -6,7 +6,8 @@ import { IconButton } from '../components/primitives';
 import { ComposerAction } from '../components/composer-action';
 import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
-import { AudioClip, clipTime, pauseAudioPlayback } from './AudioClip';
+import { AudioClip, AudioClipControls, clipTime, pauseAudioPlayback } from './AudioClip';
+import { useVoicePreviewPlayback } from './voice-preview-playback';
 import type { VoiceDockProps } from './voice-dock.types';
 
 const subscribeEmpty = () => () => {};
@@ -14,6 +15,7 @@ const emptySnapshot = () => null;
 
 /** A compact view of the same native lease; expanding never creates a second draft. */
 export function VoiceDock(props: VoiceDockProps) {
+  const sharedPreview = useVoicePreviewPlayback();
   const { colors, reducedMotion } = useTheme();
   const state = useSyncExternalStore(
     props.session?.subscribe ?? subscribeEmpty,
@@ -63,7 +65,6 @@ export function VoiceDock(props: VoiceDockProps) {
   }
   function expand() {
     if (locked || pending.current) return;
-    pauseAudioPlayback();
     props.onExpand();
   }
   const pan = usePanGesture({
@@ -153,7 +154,13 @@ export function VoiceDock(props: VoiceDockProps) {
                 </View>
               </View>
             ) : uri ? (
-              <AudioClip compact uri={uri} durationMs={durationMs} levels={[...levels]} />
+              props.session ? (
+                sharedPreview?.session === props.session && sharedPreview.preview === preview ? (
+                  <AudioClipControls compact playback={sharedPreview.playback} levels={levels} />
+                ) : null
+              ) : (
+                <AudioClip compact uri={uri} durationMs={durationMs} levels={levels} />
+              )
             ) : (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 {!error && !tooShort ? <ActivityIndicator color={colors.accent} /> : null}
