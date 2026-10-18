@@ -14,13 +14,8 @@ import { AudioClip, clipTime } from './AudioClip';
 import { AudioWaveform } from './audio-progress';
 import { VideoClip } from './VideoClip';
 import { previewMediaFile } from './preview-file';
+import { formatFileSize } from './file-size';
 
-function sizeLabel(bytes: string) {
-  const value = Number(bytes);
-  return value < 1024
-    ? `${value} B`
-    : `${new Intl.NumberFormat(formatLocale, { maximumFractionDigits: 1 }).format(value / (value < 1048576 ? 1024 : 1048576))} ${value < 1048576 ? 'KB' : 'MB'}`;
-}
 type Presentation = 'message' | 'document';
 type FileAttachmentProps = {
   itemId: string;
@@ -216,7 +211,7 @@ function FileAttachmentContent({
   const label = title ?? info?.name ?? t('media.file2');
   const readiness = info
     ? info.ready
-      ? sizeLabel(info.bytes)
+      ? formatFileSize(info.bytes, formatLocale)
       : t('media.receivedParts', {
           received: info.chunks_here,
           total: info.chunks,

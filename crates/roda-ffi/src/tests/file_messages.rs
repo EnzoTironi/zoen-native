@@ -363,6 +363,215 @@ fn file_caption_is_signed_with_its_attachment_and_thread_before_receiver_replay(
 }
 
 #[test]
+fn clearing_file_caption_through_public_edit_reaches_signed_recipient_without_changing_file() {
+    use crate::sync::Ingest;
+    use roda_proto::{Envelope, Sequenced};
+    use std::collections::{HashMap, HashSet};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct Vault(Mutex<HashMap<String, Vec<u8>>>);
+    impl SecretVault for Vault {
+        fn load(&self, key: String) -> Option<Vec<u8>> {
+            self.0.lock().unwrap().get(&key).cloned()
+        }
+        fn save(&self, key: String, value: Vec<u8>) -> bool {
+            self.0.lock().unwrap().insert(key, value);
+            true
+        }
+        fn delete(&self, key: String) {
+            self.0.lock().unwrap().remove(&key);
+        }
+    }
+    let account = |name: &str| {
+        let engine = RodaEngine::open(":memory:".into(), "en".into()).unwrap();
+        engine
+            .create_account(
+                name.into(),
+                name.into(),
+                "http://127.0.0.1:1".into(),
+                Arc::new(Vault::default()),
+            )
+            .unwrap();
+        engine
+    };
+    let sender = account("caption_author");
+    let receiver = account("caption_reader");
+    let space = sender
+        .create_group_with(
+            "Caption edit QA".into(),
+            vec![receiver.account().unwrap().identity_id],
+            PrivacyDto::Closed,
+        )
+        .unwrap();
+    let root = sender.send_message(space.clone(), "Thread".into()).unwrap();
+    let sent = send_caption(
+        &sender,
+        &space,
+        Some(root.id.clone()),
+        true,
+        "clear",
+        "Caption",
+    )
+    .unwrap();
+    let item = caption_card(&sent, "Caption").item_id.clone();
+    let revised_bytes = b"%PDF-1.4 immutable second version 53 161".to_vec();
+    sender
+        .file_new_version(
+            item.clone(),
+            revised_bytes.clone(),
+            None,
+            "Version 2".into(),
+        )
+        .unwrap();
+    let before = sender.item(item.clone()).unwrap();
+    let timeline_count = sender.timeline(space.clone()).unwrap().len();
+    let mut relay = roda_log::SpaceLog::new(space.clone());
+    let mut sequenced = HashSet::new();
+    let mut catch_up = || {
+        for pending in sender.lock().store.outbox().unwrap() {
+            if pending.event.space == space && sequenced.insert(pending.event.client_id.clone()) {
+                let event = relay.sequence(pending.event);
+                assert!(matches!(
+                    receiver.lock().ingest(Sequenced {
+                        seq: event.seq,
+                        prev: event.prev.clone(),
+                        hash: event.hash.clone(),
+                        env: Envelope::plain(event),
+                    }),
+                    Ingest::Applied
+                ));
+            }
+        }
+    };
+    catch_up();
+    let uploads = sender.lock().pending_uploads(100);
+    let wanted = receiver.lock().wanted_media();
+    for wanted in wanted {
+        let encrypted = &uploads
+            .iter()
+            .find(|(blob, _)| blob == &wanted.blob)
+            .unwrap()
+            .1;
+        assert!(receiver.lock().media_arrived(&wanted, encrypted));
+    }
+    for blank in ["", " \n\t"] {
+        sender
+            .edit_message(space.clone(), sent.id.clone(), blank.into())
+            .expect("the public FFI must allow clearing an ordinary file caption");
+        catch_up();
+        let thread = receiver.thread(space.clone(), root.id.clone()).unwrap();
+        let received = thread.iter().find(|entry| entry.id == sent.id).unwrap();
+        assert_eq!(caption_card(received, "").item_id, item);
+        assert!(received.edited && !received.author.is_me && received.voice.is_none());
+        assert_eq!(received.author.id, sender.account().unwrap().identity_id);
+        assert_eq!(received.in_thread.as_deref(), Some(root.id.as_str()));
+        let received_storage = storage(&receiver);
+        assert!(matches!(
+            receiver.edit_message(space.clone(), sent.id.clone(), "".into()),
+            Err(CoreError::Forbidden { .. })
+        ));
+        assert_eq!(storage(&receiver), received_storage);
+        assert_eq!(
+            sender.timeline(space.clone()).unwrap().len(),
+            timeline_count
+        );
+        assert_eq!(sender.item(item.clone()).unwrap(), before);
+        assert_eq!(
+            sender.file_bytes(item.clone(), Some(1)).unwrap(),
+            Some(vec![7; 1024])
+        );
+        assert_eq!(
+            sender.file_bytes(item.clone(), Some(2)).unwrap(),
+            Some(revised_bytes.clone())
+        );
+        assert_eq!(
+            receiver.file_bytes(item.clone(), None).unwrap(),
+            Some(revised_bytes.clone())
+        );
+        receiver.lock().reload().unwrap();
+        assert_eq!(
+            caption_card(
+                receiver
+                    .thread(space.clone(), root.id.clone())
+                    .unwrap()
+                    .last()
+                    .unwrap(),
+                ""
+            )
+            .item_id,
+            item
+        );
+        assert!(receiver.verify_log(space.clone()).valid);
+    }
+}
+
+#[test]
+fn blank_caption_edit_is_scoped_to_live_own_ordinary_files_and_enforces_caption_bounds() {
+    let e = seeded();
+    let space = find_space(&e, "Zoen").id;
+    let other_space = find_space(&e, "Paraty com a Marina").id;
+    let me = e.me().unwrap().id;
+    let plain = e.send_message(space.clone(), "Text body".into()).unwrap();
+    let page = e.page_create(space.clone(), "Miniapp".into()).unwrap();
+    let miniapp = e
+        .lock()
+        .post_as(&space, &me, "Miniapp", Some(page.id))
+        .unwrap();
+    let voice = e
+        .send_voice_note(
+            space.clone(),
+            vec![7; 500],
+            "audio/mp4".into(),
+            1000,
+            vec![0.5],
+            "Transcript".into(),
+            None,
+            false,
+        )
+        .unwrap();
+    assert!(voice.voice.is_some());
+    let file = send_caption(&e, &space, None, false, "editable", "Caption").unwrap();
+    caption_card(&file, "Caption");
+    for invalid in [
+        "bad\0caption".into(),
+        "é".repeat(crate::files::MAX_FILE_CAPTION_BYTES / 2 + 1),
+        " ".repeat(crate::files::MAX_FILE_CAPTION_BYTES + 1),
+    ] {
+        let before = storage(&e);
+        assert!(matches!(
+            e.edit_message(space.clone(), file.id.clone(), invalid),
+            Err(CoreError::Invalid { .. })
+        ));
+        assert_eq!(storage(&e), before);
+    }
+    let maximum = "é".repeat(crate::files::MAX_FILE_CAPTION_BYTES / 2);
+    e.edit_message(space.clone(), file.id.clone(), maximum.clone())
+        .unwrap();
+    let edited = e
+        .timeline(space.clone())
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.id == file.id)
+        .unwrap();
+    caption_card(&edited, &maximum);
+    let foreign = send_caption(&e, &other_space, None, false, "foreign", "Other chat").unwrap();
+    e.delete_message(space.clone(), file.id.clone()).unwrap();
+    for entry in [plain, miniapp, voice, foreign, file] {
+        for blank in ["", " \n\t"] {
+            let before = storage(&e);
+            assert!(
+                e.edit_message(space.clone(), entry.id.clone(), blank.into())
+                    .is_err(),
+                "blank edit must remain unavailable for {}",
+                entry.id
+            );
+            assert_eq!(storage(&e), before);
+        }
+    }
+}
+
+#[test]
 fn captioned_file_retries_survive_reopen_and_reject_caption_drift() {
     use sha2::{Digest, Sha256};
     let dir = std::env::temp_dir().join(roda_types::new_id("caption-send"));

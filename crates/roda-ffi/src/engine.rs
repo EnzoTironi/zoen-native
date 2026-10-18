@@ -1732,11 +1732,13 @@ impl Engine {
     pub fn annotate(&mut self, space: &str, target: &str, note: roda_types::Annotation) -> R<()> {
         let me = self.me_id()?;
         let s = self.space_state(space)?;
-        let Some(Entry {
-            author,
-            body: EntryBody::Message { marks, .. },
-            ..
-        }) = s.entries.iter().find(|e| e.id() == target)
+        let Some(
+            entry @ Entry {
+                author,
+                body: EntryBody::Message { marks, .. },
+                ..
+            },
+        ) = s.entries.iter().find(|e| e.id() == target)
         else {
             return Err(not_found(&t("Mensagem", "Message")));
         };
@@ -1756,7 +1758,30 @@ impl Engine {
             }
         }
         if let roda_types::Annotation::Edit { text } = &note {
-            if text.trim().is_empty() {
+            // Empty text clears a file's caption, but must never erase the body of
+            // an ordinary message, voice note or miniapp card. Resolve the Item
+            // in this exact Space instead of trusting the caller's card type.
+            let file_caption = match &entry.body {
+                EntryBody::Message {
+                    attaches: Some(item),
+                    ..
+                } => self
+                    .space_projections
+                    .get(space)
+                    .and_then(|scoped| scoped.items.get(item))
+                    .is_some_and(|item| {
+                        item.kind == ItemKind::File
+                            && matches!(&item.current().content, ItemContent::File(file) if !file.is_voice())
+                    }),
+                _ => false,
+            };
+            if file_caption {
+                if text.len() > crate::files::MAX_FILE_CAPTION_BYTES || text.contains('\0') {
+                    return Err(CoreError::Invalid {
+                        reason: t("legenda de arquivo inválida", "invalid file caption"),
+                    });
+                }
+            } else if text.trim().is_empty() {
                 return Err(CoreError::Invalid {
                     reason: t("mensagem vazia", "empty message"),
                 });

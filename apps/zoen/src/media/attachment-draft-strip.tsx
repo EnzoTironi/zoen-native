@@ -9,9 +9,12 @@ import { formatLocale, t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import type { AttachmentDraftItem, AttachmentDraftState } from './attachment-draft';
 import { sensitiveCacheWork } from './cache-work';
+import { createDraftVideoThumbnails } from './draft-video-thumbnail';
+import { formatFileSize } from './file-size';
 
-// Extract small native images serially; a selection never opens ten video decoders together.
-let thumbnailQueue: Promise<unknown> = Promise.resolve();
+const draftVideoThumbnail = createDraftVideoThumbnails((uri) =>
+  createVideoPlayer({ uri, useCaching: false }),
+);
 function DraftThumbnail({ item }: { item: AttachmentDraftItem }) {
   const { colors, scheme } = useTheme();
   const [thumbnail, setThumbnail] = useState<VideoThumbnail | null>(null);
@@ -19,29 +22,15 @@ function DraftThumbnail({ item }: { item: AttachmentDraftItem }) {
   const photo = item.mime.startsWith('image/');
   useEffect(() => {
     if (!video || item.accepted) return;
-    let live = true;
-    const task = sensitiveCacheWork.run(() => {
-      const work = thumbnailQueue.then(async () => {
-        if (!live) return null;
-        const player = createVideoPlayer({ uri: item.uri, useCaching: false });
-        try {
-          const images = await player.generateThumbnailsAsync(0, { maxWidth: 192, maxHeight: 192 });
-          return live ? (images[0] ?? null) : null;
-        } finally {
-          player.release();
-        }
-      });
-      thumbnailQueue = work.catch(() => {});
-      return work;
-    });
+    const controller = new AbortController();
+    const task = sensitiveCacheWork.run(() => draftVideoThumbnail(item.uri, controller.signal));
     void task
       .then((image) => {
-        if (live) setThumbnail(image);
+        if (controller.signal.aborted) image?.release();
+        else setThumbnail(image);
       })
       .catch(() => {});
-    return () => {
-      live = false;
-    };
+    return () => controller.abort();
   }, [item.uri, item.accepted, video]);
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
@@ -209,7 +198,7 @@ export function AttachmentDraftStrip({
             {selected
               ? selected.accepted
                 ? t('media.attachmentSent')
-                : `${new Intl.NumberFormat(formatLocale, { maximumFractionDigits: 1 }).format(selected.size / 1048576)} MB`
+                : formatFileSize(selected.size, formatLocale)
               : ''}
           </Text>
         </View>
