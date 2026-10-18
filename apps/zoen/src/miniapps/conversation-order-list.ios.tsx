@@ -177,7 +177,13 @@ export function ConversationOrderList({
         >
           <Section title={t('conversationCards.pinned')}>
             {pinned.length ? (
-              <List.ForEach data={pinned} keyExtractor={keyExtractor} onMove={move}>
+              <List.ForEach
+                key={signature}
+                data={pinned}
+                keyExtractor={keyExtractor}
+                recycling={false}
+                onMove={move}
+              >
                 {renderPinned}
               </List.ForEach>
             ) : (
@@ -190,7 +196,12 @@ export function ConversationOrderList({
           </Section>
           <Section title={t('conversationCards.hidden')}>
             {hidden.length ? (
-              <List.ForEach data={hidden} keyExtractor={keyExtractor}>
+              <List.ForEach
+                key={signature}
+                data={hidden}
+                keyExtractor={keyExtractor}
+                recycling={false}
+              >
                 {renderHidden}
               </List.ForEach>
             ) : (
