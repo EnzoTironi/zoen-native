@@ -7,6 +7,9 @@ interaction, native server-save acknowledgment and independent readback of that
 same drawing. This bounded proof does not certify full host conformance,
 accessibility or whole-application parity.
 
+A separate signed v89 proof covers a canonical drawing owned by a Zoen chat and
+its full-process reopen. The whole-application acceptance baseline remains v85.
+
 ## Two independent connections
 
 The server advertises its UI through a tool's `_meta.ui.resourceUri`. Zoen reads
@@ -101,9 +104,39 @@ The older browser core retains received App-owned document manifests but rejects
 creation and generic execution of this drawing until its typed document host is
 implemented. The iPhone implementation's current source tests cover exact scene
 and image bytes, cold reopen, stale saves, lost acknowledgments, copy rollback,
-cross-chat fresh keys and current/historical blob demand. A new signed native
-walkthrough is pending; the v87 proof below remains evidence for the separate
-remote-provider viewer.
+cross-chat fresh keys and current/historical blob demand. The signed v89 native
+proof below covers the canonical editor; the v87 proof remains separate evidence
+for the remote-provider viewer.
+
+### Bounded canonical native proof (v89)
+
+The preserving update on the isolated iOS Simulator opened a rectangle saved under
+v88. Touch added a second horizontal rectangle, the iOS keyboard entered `Zoen`
+and `MCP Apps`, and touch connected them with an arrow. Native saved status and
+guarded Back returned a Home card showing `5 elementos`. After a full process
+restart, the same card retained its count and opened the same five-element drawing.
+No Metro or runtime JavaScript injection was used; native instrumentation supplied
+accessibility inspection.
+
+One uninterrupted four-step cold-reopen path passed once: restart, Home count,
+same-card open and editor readiness. The recorded first take supplies the visible
+diagram proof. The 32-step authoring recording retains two failed automation waits
+and cross-tree warnings; it is not a successful full editing replay or two-pass QA.
+The two trimmed recordings are 44.067 and 18.233 seconds. A
+[combined 62.3-second proof](../../.argent/recordings/excalidraw-canonical-iphone-v89-proof.mp4)
+joins them without new app actions or overlays.
+
+Evidence: `acceptance.json` → `evidence.nativeCanonicalExcalidrawV89` and
+`/private/tmp/zoen-excalidraw-canonical-iphone-qa-v89/native-proof.json`. The screenshot
+is `.argent/screenshots/excalidraw-canonical-iphone-v89.png`. App 775/775,
+TypeScript/Oxlint/Oxfmt, 15 renderer tests and all three exact-source Expo CI jobs
+pass separately. Prior v88 full FFI and browser image-byte tests keep their own
+attribution. This native take does not certify image insertion, an independent
+recipient, conflict/copy-failure UI, physical iPhone, native surfaces or full parity.
+The human preserving update retained four Home cards, recipe 6/8 and larger text;
+public executable, JavaScript and strict signature checks passed. This is bounded
+Home inspection, not full-app reacceptance. The accepted whole-app v85 artifacts
+and the v87 remote readback remain unchanged.
 
 ## Current remote-session authority
 
