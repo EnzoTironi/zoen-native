@@ -11,11 +11,14 @@ Signed v51 adds bounded isolated reaction-participant, Unicode emoji and text-fo
 acceptance. Signed v52 accepts the subsequent native contrast polish, skin-tone reaction
 and cold retention. Signed v53 adds bounded cross-chat edited-voice and photo forwarding,
 native playback/QuickLook and cold retention on the isolated simulator. Signed v56
-now has verified preserving installs on both QA simulators and bounded native composer-frame,
+established preserving installs on both QA simulators and bounded native composer-frame,
 Menu/search/send and retention acceptance. Human delivery retains Home, history, its existing
 audio/receipt and an empty composer with focus only and no content mutations. Earlier v55
 profile/overlay/Rust, v54 thread/gesture, v53 forwarding and v52 emoji-sheet evidence keep
-their original attribution.
+their original attribution. Signed v58 adds bounded isolated PDF/photo preview, Share →
+Save to Files, reopen and cold media/caption retention acceptance. Both QA simulators
+now have verified preserving v58 installs; human delivery retains Home and existing
+history, audio, receipt and empty composer, with the native attachment dropdown intact.
 Selected widget content, Siri and canonical-version-update-to-OS-tap remain pending.
 Installed packages and successful compilation do not establish those journeys.
 
@@ -331,6 +334,88 @@ green: [Android28](https://github.com/EnzoTironi/zoen-native/actions/runs/390948
 timed out at `PageDraftRecoveryJourneyTest.kt:104` waiting for resumed editing after draft
 discard to advance the page version. Android35 passed; no retry establishes a flake.
 That CI does not certify v55, and other platforms remain deferred.
+
+## Additional media checks — signed v56 and isolated v57
+
+On signed v56, ordinary forwarding creates one video message in Forward QA 1018.
+Native AVKit opens inline and fullscreen, pauses, seeks from 0 to 2 seconds while
+paused, and resumes to 3 seconds with zero remaining. Player touches do not open
+message reactions. This is bounded native playback evidence, with earlier peer
+hash/decode proof retaining its v27 attribution. Cold retention was not checked
+in this run. Evidence: `/private/tmp/zoen-media-forward-qa/v56/runtime.json`.
+
+Isolated signed v57, source `4104323a`, imports a synthetic two-page PDF through
+the native Files picker, sends it once and forwards it once to Forward QA 1018.
+Quick Look displays both complete pages and the expected totals 53 and 161.
+However, Share → Save to Files remains at the system loading view. Source
+inspection establishes a separate concrete defect: Expo's presentation Promise
+resolves before dismissal, and the old adapter immediately releases the temporary
+file. The loading symptom is consistent with this defect; its OS cause is not
+independently established. V57 is not accepted or promoted to the human simulator.
+Evidence: `/private/tmp/zoen-media-forward-qa/v57/runtime.json`.
+
+V57 also restores canonical file captions below media, with the existing
+tap-to-react and hold-for-actions behavior. All 421 application checks pass,
+including six compiled-render regressions; suppressing the caption fails the
+negative control. A normally registered synthetic peer sends a signed edited-file
+caption, which appears below the received PDF. One ordinary forward retains that
+caption on the outgoing side. Diagnostic navigation timing chose QA Agente 1018,
+so this does not claim the intended Forward QA destination. The unsafe recorded
+selectors are retired, with no formal replay claim. Evidence:
+`/private/tmp/zoen-file-caption-qa/v57/runtime.json`. Cold retention, other media
+captions and broader accessibility remain pending.
+
+Native Markup persistence remains a parity gap: the prior Swift client created an
+edited copy and saved a canonical file version. A read-only Quick Look preview
+does not establish that flow.
+
+## Native file preview lifetime — signed v58, bounded native and delivery acceptance
+
+Source `3a5f5485` replaces early Expo preview completion on iOS with a public native
+Quick Look owner. Each preview transfers a separate exact owned copy and retains it
+through viewer/Share dismissal and verified deletion. Close and erasure invalidate
+presentation admission and await active, queued and retained copies; failed deletion
+remains owned for retry. Canonical cache validation accepts OS ancestor aliases such
+as `/var` and `/private/var`, while rejecting substituted generated roots and files.
+
+All 428 application tests, TypeScript, Oxlint and Oxfmt pass. Eleven real Foundation
+lifetime/filesystem scenarios and strict native typechecks pass. Source negative
+controls detect premature completion, skipped concurrent cleanup, skipped queued-file
+drain, swallowed deletion failure and the rejected legitimate cache alias. These
+establish source ordering and validation, independently of the UIKit observations.
+Logs: `/private/tmp/zoen-quicklook-lifetime-alias-app-check.log`,
+`/private/tmp/zoen-file-preview-alias-positive.log` and
+`/private/tmp/zoen-file-preview-alias-ios-typecheck.log`.
+
+The signed ARM64 simulator Release has 769 frozen inputs and source SHA256
+`21a7b6b8737a575a0d0790c70a5e2ff0974d1cf251e818bc35fc5ed1920132b5`.
+Exact installed executable/JavaScript hashes and strict signature pass before and
+after isolated UI. Actual ordinary PDF preview displays both pages and totals 53
+and 161. Share shows the 4 KB PDF, opens the real Save to Files destination picker,
+and one Save returns to the still-open viewer. Close, reopen and close pass. The
+forwarded photo also opens; tapping the image reveals hidden native controls and
+Close returns without reactions. No Zoen send or import occurred; the only content
+mutation was one synthetic OS PDF export. No exported-copy byte hash is claimed.
+
+Cold restart retains the exact incoming/outgoing PDF captions below media and one
+each of the prior forwarded video and PDF. Playback keeps its v56 attribution.
+Evidence: `/private/tmp/zoen-file-preview-qa/v58/runtime.json` and
+`/private/tmp/zoen-iphone-release-v58-verification.json`. The 45-step diagnostic has
+eight cross-tree warnings and three unmet assumptions, corrected by scrolling to
+page two, selecting the real Save control and revealing photo controls. Incorrect
+exported selectors were retired; no formal replay passed. Two explicitly undelivered
+touch attempts recovered through a device-scoped transport reconnect, without an
+app reset. Human preserving v58 installation and exact installed executable/JavaScript/
+strict signature pass before and after UI. Restart retains four Home cards, recipe
+6/8, Bilingual history, existing audio/delivered receipt, latest 100% and empty input.
+The native attachment dropdown opens and dismisses without selection. No content,
+preference, account, capture, send or import mutations occurred there. Its 13-step
+diagnostic has two cross-tree warnings and was retired without a replay claim.
+Evidence: `/private/tmp/zoen-file-preview-qa/v58/human-runtime.json`.
+
+Induced account close/erasure while Quick Look or Share is active, physical-device
+behavior and Markup/new-version persistence remain pending. Historical v57 failure
+remains attributed to that artifact.
 
 ## Native composer layout — signed v56, bounded native acceptance
 
