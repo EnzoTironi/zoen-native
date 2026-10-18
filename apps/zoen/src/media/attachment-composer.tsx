@@ -355,8 +355,12 @@ export function useAttachmentComposer({
           position: state.items.indexOf(selected) + 1,
           total: state.items.length,
           editable:
-            Platform.OS === 'ios' && !disabled && !suspended && !busy && !selected.attempted,
-          sending: Boolean(busy),
+            Platform.OS === 'ios' &&
+            !disabled &&
+            !suspended &&
+            state.phase === 'ready' &&
+            !selected.attempted,
+          sending: Boolean(busy || state.phase === 'closing' || state.phase === 'closed'),
           remaining,
           retry: state.items.some((item) => item.attempted && !item.accepted),
           onChange: (text) => {
