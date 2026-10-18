@@ -2255,6 +2255,38 @@
         "No physical-iPhone, every-provider, accessibility or comparative whole-app parity claim.",
         "Does not accept later v91 builtin MCP renderer integration."
       ]
+    },
+    "bundledMcpViewsV91": {
+      "status": "SOURCE_CHECKS_PASS_NATIVE_ACCEPTANCE_PENDING",
+      "sourceCommit": "1ea2477649b047afae1ad3a299b59e09821f9638",
+      "receipt": "/private/tmp/zoen-builtins-v91/source-checks/source-freeze-final.json",
+      "receiptSha256": "8b085972de08fcbab6661323a3e042a8d8e2f966d742353dc617a563f863b3d9",
+      "sourceManifestSha256": "6dffd215708be99650490bd5e60f22401026a77e79980d7def042d1a64232ee0",
+      "sourceFiles": 63,
+      "standardViews": ["pet", "poll", "list", "maptap", "recipe", "countdown"],
+      "coverage": "Six existing core-bundled apps use shared React UI and official MCP Apps; Hike/Schedule shared-SDK resources regenerated, Excalidraw unchanged. Legacy six-app native mutation fallback removed; historical state retained read-only.",
+      "coreChanges": [
+        "Remove simulated external WhatsApp delivery/state and obsolete caller. Real sharing uses standard explicit MCP message/open-link flow.",
+        "Repeated poll close rejects closed canonical state without adding another plan line/version/log event.",
+        "Require verified builtin manifests; builder validates exact physical manifest/entry/source boundaries including symlinks."
+      ],
+      "checks": {
+        "clientTests": 777,
+        "clientAttribution": "777 passed plus current TypeScript/Oxlint/Oxfmt. Final readonly historical checkbox semantics have focused static checks after the suite.",
+        "rustAppTests": 13,
+        "focusedFfiTests": 2,
+        "strictAppClippy": "PASS",
+        "builderFocusedTests": 11,
+        "oldBuilderEscapeFailures": 4,
+        "embeddedResourcePairsRebuiltExactly": 8,
+        "nativeAcceptance": "NOT_RUN_FOR_V91"
+      },
+      "nativeNext": "Build signed candidate; inspect six real guest interfaces and preserve Excalidraw/Hike/Schedule. Check MapTap horizontal gesture arbitration, content, controls, state mutations, accessibility and reduced motion.",
+      "limitations": [
+        "Source/DOM bridge and scoped Rust proof; no signed native v91 acceptance.",
+        "Old Swift Pet unboxing, ambient doodles and local emotes remain visual differences.",
+        "Whole-app v85 baseline and bounded v90 drawing evidence remain separately attributed."
+      ]
     }
   },
   "deferredPlatforms": ["web", "android", "macos", "windows", "linux"],

@@ -63,6 +63,29 @@ calls, checkpoint ownership and saving continue through the same live official
 Excalidraw MCP connection. The generic host has no timing workaround or launch
 data replay on layout changes.
 
+## Bundled miniapp views
+
+All nine bundled AppSpecs now provide MCP Apps resources with integrity manifests.
+Pet, Poll, List, MapTap, Recipe and Countdown use the shared React UI and official
+App SDK alongside Hike, Schedule and Excalidraw. Their former native mutation
+fallbacks are removed; historical snapshots retain read-only state. Rust tools,
+grants and native compact cards remain authoritative. See
+[`miniapps/builtins`](../../miniapps/builtins/) for the controls and visual limits.
+
+List shares through explicit `ui/message` or `ui/open-link` actions; opening a
+prepared WhatsApp link never claims delivery. The simulated core operation and
+obsolete caller are removed. Repeated poll closure rejects the already-closed
+state before producing another plan effect. The shared resource verifier requires
+a matching manifest, and the single builder checks physical source boundaries
+including symlinks before admitting the selected source graph.
+
+Source checkpoint `1ea24776` passes the actual packaged HTML/official bridge
+tests, scoped Rust checks and exact rebuilds of eight resource pairs. Its final
+receipt is indexed by `acceptance.json` → `evidence.bundledMcpViewsV91`. This
+integration still needs signed native acceptance of layout, controls, MapTap
+gesture arbitration, accessibility and reduced motion. The earlier native
+Excalidraw proofs below do not accept these six new guest renderers.
+
 ## Drawings owned by a Zoen chat
 
 The native catalog creates an Excalidraw App Item in the selected Space. The same
