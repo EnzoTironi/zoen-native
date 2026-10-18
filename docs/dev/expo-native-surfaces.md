@@ -2,9 +2,39 @@
 
 Source audit: 2026-10-17. Current acceptance priority is iPhone; Web and Android follow later. The signed ARM64
 iOS simulator Release has compiled the widget extension, Live Activities and App
-Intents metadata. Signed v7 accepts the redacted Portuguese Widget gallery preview. Selected content,
-Siri and Lock Screen journeys below remain pending.
+Intents metadata. Signed v7 accepts the redacted Portuguese Widget gallery preview. Signed v40
+accepts a private Live Activity on the Dynamic Island and Lock Screen, warm and process-terminated
+cold compact taps, Lock Screen navigation and explicit ending on the isolated QA simulator.
+Selected widget content, Siri and canonical-version-update-to-OS-tap remain pending.
 Installed packages and successful compilation do not establish those journeys.
+
+## Signed v40 checkpoint
+
+Home favorites now support a native iOS organizer with drag handles, card-menu ordering and
+pinning directly from miniapp detail. Ordered ID-only choices retain the captured account,
+device and mode, validate the visible permutation when queued work executes, and preserve
+the last committed order on save failure. Actual isolated drag, menu movement, detail pin
+and cold retention passed; independent conversation-rail pinning remains pending.
+
+Live Activities store a random session link in their existing owner-scoped preference.
+Expo SDK58 keeps the start URL in immutable ActivityKit attributes; content updates cannot
+repair a version-bound URL. `zoen.openActivity` therefore rereads the canonical item and
+admits only the still-running selected session with the same item/end and exact current
+membership. Widget and shortcut links keep their strict version checks. Cold activity links
+wait for preference restoration; legacy selections without a session link retire without
+discarding unrelated widget/shortcut choices. Production provider, route and Siri access
+share the same membership projection, excluding cached non-member conversations.
+
+Signed Release v40 source `5ac2cb7a` has 755 frozen inputs and passes 296 application tests,
+TypeScript, Oxlint and Oxfmt. It is archived and preserving-installed on both QA simulators;
+installed executable/JavaScript hashes and strict signatures match. The Live Activity check
+created one synthetic countdown through the ordinary catalog, accepted the normal OS prompt
+only on the disposable simulator, and kept private content hidden. It did not donate widget
+or Siri content. Same-end version updates and access/session races have deterministic
+production-helper/adapter coverage; they were not exercised as OS mutation-to-tap journeys.
+Actual successful supported-device Speech, accessibility/performance and full parity remain
+pending. Evidence: `/private/tmp/zoen-home-qa/v40/runtime.json` and
+`/private/tmp/zoen-iphone-release-v40-verification.json`.
 
 ## Apple baseline
 
@@ -62,7 +92,8 @@ sign-out or access loss. These navigation intents are not donation-enabled, so t
 are no registered donations to remove. Calling the SDK's donation deletion API for
 their names fails even on a fresh install.
 
-`intents.ts` accepts only `zoen.openItem` and `zoen.openChat`. It validates the invocation
+`intents.ts` accepts navigation-only `zoen.openItem`, `zoen.openChat` and the app-owned
+`zoen.openActivity` session link described above. It validates the invocation
 age, exact parameter shape, current account/device, item version and current Space
 access, checking the owner again after asynchronous reads. Unknown names and mutations
 are rejected. This is repeatable navigation; the native queue may acknowledge only an
