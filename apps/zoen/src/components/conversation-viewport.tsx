@@ -29,6 +29,7 @@ type NativeScrollContextValue = {
   onInitialInset?: (height: number) => void;
   onNativeScroll?: ScrollViewProps['onScroll'];
   onNativeLayout?: (height: number) => void;
+  onNativeInset?: (insets: { top: number; bottom: number }) => void;
 };
 const NativeScrollContext = createContext<NativeScrollContextValue | null>(null);
 
@@ -47,8 +48,9 @@ const NativeConversationScrollView = forwardRef<KeyboardChatScrollViewRef, Scrol
       viewportReady.value && contentReady.value && insetReady.value ? context.padding.value : 0,
     );
     const onInset = useCallback(
-      ({ bottom }: { bottom: number }) => {
+      ({ top, bottom }: { top: number; bottom: number }) => {
         if (!Number.isFinite(bottom) || bottom < 0) return;
+        context.onNativeInset?.({ top, bottom });
         insetReady.set(true);
         if (bottom === 0) return;
         // The SDK produced a positive reservation. Initial positioning also
@@ -103,6 +105,7 @@ type ViewportProps = {
   onInitialFooterLayout?: (height: number) => void;
   onNativeScroll?: ScrollViewProps['onScroll'];
   onNativeLayout?: (height: number) => void;
+  onNativeInset?: (insets: { top: number; bottom: number }) => void;
 };
 
 /** iOS owns keyboard insets natively; other platforms retain their existing layout. */
@@ -130,6 +133,7 @@ function NativeConversationViewport({
   onInitialFooterLayout,
   onNativeScroll,
   onNativeLayout,
+  onNativeInset,
 }: ViewportProps) {
   const [measured, setMeasured] = useState(false);
   const composerHeight = useSharedValue(0);
@@ -150,8 +154,16 @@ function NativeConversationViewport({
       onInitialInset: onInitialFooterLayout,
       onNativeScroll,
       onNativeLayout,
+      onNativeInset,
     }),
-    [composerHeight, correction, onInitialFooterLayout, onNativeScroll, onNativeLayout],
+    [
+      composerHeight,
+      correction,
+      onInitialFooterLayout,
+      onNativeScroll,
+      onNativeLayout,
+      onNativeInset,
+    ],
   );
   return (
     <View style={{ flex: 1, backgroundColor: 'transparent' }}>

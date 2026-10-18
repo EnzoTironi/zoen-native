@@ -47,6 +47,7 @@ import { MiniappRail } from '../../miniapps/rail';
 import { ConversationSearch, conversationQueryFits } from '../../core/conversation-search';
 import { launchConversationAssistant } from '../../assistant/launch';
 import { InitialTimelineEnd } from '../../core/initial-timeline-end';
+import { ConversationReveal } from '../../core/conversation-reveal';
 
 export default function Chat() {
   const { id, jump } = useLocalSearchParams<{ id: string; jump?: string }>();
@@ -134,6 +135,87 @@ export default function Chat() {
       }),
     [id, owner],
   );
+  const revealLayout = useRef({
+    entries: [] as readonly TimelineEntry[],
+    ready: false,
+    headerHeight,
+    statusBarHeight,
+    railHeight,
+    noticeHeight,
+  });
+  const searchReveal = useMemo(() => new ConversationReveal(`${id}:${owner}`), [id, owner]);
+  useLayoutEffect(() => {
+    searchReveal.connect({
+      current: (target) => {
+        const current = search.getSnapshot();
+        return (
+          focused.current &&
+          search.isCurrent() &&
+          current.active &&
+          current.hits[current.index]?.ref_id === target
+        );
+      },
+      item: (target) => {
+        const current = revealLayout.current;
+        const native = list.current;
+        if (!current.ready || !native) return null;
+        const index = current.entries.findIndex((entry) => entry.id === target);
+        if (index < 0) return null;
+        const row = native.getLayout(index);
+        if (!row) return null;
+        return {
+          y: row.y,
+          height: row.height,
+          firstItemOffset: native.getFirstItemOffset(),
+          childHeight: native.getChildContainerDimensions().height,
+          windowHeight: native.getWindowSize().height,
+          bottomAligned: true,
+          topObstruction:
+            current.headerHeight -
+            current.statusBarHeight +
+            current.railHeight * (1 - Math.min(1, Math.max(0, keyboardProgress.value))) +
+            current.noticeHeight +
+            8,
+        };
+      },
+      frame: (work) => {
+        const frame = requestAnimationFrame(work);
+        return () => cancelAnimationFrame(frame);
+      },
+      // Unlike scrollToIndex, this public API leaves clamping to our measured
+      // native range, which includes the keyboard and composer contentInset.
+      scroll: (offset) => list.current?.scrollToOffset({ offset, animated: true }),
+    });
+  }, [searchReveal, search, keyboardProgress]);
+  useLayoutEffect(() => {
+    revealLayout.current = {
+      entries: page?.entries ?? [],
+      ready:
+        loadedSpace === timelineKey &&
+        !cards.loading &&
+        (conversationMiniapps.length === 0 || railHeight > 0),
+      headerHeight,
+      statusBarHeight,
+      railHeight,
+      noticeHeight,
+    };
+    searchReveal.onCommit();
+  }, [
+    page,
+    loadedSpace,
+    timelineKey,
+    cards.loading,
+    conversationMiniapps.length,
+    headerHeight,
+    statusBarHeight,
+    railHeight,
+    noticeHeight,
+    searchReveal,
+  ]);
+  useLayoutEffect(() => {
+    searchReveal.cancel();
+  }, [searchReveal, searchState.active, searchState.query, selectedSearchId]);
+  useLayoutEffect(() => () => searchReveal.cancel(), [searchReveal]);
   const cancelInitialEnd = initialEnd.cancel;
   useLayoutEffect(() => {
     initialEnd.connect({
@@ -202,10 +284,11 @@ export default function Chat() {
       return () => {
         focused.current = false;
         initialEnd.blur();
+        searchReveal.cancel();
         store.setTyping(id, false);
         store.selectSpace(null);
       };
-    }, [id, store, initialEnd]),
+    }, [id, store, initialEnd, searchReveal]),
   );
   const reveal = useCallback(
     async (messageId: string) => {
@@ -219,13 +302,16 @@ export default function Chat() {
   useEffect(() => {
     let active = true;
     if (!searchState.active || !selectedHit) return;
+    const captured = searchReveal.capture();
+    const current = () =>
+      active && focused.current && search.isCurrent() && searchReveal.isCurrent(captured);
     void (async () => {
       const message = await store.driver.request({
         op: 'message',
         space_id: id,
         message_id: selectedHit.ref_id,
       });
-      if (!active || !search.isCurrent()) return;
+      if (!current()) return;
       let thread: { root: string; entries: TimelineEntry[] } | null = null;
       if (message.in_thread) {
         const entries = await store.driver.request({
@@ -233,17 +319,18 @@ export default function Chat() {
           space_id: id,
           root_id: message.in_thread,
         });
-        if (!active || !search.isCurrent()) return;
+        if (!current()) return;
         if (!entries.some((entry) => entry.id === selectedHit.ref_id))
           throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
         thread = { root: message.in_thread, entries };
       } else await reveal(selectedHit.ref_id);
-      if (active && search.isCurrent()) {
+      if (current()) {
         setSearchRead({ search, hit: selectedHit, thread, error: null });
-        setScrollTarget(selectedHit.ref_id);
+        if (process.env.EXPO_OS === 'ios') searchReveal.request(selectedHit.ref_id, captured);
+        else setScrollTarget(selectedHit.ref_id);
       }
     })().catch((reason: unknown) => {
-      if (active && search.isCurrent())
+      if (current())
         setSearchRead({
           search,
           hit: selectedHit,
@@ -254,7 +341,7 @@ export default function Chat() {
     return () => {
       active = false;
     };
-  }, [id, store, reveal, selectedHit, searchState.active, search]);
+  }, [id, store, reveal, selectedHit, searchState.active, search, searchReveal]);
   useFocusEffect(
     useCallback(() => {
       if (!jump) return;
@@ -405,8 +492,15 @@ export default function Chat() {
       <ConversationViewport
         initialFooterKey={initialEnd.scope}
         onInitialFooterLayout={initialEnd.onFooterLayout}
-        onNativeScroll={(event) => initialEnd.onNativeScroll(event.nativeEvent)}
-        onNativeLayout={initialEnd.onViewportLayout}
+        onNativeScroll={(event) => {
+          initialEnd.onNativeScroll(event.nativeEvent);
+          searchReveal.onScroll(event.nativeEvent);
+        }}
+        onNativeLayout={(height) => {
+          initialEnd.onViewportLayout(height);
+          searchReveal.onLayout(height);
+        }}
+        onNativeInset={searchReveal.onInset}
         composer={
           <>
             <MessageComposer
@@ -599,14 +693,21 @@ export default function Chat() {
                 setLoadedSpace(timelineKey);
                 initialEnd.onLoad();
               }}
-              onContentSizeChange={initialEnd.onContentSizeChange}
+              onContentSizeChange={(width, height) => {
+                initialEnd.onContentSizeChange(width, height);
+                searchReveal.onContentSize(width, height);
+              }}
               onCommitLayoutEffect={() => {
                 initialEnd.onCommitLayoutEffect();
+                searchReveal.onCommit();
                 // Preserve the native keyboard scroller when search changes the
                 // timeline, and address its new indices only after SDK commit.
                 if (loadedSpace !== timelineKey) setLoadedSpace(timelineKey);
               }}
-              onScrollBeginDrag={cancelInitialEnd}
+              onScrollBeginDrag={() => {
+                cancelInitialEnd();
+                searchReveal.cancel();
+              }}
               data={page.entries}
               keyExtractor={(entry) => entry.id}
               keyboardDismissMode="interactive"
