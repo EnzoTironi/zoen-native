@@ -2094,6 +2094,31 @@
         "No physical iPhone, independent recipient or edited-PDF byte comparison, backup/restore UI, performance/allocation boundary, broader accessibility/provider/Push/calls or complete comparative product-parity claim."
       ],
       "fullAppParityAccepted": false
+    },
+    "mcpAppsExcalidrawV87": {
+      "status": "PASS_NATIVE_EDIT_AND_INDEPENDENT_REAL_SERVER_READBACK",
+      "checkpoint": "v87",
+      "sourceCommit": "cc14a29d721cac51ceaa7daeac4cc72d382da956",
+      "sourceManifest": "/private/tmp/zoen-iphone-release-v87-inputs.json",
+      "sourceSha256": "9c2b353f19844823a65f49e784280ff62d2790d0eb1a38a4d63b1c9d9326fc1c",
+      "sourceInputs": 878,
+      "signedArtifactVerification": "/private/tmp/zoen-iphone-release-v87-verification.json",
+      "evidenceRoot": "/private/tmp/zoen-excalidraw-iphone-qa-v87",
+      "nativeProof": "Fresh signed v87 first normal opening, shape drawn by touch, label typed, arrow drawn, server ACK visible in recorded UI. No debugger/runtime injection during video.",
+      "independentReadback": "Checkpoint ID observed from an actual native save_checkpoint request after the video using an observational native breakpoint; no JS or tool-result injection. Fresh production remote-session connection then issued read_checkpoint only, matching all five element IDs, exact labels, new rectangle geometry and arrow bindings. It issued no create/save/export.",
+      "verifiedElements": 5,
+      "video": ".argent/recordings/screen-recording-388CA707-A103-4845-B5FE-BAA9526D3D57-1792358439976.mp4",
+      "videoSeconds": 53.4,
+      "screenshot": ".argent/screenshots/excalidraw-iphone-v87.png",
+      "presentation": "Explicit pinned upstream UI plus source fixes for initial events and host context; its own resource identity and presented SHA. Actual remote resource and real checkpoint tools remain separate.",
+      "checks": {
+        "app": 748,
+        "compiledUpstreamUiRegressions": 4,
+        "exactSourceExpoCiRun": 39167311005,
+        "exactSourceExpoCiJobs": "client, release-web-e2e, schedule-miniapp all PASS"
+      },
+      "installation": "Both exact signed v87 apps verified after preserving installs. Isolated v86-to-v87 and human v85-to-v87. Human Home/recipe6of8/Zo asleep100percent/larger-text smoke only.",
+      "limits": "Session draft at Excalidraw, not a canonical Zoen chat item or durable Zoen cold reopen. No full native widget or whole-application parity claim. Raw authoring warnings retained; no two-pass replay claim. Prior v85 artifact acceptance attribution stays unchanged."
     }
   },
   "deferredPlatforms": ["web", "android", "macos", "windows", "linux"],

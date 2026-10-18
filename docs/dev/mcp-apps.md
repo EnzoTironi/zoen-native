@@ -2,8 +2,10 @@
 
 Zoen now has an implementation of the standard MCP Apps host and a public remote
 Excalidraw connection. The actual server discovery and synthetic checkpoint
-roundtrip passed. **Native UI proof is pending**; these server receipts do not
-certify rendering, interaction, accessibility or full host conformance on iOS.
+roundtrip passed. The signed v87 iPhone Simulator build also passed actual editor
+interaction, native server-save acknowledgment and independent readback of that
+same drawing. This bounded proof does not certify full host conformance,
+accessibility or whole-application parity.
 
 ## Two independent connections
 
@@ -107,6 +109,31 @@ Local evidence is under `/private/tmp/zoen-remote-mcp-excalidraw-v86/`:
 `source-freeze.json`. The session's nine focused tests include actual official SDK
 JSON/SSE handling with the installed React Native response constructor, tool
 binding, owner teardown, bounds and unsupported authentication.
+
+The v87 native walkthrough opened the catalog and Excalidraw, started the actual
+editor, drew a second rectangle, typed `Zoen + MCP` with the iOS keyboard and drew
+a connecting arrow. The native status received the real server save ACK. The
+53.4-second H.264 recording used an ordinary fresh Release opening, without Metro,
+a debugger or runtime JavaScript injection. The app's 748 tests, four compiled
+upstream UI regressions and all three exact-source Expo CI jobs passed.
+
+A later observational native breakpoint identified the real `save_checkpoint`
+request's checkpoint. A fresh connection then called only `read_checkpoint` and
+verified all five element IDs, both labels, the newly drawn rectangle's geometry
+and both arrow bindings. It did not create, save or export a diagram. This
+independent server read is the persistence proof; leaving and reentering the
+editor alone would only demonstrate local state retention.
+
+Evidence: `/private/tmp/zoen-excalidraw-iphone-qa-v87/`, notably
+`native-server-readback-proof.json`, the raw server response and signed-product
+receipts. The recording is
+`.argent/recordings/screen-recording-388CA707-A103-4845-B5FE-BAA9526D3D57-1792358439976.mp4`;
+the saved screenshot is `.argent/screenshots/excalidraw-iphone-v87.png`.
+The original live authoring flow retains selector warnings and is not claimed as
+a two-pass replay regression. Both simulators received the exact signed v87 app
+through preserving installs. The human simulator's Home cards and larger text
+were smoke-checked; prior PDF/voice/history acceptance remains the separate v85
+record rather than a new v87 acceptance claim.
 
 ## Provider boundaries and native cards
 
