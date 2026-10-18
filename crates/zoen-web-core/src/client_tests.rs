@@ -569,6 +569,7 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
         levels: "08ff80".into(),
         transcript: "See you there".into(),
         reply: Some(ReplyRef::inline(&root)),
+        forwarded: false,
     });
     let post = |item: &str, doc: FileDoc| EventBody::ItemCreated {
         item: item.into(),
@@ -709,6 +710,79 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     let conversations = client.conversations();
     assert!(conversations[0].messages[1].deleted);
     assert!(conversations[0].messages[1].file.is_none());
+}
+
+#[test]
+fn native_forwarded_voice_is_one_destination_only_message_after_receive_and_saved_reload() {
+    use roda_types::{ItemContent, ItemKind, VoiceMeta};
+
+    for forwarded in [false, true] {
+        let identity = NativeSigner::from_secret(&[34; 32]);
+        let host = HostSigner(NativeSigner::from_secret(&[35; 32]));
+        let author = Author::root(identity.clone());
+        let linked = account(&identity, &host.0);
+        let mut client = Client::new(linked.clone(), host.clone(), "").unwrap();
+        let space = "sp_forward_destination_only";
+        let mut log = SpaceLog::new(space);
+        let create = clear(
+            &mut log,
+            &author,
+            EventBody::SpaceCreated {
+                title: "Destination only".into(),
+                kind: SpaceKind::Group,
+                privacy: Privacy::Closed,
+            },
+            1,
+        );
+        client.receive(&create, 2).unwrap();
+        let mut document =
+            crate::media::seal_file("forwarded.wav", "audio/wav", b"synthetic audio", None)
+                .unwrap()
+                .doc;
+        document.path = "VoiceNotes/forwarded-destination.wav".into();
+        // Old senders omit the flag entirely. New forwarded voices carry it in
+        // their one ItemCreated, without a second message or foreign reply IDs.
+        let mut wire =
+            serde_json::json!({"ms":1500,"levels":"08f","transcript":"Retained transcript"});
+        if forwarded {
+            wire["forwarded"] = true.into();
+        }
+        document.voice = Some(serde_json::from_value::<VoiceMeta>(wire).unwrap());
+        let posted = clear(
+            &mut log,
+            &author,
+            EventBody::ItemCreated {
+                item: "it_fresh_destination_voice".into(),
+                kind: ItemKind::File,
+                content: ItemContent::File(document.clone()),
+                origin: "Voice message".into(),
+            },
+            3,
+        );
+        let update = client.receive(&posted, 4).unwrap();
+        let assert_projection = |client: &Client<HostSigner>| {
+            let conversations = client.conversations();
+            assert_eq!(conversations.len(), 1);
+            let conversation = &conversations[0];
+            assert_eq!(conversation.id, space);
+            assert_eq!(conversation.messages.len(), 1);
+            let message = &conversation.messages[0];
+            assert_eq!(message.forwarded, forwarded);
+            assert!(message.text.is_empty());
+            assert!(message.quote.is_none() && message.thread.is_none());
+            assert_eq!(message.replies, 0);
+            assert_eq!(
+                message.file_item_id.as_deref(),
+                Some("it_fresh_destination_voice")
+            );
+            assert_eq!(message.file.as_ref(), Some(&document));
+            assert_eq!(message.file_version, Some(1));
+            assert_eq!(client.logs.len(), 1, "no source history is needed");
+        };
+        assert_projection(&client);
+        let restored = Client::new(linked, host, &update.snapshot).unwrap();
+        assert_projection(&restored);
+    }
 }
 
 fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {

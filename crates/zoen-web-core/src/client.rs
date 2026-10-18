@@ -1720,7 +1720,7 @@ impl<S: Signer> Client<S> {
             } if doc.is_voice() || delivery == "failed" => (
                 String::new(),
                 doc.voice.as_ref().and_then(|v| v.reply.clone()),
-                false,
+                doc.voice.as_ref().is_some_and(|v| v.forwarded),
                 Some(doc.clone()),
             ),
             _ => return None,

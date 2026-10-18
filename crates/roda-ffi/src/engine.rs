@@ -291,7 +291,10 @@ impl State {
                             text: String::new(),
                             attaches: Some(item.to_string()),
                             reply: doc.voice.as_ref().and_then(|meta| meta.reply.clone()),
-                            marks: MessageMarks::default(),
+                            marks: MessageMarks {
+                                forwarded: doc.voice.as_ref().is_some_and(|meta| meta.forwarded),
+                                ..Default::default()
+                            },
                         },
                     });
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
@@ -1781,13 +1784,26 @@ impl Engine {
     /// Sends a copy of a message (text and attachment) to another chat, marked forwarded.
     pub fn forward(&mut self, from_space: &str, target: &str, to_space: &str) -> R<TimelineEntry> {
         let me = self.me_id()?;
-        let s = self.space_state(from_space)?;
-        let Some(EntryBody::Message {
+        if !self.is_member(from_space, &me) || !self.state.writer(to_space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "só membros encaminham mensagens para conversas em que podem escrever",
+                    "only members can forward messages to chats they can write in",
+                ),
+            });
+        }
+        let source = self
+            .space_state(from_space)?
+            .entries
+            .iter()
+            .find(|entry| entry.id() == target)
+            .ok_or_else(|| not_found(&t("Mensagem", "Message")))?;
+        let EntryBody::Message {
             text,
             attaches,
             marks,
             ..
-        }) = s.entries.iter().find(|e| e.id() == target).map(|e| &e.body)
+        } = &source.body
         else {
             return Err(not_found(&t("Mensagem", "Message")));
         };
@@ -1795,27 +1811,40 @@ impl Engine {
             return Err(not_found(&t("Mensagem", "Message")));
         }
         let (text, attaches) = (text.clone(), attaches.clone());
-        if !self.is_member(to_space, &me) {
-            return Err(CoreError::Forbidden {
-                reason: t(
-                    "só membros escrevem neste Espaço",
-                    "only members can write in this Space",
-                ),
-            });
-        }
-        // An attachment id only resolves in its own Space. Forwarding voice across
-        // Spaces needs a fresh file and chunk keys for the destination's audience.
-        if from_space != to_space
-            && attaches
-                .as_deref()
-                .is_some_and(|item| self.voice_of(from_space, item).is_some())
-        {
-            return Err(CoreError::Invalid {
-                reason: t(
-                    "esta mensagem de voz ainda não pode ser encaminhada a outra conversa",
-                    "this voice message cannot be forwarded to another chat yet",
-                ),
-            });
+        // Resolve the canonical entry, including old Android markers. Its current
+        // audio and metadata are copied; source item/reply/thread ids never travel.
+        if from_space != to_space {
+            if let Some(voice) = self.entry_voice(source) {
+                return self.forward_file_message(
+                    from_space,
+                    &voice.item_id,
+                    to_space,
+                    "",
+                    Some(&voice),
+                );
+            }
+            if text.starts_with("⟦voice:") {
+                return Err(CoreError::Invalid {
+                    reason: t(
+                        "esta mensagem de voz não está mais disponível",
+                        "this voice message is no longer available",
+                    ),
+                });
+            }
+            if let Some(item) = attaches.as_deref() {
+                if !self.state.items.get(item).is_some_and(|item| {
+                    item.space == from_space
+                        && matches!(&item.current().content, ItemContent::File(_))
+                }) {
+                    return Err(CoreError::Invalid {
+                        reason: t(
+                            "este item ainda não pode ser encaminhado a outra conversa",
+                            "this item cannot be forwarded to another chat yet",
+                        ),
+                    });
+                }
+                return self.forward_file_message(from_space, item, to_space, &text, None);
+            }
         }
         self.append(
             to_space,
