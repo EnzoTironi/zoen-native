@@ -16,6 +16,7 @@ import {
   accessibilityAddTraits,
   accessibilityLabel,
   autocorrectionDisabled,
+  background,
   buttonStyle,
   contentShape,
   disabled,
@@ -293,16 +294,26 @@ function EmojiEntry(props: ReactionDetailsProps) {
         maxLength={64}
         onTextChange={setValue}
         modifiers={[
-          textFieldStyle('roundedBorder'),
-          font({ textStyle: 'title2' }),
+          textFieldStyle('plain'),
+          font({ size: 22 }),
+          foregroundStyle(colors.text),
+          padding({ horizontal: 14, vertical: 12 }),
           frame({ minHeight: 48 }),
+          background(colors.muted, shapes.roundedRectangle({ cornerRadius: 16 })),
+          tint(colors.accent),
           autocorrectionDisabled(),
           textInputAutocapitalization('never'),
           submitLabel('send'),
           onSubmit(submit),
           disabled(Boolean(props.pending)),
         ]}
-      />
+      >
+        <TextField.Placeholder>
+          <Text modifiers={[font({ textStyle: 'body' }), foregroundStyle(colors.secondary)]}>
+            {t('messageReactions.emojiPlaceholder')}
+          </Text>
+        </TextField.Placeholder>
+      </TextField>
       <Text
         modifiers={[
           font({ textStyle: 'footnote' }),
@@ -320,6 +331,7 @@ function EmojiEntry(props: ReactionDetailsProps) {
         modifiers={[
           buttonStyle('borderedProminent'),
           tint(colors.accent),
+          foregroundStyle(colors.onAccent),
           frame({ minHeight: 44, maxWidth: Infinity }),
           disabled(!emoji || Boolean(props.pending)),
         ]}
