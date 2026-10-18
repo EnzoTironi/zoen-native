@@ -5,6 +5,8 @@ iOS simulator Release has compiled the widget extension, Live Activities and App
 Intents metadata. Signed v7 accepts the redacted Portuguese Widget gallery preview. Signed v40
 accepts a private Live Activity on the Dynamic Island and Lock Screen, warm and process-terminated
 cold compact taps, Lock Screen navigation and explicit ending on the isolated QA simulator.
+Signed v50 accepts the bounded conversation-card journeys and preserving simulator
+delivery described below; its installed hashes and strict signatures match the archive.
 Selected widget content, Siri and canonical-version-update-to-OS-tap remain pending.
 Installed packages and successful compilation do not establish those journeys.
 
@@ -14,7 +16,7 @@ Home favorites now support a native iOS organizer with drag handles, card-menu o
 pinning directly from miniapp detail. Ordered ID-only choices retain the captured account,
 device and mode, validate the visible permutation when queued work executes, and preserve
 the last committed order on save failure. Actual isolated drag, menu movement, detail pin
-and cold retention passed; independent conversation-rail pinning remains pending.
+and cold retention passed; independent conversation-rail pinning was outside this checkpoint.
 
 Live Activities store a random session link in their existing owner-scoped preference.
 Expo SDK58 keeps the start URL in immutable ActivityKit attributes; content updates cannot
@@ -35,6 +37,62 @@ production-helper/adapter coverage; they were not exercised as OS mutation-to-ta
 Actual successful supported-device Speech, accessibility/performance and full parity remain
 pending. Evidence: `/private/tmp/zoen-home-qa/v40/runtime.json` and
 `/private/tmp/zoen-iphone-release-v40-verification.json`.
+
+## Signed v50 conversation card preferences
+
+The implementation adds separate presentation choices for each conversation. New
+canonical miniapps appear in its rail by default; hiding a card removes only that rail
+entry. It preserves the miniapp, its message card and history, and Home favorites.
+The native card menu offers Hide in this conversation and Organize cards. Miniapp
+detail offers Show/Hide and the same organizer; conversation details keep the organizer
+reachable when every card is hidden. The native organizer separates visible and hidden
+cards, with restore controls and drag handles for visible cards.
+
+`ConversationCardsController` persists bounded, versioned Item-ID-only hidden/order
+choices per Space in an identity/device/mode-scoped preference. Queued writes revalidate
+the captured owner, exact current membership and canonical items; invalid permutations
+are rejected, failed writes preserve the committed preference, and device erasure awaits
+cleanup. Demo choices remain volatile. Home and conversation cards share the canonical
+Home item source and membership projection rather than maintaining another content cache.
+Restoring an owner waits for that owner's pending writes before reading its preferences.
+
+Rendering uses subscribed immutable preferences, canonical items and membership. Both
+native organizers give the default recycled, movable `List.ForEach` stable Item IDs and
+resolve row content through the current canonical map. Successful saves do not remount
+the movable rows. The conversation's movable `ForEach` is a direct child of `List`, with
+its native section heading above the list; hidden cards use a separate static section.
+Only failed saves change the native List key to restore its committed visual order. Busy
+buttons and queued owner/scope guards serialize edits without transient row move metadata.
+The latest full check passes 320 application tests, TypeScript, Oxlint and Oxfmt. Two
+actual compiled-hook regressions fail against v42 and pass with the immutable projection.
+
+Earlier signed candidates exposed distinct native failures: v41/v42 could retain stale
+cards after a successful save, later hide/restore checks updated cards but lost drag
+handles or move callbacks, and v48 Home saved a reordered preference while a success-key
+remount blanked its rows. These failed candidates informed the final source design; they
+do not establish drag or cold-relaunch acceptance.
+
+Signed v50 source `4ef91160` removes the temporary QA traces and passes the final 320-test
+check. On the isolated simulator, actual native Home swap-and-restore retained all three
+rows; conversation swap-and-restore retained both rows and drag handles. Hiding two cards
+down to none and restoring both updated immediately and retained native drag handles.
+A cold restart retained Home's `[Recipe, Pet, Trip]` order. Final cold-conversation
+checks retained Recipe left of Pet, while the hidden QA countdown remained visible as a
+canonical message card in history. The conversation opened at 100% with an empty composer.
+
+The user's simulator now has v50 through a preserving install after an idle/empty-draft
+preflight. Installed executable/JavaScript hashes and strict signature match the archive.
+Normal restart retained four Home cards, Recipe's 6/8 progress and existing chat history.
+Fresh chat entry retained its audio/receipt above the composer by approximately 36 points.
+The actual native card menu exposed Hide in this conversation and Organize cards; the
+organizer opened with four rows and drag handles, then Back returned to the latest history.
+No hide, reorder, pin, content or audio-send mutations were performed on that simulator.
+
+The 13-step primary-simulator diagnostic contains one failed short-label wait, followed
+by a passing corrected menu-label wait, and four cross-tree warnings. It is not a clean
+formal full-flow replay. Installed failure-injection rollback remains unverified. The v40
+Live Activity evidence keeps its original attribution, and full product parity remains
+unproven.
 
 ## Apple baseline
 
@@ -545,7 +603,8 @@ miniapp content and filters them against currently known conversation membership
 Personal or unknown cached spaces remain hidden until the core supplies an explicit
 authorization projection for them.
 Home renders explicit favorites followed by remaining miniapps; Chats renders the
-accessible miniapps, and an individual conversation rail filters by its own Space.
+accessible miniapps. An individual conversation rail filters by its own Space and the
+independent hidden/order preferences described above.
 Compact cards render the canonical snapshot using bundled Zoen artwork and open
 `/miniapp/[id]`. Invalid snapshots have a bounded title/headline fallback. These
 in-app cards do not require external widget-content consent and do not donate titles,
@@ -560,9 +619,11 @@ on actual photographic cards remains pending.
 Favorites persist only Item IDs in a versioned device-local preference namespace
 bound to identity and device. There are no implicit default pins. Restore/read/write
 results are fenced across account changes; failed pin writes retain the prior pins,
-and device erasure awaits their cleanup. Demo pins are volatile. Pin order is the
-selection order; drag ordering and a separate per-conversation item-pin preference
-are not implemented. Conversation pin/archive/mute commands retain their own meaning.
+and device erasure awaits their cleanup. Demo pins are volatile. Home's native organizer
+and card-menu movement persist an explicit favorite order, accepted with isolated drag
+and cold retention in v40. Independent per-conversation choices are implemented above,
+with v50 isolated drag, hide-all/restore and cold-conversation retention checks.
+Conversation pin/archive/mute commands retain their own meaning.
 
 Home uses native SwiftUI add and per-card pin menus. Add opens the existing miniapp
 creation flow, new conversation, Activity or search. On iOS 26+, the native tab bottom
@@ -573,19 +634,21 @@ its children left an empty rounded native plate on Chats in installed v12. The
 installed React Native Screens host maps this flag to UIKit `setBottomAccessory:nil`,
 rather than hiding only the React content. Actual signed v13/v15 screenshots confirm
 the empty plate absent on Chats and Files. Search opens the search screen. Loading, failure and empty
-states expose real state rather than synthetic content. Twelve focused controller tests
-cover owner changes, persistence failures, stale reads, access loss and cleanup.
+states expose real state rather than synthetic content. Controller tests cover owner
+changes, persistence failures, stale reads, access loss and cleanup.
 Actual v12 screenshots show canonical Recipe/Countdown/Pet/Poll cards in Home and
 Chats, and Recipe opened its native detail. Signed v15 also confirms the Files
-heading and actions below the notch. Isolated menu/pin and final cold-relaunch
-acceptance remain pending during concurrent user exploration.
+heading and actions below the notch. The later v40 checkpoint above accepts isolated
+Home menu movement, detail pinning, drag ordering and cold retention. Signed v50 also
+accepts isolated Home and conversation drag, hide-all/restore and cold retention,
+plus preserving delivery and menu/organizer inspection on the user's simulator.
 
 ## Integration and command map
 
 | Journey                                              | Existing authoritative operations                                                         | Remaining integration                                                                                                                                                                          |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Read a miniapp widget                                | `items`, `item`, `item_at`, `app.snapshot_json`                                           | CNG widget kind/App Group, per-instance item selection, active-account publisher, freshness and cleanup on access loss.                                                                        |
-| In-app Home favorites and miniapp rails | Canonical `items`, `app.snapshot_json`; identity/device-scoped local Item-ID preferences | Home pin/unpin UI and membership-filtered Home/Chats/conversation cards are implemented in source. Installed interaction/relaunch QA, drag ordering and independent conversation item pinning remain pending. No conversation preference command is repurposed. |
+| In-app Home favorites and miniapp rails | Canonical `items`, `app.snapshot_json`; identity/device-scoped local Item-ID preferences | Signed v50 accepts isolated Home/conversation swap-and-restore, all-hidden/restore with retained drag handles, cold order and preserving primary delivery. The primary menu/organizer opens without preference mutations. Installed failure-injection rollback and clean formal replay remain unverified. No conversation preference command is repurposed. |
 | Open an item/chat through Siri                       | `item` plus current conversation membership                                               | Swift entities/query and read-only intents, app-target setup, local device authentication, single queue consumer, catalog update/clear lifecycle and actual Shortcuts/Siri QA.                 |
 | Perform a miniapp tool from a widget/intent          | `app_specs`, `app_call_tool`; Rust grant/confirmation checks                              | Durable invocation-ID deduplication atomic with the mutation and outcome, then native result/confirmation semantics. No props-only Feed/Nap/vote simulation.                                   |
 | Send a message or decide a request through an intent | `send_message`, `decide_request`                                                          | Persistent idempotency for invocation replay; approval/account/access checks and honest queued/acknowledged/refused results. These actions are not accepted by this router.                    |
