@@ -1,8 +1,3 @@
-use base64::Engine as _;
-use chacha20poly1305::{
-    aead::{Aead, Payload},
-    KeyInit, XChaCha20Poly1305, XNonce,
-};
 use hkdf::Hkdf;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -206,34 +201,9 @@ impl Engine {
 }
 
 fn seal(key: &[u8; 32], aad: &[u8], plain: &[u8]) -> R<String> {
-    let mut nonce = [0u8; 24];
-    getrandom::getrandom(&mut nonce).map_err(|_| storage_error())?;
-    let sealed = XChaCha20Poly1305::new(key.into())
-        .encrypt(&XNonce::from(nonce), Payload { msg: plain, aad })
-        .map_err(|_| storage_error())?;
-    let mut bytes = nonce.to_vec();
-    bytes.extend(sealed);
-    Ok(format!(
-        "v1:{}",
-        base64::engine::general_purpose::STANDARD.encode(bytes)
-    ))
+    crate::local_sealed::seal(key, aad, plain).map_err(|_| storage_error())
 }
 
 fn open(key: &[u8; 32], aad: &[u8], encoded: &str) -> R<Vec<u8>> {
-    let sealed = base64::engine::general_purpose::STANDARD
-        .decode(encoded.strip_prefix("v1:").ok_or_else(storage_error)?)
-        .map_err(|_| storage_error())?;
-    if sealed.len() < 40 {
-        return Err(storage_error());
-    }
-    let nonce: [u8; 24] = sealed[..24].try_into().map_err(|_| storage_error())?;
-    XChaCha20Poly1305::new(key.into())
-        .decrypt(
-            &XNonce::from(nonce),
-            Payload {
-                msg: &sealed[24..],
-                aad,
-            },
-        )
-        .map_err(|_| storage_error())
+    crate::local_sealed::open(key, aad, encoded, usize::MAX).map_err(|_| storage_error())
 }

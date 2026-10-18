@@ -13,6 +13,7 @@ import type { TimelineEntry } from '../core/types';
 import { MessageContext } from './message-context';
 import { useTheme } from '../theme';
 import { ComposerAction } from './composer-action';
+import { NativeButton } from './primitives';
 
 export type ComposerSearchMode = {
   state: ConversationSearchState;
@@ -42,6 +43,7 @@ export function MessageComposer({
   suspended = false,
   search,
   context,
+  draft,
 }: {
   spaceId: string;
   value: string;
@@ -60,7 +62,8 @@ export function MessageComposer({
   mediaEnabled?: boolean;
   suspended?: boolean;
   search?: ComposerSearchMode;
-  context?: { entry: TimelineEntry; onCancel: () => void };
+  context?: { entry?: TimelineEntry; onCancel: () => void };
+  draft?: { ready: boolean; error: boolean; rejected?: boolean; onRetry: () => void };
 }) {
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -119,7 +122,7 @@ export function MessageComposer({
         returnKeyType={search ? 'search' : 'default'}
         submitBehavior={search ? 'submit' : undefined}
         onSubmitEditing={search?.onSearch}
-        editable={files ? files.editable : true}
+        editable={files ? files.editable : draft?.ready !== false}
         value={files ? files.value : value}
         onChangeText={files ? files.onChange : onChangeText}
         onFocus={onFocus}
@@ -242,7 +245,7 @@ export function MessageComposer({
               name={editing ? 'checkmark' : 'arrow.up'}
               label={editing ? t('chat.saveEdit') : t('chat.sendMessage')}
               prominent
-              disabled={(!hasText && !allowEmptyEdit) || sending}
+              disabled={(!hasText && !allowEmptyEdit) || sending || draft?.ready === false}
               onPress={onSend}
             />
           ) : (
@@ -264,13 +267,35 @@ export function MessageComposer({
         process.env.EXPO_OS === 'ios' ? { paddingBottom: restingBottom } : keyboardPadding,
       ]}
     >
+      {draft?.error ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8 }}>
+          <Text
+            accessibilityRole="alert"
+            style={{ flex: 1, color: colors.secondary, fontSize: 12 }}
+          >
+            {t(
+              draft.rejected
+                ? 'chat.draftSendRejected'
+                : draft.ready
+                  ? 'chat.draftSaveFailed'
+                  : 'chat.draftLoadFailed',
+            )}
+          </Text>
+          <NativeButton
+            testID="retry-message-draft"
+            label={t('chat.tryAgain2')}
+            secondary
+            onPress={draft.onRetry}
+          />
+        </View>
+      ) : null}
       {mediaEnabled ? (
         <MediaComposer
           key={`${spaceId}:${threadRootId ?? 'chat'}`}
           spaceId={spaceId}
           replyTo={replyTo}
           thread={thread}
-          disabled={sending || editing || Boolean(search)}
+          disabled={sending || editing || Boolean(search) || draft?.ready === false}
           suspended={suspended || Boolean(search)}
           onSent={onMediaSent}
           renderControls={({ attachment, voice, review, files }) =>

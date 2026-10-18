@@ -6,6 +6,7 @@ import {
   type ActivityClock,
   type LiveActivityState,
 } from './live-activity.ts';
+import { NormalMessageDraftService } from './normal-message-draft-service.ts';
 import type {
   Command,
   CommandResult,
@@ -47,6 +48,7 @@ export class ClientStore {
   private eraseScope: DeviceScope | null = null;
   private eraseCleanup: readonly (() => Promise<void>)[] | null = null;
   private readonly deviceCleanup = new Set<() => Promise<void>>();
+  private readonly sessionCleanup = new Set<(discard: boolean) => Promise<void>>();
   private activityGeneration = 0;
   private stopEvents: (() => void) | undefined;
   private refreshTask: Promise<void> | undefined;
@@ -58,8 +60,10 @@ export class ClientStore {
   private readonly live: LiveActivity;
   private readonly typing: TypingSender;
   readonly driver: CoreDriver;
+  readonly messageDrafts: NormalMessageDraftService;
   constructor(driver: CoreDriver, clock: ActivityClock = activityClock) {
     this.driver = driver;
+    this.messageDrafts = new NormalMessageDraftService(this);
     this.live = new LiveActivity(
       () => this.state.snapshot,
       (activity) => this.publish({ activity }),
@@ -94,6 +98,9 @@ export class ClientStore {
     this.publish({ activity: emptyActivity() });
   }
   getSnapshot = (): ClientState => this.state;
+  get sessionEpoch(): number {
+    return this.generation;
+  }
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => {
@@ -112,6 +119,26 @@ export class ClientStore {
     };
   }
 
+  registerSessionCleanup(cleanup: (discard: boolean) => Promise<void>): () => void {
+    this.sessionCleanup.add(cleanup);
+    return () => {
+      this.sessionCleanup.delete(cleanup);
+    };
+  }
+
+  private retireSession(discard: boolean): Promise<void> | undefined {
+    if (!this.sessionCleanup.size) return;
+    // Stop admission synchronously, before publishing a different account.
+    const work = [...this.sessionCleanup].map((cleanup) => {
+      try {
+        return cleanup(discard);
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    });
+    return Promise.all(work).then(() => {});
+  }
+
   async open(mode: Mode = 'account'): Promise<void> {
     if (this.erasure) return this.erasure;
     if (this.state.erasePending && this.eraseScope) return this.eraseDevice(this.eraseScope);
@@ -119,6 +146,7 @@ export class ClientStore {
   }
 
   private async openSession(mode: Mode): Promise<void> {
+    const retirement = this.retireSession(false);
     const generation = ++this.generation;
     this.stopEvents?.();
     this.resetActivity(true);
@@ -129,6 +157,8 @@ export class ClientStore {
     this.timelineVersions.clear();
     this.publish({ phase: 'opening', mode, snapshot: null, timelines: {}, notice: null });
     try {
+      if (retirement) await retirement;
+      if (generation !== this.generation) return;
       await this.driver.close();
       if (generation !== this.generation) return;
       this.stopEvents = this.driver.subscribe((event) => {
@@ -336,6 +366,7 @@ export class ClientStore {
     // Clearing the snapshot can unmount account-bound providers. Preserve the
     // original cleanup owners through every retry, including that publication.
     const cleanups = (this.eraseCleanup ??= [...this.deviceCleanup]);
+    const retirement = this.retireSession(true);
     ++this.generation;
     this.stopEvents?.();
     this.stopEvents = undefined;
@@ -354,9 +385,10 @@ export class ClientStore {
     });
     this.resetActivity();
     const task = (async () => {
-      const cleanup = await Promise.allSettled(
-        cleanups.map((work) => Promise.resolve().then(work)),
-      );
+      const cleanup = await Promise.allSettled([
+        ...cleanups.map((work) => Promise.resolve().then(work)),
+        ...(retirement ? [retirement] : []),
+      ]);
       try {
         // Preflight removes OS projections before committing canonical erasure.
         // If interrupted here, the unchanged account may reopen on restart.
@@ -386,10 +418,13 @@ export class ClientStore {
 
   async close() {
     if (this.erasure) await this.erasure.catch(() => {});
+    const retirement = this.retireSession(false);
     ++this.generation;
     this.stopEvents?.();
     this.stopEvents = undefined;
     this.resetActivity();
+    this.publish({ phase: 'opening', snapshot: null, timelines: {} });
+    if (retirement) await retirement;
     await this.driver.close();
   }
 }

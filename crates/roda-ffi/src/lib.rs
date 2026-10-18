@@ -24,7 +24,10 @@ mod file_demand;
 mod files_api;
 mod liveview;
 pub use liveview::{LiveViewDemoVm, LiveViewInput, LiveViewKey, LiveViewSession};
+mod local_sealed;
 mod media;
+mod message_drafts;
+pub use message_drafts::{MessageDraftDto, MessageDraftSendResult};
 mod pages;
 pub use files::FileDto;
 pub use pages::{
@@ -77,6 +80,9 @@ pub enum CoreError {
     Invalid { reason: String },
     #[error("{reason}")]
     Stale { reason: String },
+    /// Only a current, unaccepted message-draft intent refused before append.
+    #[error("{reason}")]
+    DraftRejected { reason: String },
 }
 
 #[derive(uniffi::Object)]

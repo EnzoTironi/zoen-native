@@ -4,7 +4,6 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -38,11 +37,8 @@ import { ConversationRail, ConversationRailSpacer } from '../../components/conve
 import { ConversationMessage } from '../../components/conversation-message';
 import { useMessageActions } from '../../components/use-message-actions';
 import { messageCard } from '../../core/message-presentation';
-import {
-  initialMessageDraft,
-  messageDraftReducer,
-  captureMessageDraft,
-} from '../../core/message-draft';
+import { captureMessageDraft } from '../../core/message-draft';
+import { useMessageDraft } from '../../core/use-message-draft';
 import { ChatHeader } from '../../components/chat-header';
 import { useHome } from '../../home/provider';
 import { HomeCardMenu } from '../../home/menus';
@@ -67,11 +63,8 @@ export default function Chat() {
   const input = useRef<TextInputInstance>(null);
   const list = useRef<FlashListRef<TimelineEntry>>(null);
   const focused = useRef(false);
-  const [messageDraft, updateDraft] = useReducer(
-    messageDraftReducer,
-    undefined,
-    initialMessageDraft,
-  );
+  const normalDraft = useMessageDraft(id);
+  const { messageDraft, updateDraft } = normalDraft;
   const { text: draft, reply, editing, editText: editDraft } = messageDraft;
   const [sending, setSending] = useState(false);
   const sendingNow = useRef(false);
@@ -356,14 +349,7 @@ export default function Chat() {
           message_id: attempt.editingId,
           text,
         });
-      else
-        await store.request({
-          op: 'send_message',
-          space_id: id,
-          text,
-          reply_to: attempt.replyId,
-          thread: false,
-        });
+      else await normalDraft.send();
       updateDraft({ type: 'accepted', attempt });
     } catch {
       /* Keep the text for a retry. */
@@ -425,8 +411,11 @@ export default function Chat() {
           <>
             <MessageComposer
               context={
-                !searchState.active && (reply || editing)
-                  ? { entry: (editing ?? reply)!, onCancel: () => updateDraft({ type: 'cancel' }) }
+                !searchState.active && (normalDraft.replyTo || editing)
+                  ? {
+                      entry: editing ?? reply ?? undefined,
+                      onCancel: () => updateDraft({ type: 'cancel' }),
+                    }
                   : undefined
               }
               spaceId={id}
@@ -437,7 +426,17 @@ export default function Chat() {
               sending={sending}
               editing={Boolean(editing) && !searchState.active}
               allowEmptyEdit={Boolean(editing && messageCard(editing)?.kind_id === 'file')}
-              replyTo={reply?.id ?? null}
+              replyTo={normalDraft.replyTo}
+              draft={
+                searchState.active || editing
+                  ? undefined
+                  : {
+                      ready: normalDraft.ready,
+                      error: Boolean(normalDraft.error),
+                      rejected: normalDraft.rejected,
+                      onRetry: normalDraft.retry,
+                    }
+              }
               onChangeText={(text) => {
                 if (searchState.active) {
                   search.setQuery(text);
@@ -450,7 +449,10 @@ export default function Chat() {
                   store.setTyping(id, Boolean(text.trim()));
                 }
               }}
-              onBlur={() => store.setTyping(id, false)}
+              onBlur={() => {
+                store.setTyping(id, false);
+                normalDraft.flush();
+              }}
               onSend={() => {
                 if (!searchState.active) void send();
               }}
@@ -506,12 +508,7 @@ export default function Chat() {
                     }
                   : undefined
               }
-              onMediaSent={() =>
-                updateDraft({
-                  type: 'media-accepted',
-                  contextRevision: messageDraft.contextRevision,
-                })
-              }
+              onMediaSent={normalDraft.mediaAccepted}
             />
           </>
         }

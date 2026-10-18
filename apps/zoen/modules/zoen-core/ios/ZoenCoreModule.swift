@@ -19,7 +19,13 @@ public class ZoenCoreModule: Module {
       }
     }
     AsyncFunction("request") { (request: String) async throws -> String in
-      try await self.session.request(request)
+      do {
+        return try await self.session.request(request)
+      } catch CoreError.DraftRejected(let reason) {
+        // Only this core variant proves this exact draft revision was never
+        // accepted. Storage, transport, stale and session errors stay ambiguous.
+        throw Exception(name: "MessageDraftRejected", description: reason, code: "ERR_ZOEN_DRAFT_REJECTED")
+      }
     }
     AsyncFunction("openAssistant") { (spaceId: String, locale: String) async throws -> String in
       try await self.session.openAssistant(spaceId: spaceId, locale: locale)

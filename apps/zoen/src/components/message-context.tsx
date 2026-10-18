@@ -11,7 +11,7 @@ export function MessageContext({
   editing = false,
   onCancel,
 }: {
-  entry: TimelineEntry;
+  entry?: TimelineEntry;
   editing?: boolean;
   onCancel?: () => void;
 }) {
@@ -40,10 +40,18 @@ export function MessageContext({
       />
       <View style={{ flex: 1, gap: 3, paddingVertical: 7 }}>
         <Text numberOfLines={1} style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>
-          {editing ? t('chat.editMessage') : t('chat.replyingTo', { name: entry.author.name })}
+          {editing
+            ? t('chat.editMessage')
+            : entry
+              ? t('chat.replyingTo', { name: entry.author.name })
+              : t('chat.replyingToMessage')}
         </Text>
         <Text numberOfLines={1} style={{ color: colors.secondary, fontSize: 13, lineHeight: 18 }}>
-          {entry.voice ? t('media.voiceMessage') : messageText(entry)}
+          {entry
+            ? entry.voice
+              ? t('media.voiceMessage')
+              : messageText(entry)
+            : t('chat.messageUnavailable')}
         </Text>
       </View>
       {onCancel ? (

@@ -43,6 +43,11 @@ export const chat = defineFeature(
     editMessage: 'Edit message',
     cancel: 'Cancel',
     message: 'Message',
+    draftLoadFailed: 'Could not open your draft. Try again to continue safely.',
+    draftSaveFailed: 'Your latest changes are still on this screen. Try saving again.',
+    draftSendRejected:
+      'Could not send. Review the quoted message and your access to this chat, then try again.',
+    replyingToMessage: 'Replying to a message',
     saveEdit: 'Save edit',
     sendMessage: 'Send message',
     reply: 'Reply',
@@ -236,6 +241,11 @@ export const chat = defineFeature(
     editMessage: 'Editar mensagem',
     cancel: 'Cancelar',
     message: 'Mensagem',
+    draftLoadFailed: 'Não foi possível abrir o rascunho. Tente novamente para continuar.',
+    draftSaveFailed: 'As últimas alterações ainda estão nesta tela. Tente salvar novamente.',
+    draftSendRejected:
+      'Não foi possível enviar. Revise a citação e seu acesso à conversa, depois tente novamente.',
+    replyingToMessage: 'Respondendo a uma mensagem',
     saveEdit: 'Salvar edição',
     sendMessage: 'Enviar mensagem',
     reply: 'Responder',

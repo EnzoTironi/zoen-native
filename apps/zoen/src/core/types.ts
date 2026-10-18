@@ -40,6 +40,8 @@ import type { Mention } from './generated/Mention';
 import type { DeviceGrantDto } from './generated/DeviceGrantDto';
 import type { DecideOutcome } from './generated/DecideOutcome';
 import type { AppResourceDto } from './generated/AppResourceDto';
+import type { MessageDraftDto } from './generated/MessageDraftDto';
+import type { MessageDraftSendResult } from './generated/MessageDraftSendResult';
 
 export type { Command, Snapshot, TimelinePage, TimelineEntry, ItemDetail, PageDto, PlanPageDto };
 export type Mode = 'account' | 'demo';
@@ -59,6 +61,9 @@ type Results = {
   snapshot: Snapshot;
   timeline: TimelinePage;
   send_message: TimelineEntry;
+  message_draft: MessageDraftDto;
+  save_message_draft: MessageDraftDto;
+  send_message_draft: MessageDraftSendResult;
   thread: TimelineEntry[];
   items: ItemDetail[];
   item: ItemDetail;
@@ -142,6 +147,8 @@ export type CommandResult<C extends Command> = C['op'] extends keyof Results
   : unknown;
 
 export interface CoreDriver {
+  /** Native Rust owns encrypted, device-local normal composer drafts. */
+  durableMessageDrafts?: boolean;
   canAuthorizeDevice?(): boolean;
   assistant?: AssistantPort;
   media?: MediaDriver;

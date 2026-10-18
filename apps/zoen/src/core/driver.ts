@@ -88,6 +88,7 @@ export function createDriver(): CoreDriver {
     },
   };
   return {
+    durableMessageDrafts: true,
     assistant:
       Platform.OS === 'ios' && typeof NativeCore?.openAssistant === 'function'
         ? {

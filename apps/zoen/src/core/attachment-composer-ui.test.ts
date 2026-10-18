@@ -64,6 +64,7 @@ function fixture() {
     '../media/attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
     './message-context': { MessageContext: 'MessageContext' },
     './composer-action': { ComposerAction: 'ComposerAction' },
+    './primitives': { NativeButton: 'NativeButton' },
   };
   const module = {
     exports: {} as { MessageComposer: (props: Record<string, unknown>) => Element },
@@ -94,7 +95,13 @@ function fixture() {
       files,
     }) as Element;
   }
-  return { file, calls, render };
+  return {
+    file,
+    calls,
+    render,
+    renderRoot: (patch: Record<string, unknown>) =>
+      module.exports.MessageComposer({ ...props, ...patch }),
+  };
 }
 function find(root: unknown, predicate: (element: Element) => boolean): Element {
   const result = scan(root).find(predicate);
@@ -180,4 +187,17 @@ test('a sent file caption can be cleared without allowing empty ordinary text ed
   assert.equal(find(emptyCaption, byId('send-message')).props.disabled, false);
   const emptyText = f.render(undefined, { value: '', editing: true });
   assert.equal(find(emptyText, byId('send-message')).props.disabled, true);
+});
+
+test('an unread native draft cannot be overwritten by an initially empty field; retry stays visible', () => {
+  const f = fixture();
+  const draft = { ready: false, error: true, onRetry: () => f.calls.push('retry-draft') };
+  const root = f.render(undefined, { value: '', draft });
+  assert.equal(find(root, byId('message-input')).props.editable, false);
+  const status = f.renderRoot({ draft });
+  (find(status, byId('retry-message-draft')).props.onPress as Handler)();
+  assert.deepEqual(f.calls, ['retry-draft']);
+  const loaded = f.render(undefined, { draft: { ...draft, ready: true } });
+  assert.equal(find(loaded, byId('message-input')).props.editable, true);
+  assert.equal(find(loaded, byId('message-input')).props.value, 'My unsent normal text');
 });

@@ -17,7 +17,7 @@ use crate::{
     UndoToken,
 };
 
-const MAX_REQUEST_BYTES: usize = 1 << 20;
+pub(crate) const MAX_REQUEST_BYTES: usize = 1 << 20;
 const MAX_TIMELINE_PAGE: u32 = 200;
 
 #[derive(Serialize)]
@@ -75,6 +75,28 @@ enum Command {
         before: Option<String>,
         #[serde(default = "page_size")]
         limit: u32,
+    },
+    MessageDraft {
+        expected_identity_id: String,
+        expected_device_id: String,
+        space_id: String,
+        thread_root_id: Option<String>,
+    },
+    SaveMessageDraft {
+        expected_identity_id: String,
+        expected_device_id: String,
+        space_id: String,
+        thread_root_id: Option<String>,
+        expected_revision: String,
+        text: String,
+        reply_to: Option<String>,
+    },
+    SendMessageDraft {
+        expected_identity_id: String,
+        expected_device_id: String,
+        space_id: String,
+        thread_root_id: Option<String>,
+        expected_revision: String,
     },
     SendMessage {
         space_id: String,
@@ -428,6 +450,8 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
         .with_out_dir(path);
     Command::export_all(&config)?;
     Snapshot::export_all(&config)?;
+    crate::MessageDraftDto::export_all(&config)?;
+    crate::MessageDraftSendResult::export_all(&config)?;
     TimelinePage::export_all(&config)?;
     LogEventsPage::export_all(&config)?;
     crate::ItemDetail::export_all(&config)?;
@@ -474,10 +498,24 @@ fn encode(value: &impl Serialize) -> Result<String, CoreError> {
 }
 
 fn decode(request: &str) -> Result<Command, CoreError> {
-    if request.len() > MAX_REQUEST_BYTES {
+    // Draft commands carry owner and CAS fields in addition to the unchanged
+    // send envelope. Keep the old ceiling for every existing operation.
+    if request.len() > MAX_REQUEST_BYTES + 8 * 1024 {
         return Err(invalid("Application request is too large."));
     }
-    serde_json::from_str(request).map_err(|_| invalid("Invalid application command."))
+    let command: Command =
+        serde_json::from_str(request).map_err(|_| invalid("Invalid application command."))?;
+    if request.len() > MAX_REQUEST_BYTES
+        && !matches!(
+            command,
+            Command::MessageDraft { .. }
+                | Command::SaveMessageDraft { .. }
+                | Command::SendMessageDraft { .. }
+        )
+    {
+        return Err(invalid("Application request is too large."));
+    }
+    Ok(command)
 }
 
 fn transfer_timeout(milliseconds: u32) -> Result<u64, CoreError> {
@@ -588,6 +626,57 @@ impl RodaEngine {
                 before,
                 limit,
             )?),
+            MessageDraft {
+                expected_identity_id,
+                expected_device_id,
+                space_id,
+                thread_root_id,
+            } => {
+                let scope = crate::message_drafts::DraftScope {
+                    expected_identity_id,
+                    expected_device_id,
+                    space_id,
+                    thread_root_id,
+                };
+                encode(&self.lock().message_draft(&scope)?)
+            }
+            SaveMessageDraft {
+                expected_identity_id,
+                expected_device_id,
+                space_id,
+                thread_root_id,
+                expected_revision,
+                text,
+                reply_to,
+            } => {
+                let scope = crate::message_drafts::DraftScope {
+                    expected_identity_id,
+                    expected_device_id,
+                    space_id,
+                    thread_root_id,
+                };
+                encode(&self.lock().save_message_draft(
+                    &scope,
+                    &expected_revision,
+                    text,
+                    reply_to,
+                )?)
+            }
+            SendMessageDraft {
+                expected_identity_id,
+                expected_device_id,
+                space_id,
+                thread_root_id,
+                expected_revision,
+            } => {
+                let scope = crate::message_drafts::DraftScope {
+                    expected_identity_id,
+                    expected_device_id,
+                    space_id,
+                    thread_root_id,
+                };
+                encode(&self.lock().send_message_draft(&scope, &expected_revision)?)
+            }
             SendMessage {
                 space_id,
                 text,

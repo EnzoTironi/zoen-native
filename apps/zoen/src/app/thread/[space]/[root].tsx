@@ -1,5 +1,5 @@
 import { t } from '../../../i18n/index.ts';
-import { useCallback, useReducer, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,11 +10,8 @@ import { useClient } from '../../../core/provider';
 import type { TimelineEntry } from '../../../core/types';
 import { messageText } from '../../../core/presentation';
 import { messageCard } from '../../../core/message-presentation';
-import {
-  initialMessageDraft,
-  messageDraftReducer,
-  captureMessageDraft,
-} from '../../../core/message-draft';
+import { captureMessageDraft } from '../../../core/message-draft';
+import { useMessageDraft } from '../../../core/use-message-draft';
 import { EmptyState, Loading, NativeButton } from '../../../components/primitives';
 import { useTheme } from '../../../theme';
 import { useHome } from '../../../home/provider';
@@ -44,11 +41,8 @@ export default function Thread() {
     retry,
   } = useCoreQuery({ op: 'thread', space_id: space, root_id: root });
   const { colors } = useTheme();
-  const [messageDraft, updateDraft] = useReducer(
-    messageDraftReducer,
-    undefined,
-    initialMessageDraft,
-  );
+  const normalDraft = useMessageDraft(space, root);
+  const { messageDraft, updateDraft } = normalDraft;
   const { text: draft, reply, editing, editText: editDraft } = messageDraft;
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -82,14 +76,7 @@ export default function Thread() {
           message_id: attempt.editingId,
           text,
         });
-      else
-        await store.request({
-          op: 'send_message',
-          space_id: space,
-          text,
-          reply_to: attempt.replyId ?? root,
-          thread: true,
-        });
+      else await normalDraft.send();
       updateDraft({ type: 'accepted', attempt });
     } catch (reason) {
       setFailure(reason instanceof Error ? reason.message : t('chat.theReplyCouldNotBeSent'));
@@ -115,33 +102,44 @@ export default function Thread() {
             ) : null}
             <MessageComposer
               context={
-                reply || editing
-                  ? { entry: (editing ?? reply)!, onCancel: () => updateDraft({ type: 'cancel' }) }
+                normalDraft.replyTo || editing
+                  ? {
+                      entry: editing ?? reply ?? undefined,
+                      onCancel: () => updateDraft({ type: 'cancel' }),
+                    }
                   : undefined
               }
               threadRootId={root}
               spaceId={space}
               inputRef={input}
-              replyTo={reply?.id ?? root}
+              replyTo={normalDraft.replyTo ?? root}
               thread
               editing={Boolean(editing)}
               allowEmptyEdit={Boolean(editing && messageCard(editing)?.kind_id === 'file')}
               value={editing ? editDraft : draft}
+              draft={
+                editing
+                  ? undefined
+                  : {
+                      ready: normalDraft.ready,
+                      error: Boolean(normalDraft.error),
+                      rejected: normalDraft.rejected,
+                      onRetry: normalDraft.retry,
+                    }
+              }
               sending={busy}
               onChangeText={(text) => {
                 updateDraft({ type: 'text', value: text });
                 store.setTyping(space, !editing && Boolean(text.trim()));
               }}
-              onBlur={() => store.setTyping(space, false)}
+              onBlur={() => {
+                store.setTyping(space, false);
+                normalDraft.flush();
+              }}
               onSend={() => {
                 void send();
               }}
-              onMediaSent={() =>
-                updateDraft({
-                  type: 'media-accepted',
-                  contextRevision: messageDraft.contextRevision,
-                })
-              }
+              onMediaSent={normalDraft.mediaAccepted}
             />
           </>
         }

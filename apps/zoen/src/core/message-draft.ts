@@ -1,5 +1,16 @@
 import type { TimelineEntry } from './types';
 
+export function canConsumeMediaReply(
+  current: { replyRevision: number; editContextRevision: number; editing: boolean },
+  sent: { replyRevision: number; editContextRevision: number },
+): boolean {
+  return (
+    !current.editing &&
+    current.replyRevision === sent.replyRevision &&
+    current.editContextRevision === sent.editContextRevision
+  );
+}
+
 export type MessageDraft = {
   text: string;
   reply: TimelineEntry | null;
@@ -17,6 +28,14 @@ export type MessageDraftAttempt = {
   textRevision: number;
   editRevision: number;
 };
+
+/** Normal reply revisions never enter the transient edit reducer's fence. */
+export function projectMessageDraft(
+  edit: MessageDraft,
+  normal: Pick<MessageDraft, 'text' | 'textRevision' | 'reply'>,
+): MessageDraft {
+  return { ...edit, ...normal };
+}
 export type MessageDraftAction =
   | { type: 'text'; value: string }
   | { type: 'reply'; entry: TimelineEntry }

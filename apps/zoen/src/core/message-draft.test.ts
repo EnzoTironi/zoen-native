@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import type { TimelineEntry } from './types';
 import {
   captureMessageDraft,
+  canConsumeMediaReply,
+  projectMessageDraft,
   initialMessageDraft,
   messageDraftReducer as reduce,
 } from './message-draft.ts';
@@ -56,4 +58,42 @@ test('media completion keeps newer quotes, edits and unrelated typed text', () =
   const accepted = reduce(draft, { type: 'media-accepted', contextRevision });
   assert.equal(accepted.reply, null);
   assert.equal(accepted.text, 'Unsent caption');
+});
+
+test('an edit captured beside a durable reply uses its own context fence', () => {
+  let edit = reduce(initialMessageDraft(), {
+    type: 'edit',
+    entry: message('edit-a'),
+    text: 'Changed',
+  });
+  const normal = {
+    text: 'Normal draft stays',
+    reply: message('durable-quote'),
+    textRevision: 4,
+  };
+  const projected = projectMessageDraft(edit, normal);
+  const sent = captureMessageDraft(projected);
+  const accepted = reduce(edit, { type: 'accepted', attempt: sent });
+  assert.equal(accepted.editing, null);
+  assert.equal(accepted.editText, '');
+  assert.equal(projectMessageDraft(accepted, normal).reply?.id, 'durable-quote');
+  assert.equal(projectMessageDraft(accepted, normal).text, 'Normal draft stays');
+  edit = reduce(edit, { type: 'edit', entry: message('edit-b'), text: 'New edit' });
+  assert.equal(reduce(edit, { type: 'accepted', attempt: sent }).editing?.id, 'edit-b');
+});
+
+test('captured media acceptance checks live quote and edit fences independently', () => {
+  const sent = { replyRevision: 3, editContextRevision: 2 };
+  assert.equal(canConsumeMediaReply({ ...sent, editing: false }, sent), true);
+  assert.equal(canConsumeMediaReply({ ...sent, replyRevision: 4, editing: false }, sent), false);
+  assert.equal(
+    canConsumeMediaReply({ ...sent, editContextRevision: 3, editing: false }, sent),
+    false,
+  );
+  assert.equal(canConsumeMediaReply({ ...sent, editing: true }, sent), false);
+  // The summed numbers match, but this is a different quote after navigation.
+  assert.equal(
+    canConsumeMediaReply({ replyRevision: 5, editContextRevision: 0, editing: false }, sent),
+    false,
+  );
 });

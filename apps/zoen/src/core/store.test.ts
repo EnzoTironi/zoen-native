@@ -31,6 +31,7 @@ function deferred<T>() {
 }
 
 class Driver implements CoreDriver {
+  durableMessageDrafts?: boolean;
   opening = async () => empty;
   operation: (command: Command) => Promise<unknown> = async () => empty;
   changed: ((event: CoreEvent) => void) | undefined;
@@ -502,5 +503,179 @@ test('an old read completion cannot refresh or publish an error into a replaceme
   assert.equal(store.getSnapshot().mode, 'demo');
   assert.equal(store.getSnapshot().snapshot, empty);
   assert.equal(store.getSnapshot().notice, null);
+  await store.close();
+});
+
+test('session retirement stops admission before publication and drains before closing the native realm', async () => {
+  const driver = new Driver();
+  const store = new ClientStore(driver);
+  await store.open('demo');
+  const epoch = store.sessionEpoch;
+  const saved = deferred<void>();
+  const calls: string[] = [];
+  driver.close = async () => {
+    calls.push('native-close');
+  };
+  store.registerSessionCleanup((discard) => {
+    assert.equal(discard, false);
+    calls.push('retired');
+    return saved.promise;
+  });
+  const closing = store.close();
+  assert.deepEqual(calls, ['retired']);
+  assert.equal(store.getSnapshot().phase, 'opening');
+  assert.equal(store.getSnapshot().snapshot, null);
+  assert.ok(store.sessionEpoch > epoch);
+  saved.resolve();
+  await closing;
+  assert.deepEqual(calls, ['retired', 'native-close']);
+});
+
+test('a failed draft drain keeps the old realm open and can be retried before replacement', async () => {
+  const driver = new Driver();
+  const store = new ClientStore(driver);
+  await store.open('demo');
+  let fail = true;
+  let closes = 0;
+  let opens = 0;
+  driver.close = async () => {
+    closes++;
+  };
+  driver.opening = async () => {
+    opens++;
+    return empty;
+  };
+  const stop = store.registerSessionCleanup(async () => {
+    if (fail) throw new Error('synthetic draft save failure');
+  });
+  await store.open('demo');
+  assert.equal(closes, 0);
+  assert.equal(opens, 0);
+  assert.equal(store.getSnapshot().phase, 'failed');
+  fail = false;
+  await store.open('demo');
+  assert.equal(closes, 1);
+  assert.equal(opens, 1);
+  assert.equal(store.getSnapshot().phase, 'ready');
+  stop();
+  await store.close();
+});
+
+function draftSession(): Snapshot {
+  const snapshot = unreadSnapshot(0);
+  return {
+    ...snapshot,
+    conversations: snapshot.conversations.map((conversation) => ({
+      ...conversation,
+      members: [
+        {
+          id: erasureAccount.identity_id,
+          kind: 'Person',
+          name: 'QA',
+          handle: 'qa',
+          initials: 'QA',
+          tint_hex: '#194D2A',
+          glyph: null,
+          bio: '',
+          owner_id: null,
+          owner_name: null,
+          owner_tint_hex: null,
+          photo_sha256: null,
+          photo_ready: false,
+          photo_mime: null,
+          is_me: true,
+          is_mine: false,
+        },
+      ],
+    })),
+  };
+}
+
+test('native draft writes avoid snapshot polling and survive controller retirement with exact scoped commands', async () => {
+  const driver = new Driver();
+  driver.durableMessageDrafts = true;
+  driver.opening = async () => draftSession();
+  let durable = { revision: '0', text: '', reply_to: null as string | null };
+  const commands: Command[] = [];
+  driver.operation = async (command) => {
+    commands.push(command);
+    assert.equal(
+      'expected_identity_id' in command && command.expected_identity_id,
+      erasureAccount.identity_id,
+    );
+    assert.equal(
+      'expected_device_id' in command && command.expected_device_id,
+      erasureAccount.device_id,
+    );
+    assert.equal('thread_root_id' in command && command.thread_root_id, null);
+    if (command.op === 'message_draft') return durable;
+    assert.equal(command.op, 'save_message_draft');
+    if (command.op !== 'save_message_draft') throw Error('unexpected command');
+    assert.equal(command.expected_revision, durable.revision);
+    durable = { revision: 'opaque-next', text: command.text, reply_to: command.reply_to };
+    return durable;
+  };
+  const store = new ClientStore(driver);
+  await store.open();
+  const channel = store.messageDrafts.channel('read-chat', null)!;
+  await channel.controller.activate(channel.scope);
+  assert.equal(channel.controller.setText(channel.scope, '  Café 🌤️\r\nAinda não enviado  '), true);
+  await store.close();
+  assert.equal(commands.filter((command) => command.op === 'save_message_draft').length, 1);
+  assert.equal(
+    commands.some((command) => command.op === 'snapshot'),
+    false,
+  );
+  assert.equal(store.messageDrafts.isCurrent(channel), false);
+  assert.equal(channel.controller.setText(channel.scope, 'stale callback'), false);
+  await store.open();
+  const restored = store.messageDrafts.channel('read-chat', null)!;
+  assert.notEqual(restored.controller, channel.controller);
+  await restored.controller.activate(restored.scope);
+  assert.equal(
+    restored.controller.getSnapshot(restored.scope).text,
+    '  Café 🌤️\r\nAinda não enviado  ',
+  );
+  assert.notEqual(restored.scope.owner.sessionEpoch, channel.scope.owner.sessionEpoch);
+  await store.close();
+});
+
+test('device erasure cancels queued draft text and drains an admitted native save before wiping', async () => {
+  const driver = new Driver();
+  driver.durableMessageDrafts = true;
+  let erased = false;
+  driver.opening = async () => (erased ? empty : draftSession());
+  const save = deferred<unknown>();
+  const admitted = deferred<void>();
+  const writes: string[] = [];
+  driver.operation = async (command) => {
+    if (command.op === 'message_draft') return { revision: '0', text: '', reply_to: null };
+    assert.equal(command.op, 'save_message_draft');
+    if (command.op !== 'save_message_draft') throw Error('unexpected command');
+    assert.equal(erased, false);
+    writes.push(command.text);
+    admitted.resolve();
+    return save.promise;
+  };
+  driver.eraseDevice = async () => {
+    erased = true;
+    writes.push('wipe');
+  };
+  const store = new ClientStore(driver);
+  await store.open();
+  const channel = store.messageDrafts.channel('read-chat', null)!;
+  await channel.controller.activate(channel.scope);
+  channel.controller.setText(channel.scope, 'admitted');
+  await admitted.promise;
+  channel.controller.setText(channel.scope, 'queued after admitted');
+  const erasing = store.eraseDevice(erasureScope);
+  assert.equal(store.messageDrafts.isCurrent(channel), false);
+  assert.equal(channel.controller.setText(channel.scope, 'late'), false);
+  assert.equal(erased, false);
+  save.resolve({ revision: 'saved-before-wipe', text: 'admitted', reply_to: null });
+  await erasing;
+  assert.deepEqual(writes, ['admitted', 'wipe']);
+  assert.equal(channel.controller.getSnapshot(channel.scope).text, '');
+  assert.equal(store.getSnapshot().phase, 'onboarding');
   await store.close();
 });
