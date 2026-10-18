@@ -19,7 +19,13 @@ import { discardCacheCopy } from './cache-files';
 import { sensitiveCacheWork } from './cache-work';
 import { ComposerAction } from '../components/composer-action';
 import { VoiceReviewOwner } from './voice-review-owner';
-import type { VoiceSendable } from './voice-session';
+import type { VoiceSendable, VoiceSession } from './voice-session';
+import type { VoiceDraft } from './voice-edit';
+import {
+  hasPendingVoiceTrim,
+  updatePendingVoiceTrim,
+  type PendingVoiceTrim,
+} from './voice-trim-preview';
 import { VoiceReview } from './voice-review';
 import { VoiceDock } from './voice-dock';
 import { MediaSheet } from './media-sheet';
@@ -84,6 +90,9 @@ export function MediaComposer({
   const [recordingLevels, setRecordingLevels] = useState<readonly number[]>([]);
   const stopTask = useRef<Promise<void> | null>(null);
   const recording = useRef(false);
+  const audioModeNeedsRestore = useRef(false);
+  const trimNow = useRef<PendingVoiceTrim>(null);
+  const [pendingTrim, setPendingTrim] = useState<PendingVoiceTrim>(null);
   const suspendedNow = useRef(suspended);
   const uriToDiscard = useRef<string | undefined>(undefined);
   const mounted = useRef(true);
@@ -92,6 +101,16 @@ export function MediaComposer({
   const busyNow = useRef(false);
   const clipNow = useRef<Recording | null>(null);
   const owners = useRef(new Set<VoiceReviewOwner>());
+  const onPendingTrimChange = useCallback(
+    (session: VoiceSession, draft: VoiceDraft, pending: boolean, previewOwner: object) => {
+      if (pending && clipNow.current?.owner?.session !== session) return;
+      const next = updatePendingVoiceTrim(trimNow.current, session, draft, pending, previewOwner);
+      if (next === trimNow.current) return;
+      trimNow.current = next;
+      if (mounted.current) setPendingTrim(next);
+    },
+    [],
+  );
   const attachments = useAttachmentComposer({
     spaceId,
     replyTo,
@@ -150,36 +169,64 @@ export function MediaComposer({
 
   const stop = useCallback(() => {
     if (stopTask.current) return stopTask.current;
-    if (!recording.current) return Promise.resolve();
-    recording.current = false;
+    if (!recording.current && !audioModeNeedsRestore.current) return Promise.resolve();
+    audioModeNeedsRestore.current = true;
     const task = (async () => {
+      let failure: unknown;
+      let failed = false;
       try {
-        const durationMs = recorder.getStatus().durationMillis;
-        await recorder.stop();
-        const uri = recorder.uri;
-        if (uri && durationMs >= 250 && mounted.current && focused.current) {
-          const stride = Math.max(1, Math.ceil(levels.current.length / 160));
-          stageVoice(
-            {
-              uri,
-              durationMs: Math.round(durationMs),
-              levels: levels.current.filter((_, index) => index % stride === 0),
-            },
-            true,
-          );
-        } else {
-          await discard(uri ?? undefined);
-          if (mounted.current && focused.current && durationMs < 250)
-            void inform(t('media.recordingTooShort'), t('media.recordForAtLeastOneSecondToSend'));
+        // SDK58 releases/stops this SharedObject on unmount; retained cleanup must not touch it.
+        if (!mounted.current) recording.current = false;
+        if (recording.current) {
+          const status = recorder.getStatus();
+          const durationMs = status.durationMillis;
+          const captureUri = recorder.uri;
+          // A previous stop may have completed before a status/restoration failure.
+          if (status.isRecording) await recorder.stop();
+          if (mounted.current && recorder.getStatus().isRecording)
+            throw new Error(t('media.theRecordingOnThisDeviceCouldNotBe'));
+          // A failed stop retains capture ownership and can be retried; never discard live audio.
+          recording.current = false;
+          const uri = mounted.current ? recorder.uri : captureUri;
+          if (uri && durationMs >= 250 && mounted.current && focused.current) {
+            const stride = Math.max(1, Math.ceil(levels.current.length / 160));
+            stageVoice(
+              {
+                uri,
+                durationMs: Math.round(durationMs),
+                levels: levels.current.filter((_, index) => index % stride === 0),
+              },
+              true,
+            );
+          } else {
+            await discard(uri ?? undefined);
+            if (mounted.current && focused.current && durationMs < 250)
+              void inform(t('media.recordingTooShort'), t('media.recordForAtLeastOneSecondToSend'));
+          }
         }
       } catch (reason) {
-        if (mounted.current) setFailure(failureMessage(reason));
-      } finally {
+        failure = reason;
+        failed = true;
+      }
+      try {
         await setAudioModeAsync({ allowsRecording: false });
-        stopTask.current = null;
+        audioModeNeedsRestore.current = false;
+      } catch (reason) {
+        if (!failed) failure = reason;
+        failed = true;
+      }
+      if (failed) {
+        if (mounted.current) setFailure(failureMessage(failure));
+        throw failure;
       }
     })();
     stopTask.current = task;
+    // Releasing the single-flight latch must not depend on successful audio-session restoration.
+    void task
+      .finally(() => {
+        if (stopTask.current === task) stopTask.current = null;
+      })
+      .catch(() => {});
     return sensitiveCacheWork.track(task);
   }, [recorder, inform, stageVoice]);
   useEffect(() => {
@@ -202,13 +249,13 @@ export function MediaComposer({
       focused.current = true;
       return () => {
         focused.current = false;
-        void stop();
+        void stop().catch(() => {});
       };
     }, [stop]),
   );
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') void stop();
+      if (state !== 'active') void stop().catch(() => {});
     });
     return () => subscription.remove();
   }, [stop]);
@@ -216,10 +263,11 @@ export function MediaComposer({
     // Search keeps this owner mounted. End a live capture into its retained draft
     // before hiding the recording controls; returning restores the same edits.
     suspendedNow.current = suspended;
-    if (suspended) void stop();
+    if (suspended) void stop().catch(() => {});
   }, [suspended, stop]);
   useEffect(() => {
-    if (recorderState.isRecording && recorderState.durationMillis >= 3_600_000) void stop();
+    if (recorderState.isRecording && recorderState.durationMillis >= 3_600_000)
+      void stop().catch(() => {});
   }, [recorderState.isRecording, recorderState.durationMillis, stop]);
 
   async function pick(kind: MediaPickKind) {
@@ -277,7 +325,10 @@ export function MediaComposer({
       attachments.busy ||
       disabled ||
       suspendedNow.current ||
-      recording.current
+      recording.current ||
+      stopTask.current ||
+      audioModeNeedsRestore.current ||
+      clipNow.current
     )
       return;
     setBusy(true);
@@ -316,6 +367,7 @@ export function MediaComposer({
       setExpanded(false);
       recorder.record();
       recording.current = true;
+      uriToDiscard.current = recorder.uri ?? undefined;
     } catch (reason) {
       await inform(t('media.couldNotRecord'), failureMessage(reason));
       await setAudioModeAsync({ allowsRecording: false });
@@ -325,10 +377,15 @@ export function MediaComposer({
   }
   async function sendEdited(owner: VoiceReviewOwner, captured: VoiceSendable) {
     if (!media || busyNow.current) throw new Error(t('media.voiceRecordingUnavailable'));
+    if (clipNow.current?.owner !== owner || hasPendingVoiceTrim(trimNow.current, owner.session))
+      throw new Error(t('media.voiceRecordingUnavailable'));
     busyNow.current = true;
     setBusy(true);
     setFailure(null);
     try {
+      await stop();
+      if (clipNow.current?.owner !== owner || hasPendingVoiceTrim(trimNow.current, owner.session))
+        throw new Error(t('media.voiceRecordingUnavailable'));
       await owner.send(captured, (value) =>
         media.sendVoice({
           uri: value.preview.uri,
@@ -361,6 +418,7 @@ export function MediaComposer({
     setFailure(null);
     const uri = clip.uri;
     try {
+      await stop();
       await media.sendVoice({
         uri: clip.uri,
         durationMs: clip.durationMs,
@@ -405,13 +463,36 @@ export function MediaComposer({
       if (mounted.current) setBusy(false);
     }
   }
+  async function retryVoice() {
+    // Restore the audio session first, without throwing away a successfully staged capture.
+    await stop();
+    if (!mounted.current || !focused.current) return;
+    setFailure(null);
+    const owner = clipNow.current?.owner;
+    if (!owner) return;
+    const current = owner.session.getSnapshot();
+    if (current.phase === 'closing' || current.phase === 'closed') await cancel();
+    else if (current.phase === 'ready' && current.error && current.error.kind !== 'transcribe')
+      await owner.session.retryPreview();
+    else if (current.phase === 'idle') await owner.prepare();
+  }
   if (!media) return renderControls?.({ attachment: null, voice: null }) ?? null;
   const isRecording = recorderState.isRecording;
   const voiceActive = Boolean(clip || isRecording);
   const presented = Boolean(attachments.active || clip || isRecording || failure);
   const sheetVisible = Boolean(voiceActive ? expanded : failure);
+  const trimPending = Boolean(
+    pendingTrim &&
+    clip?.owner?.session === pendingTrim.session &&
+    pendingTrim.session.getSnapshot().draft === pendingTrim.draft,
+  );
   function collapseVoice() {
-    if (busy || busyNow.current) return;
+    if (
+      busy ||
+      busyNow.current ||
+      (clip?.owner && hasPendingVoiceTrim(trimNow.current, clip.owner.session))
+    )
+      return;
     pauseAudioPlayback();
     setExpanded(false);
   }
@@ -428,18 +509,7 @@ export function MediaComposer({
         failure={failure}
         onCancel={cancel}
         onStop={stop}
-        onRetry={
-          clip?.owner
-            ? async () => {
-                setFailure(null);
-                const session = clip.owner!.session;
-                const phase = session.getSnapshot().phase;
-                if (phase === 'closing' || phase === 'closed') await cancel();
-                else if (phase === 'ready') await session.retryPreview();
-                else await clip.owner!.prepare();
-              }
-            : undefined
-        }
+        onRetry={failure || clip?.owner ? retryVoice : undefined}
         onExpand={() => {
           pauseAudioPlayback();
           setExpanded(true);
@@ -496,7 +566,7 @@ export function MediaComposer({
       )}
       <MediaSheet
         visible={sheetVisible}
-        locked={busy}
+        locked={busy || trimPending}
         onDismiss={() => {
           if (voiceActive) collapseVoice();
           else if (!busyNow.current) void cancel();
@@ -534,7 +604,7 @@ export function MediaComposer({
                   ? { ios: 'chevron.down', android: 'expand_more', web: 'expand_more' }
                   : { ios: 'xmark', android: 'close', web: 'close' }
               }
-              disabled={busy}
+              disabled={busy || trimPending}
               onPress={() => {
                 if (voiceActive) collapseVoice();
                 else void cancel();
@@ -557,7 +627,7 @@ export function MediaComposer({
               <NativeButton
                 label={t('media.stopRecording')}
                 onPress={() => {
-                  void stop();
+                  void stop().catch(() => {});
                 }}
               />
             </>
@@ -568,6 +638,7 @@ export function MediaComposer({
               initiallyEditing
               busy={busy}
               onSend={(value) => sendEdited(clip.owner!, value)}
+              onPendingTrimChange={onPendingTrimChange}
               onRetryPrepare={() => {
                 setFailure(null);
                 void clip
@@ -579,13 +650,25 @@ export function MediaComposer({
             <AudioClip uri={clip.uri} durationMs={clip.durationMs} levels={clip.levels} />
           ) : null}
           {failure ? (
-            <Text
-              accessibilityRole="alert"
-              selectable
-              style={{ color: colors.danger, lineHeight: 22 }}
-            >
-              {failure}
-            </Text>
+            <View style={{ gap: 12 }}>
+              <Text
+                accessibilityRole="alert"
+                selectable
+                style={{ color: colors.danger, lineHeight: 22 }}
+              >
+                {failure}
+              </Text>
+              <NativeButton
+                secondary
+                label={t('media.voiceTryAgain')}
+                disabled={busy}
+                onPress={() => {
+                  void retryVoice().catch((reason: unknown) => {
+                    if (mounted.current) setFailure(failureMessage(reason));
+                  });
+                }}
+              />
+            </View>
           ) : null}
           {!isRecording && !clip?.owner && Boolean(clip) ? (
             <NativeButton

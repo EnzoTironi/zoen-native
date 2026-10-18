@@ -66,7 +66,7 @@ export function ComposerTextField({
   useImperativeHandle(inputRef, () => field.current!);
   const ref = useCallback((node: TextInputInstance | null) => {
     field.current = node;
-    setTag(node ? (findNodeHandle(node) ?? null) : null);
+    setTag(process.env.EXPO_OS === 'ios' && node ? (findNodeHandle(node) ?? null) : null);
   }, []);
   return (
     <TextInput

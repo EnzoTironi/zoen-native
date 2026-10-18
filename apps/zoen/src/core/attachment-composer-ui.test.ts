@@ -31,44 +31,57 @@ const { transformSync } = require('@babel/core') as {
   transformSync(source: string, options: Record<string, unknown>): { code: string };
 };
 const fieldPath = fileURLToPath(new URL('../components/composer-text-field.tsx', import.meta.url));
-const compiledField = transformSync(readFileSync(fieldPath, 'utf8'), {
-  filename: fieldPath,
-  configFile: false,
-  babelrc: false,
-  presets: [require.resolve('babel-preset-expo')],
-  caller: {
-    name: 'metro',
-    platform: 'ios',
-    engine: 'hermes',
-    isDev: false,
-    supportsReactCompiler: true,
-  },
-}).code;
-const fieldPorts = new Set([
-  'react',
-  'react/compiler-runtime',
-  'react/jsx-runtime',
-  'react-native',
-  '../../modules/zoen-core/src/ZoenCoreModule',
-]);
-const fieldOutput = await build({
-  stdin: { contents: compiledField, resolveDir: dirname(fieldPath), loader: 'js' },
-  bundle: true,
-  platform: 'node',
-  format: 'cjs',
-  write: false,
-  plugins: [
-    {
-      name: 'actual-composer-field-native-ports',
-      setup(builder) {
-        builder.onResolve({ filter: /./ }, ({ path }) =>
-          fieldPorts.has(path) ? { path, external: true } : undefined,
-        );
-      },
+type Platform = 'ios' | 'android' | 'web';
+async function compileField(platform: Platform) {
+  const compiledField = transformSync(readFileSync(fieldPath, 'utf8'), {
+    filename: fieldPath,
+    configFile: false,
+    babelrc: false,
+    presets: [require.resolve('babel-preset-expo')],
+    caller: {
+      name: 'metro',
+      platform,
+      engine: platform === 'web' ? undefined : 'hermes',
+      isDev: false,
+      supportsReactCompiler: true,
     },
-  ],
-});
-function fixture() {
+  }).code;
+  const fieldPorts = new Set([
+    'react',
+    'react/compiler-runtime',
+    'react/jsx-runtime',
+    'react-native',
+    '../../modules/zoen-core/src/ZoenCoreModule',
+  ]);
+  const fieldOutput = await build({
+    stdin: { contents: compiledField, resolveDir: dirname(fieldPath), loader: 'js' },
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    write: false,
+    plugins: [
+      {
+        name: 'actual-composer-field-native-ports',
+        setup(builder) {
+          builder.onResolve({ filter: /./ }, ({ path }) =>
+            fieldPorts.has(path) || path.startsWith('react-native-web/dist/exports/')
+              ? { path, external: true }
+              : undefined,
+          );
+        },
+      },
+    ],
+  });
+  return fieldOutput.outputFiles[0]!.text;
+}
+const fieldOutputs = new Map(
+  await Promise.all(
+    (['ios', 'android', 'web'] as const).map(
+      async (platform) => [platform, await compileField(platform)] as const,
+    ),
+  ),
+);
+function fixture(platform: Platform = 'ios') {
   type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
   type Effect = () => void | (() => void);
   const slots: Slot[] = [];
@@ -77,6 +90,8 @@ function fixture() {
   let cacheCursor = 0;
   let effects: (() => void)[] = [];
   let dirty = false;
+  let fieldElement: Element | null = null;
+  let nativeHandleReads = 0;
   const measurements: {
     tag: number;
     text: string;
@@ -130,6 +145,7 @@ function fixture() {
       (result.props.onLayout as Handler)({ nativeEvent: { layout: { width: 264, height: 52 } } });
       for (const commit of effects) commit();
     } while (dirty);
+    fieldElement = result;
     return result;
   }
   const jsx = (type: unknown, props: Record<string, unknown>): Element =>
@@ -202,7 +218,11 @@ function fixture() {
       Text: 'Text',
       View: 'View',
       TextInput: 'TextInput',
-      findNodeHandle: () => 101,
+      findNodeHandle: () => {
+        ++nativeHandleReads;
+        assert.equal(platform, 'ios', 'native tag lookup is unavailable outside iOS fitting');
+        return 101;
+      },
       useWindowDimensions: () => ({ fontScale: 1 }),
     },
     '../../modules/zoen-core/src/ZoenCoreModule': {
@@ -238,10 +258,13 @@ function fixture() {
     './composer-action': { ComposerAction: 'ComposerAction' },
     './primitives': { NativeButton: 'NativeButton' },
   };
-  runInNewContext(fieldOutput.outputFiles[0]!.text, {
+  // The real Expo Web transform rewrites RN imports to individual default exports.
+  for (const [name, value] of Object.entries(ports['react-native'] as Record<string, unknown>))
+    ports[`react-native-web/dist/exports/${name}`] = { __esModule: true, default: value };
+  runInNewContext(fieldOutputs.get(platform)!, {
     exports: fieldModule.exports,
     module: fieldModule,
-    process: { env: { EXPO_OS: 'ios' } },
+    process: { env: { EXPO_OS: platform } },
     requestAnimationFrame: () => 1,
     cancelAnimationFrame: () => {},
     require: (path: string) => {
@@ -256,7 +279,7 @@ function fixture() {
   runInNewContext(output.outputFiles[0]!.text, {
     exports: module.exports,
     module,
-    process: { env: { EXPO_OS: 'ios' } },
+    process: { env: { EXPO_OS: platform } },
     require: (path: string) => {
       assert.ok(path in ports, path);
       return ports[path];
@@ -283,6 +306,13 @@ function fixture() {
     file,
     calls,
     measurements,
+    nativeField,
+    nativeHandleReads: () => nativeHandleReads,
+    unmount: () => {
+      assert.ok(fieldElement);
+      (fieldElement.props.ref as (node: unknown) => void)(null);
+      for (const current of slots) current.cleanup?.();
+    },
     render,
     renderRoot: (patch: Record<string, unknown>) =>
       module.exports.MessageComposer({ ...props, ...patch }),
@@ -319,6 +349,35 @@ test('native attachment mode uses the real message field and send button without
   assert.deepEqual(f.calls, ['caption:First photo caption', 'send-files']);
   assert.equal(find(f.render(), byId('message-input')).props.value, 'My unsent normal text');
 });
+
+for (const platform of ['web', 'android'] as const) {
+  test(`${platform} mounts, changes mode and detaches the real input ref without iOS tag lookup or fitting`, () => {
+    const f = fixture(platform);
+    const inputRef = { current: null as unknown };
+    const first = find(f.render(undefined, { inputRef }), byId('message-input'));
+    assert.equal(inputRef.current, f.nativeField);
+    assert.equal(first.props.value, 'My unsent normal text');
+    const editing = find(
+      f.render(undefined, { inputRef, editing: true, value: 'Edit\nsecond line' }),
+      byId('message-input'),
+    );
+    assert.equal(inputRef.current, f.nativeField, 'mode changes preserve the mounted editor');
+    assert.equal(editing.props.ref, first.props.ref);
+    assert.equal(editing.props.value, 'Edit\nsecond line');
+    const restored = find(f.render(undefined, { inputRef }), byId('message-input'));
+    assert.equal(restored.props.value, 'My unsent normal text');
+    (restored.props.onChangeText as Handler)('Still editable');
+    (restored.props.onContentSizeChange as Handler)({
+      nativeEvent: { contentSize: { width: 264, height: 74 } },
+    });
+    assert.deepEqual(f.calls, ['normal:Still editable']);
+    assert.equal(f.nativeHandleReads(), 0);
+    assert.equal(f.measurements.length, 0);
+    f.unmount();
+    assert.equal(inputRef.current, null);
+    assert.equal(f.nativeHandleReads(), 0, 'detaching must not invoke native tag lookup either');
+  });
+}
 
 test('ambiguous attachment retry keeps the caption readonly and sends only through the batch owner', () => {
   const f = fixture();

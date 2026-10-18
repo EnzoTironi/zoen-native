@@ -9,6 +9,8 @@ export type MessageInteractionProps = Readonly<{
   /** Bubble MessagePressable owns physical callbacks; the wrapper recognises pan only. */
   onTap?: () => void;
   onActions?: () => void;
+  actionsAccessibilityLabel?: string;
+  onQuote?: () => void;
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
   children: ReactNode;

@@ -1,5 +1,12 @@
 import { Host } from '@expo/ui';
-import { Button, DisclosureGroup, Slider, Text as NativeText, VStack } from '@expo/ui/swift-ui';
+import {
+  Button,
+  DisclosureGroup,
+  HStack,
+  Slider,
+  Text as NativeText,
+  VStack,
+} from '@expo/ui/swift-ui';
 import {
   buttonStyle,
   disabled as disabledModifier,
@@ -27,6 +34,7 @@ import {
 type Props = {
   draft: VoiceDraft;
   onEdit: (commands: VoiceEditCommand | readonly VoiceEditCommand[]) => void;
+  onTrimPreviewChange: (draft: VoiceDraft, pending: boolean) => void;
   disabled?: boolean;
 };
 type Preview = { draft: VoiceDraft; range: FrameRange };
@@ -43,10 +51,11 @@ const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, Math.round(value)));
 
 /** Original-frame editor: preview locally, send one immutable edit after a completed drag. */
-export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
+export function VoiceWaveform({ draft, onEdit, onTrimPreviewChange, disabled = false }: Props) {
   const { colors, scheme } = useTheme();
   const [width, setWidth] = useState(0);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const previewNow = useRef<Preview | null>(null);
   const [selection, setSelection] = useState<Preview | null>(null);
   const [precision, setPrecision] = useState({ source: draft.original.id, open: false });
   const drag = useRef<Drag | null>(null);
@@ -62,6 +71,18 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
     maximumFractionDigits: 2,
   });
   const time = (frame: number) => `${timeFormatter.format(frame / draft.original.sampleRate)} s`;
+  function previewTrim(range: FrameRange) {
+    previewNow.current = { draft, range };
+    onTrimPreviewChange(
+      draft,
+      range.startFrame !== draft.edit.trim.startFrame ||
+        range.endFrame !== draft.edit.trim.endFrame,
+    );
+    setPreview({ draft, range });
+  }
+  function latestTrim() {
+    return previewNow.current?.draft === draft ? previewNow.current.range : draft.edit.trim;
+  }
   const projection = useMemo(
     () =>
       projectVoiceDraft({
@@ -94,7 +115,7 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
               endFrame: Math.max(frame, context.origin),
             };
     if (context.kind === 'selection') setSelection({ draft, range });
-    else setPreview({ draft, range });
+    else previewTrim(range);
     return range;
   }
   const pan = usePanGesture({
@@ -135,7 +156,7 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
       const context = drag.current;
       drag.current = null;
       if (context?.draft === draft) {
-        setPreview({ draft, range: context.trim });
+        previewTrim(context.trim);
         setSelection(context.selection);
       }
     },
@@ -189,7 +210,7 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
     value: number,
     min: number,
     max: number,
-    change: (value: number) => void,
+    change: ((value: number) => void) | 'start' | 'end',
   ) {
     return (
       <VStack alignment="leading" spacing={4}>
@@ -207,8 +228,20 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
           min={0}
           max={1}
           onValueChange={(fraction) => {
-            if (!disabled && Number.isFinite(fraction))
-              change(clamp(min + Math.max(0, Math.min(1, fraction)) * (max - min), min, max));
+            if (disabled || !Number.isFinite(fraction)) return;
+            const value = clamp(min + Math.max(0, Math.min(1, fraction)) * (max - min), min, max);
+            if (typeof change === 'function') change(value);
+            else {
+              const current = latestTrim();
+              previewTrim(
+                change === 'start'
+                  ? { startFrame: Math.min(value, current.endFrame), endFrame: current.endFrame }
+                  : {
+                      startFrame: current.startFrame,
+                      endFrame: Math.max(current.startFrame, value),
+                    },
+              );
+            }
           }}
           modifiers={[disabledModifier(disabled || max <= min)]}
         />
@@ -330,18 +363,38 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
       >
         <VStack alignment="leading" spacing={12}>
           {trimChanged ? (
-            <Button
-              label={t('media.voiceApplyTrim')}
-              onPress={() => {
-                if (!disabled && trimChanged) onEdit({ type: 'trim', range: trim });
-              }}
-              modifiers={[
-                buttonStyle('bordered'),
-                frame({ minHeight: 44 }),
-                disabledModifier(disabled),
-                foregroundStyle(colors.accent),
-              ]}
-            />
+            <HStack spacing={8}>
+              <Button
+                label={t('media.voiceApplyTrim')}
+                onPress={() => {
+                  const range = latestTrim();
+                  if (
+                    !disabled &&
+                    (range.startFrame !== draft.edit.trim.startFrame ||
+                      range.endFrame !== draft.edit.trim.endFrame)
+                  )
+                    onEdit({ type: 'trim', range });
+                }}
+                modifiers={[
+                  buttonStyle('bordered'),
+                  frame({ minHeight: 44 }),
+                  disabledModifier(disabled),
+                  foregroundStyle(colors.accent),
+                ]}
+              />
+              <Button
+                label={t('media.voiceDiscardTrim')}
+                onPress={() => {
+                  if (!disabled) previewTrim(draft.edit.trim);
+                }}
+                modifiers={[
+                  buttonStyle('bordered'),
+                  frame({ minHeight: 44 }),
+                  disabledModifier(disabled),
+                  foregroundStyle(colors.text),
+                ]}
+              />
+            </HStack>
           ) : null}
           {selected ? (
             <VStack alignment="leading" spacing={8}>
@@ -396,22 +449,8 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
                 >
                   {t('media.voiceTrimGroup')}
                 </NativeText>
-                {slider(
-                  t('media.voiceTrimStart'),
-                  trim.startFrame,
-                  0,
-                  trim.endFrame,
-                  (startFrame) =>
-                    setPreview({ draft, range: { startFrame, endFrame: trim.endFrame } }),
-                )}
-                {slider(
-                  t('media.voiceTrimEnd'),
-                  trim.endFrame,
-                  trim.startFrame,
-                  frames,
-                  (endFrame) =>
-                    setPreview({ draft, range: { startFrame: trim.startFrame, endFrame } }),
-                )}
+                {slider(t('media.voiceTrimStart'), trim.startFrame, 0, trim.endFrame, 'start')}
+                {slider(t('media.voiceTrimEnd'), trim.endFrame, trim.startFrame, frames, 'end')}
               </VStack>
               <VStack alignment="leading" spacing={16}>
                 <NativeText

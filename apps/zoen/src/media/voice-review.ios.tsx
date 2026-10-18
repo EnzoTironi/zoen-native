@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { Host } from '@expo/ui';
 import { Button } from '@expo/ui/swift-ui';
@@ -12,7 +12,12 @@ import { NativeButton } from '../components/primitives';
 import { formatLocale, locale, t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import { AudioClip, pauseAudioPlayback } from './AudioClip';
-import type { VoiceEditCommand } from './voice-edit';
+import type { VoiceDraft, VoiceEditCommand } from './voice-edit';
+import {
+  hasPendingVoiceTrim,
+  updatePendingVoiceTrim,
+  type PendingVoiceTrim,
+} from './voice-trim-preview';
 import type { VoiceSession, VoiceSessionFailure } from './voice-session';
 import { VoiceWaveform } from './voice-waveform.ios';
 import { VoiceWords } from './voice-words.ios';
@@ -42,12 +47,23 @@ export function VoiceReview({
   initiallyEditing = false,
   onSend,
   onRetryPrepare,
+  onPendingTrimChange,
 }: VoiceReviewProps) {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const { colors, scheme } = useTheme();
   const [local, setLocal] = useState<LocalState>({ session, sending: false, error: null });
   const [editor, setEditor] = useState({ session, open: initiallyEditing });
   const pendingSend = useRef(new Set<VoiceSession>());
+  const trimNow = useRef<PendingVoiceTrim>(null);
+  const [pendingTrim, setPendingTrim] = useState<PendingVoiceTrim>(null);
+  const [trimOwner] = useState(() => ({}));
+  const live = useRef<{ session: VoiceSession; busy: boolean } | null>({ session, busy });
+  useLayoutEffect(() => {
+    live.current = { session, busy };
+    return () => {
+      live.current = null;
+    };
+  }, [session, busy]);
   const sending = local.session === session && local.sending;
   const locked = busy || sending || state.phase !== 'ready';
   const error =
@@ -55,10 +71,29 @@ export function VoiceReview({
     (state.error ? failureLabel(state.error) : null);
   const editable = editor.session === session && editor.open;
   const sendable = session.getSendable();
+  const draft = state.draft;
+  const trimPending = pendingTrim?.session === session && pendingTrim.draft === draft;
   // A previous export is never offered as the preview of a new edit. Unmounting AudioClip
   // also releases its Expo player; we pause synchronously before any committed edit/send.
-  const preview = !locked && !state.rendering && sendable ? sendable.preview : null;
-  const draft = state.draft;
+  const preview = !locked && !trimPending && !state.rendering && sendable ? sendable.preview : null;
+  function trimPreviewChanged(observed: VoiceDraft, pending: boolean) {
+    if (live.current?.session !== session) return;
+    const next = updatePendingVoiceTrim(trimNow.current, session, observed, pending, trimOwner);
+    if (next === trimNow.current) return;
+    trimNow.current = next;
+    setPendingTrim(next);
+    if (pending) pauseAudioPlayback();
+    onPendingTrimChange?.(session, observed, pending, trimOwner);
+  }
+  useEffect(
+    () => () => {
+      if (draft) {
+        trimNow.current = updatePendingVoiceTrim(trimNow.current, session, draft, false, trimOwner);
+        onPendingTrimChange?.(session, draft, false, trimOwner);
+      }
+    },
+    [session, draft, onPendingTrimChange, trimOwner],
+  );
   const suggestions = useMemo(
     () => (draft ? getVoiceSuggestions(draft, formatLocale) : null),
     [draft],
@@ -74,27 +109,49 @@ export function VoiceReview({
   }
 
   function edit(commands: VoiceEditCommand | readonly VoiceEditCommand[]) {
-    if (busy || pendingSend.current.has(session) || session.getSnapshot().phase !== 'ready') return;
+    if (
+      live.current?.session !== session ||
+      live.current.busy ||
+      pendingSend.current.has(session) ||
+      session.getSnapshot().phase !== 'ready'
+    )
+      return;
+    const before = session.getSnapshot().draft;
     pauseAudioPlayback();
     setLocal({ session, sending: false, error: null });
     try {
       session.edit(commands);
+      if (before && session.getSnapshot().draft !== before) trimPreviewChanged(before, false);
     } catch {
       setLocal({ session, sending: false, error: t('media.voicePreviewFailed') });
     }
   }
   function history(direction: 'undo' | 'redo') {
-    if (busy || pendingSend.current.has(session) || session.getSnapshot().phase !== 'ready') return;
+    if (
+      live.current?.session !== session ||
+      live.current.busy ||
+      pendingSend.current.has(session) ||
+      session.getSnapshot().phase !== 'ready'
+    )
+      return;
+    const before = session.getSnapshot().draft;
     pauseAudioPlayback();
     setLocal({ session, sending: false, error: null });
     try {
       session[direction]();
+      if (before && session.getSnapshot().draft !== before) trimPreviewChanged(before, false);
     } catch {
       setLocal({ session, sending: false, error: t('media.voicePreviewFailed') });
     }
   }
   async function send() {
-    if (busy || pendingSend.current.has(session)) return;
+    if (
+      live.current?.session !== session ||
+      live.current.busy ||
+      pendingSend.current.has(session) ||
+      hasPendingVoiceTrim(trimNow.current, session)
+    )
+      return;
     const captured = session.getSendable();
     if (!captured || session.getSnapshot().rendering) return;
     pendingSend.current.add(session);
@@ -192,9 +249,13 @@ export function VoiceReview({
             <NativeButton
               secondary
               label={t(editable ? 'media.voiceDoneEditing' : 'media.voiceEdit')}
-              disabled={locked}
+              disabled={locked || trimPending}
               onPress={() => {
-                if (!locked && !pendingSend.current.has(session)) {
+                if (
+                  !locked &&
+                  !pendingSend.current.has(session) &&
+                  !hasPendingVoiceTrim(trimNow.current, session)
+                ) {
                   pauseAudioPlayback();
                   setEditor({ session, open: !editable });
                 }
@@ -228,7 +289,16 @@ export function VoiceReview({
             </View>
           </View>
 
-          {editable ? <VoiceWaveform draft={draft} disabled={locked} onEdit={edit} /> : null}
+          {editable ? (
+            <VoiceWaveform
+              draft={draft}
+              disabled={locked}
+              onTrimPreviewChange={trimPreviewChanged}
+              onEdit={(commands) => {
+                if (session.getSnapshot().draft === draft) edit(commands);
+              }}
+            />
+          ) : null}
 
           <View style={{ gap: 12 }}>
             <Text
@@ -318,7 +388,7 @@ export function VoiceReview({
 
       <NativeButton
         label={t(busy || sending ? 'media.sending' : 'media.send')}
-        disabled={locked || state.rendering || !sendable}
+        disabled={locked || trimPending || state.rendering || !sendable}
         onPress={() => {
           void send();
         }}

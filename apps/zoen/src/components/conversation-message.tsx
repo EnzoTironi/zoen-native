@@ -93,6 +93,19 @@ export const ConversationMessage = memo(function ConversationMessage({
     hour: '2-digit',
     minute: '2-digit',
   });
+  // VoiceOver groups text bubbles, so their nested quote and metadata must also
+  // be represented on the group. Native media keeps its independent controls.
+  const accessibilityMessageLabel = [
+    `${entry.author.name}: ${text}`,
+    !entry.deleted && entry.reply_to
+      ? `${t('chat.replyingTo', { name: entry.reply_to.author.name })}: ${entry.reply_to.text}`
+      : null,
+    !entry.deleted && entry.forwarded ? t('chat.forwarded') : null,
+    entry.edited ? t('chat.editedAt', { time }) : time,
+    mine ? messageDeliveryLabel(entry.delivery) : null,
+  ]
+    .filter(Boolean)
+    .join('. ');
   const open = (mode: MessageActionMode, emoji?: string) => {
     if (disabled || !messageCanInteract(entry)) return;
     // The keyboard can move this row before the popover is presented. Measure
@@ -130,10 +143,11 @@ export const ConversationMessage = memo(function ConversationMessage({
     : {
         accessible: true,
         accessibilityRole: entry.deleted ? ('text' as const) : ('button' as const),
-        accessibilityLabel:
-          `${entry.author.name}: ${text}` +
-          (mine ? `, ${messageDeliveryLabel(entry.delivery)}` : ''),
-        accessibilityHint: disabled ? undefined : t('chat.touchAndHoldToReplyOrSeeActions'),
+        accessibilityLabel: accessibilityMessageLabel,
+        accessibilityHint:
+          disabled || !messageCanInteract(entry)
+            ? undefined
+            : t('chat.touchAndHoldToReplyOrSeeActions'),
         onPress: () => open('reactions'),
         onLongPress: () => open('actions'),
         onAccessibilityTap: () => open('actions'),
@@ -294,10 +308,14 @@ export const ConversationMessage = memo(function ConversationMessage({
             messageId={entry.id}
             mine={mine}
             disabled={disabled || !messageCanInteract(entry)}
-            accessibilityLabel={!attachment ? `${entry.author.name}: ${text}` : undefined}
+            accessibilityLabel={!attachment ? accessibilityMessageLabel : undefined}
             onReply={() => onReply(entry)}
             onThread={() => onThread(entry)}
             onActions={() => open('actions')}
+            actionsAccessibilityLabel={t('chat.messageActions', { name: entry.author.name })}
+            onQuote={
+              !entry.deleted && entry.reply_to ? () => onQuote(entry.reply_to!.id) : undefined
+            }
           >
             <View style={{ width: '100%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
               <Bubble
@@ -371,6 +389,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                 ) : null}
                 {!voice && card?.kind_id !== 'file' && text.trim() ? (
                   <Text
+                    testID={`message-body-${entry.id}`}
                     style={{
                       color: attachment ? colors.text : ink,
                       fontSize: 17,

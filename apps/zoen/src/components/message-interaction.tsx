@@ -84,6 +84,8 @@ export function MessageInteraction({
   disabled = false,
   accessibilityLabel,
   onActions,
+  actionsAccessibilityLabel,
+  onQuote,
   onReply,
   onThread,
   children,
@@ -93,12 +95,16 @@ export function MessageInteraction({
   const [voiceOver, setVoiceOver] = useState(false);
   useEffect(() => {
     let live = true;
+    let changed = false;
+    const subscription = AccessibilityInfo.addEventListener('screenReaderChanged', (enabled) => {
+      changed = true;
+      if (live) setVoiceOver(enabled);
+    });
     void AccessibilityInfo.isScreenReaderEnabled()
       .then((enabled) => {
-        if (live) setVoiceOver(enabled);
+        if (live && !changed) setVoiceOver(enabled);
       })
       .catch(() => {});
-    const subscription = AccessibilityInfo.addEventListener('screenReaderChanged', setVoiceOver);
     return () => {
       live = false;
       subscription.remove();
@@ -195,6 +201,7 @@ export function MessageInteraction({
   const rightIndicator = useAnimatedStyle(() => ({
     opacity: Math.min(1, Math.max(0, -pull.get()) / 52),
   }));
+  const grouped = voiceOver && Boolean(accessibilityLabel);
   return (
     <MessageDidPan value={didPan}>
       <MessagePan value={pan}>
@@ -255,25 +262,31 @@ export function MessageInteraction({
           </View>
           <GestureDetector gesture={pan}>
             <Animated.View
-              accessible={voiceOver && Boolean(accessibilityLabel)}
+              accessible={grouped}
               accessibilityLabel={accessibilityLabel}
+              accessibilityRole={grouped ? (onActions && !disabled ? 'button' : 'text') : undefined}
+              accessibilityState={grouped ? { disabled } : undefined}
+              accessibilityHint={grouped && !disabled ? actionsAccessibilityLabel : undefined}
+              onAccessibilityTap={grouped && !disabled ? onActions : undefined}
               accessibilityActions={
-                voiceOver && accessibilityLabel && !disabled
+                grouped && !disabled
                   ? [
                       { name: 'reply', label: t('chat.reply') },
                       { name: 'thread', label: t('chat.openReplies') },
-                      ...(onActions
-                        ? [{ name: 'actions', label: t('chat.messageActions', { name: '' }) }]
+                      ...(onQuote ? [{ name: 'quote', label: t('chat.goToQuotedMessage') }] : []),
+                      ...(onActions && actionsAccessibilityLabel
+                        ? [{ name: 'actions', label: actionsAccessibilityLabel }]
                         : []),
                     ]
                   : undefined
               }
               onAccessibilityAction={(event) => {
-                if (disabled) return;
+                if (!grouped || disabled) return;
                 const name = event.nativeEvent.actionName;
                 if (name === 'reply') onReply();
                 else if (name === 'thread') onThread();
-                else if (name === 'actions') onActions?.();
+                else if (name === 'actions' && actionsAccessibilityLabel) onActions?.();
+                else if (name === 'quote') onQuote?.();
               }}
               collapsable={false}
               style={[{ alignItems: mine ? 'flex-end' : 'flex-start' }, movement]}

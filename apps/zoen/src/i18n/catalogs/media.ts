@@ -51,6 +51,7 @@ export const media = defineFeature(
     voiceCutSelection: 'Cut selection',
     voiceRestoreSelection: 'Restore selection',
     voiceApplyTrim: 'Apply trim',
+    voiceDiscardTrim: 'Discard trim',
     voiceWaveformHint: 'Drag to select audio. Tap a removed section to restore it.',
     voiceEdit: 'Edit audio',
     voiceExpand: 'Expand audio editor',
@@ -198,6 +199,7 @@ export const media = defineFeature(
     voiceCutSelection: 'Cortar seleção',
     voiceRestoreSelection: 'Restaurar seleção',
     voiceApplyTrim: 'Aplicar recorte',
+    voiceDiscardTrim: 'Descartar recorte',
     voiceWaveformHint:
       'Arraste para selecionar o áudio. Toque em um trecho removido para restaurá-lo.',
     voiceEdit: 'Editar áudio',

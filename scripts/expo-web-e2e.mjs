@@ -172,32 +172,17 @@ async function freePort() {
 async function expectMessage(author, text, timeout = 90_000) {
   // A hidden conversation preview can repeat the text. Require its exact author
   // and the real interactive message bubble, then the visible body inside it.
-  // Own messages append one localized delivery label to the accessible name.
-  // Keep this acceptance copy independent of the production translation catalog.
-  const receipts =
-    locale === "en-US"
-      ? [
-          "Saved on this device only",
-          "Sending",
-          "Sent",
-          "Delivered to everyone",
-          "Read by everyone",
-          "Could not send",
-        ]
-      : [
-          "Salva apenas neste dispositivo",
-          "Enviando",
-          "Enviada",
-          "Entregue a todos",
-          "Lida por todos",
-          "Falha no envio",
-        ];
+  // The accessible name also carries localized quote/time/delivery metadata.
+  // Check the complete actual body separately so neither a matching preview
+  // nor quoted text or a longer body can satisfy this assertion.
   const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const name = new RegExp(
-    `^${escape(`${author}: ${text}`)}(?:, (?:${receipts.map(escape).join("|")}))?$`,
-  );
+  const name = new RegExp(`^${escape(`${author}: `)}`);
   const bubble = page.getByTestId(/^message-bubble-/).and(page.getByRole("button", { name }));
-  await bubble.getByText(text, { exact: true }).waitFor({ timeout });
+  const body = bubble
+    .getByTestId(/^message-body-/)
+    .filter({ hasText: new RegExp(`^${escape(text)}$`) });
+  await body.waitFor({ timeout });
+  assert.equal(await body.innerText(), text, "the visible message body must match in full");
 }
 async function screenshot(name) {
   await page.screenshot({

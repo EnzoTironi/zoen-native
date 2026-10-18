@@ -156,18 +156,7 @@ export function VoiceDock(props: VoiceDockProps) {
               <AudioClip compact uri={uri} durationMs={durationMs} levels={[...levels]} />
             ) : (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {error && props.onRetry ? (
-                  <IconButton
-                    label={t('media.voiceTryAgain')}
-                    name={{ ios: 'arrow.clockwise', android: 'refresh', web: 'refresh' }}
-                    disabled={locked}
-                    onPress={() => {
-                      void action(props.onRetry!);
-                    }}
-                  />
-                ) : !error && !tooShort ? (
-                  <ActivityIndicator color={colors.accent} />
-                ) : null}
+                {!error && !tooShort ? <ActivityIndicator color={colors.accent} /> : null}
                 <Text numberOfLines={1} style={{ flex: 1, color: colors.secondary }}>
                   {t(
                     tooShort
@@ -180,6 +169,16 @@ export function VoiceDock(props: VoiceDockProps) {
               </View>
             )}
           </View>
+          {error && props.onRetry ? (
+            <IconButton
+              label={t('media.voiceTryAgain')}
+              name={{ ios: 'arrow.clockwise', android: 'refresh', web: 'refresh' }}
+              disabled={locked}
+              onPress={() => {
+                void action(props.onRetry!);
+              }}
+            />
+          ) : null}
           <IconButton
             label={t('media.voiceExpand')}
             name={{ ios: 'chevron.up', android: 'expand_less', web: 'expand_less' }}
