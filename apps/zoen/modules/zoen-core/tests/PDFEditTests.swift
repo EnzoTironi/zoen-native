@@ -19,9 +19,10 @@ import Foundation
   var changesSaved = false
   var recoveryCount = 0
   var onRecovery: (() -> Void)?
+  var onShown: (() -> Void)?
   var dismissCount = 0
   func show(file: URL, title: String, ended: @escaping @MainActor (Error?) -> Void) throws {
-    self.ended = ended; shown.emit()
+    self.ended = ended; shown.emit(); onShown?()
   }
   func dismiss(completion: @escaping @MainActor () -> Void) {
     dismissCount += 1; dismissed = completion; dismissRequested.emit()
@@ -116,8 +117,9 @@ private actor EditStore {
     try await acceptedSaveCleanupRetryDoesNotSaveAgain()
     try await captureFailureRequiresAcknowledgedDiscard()
     try await retryOlderCopyPreservesNewerCaptureFailure()
+    try await closeRetiresRegisteredEditorBeforePresentation()
     try captureRejectsUnsafeOrUnboundedSources()
-    print("Synthetic PDF edit tests passed: 9 scenarios; synchronous capture, serialized expected bases, row-independent retry/discard, graceful close, forced worker drain, cancellation, accepted-save cleanup retry, newer capture-loss acknowledgment across older-save retry and bounded regular PDF staging.")
+    print("Synthetic PDF edit tests passed: 10 scenarios; synchronous capture, serialized expected bases, row-independent retry/discard, active-editor graceful close, queued-editor retirement, forced worker drain, cancellation, accepted-save cleanup retry, newer capture-loss acknowledgment across older-save retry and bounded regular PDF staging.")
   }
 
   private static func serialSavesOwnTheirCopiesAndAdvanceBase() async throws {
@@ -131,7 +133,7 @@ private actor EditStore {
     await store.waitForCalls(1)
     presentation.ended?(nil)
     let closing = EditResult()
-    let close = Task { @MainActor in await closing.run { try await owner.prepareForClose() } }
+    let close = Task { @MainActor in await closing.run { try await owner.prepareForClose(before: 2) } }
     await Task.yield()
     precondition(result.result == nil && closing.result == nil, "Dismissal/close resolved before saves settled")
     await store.release(); await task.value; await close.value
@@ -265,5 +267,42 @@ private actor EditStore {
     presentation.discard?()
     await task.value
     result.success()
+  }
+
+  private static func closeRetiresRegisteredEditorBeforePresentation() async throws {
+    let fixture = try EditFixture(); defer { fixture.remove() }
+    let owner = ZoenFilePreview(), store = EditStore(), presentation = EditPresentation()
+    let source = try fixture.file("registered-editor")
+    let ticket = owner.register(file: source, generation: 1)
+    let context = ZoenFilePreview.EditContext(base: base, maximumBytes: 4096) { file, base in
+      try await store.save(file, base)
+    }
+    // This is the adverse actor order: close inspects an empty active slot while
+    // an earlier, already registered editable open has not entered MainActor yet.
+    try await owner.prepareForClose(before: 2)
+    let completed = EditSignal()
+    let result = EditResult()
+    result.onCompletion = { completed.emit() }
+    presentation.onShown = { completed.emit() }
+    let task = Task { @MainActor in
+      await result.run {
+        try await owner.open(id: ticket, title: "Queued synthetic PDF", edit: context) { _ in
+          presentation
+        }
+      }
+    }
+    // A regressed implementation enters show rather than resolving. Listen to
+    // both outcomes, so the negative control fails an assertion, not a timeout.
+    await completed.wait()
+    guard case .failure(let error)? = result.result,
+          case ZoenFilePreview.Failure.changed = error else {
+      preconditionFailure("A registered editable preview appeared after graceful close prepared")
+    }
+    precondition(presentation.ended == nil && presentation.dismissCount == 0,
+                 "Queued editor should retire before any presentation or forced dismissal")
+    let callCount = await store.bases.count
+    precondition(callCount == 0)
+    precondition(!FileManager.default.fileExists(atPath: source.directory.path))
+    await task.value
   }
 }

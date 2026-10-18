@@ -227,7 +227,10 @@ extension ZoenFilePreviewPresentation {
 
   /// Ordinary account changes wait for the editor and explicit error recovery.
   /// They must retain the old engine until all accepted edits have settled.
-  func prepareForClose() async throws {
+  func prepareForClose(before generation: UInt64) async throws {
+    // Retire queued presentations in the same main-actor turn as the active
+    // editor check. A registered open cannot slip in after this check returns.
+    invalidate(before: generation)
     guard let active, active.edit != nil else { return }
     try await withCheckedThrowingContinuation { active.lifecycle.append($0) }
   }

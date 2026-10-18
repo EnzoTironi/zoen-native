@@ -676,7 +676,7 @@ private actor ZoenSession {
       // Keep the exact engine/account live for already admitted edited copies.
       // New bridge operations are fenced by `closing`; a save failure stays
       // recoverable in native UI instead of turning account change into data loss.
-      try await self.filePreview.prepareForClose()
+      try await self.filePreview.prepareForClose(before: self.generation &+ 1)
       if self.requests > 0 {
         await withCheckedContinuation { self.requestDrain.append($0) }
       }
