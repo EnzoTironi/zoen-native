@@ -11,7 +11,6 @@ import {
   labelStyle,
   listRowBackground,
   listStyle,
-  moveDisabled,
   scrollContentBackground,
   shapes,
 } from '@expo/ui/swift-ui/modifiers';
@@ -56,6 +55,7 @@ export function ConversationOrderList({
   }, [items, pinnedIds]);
   const perform = useCallback(
     (action: () => Promise<void>) => {
+      // Keep native row editability stable across inserts; serialize saves here.
       if (pending.current || !live.current.mounted || live.current.signature !== signature) return;
       pending.current = true;
       setBusy(true);
@@ -92,7 +92,6 @@ export function ConversationOrderList({
         modifiers={[
           frame({ minHeight: 48, alignment: 'leading' }),
           listRowBackground(colors.surface),
-          moveDisabled(busy),
         ]}
       >
         <Button

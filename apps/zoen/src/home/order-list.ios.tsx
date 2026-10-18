@@ -7,7 +7,6 @@ import {
   frame,
   listRowBackground,
   listStyle,
-  moveDisabled,
   scrollContentBackground,
 } from '@expo/ui/swift-ui/modifiers';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
@@ -40,6 +39,7 @@ export function HomeOrderList({
   }, [signature]);
   const move = useCallback(
     (sources: number[], destination: number) => {
+      // Keep native row editability stable across inserts; serialize saves here.
       if (pending.current || !live.current.mounted || live.current.signature !== signature) return;
       const ids = items.map((item) => item.id);
       const order = moveHomeOrder(ids, sources, destination);
@@ -69,7 +69,6 @@ export function HomeOrderList({
         modifiers={[
           frame({ minHeight: 48, alignment: 'leading' }),
           listRowBackground(colors.surface),
-          moveDisabled(busy),
         ]}
       >
         <NativeText modifiers={[font({ textStyle: 'body' }), foregroundStyle(colors.text)]}>
@@ -84,7 +83,7 @@ export function HomeOrderList({
         ) : null}
       </VStack>
     ),
-    [busy, colors.surface, colors.text, colors.secondary],
+    [colors.surface, colors.text, colors.secondary],
   );
   return (
     <View style={{ flex: 1 }}>
