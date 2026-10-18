@@ -275,16 +275,21 @@ export function useDurableAttachmentComposer(
     }
   }
   async function remove(id: string) {
-    if (!channel || !content || !current() || state?.frozen) return;
-    const items = content.items.filter((item) => item.asset_id !== id);
+    if (!channel || !current()) return;
+    const latest = channel.getSnapshot();
+    const currentContent = latest.content;
+    if (latest.frozen || currentContent?.kind !== 'attachments') return;
+    const items = currentContent.items.filter((item) => item.asset_id !== id);
     try {
-      await channel.save(items.length ? { ...content, items } : null);
+      await channel.save(items.length ? { ...currentContent, items } : null);
     } catch (reason) {
       failure(reason);
     }
   }
   async function send() {
-    if (!channel || !current() || !content || state?.sending || runtime.picking) return;
+    if (!channel || !current() || runtime.picking) return;
+    const latest = channel.getSnapshot();
+    if (latest.content?.kind !== 'attachments' || latest.sending) return;
     const sent = admission.current.onSent;
     publish({ error: null });
     try {

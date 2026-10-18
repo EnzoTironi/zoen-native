@@ -379,3 +379,20 @@ test('an unread durable draft keeps attachment admission closed until an explici
   await ui.pick('photo');
   assert.equal(f.writes.length, 1);
 });
+
+test('a previously rendered Remove action preserves the latest caption before React commits', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([photo('one.jpg'), photo('two.jpg')]);
+  await f.render().pick('photo');
+  const ui = f.render();
+  const strip = (ui.review!.props.children as Element[])[0]!;
+  ui.field!.onChange('Latest caption before commit');
+  (strip.props.onRemove as (id: string) => void)('asset-2');
+  await tick();
+  await f.channel.flush();
+  const content = JSON.parse(f.durable().content_json);
+  assert.equal(content.items.length, 1);
+  assert.equal(content.items[0].caption, 'Latest caption before commit');
+});
