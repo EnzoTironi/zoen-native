@@ -7,17 +7,6 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const root = new URL('../../', import.meta.url);
-const generated = readFileSync(
-  new URL('modules/zoen-core/ios/generated/RodaFFI.generated.swift', root),
-  'utf8',
-);
-// Compile the actual generated enum, including its reflective LocalizedError
-// implementation. No FFI converters or Expo SDK replacements are needed.
-const start = generated.indexOf('enum CoreError: Swift.Error,');
-const end = generated.indexOf('\n#if compiler(>=6)', start);
-assert.ok(start >= 0 && end > start, 'The installed generated CoreError must be exercised');
-const declaration = generated.slice(start, end);
-
 const harness = String.raw`
 import Foundation
 
@@ -51,6 +40,18 @@ test(
   'native CoreError presentation preserves real reasons and localizes safe fallbacks without reflection',
   { skip: process.platform !== 'darwin', timeout: 60_000 },
   () => {
+    // Generated Apple artifacts do not exist on the Linux client CI job. Read
+    // them only after the Darwin-only test has actually been admitted.
+    const generated = readFileSync(
+      new URL('modules/zoen-core/ios/generated/RodaFFI.generated.swift', root),
+      'utf8',
+    );
+    // Compile the actual generated enum, including its reflective LocalizedError
+    // implementation. No FFI converters or Expo SDK replacements are needed.
+    const start = generated.indexOf('enum CoreError: Swift.Error,');
+    const end = generated.indexOf('\n#if compiler(>=6)', start);
+    assert.ok(start >= 0 && end > start, 'The installed generated CoreError must be exercised');
+    const declaration = generated.slice(start, end);
     const directory = mkdtempSync(join(tmpdir(), 'zoen-native-core-error-'));
     try {
       const source = join(directory, 'Harness.swift');
