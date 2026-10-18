@@ -8,7 +8,9 @@ same drawing. This bounded proof does not certify full host conformance,
 accessibility or whole-application parity.
 
 A separate signed v89 proof covers a canonical drawing owned by a Zoen chat and
-its full-process reopen. The whole-application acceptance baseline remains v85.
+its full-process reopen. The v90 proof adds actual native Photos import, cold
+reopen and encrypted readback on a new linked device of the same test identity.
+The whole-application acceptance baseline remains v85.
 
 ## Two independent connections
 
@@ -137,6 +139,45 @@ The human preserving update retained four Home cards, recipe 6/8 and larger text
 public executable, JavaScript and strict signature checks passed. This is bounded
 Home inspection, not full-app reacceptance. The accepted whole-app v85 artifacts
 and the v87 remote readback remain unchanged.
+
+### Native image import and linked-device readback (v90)
+
+The native Photos picker imported a synthetic JPEG into the original five-element
+drawing. Guarded Back saved it as six elements; after a full process restart, the
+same Home card opened the drawing with its image still rendered. The previous
+recovery copy also retained its six elements. Both simulators received preserving
+signed Release updates, with executable, bundled JavaScript and strict signatures
+verified. The main simulator retained its four Home cards, recipe 6/8 and larger
+text in a bounded smoke check.
+
+This walkthrough found a real image-save race: upstream Excalidraw emits an image
+placeholder before its file bytes are ready. The editor now waits for the complete
+scene before autosave, Copy or final flush. A bounded timeout keeps the editable
+canvas; it never drops the image or claims an incomplete save succeeded. Rust's
+strict scene validation is unchanged. Native request failures also present their
+human-readable reason instead of a reflected Swift error type.
+
+A fresh memory-only device linked through the normal six-digit native approval
+and received 146 encrypted history events. Typed document reads verified both
+owned scene manifests and embedded image bytes. Each drawing contained six live
+elements and one 21,025-byte JPEG; the two JPEG hashes matched. A second check
+retained both version/scene/image pins. This is another device of the same
+synthetic identity, not a separate recipient or a cryptographic author-device
+proof. The helper was stopped and its owned volatile vault cleared afterward.
+
+The [47.23-second native recording](../../.argent/recordings/excalidraw-photo-iphone-v90-proof.mp4)
+joins the import and restart takes without recoding their video packets. The
+originals retain their automatic static-frame trimming (122.042 seconds of wall
+time). These are recorded walkthroughs; system-picker/DOM target warnings prevent
+a claim of a full import replay or a two-pass regression.
+
+Evidence: `acceptance.json` → `evidence.nativeExcalidrawImageV90` and
+`/private/tmp/zoen-excalidraw-native-image-v90/`. Runtime commit `db626dce` has a
+904-file signed-build input receipt; `6902ce6a` only fixes Linux admission of the
+macOS Swift test. The macOS app check passed 776 tests and the renderer passed
+24 tests, including delayed image preparation. All three Expo CI jobs passed on
+`6902ce6a`. This does not promote the whole-app baseline or certify physical
+iPhone behavior, all MCP providers or the later builtin-renderer integration.
 
 ## Current remote-session authority
 
