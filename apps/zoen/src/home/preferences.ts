@@ -173,22 +173,17 @@ export class HomeController {
     }
     return Promise.all([this.restoreTask, this.itemsTask]).then(() => {});
   };
-  private change(id: string, pinned: boolean, owner: HomeOwner | null): Promise<void> {
+  private writePins(
+    update: () => readonly string[] | null,
+    owner: HomeOwner | null,
+  ): Promise<void> {
     const generation = this.generation;
     const work = this.writes.then(async () => {
       if (!owner || !this.current(owner, generation)) throw new HomeFailure('accountChanged');
       try {
-        if (!this.restored || !itemId(id)) throw new HomeFailure('save');
-        if (
-          pinned &&
-          !this.state.items.some(
-            (item) => item.id === id && this.source.spaces().has(item.space_id),
-          )
-        )
-          throw new HomeFailure('save');
-        const ids = this.state.pinnedIds.filter((value) => value !== id);
-        if (pinned && !this.state.pinnedIds.includes(id)) ids.push(id);
-        else if (pinned) return;
+        if (!this.restored) throw new HomeFailure('save');
+        const ids = update();
+        if (!ids) return;
         if (ids.length > 100) throw new HomeFailure('save');
         if (owner.mode === 'account')
           await this.port.set(homeOwnerKey(owner)!, JSON.stringify(ids));
@@ -204,8 +199,45 @@ export class HomeController {
     this.writes = work.catch(() => {});
     return work;
   }
+  private change(id: string, pinned: boolean, owner: HomeOwner | null): Promise<void> {
+    return this.writePins(() => {
+      if (!itemId(id)) throw new HomeFailure('save');
+      if (
+        pinned &&
+        !this.state.items.some((item) => item.id === id && this.source.spaces().has(item.space_id))
+      )
+        throw new HomeFailure('save');
+      const ids = this.state.pinnedIds.filter((value) => value !== id);
+      if (pinned && !this.state.pinnedIds.includes(id)) ids.push(id);
+      else if (pinned) return null;
+      return ids;
+    }, owner);
+  }
   pin = (id: string, owner: HomeOwner | null = this.state.owner) => this.change(id, true, owner);
   unpin = (id: string, owner: HomeOwner | null = this.state.owner) => this.change(id, false, owner);
+  /** Reorder the complete visible selection; unavailable saved IDs keep their slots. */
+  reorder = (ids: readonly string[], owner: HomeOwner | null = this.state.owner): Promise<void> => {
+    const requested = [...ids];
+    return this.writePins(() => {
+      if (
+        requested.length > 100 ||
+        !requested.every(itemId) ||
+        new Set(requested).size !== requested.length
+      )
+        throw new HomeFailure('save');
+      const spaces = this.source.spaces();
+      const accessible = new Set(
+        this.state.items.filter((item) => spaces.has(item.space_id)).map((item) => item.id),
+      );
+      const visible = this.state.pinnedIds.filter((id) => accessible.has(id));
+      const visibleIds = new Set(visible);
+      if (requested.length !== visible.length || requested.some((id) => !visibleIds.has(id)))
+        throw new HomeFailure('save');
+      if (requested.every((id, index) => id === visible[index])) return null;
+      let index = 0;
+      return this.state.pinnedIds.map((id) => (visibleIds.has(id) ? requested[index++]! : id));
+    }, owner);
+  };
   activate() {
     this.disposed = false;
     return this.refresh();

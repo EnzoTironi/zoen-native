@@ -24,27 +24,45 @@ export default function Home() {
   const contentWidth = Math.min(width, 720) - 40;
   const columns = fontScale > 1.5 || contentWidth < 300 ? 1 : contentWidth >= 600 ? 3 : 2;
   const cardSize = Math.max(136, (contentWidth - (columns - 1) * 14) / columns);
+  function movePinned(id: string, direction: -1 | 1) {
+    const ids = home.pinnedItems.map((item) => item.id);
+    const index = ids.indexOf(id);
+    const next = index + direction;
+    if (index < 0 || next < 0 || next >= ids.length) return;
+    [ids[index], ids[next]] = [ids[next]!, ids[index]!];
+    void home.reorder(ids).catch(() => {});
+  }
   function grid(items: ItemDetail[]) {
     return (
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-        {items.map((item) => (
-          <CompactMiniappCard
-            key={item.id}
-            item={item}
-            size={cardSize}
-            accessory={
-              <HomeCardMenu
-                name={item.title}
-                pinned={home.isPinned(item.id)}
-                onToggle={() => {
-                  void (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)).catch(
-                    () => {},
-                  );
-                }}
-              />
-            }
-          />
-        ))}
+        {items.map((item) => {
+          const pinnedIndex = home.pinnedItems.findIndex((pin) => pin.id === item.id);
+          return (
+            <CompactMiniappCard
+              key={item.id}
+              item={item}
+              size={cardSize}
+              accessory={
+                <HomeCardMenu
+                  testID={`home-card-menu-${item.id}`}
+                  name={item.title}
+                  pinned={home.isPinned(item.id)}
+                  onToggle={() => {
+                    void (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)).catch(
+                      () => {},
+                    );
+                  }}
+                  onMoveEarlier={pinnedIndex > 0 ? () => movePinned(item.id, -1) : undefined}
+                  onMoveLater={
+                    pinnedIndex >= 0 && pinnedIndex < home.pinnedItems.length - 1
+                      ? () => movePinned(item.id, 1)
+                      : undefined
+                  }
+                />
+              }
+            />
+          );
+        })}
       </View>
     );
   }
@@ -77,7 +95,7 @@ export default function Home() {
           >
             {t('home.title')}
           </Text>
-          <HomeActions />
+          <HomeActions canOrganize={home.pinnedItems.length > 1} />
         </View>
         {home.pendingRequestCount > 0 ? (
           <Pressable

@@ -102,6 +102,7 @@ export function useHome() {
   const error = current ? state.error : null;
   const owner = current ? state.owner : null;
   return {
+    ownerKey: homeOwnerKey(owner),
     items,
     pinnedItems,
     pinnedIds,
@@ -127,6 +128,7 @@ export function useHome() {
     // A menu presented by a previous account cannot act on the next account's shared item.
     pin: (id: string) => controller.pin(id, owner),
     unpin: (id: string) => controller.unpin(id, owner),
+    reorder: (ids: readonly string[]) => controller.reorder(ids, owner),
     isPinned: (id: string) => pinnedIds.includes(id),
   };
 }

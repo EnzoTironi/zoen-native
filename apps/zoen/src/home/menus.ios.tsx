@@ -4,11 +4,12 @@ import { buttonStyle, frame, labelStyle } from '@expo/ui/swift-ui/modifiers';
 import { router } from 'expo-router';
 import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
+import type { HomeActionsProps, HomeCardMenuProps } from './menus.types';
 
-export function HomeActions() {
+export function HomeActions({ canOrganize = false }: HomeActionsProps) {
   const { scheme, colors } = useTheme();
   return (
-    <Host matchContents colorScheme={scheme} seedColor={colors.accent}>
+    <Host testID="home-actions-host" matchContents colorScheme={scheme} seedColor={colors.accent}>
       <Menu
         label={t('home.add')}
         systemImage="plus"
@@ -18,6 +19,13 @@ export function HomeActions() {
           frame({ minWidth: 44, minHeight: 44 }),
         ]}
       >
+        {canOrganize ? (
+          <Button
+            label={t('home.organize')}
+            systemImage="arrow.up.arrow.down"
+            onPress={() => router.push('/home-order')}
+          />
+        ) : null}
         <Button
           label={t('home.addMiniapp')}
           systemImage="square.grid.2x2"
@@ -47,14 +55,14 @@ export function HomeCardMenu({
   name,
   pinned,
   onToggle,
-}: {
-  name: string;
-  pinned: boolean;
-  onToggle: () => void;
-}) {
+  onMoveEarlier,
+  onMoveLater,
+  onHistory,
+  testID,
+}: HomeCardMenuProps) {
   const { scheme } = useTheme();
   return (
-    <Host matchContents colorScheme={scheme}>
+    <Host testID={testID ? `${testID}-host` : undefined} matchContents colorScheme={scheme}>
       <Menu
         label={t('home.options', { name })}
         systemImage="ellipsis"
@@ -69,6 +77,19 @@ export function HomeCardMenu({
           systemImage={pinned ? 'pin.slash' : 'pin'}
           onPress={onToggle}
         />
+        {onMoveEarlier ? (
+          <Button label={t('home.moveEarlier')} systemImage="arrow.up" onPress={onMoveEarlier} />
+        ) : null}
+        {onMoveLater ? (
+          <Button label={t('home.moveLater')} systemImage="arrow.down" onPress={onMoveLater} />
+        ) : null}
+        {onHistory ? (
+          <Button
+            label={t('miniapps.history')}
+            systemImage="clock.arrow.circlepath"
+            onPress={onHistory}
+          />
+        ) : null}
       </Menu>
     </Host>
   );

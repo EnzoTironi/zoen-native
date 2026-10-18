@@ -11,11 +11,14 @@ import { MiniappState } from '../../miniapps/state-view';
 import { MiniappView } from '../../miniapps/view-host';
 import { callMiniapp } from '../../miniapps/actions';
 import { MiniappSurfaceControls } from '../../native-surfaces/controls';
+import { useHome } from '../../home/provider';
+import { HomeCardMenu } from '../../home/menus';
 
 export default function Miniapp() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { store } = useClient();
   const { colors } = useTheme();
+  const home = useHome();
   const dialogs = useDialogs();
   const read = useCoreQuery({ op: 'item', item_id: id });
   const specs = useCoreQuery({ op: 'app_specs' });
@@ -75,13 +78,31 @@ export default function Miniapp() {
       <Stack.Screen
         options={{
           title: item.title,
-          headerRight: () => (
-            <NativeButton
-              secondary
-              label={t('miniapps.history')}
-              onPress={() => router.push({ pathname: '/item/[id]', params: { id, history: '1' } })}
-            />
-          ),
+          headerRight: () =>
+            process.env.EXPO_OS === 'ios' &&
+            home.items.some((candidate) => candidate.id === item.id) ? (
+              <HomeCardMenu
+                testID="miniapp-detail-options"
+                name={item.title}
+                pinned={home.isPinned(item.id)}
+                onToggle={() => {
+                  void (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)).catch(
+                    () => {},
+                  );
+                }}
+                onHistory={() =>
+                  router.push({ pathname: '/item/[id]', params: { id, history: '1' } })
+                }
+              />
+            ) : (
+              <NativeButton
+                secondary
+                label={t('miniapps.history')}
+                onPress={() =>
+                  router.push({ pathname: '/item/[id]', params: { id, history: '1' } })
+                }
+              />
+            ),
         }}
       />
       <Text style={{ color: colors.accent, fontWeight: '600', fontSize: 12 }}>
@@ -93,9 +114,9 @@ export default function Miniapp() {
       >
         {item.title}
       </Text>
-      {error || read.error || specs.error ? (
+      {error || read.error || specs.error || home.error ? (
         <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
-          {error ?? read.error ?? specs.error}
+          {error ?? read.error ?? specs.error ?? home.error}
         </Text>
       ) : null}
       {message ? (
