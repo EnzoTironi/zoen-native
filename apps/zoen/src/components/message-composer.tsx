@@ -7,6 +7,10 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { t } from '../i18n/index.ts';
 import { conversationQueryFits, type ConversationSearchState } from '../core/conversation-search';
 import { MediaComposer } from '../media/MediaComposer';
+import type { AttachmentComposerField } from '../media/attachment-composer';
+import { AttachmentReplyContext } from '../media/attachment-reply-context';
+import type { TimelineEntry } from '../core/types';
+import { MessageContext } from './message-context';
 import { useTheme } from '../theme';
 import { ComposerAction } from './composer-action';
 
@@ -29,6 +33,7 @@ export function MessageComposer({
   onMediaSent,
   sending,
   editing = false,
+  allowEmptyEdit = false,
   replyTo = null,
   thread = false,
   threadRootId,
@@ -36,6 +41,7 @@ export function MessageComposer({
   mediaEnabled = true,
   suspended = false,
   search,
+  context,
 }: {
   spaceId: string;
   value: string;
@@ -46,6 +52,7 @@ export function MessageComposer({
   onMediaSent?: () => void;
   sending: boolean;
   editing?: boolean;
+  allowEmptyEdit?: boolean;
   replyTo?: string | null;
   thread?: boolean;
   threadRootId?: string;
@@ -53,6 +60,7 @@ export function MessageComposer({
   mediaEnabled?: boolean;
   suspended?: boolean;
   search?: ComposerSearchMode;
+  context?: { entry: TimelineEntry; onCancel: () => void };
 }) {
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -73,52 +81,75 @@ export function MessageComposer({
     conversationQueryFits(search.state.query.trim()),
   );
   const glass = process.env.EXPO_OS === 'ios' && isLiquidGlassAvailable();
-  const field = (
-    <TextInput
-      ref={inputRef}
-      testID="message-input"
-      accessibilityLabel={
-        search ? t('chat.searchThisChat') : editing ? t('chat.editMessage') : t('chat.message')
-      }
-      placeholder={
-        search
-          ? t('chat.searchThisChat')
-          : thread
-            ? t('chat.continueTheConversation')
-            : t('chat.message')
-      }
-      placeholderTextColor={colors.tertiary}
-      multiline
-      returnKeyType={search ? 'search' : 'default'}
-      submitBehavior={search ? 'submit' : undefined}
-      onSubmitEditing={search?.onSearch}
-      value={value}
-      onChangeText={onChangeText}
-      onFocus={onFocus}
-      onBlur={onBlur}
-      style={{
-        minHeight: 52,
-        maxHeight: 160,
-        paddingHorizontal: 18,
-        paddingTop: 15,
-        paddingBottom: 14,
-        color: colors.text,
-        fontSize: 16,
-        lineHeight: 22,
-      }}
-    />
-  );
   function controls({
     attachment,
     voice,
     review,
+    files,
   }: {
     attachment: ReactNode;
     voice: ReactNode;
     review?: ReactNode;
+    files?: AttachmentComposerField;
   }) {
+    const field = (
+      <TextInput
+        ref={inputRef}
+        testID="message-input"
+        accessibilityLabel={
+          search
+            ? t('chat.searchThisChat')
+            : files
+              ? t('media.attachmentCaption', { position: files.position, total: files.total })
+              : editing
+                ? t('chat.editMessage')
+                : t('chat.message')
+        }
+        placeholder={
+          search
+            ? t('chat.searchThisChat')
+            : files || allowEmptyEdit
+              ? t('media.attachmentCaptionPlaceholder')
+              : thread
+                ? t('chat.continueTheConversation')
+                : t('chat.message')
+        }
+        placeholderTextColor={colors.tertiary}
+        multiline
+        returnKeyType={search ? 'search' : 'default'}
+        submitBehavior={search ? 'submit' : undefined}
+        onSubmitEditing={search?.onSearch}
+        editable={files ? files.editable : true}
+        value={files ? files.value : value}
+        onChangeText={files ? files.onChange : onChangeText}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        style={{
+          minHeight: 52,
+          maxHeight: 160,
+          paddingHorizontal: 18,
+          paddingTop: 15,
+          paddingBottom: 14,
+          color: colors.text,
+          fontSize: 16,
+          lineHeight: 22,
+        }}
+      />
+    );
     return (
       <>
+        {files?.scope.replyTo ? (
+          <AttachmentReplyContext
+            scope={files.scope}
+            onCancel={
+              files.targetFrozen || (files.scope.thread && files.scope.replyTo === threadRootId)
+                ? undefined
+                : context?.onCancel
+            }
+          />
+        ) : !files && context ? (
+          <MessageContext entry={context.entry} editing={editing} onCancel={context.onCancel} />
+        ) : null}
         {search ? (
           <Text
             accessibilityLiveRegion="polite"
@@ -192,13 +223,26 @@ export function MessageComposer({
                 />
               </View>
             )
+          ) : files ? (
+            <ComposerAction
+              testID="send-attachments"
+              name="arrow.up"
+              label={
+                files.retry
+                  ? t('media.attachmentsRetry')
+                  : t('media.attachmentSendCount', { count: files.remaining })
+              }
+              prominent
+              disabled={files.sending || files.remaining === 0 || sending}
+              onPress={files.onSend}
+            />
           ) : hasText || editing || !voice ? (
             <ComposerAction
               testID="send-message"
               name={editing ? 'checkmark' : 'arrow.up'}
               label={editing ? t('chat.saveEdit') : t('chat.sendMessage')}
               prominent
-              disabled={!hasText || sending}
+              disabled={(!hasText && !allowEmptyEdit) || sending}
               onPress={onSend}
             />
           ) : (
@@ -229,11 +273,12 @@ export function MessageComposer({
           disabled={sending || editing || Boolean(search)}
           suspended={suspended || Boolean(search)}
           onSent={onMediaSent}
-          renderControls={({ attachment, voice, review }) =>
+          renderControls={({ attachment, voice, review, files }) =>
             controls({
               attachment: editing ? null : attachment,
               voice: editing ? null : voice,
               review,
+              files: editing || search ? undefined : files,
             })
           }
         />

@@ -10,6 +10,7 @@ export type ComposerActionProps = {
     | 'checkmark'
     | 'stop.fill'
     | 'xmark'
+    | 'trash'
     | 'chevron.up'
     | 'chevron.down';
   label: string;
@@ -26,6 +27,7 @@ const material = {
   checkmark: 'check',
   'stop.fill': 'stop',
   xmark: 'close',
+  trash: 'delete_outline',
   'chevron.up': 'expand_less',
   'chevron.down': 'expand_more',
 } as const;

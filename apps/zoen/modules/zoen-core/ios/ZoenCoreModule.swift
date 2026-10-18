@@ -313,26 +313,30 @@ private actor ZoenSession {
     let uri: String
     let name: String
     let mime: String
+    let caption: String?
     let replyTo: String?
     let thread: Bool
     let mutationId: String
   }
   func sendFile(_ request: String) throws -> String {
     guard !erasing, !closing, let core else { throw SessionError.closed }
-    guard request.utf8.count <= 32_768 else { throw ZoenMediaFiles.Failure.invalidFile }
+    guard request.utf8.count <= 131_072 else { throw ZoenMediaFiles.Failure.invalidFile }
     let save = try JSONDecoder().decode(FileSend.self, from: Data(request.utf8))
     guard !save.spaceId.isEmpty, save.spaceId.utf8.count <= 256,
           !save.spaceId.contains("\0"), save.uri.utf8.count <= 16_384,
           !save.mutationId.isEmpty, save.mutationId.utf8.count <= 256, !save.mutationId.contains("\0"),
+          (save.caption?.utf8.count ?? 0) <= 16_384,
+          save.caption.map({ !$0.contains("\0") }) ?? true,
           save.replyTo.map({ !$0.isEmpty && $0.utf8.count <= 256 && !$0.contains("\0") }) ?? true
           else { throw ZoenMediaFiles.Failure.invalidFile }
     let selection = try mediaFiles.readSelection(uri: save.uri, name: save.name, mime: save.mime)
     let thumbnail = try? ZoenMediaFiles.thumbnail(at: selection.url)
     // This actor method has no suspension: close/erase cannot cross the native
     // selection validation and synchronous canonical file-message mutation.
-    let entry = try core.sendFileMessage(spaceId: save.spaceId, name: selection.name,
+    let entry = try core.sendFileMessageWithCaption(spaceId: save.spaceId, name: selection.name,
       mime: selection.mime, bytes: selection.data, thumbnail: thumbnail,
-      replyTo: save.replyTo, thread: save.thread, mutationId: save.mutationId)
+      replyTo: save.replyTo, thread: save.thread, mutationId: save.mutationId,
+      caption: save.caption ?? "")
     var result: [String: Any] = ["messageId": entry.id]
     if case let .message(_, card) = entry.kind, let card { result["itemId"] = card.itemId }
     return try ZoenMediaFiles.json(result)

@@ -1,11 +1,8 @@
-import { t, formatLocale } from '../i18n/index.ts';
+import { t } from '../i18n/index.ts';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, Platform, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { Image } from 'expo-image';
 import * as DocumentPicker from 'expo-document-picker';
-import * as ImagePicker from 'expo-image-picker';
-import { randomUUID } from 'expo-crypto';
 import {
   AudioModule,
   RecordingPresets,
@@ -18,11 +15,8 @@ import { IconButton, NativeButton } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
 import { useClient } from '../core/provider';
 import { AudioClip, clipTime, pauseAudioPlayback } from './AudioClip';
-import type { FileSelection, SendFile } from './types';
 import { discardCacheCopy } from './cache-files';
 import { sensitiveCacheWork } from './cache-work';
-import { MAX_SELECTED_BYTES } from './types';
-import { VideoClip } from './VideoClip';
 import { ComposerAction } from '../components/composer-action';
 import { VoiceReviewOwner } from './voice-review-owner';
 import type { VoiceSendable } from './voice-session';
@@ -31,9 +25,9 @@ import { VoiceDock } from './voice-dock';
 import { MediaSheet } from './media-sheet';
 import { MediaActions } from './media-actions';
 import type { MediaPickKind } from './media-actions.types';
+import { useAttachmentComposer, type AttachmentComposerField } from './attachment-composer';
 
 type Recording = { uri: string; durationMs: number; levels: number[]; owner?: VoiceReviewOwner };
-type FileDraft = SendFile & { onAccepted?: () => void };
 const failureMessage = (reason: unknown) =>
   reason instanceof Error ? reason.message : t('media.thisCouldNotBeCompletedTryAgain');
 async function discard(uri: string | undefined) {
@@ -68,6 +62,7 @@ export function MediaComposer({
     attachment: ReactNode;
     voice: ReactNode;
     review?: ReactNode;
+    files?: AttachmentComposerField;
   }) => ReactNode;
 }) {
   const { store } = useClient();
@@ -82,7 +77,6 @@ export function MediaComposer({
   });
   const recorderState = useAudioRecorderState(recorder, 100);
   const [expanded, setExpanded] = useState(false);
-  const [selection, setSelection] = useState<FileDraft | null>(null);
   const [clip, setClip] = useState<Recording | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -98,6 +92,14 @@ export function MediaComposer({
   const busyNow = useRef(false);
   const clipNow = useRef<Recording | null>(null);
   const owners = useRef(new Set<VoiceReviewOwner>());
+  const attachments = useAttachmentComposer({
+    spaceId,
+    replyTo,
+    thread,
+    disabled: disabled || Boolean(clip) || recorderState.isRecording,
+    suspended,
+    onSent,
+  });
   const closeOwner = useCallback(async (owner: VoiceReviewOwner) => {
     await owner.close();
     owners.current.delete(owner);
@@ -127,8 +129,8 @@ export function MediaComposer({
     [media, store],
   );
   useEffect(() => {
-    uriToDiscard.current = selection?.uri ?? (clip?.owner ? undefined : clip?.uri);
-  }, [selection, clip]);
+    uriToDiscard.current = clip?.owner ? undefined : clip?.uri;
+  }, [clip]);
   useEffect(() => {
     mounted.current = true;
     const retainedOwners = owners.current;
@@ -230,83 +232,26 @@ export function MediaComposer({
   async function pickSelection(kind: MediaPickKind) {
     if (!media || busy || disabled || suspendedNow.current || selecting.current || !focused.current)
       return;
+    if (kind !== 'audio') {
+      await attachments.pick(kind);
+      return;
+    }
+    if (attachments.active || attachments.busy) return;
     selecting.current = true;
     setBusy(true);
     setFailure(null);
-    async function stage(file: FileSelection) {
-      if (!mounted.current || !focused.current) {
-        await discard(file.uri);
-        return;
-      }
-      // Keep cleanup ownership immediately; an unmount can precede React's next effect.
-      uriToDiscard.current = file.uri;
-      setSelection({
-        ...file,
-        spaceId,
-        replyTo,
-        thread,
-        mutationId: randomUUID(),
-        onAccepted: onSent,
-      });
-    }
     try {
-      if (kind === 'document' || kind === 'audio') {
-        const result = await DocumentPicker.getDocumentAsync({
-          copyToCacheDirectory: true,
-          multiple: false,
-          type: kind === 'audio' ? 'audio/*' : '*/*',
-          base64: false,
-        });
-        if (!result.canceled) {
-          const file = result.assets[0];
-          if (file) {
-            if (kind === 'audio') {
-              if (!mounted.current || !focused.current) await discard(file.uri);
-              else stageVoice({ uri: file.uri, durationMs: 0, levels: [] });
-            } else
-              await stage({
-                uri: file.uri,
-                name: file.name,
-                mime: file.mimeType || 'application/octet-stream',
-                size: file.size,
-              });
-          }
-        }
-      } else {
-        const permission =
-          kind === 'camera'
-            ? await ImagePicker.requestCameraPermissionsAsync()
-            : await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!mounted.current || !focused.current) return;
-        if (!permission.granted) {
-          await inform(
-            kind === 'camera' ? t('media.allowCamera') : t('media.allowPhotos'),
-            t('media.youCanAllowAccessInDeviceSettingsTo'),
-          );
-          return;
-        }
-        const result =
-          kind === 'camera'
-            ? await ImagePicker.launchCameraAsync({
-                mediaTypes: ['images'],
-                quality: 1,
-                exif: false,
-              })
-            : await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ['images', 'videos'],
-                quality: 1,
-                allowsMultipleSelection: false,
-                exif: false,
-              });
-        if (!result.canceled) {
-          const asset = result.assets[0];
-          if (asset)
-            await stage({
-              uri: asset.uri,
-              name: asset.fileName ?? (asset.type === 'video' ? 'video.mov' : 'foto.jpg'),
-              mime: asset.mimeType ?? (asset.type === 'video' ? 'video/quicktime' : 'image/jpeg'),
-              size: asset.fileSize,
-            });
+      const result = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: false,
+        type: 'audio/*',
+        base64: false,
+      });
+      if (!result.canceled) {
+        const file = result.assets[0];
+        if (file) {
+          if (!mounted.current || !focused.current) await discard(file.uri);
+          else stageVoice({ uri: file.uri, durationMs: 0, levels: [] });
         }
       }
     } catch (reason) {
@@ -325,7 +270,16 @@ export function MediaComposer({
     }
   }
   async function startRecording() {
-    if (!media || busy || disabled || suspendedNow.current || recording.current) return;
+    if (
+      !media ||
+      busy ||
+      attachments.active ||
+      attachments.busy ||
+      disabled ||
+      suspendedNow.current ||
+      recording.current
+    )
+      return;
     setBusy(true);
     setFailure(null);
     try {
@@ -401,29 +355,25 @@ export function MediaComposer({
     }
   }
   async function send() {
-    if (!media || busyNow.current || (!selection && !clip) || clip?.owner) return;
+    if (!media || busyNow.current || !clip || clip.owner) return;
     busyNow.current = true;
     setBusy(true);
     setFailure(null);
-    const uri = selection?.uri ?? clip?.uri;
+    const uri = clip.uri;
     try {
-      if (selection) await media.sendFile(selection);
-      else if (clip)
-        await media.sendVoice({
-          uri: clip.uri,
-          durationMs: clip.durationMs,
-          levels: clip.levels,
-          spaceId,
-          mime: Platform.OS === 'web' ? 'audio/webm' : 'audio/mp4',
-          replyTo,
-          thread,
-        });
-      setSelection(null);
+      await media.sendVoice({
+        uri: clip.uri,
+        durationMs: clip.durationMs,
+        levels: clip.levels,
+        spaceId,
+        mime: Platform.OS === 'web' ? 'audio/webm' : 'audio/mp4',
+        replyTo,
+        thread,
+      });
       clipNow.current = null;
       setClip(null);
       uriToDiscard.current = undefined;
-      if (selection) selection.onAccepted?.();
-      else onSent?.();
+      onSent?.();
       // Acknowledged sends stay successful even if local cache cleanup needs a retry.
       void discard(uri).catch(() => {});
       void store.refresh().catch(() => {});
@@ -442,10 +392,9 @@ export function MediaComposer({
       await stop();
       const capture = clipNow.current;
       if (capture?.owner) await closeOwner(capture.owner);
-      else await discard(selection?.uri ?? capture?.uri ?? recorder.uri ?? undefined);
+      else await discard(capture?.uri ?? recorder.uri ?? undefined);
       clipNow.current = null;
       uriToDiscard.current = undefined;
-      setSelection(null);
       setClip(null);
       setExpanded(false);
       setFailure(null);
@@ -459,8 +408,8 @@ export function MediaComposer({
   if (!media) return renderControls?.({ attachment: null, voice: null }) ?? null;
   const isRecording = recorderState.isRecording;
   const voiceActive = Boolean(clip || isRecording);
-  const presented = Boolean(selection || clip || isRecording || failure);
-  const sheetVisible = Boolean(selection || (voiceActive ? expanded : failure));
+  const presented = Boolean(attachments.active || clip || isRecording || failure);
+  const sheetVisible = Boolean(voiceActive ? expanded : failure);
   function collapseVoice() {
     if (busy || busyNow.current) return;
     pauseAudioPlayback();
@@ -503,8 +452,15 @@ export function MediaComposer({
     ) : null;
   const attachment = (
     <MediaActions
-      disabled={disabled || busy || presented}
-      hasVoiceEditor={Boolean(media.voiceEditor)}
+      disabled={
+        disabled ||
+        busy ||
+        attachments.busy ||
+        !attachments.canAdd ||
+        voiceActive ||
+        Boolean(failure)
+      }
+      hasVoiceEditor={!attachments.active && Boolean(media.voiceEditor)}
       onChoose={(kind) => {
         void pick(kind);
       }}
@@ -516,7 +472,7 @@ export function MediaComposer({
       label={t('media.recordVoiceMessage')}
       name="mic"
       prominent
-      disabled={disabled || busy || presented}
+      disabled={disabled || busy || attachments.busy || presented}
       onPress={() => {
         void start();
       }}
@@ -525,10 +481,15 @@ export function MediaComposer({
   return (
     <>
       {renderControls ? (
-        renderControls({ attachment, voice, review })
+        renderControls({
+          attachment,
+          voice,
+          review: disabled ? review : (attachments.review ?? review),
+          files: disabled ? undefined : attachments.field,
+        })
       ) : (
         <>
-          {review}
+          {attachments.review ?? review}
           {attachment}
           {voice}
         </>
@@ -580,27 +541,6 @@ export function MediaComposer({
               }}
             />
           </View>
-          {selection?.mime.startsWith('image/') ? (
-            <Image
-              cachePolicy="none"
-              source={{ uri: selection.uri }}
-              style={{ width: '100%', height: 320, borderRadius: 18 }}
-              contentFit="contain"
-            />
-          ) : null}
-          {selection?.mime.startsWith('video/') ? <VideoClip uri={selection.uri} /> : null}
-          {selection ? (
-            <>
-              <Text selectable style={{ color: colors.text, fontSize: 18, lineHeight: 26 }}>
-                {selection.name}
-              </Text>
-              <Text style={{ color: colors.secondary }}>
-                {selection.size == null
-                  ? selection.mime
-                  : `${new Intl.NumberFormat(formatLocale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(selection.size / 1048576)} MB · ${selection.mime}`}
-              </Text>
-            </>
-          ) : null}
           {isRecording ? (
             <>
               <Text
@@ -647,19 +587,14 @@ export function MediaComposer({
               {failure}
             </Text>
           ) : null}
-          {!isRecording && !clip?.owner && Boolean(selection || clip) ? (
+          {!isRecording && !clip?.owner && Boolean(clip) ? (
             <NativeButton
               label={busy ? t('media.sending') : t('media.send')}
-              disabled={busy || Boolean(selection?.size && selection.size > MAX_SELECTED_BYTES)}
+              disabled={busy}
               onPress={() => {
                 void send();
               }}
             />
-          ) : null}
-          {selection?.size && selection.size > MAX_SELECTED_BYTES ? (
-            <Text accessibilityRole="alert" style={{ color: colors.danger }}>
-              {t('media.chooseAFileUpTo64MB')}
-            </Text>
           ) : null}
           <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 20 }}>
             {t('media.reviewBeforeSendingTheFileIsSavedIn')}

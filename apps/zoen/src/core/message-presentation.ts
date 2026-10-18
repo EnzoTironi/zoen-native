@@ -21,7 +21,7 @@ export function messageCanEdit(entry: TimelineEntry) {
     !entry.deleted &&
     !entry.voice &&
     'Message' in entry.kind &&
-    !entry.kind.Message.card
+    (!entry.kind.Message.card || entry.kind.Message.card.kind_id === 'file')
   );
 }
 

@@ -144,6 +144,35 @@ impl RodaEngine {
         )
     }
 
+    /// Sends a caption and attachment as one atomic message. Reusing mutation_id
+    /// with a different caption or file is rejected before any write.
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_file_message_with_caption(
+        &self,
+        space_id: String,
+        name: String,
+        mime: String,
+        bytes: Vec<u8>,
+        thumbnail: Option<Vec<u8>>,
+        reply_to: Option<String>,
+        thread: bool,
+        mutation_id: String,
+        caption: String,
+    ) -> Result<TimelineEntry, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
+        self.lock().send_file_message_with_caption(
+            &space_id,
+            &name,
+            &mime,
+            &bytes,
+            thumbnail.as_deref(),
+            reply_to.as_deref(),
+            thread,
+            &mutation_id,
+            &caption,
+        )
+    }
+
     /// Sends a voice note as an encrypted audio file (see `Engine::send_voice_note`).
     /// `levels` are waveform bars 0…1; `reply_to` answers a message, in its thread if
     /// `thread`.

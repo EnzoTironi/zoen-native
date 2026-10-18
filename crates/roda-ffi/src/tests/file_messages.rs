@@ -23,17 +23,42 @@ fn send(
 }
 
 fn card(entry: &TimelineEntry) -> &ItemCard {
+    caption_card(entry, "")
+}
+
+fn caption_card<'a>(entry: &'a TimelineEntry, caption: &str) -> &'a ItemCard {
     assert!(entry.voice.is_none());
     match &entry.kind {
         EntryKind::Message {
             text,
             card: Some(card),
         } => {
-            assert!(text.is_empty());
+            assert_eq!(text, caption);
             card
         }
         other => panic!("expected file attachment, got {other:?}"),
     }
+}
+
+fn send_caption(
+    e: &RodaEngine,
+    space: &str,
+    reply: Option<String>,
+    thread: bool,
+    id: &str,
+    caption: &str,
+) -> Result<TimelineEntry, CoreError> {
+    e.send_file_message_with_caption(
+        space.into(),
+        "picked.bin".into(),
+        "application/pdf".into(),
+        vec![7; 1024],
+        Some(vec![9; 64]),
+        reply,
+        thread,
+        id.into(),
+        caption.into(),
+    )
 }
 
 fn storage(e: &RodaEngine) -> Vec<i64> {
@@ -292,6 +317,143 @@ fn exact_file_send_retries_survive_cold_reopen_and_reject_intent_drift() {
     }
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn file_caption_is_signed_with_its_attachment_and_thread_before_receiver_replay() {
+    use crate::sync::Ingest;
+    use roda_proto::{Envelope, Sequenced};
+    let sender = seeded();
+    let space = find_space(&sender, "Zoen").id;
+    let root = sender.send_message(space.clone(), "Root".into()).unwrap();
+    let child = sender
+        .send_reply(space.clone(), "Child".into(), root.id.clone(), true)
+        .unwrap();
+    let caption = "  Página 2 🗂️\nTotal: 161.  ";
+    let before = sender.timeline(space.clone()).unwrap().len();
+    let sent = send_caption(&sender, &space, Some(child.id), true, "caption", caption).unwrap();
+    let item = caption_card(&sent, caption).item_id.clone();
+    assert_eq!(sent.in_thread.as_deref(), Some(root.id.as_str()));
+    assert_eq!(sender.timeline(space.clone()).unwrap().len(), before + 1);
+    let receiver = RodaEngine::open(":memory:".into(), "en".into()).unwrap();
+    for event in sender.lock().logs[&space].events() {
+        assert!(matches!(
+            receiver.lock().ingest(Sequenced {
+                seq: event.seq,
+                prev: event.prev.clone(),
+                hash: event.hash.clone(),
+                env: Envelope::plain(event)
+            }),
+            Ingest::Applied
+        ));
+    }
+    let received = receiver.thread(space.clone(), root.id).unwrap();
+    let received = received.last().unwrap();
+    assert_eq!(received.id, sent.id);
+    assert_eq!(caption_card(received, caption).item_id, item);
+    assert!(!received.edited);
+    let engine = sender.lock();
+    let events = engine.logs[&space].events();
+    assert!(
+        matches!(&events[events.len()-2].body, EventBody::ItemCreated { item: id, .. } if id == &item)
+    );
+    assert!(matches!(&events.last().unwrap().body,
+        EventBody::MessagePosted { text, attaches: Some(id), .. } if text == caption && id == &item));
+    assert!(receiver.verify_log(space).valid);
+}
+
+#[test]
+fn captioned_file_retries_survive_reopen_and_reject_caption_drift() {
+    use sha2::{Digest, Sha256};
+    let dir = std::env::temp_dir().join(roda_types::new_id("caption-send"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("core.sqlite").to_string_lossy().to_string();
+    let caption = "First caption 🐝";
+    let (space, accepted, counts) = {
+        let e = RodaEngine::open(path.clone(), "en".into()).unwrap();
+        e.seed_demo_if_empty().unwrap();
+        let space = find_space(&e, "Zoen").id;
+        let accepted = send_caption(&e, &space, None, false, "durable-caption", caption).unwrap();
+        (space, accepted, storage(&e))
+    };
+    let e = RodaEngine::open(path.clone(), "en".into()).unwrap();
+    assert_eq!(
+        send_caption(&e, &space, None, false, "durable-caption", caption).unwrap(),
+        accepted
+    );
+    for changed in ["Second caption", "", "First caption 🐝 "] {
+        assert!(send_caption(&e, &space, None, false, "durable-caption", changed).is_err());
+        assert_eq!(storage(&e), counts);
+    }
+    let blank = send(&e, &space, "application/pdf", None, false, "old-blank").unwrap();
+    // Seed the persisted receipt using the exact pre-caption schema, independently
+    // from the new wrapper. A cold new client must recognize this old intent.
+    let legacy_intent = serde_json::to_vec(&(
+        &space,
+        "picked.bin",
+        "application/pdf",
+        hex::encode(Sha256::digest(vec![7; 1024])),
+        Some(hex::encode(Sha256::digest(vec![9; 64]))),
+        Option::<String>::None,
+        false,
+    ))
+    .unwrap();
+    let legacy_receipt =
+        serde_json::to_string(&(hex::encode(Sha256::digest(legacy_intent)), &blank.id)).unwrap();
+    let legacy_key = format!("file_send:{}:old-blank", e.me().unwrap().id);
+    e.lock()
+        .store
+        .set_meta(&legacy_key, &legacy_receipt)
+        .unwrap();
+    let blank_counts = storage(&e);
+    drop(e);
+    let e = RodaEngine::open(path, "en".into()).unwrap();
+    assert_eq!(
+        send_caption(&e, &space, None, false, "old-blank", " \n\t").unwrap(),
+        blank
+    );
+    assert!(send_caption(&e, &space, None, false, "old-blank", caption).is_err());
+    assert_eq!(storage(&e), blank_counts);
+    drop(e);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn file_caption_bounds_and_failed_receipt_leave_no_partial_file_or_message() {
+    let e = seeded();
+    let space = find_space(&e, "Zoen").id;
+    let before = storage(&e);
+    let timeline = e.timeline(space.clone()).unwrap();
+    for caption in [
+        "é".repeat(crate::files::MAX_FILE_CAPTION_BYTES / 2 + 1),
+        "bad\0caption".into(),
+    ] {
+        assert!(send_caption(&e, &space, None, false, "invalid-caption", &caption).is_err());
+        assert_eq!(storage(&e), before);
+    }
+    e.lock().store.conn().execute_batch(
+        "CREATE TRIGGER fail_caption BEFORE INSERT ON meta WHEN NEW.key LIKE 'file_send:%' BEGIN SELECT RAISE(ABORT,'caption receipt failed'); END;",
+    ).unwrap();
+    assert!(send_caption(
+        &e,
+        &space,
+        None,
+        false,
+        "retry-caption",
+        "Keep this caption"
+    )
+    .is_err());
+    assert_eq!(storage(&e), before);
+    assert_eq!(e.timeline(space.clone()).unwrap(), timeline);
+    e.lock()
+        .store
+        .conn()
+        .execute_batch("DROP TRIGGER fail_caption")
+        .unwrap();
+    let caption = "é".repeat(crate::files::MAX_FILE_CAPTION_BYTES / 2);
+    let sent = send_caption(&e, &space, None, false, "retry-caption", &caption).unwrap();
+    caption_card(&sent, &caption);
+    assert_eq!(e.timeline(space).unwrap().len(), timeline.len() + 1);
 }
 
 #[test]

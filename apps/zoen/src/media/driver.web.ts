@@ -91,6 +91,7 @@ export function createBrowserMediaDriver(
   return {
     async sendFile(selection) {
       if (selection.replyTo || selection.thread) throw new Error(t('media.fileReplyUnavailable'));
+      if (selection.caption?.trim()) throw new Error(t('media.fileCaptionUnavailable'));
       const host = resolveHost();
       selectionMetadata(selection.name, selection.mime);
       const local = await selectedBytes(selection.uri, host, resolveHost);

@@ -46,6 +46,7 @@ export function createDriver(): CoreDriver {
             uri: selection.uri,
             name: selection.name,
             mime: selection.mime,
+            caption: selection.caption ?? '',
             replyTo: selection.replyTo,
             thread: selection.thread,
             mutationId: selection.mutationId,

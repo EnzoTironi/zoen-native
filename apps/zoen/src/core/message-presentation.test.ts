@@ -60,13 +60,29 @@ test('deleted message never exposes its retained media/card or mutation actions'
   assert.equal(messageCanInteract(attached), false);
 });
 
-test('text editing is author-only, excludes voice/card messages, and excludes log activity', () => {
+test('text and file-caption editing is author-only, excludes voice/miniapps and log activity', () => {
   assert.equal(messageCanEdit(entry()), true);
   assert.equal(messageCanEdit(entry({ author: { ...entry().author, is_me: false } })), false);
   assert.equal(
     messageCanEdit(entry({ voice: { item_id: 'voice' } as TimelineEntry['voice'] })),
     false,
   );
+  const file = entry({
+    kind: {
+      Message: {
+        text: 'Caption',
+        card: { item_id: 'photo', kind_id: 'file' } as NonNullable<ReturnType<typeof messageCard>>,
+      },
+    },
+  });
+  assert.ok('Message' in file.kind);
+  assert.equal(messageCanEdit(file), true);
+  assert.equal(
+    messageCanEdit({ ...file, kind: { Message: { ...file.kind.Message!, text: '' } } }),
+    true,
+  );
+  assert.equal(messageCanEdit({ ...file, author: { ...file.author, is_me: false } }), false);
+  assert.equal(messageCanEdit({ ...file, deleted: true }), false);
   assert.equal(
     messageCanEdit(
       entry({

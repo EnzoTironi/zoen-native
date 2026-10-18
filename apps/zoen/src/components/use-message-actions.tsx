@@ -378,7 +378,10 @@ export function useMessageActions({
               : undefined
           }
           onCopy={
-            selected && !selected.voice && !messageCard(selected) && messageText(selected).trim()
+            selected &&
+            !selected.voice &&
+            (!messageCard(selected) || messageCard(selected)?.kind_id === 'file') &&
+            messageText(selected).trim()
               ? () => {
                   if (current(selected))
                     void Clipboard.setStringAsync(messageText(selected)).catch(() => {});

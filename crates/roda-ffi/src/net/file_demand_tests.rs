@@ -6,6 +6,10 @@ use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+// Actual HTTP journeys must not race a sub-second deadline under the full
+// parallel suite. Deadline/cancellation behavior has separate tight tests.
+const HTTP_JOURNEY_TIMEOUT_MS: u64 = 5_000;
+
 #[derive(Default)]
 struct Vault(Mutex<HashMap<String, Vec<u8>>>);
 impl SecretVault for Vault {
@@ -191,6 +195,11 @@ impl BlobServer {
                     }
                     headers.push(byte[0]);
                 }
+                // A canceled request may close its accepted socket before it
+                // writes a complete HTTP header. It is not a blob request.
+                if !headers.ends_with(b"\r\n\r\n") {
+                    continue;
+                }
                 let header = String::from_utf8(headers).unwrap();
                 let path = header
                     .lines()
@@ -233,17 +242,67 @@ impl BlobServer {
             thread: Some(thread),
         }
     }
+
+    fn stop(&mut self) -> std::thread::Result<()> {
+        self.stopped.store(true, Ordering::SeqCst);
+        self.allow_old.store(true, Ordering::SeqCst);
+        self.thread.take().map_or(Ok(()), |thread| thread.join())
+    }
 }
 impl Drop for BlobServer {
     fn drop(&mut self) {
-        self.stopped.store(true, Ordering::SeqCst);
-        self.allow_old.store(true, Ordering::SeqCst);
-        self.thread.take().unwrap().join().unwrap();
+        // Normal journeys explicitly check stop(). During another assertion's
+        // unwind, cleanup must preserve that failure instead of aborting twice.
+        let _ = self.stop();
     }
 }
 
+#[test]
+fn historical_file_fixture_survives_canceled_tcp_before_a_valid_blob_request() {
+    let body = b"sealed fixture bytes".to_vec();
+    let mut server = BlobServer::start(
+        HashMap::from([("selected".into(), body.clone())]),
+        "selected".into(),
+        false,
+    );
+    server.allow_old.store(true, Ordering::SeqCst);
+    let address = server.base.strip_prefix("http://").unwrap();
+    for prefix in [b"".as_slice(), b"GET /v1/blobs/selected HTTP/1.1\r\n"] {
+        let mut canceled = std::net::TcpStream::connect(address).unwrap();
+        canceled
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        canceled.write_all(prefix).unwrap();
+        canceled.shutdown(std::net::Shutdown::Write).unwrap();
+        let mut response = Vec::new();
+        canceled.read_to_end(&mut response).unwrap();
+        assert!(response.is_empty(), "incomplete requests receive no blob");
+    }
+    assert!(server.requests.lock().unwrap().is_empty());
+    let mut socket = std::net::TcpStream::connect(address).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    socket
+        .write_all(b"GET /v1/blobs/selected HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .unwrap();
+    let mut response = Vec::new();
+    socket.read_to_end(&mut response).unwrap();
+    assert!(response.starts_with(b"HTTP/1.1 200 OK\r\n"));
+    let body_start = response
+        .windows(4)
+        .position(|bytes| bytes == b"\r\n\r\n")
+        .unwrap()
+        + 4;
+    assert_eq!(&response[body_start..], body);
+    assert_eq!(*server.requests.lock().unwrap(), ["selected"]);
+    server
+        .stop()
+        .expect("fixture HTTP worker must finish cleanly");
+}
+
 async fn until(mut condition: impl FnMut() -> bool) {
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(Duration::from_secs(5), async {
         while !condition() {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
@@ -298,7 +357,7 @@ fn ensure(
 #[tokio::test]
 async fn historical_file_demand_downloads_only_selected_version_and_coalesces_waiters() {
     let f = Fixture::new();
-    let server = BlobServer::start(f.uploads(), f.old_blob.clone(), false);
+    let mut server = BlobServer::start(f.uploads(), f.old_blob.clone(), false);
     let kick = Arc::new(tokio::sync::Notify::new());
     let task = worker(&f.reader, &server, kick.clone());
     until(|| {
@@ -320,8 +379,8 @@ async fn historical_file_demand_downloads_only_selected_version_and_coalesces_wa
         f.reader.timeline(f.space.clone()).unwrap(),
         outbox(&f.reader),
     );
-    let first = ensure(&f.reader, &f.item, 2000);
-    let second = ensure(&f.reader, &f.item, 2000);
+    let first = ensure(&f.reader, &f.item, HTTP_JOURNEY_TIMEOUT_MS);
+    let second = ensure(&f.reader, &f.item, HTTP_JOURNEY_TIMEOUT_MS);
     until(|| f.reader.lock().net.file_demands.waiter_count() == 2).await;
     assert_eq!(f.reader.lock().net.file_demands.active().len(), 1);
     kick.notify_one();
@@ -365,6 +424,9 @@ async fn historical_file_demand_downloads_only_selected_version_and_coalesces_wa
     }
     task.abort();
     let _ = task.await;
+    server
+        .stop()
+        .expect("fixture HTTP worker must finish cleanly");
 }
 
 #[tokio::test]
@@ -418,8 +480,8 @@ async fn historical_file_demand_timeout_cancel_and_invalid_requests_leave_no_dem
 #[tokio::test]
 async fn historical_file_demand_rechecks_membership_before_accepting_inflight_bytes() {
     let mut f = Fixture::new();
-    let server = BlobServer::start(f.uploads(), f.old_blob.clone(), false);
-    let waiting = ensure(&f.reader, &f.item, 2000);
+    let mut server = BlobServer::start(f.uploads(), f.old_blob.clone(), false);
+    let waiting = ensure(&f.reader, &f.item, HTTP_JOURNEY_TIMEOUT_MS);
     until(|| !f.reader.lock().net.file_demands.active().is_empty()).await;
     let task = worker(&f.reader, &server, Arc::new(tokio::sync::Notify::new()));
     until(|| server.requests.lock().unwrap().contains(&f.old_blob)).await;
@@ -446,16 +508,20 @@ async fn historical_file_demand_rechecks_membership_before_accepting_inflight_by
         .is_err());
     task.abort();
     let _ = task.await;
+    server
+        .stop()
+        .expect("fixture HTTP worker must finish cleanly");
 }
 
 #[tokio::test]
 async fn historical_file_demand_rejects_corrupt_ciphertext_and_clears_on_deadline() {
     let f = Fixture::new();
-    let server = BlobServer::start(f.uploads(), f.old_blob.clone(), true);
+    let mut server = BlobServer::start(f.uploads(), f.old_blob.clone(), true);
     server.allow_old.store(true, Ordering::SeqCst);
-    let waiting = ensure(&f.reader, &f.item, 180);
+    let waiting = ensure(&f.reader, &f.item, HTTP_JOURNEY_TIMEOUT_MS);
     until(|| !f.reader.lock().net.file_demands.active().is_empty()).await;
     let task = worker(&f.reader, &server, Arc::new(tokio::sync::Notify::new()));
+    until(|| server.requests.lock().unwrap().contains(&f.old_blob)).await;
     assert!(waiting.await.unwrap().is_err());
     assert!(server.requests.lock().unwrap().contains(&f.old_blob));
     assert_eq!(
@@ -465,6 +531,9 @@ async fn historical_file_demand_rejects_corrupt_ciphertext_and_clears_on_deadlin
     assert!(f.reader.lock().net.file_demands.active().is_empty());
     task.abort();
     let _ = task.await;
+    server
+        .stop()
+        .expect("fixture HTTP worker must finish cleanly");
 }
 
 #[tokio::test]

@@ -135,6 +135,33 @@ test('file replies cannot silently fall back to the main conversation on web', a
   assert.equal(calls.length, 0);
 });
 
+test('deferred browser captions cannot silently send a blank attachment instead', async (t) => {
+  browser(t);
+  const { host, calls } = fixture();
+  let resolutions = 0;
+  const media = createBrowserMediaDriver(() => {
+    resolutions++;
+    return host;
+  });
+  const fetch = t.mock.method(globalThis, 'fetch', async () => new Response('abc'));
+  await assert.rejects(
+    media.sendFile({
+      spaceId: 'sp',
+      replyTo: null,
+      thread: false,
+      mutationId: 'qa-caption',
+      caption: 'Keep this caption',
+      name: 'file.txt',
+      mime: 'text/plain',
+      uri: 'blob:https://zoen.test/id',
+    }),
+    /iPhone/,
+  );
+  assert.equal(resolutions, 0);
+  assert.equal(fetch.mock.callCount(), 0);
+  assert.equal(calls.length, 0);
+});
+
 test('voice sends actual recorder codec and keeps its thread target in the same signed file', async (t) => {
   browser(t);
   const { host, calls } = fixture();

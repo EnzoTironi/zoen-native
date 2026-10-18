@@ -28,6 +28,7 @@ const AVG_CHUNK: usize = 4 << 20;
 const MAX_CHUNK: usize = 16 << 20;
 /// Largest file the core takes in one call.
 pub const MAX_FILE_BYTES: usize = 512 << 20;
+pub const MAX_FILE_CAPTION_BYTES: usize = 16 << 10;
 const MAX_THUMBNAIL_BYTES: usize = 2 << 20;
 const MAX_FILE_CHUNKS: usize = MAX_FILE_BYTES / MIN_CHUNK + 1;
 const MAX_FILE_METADATA_BYTES: usize = 128 << 10;
@@ -326,6 +327,33 @@ impl Engine {
         thread: bool,
         mutation_id: &str,
     ) -> R<TimelineEntry> {
+        self.send_file_message_with_caption(
+            space,
+            name,
+            mime,
+            bytes,
+            thumbnail,
+            reply_to,
+            thread,
+            mutation_id,
+            "",
+        )
+    }
+
+    /// The caption and file share one signed message and one retry receipt.
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_file_message_with_caption(
+        &mut self,
+        space: &str,
+        name: &str,
+        mime: &str,
+        bytes: &[u8],
+        thumbnail: Option<&[u8]>,
+        reply_to: Option<&str>,
+        thread: bool,
+        mutation_id: &str,
+        caption: &str,
+    ) -> R<TimelineEntry> {
         let me = self.me_id()?;
         if !self.state.writer(space, &me) {
             return Err(CoreError::Forbidden {
@@ -347,6 +375,8 @@ impl Engine {
             || bytes.is_empty()
             || bytes.len() > MAX_FILE_BYTES
             || thumbnail.is_some_and(|t| t.is_empty() || t.len() > MAX_THUMBNAIL_BYTES)
+            || caption.len() > MAX_FILE_CAPTION_BYTES
+            || caption.contains('\0')
             || (thread && reply_to.is_none())
         {
             return Err(invalid("envio de arquivo inválido", "invalid file send"));
@@ -356,7 +386,12 @@ impl Engine {
         let reply = reply_to
             .map(|to| self.reply_ref(space, to, thread))
             .transpose()?;
-        let intent = serde_json::to_vec(&(
+        let caption = if caption.trim().is_empty() {
+            ""
+        } else {
+            caption
+        };
+        let file_intent = (
             space,
             name,
             mime,
@@ -364,7 +399,14 @@ impl Engine {
             thumbnail.map(|t| hex::encode(Sha256::digest(t))),
             reply_to,
             thread,
-        ))
+        );
+        // Preserve the original blank-caption fingerprint for accepted sends
+        // made before caption support. Nonempty captions cannot reuse it.
+        let intent = if caption.is_empty() {
+            serde_json::to_vec(&file_intent)
+        } else {
+            serde_json::to_vec(&(file_intent, caption))
+        }
         .map_err(|_| invalid_file())?;
         let fingerprint = hex::encode(Sha256::digest(&intent));
         let key = format!("file_send:{me}:{mutation_id}");
@@ -392,7 +434,7 @@ impl Engine {
                 &me,
                 EventBody::MessagePosted {
                     message: new_id("msg"),
-                    text: String::new(),
+                    text: caption.to_string(),
                     attaches: Some(item),
                     reply,
                     forwarded: false,

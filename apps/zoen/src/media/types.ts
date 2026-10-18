@@ -4,6 +4,7 @@ import type { VoiceNativePort } from './voice-session';
 // The current UniFFI API takes one contiguous payload. Keep its native copies
 // within a predictable mobile memory budget until the Rust API supports streams.
 export const MAX_SELECTED_BYTES = 64 * 1024 * 1024;
+export const MAX_FILE_CAPTION_BYTES = 16 * 1024;
 
 export type FileSelection = {
   uri: string;
@@ -14,6 +15,8 @@ export type FileSelection = {
 
 export type SendFile = FileSelection & {
   spaceId: string;
+  /** Signed with the attachment; part of the immutable retry intent. */
+  caption?: string;
   replyTo: string | null;
   thread: boolean;
   /** One immutable selection intent, retained across failed-send retries. */

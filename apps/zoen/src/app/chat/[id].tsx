@@ -36,7 +36,6 @@ import {
 } from '../../components/conversation-viewport';
 import { ConversationRail, ConversationRailSpacer } from '../../components/conversation-rail';
 import { ConversationMessage } from '../../components/conversation-message';
-import { MessageContext } from '../../components/message-context';
 import { useMessageActions } from '../../components/use-message-actions';
 import { messageCard } from '../../core/message-presentation';
 import {
@@ -339,7 +338,11 @@ export default function Chat() {
 
   async function send() {
     if (search.getSnapshot().active) return;
-    if (!composerText.trim() || sendingNow.current) return;
+    if (
+      (!composerText.trim() && !(editing && messageCard(editing)?.kind_id === 'file')) ||
+      sendingNow.current
+    )
+      return;
     const attempt = captureMessageDraft(messageDraft);
     const text = attempt.text;
     sendingNow.current = true;
@@ -420,16 +423,12 @@ export default function Chat() {
         onNativeLayout={initialEnd.onViewportLayout}
         composer={
           <>
-            {!searchState.active && (reply || editing) ? (
-              <MessageContext
-                entry={(editing ?? reply)!}
-                editing={Boolean(editing)}
-                onCancel={() => {
-                  updateDraft({ type: 'cancel' });
-                }}
-              />
-            ) : null}
             <MessageComposer
+              context={
+                !searchState.active && (reply || editing)
+                  ? { entry: (editing ?? reply)!, onCancel: () => updateDraft({ type: 'cancel' }) }
+                  : undefined
+              }
               spaceId={id}
               suspended={searchState.active}
               inputRef={input}
@@ -437,6 +436,7 @@ export default function Chat() {
               value={searchState.active ? searchState.query : composerText}
               sending={sending}
               editing={Boolean(editing) && !searchState.active}
+              allowEmptyEdit={Boolean(editing && messageCard(editing)?.kind_id === 'file')}
               replyTo={reply?.id ?? null}
               onChangeText={(text) => {
                 if (searchState.active) {

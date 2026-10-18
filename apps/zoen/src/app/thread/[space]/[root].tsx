@@ -19,7 +19,6 @@ import { EmptyState, Loading, NativeButton } from '../../../components/primitive
 import { useTheme } from '../../../theme';
 import { useHome } from '../../../home/provider';
 import { MessageComposer } from '../../../components/message-composer';
-import { MessageContext } from '../../../components/message-context';
 import {
   ConversationContainer,
   ConversationViewport,
@@ -69,7 +68,8 @@ export default function Thread() {
   async function send() {
     const attempt = captureMessageDraft(messageDraft);
     const text = attempt.text;
-    if (!text.trim() || sending.current) return;
+    if ((!text.trim() && !(editing && messageCard(editing)?.kind_id === 'file')) || sending.current)
+      return;
     sending.current = true;
     store.setTyping(space, false);
     setBusy(true);
@@ -113,22 +113,19 @@ export default function Thread() {
                 {failure ?? error ?? notice}
               </Text>
             ) : null}
-            {reply || editing ? (
-              <MessageContext
-                entry={(editing ?? reply)!}
-                editing={Boolean(editing)}
-                onCancel={() => {
-                  updateDraft({ type: 'cancel' });
-                }}
-              />
-            ) : null}
             <MessageComposer
+              context={
+                reply || editing
+                  ? { entry: (editing ?? reply)!, onCancel: () => updateDraft({ type: 'cancel' }) }
+                  : undefined
+              }
               threadRootId={root}
               spaceId={space}
               inputRef={input}
               replyTo={reply?.id ?? root}
               thread
               editing={Boolean(editing)}
+              allowEmptyEdit={Boolean(editing && messageCard(editing)?.kind_id === 'file')}
               value={editing ? editDraft : draft}
               sending={busy}
               onChangeText={(text) => {

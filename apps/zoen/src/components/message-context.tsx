@@ -13,7 +13,7 @@ export function MessageContext({
 }: {
   entry: TimelineEntry;
   editing?: boolean;
-  onCancel: () => void;
+  onCancel?: () => void;
 }) {
   const { colors } = useTheme();
   return (
@@ -46,11 +46,13 @@ export function MessageContext({
           {entry.voice ? t('media.voiceMessage') : messageText(entry)}
         </Text>
       </View>
-      <IconButton
-        label={t('chat.cancel')}
-        name={{ ios: 'xmark', android: 'close', web: 'close' }}
-        onPress={onCancel}
-      />
+      {onCancel ? (
+        <IconButton
+          label={t('chat.cancel')}
+          name={{ ios: 'xmark', android: 'close', web: 'close' }}
+          onPress={onCancel}
+        />
+      ) : null}
     </View>
   );
 }
