@@ -57,6 +57,11 @@ export type MediaDraftSendResult = Readonly<{
   entries: readonly TimelineEntry[];
   draft: MediaDraftDto;
 }>;
+export type MediaDraftSaveResult = Readonly<{
+  /** The revision actually accepted by this save, even when current content is newer. */
+  accepted_revision: string;
+  draft: MediaDraftDto;
+}>;
 export type MaterializedMediaDraftAsset = MediaDraftAsset & Readonly<{ uri: string }>;
 export interface MediaDraftPort {
   load(scope: MediaDraftScope): Promise<MediaDraftDto>;
@@ -65,7 +70,7 @@ export interface MediaDraftPort {
     expectedRevision: string,
     contentJson: string,
     assets: readonly MediaDraftIngest[],
-  ): Promise<MediaDraftDto>;
+  ): Promise<MediaDraftSaveResult>;
   materialize(
     scope: MediaDraftScope,
     expectedRevision: string,

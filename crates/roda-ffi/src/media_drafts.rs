@@ -62,6 +62,11 @@ pub struct MediaDraftDto {
     pub assets: Vec<MediaDraftAsset>,
     pub attempted: bool,
 }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
+pub struct MediaDraftSaveResult {
+    pub accepted_revision: String,
+    pub draft: MediaDraftDto,
+}
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct MediaDraftSendResult {
     pub entries: Vec<TimelineEntry>,
@@ -109,6 +114,9 @@ struct Receipt {
 struct SaveReceipt {
     input_revision: String,
     fingerprint: String,
+    // Pre-ACK records remain readable; an unknown output can never prove a replay ACK.
+    #[serde(default)]
+    accepted_revision: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -263,6 +271,11 @@ fn validate(record: &Record) -> R<()> {
         || record.save_receipts.iter().any(|receipt| {
             !intent_id(&receipt.input_revision)
                 || !save_revisions.insert(&receipt.input_revision)
+                || receipt.accepted_revision.as_ref().is_some_and(|revision| {
+                    !intent_id(revision)
+                        || revision == MEDIA_DRAFT_REVISION_ZERO
+                        || revision == &receipt.input_revision
+                })
                 || receipt.fingerprint.len() != 64
                 || !receipt
                     .fingerprint
@@ -432,7 +445,7 @@ impl Engine {
         expected: &str,
         json: &str,
         inputs: Vec<MediaDraftAssetInput>,
-    ) -> R<MediaDraftDto> {
+    ) -> R<MediaDraftSaveResult> {
         let storage = self.media_draft_scope(scope)?;
         let previous = self.load_media_draft(&storage)?;
         if !intent_id(expected) {
@@ -497,7 +510,10 @@ impl Engine {
             .find(|receipt| receipt.input_revision == expected)
         {
             return if receipt.fingerprint == fingerprint {
-                previous.dto()
+                Ok(MediaDraftSaveResult {
+                    accepted_revision: receipt.accepted_revision.clone().ok_or_else(stale)?,
+                    draft: previous.dto()?,
+                })
             } else {
                 Err(stale())
             };
@@ -523,16 +539,18 @@ impl Engine {
             };
             assets.push(asset);
         }
+        let revision = roda_types::new_id("media_draft");
         let mut save_receipts = previous.save_receipts.clone();
         save_receipts.push(SaveReceipt {
             input_revision: expected.into(),
             fingerprint,
+            accepted_revision: Some(revision.clone()),
         });
         if save_receipts.len() > MAX_SAVE_RECEIPTS {
             save_receipts.remove(0);
         }
         let record = Record {
-            revision: roda_types::new_id("media_draft"),
+            revision,
             content,
             assets,
             attempted: false,
@@ -564,7 +582,10 @@ impl Engine {
                 }
             }
             engine.persist_media_record(&storage, &record)?;
-            record.dto()
+            Ok(MediaDraftSaveResult {
+                accepted_revision: record.revision.clone(),
+                draft: record.dto()?,
+            })
         })
     }
     fn media_draft_asset(
@@ -740,7 +761,7 @@ impl RodaEngine {
         expected_revision: String,
         content_json: String,
         assets: Vec<MediaDraftAssetInput>,
-    ) -> Result<MediaDraftDto, CoreError> {
+    ) -> Result<MediaDraftSaveResult, CoreError> {
         let _language = crate::i18n::enter(self.lang);
         self.lock()
             .save_media_draft(&scope, &expected_revision, &content_json, assets)

@@ -32,7 +32,7 @@ const empty = (): MediaDraftDto => ({
 });
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
-async function fixture() {
+async function fixture(canonicalize = false) {
   const events: string[] = [];
   let value = empty(),
     revision = 0,
@@ -64,17 +64,28 @@ async function fixture() {
           sha256: 'a'.repeat(64),
         });
       const parsed = JSON.parse(content);
+      if (canonicalize && parsed) {
+        // The real Rust codec normalizes opaque f64 JSON and stores render
+        // peaks as f32; a successful ACK does not promise decimal identity.
+        parsed.editor.draft.original.levels = parsed.editor.draft.original.levels.map(
+          (level: number) => (level === 0.12515795230865479 ? 0.1251579523086548 : level),
+        );
+        if (parsed.render)
+          parsed.render.levels = parsed.render.levels.map((level: number) =>
+            level === 0.4000000059604645 ? 0.4 : level,
+          );
+      }
       const refs = parsed
         ? [parsed.source_asset_id, ...(parsed.render ? [parsed.render.asset_id] : [])]
         : [];
       value = {
         revision: `revision_${++revision}`,
-        content_json: content,
+        content_json: canonicalize ? JSON.stringify(parsed) : content,
         assets: refs.map((id) => descriptors.get(id)!),
         attempted: false,
       };
       events.push('save-accepted');
-      return clone(value);
+      return { accepted_revision: value.revision, draft: clone(value) };
     },
     materialize: async (_scope, expected, id) => {
       assert.equal(expected, value.revision);
@@ -108,18 +119,21 @@ async function fixture() {
       return {
         id: `native_${++sequence}`,
         uri: `file:///native/${sequence}/original.m4a`,
-        sampleRate: 1000,
-        frameCount: 4000,
+        sampleRate: canonicalize ? 24000 : 1000,
+        frameCount: canonicalize ? 96000 : 4000,
         durationMs: 4000,
-        levels: [0.2, 0.8],
+        levels: canonicalize ? Array(160).fill(0.12515795230865479) : [0.2, 0.8],
       };
     },
     render: async (_source, ranges) => ({
       uri: `file:///native/render_${++renders}.m4a`,
       mime: 'audio/mp4',
-      durationMs: ranges.reduce((sum, range) => sum + range.endFrame - range.startFrame, 0),
+      durationMs:
+        (ranges.reduce((sum, range) => sum + range.endFrame - range.startFrame, 0) /
+          (canonicalize ? 24000 : 1000)) *
+        1000,
       frameCount: ranges.reduce((sum, range) => sum + range.endFrame - range.startFrame, 0),
-      levels: [0.4],
+      levels: canonicalize ? [0.4000000059604645] : [0.4],
     }),
     transcribe: async () => ({ status: 'unavailable', text: '', words: [] }),
     releaseRender: async () => {},
@@ -194,6 +208,35 @@ test('finalized voice ingestion gates Ready, retains only opaque editor metadata
     'voice',
     'leaving the route preserves encrypted draft intent',
   );
+});
+
+test('canonical decimal normalization acknowledges the real voice owner before Ready and preserves later edits and send', async () => {
+  const f = await fixture(true);
+  await f.draft.prepare();
+  const session = f.draft.owner.session;
+  assert.equal(session.getSnapshot().phase, 'ready');
+  assert.equal(session.getSnapshot().source!.sampleRate, 24000);
+  assert.equal(session.getSnapshot().source!.levels.length, 160);
+  assert.equal(session.getSnapshot().source!.levels[0], 0.12515795230865479);
+  assert.equal(
+    JSON.parse(f.value.content_json).editor.draft.original.levels[0],
+    0.1251579523086548,
+  );
+  assert.equal(f.events.filter((event) => event === 'source-ingest').length, 1);
+
+  session.edit({ type: 'trim', range: { startFrame: 2400, endFrame: 90000 } });
+  await session.retryPreview();
+  await f.channel.flush();
+  assert.deepEqual(JSON.parse(f.value.content_json).editor.draft.edit.trim, {
+    startFrame: 2400,
+    endFrame: 90000,
+  });
+  assert.equal(f.events.filter((event) => event === 'source-ingest').length, 1);
+  await f.draft.send(session.getSendable()!);
+  assert.equal(f.publications, 1);
+  assert.equal(f.value.content_json, 'null');
+  assert.deepEqual(f.errors, []);
+  await f.draft.owner.close();
 });
 
 test('failed source persistence keeps its actual native lease until retry accepts the same ingress', async () => {

@@ -224,6 +224,12 @@ function dtoValue(input: unknown): { value: MediaDraftDto; content: MediaDraftCo
     content: parsed.content,
   };
 }
+function saveResultValue(input: unknown): { acceptedRevision: string; value: MediaDraftDto } {
+  const raw = object(input);
+  keys(raw, ['accepted_revision', 'draft']);
+  if (!boundedText(raw.accepted_revision, 256) || !raw.accepted_revision.length) invalid();
+  return { acceptedRevision: raw.accepted_revision, value: dtoValue(raw.draft).value };
+}
 type Write = {
   content: MediaDraftContent | null;
   json: string;
@@ -231,6 +237,7 @@ type Write = {
   assets: readonly MediaDraftIngest[];
   baseline: MediaDraftDto | null;
   result: MediaDraftDto | null;
+  acceptedRevision: string | null;
 };
 type Intent = { revision: string };
 type Stage = {
@@ -434,6 +441,7 @@ export class MediaDraftChannel {
         assets: Object.freeze(ingests),
         baseline: null,
         result: null,
+        acceptedRevision: null,
       };
       this.writes.push(write);
       if (stage) stage.wrote = true;
@@ -559,10 +567,11 @@ export class MediaDraftChannel {
     if (!write.baseline) return;
     // Rust's sealed save receipt authenticates the original revision, normalized
     // content and actual ingress byte hashes. JSON equality cannot attest bytes.
-    const remote = dtoValue(
+    const remote = saveResultValue(
       await this.port.save(this.scope, write.baseline.revision, write.json, write.assets),
     );
     this.draining();
+    write.acceptedRevision = remote.acceptedRevision;
     write.result = this.accept(remote.value, true);
   }
   private pump(): Promise<void> {
@@ -578,23 +587,26 @@ export class MediaDraftChannel {
           if (!write.result) {
             const baseline = this.state.value!;
             write.baseline = baseline;
-            const value = dtoValue(
+            const value = saveResultValue(
               await this.port.save(this.scope, baseline.revision, write.json, write.assets),
             );
             this.draining();
-            if (value.value.content_json !== write.json) throw new MediaDraftFailure('conflict');
+            write.acceptedRevision = value.acceptedRevision;
             write.result = this.accept(value.value, true);
           }
           this.writes.shift();
-          if (write.result.content_json !== write.json) {
+          if (write.acceptedRevision !== write.result.revision) {
             if (this.writes.length) {
               // An old receipt may return independently newer durable content.
               // Pending local edits were admitted against the older intent.
               this.writes[0]!.baseline = write.baseline;
               throw new MediaDraftFailure('conflict');
             }
-            this.publish({ content: dtoValue(write.result).content });
           }
+          // Rust's accepted revision authenticates this save even when serde
+          // normalizes waveform floats. Adopt its canonical projection only when
+          // there is no later optimistic local write to preserve.
+          if (!this.writes.length) this.publish({ content: dtoValue(write.result).content });
         }
         this.writeError = null;
         this.publish({ error: null });

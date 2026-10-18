@@ -28,7 +28,8 @@ mod local_sealed;
 mod media;
 mod media_drafts;
 pub use media_drafts::{
-    MediaDraftAsset, MediaDraftAssetInput, MediaDraftDto, MediaDraftScope, MediaDraftSendResult,
+    MediaDraftAsset, MediaDraftAssetInput, MediaDraftDto, MediaDraftSaveResult, MediaDraftScope,
+    MediaDraftSendResult,
 };
 mod message_drafts;
 pub use message_drafts::{MessageDraftDto, MessageDraftSendResult};

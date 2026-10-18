@@ -399,13 +399,13 @@ private actor ZoenSession {
       if let render = content?["render"] as? [String: Any], let id = render["asset_id"] as? String,
          !admitted.contains(id) {
         guard let old = oldContent?["render"] as? [String: Any], old["asset_id"] as? String == id,
-              ZoenMediaDraftBridge.sameJSON(old, render) else { throw ZoenMediaFiles.Failure.invalidRecording }
+              ZoenMediaDraftBridge.sameRender(old, render) else { throw ZoenMediaFiles.Failure.invalidRecording }
       }
       if let sourceId = content?["source_asset_id"] as? String, !admitted.contains(sourceId) {
         let oldEditor = oldContent?["editor"] as? [String: Any]
         let editor = content?["editor"] as? [String: Any]
         guard oldContent?["source_asset_id"] as? String == sourceId,
-              ZoenMediaDraftBridge.sameJSON((oldEditor?["draft"] as? [String: Any])?["original"],
+              ZoenMediaDraftBridge.sameOriginal((oldEditor?["draft"] as? [String: Any])?["original"],
                 (editor?["draft"] as? [String: Any])?["original"]) else { throw ZoenMediaFiles.Failure.invalidRecording }
       }
     }
@@ -418,7 +418,8 @@ private actor ZoenSession {
     }
     let saved = try core.saveMediaDraft(scope: value.scope.core, expectedRevision: revision,
       contentJson: json, assets: inputs)
-    return try ZoenMediaFiles.json(ZoenMediaDraftBridge.object(saved))
+    return try ZoenMediaFiles.json(["accepted_revision": saved.acceptedRevision,
+      "draft": ZoenMediaDraftBridge.object(saved.draft)])
   }
 
   func materializeMediaDraftAsset(_ request: String) throws -> String {

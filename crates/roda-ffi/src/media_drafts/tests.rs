@@ -65,6 +65,16 @@ fn save(
     json: &str,
     assets: Vec<MediaDraftAssetInput>,
 ) -> MediaDraftDto {
+    let result = save_ack(f, revision, json, assets);
+    assert_eq!(result.accepted_revision, result.draft.revision);
+    result.draft
+}
+fn save_ack(
+    f: &Fixture,
+    revision: &str,
+    json: &str,
+    assets: Vec<MediaDraftAssetInput>,
+) -> MediaDraftSaveResult {
     f.engine
         .save_media_draft(f.scope.clone(), revision.into(), json.into(), assets)
         .unwrap()
@@ -154,7 +164,8 @@ fn private_selection_reopens_encrypted_without_a_message_file_or_upload() {
             attachments(&["thread"], None),
             vec![input("thread")],
         )
-        .unwrap();
+        .unwrap()
+        .draft;
     let scope = f.scope.clone();
     let vault = f.vault.clone();
     drop(f);
@@ -356,23 +367,23 @@ fn accepted_cold_retry_returns_same_entries_and_preserves_a_newer_unsent_selecti
     assert_eq!(retried.entries, sent.entries);
     assert_eq!(retried.draft, newer);
     let json: serde_json::Value = serde_json::from_str(
-        &e.send_media_draft_json(scope.clone(), draft.revision)
+        &e.send_media_draft_json(scope.clone(), draft.revision.clone())
             .unwrap(),
     )
     .unwrap();
     assert_eq!(json["entries"][0]["id"], sent.entries[0].id);
     assert_eq!(json["draft"]["revision"], newer.revision);
     assert_eq!(counts(&e), before);
-    assert_eq!(
-        e.save_media_draft(
+    let saved = e
+        .save_media_draft(
             scope.clone(),
             "0".into(),
             attachments(&["a", "b"], None),
-            vec![input("a"), input("b")]
+            vec![input("a"), input("b")],
         )
-        .unwrap(),
-        newer
-    );
+        .unwrap();
+    assert_eq!(saved.accepted_revision, draft.revision);
+    assert_eq!(saved.draft, newer);
     assert_eq!(counts(&e), before);
     assert_eq!(
         e.media_draft_asset(scope, newer.revision, "new".into())
@@ -968,17 +979,17 @@ fn exact_lost_save_ack_replay_returns_newer_current_and_checks_supplied_bytes_me
         &serde_json::from_str::<serde_json::Value>(&original_json).unwrap(),
     )
     .unwrap();
-    assert_eq!(
-        f.engine
-            .save_media_draft(
-                f.scope.clone(),
-                "0".into(),
-                pretty,
-                vec![input("a"), input("b")]
-            )
-            .unwrap(),
-        current
-    );
+    let replay = f
+        .engine
+        .save_media_draft(
+            f.scope.clone(),
+            "0".into(),
+            pretty,
+            vec![input("a"), input("b")],
+        )
+        .unwrap();
+    assert_eq!(replay.accepted_revision, first.revision);
+    assert_eq!(replay.draft, current);
     assert_eq!(
         rows(&f),
         before,
@@ -1028,29 +1039,29 @@ fn exact_clear_replay_preserves_newer_content_and_save_receipts_survive_send() {
         vec![input("b")],
     );
     let before = rows(&f);
-    assert_eq!(
-        f.engine
-            .save_media_draft(f.scope.clone(), first.revision, " null ".into(), vec![])
-            .unwrap(),
-        current
-    );
+    let replay = f
+        .engine
+        .save_media_draft(f.scope.clone(), first.revision, " null ".into(), vec![])
+        .unwrap();
+    assert_eq!(replay.accepted_revision, clear.revision);
+    assert_eq!(replay.draft, current);
     assert_eq!(rows(&f), before);
     let sent = f
         .engine
-        .send_media_draft(f.scope.clone(), current.revision)
+        .send_media_draft(f.scope.clone(), current.revision.clone())
         .unwrap();
     let accepted_counts = counts(&f.engine);
-    assert_eq!(
-        f.engine
-            .save_media_draft(
-                f.scope.clone(),
-                clear.revision,
-                attachments(&["b"], None),
-                vec![input("b")]
-            )
-            .unwrap(),
-        sent.draft
-    );
+    let replay = f
+        .engine
+        .save_media_draft(
+            f.scope.clone(),
+            clear.revision,
+            attachments(&["b"], None),
+            vec![input("b")],
+        )
+        .unwrap();
+    assert_eq!(replay.accepted_revision, current.revision);
+    assert_eq!(replay.draft, sent.draft);
     assert_eq!(counts(&f.engine), accepted_counts);
     assert!(read(&f).assets.is_empty());
 }
@@ -1083,4 +1094,123 @@ fn evicted_save_ack_is_stale_without_guessing_or_overwriting_current_payload() {
     ));
     assert_eq!(rows(&f), before);
     assert_eq!(read(&f), current);
+}
+
+#[test]
+fn voice_save_ack_survives_realistic_float_normalization_and_identifies_newer_current() {
+    let f = fixture(":memory:");
+    let before = counts(&f.engine);
+    // Native waveform peaks are Float32 values promoted to Double before JSON encoding.
+    let levels: Vec<f64> = (0..160)
+        .map(|index| f64::from((index % 81) as f32 / 100.0))
+        .collect();
+    let waveform = serde_json::to_string(&levels).unwrap();
+    let original_json = r#"{"kind":"voice","reply_to":null,"source_asset_id":"original","editor":{"version":1,"draft":{"original":{"id":"original","sampleRate":48000,"frameCount":48000,"levels":WAVEFORM}},"pendingTrim":null},"render":null}"#
+        .replace("WAVEFORM", &waveform);
+    let first = save_ack(&f, "0", &original_json, vec![audio("original")]);
+    assert_eq!(first.accepted_revision, first.draft.revision);
+    let original: serde_json::Value = serde_json::from_str(&first.draft.content_json).unwrap();
+    assert_eq!(
+        original["editor"]["draft"]["original"]["levels"]
+            .as_array()
+            .unwrap()
+            .len(),
+        160
+    );
+    assert_eq!(asset(&f, &first.draft, "original"), audio("original").bytes);
+
+    // Private render metadata is intentionally normalized through the canonical f32 type.
+    let rendered_json = original_json.replace(
+        r#""render":null"#,
+        r#""render":{"asset_id":"edited","mime":"audio/mp4","duration_ms":900.5,"levels":[0.4000000059604645],"transcript":"spoken result"}"#,
+    );
+    let rendered = save_ack(
+        &f,
+        &first.accepted_revision,
+        &rendered_json,
+        vec![audio("edited")],
+    );
+    assert_eq!(rendered.accepted_revision, rendered.draft.revision);
+    assert!(rendered.draft.content_json.contains(r#""levels":[0.4]"#));
+    assert!(!rendered
+        .draft
+        .content_json
+        .contains(r#""levels":[0.4000000059604645]"#));
+    assert_eq!(asset(&f, &rendered.draft, "edited"), audio("edited").bytes);
+    assert_eq!(
+        counts(&f.engine),
+        before,
+        "preparing audio must not publish media"
+    );
+
+    let newer = save(
+        &f,
+        &rendered.accepted_revision,
+        &attachments(&["a"], None),
+        vec![input("a")],
+    );
+    let retained = rows(&f);
+    let replay = save_ack(
+        &f,
+        &first.accepted_revision,
+        &rendered_json,
+        vec![audio("edited")],
+    );
+    assert_eq!(replay.accepted_revision, rendered.accepted_revision);
+    assert_ne!(replay.accepted_revision, replay.draft.revision);
+    assert_eq!(replay.draft, newer);
+    assert_eq!(
+        rows(&f),
+        retained,
+        "old ACK must not resurrect normalized audio"
+    );
+}
+
+#[test]
+fn legacy_receipt_without_output_revision_preserves_cold_draft_but_cannot_guess_ack() {
+    let dir = temp();
+    let path = dir.join("device.sqlite");
+    let f = fixture(path.to_str().unwrap());
+    let json = attachments(&["a"], None);
+    let draft = save(&f, "0", &json, vec![input("a")]);
+    {
+        let engine = f.engine.lock();
+        let storage = engine.media_draft_scope(&f.scope).unwrap();
+        let record = engine.load_media_draft(&storage).unwrap();
+        let mut legacy = serde_json::to_value(record).unwrap();
+        for receipt in legacy["save_receipts"].as_array_mut().unwrap() {
+            receipt.as_object_mut().unwrap().remove("accepted_revision");
+        }
+        let plain = serde_json::to_vec(&legacy).unwrap();
+        let encoded = crate::local_sealed::seal(&storage.key, &storage.aad, &plain).unwrap();
+        engine.store.set_meta(&storage.id, &encoded).unwrap();
+    }
+    let scope = f.scope.clone();
+    let vault = f.vault.clone();
+    drop(f);
+    let engine = RodaEngine::open(path.to_str().unwrap().into(), "en".into()).unwrap();
+    assert!(engine.unlock(vault.clone()).unwrap());
+    let f = Fixture {
+        engine,
+        vault,
+        scope,
+    };
+    assert_eq!(read(&f), draft);
+    assert_eq!(asset(&f, &draft, "a"), input("a").bytes);
+    let retained = rows(&f);
+    assert!(matches!(
+        f.engine
+            .save_media_draft(f.scope.clone(), "0".into(), json.clone(), vec![input("a")]),
+        Err(CoreError::Stale { .. })
+    ));
+    assert_eq!(
+        rows(&f),
+        retained,
+        "unknown receipt output cannot rewrite retained media"
+    );
+    let next = save_ack(&f, &draft.revision, &json, vec![]);
+    assert_eq!(next.accepted_revision, next.draft.revision);
+    assert_eq!(asset(&f, &next.draft, "a"), input("a").bytes);
+    drop(f);
+    std::fs::remove_dir_all(dir).unwrap();
 }

@@ -107,7 +107,7 @@ function fixture(initial = empty()) {
           );
         }),
       };
-      return durable;
+      return { accepted_revision: durable.revision, draft: durable };
     },
     materialize: async (_scope, expected, id) => {
       assert.equal(expected, durable.revision);

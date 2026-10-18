@@ -73,10 +73,35 @@ enum ZoenMediaDraftBridge {
           let levels = value["levels"] as? [Double], levels == render.levels
           else { throw ZoenMediaFiles.Failure.invalidRecording }
   }
-  static func sameJSON(_ left: Any?, _ right: Any?) -> Bool {
-    guard let left, let right,
-          let a = try? JSONSerialization.data(withJSONObject: left, options: [.sortedKeys, .fragmentsAllowed]),
-          let b = try? JSONSerialization.data(withJSONObject: right, options: [.sortedKeys, .fragmentsAllowed]) else { return false }
-    return a == b
+  private static func levels(_ value: Any?) -> [Double]? {
+    guard let levels = value as? [Double], levels.count <= 160,
+          levels.allSatisfy({ $0.isFinite && (0...1).contains($0) }) else { return nil }
+    return levels
+  }
+  static func sameOriginal(_ left: Any?, _ right: Any?) -> Bool {
+    guard let a = left as? [String: Any], let b = right as? [String: Any],
+          let id = a["id"] as? String, id == b["id"] as? String,
+          let rate = a["sampleRate"] as? NSNumber, rate.doubleValue.isFinite,
+          rate.doubleValue > 0, rate.doubleValue == (b["sampleRate"] as? NSNumber)?.doubleValue,
+          let frames = a["frameCount"] as? NSNumber, frames.doubleValue.isFinite,
+          frames.doubleValue > 0, frames.doubleValue == (b["frameCount"] as? NSNumber)?.doubleValue,
+          levels(a["levels"]) != nil, levels(b["levels"]) != nil else { return false }
+    // The immutable asset authenticates the audio. Display peaks can be
+    // canonically re-encoded by Rust without changing its identity or frames.
+    return true
+  }
+  static func sameRender(_ left: [String: Any], _ right: [String: Any]) -> Bool {
+    guard let id = left["asset_id"] as? String, id == right["asset_id"] as? String,
+          let mime = left["mime"] as? String, mime == right["mime"] as? String,
+          let transcript = left["transcript"] as? String,
+          transcript == right["transcript"] as? String,
+          let a = left["duration_ms"] as? NSNumber, let b = right["duration_ms"] as? NSNumber,
+          a.doubleValue.isFinite, b.doubleValue.isFinite,
+          abs(a.doubleValue - b.doubleValue) < 0.001,
+          let aLevels = levels(left["levels"]), let bLevels = levels(right["levels"]),
+          aLevels.count == bLevels.count else { return false }
+    // VoiceRender stores published waveform peaks as f32. Compare that actual
+    // representation rather than the spelling of a JS Double's JSON decimal.
+    return zip(aLevels, bLevels).allSatisfy { Float($0.0) == Float($0.1) }
   }
 }

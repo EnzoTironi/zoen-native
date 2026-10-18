@@ -9,6 +9,7 @@ import type {
   MediaDraftIngest,
   MediaDraftPort,
   MediaDraftScope,
+  MediaDraftVoice,
 } from '../media/media-draft-types.ts';
 import type { TimelineEntry } from './types.ts';
 
@@ -56,7 +57,7 @@ function fixture() {
     ['file:///a', 'bytes-a'],
     ['file:///b', 'bytes-b'],
   ]);
-  const receipts = new Map<string, true>();
+  const receipts = new Map<string, string>();
   const sends = new Map<string, readonly TimelineEntry[]>();
   const calls: {
     op: string;
@@ -69,6 +70,7 @@ function fixture() {
     load?: () => Promise<void>;
     save?: () => Promise<void>;
     saved?: () => Promise<void>;
+    normalize?: (json: string) => string;
     send?: () => Promise<void>;
     sent?: () => Promise<void>;
     materialize?: () => Promise<void>;
@@ -89,7 +91,8 @@ function fixture() {
         return { ...asset, bytes };
       });
       const fingerprint = JSON.stringify([expected, json, supplied]);
-      if (receipts.has(fingerprint)) return current;
+      const accepted = receipts.get(fingerprint);
+      if (accepted) return { accepted_revision: accepted, draft: current };
       if (expected !== current.revision) throw new Error('Stale');
       if (current.attempted && json !== 'null') throw new Error('Attempted');
       const parsed = JSON.parse(json) as MediaDraftContent | null;
@@ -115,13 +118,14 @@ function fixture() {
       });
       current = {
         revision: `r${++revision}`,
-        content_json: json,
+        content_json: hooks.normalize?.(json) ?? json,
         assets: metadata,
         attempted: false,
       };
-      receipts.set(fingerprint, true);
+      const acceptedRevision = current.revision;
+      receipts.set(fingerprint, acceptedRevision);
       await hooks.saved?.();
-      return current;
+      return { accepted_revision: acceptedRevision, draft: current };
     },
     async send(_scope, expected) {
       calls.push({ op: 'send', revision: expected });
@@ -273,6 +277,72 @@ test('exact old save replay adopts newer canonical draft without overwriting it'
   const restored = f.channel.getSnapshot().content;
   assert.ok(restored?.kind === 'attachments');
   assert.equal(restored.items[0]!.caption, 'newer');
+});
+
+test('accepted native ACK admits real waveform float normalization and adopts canonical editor/render values', async () => {
+  const f = fixture();
+  await f.channel.load();
+  const levels = Array.from({ length: 160 }, (_, index) => Math.fround(0.1251579523 + index / 512));
+  assert.equal(levels[0], 0.12515795230865479);
+  f.hooks.normalize = (json) =>
+    json
+      .replaceAll('0.12515795230865479', '0.1251579523086548')
+      .replaceAll('0.4000000059604645', '0.4');
+  const source = { ...ingest(), name: 'source.m4a', mime: 'audio/mp4' };
+  const voice: MediaDraftVoice = {
+    kind: 'voice',
+    reply_to: null,
+    source_asset_id: 'a',
+    editor: { original: { id: 'native-original', levels } },
+    render: null,
+  };
+  const saved = await f.channel.save(voice, [source]);
+  assert.equal(saved.revision, 'r1');
+  assert.notEqual(saved.content_json, f.calls.find((call) => call.op === 'save')!.json);
+  assert.equal(JSON.stringify(f.channel.getSnapshot().content), saved.content_json);
+  assert.equal(f.channel.getSnapshot().error, null);
+  const rendered: MediaDraftVoice = {
+    ...voice,
+    render: {
+      asset_id: 'b',
+      mime: 'audio/mp4',
+      duration_ms: 1910.5,
+      levels: [Math.fround(0.4)],
+      transcript: '',
+    },
+  };
+  const final = await f.channel.save(rendered, [
+    { ...ingest('b'), name: 'render.m4a', mime: 'audio/mp4' },
+  ]);
+  const canonical = f.channel.getSnapshot().content;
+  assert.ok(canonical?.kind === 'voice');
+  assert.deepEqual(canonical.render?.levels, [0.4]);
+  assert.equal(final.revision, 'r2');
+  assert.equal(f.channel.getSnapshot().error, null);
+  await f.channel.send();
+  assert.equal(f.copies(), 1);
+});
+
+test('old ACK with an identical-JSON newer revision still refuses pending stale edits', async () => {
+  const f = fixture();
+  await f.channel.load();
+  let once = true;
+  f.hooks.saved = async () => {
+    if (once) {
+      once = false;
+      throw new Error('Lost ACK');
+    }
+  };
+  await assert.rejects(f.channel.save(content('same'), [ingest()]), /Lost ACK/);
+  await assert.rejects(f.channel.save(content('pending stale')), /Lost ACK/);
+  await f.port.save(scope, f.current().revision, f.current().content_json, []);
+  const newer = f.current();
+  assert.equal(newer.revision, 'r2');
+  await assert.rejects(f.channel.retry(), kind('conflict'));
+  assert.deepEqual(f.current(), newer);
+  assert.equal(f.channel.getSnapshot().value?.revision, 'r2');
+  await assert.rejects(f.channel.retry(), /Stale/);
+  assert.deepEqual(f.current(), newer);
 });
 
 test('send freezes synchronously; ambiguous retry uses the receipt and preserves newer canonical data', async () => {

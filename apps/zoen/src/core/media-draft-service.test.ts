@@ -85,7 +85,7 @@ class Driver implements CoreDriver {
                 ],
         };
         this.events.push('saved');
-        return this.saved;
+        return { accepted_revision: this.saved.revision, draft: this.saved };
       },
       send: async () => {
         throw new Error('Test never posts');
