@@ -352,7 +352,7 @@ test('newly committed rows cannot finish at a stale native content limit while s
   assert.deepEqual(f.offsets, []);
   f.reveal.onContentSize(402, 1564);
   f.frame();
-  assert.deepEqual(f.offsets, [], 'wait for the matching native content geometry');
+  assert.deepEqual(f.offsets, [900], 'the actual native size event supplies the new range');
   f.reveal.onScroll(geometry({ contentSize: { height: 1564 } }));
   f.frame();
   assert.deepEqual(f.offsets, [900], 'the pending target seeks when native content catches up');
@@ -397,4 +397,80 @@ test('optional QA traces expose geometry without scope or raw targets and cannot
   throwing.reveal.request('another-target');
   throwing.frame();
   assert.deepEqual(throwing.offsets, f.offsets);
+});
+
+test('native content-size measurement refines the v72 seek without requiring another same-offset scroll event', () => {
+  const f = fixture();
+  const native = geometry({
+    contentOffset: { y: 3213.6666666666665 },
+    contentSize: { height: 3573.333251953125 },
+    layoutMeasurement: { height: 812 },
+    contentInset: { top: 0, bottom: 452.3333435058594 },
+  });
+  const entries = Array.from({ length: 33 }, (_, index) => ({ id: `entry-${index}` }));
+  f.setData(entries);
+  f.commit(entries);
+  f.ready(native);
+  const estimated = item({
+    y: 1456,
+    height: 100.53333333333332,
+    measured: false,
+    firstItemOffset: 62,
+    childHeight: 3499.200000000002,
+    windowHeight: 812,
+    topObstruction: 62,
+  });
+  f.setRow(estimated);
+  f.reveal.request('recipe');
+  f.frame();
+  assert.deepEqual(f.offsets, [1456]);
+  f.reveal.onInset({ top: 0, bottom: 431.3333435058594 });
+  const acknowledged = {
+    ...native,
+    contentOffset: { y: 1456 },
+    contentInset: { top: 0, bottom: 431.3333435058594 },
+  };
+  f.reveal.onScroll(acknowledged);
+  f.commit(entries);
+  // The native trace ends with this size event and no further scroll packet.
+  // The now-measured fixture row needs a different offset than its estimate.
+  f.setRow({ ...estimated, y: 1972, height: 217, childHeight: 4018.66650390625, measured: true });
+  f.reveal.onContentSize(402, 4092.66650390625);
+  f.frame();
+  assert.deepEqual(f.offsets, [1456, 1972]);
+  assert.deepEqual(f.animations, [false, true]);
+  f.setRow({ ...estimated, y: 2100, height: 217, childHeight: 4018.66650390625, measured: true });
+  f.commit(entries);
+  f.frame();
+  assert.deepEqual(
+    f.offsets,
+    [1456, 1972, 2100],
+    'content measurement is not an offset acknowledgement',
+  );
+});
+
+test('a late scroll packet cannot replace the independently measured native content range', () => {
+  const f = fixture();
+  const native = geometry({
+    contentOffset: { y: 1456 },
+    contentSize: { height: 3573.333251953125 },
+    layoutMeasurement: { height: 812 },
+    contentInset: { top: 0, bottom: 431.3333435058594 },
+  });
+  f.ready(native);
+  f.reveal.onContentSize(402, 4092.66650390625);
+  f.setRow(
+    item({
+      y: 3900,
+      height: 118,
+      childHeight: 4018.66650390625,
+      windowHeight: 812,
+      firstItemOffset: 62,
+      topObstruction: 62,
+    }),
+  );
+  f.reveal.onScroll({ ...native, contentOffset: { y: 1500 } });
+  f.reveal.request('last-hit');
+  f.frame();
+  assert.deepEqual(f.offsets, [4092.66650390625 - 812 + 431.3333435058594]);
 });

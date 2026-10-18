@@ -200,9 +200,15 @@ export class ConversationReveal {
       this.viewportHeight !== null &&
       Math.abs((geometry.contentInset.top ?? 0) - this.inset.top) <= 1 &&
       Math.abs(geometry.contentInset.bottom - this.inset.bottom) <= 1 &&
-      Math.abs(geometry.contentSize.height - this.contentHeight) <= 1 &&
       Math.abs(geometry.layoutMeasurement.height - this.viewportHeight) <= 1,
     );
+  }
+  private measuredGeometry(): ConversationRevealGeometry | null {
+    if (!this.geometry || this.contentHeight === null) return null;
+    // Native content-size events and scroll packets are independent. A resize
+    // at an unchanged offset need not emit another scroll event. Use its actual
+    // measured range without inventing a new offset or inset acknowledgement.
+    return { ...this.geometry, contentSize: { height: this.contentHeight } };
   }
   private trace(event: string, detail: Readonly<Record<string, unknown>> = {}) {
     const trace = this.port?.trace;
@@ -235,8 +241,6 @@ export class ConversationReveal {
       if (Math.abs(native.contentInset.bottom - this.inset.bottom) > 1)
         waiting.push('native-bottom-inset');
     }
-    if (native && Math.abs(native.contentSize.height - (this.contentHeight ?? NaN)) > 1)
-      waiting.push('native-content-size');
     if (native && Math.abs(native.layoutMeasurement.height - (this.viewportHeight ?? NaN)) > 1)
       waiting.push('native-viewport');
     try {
@@ -292,7 +296,7 @@ export class ConversationReveal {
         this.cancel('not-current');
         return;
       }
-      const geometry = this.geometry;
+      const geometry = this.measuredGeometry();
       if (!this.ready() || !geometry) {
         this.trace('wait-frame');
         return;
@@ -309,7 +313,13 @@ export class ConversationReveal {
       }
       const atTarget = Math.abs(offset - geometry.contentOffset.y) <= 0.5;
       const visible = conversationRevealVisible(geometry, item);
-      this.trace('sample', { item, offset, atTarget, visible });
+      this.trace('sample', {
+        item,
+        offset,
+        atTarget,
+        visible,
+        contentHeight: geometry.contentSize.height,
+      });
       // A seek must engage and measure the target in a later SDK commit before
       // its native acknowledgement can finish the request. Index layouts may
       // still contain measured dimensions belonging to pre-pagination rows.
