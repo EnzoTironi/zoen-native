@@ -49,6 +49,8 @@ import { launchConversationAssistant } from '../../assistant/launch';
 import { InitialTimelineEnd } from '../../core/initial-timeline-end';
 import { ConversationReveal } from '../../core/conversation-reveal';
 
+const revealQaEnabled = process.env.EXPO_PUBLIC_ZOEN_REVEAL_QA === '1';
+
 export default function Chat() {
   const { id, jump } = useLocalSearchParams<{ id: string; jump?: string }>();
   const { store, snapshot, timelines, notice, activity } = useClient();
@@ -186,6 +188,17 @@ export default function Chat() {
       // Unlike scrollToIndex, this public API leaves clamping to our measured
       // native range, which includes the keyboard and composer contentInset.
       scroll: (offset, animated) => list.current?.scrollToOffset({ offset, animated }),
+      trace: revealQaEnabled
+        ? (record) => {
+            let listOffset: number | null = null;
+            try {
+              listOffset = list.current?.getAbsoluteLastScrollOffset() ?? null;
+            } catch {
+              // The public layout getter is unavailable before the first SDK layout.
+            }
+            console.info(`[ZoenReveal] ${JSON.stringify({ ...record, listOffset })}`);
+          }
+        : undefined,
     });
   }, [searchReveal, search, keyboardProgress]);
   useLayoutEffect(() => {

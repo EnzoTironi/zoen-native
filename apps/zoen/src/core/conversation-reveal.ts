@@ -90,6 +90,7 @@ type RevealPort = Readonly<{
   item: (id: string) => ConversationRevealItem | null;
   frame: (work: () => void) => () => void;
   scroll: (offset: number, animated: boolean) => void;
+  trace?: (record: Readonly<Record<string, unknown>>) => void;
 }>;
 
 /** One explicit search request, committed against the latest measured native
@@ -110,23 +111,31 @@ export class ConversationReveal {
   private revision = 0;
   private cancellation = 0;
   private cancelFrame: (() => void) | null = null;
+  private traceData = new WeakMap<readonly unknown[], number>();
+  private traceDataSequence = 0;
   constructor(scope: string, port?: RevealPort) {
     this.scope = scope;
     this.port = port ?? null;
   }
   connect(port: RevealPort) {
     this.port = port;
+    this.trace('connect');
     this.schedule();
   }
   capture = () => this.cancellation;
   isCurrent = (captured: number) => captured === this.cancellation;
   request(id: string, captured = this.cancellation) {
-    if (captured !== this.cancellation) return;
+    if (captured !== this.cancellation) {
+      this.trace('request-rejected', { captured });
+      return;
+    }
     this.cancel();
     this.target = id;
+    this.trace('request');
     this.schedule();
   }
-  cancel = () => {
+  cancel = (reason = 'explicit') => {
+    this.trace('cancel', { reason });
     ++this.cancellation;
     ++this.revision;
     this.target = null;
@@ -139,8 +148,9 @@ export class ConversationReveal {
     // User scrolling cancels this intent, but its geometry is still the basis
     // for the next explicit search or arrow press.
     this.geometry = geometry;
+    this.trace('scroll');
     if (geometry.responderIgnoreScroll === false) {
-      this.cancel();
+      this.cancel('native-user-scroll');
       return;
     }
     this.schedule();
@@ -148,16 +158,19 @@ export class ConversationReveal {
   onInset = ({ top, bottom }: { top: number; bottom: number }) => {
     if (!Number.isFinite(top) || !Number.isFinite(bottom)) return;
     this.inset = { top, bottom };
+    this.trace('inset');
     this.schedule();
   };
   onContentSize = (_width: number, height: number) => {
     if (!Number.isFinite(height) || height <= 0) return;
     this.contentHeight = height;
+    this.trace('content-size');
     this.schedule();
   };
   onLayout = (height: number) => {
     if (!Number.isFinite(height) || height <= 0) return;
     this.viewportHeight = height;
+    this.trace('viewport');
     this.schedule();
   };
   onData = (data: readonly unknown[]) => {
@@ -165,12 +178,14 @@ export class ConversationReveal {
       this.data = data;
       this.commandLayout = null;
       this.engagementCommit = null;
+      this.trace('data');
     }
     this.schedule();
   };
   onCommit = (data: readonly unknown[]) => {
     this.committedData = data;
     ++this.commit;
+    this.trace('commit');
     this.schedule();
   };
 
@@ -189,36 +204,122 @@ export class ConversationReveal {
       Math.abs(geometry.layoutMeasurement.height - this.viewportHeight) <= 1,
     );
   }
+  private trace(event: string, detail: Readonly<Record<string, unknown>> = {}) {
+    const trace = this.port?.trace;
+    if (!trace) return;
+    const dataId = (data: readonly unknown[] | null) => {
+      if (!data) return null;
+      let id = this.traceData.get(data);
+      if (id === undefined) {
+        id = ++this.traceDataSequence;
+        this.traceData.set(data, id);
+      }
+      return id;
+    };
+    // Diagnostic records contain geometry and a short target fingerprint only;
+    // scope embeds account ownership and must never be included in native logs.
+    let hash = 0;
+    if (this.target)
+      for (let index = 0; index < this.target.length; index++)
+        hash = (Math.imul(hash, 31) + this.target.charCodeAt(index)) | 0;
+    const native = this.geometry;
+    const waiting: string[] = [];
+    if (!native) waiting.push('native');
+    if (this.data === null || this.data !== this.committedData) waiting.push('data-commit');
+    if (!this.inset) waiting.push('inset');
+    if (this.contentHeight === null) waiting.push('content-size');
+    if (this.viewportHeight === null) waiting.push('viewport');
+    if (native && this.inset) {
+      if (Math.abs((native.contentInset.top ?? 0) - this.inset.top) > 1)
+        waiting.push('native-top-inset');
+      if (Math.abs(native.contentInset.bottom - this.inset.bottom) > 1)
+        waiting.push('native-bottom-inset');
+    }
+    if (native && Math.abs(native.contentSize.height - (this.contentHeight ?? NaN)) > 1)
+      waiting.push('native-content-size');
+    if (native && Math.abs(native.layoutMeasurement.height - (this.viewportHeight ?? NaN)) > 1)
+      waiting.push('native-viewport');
+    try {
+      trace({
+        event,
+        target: this.target ? (hash >>> 0).toString(16).padStart(8, '0') : null,
+        intent: this.cancellation,
+        frame: this.revision,
+        data: dataId(this.data),
+        committedData: dataId(this.committedData),
+        entries: this.data?.length ?? null,
+        commit: this.commit,
+        engagementCommit: this.engagementCommit,
+        ready: this.ready(),
+        waiting,
+        native: native
+          ? {
+              contentOffset: { y: native.contentOffset.y },
+              contentSize: { height: native.contentSize.height },
+              layoutMeasurement: { height: native.layoutMeasurement.height },
+              contentInset: {
+                top: native.contentInset.top ?? 0,
+                bottom: native.contentInset.bottom,
+              },
+              responderIgnoreScroll: native.responderIgnoreScroll,
+            }
+          : null,
+        expected: {
+          inset: this.inset,
+          contentHeight: this.contentHeight,
+          viewportHeight: this.viewportHeight,
+        },
+        ...detail,
+      });
+    } catch {
+      // Optional diagnostics must not affect search or scrolling.
+    }
+  }
   private schedule() {
     this.cancelFrame?.();
     this.cancelFrame = null;
     const port = this.port;
-    if (!port || !this.target || !this.ready()) return;
+    if (!port || !this.target || !this.ready()) {
+      if (this.target) this.trace('wait');
+      return;
+    }
     const id = this.target;
     const revision = ++this.revision;
     this.cancelFrame = port.frame(() => {
       if (revision !== this.revision || this.target !== id) return;
       this.cancelFrame = null;
       if (!port.current(id)) {
-        this.cancel();
+        this.cancel('not-current');
         return;
       }
       const geometry = this.geometry;
-      if (!this.ready() || !geometry) return;
+      if (!this.ready() || !geometry) {
+        this.trace('wait-frame');
+        return;
+      }
       const item = port.item(id);
-      if (!item) return; // A new timeline waits for its real FlashList commit.
+      if (!item) {
+        this.trace('wait-item');
+        return; // A new timeline waits for its real FlashList commit.
+      }
       const offset = conversationRevealOffset(geometry, item);
-      if (offset === null) return;
+      if (offset === null) {
+        this.trace('wait-offset', { item });
+        return;
+      }
       const atTarget = Math.abs(offset - geometry.contentOffset.y) <= 0.5;
+      const visible = conversationRevealVisible(geometry, item);
+      this.trace('sample', { item, offset, atTarget, visible });
       // A seek must engage and measure the target in a later SDK commit before
       // its native acknowledgement can finish the request. Index layouts may
       // still contain measured dimensions belonging to pre-pagination rows.
       if (
         item.measured &&
         atTarget &&
-        conversationRevealVisible(geometry, item) &&
+        visible &&
         (this.engagementCommit === null || this.commit > this.engagementCommit)
       ) {
+        this.trace('retire');
         this.target = null;
         this.commandLayout = null;
         this.engagementCommit = null;
@@ -240,9 +341,17 @@ export class ConversationReveal {
         geometry.contentInset.top ?? 0,
         geometry.contentInset.bottom,
       ].join(':');
-      if (atTarget || this.commandLayout === layout) return;
+      if (atTarget || this.commandLayout === layout) {
+        this.trace('wait-ack', {
+          atTarget,
+          visible,
+          sameLayout: this.commandLayout === layout,
+        });
+        return;
+      }
       this.engagementCommit ??= this.commit;
       this.commandLayout = layout;
+      this.trace('issue', { offset, animated: item.measured });
       port.scroll(offset, item.measured);
     });
   }

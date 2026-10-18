@@ -73,7 +73,7 @@ test('closed keyboard, native top inset, and invalid or occluded geometry retain
   assert.equal(conversationRevealOffset(geometry({ contentSize: { height: NaN } }), item()), null);
 });
 
-function fixture() {
+function fixture(trace?: (record: Readonly<Record<string, unknown>>) => void) {
   const frames: { run: () => void; cancelled: boolean }[] = [];
   const offsets: number[] = [];
   const animations: boolean[] = [];
@@ -94,6 +94,7 @@ function fixture() {
       offsets.push(offset);
       animations.push(animated);
     },
+    trace,
   });
   reveal.onData(data);
   reveal.onCommit(data);
@@ -372,4 +373,28 @@ test('an oversized measured result can finish with its beginning aligned above t
   f.setRow(item({ y: 1300, height: 600, childHeight: 2936, measured: true }));
   f.commit();
   assert.deepEqual(f.offsets, []);
+});
+
+test('optional QA traces expose geometry without scope or raw targets and cannot change scrolling', () => {
+  const records: Readonly<Record<string, unknown>>[] = [];
+  const f = fixture((record) => records.push(record));
+  f.ready();
+  f.reveal.request('public-target-for-diagnostic');
+  f.frame();
+  const sample = records.find((record) => record.event === 'sample');
+  assert.ok(sample);
+  assert.deepEqual(sample.item, item({ y: 90, height: 110 }));
+  assert.equal(sample.atTarget, false);
+  assert.equal(sample.ready, true);
+  assert.deepEqual(sample.waiting, []);
+  assert.ok(records.some((record) => record.event === 'issue' && record.offset === 360));
+  assert.equal(JSON.stringify(records).includes('test-chat'), false);
+  assert.equal(JSON.stringify(records).includes('public-target-for-diagnostic'), false);
+  const throwing = fixture(() => {
+    throw new Error('diagnostic unavailable');
+  });
+  throwing.ready();
+  throwing.reveal.request('another-target');
+  throwing.frame();
+  assert.deepEqual(throwing.offsets, f.offsets);
 });
