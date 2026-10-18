@@ -61,8 +61,8 @@ jobs:
         run: |
           npm ci --prefix tools/miniapp-build
           npm ci --prefix packages/zoen-ui
-      - name: Schedule opt-in calendar and stale-booking regressions
-        run: node --test miniapps/schedule/src/availability.test.ts miniapps/schedule/src/availability-ui.test.mjs
+      - name: Real bundled UI, opt-in calendar and stale-booking regressions
+        run: node --test tools/miniapp-build/shared-react.test.mjs miniapps/schedule/src/availability.test.ts miniapps/schedule/src/availability-ui.test.mjs
       - name: Verify embedded resource matches source and capability manifest
         run: node tools/miniapp-build/check.mjs miniapps/schedule
 

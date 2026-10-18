@@ -19,9 +19,12 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { resolve, join, relative, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
+const pinnedRequire = createRequire(import.meta.url);
+const REACT_RUNTIME = new Set(['react', 'react-dom', 'scheduler']);
 const ALLOW = ['react', 'react-dom', 'react-dom/client', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'scheduler', 'zustand', 'zustand/middleware', 'date-fns', 'maplibre-gl', 'maplibre-gl/dist/maplibre-gl.css'];
 const ALLOW_PREFIX = ['date-fns/', 'zustand/'];
 const CAPS = new Set(['photos.pick', 'camera.capture', 'location', 'location.approximate', 'calendar.freebusy', 'calendar.events', 'calendar.add', 'contacts.pick', 'health.steps']);
@@ -63,9 +66,13 @@ const guard = (appDir) => ({
     b.onResolve({ filter: /^[^./]/ }, (args) => {
       if (ALIAS[args.path]) return { path: ALIAS[args.path] };
       if (args.path.startsWith('@zoen/')) return { errors: [{ text: `Unknown Zoen package ${args.path}` }] };
-      // Imports made by vendored packages themselves are theirs to resolve.
-      if (args.importer.includes('/node_modules/')) return undefined;
-      if (ALLOW.includes(args.path) || ALLOW_PREFIX.some((p) => args.path.startsWith(p))) return undefined;
+      const vendored = args.importer.includes('/node_modules/');
+      if (vendored || ALLOW.includes(args.path) || ALLOW_PREFIX.some((p) => args.path.startsWith(p))) {
+        // A shared UI package may have its own development React installation.
+        // Its hooks and the renderer must still use this builder's pinned runtime.
+        if (REACT_RUNTIME.has(args.path.split('/')[0])) return { path: pinnedRequire.resolve(args.path) };
+        return undefined;
+      }
       return { errors: [{ text: `"${args.path}" is not on the mini-app allowlist (${ALLOW.slice(0, 8).join(', ')}, …)` }] };
     });
     b.onResolve({ filter: /^\.\.?\// }, (args) => {
