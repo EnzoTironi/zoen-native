@@ -1,14 +1,6 @@
 import { Host } from '@expo/ui';
+import { Button, HStack, List, Section, Text as NativeText } from '@expo/ui/swift-ui';
 import {
-  Button,
-  HStack,
-  Image as NativeImage,
-  List,
-  Section,
-  Text as NativeText,
-} from '@expo/ui/swift-ui';
-import {
-  accessibilityLabel,
   buttonStyle,
   contentShape,
   disabled,
@@ -16,6 +8,7 @@ import {
   font,
   foregroundStyle,
   frame,
+  labelStyle,
   listRowBackground,
   listStyle,
   moveDisabled,
@@ -40,8 +33,9 @@ export function ConversationOrderList({
 }: ConversationOrderListProps) {
   const { colors, scheme } = useTheme();
   const [busy, setBusy] = useState(false);
+  const [nativeReset, setNativeReset] = useState(0);
   const pending = useRef(false);
-  const signature = JSON.stringify([items.map((item) => item.id), pinnedIds]);
+  const signature = JSON.stringify([items.map((item) => item.id), pinnedIds, nativeReset]);
   const live = useRef({ mounted: false, signature });
   useLayoutEffect(() => {
     live.current = { mounted: true, signature };
@@ -70,6 +64,9 @@ export function ConversationOrderList({
           await action();
         } catch {
           // The controller publishes save errors and retains the committed presentation.
+          // SwiftUI moves rows before persistence settles. Remount its List on
+          // failure so that its visual order returns to the committed props too.
+          if (live.current.mounted) setNativeReset((revision) => revision + 1);
         } finally {
           pending.current = false;
           if (live.current.mounted) setBusy(false);
@@ -100,20 +97,18 @@ export function ConversationOrderList({
       >
         <Button
           testID={`conversation-order-hide-${item.id}`}
+          label={t('conversationCards.unpinNamed', { name: item.title })}
+          systemImage="minus.circle.fill"
           onPress={() => perform(() => onSetPinned(item.id, false))}
           modifiers={[
-            accessibilityLabel(t('conversationCards.unpinNamed', { name: item.title })),
             buttonStyle('borderless'),
+            labelStyle('iconOnly'),
+            frame({ minWidth: 44, minHeight: 44 }),
+            contentShape(shapes.rectangle()),
+            foregroundStyle(colors.danger),
             disabled(busy),
           ]}
-        >
-          <NativeImage
-            systemName="minus.circle.fill"
-            size={22}
-            color={colors.danger}
-            modifiers={[frame({ minWidth: 44, minHeight: 44 }), contentShape(shapes.rectangle())]}
-          />
-        </Button>
+        />
         <NativeText
           modifiers={[
             font({ textStyle: 'body' }),
@@ -139,20 +134,18 @@ export function ConversationOrderList({
       >
         <Button
           testID={`conversation-order-show-${item.id}`}
+          label={t('conversationCards.pinNamed', { name: item.title })}
+          systemImage="plus.circle.fill"
           onPress={() => perform(() => onSetPinned(item.id, true))}
           modifiers={[
-            accessibilityLabel(t('conversationCards.pinNamed', { name: item.title })),
             buttonStyle('borderless'),
+            labelStyle('iconOnly'),
+            frame({ minWidth: 44, minHeight: 44 }),
+            contentShape(shapes.rectangle()),
+            foregroundStyle(colors.accent),
             disabled(busy),
           ]}
-        >
-          <NativeImage
-            systemName="plus.circle.fill"
-            size={22}
-            color={colors.accent}
-            modifiers={[frame({ minWidth: 44, minHeight: 44 }), contentShape(shapes.rectangle())]}
-          />
-        </Button>
+        />
         <NativeText
           modifiers={[
             font({ textStyle: 'body' }),
@@ -175,6 +168,7 @@ export function ConversationOrderList({
         seedColor={colors.accent}
       >
         <List
+          key={nativeReset}
           modifiers={[
             listStyle('insetGrouped'),
             scrollContentBackground('hidden'),

@@ -28,8 +28,9 @@ export function HomeOrderList({
 }) {
   const { colors, scheme } = useTheme();
   const [busy, setBusy] = useState(false);
+  const [nativeReset, setNativeReset] = useState(0);
   const pending = useRef(false);
-  const signature = JSON.stringify(items.map((item) => item.id));
+  const signature = JSON.stringify([items.map((item) => item.id), nativeReset]);
   const live = useRef({ mounted: false, signature });
   useLayoutEffect(() => {
     live.current = { mounted: true, signature };
@@ -50,6 +51,7 @@ export function HomeOrderList({
           await onReorder(order);
         } catch {
           // HomeController publishes the failed save while retaining the committed order.
+          if (live.current.mounted) setNativeReset((revision) => revision + 1);
         } finally {
           pending.current = false;
           if (live.current.mounted) setBusy(false);
@@ -93,6 +95,7 @@ export function HomeOrderList({
         seedColor={colors.accent}
       >
         <List
+          key={nativeReset}
           modifiers={[
             listStyle('insetGrouped'),
             scrollContentBackground('hidden'),
