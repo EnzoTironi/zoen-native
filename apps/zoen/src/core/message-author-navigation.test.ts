@@ -8,6 +8,11 @@ import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import type { ClientState } from './store';
 import type { Snapshot, TimelineEntry } from './types';
+import type {
+  MessageActionsProps,
+  MessageAnchor,
+  MeasureMessageAnchor,
+} from '../components/message-actions.types';
 
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core') as {
@@ -37,6 +42,7 @@ const externalPorts = new Set([
   'react/jsx-runtime',
   'expo-router',
   'expo-clipboard',
+  'react-native-keyboard-controller',
   '../core/provider',
   '../media/share-message',
   '../i18n/index.ts',
@@ -138,6 +144,18 @@ type Options = { spaceId: string; entries: readonly TimelineEntry[]; disabled: b
 type Actions = {
   profile(entry: TimelineEntry): Promise<void>;
   react(entry: TimelineEntry, emoji: string | null): Promise<void>;
+  open(
+    entry: TimelineEntry,
+    mode: 'reactions' | 'actions' | 'participants' | 'emoji',
+    anchor?: MessageAnchor,
+    emoji?: string,
+    measureAnchor?: MeasureMessageAnchor,
+  ): Promise<void>;
+  close(): void;
+  reply(entry: TimelineEntry): void;
+  thread(entry: TimelineEntry): void;
+  selectedId: string | null;
+  panel: { props: MessageActionsProps & { selectedEmoji?: string } };
 };
 type Route = { pathname: string; params: { id: string } };
 type Read = { op: string; space_id: string; message_id: string };
@@ -149,6 +167,11 @@ function fixture() {
   let read: (command: Read) => Promise<TimelineEntry> = async () => message();
   let mutate: () => Promise<unknown> = async () => undefined;
   let push: (route: Route) => void = () => {};
+  let keyboardVisible = false;
+  let dismiss: () => Promise<void> = async () => {
+    keyboardVisible = false;
+  };
+  let dismisses = 0;
   const reads: Read[] = [];
   const mutations: unknown[] = [];
   const routes: Route[] = [];
@@ -240,7 +263,10 @@ function fixture() {
         ));
       },
     },
-    'react/jsx-runtime': { jsx: () => null, jsxs: () => null },
+    'react/jsx-runtime': {
+      jsx: (type: unknown, props: unknown) => ({ type, props }),
+      jsxs: (type: unknown, props: unknown) => ({ type, props }),
+    },
     'expo-router': {
       router: {
         push: (route: Route) => {
@@ -254,6 +280,15 @@ function fixture() {
     },
     'expo-clipboard': {
       setStringAsync: () => assert.fail('Profile navigation must not copy content'),
+    },
+    'react-native-keyboard-controller': {
+      KeyboardController: {
+        dismiss: () => {
+          ++dismisses;
+          return dismiss();
+        },
+        isVisible: () => keyboardVisible,
+      },
     },
     '../core/provider': { useClient: () => ({ ...rendered, store }) },
     '../media/share-message': {
@@ -331,6 +366,13 @@ function fixture() {
     },
     push: (next: typeof push) => {
       push = next;
+    },
+    dismiss: (next: typeof dismiss) => {
+      dismiss = next;
+    },
+    dismisses: () => dismisses,
+    keyboard: (visible: boolean) => {
+      keyboardVisible = visible;
     },
     blur: () => {
       focused = false;
@@ -695,4 +737,249 @@ test('an in-flight message mutation defers author navigation until the mutation 
   await f.actions.profile(message());
   assert.equal(f.routes.length, 1);
   assert.equal(f.mutations.length, 1);
+});
+
+function anchorMeasurement() {
+  const result = deferred<MessageAnchor | null>();
+  const entered = deferred<void>();
+  return {
+    ...result,
+    entered: entered.promise,
+    measure: () => {
+      entered.resolve(undefined);
+      return result.promise;
+    },
+  };
+}
+
+const liftedAnchor: MessageAnchor = { x: 30, y: 340, width: 240, height: 70 };
+const settledAnchor: MessageAnchor = { x: 30, y: 650, width: 240, height: 70 };
+
+test('message actions wait for native keyboard dismissal and fresh measurement before presenting', async () => {
+  const f = fixture();
+  const dismissed = deferred<void>();
+  const measured = anchorMeasurement();
+  let measurements = 0;
+  f.dismiss(() => dismissed.promise);
+  const pending = f.actions.open(message(), 'reactions', liftedAnchor, undefined, () => {
+    ++measurements;
+    return measured.measure();
+  });
+  assert.equal(f.dismisses(), 1);
+  assert.equal(measurements, 0);
+  assert.equal(f.render().selectedId, null);
+  dismissed.resolve(undefined);
+  await measured.entered;
+  assert.equal(measurements, 1);
+  assert.equal(f.render().selectedId, null);
+  measured.resolve(settledAnchor);
+  await pending;
+  const shown = f.render();
+  assert.equal(shown.selectedId, message().id);
+  assert.equal(shown.panel.props.anchor, settledAnchor);
+  assert.deepEqual(f.mutations, []);
+  assert.deepEqual(f.alerts, []);
+});
+
+test('an explicit missing or invalid fresh anchor cancels instead of reusing the lifted position', async () => {
+  for (const anchor of [
+    null,
+    { ...settledAnchor, width: 0 },
+    { ...settledAnchor, height: 0 },
+    { ...settledAnchor, y: Number.NaN },
+    { ...settledAnchor, x: Number.POSITIVE_INFINITY },
+  ]) {
+    const f = fixture();
+    await f.actions.open(message(), 'reactions', liftedAnchor, undefined, async () => anchor);
+    assert.equal(f.render().selectedId, null);
+    assert.deepEqual(f.alerts, []);
+    await f.actions.open(message(), 'actions', liftedAnchor, undefined, async () => settledAnchor);
+    assert.equal(f.render().panel.props.anchor, settledAnchor);
+  }
+});
+
+test('callers without a live measurer retain their optional anchor and centered fallback', async () => {
+  for (const anchor of [liftedAnchor, undefined]) {
+    const f = fixture();
+    await f.actions.open(message(), 'actions', anchor);
+    assert.equal(f.render().selectedId, message().id);
+    assert.equal(f.render().panel.props.anchor, anchor);
+  }
+});
+
+test('duplicate opens share one dismissal while a different message supersedes the pending intent', async () => {
+  const f = fixture();
+  const other = message({ id: 'other_message' });
+  const actions = f.render({ entries: [message(), other] });
+  const dismissed = deferred<void>();
+  const measured = anchorMeasurement();
+  let obsoleteMeasurements = 0;
+  f.dismiss(() => dismissed.promise);
+  const old = actions.open(message(), 'reactions', undefined, undefined, async () => {
+    ++obsoleteMeasurements;
+    return liftedAnchor;
+  });
+  await actions.open(message(), 'reactions');
+  assert.equal(f.dismisses(), 1);
+  const latest = actions.open(other, 'actions', undefined, undefined, measured.measure);
+  dismissed.resolve(undefined);
+  await old;
+  await measured.entered;
+  assert.equal(obsoleteMeasurements, 0);
+  await actions.open(other, 'actions');
+  assert.equal(f.dismisses(), 2, 'Old finally must retain the newer measurement latch');
+  measured.resolve(settledAnchor);
+  await latest;
+  assert.equal(f.render().selectedId, other.id);
+  assert.equal(f.render().panel.props.anchor, settledAnchor);
+});
+
+test('a different reaction chip supersedes the same message participant request during dismissal', async () => {
+  const f = fixture();
+  const dismissed = deferred<void>();
+  f.dismiss(() => dismissed.promise);
+  const first = f.actions.open(
+    message(),
+    'participants',
+    undefined,
+    '👍',
+    async () => liftedAnchor,
+  );
+  const latest = f.actions.open(
+    message(),
+    'participants',
+    undefined,
+    '❤️',
+    async () => settledAnchor,
+  );
+  assert.equal(f.dismisses(), 2);
+  dismissed.resolve(undefined);
+  await Promise.all([first, latest]);
+  assert.equal(f.render().panel.props.selectedEmoji, '❤️');
+});
+
+test('pending overlay reads stay cancelled through transient session/access loss at either await', async () => {
+  for (const stage of ['dismiss', 'measure'] as const) {
+    for (const [name, change] of invalidSessions) {
+      const f = fixture();
+      const original = f.state();
+      const dismissed = deferred<void>();
+      const measured = anchorMeasurement();
+      let measurements = 0;
+      f.dismiss(() => dismissed.promise);
+      const pending = f.actions.open(message(), 'reactions', undefined, undefined, () => {
+        ++measurements;
+        return measured.measure();
+      });
+      if (stage === 'measure') {
+        dismissed.resolve(undefined);
+        await measured.entered;
+      }
+      f.update(change);
+      f.update(() => original);
+      const writes = f.writes.length;
+      dismissed.resolve(undefined);
+      measured.resolve(settledAnchor);
+      await pending;
+      assert.equal(f.render().selectedId, null, `${stage}: ${name}`);
+      assert.equal(f.writes.length, writes, `${stage}: ${name}`);
+      assert.equal(measurements, stage === 'measure' ? 1 : 0, `${stage}: ${name}`);
+      assert.deepEqual(f.alerts, []);
+    }
+  }
+});
+
+test('blur, unmount, close and another message action prevent pending measurement from reopening a menu', async () => {
+  for (const action of [
+    'blur',
+    'unmount',
+    'close',
+    'reply',
+    'thread',
+    'profile',
+    'react',
+  ] as const) {
+    const f = fixture();
+    const measured = anchorMeasurement();
+    const pending = f.actions.open(message(), 'reactions', undefined, undefined, measured.measure);
+    await measured.entered;
+    if (action === 'blur' || action === 'unmount') f[action]();
+    else if (action === 'close') f.actions.close();
+    else if (action === 'react') await f.actions.react(message(), '👍');
+    else await f.actions[action](message());
+    const writes = f.writes.length;
+    measured.resolve(settledAnchor);
+    await pending;
+    assert.equal(f.writes.length, writes, action);
+    assert.deepEqual(f.alerts, []);
+    if (action !== 'unmount') assert.equal(f.render().selectedId, null, action);
+  }
+});
+
+test('disabled/source round trips and missing/deleted entries detach a pending overlay measurement', async () => {
+  for (const action of ['disabled', 'source', 'missing', 'deleted'] as const) {
+    const f = fixture();
+    f.update((state) => ({
+      ...state,
+      snapshot: {
+        ...state.snapshot!,
+        conversations: [
+          ...state.snapshot!.conversations,
+          { ...state.snapshot!.conversations[0]!, id: 'other_chat' },
+        ],
+      },
+    }));
+    const measured = anchorMeasurement();
+    const pending = f.actions.open(message(), 'reactions', undefined, undefined, measured.measure);
+    await measured.entered;
+    if (action === 'disabled') {
+      f.render({ disabled: true });
+      f.render({ disabled: false });
+    } else if (action === 'source') {
+      f.render({ spaceId: 'other_chat' });
+      f.render({ spaceId });
+    } else f.render({ entries: action === 'missing' ? [] : [message({ deleted: true })] });
+    measured.resolve(settledAnchor);
+    await pending;
+    assert.equal(f.render().selectedId, null, action);
+  }
+});
+
+test('a newly opening keyboard cancels the measured overlay instead of hiding the new typing session', async () => {
+  const f = fixture();
+  await f.actions.open(message(), 'reactions', undefined, undefined, async () => {
+    f.keyboard(true);
+    return settledAnchor;
+  });
+  assert.equal(f.render().selectedId, null);
+  assert.equal(f.dismisses(), 1);
+});
+
+test('dismissal and measurement failures allow retry while detached failures remain silent', async () => {
+  for (const stage of ['dismiss', 'measure'] as const) {
+    const f = fixture();
+    const failure = new Error('Synthetic overlay positioning failure');
+    if (stage === 'dismiss')
+      f.dismiss(async () => {
+        throw failure;
+      });
+    await f.actions.open(message(), 'actions', undefined, undefined, async () => {
+      if (stage === 'measure') throw failure;
+      return settledAnchor;
+    });
+    assert.equal(f.render().selectedId, null);
+    assert.equal(f.alerts.length, 1);
+    assert.equal(f.alerts[0]![0], 'chat.theMessageCouldNotBeOpened');
+    f.dismiss(async () => {});
+    await f.actions.open(message(), 'actions', undefined, undefined, async () => settledAnchor);
+    assert.equal(f.render().selectedId, message().id);
+    const stale = fixture();
+    const wait = anchorMeasurement();
+    const pending = stale.actions.open(message(), 'actions', undefined, undefined, wait.measure);
+    await wait.entered;
+    stale.blur();
+    wait.reject(failure);
+    await pending;
+    assert.deepEqual(stale.alerts, []);
+  }
 });

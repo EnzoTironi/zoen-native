@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
+import { KeyboardController } from 'react-native-keyboard-controller';
 import type { TimelineEntry } from '../core/types';
 import { useClient } from '../core/provider';
 import { messageCanEdit, messageCanInteract, messageCard } from '../core/message-presentation';
@@ -11,8 +12,9 @@ import { homeSpacesFor } from '../home/access';
 import { useDialogs } from './dialogs';
 import { MessageActions } from './message-actions';
 import { ReactionDetails } from './reaction-details';
+import type { MeasureMessageAnchor, MessageAnchor } from './message-actions.types';
 
-export type MessageAnchor = { x: number; y: number; width: number; height: number };
+export type { MeasureMessageAnchor, MessageAnchor } from './message-actions.types';
 export type MessageActionMode = 'reactions' | 'actions' | 'participants' | 'emoji';
 
 /** Chat and thread use the same canonical mutations and the same post-dismiss actions. */
@@ -41,6 +43,13 @@ export function useMessageActions({
   const pending = useRef(false);
   const profileEpoch = useRef(0);
   const profileAttempt = useRef<{ epoch: number; scope: string; messageId: string } | null>(null);
+  const openAttempt = useRef<{
+    epoch: number;
+    scope: string;
+    messageId: string;
+    mode: MessageActionMode;
+    emoji?: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<{ scope: string; id: string; text: string } | null>(null);
   useEffect(() => {
@@ -48,6 +57,7 @@ export function useMessageActions({
     return () => {
       mounted.current = false;
       profileAttempt.current = null;
+      openAttempt.current = null;
     };
   }, []);
   const [selection, setSelection] = useState<{
@@ -62,6 +72,7 @@ export function useMessageActions({
     if (latest.current.scope !== scope || (disabled && !latest.current.disabled)) {
       ++profileEpoch.current;
       profileAttempt.current = null;
+      openAttempt.current = null;
     }
     latest.current = { entries, disabled, scope };
   }, [entries, disabled, scope]);
@@ -70,11 +81,13 @@ export function useMessageActions({
       focused.current = true;
       ++profileEpoch.current;
       profileAttempt.current = null;
+      openAttempt.current = null;
       setBusy(pending.current);
       return () => {
         focused.current = false;
         ++profileEpoch.current;
         profileAttempt.current = null;
+        openAttempt.current = null;
         setSelection(null);
       };
     }, []),
@@ -100,12 +113,15 @@ export function useMessageActions({
   useEffect(
     () =>
       store.subscribe(() => {
-        const attempt = profileAttempt.current;
-        if (!attempt || attempt.scope !== scope) return;
-        const value = latest.current.entries.find((entry) => entry.id === attempt.messageId);
-        if (!value || !current(value)) {
-          ++profileEpoch.current;
-          profileAttempt.current = null;
+        for (const attempt of [profileAttempt.current, openAttempt.current]) {
+          if (!attempt || attempt.scope !== scope) continue;
+          const value = latest.current.entries.find((entry) => entry.id === attempt.messageId);
+          if (!value || !current(value)) {
+            ++profileEpoch.current;
+            profileAttempt.current = null;
+            openAttempt.current = null;
+            return;
+          }
         }
       }),
     [current, scope, store],
@@ -118,13 +134,20 @@ export function useMessageActions({
     homeSpacesFor(client).has(spaceId) && candidate && messageCanInteract(candidate)
       ? candidate
       : null;
-  const close = () => setSelection(null);
+  const close = () => {
+    openAttempt.current = null;
+    setSelection(null);
+  };
   const reply = (entry: TimelineEntry) => {
     const value = current(entry);
-    if (value && !value.deleted) onReply(value);
+    if (value && !value.deleted) {
+      openAttempt.current = null;
+      onReply(value);
+    }
   };
   const thread = (entry: TimelineEntry) => {
     const value = current(entry);
+    if (value && !value.deleted) openAttempt.current = null;
     if (value && !value.deleted && onThread) onThread(value);
     else if (value && !value.deleted)
       router.push({
@@ -135,6 +158,7 @@ export function useMessageActions({
   const profile = async (entry: TimelineEntry) => {
     const value = current(entry);
     if (!mounted.current || !value || pending.current || profileAttempt.current) return;
+    openAttempt.current = null;
     const attempt = { epoch: profileEpoch.current, scope, messageId: value.id };
     profileAttempt.current = attempt;
     const active = () =>
@@ -174,6 +198,7 @@ export function useMessageActions({
   async function react(entry: TimelineEntry, emoji: string | null) {
     const value = current(entry);
     if (!value || value.deleted || pending.current) return;
+    openAttempt.current = null;
     pending.current = true;
     setBusy(true);
     setFailure(null);
@@ -197,16 +222,66 @@ export function useMessageActions({
   return {
     busy,
     selectedId: selected?.id ?? null,
-    open: (
+    open: async (
       entry: TimelineEntry,
       actionMode: MessageActionMode,
       anchor?: MessageAnchor,
       emoji?: string,
+      measureAnchor?: MeasureMessageAnchor,
     ) => {
       const value = current(entry);
-      if (value && !value.deleted && !pending.current) {
+      if (!mounted.current || !value || pending.current || profileAttempt.current) return;
+      if (
+        openAttempt.current?.messageId === value.id &&
+        openAttempt.current.mode === actionMode &&
+        openAttempt.current.emoji === emoji
+      )
+        return;
+      const attempt = {
+        epoch: profileEpoch.current,
+        scope,
+        messageId: value.id,
+        mode: actionMode,
+        emoji,
+      };
+      openAttempt.current = attempt;
+      const active = () =>
+        mounted.current &&
+        openAttempt.current === attempt &&
+        profileEpoch.current === attempt.epoch &&
+        !pending.current &&
+        Boolean(current(value));
+      try {
+        // A native modal hides the keyboard. Finish that movement before
+        // measuring the real bubble, rather than retaining its lifted position.
+        await KeyboardController.dismiss();
+        if (!active()) return;
+        const measured = measureAnchor ? await measureAnchor() : anchor;
+        if (!active() || KeyboardController.isVisible()) return;
+        if (
+          (measureAnchor && !measured) ||
+          (measured &&
+            (![measured.x, measured.y, measured.width, measured.height].every(Number.isFinite) ||
+              measured.width <= 0 ||
+              measured.height <= 0))
+        )
+          return;
         setFailure(null);
-        setSelection({ scope, id: value.id, mode: actionMode, anchor, emoji });
+        setSelection({
+          scope,
+          id: value.id,
+          mode: actionMode,
+          anchor: measured ?? undefined,
+          emoji,
+        });
+      } catch (reason) {
+        if (active())
+          void inform(
+            t('chat.theMessageCouldNotBeOpened'),
+            reason instanceof Error ? reason.message : t('chat.tryAgainInAMoment'),
+          );
+      } finally {
+        if (openAttempt.current === attempt) openAttempt.current = null;
       }
     },
     close,

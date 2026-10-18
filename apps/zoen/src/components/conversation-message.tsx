@@ -1,4 +1,4 @@
-import { memo, useRef, type ComponentRef } from 'react';
+import { memo, useLayoutEffect, useRef, type ComponentRef } from 'react';
 import { Text, View, useWindowDimensions } from 'react-native';
 import type { TimelineEntry } from '../core/types';
 import type { ItemDetail } from '../core/generated/ItemDetail';
@@ -37,6 +37,7 @@ type Props = {
     mode: MessageActionMode,
     anchor?: MessageAnchor,
     emoji?: string,
+    measureAnchor?: () => Promise<MessageAnchor | null>,
   ) => void;
   onReact: (entry: TimelineEntry, emoji: string | null) => void;
   onQuote: (id: string) => void;
@@ -62,6 +63,17 @@ export const ConversationMessage = memo(function ConversationMessage({
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const bubble = useRef<ComponentRef<typeof View>>(null);
+  const renderedMessage = useRef<string | null>(entry.id);
+  const pendingMeasures = useRef(new Set<(anchor: MessageAnchor | null) => void>());
+  useLayoutEffect(() => {
+    const measures = pendingMeasures.current;
+    renderedMessage.current = entry.id;
+    return () => {
+      renderedMessage.current = null;
+      for (const finish of measures) finish(null);
+      measures.clear();
+    };
+  }, [entry.id]);
   const mine = entry.author.is_me;
   const card = messageCard(entry);
   const voice = !entry.deleted && entry.voice;
@@ -82,12 +94,29 @@ export const ConversationMessage = memo(function ConversationMessage({
   });
   const open = (mode: MessageActionMode, emoji?: string) => {
     if (disabled || !messageCanInteract(entry)) return;
-    const view = bubble.current;
-    if (view)
-      view.measureInWindow((x, y, measuredWidth, height) =>
-        onMenu(entry, mode, { x, y, width: measuredWidth, height }, emoji),
-      );
-    else onMenu(entry, mode, undefined, emoji);
+    // The keyboard can move this row before the popover is presented. Measure
+    // only after it closes, and reject a row recycled while that was pending.
+    const measureAnchor = () =>
+      new Promise<MessageAnchor | null>((resolve) => {
+        const finish = (anchor: MessageAnchor | null) => {
+          pendingMeasures.current.delete(finish);
+          resolve(anchor);
+        };
+        pendingMeasures.current.add(finish);
+        const view = bubble.current;
+        if (!view || renderedMessage.current !== entry.id) return finish(null);
+        view.measureInWindow((x, y, measuredWidth, height) =>
+          finish(
+            renderedMessage.current === entry.id &&
+              bubble.current === view &&
+              measuredWidth > 0 &&
+              height > 0
+              ? { x, y, width: measuredWidth, height }
+              : null,
+          ),
+        );
+      });
+    onMenu(entry, mode, undefined, emoji, measureAnchor);
   };
   const openAuthor = () => {
     if (!authorDisabled) onAuthor(entry);
@@ -392,7 +421,9 @@ export const ConversationMessage = memo(function ConversationMessage({
           alignItems: mine ? 'flex-end' : 'flex-start',
         }}
       >
-        {!mine && attachment ? metadata(true) : null}
+        {!mine && attachment ? (
+          <View style={{ width: mediaWidth, maxWidth: '100%' }}>{metadata(true)}</View>
+        ) : null}
         {entry.reactions.length && !entry.deleted ? (
           <View
             style={{

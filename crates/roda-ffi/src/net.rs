@@ -600,7 +600,6 @@ async fn session(
     // Publish the name only after this socket reached Ready and any registration
     // succeeded. A Challenge alone must not establish an HTTP signature domain.
     let _ = engine!(|engine| engine.store.set_meta("relay_name", &relay));
-    *backoff = Duration::from_millis(500);
     engine!(|engine| engine.profiles_session_start(profiles));
     // Encrypted media moves over HTTP beside the socket, for as long as this session lives.
     let media_kick = Arc::new(tokio::sync::Notify::new());
@@ -754,6 +753,9 @@ async fn session(
                     ServerFrame::SyncDone => {
                         let first = !ctx.status.borrow().synced;
                         if first {
+                            // Authentication can succeed while catch-up dependencies fail.
+                            // Reset retries only after this connection actually caught up.
+                            *backoff = Duration::from_millis(500);
                             ctx.status.send_modify(|s| s.synced = true);
                             engine!(|engine| engine.mls_refresh_checkpoints());
                             engine!(|engine| engine.net.link.ask_devices = true);
@@ -863,6 +865,10 @@ async fn session(
                             claim_clock = server_time_ms.and_then(KeyPackageClaimClock::from_server_ms).map(ClaimClockSample::new);
                         }
                     }
+                    // A failed initial Sync has no SyncDone and leaves the socket open.
+                    // Reconnect to retry it; the normal run loop bounds retry frequency.
+                    ServerFrame::Error { code: ErrorCode::Unavailable, message }
+                        if !ctx.status.borrow().synced => break Exit::Retry(message),
                     ServerFrame::Error { message, .. } => tracing_like(&format!("relay: {message}")),
                     ServerFrame::Challenge { .. } | ServerFrame::Ready { .. } => {}
                 }
@@ -1780,6 +1786,198 @@ mod tests {
             .send(Message::Binary(frame.encode().into()))
             .await
             .unwrap();
+    }
+
+    /// An authenticated socket that is waiting for the initial catch-up result.
+    async fn catch_up_socket(listener: &tokio::net::TcpListener) -> RelaySocket {
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
+        let ClientFrame::Hello { identity, .. } = request(&mut socket).await else {
+            panic!("hello")
+        };
+        reply(
+            &mut socket,
+            ServerFrame::Challenge {
+                nonce: "catch-up-retry".into(),
+                relay: "catch-up-retry".into(),
+                protocol: PROTOCOL_VERSION,
+                capabilities: Vec::new(),
+                server_time_ms: None,
+            },
+        )
+        .await;
+        assert!(matches!(
+            request(&mut socket).await,
+            ClientFrame::Auth { .. }
+        ));
+        reply(
+            &mut socket,
+            ServerFrame::Ready {
+                identity,
+                registered: true,
+            },
+        )
+        .await;
+        assert!(matches!(
+            request(&mut socket).await,
+            ClientFrame::Sync { all: true, .. }
+        ));
+        socket
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn initial_catch_up_unavailable_retries_without_resetting_backoff() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let mut engine = Engine::open(":memory:").unwrap();
+        engine.create_account("Ana", "ana", &url).unwrap();
+        engine.set_registered(true).unwrap();
+        let _ = engine.mls_key_packages_to_publish().unwrap();
+        engine.mls_key_packages_published(Ok(()));
+        let (cmd, mut commands) = mpsc::unbounded_channel();
+        let (status, mut observed) = watch::channel(NetStatus {
+            state: ConnState::Connecting,
+            synced: false,
+            error: None,
+            registered: true,
+            authenticated_relay: None,
+        });
+        let ctx = Ctx {
+            engine: EngineLease::new(Arc::new(Mutex::new(engine))),
+            listener: None,
+            status,
+            lang: crate::i18n::Lang::En,
+            maintenance_work: None,
+        };
+        let (finished, shutdown) = oneshot::channel();
+        let relay = async {
+            let mut failed = catch_up_socket(&listener).await;
+            reply(
+                &mut failed,
+                ServerFrame::error(ErrorCode::Unavailable, "database unavailable"),
+            )
+            .await;
+            // Keep the failed socket open, exactly as the real relay does. A client
+            // that only logs the error will never reach this second connection.
+            let mut recovered = catch_up_socket(&listener).await;
+            reply(&mut recovered, ServerFrame::SyncDone).await;
+            loop {
+                match request(&mut recovered).await {
+                    ClientFrame::Req {
+                        id,
+                        op: Op::Profiles { ids },
+                    } if ids.len() == 1 && ids[0] == "catch-up-probe" => {
+                        // After catch-up this unrelated error keeps its existing
+                        // behavior: it must not abort an in-flight request.
+                        reply(
+                            &mut recovered,
+                            ServerFrame::error(ErrorCode::Unavailable, "database unavailable"),
+                        )
+                        .await;
+                        reply(
+                            &mut recovered,
+                            ServerFrame::Res {
+                                id,
+                                result: Ok(Reply::Done),
+                            },
+                        )
+                        .await;
+                        break;
+                    }
+                    ClientFrame::Req { id, .. } => {
+                        reply(
+                            &mut recovered,
+                            ServerFrame::Res {
+                                id,
+                                result: Ok(Reply::Done),
+                            },
+                        )
+                        .await;
+                    }
+                    ClientFrame::Ping => {
+                        reply(
+                            &mut recovered,
+                            ServerFrame::Pong {
+                                server_time_ms: None,
+                            },
+                        )
+                        .await;
+                    }
+                    _ => {}
+                }
+            }
+            shutdown.await.unwrap();
+            drop((failed, recovered));
+        };
+        let client = async {
+            let mut backoff = Duration::from_secs(4);
+            assert!(matches!(
+                session(&ctx, &mut commands, &mut backoff).await,
+                Exit::Retry(message) if message == "database unavailable"
+            ));
+            assert!(!ctx.status.borrow().synced);
+            assert_eq!(
+                backoff,
+                Duration::from_secs(4),
+                "Ready must not erase retries"
+            );
+            let exercise = async {
+                while !observed.borrow().synced {
+                    observed.changed().await.unwrap();
+                }
+                let (reply, answer) = oneshot::channel();
+                cmd.send(Cmd::Req {
+                    op: Op::Profiles {
+                        ids: vec!["catch-up-probe".into()],
+                    },
+                    reply,
+                })
+                .unwrap();
+                assert!(matches!(answer.await, Ok(Ok(Reply::Done))));
+                cmd.send(Cmd::Stop).unwrap();
+            };
+            let (exit, ()) = tokio::join!(session(&ctx, &mut commands, &mut backoff), exercise,);
+            assert!(matches!(exit, Exit::Stop));
+            assert_eq!(backoff, Duration::from_millis(500));
+            finished.send(()).unwrap();
+        };
+        tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(client, relay)
+        })
+        .await
+        .expect("an unavailable initial catch-up must retry while its socket remains open");
+    }
+
+    #[test]
+    fn catch_up_retry_keeps_handshake_refusals_terminal_and_rate_hints_bounded() {
+        for code in [
+            ErrorCode::Unauthorized,
+            ErrorCode::UpgradeRequired,
+            ErrorCode::Other,
+        ] {
+            let mut backoff = Duration::from_secs(4);
+            assert!(matches!(
+                refused(code, "refused".into(), &mut backoff),
+                Exit::Blocked(message) if message == "refused"
+            ));
+            assert_eq!(backoff, Duration::from_secs(4));
+        }
+        let mut backoff = Duration::from_secs(4);
+        assert!(matches!(
+            refused(ErrorCode::Unavailable, "unavailable".into(), &mut backoff),
+            Exit::Retry(_)
+        ));
+        assert_eq!(backoff, Duration::from_secs(4));
+        assert!(matches!(
+            refused(
+                ErrorCode::RateLimited,
+                roda_proto::slow_down(Duration::from_secs(9)),
+                &mut backoff
+            ),
+            Exit::Retry(_)
+        ));
+        assert_eq!(backoff, Duration::from_secs(9));
     }
 
     fn sequence(env: Envelope, head: &mut Option<Seen>) -> Sequenced {

@@ -53,6 +53,8 @@ export default function Chats() {
         ListHeaderComponentStyle={{ backgroundColor: 'transparent' }}
         data={conversations}
         keyExtractor={(chat) => chat.id}
+        // Inbox rows reorder on activity; anchoring their identities scrolls the header away.
+        maintainVisibleContentPosition={{ disabled: true }}
         contentInsetAdjustmentBehavior="automatic"
         keyboardDismissMode="on-drag"
         ListHeaderComponent={
