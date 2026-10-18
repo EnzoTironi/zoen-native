@@ -25,6 +25,8 @@
       "Open ${selection}": "Abrir ${selection}",
       "This session has closed. Open the app again.": "Esta sessão foi encerrada. Abra o app novamente.",
       "This session could not be opened.": "Não foi possível abrir esta sessão.",
+      "This content is no longer available. Refresh and try again.": "Este conteúdo não está mais disponível. Atualize e tente novamente.",
+      "Something went wrong. Try again.": "Algo deu errado. Tente novamente.",
       "Invalid session language.": "Idioma da sessão inválido.",
       "This device already has an account.": "Este aparelho já tem uma conta.",
       "This account could not be unlocked with this device's keys. Use account recovery.": "Não foi possível desbloquear esta conta com as chaves deste aparelho. Use a recuperação da conta.",

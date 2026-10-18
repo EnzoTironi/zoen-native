@@ -7,6 +7,26 @@ import { readFile } from "node:fs/promises";
 import { CHUNK_BYTES, sceneBytes, sceneHash } from "../src/canonical-transfer.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+const pendingNativeImage = JSON.parse(
+  await readFile(new URL("fixtures/native-pending-image.json", import.meta.url), "utf8"),
+);
+const jpeg = await readFile(new URL("fixtures/synthetic-beach.jpg", import.meta.url));
+function completedNativeImage() {
+  const scene = structuredClone(pendingNativeImage);
+  Object.assign(scene.elements.at(-1), {
+    fileId: "native_jpeg",
+    status: "saved",
+    width: 1200,
+    height: 800,
+  });
+  scene.files.native_jpeg = {
+    id: "native_jpeg",
+    mimeType: "image/jpeg",
+    dataURL: "data:image/jpeg;base64," + jpeg.toString("base64"),
+    created: 1,
+  };
+  return scene;
+}
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const held = () => {
   let resolve, reject;
@@ -57,7 +77,17 @@ const result = await build({
         p.onLoad({ filter: /src\/canonical-app\.tsx$/ }, async ({ path }) => {
           let contents = await readFile(path, "utf8");
           if (process.env.ZOEN_CANONICAL_NEGATIVE === "normal-flush")
-            contents = contents.replace("if (freezing.current) return;", "");
+            contents = contents.replace("if (action.current) return;", "");
+          if (process.env.ZOEN_CANONICAL_NEGATIVE === "incomplete-image")
+            contents = contents.replace(
+              "if (!file?.dataURL) throw new PendingSceneImages();",
+              "if (!file?.dataURL) continue;",
+            );
+          if (process.env.ZOEN_CANONICAL_NEGATIVE === "image-readiness")
+            contents = contents.replace(
+              "await Promise.all([saves.pause(), awaitImages()]);",
+              "await saves.pause();",
+            );
           if (process.env.ZOEN_CANONICAL_NEGATIVE === "teardown-freeze")
             contents = contents.replace(
               /await freeze\(["']teardown["']\);/,
@@ -81,13 +111,18 @@ const result = await build({
 async function fixture(initial = scene("initial")) {
   const calls = [],
     uploads = new Map(),
-    failures = [];
+    failures = [],
+    statuses = [],
+    deadlines = new Map();
   let commitFailure = false,
     appendGate = null;
   const bytes = sceneBytes(initial);
   const app = {
     getHostContext: () => ({ locale: "en" }),
-    updateModelContext: async () => ({}),
+    updateModelContext: async (value) => {
+      statuses.push(value.structuredContent.zoen.sceneSave);
+      return {};
+    },
     async callServerTool({ name, arguments: a }) {
       calls.push({ name, args: a });
       let value;
@@ -133,6 +168,17 @@ async function fixture(initial = scene("initial")) {
       w.qaApp = app;
       w.TextEncoder = TextEncoder;
       w.TextDecoder = TextDecoder;
+      const nativeSetTimeout = w.setTimeout.bind(w),
+        nativeClearTimeout = w.clearTimeout.bind(w);
+      let id = -1;
+      w.setTimeout = (work, delay, ...args) => {
+        if (delay !== 10_000) return nativeSetTimeout(work, delay, ...args);
+        deadlines.set(id, work);
+        return id--;
+      };
+      w.clearTimeout = (timer) => {
+        if (!deadlines.delete(timer)) nativeClearTimeout(timer);
+      };
     },
   });
   dom.window.eval(result.outputFiles[0].text);
@@ -151,6 +197,7 @@ async function fixture(initial = scene("initial")) {
     calls,
     uploads,
     failures,
+    statuses,
     wait,
     setCommitFailure: (v) => {
       commitFailure = v;
@@ -160,6 +207,13 @@ async function fixture(initial = scene("initial")) {
       return appendGate;
     },
     edit: (text) => dom.window.qaEdit(text),
+    change(value) {
+      dom.window.qaScene = structuredClone(value);
+      dom.window.qaAcknowledge();
+    },
+    expireImports() {
+      for (const work of deadlines.values()) work();
+    },
     pointer: () =>
       dom.window.document
         .querySelector(".canonical-canvas")
@@ -299,6 +353,214 @@ test("actual canonical capture attaches only referenced live image bytes despite
     const value = JSON.parse(Buffer.concat(saved.chunks).toString());
     assert.deepEqual(value.files, { pixel });
     assert.equal(value.elements[0].fileId, "pixel");
+  } finally {
+    f.close();
+  }
+});
+
+test("observed native pending JPEG never publishes an incomplete scene, and completion saves every element and owned byte", async () => {
+  const f = await fixture();
+  try {
+    assert.equal(pendingNativeImage.elements.length, 6);
+    assert.equal(pendingNativeImage.elements.at(-1).fileId, null);
+    f.edit("older complete edit awaiting debounce");
+    f.change(pendingNativeImage);
+    f.pointer();
+    f.hide();
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    assert.equal(f.calls.filter((c) => c.name === "app_scene_begin").length, 0);
+    assert.match(
+      f.dom.window.document.querySelector('[role="status"]').textContent,
+      /Importing image/,
+    );
+    assert.equal(f.statuses.at(-1).phase, "pending");
+    f.change(completedNativeImage());
+    await f.wait(() => f.calls.some((c) => c.name === "app_scene_commit"));
+    await f.app.onteardown({});
+    assert.equal(f.calls.filter((c) => c.name === "app_scene_commit").length, 1);
+    const saved = JSON.parse(Buffer.concat([...f.uploads.values()][0].chunks).toString());
+    assert.equal(saved.elements.length, 6);
+    assert.equal(saved.elements.at(-1).fileId, "native_jpeg");
+    assert.deepEqual(Buffer.from(saved.files.native_jpeg.dataURL.split(",")[1], "base64"), jpeg);
+  } finally {
+    f.close();
+  }
+});
+
+for (const mode of ["teardown", "copy"]) {
+  test(`actual ${mode} waits for slow native image completion before freezing and sending the whole scene`, async () => {
+    const f = await fixture();
+    try {
+      f.change(pendingNativeImage);
+      const request =
+        mode === "teardown"
+          ? f.app.onteardown({})
+          : f.app.oncalltool({ name: "prepare_scene_copy" });
+      let settled = false;
+      void request.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      assert.equal(settled, false);
+      assert.equal(
+        f.dom.window.qaProps.viewModeEnabled,
+        false,
+        "async upstream import callbacks remain enabled",
+      );
+      assert.equal(f.calls.filter((c) => c.name === "app_scene_begin").length, 0);
+      await assert.rejects(
+        mode === "copy" ? f.app.onteardown({}) : f.app.oncalltool({ name: "prepare_scene_copy" }),
+        /already in progress/,
+      );
+      f.change(completedNativeImage());
+      const reply = await request;
+      assert.equal(f.dom.window.qaProps.viewModeEnabled, true);
+      const upload =
+        mode === "copy"
+          ? f.uploads.get(reply.structuredContent.uploadId)
+          : [...f.uploads.values()][0];
+      const saved = JSON.parse(Buffer.concat(upload.chunks).toString());
+      assert.equal(saved.elements.length, 6);
+      assert.equal(
+        saved.files.native_jpeg.dataURL,
+        completedNativeImage().files.native_jpeg.dataURL,
+      );
+      assert.equal(
+        f.calls.filter((c) => c.name === "app_scene_commit").length,
+        mode === "copy" ? 0 : 1,
+      );
+    } finally {
+      f.close();
+    }
+  });
+}
+
+test("import deadline retains editable pending scene; explicit retry after completion does not inherit an invalid mutation", async () => {
+  const f = await fixture();
+  try {
+    f.change(pendingNativeImage);
+    const teardown = f.app.onteardown({});
+    await tick();
+    f.expireImports();
+    await assert.rejects(teardown, /still importing/);
+    assert.equal(f.dom.window.qaProps.viewModeEnabled, false);
+    assert.equal(f.dom.window.qaScene.elements.at(-1).fileId, null);
+    assert.equal(f.calls.filter((c) => c.name === "app_scene_begin").length, 0);
+    await f.wait(() =>
+      /still importing/.test(f.dom.window.document.querySelector('[role="status"]').textContent),
+    );
+    f.change(completedNativeImage());
+    await f.app.onteardown({});
+    assert.equal(f.calls.filter((c) => c.name === "app_scene_commit").length, 1);
+    assert.deepEqual(f.failures, []);
+  } finally {
+    f.close();
+  }
+});
+
+test("unmount cancels an import-waiting action without a late freeze or publication", async () => {
+  const f = await fixture();
+  f.change(pendingNativeImage);
+  const request = f.app.onteardown({});
+  const rejected = assert.rejects(request, /closed/);
+  await tick();
+  f.close();
+  await rejected;
+  assert.equal(f.calls.filter((c) => c.name === "app_scene_begin").length, 0);
+});
+
+test("unmount drains an import's fire-and-forget pause behind an admitted save without an unhandled close rejection", async () => {
+  const f = await fixture();
+  const gate = f.holdAppend();
+  f.edit("admitted complete scene");
+  f.pointer();
+  await f.wait(() => f.calls.some((c) => c.name === "app_scene_append"));
+  f.change(pendingNativeImage);
+  f.close();
+  gate.resolve();
+  await tick();
+  await tick();
+  assert.equal(f.calls.filter((c) => c.name === "app_scene_commit").length, 0);
+});
+
+test("import deadline starts while an older save is awaiting ACK; its late completion cannot freeze the editor", async () => {
+  const f = await fixture();
+  const gate = f.holdAppend();
+  try {
+    f.edit("older admitted scene");
+    f.pointer();
+    await f.wait(() => f.calls.some((c) => c.name === "app_scene_append"));
+    f.change(pendingNativeImage);
+    const teardown = f.app.onteardown({});
+    await tick();
+    f.expireImports();
+    await assert.rejects(teardown, /still importing/);
+    assert.equal(f.dom.window.qaProps.viewModeEnabled, false);
+    gate.resolve();
+    await f.wait(() => f.calls.some((c) => c.name === "app_scene_commit"));
+    await tick();
+    assert.equal(f.dom.window.qaProps.viewModeEnabled, false);
+    assert.equal(f.dom.window.qaScene.elements.at(-1).fileId, null);
+  } finally {
+    gate.resolve();
+    f.close();
+  }
+});
+
+test("pending import preserves an earlier ambiguous attempt and its exact retry before the complete latest scene", async () => {
+  const f = await fixture();
+  try {
+    f.edit("ambiguous old edit");
+    f.setCommitFailure(true);
+    await assert.rejects(f.app.onteardown({}), /shared conflict/);
+    await f.wait(() => !f.dom.window.qaProps.viewModeEnabled);
+    const failure = f.statuses.find((value) => value.phase === "error").error;
+    const mutation = f.calls.find((c) => c.name === "app_scene_begin").args.mutationId;
+    f.change(pendingNativeImage);
+    await tick();
+    assert.ok(f.dom.window.document.querySelector('[role="status"]').textContent.includes(failure));
+    assert.equal(f.statuses.at(-1).phase, "error");
+    const waiting = f.app.onteardown({});
+    await tick();
+    f.expireImports();
+    await assert.rejects(waiting, /still importing/);
+    await tick();
+    assert.ok(f.dom.window.document.querySelector('[role="status"]').textContent.includes(failure));
+    f.change(completedNativeImage());
+    await tick();
+    assert.equal(f.calls.filter((c) => c.name === "app_scene_begin").length, 1);
+    f.setCommitFailure(false);
+    await f.app.onteardown({});
+    const writes = f.calls.filter((c) => c.name === "app_scene_begin");
+    assert.equal(writes.length, 3);
+    assert.equal(writes[1].args.mutationId, mutation);
+    assert.notEqual(writes[2].args.mutationId, mutation);
+    assert.equal(
+      JSON.parse(Buffer.concat([...f.uploads.values()][2].chunks).toString()).elements.length,
+      6,
+    );
+  } finally {
+    f.close();
+  }
+});
+
+test("image becoming incomplete during positive freeze ACK rejects without publishing or dropping it", async () => {
+  const f = await fixture();
+  try {
+    f.edit("before import");
+    f.dom.window.qaHoldFreeze = true;
+    const teardown = f.app.onteardown({});
+    await f.wait(() => f.dom.window.qaProps.viewModeEnabled);
+    f.change(pendingNativeImage);
+    await assert.rejects(teardown, /still importing/);
+    await f.wait(() => !f.dom.window.qaProps.viewModeEnabled);
+    assert.equal(f.calls.filter((c) => c.name === "app_scene_begin").length, 0);
+    assert.equal(f.dom.window.qaScene.elements.at(-1).fileId, null);
   } finally {
     f.close();
   }

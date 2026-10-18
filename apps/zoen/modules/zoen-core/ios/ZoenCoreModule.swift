@@ -31,6 +31,8 @@ public class ZoenCoreModule: Module {
         // Only this core variant proves this exact draft revision was never
         // accepted. Storage, transport, stale and session errors stay ambiguous.
         throw Exception(name: "MessageDraftRejected", description: reason, code: "ERR_ZOEN_DRAFT_REJECTED")
+      } catch let error as CoreError {
+        throw Exception(name: "CoreRequestFailed", description: ZoenCoreErrorMessage.message(error), code: "ERR_ZOEN_REQUEST_FAILED")
       }
     }
     AsyncFunction("openAssistant") { (spaceId: String, locale: String) async throws -> String in

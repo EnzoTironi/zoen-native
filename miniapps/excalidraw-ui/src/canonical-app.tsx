@@ -6,6 +6,9 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import { canonicalSceneTransport } from "./canonical-transfer";
 import { createSceneSaves, type SceneSaveState } from "./canonical-saves";
 
+class PendingSceneImages extends Error {}
+const IMAGE_IMPORT_DEADLINE_MS = 10_000;
+
 // Excalidraw's database serializer deliberately omits files. Keep its chosen
 // element/appState fields, then attach only binary assets referenced by live images.
 export function serializeCanonicalScene(
@@ -16,8 +19,12 @@ export function serializeCanonicalScene(
   const document = JSON.parse(serializeAsJSON(elements, appState, files, "database"));
   const owned: BinaryFiles = {};
   for (const element of document.elements as ExcalidrawElement[]) {
-    if (element.type === "image" && !element.isDeleted && element.fileId && files[element.fileId])
-      owned[element.fileId] = files[element.fileId];
+    if (element.type !== "image" || element.isDeleted) continue;
+    const file = element.fileId && files[element.fileId];
+    // Upstream inserts the element before its asynchronous image import finishes.
+    // Keep that whole scene local until its owned bytes are available.
+    if (!file?.dataURL) throw new PendingSceneImages();
+    owned[element.fileId!] = file;
   }
   return JSON.stringify({ ...document, files: owned });
 }
@@ -43,6 +50,8 @@ const copy = {
     retry: "Try again",
     failed: "Your changes remain open. Try saving again.",
     unavailable: "The drawing could not be opened.",
+    importing: "Importing image… Changes waiting to save",
+    importFailed: "The image is still importing. Your drawing remains open. Try again.",
   },
   pt: {
     loading: "Abrindo desenho…",
@@ -52,6 +61,9 @@ const copy = {
     retry: "Tentar novamente",
     failed: "Suas alterações continuam abertas. Tente salvar novamente.",
     unavailable: "Não foi possível abrir o desenho.",
+    importing: "Importando imagem… Alterações aguardando salvar",
+    importFailed:
+      "A imagem ainda está sendo importada. Seu desenho continua aberto. Tente novamente.",
   },
 };
 
@@ -118,12 +130,17 @@ function CanonicalCanvas({
   const live = useRef(true);
   const [localError, setLocalError] = useState<string | null>(null);
   const [frozen, setFrozen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importPending = useRef(false);
+  const imageWaiters = useRef(new Set<{ resolve: () => void; reject: (error: Error) => void }>());
+  const action = useRef<"copy" | "teardown" | null>(null);
   const freezing = useRef<"copy" | "teardown" | null>(null);
   const freezeAck = useRef<{ resolve: () => void; reject: (error: Error) => void } | null>(null);
   const captureError = useRef<string | null>(null);
   const [scene] = useState(() => JSON.parse(initial));
   const report = (state: SceneSaveState) => {
     if (!live.current) return;
+    if (importPending.current && state.phase !== "error") state = { ...state, phase: "pending" };
     // This updates host context only; scene content never enters a model message.
     void app
       .updateModelContext({ structuredContent: { zoen: { sceneSave: state } } })
@@ -146,6 +163,33 @@ function CanonicalCanvas({
     }),
   );
   const state = useSyncExternalStore(saves.subscribe, saves.getSnapshot, saves.getSnapshot);
+  const deferImages = () => {
+    importPending.current = true;
+    setImporting(true);
+    // Pause synchronously, including an older complete scene's pending debounce.
+    void saves.pause().catch(() => {});
+    report(saves.getSnapshot());
+  };
+  const completeImages = () => {
+    const wasPending = importPending.current;
+    importPending.current = false;
+    setImporting(false);
+    for (const waiter of imageWaiters.current) waiter.resolve();
+    imageWaiters.current.clear();
+    if (!action.current) saves.resume();
+    return wasPending;
+  };
+  const remember = (json: string) => {
+    const wasPending = completeImages();
+    if (!initialized.current) {
+      initialized.current = true;
+      saves.baseline(json);
+    } else saves.capture(json);
+    captureError.current = null;
+    setLocalError(null);
+    if (wasPending && !action.current && saves.getSnapshot().phase !== "error")
+      void saves.flush().catch(() => {});
+  };
   const capture = (
     elements: readonly ExcalidrawElement[],
     appState: AppState,
@@ -161,15 +205,12 @@ function CanonicalCanvas({
     }
     try {
       const json = serializeCanonicalScene(elements, appState, files);
-      if (!initialized.current) {
-        initialized.current = true;
-        saves.baseline(json);
+      remember(json);
+    } catch (error) {
+      if (error instanceof PendingSceneImages) {
+        deferImages();
         return;
       }
-      saves.capture(json);
-      captureError.current = null;
-      setLocalError(null);
-    } catch (error) {
       const message = error instanceof Error ? error.message : labels.failed;
       captureError.current = message;
       setLocalError(message);
@@ -178,19 +219,56 @@ function CanonicalCanvas({
   };
   const captureNow = () => {
     if (!api.current || !initialized.current) throw new Error("The drawing is still opening.");
-    const json = serializeCanonicalScene(
-      api.current.getSceneElements(),
-      api.current.getAppState(),
-      api.current.getFiles(),
-    );
-    saves.capture(json);
-    captureError.current = null;
-    setLocalError(null);
+    try {
+      const json = serializeCanonicalScene(
+        api.current.getSceneElements(),
+        api.current.getAppState(),
+        api.current.getFiles(),
+      );
+      remember(json);
+      return true;
+    } catch (error) {
+      if (!(error instanceof PendingSceneImages)) throw error;
+      deferImages();
+      return false;
+    }
+  };
+  const awaitImages = async () => {
+    if (captureNow()) return;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const finish = (error?: Error) => {
+          clearTimeout(timer);
+          imageWaiters.current.delete(waiter);
+          if (error) reject(error);
+          else resolve();
+        };
+        const waiter = { resolve: () => finish(), reject: (error: Error) => finish(error) };
+        const timer = setTimeout(
+          () => finish(new Error(labels.importFailed)),
+          IMAGE_IMPORT_DEADLINE_MS,
+        );
+        imageWaiters.current.add(waiter);
+      });
+      if (!live.current) throw new Error("This drawing has closed.");
+      if (!captureNow()) throw new Error(labels.importFailed);
+    } catch (error) {
+      if (live.current) {
+        const message = error instanceof Error ? error.message : labels.importFailed;
+        const current = saves.getSnapshot();
+        if (current.phase !== "error") {
+          setLocalError(message);
+          report({ phase: "error", sequence: current.sequence, error: message });
+        }
+      }
+      throw error;
+    }
   };
   const flush = async () => {
     // Pointer/visibility callbacks must never unpause a copy or navigation barrier.
-    if (freezing.current) return;
-    captureNow();
+    if (action.current) return;
+    await awaitImages();
+    if (!live.current || action.current) return;
     await saves.flush();
   };
   useEffect(() => {
@@ -203,8 +281,11 @@ function CanonicalCanvas({
     };
     const freeze = async (mode: "copy" | "teardown") => {
       check();
-      if (freezing.current) throw new Error("This drawing action is already in progress.");
+      if (action.current) throw new Error("This drawing action is already in progress.");
       if (!api.current || !initialized.current) throw new Error("The drawing is still opening.");
+      action.current = mode;
+      await Promise.all([saves.pause(), awaitImages()]);
+      check();
       freezing.current = mode;
       const acknowledged = api.current.getAppState().viewModeEnabled
         ? Promise.resolve()
@@ -215,12 +296,15 @@ function CanonicalCanvas({
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       await Promise.all([saves.pause(), acknowledged]);
       check();
+      // An import can start between readiness and the positive view-only ACK.
+      if (!captureNow()) throw new Error(labels.importFailed);
     };
     const resume = () => {
       check();
-      if (freezing.current === "copy") throw new Error("A drawing copy is already prepared.");
+      if (action.current === "copy") throw new Error("A drawing copy is already prepared.");
       freezing.current = null;
-      saves.resume();
+      action.current = null;
+      if (!importPending.current) saves.resume();
       setFrozen(false);
     };
     let preparedCopy: Awaited<ReturnType<typeof transport.prepareCopy>> | null = null;
@@ -228,6 +312,8 @@ function CanonicalCanvas({
     app.oncalltool = async ({ name }) => {
       check();
       if (name === "resume_scene") {
+        if (action.current && !freezing.current)
+          throw new Error("This drawing action is already in progress.");
         resume();
         teardown = null;
         return { content: [], structuredContent: {} };
@@ -235,7 +321,7 @@ function CanonicalCanvas({
       if (name !== "prepare_scene_copy") throw new Error("This drawing action is unavailable.");
       if (preparedCopy) return { content: [], structuredContent: preparedCopy };
       if (!copyWork) {
-        if (freezing.current) throw new Error("This drawing action is already in progress.");
+        if (action.current) throw new Error("This drawing action is already in progress.");
         copyWork = (async () => {
           let staged = false;
           try {
@@ -251,14 +337,10 @@ function CanonicalCanvas({
             staged = true;
             return result;
           } finally {
-            if (
-              !staged &&
-              live.current &&
-              owners.get(app) === owner &&
-              freezing.current === "copy"
-            ) {
+            if (!staged && live.current && owners.get(app) === owner && action.current === "copy") {
               freezing.current = null;
-              saves.resume();
+              action.current = null;
+              if (!importPending.current) saves.resume();
               setFrozen(false);
             }
           }
@@ -284,8 +366,7 @@ function CanonicalCanvas({
         })();
         teardown = work;
         void work.catch(() => {
-          if (live.current && owners.get(app) === owner && freezing.current === "teardown")
-            resume();
+          if (live.current && owners.get(app) === owner && action.current === "teardown") resume();
           if (teardown === work) teardown = null;
         });
       }
@@ -298,6 +379,9 @@ function CanonicalCanvas({
     document.addEventListener("visibilitychange", background);
     return () => {
       live.current = false;
+      for (const waiter of imageWaiters.current)
+        waiter.reject(new Error("This drawing has closed."));
+      imageWaiters.current.clear();
       freezeAck.current?.reject(new Error("This drawing has closed."));
       freezeAck.current = null;
       saves.dispose();
@@ -307,7 +391,11 @@ function CanonicalCanvas({
   }, [app, saves]);
   const message =
     localError ??
-    (state.phase === "error" ? `${labels.failed} ${state.error ?? ""}` : labels[state.phase]);
+    (state.phase === "error"
+      ? `${labels.failed} ${state.error ?? ""}`
+      : importing
+        ? labels.importing
+        : labels[state.phase]);
   return (
     <main className="canonical-app" data-canonical-editor="true">
       <span role="status" aria-live="polite" className="canonical-screen-reader-status">
