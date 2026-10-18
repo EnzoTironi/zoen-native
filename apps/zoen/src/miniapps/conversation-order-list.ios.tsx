@@ -1,7 +1,6 @@
 import { Host } from '@expo/ui';
-import { Button, HStack, List, Section, Text as NativeText, VStack } from '@expo/ui/swift-ui';
+import { Button, HStack, List, Section, Text as NativeText } from '@expo/ui/swift-ui';
 import {
-  accessibilityAddTraits,
   buttonStyle,
   contentShape,
   disabled,
@@ -12,7 +11,6 @@ import {
   labelStyle,
   listRowBackground,
   listStyle,
-  padding,
   scrollContentBackground,
   shapes,
 } from '@expo/ui/swift-ui/modifiers';
@@ -25,6 +23,7 @@ import { useTheme } from '../theme';
 import type { ConversationOrderListProps } from './conversation-order-list.types';
 
 const keyExtractor = (item: ItemDetail) => item.id;
+const pinnedKeyExtractor = (id: string) => id;
 
 export function ConversationOrderList({
   items,
@@ -36,6 +35,10 @@ export function ConversationOrderList({
   const [busy, setBusy] = useState(false);
   const [nativeReset, setNativeReset] = useState(0);
   const pending = useRef(false);
+  // Native drag revisions track order, not background refreshes of card content.
+  const pinnedKey = JSON.stringify(pinnedIds);
+  const pinned = useMemo(() => JSON.parse(pinnedKey) as string[], [pinnedKey]);
+  const byId = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const signature = JSON.stringify([items.map((item) => item.id), pinnedIds, nativeReset]);
   const live = useRef({ mounted: false, signature });
   useLayoutEffect(() => {
@@ -45,17 +48,10 @@ export function ConversationOrderList({
       live.current.mounted = false;
     };
   }, [signature]);
-  const { pinned, hidden } = useMemo(() => {
-    const byId = new Map(items.map((item) => [item.id, item]));
-    const selected = new Set(pinnedIds);
-    return {
-      pinned: pinnedIds.flatMap((id) => {
-        const item = byId.get(id);
-        return item ? [item] : [];
-      }),
-      hidden: items.filter((item) => !selected.has(item.id)),
-    };
-  }, [items, pinnedIds]);
+  const hidden = useMemo(() => {
+    const selected = new Set(pinned);
+    return items.filter((item) => !selected.has(item.id));
+  }, [items, pinned]);
   const perform = useCallback(
     (action: () => Promise<void>) => {
       console.warn(
@@ -94,49 +90,52 @@ export function ConversationOrderList({
         live.current.mounted,
         live.current.signature === signature,
       );
-      const ids = pinned.map((item) => item.id);
-      const order = moveHomeOrder(ids, sources, destination);
-      if (!order || order.every((id, index) => id === ids[index])) return;
+      const order = moveHomeOrder(pinned, sources, destination);
+      if (!order || order.every((id, index) => id === pinned[index])) return;
       perform(() => onReorder(order));
     },
     [pinned, perform, onReorder, signature],
   );
   const renderPinned = useCallback(
-    ({ item }: { item: ItemDetail }) => (
-      <HStack
-        testID={`conversation-order-pinned-${item.id}`}
-        spacing={12}
-        modifiers={[
-          frame({ minHeight: 48, alignment: 'leading' }),
-          listRowBackground(colors.surface),
-        ]}
-      >
-        <Button
-          testID={`conversation-order-hide-${item.id}`}
-          label={t('conversationCards.unpinNamed', { name: item.title })}
-          systemImage="minus.circle.fill"
-          onPress={() => perform(() => onSetPinned(item.id, false))}
+    ({ item: id }: { item: string }) => {
+      const item = byId.get(id);
+      if (!item) return <NativeText />;
+      return (
+        <HStack
+          testID={`conversation-order-pinned-${item.id}`}
+          spacing={12}
           modifiers={[
-            buttonStyle('borderless'),
-            labelStyle('iconOnly'),
-            frame({ minWidth: 44, minHeight: 44 }),
-            contentShape(shapes.rectangle()),
-            foregroundStyle(colors.danger),
-            disabled(busy),
-          ]}
-        />
-        <NativeText
-          modifiers={[
-            font({ textStyle: 'body' }),
-            foregroundStyle(colors.text),
-            frame({ maxWidth: Infinity, alignment: 'leading' }),
+            frame({ minHeight: 48, alignment: 'leading' }),
+            listRowBackground(colors.surface),
           ]}
         >
-          {item.title}
-        </NativeText>
-      </HStack>
-    ),
-    [busy, colors.surface, colors.danger, colors.text, perform, onSetPinned],
+          <Button
+            testID={`conversation-order-hide-${item.id}`}
+            label={t('conversationCards.unpinNamed', { name: item.title })}
+            systemImage="minus.circle.fill"
+            onPress={() => perform(() => onSetPinned(item.id, false))}
+            modifiers={[
+              buttonStyle('borderless'),
+              labelStyle('iconOnly'),
+              frame({ minWidth: 44, minHeight: 44 }),
+              contentShape(shapes.rectangle()),
+              foregroundStyle(colors.danger),
+              disabled(busy),
+            ]}
+          />
+          <NativeText
+            modifiers={[
+              font({ textStyle: 'body' }),
+              foregroundStyle(colors.text),
+              frame({ maxWidth: Infinity, alignment: 'leading' }),
+            ]}
+          >
+            {item.title}
+          </NativeText>
+        </HStack>
+      );
+    },
+    [byId, busy, colors.surface, colors.danger, colors.text, perform, onSetPinned],
   );
   const renderHidden = useCallback(
     ({ item }: { item: ItemDetail }) => (
@@ -183,31 +182,20 @@ export function ConversationOrderList({
         colorScheme={scheme}
         seedColor={colors.accent}
       >
-        <VStack alignment="leading" spacing={0}>
-          <NativeText
-            modifiers={[
-              font({ textStyle: 'caption', weight: 'semibold' }),
-              foregroundStyle(colors.secondary),
-              padding({ horizontal: 36 }),
-              accessibilityAddTraits(['isHeader']),
-            ]}
-          >
-            {t('conversationCards.pinned')}
-          </NativeText>
-          <List
-            key={nativeReset}
-            modifiers={[
-              listStyle('insetGrouped'),
-              scrollContentBackground('hidden'),
-              environment('editMode', 'active'),
-            ]}
-          >
+        <List
+          key={nativeReset}
+          modifiers={[
+            listStyle('insetGrouped'),
+            scrollContentBackground('hidden'),
+            environment('editMode', 'active'),
+          ]}
+        >
+          <Section title={t('conversationCards.pinned')}>
             {pinned.length ? (
               <List.ForEach
                 key={signature}
                 data={pinned}
-                keyExtractor={keyExtractor}
-                recycling={false}
+                keyExtractor={pinnedKeyExtractor}
                 onMove={move}
               >
                 {renderPinned}
@@ -219,26 +207,26 @@ export function ConversationOrderList({
                 {t('conversationCards.noPinned')}
               </NativeText>
             )}
-            <Section title={t('conversationCards.hidden')}>
-              {hidden.length ? (
-                <List.ForEach
-                  key={signature}
-                  data={hidden}
-                  keyExtractor={keyExtractor}
-                  recycling={false}
-                >
-                  {renderHidden}
-                </List.ForEach>
-              ) : (
-                <NativeText
-                  modifiers={[foregroundStyle(colors.secondary), listRowBackground(colors.surface)]}
-                >
-                  {t('conversationCards.noHidden')}
-                </NativeText>
-              )}
-            </Section>
-          </List>
-        </VStack>
+          </Section>
+          <Section title={t('conversationCards.hidden')}>
+            {hidden.length ? (
+              <List.ForEach
+                key={signature}
+                data={hidden}
+                keyExtractor={keyExtractor}
+                recycling={false}
+              >
+                {renderHidden}
+              </List.ForEach>
+            ) : (
+              <NativeText
+                modifiers={[foregroundStyle(colors.secondary), listRowBackground(colors.surface)]}
+              >
+                {t('conversationCards.noHidden')}
+              </NativeText>
+            )}
+          </Section>
+        </List>
       </Host>
       {busy ? (
         <ActivityIndicator

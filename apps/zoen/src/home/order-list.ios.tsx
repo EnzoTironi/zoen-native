@@ -9,14 +9,14 @@ import {
   listStyle,
   scrollContentBackground,
 } from '@expo/ui/swift-ui/modifiers';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import type { ItemDetail } from '../core/generated/ItemDetail';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
 import { moveHomeOrder } from './order';
 
-const keyExtractor = (item: ItemDetail) => item.id;
+const keyExtractor = (id: string) => id;
 
 export function HomeOrderList({
   items,
@@ -29,7 +29,11 @@ export function HomeOrderList({
   const [busy, setBusy] = useState(false);
   const [nativeReset, setNativeReset] = useState(0);
   const pending = useRef(false);
-  const signature = JSON.stringify([items.map((item) => item.id), nativeReset]);
+  // Native drag revisions track order, not background refreshes of card content.
+  const idsKey = JSON.stringify(items.map((item) => item.id));
+  const ids = useMemo(() => JSON.parse(idsKey) as string[], [idsKey]);
+  const byId = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+  const signature = JSON.stringify([ids, nativeReset]);
   const live = useRef({ mounted: false, signature });
   useLayoutEffect(() => {
     live.current = { mounted: true, signature };
@@ -41,7 +45,6 @@ export function HomeOrderList({
     (sources: number[], destination: number) => {
       // Keep native row editability stable across inserts; serialize saves here.
       if (pending.current || !live.current.mounted || live.current.signature !== signature) return;
-      const ids = items.map((item) => item.id);
       const order = moveHomeOrder(ids, sources, destination);
       if (!order || order.every((id, index) => id === ids[index])) return;
       pending.current = true;
@@ -58,32 +61,36 @@ export function HomeOrderList({
         }
       })();
     },
-    [items, onReorder, signature],
+    [ids, onReorder, signature],
   );
   const row = useCallback(
-    ({ item }: { item: ItemDetail }) => (
-      <VStack
-        testID={`home-order-${item.id}`}
-        alignment="leading"
-        spacing={4}
-        modifiers={[
-          frame({ minHeight: 48, alignment: 'leading' }),
-          listRowBackground(colors.surface),
-        ]}
-      >
-        <NativeText modifiers={[font({ textStyle: 'body' }), foregroundStyle(colors.text)]}>
-          {item.title}
-        </NativeText>
-        {item.space_title ? (
-          <NativeText
-            modifiers={[font({ textStyle: 'caption' }), foregroundStyle(colors.secondary)]}
-          >
-            {item.space_title}
+    ({ item: id }: { item: string }) => {
+      const item = byId.get(id);
+      if (!item) return <NativeText />;
+      return (
+        <VStack
+          testID={`home-order-${item.id}`}
+          alignment="leading"
+          spacing={4}
+          modifiers={[
+            frame({ minHeight: 48, alignment: 'leading' }),
+            listRowBackground(colors.surface),
+          ]}
+        >
+          <NativeText modifiers={[font({ textStyle: 'body' }), foregroundStyle(colors.text)]}>
+            {item.title}
           </NativeText>
-        ) : null}
-      </VStack>
-    ),
-    [colors.surface, colors.text, colors.secondary],
+          {item.space_title ? (
+            <NativeText
+              modifiers={[font({ textStyle: 'caption' }), foregroundStyle(colors.secondary)]}
+            >
+              {item.space_title}
+            </NativeText>
+          ) : null}
+        </VStack>
+      );
+    },
+    [byId, colors.surface, colors.text, colors.secondary],
   );
   return (
     <View style={{ flex: 1 }}>
@@ -101,13 +108,7 @@ export function HomeOrderList({
             environment('editMode', 'active'),
           ]}
         >
-          <List.ForEach
-            key={signature}
-            data={items}
-            keyExtractor={keyExtractor}
-            recycling={false}
-            onMove={move}
-          >
+          <List.ForEach key={signature} data={ids} keyExtractor={keyExtractor} onMove={move}>
             {row}
           </List.ForEach>
         </List>
