@@ -8,6 +8,7 @@ export type ConversationRevealGeometry = Readonly<{
 export type ConversationRevealItem = Readonly<{
   y: number;
   height: number;
+  measured: boolean;
   firstItemOffset: number;
   childHeight: number;
   windowHeight: number;
@@ -70,7 +71,7 @@ type RevealPort = Readonly<{
   current: (id: string) => boolean;
   item: (id: string) => ConversationRevealItem | null;
   frame: (work: () => void) => () => void;
-  scroll: (offset: number) => void;
+  scroll: (offset: number, animated: boolean) => void;
 }>;
 
 /** One explicit search request, committed against the latest measured native
@@ -83,6 +84,11 @@ export class ConversationReveal {
   private contentHeight: number | null = null;
   private viewportHeight: number | null = null;
   private target: string | null = null;
+  private data: readonly unknown[] | null = null;
+  private committedData: readonly unknown[] | null = null;
+  private commit = 0;
+  private engagementCommit: number | null = null;
+  private commandLayout: string | null = null;
   private revision = 0;
   private cancellation = 0;
   private cancelFrame: (() => void) | null = null;
@@ -106,6 +112,8 @@ export class ConversationReveal {
     ++this.cancellation;
     ++this.revision;
     this.target = null;
+    this.commandLayout = null;
+    this.engagementCommit = null;
     this.cancelFrame?.();
     this.cancelFrame = null;
   };
@@ -134,12 +142,26 @@ export class ConversationReveal {
     this.viewportHeight = height;
     this.schedule();
   };
-  onCommit = () => this.schedule();
+  onData = (data: readonly unknown[]) => {
+    if (this.data !== data) {
+      this.data = data;
+      this.commandLayout = null;
+      this.engagementCommit = null;
+    }
+    this.schedule();
+  };
+  onCommit = (data: readonly unknown[]) => {
+    this.committedData = data;
+    ++this.commit;
+    this.schedule();
+  };
 
   private ready(): boolean {
     const geometry = this.geometry;
     return Boolean(
       geometry &&
+      this.data !== null &&
+      this.data === this.committedData &&
       this.inset &&
       this.contentHeight !== null &&
       this.viewportHeight !== null &&
@@ -169,8 +191,40 @@ export class ConversationReveal {
       if (!item) return; // A new timeline waits for its real FlashList commit.
       const offset = conversationRevealOffset(geometry, item);
       if (offset === null) return;
-      this.target = null;
-      if (Math.abs(offset - geometry.contentOffset.y) > 0.5) port.scroll(offset);
+      const atTarget = Math.abs(offset - geometry.contentOffset.y) <= 0.5;
+      // A seek must engage and measure the target in a later SDK commit before
+      // its native acknowledgement can finish the request. Index layouts may
+      // still contain measured dimensions belonging to pre-pagination rows.
+      if (
+        item.measured &&
+        atTarget &&
+        (this.engagementCommit === null || this.commit > this.engagementCommit)
+      ) {
+        this.target = null;
+        this.commandLayout = null;
+        this.engagementCommit = null;
+        return;
+      }
+      // Native animation frames are acknowledgements, not new seek requests.
+      // Refine only after the actual committed layout/insets have changed.
+      const layout = [
+        item.y,
+        item.height,
+        item.measured,
+        item.firstItemOffset,
+        item.childHeight,
+        item.windowHeight,
+        item.topObstruction,
+        item.bottomAligned,
+        geometry.contentSize.height,
+        geometry.layoutMeasurement.height,
+        geometry.contentInset.top ?? 0,
+        geometry.contentInset.bottom,
+      ].join(':');
+      if (atTarget || this.commandLayout === layout) return;
+      this.engagementCommit ??= this.commit;
+      this.commandLayout = layout;
+      port.scroll(offset, item.measured);
     });
   }
 }

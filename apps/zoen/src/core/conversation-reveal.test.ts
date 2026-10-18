@@ -17,6 +17,7 @@ const geometry = (patch: Partial<ConversationRevealGeometry> = {}): Conversation
 const item = (patch: Partial<ConversationRevealItem> = {}): ConversationRevealItem => ({
   y: 0,
   height: 90,
+  measured: true,
   firstItemOffset: 64,
   childHeight: 200,
   windowHeight: 760,
@@ -75,6 +76,8 @@ test('closed keyboard, native top inset, and invalid or occluded geometry retain
 function fixture() {
   const frames: { run: () => void; cancelled: boolean }[] = [];
   const offsets: number[] = [];
+  const animations: boolean[] = [];
+  let data: readonly unknown[] = [];
   let current = true;
   let row: ConversationRevealItem | null = item({ y: 90, height: 110 });
   const reveal = new ConversationReveal('test-chat', {
@@ -87,11 +90,22 @@ function fixture() {
         frame.cancelled = true;
       };
     },
-    scroll: (offset) => offsets.push(offset),
+    scroll: (offset, animated) => {
+      offsets.push(offset);
+      animations.push(animated);
+    },
   });
+  reveal.onData(data);
+  reveal.onCommit(data);
   return {
     reveal,
     offsets,
+    animations,
+    setData: (next: readonly unknown[]) => {
+      data = next;
+      reveal.onData(next);
+    },
+    commit: (committed = data) => reveal.onCommit(committed),
     frames,
     setCurrent: (value: boolean) => {
       current = value;
@@ -169,11 +183,11 @@ test('unmeasured search thread waits for list commit and samples the latest row 
   f.frame();
   assert.deepEqual(f.offsets, []);
   f.setRow(item({ y: 90, height: 110 }));
-  f.reveal.onCommit();
+  f.commit();
   f.frame();
   assert.deepEqual(f.offsets, [360]);
   f.reveal.onScroll(geometry());
-  f.reveal.onCommit();
+  f.commit();
   assert.equal(
     f.offsets.length,
     1,
@@ -221,4 +235,104 @@ test('a delayed canonical read cannot create a new reveal after user interruptio
   f.reveal.request('new-user-search', fresh);
   f.frame();
   assert.deepEqual(f.offsets, [360]);
+});
+
+test('same-chat pagination rejects a valid old measured index until the exact new entries commit', () => {
+  const f = fixture();
+  const oldData = [{ id: 'previous-row' }];
+  const expandedData = [{ id: 'older-row' }, ...oldData];
+  f.setData(oldData);
+  f.commit(oldData);
+  f.ready();
+  f.setData(expandedData);
+  // getLayout still returns non-null, fully measured old-index geometry.
+  f.setRow(item({ y: 90, height: 110, measured: true }));
+  f.reveal.request('selected-after-pagination');
+  assert.equal(f.frames.length, 0);
+  f.commit(oldData);
+  assert.equal(f.frames.length, 0);
+  f.commit(expandedData);
+  f.frame();
+  assert.deepEqual(f.offsets, [360]);
+});
+
+test('estimated engagement remains pending and refines the real variable-height row without retargeting native animation frames', () => {
+  const f = fixture();
+  const native = geometry({ contentOffset: { y: 0 }, contentSize: { height: 3000 } });
+  f.ready(native);
+  f.setRow(item({ y: 900, childHeight: 2936, measured: false }));
+  f.reveal.request('newly-loaded-recipe');
+  f.frame();
+  assert.deepEqual(f.offsets, [900]);
+  assert.deepEqual(f.animations, [false]);
+  f.reveal.onScroll({ ...native, contentOffset: { y: 500 } });
+  f.frame();
+  assert.deepEqual(f.offsets, [900]);
+  f.setRow(item({ y: 1300, height: 180, childHeight: 2936, measured: true }));
+  f.commit();
+  f.frame();
+  assert.deepEqual(f.offsets, [900, 1300]);
+  assert.deepEqual(f.animations, [false, true]);
+  for (const y of [900, 1100]) {
+    f.reveal.onScroll({ ...native, contentOffset: { y } });
+    f.frame();
+  }
+  assert.deepEqual(f.offsets, [900, 1300]);
+  f.reveal.onScroll({ ...native, contentOffset: { y: 1300 } });
+  f.frame();
+  f.setRow(item({ y: 1800, childHeight: 2936, measured: true }));
+  f.commit();
+  assert.deepEqual(
+    f.offsets,
+    [900, 1300],
+    'acknowledged target retires after its measured SDK commit',
+  );
+});
+
+test('a seek cannot retire against old measured flags before the newly engaged target commits', () => {
+  const f = fixture();
+  const native = geometry({ contentOffset: { y: 0 }, contentSize: { height: 3000 } });
+  f.ready(native);
+  f.setRow(item({ y: 900, childHeight: 2936 }));
+  f.reveal.request('recipe');
+  f.frame();
+  f.reveal.onScroll({ ...native, contentOffset: { y: 900 } });
+  f.frame();
+  f.setRow(item({ y: 1300, childHeight: 2936 }));
+  f.commit();
+  f.frame();
+  assert.deepEqual(f.offsets, [900, 1300]);
+});
+
+test('a provisional hit never completes merely because its estimated bounds are visible', () => {
+  const f = fixture();
+  f.ready(geometry());
+  f.setRow(item({ y: 90, height: 110, measured: false }));
+  f.reveal.request('unmeasured');
+  f.frame();
+  assert.deepEqual(f.offsets, []);
+  f.setRow(item({ y: 700, height: 110, childHeight: 1500, measured: true }));
+  f.ready(geometry({ contentSize: { height: 1564 } }));
+  f.commit();
+  f.frame();
+  assert.deepEqual(f.offsets, [700]);
+});
+
+test('drag or query replacement cancels all later variable-height refinements and native acknowledgements', () => {
+  for (const interrupt of ['drag', 'query'] as const) {
+    const f = fixture();
+    const native = geometry({ contentOffset: { y: 0 }, contentSize: { height: 3000 } });
+    f.ready(native);
+    f.setRow(item({ y: 900, childHeight: 2936, measured: false }));
+    f.reveal.request('old-hit');
+    f.frame();
+    if (interrupt === 'drag')
+      f.reveal.onScroll({ ...native, contentOffset: { y: 500 }, responderIgnoreScroll: false });
+    else f.reveal.cancel();
+    f.setRow(item({ y: 1300, childHeight: 2936, measured: true }));
+    f.commit();
+    f.reveal.onScroll({ ...native, contentOffset: { y: 900 } });
+    f.frame();
+    assert.deepEqual(f.offsets, [900], interrupt);
+  }
 });

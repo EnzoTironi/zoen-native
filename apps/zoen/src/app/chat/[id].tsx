@@ -166,6 +166,7 @@ export default function Chat() {
         return {
           y: row.y,
           height: row.height,
+          measured: row.isHeightMeasured === true && row.isWidthMeasured === true,
           firstItemOffset: native.getFirstItemOffset(),
           childHeight: native.getChildContainerDimensions().height,
           windowHeight: native.getWindowSize().height,
@@ -184,7 +185,7 @@ export default function Chat() {
       },
       // Unlike scrollToIndex, this public API leaves clamping to our measured
       // native range, which includes the keyboard and composer contentInset.
-      scroll: (offset) => list.current?.scrollToOffset({ offset, animated: true }),
+      scroll: (offset, animated) => list.current?.scrollToOffset({ offset, animated }),
     });
   }, [searchReveal, search, keyboardProgress]);
   useLayoutEffect(() => {
@@ -199,7 +200,7 @@ export default function Chat() {
       railHeight,
       noticeHeight,
     };
-    searchReveal.onCommit();
+    searchReveal.onData(page?.entries ?? []);
   }, [
     page,
     loadedSpace,
@@ -699,7 +700,7 @@ export default function Chat() {
               }}
               onCommitLayoutEffect={() => {
                 initialEnd.onCommitLayoutEffect();
-                searchReveal.onCommit();
+                searchReveal.onCommit(page.entries);
                 // Preserve the native keyboard scroller when search changes the
                 // timeline, and address its new indices only after SDK commit.
                 if (loadedSpace !== timelineKey) setLoadedSpace(timelineKey);
