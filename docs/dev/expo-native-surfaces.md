@@ -1,5 +1,43 @@
 # iPhone native surfaces and acceptance
 
+Current signed checkpoint, 18 October: **v84**, source `e35d2fb3`, is preserving-installed
+and publicly verified on both iPhone QA simulators with 835 frozen inputs. Shared
+voice audition and recovery of the retained imported WAV pass bounded native checks;
+human Home/history/Delivered voice retention passes. App 696/696,
+TypeScript/Oxlint/Oxfmt and all three exact-source Expo jobs pass separately.
+Full product parity remains open.
+
+## Bounded v84 voice audition and imported-WAV recovery
+
+The isolated preserving update recovers the same failed 24-second WAV draft without
+reimport. Playback continues through compact → detail → compact, with native clocks
+6 → 12 → paused 18 seconds; paused rate 1.5 survives expansion. A paused original
+12-second tap remains paused, and after cutting the selected 6.01–10-second range,
+original 12 maps to edited 8 seconds. Play from selection advances from its first
+retained frame; cutting stops the old preview. Restore and Undo/Redo stay paused.
+Cancel while playing followed by cold return leaves no draft or new Send and
+retains earlier photo/video/v82 voice history.
+
+Separate host AVFoundation tests cover full/cut PCM16 mono WAV at 8/16/24/44.1 kHz,
+exact decoded frames/rate, retained/excluded tones, fades, waveform and cleanup.
+The compiled old production fails the same assertions at its fixed-bitrate writer
+with NSError 560226676. Failed v83 remains diagnostic, never promoted as main;
+this host proof is separate from v84 simulator recovery. Human v82 → v84 retains
+four Home cards, recipe 6/8, six-page chat history at 100%, larger text and old
+11-second Delivered voice (opened at 2, paused at 7 seconds), with empty composer
+and closed keyboard; no human content/calendar/preference changes.
+
+Evidence: `acceptance.json` → `evidence.nativeVoiceAuditionV84` and
+`/private/tmp/zoen-voice-audition-qa-v84/runtime.json`. The 65 isolated/18 human
+observations, 38 copied PNGs and retired 30/9-step recordings are one-use diagnostics,
+not formal replay/E2E. The 26.4-second video shows native clock continuity, without
+captured audio-output, perceptual-quality or timing/performance claims. No new Send,
+recipient, microphone/ASR, fresh VoiceOver or physical-device acceptance is implied.
+Prior v82 pending-trim and dedicated v82a offline proofs retain their exact attribution;
+unchanged Rust 463/463 remains attributed to `6c338bcf`.
+
+**Historical accepted-v82/v82a preface (verbatim):**
+
 Main and human accepted artifacts remain **v82**, source `c71383a7`, with 832 frozen
 inputs. A separate signed **v82a-offline** artifact now passes the bounded fresh-device
 voice/photo/video offline Send → offline cold → automatic reconnect → independent
