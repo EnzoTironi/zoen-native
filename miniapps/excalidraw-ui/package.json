@@ -1,6 +1,6 @@
 {
   "name": "zoen-excalidraw-ui",
-  "version": "0.3.2-zoen.1",
+  "version": "0.3.2-zoen.2",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -9,8 +9,9 @@
     "test": "node --import ../../apps/zoen/src/i18n/test-setup.ts --test test/*.test.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/ext-apps": "0.4.2",
-    "@modelcontextprotocol/sdk": "1.25.2",
+    "@excalidraw/excalidraw": "0.18.0",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "@noble/hashes": "2.0.1",
     "esbuild": "0.25.10",
     "morphdom": "2.7.8",
     "react": "19.0.0",

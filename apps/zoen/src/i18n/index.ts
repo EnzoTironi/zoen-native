@@ -6,6 +6,7 @@ import { authProviders } from './catalogs/authProviders.ts';
 import { chat } from './catalogs/chat.ts';
 import { common } from './catalogs/common.ts';
 import { documents } from './catalogs/documents.ts';
+import { drawing } from './catalogs/drawing.ts';
 import { home } from './catalogs/home.ts';
 import { conversationCards } from './catalogs/conversation-cards.ts';
 import { connectedApps } from './catalogs/connected-apps.ts';
@@ -37,6 +38,7 @@ const catalogs = {
   chat,
   common,
   documents,
+  drawing,
   home,
   conversationCards,
   connectedApps,

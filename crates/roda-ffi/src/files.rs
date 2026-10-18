@@ -81,7 +81,7 @@ fn validate_chunk(chunk: &ChunkRef, max_bytes: usize) -> R<usize> {
     usize::try_from(chunk.bytes).map_err(|_| invalid_file())
 }
 
-fn validate_file(file: &FileDoc, max_bytes: u64) -> R<usize> {
+pub(crate) fn validate_file(file: &FileDoc, max_bytes: u64) -> R<usize> {
     if file.bytes == 0
         || file.bytes > max_bytes
         || file.bytes > MAX_FILE_BYTES as u64
@@ -167,7 +167,7 @@ impl Engine {
     }
 
     /// The key shared by every version of a file (kept in the device database).
-    fn file_key(&mut self, item: Option<&str>) -> R<[u8; 32]> {
+    pub(crate) fn file_key(&mut self, item: Option<&str>) -> R<[u8; 32]> {
         if let Some(item) = item {
             if let Some(k) = self.store.meta(&format!("file_key:{item}"))? {
                 if let Ok(b) = hex::decode(k) {
@@ -220,7 +220,7 @@ impl Engine {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn file_doc(
+    pub(crate) fn file_doc(
         &mut self,
         space: &str,
         file_key: &[u8; 32],
@@ -818,11 +818,14 @@ impl Engine {
             .ok_or_else(|| CoreError::NotFound {
                 what: "Item".into(),
             })?;
+        if matches!(&it.current().content, ItemContent::App(_)) {
+            self.app_document_identity(&it.space)?;
+        }
         let v = match version {
             Some(n) => it.versions.iter().find(|v| v.number == n),
             None => it.versions.last(),
         };
-        let Some(ItemContent::File(f)) = v.map(|v| &v.content) else {
+        let Some(f) = v.and_then(|v| v.content.owned_file()) else {
             return Err(invalid(
                 "este Item não é um arquivo",
                 "this Item is not a file",
@@ -858,6 +861,10 @@ impl Engine {
         max_bytes: u64,
     ) -> R<Option<Vec<u8>>> {
         let f = self.file_doc_at(item, version)?;
+        self.owned_file_bytes(f, max_bytes)
+    }
+
+    pub(crate) fn owned_file_bytes(&self, f: &FileDoc, max_bytes: u64) -> R<Option<Vec<u8>>> {
         let size = validate_file(f, max_bytes)?;
         // Missing or oversized cached pieces cannot trigger a file-sized allocation.
         for chunk in &f.chunks {
@@ -1015,9 +1022,18 @@ impl Engine {
             if !self.net.synced.contains(&it.space) {
                 continue;
             }
+            if matches!(&it.current().content, ItemContent::App(_))
+                && !self
+                    .me
+                    .as_deref()
+                    .is_some_and(|me| self.is_member(&it.space, me))
+            {
+                continue;
+            }
             let mut refs: Vec<(&ChunkRef, &str)> = Vec::new();
             match it.versions.last().map(|v| &v.content) {
-                Some(ItemContent::File(f)) => {
+                Some(content) if content.owned_file().is_some() => {
+                    let f = content.owned_file().expect("matched owned file");
                     if validate_file(f, MAX_FILE_BYTES as u64).is_err() {
                         continue;
                     }

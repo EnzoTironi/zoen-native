@@ -78,8 +78,13 @@ function fixture(overrides: Partial<HostOptions> = {}) {
     await receive({ jsonrpc: '2.0', method: 'ui/notifications/initialized' });
     await tick();
   };
-  const connect = async () => {
-    const app = new App({ name: 'real-official-app', version: '1' }, {}, { autoResize: false });
+  const connect = async (oncalltool?: NonNullable<App['oncalltool']>) => {
+    const app = new App(
+      { name: 'real-official-app', version: '1' },
+      oncalltool ? { tools: {} } : {},
+      { autoResize: false },
+    );
+    if (oncalltool) app.oncalltool = oncalltool;
     const notifications: { kind: string; value: unknown }[] = [];
     app.ontoolinput = (value) => notifications.push({ kind: 'input', value });
     app.ontoolresult = (value) => notifications.push({ kind: 'result', value });
@@ -354,4 +359,92 @@ test('context-only resize/theme/display changes do not replay the original drawi
   await tick();
   assert.equal(updates.length, 1, 'identical host geometry does not publish redundant context');
   assert.equal(notifications.length, 2, 'original create_view result stays single-delivery');
+});
+
+test('teardown flush keeps tool authority live until the official app acknowledges its last write', async () => {
+  let release!: () => void;
+  const pendingSave = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let saves = 0;
+  const f = fixture({
+    call: async () => {
+      saves++;
+      await pendingSave;
+      return { content: [], structuredContent: { saved: true } };
+    },
+  });
+  const { app } = await f.connect();
+  let teardowns = 0;
+  app.onteardown = async () => {
+    teardowns++;
+    await app.callServerTool({ name: 'list_add', arguments: { last: 'edit' } });
+    return {};
+  };
+  let complete = false;
+  const flush = f.session.flushResource().then(() => {
+    complete = true;
+  });
+  const concurrent = f.session.flushResource();
+  await tick();
+  assert.equal(complete, false);
+  assert.equal(saves, 1);
+  assert.equal(teardowns, 1);
+  release();
+  await Promise.all([flush, concurrent]);
+  assert.equal(complete, true);
+  app.onteardown = async () => ({});
+  f.session.dispose();
+  await app.close();
+});
+
+test('a failed flush can retry without closing the editor or admitting calls after retirement', async () => {
+  const f = fixture();
+  const { app } = await f.connect();
+  let attempts = 0;
+  app.onteardown = async () => {
+    attempts++;
+    if (attempts === 1) throw new Error('Unsaved drawing');
+    return {};
+  };
+  await assert.rejects(f.session.flushResource(), /Unsaved drawing/);
+  await f.session.flushResource();
+  assert.equal(attempts, 2);
+  await app.callServerTool({ name: 'list_add', arguments: { stillOpen: true } });
+  assert.equal(f.calls.length, 1);
+  f.session.dispose();
+  await assert.rejects(f.session.flushResource(), /closed/);
+  await app.close();
+});
+
+test('native copy preparation uses an app-side MCP tool and fences a late result after retirement', async () => {
+  const f = fixture();
+  let finish!: () => void;
+  const wait = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const calls: unknown[] = [];
+  const { app } = await f.connect(async (params) => {
+    calls.push(params);
+    if (params.arguments?.slow) await wait;
+    return {
+      content: [],
+      structuredContent: { uploadId: 'copy-upload', bytes: 42, sha256: 'a'.repeat(64) },
+    };
+  });
+  const result = await f.session.callAppTool('prepare_scene_copy');
+  assert.deepEqual(result.structuredContent, {
+    uploadId: 'copy-upload',
+    bytes: 42,
+    sha256: 'a'.repeat(64),
+  });
+  assert.deepEqual(calls, [{ name: 'prepare_scene_copy', arguments: {} }]);
+  assert.deepEqual(f.calls, []);
+  const late = f.session.callAppTool('prepare_scene_copy', { slow: true });
+  await tick();
+  f.session.dispose();
+  finish();
+  await assert.rejects(late, /initialized/);
+  await assert.rejects(f.session.callAppTool('prepare_scene_copy'), /initialized/);
+  await app.close();
 });

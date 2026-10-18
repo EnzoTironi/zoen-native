@@ -93,6 +93,8 @@ async function fixture({ mode = "fullscreen", mutate, earlyContext } = {}) {
     pretendToBeVisual: true,
     virtualConsole: console,
     beforeParse(window) {
+      window.TextEncoder = TextEncoder;
+      window.TextDecoder = TextDecoder;
       window.matchMedia = () => ({
         matches: true,
         addEventListener() {},

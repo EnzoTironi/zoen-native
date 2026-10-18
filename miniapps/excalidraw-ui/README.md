@@ -1,21 +1,13 @@
-# Pinned Excalidraw MCP UI
+# Pinned Excalidraw MCP Apps renderer
 
-This subtree builds an explicitly patched Excalidraw MCP UI. It contains only the
-upstream browser sources, not a second MCP server. The live official server still
-supplies discovery, diagram creation and checkpoint tools through standard MCP.
-Its original resource identity remains separate from this presentation resource.
-
-`upstream.json` pins upstream commit `157aa23ceb1976008aadc89eb05e3444060f09d6`
-and PR #89 commit `aafc247efb8ba0689e193557749784ea80ee4996`. The downloaded
-PR diff is retained in `patches/89-buffer-initial-events.diff`. The small second
-source patch records consumption of the negotiated initial display mode and
-buffering of host-context changes before the editor React effect mounts.
-No host timers, repeated tool-input injection, HTML response rewriting or
-relaxed sandbox/storage permissions are used.
+This subtree contains the pinned upstream browser UI and explicit local patches,
+not a second MCP server. `upstream.json` records upstream commit
+`157aa23ceb1976008aadc89eb05e3444060f09d6`, PR #89 commit
+`aafc247efb8ba0689e193557749784ea80ee4996`, exact source hashes and dependency
+source pins. The original early-notification and initial-host-context patches
+remain under `patches/`. The canonical scene adapter is separate readable source.
 
 ## Build
-
-From the repository root, install the app tooling and this isolated UI lock:
 
 ```sh
 npm ci --prefix apps/zoen
@@ -25,31 +17,76 @@ node miniapps/excalidraw-ui/build.mjs --check
 npm test --prefix miniapps/excalidraw-ui
 ```
 
-The builder uses pinned esbuild and the app's pinned Oxfmt. It verifies recorded
-source hashes, bundles the upstream browser entry and official App SDK, and
-retains upstream's exact versioned React/Excalidraw/morphdom esm.sh imports.
-No server dependencies or tools are copied into the app.
+The pinned builder bundles React, Excalidraw 0.18.0, the official MCP Apps SDK
+2.0.3 and every runtime stylesheet/font/image dependency. SDK 2.0.3 preserves the
+negotiated experimental capability marker; upstream's older SDK stripped it.
+The generated HTML has no external imports or network origins and must fit the
+existing 8 MiB host verifier. `--check` compares exact output bytes and notices.
 
-Outputs are `apps/zoen/src/miniapps/vendor/excalidraw-ui.ts` (default HTML plus
-named `manifest`) and its JSON integrity manifest. The resource URI is
-`ui://zoen/excalidraw.html`. `--check` regenerates in memory and compares exact
-artifacts and third-party notices without writing. The manifest records the
-presented bytes/SHA, exact source and lock hashes, upstream/patch provenance,
-bundled dependency licenses and esm.sh-only resource policy.
+Outputs are `apps/zoen/src/miniapps/vendor/excalidraw-ui.ts` (default HTML and named
+`manifest`), its JSON integrity manifest, and the same HTML/manifest under
+`crates/roda-apps/resources/excalidraw.*`. Resource identity is
+`ui://zoen/excalidraw.html`. Provenance distinguishes this patched presentation
+from the original remote provider resource; it does not attest a vendor signature.
+
+## Canonical drawing behavior
+
+The negotiated `experimental.zoen.canonicalScene` capability selects the canonical
+editor. Its full scene contains the database serializer's elements and selected
+persistable appState plus exactly the owned BinaryFiles referenced by live images.
+Excalidraw's database serializer alone intentionally omits files. Images remain
+embedded bytes; the guest never uploads them to an external service.
+
+Standard `tools/call` uses `app_scene_read`, `app_scene_read_chunk`,
+`app_scene_begin`, `app_scene_append`, `app_scene_commit`, and `app_scene_abort`.
+UTF-8 scenes are bounded to 16 MiB, chunks to 196608 bytes, and transfer hashes are
+verified. The host binds authority/CAS/mutation receipts to its canonical item.
+Failed saves retain their exact attempt before newer edits can advance; metadata
+status uses `ui/update-model-context` without scene text or an AI message.
+
+`ui/resource-teardown` freezes the real editor, waits for its view-only callback,
+captures the latest API scene and awaits save acknowledgment. Success remains
+view-only through navigation. Host-called `resume_scene` restores editing after
+an ordinary Save Now/background flush; a prepared copy cannot be resumed that way.
+Host-called `prepare_scene_copy` drains an admitted save without retrying a failed
+CAS, stages the latest frozen scene without committing it, and retains the same
+staged result for lost-ACK retries. The native host owns visible save/retry/copy
+controls. Account privacy retirement can interrupt this in-memory guest; this
+renderer does not claim process-death recovery of unsaved browser edits.
+
+## Embedded assets and explicit exclusions
+
+`library-assets.mjs` verifies pinned Excalidraw module hashes before applying
+bounded source repairs. It embeds the standard Excalifont, Virgil, Cascadia and
+other distributed non-Xiaolai font assets. Optional Xiaolai's large CJK font
+subsets use the native `system-ui` fallback; Unicode scene strings are unchanged.
+The canonical editor has no CDN fallback or browser-local scene persistence.
+
+Public `aiEnabled=false` hides provider AI. Two pinned repairs also guard the
+manual Mermaid menu and automatic Mermaid-paste conversion, which upstream 0.18
+otherwise leaves reachable with that flag. Only that optional converter branch
+is excluded. Ordinary text/Unicode paste, vectors, images and full scenes remain.
+Canonical load/save/export menu actions requiring unavailable browser or remote
+upload authority are disabled using public `UIOptions`. Link opening is prevented;
+embeddable content is disabled. The authoritative Rust parser also rejects
+unsupported elements and external image assets.
 
 ## Verification boundary
 
-The test compiles the actual patched upstream React UI and actual official App
-SDK, then connects it to Zoen's production AppBridge. Host launch notifications
-are delivered while the Core component is still unmounted. Assertions cover the
-initial rectangle, checkpoint result, negotiated fullscreen and early context
-changes. Independent controls compile the same source with each repair removed
-and reproduce the missing editor. Only the expensive graphics library is a
-presentation fixture; React, useApp, message transport, AppBridge, buffering and
-upstream UI event handlers are real. This is not a claim of native WebKit,
-Excalidraw canvas rendering, remote checkpoint persistence or iPhone acceptance;
-those require the separate signed-app runtime journey.
+Tests execute actual React handlers and save/transport controllers with only the
+expensive drawing component substituted for lifecycle probes. They cover frozen
+copy/navigation, latest full-scene capture, ACK replay, conflicts and image bytes.
+The original initial-event tests use the real official App and production host
+AppBridge; independent repair removals reproduce lost early events.
 
-See NOTICE.md, LICENSE and THIRD-PARTY-LICENSES.txt for attribution. Updating
-upstream requires reviewing both source patches, refreshing exact source hashes,
-rebuilding, and rerunning the early-delivery controls and native acceptance.
+The optional owned Chrome test executes the full generated production renderer,
+production AppBridge and unchanged opaque sandbox/CSP. It checks real canvas boot,
+image bytes, ordinary Unicode paste, canonical save and the absence of a Mermaid
+entry. Independent menu/paste guard removals fail those same assertions. The
+library makes a caught script-evaluation probe denied by CSP; no unsafe-eval or
+network authority is granted. This headless proof does not establish iOS WebKit,
+physical device performance, native navigation or multiplayer behavior. Those
+remain separate signed-app acceptance journeys.
+
+See NOTICE.md, LICENSE and THIRD-PARTY-LICENSES.txt. Updating dependencies requires
+reviewing source repairs, refreshing pins, rebuilding and repeating these checks.

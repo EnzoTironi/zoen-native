@@ -50,6 +50,7 @@ export class ClientStore {
   private eraseCleanup: readonly (() => Promise<void>)[] | null = null;
   private readonly deviceCleanup = new Set<() => Promise<void>>();
   private readonly sessionCleanup = new Set<(discard: boolean) => Promise<void>>();
+  private readonly sessionPreflight = new Set<() => void>();
   private activityGeneration = 0;
   private stopEvents: (() => void) | undefined;
   private refreshTask: Promise<void> | undefined;
@@ -129,6 +130,23 @@ export class ClientStore {
     };
   }
 
+  /** Reject replacement before retiring any current owner; cleanup and erasure still run. */
+  registerSessionPreflight(check: () => void): () => void {
+    this.sessionPreflight.add(check);
+    return () => {
+      this.sessionPreflight.delete(check);
+    };
+  }
+
+  private checkSessionPreflight() {
+    for (const check of this.sessionPreflight) check();
+  }
+
+  /** External pushes must not blur an editor that still owns unsaved content. */
+  assertExternalNavigationAllowed() {
+    this.checkSessionPreflight();
+  }
+
   private retireSession(discard: boolean): Promise<void> | undefined {
     if (!this.sessionCleanup.size) return;
     // Stop admission synchronously, before publishing a different account.
@@ -148,7 +166,8 @@ export class ClientStore {
     return this.openSession(mode);
   }
 
-  private async openSession(mode: Mode): Promise<void> {
+  private async openSession(mode: Mode, preflight = true): Promise<void> {
+    if (preflight) this.checkSessionPreflight();
     const retirement = this.retireSession(false);
     const generation = ++this.generation;
     this.stopEvents?.();
@@ -241,6 +260,7 @@ export class ClientStore {
 
   async createAccount(name: string, handle: string, relay: string) {
     this.requireAvailableSession();
+    this.checkSessionPreflight();
     const generation = this.generation;
     try {
       const snapshot = await this.driver.createAccount(name, handle, relay);
@@ -408,7 +428,8 @@ export class ClientStore {
       this.eraseScope = null;
       this.eraseCleanup = null;
       this.publish({ erasePending: false });
-      await this.openSession('account');
+      // The confirmed erasure already discarded the old owners and must reopen empty.
+      await this.openSession('account', false);
     })();
     this.erasure = task;
     void task

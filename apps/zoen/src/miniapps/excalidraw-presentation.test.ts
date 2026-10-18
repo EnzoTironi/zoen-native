@@ -44,6 +44,12 @@ test('pinned Excalidraw renderer has truthful integrity and its own resource ide
   assert.equal(shown.sha256, createHash('sha256').update(html).digest('hex'));
   assert.equal(shown.sha256, manifest.sha256);
   assert.deepEqual(shown.permissions, {});
+  assert.deepEqual(shown.csp, {
+    connectDomains: [],
+    resourceDomains: [],
+    frameDomains: [],
+    baseUriDomains: [],
+  });
   assert.equal(upstream.sha256, 'remote-resource-sha');
   assert.equal(upstream.html, '<p>Actual remote resource</p>');
   assert.equal(upstream.resourceUri, descriptor.resourceUri);
@@ -65,16 +71,19 @@ test('presentation cannot substitute an unrelated server/resource or widen decla
   assert.throws(() =>
     excalidrawPresentation(descriptor, { ...upstream, resourceUri: 'ui://other' }),
   );
-  assert.throws(() =>
-    excalidrawPresentation(descriptor, {
-      ...upstream,
-      csp: { ...upstream.csp, connectDomains: [] },
-    }),
-  );
-  assert.throws(() =>
-    excalidrawPresentation(descriptor, {
-      ...upstream,
-      csp: { ...upstream.csp, resourceDomains: ['https://example.com'] },
-    }),
-  );
+  const offline = excalidrawPresentation(descriptor, {
+    ...upstream,
+    csp: { connectDomains: [], resourceDomains: [], frameDomains: [], baseUriDomains: [] },
+  });
+  assert.deepEqual(offline.csp, {
+    connectDomains: [],
+    resourceDomains: [],
+    frameDomains: [],
+    baseUriDomains: [],
+  });
+  const narrower = excalidrawPresentation(descriptor, {
+    ...upstream,
+    csp: { ...upstream.csp, resourceDomains: ['https://example.com'] },
+  });
+  assert.deepEqual(narrower.csp, offline.csp);
 });

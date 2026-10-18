@@ -874,17 +874,21 @@ impl<S: Signer> Client<S> {
             )?,
             Command::FileManifest { item_id, version } => {
                 let item = self.document_item(&item_id)?;
-                if item.kind != ItemKind::File {
-                    return Err("Este arquivo não contém mídia.".into());
-                }
                 let number = version.unwrap_or(item.versions.len() as u32);
                 let current = number
                     .checked_sub(1)
                     .and_then(|index| item.versions.get(index as usize))
                     .ok_or("Versão indisponível.")?;
-                let ItemContent::File(document) = &current.content else {
+                if !matches!(
+                    (item.kind, &current.content),
+                    (ItemKind::File, ItemContent::File(_)) | (ItemKind::App, ItemContent::App(_))
+                ) {
                     return Err("Esta versão não contém mídia.".into());
-                };
+                }
+                let document = current
+                    .content
+                    .owned_file()
+                    .ok_or("Esta versão não contém mídia.")?;
                 let detail = self.item_value(&item, Some(number), &mut downloads)?;
                 json!({"itemId":item.id,"version":number,"doc":document,"info":detail["file"]})
             }

@@ -14,7 +14,10 @@ function ReadyConsumer() {
           currentOwner: () => surfaceOwner(store.getSnapshot()),
           item: (id) => store.driver.request({ op: 'item', item_id: id }),
           canOpenSpace: async (id) => surfaceSpaces(store.getSnapshot()).has(id),
-          open: (path) => router.push(path as '/'),
+          open: (path) => {
+            store.assertExternalNavigationAllowed();
+            router.push(path as '/');
+          },
         });
         // Navigation is safe to replay. Transient reads and another account remain pending.
         // Known malformed/expired and stale-version requests are retired without claiming success.

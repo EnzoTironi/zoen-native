@@ -515,7 +515,7 @@ fn zoen(e: &RodaEngine) -> Persona {
 fn mcp_specs_follow_the_apps_extension() {
     let e = seeded();
     let specs = e.app_specs();
-    assert_eq!(specs.len(), 8);
+    assert_eq!(specs.len(), 9);
     for s in &specs {
         assert!(s.resource_uri.starts_with("ui://"));
         assert!(
@@ -538,13 +538,17 @@ fn mcp_specs_follow_the_apps_extension() {
                 .any(|t| t.visibility == vec!["model".to_string()]),
             "uma ferramenta para o agente criar"
         );
-        assert!(
-            s.tools
-                .iter()
-                .filter(|t| t.visibility.contains(&"app".to_string()))
-                .count()
-                >= 3
-        );
+        let app_tools = s
+            .tools
+            .iter()
+            .filter(|t| t.visibility.contains(&"app".to_string()))
+            .map(|t| t.name.as_str())
+            .collect::<Vec<_>>();
+        if s.id == "excalidraw" {
+            assert_eq!(app_tools, vec!["app_document_read", "app_document_save"]);
+        } else {
+            assert!(app_tools.len() >= 3);
+        }
     }
     assert!(e.read_app_resource("ui://outro/x".into()).is_err());
 }

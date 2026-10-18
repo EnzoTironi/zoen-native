@@ -28,8 +28,35 @@ import { authorizedNetworkHosts } from './network';
 import { frameAuthority } from './lifetime';
 import { DeviceConsent } from './device-consent';
 import { useDeviceConsent } from './use-device-consent';
+import { CanonicalDrawingView } from './canonical-view';
+import type { MiniappDocumentController } from './document-controller';
 
 export function MiniappView({
+  onDocumentController,
+  onDocumentCopied,
+  onDocumentDiscard,
+  ...props
+}: {
+  item: ItemDetail;
+  spec: AppSpecDto;
+  fill?: boolean;
+  onDocumentController?: (controller: MiniappDocumentController | null) => void;
+  onDocumentCopied?: (itemId: string) => void;
+  onDocumentDiscard?: () => void;
+}) {
+  return props.spec.id === 'excalidraw' ? (
+    <CanonicalDrawingView
+      {...props}
+      onDocumentController={onDocumentController}
+      onDocumentCopied={onDocumentCopied}
+      onDocumentDiscard={onDocumentDiscard}
+    />
+  ) : (
+    <BuiltinMiniappView {...props} />
+  );
+}
+
+function BuiltinMiniappView({
   item,
   spec,
   fill = false,

@@ -10,6 +10,7 @@ import {
 import { AppState, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useClient } from '../core/provider';
+import { useDialogs } from '../components/dialogs';
 import { PushCoordinator } from './coordinator';
 import { validLocalNotification } from './links';
 import { decodeWake } from './wake';
@@ -31,6 +32,7 @@ const Context = createContext<PushCoordinator | null>(null);
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { store, snapshot, mode } = useClient();
+  const dialogs = useDialogs();
   const deviceId = mode === 'account' ? (snapshot?.account?.device_id ?? null) : null;
   const jobs = useMemo(() => (deviceId ? new NotificationJobs() : null), [deviceId]);
   const coordinator = useMemo(
@@ -106,7 +108,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       },
       (data) => {
         const chat = canOpen(data);
-        if (chat) router.push({ pathname: '/chat/[id]', params: { id: chat.id } });
+        if (!chat) return;
+        try {
+          store.assertExternalNavigationAllowed();
+        } catch {
+          void dialogs.inform(t('drawing.pending'), t('drawing.closeFirst')).catch(() => {});
+          return;
+        }
+        router.push({ pathname: '/chat/[id]', params: { id: chat.id } });
       },
     );
     let before = store.getSnapshot().snapshot;
@@ -146,7 +155,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           .then(() => clearDeviceNotifications(deviceId))
           .catch(() => {});
     };
-  }, [store, deviceId, coordinator, jobs]);
+  }, [store, deviceId, coordinator, jobs, dialogs]);
   return <Context value={coordinator}>{children}</Context>;
 }
 

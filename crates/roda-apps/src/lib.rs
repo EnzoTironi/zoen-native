@@ -109,6 +109,19 @@ pub fn specs() -> Vec<AppSpec> {
     use ActionClass::*;
     vec![
         AppSpec {
+            id: "excalidraw",
+            name: "Excalidraw",
+            description: ts("Desenho compartilhado e criptografado do grupo.", "The group's shared encrypted drawing."),
+            resource_uri: "ui://zoen/excalidraw.html",
+            html: Some(include_str!("../resources/excalidraw.html")),
+            manifest: Some(include_str!("../resources/excalidraw.manifest.json")),
+            tools: vec![
+                tool("create_excalidraw", ts("Criar desenho", "Create drawing"), ts("Cria um desenho neste Espaço.", "Creates a drawing in this Space."), json!({"type":"object","properties":{"title":{"type":"string","maxLength":160}},"additionalProperties":false}), &["model"], Reversible, false),
+                tool("app_document_read", ts("Ler desenho", "Read drawing"), ts("Lê o documento deste item.", "Reads this item's document."), empty(), &["app"], Reversible, true),
+                tool("app_document_save", ts("Salvar desenho", "Save drawing"), ts("Salva uma versão observada deste item.", "Saves an observed version of this item."), empty(), &["app"], Reversible, false),
+            ],
+        },
+        AppSpec {
             id: "pet",
             name: ts("Jumento do grupo", "Group donkey"),
             description: ts("Um jumento em pixel art que mora no grupo: comer, cochilar, brincar e a Corrida do Jumento, com placar do grupo. Todo mundo vê o mesmo bicho e quem fez o quê.", "A pixel-art donkey that lives in the group: eat, nap, play and Donkey Dash, with a group leaderboard. Everyone sees the same pet and who did what."),
@@ -437,6 +450,28 @@ fn push_log(state: &mut Value, who: &str, what: &str, now: i64) {
 
 pub fn create(app: &str, args: &Value, actor: &str, now: i64) -> Result<(String, Value), String> {
     match app {
+        "excalidraw" => {
+            let title = args
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or(ts("Desenho", "Drawing"))
+                .trim();
+            if args.get("title").is_some_and(|v| !v.is_string())
+                || title.is_empty()
+                || title.len() > 640
+                || title.chars().count() > 160
+                || title.contains('\0')
+                || args
+                    .as_object()
+                    .is_none_or(|o| o.keys().any(|k| k != "title"))
+            {
+                return Err(t("título de desenho inválido", "invalid drawing title"));
+            }
+            Ok((
+                title.into(),
+                json!({"title":title,"elementCount":0,"textCount":0}),
+            ))
+        }
         "pet" => {
             let name = s(args, "name")
                 .map(|n| n.chars().take(18).collect())
@@ -722,6 +757,14 @@ fn pet_mood(v: &Value) -> &'static str {
 pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64)>) {
     let v = view(app, state, now);
     match app {
+        "excalidraw" => (
+            tr!(
+                "{} elementos",
+                "{} elements",
+                state["elementCount"].as_u64().unwrap_or(0)
+            ),
+            vec![],
+        ),
         "pet" => (
             format!(
                 "{} · {}",
@@ -905,6 +948,9 @@ pub fn snapshot(app: &str, state: &Value, item_id: &str, now: i64) -> Option<Val
     let v = view(app, state, now);
     let link = format!("zoen://app/{item_id}");
     let snap = match app {
+        "excalidraw" => {
+            json!({"template":"caption","title":state["title"],"eyebrow":"Excalidraw","detail":headline(app,state,now).0,"accentHex":"#6965DB","symbol":"pencil.and.outline","art":"drawing"})
+        }
         "pet" => {
             let asleep = v["asleep"].as_bool().unwrap_or(false);
             let gone = v["released"].as_bool().unwrap_or(false);

@@ -83,7 +83,7 @@ fn snapshot_json(app: &str, state: &Value, item: &str, now: i64) -> Option<Strin
 }
 
 impl Engine {
-    fn native_surface_owner(&self, identity: &str, device: &str) -> R<()> {
+    pub(crate) fn native_surface_owner(&self, identity: &str, device: &str) -> R<()> {
         let account = self.net.account.as_ref().ok_or_else(forbidden)?;
         let author = self.net.author.as_ref().ok_or_else(forbidden)?;
         if account.identity != identity

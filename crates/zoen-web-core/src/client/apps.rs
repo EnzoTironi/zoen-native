@@ -106,6 +106,7 @@ impl<S: Signer> Client<S> {
                 json!({"uri":uri,"mime_type":apps::MIME,"text":html,"prefers_border":false,"manifest_json":spec.manifest.unwrap_or("")})
             }
             Command::InstallApp{space_id,app_id,args_json}=>{
+                if app_id=="excalidraw" { return Err(roda_i18n::t("Este desenho precisa do host nativo de documentos.","This drawing requires the native document host.")); }
                 let spec=apps::spec(&app_id).ok_or("Mini-app desconhecido.")?;
                 let args:Value=serde_json::from_str(&args_json).map_err(error)?;
                 if !args.is_object(){return Err("Argumentos inválidos.".into())}
@@ -114,7 +115,7 @@ impl<S: Signer> Client<S> {
                 let (title,state)=apps::create_as(spec.id,&args,&actor,now)?;
                 let item=browser_id("it", now);
                 self.queue_domain_batch(&space_id,vec![
-                    EventBody::ItemCreated{item:item.clone(),kind:ItemKind::App,content:ItemContent::App(AppDoc{app:app_id,resource_uri:spec.resource_uri.into(),title,state_json:state.to_string()}),origin:"Instalado por você".into()},
+                    EventBody::ItemCreated{item:item.clone(),kind:ItemKind::App,content:ItemContent::App(AppDoc{document:None,app:app_id,resource_uri:spec.resource_uri.into(),title,state_json:state.to_string()}),origin:"Instalado por você".into()},
                     EventBody::GrantIssued{grant:Grant{id:browser_id("gr", now),grantor:self.account.identity.clone(),grantee:Some(format!("app:{item}")),scope:GrantScope::Item(item.clone()),capability:Capability::Trust(TrustLevel::Act),expires_at_ms:None}},
                     EventBody::MessagePosted{message:roda_types::new_secret_id("msg"),text:"Mini-app adicionado a este Espaço.".into(),attaches:Some(item.clone()),reply:None,forwarded:false},
                 ],now)?;
@@ -154,6 +155,12 @@ impl<S: Signer> Client<S> {
         let ItemContent::App(document) = &item.current().content else {
             return Err("Este arquivo não é um mini-app.".into());
         };
+        if document.app == "excalidraw" {
+            return Err(roda_i18n::t(
+                "Este desenho precisa do host nativo de documentos.",
+                "This drawing requires the native document host.",
+            ));
+        }
         let spec = apps::spec(&document.app).ok_or("Mini-app desconhecido.")?;
         let tool = spec
             .tools

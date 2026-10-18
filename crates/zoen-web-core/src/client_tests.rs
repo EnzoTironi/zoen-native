@@ -1910,3 +1910,77 @@ fn browser_task_checkbox_draft_survives_reread_and_cold_journal_restore() {
         published_markdown
     );
 }
+
+#[test]
+fn received_app_owned_documents_keep_manifest_history_without_becoming_file_cards() {
+    let (mut client, author, mut log) = document_fixture();
+    let bytes = br#"{"type":"excalidraw","version":2,"elements":[],"appState":{},"files":{}}"#;
+    let sealed = crate::media::seal_file(
+        "drawing.excalidraw",
+        "application/vnd.excalidraw+json",
+        bytes,
+        None,
+    )
+    .unwrap();
+    let document = roda_types::AppDoc {
+        app: "excalidraw".into(),
+        resource_uri: "ui://zoen/excalidraw.html".into(),
+        title: "Drawing".into(),
+        state_json: r#"{"title":"Drawing","elementCount":0,"textCount":0}"#.into(),
+        document: Some(sealed.doc.clone()),
+    };
+    let created = clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: "it_drawing".into(),
+            kind: roda_types::ItemKind::App,
+            content: roda_types::ItemContent::App(document),
+            origin: "Created".into(),
+        },
+        10,
+    );
+    client.receive(&created, 11).unwrap();
+    let posted = clear(
+        &mut log,
+        &author,
+        EventBody::MessagePosted {
+            message: "msg_drawing".into(),
+            text: "Drawing".into(),
+            attaches: Some("it_drawing".into()),
+            reply: None,
+            forwarded: false,
+        },
+        12,
+    );
+    client.receive(&posted, 13).unwrap();
+    let response = doc(
+        &mut client,
+        serde_json::json!({"op":"file_manifest","item_id":"it_drawing","version":1}),
+        14,
+    );
+    assert_eq!(
+        response.result["doc"],
+        serde_json::to_value(&sealed.doc).unwrap()
+    );
+    let conversation = client.conversations();
+    let message = conversation[0].messages.last().unwrap();
+    assert!(message.file.is_none());
+    assert_eq!(
+        message.card.as_ref().unwrap()["app"]["app_id"],
+        "excalidraw"
+    );
+    let snapshot = client.update(Vec::new()).unwrap().snapshot;
+    let mut restored =
+        Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
+    let history = doc(
+        &mut restored,
+        serde_json::json!({"op":"file_manifest","item_id":"it_drawing","version":1}),
+        15,
+    );
+    assert_eq!(history.result["doc"], response.result["doc"]);
+    let before = restored.saved.outbox.len();
+    assert!(restored.app_request(&serde_json::json!({"op":"install_app","space_id":log.space(),"app_id":"excalidraw","args_json":"{}"}).to_string(),16,"en").is_err());
+    assert!(restored.app_request(&serde_json::json!({"op":"app_call_tool","item_id":"it_drawing","tool":"app_document_read","args_json":"{}","confirmed":false}).to_string(),17,"en").is_err());
+    assert_eq!(restored.saved.outbox.len(), before);
+}

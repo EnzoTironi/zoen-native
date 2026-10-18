@@ -1,6 +1,6 @@
 import { t } from '../i18n/index.ts';
-import { useState } from 'react';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { Stack, router, useLocalSearchParams, usePreventRemove } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollView, Text, View } from 'react-native';
@@ -16,6 +16,7 @@ import { MiniappSurfaceControls } from '../native-surfaces/controls';
 import { useHome } from '../home/provider';
 import { HomeCardMenu } from '../home/menus';
 import { useConversationCards } from './conversation-provider';
+import type { MiniappDocumentController } from './document-controller';
 
 export function MiniappScreen({ manage = false }: { manage?: boolean }) {
   const headerHeight = useHeaderHeight();
@@ -30,6 +31,55 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [document, setDocument] = useState<MiniappDocumentController | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const navigating = useRef(false);
+  const registerDocument = useCallback((controller: MiniappDocumentController | null) => {
+    setDocument(controller);
+    if (controller) setLeaving(false);
+  }, []);
+  const disablePrevention = usePreventRemove(!!document && !leaving, ({ repeat }) => {
+    if (!document || navigating.current) return;
+    navigating.current = true;
+    void document
+      .flush({ retire: true })
+      .then(() => {
+        setLeaving(true);
+        repeat();
+      })
+      .catch(() => setError(t('drawing.closeFailed')))
+      .finally(() => {
+        navigating.current = false;
+      });
+  });
+  const openCopy = useCallback(
+    (itemId: string) => {
+      setLeaving(true);
+      disablePrevention();
+      router.replace({ pathname: '/miniapp/[id]', params: { id: itemId } });
+    },
+    [disablePrevention],
+  );
+  const discardDocument = useCallback(() => {
+    if (navigating.current) return;
+    navigating.current = true;
+    void dialogs
+      .confirm({
+        title: t('drawing.discard'),
+        message: t('drawing.discardDetails'),
+        confirmLabel: t('miniapps.discard'),
+        destructive: true,
+      })
+      .then((accepted) => {
+        if (!accepted) return;
+        setLeaving(true);
+        disablePrevention();
+        router.back();
+      })
+      .finally(() => {
+        navigating.current = false;
+      });
+  }, [dialogs, disablePrevention]);
   const item = read.data;
   const cards = useConversationCards(item?.space_id ?? '');
   const app = item?.app;
@@ -49,7 +99,25 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       />
     );
   const spec = specs.data?.find((spec) => spec.id === app.app_id);
-  const tools = spec?.tools.filter((tool) => tool.visibility.includes('app')) ?? [];
+  const tools =
+    spec?.tools.filter(
+      (tool) =>
+        tool.visibility.includes('app') &&
+        !(spec.id === 'excalidraw' && tool.name.startsWith('app_document_')),
+    ) ?? [];
+  function openDetails() {
+    if (navigating.current) return;
+    navigating.current = true;
+    void (async () => {
+      await document?.flush({ retire: true });
+      setError(null);
+      router.push({ pathname: '/miniapp/[id]/manage', params: { id } });
+    })()
+      .catch(() => setError(t('drawing.closeFailed')))
+      .finally(() => {
+        navigating.current = false;
+      });
+  }
   function call(tool: string, args: Record<string, unknown>) {
     if (busy) return;
     setBusy(true);
@@ -80,7 +148,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
               secondary
               testID="miniapp-open-details"
               label={t('common.details')}
-              onPress={() => router.push({ pathname: '/miniapp/[id]/manage', params: { id } })}
+              onPress={openDetails}
             />
           ) : process.env.EXPO_OS === 'ios' ? (
             <HomeCardMenu
@@ -140,12 +208,19 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
         }}
       >
         {navigation}
-        {error || read.error || specs.error ? (
+        {(error && spec.id !== 'excalidraw') || read.error || specs.error ? (
           <Text accessibilityRole="alert" selectable style={{ color: colors.danger, padding: 16 }}>
             {error ?? read.error ?? specs.error}
           </Text>
         ) : null}
-        <MiniappView item={item} spec={spec} fill />
+        <MiniappView
+          item={item}
+          spec={spec}
+          fill
+          onDocumentController={registerDocument}
+          onDocumentCopied={openCopy}
+          onDocumentDiscard={discardDocument}
+        />
       </View>
     );
   }
@@ -183,48 +258,59 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       ) : null}
       {!manage ? (
         spec?.has_view ? (
-          <MiniappView item={item} spec={spec} />
+          <MiniappView
+            item={item}
+            spec={spec}
+            onDocumentController={registerDocument}
+            onDocumentCopied={openCopy}
+            onDocumentDiscard={discardDocument}
+          />
         ) : (
           <MiniappState app={app} busy={busy} onCall={call} />
         )
       ) : null}
       <MiniappSurfaceControls item={item} />
-      <Surface>
-        <Text
-          accessibilityRole="header"
-          style={{ color: colors.text, fontSize: 20, fontWeight: '600' }}
-        >
-          {t('miniapps.actions')}
-        </Text>
-        <Text style={{ color: colors.secondary, lineHeight: 22 }}>
-          {t('miniapps.theCoreChecksEachActionAndAsksFor')}
-        </Text>
-        <View style={{ gap: 12 }}>
-          {tools
-            .filter((tool) => !tool.read_only)
-            .map((tool) => (
-              <View key={tool.name} style={{ gap: 6, paddingVertical: 8 }}>
-                <Text style={{ color: colors.secondary, fontSize: 14, lineHeight: 21 }}>
-                  {tool.description}
-                </Text>
-                <NativeButton
-                  secondary
-                  label={tool.title}
-                  disabled={busy}
-                  onPress={() =>
-                    router.push({ pathname: '/miniapp/[id]/tool', params: { id, tool: tool.name } })
-                  }
-                />
-              </View>
-            ))}
-        </View>
-        <NativeButton
-          secondary
-          label={t('miniapps.refreshState')}
-          disabled={busy}
-          onPress={read.retry}
-        />
-      </Surface>
+      {tools.some((tool) => !tool.read_only) ? (
+        <Surface>
+          <Text
+            accessibilityRole="header"
+            style={{ color: colors.text, fontSize: 20, fontWeight: '600' }}
+          >
+            {t('miniapps.actions')}
+          </Text>
+          <Text style={{ color: colors.secondary, lineHeight: 22 }}>
+            {t('miniapps.theCoreChecksEachActionAndAsksFor')}
+          </Text>
+          <View style={{ gap: 12 }}>
+            {tools
+              .filter((tool) => !tool.read_only)
+              .map((tool) => (
+                <View key={tool.name} style={{ gap: 6, paddingVertical: 8 }}>
+                  <Text style={{ color: colors.secondary, fontSize: 14, lineHeight: 21 }}>
+                    {tool.description}
+                  </Text>
+                  <NativeButton
+                    secondary
+                    label={tool.title}
+                    disabled={busy}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/miniapp/[id]/tool',
+                        params: { id, tool: tool.name },
+                      })
+                    }
+                  />
+                </View>
+              ))}
+          </View>
+          <NativeButton
+            secondary
+            label={t('miniapps.refreshState')}
+            disabled={busy}
+            onPress={read.retry}
+          />
+        </Surface>
+      ) : null}
       <NativeButton
         secondary
         label={t('miniapps.thisMiniappSPermissions')}

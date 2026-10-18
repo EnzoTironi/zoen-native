@@ -331,6 +331,21 @@ enum Command {
         extra_cents: String,
     },
     AppSpecs {},
+    AppDocumentRead {
+        item_id: String,
+    },
+    AppDocumentCopy {
+        item_id: String,
+        scene_json: String,
+        mutation_id: String,
+    },
+    AppDocumentSave {
+        item_id: String,
+        expected_version: u32,
+        expected_sha256: String,
+        scene_json: String,
+        mutation_id: String,
+    },
     InstallApp {
         space_id: String,
         app_id: String,
@@ -468,6 +483,7 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::SearchHit::export_all(&config)?;
     crate::MessageSearchPage::export_all(&config)?;
     crate::AppSpecDto::export_all(&config)?;
+    crate::AppDocumentDto::export_all(&config)?;
     crate::AppCallOutcome::export_all(&config)?;
     crate::AppResourceDto::export_all(&config)?;
     crate::DeviceGrantDto::export_all(&config)?;
@@ -505,20 +521,37 @@ fn encode(value: &impl Serialize) -> Result<String, CoreError> {
 }
 
 fn decode(request: &str) -> Result<Command, CoreError> {
-    // Draft commands carry owner and CAS fields in addition to the unchanged
-    // send envelope. Keep the old ceiling for every existing operation.
-    if request.len() > MAX_REQUEST_BYTES + 8 * 1024 {
+    // Only document writes carry a bounded full scene. Inspect their borrowed op
+    // before allocating a large command; every existing operation keeps its ceiling.
+    if request.len() > crate::app_documents::MAX_SCENE_BYTES * 6 + 8 * 1024 {
         return Err(invalid("Application request is too large."));
+    }
+    if request.len() > MAX_REQUEST_BYTES + 8 * 1024 {
+        #[derive(serde::Deserialize)]
+        struct Envelope<'a> {
+            #[serde(borrow)]
+            op: &'a str,
+        }
+        let envelope: Envelope<'_> =
+            serde_json::from_str(request).map_err(|_| invalid("Invalid application command."))?;
+        if !matches!(envelope.op, "app_document_save" | "app_document_copy") {
+            return Err(invalid("Application request is too large."));
+        }
     }
     let command: Command =
         serde_json::from_str(request).map_err(|_| invalid("Invalid application command."))?;
     if request.len() > MAX_REQUEST_BYTES
         && !matches!(
             command,
-            Command::MessageDraft { .. }
-                | Command::SaveMessageDraft { .. }
-                | Command::SendMessageDraft { .. }
+            Command::AppDocumentSave { .. } | Command::AppDocumentCopy { .. }
         )
+        && !(request.len() <= MAX_REQUEST_BYTES + 8 * 1024
+            && matches!(
+                command,
+                Command::MessageDraft { .. }
+                    | Command::SaveMessageDraft { .. }
+                    | Command::SendMessageDraft { .. }
+            ))
     {
         return Err(invalid("Application request is too large."));
     }
@@ -886,6 +919,25 @@ impl RodaEngine {
                 extra_cents,
             } => encode(&self.raise_budget(agent_id, cents(extra_cents)?)?),
             AppSpecs {} => encode(&self.app_specs()),
+            AppDocumentRead { item_id } => encode(&self.app_document_read(item_id)?),
+            AppDocumentCopy {
+                item_id,
+                scene_json,
+                mutation_id,
+            } => encode(&self.app_document_copy(item_id, scene_json, mutation_id)?),
+            AppDocumentSave {
+                item_id,
+                expected_version,
+                expected_sha256,
+                scene_json,
+                mutation_id,
+            } => encode(&self.app_document_save(
+                item_id,
+                expected_version,
+                expected_sha256,
+                scene_json,
+                mutation_id,
+            )?),
             InstallApp {
                 space_id,
                 app_id,

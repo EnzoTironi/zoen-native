@@ -363,6 +363,15 @@ impl FileDoc {
 }
 
 impl ItemContent {
+    /// A file or a typed document owned by an app; never a foreign Item reference.
+    pub fn owned_file(&self) -> Option<&FileDoc> {
+        match self {
+            Self::File(file) => Some(file),
+            Self::App(app) => app.document.as_ref(),
+            _ => None,
+        }
+    }
+
     pub fn title(&self) -> String {
         match self {
             ItemContent::Text { text } => text.lines().next().unwrap_or_default().to_string(),
@@ -386,6 +395,9 @@ pub struct AppDoc {
     pub title: String,
     /// Estado em JSON canônico (o servidor do mini-app define o formato).
     pub state_json: String,
+    /// Optional owned document. Its encrypted chunks share this App Item's history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document: Option<FileDoc>,
 }
 
 // ───────────────────────────── Concessão ─────────────────────────────

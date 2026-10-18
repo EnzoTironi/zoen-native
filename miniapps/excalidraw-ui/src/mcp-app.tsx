@@ -1,3 +1,4 @@
+import { CanonicalExcalidrawApp, canonicalSceneMarker } from './canonical-app';
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { App } from "@modelcontextprotocol/ext-apps";
 import {  Excalidraw, exportToSvg, convertToExcalidrawElements, restore, CaptureUpdateAction, FONT_FAMILY, serializeAsJSON, MainMenu } from "@excalidraw/excalidraw";
@@ -943,6 +944,7 @@ export function ExcalidrawAppCore({ app }: { app: App }) {
         }}>
           <Excalidraw
             excalidrawAPI={(api) => { setExcalidrawApi(api); fsLog(`excalidrawAPI set`); }}
+            aiEnabled={false}
             initialData={{ elements: elements as any, scrollToContent: true }}
             theme="light"
             onChange={(els) => onEditorChange(app, els)}
@@ -1044,11 +1046,12 @@ export function ExcalidrawAppCore({ app }: { app: App }) {
 export function ExcalidrawApp() {
   const { app, error } = useApp({
     appInfo: { name: "Excalidraw", version: "1.0.0" },
-    capabilities: {},
+    capabilities: { tools: {} },
     onAppCreated: bufferInitialToolEvents,
   });
 
   if (error) return <div className="error">ERROR: {error.message}</div>;
   if (!app) return <div className="loading">Connecting...</div>;
-  return <ExcalidrawAppCore app={app} />;
+  const canonical = canonicalSceneMarker(app);
+  return canonical ? <CanonicalExcalidrawApp app={app} itemId={canonical.itemId} /> : <ExcalidrawAppCore app={app} />;
 }

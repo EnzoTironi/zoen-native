@@ -811,6 +811,7 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             item: trip.clone(),
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
+                document: None,
                 app: "countdown".into(),
                 resource_uri: "ui://roda/countdown".into(),
                 title: trip_title.clone(),
@@ -1052,6 +1053,7 @@ fn seed_turma_apps(
             item: hike.clone(),
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
+                document: None,
                 app: "hike".into(),
                 resource_uri: "ui://roda/hike".into(),
                 title: hike_title.clone(),
@@ -1154,6 +1156,7 @@ fn seed_turma_apps(
             item: pet.clone(),
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
+                document: None,
                 app: "pet".into(),
                 resource_uri: "ui://roda/pet".into(),
                 title: pet_name.clone(),
@@ -1219,6 +1222,7 @@ fn seed_turma_apps(
             item: maptap.clone(),
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
+                document: None,
                 app: "maptap".into(),
                 resource_uri: "ui://roda/maptap".into(),
                 title: map_title,
@@ -1308,6 +1312,7 @@ fn seed_coastal_hike(
             item: hike.clone(),
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
+                document: None,
                 app: "hike".into(),
                 resource_uri: "ui://roda/hike".into(),
                 title: hike_title.clone(),

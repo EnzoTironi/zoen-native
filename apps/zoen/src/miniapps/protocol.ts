@@ -47,6 +47,7 @@ export class MiniappSession {
   private initialized = false;
   private handshake = false;
   private inputSent = false;
+  private flush: Promise<void> | null = null;
   private pending = new Map<string, { method: string; finish: () => void }>();
   private readonly host: HostOptions;
   private readonly bridge: AppBridge;
@@ -222,6 +223,35 @@ export class MiniappSession {
   syncContext() {
     if (!this.active || !this.initialized) return;
     this.bridge.setHostContext(McpUiHostContextSchema.parse(this.host.context()));
+  }
+
+  get ready() {
+    return this.active && this.initialized;
+  }
+
+  /** Native UI may request a declared app-side tool without routing through a model. */
+  async callAppTool(name: string, args: Params = {}) {
+    this.check();
+    const result = await this.bridge.callTool({ name, arguments: args }, { timeout: 20_000 });
+    this.check();
+    return result;
+  }
+
+  /** Keep tool authority alive until the app acknowledges its last pending edit. */
+  flushResource(timeout = 20_000): Promise<void> {
+    if (!this.active) return Promise.reject(new Error(t('miniapps.thisInterfaceHasClosed')));
+    if (!this.initialized) return Promise.resolve();
+    if (this.flush) return this.flush;
+    const pending = this.bridge.teardownResource({}, { timeout }).then(() => {
+      if (!this.active) throw new Error(t('miniapps.thisInterfaceHasClosed'));
+    });
+    this.flush = pending;
+    void pending
+      .finally(() => {
+        if (this.flush === pending) this.flush = null;
+      })
+      .catch(() => {});
+    return pending;
   }
 
   dispose() {

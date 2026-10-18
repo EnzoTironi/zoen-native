@@ -10,6 +10,8 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 mod agent_notes;
+mod app_documents;
+pub use app_documents::AppDocumentDto;
 mod api;
 mod backup;
 mod backup_api;

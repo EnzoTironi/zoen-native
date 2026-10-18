@@ -1,10 +1,10 @@
-/* Load Excalidraw component CSS from CDN (avoids inlining ~200KB) */
-@import url("https://esm.sh/@excalidraw/excalidraw@0.18.0/dist/prod/index.css");
+/* Component styles and fonts are embedded by the pinned local builder. */
+@import "@excalidraw/excalidraw/index.css";
 
-/* Load Excalidraw's hand-drawn font from CDN (Excalifont = v0.18 default) */
+/* Excalifont is the pinned v0.18 default; no runtime font downloads. */
 @font-face {
   font-family: "Excalifont";
-  src: url("https://esm.sh/@excalidraw/excalidraw@0.18.0/dist/prod/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2") format("woff2");
+  src: url("../node_modules/@excalidraw/excalidraw/dist/prod/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2") format("woff2");
   font-display: swap;
 }
 
@@ -13,19 +13,19 @@
    recalculation pass that corrupts text dimensions on first open. */
 @font-face {
   font-family: "Assistant";
-  src: url("https://esm.sh/@excalidraw/excalidraw@0.18.0/dist/prod/fonts/Assistant/Assistant-Regular.woff2") format("woff2");
+  src: url("../node_modules/@excalidraw/excalidraw/dist/prod/fonts/Assistant/Assistant-Regular.woff2") format("woff2");
   font-weight: 400;
   font-display: swap;
 }
 @font-face {
   font-family: "Assistant";
-  src: url("https://esm.sh/@excalidraw/excalidraw@0.18.0/dist/prod/fonts/Assistant/Assistant-Medium.woff2") format("woff2");
+  src: url("../node_modules/@excalidraw/excalidraw/dist/prod/fonts/Assistant/Assistant-Medium.woff2") format("woff2");
   font-weight: 500;
   font-display: swap;
 }
 @font-face {
   font-family: "Assistant";
-  src: url("https://esm.sh/@excalidraw/excalidraw@0.18.0/dist/prod/fonts/Assistant/Assistant-Bold.woff2") format("woff2");
+  src: url("../node_modules/@excalidraw/excalidraw/dist/prod/fonts/Assistant/Assistant-Bold.woff2") format("woff2");
   font-weight: 700;
   font-display: swap;
 }
@@ -321,3 +321,7 @@ body {
   padding: 1rem;
   color: #dc2626;
 }
+
+.canonical-app{height:100dvh;display:flex;flex-direction:column;overflow:hidden}.canonical-canvas{flex:1;min-height:0}.canonical-loading{padding:24px;display:flex;gap:12px;align-items:center;font:16px system-ui,sans-serif}
+
+.canonical-screen-reader-status{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

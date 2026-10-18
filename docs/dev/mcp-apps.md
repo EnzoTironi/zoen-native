@@ -58,6 +58,53 @@ calls, checkpoint ownership and saving continue through the same live official
 Excalidraw MCP connection. The generic host has no timing workaround or launch
 data replay on layout changes.
 
+## Drawings owned by a Zoen chat
+
+The native catalog creates an Excalidraw App Item in the selected Space. The same
+compact Rust projection supplies its chat and Home cards. The scene belongs to
+that Item's version history; its full JSON, application state and embedded image
+bytes use the existing encrypted, content-defined file chunks. The App envelope
+contains the owned file manifest and small counts, without putting the scene or
+encryption keys in `view_json` or a card snapshot.
+
+The bundled editor uses the official MCP Apps bridge with an item-bound
+`canonicalScene` capability. Six `app_scene_*` tools transfer a maximum 16 MiB
+scene in 192 KiB chunks. The host checks the exact Item, order, UTF-8, size and
+SHA before admitting a typed `app_document_save`. Rust independently validates
+the scene and images, current membership/writer authority, app grant and observed
+version/SHA. A checked save atomically publishes the owned chunks and one App
+version. Its bounded durable receipts let a lost acknowledgment retry the exact
+mutation; they do not adopt an unrelated newer scene as the editor's base.
+
+The renderer captures all three Excalidraw `onChange` arguments. It retains the
+unacknowledged attempt and newer edits, serializes writes, and reports only small
+save-state metadata through `ui/update-model-context`. Back and Details freeze
+editing and await the final acknowledged flush before retiring the frame.
+Ordinary Save resumes editing. Failed saves leave the drawing open. An explicit
+native Save Copy asks the app-side `prepare_scene_copy` tool for the current
+canvas, verifies the staged chunks, and creates one new App Item/card atomically.
+The original Item remains intact. An ambiguous copy retries the same mutation
+with editing paused. Account replacement and external navigation cannot bypass
+the active editor; owner retirement and explicit device erasure still fence its
+authority immediately.
+
+The canonical resource is self-contained and has no connection origins. Canvas
+editing, images and bundled normal fonts do not need a CDN or a public provider
+checkpoint. Native system fonts cover the optional CJK fallback. The unused
+provider AI/Mermaid path is disabled through the public AI policy with two
+explicit pinned library guards; provenance and bundled licenses record that
+change. Provider export and unsupported browser file actions are absent from
+this native editor. This is not a claim of every Excalidraw feature or platform
+being accepted.
+
+The older browser core retains received App-owned document manifests but rejects
+creation and generic execution of this drawing until its typed document host is
+implemented. The iPhone implementation's current source tests cover exact scene
+and image bytes, cold reopen, stale saves, lost acknowledgments, copy rollback,
+cross-chat fresh keys and current/historical blob demand. A new signed native
+walkthrough is pending; the v87 proof below remains evidence for the separate
+remote-provider viewer.
+
 ## Current remote-session authority
 
 The registry currently allows only `https://mcp.excalidraw.com/mcp`. Redirects,
@@ -165,6 +212,9 @@ publication needs an explicit product action and validated projection.
   [native parent transport](../../apps/zoen/src/miniapps/host-transport.ts),
   [remote CSP](../../apps/zoen/src/miniapps/remote-sandbox.ts)
 - [Canonical native-surface batch](../../crates/roda-ffi/src/native_surfaces.rs)
+- [Canonical encrypted drawing documents](../../crates/roda-ffi/src/app_documents.rs),
+  [bounded scene transfer](../../apps/zoen/src/miniapps/canonical-scene.ts),
+  [native drawing host](../../apps/zoen/src/miniapps/canonical-view.tsx)
 
 Adding another provider requires endpoint and authorization policy, real
 descriptor/resource discovery, supported CSP and permission handling, tool grants,

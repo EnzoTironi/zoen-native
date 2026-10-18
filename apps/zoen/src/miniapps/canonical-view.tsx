@@ -1,0 +1,517 @@
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { AppState, Linking, Text, View } from 'react-native';
+import * as Crypto from 'expo-crypto';
+import { locale, t } from '../i18n/index.ts';
+import type { ItemDetail } from '../core/types';
+import type { AppSpecDto } from '../core/generated/AppSpecDto';
+import type { AppResourceDto } from '../core/generated/AppResourceDto';
+import { useClient } from '../core/provider';
+import { Loading, NativeButton, Surface } from '../components/primitives';
+import { useDialogs } from '../components/dialogs';
+import { useTheme } from '../theme';
+import {
+  CanonicalSceneHost,
+  type CanonicalSceneDoc,
+  type CanonicalScenePhase,
+} from './canonical-scene';
+import type { MiniappDocumentController } from './document-controller';
+import { MiniappFrame } from './frame';
+import type { MiniappFrameHandle } from './frame-types';
+import { frameAuthority } from './lifetime';
+import { MiniappSession } from './protocol';
+import { canonicalCopy } from './canonical-copy';
+import { safeMiniappLink, sandboxHtml, verifyMiniappResource } from './sandbox';
+
+type Props = {
+  item: ItemDetail;
+  spec: AppSpecDto;
+  fill?: boolean;
+  onDocumentController?: (controller: MiniappDocumentController | null) => void;
+  onDocumentCopied?: (itemId: string) => void;
+  onDocumentDiscard?: () => void;
+};
+const tools = new Set([
+  'app_scene_read',
+  'app_scene_read_chunk',
+  'app_scene_begin',
+  'app_scene_append',
+  'app_scene_commit',
+  'app_scene_abort',
+]);
+
+/** A newly focused document receives a new authority, even if its route stays mounted. */
+export function CanonicalDrawingView(props: Props) {
+  const [focus, setFocus] = useState({ active: false, epoch: 0 });
+  const close = useRef<(() => void) | null>(null);
+  const registerClose = useCallback((end: (() => void) | null) => {
+    close.current = end;
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      setFocus((current) => ({ active: true, epoch: current.epoch + 1 }));
+      return () => {
+        close.current?.();
+        setFocus((current) => ({ ...current, active: false }));
+      };
+    }, []),
+  );
+  return focus.active ? (
+    <FocusedDrawing key={focus.epoch} {...props} registerClose={registerClose} />
+  ) : null;
+}
+
+function FocusedDrawing({
+  item,
+  spec,
+  fill = false,
+  onDocumentController,
+  onDocumentCopied,
+  onDocumentDiscard,
+  registerClose,
+}: Props & { registerClose: (end: (() => void) | null) => void }) {
+  const { store } = useClient();
+  const { colors } = useTheme();
+  const epoch = useRef(store.sessionEpoch).current;
+  const owner = useRef(
+    (() => {
+      const state = store.getSnapshot();
+      return `${state.mode}:${state.snapshot?.account?.identity_id ?? state.snapshot?.me?.id ?? ''}:${state.snapshot?.account?.device_id ?? ''}`;
+    })(),
+  ).current;
+  const [attempt, retry] = useState(0);
+  const readKey = `${item.id}:${spec.resource_uri}:${attempt}`;
+  const [read, setRead] = useState<{
+    key?: string;
+    resource?: AppResourceDto;
+    doc?: CanonicalSceneDoc;
+    error?: string;
+  }>({});
+  const checkOwner = useCallback(() => {
+    const state = store.getSnapshot();
+    const account = state.snapshot?.account;
+    if (
+      store.sessionEpoch !== epoch ||
+      state.phase !== 'ready' ||
+      state.erasePending ||
+      (state.mode === 'account' && (!account?.unlocked || account.setup_pending)) ||
+      `${state.mode}:${account?.identity_id ?? state.snapshot?.me?.id ?? ''}:${account?.device_id ?? ''}` !==
+        owner ||
+      !state.snapshot?.conversations.some((chat) => chat.id === item.space_id)
+    )
+      throw new Error(t('drawing.accountChanged'));
+  }, [store, epoch, owner, item.space_id]);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      checkOwner();
+      const [resource, doc] = await Promise.all([
+        store.driver.request({ op: 'app_resource', uri: spec.resource_uri }),
+        store.driver.request({ op: 'app_document_read', item_id: item.id }),
+      ]);
+      if (!active) return;
+      checkOwner();
+      if (resource.uri !== 'ui://zoen/excalidraw.html' || resource.uri !== spec.resource_uri)
+        throw new Error(t('miniapps.thisResourceDoesNotBelongToTheOpen'));
+      const manifest = verifyMiniappResource(resource, 'excalidraw');
+      if (!manifest || manifest.allowedDomains.length || manifest.capabilities.length)
+        throw new Error(t('miniapps.theMiniappManifestDoesNotMatchThisResource'));
+      if (doc.item_id !== item.id) throw new Error(t('drawing.unavailable'));
+      setRead({ key: readKey, resource, doc });
+    })().catch((error: unknown) => {
+      if (active)
+        setRead({
+          key: readKey,
+          error: error instanceof Error ? error.message : t('drawing.unavailable'),
+        });
+    });
+    return () => {
+      active = false;
+    };
+  }, [store, checkOwner, item.id, spec.resource_uri, readKey]);
+  if (read.key !== readKey) return <Loading />;
+  if (read.error)
+    return (
+      <Surface>
+        <Text selectable accessibilityRole="alert" style={{ color: colors.danger }}>
+          {read.error}
+        </Text>
+        <NativeButton
+          secondary
+          label={t('miniapps.tryAgain')}
+          onPress={() => retry((value) => value + 1)}
+        />
+      </Surface>
+    );
+  if (!read.doc || !read.resource) return <Loading />;
+  return (
+    <DrawingDocument
+      key={attempt}
+      item={item}
+      spec={spec}
+      fill={fill}
+      resource={read.resource}
+      doc={read.doc}
+      checkOwner={checkOwner}
+      registerClose={registerClose}
+      onDocumentController={onDocumentController}
+      onDocumentCopied={onDocumentCopied}
+      onDocumentDiscard={onDocumentDiscard}
+    />
+  );
+}
+
+function DrawingDocument({
+  item,
+  fill,
+  resource,
+  doc,
+  checkOwner,
+  registerClose,
+  onDocumentController,
+  onDocumentCopied,
+  onDocumentDiscard,
+}: Props & {
+  resource: AppResourceDto;
+  doc: CanonicalSceneDoc;
+  checkOwner: () => void;
+  registerClose: (end: (() => void) | null) => void;
+}) {
+  const { store } = useClient();
+  const { colors, scheme } = useTheme();
+  const dialogs = useDialogs();
+  const frame = useRef<MiniappFrameHandle>(null);
+  const session = useRef<MiniappSession | null>(null);
+  const [phase, setPhase] = useState<CanonicalScenePhase>('idle');
+  const [pending, setPending] = useState(false);
+  const [copyBusy, setCopyBusy] = useState(false);
+  const [copyBlocked, setCopyBlocked] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dimensions, setDimensions] = useState({ width: 360, height: 640 });
+  const copyAction = useRef<(() => Promise<void>) | null>(null);
+  const flushAction = useRef<(() => Promise<void>) | null>(null);
+  const callbacks = useRef({ onDocumentController, onDocumentCopied });
+  const latest = useRef({ colors, scheme, dimensions, item });
+  useLayoutEffect(() => {
+    latest.current = { colors, scheme, dimensions, item };
+    callbacks.current = { onDocumentController, onDocumentCopied };
+  }, [colors, scheme, dimensions, item, onDocumentController, onDocumentCopied]);
+  const context = useCallback(
+    () => ({
+      theme: latest.current.scheme,
+      displayMode: 'fullscreen',
+      availableDisplayModes: ['fullscreen'],
+      containerDimensions: latest.current.dimensions,
+      locale,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      platform: process.env.EXPO_OS === 'web' ? 'web' : 'mobile',
+      deviceCapabilities: { touch: true, hover: process.env.EXPO_OS === 'web' },
+      safeAreaInsets: { top: 0, right: 0, bottom: 0, left: 0 },
+      styles: {
+        variables: {
+          '--color-background-primary': latest.current.colors.background,
+          '--color-text-primary': latest.current.colors.text,
+          '--font-sans': 'system-ui, sans-serif',
+        },
+      },
+    }),
+    [],
+  );
+  useLayoutEffect(() => {
+    const lifetime = frameAuthority(checkOwner);
+    let live = true;
+    let retiring = false;
+    const scene = new CanonicalSceneHost({
+      initialDoc: doc,
+      id: () => Crypto.randomUUID(),
+      check: lifetime.check,
+      save: async (input) => {
+        lifetime.check();
+        const accepted = await store.request({ op: 'app_document_save', ...input });
+        lifetime.check();
+        return accepted;
+      },
+      onState: (next) => {
+        if (!live) return;
+        setPhase(next);
+        if (next === 'saved') {
+          setPending(false);
+          setError(null);
+        }
+        if (next === 'error') setError(t('drawing.saveFailed'));
+      },
+    });
+    const manifest = verifyMiniappResource(resource, 'excalidraw');
+    const current = new MiniappSession({
+      send: (message) => frame.current?.send(message),
+      resourceUri: resource.uri,
+      tools,
+      initialize: () => ({
+        protocolVersion: '2026-01-26',
+        hostInfo: { name: 'zoen', version: '0.1.0' },
+        hostCapabilities: {
+          openLinks: {},
+          serverTools: {},
+          serverResources: {},
+          updateModelContext: { structuredContent: {} },
+          sandbox: { csp: { connectDomains: [] }, permissions: {} },
+          experimental: { zoen: { canonicalScene: { version: 1, itemId: item.id } } },
+        },
+        hostContext: context(),
+      }),
+      state: () => ({
+        content: [{ type: 'text', text: latest.current.item.title }],
+        structuredContent: { checkpointId: item.id },
+        isError: false,
+      }),
+      context,
+      resource: async () => {
+        lifetime.check();
+        return {
+          contents: [{ uri: resource.uri, mimeType: resource.mime_type, text: resource.text }],
+        };
+      },
+      call: async (name, args) => {
+        lifetime.check();
+        const result = await scene.call(name, args);
+        lifetime.check();
+        return result;
+      },
+      updateModelContext: async (params) => {
+        lifetime.check();
+        const value = params.structuredContent as
+          | { zoen?: { sceneSave?: { phase?: unknown; sequence?: unknown } } }
+          | undefined;
+        const state = value?.zoen?.sceneSave;
+        if (state?.phase === 'pending') setPending(true);
+        if (state?.phase === 'error') setError(t('drawing.saveFailed'));
+        return {};
+      },
+      openLink: async (input) => {
+        lifetime.check();
+        const url = safeMiniappLink(input, manifest);
+        if (
+          !(await dialogs.confirm({
+            title: t('miniapps.openLinkOutsideZoen'),
+            message: url,
+            confirmLabel: t('miniapps.openLink'),
+          }))
+        )
+          throw new Error(t('miniapps.youDidNotOpenTheLink'));
+        lifetime.check();
+        await Linking.openURL(url);
+        lifetime.check();
+        return {};
+      },
+      share: async () => {
+        throw new Error(t('miniapps.thisFeatureIsNotAvailableOnThisHost'));
+      },
+      native: async () => {
+        throw new Error(t('miniapps.thisFeatureIsNotAvailableOnThisHost'));
+      },
+      haptic: () => {},
+      resize: () => {},
+      close: () => router.back(),
+    });
+    session.current = current;
+    const copy = canonicalCopy({
+      itemId: item.id,
+      check: lifetime.check,
+      id: () => Crypto.randomUUID(),
+      prepare: () => current.callAppTool('prepare_scene_copy'),
+      staged: (uploadId, bytes, sha) => scene.stagedScene(uploadId, bytes, sha),
+      save: async (input) => {
+        lifetime.check();
+        const accepted = await store.request({ op: 'app_document_copy', ...input });
+        lifetime.check();
+        return accepted;
+      },
+      blocked: (value) => {
+        if (live) setCopyBlocked(value);
+      },
+    });
+    copyAction.current = async () => {
+      if (copy.busy || retiring) return;
+      setCopyBusy(true);
+      try {
+        const accepted = await copy.run();
+        lifetime.check();
+        callbacks.current.onDocumentCopied?.(accepted.item_id);
+      } catch {
+        if (live) setError(t('drawing.copyFailed'));
+      } finally {
+        if (live) setCopyBusy(false);
+      }
+    };
+    const controller: MiniappDocumentController = {
+      flush: async (options) => {
+        lifetime.check();
+        if (copy.busy || copy.unresolved) throw new Error(t('drawing.copyFailed'));
+        if (!current.ready) return;
+        if (options?.retire) retiring = true;
+        try {
+          await current.flushResource();
+          lifetime.check();
+          if (!retiring) {
+            const resumed = await current.callAppTool('resume_scene');
+            lifetime.check();
+            if (resumed.isError) throw new Error(t('drawing.saveFailed'));
+          }
+        } catch (error) {
+          if (options?.retire) retiring = false;
+          if (live) setError(t('drawing.saveFailed'));
+          throw error;
+        }
+        lifetime.check();
+        if (live) {
+          setError(null);
+          setPending(false);
+        }
+      },
+    };
+    flushAction.current = controller.flush;
+    callbacks.current.onDocumentController?.(controller);
+    const unregisterPreflight = store.registerSessionPreflight(() => {
+      if (live) throw new Error(t('drawing.closeFirst'));
+    });
+    const close = () => {
+      if (!live) return;
+      live = false;
+      unregisterPreflight();
+      lifetime.close();
+      copy.dispose();
+      copyAction.current = null;
+      flushAction.current = null;
+      scene.dispose();
+      current.dispose();
+      frame.current?.dispose();
+      if (session.current === current) session.current = null;
+      callbacks.current.onDocumentController?.(null);
+    };
+    registerClose(close);
+    const stop = store.subscribe(() => {
+      try {
+        lifetime.check();
+      } catch {
+        close();
+      }
+    });
+    const unregister = store.registerSessionCleanup(async () => {
+      close();
+    });
+    const background = AppState.addEventListener('change', (state) => {
+      if (state !== 'active' && live)
+        void controller.flush().catch(() => {
+          if (live) setError(t('drawing.saveFailed'));
+        });
+    });
+    return () => {
+      stop();
+      unregister();
+      background.remove();
+      close();
+      registerClose(null);
+    };
+  }, [store, checkOwner, context, doc, item.id, resource, dialogs, registerClose]);
+  useEffect(() => {
+    session.current?.syncContext();
+  }, [scheme, dimensions]);
+  const html = useMemo(() => sandboxHtml(resource.text, []), [resource.text]);
+  const receive = useCallback((message: string) => {
+    void session.current?.receive(message);
+  }, []);
+  const label =
+    phase === 'saving' ? t('drawing.saving') : pending ? t('drawing.pending') : t('drawing.saved');
+  return (
+    <View style={fill ? { flex: 1, minHeight: 0 } : { height: 640 }}>
+      {error ? (
+        <View style={{ padding: 12, gap: 8 }}>
+          <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
+            {error}
+          </Text>
+          <NativeButton
+            secondary
+            label={t('drawing.retrySave')}
+            disabled={copyBlocked}
+            onPress={() => {
+              void flushAction
+                .current?.()
+                .then(() => {
+                  setError(null);
+                  setPending(false);
+                })
+                .catch(() => setError(t('drawing.saveFailed')));
+            }}
+          />
+          {onDocumentCopied ? (
+            <NativeButton
+              secondary
+              testID="drawing-save-copy"
+              label={copyBusy ? t('drawing.copying') : t('drawing.saveCopy')}
+              disabled={copyBusy}
+              onPress={() => {
+                void copyAction.current?.();
+              }}
+            />
+          ) : null}
+          {onDocumentDiscard ? (
+            <NativeButton
+              secondary
+              label={t('drawing.discard')}
+              disabled={copyBusy}
+              onPress={onDocumentDiscard}
+            />
+          ) : null}
+        </View>
+      ) : null}
+      <View
+        accessibilityLiveRegion="polite"
+        style={{
+          paddingHorizontal: 16,
+          paddingVertical: 4,
+          minHeight: 48,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+        }}
+      >
+        <Text
+          testID="drawing-save-status"
+          style={{ flex: 1, color: colors.secondary, fontSize: 12 }}
+        >
+          {copyBusy ? t('drawing.copying') : label}
+        </Text>
+        {pending && !error ? (
+          <NativeButton
+            secondary
+            label={t('drawing.saveNow')}
+            disabled={copyBlocked}
+            onPress={() => {
+              void flushAction.current?.().catch(() => setError(t('drawing.saveFailed')));
+            }}
+          />
+        ) : null}
+      </View>
+      <View
+        style={{ flex: 1, minHeight: 0 }}
+        onLayout={(event) => {
+          const { width, height } = event.nativeEvent.layout;
+          setDimensions((prior) =>
+            prior.width === width && prior.height === height ? prior : { width, height },
+          );
+        }}
+      >
+        <MiniappFrame
+          ref={frame}
+          html={html}
+          title={item.title}
+          height={dimensions.height}
+          fill
+          blocked={copyBlocked}
+          onMessage={receive}
+          onError={setError}
+        />
+      </View>
+    </View>
+  );
+}

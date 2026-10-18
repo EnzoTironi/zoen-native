@@ -1857,6 +1857,9 @@ impl Engine {
                 });
             }
             if let Some(item) = attaches.as_deref() {
+                if self.state.items.get(item).is_some_and(|item| item.space==from_space && matches!(&item.current().content,ItemContent::App(app) if app.app=="excalidraw")) {
+                    return self.forward_app_document(from_space,item,to_space,&text);
+                }
                 if !self.state.items.get(item).is_some_and(|item| {
                     item.space == from_space
                         && matches!(&item.current().content, ItemContent::File(_))
@@ -3661,7 +3664,7 @@ impl Engine {
     }
 
     /// Nível da Concessão do mini-app neste Item (sem Concessão: só ouvir).
-    fn app_trust(&self, item: &str) -> TrustLevel {
+    pub(crate) fn app_trust(&self, item: &str) -> TrustLevel {
         self.state.items.get(item).map_or(TrustLevel::Listen, |it| {
             self.app_trust_in_space(&it.space, item)
         })
@@ -3743,6 +3746,21 @@ impl Engine {
         engine_label: &str,
         prompt: &str,
     ) -> R<PlanOutcome> {
+        self.atomic_agent_action(|e| {
+            e.agent_create_app_inner(space, agent, start_tool, args_json, engine_label, prompt)
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn agent_create_app_inner(
+        &mut self,
+        space: &str,
+        agent: &str,
+        start_tool: &str,
+        args_json: &str,
+        engine_label: &str,
+        prompt: &str,
+    ) -> R<PlanOutcome> {
         if !self.is_member(space, agent) {
             return Err(CoreError::Forbidden {
                 reason: t(
@@ -3770,6 +3788,7 @@ impl Engine {
         let (title, state) = apps::create_as(spec.id, &args, &creator, now_ms())
             .map_err(|reason| CoreError::Invalid { reason })?;
         let doc = AppDoc {
+            document: None,
             app: spec.id.into(),
             resource_uri: spec.resource_uri.into(),
             title: title.clone(),
@@ -3803,8 +3822,10 @@ impl Engine {
                 "Made the list “{title}”. Check off what you’re bringing."
             ),
         };
+        let item = new_id("it");
+        let doc = self.attach_app_document(space, &item, doc)?;
         let proposal = ItemProposal {
-            item: new_id("it"),
+            item,
             kind: ItemKind::App,
             content: ItemContent::App(doc),
             origin: tr!(
@@ -3829,6 +3850,10 @@ impl Engine {
 
     /// Installs a catalog mini-app as the current user, with an Item-scoped grant.
     pub fn install_app(&mut self, space: &str, app_id: &str, args_json: &str) -> R<ItemDetail> {
+        self.atomic_agent_action(|e| e.install_app_inner(space, app_id, args_json))
+    }
+
+    fn install_app_inner(&mut self, space: &str, app_id: &str, args_json: &str) -> R<ItemDetail> {
         let me = self.me_id()?;
         if !self.is_member(space, &me) {
             return Err(CoreError::Forbidden {
@@ -3864,18 +3889,24 @@ impl Engine {
         let (title, state) = apps::create_as(spec.id, &args, &creator, now_ms())
             .map_err(|reason| CoreError::Invalid { reason })?;
         let item = new_id("it");
+        let document = self.attach_app_document(
+            space,
+            &item,
+            AppDoc {
+                document: None,
+                app: spec.id.into(),
+                resource_uri: spec.resource_uri.into(),
+                title,
+                state_json: state.to_string(),
+            },
+        )?;
         self.append(
             space,
             &me,
             EventBody::ItemCreated {
                 item: item.clone(),
                 kind: ItemKind::App,
-                content: ItemContent::App(AppDoc {
-                    app: spec.id.into(),
-                    resource_uri: spec.resource_uri.into(),
-                    title,
-                    state_json: state.to_string(),
-                }),
+                content: ItemContent::App(document),
                 origin: t("Instalado por você", "Installed by you"),
             },
         )?;
@@ -4019,6 +4050,14 @@ impl Engine {
             });
         };
         let spec = apps::spec(&doc.app).ok_or_else(|| not_found("mini-app"))?;
+        if doc.app == "excalidraw" {
+            return Err(CoreError::Invalid {
+                reason: t(
+                    "use a operação de documento com versão observada",
+                    "use the document operation with an observed version",
+                ),
+            });
+        }
         let tool = spec
             .tools
             .iter()
