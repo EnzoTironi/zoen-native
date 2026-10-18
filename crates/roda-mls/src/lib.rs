@@ -23,6 +23,8 @@ mod group;
 mod leaf;
 #[cfg(feature = "portable")]
 mod portable;
+#[cfg(any(feature = "device", feature = "portable"))]
+pub mod reconciliation;
 pub mod recovery;
 #[cfg(feature = "device")]
 pub mod sealed;

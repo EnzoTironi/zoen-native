@@ -1,5 +1,29 @@
 use roda_proto::{ClientFrame, ErrorCode, Op, Reply, ServerFrame, CAPABILITIES, PROTOCOL_VERSION};
-use serde::Serialize;
+use roda_types::Identity;
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateInvite {
+    space: String,
+    agent: Option<String>,
+    role: roda_types::Role,
+    max_uses: u32,
+    ttl_secs: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ControlAgent {
+    agent: String,
+    action: String,
+}
+
+fn identity(value: &str) -> Result<String, String> {
+    roda_log::parse_device_key(value)
+        .map(|_| value.to_owned())
+        .ok_or_else(|| "invalid identity public key".into())
+}
 
 pub fn hello(identity: &str, device: &str, cert: &str) -> Vec<u8> {
     ClientFrame::Hello {
@@ -14,6 +38,22 @@ pub fn hello(identity: &str, device: &str, cert: &str) -> Vec<u8> {
 
 pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
     let op = match kind {
+        "register" => {
+            let profile: Identity =
+                serde_json::from_str(value).map_err(|error| error.to_string())?;
+            if profile.kind != roda_types::IdentityKind::Person
+                || !profile.name.is_empty()
+                || !profile.bio.is_empty()
+                || profile.owner.is_some()
+                || profile.owner_proof.is_some()
+                || roda_proto::normalize_handle(&profile.handle).as_deref()
+                    != Some(profile.handle.as_str())
+            {
+                return Err("invalid public profile".into());
+            }
+            identity(&profile.id)?;
+            Op::Register { profile }
+        }
         "fetch_link" => Op::FetchLink {
             id: value.to_string(),
         },
@@ -29,6 +69,47 @@ pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
         "profiles" => Op::Profiles {
             ids: serde_json::from_str(value).map_err(|e| e.to_string())?,
         },
+        "lookup" => Op::Lookup {
+            handle: value.trim().trim_start_matches('@').to_lowercase(),
+            prefix: true,
+        },
+        "create_invite" => {
+            let args: CreateInvite =
+                serde_json::from_str(value).map_err(|error| error.to_string())?;
+            if args.max_uses == 0
+                || args.max_uses > 10_000
+                || args.ttl_secs == 0
+                || args.ttl_secs > 365 * 24 * 3600
+            {
+                return Err("invalid invite limits".into());
+            }
+            if let Some(agent) = &args.agent {
+                identity(agent)?;
+            }
+            Op::CreateInvite {
+                space: args.space,
+                agent: args.agent,
+                role: args.role,
+                max_uses: args.max_uses,
+                ttl_secs: args.ttl_secs,
+            }
+        }
+        "redeem_agent_invite" => Op::RedeemAgentInvite { code: value.into() },
+        "revoke_agent_invite" => Op::RevokeAgentInvite {
+            agent: identity(value)?,
+        },
+        "agent_status" => Op::Agent(roda_proto::AgentRequest::Status {
+            agent: identity(value)?,
+        }),
+        "control_agent" => {
+            let args: ControlAgent =
+                serde_json::from_str(value).map_err(|error| error.to_string())?;
+            Op::Agent(roda_proto::AgentRequest::Control {
+                agent: identity(&args.agent)?,
+                action: roda_proto::AgentAction::parse(&args.action)
+                    .ok_or("invalid agent control")?,
+            })
+        }
         _ => return Err("unsupported browser request".into()),
     };
     Ok(ClientFrame::Req { id, op }.encode())
@@ -41,6 +122,11 @@ pub enum ServerMessage {
         nonce: String,
         relay: String,
         protocol: u32,
+        capabilities: Vec<String>,
+        server_time_ms: Option<String>,
+    },
+    Pong {
+        server_time_ms: Option<String>,
     },
     Ready {
         identity: String,
@@ -62,7 +148,7 @@ pub enum ServerMessage {
     Accepted {
         space: String,
         client_id: String,
-        seq: u64,
+        seq: String,
     },
     Rejected {
         space: String,
@@ -73,6 +159,16 @@ pub enum ServerMessage {
     KeyPackagesLow {
         device: String,
         remaining: u32,
+    },
+    Ephemeral {
+        space: String,
+        from: String,
+        event: &'static str,
+        detail: String,
+    },
+    Presence {
+        identity: String,
+        online: bool,
     },
     Error {
         code: &'static str,
@@ -88,11 +184,17 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
             nonce,
             relay,
             protocol,
-            ..
+            capabilities,
+            server_time_ms,
         } => ServerMessage::Challenge {
             nonce,
             relay,
             protocol,
+            capabilities,
+            server_time_ms: server_time_ms.map(|time| time.to_string()),
+        },
+        ServerFrame::Pong { server_time_ms } => ServerMessage::Pong {
+            server_time_ms: server_time_ms.map(|time| time.to_string()),
         },
         ServerFrame::Ready {
             identity,
@@ -111,6 +213,9 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
         } => ServerMessage::Response {
             id,
             value: match reply {
+                Reply::Registered(profile) => {
+                    serde_json::json!({"kind":"registered","profile":profile})
+                }
                 Reply::Link(sealed) => serde_json::json!({"kind":"link","sealed":sealed}),
                 Reply::AgentState(a) => {
                     serde_json::json!({"kind":"agent_state","status":a.status,"definition_version":a.definition_version})
@@ -122,7 +227,10 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
                     serde_json::json!({"kind":"profiles","profiles":profiles})
                 }
                 Reply::Preview(p) => {
-                    serde_json::json!({"kind":"preview","space":p.space,"role":p.role,"title":p.title,"members":p.members})
+                    serde_json::json!({"kind":"preview","space":p.space,"role":p.role,"title":p.title,"members":p.members,"invite_kind":p.kind,"agent":p.agent,"inviter":p.inviter})
+                }
+                Reply::Invite(invite) => {
+                    serde_json::json!({"kind":"invite","code":invite.code,"expires_at_ms":invite.expires_at_ms.to_string()})
                 }
                 Reply::KeyPackages(records) => {
                     serde_json::json!({"kind":"key_packages","records":records})
@@ -141,8 +249,24 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
         } => ServerMessage::Accepted {
             space,
             client_id,
-            seq,
+            seq: seq.to_string(),
         },
+        ServerFrame::Ephemeral { space, from, kind } => {
+            let (event, detail) = match kind {
+                roda_proto::EphemeralKind::Typing => ("typing", String::new()),
+                roda_proto::EphemeralKind::StoppedTyping => ("stopped", String::new()),
+                roda_proto::EphemeralKind::Status { status } => ("status", status),
+                roda_proto::EphemeralKind::Read { seq } => ("read", seq.to_string()),
+                roda_proto::EphemeralKind::Delivered { seq } => ("delivered", seq.to_string()),
+            };
+            ServerMessage::Ephemeral {
+                space,
+                from,
+                event,
+                detail,
+            }
+        }
+        ServerFrame::Presence { identity, online } => ServerMessage::Presence { identity, online },
         ServerFrame::Rejected {
             space,
             client_id,
@@ -183,5 +307,54 @@ mod tests {
             matches!(frame, ClientFrame::Req { id: 42, op: Op::Unlink { device: target } } if target == device)
         );
         assert!(request(43, "unlink", "not-a-device").is_err());
+    }
+}
+
+#[cfg(test)]
+mod relay_tests {
+    use super::*;
+    #[test]
+    fn owner_controls_and_invites_use_existing_authenticated_protocol_and_exact_times() {
+        let agent = roda_log::Signer::generate().id();
+        let request_value = serde_json::json!({"agent":agent,"action":"pause"}).to_string();
+        assert!(matches!(
+            ClientFrame::decode(&request(45, "control_agent", &request_value).unwrap()).unwrap(),
+            ClientFrame::Req {
+                op: Op::Agent(roda_proto::AgentRequest::Control {
+                    action: roda_proto::AgentAction::Pause,
+                    ..
+                }),
+                ..
+            }
+        ));
+        assert!(request(
+            46,
+            "control_agent",
+            &serde_json::json!({"agent":agent,"action":"erase_all"}).to_string()
+        )
+        .is_err());
+        let invite = ServerFrame::Res {
+            id: 47,
+            result: Ok(Reply::Invite(roda_proto::InviteCreated {
+                code: "0123456789".into(),
+                expires_at_ms: i64::MAX,
+            })),
+        };
+        let json = serde_json::to_value(decode_server(&invite.encode()).unwrap()).unwrap();
+        assert_eq!(json["value"]["expires_at_ms"], i64::MAX.to_string());
+        let accepted = ServerFrame::Accepted {
+            space: "sp_fixture".into(),
+            client_id: "client".into(),
+            seq: u64::MAX,
+        };
+        let json = serde_json::to_value(decode_server(&accepted.encode()).unwrap()).unwrap();
+        assert_eq!(json["seq"], u64::MAX.to_string());
+        let read = ServerFrame::Ephemeral {
+            space: "sp_fixture".into(),
+            from: agent,
+            kind: roda_proto::EphemeralKind::Read { seq: u64::MAX },
+        };
+        let json = serde_json::to_value(decode_server(&read.encode()).unwrap()).unwrap();
+        assert_eq!(json["detail"], u64::MAX.to_string());
     }
 }

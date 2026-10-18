@@ -34,7 +34,8 @@ use session::{CommitStatus, DocumentEdit, DocumentView, PageSession, SessionRead
 /// Largest payload that rides inside the event (base64 adds a third; envelopes cap at 90 KB).
 const INLINE_MAX: usize = 48 * 1024;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Record, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct TextSpanDto {
     /// UTF-16 offsets into the block's text.
     pub start: u32,
@@ -44,7 +45,8 @@ pub struct TextSpanDto {
     pub value: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Record, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct PageBlockDto {
     pub id: String,
     /// paragraph, heading, bullet, numbered, task, quote, code, divider, image, raw
@@ -62,14 +64,16 @@ pub struct PageBlockDto {
 }
 
 /// A Markdown file to import as a page.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct MarkdownFileDto {
     /// Where it sits in the Space's files ("notes/trip.md").
     pub path: String,
     pub markdown: String,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct PageDto {
     pub item_id: String,
     pub space_id: String,
@@ -91,7 +95,8 @@ pub struct PageDto {
     pub blocks: Vec<PageBlockDto>,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct PageEditResult {
     pub mutation_hash: String,
     pub mutation_id: String,
@@ -193,6 +198,39 @@ fn kind_from_dto(d: &PageBlockDto, prev: Option<&Kind>) -> Kind {
         "raw" => Kind::Raw,
         _ => Kind::Paragraph,
     }
+}
+
+pub(crate) fn parse_editor_markdown(markdown: &str) -> R<Vec<PageBlockDto>> {
+    Ok(Page::from_markdown(markdown)
+        .map_err(doc_err)?
+        .blocks()
+        .iter()
+        .map(block_dto)
+        .collect())
+}
+
+pub(crate) fn editor_block_markdown(block: &PageBlockDto) -> R<String> {
+    let page = Page::new();
+    page.apply(
+        std::slice::from_ref(&block.id),
+        &[roda_docs::BlockEdit {
+            id: block.id.clone(),
+            kind: kind_from_dto(block, None),
+            text: block.text.clone(),
+            spans: block
+                .spans
+                .iter()
+                .map(|span| roda_docs::Span {
+                    start: span.start,
+                    end: span.end,
+                    key: span.key.clone(),
+                    value: span.value.clone(),
+                })
+                .collect(),
+        }],
+    )
+    .map_err(doc_err)?;
+    Ok(page.canonical_markdown())
 }
 
 impl Engine {

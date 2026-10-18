@@ -1,0 +1,106 @@
+import { t, formatLocale } from '../../../i18n/index.ts';
+import { ProfileAvatar } from '../../../profile/profile-avatar';
+import { useState } from 'react';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { FlashList } from '@shopify/flash-list';
+import { useHeaderHeight } from 'expo-router/react-navigation';
+import { Pressable, Text, TextInput, View } from 'react-native';
+import { useClient } from '../../../core/provider';
+import { useTheme } from '../../../theme';
+import { EmptyState } from '../../../components/primitives';
+
+export default function Forward() {
+  const headerHeight = useHeaderHeight();
+  const { space, message } = useLocalSearchParams<{ space: string; message: string }>();
+  const { snapshot, store } = useClient();
+  const { colors } = useTheme();
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const chats =
+    snapshot?.conversations.filter(
+      (chat) =>
+        chat.id !== space &&
+        chat.title.toLocaleLowerCase(formatLocale).includes(query.toLocaleLowerCase(formatLocale)),
+    ) ?? [];
+  return (
+    <View style={{ flex: 1, paddingTop: headerHeight, backgroundColor: 'transparent' }}>
+      <Stack.Screen options={{ title: t('chat.forwardTo') }} />
+      <TextInput
+        accessibilityLabel={t('chat.searchChats2')}
+        value={query}
+        onChangeText={setQuery}
+        placeholder={t('chat.searchChats2')}
+        placeholderTextColor={colors.tertiary}
+        style={{
+          margin: 20,
+          padding: 14,
+          borderRadius: 16,
+          color: colors.text,
+          backgroundColor: colors.muted,
+          fontSize: 17,
+        }}
+      />
+      {error ? (
+        <Text accessibilityRole="alert" selectable style={{ padding: 20, color: colors.danger }}>
+          {error}
+        </Text>
+      ) : null}
+      <FlashList
+        contentInsetAdjustmentBehavior="never"
+        data={chats}
+        keyExtractor={(chat) => chat.id}
+        ListEmptyComponent={
+          <EmptyState
+            title={t('chat.noChatsFound')}
+            detail={t('chat.startAnotherChatToForwardThisMessage')}
+          />
+        }
+        renderItem={({ item }) => (
+          <Pressable
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat.forwardToNamedChat', { title: item.title })}
+            onPress={() => {
+              setBusy(true);
+              setError(null);
+              void store
+                .request({
+                  op: 'forward_message',
+                  source_space: space,
+                  message_id: message,
+                  target_space: item.id,
+                })
+                .then(() => {
+                  router.dismissTo({ pathname: '/chat/[id]', params: { id: item.id } });
+                })
+                .catch((failure: unknown) =>
+                  setError(
+                    failure instanceof Error
+                      ? failure.message
+                      : t('chat.theMessageCouldNotBeForwarded'),
+                  ),
+                )
+                .finally(() => setBusy(false));
+            }}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 14,
+              paddingHorizontal: 24,
+              paddingVertical: 16,
+              opacity: busy ? 0.5 : 1,
+            }}
+          >
+            <ProfileAvatar
+              person={item.counterpart}
+              name={item.title}
+              color={item.counterpart?.tint_hex}
+            />
+            <Text style={{ color: colors.text, fontSize: 17, flex: 1 }}>{item.title}</Text>
+          </Pressable>
+        )}
+      />
+    </View>
+  );
+}

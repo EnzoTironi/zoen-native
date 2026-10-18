@@ -40,7 +40,8 @@ pub trait CoreListener: Send + Sync {
     fn on_profile_changed(&self, identity_id: String);
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AccountDto {
     pub identity_id: String,
     pub device_id: String,
@@ -51,6 +52,10 @@ pub struct AccountDto {
     pub registered: bool,
     /// The device key is loaded (from the Keychain) and can sign.
     pub unlocked: bool,
+    /// A social signup has local keys, but its provider binding is not confirmed yet.
+    #[serde(default)]
+    #[uniffi(default = false)]
+    pub setup_pending: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -62,7 +67,8 @@ pub struct AgentAuthorizationDto {
     pub signature: String,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct ConnectionDto {
     /// "offline", "connecting" or "online".
     pub state: String,
@@ -89,7 +95,8 @@ impl ConnectionDto {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct InviteDto {
     pub code: String,
     /// Space: `zoen://join/CODE`. Agent: `https://tryzoen.com/a/CODE`.
@@ -97,7 +104,8 @@ pub struct InviteDto {
     pub expires_at_ms: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct InvitePreviewDto {
     pub space_id: String,
     pub title: String,
@@ -116,7 +124,7 @@ fn link_no_longer_valid() -> CoreError {
     ))
 }
 
-fn invalid(reason: impl Into<String>) -> CoreError {
+pub(crate) fn invalid(reason: impl Into<String>) -> CoreError {
     CoreError::Invalid {
         reason: reason.into(),
     }
@@ -186,6 +194,7 @@ impl RodaEngine {
             relay_url: a.relay_url.clone(),
             registered: a.registered,
             unlocked: e.is_unlocked(),
+            setup_pending: e.provider_setup_pending(),
         })
     }
 
@@ -355,6 +364,7 @@ impl RodaEngine {
 impl RodaEngine {
     /// The account on this device, if any.
     pub fn account(&self) -> Option<AccountDto> {
+        let _language = crate::i18n::enter(self.lang);
         self.account_dto()
     }
 
@@ -368,8 +378,14 @@ impl RodaEngine {
         relay_url: String,
         vault: Arc<dyn SecretVault>,
     ) -> Result<AccountDto, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         {
             let mut e = self.lock();
+            if crate::provider_auth::ProviderSetup::load(&vault)?.is_some() {
+                return Err(invalid(
+                    "Conclua a entrada já preparada antes de criar outra conta.",
+                ));
+            }
             let (root, device, agreement) = e.create_account(&name, &handle, &relay_url)?;
             if !vault.save(VAULT_IDENTITY.into(), root.to_vec())
                 || !vault.save(VAULT_DEVICE.into(), device.to_vec())
@@ -389,6 +405,8 @@ impl RodaEngine {
 
     /// Loads the device key from `vault`. `false` = no account here yet.
     pub fn unlock(&self, vault: Arc<dyn SecretVault>) -> Result<bool, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
+        self.resume_provider_setup(vault.clone())?;
         let mut e = self.lock();
         if e.account().is_none() {
             return Ok(false);
@@ -411,8 +429,28 @@ impl RodaEngine {
         Ok(true)
     }
 
+    /// Resume an interrupted social signup before checking for an orphaned vault
+    /// or a locked account. All local keys/metadata are validated before the
+    /// staging record is removed; server registration remains pending.
+    pub fn resume_provider_setup(&self, vault: Arc<dyn SecretVault>) -> Result<bool, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
+        let mut engine = self.lock();
+        let Some(setup) = crate::provider_auth::ProviderSetup::load(&vault)? else {
+            return Ok(false);
+        };
+        setup.resume(&mut engine, &vault)?;
+        Ok(true)
+    }
+
     /// Connects to the relay and keeps the connection (reconnects with backoff).
     pub fn start_sync(&self, listener: Option<Arc<dyn CoreListener>>) -> Result<(), CoreError> {
+        let _language = crate::i18n::enter(self.lang);
+        if self.lock().provider_setup_pending() {
+            return Err(invalid(t(
+                "Continue com Apple ou Google para concluir sua entrada.",
+                "Continue with Apple or Google to finish signing in.",
+            )));
+        }
         let mut guard = self.net.lock().unwrap_or_else(|p| p.into_inner());
         if guard.is_some() {
             return Ok(());
@@ -432,6 +470,7 @@ impl RodaEngine {
     /// Forgets everything on this device: chats, account and keys. Your account and
     /// chats stay on the relay for the other members; this device just signs out.
     pub fn erase_device(&self, vault: Arc<dyn SecretVault>) -> Result<(), CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         self.stop_sync();
         {
             let mut e = self.lock();
@@ -441,10 +480,13 @@ impl RodaEngine {
         vault.delete(VAULT_IDENTITY.into());
         vault.delete(VAULT_DEVICE.into());
         vault.delete(VAULT_AGREEMENT.into());
+        vault.delete(crate::provider_auth::VAULT_SETUP.into());
         Ok(())
     }
 
     pub fn stop_sync(&self) {
+        let _language = crate::i18n::enter(self.lang);
+        self.cancel_history_receive();
         let net = self.net.lock().unwrap_or_else(|p| p.into_inner()).take();
         if let Some(n) = net {
             self.lock().net.poke = None;
@@ -644,6 +686,17 @@ impl RodaEngine {
         self.lock().profile_view(&identity_id)
     }
 
+    /// Reads only the exact currently authorized profile photo, bounded to 5 MB.
+    pub fn profile_photo(
+        &self,
+        identity_id: String,
+        expected_sha256: String,
+    ) -> Result<Option<crate::ProfilePhotoBytes>, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
+        self.lock()
+            .profile_photo_bytes(&identity_id, &expected_sha256)
+    }
+
     /// Edits your encrypted profile. The relay stores only ciphertext; your contacts
     /// get it through the key you share with them. `photo`: keep, remove or set (≤ 5 MB).
     pub fn update_my_profile(
@@ -652,6 +705,7 @@ impl RodaEngine {
         bio: String,
         photo: PhotoChange,
     ) -> Result<ProfileDto, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         let mut e = self.lock();
         e.update_my_profile(&name, &bio, photo)?;
         let me = e.me_id()?;
@@ -836,7 +890,7 @@ impl RodaEngine {
             None => {
                 return Err(CoreError::NotFound {
                     what: t("agente", "agent"),
-                })
+                });
             }
         };
         let mut e = self.lock();

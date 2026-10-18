@@ -4,11 +4,13 @@ cd "$(dirname "$0")/.."
 
 PROFILE=dev
 ABIS=arm64-v8a,x86_64
+OUT=android/app/build/generated/roda
 for arg in "$@"; do
   case "$arg" in
     --release) PROFILE=release ;;
     --debug) PROFILE=dev ;;
     --abis=*) ABIS="${arg#--abis=}" ;;
+    --output=*) OUT="${arg#--output=}" ;;
     *) echo "Unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -20,7 +22,6 @@ SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 if [[ -z "$SDK" && "$(uname -s)" == Darwin ]]; then SDK="$HOME/Library/Android/sdk"; fi
 [[ -d "$SDK/ndk" ]] || { echo "Set ANDROID_HOME to an SDK with NDK 27 or newer installed." >&2; exit 1; }
 export ANDROID_HOME="$SDK"
-OUT=android/app/build/generated/roda
 mkdir -p "$OUT/kotlin" "$OUT/jniLibs"
 python3 scripts/android-core-contract.py capture --output "$OUT" --abis "$ABIS" --profile "$PROFILE"
 find "$OUT/kotlin" -name '*.kt' -type f -delete

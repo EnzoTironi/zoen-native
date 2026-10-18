@@ -6,6 +6,7 @@ export function parsePending(json: string) {
     device: publicKey(value.device), relay: string(value.relay), hpke_secret: string(value.hpke_secret),
     secret: string(value.secret), code: string(value.code), check: string(value.check), box_id: string(value.box_id),
     expires_at_ms: integer(value.expires_at_ms ?? 0),
+    ...(value.expected_identity===undefined?{}:{expected_identity:publicKey(value.expected_identity)}),
   };
 }
 export type PendingLink = ReturnType<typeof parsePending>;
@@ -26,6 +27,7 @@ export type LinkedAccount = ReturnType<typeof parseAccount>;
 export type StoredSession =
   | { kind: 'empty' }
   | { kind: 'pending'; pending: PendingLink }
+  | { kind: 'provider_pending'; account: LinkedAccount; snapshot: string }
   | { kind: 'linked'; account: LinkedAccount; snapshot: string };
 
 export function parseSession(json: string): StoredSession {
@@ -34,6 +36,7 @@ export function parseSession(json: string): StoredSession {
     case 'empty': return { kind: 'empty' };
     case 'pending': return { kind: 'pending', pending: parsePending(JSON.stringify(value.pending)) };
     case 'linked': return { kind: 'linked', account: parseAccount(JSON.stringify(value.account)), snapshot: string(value.snapshot) };
+    case 'provider_pending': return {kind:'provider_pending',account:parseAccount(JSON.stringify(value.account)),snapshot:string(value.snapshot)};
     default: throw new Error('Unrecognized local session.');
   }
 }

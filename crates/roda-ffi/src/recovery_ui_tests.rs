@@ -144,7 +144,8 @@ async fn recovery_ui_rejects_malformed_keys_before_network() {
 
 #[tokio::test]
 async fn recovery_ui_refuses_password_mode_before_spending_a_guess() {
-    let response = r#"{"mode":"passphrase","identity":"fixture","kdf":{},"generation":null}"#;
+    // A canonical public identity is validated before classifying the backup mode.
+    let response = r#"{"mode":"passphrase","identity":"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a","kdf":{},"generation":null}"#;
     let (relay, server) = server(vec![("200 OK", response)]).await;
     let engine = RodaEngine::open(":memory:".into(), "pt-BR".into()).unwrap();
     let vault: Arc<dyn SecretVault> = Arc::new(Vault::default());
@@ -163,5 +164,27 @@ async fn recovery_ui_refuses_password_mode_before_spending_a_guess() {
         start["blinded"].is_null(),
         "key-only restore must not send a password OPRF point"
     );
+    assert_eq!(start["recovery_only"], true);
+}
+
+#[tokio::test]
+async fn recovery_ui_rejects_invalid_backup_identity_before_mode_or_key_work() {
+    let response = r#"{"mode":"passphrase","identity":"fixture","kdf":{},"generation":null}"#;
+    let (relay, server) = server(vec![("200 OK", response)]).await;
+    let engine = RodaEngine::open(":memory:".into(), "pt-BR".into()).unwrap();
+    let vault = Arc::new(Vault::default());
+    let key = engine.backup_create_recovery_key();
+    let result = engine
+        .restore_backup_with_recovery_key(relay, "ana".into(), key, vault.clone())
+        .await;
+    assert!(
+        matches!(result, Err(crate::CoreError::Invalid { reason }) if reason == "backup identity")
+    );
+    assert!(engine.account().is_none());
+    assert!(vault.0.lock().unwrap().is_empty());
+    let requests = server.await.unwrap();
+    assert_eq!(requests.len(), 1);
+    let start: serde_json::Value = serde_json::from_slice(&requests[0]).unwrap();
+    assert!(start["blinded"].is_null());
     assert_eq!(start["recovery_only"], true);
 }

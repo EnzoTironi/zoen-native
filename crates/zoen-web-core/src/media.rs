@@ -68,6 +68,18 @@ fn seal_chunk(file_key: &[u8; 32], plain: &[u8], uploads: &mut Vec<Upload>) -> C
     }
 }
 
+/// One page payload, with the same authenticated chunk format as native pages.
+pub(crate) fn seal_page(bytes: &[u8]) -> Result<(ChunkRef, Upload), String> {
+    if bytes.is_empty() || bytes.len() > 32 << 20 {
+        return Err("page payload empty or too large".into());
+    }
+    let mut key = [0; 32];
+    getrandom::getrandom(&mut key).map_err(|error| error.to_string())?;
+    let mut uploads = Vec::new();
+    let reference = seal_chunk(&key, bytes, &mut uploads);
+    Ok((reference, uploads.remove(0)))
+}
+
 /// Seals a file for a relay-synced chat. The caller uploads every `Upload`, then queues
 /// the `ItemCreated` carrying `doc`.
 pub fn seal_file(

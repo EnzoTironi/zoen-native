@@ -687,6 +687,29 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
         })),
     };
     proposal.content_hash = proposal.proposal_hash(&fixture.space).unwrap();
+    fixture.ordered(EventBody::MemberAdded {
+        identity: agent.clone(),
+        role: Role::Reader,
+    });
+    fixture.ordered_as(
+        &agent,
+        EventBody::ItemCreated {
+            item: proposal.proposal.as_ref().unwrap().item.clone(),
+            kind: ItemKind::Plan,
+            content: ItemContent::Plan(original()),
+            origin: "refused reader creation".into(),
+        },
+    );
+    fixture.ordered(EventBody::MemberAdded {
+        identity: agent.clone(),
+        role: Role::Member,
+    });
+    // Identical payload in an owner-signed opening is refused. Its bytes must
+    // never stand in for the real certified Agent opening in a shorter prefix.
+    fixture.ordered(EventBody::RequestOpened {
+        request: proposal.clone(),
+    });
+    let refused_opening_end = fixture.engine.logs[&fixture.space].len();
     fixture.ordered_as(
         &agent,
         EventBody::RequestOpened {
@@ -694,7 +717,8 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
         },
     );
     let item = proposal.proposal.as_ref().unwrap().item.clone();
-    fixture.ordered(EventBody::RequestResolved {
+    let before_resolution = fixture.engine.logs[&fixture.space].len();
+    let pending_approval = fixture.queue(EventBody::RequestResolved {
         request: proposal.id.clone(),
         approved: true,
         content_hash: proposal.content_hash.clone(),
@@ -705,9 +729,48 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
             standing_grant: None,
         }),
     });
+    assert!(fixture
+        .engine
+        .plan_timeline(&item)
+        .unwrap()
+        .origin_tag()
+        .is_none());
+    assert!(
+        fixture.engine.plan_page(&item).is_err(),
+        "unconfirmed approval cannot authenticate a Plan session"
+    );
+    deliver(&mut fixture.engine, &pending_approval, Ingest::Confirmed);
     assert_eq!(
         fixture.engine.state.plan_origins[&item],
         PlanOrigin::Proposal
+    );
+    let read = fixture.engine.plan_page(&item).unwrap();
+    assert!(read.ready && read.legacy_edit_admitted);
+    assert_eq!(read.total_cents, Some(193));
+    assert_eq!(fixture.engine.state.items[&item].versions[0].author, agent);
+    let scoped = &fixture.engine.space_projections[&fixture.space];
+    for end in [refused_opening_end, before_resolution] {
+        let (fold, _) = confirmed::Prefix::from_log(
+            &fixture.space,
+            fixture.engine.logs.get(&fixture.space),
+            end,
+        )
+        .unwrap()
+        .with_requests(&scoped.requests)
+        .fold(&item, |_| unreachable!())
+        .unwrap();
+        assert!(
+            fold.origin_tag().is_none(),
+            "final approval cannot authenticate an earlier prefix"
+        );
+    }
+    fixture.engine.reload().unwrap();
+    assert!(
+        fixture
+            .engine
+            .plan_page(&item)
+            .unwrap()
+            .legacy_edit_admitted
     );
     let explicit_item = fixture.item.clone();
     fixture.item = item.clone();
@@ -726,6 +789,19 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
     assert_eq!(
         fixture.engine.state.plan_origins[&item],
         PlanOrigin::Proposal
+    );
+    let observed = fixture.engine.plan_page(&item).unwrap().content_hash;
+    fixture
+        .engine
+        .add_plan_line(&item, 0, "Owner edits approved proposal", 25, &observed)
+        .unwrap();
+    let pending_edit = fixture.engine.store.outbox().unwrap().into_iter().find(|pending|
+        matches!(&pending.event.body, EventBody::ItemVersioned { item: edited, .. } if edited == &item)).unwrap().event;
+    deliver(&mut fixture.engine, &pending_edit, Ingest::Confirmed);
+    fixture.engine.reload().unwrap();
+    assert_eq!(
+        fixture.engine.plan_page(&item).unwrap().total_cents,
+        Some(218)
     );
     let baseline = fixture.engine.plan_timeline(&explicit_item).unwrap();
     let counterfeit = edited(
@@ -757,6 +833,31 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Approved
+    );
+    // The genuine two-source ancestry supports a canonical cutover, including
+    // cold replay, without an ItemCreated event or changing the Agent creator.
+    canonical(
+        &mut fixture,
+        LinePatch {
+            text: Some("Owner-approved canonical plan".into()),
+            ..Default::default()
+        },
+    );
+    fixture.engine.reload().unwrap();
+    let read = fixture.engine.plan_page(&item).unwrap();
+    assert!(read.ready);
+    assert!(!read.legacy_edit_admitted);
+    assert_eq!(fixture.engine.state.items[&item].versions[0].author, agent);
+    assert_eq!(
+        fixture
+            .engine
+            .plan_snapshot_in_space(&fixture.space, &item)
+            .unwrap()
+            .document
+            .sections[0]
+            .lines[0]
+            .text,
+        "Owner-approved canonical plan"
     );
 }
 

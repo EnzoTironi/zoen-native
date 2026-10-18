@@ -330,7 +330,8 @@ fn refused_legacy_intent_stays_readable_without_blocking_a_new_promotion() {
     assert!(fixture.fold().pending_legacy);
     assert!(fixture
         .engine
-        .reject(&pending.client_id, "permission", true, None));
+        .reject(&pending.client_id, "permission", true, None)
+        .user_failed());
     let fold = fixture.fold();
     assert!(fold.writable());
     assert_eq!(view(&fold), original());
@@ -985,7 +986,8 @@ fn reopening_the_real_database_reverifies_identical_sources_history_and_cutover(
     })));
     assert!(fixture
         .engine
-        .reject(&pending.client_id, "old_client", true, None));
+        .reject(&pending.client_id, "old_client", true, None)
+        .user_failed());
     let before = fixture.fold();
     let raw = fixture.engine.store.events(&fixture.space).unwrap();
     let space = fixture.space.clone();

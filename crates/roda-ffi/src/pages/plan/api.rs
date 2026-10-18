@@ -9,7 +9,8 @@ use crate::engine::{Engine, ItemState, R};
 use crate::pages::session::{DocumentTag, DocumentView};
 use crate::pages::{invalid, TextSpanDto};
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Enum, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum PlanProseKindDto {
     Paragraph,
     Heading {
@@ -70,7 +71,8 @@ impl From<&Kind> for PlanProseKindDto {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Enum, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum PlanPageContentDto {
     Title {
         budget_cents: Option<i64>,
@@ -87,7 +89,8 @@ pub enum PlanPageContentDto {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Record, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct PlanPageBlockDto {
     /// CRDT identity in DocumentSession; a presentation ID in LocalPendingLegacy.
     /// Both are distinct from a line's possibly duplicated legacy ID.
@@ -135,14 +138,16 @@ impl From<&PlanBlock> for PlanPageBlockDto {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum PlanPageReadSourceDto {
     DocumentSession,
     /// This device's signed, durable legacy intent, without a shared manifest/edit context.
     LocalPendingLegacy,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct PlanPageDto {
     pub item_id: String,
     pub space_id: String,

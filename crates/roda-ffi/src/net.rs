@@ -25,7 +25,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::engine::Engine;
-use crate::sync::Ingest;
+use crate::sync::{Ingest, RejectionOutcome};
 use crate::CoreListener;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -159,16 +159,19 @@ impl Net {
             }));
         }
         let engine = EngineLease::new(engine);
-        rt.spawn(run(
-            Ctx {
-                engine: engine.clone(),
-                listener,
-                status: status_tx,
-                lang,
-                #[cfg(test)]
-                maintenance_work: None,
-            },
-            cmd_rx,
+        rt.spawn(crate::i18n::scope(
+            lang,
+            run(
+                Ctx {
+                    engine: engine.clone(),
+                    listener,
+                    status: status_tx,
+                    lang,
+                    #[cfg(test)]
+                    maintenance_work: None,
+                },
+                cmd_rx,
+            ),
         ));
         Ok(Net {
             rt: Some(rt),
@@ -274,8 +277,7 @@ impl Ctx {
     }
 
     fn engine<T>(&self, work: impl FnOnce(&mut Engine) -> T) -> Option<T> {
-        crate::i18n::set(self.lang);
-        self.engine.with(work)
+        crate::i18n::with_lang(self.lang, || self.engine.with(work))
     }
 }
 
@@ -379,7 +381,7 @@ async fn recv(stream: &mut Stream) -> Result<ServerFrame, String> {
             Ok(None) => return Err("relay closed the connection".into()),
             Ok(Some(Err(e))) => return Err(e.to_string()),
             Ok(Some(Ok(Message::Binary(b)))) => {
-                return ServerFrame::decode(&b).map_err(|e| e.to_string())
+                return ServerFrame::decode(&b).map_err(|e| e.to_string());
             }
             Ok(Some(Ok(Message::Close(_)))) => return Err("relay closed the connection".into()),
             Ok(Some(Ok(_))) => continue,
@@ -405,6 +407,21 @@ enum Waiting {
     Devices,
     /// Nothing to do with the answer (a message to another device of ours).
     Ignored,
+}
+
+/// Only the current retry may consume a profile response or settle its deadline.
+/// A timed-out request can still reply after the replacement was sent.
+fn remember_waiting(waiting: &mut HashMap<u64, Waiting>, id: u64, next: Waiting) {
+    match &next {
+        Waiting::SealedProfiles(_) => {
+            waiting.retain(|_, entry| !matches!(entry, Waiting::SealedProfiles(_)))
+        }
+        Waiting::ProfileUploaded(_) => {
+            waiting.retain(|_, entry| !matches!(entry, Waiting::ProfileUploaded(_)))
+        }
+        _ => {}
+    }
+    waiting.insert(id, next);
 }
 
 /// Encrypted-profile requests: free (`None`), or in flight / backing off until a deadline.
@@ -449,6 +466,23 @@ impl ClaimClockSample {
     fn fresh(&self) -> Option<KeyPackageClaimClock> {
         (self.sampled.elapsed() < Duration::from_millis(KEY_PACKAGE_CLAIM_TTL_MS as u64))
             .then_some(self.clock)
+    }
+}
+
+fn report_rejection(ctx: &Ctx, outcome: &RejectionOutcome) {
+    let notice = crate::i18n::with_lang(ctx.lang, || match outcome {
+        RejectionOutcome::UserFailed => Some(crate::i18n::t(
+            "Não foi possível enviar. Tente novamente.",
+            "Could not send. Try again.",
+        )),
+        RejectionOutcome::StorageFailure(_) => Some(crate::i18n::t(
+            "Não foi possível concluir a sincronização. Tente novamente.",
+            "Could not finish syncing. Try again.",
+        )),
+        _ => None,
+    });
+    if let (Some(listener), Some(notice)) = (&ctx.listener, notice) {
+        listener.on_error(notice);
     }
 }
 
@@ -522,7 +556,7 @@ async fn session(
         Ok(ServerFrame::Challenge { protocol, .. }) => {
             return Exit::Blocked(format!(
                 "relay protocol {protocol} needs an upgrade before encrypted histories can sync"
-            ))
+            ));
         }
         Ok(ServerFrame::Error { code, message }) => return refused(code, message, backoff),
         Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
@@ -570,13 +604,16 @@ async fn session(
     engine!(|engine| engine.profiles_session_start(profiles));
     // Encrypted media moves over HTTP beside the socket, for as long as this session lives.
     let media_kick = Arc::new(tokio::sync::Notify::new());
-    let _media = AbortOnDrop(tokio::spawn(media_worker(
-        ctx.engine.clone(),
-        ctx.listener.clone(),
-        http_base(&relay_url),
-        relay.clone(),
-        key.clone(),
-        media_kick.clone(),
+    let _media = AbortOnDrop(tokio::spawn(crate::i18n::scope(
+        ctx.lang,
+        media_worker(
+            ctx.engine.clone(),
+            ctx.listener.clone(),
+            http_base(&relay_url),
+            relay.clone(),
+            key.clone(),
+            media_kick.clone(),
+        ),
     )));
     ctx.set(|s| {
         s.state = ConnState::Online;
@@ -670,19 +707,20 @@ async fn session(
                     ServerFrame::Accepted { .. } => {}
                     ServerFrame::Rejected { space, client_id, reason, permanent } => {
                         let sent_epoch = sent.remove(&client_id).flatten();
-                        let recoverable = reason == roda_proto::STALE_SEAL || reason == roda_proto::SEAL_REQUIRED;
-                        if engine!(|engine| engine.reject(&client_id, &reason, permanent, sent_epoch)) { dirty.insert(space); }
+                        let outcome = engine!(|engine| engine.reject(&client_id, &reason, permanent, sent_epoch));
+                        tracing_like(&format!("publication {client_id} refused: {reason}; {outcome:?}"));
+                        if outcome.user_failed() { dirty.insert(space); }
                         if !permanent {
                             // Transient (rate limit, db hiccup): retry shortly.
                             let poke = engine!(|engine| engine.net.poke.is_some());
                             if poke { tokio::time::sleep(Duration::from_millis(500)).await; }
                         }
-                        if !permanent || recoverable {
+                        if matches!(outcome, RejectionOutcome::Retry) {
                             // The relay refuses the old encoding permanently, but the
                             // queued plaintext may already have a current sealed copy.
                             if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                         }
-                        if let Some(l) = &ctx.listener { if permanent && !recoverable { l.on_error(reason); } }
+                        report_rejection(ctx, &outcome);
                     }
                     ServerFrame::Ephemeral { space, from, kind } => {
                         let mark = match kind {
@@ -779,13 +817,17 @@ async fn session(
                             Some(Waiting::SealedProfiles(asked)) => {
                                 opening = None;
                                 let ok = if let Ok(Reply::SealedProfiles(list)) = result {
-                                    let changed = engine!(|engine| engine.sealed_profiles_arrived(list, &asked));
+                                    let (changed, complete) = engine!(|engine| {
+                                        let changed=engine.sealed_profiles_arrived(list,&asked);
+                                        let complete=engine.profiles_answer_complete(&asked);
+                                        (changed,complete)
+                                    });
                                     if !changed.is_empty() {
                                         dirty.insert(String::new());
                                         media_kick.notify_one();
                                         if let Some(l) = &ctx.listener { for id in changed { l.on_profile_changed(id); } }
                                     }
-                                    true
+                                    complete
                                 } else { false };
                                 settle(&mut traffic.profiles, ok);
                             }
@@ -808,7 +850,14 @@ async fn session(
                     }
                     ServerFrame::ProfileChanged { identity, .. } => engine!(|engine| engine.profile_changed(&identity)),
                     ServerFrame::KeyPackagesLow { device, remaining } => engine!(|engine| engine.mls_key_packages_low(&device, remaining)),
-                    ServerFrame::DeviceMessage { from, to, sealed } => engine!(|engine| engine.device_message(&from, &to, &sealed)),
+                    ServerFrame::DeviceMessage { from, to, sealed } => {
+                        engine!(|engine| engine.device_message(&from, &to, &sealed));
+                        if engine!(|engine| engine.take_initial_history_ready()) {
+                            if let Some(listener) = &ctx.listener {
+                                listener.on_ephemeral(String::new(), from, "history_ready".to_owned(), String::new());
+                            }
+                        }
+                    },
                     ServerFrame::Pong { server_time_ms } => {
                         if clock_negotiated {
                             claim_clock = server_time_ms.and_then(KeyPackageClaimClock::from_server_ms).map(ClaimClockSample::new);
@@ -943,7 +992,7 @@ async fn session(
                 for (op, w) in reqs {
                     let id = next_id; next_id += 1;
                     if let Err(e) = send(&mut sink, &ClientFrame::Req { id, op }).await { failed = Some(e); break }
-                    waiting.insert(id, w);
+                    remember_waiting(&mut waiting,id,w);
                 }
                 if let Some(e) = failed { break Exit::Retry(e) }
                 // Hold UI updates briefly while we learn who new authors are, so the
@@ -1336,13 +1385,13 @@ async fn fetch_link_attempt(
         ServerFrame::Challenge { protocol, .. } => {
             return Err(PickupError::Fatal(format!(
                 "O servidor precisa ser atualizado antes de conectar (versão {protocol})."
-            )))
+            )));
         }
         ServerFrame::Error { message, .. } => return Err(PickupError::Fatal(message)),
         _ => {
             return Err(PickupError::Fatal(
                 "Resposta inesperada ao conectar.".into(),
-            ))
+            ));
         }
     };
     send(
@@ -1377,7 +1426,7 @@ async fn fetch_link_attempt(
             Ok(_) => {
                 return Err(PickupError::Fatal(
                     "Resposta inesperada ao conectar.".into(),
-                ))
+                ));
             }
             Err(e) => return Err(PickupError::Fatal(e)),
         }
@@ -1761,9 +1810,40 @@ mod tests {
         queued_messages_round_trip(CatchUp::Incremental).await;
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn handled_commit_collision_reconciles_without_listener_error() {
+        queued_messages_round_trip(CatchUp::HandshakeCollision).await;
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn terminal_application_refusal_keeps_failed_delivery_and_listener_notice() {
+        queued_messages_round_trip(CatchUp::PermissionRefusal).await;
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn handshake_storage_failure_notifies_and_retains_retry_before_reconciliation() {
+        queued_messages_round_trip(CatchUp::StorageRefusal).await;
+    }
+    #[derive(Default)]
+    struct RejectionListener {
+        errors: Mutex<Vec<String>>,
+        changed: tokio::sync::Notify,
+    }
+    impl CoreListener for RejectionListener {
+        fn on_change(&self, _: Vec<String>) {}
+        fn on_ephemeral(&self, _: String, _: String, _: String, _: String) {}
+        fn on_presence(&self, _: String, _: bool) {}
+        fn on_connection(&self, _: crate::ConnectionDto) {}
+        fn on_error(&self, message: String) {
+            self.errors.lock().unwrap().push(message);
+            self.changed.notify_one();
+        }
+        fn on_profile_changed(&self, _: String) {}
+    }
     enum CatchUp {
         Initial,
         Incremental,
+        HandshakeCollision,
+        PermissionRefusal,
+        StorageRefusal,
     }
 
     async fn queued_messages_round_trip(catch_up: CatchUp) {
@@ -1899,6 +1979,28 @@ mod tests {
             ),
             &mut head,
         );
+        let losing_commit = if matches!(
+            catch_up,
+            CatchUp::HandshakeCollision | CatchUp::StorageRefusal
+        ) {
+            engine.commit_now(space, &[], &Default::default()).unwrap();
+            Some(
+                engine
+                    .store
+                    .outbox_handshakes()
+                    .unwrap()
+                    .into_iter()
+                    .find(|(_, _, kind)| kind == SealedKind::Commit.name())
+                    .unwrap()
+                    .0,
+            )
+        } else {
+            None
+        };
+        if matches!(catch_up, CatchUp::StorageRefusal) {
+            engine.store.conn().execute_batch("CREATE TRIGGER fail_refusal BEFORE DELETE ON outbox BEGIN SELECT RAISE(ABORT, 'injected handshake storage failure'); END;").unwrap();
+        }
+        let notices = Arc::new(RejectionListener::default());
         let engine = Arc::new(Mutex::new(engine));
         let (cmd, mut commands) = mpsc::unbounded_channel();
         let (status, _) = watch::channel(NetStatus {
@@ -1911,7 +2013,7 @@ mod tests {
         let (maintenance, mut maintenance_started) = mpsc::unbounded_channel();
         let ctx = Ctx {
             engine: EngineLease::new(engine.clone()),
-            listener: None,
+            listener: Some(notices.clone()),
             status,
             lang: crate::i18n::Lang::En,
             maintenance_work: Some(Arc::new(move || {
@@ -1961,6 +2063,102 @@ mod tests {
                 ClientFrame::Sync { all: true, .. }
             ));
             let mut current_copies = HashMap::new();
+            let mut held_commit = None;
+            if matches!(
+                catch_up,
+                CatchUp::HandshakeCollision | CatchUp::StorageRefusal
+            ) {
+                reply(&mut socket, ServerFrame::SyncDone).await;
+                loop {
+                    match request(&mut socket).await {
+                        ClientFrame::Publish { env }
+                            if Some(env.client_id()) == losing_commit.as_deref() =>
+                        {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Rejected {
+                                    space: space.into(),
+                                    client_id: env.client_id().into(),
+                                    reason: roda_proto::STALE_COMMIT.into(),
+                                    permanent: true,
+                                },
+                            )
+                            .await;
+                            break;
+                        }
+                        ClientFrame::Req { id, .. } => {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Res {
+                                    id,
+                                    result: Ok(Reply::Done),
+                                },
+                            )
+                            .await
+                        }
+                        ClientFrame::Ping => {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Pong {
+                                    server_time_ms: None,
+                                },
+                            )
+                            .await
+                        }
+                        other => panic!("unexpected before commit collision {other:?}"),
+                    }
+                }
+                if matches!(catch_up, CatchUp::StorageRefusal) {
+                    notices.changed.notified().await;
+                    {
+                        let engine = lock(&engine);
+                        assert!(engine.device().unwrap().pending(space));
+                        assert!(engine
+                            .store
+                            .outbox_get(losing_commit.as_ref().unwrap())
+                            .unwrap()
+                            .is_some());
+                        engine
+                            .store
+                            .conn()
+                            .execute_batch("DROP TRIGGER fail_refusal")
+                            .unwrap();
+                    }
+                    reply(
+                        &mut socket,
+                        ServerFrame::Rejected {
+                            space: space.into(),
+                            client_id: losing_commit.clone().unwrap(),
+                            reason: roda_proto::STALE_COMMIT.into(),
+                            permanent: true,
+                        },
+                    )
+                    .await;
+                }
+                if matches!(catch_up, CatchUp::StorageRefusal) {
+                    // Exercise the real gap after retry succeeds but before the winning
+                    // commit arrives: the relay must refuse an old-epoch application.
+                    held_commit = Some(missed_commit.clone());
+                } else {
+                    reply(
+                        &mut socket,
+                        ServerFrame::Event {
+                            ev: missed_commit.clone(),
+                        },
+                    )
+                    .await;
+                }
+            }
+            if matches!(catch_up, CatchUp::PermissionRefusal) {
+                reply(
+                    &mut socket,
+                    ServerFrame::Event {
+                        ev: missed_commit.clone(),
+                    },
+                )
+                .await;
+                reply(&mut socket, ServerFrame::SyncDone).await;
+            }
             if matches!(catch_up, CatchUp::Incremental) {
                 reply(&mut socket, ServerFrame::SyncDone).await;
                 let mut sent_at_old_epoch = HashSet::new();
@@ -2120,8 +2318,48 @@ mod tests {
                                 "a late rejection must preserve the newer sealed copy"
                             );
                         }
+                        if matches!(catch_up, CatchUp::PermissionRefusal)
+                            && env.client_id() == cached.client_id
+                        {
+                            assert!(readable.insert(env.client_id().to_string()));
+                            reply(
+                                &mut socket,
+                                ServerFrame::Rejected {
+                                    space: space.into(),
+                                    client_id: env.client_id().into(),
+                                    reason: "permission denied".into(),
+                                    permanent: true,
+                                },
+                            )
+                            .await;
+                            continue;
+                        }
                         let (_, bytes) = env.sealed_data().unwrap();
-                        assert_eq!(roda_mls::application_epoch(bytes), Some(2));
+                        let epoch = roda_mls::application_epoch(bytes);
+                        if epoch == Some(1)
+                            && matches!(
+                                catch_up,
+                                CatchUp::HandshakeCollision | CatchUp::StorageRefusal
+                            )
+                        {
+                            // `original` above restricts this to the same two queued IDs.
+                            // A sent copy can precede catch-up even after its server reply.
+                            reply(
+                                &mut socket,
+                                ServerFrame::Rejected {
+                                    space: space.into(),
+                                    client_id: env.client_id().into(),
+                                    reason: roda_proto::STALE_SEAL.into(),
+                                    permanent: true,
+                                },
+                            )
+                            .await;
+                            if let Some(ev) = held_commit.take() {
+                                reply(&mut socket, ServerFrame::Event { ev }).await;
+                            }
+                            continue;
+                        }
+                        assert_eq!(epoch, Some(2));
                         let Opened::Application { plaintext, .. } = peer
                             .open(
                                 space,
@@ -2167,6 +2405,7 @@ mod tests {
                     other => panic!("unexpected {other:?}"),
                 }
             }
+            assert!(held_commit.is_none(), "the old-epoch gap was not exercised");
             // A response ordered after both event echoes confirms that the client
             // applied them and cleared their pending records before stopping.
             let (marker, marked) = oneshot::channel();
@@ -2223,6 +2462,22 @@ mod tests {
                 assert!(!engine.net.pending.contains_key(&cached.client_id));
                 assert!(!engine.net.pending.contains_key(&fresh.client_id));
                 engine.logs[space].verify().unwrap();
+                let errors = notices.errors.lock().unwrap();
+                if matches!(catch_up, CatchUp::PermissionRefusal) {
+                    assert_eq!(errors.as_slice(), ["Could not send. Try again."]);
+                    assert!(engine.store.outbox().unwrap().iter().any(|p| p.failed
+                        && p.event.client_id == cached.client_id
+                        && p.last_error.as_deref() == Some("permission denied")));
+                } else if matches!(catch_up, CatchUp::StorageRefusal) {
+                    assert_eq!(errors.as_slice(), ["Could not finish syncing. Try again."]);
+                    assert_eq!(engine.outbox_len(), 0);
+                } else {
+                    assert!(
+                        errors.is_empty(),
+                        "handled reconciliation is not a user error: {errors:?}"
+                    );
+                    assert_eq!(engine.outbox_len(), 0);
+                }
             }
             cmd.send(Cmd::Stop).unwrap();
             stopped.await.unwrap();
@@ -2572,5 +2827,42 @@ mod tests {
             Some("Members see different groups in this chat (the server may have forked it).")
         );
         assert!(!stored, "the refused event was appended");
+    }
+    #[test]
+    fn superseded_profile_query_cannot_consume_current_batch_or_its_backoff() {
+        let mut waiting = HashMap::new();
+        remember_waiting(
+            &mut waiting,
+            1,
+            Waiting::SealedProfiles(vec!["self".into()]),
+        );
+        remember_waiting(
+            &mut waiting,
+            2,
+            Waiting::AgreementKeys(vec!["contact".into()]),
+        );
+        remember_waiting(
+            &mut waiting,
+            3,
+            Waiting::SealedProfiles(vec!["self".into()]),
+        );
+        assert!(
+            waiting.remove(&1).is_none(),
+            "late Q1 must never reach sealed_profiles_arrived"
+        );
+        assert!(
+            matches!(waiting.get(&3),Some(Waiting::SealedProfiles(ids)) if ids==&vec!["self".to_owned()])
+        );
+        assert!(
+            waiting.contains_key(&2),
+            "independent agreement request remains tracked"
+        );
+        remember_waiting(&mut waiting, 4, Waiting::ProfileUploaded(2));
+        remember_waiting(&mut waiting, 5, Waiting::ProfileUploaded(3));
+        assert!(
+            waiting.remove(&4).is_none(),
+            "old upload ACK must not settle current request deadline"
+        );
+        assert!(matches!(waiting.get(&5), Some(Waiting::ProfileUploaded(3))));
     }
 }

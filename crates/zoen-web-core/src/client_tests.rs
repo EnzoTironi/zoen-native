@@ -4,7 +4,7 @@ use roda_log::{Author, Signer as NativeSigner};
 use roda_mls::Device;
 
 #[derive(Clone)]
-struct HostSigner(NativeSigner);
+pub(super) struct HostSigner(pub(super) NativeSigner);
 impl Signer for HostSigner {
     fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, SignerError> {
         hex::decode(self.0.sign(payload)).map_err(|_| SignerError::SigningError)
@@ -14,7 +14,7 @@ impl Signer for HostSigner {
     }
 }
 
-fn account(identity: &NativeSigner, device: &NativeSigner) -> LinkedAccount {
+pub(super) fn account(identity: &NativeSigner, device: &NativeSigner) -> LinkedAccount {
     LinkedAccount {
         identity: identity.id(),
         device: device.id(),
@@ -34,7 +34,7 @@ fn account(identity: &NativeSigner, device: &NativeSigner) -> LinkedAccount {
     }
 }
 
-fn sequence(log: &mut SpaceLog, env: Envelope) -> Vec<u8> {
+pub(super) fn sequence(log: &mut SpaceLog, env: Envelope) -> Vec<u8> {
     let outer = roda_log::event_from_content(
         env.content().to_vec(),
         env.sig.clone(),
@@ -56,7 +56,7 @@ fn sequence(log: &mut SpaceLog, env: Envelope) -> Vec<u8> {
     .encode()
 }
 
-fn clear(log: &mut SpaceLog, author: &Author, body: EventBody, now: i64) -> Vec<u8> {
+pub(super) fn clear(log: &mut SpaceLog, author: &Author, body: EventBody, now: i64) -> Vec<u8> {
     let event = author.sign_event(
         log.space(),
         &roda_types::new_ulid(now),
@@ -228,13 +228,22 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
             .count(),
         1
     );
-    // Only the redundant empty file companion may disappear. Attachment posts
-    // carrying text, reply/thread context, forwards, or non-file items are posts.
+    // Ordinary files use the same MessagePosted identity as native. Only voice
+    // creation is itself a message; otherwise reactions/deletes target the wrong hash.
     let companion = events
         .iter()
         .find(|e| matches!(e.body, EventBody::MessagePosted { .. }))
         .unwrap();
-    assert!(client.message_view(companion, "sending", None).is_none());
+    assert!(client
+        .message_view(companion, "sending", None)
+        .unwrap()
+        .file
+        .is_some());
+    let creation = events
+        .iter()
+        .find(|event| matches!(event.body, EventBody::ItemCreated { .. }))
+        .unwrap();
+    assert!(client.message_view(creation, "sending", None).is_none());
     assert_eq!(client.conversations()[0].messages.len(), 2);
     // A later empty reshare is not the generated companion, even by its owner.
     let mut reshare = companion.clone();
@@ -417,6 +426,42 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
     let accepted = client.receive(&sequence(&mut log, env), 12).unwrap();
     assert_eq!(accepted.conversations[0].messages.len(), 2);
     assert_eq!(accepted.conversations[0].messages[1].delivery, "confirmed");
+
+    // A cold offline reopen can enqueue with its provisioned MLS group. It must
+    // persist the ratchet and outbox without publishing until catch-up finishes.
+    let mut offline = Client::new(account.clone(), host.clone(), &accepted.snapshot).unwrap();
+    assert!(!offline.synced);
+    assert!(offline.conversations()[0].can_send);
+    let queued = offline
+        .queue_message(space, "Offline after reopening", 12)
+        .unwrap();
+    let queued_id = queued.conversations[0].messages.last().unwrap().id.clone();
+    assert!(!queued.frames.iter().any(|frame| matches!(
+        ClientFrame::decode(frame).unwrap(),
+        ClientFrame::Publish { env } if env.client_id() == queued_id
+    )));
+    let mut offline_reopened =
+        Client::new(account.clone(), host.clone(), &queued.snapshot).unwrap();
+    assert_eq!(offline_reopened.conversations()[0].messages.len(), 3);
+    assert_eq!(
+        offline_reopened.conversations()[0].messages[2].text,
+        "Offline after reopening"
+    );
+    offline_reopened.bootstrap().unwrap();
+    let resumed = offline_reopened
+        .receive(&ServerFrame::SyncDone.encode(), 13)
+        .unwrap();
+    assert_eq!(
+        resumed
+            .frames
+            .iter()
+            .filter(|frame| matches!(
+                ClientFrame::decode(frame).unwrap(),
+                ClientFrame::Publish { env } if env.client_id() == queued_id
+            ))
+            .count(),
+        1
+    );
 
     let mut restored = Client::new(account, host, &accepted.snapshot).unwrap();
     restored.bootstrap().unwrap();
@@ -716,6 +761,143 @@ fn annotate(log: &mut SpaceLog, author: &Author, target: &str, note: roda_types:
 }
 
 #[test]
+fn conversation_metadata_comes_from_logs_and_only_my_personal_log_controls_preferences() {
+    let (mut client, author, other, mut chat, _) = web_fixture();
+    clear(
+        &mut chat,
+        &author,
+        EventBody::MemberAdded {
+            identity: other.identity.clone(),
+            role: Role::Reader,
+        },
+        3,
+    );
+    let prefs = roda_types::ChatPrefs {
+        pinned: true,
+        archived: true,
+        muted_until_ms: Some(i64::MAX),
+    };
+    let body = || EventBody::ChatPrefsSet {
+        space: chat.space().into(),
+        prefs: prefs.clone(),
+    };
+    let mut personal = SpaceLog::new("sp_my_personal");
+    clear(
+        &mut personal,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Personal".into(),
+            kind: SpaceKind::Personal,
+            privacy: Privacy::EndToEnd,
+        },
+        4,
+    );
+    clear(&mut personal, &author, body(), 5);
+    clear(
+        &mut personal,
+        &other,
+        EventBody::ChatPrefsSet {
+            space: chat.space().into(),
+            prefs: Default::default(),
+        },
+        6,
+    );
+    client.logs.insert(personal.space().into(), personal);
+    let mut impostor = SpaceLog::new("sp_someone_elses_personal");
+    clear(
+        &mut impostor,
+        &other,
+        EventBody::SpaceCreated {
+            title: "Other".into(),
+            kind: SpaceKind::Personal,
+            privacy: Privacy::EndToEnd,
+        },
+        7,
+    );
+    clear(
+        &mut impostor,
+        &author,
+        EventBody::ChatPrefsSet {
+            space: chat.space().into(),
+            prefs: Default::default(),
+        },
+        8,
+    );
+    client.logs.insert(impostor.space().into(), impostor);
+    let profile = Identity {
+        id: other.identity.clone(),
+        kind: roda_types::IdentityKind::Agent,
+        name: "Garden".into(),
+        handle: "garden".into(),
+        tint_hex: "#34752A".into(),
+        glyph: Some("leaf".into()),
+        owner: Some(author.identity.clone()),
+        bio: "Agent".into(),
+        owner_proof: None,
+    };
+    client
+        .saved
+        .profiles
+        .insert(profile.id.clone(), profile.clone());
+    client.logs.insert(chat.space().into(), chat.clone());
+    let conversations = client.conversations();
+    assert_eq!(conversations.len(), 1);
+    let conversation = &conversations[0];
+    assert_eq!(conversation.privacy, Privacy::EndToEnd);
+    assert_eq!(conversation.roster[&other.identity], Role::Reader);
+    assert_eq!(
+        conversation
+            .profiles
+            .iter()
+            .map(|profile| profile.identity.clone())
+            .collect::<Vec<_>>(),
+        vec![profile]
+    );
+    assert_eq!(conversation.event_count, chat.next_seq().to_string());
+    assert!(conversation.prefs.pinned && conversation.prefs.archived);
+    assert_eq!(
+        conversation.prefs.muted_until_ms.as_deref(),
+        Some("9223372036854775807")
+    );
+
+    // The same preference body in the group has no effect.
+    let chat_id = chat.space().to_owned();
+    clear(
+        &mut chat,
+        &author,
+        EventBody::ChatPrefsSet {
+            space: chat_id,
+            prefs: Default::default(),
+        },
+        9,
+    );
+    client.logs.insert(chat.space().into(), chat);
+    assert!(client.conversations()[0].prefs.pinned);
+    for privacy in [Privacy::Closed, Privacy::Public] {
+        let space = format!("sp_{privacy:?}");
+        let mut log = SpaceLog::new(&space);
+        clear(
+            &mut log,
+            &author,
+            EventBody::SpaceCreated {
+                title: space.clone(),
+                kind: SpaceKind::Community,
+                privacy,
+            },
+            10,
+        );
+        client.logs.insert(space.clone(), log);
+        let projected = client
+            .conversations()
+            .into_iter()
+            .find(|chat| chat.id == space)
+            .unwrap();
+        assert_eq!(projected.privacy, privacy);
+        assert!(!projected.prefs.pinned);
+    }
+}
+
+#[test]
 fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
     let (mut client, author, other, mut log, target) = web_fixture();
     let react = |emoji: &str| roda_types::Annotation::React {
@@ -822,4 +1004,835 @@ fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect() {
         );
         assert!(restored.delivered().is_empty());
     }
+}
+
+fn document_fixture() -> (Client<HostSigner>, Author, SpaceLog) {
+    let identity = NativeSigner::from_secret(&[71; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[72; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let mut client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let mut log = SpaceLog::new("sp_web_documents");
+    let created = clear(
+        &mut log,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Documentos compartilhados".into(),
+            kind: SpaceKind::Group,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    client.receive(&created, 2).unwrap();
+    client.receive(&ServerFrame::SyncDone.encode(), 3).unwrap();
+    (client, author, log)
+}
+
+fn doc(client: &mut Client<HostSigner>, command: serde_json::Value, now: i64) -> DocumentResponse {
+    client.document_request(&command.to_string(), now).unwrap()
+}
+
+fn confirm_documents(
+    client: &mut Client<HostSigner>,
+    log: &mut SpaceLog,
+    update: Update,
+    now: i64,
+) {
+    for frame in update.frames {
+        if let ClientFrame::Publish { env } = ClientFrame::decode(&frame).unwrap() {
+            let frame = sequence(log, env);
+            client.receive(&frame, now).unwrap();
+        }
+    }
+}
+
+#[test]
+fn browser_new_document_notes_follow_language_without_rewriting_received_history() {
+    for (language, created, imported, untitled, page_label, restore_note) in [
+        (
+            roda_i18n::Lang::En,
+            "Created",
+            "Imported",
+            "Untitled",
+            "Page",
+            "Restored v1",
+        ),
+        (
+            roda_i18n::Lang::Pt,
+            "Criado",
+            "Importado",
+            "Sem título",
+            "Página",
+            "Restaurou a v1",
+        ),
+    ] {
+        let _language = roda_i18n::enter(language);
+        let (mut client, author, mut log) = document_fixture();
+        let made = doc(
+            &mut client,
+            serde_json::json!({"op":"page_create","space_id":log.space(),"title":""}),
+            10,
+        );
+        assert_eq!(made.result["origin"], created);
+        assert_eq!(made.result["title"], untitled);
+        assert_eq!(made.result["kind_id"], "page");
+        assert_eq!(made.result["kind_label"], page_label);
+        confirm_documents(&mut client, &mut log, made.update.unwrap(), 11);
+        let made = doc(
+            &mut client,
+            serde_json::json!({"op":"page_import_markdown","space_id":log.space(),"path":"notas/original.md","markdown":"# Título em português 🪴\n"}),
+            12,
+        );
+        assert_eq!(made.result["origin"], imported);
+        assert_eq!(made.result["title"], "Título em português 🪴");
+        assert_eq!(made.result["path"], "notas/original.md");
+        confirm_documents(&mut client, &mut log, made.update.unwrap(), 13);
+        let received = clear(
+            &mut log,
+            &author,
+            EventBody::ItemCreated {
+                item: "it_literal_history".into(),
+                kind: roda_types::ItemKind::Note,
+                content: roda_types::ItemContent::Text {
+                    text: "Texto original em português".into(),
+                },
+                origin: "Criado no iOS — manter literal".into(),
+            },
+            14,
+        );
+        client.receive(&received, 15).unwrap();
+        let received = clear(
+            &mut log,
+            &author,
+            EventBody::ItemVersioned {
+                item: "it_literal_history".into(),
+                content: roda_types::ItemContent::Text {
+                    text: "Outra versão em português".into(),
+                },
+                note: "Editou no iOS — manter literal".into(),
+            },
+            16,
+        );
+        client.receive(&received, 17).unwrap();
+        let restored = doc(
+            &mut client,
+            serde_json::json!({"op":"restore_version","item_id":"it_literal_history","version":1}),
+            18,
+        );
+        assert_eq!(restored.result["versions"][0]["note"], restore_note);
+        assert_eq!(
+            restored.result["versions"][1]["note"],
+            "Editou no iOS — manter literal"
+        );
+        assert_eq!(
+            restored.result["versions"][2]["note"],
+            "Criado no iOS — manter literal"
+        );
+        assert_eq!(restored.result["text"], "Texto original em português");
+    }
+}
+
+#[test]
+fn browser_pages_share_native_codec_persist_drafts_and_replay_receipts() {
+    let (mut client, _, mut log) = document_fixture();
+    let made = doc(
+        &mut client,
+        serde_json::json!({"op":"page_import_markdown","space_id":log.space(),"path":"notes/viagem.md","markdown":"# Viagem 🪴\n\nTexto **marcado**.\n"}),
+        10,
+    );
+    let id = made.result["id"].as_str().unwrap().to_owned();
+    confirm_documents(&mut client, &mut log, made.update.unwrap(), 11);
+    let read = doc(
+        &mut client,
+        serde_json::json!({"op":"page","item_id":id}),
+        12,
+    )
+    .result;
+    assert_eq!(read["path"], "notes/viagem.md");
+    let mut changed = read["blocks"][1].clone();
+    changed["text"] = "Texto **preservado** 🪴".into();
+    changed["spans"] = serde_json::json!([]);
+    let request = serde_json::json!({"op":"page_apply","item_id":id,"mutation_id":"first","edit_context":read["edit_context"],"order":read["blocks"].as_array().unwrap().iter().map(|b|b["id"].clone()).collect::<Vec<_>>(),"changed":[changed]});
+    let applied = doc(&mut client, request.clone(), 13);
+    assert_eq!(applied.result["replayed"], false);
+    assert_eq!(applied.result["page"]["unsaved"], true);
+    let snapshot = applied.update.unwrap().snapshot;
+    let mut reopened =
+        Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
+    let replay = doc(&mut reopened, request.clone(), 14);
+    assert_eq!(replay.result["replayed"], true);
+    assert_eq!(
+        replay.result["applied_content_hash"],
+        applied.result["applied_content_hash"]
+    );
+    let exported = doc(
+        &mut reopened,
+        serde_json::json!({"op":"page_markdown","item_id":id}),
+        15,
+    );
+    assert!(exported.result.as_str().unwrap().contains("preservado"));
+    let mut wrong = request;
+    wrong["changed"][0]["text"] = "Outra edição".into();
+    assert!(reopened.document_request(&wrong.to_string(), 16).is_err());
+    let committed = doc(
+        &mut reopened,
+        serde_json::json!({"op":"page_commit","item_id":id,"note":"Editou no navegador"}),
+        17,
+    );
+    assert_eq!(committed.result, true);
+    let queued_page = doc(
+        &mut reopened,
+        serde_json::json!({"op":"page","item_id":id}),
+        18,
+    )
+    .result;
+    assert_eq!(queued_page["unsaved"], false);
+    assert_eq!(queued_page["pending_sync"], true);
+}
+
+#[test]
+fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_new_change() {
+    use base64::Engine as _;
+    let (mut client, author, mut log) = document_fixture();
+    let page = roda_docs::Page::from_markdown("# Original\n\nTexto antigo\n").unwrap();
+    let content = roda_types::PageContent {
+        title: "Original".into(),
+        path: String::new(),
+        loro: base64::engine::general_purpose::STANDARD.encode(page.snapshot()),
+        blob: None,
+        manifest: None,
+    };
+    let create = clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: "it_merge".into(),
+            kind: roda_types::ItemKind::Page,
+            content: roda_types::ItemContent::Page(content),
+            origin: "Criado no nativo".into(),
+        },
+        10,
+    );
+    client.receive(&create, 11).unwrap();
+    let read = doc(
+        &mut client,
+        serde_json::json!({"op":"page","item_id":"it_merge"}),
+        12,
+    )
+    .result;
+    let before = page.version();
+    let mut order = page
+        .blocks()
+        .iter()
+        .map(|b| b.id.clone())
+        .collect::<Vec<_>>();
+    order.push("remote-block".into());
+    page.apply(
+        &order,
+        &[roda_docs::BlockEdit {
+            id: "remote-block".into(),
+            kind: roda_docs::Kind::Paragraph,
+            text: "Mudança remota".into(),
+            spans: vec![],
+        }],
+    )
+    .unwrap();
+    let version = clear(
+        &mut log,
+        &author,
+        EventBody::ItemVersioned {
+            item: "it_merge".into(),
+            content: roda_types::ItemContent::Page(roda_types::PageContent {
+                title: "Original".into(),
+                path: String::new(),
+                loro: base64::engine::general_purpose::STANDARD.encode(page.updates_since(&before)),
+                blob: None,
+                manifest: None,
+            }),
+            note: "Mudança concorrente".into(),
+        },
+        13,
+    );
+    client.receive(&version, 14).unwrap();
+    let mut heading = read["blocks"][0].clone();
+    heading["text"] = "Editado no navegador".into();
+    let request = serde_json::json!({"op":"page_apply","item_id":"it_merge","mutation_id":"merge","edit_context":read["edit_context"],"order":read["blocks"].as_array().unwrap().iter().map(|b|b["id"].clone()).collect::<Vec<_>>(),"changed":[heading]});
+    let merged = doc(&mut client, request, 15).result;
+    assert_eq!(merged["page"]["blocks"].as_array().unwrap().len(), 3);
+    assert!(merged["page"]["blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|b| b["text"] == "Mudança remota"));
+    let committed = doc(
+        &mut client,
+        serde_json::json!({"op":"page_commit","item_id":"it_merge","note":"Mesclou"}),
+        16,
+    );
+    confirm_documents(&mut client, &mut log, committed.update.unwrap(), 17);
+    let past = doc(
+        &mut client,
+        serde_json::json!({"op":"page_at","item_id":"it_merge","version":1}),
+        18,
+    )
+    .result;
+    assert_eq!(past["blocks"].as_array().unwrap().len(), 2);
+    assert_eq!(past["can_edit"], false);
+    let restored = doc(
+        &mut client,
+        serde_json::json!({"op":"restore_version","item_id":"it_merge","version":1}),
+        19,
+    );
+    assert_eq!(restored.result["version"], 4);
+    let current = doc(
+        &mut client,
+        serde_json::json!({"op":"page","item_id":"it_merge"}),
+        20,
+    )
+    .result;
+    assert_eq!(current["blocks"].as_array().unwrap().len(), 2);
+    assert_eq!(current["blocks"][0]["text"], "Original");
+}
+
+#[test]
+fn browser_large_page_upload_barrier_survives_reload_and_missing_download_waits() {
+    use base64::Engine as _;
+    let (mut client, author, mut log) = document_fixture();
+    let original_snapshot = client.update(Vec::new()).unwrap().snapshot;
+    let markdown = (0..8000)
+        .map(|i| format!("Parágrafo {i}: conteúdo de uma página compartilhada 🪴.\n\n"))
+        .collect::<String>();
+    let made = doc(
+        &mut client,
+        serde_json::json!({"op":"page_import_markdown","space_id":log.space(),"path":"large.md","markdown":markdown}),
+        10,
+    );
+    assert!(!made.uploads.is_empty());
+    let update = made.update.unwrap();
+    assert!(!update
+        .frames
+        .iter()
+        .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. }))));
+    let mut reopened = Client::new(
+        client.account.clone(),
+        client.signer.clone(),
+        &update.snapshot,
+    )
+    .unwrap();
+    let resumed: Vec<String> = serde_json::from_str(&reopened.document_uploads().unwrap()).unwrap();
+    assert_eq!(resumed, made.uploads);
+    let queued = reopened
+        .saved
+        .outbox
+        .values()
+        .find_map(|p| p.inner.clone().or_else(|| p.envelope().ok()?.plain_event()))
+        .unwrap();
+    let roda_types::EventBody::ItemCreated {
+        item,
+        content: roda_types::ItemContent::Page(content),
+        ..
+    } = queued.body
+    else {
+        panic!("page creation")
+    };
+    let reference = content.blob.unwrap();
+    let sealed = reopened.local_chunk(&reference.blob);
+    let bytes = crate::media::open_chunk(&reference, &sealed).unwrap();
+    let page = roda_docs::Page::new();
+    page.import(&bytes).unwrap();
+    assert!(page.to_markdown().contains("Parágrafo 7999"));
+    reopened.synced = true;
+    let released = reopened.document_uploaded(&resumed).unwrap();
+    assert!(released
+        .frames
+        .iter()
+        .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. }))));
+    let received = clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: item.clone(),
+            kind: roda_types::ItemKind::Page,
+            content: roda_types::ItemContent::Page(roda_types::PageContent {
+                title: "Grande".into(),
+                path: "large.md".into(),
+                loro: String::new(),
+                blob: Some(reference.clone()),
+                manifest: None,
+            }),
+            origin: "Outro cliente".into(),
+        },
+        20,
+    );
+    let mut remote = Client::new(
+        client.account.clone(),
+        client.signer.clone(),
+        &original_snapshot,
+    )
+    .unwrap();
+    remote.receive(&received, 21).unwrap();
+    let waiting = doc(
+        &mut remote,
+        serde_json::json!({"op":"page","item_id":item}),
+        22,
+    );
+    assert_eq!(waiting.result["ready"], false);
+    assert_eq!(waiting.result["can_edit"], false);
+    assert_eq!(waiting.downloads.len(), 1);
+    assert!(remote
+        .document_cache_blob(reference.clone(), b"wrong".to_vec())
+        .is_err());
+    remote.document_cache_blob(reference, bytes).unwrap();
+    let ready = doc(
+        &mut remote,
+        serde_json::json!({"op":"page_markdown","item_id":item}),
+        23,
+    );
+    assert!(ready.result.as_str().unwrap().contains("Parágrafo 7999"));
+    // The codec itself is the same binary snapshot native imports.
+    assert!(
+        base64::engine::general_purpose::STANDARD
+            .encode(page.snapshot())
+            .len()
+            > 48 << 10
+    );
+}
+
+#[test]
+fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_undo() {
+    let (mut client, author, mut log) = document_fixture();
+    let plan = roda_types::PlanDoc {
+        title: "Plano exato".into(),
+        summary: "Centavos sem float".into(),
+        budget_cents: Some(i64::MAX),
+        sections: vec![roda_types::PlanSection {
+            title: "Custos".into(),
+            lines: vec![roda_types::PlanLine {
+                id: "ln_exact".into(),
+                text: "Custo grande".into(),
+                cost_cents: 9_007_199_254_740_993,
+                done: false,
+            }],
+        }],
+    };
+    let made = clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: "it_plan".into(),
+            kind: roda_types::ItemKind::Plan,
+            content: roda_types::ItemContent::Plan(plan),
+            origin: "Criado no nativo".into(),
+        },
+        10,
+    );
+    client.receive(&made, 11).unwrap();
+    let read = doc(
+        &mut client,
+        serde_json::json!({"op":"plan_page","item_id":"it_plan"}),
+        12,
+    )
+    .result;
+    assert_eq!(read["total_cents"], "9007199254740993");
+    assert_eq!(read["legacy_edit_admitted"], true);
+    let detail = doc(
+        &mut client,
+        serde_json::json!({"op":"item","item_id":"it_plan"}),
+        13,
+    )
+    .result;
+    assert_eq!(
+        detail["plan"]["sections"][0]["lines"][0]["cost_cents"],
+        "9007199254740993"
+    );
+    let toggle = doc(
+        &mut client,
+        serde_json::json!({"op":"toggle_plan_line","item_id":"it_plan","line_id":"ln_exact","observed_hash":read["content_hash"]}),
+        14,
+    );
+    assert_eq!(
+        toggle.result["item"]["plan"]["sections"][0]["lines"][0]["done"],
+        true
+    );
+    assert!(client.document_request(&serde_json::json!({"op":"toggle_plan_line","item_id":"it_plan","line_id":"ln_exact","observed_hash":read["content_hash"]}).to_string(),15).is_err());
+    let undo = doc(
+        &mut client,
+        serde_json::json!({"op":"undo","token":toggle.result["undo"]}),
+        16,
+    );
+    assert_eq!(
+        undo.result["plan"]["sections"][0]["lines"][0]["done"],
+        false
+    );
+    assert!(client
+        .document_request(
+            &serde_json::json!({"op":"undo","token":toggle.result["undo"]}).to_string(),
+            17
+        )
+        .is_err());
+}
+
+#[test]
+fn browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmations() {
+    let (mut client, _, mut log) = document_fixture();
+    let made=client.app_request(&serde_json::json!({"op":"install_app","space_id":log.space(),"app_id":"pet","args_json":"{\"name\":\"Jumento\"}"}).to_string(),10,"pt-BR").unwrap();
+    let item = made.result["id"].as_str().unwrap().to_owned();
+    assert_eq!(made.result["app"]["trust"], "Act");
+    let update = made.update.unwrap();
+    let published = update
+        .frames
+        .iter()
+        .filter_map(|frame| match ClientFrame::decode(frame).unwrap() {
+            ClientFrame::Publish { env } => env.plain_event(),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(published.len(), 3);
+    assert!(matches!(published[0].body, EventBody::ItemCreated { .. }));
+    assert!(matches!(published[1].body, EventBody::GrantIssued { .. }));
+    assert!(matches!(published[2].body, EventBody::MessagePosted { .. }));
+    let timeline = client.conversations();
+    let card = timeline[0]
+        .messages
+        .iter()
+        .find_map(|message| message.card.as_ref())
+        .unwrap();
+    assert_eq!(card["item_id"], item);
+    assert_eq!(card["app"]["app_id"], "pet");
+    confirm_documents(&mut client, &mut log, update, 11);
+    let read=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_get_state","args_json":"{}","confirmed":false}).to_string(),12,"pt-BR").unwrap();
+    assert_eq!(read.result["status"], "Done");
+    assert!(read.update.is_none());
+    let fed=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_feed","args_json":"{}","confirmed":false}).to_string(),13,"pt-BR").unwrap();
+    assert_eq!(fed.result["status"], "Done");
+    assert_eq!(fed.result["item"]["version"], 2);
+    let count = client.saved.outbox.len();
+    let needs=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_release","args_json":"{}","confirmed":false}).to_string(),14,"pt-BR").unwrap();
+    assert_eq!(needs.result["status"], "NeedsConfirmation");
+    assert!(needs.update.is_none());
+    assert_eq!(client.saved.outbox.len(), count);
+    let released=client.app_request(&serde_json::json!({"op":"app_call_tool","item_id":item,"tool":"pet_release","args_json":"{}","confirmed":true}).to_string(),15,"pt-BR").unwrap();
+    assert_eq!(released.result["status"], "Done");
+    assert_eq!(released.result["item"]["version"], 3);
+    let resource = client
+        .app_request(
+            &serde_json::json!({"op":"app_resource","uri":"ui://roda/pet"}).to_string(),
+            16,
+            "pt-BR",
+        )
+        .unwrap();
+    assert_eq!(
+        resource.result["text"],
+        roda_apps::spec("pet").unwrap().html.unwrap()
+    );
+    let specs = client
+        .app_request(r#"{"op":"app_specs"}"#, 17, "pt-BR")
+        .unwrap();
+    assert_eq!(
+        specs.result.as_array().unwrap().len(),
+        roda_apps::specs().len()
+    );
+}
+
+#[test]
+fn browser_closed_chat_posts_queue_offline_and_never_publish_plaintext_after_encryption() {
+    let (mut client, author, mut log) = document_fixture();
+    client.synced = false;
+    let queued = client
+        .queue_message(log.space(), "Uma mensagem offline", 10)
+        .unwrap();
+    assert_eq!(
+        client.conversations()[0].messages.last().unwrap().text,
+        "Uma mensagem offline"
+    );
+    assert!(!queued
+        .frames
+        .iter()
+        .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. }))));
+    let upgraded = clear(&mut log, &author, EventBody::SpaceEncrypted, 11);
+    client.receive(&upgraded, 12).unwrap();
+    let resumed = client.receive(&ServerFrame::SyncDone.encode(), 13).unwrap();
+    assert!(!resumed.frames.iter().any(|frame|matches!(ClientFrame::decode(frame),Ok(ClientFrame::Publish{env}) if env.plain_event().is_some_and(|event|matches!(event.body,EventBody::MessagePosted{..})))));
+}
+
+#[test]
+fn browser_file_cards_keep_the_native_message_identity_for_deletion_and_replies() {
+    let (mut client, _, mut log) = document_fixture();
+    let file = crate::media::seal_file("report.txt", "text/plain", b"report", None)
+        .unwrap()
+        .doc;
+    let (update, item, message) = client.queue_file_record(log.space(), file, 10).unwrap();
+    let before = client.conversations();
+    assert_eq!(before[0].messages.len(), 1);
+    assert_eq!(before[0].messages[0].id, message);
+    assert_eq!(
+        before[0].messages[0].file_item_id.as_deref(),
+        Some(item.as_str())
+    );
+    confirm_documents(&mut client, &mut log, update, 11);
+    let posted = client.conversations()[0].messages[0].entry.clone().unwrap();
+    let deleted = client
+        .queue_annotation(log.space(), &posted, roda_types::Annotation::Delete, 12)
+        .unwrap();
+    confirm_documents(&mut client, &mut log, deleted, 13);
+    let after = client.conversations();
+    assert!(after[0].messages[0].deleted);
+    assert!(after[0].messages[0].file.is_none());
+}
+
+#[test]
+fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven_agent_owner() {
+    let (mut client, owner, _) = document_fixture();
+    let person = NativeSigner::from_secret(&[81; 32]);
+    let mut record = Identity {
+        id: person.id(),
+        kind: roda_types::IdentityKind::Person,
+        name: "Directory must not reveal this".into(),
+        handle: "person".into(),
+        tint_hex: "#123456".into(),
+        glyph: None,
+        owner: None,
+        bio: "Private directory text".into(),
+        owner_proof: None,
+    };
+    let cached = client
+        .directory_profiles(&serde_json::to_string(&vec![record.clone()]).unwrap())
+        .unwrap();
+    assert_eq!(cached.result[0]["name"], "@person");
+    assert_eq!(cached.result[0]["bio"], "");
+    let agent = NativeSigner::from_secret(&[82; 32]);
+    record.id = agent.id();
+    record.kind = roda_types::IdentityKind::Agent;
+    record.name = "Verified agent".into();
+    record.owner = Some(owner.identity.clone());
+    // Public ownership metadata without the certified device proof has no authority.
+    client
+        .directory_profiles(&serde_json::to_string(&vec![record.clone()]).unwrap())
+        .unwrap();
+    assert!(!client.saved.profiles.contains_key(&agent.id()));
+    record.owner_proof = Some(Box::new(
+        roda_log::agent_owner::authorize(&owner, &agent.id()).unwrap(),
+    ));
+    client
+        .directory_profiles(&serde_json::to_string(&vec![record.clone()]).unwrap())
+        .unwrap();
+    assert_eq!(
+        client.saved.profiles[&agent.id()].owner.as_deref(),
+        Some(owner.identity.as_str())
+    );
+    let other = Author::device(
+        &NativeSigner::from_secret(&[83; 32]),
+        NativeSigner::from_secret(&[84; 32]),
+    );
+    record.owner = Some(other.identity.clone());
+    record.owner_proof = Some(Box::new(
+        roda_log::agent_owner::authorize(&other, &agent.id()).unwrap(),
+    ));
+    client
+        .directory_profiles(&serde_json::to_string(&vec![record]).unwrap())
+        .unwrap();
+    assert_eq!(
+        client.saved.profiles[&agent.id()].owner.as_deref(),
+        Some(owner.identity.as_str())
+    );
+}
+
+#[test]
+fn browser_typing_is_connection_local_and_requires_a_current_writing_member() {
+    let (mut client, author, mut log) = document_fixture();
+    let before = serde_json::to_string(&client.saved).unwrap();
+    assert!(matches!(
+        ClientFrame::decode(&client.typing_frame(log.space(), true).unwrap()).unwrap(),
+        ClientFrame::Ephemeral {
+            kind: roda_proto::EphemeralKind::Typing,
+            ..
+        }
+    ));
+    assert!(matches!(
+        ClientFrame::decode(&client.typing_frame(log.space(), false).unwrap()).unwrap(),
+        ClientFrame::Ephemeral {
+            kind: roda_proto::EphemeralKind::StoppedTyping,
+            ..
+        }
+    ));
+    assert_eq!(serde_json::to_string(&client.saved).unwrap(), before);
+    client.synced = false;
+    assert!(client.typing_frame(log.space(), true).unwrap().is_empty());
+    client.synced = true;
+    let reader = clear(
+        &mut log,
+        &author,
+        EventBody::MemberAdded {
+            identity: author.identity.clone(),
+            role: Role::Reader,
+        },
+        10,
+    );
+    client.receive(&reader, 11).unwrap();
+    assert!(client.typing_frame(log.space(), true).unwrap().is_empty());
+}
+
+#[test]
+fn browser_task_checkbox_draft_survives_reread_and_cold_journal_restore() {
+    let (mut client, _, mut log) = document_fixture();
+    let made = doc(
+        &mut client,
+        serde_json::json!({"op":"page_import_markdown","space_id":log.space(),"path":"checkbox.md","markdown":"# Checkbox\n\nOriginal café\n\n- [ ] Revisar documento\n"}),
+        10,
+    );
+    let id = made.result["id"].as_str().unwrap().to_owned();
+    confirm_documents(&mut client, &mut log, made.update.unwrap(), 11);
+    let read = doc(
+        &mut client,
+        serde_json::json!({"op":"page","item_id":id}),
+        12,
+    )
+    .result;
+    assert_eq!(read["unsaved"], false);
+    let published_markdown = doc(
+        &mut client,
+        serde_json::json!({"op":"page_markdown","item_id":id}),
+        12,
+    )
+    .result;
+    let mut task = read["blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|block| block["kind"] == "task")
+        .unwrap()
+        .clone();
+    assert_eq!(task["checked"], false);
+    task["checked"] = true.into();
+    let order = read["blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|block| block["id"].clone())
+        .collect::<Vec<_>>();
+    let applied = doc(
+        &mut client,
+        serde_json::json!({"op":"page_apply","item_id":id,"mutation_id":"check-task","edit_context":read["edit_context"],"order":order,"changed":[task]}),
+        13,
+    );
+    let assert_checked_draft = |value: &serde_json::Value| {
+        assert_eq!(
+            value["unsaved"], true,
+            "accepted toggle must create a visible local draft"
+        );
+        let task = value["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|block| block["kind"] == "task")
+            .unwrap();
+        assert_eq!(task["checked"], true, "accepted toggle must remain checked");
+    };
+    assert_checked_draft(&applied.result["page"]);
+    let snapshot = applied.update.unwrap().snapshot;
+    let read_again = doc(
+        &mut client,
+        serde_json::json!({"op":"page","item_id":id}),
+        14,
+    )
+    .result;
+    assert_checked_draft(&read_again);
+    let exported = doc(
+        &mut client,
+        serde_json::json!({"op":"page_markdown","item_id":id}),
+        15,
+    )
+    .result;
+    assert!(exported.as_str().unwrap().contains("[x] Revisar documento"));
+    let mut reopened =
+        Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
+    let restored = doc(
+        &mut reopened,
+        serde_json::json!({"op":"page","item_id":id}),
+        16,
+    )
+    .result;
+    assert_checked_draft(&restored);
+    let exported = doc(
+        &mut reopened,
+        serde_json::json!({"op":"page_markdown","item_id":id}),
+        17,
+    )
+    .result;
+    assert!(exported.as_str().unwrap().contains("[x] Revisar documento"));
+    let mut unchecked = restored["blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|block| block["kind"] == "task")
+        .unwrap()
+        .clone();
+    unchecked["checked"] = false.into();
+    let restored_order = restored["blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|block| block["id"].clone())
+        .collect::<Vec<_>>();
+    let reverted = doc(
+        &mut reopened,
+        serde_json::json!({"op":"page_apply","item_id":id,"mutation_id":"uncheck-task","edit_context":restored["edit_context"],"order":restored_order,"changed":[unchecked]}),
+        18,
+    );
+    let assert_clean = |value: &serde_json::Value| {
+        assert_eq!(
+            value["unsaved"], false,
+            "returning to published content clears the draft difference"
+        );
+        assert_eq!(
+            value["blocks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|block| block["kind"] == "task")
+                .unwrap()["checked"],
+            false
+        );
+    };
+    assert_clean(&reverted.result["page"]);
+    let clean_snapshot = reverted.update.unwrap().snapshot;
+    assert_clean(
+        &doc(
+            &mut reopened,
+            serde_json::json!({"op":"page","item_id":id}),
+            19,
+        )
+        .result,
+    );
+    assert_eq!(
+        doc(
+            &mut reopened,
+            serde_json::json!({"op":"page_markdown","item_id":id}),
+            20
+        )
+        .result,
+        published_markdown
+    );
+    let mut clean_reopened = Client::new(
+        reopened.account.clone(),
+        reopened.signer.clone(),
+        &clean_snapshot,
+    )
+    .unwrap();
+    assert_clean(
+        &doc(
+            &mut clean_reopened,
+            serde_json::json!({"op":"page","item_id":id}),
+            21,
+        )
+        .result,
+    );
+    assert_eq!(
+        doc(
+            &mut clean_reopened,
+            serde_json::json!({"op":"page_markdown","item_id":id}),
+            22
+        )
+        .result,
+        published_markdown
+    );
 }

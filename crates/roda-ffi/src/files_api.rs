@@ -111,9 +111,37 @@ impl RodaEngine {
         bytes: Vec<u8>,
         thumbnail: Option<Vec<u8>>,
     ) -> Result<ItemDetail, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         let mut e = self.lock();
         let id = e.file_add(&space_id, &path, &name, &mime, &bytes, thumbnail.as_deref())?;
         e.item(&id)
+    }
+
+    /// Sends an ordinary attachment in the conversation, atomically with its file.
+    /// Reuse mutation_id only to retry the exact same selected file and target.
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_file_message(
+        &self,
+        space_id: String,
+        name: String,
+        mime: String,
+        bytes: Vec<u8>,
+        thumbnail: Option<Vec<u8>>,
+        reply_to: Option<String>,
+        thread: bool,
+        mutation_id: String,
+    ) -> Result<TimelineEntry, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
+        self.lock().send_file_message(
+            &space_id,
+            &name,
+            &mime,
+            &bytes,
+            thumbnail.as_deref(),
+            reply_to.as_deref(),
+            thread,
+            &mutation_id,
+        )
     }
 
     /// Sends a voice note as an encrypted audio file (see `Engine::send_voice_note`).
@@ -131,6 +159,7 @@ impl RodaEngine {
         reply_to: Option<String>,
         thread: bool,
     ) -> Result<TimelineEntry, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         self.lock().send_voice_note(
             &space_id,
             &bytes,
@@ -188,6 +217,7 @@ impl RodaEngine {
         version: Option<u32>,
         max_bytes: u64,
     ) -> Result<Option<Vec<u8>>, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         self.lock().file_bytes_bounded(&item_id, version, max_bytes)
     }
 
@@ -206,6 +236,7 @@ impl RodaEngine {
         item_id: String,
         version: Option<u32>,
     ) -> Result<FileDto, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         self.lock().file_info_at(&item_id, version)
     }
 }

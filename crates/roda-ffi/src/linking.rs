@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use roda_log::{content_hash_of, verify_author, Author, Signer};
+use roda_log::{Author, Signer};
 use roda_proto::DeviceRecord;
 use roda_types::*;
 
@@ -20,6 +20,8 @@ const META_ACTIVE: &str = "devices.active";
 const META_REVOKED: &str = "devices.revoked";
 /// The device that linked this one: it answers for older history.
 pub const META_PRIMARY: &str = "link.primary";
+/// Installed before the linked account can be observed, survives process termination.
+pub(crate) const META_INITIAL_HISTORY_PENDING: &str = "link.initial_history_pending";
 
 /// Messages per chat in the first bundle (`ZOEN_HISTORY_RECENT`).
 pub fn history_recent() -> usize {
@@ -55,6 +57,8 @@ pub struct LinkNet {
     pub answers: HashMap<String, (u32, bool)>,
     /// Ask the relay for our device list on this connection.
     pub ask_devices: bool,
+    /// A verified primary-device hint, consumed by the native session listener.
+    pub initial_history_ready: bool,
 }
 
 impl Engine {
@@ -77,6 +81,8 @@ impl Engine {
         if !self.is_empty() {
             self.wipe()?;
         }
+        self.store.set_meta(META_INITIAL_HISTORY_PENDING, "1")?;
+        self.store.set_meta(META_PRIMARY, &b.primary)?;
         let me = Identity {
             owner_proof: None,
             id: identity.id(),
@@ -101,6 +107,7 @@ impl Engine {
                     .set_profile_fields(&me.id, b.profile_seen_version, &fields)?;
             }
         }
+        self.initialize_linked_profile_sync()?;
         self.save_linked_account(AccountMeta {
             identity: me.id.clone(),
             device: device.id(),
@@ -109,7 +116,6 @@ impl Engine {
             registered: true,
         })?;
         self.net.author = Some(Author::certified(me.id.clone(), device, b.cert.clone()));
-        self.store.set_meta(META_PRIMARY, &b.primary)?;
         let mut active = set_of(self.store.meta(META_ACTIVE)?);
         active.insert(b.primary.clone());
         self.store.set_meta(
@@ -290,7 +296,7 @@ impl Engine {
     /// a pruned stub keeps too), signed by its author. Returns how many it took.
     pub(crate) fn import_opened(&mut self, events: Vec<Event>) -> R<u32> {
         let mut taken = 0;
-        for mut e in events {
+        for e in events {
             let Some(local) = self
                 .logs
                 .get(&e.space)
@@ -299,19 +305,9 @@ impl Engine {
             else {
                 continue;
             };
-            let fits = matches!(local.body, EventBody::Sealed { .. })
-                && local.sealed_wire.is_none()
-                && e.sealed_wire.as_deref() == Some(content_hash_of(&local).as_str())
-                && e.client_id == local.client_id
-                && e.author == local.author
-                && e.space == local.space
-                && !matches!(e.body, EventBody::Sealed { .. })
-                && verify_author(&e).is_ok();
-            if !fits {
+            let Some(e) = crate::link::opened_history_event(&local, e) else {
                 continue;
-            }
-            e.prev = local.prev.clone();
-            e.hash = local.hash.clone();
+            };
             if self.store.replace_event(&e)? {
                 taken += 1;
             }
@@ -372,6 +368,23 @@ impl Engine {
         std::mem::take(&mut self.net.link.outbox)
     }
 
+    pub(crate) fn announce_initial_history(&mut self, device: &str) {
+        if let Some(sealed) = self
+            .net
+            .link
+            .peers
+            .get(device)
+            .and_then(|peer| peer.seal(&DeviceMsg::HistoryReady))
+        {
+            self.net.link.outbox.push((device.to_owned(), sealed));
+            self.net.wake();
+        }
+    }
+
+    pub(crate) fn take_initial_history_ready(&mut self) -> bool {
+        std::mem::take(&mut self.net.link.initial_history_ready)
+    }
+
     pub(crate) fn take_ask_devices(&mut self) -> bool {
         std::mem::take(&mut self.net.link.ask_devices)
     }
@@ -395,6 +408,19 @@ impl Engine {
             return;
         };
         match msg {
+            DeviceMsg::HistoryReady => {
+                if self.store.meta(META_PRIMARY).ok().flatten().as_deref() == Some(from)
+                    && self
+                        .store
+                        .meta(META_INITIAL_HISTORY_PENDING)
+                        .ok()
+                        .flatten()
+                        .is_some()
+                    && !self.revoked_devices().contains(from)
+                {
+                    self.net.link.initial_history_ready = true;
+                }
+            }
             DeviceMsg::PageRequest {
                 req,
                 space,

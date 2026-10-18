@@ -79,6 +79,12 @@ order.
   own commit is refused clears it. A Welcome whose roster disagrees
   with the log is refused, and its key package is spent with it. The adder re-adds from a
   fresh package; no one can retry the bad Welcome. Removal is the mirror image.
+- **Direct-message delivery.** A Direct Space never seals an application message while a
+  listed identity is missing from its MLS roster, including after an empty key-package
+  claim. The original message stays pending until the recipient can join and the Commit
+  and Welcome are confirmed; a later Welcome cannot decrypt an earlier epoch. Groups
+  may continue for existing readers while an unavailable newcomer waits. An additional
+  device of an identity already represented does not count as a missing identity.
 - **Who commits:** the log is the intent and the group follows it. Any Owner or Admin device
   that sees a difference (listed but not in the group, or in the group but no longer listed)
   claims packages for the missing devices and puts all of it in one Commit plus Welcome. The

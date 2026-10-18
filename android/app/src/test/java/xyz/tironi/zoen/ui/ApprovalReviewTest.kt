@@ -12,7 +12,12 @@ import xyz.tironi.zoen.data.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ApprovalReviewTest {
-    private fun persona(id: String, mine: Boolean = false) = Persona(id, if (mine) PersonaKind.PERSON else PersonaKind.AGENT, id, id, "Z", "#123456", null, "", "me", "Me", null, mine, true)
+    private fun persona(id: String, mine: Boolean = false) = Persona(
+        id = id, kind = if (mine) PersonaKind.PERSON else PersonaKind.AGENT,
+        name = id, handle = id, initials = "Z", tintHex = "#123456", glyph = null, bio = "",
+        ownerId = "me", ownerName = "Me", ownerTintHex = null,
+        photoSha256 = null, photoReady = false, photoMime = null, isMe = mine, isMine = true,
+    )
     private fun request(id: String, chat: String = "chat", action: String = "reversible", always: Boolean = true) = AgentRequestDto(
         id, persona("agent"), chat, "Chat", id, "Detail", "Chat members", "Edit", null, "Ask first", RequestStatus.PENDING,
         1, null, null, null, action, always, false,

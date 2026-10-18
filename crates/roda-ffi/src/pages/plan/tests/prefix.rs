@@ -213,7 +213,8 @@ fn ui_overlay_keeps_version_addresses_after_invalid_undo_and_duplicate_creation(
 
     assert!(fixture
         .engine
-        .reject(&pending.client_id, "permission", true, None));
+        .reject(&pending.client_id, "permission", true, None)
+        .user_failed());
     let failed = fixture.fold();
     assert_eq!(&failed.slots[..4], confirmed.slots.as_slice());
     assert_eq!(failed.slots[4].number, Some(3));

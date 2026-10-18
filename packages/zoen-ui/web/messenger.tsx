@@ -190,7 +190,7 @@ function ChatRow({ c, active, prefs, open, set }: { c: Conversation; active: boo
   const last = [...c.messages].reverse().find((m) => !m.thread);
   const [menu, setMenu] = useState(false);
   const preview = last ? (last.deleted ? 'Mensagem apagada' : `${c.kind !== 'direct' && last.name ? `${last.name}: ` : ''}${last.file ? fileLabel(last.file) : last.text}`) : c.waiting ? 'Preparando a conversa…' : 'Nenhuma mensagem ainda';
-  return <li className={`zm-chat${active ? ' zm-active' : ''}${c.unread ? ' zm-unread' : ''}`} onContextMenu={(e) => { e.preventDefault(); setMenu(true); }} onMouseLeave={() => setMenu(false)}>
+  return <li data-space-id={c.id} className={`zm-chat${active ? ' zm-active' : ''}${c.unread ? ' zm-unread' : ''}`} onContextMenu={(e) => { e.preventDefault(); setMenu(true); }} onMouseLeave={() => setMenu(false)}>
     <button className="zm-chat-open" onClick={open} aria-current={active ? 'true' : undefined}>
       <Avatar name={c.title} />
       <span className="zm-chat-body"><span className="zm-chat-top"><b>{c.title}</b>{last ? <time>{day(last.at_ms)}</time> : null}</span>

@@ -1,0 +1,24 @@
+# Keep the MLS signing worker isolated throughout the application.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+
+# Pages merges overlapping values. Detach before attaching the exact OAuth policy.
+# Only the canonical sign-in entry and its explicitly redirected aliases relax isolation.
+/sign-in
+  ! Cross-Origin-Opener-Policy
+  ! Cross-Origin-Embedder-Policy
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Cross-Origin-Embedder-Policy: unsafe-none
+
+/sign-in/
+  ! Cross-Origin-Opener-Policy
+  ! Cross-Origin-Embedder-Policy
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Cross-Origin-Embedder-Policy: unsafe-none
+
+/sign-in.html
+  ! Cross-Origin-Opener-Policy
+  ! Cross-Origin-Embedder-Policy
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Cross-Origin-Embedder-Policy: unsafe-none

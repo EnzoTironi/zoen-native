@@ -18,6 +18,7 @@ use roda_log::profile::{
     verify_agreement, verify_upload, AgreementKey, DeviceSigned, ProfileFields, ProfileKey,
     ProfilePhoto, SealedShare, MAX_CIPHERTEXT,
 };
+use roda_log::profile_sync::{Observe, OwnProfileSync};
 use roda_proto::{AgreementKeyRecord, SealedProfile};
 use roda_types::*;
 use sha2::{Digest, Sha256};
@@ -28,13 +29,44 @@ use crate::media::Wanted;
 use crate::CoreError;
 
 pub(crate) const VAULT_AGREEMENT: &str = "zoen.agreement.v1";
-const META_UPLOADED: &str = "profile:uploaded";
+const META_UPLOADED: &str = "profile:uploaded"; // read once during migration
+const META_OWN_SYNC: &str = "profile:own-sync:v1";
+
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct OwnJournal {
+    sync: OwnProfileSync,
+    upload: Option<StoredUpload>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct StoredUpload {
+    version: u64,
+    ciphertext: Vec<u8>,
+    device: String,
+    cert: String,
+    sig: String,
+}
+
+impl StoredUpload {
+    fn sealed(&self, identity: &str) -> SealedProfile {
+        SealedProfile {
+            identity: identity.into(),
+            version: self.version,
+            ciphertext: self.ciphertext.clone(),
+            signed: DeviceSigned {
+                device: self.device.clone(),
+                cert: self.cert.clone(),
+                sig: self.sig.clone(),
+            },
+        }
+    }
+}
 const META_AGREEMENT: &str = "agreement:published";
 /// Shares per event until MLS carries them (each is ~200 bytes of hex).
 const SHARES_PER_EVENT: usize = 200;
 const MAX_NAME: usize = 64;
 const MAX_BIO: usize = 280;
-const MAX_PHOTO_BYTES: usize = 5 * 1024 * 1024;
+use roda_log::profile::MAX_PHOTO_BYTES;
 const BATCH: usize = 500;
 
 /// Profile bookkeeping for the network task.
@@ -52,8 +84,9 @@ pub struct ProfileNet {
     pub supported: bool,
     /// Who already holds my key at a version: rebuilt from the logs when the version moves.
     shared: Option<(u64, HashSet<IdentityId>)>,
-    /// The upload in flight, so a retry resends identical bytes.
-    sealed: Option<SealedProfile>,
+    own_refreshed: bool,
+    fetching: HashSet<IdentityId>,
+    refetch: HashSet<IdentityId>,
 }
 
 impl ProfileNet {
@@ -63,7 +96,8 @@ impl ProfileNet {
 }
 
 /// How `update_my_profile` treats the photo.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum PhotoChange {
     Keep,
     Remove,
@@ -71,16 +105,18 @@ pub enum PhotoChange {
 }
 
 /// A person's profile as this device can see it.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct ProfileDto {
     pub identity_id: String,
     pub handle: String,
     /// `None` when this device holds no key for them (not a contact): show `@handle`.
     pub name: Option<String>,
     pub bio: Option<String>,
-    /// The photo's sha256; its bytes come from `media(sha256)` once `photo_ready`.
+    /// The photo's sha256; read using `profile_photo(identity, expected_sha256)`.
     pub photo_sha256: Option<String>,
     pub photo_ready: bool,
+    pub photo_mime: Option<String>,
     /// The profile version shown (0 = none readable yet).
     pub version: u64,
     pub tint_hex: String,
@@ -88,11 +124,65 @@ pub struct ProfileDto {
     pub blocked: bool,
 }
 
+/// A bounded disposable view of the exact photo currently readable for an identity.
+#[derive(Clone, uniffi::Record)]
+pub struct ProfilePhotoBytes {
+    pub identity_id: String,
+    pub sha256: String,
+    pub mime: String,
+    pub bytes: Vec<u8>,
+}
+
 fn invalid(reason: String) -> CoreError {
     CoreError::Invalid { reason }
 }
 
 impl Engine {
+    fn own_profile_journal(&self) -> R<OwnJournal> {
+        if let Some(encoded) = self.store.meta(META_OWN_SYNC)? {
+            return serde_json::from_str(&encoded).map_err(|_| invalid("profile journal".into()));
+        }
+        let me = self.me_id()?;
+        let (_, _, seen, _) = self.my_fields(&me)?;
+        let uploaded = self
+            .store
+            .meta(META_UPLOADED)?
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(0);
+        Ok(OwnJournal {
+            sync: OwnProfileSync::migrate(seen, uploaded),
+            upload: None,
+        })
+    }
+
+    fn save_own_profile_journal(&self, journal: &OwnJournal) -> R<()> {
+        self.store.set_meta(
+            META_OWN_SYNC,
+            &serde_json::to_string(journal).map_err(|_| invalid("profile journal".into()))?,
+        )?;
+        Ok(())
+    }
+
+    fn next_profile_version(&self, seen: u64) -> R<u64> {
+        self.own_profile_journal()?
+            .sync
+            .edit(seen)
+            .ok_or_else(|| invalid("profile version".into()))
+    }
+
+    fn mark_profile_intent(&self, version: u64) -> R<()> {
+        let mut journal = self.own_profile_journal()?;
+        journal.sync.pending = Some(version);
+        journal.upload = None;
+        self.save_own_profile_journal(&journal)
+    }
+
+    pub(crate) fn initialize_linked_profile_sync(&self) -> R<()> {
+        self.save_own_profile_journal(&OwnJournal {
+            sync: OwnProfileSync::default(),
+            upload: None,
+        })
+    }
     fn my_fields(&self, me: &str) -> R<(ProfileKey, u64, u64, ProfileFields)> {
         let row = self
             .store
@@ -109,7 +199,7 @@ impl Engine {
         Ok((key, row.key_version, row.seen_version, fields))
     }
 
-    fn fields_of(&self, id: &str) -> Option<(u64, ProfileFields)> {
+    pub(crate) fn fields_of(&self, id: &str) -> Option<(u64, ProfileFields)> {
         let row = self.store.profile_key(id).ok()??;
         let fields = ProfileFields::from_bytes(row.fields.as_deref()?)?;
         Some((row.seen_version, fields))
@@ -118,6 +208,15 @@ impl Engine {
     /// A new account's profile key, first version and agreement key. Returns the agreement
     /// secret for the vault.
     pub(crate) fn init_profile(&mut self, me: &str, name: &str) -> R<[u8; 32]> {
+        self.init_profile_with_agreement(me, name, AgreementKey::generate())
+    }
+
+    pub(crate) fn init_profile_with_agreement(
+        &mut self,
+        me: &str,
+        name: &str,
+        agreement: AgreementKey,
+    ) -> R<[u8; 32]> {
         let key = ProfileKey::generate();
         self.store.put_profile_key(me, &key.to_hex(), 1)?;
         let fields = ProfileFields {
@@ -125,7 +224,7 @@ impl Engine {
             ..Default::default()
         };
         self.store.set_profile_fields(me, 1, &fields.to_bytes())?;
-        let agreement = AgreementKey::generate();
+        self.mark_profile_intent(1)?;
         let secret = agreement.secret();
         self.net.profiles.agreement = Some(agreement);
         self.net.profiles.shares_dirty = true;
@@ -148,6 +247,7 @@ impl Engine {
                 ..Default::default()
             };
             self.store.set_profile_fields(&me, 1, &fields.to_bytes())?;
+            self.mark_profile_intent(1)?;
         }
         self.net.profiles.shares_dirty = true;
         self.net
@@ -188,14 +288,37 @@ impl Engine {
         }
         fields.name = name.to_string();
         fields.bio = bio.to_string();
-        match photo {
-            PhotoChange::Keep => {}
-            PhotoChange::Remove => fields.photo = None,
-            PhotoChange::Set { bytes, mime } => {
-                fields.photo = Some(self.profile_photo(&bytes, &mime)?)
+        let next = self.next_profile_version(version)?;
+        self.store.raw_execute("SAVEPOINT profile_edit")?;
+        let edited = (|| -> R<()> {
+            match photo {
+                PhotoChange::Keep => {}
+                PhotoChange::Remove => fields.photo = None,
+                PhotoChange::Set { bytes, mime } => {
+                    fields.photo = Some(self.profile_photo(&bytes, &mime)?)
+                }
             }
+            self.store
+                .set_profile_fields(&me, next, &fields.to_bytes())?;
+            self.mark_profile_intent(next)?;
+            if let Some(mut ident) = self.identities.get(&me).cloned() {
+                ident.name = fields.name.clone();
+                ident.bio = fields.bio.clone();
+                self.store.put_identity(&ident, None)?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = edited {
+            self.store.raw_execute("ROLLBACK TO profile_edit")?;
+            self.store.raw_execute("RELEASE profile_edit")?;
+            return Err(error);
         }
-        self.write_my_fields(&me, version + 1, &fields)?;
+        self.store.raw_execute("RELEASE profile_edit")?;
+        if let Some(ident) = self.identities.get_mut(&me) {
+            ident.name = fields.name;
+            ident.bio = fields.bio;
+        }
+        self.index_dirty = true;
         self.net.wake();
         Ok(())
     }
@@ -209,7 +332,7 @@ impl Engine {
         if fields.name != name || fields.bio != bio {
             fields.name = name.to_string();
             fields.bio = bio.to_string();
-            self.write_my_fields(&me, version + 1, &fields)?;
+            self.write_my_fields(&me, self.next_profile_version(version)?, &fields)?;
             self.net.wake();
         }
         Ok(())
@@ -232,7 +355,8 @@ impl Engine {
             )));
         }
         let sha = hex::encode(Sha256::digest(bytes));
-        self.import_media(&sha, bytes, mime)?;
+        self.store
+            .cache_imported_media(&sha, mime, bytes, now_ms())?;
         let mut m = MediaRef {
             sha256: sha.clone(),
             mime: mime.to_string(),
@@ -252,9 +376,19 @@ impl Engine {
     }
 
     fn write_my_fields(&mut self, me: &str, version: u64, fields: &ProfileFields) -> R<()> {
-        self.store
-            .set_profile_fields(me, version, &fields.to_bytes())?;
-        self.net.profiles.sealed = None;
+        self.store.raw_execute("SAVEPOINT profile_fields")?;
+        let changed = (|| -> R<()> {
+            self.store
+                .set_profile_fields(me, version, &fields.to_bytes())?;
+            self.mark_profile_intent(version)?;
+            Ok(())
+        })();
+        if let Err(error) = changed {
+            self.store.raw_execute("ROLLBACK TO profile_fields")?;
+            self.store.raw_execute("RELEASE profile_fields")?;
+            return Err(error);
+        }
+        self.store.raw_execute("RELEASE profile_fields")?;
         if let Some(mut ident) = self.identities.get(me).cloned() {
             ident.name = fields.name.clone();
             ident.bio = fields.bio.clone();
@@ -270,7 +404,7 @@ impl Engine {
     fn rotate_profile_key(&mut self) -> R<()> {
         let me = self.me_id()?;
         let (_, _, version, fields) = self.my_fields(&me)?;
-        let next = version + 1;
+        let next = self.next_profile_version(version)?;
         self.store
             .put_profile_key(&me, &ProfileKey::generate().to_hex(), next)?;
         self.write_my_fields(&me, next, &fields)?;
@@ -287,9 +421,19 @@ impl Engine {
                 "You can't block that person.",
             )));
         }
-        if self.store.block(id, now_ms())? {
-            self.rotate_profile_key()?;
+        self.store.raw_execute("SAVEPOINT profile_block")?;
+        let changed = (|| -> R<()> {
+            if self.store.block(id, now_ms())? {
+                self.rotate_profile_key()?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = changed {
+            self.store.raw_execute("ROLLBACK TO profile_block")?;
+            self.store.raw_execute("RELEASE profile_block")?;
+            return Err(error);
         }
+        self.store.raw_execute("RELEASE profile_block")?;
         Ok(())
     }
 
@@ -332,12 +476,13 @@ impl Engine {
         };
         let photo_ready = photo
             .as_ref()
-            .is_some_and(|p| matches!(self.store.media(&p.sha256), Ok(Some(_))));
+            .is_some_and(|p| p.valid() && matches!(self.store.media_bytes_len(&p.sha256), Ok(Some(size)) if size > 0 && size <= MAX_PHOTO_BYTES as u64));
         Ok(ProfileDto {
             identity_id: id.to_string(),
             handle: ident.map(|i| i.handle.clone()).unwrap_or_default(),
             name,
             bio,
+            photo_mime: photo.as_ref().map(|p| p.mime.clone()),
             photo_sha256: photo.map(|p| p.sha256),
             photo_ready,
             version,
@@ -345,6 +490,34 @@ impl Engine {
             is_me,
             blocked: self.store.blocked()?.iter().any(|b| b == id),
         })
+    }
+
+    pub(crate) fn profile_photo_bytes(
+        &self,
+        id: &str,
+        expected: &str,
+    ) -> R<Option<ProfilePhotoBytes>> {
+        let Some((_, fields)) = self.fields_of(id) else {
+            return Ok(None);
+        };
+        let Some(photo) = fields.photo.filter(|p| p.sha256 == expected && p.valid()) else {
+            return Ok(None);
+        };
+        let Some(bytes) = self.store.media_bytes_bounded(expected, MAX_PHOTO_BYTES)? else {
+            return Ok(None);
+        };
+        if bytes.is_empty()
+            || bytes.len() > MAX_PHOTO_BYTES
+            || hex::encode(Sha256::digest(&bytes)) != expected
+        {
+            return Ok(None);
+        }
+        Ok(Some(ProfilePhotoBytes {
+            identity_id: id.into(),
+            sha256: expected.into(),
+            mime: photo.mime,
+            bytes,
+        }))
     }
 
     /// What the directory says about a person, with the name and bio this device can
@@ -551,19 +724,19 @@ impl Engine {
         self.net
             .mls
             .wake_recovery_many(self.net.synced.iter().cloned());
-        let me = self.me.clone().unwrap_or_default();
         let p = &mut self.net.profiles;
         p.supported = supported;
         p.no_agreement.clear();
         p.shares_dirty = true;
-        p.sealed = None;
+        p.own_refreshed = false;
+        p.fetching.clear();
+        p.refetch.clear();
         p.need_profiles = self
             .store
             .profile_keys()
             .unwrap_or_default()
             .into_iter()
             .map(|r| r.identity)
-            .filter(|id| *id != me)
             .collect();
     }
 
@@ -583,23 +756,12 @@ impl Engine {
         let _ = self.store.set_meta(META_AGREEMENT, public);
     }
 
-    fn uploaded_version(&self) -> u64 {
-        self.store
-            .meta(META_UPLOADED)
-            .ok()
-            .flatten()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0)
-    }
-
     fn upload_due(&self) -> bool {
-        if !self.net.profiles.supported {
-            return false;
-        }
-        let Some(me) = self.me.as_deref() else {
-            return false;
-        };
-        matches!(self.store.profile_key(me), Ok(Some(r)) if r.seen_version > self.uploaded_version())
+        self.net.profiles.supported
+            && self.net.profiles.own_refreshed
+            && self.own_profile_journal().is_ok_and(|journal| {
+                journal.sync.pending.is_some() && !journal.sync.key_unavailable()
+            })
     }
 
     /// My sealed profile when the relay doesn't have the current version yet.
@@ -609,9 +771,26 @@ impl Engine {
         }
         let me = self.me.clone()?;
         let (key, _, version, fields) = self.my_fields(&me).ok()?;
-        if let Some(s) = &self.net.profiles.sealed {
-            if s.version == version {
-                return Some(s.clone());
+        // Publishing the reference before its encrypted blob would strand contacts.
+        if fields
+            .photo
+            .as_ref()
+            .is_some_and(|photo| self.store.upload_pending(&photo.blob).unwrap_or(true))
+        {
+            return None;
+        }
+        let mut journal = self.own_profile_journal().ok()?;
+        if journal.sync.pending != Some(version) {
+            return None;
+        }
+        if let Some(upload) = &journal.upload {
+            if upload.version == version
+                && self.net.author.as_ref().is_some_and(|author| {
+                    author.device.as_deref() == Some(upload.device.as_str())
+                        && author.cert.as_deref() == Some(upload.cert.as_str())
+                })
+            {
+                return Some(upload.sealed(&me));
             }
         }
         let ciphertext = seal_profile(&key, &me, version, &fields);
@@ -625,26 +804,44 @@ impl Engine {
             ciphertext,
             signed,
         };
-        self.net.profiles.sealed = Some(s.clone());
+        journal.upload = Some(StoredUpload {
+            version,
+            ciphertext: s.ciphertext.clone(),
+            device: s.signed.device.clone(),
+            cert: s.signed.cert.clone(),
+            sig: s.signed.sig.clone(),
+        });
+        self.save_own_profile_journal(&journal).ok()?;
         Some(s)
     }
 
     /// The relay answered an upload. A stale version means another of my devices got
     /// further: move past it.
     pub fn profile_upload_answered(&mut self, version: u64, result: Result<(), String>) {
-        self.net.profiles.sealed = None;
+        let Ok(mut journal) = self.own_profile_journal() else {
+            return;
+        };
         match result {
             Ok(()) => {
-                let _ = self.store.set_meta(META_UPLOADED, &version.to_string());
+                journal.sync.acknowledge(version);
+                if journal
+                    .upload
+                    .as_ref()
+                    .is_some_and(|upload| upload.version == version)
+                {
+                    journal.upload = None;
+                }
+                let _ = self.save_own_profile_journal(&journal);
             }
-            Err(e) if e.contains("stale profile version") => {
-                if let Ok(me) = self.me_id() {
-                    if let Ok((_, _, v, fields)) = self.my_fields(&me) {
-                        let _ = self.write_my_fields(&me, v + 1, &fields);
-                    }
+            Err(error) if error.contains("stale profile version") => {
+                // Fetch the signed relay floor before rebasing. Never blindly increment
+                // an old-key payload or mistake a lost acknowledgement for an edit.
+                if let Some(me) = self.me.clone() {
+                    self.net.profiles.need_profiles.insert(me);
+                    self.net.profiles.own_refreshed = false;
                 }
             }
-            Err(e) => crate::net::tracing_like(&format!("profile upload refused: {e}")),
+            Err(error) => crate::net::tracing_like(&format!("profile upload refused: {error}")),
         }
     }
 
@@ -693,17 +890,23 @@ impl Engine {
         );
     }
 
-    pub fn take_need_profiles(&self) -> Vec<IdentityId> {
+    pub fn take_need_profiles(&mut self) -> Vec<IdentityId> {
         if !self.net.profiles.supported {
             return Vec::new();
         }
-        self.net
+        let asked = self
+            .net
             .profiles
             .need_profiles
             .iter()
             .take(BATCH)
             .cloned()
-            .collect()
+            .collect::<Vec<_>>();
+        for id in &asked {
+            self.net.profiles.fetching.insert(id.clone());
+            self.net.profiles.refetch.remove(id);
+        }
+        asked
     }
 
     /// Opens what the relay served. Returns whose profile changed on this device.
@@ -713,11 +916,28 @@ impl Engine {
         asked: &[IdentityId],
     ) -> Vec<IdentityId> {
         for id in asked {
-            self.net.profiles.need_profiles.remove(id);
+            self.net.profiles.fetching.remove(id);
+            if !self.net.profiles.refetch.remove(id) {
+                self.net.profiles.need_profiles.remove(id);
+            }
         }
         let mut changed = Vec::new();
+        let me = self.me.clone();
+        let own_asked = me.as_ref().is_some_and(|me| asked.contains(me));
+        let own_present = me
+            .as_ref()
+            .is_some_and(|me| list.iter().any(|record| &record.identity == me));
+        let own_sync = own_asked
+            .then(|| self.own_profile_journal().ok().map(|journal| journal.sync))
+            .flatten();
+        let mut own_verified = false;
+        if own_asked {
+            self.net.profiles.own_refreshed = false;
+        }
         for p in list {
             if !asked.contains(&p.identity)
+                || p.version == 0
+                || p.ciphertext.len() > MAX_CIPHERTEXT
                 || !verify_upload(&p.identity, p.version, &p.ciphertext, &p.signed)
             {
                 continue;
@@ -725,6 +945,15 @@ impl Engine {
             let Ok(Some(row)) = self.store.profile_key(&p.identity) else {
                 continue;
             };
+            if self.me.as_deref() == Some(p.identity.as_str()) {
+                own_verified |= own_sync
+                    .as_ref()
+                    .is_some_and(|sync| p.version >= sync.published);
+                if self.open_own_profile(&p).unwrap_or(false) {
+                    changed.push(p.identity);
+                }
+                continue;
+            }
             if p.version <= row.seen_version || p.version < row.key_version {
                 continue;
             }
@@ -743,13 +972,95 @@ impl Engine {
                 changed.push(p.identity);
             }
         }
+        if own_asked {
+            let me = me.expect("own profile was requested");
+            let bootstrap_absent = !own_present
+                && own_sync.as_ref().is_some_and(|sync| {
+                    sync.published == 0 && sync.pending.is_some() && !sync.key_unavailable()
+                });
+            let complete = (own_verified || bootstrap_absent)
+                && !self.net.profiles.need_profiles.contains(&me);
+            self.net.profiles.own_refreshed = complete;
+            if !complete {
+                self.net.profiles.need_profiles.insert(me);
+            }
+        }
         changed
+    }
+
+    /// Invalid/stale own records and a missing known publication remain work.
+    /// The network layer uses this to apply its ordinary bounded retry deadline.
+    pub fn profiles_answer_complete(&self, asked: &[IdentityId]) -> bool {
+        !asked
+            .iter()
+            .any(|id| self.net.profiles.need_profiles.contains(id))
+    }
+
+    fn open_own_profile(&mut self, profile: &SealedProfile) -> R<bool> {
+        let me = self.me_id()?;
+        let (key, key_version, local_version, local_fields) = self.my_fields(&me)?;
+        let mut journal = self.own_profile_journal()?;
+        if profile.version < journal.sync.published || profile.version < key_version {
+            return Ok(false);
+        }
+        let Some(fields) = open_profile(&key, &me, profile.version, &profile.ciphertext) else {
+            journal.sync.cannot_open(profile.version);
+            self.save_own_profile_journal(&journal)?;
+            return Ok(false);
+        };
+        let exact = journal
+            .upload
+            .as_ref()
+            .is_some_and(|upload| upload.sealed(&me) == *profile);
+        let outcome = journal
+            .sync
+            .observe_opened(profile.version, exact)
+            .ok_or_else(|| invalid("profile version".into()))?;
+        let (version, adopted) = match outcome {
+            Observe::Adopt => (profile.version, Some(fields)),
+            Observe::Preserve { version } => (version.max(local_version), Some(local_fields)),
+            Observe::Acknowledged | Observe::Ignore => (local_version, None),
+        };
+        // Old in-flight ACKs are version-scoped; only the current pending intent
+        // may clear itself. Invalidate a ciphertext only when its version moved.
+        if journal
+            .upload
+            .as_ref()
+            .is_some_and(|upload| Some(upload.version) != journal.sync.pending)
+        {
+            journal.upload = None;
+        }
+        self.store.raw_execute("SAVEPOINT own_profile_receive")?;
+        let applied = (|| -> R<()> {
+            if let Some(fields) = &adopted {
+                self.store
+                    .set_profile_fields(&me, version, &fields.to_bytes())?;
+            }
+            self.save_own_profile_journal(&journal)?;
+            Ok(())
+        })();
+        if let Err(error) = applied {
+            self.store.raw_execute("ROLLBACK TO own_profile_receive")?;
+            self.store.raw_execute("RELEASE own_profile_receive")?;
+            return Err(error);
+        }
+        self.store.raw_execute("RELEASE own_profile_receive")?;
+        if adopted.is_some() {
+            self.apply_fields(&me)?;
+        }
+        Ok(matches!(outcome, Observe::Adopt))
     }
 
     /// The relay says someone's profile moved on.
     pub fn profile_changed(&mut self, id: &str) {
-        if self.me.as_deref() != Some(id) && matches!(self.store.profile_key(id), Ok(Some(_))) {
+        if matches!(self.store.profile_key(id), Ok(Some(_))) {
+            if self.net.profiles.fetching.contains(id) {
+                self.net.profiles.refetch.insert(id.to_string());
+            }
             self.net.profiles.need_profiles.insert(id.to_string());
+            if self.me.as_deref() == Some(id) {
+                self.net.profiles.own_refreshed = false;
+            }
         }
     }
 
@@ -764,5 +1075,301 @@ impl Engine {
             && !p.shares_dirty
             && self.agreement_to_publish().is_none()
             && !self.upload_due()
+            && self.own_profile_journal().is_ok_and(|journal| {
+                journal.sync.pending.is_none() && !journal.sync.key_unavailable()
+            })
+    }
+}
+
+#[cfg(test)]
+mod own_sync_tests {
+    use super::*;
+    use roda_log::{Author, Signer};
+
+    fn fixture() -> (Engine, Signer) {
+        fixture_at(":memory:")
+    }
+
+    fn fixture_at(path: &str) -> (Engine, Signer) {
+        let identity = Signer::from_secret(&[71; 32]);
+        let author = Author::device(&identity, Signer::from_secret(&[72; 32]));
+        let mut engine = Engine::open(path).unwrap();
+        engine.me = Some(identity.id());
+        engine.store.set_meta("me", &identity.id()).unwrap();
+        engine.net.author = Some(author);
+        engine.init_profile(&identity.id(), "Original").unwrap();
+        engine.profiles_session_start(true);
+        engine.sealed_profiles_arrived(Vec::new(), &[identity.id()]);
+        let upload = engine.profile_to_upload().unwrap();
+        engine.profile_upload_answered(upload.version, Ok(()));
+        (engine, identity)
+    }
+
+    fn remote(
+        engine: &Engine,
+        identity: &Signer,
+        version: u64,
+        name: &str,
+        rotated: bool,
+    ) -> SealedProfile {
+        let author = Author::device(identity, Signer::from_secret(&[92; 32]));
+        let key = if rotated {
+            ProfileKey::generate()
+        } else {
+            engine.my_fields(&identity.id()).unwrap().0
+        };
+        let ciphertext = seal_profile(
+            &key,
+            &identity.id(),
+            version,
+            &ProfileFields {
+                name: name.into(),
+                ..Default::default()
+            },
+        );
+        SealedProfile {
+            identity: identity.id(),
+            version,
+            signed: sign_upload(&author, version, &ciphertext).unwrap(),
+            ciphertext,
+        }
+    }
+
+    #[test]
+    fn clean_same_identity_update_adopts_without_republication() {
+        let (mut engine, identity) = fixture();
+        let (photo, _) = ProfilePhoto::seal(b"synthetic peer photo", "image/jpeg").unwrap();
+        let fields = ProfileFields {
+            name: "Other device".into(),
+            photo: Some(photo.clone()),
+            ..Default::default()
+        };
+        let mut incoming = remote(&engine, &identity, 2, "Other device", false);
+        incoming.ciphertext = seal_profile(
+            &engine.my_fields(&identity.id()).unwrap().0,
+            &identity.id(),
+            2,
+            &fields,
+        );
+        incoming.signed = sign_upload(
+            &Author::device(&identity, Signer::from_secret(&[92; 32])),
+            2,
+            &incoming.ciphertext,
+        )
+        .unwrap();
+        engine.profile_changed(&identity.id());
+        assert!(engine.take_need_profiles().contains(&identity.id()));
+        assert_eq!(
+            engine.sealed_profiles_arrived(vec![incoming], &[identity.id()]),
+            vec![identity.id()]
+        );
+        assert_eq!(
+            engine.my_fields(&identity.id()).unwrap().3.name,
+            "Other device"
+        );
+        assert_eq!(
+            engine.my_fields(&identity.id()).unwrap().3.photo,
+            Some(photo.clone())
+        );
+        assert!(engine
+            .wanted_profile_photos()
+            .iter()
+            .any(
+                |wanted| wanted.profile.as_deref() == Some(identity.id().as_str())
+                    && wanted.plain == photo.sha256
+                    && wanted.blob == photo.blob
+            ));
+        assert!(engine.profile_to_upload().is_none());
+        let sync = engine.own_profile_journal().unwrap().sync;
+        assert_eq!(sync.published, 2);
+        assert_eq!(sync.pending, None);
+    }
+
+    #[test]
+    fn concurrent_self_profile_preserves_pending_and_exact_retry_across_network_reset() {
+        let (mut engine, identity) = fixture();
+        engine
+            .update_my_profile("Local pending", "bio", PhotoChange::Keep)
+            .unwrap();
+        let old = engine.profile_to_upload().unwrap();
+        let incoming = remote(&engine, &identity, 4, "Other device", false);
+        engine.sealed_profiles_arrived(vec![incoming.clone()], &[identity.id()]);
+        assert_eq!(
+            engine.my_fields(&identity.id()).unwrap().3.name,
+            "Local pending"
+        );
+        let upload = engine.profile_to_upload().unwrap();
+        assert_eq!(upload.version, 5);
+        engine.profile_upload_answered(old.version, Ok(()));
+        assert_eq!(engine.own_profile_journal().unwrap().sync.pending, Some(5));
+        engine.net.profiles = ProfileNet::default();
+        engine.profiles_session_start(true);
+        engine.sealed_profiles_arrived(vec![incoming], &[identity.id()]);
+        assert_eq!(engine.profile_to_upload(), Some(upload.clone()));
+        engine.sealed_profiles_arrived(vec![upload], &[identity.id()]);
+        assert!(engine.profile_to_upload().is_none());
+    }
+
+    #[test]
+    fn pending_upload_bytes_survive_actual_sqlite_close_and_reopen() {
+        let path = std::env::temp_dir().join(format!(
+            "zoen-profile-sync-{}-{}.sqlite",
+            std::process::id(),
+            roda_types::new_ulid(now_ms())
+        ));
+        let path = path.to_str().unwrap();
+        let (mut engine, identity) = fixture_at(path);
+        engine
+            .update_my_profile("Cold pending", "bio", PhotoChange::Keep)
+            .unwrap();
+        let upload = engine.profile_to_upload().unwrap();
+        drop(engine);
+        let mut reopened = Engine::open(path).unwrap();
+        reopened.net.author = Some(Author::device(&identity, Signer::from_secret(&[72; 32])));
+        reopened.profiles_session_start(true);
+        let baseline = remote(&reopened, &identity, 1, "Original", false);
+        reopened.sealed_profiles_arrived(vec![baseline], &[identity.id()]);
+        assert_eq!(reopened.profile_to_upload(), Some(upload));
+        drop(reopened);
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(format!("{path}-wal"));
+        let _ = std::fs::remove_file(format!("{path}-shm"));
+    }
+
+    #[test]
+    fn unknown_rotation_never_republishes_an_obsolete_profile_key() {
+        let (mut engine, identity) = fixture();
+        engine
+            .update_my_profile("Local pending", "bio", PhotoChange::Keep)
+            .unwrap();
+        let (_, _, _, fields) = engine.my_fields(&identity.id()).unwrap();
+        engine
+            .store
+            .set_profile_fields(&identity.id(), 100, &fields.to_bytes())
+            .unwrap();
+        engine.mark_profile_intent(100).unwrap();
+        let incoming = remote(&engine, &identity, 8, "Rotated", true);
+        engine.sealed_profiles_arrived(vec![incoming], &[identity.id()]);
+        assert!(engine.own_profile_journal().unwrap().sync.key_unavailable());
+        let old = remote(&engine, &identity, 2, "Old key", false);
+        engine.sealed_profiles_arrived(vec![old], &[identity.id()]);
+        engine.profile_upload_answered(2, Ok(()));
+        engine.profile_upload_answered(100, Ok(()));
+        let newer_old_key = remote(&engine, &identity, 101, "Old key published higher", false);
+        engine.sealed_profiles_arrived(vec![newer_old_key], &[identity.id()]);
+        let state = engine.own_profile_journal().unwrap().sync;
+        assert_eq!(state.blocked_at_version, Some(8));
+        assert_eq!(state.pending, Some(100));
+        assert!(engine.profile_to_upload().is_none());
+        assert!(!engine.profiles_settled());
+        assert_eq!(
+            engine.my_fields(&identity.id()).unwrap().3.name,
+            "Local pending"
+        );
+    }
+    #[test]
+    fn maximum_remote_version_cannot_wrap_text_photo_or_block_rotation() {
+        let (mut engine, identity) = fixture();
+        let (_, _, _, fields) = engine.my_fields(&identity.id()).unwrap();
+        engine
+            .store
+            .set_profile_fields(&identity.id(), u64::MAX, &fields.to_bytes())
+            .unwrap();
+        engine
+            .save_own_profile_journal(&OwnJournal {
+                sync: OwnProfileSync::clean(u64::MAX),
+                upload: None,
+            })
+            .unwrap();
+        let before = engine.my_fields(&identity.id()).unwrap();
+        let journal = engine.store.meta(META_OWN_SYNC).unwrap();
+        assert!(engine.set_profile_text("Overflow", "bio").is_err());
+        assert!(engine
+            .update_my_profile("Overflow", "bio", PhotoChange::Keep)
+            .is_err());
+        assert!(engine
+            .block_person(&Signer::from_secret(&[93; 32]).id())
+            .is_err());
+        assert_eq!(engine.my_fields(&identity.id()).unwrap(), before);
+        assert_eq!(engine.store.meta(META_OWN_SYNC).unwrap(), journal);
+        assert!(engine.blocked_people().unwrap().is_empty());
+    }
+    #[test]
+    fn invalid_own_lookup_preserves_fields_intent_and_cannot_release_upload() {
+        let (mut engine, identity) = fixture();
+        engine
+            .update_my_profile("Local pending", "bio", PhotoChange::Keep)
+            .unwrap();
+        engine.profile_changed(&identity.id());
+        let asked = engine.take_need_profiles();
+        let before = engine.my_fields(&identity.id()).unwrap();
+        let journal = engine.store.meta(META_OWN_SYNC).unwrap();
+        let mut forged = remote(&engine, &identity, 2, "Forged", false);
+        forged.signed.sig = "00".repeat(64);
+        assert!(engine
+            .sealed_profiles_arrived(vec![forged], &asked)
+            .is_empty());
+        assert_eq!(engine.my_fields(&identity.id()).unwrap(), before);
+        assert_eq!(engine.store.meta(META_OWN_SYNC).unwrap(), journal);
+        assert!(!engine.net.profiles.own_refreshed);
+        assert!(!engine.profiles_answer_complete(&asked));
+        assert!(engine.take_need_profiles().contains(&identity.id()));
+        assert!(engine.profile_to_upload().is_none());
+    }
+
+    #[test]
+    fn missing_known_publication_does_not_complete_own_lookup() {
+        let (mut engine, identity) = fixture();
+        engine
+            .update_my_profile("Local pending", "bio", PhotoChange::Keep)
+            .unwrap();
+        engine.profile_changed(&identity.id());
+        let asked = engine.take_need_profiles();
+        engine.sealed_profiles_arrived(Vec::new(), &asked);
+        assert!(!engine.profiles_answer_complete(&asked));
+        assert!(!engine.net.profiles.own_refreshed);
+        assert!(engine.profile_to_upload().is_none());
+        assert_eq!(engine.own_profile_journal().unwrap().sync.published, 1);
+        assert_eq!(engine.own_profile_journal().unwrap().sync.pending, Some(2));
+    }
+
+    #[test]
+    fn missing_profile_allows_explicit_bootstrap_but_not_clean_inherited_seed() {
+        let (mut engine, identity) = fixture();
+        engine
+            .save_own_profile_journal(&OwnJournal {
+                sync: OwnProfileSync::migrate(1, 0),
+                upload: None,
+            })
+            .unwrap();
+        engine.profiles_session_start(true);
+        let asked = engine.take_need_profiles();
+        engine.sealed_profiles_arrived(Vec::new(), &asked);
+        assert!(engine.profiles_answer_complete(&asked));
+        assert!(engine.profile_to_upload().is_some());
+        engine.initialize_linked_profile_sync().unwrap();
+        engine.profiles_session_start(true);
+        let asked = engine.take_need_profiles();
+        engine.sealed_profiles_arrived(Vec::new(), &asked);
+        assert!(!engine.profiles_answer_complete(&asked));
+        assert!(!engine.net.profiles.own_refreshed);
+        assert!(engine.profile_to_upload().is_none());
+        assert!(engine.take_need_profiles().contains(&identity.id()));
+    }
+    #[test]
+    fn stale_signed_own_record_does_not_satisfy_publication_floor() {
+        let (mut engine, identity) = fixture();
+        engine
+            .update_my_profile("Local pending", "bio", PhotoChange::Keep)
+            .unwrap();
+        engine.profile_changed(&identity.id());
+        let asked = engine.take_need_profiles();
+        let stale = remote(&engine, &identity, 0, "Old", false);
+        engine.sealed_profiles_arrived(vec![stale], &asked);
+        assert!(!engine.profiles_answer_complete(&asked));
+        assert!(!engine.net.profiles.own_refreshed);
+        assert_eq!(engine.own_profile_journal().unwrap().sync.published, 1);
+        assert_eq!(engine.own_profile_journal().unwrap().sync.pending, Some(2));
+        assert!(engine.profile_to_upload().is_none());
     }
 }

@@ -5,7 +5,12 @@ import org.junit.Test
 import xyz.tironi.zoen.core.*
 
 class PermissionScopeTest {
-    private fun agent(id: String) = Persona(id, PersonaKind.AGENT, "Zoen", "zoen", "Z", "#123456", null, "", "me", "Me", null, false, true)
+    private fun agent(id: String) = Persona(
+        id = id, kind = PersonaKind.AGENT, name = "Zoen", handle = "zoen", initials = "Z",
+        tintHex = "#123456", glyph = null, bio = "", ownerId = "me", ownerName = "Me",
+        ownerTintHex = null, photoSha256 = null, photoReady = false, photoMime = null,
+        isMe = false, isMine = true,
+    )
     private fun standing(id: String, agent: String, space: String, allow: Boolean) =
         StandingDecisionDto(id, agent(agent), space, "Same chat title", "reversible", "Edit a plan", allow, 1000)
     private fun device(id: String, item: String) =

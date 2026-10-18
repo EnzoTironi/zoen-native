@@ -1,4 +1,4 @@
-import { bytes, hex, object, string } from './boundary.ts';
+import { bytes, hex, object, string,publicKey } from './boundary.ts';
 import { parseAccount, parsePending, relayUrl, type LinkedAccount, type PendingLink, type StoredSession } from './session.ts';
 import { AuthenticatedTransport, type ConnectionState } from './transport.ts';
 import type { CoreWorker } from './worker-client.ts';
@@ -38,15 +38,18 @@ export class Pairing {
     this.vault = vault; this.core = core; this.changed = changed; this.factory = factory;
   }
 
-  async start(relay: string, stored: StoredSession): Promise<void> {
+  async start(relay: string, stored: StoredSession,expectedIdentityId?:string): Promise<void> {
     if (this.canceled) return;
     this.changed({ kind: 'starting' });
     try {
+      if(stored.kind==='provider_pending')throw new Error('A primary account is pending.');
+      const expected=expectedIdentityId===undefined?(stored.kind==='pending'?stored.pending.expected_identity:undefined):publicKey(expectedIdentityId);
       const device = await this.vault.device();
       if (this.canceled) return;
       // Legacy pending records have no trustworthy creation time: replace them.
-      const pending = stored.kind === 'pending' && stored.pending.expires_at_ms > Date.now() ? stored.pending :
+      const retained = stored.kind === 'pending' && relayUrl(stored.pending.relay)===relayUrl(relay) && stored.pending.expires_at_ms > Date.now() && (expected===undefined||stored.pending.expected_identity===undefined||stored.pending.expected_identity===expected)?stored.pending:
         parsePending(JSON.stringify({ ...JSON.parse(await this.core.text({ kind: 'create_link', device, relay: relayUrl(relay) })), expires_at_ms: Date.now() + TTL }));
+      const pending=expected===undefined?retained:{...retained,expected_identity:expected};
       if (this.canceled) return;
       if (pending.device !== device) throw new Error('different device');
       this.pending = pending;
@@ -95,6 +98,7 @@ export class Pairing {
       if (result.sealed === null) { this.schedule(); return; }
       const account = parseAccount(await this.core.text({ kind: 'complete_link', pending: JSON.stringify(this.pending), sealed: bytes(result.sealed) }));
       if (!this.active()) return;
+      if(this.pending.expected_identity&&account.identity!==this.pending.expected_identity){this.fail('Este celular está conectado a outra conta. Use o aparelho da conta que você confirmou com Apple ou Google.');return;}
       // Persist before exposing enrollment. No late response can begin a save after expiry/cancellation.
       await this.vault.save({ kind: 'linked', account, snapshot: '' }, this.abort.signal);
       if (!this.active()) return;

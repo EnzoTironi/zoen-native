@@ -13,7 +13,10 @@ mod agent_notes;
 mod api;
 mod backup;
 mod backup_api;
+mod client_api;
 pub use backup_api::BackupStatusDto;
+#[cfg(feature = "client-types")]
+pub use client_api::export_typescript;
 mod files;
 mod growth;
 pub use growth::{AcquisitionDto, GrowthSyncDto, OnboardingPlanDto};
@@ -36,16 +39,20 @@ mod mls_opening;
 mod mls_recovery;
 mod net;
 mod profile;
+mod provider_auth;
 mod replies;
 pub mod runtime_core;
-pub use profile::{PhotoChange, ProfileDto};
+pub use profile::{PhotoChange, ProfileDto, ProfilePhotoBytes};
 mod sync;
 pub use api::*;
-pub use link_api::{DeviceDto, HistoryDto, LinkRequestDto, LinkedDto, OlderDto, TransferListener};
+pub use link_api::{
+    DeviceDto, HistoryDto, HistoryStatusDto, LinkRequestDto, LinkedDto, OlderDto, TransferListener,
+};
 pub use sync::Ingest;
 
 mod approvals;
-mod apps;
+use roda_apps as apps;
+pub use roda_i18n::tr;
 pub mod dto;
 pub mod engine;
 pub mod i18n;
@@ -77,6 +84,7 @@ pub struct RodaEngine {
     lang: i18n::Lang,
     /// The relay connection, while sync runs.
     net: Mutex<Option<net::Net>>,
+    history_receive: link_api::HistoryControl,
 }
 
 impl RodaEngine {
@@ -117,11 +125,12 @@ impl RodaEngine {
     #[uniffi::constructor]
     pub fn open(path: String, locale: String) -> Result<Arc<Self>, CoreError> {
         let lang = i18n::Lang::from_tag(&locale);
-        i18n::set(lang);
+        let _language = i18n::enter(lang);
         Ok(Arc::new(Self {
             inner: Arc::new(Mutex::new(Engine::open(&path)?)),
             lang,
             net: Mutex::new(None),
+            history_receive: link_api::HistoryControl::default(),
         }))
     }
 
@@ -132,6 +141,7 @@ impl RodaEngine {
 
     /// Cria o elenco e a história da demo se o banco estiver vazio. Devolve `true` se semeou.
     pub fn seed_demo_if_empty(&self) -> Result<bool, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         let mut e = self.lock();
         if !e.is_empty() {
             // Demo data follows the device language: if the story was seeded in another
@@ -157,6 +167,7 @@ impl RodaEngine {
 
     /// Apaga tudo e recomeça a demo.
     pub fn reset_demo(&self) -> Result<(), CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         let mut e = self.lock();
         e.wipe()?;
         seed::seed(&mut e)?;
@@ -344,6 +355,7 @@ impl RodaEngine {
     }
 
     pub fn item(&self, item_id: String) -> Result<ItemDetail, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
         self.lock().item(&item_id)
     }
 
@@ -414,8 +426,11 @@ impl RodaEngine {
     }
 
     pub fn restore_version(&self, item_id: String, version: u32) -> Result<ItemDetail, CoreError> {
-        self.lock()
-            .restore_version(&item_id, version, &format!("Restaurou a v{version}"))
+        self.lock().restore_version(
+            &item_id,
+            version,
+            &tr!("Restaurou a v{version}", "Restored v{version}"),
+        )
     }
 
     pub fn requests(&self) -> Vec<AgentRequestDto> {
@@ -646,7 +661,7 @@ impl RodaEngine {
             other => {
                 return Err(CoreError::Invalid {
                     reason: format!("unknown action {other}"),
-                })
+                });
             }
         };
         self.lock()
@@ -671,7 +686,7 @@ pub fn format_brl(cents: i64) -> String {
     engine::brl(cents)
 }
 
-/// Formats cents for a locale: "$1,348" (en) or "R$ 1.348" (pt-BR).
+/// Formats the existing plan/grant domain's BRL cents for the chosen locale.
 #[uniffi::export]
 pub fn format_money(cents: i64, locale: String) -> String {
     i18n::money_in(i18n::Lang::from_tag(&locale), cents)

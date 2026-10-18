@@ -93,3 +93,74 @@ test('forgetting the vault deletes state and creates a distinct protected device
   assert.notEqual(await replacement.device(), device);
   assert.deepEqual(await replacement.load(), { kind: 'empty' });
 });
+
+test('erase fences a save suspended in encryption and cannot resurrect the old device', async (t) => {
+  install(t);
+  const vault = await BrowserVault.open();
+  const device = await vault.device();
+  let resume!: () => void;
+  const suspended = new Promise<void>(resolve => { resume = resolve; });
+  const encrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+  t.mock.method(crypto.subtle, 'encrypt', async (...args: Parameters<SubtleCrypto['encrypt']>) => {
+    await suspended;
+    return encrypt(...args);
+  });
+  const saving = vault.save({ kind: 'empty' });
+  const refused = assert.rejects(saving, /vault is closed/);
+  await vault.erase();
+  resume();
+  await refused;
+  await assert.rejects(vault.sign(new Uint8Array([1])), /vault is closed/);
+  assert.throws(() => vault.authorityKey(), /vault is closed/);
+  const next = await BrowserVault.open();
+  t.after(() => next.close());
+  assert.notEqual(await next.device(), device);
+  assert.deepEqual(await next.load(), { kind: 'empty' });
+});
+
+test('erase clears protected records despite another database connection and is idempotent', async (t) => {
+  const factory = install(t);
+  const vault = await BrowserVault.open();
+  await vault.save({ kind: 'empty' });
+  const inspection = await operation(factory.open(name));
+  t.after(() => inspection.close());
+  await Promise.all([vault.erase(), vault.erase()]);
+  const read = inspection.transaction('vault', 'readonly');
+  const done = complete(read);
+  assert.deepEqual(await operation(read.objectStore('vault').getAllKeys()), []);
+  await done;
+});
+
+test('failed durable erasure stays fenced and can retry without restoring signing access', async (t) => {
+  install(t);
+  const vault = await BrowserVault.open();
+  const device = await vault.device();
+  await vault.save({ kind: 'empty' });
+  const db = (vault as unknown as { db: IDBDatabase }).db;
+  const failure = t.mock.method(db, 'transaction', () => { throw new Error('Synthetic storage unavailable'); });
+  await assert.rejects(vault.erase(), /storage unavailable/);
+  await assert.rejects(vault.save({ kind: 'empty' }), /vault is closed/);
+  await assert.rejects(vault.sign(new Uint8Array([2])), /vault is closed/);
+  failure.mock.restore();
+  await vault.erase();
+  const next = await BrowserVault.open();
+  t.after(() => next.close());
+  assert.notEqual(await next.device(), device);
+});
+
+test('a signature already running at erasure cannot leave the closed vault', async (t) => {
+  install(t);
+  const vault = await BrowserVault.open();
+  let resume!: () => void;
+  const suspended = new Promise<void>(resolve => { resume = resolve; });
+  const sign = crypto.subtle.sign.bind(crypto.subtle);
+  t.mock.method(crypto.subtle, 'sign', async (...args: Parameters<SubtleCrypto['sign']>) => {
+    await suspended;
+    return sign(...args);
+  });
+  const signing = vault.sign(new Uint8Array([1, 2, 3]));
+  const refused = assert.rejects(signing, /vault is closed/);
+  await vault.erase();
+  resume();
+  await refused;
+});

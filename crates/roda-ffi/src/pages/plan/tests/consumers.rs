@@ -644,7 +644,7 @@ fn total_overflow_is_unavailable_and_minimum_legacy_cents_stay_readable() {
     assert_eq!(legacy.engine.search("Hotel").len(), 1);
     assert_eq!(
         crate::i18n::money_in(crate::i18n::Lang::En, i64::MIN),
-        "−$92,233,720,368,547,758.08"
+        "−R$ 92,233,720,368,547,758.08"
     );
 }
 

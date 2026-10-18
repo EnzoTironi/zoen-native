@@ -107,6 +107,21 @@ pub enum Ingest {
     Invalid(String),
 }
 
+/// Local handling of a relay publication refusal; never a wire/UI error code.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum RejectionOutcome {
+    HandshakeReconciled,
+    Retry,
+    UserFailed,
+    Ignored,
+    StorageFailure(String),
+}
+impl RejectionOutcome {
+    pub(crate) fn user_failed(&self) -> bool {
+        matches!(self, Self::UserFailed)
+    }
+}
+
 pub(crate) fn tint_for(id: &str) -> String {
     const TINTS: [&str; 8] = [
         "#4F7CFF", "#FF5C8A", "#19B5A5", "#F59E0B", "#7C5CFF", "#22C55E", "#0EA5E9", "#FF9F0A",
@@ -592,15 +607,24 @@ impl Engine {
 
     /// The relay refused one of ours. `sent_epoch` describes the application envelope
     /// actually sent on this connection, not a copy resealed since then.
-    pub fn reject(
+    pub(crate) fn reject(
         &mut self,
         client_id: &str,
         reason: &str,
         permanent: bool,
         sent_epoch: Option<u64>,
-    ) -> bool {
-        if permanent && self.mls_handshake_refused(client_id, reason) {
-            return false;
+    ) -> RejectionOutcome {
+        if permanent {
+            match self.mls_handshake_refused(client_id, reason) {
+                Ok(true) => return RejectionOutcome::HandshakeReconciled,
+                Ok(false) => {}
+                Err(error) => return RejectionOutcome::StorageFailure(error.to_string()),
+            }
+        }
+        match self.store.outbox_get(client_id) {
+            Ok(None) => return RejectionOutcome::Ignored,
+            Err(error) => return RejectionOutcome::StorageFailure(error.to_string()),
+            Ok(Some(_)) => {}
         }
         // Written in the clear just before the Space went end-to-end: it waits for the
         // group and goes out sealed, it doesn't fail.
@@ -622,16 +646,16 @@ impl Engine {
         } else {
             self.store.outbox_note(client_id, reason, permanent)
         };
-        if noted.is_err() {
-            return false;
+        if let Err(error) = noted {
+            return RejectionOutcome::StorageFailure(error.to_string());
         }
         if !permanent {
-            return false;
+            return RejectionOutcome::Retry;
         }
         let _ = self.store.meta_delete(&format!("invite:{client_id}"));
         // Re-project without the refused event (messages stay visible as failed).
         let _ = self.reload();
-        true
+        RejectionOutcome::UserFailed
     }
 
     pub fn cursors(&self) -> Vec<Cursor> {
@@ -878,7 +902,173 @@ impl Engine {
         handle: &str,
         relay_url: &str,
     ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
-        self.create_account_as(name, handle, relay_url, Signer::generate(), None)
+        self.create_account_as(name, handle, relay_url, Signer::generate(), None, false)
+    }
+
+    /// Only the protected staging identity may repair its unfinished local install.
+    /// An existing real account, a different vault, or unrelated local data is never
+    /// replaced by recovery of a signup journal.
+    pub(crate) fn validate_provider_setup(
+        &self,
+        setup: &crate::provider_auth::ProviderSetup,
+    ) -> R<()> {
+        let root = Signer::from_secret(&setup.root);
+        let device = Signer::from_secret(&setup.device);
+        let identity = root.id();
+        let certificate = root.sign(&roda_log::device_cert_message(&device.id()));
+        let forbidden = || CoreError::Invalid {
+            reason:
+                "A preparação não pertence a esta conta. Seus dados e chaves foram preservados."
+                    .into(),
+        };
+        if self.store.meta("account")?.is_some() && self.account().is_none() {
+            return Err(forbidden());
+        }
+        if let Some(account) = self.account() {
+            if account.registered
+                || account.identity != identity
+                || account.device != device.id()
+                || account.cert != certificate
+                || account.relay_url != setup.relay
+                || self.store.meta("provider_signup_pending")?.as_deref() != Some("1")
+            {
+                return Err(forbidden());
+            }
+        }
+        if self.me.as_deref().is_some_and(|me| me != identity)
+            || self.identities.values().any(|person| {
+                if person.id == identity {
+                    person.kind != IdentityKind::Person || person.handle != setup.handle
+                } else {
+                    person.kind != IdentityKind::Agent
+                        || person.owner.as_deref() != Some(identity.as_str())
+                        || !roda_log::agent_owner::profile_authorized(person)
+                }
+            })
+            || self.logs.values().any(|log| {
+                log.events().iter().any(|event| {
+                    event.author != identity
+                        || event.device.as_deref() != Some(device.id().as_str())
+                        || event.cert.as_deref() != Some(certificate.as_str())
+                })
+            })
+            || !self.broken_spaces.is_empty()
+            || !self.store.synced_spaces()?.is_empty()
+            || self
+                .store
+                .profile_keys()?
+                .iter()
+                .any(|row| row.identity != identity)
+        {
+            return Err(forbidden());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_installed_provider_setup(
+        &self,
+        setup: &crate::provider_auth::ProviderSetup,
+    ) -> R<()> {
+        self.validate_provider_setup(setup)?;
+        let identity = Signer::from_secret(&setup.root).id();
+        let profile = self.store.profile_key(&identity)?;
+        if self.account().is_none()
+            || !self.is_unlocked()
+            || self.me.as_deref() != Some(identity.as_str())
+            || !self.identities.contains_key(&identity)
+            || profile.as_ref().is_none_or(|row| {
+                roda_log::profile::ProfileKey::from_hex(&row.key).is_none()
+                    || row
+                        .fields
+                        .as_deref()
+                        .and_then(roda_log::profile::ProfileFields::from_bytes)
+                        .is_none()
+            })
+        {
+            return Err(CoreError::Invalid {
+                reason:
+                    "A preparação desta conta ainda não terminou. Suas chaves foram preservadas."
+                        .into(),
+            });
+        }
+        Ok(())
+    }
+
+    /// The journal already owns all three fixed secrets before this transaction.
+    /// A crash before RELEASE rolls SQLite back; a crash after it replays the same
+    /// account, private profile key and personal spaces without creating duplicates.
+    pub(crate) fn install_provider_setup(
+        &mut self,
+        setup: &crate::provider_auth::ProviderSetup,
+    ) -> R<()> {
+        self.validate_provider_setup(setup)?;
+        let root = Signer::from_secret(&setup.root);
+        let device = Signer::from_secret(&setup.device);
+        let identity = root.id();
+        let author = Author::device(&root, device.clone());
+        let storage_error = |error: rusqlite::Error| CoreError::Storage {
+            message: error.to_string(),
+        };
+        self.store
+            .conn()
+            .execute_batch("SAVEPOINT provider_setup")
+            .map_err(storage_error)?;
+        let result = (|| {
+            self.store.set_meta("provider_signup_pending", "1")?;
+            if !self.identities.contains_key(&identity) {
+                let me = Identity {
+                    id: identity.clone(),
+                    kind: IdentityKind::Person,
+                    name: setup.name.clone(),
+                    handle: setup.handle.clone(),
+                    tint_hex: tint_for(&identity),
+                    glyph: None,
+                    owner: None,
+                    bio: String::new(),
+                    owner_proof: None,
+                };
+                self.store.put_identity(&me, None)?;
+                self.identity_order.push(identity.clone());
+                self.identities.insert(identity.clone(), me);
+            }
+            self.store.set_meta("me", &identity)?;
+            self.me = Some(identity.clone());
+            self.save_account(AccountMeta {
+                identity: identity.clone(),
+                device: device.id(),
+                cert: author.cert.clone().unwrap_or_default(),
+                relay_url: setup.relay.clone(),
+                registered: false,
+            })?;
+            self.net.author = Some(author);
+            let agreement = roda_log::profile::AgreementKey::from_secret(setup.agreement);
+            if self.store.profile_key(&identity)?.is_none() {
+                self.init_profile_with_agreement(&identity, &setup.name, agreement)?;
+            } else {
+                self.net.profiles.agreement = Some(agreement);
+            }
+            self.seed_personal_agent(&identity)?;
+            self.validate_installed_provider_setup(setup)?;
+            self.store
+                .conn()
+                .execute_batch("RELEASE provider_setup")
+                .map_err(storage_error)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = self
+                .store
+                .conn()
+                .execute_batch("ROLLBACK TO provider_setup; RELEASE provider_setup");
+            self.net = Default::default();
+            self.reload()?;
+        }
+        result
+    }
+
+    pub(crate) fn provider_setup_pending(&self) -> bool {
+        // A storage failure must not turn unfinished signup into an active account.
+        !matches!(self.store.meta("provider_signup_pending"), Ok(None))
     }
 
     /// An Agent citizen's own account: its root key, a fresh certified device and the
@@ -904,6 +1094,7 @@ impl Engine {
             relay_url,
             root,
             Some((owner.to_string(), proof)),
+            false,
         )
     }
 
@@ -914,6 +1105,7 @@ impl Engine {
         relay_url: &str,
         root: Signer,
         agent: Option<(String, roda_types::AgentOwnerProof)>,
+        provider_signup: bool,
     ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
         if self.net.account.is_some() {
             return Err(CoreError::Invalid {
@@ -938,6 +1130,9 @@ impl Engine {
         // A real account replaces the demo story.
         if !self.is_empty() {
             self.wipe()?;
+        }
+        if provider_signup {
+            self.store.set_meta("provider_signup_pending", "1")?;
         }
         let device = Signer::generate();
         let author = Author::device(&root, device.clone());
@@ -1007,45 +1202,93 @@ impl Engine {
     /// Your on-device Zoen (local agent, local DM) until the agent runtime takes over.
     fn seed_personal_agent(&mut self, me: &str) -> R<()> {
         let at = crate::engine::now_ms();
-        let personal = new_id("sp");
-        self.append_at(
-            &personal,
-            me,
-            at,
-            EventBody::SpaceCreated {
-                title: "Personal".into(),
-                kind: SpaceKind::Personal,
-                privacy: Privacy::EndToEnd,
-            },
-        )?;
-        let zoen = self.create_identity(
-            Identity {
-                owner_proof: None,
-                id: String::new(),
-                kind: IdentityKind::Agent,
-                name: "Zoen".into(),
-                handle: "zoen".into(),
-                tint_hex: "#7C5CFF".into(),
-                glyph: Some("sparkles".into()),
-                owner: Some(me.to_string()),
-                bio: t(
-                    "Seu agente. Transforma conversa em coisa.",
-                    "Your agent. Turns conversation into things.",
-                ),
-            },
-            true,
-        )?;
-        let dm = new_id("sp");
-        self.append_at(
-            &dm,
-            me,
-            at,
-            EventBody::SpaceCreated {
-                title: "Zoen".into(),
-                kind: SpaceKind::Direct,
-                privacy: Privacy::EndToEnd,
-            },
-        )?;
+        if !self.state.spaces.values().any(|space| {
+            space.kind == SpaceKind::Personal
+                && space
+                    .members
+                    .iter()
+                    .any(|(id, role)| id == me && *role == Role::Owner)
+        }) {
+            let personal = new_id("sp");
+            self.append_at(
+                &personal,
+                me,
+                at,
+                EventBody::SpaceCreated {
+                    title: "Personal".into(),
+                    kind: SpaceKind::Personal,
+                    privacy: Privacy::EndToEnd,
+                },
+            )?;
+        }
+        let existing = self
+            .identities
+            .values()
+            .find(|person| {
+                person.kind == IdentityKind::Agent
+                    && person.owner.as_deref() == Some(me)
+                    && person.handle == "zoen"
+            })
+            .map(|person| person.id.clone());
+        let zoen = match existing {
+            Some(id) => id,
+            None => self.create_identity(
+                Identity {
+                    owner_proof: None,
+                    id: String::new(),
+                    kind: IdentityKind::Agent,
+                    name: "Zoen".into(),
+                    handle: "zoen".into(),
+                    tint_hex: "#7C5CFF".into(),
+                    glyph: Some("sparkles".into()),
+                    owner: Some(me.to_string()),
+                    bio: t(
+                        "Seu agente. Transforma conversa em coisa.",
+                        "Your agent. Turns conversation into things.",
+                    ),
+                },
+                true,
+            )?,
+        };
+        if self.state.spaces.values().any(|space| {
+            space.kind == SpaceKind::Direct
+                && space.members.iter().any(|(id, _)| id == me)
+                && space.members.iter().any(|(id, _)| id == &zoen)
+        }) {
+            return Ok(());
+        }
+        let partial = self
+            .state
+            .spaces
+            .values()
+            .find(|space| {
+                space.kind == SpaceKind::Direct
+                    && space.privacy == Privacy::EndToEnd
+                    && space.title == "Zoen"
+                    && space.members.len() == 1
+                    && space
+                        .members
+                        .iter()
+                        .any(|(id, role)| id == me && *role == Role::Owner)
+            })
+            .map(|space| space.id.clone());
+        let dm = match partial {
+            Some(id) => id,
+            None => {
+                let id = new_id("sp");
+                self.append_at(
+                    &id,
+                    me,
+                    at,
+                    EventBody::SpaceCreated {
+                        title: "Zoen".into(),
+                        kind: SpaceKind::Direct,
+                        privacy: Privacy::EndToEnd,
+                    },
+                )?;
+                id
+            }
+        };
         self.append_at(
             &dm,
             me,
@@ -1279,7 +1522,7 @@ impl Engine {
             (_, None) => {
                 return Err(CoreError::NotFound {
                     what: t("membro", "member"),
-                })
+                });
             }
             (Some(Role::Owner), _) => true,
             (Some(Role::Admin), Some(target)) => target != Role::Owner,

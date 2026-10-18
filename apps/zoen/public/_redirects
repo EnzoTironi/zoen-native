@@ -1,0 +1,3 @@
+# Canonical OAuth entry for SPA aliases; do not redirect private application routes.
+/sign-in/ /sign-in 308
+/sign-in.html /sign-in 308

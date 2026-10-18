@@ -2,6 +2,9 @@
 resolver = "2"
 members = [
   "crates/roda-types",
+  "crates/roda-i18n",
+  "crates/roda-apps",
+  "crates/roda-link",
   "crates/roda-log",
   "crates/roda-grants",
   "crates/roda-store",
@@ -48,6 +51,9 @@ rusqlite = { version = "0.37", features = ["bundled", "serialize"] }
 uniffi = "0.32"
 prost = "0.14"
 roda-types = { path = "crates/roda-types" }
+roda-i18n = { path = "crates/roda-i18n" }
+roda-apps = { path = "crates/roda-apps" }
+roda-link = { path = "crates/roda-link" }
 roda-log = { path = "crates/roda-log" }
 roda-grants = { path = "crates/roda-grants" }
 roda-gate = { path = "crates/roda-gate" }

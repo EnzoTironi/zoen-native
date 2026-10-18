@@ -136,7 +136,8 @@ pub struct MlsNet {
     /// Where this device's last checkpoint in each Space reached (`upto.seq`), from the
     /// device database; it survives restarts so a reader still checkpoints.
     checkpointed_at: HashMap<SpaceId, u64>,
-    /// Spaces where someone listed had no key packages: messages stop waiting for them.
+    /// Groups where someone listed had no key packages: existing readers may proceed.
+    /// Direct chats still wait for every logical member to be able to read.
     stuck: HashSet<SpaceId>,
     /// When this device's turn to commit comes, behind the admins before it.
     turn_at: HashMap<SpaceId, Instant>,
@@ -261,38 +262,12 @@ fn joins_meta(space: &str) -> String {
     format!("mls.joins:{space}")
 }
 
-/// What a group owes, as one commit: identities to add (every device of theirs), single
-/// devices to add (identity already in), and removals (identities or leaf names).
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct Owed {
-    add: BTreeSet<IdentityId>,
-    add_devices: BTreeSet<(IdentityId, String)>,
-    remove: BTreeSet<String>,
-}
+use roda_mls::reconciliation::{self, Owed};
 
 impl MlsNet {
     pub(crate) fn mark_dirty(&mut self, spaces: Vec<SpaceId>) {
         self.wake_recovery_many(spaces.iter().cloned());
         self.dirty.extend(spaces);
-    }
-}
-
-impl Owed {
-    fn is_empty(&self) -> bool {
-        self.add.is_empty() && self.add_devices.is_empty() && self.remove.is_empty()
-    }
-
-    fn adds_nobody(&self) -> bool {
-        self.add.is_empty() && self.add_devices.is_empty()
-    }
-
-    /// Whose key packages a claim asks for.
-    fn to_claim(&self) -> Vec<IdentityId> {
-        let mut ids = self.add.clone();
-        ids.extend(self.add_devices.iter().map(|(id, _)| id.clone()));
-        // The relay serves up to fifty distinct identities per operation. Remaining
-        // members reconcile after this batch's commit/Welcome lands.
-        ids.into_iter().take(50).collect()
     }
 }
 
@@ -586,8 +561,14 @@ impl Engine {
         if m.behind.get(space) == Some(&epoch) {
             return None;
         }
-        let adding =
-            m.claiming.contains(space) || s.members.iter().any(|(who, _)| !group.contains(who));
+        let missing_member = s.members.iter().any(|(who, _)| !group.contains(who));
+        // An unavailable package must not turn a direct message into a message only
+        // its sender can open. A later Welcome cannot recover that earlier epoch.
+        // Extra devices of an identity already in the group do not change this gate.
+        if s.kind == SpaceKind::Direct && missing_member {
+            return None;
+        }
+        let adding = m.claiming.contains(space) || missing_member;
         if runs_it && adding && !m.stuck.contains(space) {
             return None;
         }
@@ -1579,19 +1560,21 @@ impl Engine {
     /// anything the person wrote, so it isn't shown as failed: a lost commit is dropped with
     /// its Welcome, the winner arrives from the log, and the group is checked again.
     /// `false` when `client_id` isn't a handshake.
-    pub(crate) fn mls_handshake_refused(&mut self, client_id: &str, reason: &str) -> bool {
-        let Some(e) = self.store.outbox().ok().and_then(|o| {
-            o.into_iter()
-                .map(|p| p.event)
-                .find(|e| e.client_id == client_id)
-        }) else {
-            return false;
+    pub(crate) fn mls_handshake_refused(&mut self, client_id: &str, reason: &str) -> R<bool> {
+        let Some(e) = self
+            .store
+            .outbox()?
+            .into_iter()
+            .map(|p| p.event)
+            .find(|e| e.client_id == client_id)
+        else {
+            return Ok(false);
         };
         let EventBody::Sealed { kind } = &e.body else {
-            return false;
+            return Ok(false);
         };
         if kind != SealedKind::Commit.name() && kind != SealedKind::Welcome.name() {
-            return false;
+            return Ok(false);
         }
         tracing_like(&format!("{kind} in {} refused: {reason}", e.space));
         let dropped = (|| -> R<Vec<String>> {
@@ -1651,14 +1634,14 @@ impl Engine {
                 // This is still a handshake. Preserve its whole transaction for retry;
                 // treating it as a failed user event would strand the pending group.
                 tracing_like(&format!("dropping the handshake in {}: {err}", e.space));
-                return true;
+                return Err(err);
             }
         };
         for id in dropped {
             self.net.pending.remove(&id);
         }
         self.net.mls.mark_group_dirty(e.space);
-        true
+        Ok(true)
     }
 
     /// The next group that owes a commit adding someone: claim their key packages. Groups
@@ -1914,45 +1897,16 @@ impl Engine {
         let Some(leaves) = device.committed_leaves(space).map_err(mls_err)? else {
             return Ok(None);
         };
-        let group: BTreeSet<IdentityId> = leaves.keys().map(|(id, _)| id.clone()).collect();
-        let mut owed = Owed::default();
-        if admin || reconciling {
-            let listed: BTreeSet<IdentityId> = roster.keys().cloned().collect();
-            if admin {
-                owed.add = listed.difference(&group).cloned().collect();
-            }
-            owed.remove = group.difference(&listed).cloned().collect();
-        }
-        let has = |id: &str, dev: &str| leaves.get(&(id.to_string(), dev.to_string()));
-        // Our unlinked devices leave every group we are in.
-        for (id, dev) in leaves.keys() {
-            if *id == me && revoked.contains(dev) {
-                owed.remove.insert(leaf_name(id, dev));
-            }
-        }
-        for name in stranded.iter().filter(|n| for_me(n)) {
-            if split_leaf(name).is_some_and(|(id, dev)| has(id, dev).is_some()) {
-                owed.remove.insert(name.clone());
-            }
-        }
-        for (name, stale) in joins.iter().filter(|(n, _)| for_me(n)) {
-            let Some((id, dev)) = split_leaf(name) else {
-                continue;
-            };
-            if !roster.contains_key(id) || owed.add.contains(id) || owed.remove.contains(id) {
-                continue;
-            }
-            match has(id, dev) {
-                Some(key) if hex::encode(key) == *stale => {
-                    owed.remove.insert(name.clone());
-                }
-                Some(_) => {}
-                None => {
-                    owed.add_devices.insert((id.to_string(), dev.to_string()));
-                }
-            }
-        }
-        Ok((!owed.is_empty() || reconciling).then_some(owed))
+        Ok(reconciliation::plan(reconciliation::Input {
+            me: &me,
+            admin,
+            reconciling,
+            listed: &roster.keys().cloned().collect(),
+            leaves: &leaves,
+            joins: &joins,
+            stranded: &stranded,
+            revoked: &revoked,
+        }))
     }
 
     /// Key packages for a group's newcomers came back: commit them (and any removals).
@@ -2033,8 +1987,8 @@ impl Engine {
             .iter()
             .any(|who| claim.targets.contains(who) && !found.contains(who))
         {
-            // Someone can't be added yet (no device, or none with packages): messages
-            // don't wait for them; they'll read from whenever their commit lands.
+            // A group may continue for its existing readers while a newcomer has no
+            // packages. Direct chats still wait for all identities in ready_epoch_in.
             self.net.mls.stuck.insert(space.to_string());
         }
         let devices_found: BTreeSet<(&str, &str)> = records
@@ -2300,10 +2254,19 @@ mod tests {
     }
 
     fn claim_group(engine: &mut Engine, space: &str, peers: &mut [Engine]) -> Vec<Sequenced> {
+        claim_space(engine, space, SpaceKind::Group, peers)
+    }
+
+    fn claim_space(
+        engine: &mut Engine,
+        space: &str,
+        kind: SpaceKind,
+        peers: &mut [Engine],
+    ) -> Vec<Sequenced> {
         let author = engine.net.author.clone().unwrap();
         let mut bodies = vec![EventBody::SpaceCreated {
             title: space.into(),
-            kind: SpaceKind::Group,
+            kind,
             privacy: Privacy::EndToEnd,
         }];
         for peer in peers.iter_mut() {
@@ -2365,6 +2328,143 @@ mod tests {
                 })
             })
             .collect()
+    }
+
+    fn relay_ready_to_peer(owner: &mut Engine, peer: &mut Engine) -> Vec<Sequenced> {
+        let mut published = Vec::new();
+        for _ in 0..10 {
+            for (sha, _) in owner.pending_uploads(100) {
+                owner.upload_done(&sha);
+            }
+            owner.mls_seal_outbox().unwrap();
+            let envelopes = owner.outbox_envelopes();
+            if envelopes.is_empty() {
+                assert_eq!(
+                    owner.outbox_len(),
+                    0,
+                    "queued event did not become publishable"
+                );
+                return published;
+            }
+            for env in envelopes {
+                let frame = ordered(owner, env);
+                assert_eq!(owner.ingest(frame.clone()), Ingest::Confirmed);
+                assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
+                published.push(frame);
+            }
+        }
+        panic!("canonical handshake/application publication did not settle");
+    }
+
+    #[test]
+    fn direct_seed_waits_for_missing_package_then_reaches_the_same_recipient() {
+        let mut owner = Engine::open(":memory:").unwrap();
+        owner
+            .create_account("Ana", "ana", "http://relay.test")
+            .unwrap();
+        owner.net.profiles.supported = true;
+        let mut peer = Engine::open(":memory:").unwrap();
+        peer.create_account("Bruno", "bruno", "http://relay.test")
+            .unwrap();
+        let space = "direct-seed-delayed-package";
+        let frames = claim_space(
+            &mut owner,
+            space,
+            SpaceKind::Direct,
+            std::slice::from_mut(&mut peer),
+        );
+        for frame in frames {
+            assert_eq!(peer.ingest(frame), Ingest::Applied);
+        }
+        let seed = owner.send_message(space, "original direct seed").unwrap();
+        let clock = Some(
+            roda_proto::KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap(),
+        );
+        let (_, targets, operation) = owner.mls_to_claim(clock).unwrap().unwrap();
+        owner.mls_claimed(space, &operation, Ok(vec![]));
+        assert!(owner.net.mls.stuck.contains(space));
+        assert_eq!(owner.ready_epoch(space), None);
+        assert!(!owner.mls_seal_outbox().unwrap());
+        assert!(owner
+            .outbox_envelopes()
+            .iter()
+            .all(|env| env.client_id() != seed.id));
+        assert_eq!(owner.outbox_len(), 1);
+        assert!(peer.timeline(space).unwrap().is_empty());
+
+        // The existing retry becomes due; the same user message remains queued.
+        owner.net.mls.retry_at.insert(space.into(), Instant::now());
+        let (_, retry_targets, retry_operation) = owner.mls_to_claim(clock).unwrap().unwrap();
+        assert_eq!(targets, retry_targets);
+        let records = claimed_records(std::slice::from_mut(&mut peer), &retry_targets);
+        owner.mls_claimed(space, &retry_operation, Ok(records));
+        assert_eq!(
+            owner.ready_epoch(space),
+            None,
+            "commit and Welcome must land first"
+        );
+        let published = relay_ready_to_peer(&mut owner, &mut peer);
+        let seed_frame = published
+            .iter()
+            .find(|frame| frame.env.client_id() == seed.id)
+            .unwrap();
+        assert_eq!(seed_frame.env.sealed_kind(), Some(SealedKind::Application));
+        assert!(roda_mls::application_epoch(seed_frame.env.sealed_data().unwrap().1).unwrap() > 0);
+        let received = peer.timeline(space).unwrap();
+        assert_eq!(received.len(), 1);
+        assert_eq!(received[0].id, seed.id);
+        assert!(
+            matches!(&received[0].kind, crate::dto::EntryKind::Message { text, .. } if text == "original direct seed")
+        );
+        owner.logs[space].verify().unwrap();
+        peer.logs[space].verify().unwrap();
+    }
+
+    #[test]
+    fn group_existing_reader_can_receive_while_another_identity_has_no_package() {
+        let mut owner = Engine::open(":memory:").unwrap();
+        owner
+            .create_account("Ana", "ana", "http://relay.test")
+            .unwrap();
+        owner.net.profiles.supported = true;
+        let mut peers: Vec<_> = ["bruno", "carla"]
+            .into_iter()
+            .map(|handle| {
+                let mut peer = Engine::open(":memory:").unwrap();
+                peer.create_account(handle, handle, "http://relay.test")
+                    .unwrap();
+                peer
+            })
+            .collect();
+        let space = "group-missing-newcomer-package";
+        let frames = claim_group(&mut owner, space, &mut peers);
+        for frame in frames {
+            assert_eq!(peers[0].ingest(frame), Ingest::Applied);
+        }
+        let clock = Some(
+            roda_proto::KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap(),
+        );
+        let (_, targets, operation) = owner.mls_to_claim(clock).unwrap().unwrap();
+        let records = claimed_records(&mut peers[..1], &targets);
+        owner.mls_claimed(space, &operation, Ok(records));
+        assert!(owner.net.mls.stuck.contains(space));
+        relay_ready_to_peer(&mut owner, &mut peers[0]);
+        assert!(owner.ready_epoch(space).is_some());
+        let message = owner
+            .send_message(space, "for existing group readers")
+            .unwrap();
+        relay_ready_to_peer(&mut owner, &mut peers[0]);
+        assert!(peers[0]
+            .timeline(space)
+            .unwrap()
+            .iter()
+            .any(|entry| entry.id == message.id));
+        assert!(!owner
+            .device()
+            .unwrap()
+            .roster(space)
+            .unwrap()
+            .contains(peers[1].me.as_ref().unwrap()));
     }
 
     #[test]

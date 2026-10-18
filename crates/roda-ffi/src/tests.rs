@@ -4,7 +4,9 @@ use super::*;
 
 mod client_api;
 mod file_bounds;
+mod file_messages;
 mod message_search;
+mod profile_photos;
 mod voice_notes;
 
 fn seeded() -> Arc<RodaEngine> {
@@ -372,6 +374,27 @@ fn budget_stops_at_ceiling_and_can_be_raised() {
             .budget_limit_cents,
         None
     );
+}
+
+#[test]
+fn budget_rejects_nonpositive_and_overflowing_increases_without_mutation() {
+    let e = seeded();
+    let fin = agent(&e, "Financeiro");
+    let before = e.agent_profile(fin.id.clone());
+    for extra in [0, -1, i64::MIN, i64::MAX] {
+        assert!(matches!(
+            e.raise_budget(fin.id.clone(), extra),
+            Err(CoreError::Invalid { .. })
+        ));
+        assert_eq!(e.agent_profile(fin.id.clone()), before);
+    }
+    let max = e.raise_budget(fin.id.clone(), i64::MAX - 500).unwrap();
+    assert_eq!(max.budget_limit_cents, Some(i64::MAX));
+    assert!(matches!(
+        e.raise_budget(fin.id.clone(), 1),
+        Err(CoreError::Invalid { .. })
+    ));
+    assert_eq!(e.agent_profile(fin.id), max);
 }
 
 #[test]
@@ -937,8 +960,8 @@ fn english_is_the_default_language_for_demo_data_agents_and_money() {
         .requests()
         .iter()
         .any(|r| r.title == "Book the Casa Azul Inn"));
-    assert_eq!(format_money(134_800, "en-US".into()), "$1,348");
-    assert_eq!(format_money(1_240, "en".into()), "$12.40");
+    assert_eq!(format_money(134_800, "en-US".into()), "R$ 1,348");
+    assert_eq!(format_money(1_240, "en".into()), "R$ 12.40");
     assert_eq!(format_money(134_800, "pt-BR".into()), "R$ 1.348");
 
     // Agent output and mini-apps speak English too.
@@ -973,7 +996,8 @@ fn english_is_the_default_language_for_demo_data_agents_and_money() {
         .unwrap();
     let reaction = edit.reaction.unwrap();
     assert!(
-        reaction.contains('$') && !reaction.contains("R$"),
+        reaction.contains("R$")
+            && (reaction.starts_with("Recalculated:") || reaction.starts_with("Heads up:")),
         "{reaction}"
     );
 }
@@ -1230,7 +1254,7 @@ fn schedule_journey_client_books_agent_resolves_privately() {
         manifest["sha256"].as_str().unwrap(),
         format!(
             "{:x}",
-            sha2::Sha256::digest(include_bytes!("../apps/schedule.html"))
+            sha2::Sha256::digest(include_bytes!("../../roda-apps/resources/schedule.html"))
         )
     );
     // Services were sanitized and deduped; the business is free-form, no trade.
@@ -1936,7 +1960,8 @@ fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch() {
         }
         assert!(!e
             .lock()
-            .reject(genesis.client_id(), "too large", true, None));
+            .reject(genesis.client_id(), "too large", true, None)
+            .user_failed());
         {
             let engine = e.lock();
             assert!(engine.store.conn().is_autocommit());
@@ -1959,7 +1984,8 @@ fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch() {
         }
         assert!(e
             .lock()
-            .reject(genesis.client_id(), "too large", true, None));
+            .reject(genesis.client_id(), "too large", true, None)
+            .user_failed());
         {
             let engine = e.lock();
             let queued = engine.store.outbox().unwrap();

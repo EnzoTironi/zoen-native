@@ -38,6 +38,14 @@ run(ana.home, 'dm', `@${bruno.handle}`, 'Oi Bruno! Tudo certo pra sexta?');
 people.forEach(watch);
 const ready = async (page) => { await page.locator('.zm-chat-open').first().click({ timeout: 90000 }); await page.waitForSelector('.zm-composer textarea:not([disabled])', { timeout: 90000 }); };
 await Promise.all([ready(ana.page), ready(bruno.page)]);
+// Profile sharing can replace @handles with private, editable names. Keep the
+// actual shared DM id after setup rather than treating its current title as identity.
+const directSpace = await ana.page.locator('.zm-chat.zm-active').getAttribute('data-space-id');
+if (!directSpace || directSpace !== await bruno.page.locator('.zm-chat.zm-active').getAttribute('data-space-id')) {
+  throw new Error('The two browsers did not open the same direct conversation.');
+}
+const directChat = (page) => page.locator(`.zm-chat[data-space-id=${JSON.stringify(directSpace)}]`);
+
 const send = async (page, text) => { await page.locator('.zm-composer textarea').first().fill(text); await page.keyboard.press('Enter'); };
 await bruno.page.locator('.zm-main .zm-text', { hasText: 'Oi Bruno! Tudo certo pra sexta?' }).waitFor();
 await send(bruno.page, 'Tudo! Levo o bolo 🎂');
@@ -108,9 +116,8 @@ await ana.page.screenshot({ path: `${SHOTS}/11-encaminhada.png` });
 const crow = ana.page.locator('.zm-chat', { hasText: 'Churrasco' }).first();
 await crow.hover(); await crow.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Arquivar' }).click();
 await ana.page.screenshot({ path: `${SHOTS}/12-arquivadas.png` });
-// Pick a chat by its exact title, never by preview text (a group preview can mention @ana).
-const chat = (page, title) => page.locator('.zm-chat').filter({ has: page.locator('.zm-chat-top b').getByText(title, { exact: true }) });
-await chat(bruno.page, `@${ana.handle}`).click();
+// Reopen the actual DM, even after encrypted profiles update its visible name.
+await directChat(bruno.page).click();
 await bruno.page.waitForTimeout(500); await bruno.page.screenshot({ path: `${SHOTS}/13-bruno-chat.png` });
 // Empty composer shows the mic; typing swaps to send.
 await bruno.page.locator('.zm-main .zm-composer textarea').fill('');
@@ -119,7 +126,7 @@ await bruno.page.locator('.zm-main .zm-composer textarea').fill('Até sexta!');
 await bruno.page.locator('.zm-main .zm-composer').screenshot({ path: `${SHOTS}/15-composer-enviar.png` });
 // Media: photo, video, file and a voice note, end-to-end encrypted through the relay.
 const fixtures = new URL('./fixtures/', import.meta.url).pathname;
-await chat(ana.page, `@${bruno.handle}`).click();
+await directChat(ana.page).click();
 const attach = async (page, file) => { await page.locator('.zm-main input[type=file]').setInputFiles(fixtures + file, { timeout: 15000 }); };
 await attach(ana.page, 'praia.jpg');
 await bruno.page.locator('.zm-main .zm-visual.zm-image img').last().waitFor({ timeout: 40000 });

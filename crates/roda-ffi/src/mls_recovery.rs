@@ -310,6 +310,15 @@ impl Engine {
                 "recovery context does not match the current roster or epoch",
             ));
         }
+        // A commit can become visible, and its context download finish, before
+        // the separately published Welcome. If this exact certified device is
+        // already in that tree, it must join via its Welcome, not external-replace
+        // itself and lose the epoch secrets needed by the original messages.
+        // Restores/relinks use a fresh device key and still take the recovery path.
+        // The verified persisted context makes this gate survive a cold reopen.
+        if summary.leaves.contains(device.leaf()) {
+            return Ok(false);
+        }
         let Some(recipients) = self.recovery_recipients(space)? else {
             return Ok(false);
         };

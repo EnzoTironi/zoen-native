@@ -13,6 +13,7 @@
 mod agent_page;
 pub mod agents;
 pub mod analytics;
+pub mod auth;
 pub mod backup;
 pub mod blobs;
 pub mod db;
@@ -80,6 +81,8 @@ pub struct AndroidPackage {
 }
 
 pub struct AppState {
+    /// OIDC provider proofs and explicit signed account bindings.
+    pub auth: auth::Service,
     pub pool: PgPool,
     /// Separate bounded lanes keep durable delivery checks independent of admission
     /// traffic. Ordinary requests release their admission fence before doing any work.
@@ -118,6 +121,7 @@ pub async fn connect(cfg: &Config) -> anyhow::Result<PgPool> {
 }
 
 pub fn router(state: Shared) -> Router {
+    let auth = auth::router(&state.auth);
     let backups = Router::new()
         .route("/v1/backup/oprf", post(backup::oprf))
         .route("/v1/backup/vault", put(backup::put_vault))
@@ -135,6 +139,7 @@ pub fn router(state: Shared) -> Router {
             backup::deadline,
         ));
     Router::new()
+        .merge(auth)
         .merge(backups)
         .route("/v1/sync", get(ws))
         .route(
@@ -152,9 +157,15 @@ pub fn router(state: Shared) -> Router {
             "/v1/transfer/{id}/{n}",
             put(transfer::put)
                 .get(transfer::get)
-                .layer(DefaultBodyLimit::max(transfer::MAX_CHUNK + 1024)),
+                .layer::<_, std::convert::Infallible>(DefaultBodyLimit::max(
+                    transfer::MAX_CHUNK + 1024,
+                ))
+                .layer::<_, std::convert::Infallible>(transfer::cors()),
         )
-        .route("/v1/transfer/{id}", delete(transfer::delete))
+        .route(
+            "/v1/transfer/{id}",
+            delete(transfer::delete).layer(transfer::cors()),
+        )
         .route(
             "/.well-known/apple-app-site-association",
             get(apple_app_site_association),
@@ -241,6 +252,7 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     tracing::info!(node = %node, partitions = ownership::PARTITION_COUNT, "persisted space ownership ready");
     let analytics = analytics::Analytics::load(&pool).await?;
     let state = Arc::new(AppState {
+        auth: auth::Service::new(auth::Settings::from_env()?)?,
         pool,
         session_auth,
         delivery_auth,

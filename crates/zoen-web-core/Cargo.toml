@@ -13,6 +13,12 @@ crate-type = ["cdylib", "rlib"]
 roda-types.workspace = true
 roda-log.workspace = true
 roda-proto.workspace = true
+roda-docs.workspace = true
+roda-grants.workspace = true
+roda-apps.workspace = true
+roda-i18n.workspace = true
+roda-link.workspace = true
+base64 = "0.22"
 roda-mls = { workspace = true, features = ["portable"] }
 openmls = { version = "0.9.1", features = ["js"] }
 openmls_rust_crypto = "0.6"
@@ -23,7 +29,6 @@ hex.workspace = true
 sha2.workspace = true
 zeroize.workspace = true
 getrandom = { workspace = true, features = ["js"] }
-hpke-rs = { version = "0.7", features = ["rustcrypto"] }
 chacha20poly1305.workspace = true
 hkdf.workspace = true
 fastcdc = "5"
