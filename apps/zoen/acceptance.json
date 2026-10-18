@@ -866,6 +866,97 @@
       "copiedScreenshotHashes": 26,
       "postRuntimeManifest": "789 inputs/source5290112bd94a97075c03e4839bc8da266aa639e8c2ddb4908cf1222748158f76 stable after both walks.",
       "cleanup": "Root stopped six scoped tooling services for both devices; relay untouched."
+    },
+    "nativeComposerQuotesActivityV74": {
+      "status": "PASS_BOUNDED_NATIVE_FITTING_QUOTES_ACTIVITY_SEARCH_AND_PRESERVATION",
+      "sourceCommit": "43ef6b840f189af3b2c021441f7889f9cf560f23",
+      "artifactVerification": "/private/tmp/zoen-iphone-release-v74-verification.json",
+      "sourceInputs": 794,
+      "sourceSha256": "9e1c0629fe2b7dd7b6a24ab5f2889cbfa7d7d769b78cb2e64dd090f90d528f82",
+      "publicFlags": {
+        "EXPO_PUBLIC_ZOEN_REVEAL_QA": "0"
+      },
+      "checks": {
+        "fullApp": 547,
+        "typeScriptOxlintOxfmt": "PASS final 6",
+        "fullRustFfi": 444,
+        "fullRustFfiSeconds": 127.23,
+        "canonicalActivityNoteSearch": 7,
+        "retainedVoiceSearch": 2,
+        "compiledQuoteAndLiveCapture": 9,
+        "fittingCoordinator": 8,
+        "compiledFieldAndAttachments": 6,
+        "strictClippy": "PASS scoped native Rust",
+        "swiftUIKit": "PASS Swift5/6 strict concurrency",
+        "finalReceipt": "/private/tmp/zoen-native-composer-qa-v74/source-checks/final-checks.json"
+      },
+      "build": {
+        "seconds": 97.64,
+        "minimumFreeBytes": 10145005568,
+        "receipt": "/private/tmp/zoen-v74-xcode-build.json"
+      },
+      "implementation": "Existing mounted React Native UITextView remains the editor. Read-only tagged-subtree sizeThatFits validates exact text/label/placeholder/width/font; async coordinator validates snapshot/tag/nonce and cancels stale results with at most two retry frames. It changes height only, not text/selection/focus. Canonical ItemEdited.note joins existing search rules; quote preview refreshes independently of durable text/reply ID. Abandoned ExpoUI NativeState prototype is not shipped or accepted.",
+      "isolated": {
+        "runtime": "/private/tmp/zoen-native-composer-qa-v74/isolated-runtime/runtime.json",
+        "recordedSteps": 25,
+        "pngs": 27,
+        "nativeEditor": "0x110e78c00",
+        "oneLineEditCancelHeightsPoints": [52, 73, 52],
+        "wrappedWithoutNewlineEditCancelHeightsPoints": [95, 73, 95],
+        "quote": "Actual swipe-left quote follows target edit/deletion; clear retains normal draft.",
+        "syntheticMutation": {
+          "spaceId": "sp_01m576xayyv6j68vpbsk025j3z",
+          "messageId": "01M57E3QP0XDBNYFCA8CM16WS6",
+          "createdText": "QA v74 quote target",
+          "editedText": "QA v74 quote target updated",
+          "deleted": true
+        },
+        "final": "Original seed/Read history retained plus the new tombstone; empty 52 pt field, no quote and closed keyboard. No new peer or fresh receipt proof."
+      },
+      "human": {
+        "runtime": "/private/tmp/zoen-native-composer-qa-v74/human-runtime/runtime.json",
+        "recordedSteps": 10,
+        "pngs": 11,
+        "query": "Cilantro",
+        "actualItemEditedNoteResults": 4,
+        "selectedIndices": [1, 2, 1],
+        "positioning": "Selected green bubble fully above keyboard/composer and below top HUD.",
+        "searchCloseEditor": "0x115a2cc00",
+        "preserved": "Home 4 cards, recipe 6/8, original six-page history and existing Delivered 11-second voice.",
+        "finalEmptyHeightPoints": 56.333,
+        "final": "Empty normal draft, no quote and closed keyboard at the current font; not a universal 52 pt claim.",
+        "contentMutations": [],
+        "harnessDiagnostic": "Initial Fixados wait mismatched existing Miniapps section; retained as tooling diagnostic, not product failure."
+      },
+      "beforeDiagnostic": {
+        "artifact": "accepted v73, not v74",
+        "verdict": "/private/tmp/zoen-native-composer-qa-v74/before-runtime/verdict.json",
+        "observations": "/private/tmp/zoen-native-composer-qa-v74/before-runtime/observations.json",
+        "sameEditor": "0x110270c00",
+        "nativeHeightsPoints": {
+          "oneLine": 52,
+          "multilineEditClipped": 52,
+          "cancelBackToOneLine": 73.333
+        },
+        "unsentDraft": "QA v74 keep retained for preserving candidate install; no content sent."
+      },
+      "limits": [
+        "Both recordings are retired one-use observations, not formal reusable replay/E2E.",
+        "Before-runtime v73 failure and earlier failed fullcheck/harness attempts remain attributed and preserved.",
+        "Existing v68 normal-draft/send/peer/Read/media and v73 search-positioning claims remain unchanged original-artifact evidence; not rerun wholesale on v74.",
+        "No physical-device, provider-login, broad VoiceOver/Dynamic Type, performance/frame-rate, hosted current-head CI or comparative/full-product parity acceptance."
+      ],
+      "fullAppParityAccepted": false,
+      "installedPublicVerification": {
+        "receipt": "/private/tmp/zoen-native-composer-qa-v74/installed-public-app-checks.json",
+        "scope": "Both installed executable/JavaScript SHA256 values match frozen v74 and strict signatures pass after native runtime. Earlier pre-runtime checks were observed in root tool history; no saved before/after raw-log pair claimed."
+      },
+      "postRuntimeManifest": "794 inputs / source 9e1c0629fe2b7dd7b6a24ab5f2889cbfa7d7d769b78cb2e64dd090f90d528f82 verified after build and runtime.",
+      "cleanup": {
+        "receipt": "/private/tmp/zoen-native-composer-qa-v74/scoped-cleanup.json",
+        "scope": "Six scoped tooling services stopped for both devices; relay untouched."
+      },
+      "evidenceManifest": "/private/tmp/zoen-native-composer-qa-v74/evidence-manifest.json"
     }
   },
   "deferredPlatforms": ["web", "android", "macos", "windows", "linux"],
@@ -886,59 +977,64 @@
     "2026-10-18: Signed v64 resolves the bounded stale local unread snapshot observed in v63: the existing c row starts at1unread, ordinary exact-chat Open then Back keeps the row visible without unread in the same foreground session, with no restart or new content. App440 tests/TypeScript/Oxlint/Oxfmt pass; native geometry/Rust and v63 first-file/history attribution remain unchanged. Prior v63 pending-unread notes are historical. Human signedv64 preserving installation now retains Home4cards/recipe6of8, existing Bilingual history/cards/last voice Delivered and timeline100% with empty composer, closed keyboard and idle audio on its first ordinary cold launch; native induced storage/account-replacement failures, physical-device, providers, broad accessibility/performance and full parity remain pending.",
     "V66 bounded attachment batch/caption/video-preview/native thread/recipient/read/human-retention proof supersedes only the corresponding pending v65 observations. Source retry/cleanup/ownership cases are not native induced-failure proof; unsent drafts are still route-local, and full media/album/accessibility/performance/physical/provider parity remains incomplete.",
     "Signed v68 bounded ordinary text/reply draft/thread/quote/cold/peer/rejection/Read and human-retention acceptance does not close all composer quality gaps: keyboard-open search found2 results but initial result bubbles scrolled behind keyboard; multiline Edit→nonempty one-line draft retained taller field (empty52pt fixed); active quote retained cached preview after target deletion while core safely rejected the send/preserved text. Kill-before-unacknowledged-write, induced native storage/owner/erase failures, unsent attachment/audio/PDF process-death recovery, formal replay, physical/accessibility/performance/provider/comparative acceptance remain pending. Earlier v66 route-local attachment/draft and other gap statements retain exact historical attribution.",
-    "Signed flag0 v73 bounded first-result/both-arrow positioning passes for long human QA8 Recipe/Trip cards and isolated rascunho2 messages above an open keyboard; manualdrag/no-snapback and normal-empty/receipt retention pass. This narrowly resolves the corresponding observed v68 search-positioning gap for those paths; v69/v71/v72 native misses and uninstalled v70 rejection remain diagnostic history. Projected-activity word indexing/Cilantro0, nonempty one-line height after multiline Edit, cached unavailable-quote preview, broader search/thread/multiline, physical/provider/accessibility/performance and comparative parity remain pending. V68 normal-draft/send/peer/media proofs retain their exact original artifact attribution, not a new v73 replay."
+    "Signed flag0 v73 bounded first-result/both-arrow positioning passes for long human QA8 Recipe/Trip cards and isolated rascunho2 messages above an open keyboard; manualdrag/no-snapback and normal-empty/receipt retention pass. This narrowly resolves the corresponding observed v68 search-positioning gap for those paths; v69/v71/v72 native misses and uninstalled v70 rejection remain diagnostic history. Projected-activity word indexing/Cilantro0, nonempty one-line height after multiline Edit, cached unavailable-quote preview, broader search/thread/multiline, physical/provider/accessibility/performance and comparative parity remain pending. V68 normal-draft/send/peer/media proofs retain their exact original artifact attribution, not a new v73 replay.",
+    "Signed flag 0 v74 narrowly resolves the tested v68/v73 nonempty composer-height, stale quote-preview and activity-note word-index gaps: one mounted focused RN editor fits one-line 52 → Edit 73 → Cancel 52 pt and wrapped text without a newline 95 → Edit 73 → Cancel 95 pt; actual quote edit/delete/clear preserves the normal draft, and human Cilantro returns 4 canonical ItemEdited-note results with 1 → 2 → 1 visible above keyboard/below HUD. Human preserving Home/history/Delivered 11-second voice and final empty 56.333 pt at its current font pass; isolated final empty 52 pt and old Read history remain. One isolated synthetic target was created/edited/deleted; no human content mutations, fresh peer delivery, reusable replay/E2E or universal 52 pt claim. All original 17 gaps and historical evidence retain exact attribution; physical/provider/broad accessibility/Dynamic Type/performance, broader search/thread/media and full comparative parity remain pending."
   ],
   "currentIphoneArtifact": {
-    "checkpoint": "v73",
-    "commit": "04451232f631372db81eaee35cecd79d780a605a",
+    "checkpoint": "v74",
+    "commit": "43ef6b840f189af3b2c021441f7889f9cf560f23",
     "configuration": "signed Release ARM64",
     "preservingInstall": true,
-    "inputs": 789,
-    "sourceSha256": "5290112bd94a97075c03e4839bc8da266aa639e8c2ddb4908cf1222748158f76",
-    "bundleSha256": "9181ffd376bf153e761a02620ee3c8ae8c8ff16aacec8547bb23cdf9fd4fb049",
-    "bundleBytes": 6628732,
-    "executableSha256": "d15d8d4df0d2f038e75658db0c4489b9b1219f4e2dce1cc826757e80185e2430",
-    "appTreeSha256": "5018958ee4646e85f51e011b04e44ddcb1f88185a202cf816e82578a580cc2f2",
+    "inputs": 794,
+    "sourceSha256": "9e1c0629fe2b7dd7b6a24ab5f2889cbfa7d7d769b78cb2e64dd090f90d528f82",
+    "bundleSha256": "890ee3ebba7482b61da81a94399688af017605f0ce63813410e85ff404e81621",
+    "bundleBytes": 6637706,
+    "executableSha256": "847850a5ae8b86255f43a1903016c1d48290a449c09a78aa5edb93ae60f84121",
+    "appTreeSha256": "32104ddd976f31afe2f808dc2920244a130598601474b9bf6c259bd4dc1e39d1",
     "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
-    "appBytes": 131835395,
-    "archivePath": "/private/tmp/zoen-iphone-artifacts/v73/Zoen.app",
+    "appBytes": 138227089,
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v74/Zoen.app",
     "installedExecutableVerified": true,
     "installedJavascriptVerified": true,
     "strictSignatureVerified": true,
-    "buildVerification": "/private/tmp/zoen-iphone-release-v73-verification.json",
+    "buildVerification": "/private/tmp/zoen-iphone-release-v74-verification.json",
     "publicFlags": {
       "EXPO_PUBLIC_ZOEN_REVEAL_QA": "0"
     },
     "device": "isolated iPhone18 Pro / iOS27 simulator",
     "deviceUdid": "388CA707-A103-4845-B5FE-BAA9526D3D57",
-    "status": "BOUNDED PASS native short two-hit first-result/both-arrow keyboard positioning and normal-empty52/Read/closed-keyboard return; preserving install/exact public bundles verified. Full product parity remains open.",
-    "runtimeAcceptance": "Signed flag0 v73,789 frozen inputs stable after both native walks; exact executable/JavaScript/strict signatures before/after UI. Existing short group queryrascunho returns2: FIRST own message highlighted above input with keyboard open, older2 seed visible then newer1 own visible. Return to normal composer empty52pt/keyboard closed, prior Read retained. Ten-step partial recorder/12AX observations, retired external YAML/copied PNGs; no formal reusable replay. No content/preferences mutation or new peer. Prior draft/send/peer/media proof retains v68/earlier attribution. /private/tmp/zoen-search-viewport-qa-v73/isolated-runtime.json"
+    "status": "BOUNDED PASS same-editor one-line/wrapped fitting and Edit/Cancel focus, canonical quote edit/delete/clear and preserved normal draft; preserving signed install verified. Full product parity remains open.",
+    "runtimeAcceptance": "Signed flag 0 v74 preserving install restores prior unsent QA v74 keep. One native RCTUITextView 0x110e78c00 stays focused: one-line 52 → multiline Edit 73 → Cancel 52 pt; wrapped text without a newline 95 → Edit 73 → Cancel 95 pt, exact normal text retained. Swipe-left quote updates on canonical edit and deletion; clearing quote preserves draft. One new synthetic target 01M57E3QP0XDBNYFCA8CM16WS6 was created, edited and deleted; original seed/Read history remains plus its tombstone. Back/reopen ends empty 52 pt/no quote/closed keyboard. 25 recorded one-use steps / 27 PNGs; retired YAML, no reusable replay/E2E or fresh peer/receipt claim. /private/tmp/zoen-native-composer-qa-v74/isolated-runtime/runtime.json",
+    "fullAppParityAccepted": false,
+    "installedPublicVerification": "/private/tmp/zoen-native-composer-qa-v74/installed-public-app-checks.json"
   },
   "humanIphoneArtifact": {
-    "checkpoint": "v73",
-    "commit": "04451232f631372db81eaee35cecd79d780a605a",
+    "checkpoint": "v74",
+    "commit": "43ef6b840f189af3b2c021441f7889f9cf560f23",
     "configuration": "signed Release ARM64",
     "preservingInstall": true,
-    "inputs": 789,
-    "sourceSha256": "5290112bd94a97075c03e4839bc8da266aa639e8c2ddb4908cf1222748158f76",
-    "bundleSha256": "9181ffd376bf153e761a02620ee3c8ae8c8ff16aacec8547bb23cdf9fd4fb049",
-    "bundleBytes": 6628732,
-    "executableSha256": "d15d8d4df0d2f038e75658db0c4489b9b1219f4e2dce1cc826757e80185e2430",
-    "appTreeSha256": "5018958ee4646e85f51e011b04e44ddcb1f88185a202cf816e82578a580cc2f2",
+    "inputs": 794,
+    "sourceSha256": "9e1c0629fe2b7dd7b6a24ab5f2889cbfa7d7d769b78cb2e64dd090f90d528f82",
+    "bundleSha256": "890ee3ebba7482b61da81a94399688af017605f0ce63813410e85ff404e81621",
+    "bundleBytes": 6637706,
+    "executableSha256": "847850a5ae8b86255f43a1903016c1d48290a449c09a78aa5edb93ae60f84121",
+    "appTreeSha256": "32104ddd976f31afe2f808dc2920244a130598601474b9bf6c259bd4dc1e39d1",
     "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
-    "appBytes": 131835395,
-    "archivePath": "/private/tmp/zoen-iphone-artifacts/v73/Zoen.app",
+    "appBytes": 138227089,
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v74/Zoen.app",
     "installedExecutableVerified": true,
     "installedJavascriptVerified": true,
     "strictSignatureVerified": true,
-    "buildVerification": "/private/tmp/zoen-iphone-release-v73-verification.json",
+    "buildVerification": "/private/tmp/zoen-iphone-release-v74-verification.json",
     "publicFlags": {
       "EXPO_PUBLIC_ZOEN_REVEAL_QA": "0"
     },
     "device": "human iPhone18 Pro / iOS27 simulator",
     "deviceUdid": "E2B33D1A-D73F-4793-96E7-5FC43E64053F",
-    "status": "BOUNDED PASS preserving human first longQA8 Recipe reveal before arrows, older2Trip/newer1Recipe, manualdrag/no-snapback and retained cold Home/history/Deliveredvoice/empty52 return. Full product parity remains open.",
-    "runtimeAcceptance": "Same signed flag0 v73 archive preserving-installed and exact executable/JavaScript/strict signatures verified before/after UI;789 frozen inputs stable after runtime. Cold Home4cards/recipe6of8→Bilingual100%/Deliveredvoice. FIRST QA1of8 before any arrows settles selected green Recipe at nativex92/y200/w294/h217, entirely above open-keyboard composer around482; initial animated frame is not settled proof. Older2Tripgreen and newer1Recipegreen fully visible. Manualdrag Recipe normalizedY0.229→0.029, no settled snapback. Search close restores normal empty compose retaining component focus/keyboard; Back→Chats→reopen ends Bilingual6pages100%/Deliveredvoice/empty native52pt/keyboardclosed/idle. Cilantro0 remains zero-result observation, not projected-activity indexing acceptance.12-step partial recorder/14AX observations; retired external YAML/copied PNGs, no formal replay. No content/preferences mutation. /private/tmp/zoen-search-viewport-qa-v73/human-runtime.json"
+    "status": "BOUNDED PASS canonical activity-note Cilantro4 search and1→2→1 positioning above keyboard/HUD, same-editor search close and human Home/history/Deliveredvoice preservation. Full product parity remains open.",
+    "runtimeAcceptance": "Same signed flag 0 v74 preserving-installed. Actual historical ItemEdited-note query Cilantro returns 4; selected 1 → 2 → 1 green bubbles stay fully above composer/keyboard and below top HUD. Search/close retains native editor 0x115a2cc00. Home 4 cards / recipe 6/8, six-page history and existing Delivered 11-second voice preserved; final normal draft empty / no quote / keyboard closed, native height 56.333 pt at current font (not a universal 52 pt claim). 10 one-use steps / 11 PNGs, retired YAML; initial Fixados wait mismatch versus the actual Miniapps section retained as harness diagnostic. No human content mutations or fresh delivery/replay claim. /private/tmp/zoen-native-composer-qa-v74/human-runtime/runtime.json",
+    "fullAppParityAccepted": false,
+    "installedPublicVerification": "/private/tmp/zoen-native-composer-qa-v74/installed-public-app-checks.json"
   },
   "previousControlledV60IphoneArtifact": {
     "checkpoint": "v60",
@@ -1847,5 +1943,57 @@
     "status": "BOUNDED PASS preserving v66→v68 first cold Home4cards/recipe6of8→Chats→Bilingual100%, existing Delivered text/voice and empty52pt/keyboard-closed/audio-idle composer. No human content/preferences mutation; full product acceptance remains incomplete.",
     "runtimeAcceptance": "Same accepted v68 archive preserving-installed without uninstall/reset/erase; exact public executable/JavaScript/strict signature verified before and after UI,788 source manifest stable after runtime. First ordinary cold launch retains four Home cards/recipe6of8, existing Bilingual history at100%, prior Delivered text and voice, empty native52pt composer, closed keyboard and idle audio. No content/preferences mutation. Partial4-step recorder+2 direct actions, retired external YAML/copied PNGs; no formal reusable replay. /private/tmp/zoen-message-draft-qa-v68/human-preserving-runtime.json"
   },
-  "currentAcceptanceSummary": "Current isolated and human signed artifact is v73, logging disabled, with bounded native search-positioning/preserving-install proof in evidence.searchViewportV69V73. All pre-existing evidence narratives, including their original current-checkpoint wording, remain immutable historical records; v68 completed draft/peer/Read proof is unchanged. Full product parity remains incomplete."
+  "currentAcceptanceSummary": "Current isolated and human signed artifact is v74, reveal logging disabled, with bounded native same-editor fitting, canonical quote freshness, activity-note search and preserving-install evidence in evidence.nativeComposerQuotesActivityV74. Exact former v73 current objects are archived; all 41 prior historical artifact objects, 70 evidence values and 17 ordered gaps remain unchanged, including completed v68 drafts/peer/Read and v73 positioning proof. Full product parity remains incomplete.",
+  "previousControlledV73IphoneArtifact": {
+    "checkpoint": "v73",
+    "commit": "04451232f631372db81eaee35cecd79d780a605a",
+    "configuration": "signed Release ARM64",
+    "preservingInstall": true,
+    "inputs": 789,
+    "sourceSha256": "5290112bd94a97075c03e4839bc8da266aa639e8c2ddb4908cf1222748158f76",
+    "bundleSha256": "9181ffd376bf153e761a02620ee3c8ae8c8ff16aacec8547bb23cdf9fd4fb049",
+    "bundleBytes": 6628732,
+    "executableSha256": "d15d8d4df0d2f038e75658db0c4489b9b1219f4e2dce1cc826757e80185e2430",
+    "appTreeSha256": "5018958ee4646e85f51e011b04e44ddcb1f88185a202cf816e82578a580cc2f2",
+    "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
+    "appBytes": 131835395,
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v73/Zoen.app",
+    "installedExecutableVerified": true,
+    "installedJavascriptVerified": true,
+    "strictSignatureVerified": true,
+    "buildVerification": "/private/tmp/zoen-iphone-release-v73-verification.json",
+    "publicFlags": {
+      "EXPO_PUBLIC_ZOEN_REVEAL_QA": "0"
+    },
+    "device": "isolated iPhone18 Pro / iOS27 simulator",
+    "deviceUdid": "388CA707-A103-4845-B5FE-BAA9526D3D57",
+    "status": "BOUNDED PASS native short two-hit first-result/both-arrow keyboard positioning and normal-empty52/Read/closed-keyboard return; preserving install/exact public bundles verified. Full product parity remains open.",
+    "runtimeAcceptance": "Signed flag0 v73,789 frozen inputs stable after both native walks; exact executable/JavaScript/strict signatures before/after UI. Existing short group queryrascunho returns2: FIRST own message highlighted above input with keyboard open, older2 seed visible then newer1 own visible. Return to normal composer empty52pt/keyboard closed, prior Read retained. Ten-step partial recorder/12AX observations, retired external YAML/copied PNGs; no formal reusable replay. No content/preferences mutation or new peer. Prior draft/send/peer/media proof retains v68/earlier attribution. /private/tmp/zoen-search-viewport-qa-v73/isolated-runtime.json"
+  },
+  "previousHumanV73IphoneArtifact": {
+    "checkpoint": "v73",
+    "commit": "04451232f631372db81eaee35cecd79d780a605a",
+    "configuration": "signed Release ARM64",
+    "preservingInstall": true,
+    "inputs": 789,
+    "sourceSha256": "5290112bd94a97075c03e4839bc8da266aa639e8c2ddb4908cf1222748158f76",
+    "bundleSha256": "9181ffd376bf153e761a02620ee3c8ae8c8ff16aacec8547bb23cdf9fd4fb049",
+    "bundleBytes": 6628732,
+    "executableSha256": "d15d8d4df0d2f038e75658db0c4489b9b1219f4e2dce1cc826757e80185e2430",
+    "appTreeSha256": "5018958ee4646e85f51e011b04e44ddcb1f88185a202cf816e82578a580cc2f2",
+    "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
+    "appBytes": 131835395,
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v73/Zoen.app",
+    "installedExecutableVerified": true,
+    "installedJavascriptVerified": true,
+    "strictSignatureVerified": true,
+    "buildVerification": "/private/tmp/zoen-iphone-release-v73-verification.json",
+    "publicFlags": {
+      "EXPO_PUBLIC_ZOEN_REVEAL_QA": "0"
+    },
+    "device": "human iPhone18 Pro / iOS27 simulator",
+    "deviceUdid": "E2B33D1A-D73F-4793-96E7-5FC43E64053F",
+    "status": "BOUNDED PASS preserving human first longQA8 Recipe reveal before arrows, older2Trip/newer1Recipe, manualdrag/no-snapback and retained cold Home/history/Deliveredvoice/empty52 return. Full product parity remains open.",
+    "runtimeAcceptance": "Same signed flag0 v73 archive preserving-installed and exact executable/JavaScript/strict signatures verified before/after UI;789 frozen inputs stable after runtime. Cold Home4cards/recipe6of8→Bilingual100%/Deliveredvoice. FIRST QA1of8 before any arrows settles selected green Recipe at nativex92/y200/w294/h217, entirely above open-keyboard composer around482; initial animated frame is not settled proof. Older2Tripgreen and newer1Recipegreen fully visible. Manualdrag Recipe normalizedY0.229→0.029, no settled snapback. Search close restores normal empty compose retaining component focus/keyboard; Back→Chats→reopen ends Bilingual6pages100%/Deliveredvoice/empty native52pt/keyboardclosed/idle. Cilantro0 remains zero-result observation, not projected-activity indexing acceptance.12-step partial recorder/14AX observations; retired external YAML/copied PNGs, no formal replay. No content/preferences mutation. /private/tmp/zoen-search-viewport-qa-v73/human-runtime.json"
+  }
 }
