@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, ScrollView, Text, View, type ScrollViewInstance } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useHeaderHeight } from 'expo-router/react-navigation';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EphemeralConversation } from '../../assistant/conversation';
 import type { AssistantUnavailableReason } from '../../assistant/types';
 import { readAssistantLaunch, releaseAssistantLaunch } from '../../assistant/launch';
-import { ConversationViewport } from '../../components/conversation-viewport';
+import {
+  ConversationContainer,
+  ConversationViewport,
+} from '../../components/conversation-viewport';
 import { MessageComposer } from '../../components/message-composer';
 import { EmptyState, Loading, NativeButton } from '../../components/primitives';
 import { useClient } from '../../core/provider';
@@ -130,6 +134,8 @@ function Conversation({
     return () => cancelAnimationFrame(frame);
   }, [state.turns.length, state.pending]);
   const { colors } = useTheme();
+  const headerHeight = useHeaderHeight();
+  const { top: statusBarHeight } = useSafeAreaInsets();
   const finished = state.turns.length >= 8;
   const turns = state.pending
     ? [...state.turns, { role: 'user' as const, text: state.pending }]
@@ -157,7 +163,7 @@ function Conversation({
       </EmptyState>
     );
   return (
-    <KeyboardAvoidingView behavior="padding" automaticOffset style={{ flex: 1 }}>
+    <ConversationContainer style={{ flex: 1 }}>
       <ConversationViewport
         composer={
           finished ? (
@@ -179,73 +185,81 @@ function Conversation({
           )
         }
       >
-        {(composerSpacer) => (
-          <ScrollView
-            ref={list}
-            contentInsetAdjustmentBehavior="automatic"
-            keyboardDismissMode="interactive"
-            keyboardShouldPersistTaps="handled"
-            maintainVisibleContentPosition={{
-              minIndexForVisible: 0,
-            }}
-            contentContainerStyle={{
-              paddingHorizontal: 20,
-              paddingTop: 20,
-              paddingBottom: 12,
-              gap: 16,
-            }}
-          >
-            <View style={{ gap: 6, paddingBottom: 12 }}>
-              <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
-                {t('agents.temporaryPrivacy')}
-              </Text>
-              <Text style={{ color: colors.secondary, fontSize: 14, lineHeight: 21 }}>
-                {t('agents.temporaryContext')}
-              </Text>
-            </View>
-            {turns.map((turn, index) => (
-              <View
-                key={index}
-                style={{
-                  alignSelf: turn.role === 'user' ? 'flex-end' : 'flex-start',
-                  maxWidth: '92%',
-                  borderRadius: 24,
-                  padding: 16,
-                  backgroundColor: turn.role === 'user' ? colors.mine : colors.theirs,
-                }}
-              >
-                <Text
-                  selectable
-                  style={{
-                    color: turn.role === 'user' ? colors.onMine : colors.text,
-                    fontSize: 17,
-                    lineHeight: 25,
-                  }}
-                >
-                  {turn.text}
+        {(composerSpacer, NativeScrollComponent) => {
+          const ScrollComponent = NativeScrollComponent ?? ScrollView;
+          return (
+            <ScrollComponent
+              ref={list}
+              testID="conversation-timeline"
+              style={process.env.EXPO_OS === 'ios' ? { marginTop: statusBarHeight } : undefined}
+              contentInsetAdjustmentBehavior="automatic"
+              keyboardDismissMode="interactive"
+              keyboardShouldPersistTaps="handled"
+              maintainVisibleContentPosition={{
+                minIndexForVisible: 0,
+              }}
+              contentContainerStyle={{
+                paddingHorizontal: 20,
+                paddingTop:
+                  process.env.EXPO_OS === 'ios'
+                    ? Math.max(0, headerHeight - statusBarHeight) + 20
+                    : 20,
+                paddingBottom: 12,
+                gap: 16,
+              }}
+            >
+              <View style={{ gap: 6, paddingBottom: 12 }}>
+                <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
+                  {t('agents.temporaryPrivacy')}
+                </Text>
+                <Text style={{ color: colors.secondary, fontSize: 14, lineHeight: 21 }}>
+                  {t('agents.temporaryContext')}
                 </Text>
               </View>
-            ))}
-            {state.phase === 'asking' ? (
-              <View accessibilityRole="progressbar" style={{ flexDirection: 'row', gap: 10 }}>
-                <ActivityIndicator color={colors.secondary} />
-                <Text style={{ color: colors.secondary }}>{t('agents.temporaryThinking')}</Text>
-              </View>
-            ) : null}
-            {inputError || state.failed ? (
-              <Text accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 22 }}>
-                {inputError ? t('agents.temporaryQuestionTooLong') : t('agents.temporaryFailed')}
-              </Text>
-            ) : null}
-            {finished ? (
-              <Text style={{ color: colors.secondary, lineHeight: 22 }}>
-                {t('agents.temporaryFinished')}
-              </Text>
-            ) : null}
-            {composerSpacer}
-          </ScrollView>
-        )}
+              {turns.map((turn, index) => (
+                <View
+                  key={index}
+                  style={{
+                    alignSelf: turn.role === 'user' ? 'flex-end' : 'flex-start',
+                    maxWidth: '92%',
+                    borderRadius: 24,
+                    padding: 16,
+                    backgroundColor: turn.role === 'user' ? colors.mine : colors.theirs,
+                  }}
+                >
+                  <Text
+                    selectable
+                    style={{
+                      color: turn.role === 'user' ? colors.onMine : colors.text,
+                      fontSize: 17,
+                      lineHeight: 25,
+                    }}
+                  >
+                    {turn.text}
+                  </Text>
+                </View>
+              ))}
+              {state.phase === 'asking' ? (
+                <View accessibilityRole="progressbar" style={{ flexDirection: 'row', gap: 10 }}>
+                  <ActivityIndicator color={colors.secondary} />
+                  <Text style={{ color: colors.secondary }}>{t('agents.temporaryThinking')}</Text>
+                </View>
+              ) : null}
+              {inputError || state.failed ? (
+                <Text accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 22 }}>
+                  {inputError ? t('agents.temporaryQuestionTooLong') : t('agents.temporaryFailed')}
+                </Text>
+              ) : null}
+              {finished ? (
+                <Text style={{ color: colors.secondary, lineHeight: 22 }}>
+                  {t('agents.temporaryFinished')}
+                </Text>
+              ) : null}
+              {composerSpacer}
+            </ScrollComponent>
+          );
+        }}
       </ConversationViewport>
-    </KeyboardAvoidingView>
+    </ConversationContainer>
   );
 }

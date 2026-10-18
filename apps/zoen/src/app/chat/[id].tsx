@@ -14,10 +14,6 @@ import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
-  KeyboardAvoidingView,
-  useReanimatedKeyboardAnimation,
-} from 'react-native-keyboard-controller';
-import {
   Pressable,
   Text,
   View,
@@ -25,6 +21,7 @@ import {
   type TextInputInstance,
 } from 'react-native';
 import { useDialogs } from '../../components/dialogs';
+import { useKeyboardMotion } from '../../components/keyboard-motion';
 import { useClient } from '../../core/provider';
 import type { TimelineEntry } from '../../core/types';
 import type { UniversalHit } from '../../core/generated/UniversalHit';
@@ -33,7 +30,10 @@ import { messageText } from '../../core/presentation';
 import { useTheme } from '../../theme';
 import { EmptyState, Loading } from '../../components/primitives';
 import { MessageComposer } from '../../components/message-composer';
-import { ConversationViewport } from '../../components/conversation-viewport';
+import {
+  ConversationContainer,
+  ConversationViewport,
+} from '../../components/conversation-viewport';
 import { ConversationRail, ConversationRailSpacer } from '../../components/conversation-rail';
 import { ConversationMessage } from '../../components/conversation-message';
 import { MessageContext } from '../../components/message-context';
@@ -58,7 +58,7 @@ export default function Chat() {
   const { items } = useHome();
   const headerHeight = useHeaderHeight();
   const { top: statusBarHeight } = useSafeAreaInsets();
-  const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
+  const { progress: keyboardProgress } = useKeyboardMotion();
   const conversationMiniapps = items.filter((item) => item.space_id === id);
   const { inform } = useDialogs();
   const input = useRef<TextInputInstance>(null);
@@ -379,11 +379,7 @@ export default function Chat() {
       />
     );
   return (
-    <KeyboardAvoidingView
-      behavior="padding"
-      automaticOffset
-      style={{ flex: 1, backgroundColor: 'transparent' }}
-    >
+    <ConversationContainer style={{ flex: 1, backgroundColor: 'transparent' }}>
       <ChatHeader
         id={id}
         title={chat.title}
@@ -533,20 +529,27 @@ export default function Chat() {
           </View>
         }
       >
-        {(composerSpacer) =>
+        {(composerSpacer, ScrollComponent) =>
           !page ? (
             <Loading />
           ) : (
             <FlashList
               style={{ flex: 1, marginTop: statusBarHeight, overflow: 'hidden' }}
-              key={timelineKey}
+              key={initialEnd.scope}
               ref={list}
+              testID="conversation-timeline"
+              renderScrollComponent={ScrollComponent}
               onLoad={() => {
                 setLoadedSpace(timelineKey);
                 initialEnd.onLoad();
               }}
               onContentSizeChange={initialEnd.onContentSizeChange}
-              onCommitLayoutEffect={initialEnd.onCommitLayoutEffect}
+              onCommitLayoutEffect={() => {
+                initialEnd.onCommitLayoutEffect();
+                // Preserve the native keyboard scroller when search changes the
+                // timeline, and address its new indices only after SDK commit.
+                if (loadedSpace !== timelineKey) setLoadedSpace(timelineKey);
+              }}
               onScrollBeginDrag={initialEnd.cancel}
               data={page.entries}
               keyExtractor={(entry) => entry.id}
@@ -610,6 +613,6 @@ export default function Chat() {
         }
       </ConversationViewport>
       {actions.panel}
-    </KeyboardAvoidingView>
+    </ConversationContainer>
   );
 }

@@ -4,7 +4,7 @@ type Port = Readonly<{
   scroll: () => boolean;
 }>;
 
-/** Reconcile the first native end position after the list and its footer have laid out. */
+/** Reconcile the first native end after the list and composer reservation are ready. */
 export class InitialTimelineEnd {
   readonly scope: string;
   private port: Port | undefined;
@@ -68,8 +68,8 @@ export class InitialTimelineEnd {
         this.cancel();
         return;
       }
-      // Use native content size, including the footer, for this nonanimated
-      // initial request rather than the list's item-container bounds.
+      // The native end includes content size and bottom inset, so this request
+      // covers either a native composer reservation or the fallback footer.
       if (this.port.scroll()) this.cancel();
     });
   }

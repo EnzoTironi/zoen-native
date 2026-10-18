@@ -5,7 +5,6 @@ import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Text, View, type TextInputInstance } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useCoreQuery } from '../../../core/query';
 import { useClient } from '../../../core/provider';
 import type { TimelineEntry } from '../../../core/types';
@@ -21,7 +20,10 @@ import { useTheme } from '../../../theme';
 import { useHome } from '../../../home/provider';
 import { MessageComposer } from '../../../components/message-composer';
 import { MessageContext } from '../../../components/message-context';
-import { ConversationViewport } from '../../../components/conversation-viewport';
+import {
+  ConversationContainer,
+  ConversationViewport,
+} from '../../../components/conversation-viewport';
 import { ConversationMessage } from '../../../components/conversation-message';
 import { useMessageActions } from '../../../components/use-message-actions';
 
@@ -95,11 +97,7 @@ export default function Thread() {
     }
   }
   return (
-    <KeyboardAvoidingView
-      behavior="padding"
-      automaticOffset
-      style={{ flex: 1, backgroundColor: 'transparent' }}
-    >
+    <ConversationContainer style={{ flex: 1, backgroundColor: 'transparent' }}>
       <Stack.Screen options={{ title: t('chat.replies') }} />
       <ConversationViewport
         composer={
@@ -149,7 +147,7 @@ export default function Thread() {
           </>
         }
       >
-        {(composerSpacer) =>
+        {(composerSpacer, ScrollComponent) =>
           error && !entries ? (
             <EmptyState title={t('chat.theRepliesCouldNotBeOpened')} detail={error}>
               <NativeButton label={t('chat.tryAgain2')} onPress={retry} />
@@ -160,6 +158,8 @@ export default function Thread() {
             <FlashList
               style={{ flex: 1, marginTop: statusBarHeight, overflow: 'hidden' }}
               ref={list}
+              testID="conversation-timeline"
+              renderScrollComponent={ScrollComponent}
               data={entries}
               keyExtractor={(entry) => entry.id}
               keyboardDismissMode="interactive"
@@ -223,6 +223,6 @@ export default function Thread() {
         }
       </ConversationViewport>
       {actions.panel}
-    </KeyboardAvoidingView>
+    </ConversationContainer>
   );
 }

@@ -27,6 +27,7 @@ export function ConversationRail({
   });
   return (
     <Animated.View
+      testID="conversation-rail"
       pointerEvents={visible ? 'none' : 'box-none'}
       accessibilityElementsHidden={visible}
       importantForAccessibility={visible ? 'no-hide-descendants' : 'auto'}
