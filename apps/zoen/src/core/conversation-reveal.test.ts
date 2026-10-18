@@ -336,3 +336,40 @@ test('drag or query replacement cancels all later variable-height refinements an
     assert.deepEqual(f.offsets, [900], interrupt);
   }
 });
+
+test('newly committed rows cannot finish at a stale native content limit while still behind the keyboard', () => {
+  const f = fixture();
+  f.ready(geometry());
+  const expanded = [{ id: 'older-recipe' }, { id: 'previous-row' }];
+  f.setData(expanded);
+  f.setRow(item({ y: 900, height: 110, childHeight: 1500, measured: true }));
+  f.commit(expanded);
+  f.reveal.request('older-recipe');
+  f.frame();
+  // The old content height clamps the desired offset to its current 360 even
+  // though the new, measured row starts at 604, below the visible bottom 400.
+  assert.deepEqual(f.offsets, []);
+  f.reveal.onContentSize(402, 1564);
+  f.frame();
+  assert.deepEqual(f.offsets, [], 'wait for the matching native content geometry');
+  f.reveal.onScroll(geometry({ contentSize: { height: 1564 } }));
+  f.frame();
+  assert.deepEqual(f.offsets, [900], 'the pending target seeks when native content catches up');
+  f.commit(expanded);
+  f.reveal.onScroll(geometry({ contentSize: { height: 1564 }, contentOffset: { y: 900 } }));
+  f.frame();
+  f.setRow(item({ y: 1200, height: 110, childHeight: 1500, measured: true }));
+  f.commit(expanded);
+  assert.deepEqual(f.offsets, [900], 'only the genuinely visible target can retire');
+});
+
+test('an oversized measured result can finish with its beginning aligned above the keyboard', () => {
+  const f = fixture();
+  f.ready(geometry({ contentSize: { height: 3000 }, contentOffset: { y: 900 } }));
+  f.setRow(item({ y: 900, height: 600, childHeight: 2936, measured: true }));
+  f.reveal.request('oversized');
+  f.frame();
+  f.setRow(item({ y: 1300, height: 600, childHeight: 2936, measured: true }));
+  f.commit();
+  assert.deepEqual(f.offsets, []);
+});

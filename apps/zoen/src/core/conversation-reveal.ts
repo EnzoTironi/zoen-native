@@ -67,6 +67,24 @@ export function conversationRevealOffset(
   return clamp(rowTop - visibleTop);
 }
 
+function conversationRevealVisible(
+  geometry: ConversationRevealGeometry,
+  item: ConversationRevealItem,
+): boolean {
+  const top = Math.max(0, item.topObstruction);
+  const bottom = geometry.layoutMeasurement.height - geometry.contentInset.bottom;
+  const alignment = item.bottomAligned
+    ? Math.max(0, item.windowHeight - item.childHeight - item.firstItemOffset)
+    : 0;
+  const start = item.y + item.firstItemOffset + alignment - geometry.contentOffset.y;
+  if (bottom <= top) return false;
+  // A message taller than the usable viewport reveals its beginning. A normal
+  // row must actually fit; equality with a clamped scroll limit proves neither.
+  return item.height > bottom - top
+    ? Math.abs(start - top) <= 0.5
+    : start >= top - 0.5 && start + item.height <= bottom + 0.5;
+}
+
 type RevealPort = Readonly<{
   current: (id: string) => boolean;
   item: (id: string) => ConversationRevealItem | null;
@@ -198,6 +216,7 @@ export class ConversationReveal {
       if (
         item.measured &&
         atTarget &&
+        conversationRevealVisible(geometry, item) &&
         (this.engagementCommit === null || this.commit > this.engagementCommit)
       ) {
         this.target = null;
