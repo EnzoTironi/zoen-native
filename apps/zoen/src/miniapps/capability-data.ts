@@ -138,15 +138,25 @@ export function eventDraft(params: Record<string, unknown>) {
   };
 }
 
-/** Copies only busy intervals; no event names, calendar names, IDs or participants. */
+/** Copies only busy intervals; no event names, calendar names, IDs or participants.
+ * Timed non-free events block as before. All-day events block only when the
+ * calendar explicitly reports busy/tentative/unavailable, so unsupported or
+ * unknown birthday/holiday notices do not make an otherwise free day unavailable.
+ */
 export function busyBlocks(
-  events: { startMs: number; endMs: number; allDay?: boolean; free?: boolean }[],
+  events: {
+    startMs: number;
+    endMs: number;
+    allDay?: boolean;
+    free?: boolean;
+    explicitAllDayBusy?: boolean;
+  }[],
   range: BusyBlock,
 ): BusyBlock[] {
   const blocks = events
     .filter(
       (event) =>
-        !event.allDay &&
+        (!event.allDay || event.explicitAllDayBusy === true) &&
         !event.free &&
         Number.isFinite(event.startMs) &&
         Number.isFinite(event.endMs),

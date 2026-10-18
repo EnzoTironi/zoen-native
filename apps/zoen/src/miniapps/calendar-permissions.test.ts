@@ -8,6 +8,7 @@ import type { ExpoConfig } from 'expo/config';
 import type { ConfigPlugin, ExportedConfig } from 'expo/config-plugins';
 import { build } from 'esbuild';
 import type * as NativeCapabilities from './native-capabilities';
+import { miniapps } from '../i18n/catalogs/miniapps.ts';
 
 const require = createRequire(import.meta.url);
 const projectRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -91,6 +92,13 @@ function fixture(
     permissionGate?: Promise<void>;
     permissionEntered?: () => void;
     failList?: boolean;
+    noCalendars?: boolean;
+    emptyEvents?: boolean;
+    calendarGate?: Promise<void>;
+    calendarEntered?: () => void;
+    listGate?: Promise<void>;
+    listEntered?: () => void;
+    language?: 'en' | 'pt-BR';
   } = {},
 ) {
   const calls = {
@@ -119,7 +127,7 @@ function fixture(
         ]),
       ),
     );
-  const events = [
+  let events = [
     event(startMs - 1000, startMs + 1000),
     event(startMs + 500, startMs + 2000),
     event(startMs + 100, startMs + 5000, { availability: 'free' }),
@@ -128,7 +136,13 @@ function fixture(
   ];
   const nativeCalendar = {
     EntityTypes: { EVENT: 'event' },
-    Availability: { FREE: 'free' },
+    Availability: {
+      FREE: 'free',
+      BUSY: 'busy',
+      TENTATIVE: 'tentative',
+      UNAVAILABLE: 'unavailable',
+      NOT_SUPPORTED: 'notSupported',
+    },
     CalendarDialogResultActions: { saved: 'saved' },
     async requestCalendarPermissions(writeOnly: boolean) {
       calls.permissions.push(writeOnly);
@@ -143,13 +157,17 @@ function fixture(
     async getCalendars(entity: string) {
       assert.equal(entity, 'event');
       calls.calendars++;
-      return [calendar];
+      options.calendarEntered?.();
+      await options.calendarGate;
+      return options.noCalendars ? [] : [calendar];
     },
     async listEvents(calendars: unknown[], start: Date, end: Date) {
-      assert.deepEqual(calendars, [calendar]);
+      assert.deepEqual(calendars, options.noCalendars ? [] : [calendar]);
       calls.ranges.push({ startMs: start.getTime(), endMs: end.getTime() });
+      options.listEntered?.();
+      await options.listGate;
       if (options.failList) throw new Error('Synthetic calendar read failure');
-      return events;
+      return options.noCalendars || options.emptyEvents ? [] : events;
     },
     getDefaultCalendarSync: () => ({
       async addEventWithForm() {
@@ -168,7 +186,12 @@ function fixture(
       Platform: { OS: 'ios' },
       AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
     },
-    '../i18n/index.ts': { t: (key: string) => key },
+    '../i18n/index.ts': {
+      t: (key: string) =>
+        key === 'miniapps.noCalendarsAvailable' && options.language
+          ? miniapps[options.language].noCalendarsAvailable
+          : key,
+    },
     './photo-preview': {},
   };
   const module = { exports: {} };
@@ -183,7 +206,24 @@ function fixture(
     },
   });
   const adapter = module.exports as typeof NativeCapabilities;
-  return { adapter, calls, startMs, endMs };
+  return {
+    adapter,
+    calls,
+    startMs,
+    endMs,
+    setEvents(
+      values: { startMs: number; endMs: number; allDay?: boolean; availability?: string }[],
+    ) {
+      events = values.map(({ startMs, endMs, ...extra }) => event(startMs, endMs, extra));
+    },
+    failProjection() {
+      Object.defineProperty(events[0], 'startDate', {
+        get: () => {
+          throw new Error('Synthetic event getter failure');
+        },
+      });
+    },
+  };
 }
 const serializable = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 
@@ -257,6 +297,84 @@ test('denied read permission never queries calendars or fabricates free time', a
   assert.deepEqual(calls.ranges, []);
 });
 
+test('no calendars reports localized setup guidance without querying events, then permits retry', async () => {
+  for (const language of ['en', 'pt-BR'] as const) {
+    const options = { language, noCalendars: true, emptyEvents: true };
+    const { adapter, calls, startMs, endMs } = fixture(options);
+    await assert.rejects(adapter.perform('calendar.freebusy', { startMs, endMs }, 'item'), {
+      message: miniapps[language].noCalendarsAvailable,
+    });
+    assert.deepEqual(calls.ranges, [], 'absence is never reported as a successful empty agenda');
+    assert.equal(calls.releasedCalendars, 0);
+    assert.equal(calls.releasedEvents, 0);
+    options.noCalendars = false;
+    assert.deepEqual(
+      serializable(await adapter.perform('calendar.freebusy', { startMs, endMs }, 'item')),
+      [],
+      'a real calendar with zero events is legitimately free',
+    );
+    assert.deepEqual(calls.permissions, [false, false]);
+    assert.deepEqual(calls.ranges, [{ startMs, endMs }]);
+    assert.equal(calls.releasedCalendars, 1);
+  }
+});
+
+test('all-day busy, tentative and unavailable events block their full clipped intervals', async () => {
+  for (const availability of ['busy', 'tentative', 'unavailable']) {
+    const { adapter, calls, startMs, endMs, setEvents } = fixture();
+    setEvents([
+      { startMs: startMs - 1000, endMs: startMs + 86_400_000, allDay: true, availability },
+      { startMs: endMs - 1000, endMs: endMs + 1000, allDay: true, availability },
+    ]);
+    assert.deepEqual(
+      serializable(await adapter.perform('calendar.freebusy', { startMs, endMs }, 'item')),
+      [
+        { startMs, endMs: startMs + 86_400_000 },
+        { startMs: endMs - 1000, endMs },
+      ],
+      availability,
+    );
+    assert.equal(calls.releasedEvents, 2);
+    assert.equal(calls.releasedCalendars, 1);
+  }
+});
+
+test('free and unsupported or unknown all-day notices do not block otherwise available days', async () => {
+  const { adapter, calls, startMs, endMs, setEvents } = fixture();
+  setEvents(
+    ['free', 'notSupported', undefined, 'future-unknown'].map((availability) => ({
+      startMs,
+      endMs,
+      allDay: true,
+      availability,
+    })),
+  );
+  assert.deepEqual(
+    serializable(await adapter.perform('calendar.freebusy', { startMs, endMs }, 'item')),
+    [],
+  );
+  assert.equal(calls.releasedEvents, 4);
+  assert.equal(calls.releasedCalendars, 1);
+});
+
+test('timed non-free events preserve their conservative availability policy and merge adjacency', async () => {
+  const { adapter, calls, startMs, endMs, setEvents } = fixture();
+  const values = ['busy', 'tentative', 'unavailable', 'notSupported', undefined, 'future-unknown'];
+  setEvents([
+    ...values.map((availability, index) => ({
+      startMs: startMs + index * 1000,
+      endMs: startMs + (index + 1) * 1000,
+      availability,
+    })),
+    { startMs, endMs, availability: 'free' },
+  ]);
+  assert.deepEqual(
+    serializable(await adapter.perform('calendar.freebusy', { startMs, endMs }, 'item')),
+    [{ startMs, endMs: startMs + 6000 }],
+  );
+  assert.equal(calls.releasedEvents, 7);
+});
+
 test('closing a miniapp during the permission prompt prevents a late calendar read', async () => {
   let entered!: () => void;
   let resume!: () => void;
@@ -291,4 +409,66 @@ test('calendar query failure releases its native calendar objects and permits a 
   assert.deepEqual(calls.permissions, [false, true]);
   assert.equal(calls.addForms, 1);
   assert.equal(calls.calendars, 1);
+});
+
+test('closing while native calendars are arriving releases them before any event query and permits reopen', async () => {
+  let entered!: () => void;
+  let resume!: () => void;
+  const calendarEntered = new Promise<void>((resolve) => (entered = resolve));
+  const calendarGate = new Promise<void>((resolve) => (resume = resolve));
+  const { adapter, calls, startMs, endMs } = fixture({
+    calendarEntered: entered,
+    calendarGate,
+    emptyEvents: true,
+  });
+  const pending = adapter.perform('calendar.freebusy', { startMs, endMs }, 'item');
+  await calendarEntered;
+  adapter.releaseItemPhotos('item');
+  resume();
+  await assert.rejects(pending, /thisMiniappHasClosed/);
+  assert.deepEqual(calls.ranges, []);
+  assert.equal(calls.releasedCalendars, 1);
+  assert.deepEqual(
+    serializable(await adapter.perform('calendar.freebusy', { startMs, endMs }, 'item')),
+    [],
+  );
+  assert.equal(calls.releasedCalendars, 2);
+});
+
+test('late event results after lease retirement release every native resource and cannot publish availability', async () => {
+  let entered!: () => void;
+  let resume!: () => void;
+  const listEntered = new Promise<void>((resolve) => (entered = resolve));
+  const listGate = new Promise<void>((resolve) => (resume = resolve));
+  const { adapter, calls, startMs, endMs } = fixture({ listEntered: entered, listGate });
+  const pending = adapter.perform('calendar.freebusy', { startMs, endMs }, 'item');
+  await listEntered;
+  adapter.releaseItemPhotos('item');
+  resume();
+  await assert.rejects(pending, /thisMiniappHasClosed/);
+  assert.equal(calls.releasedEvents, 5);
+  assert.equal(calls.releasedCalendars, 1);
+  const saved = await adapter.perform(
+    'calendar.add',
+    { title: 'Retry after closed reader', startMs, endMs: startMs + 1000 },
+    'item',
+  );
+  assert.deepEqual(serializable(saved), { saved: true });
+});
+
+test('projection exceptions release every event and calendar instead of leaking native handles', async () => {
+  const { adapter, calls, startMs, endMs, failProjection, setEvents } = fixture();
+  failProjection();
+  await assert.rejects(
+    adapter.perform('calendar.freebusy', { startMs, endMs }, 'item'),
+    /Synthetic event getter failure/,
+  );
+  assert.equal(calls.releasedEvents, 5);
+  assert.equal(calls.releasedCalendars, 1);
+  setEvents([]);
+  assert.deepEqual(
+    serializable(await adapter.perform('calendar.freebusy', { startMs, endMs }, 'item')),
+    [],
+  );
+  assert.equal(calls.releasedCalendars, 2);
 });

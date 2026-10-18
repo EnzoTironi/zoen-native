@@ -4,6 +4,10 @@
   "description": "Horários livres, serviços e preços. O cliente marca; o agente confirma o que for especial.",
   "capabilities": [
     {
+      "id": "calendar.freebusy",
+      "purpose": "Consultar, só quando você pedir, os intervalos ocupados da sua agenda para marcar conflitos. Nomes e detalhes dos eventos não são compartilhados."
+    },
+    {
       "id": "calendar.add",
       "purpose": "Colocar o horário marcado na sua agenda. Você vê o evento antes de salvar."
     }
@@ -11,8 +15,8 @@
   "allowedDomains": [],
   "networkPurpose": "",
   "linkDomains": [],
-  "sha256": "eeaeeb589bb7d89123a1087be4d73f5337613a853f911fe7e04fe2bdeb2b15d0",
-  "bytes": 216757,
+  "sha256": "764ab5d4affbc32118ea60aded4ec20b7a798aefb9a3542aadbd6a6ea8f28912",
+  "bytes": 231026,
   "deps": {
     "scheduler": "0.26.0",
     "react": "19.1.1",

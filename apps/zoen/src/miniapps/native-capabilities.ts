@@ -163,6 +163,7 @@ async function freebusy(params: Record<string, unknown>, lease: CapabilityLease)
   let events: Awaited<ReturnType<typeof Calendar.listEvents>> = [];
   try {
     lease.check();
+    if (calendars.length === 0) throw new Error(t('miniapps.noCalendarsAvailable'));
     events = await Calendar.listEvents(calendars, new Date(range.startMs), new Date(range.endMs));
     lease.check();
     return busyBlocks(
@@ -171,6 +172,10 @@ async function freebusy(params: Record<string, unknown>, lease: CapabilityLease)
         endMs: new Date(event.endDate).getTime(),
         allDay: event.allDay,
         free: event.availability === Calendar.Availability.FREE,
+        explicitAllDayBusy:
+          event.availability === Calendar.Availability.BUSY ||
+          event.availability === Calendar.Availability.TENTATIVE ||
+          event.availability === Calendar.Availability.UNAVAILABLE,
       })),
       range,
     );

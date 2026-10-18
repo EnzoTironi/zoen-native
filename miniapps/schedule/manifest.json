@@ -5,6 +5,10 @@
   "entry": "src/main.tsx",
   "capabilities": [
     {
+      "id": "calendar.freebusy",
+      "purpose": "Consultar, só quando você pedir, os intervalos ocupados da sua agenda para marcar conflitos. Nomes e detalhes dos eventos não são compartilhados."
+    },
+    {
       "id": "calendar.add",
       "purpose": "Colocar o horário marcado na sua agenda. Você vê o evento antes de salvar."
     }

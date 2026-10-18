@@ -32,6 +32,8 @@ export const miniapps = defineFeature(
     locationTookTooLongTryAgain: 'Location took too long. Try again.',
     allowCalendarReadingInSettingsToCheckFree:
       'Allow calendar reading in Settings to check free times.',
+    noCalendarsAvailable:
+      'No calendars available. Add a calendar in Calendar or Settings, then try again.',
     allowAddingCalendarEventsInSettings: 'Allow adding calendar events in Settings.',
     thisFeatureIsNotAvailableOnThisDevice: 'This feature is not available on this device.',
     openZoenToContinue: 'Open Zoen to continue.',
@@ -285,6 +287,8 @@ export const miniapps = defineFeature(
     locationTookTooLongTryAgain: 'A localização demorou demais. Tente novamente.',
     allowCalendarReadingInSettingsToCheckFree:
       'Permita a leitura do calendário nos Ajustes para consultar horários livres.',
+    noCalendarsAvailable:
+      'Nenhum calendário disponível. Adicione um calendário no app Calendário ou nos Ajustes e tente novamente.',
     allowAddingCalendarEventsInSettings: 'Permita adicionar eventos ao calendário nos Ajustes.',
     thisFeatureIsNotAvailableOnThisDevice: 'Este recurso não está disponível neste aparelho.',
     openZoenToContinue: 'Abra o Zoen para continuar.',

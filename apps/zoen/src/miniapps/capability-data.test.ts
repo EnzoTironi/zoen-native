@@ -58,7 +58,7 @@ test('a miniapp cannot retain unbounded full images or evade preview size constr
   assert.throws(() => photoOptions({ max: NaN }));
 });
 
-test('freebusy returns only clipped, merged timed intervals within a 31-day window', () => {
+test('freebusy returns only clipped, merged busy intervals within a 31-day window', () => {
   const range = timeWindow({ startMs: 100, endMs: 40 * 86_400_000 });
   assert.equal(range.endMs, 100 + 31 * 86_400_000);
   const blocks = busyBlocks(
@@ -79,6 +79,53 @@ test('freebusy returns only clipped, merged timed intervals within a 31-day wind
   ]);
   assert.throws(() => timeWindow({ startMs: 10, endMs: 10 }));
   assert.throws(() => timeWindow({ startMs: 10, endMs: Number.MAX_SAFE_INTEGER }));
+});
+
+test('all-day intervals require explicit busy availability while free always wins', () => {
+  const range = { startMs: 100, endMs: 1000 };
+  assert.deepEqual(
+    busyBlocks(
+      [
+        { startMs: 0, endMs: 200, allDay: true, explicitAllDayBusy: true },
+        { startMs: 200, endMs: 300 },
+        { startMs: 900, endMs: 1100, allDay: true, explicitAllDayBusy: true },
+        { startMs: 0, endMs: 1100, allDay: true },
+        { startMs: 0, endMs: 1100, allDay: true, explicitAllDayBusy: false },
+        { startMs: 0, endMs: 1100, allDay: true, explicitAllDayBusy: true, free: true },
+        { startMs: 0, endMs: 1100, free: true },
+        { startMs: NaN, endMs: 1100, allDay: true, explicitAllDayBusy: true },
+      ],
+      range,
+    ),
+    [
+      { startMs: 100, endMs: 300 },
+      { startMs: 900, endMs: 1000 },
+    ],
+  );
+});
+
+test('all-day busy intervals retain native date boundaries across daylight saving changes', () => {
+  const range = timeWindow({
+    startMs: Date.parse('2026-03-08T01:00:00-05:00'),
+    endMs: Date.parse('2026-03-09T01:00:00-04:00'),
+  });
+  const endOfDay = Date.parse('2026-03-09T00:00:00-04:00');
+  assert.equal(range.endMs - range.startMs, 23 * 3_600_000);
+  assert.deepEqual(
+    busyBlocks(
+      [
+        {
+          startMs: Date.parse('2026-03-08T00:00:00-05:00'),
+          endMs: endOfDay,
+          allDay: true,
+          explicitAllDayBusy: true,
+        },
+        { startMs: endOfDay, endMs: range.endMs },
+      ],
+      range,
+    ),
+    [{ ...range }],
+  );
 });
 
 test('system calendar drafts validate dates and bound text before presenting any write UI', () => {
