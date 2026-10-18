@@ -1030,6 +1030,72 @@
         "Physical-device/provider/performance/accessibility/comparative full product parity remains incomplete."
       ],
       "fullAppParityAccepted": false
+    },
+    "nativeOfflineTextV76": {
+      "status": "PASS_BOUNDED_DEDICATED_NATIVE_OFFLINE_TEXT_LIFECYCLE",
+      "sourceCommit": "c33f2760eadd1e9b4c9bfa252c14d4a778616906",
+      "productionSourceChanged": false,
+      "sourceInputs": 795,
+      "sourceSha256": "433775c732988025e4dc52ae2d9841c4ce3e30a57eedf76fc9fc03b9414fb865",
+      "artifact": {
+        "checkpoint": "v76",
+        "deviceUdid": "E9B80305-F7D1-4E8D-BB00-CF860D4931CD",
+        "scope": "Fresh dedicated iPhone 18 Pro / iOS 27 simulator only; current human and existing isolated accepted artifacts remain v75 and untouched.",
+        "verification": "/private/tmp/zoen-iphone-release-v76-verification.json",
+        "buildEnvironment": "/private/tmp/zoen-iphone-release-v76-build-environment.json",
+        "environmentContractSha256": "adfee56e82056e0e73d77b38d8620727f1011f925a4c6f87a72806f4f9e6cbb2",
+        "publicRelayUrl": "http://127.0.0.1:18776",
+        "appTreeSha256": "e6185d2a103e3f817506439711d1cbb34a9929295a604af012efec294f6dad33",
+        "executableSha256": "b362f0e356df4ee494cc54b6c45cc71d8e98b031b7fcb7b89deee740f0f3f3d2",
+        "bundleBytes": 6644624,
+        "bundleSha256": "2c65f81463a4bf9f04a292598af0385b65ddebaf8ac20c64c5888208476a5d03",
+        "installedPublicProof": "Installed executable/JavaScript SHA256 and strict signatures pass before/after runtime. Same frozen source inputs as v75, distinct build environment and app bytes."
+      },
+      "runtime": "/private/tmp/zoen-offline-qa-v76/runtime.json",
+      "nativeObservations": "/private/tmp/zoen-offline-qa-v76/native-observations.json",
+      "independentPeer": "/private/tmp/zoen-offline-qa-v76/peer-completion.json",
+      "setup": "Public native linking and initial history reveal the decrypted fixed seed in a fresh two-identity E2E group with exactly three pinned MLS device leaves. Helpers remain directly online through 8790.",
+      "message": {
+        "id": "01M57J8SX80C9AE0DYCCDWXZHT",
+        "groupId": "sp_01m57hvjfqaq2rhc6k355fgeq9",
+        "textUtf8Bytes": 29,
+        "textSha256": "29e4e482fa096287b88c4737d079d99cb21892d0a9a3ee205de8fb356f1c4891",
+        "canonicalSeq": 14,
+        "authorDeviceCryptographicallyAttributed": false
+      },
+      "outage": "Task-owned loopback TCP forwarder 18776 to fixed upstream 8790 closes its listener and one existing connection, with zero owned sockets/tasks before acknowledgement. This cuts the native relay path, not all device networking or airplane mode.",
+      "offlineCold": "One native Send shows Enviando; actual offline restart retains the exact message ID, queue 1, empty composer and closed keyboard. Independent recipient sees zero copies before send, after send and through offline cold; forwarder counters remain unchanged.",
+      "automaticReconnect": "Restoring the same port yields Entregue a todos and native queue 0 without manual resend/retry. The observed wait is 13,967 ms, not a delivery-latency benchmark.",
+      "recipient": {
+        "postCopies": 1,
+        "onlineColdCopies": 1,
+        "sameMessageIdSeqAndLogHead": true,
+        "signedLogEvents": 15,
+        "signedLogHead": "6bf0955e8c91f7e7c0c1cbecddb6ceaf53950b8184e8e2923c37f7697e79a331",
+        "signedLogValid": true
+      },
+      "onlineColdAndRead": "Actual online restart retains native history and the independent exact-one pin. The immediate pre-read capture is transitional Chats, so settled Delivered after online cold is not claimed. One later explicit recipient mark_read yields the same native message ID with Lida por todos, empty composer and closed keyboard.",
+      "diagnostics": {
+        "nativeRecords": 60,
+        "nativeSteps": 38,
+        "copiedPngs": 30,
+        "screenshots": "/private/tmp/zoen-offline-qa-v76/screenshots.json",
+        "retiredFlow": "/private/tmp/zoen-offline-qa-v76/native-flow-retired.yaml",
+        "rawWaitConversionWarnings": 4,
+        "formalRegressionOrReplay": false
+      },
+      "cleanup": {
+        "receipt": "/private/tmp/zoen-offline-qa-v76/cleanup.json",
+        "scope": "Peer exits 0, discards volatile keys and preserves its permanent one-use latch. Forwarder exits 0 with all owned connections/tasks/sockets zero and control socket removed. Only dedicated simulator services stop and that simulator shuts down with account data preserved; relay PID 19737 and both accepted v75 artifacts remain untouched."
+      },
+      "checksAttribution": "No new production source or full suite run. Prior App 571/571, native Rust 444/444 and source-head CI retain their existing checkpoint/source attribution.",
+      "limits": [
+        "Public message DTO exposes author identity rather than cryptographic author device; native attribution uses the fresh one-use namespace, exact UI ID/text and helper with no bootstrap group-send path.",
+        "Ordinary text and one isolated loopback-path outage only. Voice/media offline, long outages, induced storage failures, account/membership changes, OS suspension and physical hardware remain unproved here.",
+        "Independent canonical peer checks are not a second native-device journey. The 38-step first-walk diagnostic is retired, with four warnings and transitional captures, not formal replay/E2E.",
+        "Native VoiceOver/Dynamic Type, provider recovery, broader failure/performance and full comparative product acceptance remain open; historical evidence and both current v75 pointers are unchanged."
+      ],
+      "fullAppParityAccepted": false
     }
   },
   "deferredPlatforms": ["web", "android", "macos", "windows", "linux"],
@@ -1052,7 +1118,8 @@
     "Signed v68 bounded ordinary text/reply draft/thread/quote/cold/peer/rejection/Read and human-retention acceptance does not close all composer quality gaps: keyboard-open search found2 results but initial result bubbles scrolled behind keyboard; multiline Edit→nonempty one-line draft retained taller field (empty52pt fixed); active quote retained cached preview after target deletion while core safely rejected the send/preserved text. Kill-before-unacknowledged-write, induced native storage/owner/erase failures, unsent attachment/audio/PDF process-death recovery, formal replay, physical/accessibility/performance/provider/comparative acceptance remain pending. Earlier v66 route-local attachment/draft and other gap statements retain exact historical attribution.",
     "Signed flag0 v73 bounded first-result/both-arrow positioning passes for long human QA8 Recipe/Trip cards and isolated rascunho2 messages above an open keyboard; manualdrag/no-snapback and normal-empty/receipt retention pass. This narrowly resolves the corresponding observed v68 search-positioning gap for those paths; v69/v71/v72 native misses and uninstalled v70 rejection remain diagnostic history. Projected-activity word indexing/Cilantro0, nonempty one-line height after multiline Edit, cached unavailable-quote preview, broader search/thread/multiline, physical/provider/accessibility/performance and comparative parity remain pending. V68 normal-draft/send/peer/media proofs retain their exact original artifact attribution, not a new v73 replay.",
     "Signed flag 0 v74 narrowly resolves the tested v68/v73 nonempty composer-height, stale quote-preview and activity-note word-index gaps: one mounted focused RN editor fits one-line 52 → Edit 73 → Cancel 52 pt and wrapped text without a newline 95 → Edit 73 → Cancel 95 pt; actual quote edit/delete/clear preserves the normal draft, and human Cilantro returns 4 canonical ItemEdited-note results with 1 → 2 → 1 visible above keyboard/below HUD. Human preserving Home/history/Delivered 11-second voice and final empty 56.333 pt at its current font pass; isolated final empty 52 pt and old Read history remain. One isolated synthetic target was created/edited/deleted; no human content mutations, fresh peer delivery, reusable replay/E2E or universal 52 pt claim. All original 17 gaps and historical evidence retain exact attribution; physical/provider/broad accessibility/Dynamic Type/performance, broader search/thread/media and full comparative parity remain pending.",
-    "Signed v75 narrows the observed voice-review/pending-control gap for one synthetic native import: 3.72 s → pending 1.87 s blocks Done/collapse/Send, Discard restores 3.72 s, then settled Apply retains 1.91 s and one compact Send/cold return shows a sole visible 0:01 voice/Sent with old Read history. Human Home 4 cards / recipe 6/8, six-page history at 100%, existing 0:11 Delivered voice and empty closed-keyboard composer remain, without human content mutations. Source regressions cover VoiceOver actions/metadata/lifecycle, retry faults, ownership and stale controls; actual native VoiceOver, OS fault injection, ASR success, offline cold/reconnect, exact new message/payload/independent recipient and physical/provider/performance/full comparative acceptance remain open. Retired one-use recordings are not formal replay/E2E; all previous 18 gap statements and earlier artifact proofs remain unchanged history."
+    "Signed v75 narrows the observed voice-review/pending-control gap for one synthetic native import: 3.72 s → pending 1.87 s blocks Done/collapse/Send, Discard restores 3.72 s, then settled Apply retains 1.91 s and one compact Send/cold return shows a sole visible 0:01 voice/Sent with old Read history. Human Home 4 cards / recipe 6/8, six-page history at 100%, existing 0:11 Delivered voice and empty closed-keyboard composer remain, without human content mutations. Source regressions cover VoiceOver actions/metadata/lifecycle, retry faults, ownership and stale controls; actual native VoiceOver, OS fault injection, ASR success, offline cold/reconnect, exact new message/payload/independent recipient and physical/provider/performance/full comparative acceptance remain open. Retired one-use recordings are not formal replay/E2E; all previous 18 gap statements and earlier artifact proofs remain unchanged history.",
+    "Dedicated signed v76 narrowly proves ordinary native text offline Send → actual offline cold with the same ID/queue 1 and zero recipient copies → automatic reconnect/Delivered/queue 0 → independent exactly one same ID/seq 14/valid log → online cold exact-one retention → explicit recipient Read shown natively. The immediate post-online-cold capture is transitional Chats, not settled Delivered proof. This addresses only that text lifecycle on the fresh 18776-to-8790 loopback fault path; accepted human/isolated v75 pointers and all 19 prior gap statements remain unchanged. Voice/media offline, long outages, native storage/account/membership/OS failures, author-device cryptographic attribution, physical/provider/accessibility/performance and full comparative parity remain open. No formal replay/E2E or new full-suite claim."
   ],
   "currentIphoneArtifact": {
     "checkpoint": "v75",
