@@ -2,9 +2,12 @@ import type { SensitiveCacheWork } from './cache-work.ts';
 import {
   VoiceSession,
   VoiceSessionFailure,
+  type VoicePreparedSource,
+  type VoiceRenderResult,
   type VoiceNativePort,
   type VoiceSendable,
 } from './voice-session.ts';
+import type { VoiceEditorState } from './voice-editor-state.ts';
 
 type Options = {
   port: VoiceNativePort;
@@ -12,6 +15,12 @@ type Options = {
   registerCleanup: (cleanup: () => Promise<void>) => () => void;
   work: Pick<SensitiveCacheWork, 'run' | 'track'>;
   discard: (uri: string) => Promise<void> | void;
+  editor?: unknown;
+  logicalSourceId?: string;
+  attempted?: boolean;
+  frozenPreview?: VoiceRenderResult;
+  beforeReady?: (source: VoicePreparedSource, editor: VoiceEditorState) => Promise<void>;
+  releaseMaterialized?: () => Promise<void>;
 };
 
 /** Created once in the capture/import action, never during render or an effect replay. */
@@ -38,7 +47,7 @@ export class VoiceReviewOwner {
   prepare = (): Promise<void> => {
     if (!this.accepting || this.committed || this.sending)
       return Promise.reject(new VoiceSessionFailure('closed'));
-    return this.options.work.run(() => this.session.prepare(this.options.uri));
+    return this.options.work.run(() => this.session.prepare(this.options.uri, this.options));
   };
 
   async send<T>(captured: VoiceSendable, commit: (value: VoiceSendable) => Promise<T>): Promise<T> {
@@ -74,6 +83,7 @@ export class VoiceReviewOwner {
         if (this.sending) await this.sending;
         await this.session.close();
         await this.options.discard(this.options.uri);
+        await this.options.releaseMaterialized?.();
         this.closed = true;
         // Failed native/source cleanup stays registered for device-erasure retries.
         this.unregister();

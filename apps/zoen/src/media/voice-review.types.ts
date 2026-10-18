@@ -1,5 +1,5 @@
 import type { VoiceSendable, VoiceSession } from './voice-session';
-import type { VoiceDraft } from './voice-edit';
+import type { FrameRange, VoiceDraft } from './voice-edit';
 
 /** The parent owns prepare, capture, cancellation and the native source lease. */
 export type VoiceReviewProps = Readonly<{
@@ -13,5 +13,6 @@ export type VoiceReviewProps = Readonly<{
     draft: VoiceDraft,
     pending: boolean,
     previewOwner: object,
+    range?: FrameRange | null,
   ) => void;
 }>;

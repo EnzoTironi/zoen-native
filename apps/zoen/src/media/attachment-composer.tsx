@@ -8,9 +8,6 @@ import {
 } from 'react';
 import { Platform } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { File } from 'expo-file-system';
-import * as DocumentPicker from 'expo-document-picker';
-import * as ImagePicker from 'expo-image-picker';
 import { randomUUID } from 'expo-crypto';
 import { useClient } from '../core/provider';
 import { homeOwnerFor, homeSpacesFor } from '../home/access';
@@ -20,11 +17,12 @@ import {
   AttachmentDraft,
   AttachmentDraftFailure,
   MAX_ATTACHMENT_ITEMS,
-  type AttachmentAsset,
   type AttachmentDraftScope,
 } from './attachment-draft';
 import { discardCacheCopy } from './cache-files';
 import { sensitiveCacheWork } from './cache-work';
+import { pickAttachmentAssets } from './attachment-picker';
+import { useDurableAttachmentComposer } from './durable-attachment-composer';
 
 const subscribeEmpty = () => () => {};
 const emptySnapshot = () => null;
@@ -75,22 +73,40 @@ async function discard(uri: string) {
     if (uri.startsWith('blob:')) URL.revokeObjectURL(uri);
   } else discardCacheCopy(uri);
 }
-/** Staged SDK files stay owned until the batch accepts them or cleanup succeeds. */
-export function useAttachmentComposer({
+export type AttachmentComposerOptions = {
+  spaceId: string;
+  replyTo: string | null;
+  threadRootId?: string | null;
+  thread: boolean;
+  disabled: boolean;
+  suspended: boolean;
+  onSent?: () => void;
+};
+
+export function useAttachmentComposer(options: AttachmentComposerOptions) {
+  const { store, mode } = useClient();
+  const durable = mode === 'account' && Boolean(store.driver.media?.drafts);
+  const channel = durable
+    ? store.mediaDrafts.channel(options.spaceId, options.threadRootId ?? null)
+    : null;
+  const saved = useDurableAttachmentComposer(options, channel);
+  const temporary = useVolatileAttachmentComposer({
+    ...options,
+    disabled: options.disabled || durable,
+    suspended: options.suspended || durable,
+  });
+  return durable ? saved : temporary;
+}
+
+/** Demo and platforms without the native journal retain owned temporary selections. */
+function useVolatileAttachmentComposer({
   spaceId,
   replyTo,
   thread,
   disabled,
   suspended,
   onSent,
-}: {
-  spaceId: string;
-  replyTo: string | null;
-  thread: boolean;
-  disabled: boolean;
-  suspended: boolean;
-  onSent?: () => void;
-}) {
+}: AttachmentComposerOptions) {
   const client = useClient();
   const { store } = client;
   const [owner, setOwner] = useState<AttachmentDraft | null>(null);
@@ -244,68 +260,11 @@ export function useAttachmentComposer({
         throw new AttachmentDraftFailure('limit');
       setFailure(null);
       await sensitiveCacheWork.run(() =>
-        owner.pick(async () => {
-          let assets: { uri: string; name: string; mime: string; size?: number }[] = [];
-          if (kind === 'document') {
-            const result = await DocumentPicker.getDocumentAsync({
-              copyToCacheDirectory: true,
-              multiple: Platform.OS === 'ios',
-              type: '*/*',
-              base64: false,
-            });
-            if (!result.canceled)
-              assets = result.assets.map((file) => ({
-                uri: file.uri,
-                name: file.name,
-                mime: file.mimeType || 'application/octet-stream',
-                size: file.size,
-              }));
-          } else {
-            if (kind === 'camera') {
-              const permission = await ImagePicker.requestCameraPermissionsAsync();
-              if (!current(owner.getSnapshot().scope)) return [];
-              if (!permission.granted)
-                throw new Error(t('media.youCanAllowAccessInDeviceSettingsTo'));
-            }
-            const result =
-              kind === 'camera'
-                ? await ImagePicker.launchCameraAsync({
-                    mediaTypes: ['images'],
-                    quality: 1,
-                    exif: false,
-                  })
-                : await ImagePicker.launchImageLibraryAsync({
-                    mediaTypes: ['images', 'videos'],
-                    quality: 1,
-                    allowsMultipleSelection: Platform.OS === 'ios',
-                    selectionLimit: MAX_ATTACHMENT_ITEMS - owner.getSnapshot().items.length,
-                    orderedSelection: true,
-                    exif: false,
-                  });
-            if (!result.canceled)
-              assets = result.assets.map((asset) => ({
-                uri: asset.uri,
-                name: asset.fileName ?? (asset.type === 'video' ? 'video.mov' : 'photo.jpg'),
-                mime: asset.mimeType ?? (asset.type === 'video' ? 'video/quicktime' : 'image/jpeg'),
-                size: asset.fileSize,
-              }));
-          }
-          // Even an unreadable selection enters the owner's cleanup set. Invalid
-          // sizes reject the batch after it takes ownership of every returned URI.
-          return assets.map((asset): AttachmentAsset => {
-            let size = NaN;
-            try {
-              if (Platform.OS === 'web') size = asset.size ?? NaN;
-              else {
-                const file = new File(asset.uri);
-                if (file.exists) size = file.size;
-              }
-            } catch {
-              /* The owner rejects this asset and retains cleanup retries. */
-            }
-            return { ...asset, size };
-          });
-        }),
+        owner.pick(() =>
+          pickAttachmentAssets(kind, MAX_ATTACHMENT_ITEMS - owner.getSnapshot().items.length, () =>
+            current(owner.getSnapshot().scope),
+          ),
+        ),
       );
       if (!owner.getSnapshot().items.length && !owner.getSnapshot().error) {
         await closeOwner(owner);

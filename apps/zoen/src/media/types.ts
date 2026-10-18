@@ -1,5 +1,6 @@
 import type { FileDto } from '../core/generated/FileDto';
 import type { VoiceNativePort } from './voice-session';
+import type { MediaDraftPort } from './media-draft-types';
 
 // The current UniFFI API takes one contiguous payload. Keep its native copies
 // within a predictable mobile memory budget until the Rust API supports streams.
@@ -44,6 +45,8 @@ export type LocalMediaFile = {
 
 /** Bytes stay in native storage. The bridge carries local URIs and small metadata only. */
 export interface MediaDriver {
+  /** Private encrypted pre-send journal, owned by the native Rust account session. */
+  drafts?: MediaDraftPort;
   voiceEditor?: VoiceNativePort;
   sendFile(selection: SendFile): Promise<{ itemId: string; messageId: string }>;
   sendVoice(recording: SendVoice): Promise<{ messageId: string; itemId: string }>;

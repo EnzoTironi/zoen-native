@@ -12,7 +12,7 @@ import { NativeButton } from '../components/primitives';
 import { formatLocale, locale, t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import { AudioClip, pauseAudioPlayback } from './AudioClip';
-import type { VoiceDraft, VoiceEditCommand } from './voice-edit';
+import type { FrameRange, VoiceDraft, VoiceEditCommand } from './voice-edit';
 import {
   hasPendingVoiceTrim,
   updatePendingVoiceTrim,
@@ -66,24 +66,27 @@ export function VoiceReview({
   }, [session, busy]);
   const sending = local.session === session && local.sending;
   const locked = busy || sending || state.phase !== 'ready';
+  const editLocked = locked || state.attempted;
   const error =
     (local.session === session ? local.error : null) ??
     (state.error ? failureLabel(state.error) : null);
   const editable = editor.session === session && editor.open;
   const sendable = session.getSendable();
   const draft = state.draft;
-  const trimPending = pendingTrim?.session === session && pendingTrim.draft === draft;
+  const trimPending =
+    !!state.pendingTrim || (pendingTrim?.session === session && pendingTrim.draft === draft);
   // A previous export is never offered as the preview of a new edit. Unmounting AudioClip
   // also releases its Expo player; we pause synchronously before any committed edit/send.
   const preview = !locked && !trimPending && !state.rendering && sendable ? sendable.preview : null;
-  function trimPreviewChanged(observed: VoiceDraft, pending: boolean) {
+  function trimPreviewChanged(observed: VoiceDraft, pending: boolean, range?: FrameRange | null) {
     if (live.current?.session !== session) return;
+    if (range !== undefined) session.setPendingTrim(observed, range);
     const next = updatePendingVoiceTrim(trimNow.current, session, observed, pending, trimOwner);
     if (next === trimNow.current) return;
     trimNow.current = next;
     setPendingTrim(next);
     if (pending) pauseAudioPlayback();
-    onPendingTrimChange?.(session, observed, pending, trimOwner);
+    onPendingTrimChange?.(session, observed, pending, trimOwner, range);
   }
   useEffect(
     () => () => {
@@ -99,7 +102,7 @@ export function VoiceReview({
     [draft],
   );
   function acceptSuggestions(ids: readonly string[]) {
-    if (busy || pendingSend.current.has(session)) return;
+    if (busy || state.attempted || pendingSend.current.has(session)) return;
     const current = session.getSnapshot();
     if (current.phase !== 'ready' || !current.draft) return;
     // IDs include the immutable source and exact original ranges. Revalidate the
@@ -112,6 +115,7 @@ export function VoiceReview({
     if (
       live.current?.session !== session ||
       live.current.busy ||
+      session.getSnapshot().attempted ||
       pendingSend.current.has(session) ||
       session.getSnapshot().phase !== 'ready'
     )
@@ -130,6 +134,7 @@ export function VoiceReview({
     if (
       live.current?.session !== session ||
       live.current.busy ||
+      session.getSnapshot().attempted ||
       pendingSend.current.has(session) ||
       session.getSnapshot().phase !== 'ready'
     )
@@ -219,9 +224,10 @@ export function VoiceReview({
             <NativeButton
               secondary
               label={t('media.voicePreviewRetry')}
-              disabled={locked || state.rendering}
+              disabled={editLocked || state.rendering}
               onPress={() => {
-                if (!busy && !pendingSend.current.has(session)) void session.retryPreview();
+                if (!busy && !session.getSnapshot().attempted && !pendingSend.current.has(session))
+                  void session.retryPreview();
               }}
             />
           ) : state.phase === 'idle' && onRetryPrepare ? (
@@ -249,10 +255,11 @@ export function VoiceReview({
             <NativeButton
               secondary
               label={t(editable ? 'media.voiceDoneEditing' : 'media.voiceEdit')}
-              disabled={locked || trimPending}
+              disabled={editLocked || trimPending}
               onPress={() => {
                 if (
-                  !locked &&
+                  !editLocked &&
+                  !session.getSnapshot().pendingTrim &&
                   !pendingSend.current.has(session) &&
                   !hasPendingVoiceTrim(trimNow.current, session)
                 ) {
@@ -280,7 +287,7 @@ export function VoiceReview({
                       buttonStyle('bordered'),
                       labelStyle('iconOnly'),
                       frame({ width: 44, height: 44 }),
-                      disabledModifier(locked || draft[direction].length === 0),
+                      disabledModifier(editLocked || draft[direction].length === 0),
                     ]}
                     onPress={() => history(direction)}
                   />
@@ -292,8 +299,9 @@ export function VoiceReview({
           {editable ? (
             <VoiceWaveform
               draft={draft}
-              disabled={locked}
+              disabled={editLocked}
               onTrimPreviewChange={trimPreviewChanged}
+              pendingTrim={state.pendingTrim}
               onEdit={(commands) => {
                 if (session.getSnapshot().draft === draft) edit(commands);
               }}
@@ -321,9 +329,13 @@ export function VoiceReview({
                   secondary
                   testID="voice-transcribe"
                   label={t('media.voiceTranscribe')}
-                  disabled={locked || state.transcribing}
+                  disabled={editLocked || state.transcribing}
                   onPress={() => {
-                    if (!busy && !pendingSend.current.has(session)) {
+                    if (
+                      !busy &&
+                      !session.getSnapshot().attempted &&
+                      !pendingSend.current.has(session)
+                    ) {
                       pauseAudioPlayback();
                       setEditor({ session, open: true });
                       void session.transcribe(locale);
@@ -332,7 +344,7 @@ export function VoiceReview({
                 />
               </>
             ) : editable && draft.transcript.words.length ? (
-              <VoiceWords draft={draft} disabled={locked} onEdit={edit} />
+              <VoiceWords draft={draft} disabled={editLocked} onEdit={edit} />
             ) : state.projection?.transcript ? (
               <Text selectable style={{ color: colors.text, fontSize: 17, lineHeight: 24 }}>
                 {state.projection.transcript}
@@ -365,7 +377,7 @@ export function VoiceReview({
                 <NativeButton
                   secondary
                   label={t('media.voiceRemoveFillers', { count: suggestions.fillers.length })}
-                  disabled={locked}
+                  disabled={editLocked}
                   onPress={() =>
                     acceptSuggestions(suggestions.fillers.map((suggestion) => suggestion.id))
                   }
@@ -375,7 +387,7 @@ export function VoiceReview({
                 <NativeButton
                   secondary
                   label={t('media.voiceShortenPauses', { count: suggestions.pauses.length })}
-                  disabled={locked}
+                  disabled={editLocked}
                   onPress={() =>
                     acceptSuggestions(suggestions.pauses.map((suggestion) => suggestion.id))
                   }

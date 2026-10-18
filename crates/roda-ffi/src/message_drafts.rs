@@ -104,7 +104,7 @@ fn valid_revision(id: &str) -> bool {
 }
 
 impl Engine {
-    fn draft_storage_scope(&self, scope: &DraftScope) -> R<StorageScope> {
+    pub(crate) fn validate_private_draft_scope(&self, scope: &DraftScope) -> R<()> {
         let account = self.net.account.as_ref().ok_or_else(invalid)?;
         if !valid_id(&scope.expected_identity_id)
             || !valid_id(&scope.expected_device_id)
@@ -137,6 +137,12 @@ impl Engine {
                 return Err(invalid());
             }
         }
+        Ok(())
+    }
+    fn draft_storage_scope(&self, scope: &DraftScope) -> R<StorageScope> {
+        self.validate_private_draft_scope(scope)?;
+        let account = self.net.account.as_ref().ok_or_else(invalid)?;
+        let author = self.author_for(&account.identity)?;
         let aad = serde_json::to_vec(&(
             "zoen.message.draft.v1",
             &account.identity,
@@ -152,7 +158,7 @@ impl Engine {
             .map_err(|_| storage_error())?;
         Ok(StorageScope { id, aad, key })
     }
-    fn draft_target(&self, scope: &DraftScope, reply: Option<&str>) -> R<()> {
+    pub(crate) fn draft_target(&self, scope: &DraftScope, reply: Option<&str>) -> R<()> {
         let target = reply.or(scope.thread_root_id.as_deref());
         if let Some(target) = target {
             if !valid_id(target) {

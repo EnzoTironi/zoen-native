@@ -21,7 +21,7 @@ function DraftThumbnail({ item }: { item: AttachmentDraftItem }) {
   const video = item.mime.startsWith('video/');
   const photo = item.mime.startsWith('image/');
   useEffect(() => {
-    if (!video || item.accepted) return;
+    if (!video || !item.uri || item.accepted) return;
     const controller = new AbortController();
     const task = sensitiveCacheWork.run(() => draftVideoThumbnail(item.uri, controller.signal));
     void task
@@ -34,7 +34,7 @@ function DraftThumbnail({ item }: { item: AttachmentDraftItem }) {
   }, [item.uri, item.accepted, video]);
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-      {!item.accepted && (photo || thumbnail) ? (
+      {!item.accepted && ((photo && item.uri) || thumbnail) ? (
         <Image
           source={photo ? { uri: item.uri } : thumbnail}
           cachePolicy="none"

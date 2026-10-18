@@ -196,6 +196,12 @@ actor ZoenVoiceEditor {
     return render
   }
 
+  func admitSource(sourceId: String, uri: String) throws -> Source {
+    guard !closing.contains(sourceId), let source = leases[sourceId]?.source,
+          source.uri == uri else { throw Failure.closed }
+    return source
+  }
+
   func releaseAll() async throws {
     let ids = Array(leases.keys)
     var failed = false

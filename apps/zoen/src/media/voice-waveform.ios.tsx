@@ -34,7 +34,8 @@ import {
 type Props = {
   draft: VoiceDraft;
   onEdit: (commands: VoiceEditCommand | readonly VoiceEditCommand[]) => void;
-  onTrimPreviewChange: (draft: VoiceDraft, pending: boolean) => void;
+  onTrimPreviewChange: (draft: VoiceDraft, pending: boolean, range: FrameRange | null) => void;
+  pendingTrim?: FrameRange | null;
   disabled?: boolean;
 };
 type Preview = { draft: VoiceDraft; range: FrameRange };
@@ -51,7 +52,13 @@ const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, Math.round(value)));
 
 /** Original-frame editor: preview locally, send one immutable edit after a completed drag. */
-export function VoiceWaveform({ draft, onEdit, onTrimPreviewChange, disabled = false }: Props) {
+export function VoiceWaveform({
+  draft,
+  onEdit,
+  onTrimPreviewChange,
+  pendingTrim = null,
+  disabled = false,
+}: Props) {
   const { colors, scheme } = useTheme();
   const [width, setWidth] = useState(0);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -61,7 +68,7 @@ export function VoiceWaveform({ draft, onEdit, onTrimPreviewChange, disabled = f
   const drag = useRef<Drag | null>(null);
   const tapping = useRef<{ draft: VoiceDraft; width: number } | null>(null);
   const frames = draft.original.frameCount;
-  const trim = preview?.draft === draft ? preview.range : draft.edit.trim;
+  const trim = preview?.draft === draft ? preview.range : (pendingTrim ?? draft.edit.trim);
   const selected = selection?.draft === draft ? selection.range : null;
   const track = Math.max(1, width - GUTTER * 2);
   const position = (frame: number) => GUTTER + (frame / frames) * track;
@@ -77,11 +84,16 @@ export function VoiceWaveform({ draft, onEdit, onTrimPreviewChange, disabled = f
       draft,
       range.startFrame !== draft.edit.trim.startFrame ||
         range.endFrame !== draft.edit.trim.endFrame,
+      range.startFrame !== draft.edit.trim.startFrame || range.endFrame !== draft.edit.trim.endFrame
+        ? range
+        : null,
     );
     setPreview({ draft, range });
   }
   function latestTrim() {
-    return previewNow.current?.draft === draft ? previewNow.current.range : draft.edit.trim;
+    return previewNow.current?.draft === draft
+      ? previewNow.current.range
+      : (pendingTrim ?? draft.edit.trim);
   }
   const projection = useMemo(
     () =>

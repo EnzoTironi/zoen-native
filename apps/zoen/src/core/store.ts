@@ -7,6 +7,7 @@ import {
   type LiveActivityState,
 } from './live-activity.ts';
 import { NormalMessageDraftService } from './normal-message-draft-service.ts';
+import { MediaDraftService } from './media-draft-service.ts';
 import type {
   Command,
   CommandResult,
@@ -61,9 +62,11 @@ export class ClientStore {
   private readonly typing: TypingSender;
   readonly driver: CoreDriver;
   readonly messageDrafts: NormalMessageDraftService;
+  readonly mediaDrafts: MediaDraftService;
   constructor(driver: CoreDriver, clock: ActivityClock = activityClock) {
     this.driver = driver;
     this.messageDrafts = new NormalMessageDraftService(this);
+    this.mediaDrafts = new MediaDraftService(this);
     this.live = new LiveActivity(
       () => this.state.snapshot,
       (activity) => this.publish({ activity }),

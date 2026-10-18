@@ -27,6 +27,10 @@ declare class ZoenCoreModule extends NativeModule<{ onChange: (event: CoreEvent)
   createAccount(name: string, handle: string, relay: string): Promise<string>;
   sendFile(request: string): Promise<string>;
   sendVoice(request: string): Promise<string>;
+  loadMediaDraft(request: string): Promise<string>;
+  saveMediaDraft(request: string): Promise<string>;
+  materializeMediaDraftAsset(request: string): Promise<string>;
+  sendMediaDraft(request: string): Promise<string>;
   prepareVoice(uri: string): Promise<string>;
   renderVoice(sourceId: string, ranges: string): Promise<string>;
   transcribeVoice(sourceId: string, locale: string): Promise<string>;

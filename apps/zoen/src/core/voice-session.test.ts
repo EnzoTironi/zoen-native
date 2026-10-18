@@ -9,6 +9,7 @@ import {
   type VoiceTranscription,
 } from '../media/voice-session.ts';
 import type { FrameRange } from '../media/voice-edit.ts';
+import { voiceEditorState } from '../media/voice-editor-state.ts';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -72,6 +73,103 @@ function fixture() {
   const session = new VoiceSession(port);
   return { port, calls, session };
 }
+
+test('a finalized source remains preparing and unsendable until its private ingestion is durable', async () => {
+  const f = fixture();
+  const entered = deferred<void>();
+  const persisted = deferred<void>();
+  const preparing = f.session.prepare('capture', {
+    logicalSourceId: 'durable_source',
+    beforeReady: async (prepared, editor) => {
+      assert.equal(prepared.id, 'source_a');
+      assert.equal(editor.draft.original.id, 'durable_source');
+      assert.equal(JSON.stringify(editor).includes('file:'), false);
+      entered.resolve();
+      await persisted.promise;
+    },
+  });
+  await entered.promise;
+  assert.equal(f.session.getSnapshot().phase, 'preparing');
+  assert.equal(f.session.getSendable(), null);
+  assert.equal(
+    f.calls.some((call) => call.startsWith('render:')),
+    false,
+  );
+  persisted.resolve();
+  await preparing;
+  assert.equal(f.session.getSnapshot().phase, 'ready');
+  assert.ok(f.session.getSendable());
+  await f.session.close();
+});
+
+test('cold editor restoration preserves word identities, undo and unapplied trim while using a new native lease', async () => {
+  const previous = fixture();
+  await previous.session.prepare('capture', { logicalSourceId: 'durable_source' });
+  await previous.session.transcribe('en');
+  previous.session.edit(cut(1000, 2000));
+  await previous.session.retryPreview();
+  const draft = previous.session.getSnapshot().draft!;
+  previous.session.setPendingTrim(draft, { startFrame: 200, endFrame: 3500 });
+  const saved = JSON.parse(JSON.stringify(previous.session.editorState()));
+  await previous.session.close();
+  const restored = fixture();
+  restored.port.prepare = async () => source('new_native_lease');
+  await restored.session.prepare('restored_private_copy', { editor: saved });
+  const state = restored.session.getSnapshot();
+  assert.equal(state.source?.id, 'new_native_lease');
+  assert.equal(state.draft?.original.id, 'durable_source');
+  assert.deepEqual(
+    state.draft?.transcript?.words.map((word) => word.id),
+    ['keep', 'secret', 'after'],
+  );
+  assert.equal(state.draft?.undo.length, 1);
+  assert.deepEqual(state.pendingTrim, { startFrame: 200, endFrame: 3500 });
+  assert.equal(
+    restored.session.getSendable(),
+    null,
+    'pending sliders never publish the old canonical audio',
+  );
+  assert.ok(restored.calls.includes('render:new_native_lease'));
+  restored.session.setPendingTrim(state.draft!, null);
+  assert.equal(restored.session.getSendable()?.preview.frameCount, 3000);
+  restored.session.undo();
+  await restored.session.retryPreview();
+  assert.equal(restored.session.getSendable()?.preview.frameCount, 4000);
+  await restored.session.close();
+});
+
+test('a recovered attempted voice plays its exact frozen export and cannot edit or rerender its intent', async () => {
+  const f = fixture();
+  const prior = fixture();
+  await prior.session.prepare('capture');
+  const editor = voiceEditorState(prior.session.getSnapshot().draft!, null);
+  await prior.session.close();
+  const frozen = rendered('file:///owned/frozen.m4a', 4000);
+  await f.session.prepare('restored', { editor, attempted: true, frozenPreview: frozen });
+  assert.strictEqual(f.session.getSendable()?.preview, frozen);
+  assert.equal(
+    f.calls.some((call) => call.startsWith('render:')),
+    false,
+  );
+  assert.throws(() => f.session.edit(cut(0, 1000)), VoiceSessionFailure);
+  assert.throws(() => f.session.undo(), VoiceSessionFailure);
+  await f.session.close();
+});
+
+test('a saved editor cannot be rebound to different decoded source frames', async () => {
+  const f = fixture();
+  await f.session.prepare('capture');
+  const editor = f.session.editorState();
+  await f.session.close();
+  const changed = fixture();
+  changed.port.prepare = async () => ({ ...source('different'), frameCount: 3000 });
+  await changed.session.prepare('replacement', { editor });
+  assert.equal(changed.session.getSnapshot().phase, 'idle');
+  assert.equal(changed.session.getSnapshot().error?.kind, 'prepare');
+  assert.equal(changed.session.getSendable(), null);
+  assert.ok(changed.calls.includes('release:different'));
+  await changed.session.close();
+});
 
 test('prepare keeps an immutable native descriptor and only a current validated preview is sendable', async () => {
   const f = fixture();

@@ -16,6 +16,11 @@ import {
   type VoiceSource,
   type VoiceTranscript,
 } from './voice-edit.ts';
+import {
+  restoreVoiceEditor,
+  voiceEditorState,
+  type VoiceEditorState,
+} from './voice-editor-state.ts';
 
 export type VoicePreparedSource = VoiceSource & Readonly<{ uri: string; durationMs: number }>;
 export type VoiceRenderResult = Readonly<{
@@ -61,6 +66,8 @@ export type VoiceSessionState = Readonly<{
   transcription: 'idle' | 'ready' | 'unavailable';
   canSend: boolean;
   error: VoiceSessionFailure | null;
+  pendingTrim: FrameRange | null;
+  attempted: boolean;
 }>;
 export type VoiceSendable = Readonly<{ preview: VoiceRenderResult; transcript: string }>;
 type Lease = { id: string; uri: string; renders: Set<string>; released: boolean };
@@ -76,6 +83,8 @@ const initialState = (): VoiceSessionState =>
     transcription: 'idle',
     canSend: false,
     error: null,
+    pendingTrim: null,
+    attempted: false,
   });
 
 /** One recording's local lease. It owns no account, files, React state, or send mutation. */
@@ -125,7 +134,16 @@ export class VoiceSession {
       cause instanceof VoiceSessionFailure ? cause : new VoiceSessionFailure(kind, cause);
     this.publish({ error, canSend: false });
   }
-  prepare = (uri: string): Promise<void> => {
+  prepare = (
+    uri: string,
+    options: Readonly<{
+      editor?: unknown;
+      logicalSourceId?: string;
+      attempted?: boolean;
+      frozenPreview?: VoiceRenderResult;
+      beforeReady?: (source: VoicePreparedSource, editor: VoiceEditorState) => Promise<void>;
+    }> = {},
+  ): Promise<void> => {
     if (this.state.phase === 'closed' || this.state.phase === 'closing')
       return Promise.reject(new VoiceSessionFailure('closed'));
     if (this.state.phase === 'ready') return Promise.reject(new VoiceSessionFailure('not_ready'));
@@ -146,7 +164,13 @@ export class VoiceSession {
             await this.releaseLease(lease);
             return;
           }
-          const draft = createVoiceDraft(prepared);
+          const restored = options.editor
+            ? restoreVoiceEditor(options.editor, prepared)
+            : voiceEditorState(
+                createVoiceDraft({ ...prepared, id: options.logicalSourceId ?? prepared.id }),
+                null,
+              );
+          const draft = restored.draft;
           if (
             typeof prepared.uri !== 'string' ||
             !prepared.uri ||
@@ -156,20 +180,39 @@ export class VoiceSession {
           )
             throw new VoiceSessionFailure('prepare');
           const source = Object.freeze({
-            ...draft.original,
+            ...prepared,
+            levels: Object.freeze([...prepared.levels]),
             uri: prepared.uri,
             durationMs: prepared.durationMs,
           });
           this.revision = 0;
           this.previewRevision = -1;
+          this.publish({ source, draft, pendingTrim: restored.pendingTrim });
+          await options.beforeReady?.(source, restored);
+          if (!this.current(generation, source.id)) return;
           this.publish({
             phase: 'ready',
             source,
             draft,
             projection: projectVoiceDraft(draft),
             error: null,
+            pendingTrim: restored.pendingTrim,
+            attempted: options.attempted ?? false,
           });
-          await this.retryPreview();
+          if (options.attempted && !options.frozenPreview)
+            throw new VoiceSessionFailure('invalid_render');
+          if (options.attempted && options.frozenPreview) {
+            const projection = projectVoiceDraft(draft);
+            const preview = options.frozenPreview;
+            if (
+              preview.frameCount !== projection.frameCount ||
+              preview.mime !== 'audio/mp4' ||
+              Math.abs(preview.durationMs - projection.durationMs) > 1
+            )
+              throw new VoiceSessionFailure('invalid_render');
+            this.previewRevision = this.revision;
+            this.publish({ preview, canSend: projection.canSend });
+          } else await this.retryPreview();
         } catch (cause) {
           if (lease && this.state.source?.id !== lease.id) {
             try {
@@ -189,11 +232,17 @@ export class VoiceSession {
   private change(draft: VoiceDraft) {
     if (draft === this.state.draft) return;
     ++this.revision;
-    this.publish({ draft, projection: projectVoiceDraft(draft), canSend: false, error: null });
+    this.publish({
+      draft,
+      projection: projectVoiceDraft(draft),
+      pendingTrim: null,
+      canSend: false,
+      error: null,
+    });
     void this.retryPreview();
   }
   private readyDraft(): VoiceDraft {
-    if (this.state.phase !== 'ready' || !this.state.draft)
+    if (this.state.phase !== 'ready' || !this.state.draft || this.state.attempted)
       throw new VoiceSessionFailure('not_ready');
     return this.state.draft;
   }
@@ -206,6 +255,16 @@ export class VoiceSession {
   redo = () => {
     this.change(redoVoiceEdit(this.readyDraft()));
   };
+  editorState = (): VoiceEditorState | null =>
+    this.state.draft ? voiceEditorState(this.state.draft, this.state.pendingTrim) : null;
+  setPendingTrim = (draft: VoiceDraft, pending: FrameRange | null) => {
+    if (this.state.phase !== 'ready' || this.state.draft !== draft || this.state.attempted) return;
+    const value = voiceEditorState(draft, pending).pendingTrim;
+    const current = this.state.pendingTrim;
+    if (current?.startFrame === value?.startFrame && current?.endFrame === value?.endFrame) return;
+    this.publish({ pendingTrim: value });
+  };
+  freeze = (attempted = true) => this.publish({ attempted });
 
   private async cleanRenders(lease: Lease, keep?: string) {
     for (const uri of lease.renders) {
@@ -219,7 +278,7 @@ export class VoiceSession {
     }
   }
   retryPreview = (): Promise<void> => {
-    if (this.state.phase !== 'ready') return Promise.resolve();
+    if (this.state.phase !== 'ready' || this.state.attempted) return Promise.resolve();
     this.dirty = true;
     if (this.rendering) return this.rendering;
     this.publish({ rendering: true, canSend: false, error: null });
@@ -302,7 +361,7 @@ export class VoiceSession {
     return task;
   };
   transcribe = (locale: string): Promise<void> => {
-    if (this.state.phase !== 'ready') return Promise.resolve();
+    if (this.state.phase !== 'ready' || this.state.attempted) return Promise.resolve();
     if (this.transcribing) return this.transcribing;
     if (this.state.draft?.transcript) return Promise.resolve();
     const source = this.state.source!;
@@ -318,7 +377,12 @@ export class VoiceSession {
             return;
           }
           if (result.status !== 'ready') throw new VoiceSessionFailure('transcribe');
-          const draft = attachVoiceTranscript(this.state.draft!, source.id, result);
+          if (this.state.attempted) return;
+          const draft = attachVoiceTranscript(
+            this.state.draft!,
+            this.state.draft!.original.id,
+            result,
+          );
           this.publish({ draft, projection: projectVoiceDraft(draft), transcription: 'ready' });
         } catch (cause) {
           if (this.current(generation, source.id))
@@ -340,6 +404,7 @@ export class VoiceSession {
   getSendable = (): VoiceSendable | null => {
     const { phase, canSend, preview, projection } = this.state;
     return phase === 'ready' &&
+      !this.state.pendingTrim &&
       canSend &&
       preview &&
       projection &&

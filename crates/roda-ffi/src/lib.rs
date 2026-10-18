@@ -26,6 +26,10 @@ mod liveview;
 pub use liveview::{LiveViewDemoVm, LiveViewInput, LiveViewKey, LiveViewSession};
 mod local_sealed;
 mod media;
+mod media_drafts;
+pub use media_drafts::{
+    MediaDraftAsset, MediaDraftAssetInput, MediaDraftDto, MediaDraftScope, MediaDraftSendResult,
+};
 mod message_drafts;
 pub use message_drafts::{MessageDraftDto, MessageDraftSendResult};
 mod pages;
@@ -80,7 +84,7 @@ pub enum CoreError {
     Invalid { reason: String },
     #[error("{reason}")]
     Stale { reason: String },
-    /// Only a current, unaccepted message-draft intent refused before append.
+    /// Only a current, unaccepted private-draft intent refused before append.
     #[error("{reason}")]
     DraftRejected { reason: String },
 }

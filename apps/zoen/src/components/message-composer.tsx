@@ -297,6 +297,7 @@ export function MessageComposer({
           key={`${spaceId}:${threadRootId ?? 'chat'}`}
           spaceId={spaceId}
           replyTo={replyTo}
+          threadRootId={threadRootId ?? null}
           thread={thread}
           disabled={sending || editing || Boolean(search) || draft?.ready === false}
           suspended={suspended || Boolean(search)}

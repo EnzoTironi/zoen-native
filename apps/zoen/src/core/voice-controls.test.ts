@@ -5,7 +5,8 @@ import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { SensitiveCacheWork } from '../media/cache-work.ts';
 import { VoiceReviewOwner } from '../media/voice-review-owner.ts';
-import { VoiceSession, type VoiceNativePort } from '../media/voice-session.ts';
+import { VoiceDraftOwner, frozenVoicePreview } from '../media/voice-draft-owner.ts';
+import { VoiceSession, VoiceSessionFailure, type VoiceNativePort } from '../media/voice-session.ts';
 import * as voiceEdit from '../media/voice-edit.ts';
 import * as voiceSuggestions from '../media/voice-suggestions.ts';
 import * as voiceTrimPreview from '../media/voice-trim-preview.ts';
@@ -116,6 +117,9 @@ function component(name: (typeof files)[number], ports: Record<string, unknown>)
         }, [read]);
       },
     },
+    'expo-crypto': { randomUUID: () => 'synthetic-voice-id' },
+    './voice-draft-owner': { VoiceDraftOwner, frozenVoicePreview },
+    './voice-session': { VoiceSessionFailure },
     '@expo/ui': { Host: 'Host' },
     '@expo/ui/swift-ui': Object.fromEntries(
       ['Button', 'DisclosureGroup', 'HStack', 'Slider', 'Text', 'VStack'].map((key) => [key, key]),

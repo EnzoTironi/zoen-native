@@ -15,6 +15,45 @@ function core() {
 
 export function createDriver(): CoreDriver {
   const media: MediaDriver = {
+    drafts:
+      Platform.OS === 'ios' && typeof NativeCore?.loadMediaDraft === 'function'
+        ? {
+            async load(scope) {
+              return JSON.parse(await core().loadMediaDraft(JSON.stringify({ scope })));
+            },
+            async save(scope, expectedRevision, contentJson, assets) {
+              return JSON.parse(
+                await core().saveMediaDraft(
+                  JSON.stringify({
+                    scope,
+                    expected_revision: expectedRevision,
+                    content_json: contentJson,
+                    assets,
+                  }),
+                ),
+              );
+            },
+            async materialize(scope, expectedRevision, assetId) {
+              return JSON.parse(
+                await core().materializeMediaDraftAsset(
+                  JSON.stringify({
+                    scope,
+                    expected_revision: expectedRevision,
+                    asset_id: assetId,
+                  }),
+                ),
+              );
+            },
+            async send(scope, expectedRevision) {
+              return JSON.parse(
+                await core().sendMediaDraft(
+                  JSON.stringify({ scope, expected_revision: expectedRevision }),
+                ),
+              );
+            },
+            release: (uri) => core().releaseLocalFile(uri),
+          }
+        : undefined,
     voiceEditor:
       Platform.OS === 'ios' && typeof NativeCore?.prepareVoice === 'function'
         ? {
