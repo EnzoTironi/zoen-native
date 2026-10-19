@@ -125,7 +125,17 @@ effective settings; it did not compile an app. The failure and probe index is
 `/private/tmp/zoen-android-v96/ci-39201639333-failure/index.json` (SHA256
 `dfa19d6817bda33b0f0195f3a4da10a9cb5b4797bb5e74b9b7522d30736b3db6`).
 The fresh [run 39204333306](https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306)
-on head `52da9729` must establish its own Release/JVM result.
+on head `52da9729` **passed** the minified Release build and all 14 JVM tests
+(eight lifecycle, six erasure), with no skips/failures. It tested merge
+`59998b677ce581bd49a045538ee62f3d17b55347` and produced artifact `12165977835`.
+The signature-verified arm64 APK is 124,609,341 bytes, SHA256
+`55bb795d3083f20179bc128cbf63a662ba915984de2438ca4d6467d9cf82d46a`.
+It targets API37 with minSdk28 and retains R8; its generated CI Debug signing
+certificate is not a store-distribution signing acceptance. The actual runner had
+15GiB RAM and the Release task completed in 20m29s. Independent artifact, packaged
+JNI/Hermes, XML and log checks are bound by
+`/private/tmp/zoen-android-v96/ci-39204333306-watch/release-build-acceptance.json`
+(SHA256 `1c0796bc675dc276c366eb1521ec6e84bf9339f58c517188eb010612a4b76360`).
 
 Release runtime, API 28 minimum-runtime behavior, physical devices, public OAuth
 and Cloudflare sync, Android media/voice/profile-photo parity, and forced

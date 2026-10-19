@@ -6,8 +6,7 @@ application. The older `ci / web-e2e` job exercises the separate
 
 The current runner retains the previous 19 checkpoints and adds three real browser
 checks for canonical Excalidraw documents. The current local release passed all
-**22 checkpoints separately in `en-US` and `pt-BR`**. The prior 19-checkpoint scope
-also passes in CI. Each run uses fresh synthetic CLI identities, browser
+**22 checkpoints separately in `en-US` and `pt-BR`**, locally and in CI. Each run uses fresh synthetic CLI identities, browser
 context/process and Pages state.
 Locale expectations are authored independently in `expo-web-expectations.mjs`.
 
@@ -94,6 +93,34 @@ export files unchanged. It was never deployed. Its earlier pre-inset acceptance
 remains separately retained. This does not accept image import, every conflict or
 fault path, public authentication or full comparative parity.
 
+### Current CI and smaller release artifact
+
+[CI run 39204333306](https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306)
+passed all six Expo jobs on merge `59998b677ce581bd49a045538ee62f3d17b55347`
+for head `52da9729`. Actual browser receipts passed 22/22 per locale with no page
+errors; the closed-group 17/4/5/4 and Directory 33 PostgreSQL/nine workerd checks
+also passed. Four immutable GitHub artifact digests and 37 exact-merge source
+bindings were checked. Receipt:
+`/private/tmp/zoen-cloudflare-web-v96/ci-52da-evidence/acceptance.json` (SHA256
+`433598e928827681ac6d3d062d30f5dceddc3eec8a9bc51e46d4c9d551b965ed`).
+The Linux client check discovered 795 tests: 793 passed and exactly two explicitly
+Darwin-only Swift harnesses were skipped. Both pass in the macOS 795-test check.
+The separate Android receipt accepts the minified Release APK and 14 JVM tests;
+its runtime has its own acceptance boundary.
+
+Later release-only changes `945170ea` and `891d6d9b` remove the debug name section
+and normalize esbuild's working directory. Every remaining WASM section is byte
+identical: 25,876,496 becomes 23,251,769 bytes, saving 2,624,727 bytes (10.14%).
+Development keeps debug names. Real builds from the repository and app directories
+produce identical WASM, glue, worker and pin bytes. The resulting QA artifact
+passed 22/22 in each locale again, with 795 local client tests and all checks.
+Receipt `/private/tmp/zoen-web-v96/release-strip-01/acceptance.json` has SHA256
+`33259fb5c08f0b6bbd7c7ec13c817ad8ae0e36f45f0a2a070465087e9bb0e63e`;
+`reproducible-build.json` has SHA256
+`a69eb6c19362ee8dacb3d98f2d87b9df2ea5c01af1b89f1719d7e96a1fab14ee`.
+The QA artifact was never published; public production uses its own provider
+configuration. This measures artifact bytes, without startup/performance acceptance.
+
 ### Prior CI release
 
 [CI run 39201639333](https://github.com/EnzoTironi/zoen-native/actions/runs/39201639333)
@@ -101,7 +128,7 @@ passed the previous 19 browser checkpoints per locale and the private closed-gro
 differential step on merge `d126484348aded89d131b018933545dd858374c2` for head
 `db60c33e`. Its downloaded proof is indexed at
 `/private/tmp/zoen-cloudflare-web-v96/ci-db60-evidence/index.json`. It predates
-the new drawing and Directory changes; the new 22-step CI scope remains pending.
+the new drawing and Directory changes; the later 52da run above accepts that scope.
 
 [CI run 39198364287](https://github.com/EnzoTironi/zoen-native/actions/runs/39198364287)
 passed all 19 checkpoints in both locales on Chromium `155.0.8059.39`. It tested
@@ -226,20 +253,20 @@ configuration text. Artifact/hosting checks do not establish encrypted messaging
 ## Public hosting and remaining scope
 
 On 19 October 2026, production frontend deployment
-`4d56e30f-a989-4de4-be9b-60b70d03d430` from clean source `d4a0590d` at
+`359e0cd0-41c5-4e53-b64c-fef8e1b4d0e1` from clean source `891d6d9b` at
 [app.tryzoen.com](https://app.tryzoen.com) and
 [zoen-web.agenttironi.workers.dev](https://zoen-web.agenttironi.workers.dev)
 passed all ten public HTTP paths, exact SPA/worker/WASM bytes and signing-worker
 integrity on each origin. This fresh production export includes canonical Web
-Excalidraw and the measured header inset. Receipt:
-`/private/tmp/zoen-app-domain-v96/release-07-public/acceptance.json` (SHA256
-`306b367117f5e39a8bc0ac05abfb1a692cf88abd4e243ad2a6df8c257aa9541b`).
+Excalidraw, the measured header inset and the smaller reproducible runtime. Receipt:
+`/private/tmp/zoen-app-domain-v96/release-09-public/acceptance.json` (SHA256
+`5c9210eccb0267bd60d59255c830ccdfc0f79fd29097532054e03a8444394ac0`).
 Its worker integrity is
-`sha384-dYc1Ds6ChZA3cp5LAy6/3BNbEuwGze2+MlxwJotYmJoXyigQWBHsMy9h5GHmbjwN`;
-WASM is 25,876,496 bytes with SHA256
-`f493705d54fe1c23165f351ae85ad9aa9fe551feafc3ebfe7442da7246d10088`.
+`sha384-pImaTmN20eB49OhAsS9/4uCr8hZDDmu0NhVTfWUyy5IEBLeeGXkVY+YR8YeYLGlH`;
+WASM is 23,251,769 bytes with SHA256
+`f1e077a46b914c8098d9448b42e694fd47bffdc944cb73a553d16c50ae17e096`.
 Production's 90-file manifest is
-`fb32ad206989bb24e8842a56a26c0d7d6ea2ccd13647010ccbffde86b93607bc`.
+`d182d994fcd239b770aaa2035e3f5914aa2d72e3e1456744f237ffdabfc83110`.
 The authenticated 22-step journey ran only on the controlled loopback export;
 public hosting uses production provider configuration.
 
@@ -253,9 +280,9 @@ onboarding, the localized connection error and system Retry font with no unhandl
 page errors or injected analytics. Root documents were isolated and sign-in
 popup-safe. Both providers remain unavailable against the dead relay. No
 provider/device-link action was taken. Receipts and screenshots are under
-`/private/tmp/zoen-app-domain-v96/release-07-public/{canonical,workers-preview}/`.
+`/private/tmp/zoen-app-domain-v96/release-09-public/{canonical,workers-preview}/`.
 This establishes guest rendering, without successful WASM initialization,
-authentication or encrypted-sync acceptance. Prior release06, canonical-domain
+authentication or encrypted-sync acceptance. Prior releases07/06, canonical-domain
 and preview observations remain separately attributed in the acceptance manifest.
 
 See the [Cloudflare deployment guide](../../infra/cloudflare/README.md) for

@@ -109,10 +109,10 @@ recovery journey. Exact artifacts and the immutable history are in
 [`acceptance.json`](acceptance.json).
 
 The [Web release journey](../../docs/dev/expo-web-acceptance.md) passed 22
-local checkpoints in each of English and Portuguese, adding actual Excalidraw edits,
+checkpoints locally and in CI in each of English and Portuguese, adding actual Excalidraw edits,
 exact native-peer bytes and cold reload to linking, encrypted messages, Markdown
-drafts, a builtin MCP list, plain files and local erasure. The previous 19-checkpoint
-scope also passes in CI; the new drawing scope needs its own CI acceptance.
+drafts, a builtin MCP list, plain files and local erasure.
+The smaller production artifact has separately verified identical executable sections.
 Onboarding accessibility and public HTTP hosting have separate bounded evidence.
 The [Android Debug journey](../../docs/dev/expo-android-acceptance.md) passed
 normal linking, history recovery, Page creation/read, corrected headers/status and
