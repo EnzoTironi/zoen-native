@@ -23,6 +23,28 @@ env:
   ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
 
 jobs:
+  local-integrity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Native local tooling syntax
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for source in sorted(Path("infra/local").glob("*.py")):
+              compile(source.read_bytes(), str(source), "exec")
+          PY
+          sh -n infra/fdb/server-entrypoint.sh
+
+      - name: Resource ownership and backup integrity
+        run: python3 -m unittest discover -s infra/local -p 'test_*.py' -v
+
   rust:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
