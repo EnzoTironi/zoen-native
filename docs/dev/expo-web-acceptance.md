@@ -4,16 +4,17 @@ The `expo / release-web-e2e` job exercises `apps/zoen`'s exported Expo Router
 application. The older `ci / web-e2e` job exercises the separate
 `packages/zoen-ui/web` messenger shell and does not establish Expo acceptance.
 
-The current runner retains the original 14 checkpoints and adds five real browser
-checks for a sandboxed builtin list and plain file attachments. The latest exact-source
-CI release passed all **19 checkpoints separately in `en-US` and `pt-BR`**. Each run
-uses fresh synthetic CLI identities, browser context/process and Pages state.
+The current runner retains the previous 19 checkpoints and adds three real browser
+checks for canonical Excalidraw documents. The current local release passed all
+**22 checkpoints separately in `en-US` and `pt-BR`**. The prior 19-checkpoint scope
+also passes in CI. Each run uses fresh synthetic CLI identities, browser
+context/process and Pages state.
 Locale expectations are authored independently in `expo-web-expectations.mjs`.
 
 ## Accepted journey
 
-These are the checkpoints in `acceptance.json`, in execution order. Steps 12–16
-are the five additions; the other 14 retain the earlier acceptance scope.
+These are the checkpoints in `acceptance.json`, in execution order. Steps 17–19
+are the drawing additions; the previous 19 retain their acceptance scope.
 
 1. Inspect the actual release files and verify the application's pinned worker
    integrity and the worker's pinned WASM bytes.
@@ -41,16 +42,66 @@ are the five additions; the other 14 retain the earlier acceptance scope.
     and publish a plain encrypted file.
 16. Open/download the file in the browser and download it through the canonical
     peer; require both outputs to equal the original fixture bytes.
-17. Cancel local erasure, reopen the chat and retain its encrypted history.
-18. Confirm local erasure, reach the popup-safe sign-in document and retain
+17. Open a canonical native-peer Excalidraw Item inside the unchanged strict
+    `allow-scripts` sandbox and verify the actual MCP scene-read bytes.
+18. Draw a rectangle and type text through the actual canvas controls; require
+    both edits in the independent peer's decrypted document.
+19. Cold-reload the drawing and compare the guest's actual reconstructed read
+    bytes with the peer's file, while retaining the original encrypted version.
+20. Cancel local erasure, reopen the chat and retain its encrypted history.
+21. Confirm local erasure, reach the popup-safe sign-in document and retain
     onboarding after reload, without a composer or erasure action.
-19. Require the independent canonical peer to retain the earlier messages.
+22. Require the independent canonical peer to retain the earlier messages.
 
 The runner uses visible UI and the independent Rust CLI, without IDB/session
 injection, fake provider tokens or production accounts. It rejects non-loopback
 relays. An authored runner or passing unit tests alone do not establish acceptance.
 
 ## Recorded source and artifacts
+
+### Current local drawing release
+
+Adapter `10329c8c` supports drawing read/save/copy and installation through the
+existing encrypted snapshot/upload pipeline. Scene validation is shared with the
+native client in `roda-apps::excalidraw` (`ac7f6cb7`). The shared library's 17 tests,
+16 existing native document regressions, 65 Web core tests including eight drawing
+regressions, and strict all-target Clippy passed. Tests cover immutable retries,
+stale writes, upload barriers, unchanged saves, copied ownership and denied current
+or historical descriptors after revocation, membership loss or a broken log.
+
+Runner `fc4feece` passed 22/22 in both locales on source `46128a65` plus the exact
+Web-only header inset now committed as `d4a0590d`. Each locale passed on its first
+attempt without uncaught JavaScript errors. A passive message observer reads real
+host-to-guest MCP responses; it never replaces transport, changes application
+state or injects keys. The fresh CLI's SHA256 is
+`6a9b639ae3d37af83fe1963667bebb0a1f03602c660e750dc15371ee634807c6`.
+
+Receipt `/private/tmp/zoen-web-v96/drawing-release-22/acceptance.json` has SHA256
+`6cd706271bb594da8b659214f332b211bc872fb5499c22a6f3a70b180500545c` and binds
+16 frozen sources, the one-line inset patch, artifacts, logs and screenshots. The
+final app check passed 795 tests, TypeScript, Oxlint and Oxfmt. The drawing's real
+version-four bytes matched the native peer: 1,278 bytes in English and 1,277 in
+Portuguese; version one remained unchanged.
+
+The 90-file QA export has manifest SHA256
+`745309d8ee986060b90b0c59df391fb2816d8e26a0e52d267bfacc0ff3db6f4d`.
+Its worker integrity is
+`sha384-dYc1Ds6ChZA3cp5LAy6/3BNbEuwGze2+MlxwJotYmJoXyigQWBHsMy9h5GHmbjwN`;
+WASM is 25,876,496 bytes with SHA256
+`f493705d54fe1c23165f351ae85ad9aa9fe551feafc3ebfe7442da7246d10088`.
+The export used an external task-owned directory and left all previous production
+export files unchanged. It was never deployed. Its earlier pre-inset acceptance
+remains separately retained. This does not accept image import, every conflict or
+fault path, public authentication or full comparative parity.
+
+### Prior CI release
+
+[CI run 39201639333](https://github.com/EnzoTironi/zoen-native/actions/runs/39201639333)
+passed the previous 19 browser checkpoints per locale and the private closed-group
+differential step on merge `d126484348aded89d131b018933545dd858374c2` for head
+`db60c33e`. Its downloaded proof is indexed at
+`/private/tmp/zoen-cloudflare-web-v96/ci-db60-evidence/index.json`. It predates
+the new drawing and Directory changes; the new 22-step CI scope remains pending.
 
 [CI run 39198364287](https://github.com/EnzoTironi/zoen-native/actions/runs/39198364287)
 passed all 19 checkpoints in both locales on Chromium `155.0.8059.39`. It tested
@@ -154,7 +205,7 @@ test "$qa_status" -eq 0
 
 Replace `qa_chrome` with the actual executable. Both locales run even if one
 fails; either failure fails the combined result. The locale is mandatory. Inspect
-each locale's `passed` flag and 19 completed steps before accepting the run.
+each locale's `passed` flag and 22 completed steps before accepting the run.
 
 The loopback export has external providers disabled for QA. **Do not deploy it.**
 For independent artifact or HTTP checks, without accounts or a browser:
@@ -175,30 +226,37 @@ configuration text. Artifact/hosting checks do not establish encrypted messaging
 ## Public hosting and remaining scope
 
 On 19 October 2026, production frontend deployment
-`13975cc7-93e5-47f6-9f89-c769f1bd0756` at
+`4d56e30f-a989-4de4-be9b-60b70d03d430` from clean source `d4a0590d` at
 [app.tryzoen.com](https://app.tryzoen.com) and
 [zoen-web.agenttironi.workers.dev](https://zoen-web.agenttironi.workers.dev)
-passed all ten public HTTP paths and exact signing-worker integrity on each origin.
-This fresh production build includes the decorative accessibility and localized connection
-failure corrections. Receipt:
-`/private/tmp/zoen-app-domain-v96/live-hosting-final.json`. Its worker integrity is
-`sha384-5lhNMH1yUGXCJcds6hQwwqxce9rFjyYH5ABCkzRUpP70btnwC/2vOLvpz4P6rhtw`;
-this is distinct from the CI build's bytes. Neither 19-step journey ran against
-the public domain. The exact fail-closed `app.tryzoen.com/*` route uses the two
-existing DNS records with Proxied enabled; their contents and Auto TTL were retained.
-`no-transform` prevents the zone's analytics injection from modifying the served
-HTML. Both public origins and the real local Pages/Workers checks verify that
-policy and exact body bytes.
+passed all ten public HTTP paths, exact SPA/worker/WASM bytes and signing-worker
+integrity on each origin. This fresh production export includes canonical Web
+Excalidraw and the measured header inset. Receipt:
+`/private/tmp/zoen-app-domain-v96/release-07-public/acceptance.json` (SHA256
+`306b367117f5e39a8bc0ac05abfb1a692cf88abd4e243ad2a6df8c257aa9541b`).
+Its worker integrity is
+`sha384-dYc1Ds6ChZA3cp5LAy6/3BNbEuwGze2+MlxwJotYmJoXyigQWBHsMy9h5GHmbjwN`;
+WASM is 25,876,496 bytes with SHA256
+`f493705d54fe1c23165f351ae85ad9aa9fe551feafc3ebfe7442da7246d10088`.
+Production's 90-file manifest is
+`fb32ad206989bb24e8842a56a26c0d7d6ea2ccd13647010ccbffde86b93607bc`.
+The authenticated 22-step journey ran only on the controlled loopback export;
+public hosting uses production provider configuration.
 
-An empty-profile Chrome `155.0.8059.85` on the current canonical domain rendered
-Portuguese onboarding, the localized connection error and popup-safe sign-in,
-with no unhandled page errors or injected analytics script. Both providers remain
-unavailable against the dead relay. No provider/device-link action was taken.
-Receipt and screenshot: `/private/tmp/zoen-app-domain-v96/final-web/guest-boot.json` and
-`canonical-onboarding.png`. This is guest rendering evidence, without WASM
-initialization, authentication or encrypted-sync acceptance. The preceding
-workers.dev guest observation retains its separate attribution in
-`/private/tmp/zoen-web-v96/public-preview/acceptance.json`.
+The exact fail-closed `app.tryzoen.com/*` route uses the two existing DNS records
+with Proxied enabled; their contents and Auto TTL were retained. `no-transform`
+prevents the zone's analytics injection from modifying served HTML. Both public
+origins and real local Pages/Workers checks verify that policy and exact bytes.
+
+Empty-profile Chrome `155.0.8059.85` on **both** public origins rendered Portuguese
+onboarding, the localized connection error and system Retry font with no unhandled
+page errors or injected analytics. Root documents were isolated and sign-in
+popup-safe. Both providers remain unavailable against the dead relay. No
+provider/device-link action was taken. Receipts and screenshots are under
+`/private/tmp/zoen-app-domain-v96/release-07-public/{canonical,workers-preview}/`.
+This establishes guest rendering, without successful WASM initialization,
+authentication or encrypted-sync acceptance. Prior release06, canonical-domain
+and preview observations remain separately attributed in the acceptance manifest.
 
 See the [Cloudflare deployment guide](../../infra/cloudflare/README.md) for
 production reproduction and the outstanding relay boundary. The
@@ -215,10 +273,11 @@ instead produced a closed-session error after reconnect; page reload did not
 recover it. A full browser restart recovered history and delivered the preserved
 queue. That startup edge remains open; PWA cold offline loading was not tested.
 
-Canonical Excalidraw remains blocked by unsupported `app_document_read` in the
-Web driver, with document save/copy integration also outstanding. A loaded builtin
-list does not establish Excalidraw or all-miniapp acceptance. Plain file upload,
-preview and exact download are accepted above; file captions, inline replies,
+Canonical Excalidraw now has checked read/save/copy and install operations, with
+actual canvas editing and cold-reload/native-peer byte evidence above. Image
+import, broader collaborative/fault paths and every miniapp capability still need
+their own acceptance. Plain file upload, preview and exact download are accepted
+above; file captions, inline replies,
 threads and immutable mutation/retry metadata remain incomplete. Collaborative
 conflict/history, account recovery, Google/Apple login, Safari/WebKit, camera and
 microphone permission paths, manual keyboard/screen-reader/contrast coverage and

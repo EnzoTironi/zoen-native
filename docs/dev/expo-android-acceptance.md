@@ -101,6 +101,21 @@ the Expo job pairs `:app:assembleRelease` with the module's actual
 `:zoen-core:testDebugUnitTest` task. That configuration fix is not a successful
 Release build or runtime receipt.
 
+### Release shrinking correction
+
+Later CI `39198364287` reached `:app:minifyReleaseWithR8` and failed on JNA's
+optional desktop AWT references. Fix `db60c33e` puts consumer rules in the Expo
+Rust module, preserving its native symbols, reflected Structure layouts and
+callbacks while retaining application shrinking and obfuscation. Suppressions name
+only the four optional AWT types found by the actual shrinker.
+
+A real Android DEX/minSdk28 probe with JNA 5.18.1, R8 9.2.14 and 84 compiled
+UniFFI classes passed. Native names, public RustBuffer fields, FieldOrder
+annotations and callback methods survived; an unused control was removed.
+Receipt: `/private/tmp/zoen-android-v96/r8-consumer-check/actual-uniffi-final.json`.
+This is a focused shrinker proof, not a new APK/runtime acceptance. The independent
+Expo Release/JVM CI result must be recorded separately.
+
 Release runtime, API 28 minimum-runtime behavior, physical devices, public OAuth
 and Cloudflare sync, Android media/voice/profile-photo parity, and forced
 process-death erasure fault injection remain unaccepted. Performance also remains

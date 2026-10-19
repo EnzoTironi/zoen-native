@@ -64,8 +64,8 @@ uses Oxfmt. Generated bindings and native projects stay outside formatter/linter
 
 `npm run export:web` exports the application and its isolation policy into `dist/`.
 The [Cloudflare deployment guide](../../infra/cloudflare/README.md) describes the
-production Workers preview, fresh production builds and the outstanding canonical
-domain/relay setup. Local acceptance uses the actual Pages runtime; an export with
+canonical domain, fresh production builds and the outstanding public relay setup.
+Local acceptance uses the actual Pages runtime; an export with
 loopback QA configuration must never be deployed.
 
 The app and its MLS signing worker require `Cross-Origin-Opener-Policy: same-origin`
@@ -108,9 +108,11 @@ Page input and session work has source/host proof without a new signed editor
 recovery journey. Exact artifacts and the immutable history are in
 [`acceptance.json`](acceptance.json).
 
-The [Web release journey](../../docs/dev/expo-web-acceptance.md) passed 19
-checkpoints in each of English and Portuguese locally and in CI, including normal linking, encrypted
-messages, Markdown drafts, a builtin MCP list, plain files and local erasure.
+The [Web release journey](../../docs/dev/expo-web-acceptance.md) passed 22
+local checkpoints in each of English and Portuguese, adding actual Excalidraw edits,
+exact native-peer bytes and cold reload to linking, encrypted messages, Markdown
+drafts, a builtin MCP list, plain files and local erasure. The previous 19-checkpoint
+scope also passes in CI; the new drawing scope needs its own CI acceptance.
 Onboarding accessibility and public HTTP hosting have separate bounded evidence.
 The [Android Debug journey](../../docs/dev/expo-android-acceptance.md) passed
 normal linking, history recovery, Page creation/read, corrected headers/status and

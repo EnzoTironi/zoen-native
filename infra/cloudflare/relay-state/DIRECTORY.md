@@ -49,4 +49,10 @@ still creates its own fresh, validated PostgreSQL schema, runs real native direc
 transactions and removes only that schema on success or ordinary errors. The test bridge
 and SQL failure triggers are local fixtures and are absent from the deployment config.
 The shared WASM build command is reused from `scripts/build-cloudflare-closed.mjs`; it
-does not require PostgreSQL or deploy either Worker. This checkpoint has no deployment.
+does not require PostgreSQL or deploy either Worker.
+
+The private `zoen-relay-directory` Worker was provisioned on 2026-10-19 at version
+`759ffee3-0ef9-4ff5-a53b-1c971a3e2197`, from source commit `46128a65`. It has no
+public route, workers.dev or preview URL. The 33 PostgreSQL scenarios and nine
+workerd cases are local validation; no remote Directory journey was run in this
+checkpoint.

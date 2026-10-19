@@ -32,7 +32,7 @@
   ],
   "deferredPlatforms": ["macos", "windows", "linux"],
   "fullAppParityAccepted": false,
-  "currentAcceptanceSummary": "Whole-application iPhone baseline remains v85; the latest preserving-installed v92 artifact has bounded MCP/gesture/Home evidence. v94/v95 validate source and separate host foundations without a new signed iPhone editor recovery journey. v96 Web passes 19 checkpoints in each locale locally and in CI; onboarding accessibility and public HTTP hosting are separate bounded proofs. Android API35 Debug passes actual linking, history/Page, corrected headers/status and erasure journeys plus 14 JVM tests. Full parity remains incomplete.",
+  "currentAcceptanceSummary": "Whole-application iPhone baseline remains v85; preserving-installed v92 has bounded MCP/gesture/Home evidence. v94/v95 Page input/session work remains source/host proof without new signed editor recovery. Local Web passes22 checkpoints per locale including actual Excalidraw edits, exact native-peer bytes and cold reload; prior19 also pass in CI. Android API35 Debug passed linking/history/Page/headers/erasure with14 JVM tests; release shrinking has a focused verified fix, separate full build/runtime acceptance required. Cloudflare hosts the frontend, private closed-group storage and a private Person/device directory; the public encrypted relay/provider paths remain incomplete. Full parity is not accepted.",
   "historicalEvidence": {
     "commit": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
     "path": "apps/zoen/acceptance.json",
@@ -597,7 +597,7 @@
         "coldStartupOfflineGap": "Cutoff during startup produced closed-session error after reconnect; page reload did not restore history. Full browser restart recovered history and delivered preserved queue. Unresolved; PWA cold offline load not tested."
       },
       "limits": [
-        "Canonical Excalidraw app_document_read/save/copy Web integration remains unsupported.",
+        "This prior19 source did not support canonical Excalidraw read/save/copy. Successor webDrawingsV97 accepts those operations and actual22 canvas/reload/peer journeys locally.",
         "Plain file upload/preview/download accepted; captions, file inline replies/threads and immutable retry metadata incomplete.",
         "Loopback QA uses synthetic identities and unavailable external providers; never deploy this export.",
         "No provider login, Safari/WebKit, real camera/microphone, whole-app accessibility or full-parity acceptance."
@@ -611,27 +611,28 @@
         "scope": "Combined final source including Android status/header changes and localized sign-in connection failure. Separate from the19-checkpoint CI artifact and onboarding axe receipts."
       },
       "ciCurrent": {
-        "run": 39198364287,
-        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39198364287",
-        "head": "7c71cecbf3e71fb502c9213b97bd909854dfa2d2",
-        "testedMergeCommit": "bfd35da7d52271a332e8b439b69d23850e87a973",
-        "artifactId": 12162482735,
+        "run": 39201639333,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39201639333",
+        "head": "db60c33efb998bde7f8b455ac8f9712c9747589f",
+        "testedMergeCommit": "d126484348aded89d131b018933545dd858374c2",
+        "artifactId": 12163494249,
         "artifactName": "expo-release-web-evidence",
         "passed": true,
         "checkpointsEach": 19,
         "locales": ["en-US", "pt-BR"],
-        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-7c71-receipts.json",
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-db60-evidence/index.json",
+        "receiptSha256": "2f4f8ac748da80c90d0eea998f78485ff9af6a56350e9dd8905e5318cbb05110",
         "browser": "155.0.8059.39",
         "artifact": {
-          "manifestSHA256": "184a76ed4667d5d37a4acdce7f3a90fe55fa5d75e1595972f7643cf2bee74570",
-          "workerIntegrity": "sha384-L+9+jxotxheYp9vbLHFT/KfMrU8ylmtaxzcR1mU6cbJiA47p+Ozdyg03C3VnJx2S",
+          "manifestSHA256": "884e16ad8b831309c7b085701822e665d1fd1c7c4e460afa4ba2dc4a0aecc44e",
+          "workerIntegrity": "sha384-cuuu51ynijNnOGbPsp+HZT6jZ2MKTk6eJ+qkhJN74KZ1CALnCghCv4KMk4KVTOXW",
           "wasm": {
             "path": "core/zoen_web_core_bg.wasm",
-            "bytes": 25721313,
-            "sha256": "95c666cd9451d48fcc40b2fe251dc1087973b5edb36f62536c813e8b25c44701"
+            "bytes": 25775772,
+            "sha256": "2bb7d8e1185f117834bfd4f5b646cd8f8785aedb15e366381e1ded5575376f29"
           }
         },
-        "scope": "Includes the Android access/layout and localized auth failure source. The later no-transform header and font-only correction have separate hosting/render proof. AndroidRelease job was pending at receipt creation; no wholeworkflowpass claim."
+        "scope": "19-checkpoint browser and closed-group CI passed; predates local22 drawing/Directory changes. Android Release failed on R8 heap exhaustion; no whole-workflow pass."
       },
       "ciPrior19": {
         "run": 39194529436,
@@ -662,19 +663,42 @@
         "renderedSystemFont": "system-ui",
         "receipt": "/private/tmp/zoen-app-domain-v96/final-web/guest-boot.json",
         "scope": "One font-family correction after the795-test source checkpoint; scoped compile/lint/format and actual canonical guest render."
+      },
+      "ciPrior7c71": {
+        "run": 39198364287,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39198364287",
+        "head": "7c71cecbf3e71fb502c9213b97bd909854dfa2d2",
+        "testedMergeCommit": "bfd35da7d52271a332e8b439b69d23850e87a973",
+        "artifactId": 12162482735,
+        "artifactName": "expo-release-web-evidence",
+        "passed": true,
+        "checkpointsEach": 19,
+        "locales": ["en-US", "pt-BR"],
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-7c71-receipts.json",
+        "browser": "155.0.8059.39",
+        "artifact": {
+          "manifestSHA256": "184a76ed4667d5d37a4acdce7f3a90fe55fa5d75e1595972f7643cf2bee74570",
+          "workerIntegrity": "sha384-L+9+jxotxheYp9vbLHFT/KfMrU8ylmtaxzcR1mU6cbJiA47p+Ozdyg03C3VnJx2S",
+          "wasm": {
+            "path": "core/zoen_web_core_bg.wasm",
+            "bytes": 25721313,
+            "sha256": "95c666cd9451d48fcc40b2fe251dc1087973b5edb36f62536c813e8b25c44701"
+          }
+        },
+        "scope": "Includes the Android access/layout and localized auth failure source. The later no-transform header and font-only correction have separate hosting/render proof. AndroidRelease job was pending at receipt creation; no wholeworkflowpass claim."
       }
     },
     "publicWebHostingV96": {
-      "status": "PASS_HTTP_HOSTING_AND_WORKER_INTEGRITY_ONLY",
+      "status": "PASS_PUBLIC_HOSTING_AND_GUEST_ONBOARDING_ONLY",
       "url": "https://app.tryzoen.com",
-      "version": "13975cc7-93e5-47f6-9f89-c769f1bd0756",
+      "version": "4d56e30f-a989-4de4-be9b-60b70d03d430",
       "date": "2026-10-19",
       "hostingPathsPassed": 10,
       "exactSigningWorkerIntegrity": "PASS",
-      "build": "Fresh production configuration including final accessibility/auth corrections and no-transform policy; separate from loopback QA.",
+      "build": "Fresh production export of d4a0590d, including canonical Web Excalidraw and measured Web miniapp header inset. Separate from loopback QA.",
       "documentation": "infra/cloudflare/README.md",
       "limits": "Encrypted journeys were not run against the public domain. Production relay remains unavailable; public encrypted sync and provider OAuth unaccepted. Provider origins, separateOAuthWorker and otherhostnames unchanged.",
-      "receipt": "/private/tmp/zoen-app-domain-v96/live-hosting-final.json",
+      "receipt": "/private/tmp/zoen-app-domain-v96/release-07-public/acceptance.json",
       "priorGuestBoot": {
         "receipt": "/private/tmp/zoen-web-v96/public-preview/acceptance.json",
         "scope": "Guest onboarding boot on prior deployment02, crossOriginIsolated=true, no JavaScript page errors. Provider challenge calls failed against unavailable configured relay; no provider login, WASM initialization or encrypted-sync acceptance."
@@ -691,13 +715,31 @@
         "receipt": "/private/tmp/zoen-app-domain-v96/migration-proxy-acceptance.json"
       },
       "currentGuestBoot": {
-        "receipt": "/private/tmp/zoen-app-domain-v96/final-web/guest-boot.json",
+        "receipts": [
+          {
+            "path": "/private/tmp/zoen-app-domain-v96/release-07-public/canonical/guest-boot.json",
+            "sha256": "afb5fe24b4ba60b183abb7b723b33bd4a02b520c4e1fa8596c83d4a0c0a3d06c",
+            "bytes": 3879
+          },
+          {
+            "path": "/private/tmp/zoen-app-domain-v96/release-07-public/workers-preview/guest-boot.json",
+            "sha256": "95ac5a41c92e7f0359c53233438d33463e168a8b69e7904fd0ee7266e5f55868",
+            "bytes": 4307
+          }
+        ],
         "browser": "155.0.8059.85",
+        "origins": ["https://app.tryzoen.com", "https://zoen-web.agenttironi.workers.dev"],
         "friendlyLocalizedErrorVisible": true,
         "unhandledPageErrors": 0,
         "unrequestedAnalyticsScript": false,
-        "scope": "Own empty-profile guest onboarding and popup-safe sign-in on canonical domain; provider preparation failed against unavailable configured relay. No provider confirmation, account/device linking, WASM initialization or encrypted sync.",
-        "retryFont": "system-ui"
+        "rootIsolated": true,
+        "signInIsolated": false,
+        "retryFont": "system-ui",
+        "providerState": {
+          "apple": "unavailable",
+          "google": "unavailable"
+        },
+        "scope": "Public release07 hosting + empty-profile guest onboarding on canonical and workers.dev origins only. No provider login/account/linking, successful WASM initialization, authenticated sync, or whole-platform acceptance."
       },
       "localHeaderChecks": {
         "pagesPaths": 9,
@@ -706,7 +748,26 @@
           "/private/tmp/zoen-app-domain-v96/local-header-check-final.log",
           "/private/tmp/zoen-app-domain-v96/local-workers-hosting.log"
         ]
-      }
+      },
+      "priorRelease06": {
+        "version": "13975cc7-93e5-47f6-9f89-c769f1bd0756",
+        "receipt": "/private/tmp/zoen-app-domain-v96/live-hosting-final.json",
+        "build": "Fresh production configuration including final accessibility/auth corrections and no-transform policy; separate from loopback QA.",
+        "currentGuestBoot": {
+          "receipt": "/private/tmp/zoen-app-domain-v96/final-web/guest-boot.json",
+          "browser": "155.0.8059.85",
+          "friendlyLocalizedErrorVisible": true,
+          "unhandledPageErrors": 0,
+          "unrequestedAnalyticsScript": false,
+          "scope": "Own empty-profile guest onboarding and popup-safe sign-in on canonical domain; provider preparation failed against unavailable configured relay. No provider confirmation, account/device linking, WASM initialization or encrypted sync.",
+          "retryFont": "system-ui"
+        }
+      },
+      "sourceCommit": "d4a0590d68b33aa9d5a13039af26c9bcd77ede3c",
+      "receiptSha256": "306b367117f5e39a8bc0ac05abfb1a692cf88abd4e243ad2a6df8c257aa9541b",
+      "workerIntegrity": "sha384-dYc1Ds6ChZA3cp5LAy6/3BNbEuwGze2+MlxwJotYmJoXyigQWBHsMy9h5GHmbjwN",
+      "wasmBytes": 25876496,
+      "artifactManifestSha256": "fb32ad206989bb24e8842a56a26c0d7d6ea2ccd13647010ccbffde86b93607bc"
     },
     "androidV96": {
       "status": "PASS_BOUNDED_API35_DEBUG_LINK_HISTORY_PAGE_HEADERS_AND_ERASURE",
@@ -750,7 +811,18 @@
         "Cancel erasure retains account/history; confirmed UI erasure clears account, vault keys, durable journal and actual SDK image cache",
         "Earlier actual process restart remains signed out; canonical peer retains earlier history",
         "Second confirmed erasure replay on fresh current JavaScript returns onboarding with empty account/conversations and no pending erase"
-      ]
+      ],
+      "releaseShrinker": {
+        "sourceCommit": "db60c33e",
+        "receipt": "/private/tmp/zoen-android-v96/r8-consumer-check/actual-uniffi-final.json",
+        "passed": true,
+        "r8": "9.2.14",
+        "jna": "5.18.1",
+        "minApi": 28,
+        "actualCompiledClasses": 84,
+        "fullApkOrRuntimeAcceptance": false,
+        "scope": "Real DEX optimized/obfuscated JNA/UniFFI probe; native names/layout/annotations/callbacks retained and unused control removed. Full Release/JVM build and runtime remain independent."
+      }
     },
     "cloudflareAdmissionFoundationV96": {
       "status": "PASS_SHARED_RUST_NATIVE_AND_LOCAL_WORKERD_FOUNDATION_ONLY",
@@ -832,7 +904,128 @@
         "forcedRemoteDoRestartClaim": false,
         "scope": "Deployed private closed Group via authenticated remote service binding; one fresh synthetic Space and a second preview client session. No public authentication/sync, invite/clock overrides, encrypted groups, or forced remote Durable Object restart acceptance."
       },
-      "limits": "Private trusted-service closed Group only; no public protocol/auth, global invite resolver, MLS/holds/pruning or encrypted sync"
+      "limits": "Private trusted-service closed Group only; no public protocol/auth, global invite resolver, MLS/holds/pruning or encrypted sync",
+      "ci": {
+        "run": 39201639333,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39201639333",
+        "testedMergeCommit": "d126484348aded89d131b018933545dd858374c2",
+        "head": "db60c33efb998bde7f8b455ac8f9712c9747589f",
+        "artifactId": 12164510542,
+        "artifactName": "cloudflare-closed-evidence",
+        "passed": true,
+        "nativeSteps": 17,
+        "negativeCases": 4,
+        "workerdCases": 5,
+        "sharedStorageCases": 4,
+        "sourceDirty": false,
+        "index": "/private/tmp/zoen-cloudflare-web-v96/ci-db60-evidence/index.json"
+      }
+    },
+    "webDrawingsV97": {
+      "status": "PASS_LOCAL_RELEASE_EN_PT_22_BOUNDED_SCOPE",
+      "documentation": "docs/dev/expo-web-acceptance.md",
+      "adapterCommit": "10329c8c",
+      "runnerCommit": "fc4feece",
+      "sharedSceneCommit": "ac7f6cb7",
+      "testedHead": "46128a6506d13eaf93407630564f50ea73258711",
+      "headerInsetCommit": "d4a0590d",
+      "headerInsetSourceSha256": "975c69d7644c377701071a590365ec16252b66c51aefc33c180143305c77e2a1",
+      "receipt": "/private/tmp/zoen-web-v96/drawing-release-22/acceptance.json",
+      "receiptSha256": "6cd706271bb594da8b659214f332b211bc872fb5499c22a6f3a70b180500545c",
+      "frozenSources": 16,
+      "sourceDrift": [],
+      "checks": {
+        "sharedLibraryTests": 17,
+        "nativeDocumentRegressions": 16,
+        "webCoreTests": 65,
+        "drawingRegressions": 8,
+        "clientTests": 795,
+        "typescriptOxlintOxfmt": "passed",
+        "strictClippy": "passed",
+        "locales": [
+          {
+            "locale": "en-US",
+            "passed": true,
+            "checkpoints": 22,
+            "browserErrors": [],
+            "drawing": {
+              "name": "cold-canonical-drawing-reload-matches-peer-bytes-and-retains-original-version",
+              "bytes": 1278,
+              "sha256": "202452e58d85146f53b84e13c720d6e0bb1b23a6860df20c67dfe4b3674811c7",
+              "version": 4
+            },
+            "receipt": "/private/tmp/zoen-web-v96/drawing-release-22/polished-attempt01/evidence/en-US/acceptance.json"
+          },
+          {
+            "locale": "pt-BR",
+            "passed": true,
+            "checkpoints": 22,
+            "browserErrors": [],
+            "drawing": {
+              "name": "cold-canonical-drawing-reload-matches-peer-bytes-and-retains-original-version",
+              "bytes": 1277,
+              "sha256": "ca019786d0239d09b48c467f6605c1923891d3f0c16f642a0ad42a3fb53854ca",
+              "version": 4
+            },
+            "receipt": "/private/tmp/zoen-web-v96/drawing-release-22/polished-attempt01/evidence/pt-BR/acceptance.json"
+          }
+        ]
+      },
+      "artifact": {
+        "directory": "/private/tmp/zoen-web-v96/drawing-release-22/qa-dist-polished",
+        "manifestReceipt": {
+          "path": "/private/tmp/zoen-web-v96/drawing-release-22/qa-artifact-polished.json",
+          "sha256": "d9d6d181f2f80e151b5fd5db7ea95695e0717ae4ad0224c24ea793d3f73f4240",
+          "bytes": 18399
+        },
+        "manifestSha256": "745309d8ee986060b90b0c59df391fb2816d8e26a0e52d267bfacc0ff3db6f4d",
+        "workerIntegrity": "sha384-dYc1Ds6ChZA3cp5LAy6/3BNbEuwGze2+MlxwJotYmJoXyigQWBHsMy9h5GHmbjwN",
+        "wasmBytes": 25876496,
+        "cloudflareAssetCapBytes": 26214400,
+        "assetHeadroomBytes": 337904,
+        "sameCoreAsBeforeInset": true
+      },
+      "scope": "Controlled loopback release with fresh linked accounts, actual canvas rectangle/text, exact guest/native-peer bytes, cold reload and original encrypted version retained. Header placement visually corrected. No public provider or encrypted-sync acceptance; image import/broader collaborative/fault paths remain open."
+    },
+    "cloudflareDirectoryV97": {
+      "status": "PASS_PRIVATE_LOCAL_DIFFERENTIAL_AND_DEPLOYMENT_ONLY",
+      "sourceCommit": "46128a65",
+      "documentation": "infra/cloudflare/relay-state/DIRECTORY.md",
+      "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-acceptance.json",
+      "receiptSha256": "1ac38254fee308706603f7cc09571c75d6bdc6f4d1cb3181539ff2a2c12a894e",
+      "frozenSources": 16,
+      "checks": {
+        "sharedRustTests": 40,
+        "directoryRustTests": 11,
+        "nativePostgresSteps": 33,
+        "workerdCases": 9,
+        "strictNativeAndOracleClippy": true,
+        "strictAdmissionAllTargetClippy": true,
+        "privateDryRun": true,
+        "ownedPgStoppedAndRemoved": true
+      },
+      "deployment": {
+        "worker": "zoen-relay-directory",
+        "version": "759ffee3-0ef9-4ff5-a53b-1c971a3e2197",
+        "sourceCommit": "46128a6506d13eaf93407630564f50ea73258711",
+        "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-deployment-acceptance.json",
+        "receiptSha256": "ccf3f1d6b54701e69962b62e9a6b0ef14fd5709835628c3977dbe68ca554314c",
+        "publicRoutes": [],
+        "workersDev": false,
+        "previewUrls": false,
+        "wasmBytes": 1167482,
+        "wasmSha256": "6a718562c996b2fba75cf11918fa6fb0abadd00223a6f67f814401ece83233b7",
+        "remoteDirectoryJourneyRun": false
+      },
+      "scope": "Private single-cell Person/device directory only. Native PostgreSQL policy versus shared Rust/WASM and SQLite transactions; no public socket/auth provider, delivery fence, recovery, agent registration or MLS key-package claims.",
+      "remainingGates": [
+        "public sockets and final durable send fence",
+        "provider proof/JWT unique binding",
+        "backup/recovery authorization and enrollment",
+        "agent ownership/directory state",
+        "MLS key-package claims across identities and revoke cleanup",
+        "Space/directory integration and public encrypted protocol"
+      ]
     }
   },
   "knownParityGaps": [
@@ -841,7 +1034,7 @@
     "v94/v95 native Page input foundations are not integrated into a signed editor recovery journey; Plan Apply remains closed and external producer/bridge candidates are not installed.",
     "iPhone evidence is bounded: undelivered Quick Look edits, conflict/MIME recovery UI, multi-capture faults, backup/restore, broader accessibility/performance and native failure paths remain open.",
     "MCP observations across v89/v90/v91/v92 do not certify all features/providers. Management back-drag, broader accessibility/reduced motion and physical-device journeys remain open; native Back buttons are accepted.",
-    "Web canonical Excalidraw document operations, rich file captions/replies/threads/retry metadata and cold-start offline recovery remain incomplete.",
+    "Web canonical drawing operations and actual canvas/reload/peer bytes are accepted locally. Image import, broader collaborative/fault paths, rich file captions/replies/threads/retry metadata and cold-start offline recovery still need acceptance.",
     "Web onboarding axe found no violations but contrast review remains incomplete; whole-app keyboard/screen-reader, Safari/WebKit, camera/microphone and performance are unaccepted.",
     "Public hosting proves HTTP routing/isolation/assets only; unavailable production relay blocks public encrypted sync/provider acceptance.",
     "Android acceptance is bounded to API35 arm64 Debug and synthetic linking/history/Page/erasure. Release runtime/performance, API28/physical devices and remaining media/voice/profile/assistant features remain unaccepted.",
