@@ -621,7 +621,17 @@
         "checkpointsEach": 19,
         "locales": ["en-US", "pt-BR"],
         "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-e2b-receipts.json",
-        "scope": "Includes the decorative sky attribute correction. Separate from the later 762ceb51 Android layout/status and auth error copy; no claim that all jobs of this workflow passed."
+        "scope": "Includes the decorative sky attribute correction. Separate from the later 762ceb51 Android layout/status and auth error copy; no claim that all jobs of this workflow passed.",
+        "artifact": {
+          "manifestSHA256": "44abaf303e2e6890431895ba275ce99e4965cbd65b5d6c03de00bf3e848270c7",
+          "workerIntegrity": "sha384-L+9+jxotxheYp9vbLHFT/KfMrU8ylmtaxzcR1mU6cbJiA47p+Ozdyg03C3VnJx2S",
+          "wasm": {
+            "path": "core/zoen_web_core_bg.wasm",
+            "bytes": 25721313,
+            "sha256": "95c666cd9451d48fcc40b2fe251dc1087973b5edb36f62536c813e8b25c44701"
+          }
+        },
+        "browser": "155.0.8059.39"
       }
     },
     "publicWebHostingV96": {
@@ -683,6 +693,36 @@
         "Earlier actual process restart remains signed out; canonical peer retains earlier history",
         "Second confirmed erasure replay on fresh current JavaScript returns onboarding with empty account/conversations and no pending erase"
       ]
+    },
+    "cloudflareAdmissionFoundationV96": {
+      "status": "PASS_SHARED_RUST_NATIVE_AND_LOCAL_WORKERD_FOUNDATION_ONLY",
+      "sourceCommit": "db3f3885",
+      "documentation": "infra/cloudflare/admission.md",
+      "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/foundation-acceptance.json",
+      "receiptSha256": "2f3f5733350e2475e78540c7561de198afd048db0282083b7c413327332ddbbc",
+      "frozenSourceInputs": 14,
+      "nativeRuleTests": 9,
+      "portableBoundaryTests": 11,
+      "nativeFdbContractScenarios": 11,
+      "strictClippyAndFormatting": "PASS",
+      "lockedCargoResolution": "PASS",
+      "wasm": {
+        "bytes": 885129,
+        "sha256": "24c629124795efc9c7ea8f2382259a5370a18163fbf6a303972b71106cf6bdc6"
+      },
+      "localRuntime": {
+        "node": "PASS",
+        "workerd": "PASS",
+        "fixturesEach": 2,
+        "checks": [
+          "exact native canonical protobuf bytes and effects",
+          "verified authenticated lookup keys",
+          "invalid signature rejection",
+          "genesis and UInt64 above2^53"
+        ],
+        "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/complete-run/summary.json"
+      },
+      "limits": "Extraction and portable validation foundation only. No deployed admission adapter, directory/revocation/auth, complete MLS projection, WebSockets or public encrypted synchronization."
     }
   },
   "knownParityGaps": [

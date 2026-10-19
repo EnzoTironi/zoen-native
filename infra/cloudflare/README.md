@@ -61,8 +61,9 @@ Object, local workerd tests and actual remote synthetic storage check. It preser
 the Rust log's append, dedupe, head and atomic opaque-projection storage contract.
 It exposes no public sync or authentication endpoint.
 
-Shared Rust/WASM admission extraction is being validated; it is not yet accepted
-or deployed and is not connected to the storage Worker. The remaining adapter must
+[Shared Rust/WASM admission](admission.md) passed 20 policy/boundary tests,
+the eleven-scenario native FDB contract and actual Node/workerd equivalence checks.
+It is not deployed or connected to the storage Worker. The remaining adapter must
 preserve the canonical protocol, directory/identity/revocation transactions and
 WebSocket behavior. Encrypted media storage in private R2 also remains pending its
 separate activation/terms confirmation. Existing OAuth Workers, DNS and R2
