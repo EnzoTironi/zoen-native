@@ -54,6 +54,8 @@ python3 infra/local/manage.py status
 
 This restarts the first relay with its existing native NATS bus and adds the identical second relay on `127.0.0.1:8881`. Both use the same PostgreSQL/FDB/S3 authority. The bus and its volume are private and included in cold backups. This is useful for cross-process delivery and fault tests. A single-machine PG/FDB/storage stack is not a high-availability deployment or evidence of production capacity.
 
+For one canonical local URL across these two processes, use the optional [standard pinned HAProxy frontdoor](FRONTDOOR.md). Enabling it starts only the gateway, preserves the six existing services, and defaults to `http://127.0.0.1:8882`.
+
 ## Apple and Google sign-in
 
 The local server initially has no provider bindings. The canonical public client IDs are in `apps/zoen/config/identity-providers.json`, and the Apple bundle audience is in `apps/zoen/app.json`. To exercise real provider tokens, configure the corresponding `ZOEN_AUTH_*_AUDIENCE` / `ZOEN_AUTH_*_PRESENTER` fields in the instance's private `relay.env`, following `infra/fly/relay.toml`. Set exact browser origins in `ZOEN_AUTH_WEB_ORIGINS`, for example `http://localhost:8097,http://127.0.0.1:8097`; HTTP is allowed only for loopback. Recreate the owned relay through `up` after changing its environment. Google must also authorize the selected browser origin in its own console. Apple Web requires its separate Services ID/domain setup. No provider secret, fake token, JWKS override or permissive auth option is added by this environment. Real Apple/Google confirmation remains a separate pending UI/provider test until performed.
