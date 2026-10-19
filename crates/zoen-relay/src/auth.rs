@@ -16,20 +16,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(rename_all = "lowercase")]
-pub enum Provider {
-    Apple,
-    Google,
-}
-impl Provider {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Apple => "apple",
-            Self::Google => "google",
-        }
-    }
-}
+pub use roda_relay_admission::auth::Provider;
 #[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub enum Client {

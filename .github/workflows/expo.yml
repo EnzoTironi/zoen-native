@@ -22,6 +22,7 @@ on:
         'scripts/expo-web-*.mjs',
         'scripts/expo-web-tests/**',
         'scripts/verify-cloudflare-admission.mjs',
+        'scripts/verify-cloudflare-provider.mjs',
         'scripts/verify-cloudflare-closed.mjs',
         'scripts/verify-cloudflare-directory.mjs',
         'scripts/build-cloudflare-closed.mjs',
@@ -50,6 +51,7 @@ on:
         'scripts/expo-web-*.mjs',
         'scripts/expo-web-tests/**',
         'scripts/verify-cloudflare-admission.mjs',
+        'scripts/verify-cloudflare-provider.mjs',
         'scripts/verify-cloudflare-closed.mjs',
         'scripts/verify-cloudflare-directory.mjs',
         'scripts/build-cloudflare-closed.mjs',
@@ -83,7 +85,7 @@ jobs:
           cache-dependency-path: infra/cloudflare/package-lock.json
       - name: Portable Rust and WASM toolchains
         run: |
-          rustup toolchain install 1.99.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
+          rustup toolchain install 1.99.1 --profile minimal --component clippy,rustfmt,llvm-tools-preview --target wasm32-unknown-unknown
           rustup default 1.99.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
@@ -100,12 +102,16 @@ jobs:
       - name: Compare native, WASM and real workerd receipts
         # Public deterministic fixtures only; no account credentials or deployment.
         run: node scripts/verify-cloudflare-admission.mjs --out-dir .dev/cloudflare-admission
+      - name: Verify shared Apple and Google assertion policy in workerd
+        run: node scripts/verify-cloudflare-provider.mjs --out-dir .dev/cloudflare-provider
       - name: Retain portable admission evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: cloudflare-admission-evidence
-          path: .dev/cloudflare-admission
+          path: |
+            .dev/cloudflare-admission
+            .dev/cloudflare-provider
           if-no-files-found: warn
           retention-days: 7
 

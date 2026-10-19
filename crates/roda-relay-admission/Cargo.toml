@@ -17,9 +17,11 @@ roda-mls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 base64 = "0.22"
+ring = "0.17"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.129"
+ring = { version = "0.17", features = ["wasm32_unknown_unknown_js"] }
 openmls = { version = "0.9.1", features = ["js"] }
 getrandom = { workspace = true, features = ["js"] }
 getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }

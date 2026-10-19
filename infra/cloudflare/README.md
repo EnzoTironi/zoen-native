@@ -1,10 +1,14 @@
 # Cloudflare deployment
 
-Node 26 and the pinned shared tooling are required:
+Node 26, Rust 1.99.1 and the pinned shared tooling are required:
 
 ```sh
 npm ci --prefix infra/cloudflare
+rustup component add llvm-tools-preview
 ```
+
+The portable backend uses LLVM’s archiver for WASM C objects; an existing
+`AR_wasm32_unknown_unknown` override is retained. Native builds keep their host tools.
 
 ## Web application
 

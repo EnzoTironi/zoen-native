@@ -3,10 +3,11 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -42,12 +43,12 @@ const checks = [
 await mkdir(wasmDirectory, { recursive: true });
 console.log(`Admission smoke output: ${output}`);
 
-function run(command, commandArgs, capture = false) {
+function run(command, commandArgs, capture = false, environment = process.env) {
   console.log(`Running ${command} ${commandArgs.join(" ")}`);
   return new Promise((accept, reject) => {
     const child = spawn(command, commandArgs, {
       cwd: root,
-      env: process.env,
+      env: environment,
       stdio: ["ignore", capture ? "pipe" : "inherit", "inherit"],
     });
     const chunks = [];
@@ -58,6 +59,28 @@ function run(command, commandArgs, capture = false) {
       else accept(capture ? Buffer.concat(chunks).toString("utf8") : undefined);
     });
   });
+}
+
+async function wasmEnvironment() {
+  if (process.env.AR_wasm32_unknown_unknown || process.env["AR_wasm32-unknown-unknown"])
+    return process.env;
+  // Host Apple/GNU ar may accept WASM objects without indexing their symbols.
+  // Prefer LLVM's archiver for ring's C objects, without changing native builds.
+  const suffix = process.platform === "win32" ? ".exe" : "";
+  const candidates = (process.env.PATH ?? "").split(delimiter)
+    .filter(Boolean).map(directory => join(directory, `llvm-ar${suffix}`));
+  const sysroot = execFileSync("rustc", ["--print", "sysroot"], { encoding: "utf8" }).trim();
+  const host = /^host: (.+)$/m.exec(execFileSync("rustc", ["-vV"], { encoding: "utf8" }))?.[1];
+  if (host) candidates.push(join(sysroot, "lib", "rustlib", host, "bin", `llvm-ar${suffix}`));
+  for (const path of candidates) {
+    try {
+      await access(path, constants.X_OK);
+      return { ...process.env, AR_wasm32_unknown_unknown: path };
+    } catch (error) {
+      if (!["ENOENT", "EACCES", "ENOTDIR"].includes(error.code)) throw error;
+    }
+  }
+  throw new Error("WASM RSA requires llvm-ar. Install rustup component add llvm-tools-preview, or set AR_wasm32_unknown_unknown to LLVM ar.");
 }
 
 async function save(name, value) {
@@ -140,7 +163,7 @@ try {
     await writeFile(fixturesPath, generated);
     await run("cargo", [
       "build", "--locked", "--release", "-p", "roda-relay-admission", "--target", "wasm32-unknown-unknown",
-    ]);
+    ], false, await wasmEnvironment());
     const target = process.env.CARGO_TARGET_DIR
       ? resolve(root, process.env.CARGO_TARGET_DIR)
       : join(root, "target");
