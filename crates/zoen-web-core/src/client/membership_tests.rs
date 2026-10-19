@@ -1,10 +1,10 @@
 use super::super::tests::{account, sequence, HostSigner};
 use super::*;
-use roda_log::{
+use event_log::{
     profile::{AgreementKey, ProfileFields, ProfileKey},
     Signer as NativeSigner,
 };
-use roda_mls::Device;
+use mls::Device;
 
 fn published(update: &Update) -> Vec<Envelope> {
     update
@@ -78,14 +78,14 @@ fn fixture() -> Fixture {
         .to_bytes(),
     );
     let mut sqlite = rusqlite::Connection::open_in_memory().unwrap();
-    roda_mls::migrate(&mut sqlite).unwrap();
+    mls::migrate(&mut sqlite).unwrap();
     let package = {
         let native = Device::new(
             &sqlite,
             [107; 32],
             &bob.id(),
             bob_device.secret(),
-            &bob.sign(&roda_log::device_cert_message(&bob_device.id())),
+            &bob.sign(&event_log::device_cert_message(&bob_device.id())),
         )
         .unwrap();
         native.key_packages(1, false).unwrap().pop().unwrap()
@@ -95,7 +95,7 @@ fn fixture() -> Fixture {
         bob.id(),
         Identity {
             id: bob.id(),
-            kind: roda_types::IdentityKind::Person,
+            kind: types::IdentityKind::Person,
             name: String::new(),
             handle: "bob".into(),
             tint_hex: "#4F7CFF".into(),
@@ -214,14 +214,14 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
         .unwrap()
         .envelope()
         .unwrap();
-    let recovery = roda_log::recovery::RecoveryRef::parse(commit.recovery().unwrap()).unwrap();
+    let recovery = event_log::recovery::RecoveryRef::parse(commit.recovery().unwrap()).unwrap();
     let blob = f.client.saved.local_chunks.get(&recovery.blob).unwrap();
     assert_eq!(hex::encode(Sha256::digest(blob)), recovery.blob);
     assert_eq!(
         f.client.pending_document_uploads(),
         vec![recovery.blob.clone()]
     );
-    let group_info = roda_log::recovery::open(
+    let group_info = event_log::recovery::open(
         &f.space,
         recovery.epoch,
         &f.account.device,
@@ -231,8 +231,7 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
     )
     .unwrap();
     let summary =
-        roda_mls::recovery::verify_group_info(&f.space, &group_info, Some(&f.account.device))
-            .unwrap();
+        mls::recovery::verify_group_info(&f.space, &group_info, Some(&f.account.device)).unwrap();
     assert_eq!(
         summary.identities,
         BTreeSet::from([f.account.identity.clone(), f.bob.id()])
@@ -270,7 +269,7 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
             &f.bob.id(),
             f.bob_device.secret(),
             &f.bob
-                .sign(&roda_log::device_cert_message(&f.bob_device.id())),
+                .sign(&event_log::device_cert_message(&f.bob_device.id())),
         )
         .unwrap();
         assert_eq!(native.group_state(&f.space).unwrap(), GroupState::Missing);
@@ -297,7 +296,7 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
         &f.bob.id(),
         f.bob_device.secret(),
         &f.bob
-            .sign(&roda_log::device_cert_message(&f.bob_device.id())),
+            .sign(&event_log::device_cert_message(&f.bob_device.id())),
     )
     .unwrap();
     let sender = Leaf {
@@ -318,7 +317,7 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
     };
     assert_eq!(from, sender);
     let inner = InnerEvent::decode(&plaintext).unwrap();
-    let event = roda_log::event_from_content(
+    let event = event_log::event_from_content(
         inner.content,
         inner.sig,
         Some(f.account.cert.clone()),
@@ -327,7 +326,7 @@ fn browser_created_membership_claim_recovery_barrier_and_welcome_join_native_sql
         String::new(),
     )
     .unwrap();
-    roda_log::verify_author(&event).unwrap();
+    event_log::verify_author(&event).unwrap();
     assert!(
         matches!(event.body, EventBody::MessagePosted { text, .. } if text == "Criado na Web, aberto no iOS 🌱")
     );

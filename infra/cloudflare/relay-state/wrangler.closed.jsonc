@@ -7,6 +7,13 @@
   "workers_dev": false,
   "preview_urls": false,
   "routes": [],
+  "services": [
+    {
+      "binding": "RELAY_DIRECTORY",
+      "service": "zoen-relay-directory",
+      "entrypoint": "RelayDispatch"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {

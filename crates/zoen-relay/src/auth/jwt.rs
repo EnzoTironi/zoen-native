@@ -1,6 +1,6 @@
 use super::{Challenge, Provider};
-pub(super) use roda_relay_admission::auth::Verified;
-use roda_relay_admission::auth::{key_id, key_set, verify_with_key, Jwk, VerificationContext};
+pub(super) use relay_admission::auth::Verified;
+use relay_admission::auth::{key_id, key_set, verify_with_key, Jwk, VerificationContext};
 use std::{
     collections::BTreeMap,
     sync::Arc,
@@ -129,7 +129,7 @@ mod tests {
     }
     fn key() -> Jwk {
         serde_json::from_str(include_str!(
-            "../../../roda-relay-admission/src/auth/fixtures/rsa-test-only.jwk.json"
+            "../../../relay-admission/src/auth/fixtures/rsa-test-only.jwk.json"
         ))
         .unwrap()
     }
@@ -139,7 +139,7 @@ mod tests {
     fn signed(header: Value, claims: Value) -> String {
         // Disposable synthetic key: never configured with either real provider.
         let key = RsaKeyPair::from_pkcs8(include_bytes!(
-            "../../../roda-relay-admission/src/auth/fixtures/rsa-test-only.pk8"
+            "../../../relay-admission/src/auth/fixtures/rsa-test-only.pk8"
         ))
         .unwrap();
         let input = format!(

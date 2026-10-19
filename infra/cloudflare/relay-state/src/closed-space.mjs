@@ -8,9 +8,15 @@ import {
   closedPruneEntry,
   closedPrunePlan,
   closedPruneState,
+  closedVisibility,
+  closedCoMembers,
+  closedReadPlan,
+  relayPublicationMetadata,
+  closedRelayPreview,
 } from "../generated/wasm/admission.js";
 import wasmModule from "../generated/wasm/admission_bg.wasm";
 import { SpaceStorage } from "./space-storage.mjs";
+import { RelayPublications } from "./relay-publications.mjs";
 
 initSync({ module: wasmModule });
 
@@ -58,9 +64,19 @@ export function verifiedPublication(input) {
   return { session, verified: invoke(verifyPublish, input.frame, session) };
 }
 
+// Only the local test module imports this function; no production WorkerEntrypoint
+// or Durable Object RPC method exposes it. It cannot bypass composed-Space mode.
+const fixturePublications = new WeakMap();
+export function fixturePublication(object, input) {
+  const publish = fixturePublications.get(object);
+  if (!publish) throw internal("fixture Space instance unavailable");
+  return publish(input);
+}
+
 /** Private, trusted-service-only Direct/Group admission and MLS adapter. No raw append RPC exists. */
 export class ClosedSpace extends DurableObject {
   #store;
+  #relay;
 
   constructor(ctx, env) {
     super(ctx, env);
@@ -68,6 +84,32 @@ export class ClosedSpace extends DurableObject {
     ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS closed_invites (code_hash TEXT PRIMARY KEY, bytes BLOB NOT NULL)",
     );
+    this.#relay = new RelayPublications(ctx, {
+      nowMs: () => this._nowMs(),
+      dependencies: () => {
+        if (
+          !this.env.RELAY_DIRECTORY ||
+          typeof this.env.RELAY_DIRECTORY.relayDispatch !== "function"
+        )
+          throw internal("Directory relay callback binding is unavailable");
+      },
+      verify: (input) =>
+        invoke(relayPublicationMetadata, input.frame, JSON.stringify(input.session)),
+      preview: (input) => this.#previewRelay(input),
+      publish: (input) => this.#publishInTransaction(input),
+      snapshot: (space) => this.#store.snapshot(space, { bind: false }),
+      event: (space, seq) => this.#store.eventAt(space, seq),
+      dispatch: (packet) => this.env.RELAY_DIRECTORY.relayDispatch(packet),
+    });
+    fixturePublications.set(this, (input) => {
+      const { verified } = verifiedPublication(input);
+      const outcome = this.ctx.storage.transactionSync(() => {
+        this.#relay.assertFixtureOnly(verified.space_id);
+        return this.#publishInTransaction(input);
+      });
+      if (outcome.error) throw outcome.error;
+      return outcome.result;
+    });
   }
 
   // Read-only production clock; local fixture subclasses override it without a production setter.
@@ -117,80 +159,113 @@ export class ClosedSpace extends DurableObject {
     this.#prune(projection, plan);
   }
 
-  publish(input) {
-    const { session, verified } = verifiedPublication(input);
-    const outcome = this.ctx.storage.transactionSync(() => {
-      const original = this.#store.receipt(verified.author, verified.client_id);
-      const snapshot = this.#store.snapshot(verified.space_id, { bind: false });
-      const projection = decode(snapshot.admissionState);
-      if (original) {
-        const result = invoke(
-          closedReplay,
-          input.frame,
-          session,
-          JSON.stringify(projection),
-          original.bytes,
-        );
-        this.#compact(projection);
-        return { result };
-      }
+  #publicationContext(input, verified, projection) {
+    const lookup = verified.lookup;
+    if (input.target != null) {
+      if (
+        input.target.identity !== lookup.target_identity ||
+        typeof input.target.registered !== "boolean"
+      )
+        throw internal("Directory fact does not match the verified target");
+    }
+    return {
+      session: input.session,
+      projection,
+      space_id: verified.space_id,
+      history: this.#store.hashes([lookup.seen_seq, lookup.upto_seq].filter((seq) => seq !== null)),
+      target: input.target ?? null,
+      invite: this.#invite(lookup.invite_hash),
+      now_ms: this._nowMs(),
+      prune_ceiling_secs: this.env.ZOEN_PRUNE_CEILING_SECS ?? null,
+    };
+  }
 
-      const lookup = verified.lookup;
-      if (input.target != null) {
-        if (
-          input.target.identity !== lookup.target_identity ||
-          typeof input.target.registered !== "boolean"
-        )
-          throw internal("Directory fact does not match the verified target");
-      }
-      const context = {
-        session: input.session,
-        projection,
-        space_id: verified.space_id,
-        history: this.#store.hashes(
-          [lookup.seen_seq, lookup.upto_seq].filter((seq) => seq !== null),
-        ),
-        target: input.target ?? null,
-        invite: this.#invite(lookup.invite_hash),
-        now_ms: this._nowMs(),
-        prune_ceiling_secs: this.env.ZOEN_PRUNE_CEILING_SECS ?? null,
-      };
-      let accepted;
+  #previewRelay(input) {
+    const { verified } = verifiedPublication(input);
+    const original = this.#store.receipt(verified.author, verified.client_id);
+    const snapshot = this.#store.snapshot(verified.space_id, { bind: false });
+    const context = this.#publicationContext(input, verified, decode(snapshot.admissionState));
+    try {
+      return invoke(
+        closedRelayPreview,
+        input.frame,
+        JSON.stringify(context),
+        original?.bytes ?? new Uint8Array(),
+      );
+    } catch (error) {
+      let detail;
       try {
-        accepted = invoke(closedPublish, input.frame, JSON.stringify(context));
-      } catch (error) {
-        let detail;
-        try {
-          detail = JSON.parse(error.message);
-        } catch {}
-        if (detail?.permanent !== true) throw error;
-        // Native compacts safe old ciphertext even when this valid publication
-        // is refused. Commit compaction before propagating its original refusal.
-        this.#compact(projection);
-        return { error };
-      }
-      const event = accepted.event;
-      const appended = this.#store.appendAdmitted({
-        spaceId: verified.space_id,
-        author: verified.author,
-        clientId: verified.client_id,
-        expectedHead: snapshot.head,
-        event: {
-          seq: event.seq,
-          prev: event.prev,
-          hash: event.hash,
-          bytes: Uint8Array.from(atob(event.bytes_base64), (char) => char.charCodeAt(0)),
-        },
-        admissionState: encode(accepted.projection),
-      });
-      if (accepted.kind !== "new" || appended.kind !== "new")
-        throw internal("Atomic append did not match Rust acceptance");
-      if (accepted.invite_update !== null) this.#saveInvite(accepted.invite_update);
-      accepted.projection = this.#prune(accepted.projection, accepted.prune);
-      return { result: accepted };
+        detail = JSON.parse(error.message);
+      } catch {}
+      if (detail?.permanent !== true) throw error;
+      // Like native append admission, a signed refusal can safely compact old
+      // ciphertext. Its rejection still creates no event or membership change.
+      this.#compact(context.projection);
+      return { error };
+    }
+  }
+
+  #publishInTransaction(input) {
+    const { session, verified } = verifiedPublication(input);
+    const original = this.#store.receipt(verified.author, verified.client_id);
+    const snapshot = this.#store.snapshot(verified.space_id, { bind: false });
+    const projection = decode(snapshot.admissionState);
+    if (original) {
+      const result = invoke(
+        closedReplay,
+        input.frame,
+        session,
+        JSON.stringify(projection),
+        original.bytes,
+      );
+      this.#compact(projection);
+      return { result };
+    }
+
+    const context = this.#publicationContext(input, verified, projection);
+    let accepted;
+    try {
+      accepted = invoke(closedPublish, input.frame, JSON.stringify(context));
+    } catch (error) {
+      let detail;
+      try {
+        detail = JSON.parse(error.message);
+      } catch {}
+      if (detail?.permanent !== true) throw error;
+      // Native compacts safe old ciphertext even when this valid publication
+      // is refused. Commit compaction before propagating its original refusal.
+      this.#compact(projection);
+      return { error };
+    }
+    const event = accepted.event;
+    const appended = this.#store.appendAdmitted({
+      spaceId: verified.space_id,
+      author: verified.author,
+      clientId: verified.client_id,
+      expectedHead: snapshot.head,
+      event: {
+        seq: event.seq,
+        prev: event.prev,
+        hash: event.hash,
+        bytes: Uint8Array.from(atob(event.bytes_base64), (char) => char.charCodeAt(0)),
+      },
+      admissionState: encode(accepted.projection),
     });
-    if (outcome.error) throw outcome.error;
-    return outcome.result;
+    if (accepted.kind !== "new" || appended.kind !== "new")
+      throw internal("Atomic append did not match Rust acceptance");
+    if (accepted.invite_update !== null) this.#saveInvite(accepted.invite_update);
+    accepted.projection = this.#prune(accepted.projection, accepted.prune);
+    return { result: accepted };
+  }
+
+  prepareRelayPublication(input) {
+    return this.#relay.prepare(input);
+  }
+  commitRelayPublication(input) {
+    return this.#relay.commit(input);
+  }
+  alarm() {
+    return this.#relay.alarm();
   }
 
   createInvite(input) {
@@ -228,5 +303,45 @@ export class ClosedSpace extends DurableObject {
 
   read(input) {
     return this.ctx.storage.transactionSync(() => this.#store.read(input, { bind: false }));
+  }
+
+  #readContext(input) {
+    const snapshot = this.#store.snapshot(input?.spaceId, { bind: false });
+    const projection = decode(snapshot.admissionState);
+    if (
+      snapshot.head?.seq !== projection?.head?.seq ||
+      snapshot.head?.hash !== projection?.head?.hash
+    )
+      throw internal("Space projection does not match its authoritative head");
+    return JSON.stringify({ space_id: input.spaceId, session: input.session, projection });
+  }
+
+  /** Private Directory-derived session only. This is not active-device auth. */
+  visibility(input) {
+    return this.ctx.storage.transactionSync(() =>
+      invoke(closedVisibility, this.#readContext(input)),
+    );
+  }
+
+  /** Current membership only; unknown Spaces are not bound by this read. */
+  coMembers(input) {
+    return this.ctx.storage.transactionSync(() => ({
+      members: invoke(closedCoMembers, this.#readContext(input)),
+    }));
+  }
+
+  readAuthorized(input) {
+    if (!Number.isSafeInteger(input?.limit) || input.limit < 1 || input.limit > 256)
+      throw internal("Invalid authorized Space read limit");
+    return this.ctx.storage.transactionSync(() => {
+      const plan = invoke(closedReadPlan, this.#readContext(input), input.from, input.limit);
+      const page = this.#store.readAuthorizedPage({
+        spaceId: input.spaceId,
+        from: plan.from,
+        through: plan.through,
+        limit: plan.limit,
+      });
+      return { ...page, through: plan.through, visibility: plan.visibility };
+    });
   }
 }

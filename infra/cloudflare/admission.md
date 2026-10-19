@@ -1,6 +1,6 @@
 # Shared relay admission
 
-`roda-relay-admission` contains the same Rust rules used by the native relay and
+`relay-admission` contains the same Rust rules used by the native relay and
 the portable Worker boundary. The extraction moves the existing policy and its
 nine tests; it does not implement a second policy in JavaScript. The native
 FoundationDB adapter re-exports the shared types and canonical invite-code hash.
@@ -34,8 +34,8 @@ Use Rust 1.99.1 with `wasm32-unknown-unknown`, Node 26 and
 
 ```sh
 npm ci --prefix infra/cloudflare
-cargo test --locked -p roda-relay-admission
-cargo clippy --locked -p roda-relay-admission --all-targets -- -D warnings
+cargo test --locked -p relay-admission
+cargo clippy --locked -p relay-admission --all-targets -- -D warnings
 CARGO_BUILD_JOBS=2 node scripts/verify-cloudflare-admission.mjs \
   --out-dir .dev/cloudflare-admission
 ```

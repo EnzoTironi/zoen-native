@@ -25,7 +25,7 @@ function runtime(production = false) {
   return new Miniflare(convertV4MiniflareOptions({
     modulesRoot: moduleRoot,
     modules: [production ? 'src/directory-index.mjs' : 'tests/directory-fixture.mjs',
-      'src/directory-state.mjs', 'src/provider-auth.mjs', 'src/media-blobs.mjs', 'src/blob-io.mjs', 'src/blob-quota.mjs', 'src/transfer-blobs.mjs', 'generated/wasm/admission.js']
+      'src/relay-entrypoint.mjs', 'src/relay-route.mjs', 'src/directory-state.mjs', 'src/relay-composition.mjs', 'src/provider-auth.mjs', 'src/media-blobs.mjs', 'src/blob-io.mjs', 'src/blob-quota.mjs', 'src/transfer-blobs.mjs', 'generated/wasm/admission.js']
       .map(path => ({ type: 'ESModule', path: join(moduleRoot, path) }))
       .concat({ type: 'CompiledWasm', path: join(moduleRoot, 'generated/wasm/admission_bg.wasm') }),
     compatibilityDate: '2026-10-18',

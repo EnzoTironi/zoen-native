@@ -222,9 +222,9 @@ async function runMediaMode() {
     "infra/cloudflare/relay-state/src/directory-state.mjs",
     "infra/cloudflare/relay-state/src/media-blobs.mjs",
     "infra/cloudflare/relay-state/src/provider-auth.mjs",
-    "crates/roda-relay-admission/src/blobs.rs",
-    "crates/roda-log/src/media.rs",
-    "crates/roda-proto/src/lib.rs",
+    "crates/relay-admission/src/blobs.rs",
+    "crates/event-log/src/media.rs",
+    "crates/protocol/src/lib.rs",
   ];
   const sources = [];
   let config;
@@ -259,8 +259,8 @@ async function runMediaMode() {
         include(dependency);
       }
       if (relative.endsWith("/transfer-blobs.mjs"))
-        include("crates/roda-relay-admission/src/transfer.rs");
-      if (relative.endsWith("/blob-quota.mjs")) include("crates/roda-relay-admission/src/gcra.rs");
+        include("crates/relay-admission/src/transfer.rs");
+      if (relative.endsWith("/blob-quota.mjs")) include("crates/relay-admission/src/gcra.rs");
     }
   }
   assert.equal(config.name, worker);
@@ -280,7 +280,7 @@ async function runMediaMode() {
     "scripts/verify-cloudflare-directory-remote.mjs",
     "scripts/cloudflare-directory-remote-preview.mjs",
     "infra/cloudflare/relay-state/tests/directory-remote-bridge.mjs",
-    "crates/roda-relay-admission/examples/directory-socket-client.rs",
+    "crates/relay-admission/examples/directory-socket-client.rs",
     "infra/cloudflare/package.json",
     "infra/cloudflare/package-lock.json",
   ])
@@ -641,7 +641,7 @@ else {
     "scripts/verify-cloudflare-directory-remote.mjs",
     "scripts/cloudflare-directory-remote-preview.mjs",
     "infra/cloudflare/relay-state/tests/directory-remote-bridge.mjs",
-    "crates/roda-relay-admission/examples/directory-socket-client.rs",
+    "crates/relay-admission/examples/directory-socket-client.rs",
     "infra/cloudflare/package.json",
     "infra/cloudflare/package-lock.json",
   ];
@@ -711,7 +711,7 @@ else {
     preview:
       "Ephemeral authenticated remote preview with fixed cell and fixed public synthetic identity/device/Pong. Direct Cloudflare-edge sockets; preview credentials remain in memory.",
     nativeClient:
-      "Separately build: cargo build --locked -p roda-relay-admission --example directory-socket-client. Supply --client-bin and --client-sha256. No Cargo in this runner.",
+      "Separately build: cargo build --locked -p relay-admission --example directory-socket-client. Supply --client-bin and --client-sha256. No Cargo in this runner.",
     checkpoints: [
       "private-preview-and-outer-http-refusal",
       "two-real-challenges-and-provisional-ready",

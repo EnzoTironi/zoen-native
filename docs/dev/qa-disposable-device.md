@@ -8,7 +8,7 @@ Start the existing local development relay, then run from the repository root:
 
 ```sh
 CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 \
-  cargo run -p roda-ffi --example qa-device -- \
+  cargo run -p client-core --example qa-device -- \
   --handle qa_ios_pair_1 --relay http://127.0.0.1:8787
 ```
 
@@ -54,7 +54,7 @@ For a browser-primary to native journey, the fixture can receive a link instead 
 creating an account:
 
 ```sh
-cargo run -p roda-ffi --example qa-device -- \
+cargo run -p client-core --example qa-device -- \
   --handle qa_receiver_1 --relay http://127.0.0.1:8790 \
   --mode linked --expected-identity <synthetic-source-public-identity>
 ```
@@ -71,7 +71,7 @@ canonical `receive_history` and `load_older` commands.
 With an owned local relay running, build the current fixture and WASM, then run:
 
 ```sh
-cargo build -p roda-ffi --example qa-device
+cargo build -p client-core --example qa-device
 node scripts/build-expo-web-core.mjs
 node scripts/qa-web-primary-native-history.mjs --relay http://127.0.0.1:8790
 ```

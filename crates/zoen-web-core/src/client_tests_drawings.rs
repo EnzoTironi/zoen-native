@@ -1,8 +1,8 @@
 use super::*;
-use roda_apps::excalidraw::{EMPTY, MIME, RESOURCE};
-use roda_types::{AppDoc, ItemContent, ItemKind};
+use miniapps::excalidraw::{EMPTY, MIME, RESOURCE};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use types::{AppDoc, ItemContent, ItemKind};
 
 fn scene(text: &str) -> String {
     format!(
@@ -82,7 +82,7 @@ fn canonical_drawing_install_save_reload_and_ciphertext_barrier_preserve_origina
         16,
     )
     .result;
-    let file: roda_types::FileDoc = serde_json::from_value(manifest["doc"].clone()).unwrap();
+    let file: types::FileDoc = serde_json::from_value(manifest["doc"].clone()).unwrap();
     assert_eq!(file.mime, MIME);
     let bytes = file
         .chunks

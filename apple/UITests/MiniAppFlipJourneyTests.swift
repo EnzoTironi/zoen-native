@@ -8,9 +8,9 @@ final class MiniAppFlipJourneyTests: XCTestCase {
     @MainActor
     func testHomeTileFlipsOpenAndBackIntoTheTile() {
         let app = XCUIApplication()
-        app.launchArguments = ["-RodaDemo", "YES", "-RodaShowcase", "YES", "-AppleLanguages", "(pt-BR)",
-                               "-RodaAppearance", "light", "-RodaApprovalsExplained", "YES",
-                               "-RodaFreshStart", "YES", "-RodaResetDemo", "YES"]
+        app.launchArguments = ["-Demo", "YES", "-Showcase", "YES", "-AppleLanguages", "(pt-BR)",
+                               "-Appearance", "light", "-ApprovalsExplained", "YES",
+                               "-FreshStart", "YES", "-ResetDemo", "YES"]
         app.launch()
         let tiles = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'home-tile-'"))
         XCTAssertTrue(tiles.firstMatch.waitForExistence(timeout: 20), "Home shows mini-app tiles")

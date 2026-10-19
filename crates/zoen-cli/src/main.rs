@@ -17,9 +17,9 @@ use std::{
     time::Duration,
 };
 
-use roda_ffi::{
-    ConnectionDto, CoreListener, Delivery, EntryKind, MarkdownFileDto, PhotoChange, PrivacyDto,
-    ProfileDto, RodaEngine, SecretVault, SpaceKindDto,
+use client_core::{
+    Client, ConnectionDto, CoreListener, Delivery, EntryKind, MarkdownFileDto, PhotoChange,
+    PrivacyDto, ProfileDto, SecretVault, SpaceKindDto,
 };
 
 struct FileVault {
@@ -54,14 +54,14 @@ impl SecretVault for FileVault {
 /// Prints a history transfer's progress.
 struct Progress;
 
-impl roda_ffi::TransferListener for Progress {
+impl client_core::TransferListener for Progress {
     fn on_progress(&self, done: u32, total: u32) {
         println!("history {done}/{total}");
     }
 }
 
 /// Takes the first history bundle from the device that linked this one.
-async fn receive_history(e: &RodaEngine, timeout: u64) {
+async fn receive_history(e: &Client, timeout: u64) {
     match e
         .receive_history(timeout.max(30_000), Some(Arc::new(Progress)))
         .await
@@ -76,7 +76,7 @@ async fn receive_history(e: &RodaEngine, timeout: u64) {
 
 struct Printer {
     me: String,
-    engine: std::sync::Weak<RodaEngine>,
+    engine: std::sync::Weak<Client>,
 }
 
 impl CoreListener for Printer {
@@ -167,7 +167,7 @@ fn profile_line(p: &ProfileDto) -> String {
 }
 
 /// The identity behind `@handle`: someone this device knows, else the directory.
-async fn person(e: &RodaEngine, handle: &str) -> String {
+async fn person(e: &Client, handle: &str) -> String {
     let h = handle.trim_start_matches('@').to_string();
     if let Some(p) = e.personas().into_iter().find(|p| p.handle == h) {
         return p.id;
@@ -181,13 +181,13 @@ async fn person(e: &RodaEngine, handle: &str) -> String {
         .unwrap_or_else(|| die(format!("@{h} isn't on Zoen")))
 }
 
-fn title_of(e: &RodaEngine, space: &str) -> String {
+fn title_of(e: &Client, space: &str) -> String {
     e.space(space.to_string())
         .map(|s| s.title)
         .unwrap_or_else(|_| space.chars().take(10).collect())
 }
 
-fn line(t: &roda_ffi::TimelineEntry) -> String {
+fn line(t: &client_core::TimelineEntry) -> String {
     let body = match &t.kind {
         EntryKind::Message { text, .. } => text.clone(),
         EntryKind::ItemEdited { title, note, .. } => format!("✎ {title}: {note}"),
@@ -279,10 +279,10 @@ impl Cli {
     }
 }
 
-fn open(home: &Path) -> Arc<RodaEngine> {
+fn open(home: &Path) -> Arc<Client> {
     std::fs::create_dir_all(home).expect("home dir");
     let db = home.join("zoen.sqlite");
-    match RodaEngine::open(
+    match Client::open(
         db.to_string_lossy().into(),
         std::env::var("ZOEN_LOCALE").unwrap_or_else(|_| "en-US".into()),
     ) {
@@ -300,7 +300,7 @@ pub(crate) fn die(msg: impl std::fmt::Display) -> ! {
 }
 
 /// Resolves `@handle`, a title, or a space id (prefix ok) to a space id.
-fn chat(e: &RodaEngine, q: &str) -> String {
+fn chat(e: &Client, q: &str) -> String {
     let spaces = e.spaces();
     if let Some(h) = q.strip_prefix('@') {
         if let Some(s) = spaces.iter().find(|s| {
@@ -320,7 +320,7 @@ fn chat(e: &RodaEngine, q: &str) -> String {
 }
 
 /// Resolves an Item by id (prefix ok), folder path or title.
-fn item(e: &RodaEngine, q: &str) -> roda_ffi::ItemDetail {
+fn item(e: &Client, q: &str) -> client_core::ItemDetail {
     let items = e.items();
     items
         .iter()
@@ -333,7 +333,7 @@ fn item(e: &RodaEngine, q: &str) -> roda_ffi::ItemDetail {
 }
 
 /// Waits until this device has every piece of the page (or file) `id`.
-async fn ready(e: &RodaEngine, id: &str, timeout: u64) -> bool {
+async fn ready(e: &Client, id: &str, timeout: u64) -> bool {
     let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout);
     loop {
         let ok = match e.item(id.to_string()) {
@@ -387,9 +387,9 @@ fn write_file(path: &Path, bytes: &[u8]) {
 
 /// Applies one block change to a page and saves it as a version.
 fn edit_page(
-    e: &RodaEngine,
+    e: &Client,
     id: &str,
-    f: impl FnOnce(&mut Vec<roda_ffi::PageBlockDto>) -> Vec<String>,
+    f: impl FnOnce(&mut Vec<client_core::PageBlockDto>) -> Vec<String>,
 ) {
     let p = e.page(id.to_string()).unwrap_or_else(|err| die(err));
     let mut blocks = p.blocks;
@@ -488,7 +488,7 @@ async fn main() {
         };
         println!(
             "{}",
-            roda_ffi::agent_id_for_root(root).unwrap_or_else(|err| die(err))
+            client_core::agent_id_for_root(root).unwrap_or_else(|err| die(err))
         );
         return;
     }
@@ -659,7 +659,7 @@ async fn main() {
             } else {
                 cli.args.remove(0)
             };
-            let show = |s: roda_ffi::BackupStatusDto| {
+            let show = |s: client_core::BackupStatusDto| {
                 println!(
                     "backup {} mode={} bytes={} last={}",
                     if s.enabled { "on" } else { "off" },
@@ -1133,7 +1133,7 @@ async fn main() {
             let m = e
                 .put_media(bytes, "image/jpeg".into(), 1, 1)
                 .unwrap_or_else(|err| die(err));
-            let bg = roda_ffi::BackgroundDto {
+            let bg = client_core::BackgroundDto {
                 style: "photo".into(),
                 media: Some(m.clone()),
                 zoom_pm: 1000,
@@ -1434,7 +1434,7 @@ async fn main() {
                     let text = cli.args[1..].join(" ");
                     edit_page(&e, &it.id, |blocks| {
                         let id = new_block_id();
-                        blocks.push(roda_ffi::PageBlockDto {
+                        blocks.push(client_core::PageBlockDto {
                             id: id.clone(),
                             kind: "paragraph".into(),
                             level: 0,

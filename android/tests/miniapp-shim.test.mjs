@@ -44,7 +44,7 @@ async function fixture(id, { missingSource = false } = {}) {
         hostCapabilities: { serverTools: {}, message: { text: {} }, openLinks: {}, experimental: { zoen: { native: [], services: ['state', 'members', 'share', 'theme'] } } }, hostContext: context() }),
       context, state: () => ({ content: [], structuredContent: state }),
       tools: new Set(id === 'list' ? ['list_toggle', 'list_get_state'] : ['hike_vote', 'hike_get_state']),
-      resourceUri: `ui://roda/${id}`, resource: async () => ({ contents: [] }),
+      resourceUri: `ui://builtin/${id}`, resource: async () => ({ contents: [] }),
       async call(name, args) {
         calls.push({ name, args });
         if (name === 'list_toggle') state = { ...state, items: state.items.map(item => item.id === args.id ? { ...item, done: !item.done } : item) };

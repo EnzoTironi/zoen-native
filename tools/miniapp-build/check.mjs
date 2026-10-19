@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { buildApp } from './build.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const [app, resourceFolder = join(root, 'crates/roda-apps/resources'), manifestPath] =
+const [app, resourceFolder = join(root, 'crates/miniapps/resources'), manifestPath] =
   process.argv.slice(2);
 assert.ok(
   app,

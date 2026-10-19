@@ -1,14 +1,14 @@
 //! Browser document adapter. Signed Space history is canonical; the existing encrypted
 //! browser snapshot owns only disposable projections, downloaded payloads and local drafts.
-//! Pages use roda-docs' exact Loro/Markdown codec and share native Item events and blobs.
+//! Pages use documents' exact Loro/Markdown codec and share native Item events and blobs.
 
 use super::*;
+use ::documents::{BlockEdit, Frontiers, Kind, Page};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use roda_docs::{BlockEdit, Frontiers, Kind, Page};
-use roda_i18n::{t, tr};
-use roda_types::{ChunkRef, ItemContent, ItemKind, PageContent, PlanDoc};
+use localization::{t, tr};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use types::{ChunkRef, ItemContent, ItemKind, PageContent, PlanDoc};
 
 mod apps;
 
@@ -83,8 +83,8 @@ struct Block {
     spans: Vec<Span>,
 }
 
-impl From<&roda_docs::Block> for Block {
-    fn from(block: &roda_docs::Block) -> Self {
+impl From<&::documents::Block> for Block {
+    fn from(block: &::documents::Block) -> Self {
         let mut dto = Self {
             id: block.id.clone(),
             kind: block.kind.id().into(),
@@ -96,7 +96,7 @@ impl From<&roda_docs::Block> for Block {
             url: String::new(),
             alt: String::new(),
             text: block.plain_text(),
-            spans: roda_docs::spans_of(&block.runs)
+            spans: ::documents::spans_of(&block.runs)
                 .into_iter()
                 .map(|span| Span {
                     start: span.start,
@@ -170,7 +170,7 @@ impl Block {
             spans: self
                 .spans
                 .iter()
-                .map(|span| roda_docs::Span {
+                .map(|span| ::documents::Span {
                     start: span.start,
                     end: span.end,
                     key: span.key.clone(),
@@ -313,7 +313,7 @@ impl Item {
     }
     pub(crate) fn has_explicit_origin(&self) -> bool {
         let event = &self.versions[0].event;
-        roda_log::event_from_content(
+        event_log::event_from_content(
             event.content.clone(),
             event.sig.clone(),
             event.cert.clone(),
@@ -645,7 +645,7 @@ impl<S: Signer> Client<S> {
         let owner = profile.and_then(|profile| profile.owner.as_ref());
         let owner_profile = owner.and_then(|id| self.saved.profiles.get(id));
         let photo = self.fields_of(id).and_then(|(_, fields)| fields.photo);
-        json!({ "id": id, "kind": profile.map(|profile| profile.kind).unwrap_or(roda_types::IdentityKind::Person),
+        json!({ "id": id, "kind": profile.map(|profile| profile.kind).unwrap_or(types::IdentityKind::Person),
             "name": name, "handle": profile.map(|profile| profile.handle.as_str()).unwrap_or(if id==self.account.identity {&self.account.handle}else{""}),
             "initials": name.split_whitespace().take(2).filter_map(|part| part.chars().next()).collect::<String>().to_uppercase(),
             "tint_hex": profile.map(|profile| profile.tint_hex.as_str()).unwrap_or("#8E8E93"),
@@ -1058,7 +1058,7 @@ impl<S: Signer> Client<S> {
                             .get_mut(section_index as usize)
                             .ok_or("Seção indisponível.")?
                             .lines
-                            .push(roda_types::PlanLine {
+                            .push(types::PlanLine {
                                 id: browser_id("ln", now),
                                 text,
                                 cost_cents: cost,
@@ -1300,7 +1300,7 @@ impl<S: Signer> Client<S> {
                 .into_iter()
                 .map(|block| BlockEdit {
                     text: block.plain_text(),
-                    spans: roda_docs::spans_of(&block.runs),
+                    spans: ::documents::spans_of(&block.runs),
                     id: block.id,
                     kind: block.kind,
                 })
@@ -1433,7 +1433,7 @@ fn fold_item(
             if let Some(item) = items.get_mut(item).filter(|item| item.space == space) {
                 if item.kind == ItemKind::File && item.versions.iter().any(|version| matches!(&version.content,ItemContent::File(file) if file.is_voice())) && item.versions[0].event.author != event.author { return Ok(()); }
                 let content =
-                    roda_apps::reconcile_concurrent(&item.current().content, content, event.at_ms)
+                    miniapps::reconcile_concurrent(&item.current().content, content, event.at_ms)
                         .unwrap_or_else(|| content.clone());
                 item.versions.push(Version {
                     content,
@@ -1491,10 +1491,7 @@ fn valid_line(text: String, cost: i64) -> Result<String, String> {
     Ok(text)
 }
 
-fn unique_line_mut<'a>(
-    plan: &'a mut PlanDoc,
-    id: &str,
-) -> Result<&'a mut roda_types::PlanLine, String> {
+fn unique_line_mut<'a>(plan: &'a mut PlanDoc, id: &str) -> Result<&'a mut types::PlanLine, String> {
     if plan
         .sections
         .iter()

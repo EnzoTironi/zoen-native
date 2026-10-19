@@ -43,7 +43,7 @@ await mkdir(wasmDirectory);
 for (const file of ['admission.js', 'admission_bg.wasm'])
   await copyFile(join(root, 'infra/cloudflare/relay-state/generated/wasm', file), join(wasmDirectory, file));
 await writeFile(join(wasmDirectory, 'package.json'), '{"type":"module"}\n', { flag: 'wx' });
-const fixture = await run('cargo', ['run', '--quiet', '--locked', '-p', 'roda-relay-admission', '--example', 'sync-fixture'], true);
+const fixture = await run('cargo', ['run', '--quiet', '--locked', '-p', 'relay-admission', '--example', 'sync-fixture'], true);
 await writeFile(fixturePath, fixture, { flag: 'wx' });
 assert.equal(JSON.parse(fixture).steps.length, 8);
 await run(process.execPath, ['--test', join(root, 'infra/cloudflare/relay-state/tests/sync-plan.test.mjs')], false,
@@ -63,7 +63,7 @@ const result = {
   result: 'passed',
   scope: 'Shared catch-up visibility only: 8 native protobuf vectors agree in Node WASM and local workerd. Device authentication, membership storage/indexing, paginated reads, delivery fencing, public sync and runtime WebSocket closure remain separate gates.',
   source: { checkoutHead: git('rev-parse', 'HEAD'), dirty: git('status', '--porcelain', '--',
-    'crates/roda-relay-admission', 'crates/zoen-relay/src/session.rs',
+    'crates/relay-admission', 'crates/zoen-relay/src/session.rs',
     'infra/cloudflare/relay-state/tests/sync-plan.test.mjs', 'scripts/verify-cloudflare-sync.mjs').length > 0 },
   nativeVectors: 8,
   nodeTests: 1,

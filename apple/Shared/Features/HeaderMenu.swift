@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 /// Tapping the chat's title grows the header into a menu, Slack-style. The avatar still
 /// opens the profile (or the people, in a group).

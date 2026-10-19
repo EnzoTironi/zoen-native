@@ -1,9 +1,9 @@
 //! Postgres: the directory (identities, handles, devices). Logs and membership live in
 //! the log store (`crate::log`).
 
-use roda_proto::{AgreementKeyRecord, DeviceSigned, KeyPackageRecord, SealedProfile};
-use roda_types::{Identity, IdentityKind};
+use protocol::{AgreementKeyRecord, DeviceSigned, KeyPackageRecord, SealedProfile};
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
+use types::{Identity, IdentityKind};
 
 /// Holds the device row for request admission or delivery. Ordinary requests commit
 /// before work. Directory mutations keep the fence through their SQL transaction.
@@ -29,12 +29,8 @@ pub async fn authorize_device(
     .await?;
     // A pending link polls as its own key until it opens its identity box. Enrollment
     // can assign that key to the account before this provisional fetch completes.
-    let provisional = roda_relay_admission::directory::provisional_allowed(
-        enrolled,
-        identity,
-        device,
-        require_device,
-    );
+    let provisional =
+        relay_admission::directory::provisional_allowed(enrolled, identity, device, require_device);
     let unregistered = if provisional {
         !sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM identities WHERE id = $1)")
             .bind(identity)
@@ -43,7 +39,7 @@ pub async fn authorize_device(
     } else {
         false
     };
-    if roda_relay_admission::directory::request_authorized(enrolled, unregistered) {
+    if relay_admission::directory::request_authorized(enrolled, unregistered) {
         Ok(Some(tx))
     } else {
         tx.rollback().await?;
@@ -127,7 +123,7 @@ pub async fn enroll_device(
     device: &str,
     cert: &str,
 ) -> Result<(), EnrollmentError> {
-    if !roda_relay_admission::directory::enrollment_certificate_valid(identity, device, cert) {
+    if !relay_admission::directory::enrollment_certificate_valid(identity, device, cert) {
         return Err(EnrollmentError::InvalidCertificate);
     }
     let changed = sqlx::query(
@@ -171,7 +167,7 @@ pub async fn register(
     cert: &str,
     first: bool,
 ) -> Result<(), String> {
-    if !roda_log::agent_owner::profile_authorized(profile) {
+    if !event_log::agent_owner::profile_authorized(profile) {
         return Err("profile ownership authorization invalid".into());
     }
     let kind = match profile.kind {
@@ -322,7 +318,7 @@ pub async fn lookup(
     prefix: bool,
 ) -> Result<Vec<Identity>, sqlx::Error> {
     let rows: Vec<DirectoryRow> = if prefix {
-        let pattern = roda_relay_admission::directory::reads::prefix_pattern(handle);
+        let pattern = relay_admission::directory::reads::prefix_pattern(handle);
         sqlx::query_as(
             "SELECT id, kind, owner, profile FROM identities WHERE handle LIKE $1 ORDER BY handle LIMIT 20",
         )
@@ -356,7 +352,7 @@ pub async fn profiles(pool: &PgPool, ids: &[String]) -> Result<Vec<Identity>, sq
 type DirectoryRow = (String, String, Option<String>, serde_json::Value);
 
 fn authorized_directory_profile((id, kind, owner, json): DirectoryRow) -> Option<Identity> {
-    roda_relay_admission::directory::reads::authorized_profile(&id, &kind, owner.as_deref(), json)
+    relay_admission::directory::reads::authorized_profile(&id, &kind, owner.as_deref(), json)
 }
 
 pub async fn put_agreement_key(
@@ -447,7 +443,7 @@ pub async fn sealed_profiles(
 }
 
 /// Single-use key packages a device may keep stored; publishing past it is refused.
-pub const MAX_KEY_PACKAGES: i64 = roda_relay_admission::directory::key_packages::MAX_STOCK as i64;
+pub const MAX_KEY_PACKAGES: i64 = relay_admission::directory::key_packages::MAX_STOCK as i64;
 
 /// Stores a device's key packages, and its last-resort one in place of the previous.
 /// `false` when that would keep more than [`MAX_KEY_PACKAGES`] single-use ones.
@@ -654,7 +650,7 @@ pub async fn take_link_box(pool: &PgPool, id: &str) -> Result<Option<Vec<u8>>, s
 pub async fn devices_of(
     pool: &PgPool,
     identity: &str,
-) -> Result<Vec<roda_proto::DeviceRecord>, sqlx::Error> {
+) -> Result<Vec<protocol::DeviceRecord>, sqlx::Error> {
     let rows: Vec<(String, bool)> = sqlx::query_as(
         "SELECT device, revoked_at IS NOT NULL FROM devices WHERE identity = $1 ORDER BY created_at",
     )
@@ -663,7 +659,7 @@ pub async fn devices_of(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(device, revoked)| roda_proto::DeviceRecord { device, revoked })
+        .map(|(device, revoked)| protocol::DeviceRecord { device, revoked })
         .collect())
 }
 

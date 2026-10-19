@@ -1,11 +1,11 @@
 //! Browser storage adapter for the shared MLS membership planner. Claims are
 //! journaled before consuming key packages, and recovery blobs gate publication.
 use super::*;
-use roda_mls::{
+use mls::{
     leaf_name,
     reconciliation::{self, Owed},
 };
-use roda_proto::{KeyPackageClaimClock, KeyPackageRecord};
+use protocol::{KeyPackageClaimClock, KeyPackageRecord};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
@@ -122,9 +122,9 @@ impl<S: Signer> Client<S> {
     fn handshake(&self, space: &str, sealed: Sealed, now: i64) -> Result<PendingEnvelope, String> {
         self.sign_content(
             SignedContent {
-                v: roda_log::content::SEALED_CONTENT_VERSION,
+                v: event_log::content::SEALED_CONTENT_VERSION,
                 space: space.into(),
-                client_id: roda_types::new_ulid(now),
+                client_id: types::new_ulid(now),
                 author: self.account.identity.clone(),
                 device: Some(self.account.device.clone()),
                 at_ms: now,
@@ -155,11 +155,11 @@ impl<S: Signer> Client<S> {
             .filter(|id| id != &self.account.identity)
             .collect::<BTreeSet<_>>();
         for id in &members {
-            if roda_log::parse_device_key(id).is_none() || !self.saved.profiles.contains_key(id) {
+            if event_log::parse_device_key(id).is_none() || !self.saved.profiles.contains_key(id) {
                 return Err("Pessoa não encontrada.".into());
             }
         }
-        let space = format!("sp_{}", roda_types::new_ulid(now).to_ascii_lowercase());
+        let space = format!("sp_{}", types::new_ulid(now).to_ascii_lowercase());
         let pending = self.clear_event(
             &space,
             EventBody::SpaceCreated {
@@ -275,7 +275,7 @@ impl<S: Signer> Client<S> {
                 };
                 self.require_admin(&space_id)?;
                 if identity_id == self.account.identity
-                    || roda_log::parse_device_key(&identity_id).is_none()
+                    || event_log::parse_device_key(&identity_id).is_none()
                     || !self.saved.profiles.contains_key(&identity_id)
                 {
                     return Err("Pessoa não encontrada.".into());
@@ -552,7 +552,7 @@ impl<S: Signer> Client<S> {
             let mut sealed = Sealed::new(SealedKind::Commit, SUITE_ID, commit.commit);
             let mut upload = None;
             if let Some(recipients) = recipients {
-                let summary = roda_mls::recovery::verify_group_info(
+                let summary = mls::recovery::verify_group_info(
                     space,
                     &commit.group_info,
                     Some(&self.account.device),
@@ -568,7 +568,7 @@ impl<S: Signer> Client<S> {
                     .iter()
                     .map(|(id, key)| (id.as_str(), key.as_str()))
                     .collect::<Vec<_>>();
-                let bytes = roda_log::recovery::seal(
+                let bytes = event_log::recovery::seal(
                     space,
                     summary.epoch,
                     &self.account.device,
@@ -577,7 +577,7 @@ impl<S: Signer> Client<S> {
                 )
                 .ok_or("Could not seal recovery context.")?;
                 let blob = hex::encode(Sha256::digest(&bytes));
-                sealed.recovery = roda_log::recovery::RecoveryRef {
+                sealed.recovery = event_log::recovery::RecoveryRef {
                     version: 1,
                     epoch: summary.epoch,
                     blob: blob.clone(),
@@ -598,7 +598,7 @@ impl<S: Signer> Client<S> {
                     let id = pending.envelope()?.client_id().to_owned();
                     let newcomers = packages
                         .iter()
-                        .filter_map(|package| roda_mls::key_package_leaf(package).ok())
+                        .filter_map(|package| mls::key_package_leaf(package).ok())
                         .map(|leaf| leaf_name(&leaf.identity, &leaf.device))
                         .collect();
                     Ok((id, pending, newcomers))
@@ -668,7 +668,7 @@ impl<S: Signer> Client<S> {
         {
             match result {
                 Ok(Reply::KeyPackages(records)) => claim.records = Some(records.clone()),
-                Err(error) if error == roda_proto::KEY_PACKAGE_CLAIM_EXPIRED => {
+                Err(error) if error == protocol::KEY_PACKAGE_CLAIM_EXPIRED => {
                     self.saved.membership.claims.remove(&space);
                     self.membership_net.clock = None;
                 }
@@ -979,7 +979,7 @@ impl<S: Signer> Client<S> {
                 let records = records
                     .into_iter()
                     .filter(|record| {
-                        roda_mls::key_package_leaf(&record.data).is_ok_and(|leaf| {
+                        mls::key_package_leaf(&record.data).is_ok_and(|leaf| {
                             leaf.identity == record.identity
                                 && leaf.device == record.device
                                 && claim.targets.contains(&leaf.identity)

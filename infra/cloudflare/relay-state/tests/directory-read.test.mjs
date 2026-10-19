@@ -17,7 +17,7 @@ initSync({ module: new WebAssembly.Module(await readFile(join(root, 'generated/w
 function runtime(path) {
   return new Miniflare(convertV4MiniflareOptions({
     modulesRoot: root,
-    modules: ['tests/directory-fixture.mjs', 'src/directory-state.mjs', 'src/provider-auth.mjs',
+    modules: ['tests/directory-fixture.mjs', 'src/directory-state.mjs', 'src/relay-composition.mjs', 'src/provider-auth.mjs',
       'src/media-blobs.mjs', 'src/blob-io.mjs', 'src/blob-quota.mjs', 'src/transfer-blobs.mjs', 'generated/wasm/admission.js']
       .map(path => ({ type: 'ESModule', path: join(root, path) }))
       .concat({ type: 'CompiledWasm', path: join(root, 'generated/wasm/admission_bg.wasm') }),

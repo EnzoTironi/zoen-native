@@ -4,10 +4,10 @@
 
 use bytes::Bytes;
 use ed25519_dalek::SigningKey;
-use roda_types::ActionClass;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use types::ActionClass;
 use zoen_agentd::budget::{BudgetError, DailyBudget};
 use zoen_agentd::router::RouteError;
 use zoen_agentd::sandbox::fake::FakeProvider;

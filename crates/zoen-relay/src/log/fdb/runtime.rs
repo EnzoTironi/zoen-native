@@ -5,7 +5,7 @@ use foundationdb::{
     tuple::{unpack, Subspace},
     Transaction,
 };
-use roda_proto::Sequenced;
+use protocol::Sequenced;
 
 use crate::log::StoreError;
 
@@ -150,7 +150,7 @@ impl RuntimeSource {
         let entry = self.entry_in(trx, space, seq).await?;
         if entry.env.is_pruned()
             || entry.env.verify().is_err()
-            || roda_log::chain_hash(space, seq, &entry.prev, &entry.env.wire_hash()) != entry.hash
+            || event_log::chain_hash(space, seq, &entry.prev, &entry.env.wire_hash()) != entry.hash
         {
             return Err(invalid());
         }

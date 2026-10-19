@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DD="$(pwd)/build/DerivedData-device"
-XCF=apple/Packages/RodaCore/RodaFFI.xcframework
+XCF=apple/Packages/ClientCore/ClientFFI.xcframework
 
 scripts/build-core.sh --if-stale
 [[ -d "$XCF" ]] || scripts/build-core.sh

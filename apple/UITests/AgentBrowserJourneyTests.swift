@@ -8,9 +8,9 @@ final class AgentBrowserJourneyTests: XCTestCase {
 
     @MainActor private func launch() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-RodaDemo", "YES", "-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
-                               "-AppleLanguages", "(pt-BR)", "-RodaAppearance", "light",
-                               "-RodaApprovalsExplained", "YES", "-RodaOpen", "paraty", "-RodaAgentBrowser", "YES"]
+        app.launchArguments = ["-Demo", "YES", "-FreshStart", "YES", "-ResetDemo", "YES",
+                               "-AppleLanguages", "(pt-BR)", "-Appearance", "light",
+                               "-ApprovalsExplained", "YES", "-Open", "paraty", "-AgentBrowser", "YES"]
         app.launch()
         return app
     }

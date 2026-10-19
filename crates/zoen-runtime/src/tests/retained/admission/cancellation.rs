@@ -339,7 +339,7 @@ async fn independent_cleanup_after_permission_loss() {
                 policy.enabled = false;
                 runtime
                     .install_policy(
-                        roda_log::owner_budget::sign(&fixture.world.owner, policy).unwrap(),
+                        event_log::owner_budget::sign(&fixture.world.owner, policy).unwrap(),
                     )
                     .await
                     .unwrap();

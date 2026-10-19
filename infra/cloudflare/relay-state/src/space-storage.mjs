@@ -91,6 +91,15 @@ export class SpaceStorage {
     return rows.length ? entry(rows[0]) : null;
   }
 
+  /** Canonical reference resolution for a bounded trusted publication outbox. */
+  eventAt(space, seq) {
+    this.#scope(space, false);
+    const rows = this.#sql
+      .exec("SELECT seq_key,prev,hash,bytes FROM entries WHERE seq_key=?", seqKey(seq))
+      .toArray();
+    return rows.length ? entry(rows[0]) : null;
+  }
+
   hashes(seqs) {
     const result = [];
     for (const seq of new Set(seqs)) {
@@ -205,6 +214,54 @@ export class SpaceStorage {
     )
       throw new TypeError("Invalid admission state bytes");
     this.#sql.exec("UPDATE admission_state SET bytes=? WHERE singleton=1", bytes);
+  }
+
+  /** Caller owns the transaction and obtains `through` from the Rust projection.
+   * This is persistence only: no client may call it with a membership assertion.
+   * A key-only lookahead distinguishes byte-limited pages from the actual EOF.
+   */
+  readAuthorizedPage(input) {
+    this.#scope(input?.spaceId, false);
+    const from = sequence(input.from);
+    if (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > MAX_READ_ENTRIES)
+      throw new TypeError("Invalid authorized read limit");
+    if (input.through === null) return { events: [], has_more: false, done: true, next_seq: null };
+    const through = sequence(input.through);
+    if (from > through) return { events: [], has_more: false, done: true, next_seq: null };
+    const events = [];
+    let totalBytes = 0;
+    let next = from;
+    for (const row of this.#sql.exec(
+      "SELECT seq_key,prev,hash,bytes FROM entries WHERE seq_key>=? AND seq_key<=? ORDER BY seq_key LIMIT ?",
+      seqKey(input.from),
+      seqKey(input.through),
+      input.limit,
+    )) {
+      if (totalBytes + row.bytes.byteLength > MAX_READ_BYTES) break;
+      totalBytes += row.bytes.byteLength;
+      events.push(entry(row));
+      next = BigInt(row.seq_key) + 1n;
+    }
+    // UInt64 exhaustion is terminal. Never coerce it through Number or expose
+    // 2^64 as a protocol cursor. Stored gaps still use inclusive `next` semantics.
+    const more =
+      next <= through &&
+      next <= MAX_U64 &&
+      this.#sql
+        .exec(
+          "SELECT seq_key FROM entries WHERE seq_key>=? AND seq_key<=? ORDER BY seq_key LIMIT 1",
+          seqKey(next.toString()),
+          seqKey(input.through),
+        )
+        .toArray().length !== 0;
+    if (more && events.length === 0)
+      throw new TypeError("An authorized read cannot advance within its byte bound");
+    return {
+      events,
+      has_more: Boolean(more),
+      done: !more,
+      next_seq: more ? next.toString() : null,
+    };
   }
 
   /** Inclusive cursor, UInt64 ordering and bounded bytes match the original LogStore. */

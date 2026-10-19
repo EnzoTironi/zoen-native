@@ -27,7 +27,7 @@ class ZoenCoreModule : Module() {
   private val cleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val destroyed = AtomicBoolean(false)
   private class Session(
-    val engine: RodaEngine,
+    val engine: Client,
     val vault: ZoenVault,
     val listener: CoreListener,
     val mode: String,
@@ -72,8 +72,8 @@ class ZoenCoreModule : Module() {
           check(process.isOpening(owner, opening.first)) { "The app session has closed" }
           closeCore(allOwners = true)
           val context = requireNotNull(appContext.reactContext)
-          val root = File(context.noBackupFilesDir, if (selectedMode == "account") "core" else "zoen/demo").apply { mkdirs() }
-          val core = RodaEngine.open(File(root, "zoen.sqlite").path, locale)
+          val root = File(context.noBackupFilesDir, selectedMode).apply { mkdirs() }
+          val core = Client.open(File(root, "client.sqlite").path, locale)
           val keys = ZoenVault(context)
           val eventToken = Any()
           val bridge = object : CoreListener {
@@ -224,7 +224,7 @@ class ZoenCoreModule : Module() {
     }
   }
 
-  private fun verifyErasureScope(engine: RodaEngine, expected: ZoenDeviceScope, allowEmpty: Boolean = false) {
+  private fun verifyErasureScope(engine: Client, expected: ZoenDeviceScope, allowEmpty: Boolean = false) {
     val account = engine.account()
     requireErasureScope(account?.let { ZoenDeviceScope(it.identityId, it.deviceId) }, expected, allowEmpty)
   }
@@ -249,8 +249,8 @@ class ZoenCoreModule : Module() {
       try {
         working?.engine?.stopSync()
         if (working == null) working = process.withErasureAfterRetirements(expected, task, earlierRequests) {
-          val root = File(context.noBackupFilesDir, "core").apply { mkdirs() }
-          val engine = RodaEngine.open(File(root, "zoen.sqlite").path, locale)
+          val root = File(context.noBackupFilesDir, "account").apply { mkdirs() }
+          val engine = Client.open(File(root, "client.sqlite").path, locale)
           val candidate = Session(engine, ZoenVault(context), emptyListener(), "account").also { it.lease.close(erase = true) }
           try {
             verifyErasureScope(engine, expected, allowEmpty = erasure.pending() == expected)
@@ -270,7 +270,7 @@ class ZoenCoreModule : Module() {
         current.engine.destroy()
         engineDestroyed = true
         mutex.withLock { current.lease.destroyed() }
-        ZoenDeviceErasure.eraseDirectory(File(context.noBackupFilesDir, "core"))
+        ZoenDeviceErasure.eraseDirectory(File(context.noBackupFilesDir, "account"))
         for (name in listOf("ZoenMedia", "ZoenVoiceEditor", "ImagePicker", "ImageManipulator", "DocumentPicker", "ExpoAudio", "zoen-exports")) {
           ZoenDeviceErasure.eraseDirectory(File(context.cacheDir, name))
         }

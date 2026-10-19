@@ -79,7 +79,7 @@ Per connection and per handshake:
    message *k* leaves at *k*/rate and the loop sleeps until the next due time. Real p50 at
    light load is 4–5 ms (GRV 1.6 ms + commit 2.1 ms + two WebSocket hops).
 2. **Nagle on every socket.** Nothing set `TCP_NODELAY`; small frames could wait on a delayed
-   ACK. The relay listener, the app (`roda-ffi`) and `zoen-load` now disable it.
+   ACK. The relay listener, the app (`client-core`) and `zoen-load` now disable it.
 3. **128 KiB + 128 KiB of buffers per WebSocket.** tungstenite's defaults reserved 256 KiB per
    connection, so the relay held 160 KiB per person: 26 TB of RAM for 160M devices. The relay
    now starts each socket with 8 KiB read and write buffers (they still grow for a large sync

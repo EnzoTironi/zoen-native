@@ -101,15 +101,15 @@ impl Limiter {
         let t = self.quota.interval.as_nanos() as u64;
         let shard = &self.shards[(self.hasher.hash_one(key) as usize) % SHARDS];
         let mut map = shard.lock().unwrap_or_else(|e| e.into_inner());
-        let next = match roda_relay_admission::gcra::decide(
+        let next = match relay_admission::gcra::decide(
             now,
             map.get(key).copied(),
             cost,
             t,
             self.quota.burst,
         ) {
-            roda_relay_admission::gcra::Decision::Accepted { next_ns } => next_ns,
-            roda_relay_admission::gcra::Decision::Rejected { wait_ns } => {
+            relay_admission::gcra::Decision::Accepted { next_ns } => next_ns,
+            relay_admission::gcra::Decision::Rejected { wait_ns } => {
                 self.refused.fetch_add(1, Relaxed);
                 return Err(Duration::from_nanos(wait_ns));
             }
@@ -173,9 +173,9 @@ impl Limits {
                 "lookup_account",
                 Quota {
                     interval: Duration::from_nanos(
-                        roda_relay_admission::directory::reads::LOOKUP_INTERVAL_NS,
+                        relay_admission::directory::reads::LOOKUP_INTERVAL_NS,
                     ),
-                    burst: roda_relay_admission::directory::reads::LOOKUP_BURST,
+                    burst: relay_admission::directory::reads::LOOKUP_BURST,
                 },
             ),
             invite_account: Limiter::new("invite_account", Quota::per_minute(30, 30)),
@@ -183,10 +183,8 @@ impl Limits {
             blob_kib_device: Limiter::new(
                 "blob_kib_device",
                 Quota {
-                    interval: Duration::from_nanos(
-                        roda_relay_admission::blobs::DEFAULT_INTERVAL_NS,
-                    ),
-                    burst: roda_relay_admission::blobs::DEFAULT_BURST,
+                    interval: Duration::from_nanos(relay_admission::blobs::DEFAULT_INTERVAL_NS),
+                    burst: relay_admission::blobs::DEFAULT_BURST,
                 },
             ),
             backup_device: Limiter::new("backup_device", Quota::per_minute(10, 20)),
@@ -272,7 +270,7 @@ impl Limits {
     }
 }
 
-pub use roda_proto::slow_down;
+pub use protocol::slow_down;
 
 #[cfg(test)]
 mod tests {

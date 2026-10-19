@@ -9,9 +9,9 @@ use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
 };
 use hkdf::Hkdf;
-use roda_types::{ChunkRef, FileDoc};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use types::{ChunkRef, FileDoc};
 
 const MIN_CHUNK: usize = 1 << 20;
 const AVG_CHUNK: usize = 4 << 20;

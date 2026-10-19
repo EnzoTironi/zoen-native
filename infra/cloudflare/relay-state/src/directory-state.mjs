@@ -11,11 +11,20 @@ import {
   directorySocketControl,
   directorySocketDelivery,
   directoryLookupRate,
+  verifyPublish,
+  planSync,
+  relaySocketHello,
+  relaySocketFrame,
+  relaySocketControl,
+  relaySocketEvent,
+  relaySocketRate,
+  relaySocketRequestEffects,
 } from "../generated/wasm/admission.js";
 import wasmModule from "../generated/wasm/admission_bg.wasm";
 import { ProviderAuthState } from "./provider-auth.mjs";
 import { MediaBlobsState } from "./media-blobs.mjs";
 import { TransferBlobsState } from "./transfer-blobs.mjs";
+import { RelayComposition } from "./relay-composition.mjs";
 
 initSync({ module: wasmModule });
 const MAX_BYTES = 1024 * 1024;
@@ -67,6 +76,7 @@ export class DirectoryState extends DurableObject {
   #providerAuth;
   #mediaBlobs;
   #transferBlobs;
+  #relay;
   constructor(ctx, env) {
     super(ctx, env);
     const sql = ctx.storage.sql;
@@ -113,6 +123,10 @@ export class DirectoryState extends DurableObject {
     sql.exec(`CREATE TABLE IF NOT EXISTS directory_connections (
       id TEXT PRIMARY KEY, stage TEXT NOT NULL, challenge_id TEXT, session_id TEXT,
       identity TEXT, device TEXT, claim_receipts INTEGER NOT NULL DEFAULT 0, expires_ms INTEGER NOT NULL)`);
+    if (this.env.RELAY_PROTOCOL_ENABLED === "true") {
+      this.#relayProtocol();
+      this.#relayGenesis();
+    }
   }
 
   _nowMs() {
@@ -444,7 +458,7 @@ export class DirectoryState extends DurableObject {
       const nonce = this._nonce();
       const relay = this.env.RELAY_NAME;
       const result = invoke(
-        directoryHello,
+        this.env.RELAY_PROTOCOL_ENABLED === "true" ? relaySocketHello : directoryHello,
         bytes,
         JSON.stringify({ nonce, relay, now_ms: String(now) }),
       );
@@ -756,6 +770,307 @@ export class DirectoryState extends DurableObject {
     return outcome;
   }
 
+  #relayProtocol() {
+    if (this.env.RELAY_PROTOCOL_ENABLED !== "true") return null;
+    if (!this.env.CLOSED_RELAY) throw error("relay Space binding unavailable", "relay_unavailable");
+    this.#relay ??= new RelayComposition(this.ctx, this.env.CLOSED_RELAY, {
+      socketId: (socket) => this._socketId(socket),
+      socketFor: (id) =>
+        this.ctx
+          .getWebSockets()
+          .find((socket) => socket.readyState === 1 && this._socketId(socket) === id) ?? null,
+      socketRow: (socket) => this._socketRow(socket),
+      incoming: (bytes) => invoke(relaySocketFrame, bytes),
+      control: (input) => unbase64(invoke(relaySocketControl, JSON.stringify(input)).frame_base64),
+      event: (bytes) => {
+        const decoded = invoke(relaySocketEvent, bytes);
+        return { ...decoded, frame: unbase64(decoded.frame_base64) };
+      },
+      plan: (bytes, context) => invoke(planSync, bytes, JSON.stringify(context)),
+      admit: (id, bytes, input) => this.#relayAdmission(id, bytes, input),
+      request: (admitted, bytes) =>
+        unbase64(this.request({ sessionId: admitted.session_id, frame: bytes }).reply_base64),
+      effects: (bytes) => invoke(relaySocketRequestEffects, bytes),
+      ownStock: (socket, admitted) => this.#relayNotifyOwnStock(socket, admitted),
+      claimedStock: (devices) => this.#relayNotifyClaimedStock(devices),
+      reason: (failure) => this._socketFailure(failure),
+      refused: (id, reason) => this._socketControl({ kind: "refused", id, reason }),
+      ping: (admitted) =>
+        this._socketControl({
+          kind: "pong",
+          server_time_ms: admitted.claim_receipts ? String(this._nowMs()) : null,
+        }),
+      error: (reason, permanent) =>
+        this._socketControl({ kind: "error", stage: "ready", reason, permanent }),
+      send: (socket, bytes) => this._sendSocket(socket, bytes),
+      close: (socket, code) => this._socketClose(socket, code),
+      wake: () => this._scheduleSocketAlarm(),
+      assertCurrent: (id) =>
+        this.ctx.storage.transactionSync(() => {
+          const row = this.#one("SELECT * FROM directory_connections WHERE id=?", id);
+          this._socketAuthenticated(row, this._nowMs());
+        }),
+      activateCatalogue: () => this.#relayGenesis(),
+    });
+    return this.#relay;
+  }
+  #relayGenesis() {
+    // A successful server-side empty-SQL check creates the marker exactly once.
+    // Neither a gate flag nor a fixture caller can declare existing data complete.
+    return this.ctx.storage.transactionSync(() => {
+      const sql = this.ctx.storage.sql;
+      sql.exec(`CREATE TABLE IF NOT EXISTS relay_catalogue_genesis (
+        singleton INTEGER PRIMARY KEY CHECK(singleton=1),version TEXT NOT NULL)`);
+      const marker = this.#one("SELECT version FROM relay_catalogue_genesis WHERE singleton=1");
+      if (marker) {
+        if (marker.version !== "protocol4-fresh-v1")
+          throw error("invalid relay genesis metadata", "relay_activation");
+        return;
+      }
+      for (const table of [
+        "directory_identities",
+        "directory_devices",
+        "directory_agreement_keys",
+        "directory_sealed_profiles",
+        "directory_boxes",
+        "directory_challenges",
+        "directory_sessions",
+        "directory_key_packages",
+        "directory_publications",
+        "directory_claims",
+        "directory_connections",
+        "relay_pending",
+        "relay_discovery",
+      ]) {
+        if (this.#one(`SELECT 1 AS occupied FROM ${table} LIMIT 1`))
+          throw error("nonempty precomposition Directory cannot activate", "relay_activation");
+      }
+      for (const table of [
+        "provider_challenges",
+        "provider_proofs",
+        "provider_bindings",
+        "directory_lookup_limits",
+        "directory_blob_limits",
+      ]) {
+        if (
+          this.#one("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table) &&
+          this.#one(`SELECT 1 AS occupied FROM ${table} LIMIT 1`)
+        )
+          throw error("nonempty precomposition Directory cannot activate", "relay_activation");
+      }
+      sql.exec("INSERT INTO relay_catalogue_genesis VALUES(1,?)", "protocol4-fresh-v1");
+      sql.exec(`CREATE TABLE IF NOT EXISTS relay_rate_limits (
+        scope TEXT NOT NULL,key TEXT NOT NULL,tat_ns TEXT NOT NULL,last_ns TEXT NOT NULL,
+        expires_ms INTEGER NOT NULL,PRIMARY KEY(scope,key))`);
+      sql.exec(`CREATE TABLE IF NOT EXISTS relay_socket_send_usage (
+        connection_id TEXT PRIMARY KEY,bytes INTEGER NOT NULL,frames INTEGER NOT NULL)`);
+    });
+  }
+  #relayCharge(scope, key, now) {
+    const sql = this.ctx.storage.sql;
+    const previous = this.#one(
+      "SELECT tat_ns,last_ns FROM relay_rate_limits WHERE scope=? AND key=?",
+      scope,
+      key,
+    );
+    const wall = BigInt(now) * 1_000_000n;
+    const clock = previous && BigInt(previous.last_ns) > wall ? BigInt(previous.last_ns) : wall;
+    const result = invoke(
+      relaySocketRate,
+      JSON.stringify({ scope, now_ns: String(clock), tat_ns: previous?.tat_ns ?? null }),
+    );
+    if (!result.accepted) return result; // Return, not throw: already-spent device quota must commit.
+    const expires = Number((BigInt(result.next_ns) + 999_999n) / 1_000_000n);
+    if (!Number.isSafeInteger(expires)) throw error("invalid relay rate clock", "relay_context");
+    sql.exec(
+      `DELETE FROM relay_rate_limits WHERE rowid IN (
+      SELECT rowid FROM relay_rate_limits WHERE expires_ms<=? LIMIT 256)`,
+      now,
+    );
+    sql.exec(
+      `INSERT INTO relay_rate_limits VALUES(?,?,?,?,?) ON CONFLICT(scope,key)
+      DO UPDATE SET tat_ns=excluded.tat_ns,last_ns=excluded.last_ns,expires_ms=excluded.expires_ms`,
+      scope,
+      key,
+      result.next_ns,
+      String(clock),
+      expires,
+    );
+    return result;
+  }
+  #relayAdmission(id, bytes, input) {
+    const now = this._nowMs();
+    const first = this.ctx.storage.transactionSync(() => {
+      const row = this.#one("SELECT * FROM directory_connections WHERE id=?", id);
+      let session;
+      try {
+        session = this._socketAuthenticated(row, now);
+      } catch {
+        return { state: "unauthorized" };
+      }
+      if (["publish", "sync"].includes(input.kind) && !session.registered)
+        return { state: "refused", frame: "error", reason: "register first", permanent: true };
+      const admitted = {
+        state: "admitted",
+        identity: session.identity,
+        device: session.device,
+        registered: session.registered,
+        origin_connection: row.id,
+        session_id: row.session_id,
+        claim_receipts: row.claim_receipts,
+        session: { authenticated_identity: session.identity, authenticated_device: session.device },
+      };
+      if (["request", "publish"].includes(input.kind)) {
+        const rate = this.#relayCharge(
+          input.kind === "publish" ? "publish_device" : "request_device",
+          session.device,
+          now,
+        );
+        if (!rate.accepted)
+          return {
+            state: "refused",
+            frame: input.kind === "publish" ? "rejected" : "refused",
+            reason: rate.reason,
+            permanent: false,
+          };
+      }
+      return admitted;
+    });
+    if (first.state !== "admitted" || input.kind !== "publish") return first;
+    // Separate commits preserve native device-first spending even if account
+    // refuses or later signature/target validation fails. No await between them.
+    let account;
+    try {
+      account = this.ctx.storage.transactionSync(() =>
+        this.#relayCharge("publish_account", first.identity, now),
+      );
+    } catch {
+      return {
+        state: "refused",
+        frame: "rejected",
+        reason: "directory unavailable",
+        permanent: false,
+      };
+    }
+    if (!account.accepted)
+      return { state: "refused", frame: "rejected", reason: account.reason, permanent: false };
+    let verified;
+    try {
+      verified = invoke(verifyPublish, bytes, JSON.stringify(first.session));
+    } catch (failure) {
+      return { state: "refused", frame: "rejected", ...this._socketFailure(failure) };
+    }
+    let target = null;
+    try {
+      const identity = verified.lookup.target_identity;
+      if (identity !== null)
+        target = {
+          identity,
+          registered: Boolean(
+            this.#one("SELECT id FROM directory_identities WHERE id=?", identity),
+          ),
+        };
+    } catch {
+      return {
+        state: "refused",
+        frame: "rejected",
+        reason: "directory unavailable",
+        permanent: false,
+      };
+    }
+    return {
+      ...first,
+      space: verified.space_id,
+      client_id: verified.client_id,
+      frame_hash: input.frame_hash,
+      target,
+    };
+  }
+  #relaySendBudget(row, bytes) {
+    if (this.env.RELAY_PROTOCOL_ENABLED !== "true") return;
+    // INTERIM DISABLED-CANDIDATE guard only. It is not queue feedback or final
+    // backpressure: negotiated perbatch credit + real slow-reader proof remain.
+    const usage = this.#one(
+      "SELECT bytes,frames FROM relay_socket_send_usage WHERE connection_id=?",
+      row.id,
+    );
+    const total = (usage?.bytes ?? 0) + bytes.byteLength,
+      frames = (usage?.frames ?? 0) + 1;
+    if (total > 8 * 1024 * 1024 || frames > 4096)
+      throw error("relay send capacity reached", "relay_send_capacity");
+    this.ctx.storage.sql.exec(
+      `INSERT INTO relay_socket_send_usage VALUES(?,?,?) ON CONFLICT(connection_id)
+      DO UPDATE SET bytes=excluded.bytes,frames=excluded.frames`,
+      row.id,
+      total,
+      frames,
+    );
+  }
+  relayDispatch(input) {
+    const relay = this.#relayProtocol();
+    if (!relay) throw error("relay protocol disabled", "relay_unavailable");
+    this.#relayGenesis();
+    return relay.dispatch(input);
+  }
+
+  #relayStock(identity, device) {
+    const row = this.#one(
+      `SELECT (SELECT count(*) FROM directory_key_packages
+      WHERE identity=? AND device=? AND last_resort=0) AS remaining
+      WHERE EXISTS (SELECT 1 FROM directory_key_packages
+      WHERE identity=? AND device=? AND last_resort=1)`,
+      identity,
+      device,
+      identity,
+      device,
+    );
+    // Match native db::key_package_stock: never-published devices aren't listed.
+    return row && row.remaining < 8 ? row.remaining : null;
+  }
+  #relayNotifyOwnStock(socket, admitted) {
+    try {
+      const remaining = this.#relayStock(admitted.identity, admitted.device);
+      if (remaining !== null)
+        this._sendSocket(
+          socket,
+          unbase64(
+            invoke(
+              relaySocketControl,
+              JSON.stringify({ kind: "key_packages_low", device: admitted.device, remaining }),
+            ).frame_base64,
+          ),
+        );
+    } catch {
+      /* Like native stock notice failure, do not fabricate a count or fail Req. */
+    }
+  }
+  #relayNotifyClaimedStock(devices) {
+    if (!Array.isArray(devices) || devices.length > 128)
+      throw error("invalid claim stock work", "relay_context");
+    try {
+      let attempts = 0;
+      const sockets = this.ctx.getWebSockets();
+      for (const record of devices) {
+        const remaining = this.#relayStock(record.identity, record.device);
+        if (remaining === null) continue;
+        const bytes = unbase64(
+          invoke(
+            relaySocketControl,
+            JSON.stringify({ kind: "key_packages_low", device: record.device, remaining }),
+          ).frame_base64,
+        );
+        for (const socket of sockets) {
+          const row = this._socketRow(socket);
+          if (row?.stage !== "ready" || row.identity !== record.identity) continue;
+          if (++attempts > 1024) this._socketClose(socket, 1013);
+          else this._sendSocket(socket, bytes);
+        }
+      }
+    } catch {
+      /* Authoritative notice is best-effort; the durable claim reply is preserved. */
+    }
+  }
+
   _socketId(socket) {
     const value = socket.deserializeAttachment();
     return value?.version === 1 &&
@@ -778,10 +1093,17 @@ export class DirectoryState extends DurableObject {
       // Storage failure cannot keep an unauthorized/expired network socket open.
       try {
         socket.close(code, "private directory connection closed");
-      } catch (_) {}
+      } catch {}
     }
   }
   _dropConnection(row) {
+    if (this.#relay) {
+      this.#relay.drop(row.id);
+      this.ctx.storage.sql.exec(
+        "DELETE FROM relay_socket_send_usage WHERE connection_id=?",
+        row.id,
+      );
+    }
     if (row.challenge_id)
       this.ctx.storage.sql.exec("DELETE FROM directory_challenges WHERE id=?", row.challenge_id);
     if (row.session_id)
@@ -795,14 +1117,23 @@ export class DirectoryState extends DurableObject {
     try {
       const value = JSON.parse(failure.message ?? String(failure));
       if (typeof value.reason === "string") return value;
-    } catch (_) {}
+    } catch {}
     return { reason: "database unavailable", permanent: false };
   }
   _socketAuthenticated(row, now) {
     if (!row || row.stage !== "ready" || row.expires_ms <= now)
       throw error("private session expired", "private_session");
     const session = this.#session(row.session_id, now);
-    invoke(directoryAuthorize, JSON.stringify({ session, facts: this.#facts(session, {}, now) }));
+    const device = this.#device(session.device);
+    const facts = {
+      registered: Boolean(
+        this.#one("SELECT id FROM directory_identities WHERE id=?", session.identity),
+      ),
+      device,
+    };
+    invoke(directoryAuthorize, JSON.stringify({ session, facts }));
+    if (session.registered && device?.cert !== session.cert)
+      throw error("device certificate changed", "private_session");
     return session;
   }
   _sendSocket(socket, bytes) {
@@ -810,12 +1141,18 @@ export class DirectoryState extends DurableObject {
       // Read authorization and enqueue the actual frame in ONE synchronous turn.
       // No await, external RPC, automatic Pong or caller-supplied auth snapshot.
       this.ctx.storage.transactionSync(() => {
-        this._socketAuthenticated(this._socketRow(socket), this._nowMs());
+        const row = this._socketRow(socket);
+        this._socketAuthenticated(row, this._nowMs());
+        this.#relaySendBudget(row, bytes);
         socket.send(bytes);
       });
       return true;
-    } catch (_) {
-      this._socketClose(socket);
+    } catch (failure) {
+      let capacity = false;
+      try {
+        capacity = JSON.parse(failure.message).code === "relay_send_capacity";
+      } catch {}
+      this._socketClose(socket, capacity ? 1013 : 1008);
       return false;
     }
   }
@@ -837,7 +1174,7 @@ export class DirectoryState extends DurableObject {
           );
         if (!row || row.expires_ms <= now) throw error("private connection expired");
         if (row.stage === "ready") this._socketAuthenticated(row, now);
-      } catch (_) {
+      } catch {
         this._socketClose(socket);
       }
     }
@@ -852,11 +1189,14 @@ export class DirectoryState extends DurableObject {
   }
   async _scheduleSocketAlarm() {
     const row = this.#one("SELECT min(expires_ms) AS deadline FROM directory_connections");
-    if (row.deadline !== null) await this.ctx.storage.setAlarm(row.deadline);
+    let deadline = row.deadline;
+    if (this.#relay?.pending()) deadline = Math.min(deadline ?? Infinity, this._nowMs() + 250);
+    if (deadline !== null) await this.ctx.storage.setAlarm(deadline);
     else await this.ctx.storage.deleteAlarm();
   }
   async alarm() {
     this._retireSockets();
+    this.#relay?.kick();
     await this._scheduleSocketAlarm();
   }
 
@@ -891,7 +1231,7 @@ export class DirectoryState extends DurableObject {
     this.ctx.acceptWebSocket(socket);
     try {
       await this._scheduleSocketAlarm();
-    } catch (_) {
+    } catch {
       this._socketClose(socket, 1011);
       throw new Error("Private connection scheduling unavailable");
     }
@@ -902,10 +1242,10 @@ export class DirectoryState extends DurableObject {
     let row;
     try {
       row = this._socketRow(socket);
-    } catch (_) {
+    } catch {
       try {
         socket.close(1011, "private directory unavailable");
-      } catch (_) {}
+      } catch {}
       return;
     }
     if (!row) {
@@ -936,10 +1276,15 @@ export class DirectoryState extends DurableObject {
       return;
     }
     const bytes = new Uint8Array(message);
+    const relay = this.#relayProtocol();
+    if (stage === "ready" && relay) {
+      relay.enqueue(socket, bytes);
+      return;
+    }
     let input;
     try {
       input = invoke(directorySocketFrame, bytes);
-    } catch (_) {
+    } catch {
       this._socketClose(socket, 1003);
       return;
     }
@@ -957,6 +1302,7 @@ export class DirectoryState extends DurableObject {
         if (input.kind !== "auth") throw error("expected auth");
         const result = this.#authenticate({ challengeId: row.challenge_id, frame: bytes }, row.id);
         this._sendSocket(socket, this._socketControl({ kind: "ready", session: result.session }));
+        if (relay && result.session.registered) this.#relayNotifyOwnStock(socket, result.session);
       } catch (failure) {
         refuseHandshake(failure);
         return;
@@ -996,7 +1342,7 @@ export class DirectoryState extends DurableObject {
             this._socketControl({ kind: "error", stage: "ready", reason, permanent: true }),
           );
         }
-      } catch (_) {
+      } catch {
         this._socketClose(socket);
         return;
       }

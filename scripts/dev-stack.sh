@@ -6,7 +6,7 @@
 #   DATABASE_URL=postgres://… scripts/dev-stack.sh   → use your own Postgres instead
 #
 # The iOS simulator and the Mac app reach it at 127.0.0.1:8787 (the default relay of a
-# debug build); a phone on the same Wi-Fi uses `-RodaRelay http://<this-mac>.local:8787`.
+# debug build); a phone on the same Wi-Fi uses `-Relay http://<this-mac>.local:8787`.
 # Try it from a terminal with the CLI: `target/debug/zoen --home /tmp/ana init --name Ana --handle ana`.
 set -euo pipefail
 cd "$(dirname "$0")/.."

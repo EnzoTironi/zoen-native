@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 // Kept only in view memory: no defaults, analytics, clipboard or error interpolation.
 struct RecoveryKeySetup: View {

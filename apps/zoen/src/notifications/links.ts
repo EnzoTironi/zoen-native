@@ -54,12 +54,12 @@ export function parseZoenLink(value: string): ZoenLink | null {
   }
 }
 
-/** Expo CLI may redeliver its transport envelope to an installed Release binary.
+/** Expo CLI and the development client may redeliver their startup envelopes.
  * Discard the whole envelope; never open, fetch or authenticate with its inner address. */
 function expoBootstrapLink(path: string): boolean {
   if (
     path.length > 2048 ||
-    !/^(?:zoen|exp\+zoen):\/\/\/?\?/.test(path) ||
+    !/^(?:(?:zoen|exp\+zoen):\/\/\/?|exp\+zoen:\/\/expo-development-client\/?)\?/.test(path) ||
     Array.from(path).some(
       (character) => character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127,
     )
@@ -67,9 +67,11 @@ function expoBootstrapLink(path: string): boolean {
     return false;
   try {
     const launch = new URL(path);
+    const developmentClient =
+      launch.protocol === 'exp+zoen:' && launch.host === 'expo-development-client';
     if (
       !['zoen:', 'exp+zoen:'].includes(launch.protocol) ||
-      launch.host ||
+      (!developmentClient && launch.host) ||
       launch.username ||
       launch.password ||
       (launch.pathname !== '' && launch.pathname !== '/') ||
@@ -78,8 +80,11 @@ function expoBootstrapLink(path: string): boolean {
       return false;
     const keys = [...launch.searchParams.keys()].sort().join(',');
     if (
-      keys !== '__expo_url' &&
-      keys !== '__expo_disable_auto_launch,__expo_disable_fab,__expo_disable_onboarding,__expo_url'
+      developmentClient
+        ? keys !== 'url'
+        : keys !== '__expo_url' &&
+          keys !==
+            '__expo_disable_auto_launch,__expo_disable_fab,__expo_disable_onboarding,__expo_url'
     )
       return false;
     for (const key of [
@@ -89,7 +94,9 @@ function expoBootstrapLink(path: string): boolean {
     ]) {
       if (launch.searchParams.has(key) && launch.searchParams.get(key) !== '1') return false;
     }
-    const transport = new URL(launch.searchParams.get('__expo_url') ?? '');
+    const transport = new URL(
+      launch.searchParams.get(developmentClient ? 'url' : '__expo_url') ?? '',
+    );
     return (
       ['http:', 'https:'].includes(transport.protocol) &&
       !!transport.hostname &&

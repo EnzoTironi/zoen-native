@@ -47,7 +47,7 @@ class McpWebViewTest {
         assumeTrue("The installed WebView must support origin-scoped messaging and isolated profiles", MiniAppWebProvider.supported())
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
         val folder = File(context.noBackupFilesDir, "web-test-${UUID.randomUUID()}").apply { mkdirs() }
-        val core = RodaEngine.open(File(folder, "core.sqlite").absolutePath, "en")
+        val core = Client.open(File(folder, "core.sqlite").absolutePath, "en")
         core.seedDemoIfEmpty()
         val space = core.spaces().first { it.counterpart?.handle == "zoen" }
         val item = core.installApp(space.id, "list", "{\"title\":\"Android WebView list\",\"items\":[\"Water\"]}")
@@ -108,7 +108,7 @@ class McpWebViewTest {
                     window.resourceOutcome = event.data.error ? String(event.data.error.code) : 'allowed';
                   };
                   window.addEventListener('message', receive);
-                  window.parent.postMessage({jsonrpc:'2.0',id,method:'resources/read',params:{uri:'ui://roda/pet'}}, '*');
+                  window.parent.postMessage({jsonrpc:'2.0',id,method:'resources/read',params:{uri:'ui://builtin/pet'}}, '*');
                 })(); null
             """.trimIndent())
             waitUntil { evaluate(web.get(), "window.resourceOutcome") == "\"-32003\"" }
@@ -145,7 +145,7 @@ class McpWebViewTest {
         assumeTrue("The installed WebView must support origin-scoped messaging and isolated profiles", MiniAppWebProvider.supported())
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
         val folder = File(context.noBackupFilesDir, "hike-web-test-${UUID.randomUUID()}").apply { mkdirs() }
-        val core = RodaEngine.open(File(folder, "core.sqlite").absolutePath, "en")
+        val core = Client.open(File(folder, "core.sqlite").absolutePath, "en")
         core.seedDemoIfEmpty()
         val space = core.spaces().first { it.counterpart?.handle == "zoen" }
         val item = core.installApp(space.id, "hike", "{}")
@@ -236,7 +236,7 @@ class McpWebViewTest {
         }
     }
 
-    private fun gateway(core: RodaEngine, confirmedCalls: AtomicInteger = AtomicInteger(), lastTool: AtomicReference<String>? = null): MiniAppGateway = object : MiniAppGateway {
+    private fun gateway(core: Client, confirmedCalls: AtomicInteger = AtomicInteger(), lastTool: AtomicReference<String>? = null): MiniAppGateway = object : MiniAppGateway {
         override suspend fun item(id: String) = withContext(Dispatchers.IO) { core.item(id) }
         override suspend fun specs() = withContext(Dispatchers.IO) { core.appSpecs() }
         override suspend fun resource(uri: String) = withContext(Dispatchers.IO) { core.readAppResource(uri) }

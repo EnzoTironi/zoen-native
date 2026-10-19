@@ -2,10 +2,10 @@
 
 mod common;
 use common::*;
-use roda_log::{Author, Signer};
-use roda_proto::{ClientFrame, DeviceCertificate, Envelope, ErrorCode, Op, ServerFrame};
-use roda_types::{EventBody, Privacy, Seen, SpaceKind};
+use event_log::{Author, Signer};
+use protocol::{ClientFrame, DeviceCertificate, Envelope, ErrorCode, Op, ServerFrame};
 use sqlx::{Connection, PgConnection};
+use types::{EventBody, Privacy, Seen, SpaceKind};
 
 async fn barrier(client: &mut RawClient) {
     assert!(client.send_if_open(&ClientFrame::Ping).await);
@@ -66,7 +66,7 @@ async fn revoke_live_sockets(two_nodes: bool, miss_bus_invalidation: bool) {
     barrier(&mut syncing).await;
     barrier(&mut publishing).await;
     barrier(&mut receiving).await;
-    let space = roda_types::new_id("readable");
+    let space = types::new_id("readable");
     let created = syncing
         .publish_body(
             &space,

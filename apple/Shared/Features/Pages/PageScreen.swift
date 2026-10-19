@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 import os
 #if os(macOS)
 import AppKit

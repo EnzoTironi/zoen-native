@@ -51,7 +51,7 @@ class ZoenRepository(private val context: Context) {
     private val changes = Channel<Unit>(Channel.CONFLATED)
     private val errors = Channel<String>(Channel.BUFFERED)
     val errorEvents = errors.receiveAsFlow()
-    private var engine: RodaEngine? = null
+    private var engine: Client? = null
     private var syncRunning = false
     private var backgroundOwner: Any? = null
     private var openedLanguage: String? = null
@@ -187,7 +187,8 @@ class ZoenRepository(private val context: Context) {
     suspend fun boot(requestDemo: Boolean = false) = withContext(Dispatchers.IO) {
         gate.withLock {
             val language = Locale.forLanguageTag(locale).language
-            if (engine != null && openedLanguage == language) return@withLock
+            val demo = BuildConfig.DEBUG && (requestDemo || preferences.getBoolean("demo", false))
+            if (engine != null && openedLanguage == language && mutableState.value.demo == demo) return@withLock
             if (engine != null) {
                 engine?.stopSync()
                 syncRunning = false
@@ -199,8 +200,7 @@ class ZoenRepository(private val context: Context) {
                 xyz.tironi.zoen.miniapps.MiniAppModelContext.clear()
             }
             try {
-                val demo = BuildConfig.DEBUG && (requestDemo || preferences.getBoolean("demo", false))
-                val core = RodaEngine.open(databaseFile(demo).absolutePath, locale)
+                val core = Client.open(databaseFile(demo).absolutePath, locale)
                 engine = core
                 openedLanguage = language
                 mutableState.value = mutableState.value.copy(demo = demo)
@@ -236,11 +236,11 @@ class ZoenRepository(private val context: Context) {
         )
     }
 
-    suspend fun <T> query(block: (RodaEngine) -> T): T = withContext(Dispatchers.IO) {
+    suspend fun <T> query(block: (Client) -> T): T = withContext(Dispatchers.IO) {
         gate.withLock { block(checkNotNull(engine) { "Zoen is still opening." }) }
     }
 
-    suspend fun <T> change(block: (RodaEngine) -> T): T = withContext(Dispatchers.IO) {
+    suspend fun <T> change(block: (Client) -> T): T = withContext(Dispatchers.IO) {
         gate.withLock {
             val result = block(checkNotNull(engine) { "Zoen is still opening." })
             refreshLocked()
@@ -329,7 +329,7 @@ class ZoenRepository(private val context: Context) {
             try {
                 block(file)
             } finally {
-                engine = RodaEngine.open(file.absolutePath, locale)
+                engine = Client.open(file.absolutePath, locale)
                 openedLanguage = Locale.forLanguageTag(locale).language
                 updateSyncLocked()
                 refreshLocked()
@@ -338,12 +338,11 @@ class ZoenRepository(private val context: Context) {
     }
 
     private fun databaseFile(demo: Boolean): File {
-        val dir = File(context.noBackupFilesDir, "core").apply { mkdirs() }
-        val name = if (demo) "demo-${Locale.forLanguageTag(locale).language}.sqlite" else "zoen.sqlite"
-        return File(dir, name)
+        val dir = File(context.noBackupFilesDir, if (demo) "demo" else "account").apply { mkdirs() }
+        return File(dir, "client.sqlite")
     }
 
-    suspend fun <T> network(block: suspend (RodaEngine) -> T): T {
+    suspend fun <T> network(block: suspend (Client) -> T): T {
         val core = query { it }
         val result = block(core)
         refresh()

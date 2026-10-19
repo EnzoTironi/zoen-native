@@ -8,8 +8,14 @@
   "preview_urls": false,
   "routes": [],
   "r2_buckets": [{ "binding": "MEDIA_BUCKET", "bucket_name": "zoen-private-blobs" }],
-  "vars": { "DIRECTORY_CELL": "zoen-private-directory-v1", "RELAY_NAME": "zoen-cloudflare-private" },
+  "vars": {
+    "DIRECTORY_CELL": "zoen-private-directory-v1",
+    "RELAY_NAME": "zoen-cloudflare-private",
+    "RELAY_PROTOCOL_ENABLED": "false",
+    "RELAY_ALLOWED_ORIGINS": "[\"https://app.tryzoen.com\"]"
+  },
   "durable_objects": { "bindings": [{ "name": "DIRECTORY", "class_name": "DirectoryState" }] },
   "migrations": [{ "tag": "directory-v1", "new_sqlite_classes": ["DirectoryState"] }],
+  "services": [{ "binding": "CLOSED_RELAY", "service": "zoen-relay-closed" }],
   "build": { "command": "node \"$(git rev-parse --show-toplevel)/scripts/build-cloudflare-closed.mjs\"" }
 }

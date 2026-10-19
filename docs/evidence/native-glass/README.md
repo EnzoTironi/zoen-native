@@ -12,7 +12,7 @@ Captured on iPhone 18 Pro, iOS 27.1 simulator `E748ECE3-BD66-46CF-A20E-00BEFB24E
 
 The original six images were visually inspected. The three after images were refreshed after the native sizing correction and visually inspected again; [compact glass Undo](after-compact-undo.png) was also captured and visually inspected. Screenshots are unmodified XCTest attachments: onboarding from `OnboardingKeyboardJourneyTests`, chats/group from `InvestorShowcaseTests/testCaptureInvestorLightPT`. Demo timestamps, countdowns and mascot animation naturally differ. The onboarding CTA no longer renders the custom swollen gradient pill; it uses the native prominent glass button. Group/chat content and layout remain intact.
 
-The before app was built from a `git archive origin/main` at `71bc1ebb857e7756ba659f64da1b962bc289fcb6` in `/tmp/zoen-glass-baseline`, not by switching the working checkout. XcodeGen generated its ignored project. Generated RodaFFI framework and Swift bindings are excluded from Git, so the existing local generated artifacts were copied into the archive after confirming `git diff origin/main -- crates Cargo.lock apple/Packages/RodaCore` was empty. This establishes baseline Swift UI source, not an independently rebuilt Rust artifact.
+The before app was built from a `git archive origin/main` at `71bc1ebb857e7756ba659f64da1b962bc289fcb6` in `/tmp/zoen-glass-baseline`, not by switching the working checkout. XcodeGen generated its ignored project. Generated ClientFFI framework and Swift bindings are excluded from Git, so the existing local generated artifacts were copied into the archive after confirming `git diff origin/main -- crates Cargo.lock apple/Packages/ClientCore` was empty. This establishes baseline Swift UI source, not an independently rebuilt Rust artifact.
 
 Direct simctl launch captures initially contained black content; they were replaced by the rendered XCTest attachments above, not used as evidence.
 
@@ -37,7 +37,7 @@ The corrected source was verified with full iOS and macOS builds using the final
 
 Regression tests now assert the onboarding Continue button is at least 56 points high and the actual `.wabiGlassProminent` revoke-toast Undo (`toast-undo`, not the plain approval-card or voice-editor Undo) is narrower than one third of the 402-point window. Undo also restores the revoked standing decision.
 
-Fail-before checks used an isolated `git archive 46de5a0` at `/tmp/zoen-glass-regression`, with the new test files copied in, an XcodeGen project, and existing local generated RodaCore artifacts copied in. The working source was not reverted. With `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, commands used:
+Fail-before checks used an isolated `git archive 46de5a0` at `/tmp/zoen-glass-regression`, with the new test files copied in, an XcodeGen project, and existing local generated ClientCore artifacts copied in. The working source was not reverted. With `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, commands used:
 
 ```sh
 xcodebuild -project /tmp/zoen-glass-regression/apple/Zoen.xcodeproj -scheme ZoenUITests -destination 'platform=iOS Simulator,id=E748ECE3-BD66-46CF-A20E-00BEFB24EA2B' -derivedDataPath /tmp/zoen-glass-regression-dd -resultBundlePath /tmp/zoen-glass-regression-ui.xcresult -only-testing:ZoenUITests/OnboardingKeyboardJourneyTests -only-testing:ZoenUITests/VoiceEditorMultiCutTests CODE_SIGNING_ALLOWED=NO test

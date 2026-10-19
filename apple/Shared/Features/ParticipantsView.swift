@@ -1,12 +1,11 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 /// Participantes (poster #016): Pessoas e Agentes separados, permissões por agente
 /// e a configuração da conversa (convites, privacidade, registro).
 struct ParticipantsView: View {
     @Environment(AppModel.self) private var model
     let spaceId: String
-    @State private var invite: String?
     /// A relay invite for a shared chat (code + link).
     @State private var relayInvite: InviteDto?
     @State private var inviting = false
@@ -142,15 +141,6 @@ struct ParticipantsView: View {
                     }
                 }
 
-                if let invite {
-                    Section {
-                        ShareLink(item: invite) { Label { Text("Share invite") } icon: { ZoenIcon(.share, size: 18) } }
-                        Text(invite).font(.caption.monospaced()).foregroundStyle(Palette.textSecondary)
-                    } header: { Text("Invite") } footer: {
-                        Text("Valid for 7 days. The invite web page isn’t ready yet — sharing the link is enough for now.")
-                    }
-                }
-
                 Section {
                     Label { Text("Jam (voice, video and co-editing) arrives in phase 2") } icon: { HStack(spacing: 2) { ZoenIcon(.phone, size: 15); ZoenIcon(.video, size: 15) } }
                         .foregroundStyle(Palette.textTertiary)
@@ -173,19 +163,15 @@ struct ParticipantsView: View {
 
     private var inviteButton: some View {
         Button("Add") {
-            if model.sync.isSynced(spaceId) {
-                inviting = true
-                Task {
-                    defer { inviting = false }
-                    do { relayInvite = try await model.core.createInvite(spaceId: spaceId) }
-                    catch { model.show(.init(kind: .error, text: (error as? CoreError)?.message ?? error.localizedDescription)) }
-                }
-            } else {
-                invite = model.perform { try model.core.inviteLink(spaceId: spaceId) }
+            inviting = true
+            Task {
+                defer { inviting = false }
+                do { relayInvite = try await model.core.createInvite(spaceId: spaceId) }
+                catch { model.show(.init(kind: .error, text: (error as? CoreError)?.message ?? error.localizedDescription)) }
             }
         }
         .font(.subheadline.weight(.semibold))
         .textCase(nil)
-        .disabled(inviting || (model.sync.isSynced(spaceId) && space?.kind != .group))
+        .disabled(inviting || !model.sync.isOnline || !model.sync.isSynced(spaceId) || space?.kind != .group)
     }
 }

@@ -1,8 +1,8 @@
 //! Canonical drawing adapter. Scene policy is shared Rust; original bytes remain authoritative.
 use super::*;
 use crate::media::{self, Sealed};
-use roda_apps::excalidraw::{Scene, EMPTY, MAX_SCENE_BYTES, MIME, RESOURCE};
-use roda_types::{AppDoc, Capability, Grant, GrantScope, TrustLevel};
+use miniapps::excalidraw::{Scene, EMPTY, MAX_SCENE_BYTES, MIME, RESOURCE};
+use types::{AppDoc, Capability, Grant, GrantScope, TrustLevel};
 
 // JSON escaping can expand a valid UTF-8 scene sixfold. Other document commands keep 1 MiB.
 pub(super) const MAX_REQUEST_BYTES: usize = MAX_SCENE_BYTES * 6 + 4096;
@@ -414,7 +414,7 @@ impl<S: Signer> Client<S> {
                     },
                 },
                 EventBody::MessagePosted {
-                    message: roda_types::new_secret_id("msg"),
+                    message: types::new_secret_id("msg"),
                     text: t(
                         "Mini-app adicionado a este Espaço.",
                         "Mini-app added to this Space.",
@@ -524,14 +524,14 @@ impl<S: Signer> Client<S> {
             return Err(invalid());
         }
         let profile = self.saved.profiles.get(&self.account.identity);
-        let actor = roda_apps::Actor {
+        let actor = miniapps::Actor {
             id: &self.account.identity,
             name: profile
                 .map(|profile| profile.name.as_str())
                 .unwrap_or(&self.account.name),
             owner: profile.and_then(|profile| profile.owner.as_deref()),
         };
-        let (title, _) = roda_apps::create_as("excalidraw", &arguments, &actor, now)?;
+        let (title, _) = miniapps::create_as("excalidraw", &arguments, &actor, now)?;
         let item = browser_id("it", now);
         let app = AppDoc {
             app: "excalidraw".into(),

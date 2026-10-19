@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 /// The group's countdown (a trip, a show): hand-drawn scene, the time left ticking, the date.
 struct CountdownSheet: View {

@@ -2,9 +2,9 @@
 
 mod common;
 use common::World;
+use event_log::content::SealedKind;
 use futures_util::{SinkExt, StreamExt};
-use roda_log::content::SealedKind;
-use roda_proto::ClientFrame;
+use protocol::ClientFrame;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Message;

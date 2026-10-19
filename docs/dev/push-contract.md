@@ -1,6 +1,6 @@
 # APNs wake contract
 
-Source checkpoint: 12 October 2026, shared `main`. The captured `roda-proto::push` source defines validated APNs inputs and a concrete sync-wake encoder. Its four new tests passed within the complete 28-case protocol library run. The later complete Core run was interrupted when the module entry disappeared from `roda-proto/src/lib.rs`; that source guard failure is preserved, and the entry must be restored before accepting the current source. This unit does not implement registration transport or provider delivery, and the shared capability list does not advertise `push_registration_v1` yet.
+Source checkpoint: 12 October 2026, shared `main`. The captured `protocol::push` source defines validated APNs inputs and a concrete sync-wake encoder. Its four new tests passed within the complete 28-case protocol library run. The later complete Core run was interrupted when the module entry disappeared from `protocol/src/lib.rs`; that source guard failure is preserved, and the entry must be restored before accepting the current source. This unit does not implement registration transport or provider delivery, and the shared capability list does not advertise `push_registration_v1` yet.
 
 The exact payload from `encode_sync_wake(space_id, event_seq)` is:
 
@@ -24,7 +24,7 @@ Before exposing `setPushRegistration` or advertising support, the remaining unit
 After the coordinator reserves a frozen-source test slot:
 
 ```sh
-cargo test --locked -j2 -p roda-proto push::tests -- --test-threads=1
+cargo test --locked -j2 -p protocol push::tests -- --test-threads=1
 ```
 
 That command checks the payload/input contract only; it does not certify end-to-end delivery or registration.

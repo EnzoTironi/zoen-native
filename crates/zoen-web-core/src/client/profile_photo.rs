@@ -1,6 +1,6 @@
 //! Disposable verified profile image cache; ProfileFields remains the only authority.
 use super::*;
-use roda_log::profile::{ProfilePhoto, MAX_PHOTO_BYTES};
+use event_log::profile::{ProfilePhoto, MAX_PHOTO_BYTES};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 

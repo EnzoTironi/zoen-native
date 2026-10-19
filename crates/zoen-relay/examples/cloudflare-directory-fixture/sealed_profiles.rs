@@ -1,8 +1,8 @@
 //! Real native SQL/encryption oracle; never exports account signing or profile keys.
 use super::*;
-use roda_log::profile::{self as crypto, AgreementKey, ProfileFields, ProfileKey};
-use roda_proto::SealedProfile;
-use roda_relay_admission::directory::sealed_profiles as policy;
+use event_log::profile::{self as crypto, AgreementKey, ProfileFields, ProfileKey};
+use protocol::SealedProfile;
+use relay_admission::directory::sealed_profiles as policy;
 
 async fn encrypted_state(pool: &PgPool) -> Result<Value> {
     let ids: Vec<String> = sqlx::query_scalar("SELECT id FROM identities ORDER BY id")
@@ -288,7 +288,7 @@ pub(super) async fn timeline(f: &mut Fixture<'_>) -> Result<Value> {
     );
     let proof = json!({"roundtrip":roundtrip,"wrong_version_rejected":wrong_version_rejected,
         "wrong_key_rejected":wrong_key_rejected,"identity":owner.identity,"version":version.to_string(),
-        "ciphertext_sha256":roda_log::sha256_hex(&stored[0].ciphertext)});
+        "ciphertext_sha256":event_log::sha256_hex(&stored[0].ciphertext)});
     request(
         f,
         "encrypted-profile-read",

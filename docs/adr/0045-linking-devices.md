@@ -11,7 +11,7 @@ plaintext, and pruning (ADR 0026) must not take away history a new device still 
 ## Decision
 
 ### Flow (Signal-style)
-1. **New device** — `zoen link-request` / `RodaEngine::link_request`: makes a device key, an
+1. **New device** — `zoen link-request` / `Client::link_request`: makes a device key, an
    HPKE (X25519) key pair and a 32-byte one-time **link secret**, and shows them as a code
    (`zoen-link:1:<device pub>:<hpke pub>:<secret>`, a QR in the app) with six check digits.
 2. **Existing device** — `zoen link CODE` / `link_device`: shows the same check digits (the

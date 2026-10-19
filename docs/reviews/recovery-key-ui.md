@@ -29,13 +29,13 @@ Disk checks remained above 5 GiB (last observed 276 GiB available).
 | Check | Observed result / boundary |
 | --- | --- |
 | `python3 scripts/test-recovery-ui.py` | Baseline: 4 failed assertions and 1 missing-module error. After: 5 passed. These are source-wiring guards, not UI execution. |
-| `cargo test --locked -p roda-ffi --lib recovery_ui -- --test-threads=1` | 3 passed. Mock HTTP upload failure/retry reopens the same encrypted backup key with the confirmed recovery key and rejects a wrong key; malformed input is rejected; password mode is refused without an open request. 317 unrelated tests filtered out. Not an actual relay/lost-device journey. |
+| `cargo test --locked -p client-core --lib recovery_ui -- --test-threads=1` | 3 passed. Mock HTTP upload failure/retry reopens the same encrypted backup key with the confirmed recovery key and rejects a wrong key; malformed input is rejected; password mode is refused without an open request. 317 unrelated tests filtered out. Not an actual relay/lost-device journey. |
 | Same malformed-key test with the original permissive parser temporarily restored | Failed at `backup::recovery_keys(&key).is_err()`. Restoring the fix made the same test pass. No key value was printed. |
-| `cargo clippy --locked -p roda-ffi --lib --tests -- -D warnings` | Passed. |
+| `cargo clippy --locked -p client-core --lib --tests -- -D warnings` | Passed. |
 | `cargo fmt --all --check`; `git diff --check` | Passed. |
 | `swiftc apple/Shared/Features/Settings/RecoveryKeyInput.swift apple/Tests/RecoveryKeyInputJourney.swift -o /tmp/zoen-recovery-input && /tmp/zoen-recovery-input` | Passed full-key confirmation, wrong/malformed key and secure relay-origin checks with synthetic fixtures. |
 | `npm ci --ignore-scripts`; `npm run typecheck:web`; `npm run test:web` (in `packages/zoen-ui`) | Passed; all 13 web tests passed. |
-| Native bindings | Regenerated Swift and Kotlin with `target/debug/uniffi-bindgen generate --library target/debug/libroda_ffi.dylib`, language-specific output and Android config, plus `scripts/fix-android-uniffi-callbacks.py`. Generated artifacts are ignored build output, not hand-edited source. All three new methods appear in both generated interfaces. |
+| Native bindings | Regenerated Swift and Kotlin with `target/debug/uniffi-bindgen generate --library target/debug/libclient_core.dylib`, language-specific output and Android config, plus `scripts/fix-android-uniffi-callbacks.py`. Generated artifacts are ignored build output, not hand-edited source. All three new methods appear in both generated interfaces. |
 | Native Mac build | Partial: fresh host-only XCFramework and generated Swift were used. Both `RecoveryKeyFlow.o` and `RecoveryKeyInput.o` were produced. Full `xcodebuild -project apple/Zoen.xcodeproj -scheme ZoenMac -configuration Debug -destination 'platform=macOS' -derivedDataPath build/recovery-native CODE_SIGNING_ALLOWED=NO` failed because existing `apple/Shared/Sync/PushBridge.swift:58` references `.ephemeral`, unavailable on macOS. That file is unchanged by this PR and unchanged between the original checkout and observed main. Build/polish is excluded (#105); no fix here. |
 | Android build/unit/instrumentation tests | Not run locally: `java -version` reports no Java runtime; no Android SDK was found at the standard path. Generated bindings alone are not ABI/runtime proof. |
 | Native UI tests | Existing disabled-restore-placeholder assertions were replaced with stronger key-flow guards: malformed/wrong confirmation cannot activate, no password field, cancel before activation leaves backup off. Tests were updated, **not executed**. |
@@ -85,13 +85,13 @@ without feature edits. No generated bindings were hand-edited.
 Fresh local checks on the integrated tree:
 
 - `python3 scripts/test-recovery-ui.py`: **passed**, 5 source-wiring guards.
-- `cargo test --locked -p roda-ffi --lib recovery_ui -- --test-threads=1`:
+- `cargo test --locked -p client-core --lib recovery_ui -- --test-threads=1`:
   **passed**, 3 regressions, 321 unrelated tests filtered out.
-- `cargo clippy --locked -p roda-ffi --lib --tests -- -D warnings`: **passed**.
+- `cargo clippy --locked -p client-core --lib --tests -- -D warnings`: **passed**.
 - `cargo fmt --all --check` and staged/unstaged `git diff --check`: **passed**.
-- `cargo build --locked -p roda-ffi -p uniffi-bindgen`: **passed**.
+- `cargo build --locked -p client-core -p uniffi-bindgen`: **passed**.
 - Swift and Kotlin bindings regenerated from that host dylib using
-  `target/debug/uniffi-bindgen generate --library target/debug/libroda_ffi.dylib`,
+  `target/debug/uniffi-bindgen generate --library target/debug/libclient_core.dylib`,
   language-specific output in ignored `build/recovery-bindings`, Kotlin config
   `android/uniffi.toml`, and `scripts/fix-android-uniffi-callbacks.py`.
 - Swift recovery-input journey: **passed** using the command in the original table.
@@ -119,9 +119,9 @@ clients retain their request behavior.
 Verification on this fix:
 
 - Temporarily restoring the original client request made
-  `cargo test --locked -p roda-ffi --lib recovery_ui_tests::recovery_ui_refuses_password_mode_before_spending_a_guess -- --exact --test-threads=1`
+  `cargo test --locked -p client-core --lib recovery_ui_tests::recovery_ui_refuses_password_mode_before_spending_a_guess -- --exact --test-threads=1`
   fail at the new no-OPRF-point assertion. Restoring the fix and running
-  `cargo test --locked -p roda-ffi --lib recovery_ui -- --test-threads=1`
+  `cargo test --locked -p client-core --lib recovery_ui -- --test-threads=1`
   passed all 3 tests.
 - The freshly built native unit-test executable with `--test-threads=2` passed
   all 324 tests, zero ignored or failed.

@@ -81,7 +81,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "Whole-application iPhone baseline remains v85; preserving-installed v92 has bounded MCP/gesture/Home evidence. v94/v95 Page input/session work remains source/host proof without new signed editor recovery. Web passes22 checkpoints per locale locally and in CI, including actual Excalidraw edits, exact native-peer bytes and cold reload. Android API 35 Debug passed linking/history/Page/headers/erasure; the minified CI Release APK and 14 JVM tests passed, and the unchanged non-debuggable APK passed normal onboarding and connection-code generation only. Cloudflare hosts the frontend, private closed-group storage and a private Person/device directory including MLS key packages. Public encrypted relay/provider paths and full comparative parity remain incomplete.",
+  "currentAcceptanceSummary": "Current source uses Expo SDK 58.0.16 and purpose-based Rust packages with a regenerated Client ABI, separate account/demo storage and no old-name aliases. TypeScript, Oxlint, Oxfmt and 815 app tests pass. Fresh native Android arm64 passes 123 JVM tests and two API 35 MCP App flows. A signed Expo iOS Debug simulator app passes onboarding, demo Home, Hike and conversation checks; its JavaScript startup-link follow-up is recorded separately. Earlier Release artifacts remain v85/v92; they do not certify current source. Public backend/provider interoperability, complete platform journeys and measured production/scale acceptance remain incomplete.",
   "historicalEvidence": {
     "commit": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
     "path": "apps/zoen/acceptance.json",
@@ -2017,5 +2017,32 @@
     "Public hosting proves HTTP routing/isolation/assets only; unavailable production relay blocks public encrypted sync/provider acceptance.",
     "Android acceptance is bounded to API35 arm64 Debug synthetic linking/history/Page/erasure and unchanged minified Release onboarding/key-generation only. Release linked-account runtime/performance, API28/physical devices and remaining media/voice/profile/assistant features remain unaccepted.",
     "Native extensions, Push delivery, agent/community/permissions workflows and remaining media/document/history failure boundaries need their own current-artifact journeys."
-  ]
+  ],
+  "currentSourceCheckpoint": {
+    "id": "prelaunch-core-cleanup-v111",
+    "progressDocument": "docs/dev/zoen-product-progress.md",
+    "expoVersion": "58.0.16",
+    "sharedPackagesRenamed": 13,
+    "nativeObject": "Client",
+    "nativeBindings": "client_core",
+    "compatibilityAliasesAdded": false,
+    "nativeProof": {
+      "path": "/private/tmp/zoen-client-rename-v110/acceptance.json",
+      "sha256": "4d39212739054d7d70a773cf02e8aca4ebc0c95b07c7e6b4dc40a17caac6340d"
+    },
+    "javascriptChecks": {
+      "path": "/private/tmp/zoen-transfer-v102/v111-development-link-app-check.json",
+      "sha256": "9acc5013924872e48ac0f3aaf1ec36b5a592ae26f6fd747525bbd6fb6827fc0d",
+      "tests": 815,
+      "failures": 0,
+      "skipped": 0
+    },
+    "scope": "Bounded source, regenerated ABI, native Android host and signed Expo iOS Debug simulator checks. Earlier receipts retain their original source; no complete Expo Android, signed Release, public provider/backend, full-app or scale acceptance follows.",
+    "javascriptRuntimeProof": {
+      "path": "/private/tmp/zoen-client-routing-v111/acceptance.json",
+      "sha256": "32357c97359875e1ce2d1e6cf541b5a0c109bdf2cbf864b544f45ccbde27673d",
+      "scope": "Current served bundle, cold/warm development-client links followed by explicit demo entry, retained five card IDs/four message IDs; no invalid-link detour. Development-client redelivery reloads JavaScript; demo mode is session-only."
+    },
+    "checkpointReceipt": "/private/tmp/zoen-naming-v110/acceptance.json"
+  }
 }

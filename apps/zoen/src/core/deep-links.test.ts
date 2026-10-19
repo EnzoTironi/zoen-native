@@ -119,3 +119,45 @@ test('Expo Router empty root scheme URLs open home on ordinary native cold launc
   ])
     assert.equal(nativeLinkPath(invalid), '/open-link?invalid=1');
 });
+
+test('development-client startup and redelivery open home without using the inner URL', () => {
+  for (const slash of ['', '/']) {
+    for (const transport of [
+      'http://localhost:8089',
+      'http://192.168.1.2:8081',
+      'https://example.test/tunnel?state=not-a-provider-proof',
+    ]) {
+      const launch = `exp+zoen://expo-development-client${slash}?url=${encodeURIComponent(transport)}`;
+      assert.equal(nativeLinkPath(launch), '/');
+      assert.equal(parseZoenLink(launch), null);
+    }
+  }
+});
+
+test('development-client recognition cannot swallow product links or provider callbacks', () => {
+  const launch = 'exp+zoen://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8089';
+  for (const invalid of [
+    launch.replace('exp+zoen:', 'zoen:'),
+    launch.replace('expo-development-client/', 'expo-development-client.evil.test/'),
+    launch.replace('expo-development-client/', 'user@expo-development-client/'),
+    launch.replace('expo-development-client/', 'expo-development-client:8089/'),
+    launch.replace('expo-development-client/', 'expo-development-client/nested/'),
+    launch.replace('?url=', '?__expo_url='),
+    launch.replace('http%3A%2F%2Flocalhost%3A8089', 'zoen%3A%2F%2Fjoin%2FABCDE12345'),
+    launch.replace('http%3A%2F%2Flocalhost%3A8089', 'javascript%3Aalert(1)'),
+    launch.replace('http%3A%2F%2Flocalhost%3A8089', 'http%3A%2F%2Fuser%3Apassword%40localhost'),
+    `${launch}&url=http%3A%2F%2Flocalhost%3A8081`,
+    `${launch}&code=provider-proof`,
+    `${launch}&state=provider-state`,
+    `${launch}#fragment`,
+    ` ${launch}`,
+    `${launch}\n`,
+    'exp+zoen://expo-development-client/?url=',
+  ])
+    assert.equal(nativeLinkPath(invalid), '/open-link?invalid=1', invalid);
+  assert.equal(nativeLinkPath('zoen://chat/sp_signed'), '/chat/sp_signed');
+  assert.equal(
+    nativeLinkPath('zoen://join/abcde12345'),
+    '/open-link?kind=invite&target=ABCDE12345',
+  );
+});

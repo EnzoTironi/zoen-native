@@ -45,6 +45,47 @@ async function inputs(directory) {
   }
   return result;
 }
+
+async function exactFiles(directory, expected) {
+  const actual = [];
+  async function visit(path, prefix = '') {
+    for (const entry of await readdir(path, { withFileTypes: true })) {
+      const name = prefix + entry.name;
+      if (entry.isDirectory()) await visit(join(path, entry.name), `${name}/`);
+      else if (entry.isFile()) actual.push(name);
+      else throw new Error(`Unexpected generated artifact: ${join(path, entry.name)}`);
+    }
+  }
+  await visit(directory);
+  if (JSON.stringify(actual.sort()) !== JSON.stringify(expected.sort()))
+    throw new Error(`Generated output inventory changed: ${directory}`);
+}
+
+async function validateGeneratedInventory() {
+  if (platform === 'android') {
+    const out = join(moduleRoot, 'generated/android');
+    await exactFiles(out, [
+      'core-inputs.json',
+      'core-contract.json',
+      'kotlin/xyz/tironi/zoen/core/client_core.kt',
+      ...androidAbis.split(',').map((abi) => `jniLibs/${abi}/libclient_core.so`),
+    ]);
+  } else if (platform === 'ios') {
+    await exactFiles(join(moduleRoot, 'ios/generated'), [
+      'ClientFFI.generated.swift',
+      'ClientFFI.xcframework/Info.plist',
+      ...iosArchitectures.flatMap((architecture) => {
+        const slice = architecture.endsWith('-sim') ? 'ios-arm64-simulator' : 'ios-arm64';
+        const prefix = `ClientFFI.xcframework/${slice}/`;
+        return [`${prefix}libclient_core.a`, `${prefix}Headers/client_coreFFI.h`, `${prefix}Headers/module.modulemap`];
+      }),
+    ]);
+    await exactFiles(join(moduleRoot, 'generated/swift'), [
+      'client_core.swift', 'client_coreFFI.h', 'client_coreFFI.modulemap',
+      'headers/client_coreFFI.h', 'headers/module.modulemap',
+    ]);
+  }
+}
 async function sourceHash() {
   const hash = createHash('sha256');
   hash.update(JSON.stringify({ platform, profile, iosArchitectures, androidAbis }));
@@ -57,7 +98,7 @@ async function sourceHash() {
   );
   const packages = JSON.parse(stdout).packages;
   const byDirectory = new Map(packages.map((pkg) => [dirname(pkg.manifest_path), pkg]));
-  const pending = ['roda-ffi', ...(platform === 'types' ? [] : ['uniffi-bindgen'])].map((name) => {
+  const pending = ['client-core', ...(platform === 'types' ? [] : ['uniffi-bindgen'])].map((name) => {
     const pkg = packages.find((candidate) => candidate.name === name);
     if (!pkg) throw new Error(`Missing build package: ${name}`);
     return dirname(pkg.manifest_path);
@@ -101,6 +142,7 @@ try {
   // Always rerun its inexpensive exporter; Cargo already caches the executable.
   if (platform !== 'types' && previous.sha256 === hash) {
     await Promise.all(previous.outputs.map((path) => stat(path)));
+    await validateGeneratedInventory();
     process.exit(0);
   }
 } catch {
@@ -115,7 +157,7 @@ if (platform === 'types') {
     'run',
     '--locked',
     '-p',
-    'roda-ffi',
+    'client-core',
     '--example',
     'export-client-types',
     '--features',
@@ -135,11 +177,13 @@ if (platform === 'types') {
   ]);
   outputs = [
     join(out, 'kotlin'),
-    ...abis.split(',').map((abi) => join(out, 'jniLibs', abi, 'libroda_ffi.so')),
+    ...abis.split(',').map((abi) => join(out, 'jniLibs', abi, 'libclient_core.so')),
   ];
 } else {
   const out = join(moduleRoot, 'ios/generated');
   const binding = join(moduleRoot, 'generated/swift');
+  await rm(out, { recursive: true, force: true });
+  await rm(binding, { recursive: true, force: true });
   await mkdir(binding, { recursive: true });
   await mkdir(join(binding, 'headers'), { recursive: true });
   await mkdir(out, { recursive: true });
@@ -155,13 +199,13 @@ if (platform === 'types') {
   // Xcode and shell sessions can export a different SDKROOT. The host binding
   // generator and each Apple target must link against their own SDK explicitly.
   const hostSdk = await appleSdk('macosx');
-  await run('cargo', ['build', '--locked', '-p', 'roda-ffi', '--profile', profile], root, {
+  await run('cargo', ['build', '--locked', '-p', 'client-core', '--profile', profile], root, {
     SDKROOT: hostSdk,
   });
   for (const architecture of iosArchitectures) {
     await run(
       'cargo',
-      ['build', '--locked', '-p', 'roda-ffi', '--profile', profile, '--target', architecture],
+      ['build', '--locked', '-p', 'client-core', '--profile', profile, '--target', architecture],
       root,
       {
         IPHONEOS_DEPLOYMENT_TARGET: '26.0',
@@ -177,30 +221,31 @@ if (platform === 'types') {
     '--',
     'generate',
     '--library',
-    join(target, folder, 'libroda_ffi.dylib'),
+    join(target, folder, 'libclient_core.dylib'),
     '--language',
     'swift',
     '--out-dir',
     binding,
   ], root, { SDKROOT: hostSdk });
-  await cp(join(binding, 'roda_ffiFFI.h'), join(binding, 'headers/roda_ffiFFI.h'));
-  await cp(join(binding, 'roda_ffiFFI.modulemap'), join(binding, 'headers/module.modulemap'));
-  const framework = join(out, 'RodaFFI.xcframework');
+  await cp(join(binding, 'client_coreFFI.h'), join(binding, 'headers/client_coreFFI.h'));
+  await cp(join(binding, 'client_coreFFI.modulemap'), join(binding, 'headers/module.modulemap'));
+  const framework = join(out, 'ClientFFI.xcframework');
   await rm(framework, { recursive: true, force: true });
   await run('xcodebuild', [
     '-create-xcframework',
     ...iosArchitectures.flatMap((architecture) => [
       '-library',
-      join(target, architecture, folder, 'libroda_ffi.a'),
+      join(target, architecture, folder, 'libclient_core.a'),
       '-headers',
       join(binding, 'headers'),
     ]),
     '-output',
     framework,
   ]);
-  await cp(join(binding, 'roda_ffi.swift'), join(out, 'RodaFFI.generated.swift'));
-  outputs = [join(framework, 'Info.plist'), join(out, 'RodaFFI.generated.swift')];
+  await cp(join(binding, 'client_core.swift'), join(out, 'ClientFFI.generated.swift'));
+  outputs = [join(framework, 'Info.plist'), join(out, 'ClientFFI.generated.swift')];
 }
+await validateGeneratedInventory();
 await writeFile(
   stamp,
   `${JSON.stringify({ sha256: hash, profile, platform, outputs }, null, 2)}\n`,

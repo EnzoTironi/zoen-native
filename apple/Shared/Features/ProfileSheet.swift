@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 /// Opens as a native sheet (medium → large). One entry point for every avatar/name tap.
 struct ProfileSheetRef: Identifiable, Hashable {

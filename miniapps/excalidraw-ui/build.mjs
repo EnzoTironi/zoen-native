@@ -157,7 +157,7 @@ for (const [name, content] of Object.entries(files)) {
     await writeFile(path, content);
   }
 }
-const rustOutput = join(root, "../../crates/roda-apps/resources");
+const rustOutput = join(root, "../../crates/miniapps/resources");
 const rustManifest = {
   ...manifest,
   id: "excalidraw",

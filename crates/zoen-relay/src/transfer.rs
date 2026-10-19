@@ -17,7 +17,7 @@ use axum::{
 };
 use futures_util::StreamExt;
 use object_store::{path::Path as ObjPath, ObjectStoreExt, PutMode, PutOptions, PutPayload};
-use roda_relay_admission::transfer as policy;
+use relay_admission::transfer as policy;
 use sha2::{Digest, Sha256};
 
 use crate::Shared;

@@ -6,7 +6,7 @@ final class SwipeBackTests: XCTestCase {
     @MainActor
     func testEdgeSwipeGoesBackFromChat() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-RodaResetDemo", "YES", "-AppleLanguages", "(en)", "-RodaStory", "hike-ride", "-RodaAppAITimeout", "0"]
+        app.launchArguments = ["-ResetDemo", "YES", "-AppleLanguages", "(en)", "-Story", "hike-ride", "-AppAITimeout", "0"]
         app.launch()
         let call = app.buttons["Voice call"]
         XCTAssertTrue(call.waitForExistence(timeout: 15), "chat didn't open")

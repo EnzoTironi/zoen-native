@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 
 PROFILE=dev
 ABIS=arm64-v8a,x86_64
-OUT=android/app/build/generated/roda
+OUT=android/app/build/generated/core
 for arg in "$@"; do
   case "$arg" in
     --release) PROFILE=release ;;
@@ -25,13 +25,16 @@ export ANDROID_HOME="$SDK"
 mkdir -p "$OUT/kotlin" "$OUT/jniLibs"
 python3 scripts/android-core-contract.py capture --output "$OUT" --abis "$ABIS" --profile "$PROFILE"
 find "$OUT/kotlin" -name '*.kt' -type f -delete
+# This directory contains only this generator's native artifacts.
+rm -rf "$OUT/jniLibs"
+mkdir -p "$OUT/jniLibs"
 
 # Bindgen runs on the host. Kotlin and every ABI use metadata from the same build.
 cargo build --locked -q -p uniffi-bindgen
-cargo rustc --locked -q -p roda-ffi --lib --crate-type cdylib
+cargo rustc --locked -q -p client-core --lib --crate-type cdylib
 case "$(uname -s)" in
-  Darwin) HOST_LIB="${CARGO_TARGET_DIR:-target}/debug/libroda_ffi.dylib" ;;
-  Linux) HOST_LIB="${CARGO_TARGET_DIR:-target}/debug/libroda_ffi.so" ;;
+  Darwin) HOST_LIB="${CARGO_TARGET_DIR:-target}/debug/libclient_core.dylib" ;;
+  Linux) HOST_LIB="${CARGO_TARGET_DIR:-target}/debug/libclient_core.so" ;;
   *) echo "Build the Android core on macOS or Linux." >&2; exit 1 ;;
 esac
 "${CARGO_TARGET_DIR:-target}/debug/uniffi-bindgen" generate --library "$HOST_LIB" --language kotlin \
@@ -54,6 +57,6 @@ rustup target add "${TARGETS[@]}"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384"
 export CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384"
 cargo ndk "${NDK_ARGS[@]}" --platform 28 -o "$OUT/jniLibs" \
-  rustc --locked -q -p roda-ffi --lib --crate-type cdylib --profile "$PROFILE"
+  rustc --locked -q -p client-core --lib --crate-type cdylib --profile "$PROFILE"
 python3 scripts/android-core-contract.py finish --output "$OUT" --host-library "$HOST_LIB" --abis "$ABIS" --profile "$PROFILE"
 echo "Android core ready ($ABIS, $PROFILE)."

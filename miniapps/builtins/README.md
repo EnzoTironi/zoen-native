@@ -6,7 +6,7 @@ transport, copy Rust state machines, generate demo state or persist browser stat
 All shared changes use the existing item-scoped Rust tools and canonical results.
 
 These are the source views for six core-bundled Rust AppSpecs. The generated HTML
-and integrity manifests live in `crates/roda-apps/resources`. The existing official
+and integrity manifests live in `crates/miniapps/resources`. The existing official
 AppBridge and sandbox host them; Rust tools, grants and native compact cards stay
 authoritative. Native acceptance is separate from the source checks below.
 
@@ -33,7 +33,7 @@ are involved.
 ```sh
 for app in pet poll list maptap recipe countdown; do
   node tools/miniapp-build/build.mjs miniapps/builtins --manifest "manifests/$app.json"
-  node tools/miniapp-build/check.mjs miniapps/builtins crates/roda-apps/resources "manifests/$app.json"
+  node tools/miniapp-build/check.mjs miniapps/builtins crates/miniapps/resources "manifests/$app.json"
 done
 node --test miniapps/builtins/test/*.test.mjs tools/miniapp-build/manifest-input.test.mjs
 ```

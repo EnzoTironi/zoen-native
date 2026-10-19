@@ -1,9 +1,11 @@
 //! Encrypted profile cache and retry journal. The wire codec and cryptography are
 //! shared with native; the host persists every update before sending its frames.
 use super::*;
-use roda_log::profile::{self, AgreementKey, DeviceSigned, ProfileFields, ProfileKey, SealedShare};
-use roda_log::profile_sync::{Observe, OwnProfileSync};
-use roda_proto::{AgreementKeyRecord, SealedProfile};
+use event_log::profile::{
+    self, AgreementKey, DeviceSigned, ProfileFields, ProfileKey, SealedShare,
+};
+use event_log::profile_sync::{Observe, OwnProfileSync};
+use protocol::{AgreementKeyRecord, SealedProfile};
 use serde_json::{json, Value};
 
 const AGREEMENT_PUBLISH: u64 = 0x8000_0010;
@@ -31,7 +33,7 @@ pub(super) struct Journal {
 mod tests {
     use super::super::tests::{account, clear, sequence, HostSigner};
     use super::*;
-    use roda_log::{Author, Signer as NativeSigner};
+    use event_log::{Author, Signer as NativeSigner};
 
     fn client() -> (Client<HostSigner>, NativeSigner, Author) {
         let identity = NativeSigner::from_secret(&[71; 32]);
@@ -838,7 +840,7 @@ mod tests {
         assert!(profile.bio.is_empty());
         assert_eq!(client.account.handle, "fixture");
         let mut wrong = profile.clone();
-        wrong.id = roda_log::Signer::from_secret(&[82; 32]).id();
+        wrong.id = event_log::Signer::from_secret(&[82; 32]).id();
         assert!(client
             .handle_confirmed(&serde_json::to_string(&wrong).unwrap(), "depois_123")
             .is_err());
@@ -888,7 +890,7 @@ mod tests {
             &author,
             EventBody::ProfileKeyShared {
                 version: 3,
-                shares: vec![roda_types::ProfileKeyShare {
+                shares: vec![types::ProfileKeyShare {
                     to: client.account.identity.clone(),
                     ephemeral: share.ephemeral,
                     sealed: share.sealed,
@@ -1075,7 +1077,7 @@ mod tests {
         let update = synced(&mut client);
         for frame in &update.frames {
             if let ClientFrame::Publish { env } = ClientFrame::decode(frame).unwrap() {
-                let event = roda_log::event_from_content(
+                let event = event_log::event_from_content(
                     env.content().to_vec(),
                     env.sig,
                     env.cert,
@@ -1101,7 +1103,7 @@ mod tests {
                 let bytes = sequence(&mut log, env);
                 let decoded = ServerFrame::decode(&bytes).unwrap();
                 if let ServerFrame::Event { ev } = decoded {
-                    let event = roda_log::event_from_content(
+                    let event = event_log::event_from_content(
                         ev.env.content().to_vec(),
                         ev.env.sig,
                         ev.env.cert,
@@ -1217,7 +1219,7 @@ impl<S: Signer> Client<S> {
 
     /// Prepare the redacted registration payload without changing the local alias.
     pub fn handle_profile(&self, handle: &str) -> Result<String, String> {
-        let handle = roda_proto::normalize_handle(handle)
+        let handle = protocol::normalize_handle(handle)
             .ok_or("Use de 3 a 24 letras, números, pontos ou _. Comece com uma letra.")?;
         let mut profile = self
             .saved
@@ -1226,7 +1228,7 @@ impl<S: Signer> Client<S> {
             .cloned()
             .unwrap_or(Identity {
                 id: self.account.identity.clone(),
-                kind: roda_types::IdentityKind::Person,
+                kind: types::IdentityKind::Person,
                 name: String::new(),
                 handle: handle.clone(),
                 tint_hex: "#4F7CFF".into(),
@@ -1235,7 +1237,7 @@ impl<S: Signer> Client<S> {
                 bio: String::new(),
                 owner_proof: None,
             });
-        if profile.kind != roda_types::IdentityKind::Person {
+        if profile.kind != types::IdentityKind::Person {
             return Err("Este perfil não é uma pessoa.".into());
         }
         profile.name.clear();
@@ -1248,9 +1250,9 @@ impl<S: Signer> Client<S> {
     pub fn handle_confirmed(&mut self, encoded: &str, expected: &str) -> Result<Update, String> {
         let mut profile: Identity =
             serde_json::from_str(encoded).map_err(|error| error.to_string())?;
-        let expected = roda_proto::normalize_handle(expected).ok_or("Nome de usuário inválido.")?;
+        let expected = protocol::normalize_handle(expected).ok_or("Nome de usuário inválido.")?;
         if profile.id != self.account.identity
-            || profile.kind != roda_types::IdentityKind::Person
+            || profile.kind != types::IdentityKind::Person
             || profile.owner.is_some()
             || profile.owner_proof.is_some()
             || profile.handle != expected
@@ -1324,7 +1326,7 @@ impl<S: Signer> Client<S> {
                 .saved
                 .profiles
                 .get_mut(id)
-                .filter(|person| person.kind == roda_types::IdentityKind::Person)
+                .filter(|person| person.kind == types::IdentityKind::Person)
             {
                 person.name = fields.name.clone();
                 person.bio = fields.bio.clone();
@@ -1412,7 +1414,7 @@ impl<S: Signer> Client<S> {
             }
             Command::BlockPerson { identity_id } => {
                 if identity_id == self.account.identity
-                    || roda_log::parse_device_key(&identity_id).is_none()
+                    || event_log::parse_device_key(&identity_id).is_none()
                 {
                     return Err("Não dá para bloquear essa pessoa.".into());
                 }
@@ -1447,8 +1449,7 @@ impl<S: Signer> Client<S> {
         if identity.is_none() && fields.is_none() && id != self.account.identity {
             return Err("Perfil não encontrado.".into());
         }
-        let agent =
-            identity.is_some_and(|identity| identity.kind == roda_types::IdentityKind::Agent);
+        let agent = identity.is_some_and(|identity| identity.kind == types::IdentityKind::Agent);
         let (name, bio, version, photo) = if agent {
             (
                 identity.map(|identity| identity.name.clone()),
@@ -1939,7 +1940,7 @@ impl<S: Signer> Client<S> {
             .filter(|pending| pending.failure.is_none())
             .filter_map(|pending| pending.envelope().ok())
             .filter_map(|envelope| {
-                roda_log::event_from_content(
+                event_log::event_from_content(
                     envelope.content().to_vec(),
                     envelope.sig,
                     envelope.cert,
@@ -1977,7 +1978,7 @@ impl<S: Signer> Client<S> {
                         .saved
                         .profiles
                         .get(id)
-                        .is_some_and(|identity| identity.kind == roda_types::IdentityKind::Agent)
+                        .is_some_and(|identity| identity.kind == types::IdentityKind::Agent)
                 {
                     continue;
                 }
@@ -1990,7 +1991,7 @@ impl<S: Signer> Client<S> {
                     public,
                     &profile::share_context(space, me, id),
                 ) {
-                    shares.push(roda_types::ProfileKeyShare {
+                    shares.push(types::ProfileKeyShare {
                         to: id.clone(),
                         ephemeral: sealed.ephemeral,
                         sealed: sealed.sealed,

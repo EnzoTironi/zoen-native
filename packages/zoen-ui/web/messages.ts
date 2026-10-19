@@ -86,7 +86,7 @@ export type FileDoc = ReturnType<typeof parseFile>;
 export type Chunk = ReturnType<typeof parseChunk>;
 export type VoiceMeta = ReturnType<typeof parseVoice>;
 
-// Keep received media within the same bounds as roda-ffi/src/files.rs.
+// Keep received media within the same bounds as client-core/src/files.rs.
 const MAX_FILE_BYTES = 512 << 20;
 const MAX_CHUNK_BYTES = 16 << 20;
 const MAX_THUMBNAIL_BYTES = 2 << 20;

@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Zoen, Roda's mascot
+// MARK: - Zo, the app's mascot
 //
 // A round, fuzzy, moss-green furball: an almost spherical body, tiny stubby arms and
 // feet, big glossy dark eyes, pink blush and a grumpy-cute attitude (furrowed brows,
@@ -844,12 +844,12 @@ struct MascotHead: View {
     }
 }
 
-/// `-RodaMascotGallery YES`: every pose on one page, for review and screenshots.
-/// `-RodaMascotPose run` shows one pose, big (close-ups).
+/// `-MascotGallery YES`: every pose on one page, for review and screenshots.
+/// `-MascotPose run` shows one pose, big (close-ups).
 struct MascotGallery: View {
     var body: some View {
         Group {
-            if let one = UserDefaults.standard.string(forKey: "RodaMascotPose").flatMap(MascotPose.init(rawValue:)) {
+            if let one = UserDefaults.standard.string(forKey: "MascotPose").flatMap(MascotPose.init(rawValue:)) {
                 VStack {
                     Spacer()
                     MascotView(pose: one).frame(width: 440, height: 440)

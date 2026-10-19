@@ -12,10 +12,10 @@ import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "android/app/build/generated/roda"
+OUTPUT = ROOT / "android/app/build/generated/core"
 ABI_MACHINES = {"arm64-v8a": 183, "x86_64": 62}
-META_PREFIX = "UNIFFI_META_RODA_FFI_"
-CHECKSUM_PREFIX = "uniffi_roda_ffi_checksum_"
+META_PREFIX = "UNIFFI_META_CLIENT_CORE_"
+CHECKSUM_PREFIX = "uniffi_client_core_checksum_"
 
 
 def digest(value):
@@ -102,9 +102,9 @@ def source_contract(sources):
 def contract_at(root, ref=None):
     if ref is None:
         sources = {path.relative_to(root).as_posix(): path.read_text()
-                   for path in (root / "crates/roda-ffi/src").rglob("*.rs")}
+                   for path in (root / "crates/client-core/src").rglob("*.rs")}
     else:
-        paths = git(root, "ls-tree", "-r", "--name-only", ref, "crates/roda-ffi/src").stdout.splitlines()
+        paths = git(root, "ls-tree", "-r", "--name-only", ref, "crates/client-core/src").stdout.splitlines()
         sources = {path: git(root, "show", ref + ":" + path).stdout for path in paths if path.endswith(".rs")}
     return source_contract(sources)
 
@@ -155,7 +155,7 @@ def kotlin_checksums(directory):
         raise ValueError("Missing generated Kotlin bindings")
     checksums = {}
     for path in files:
-        for symbol, value in re.findall(r"\(lib\.(uniffi_roda_ffi_checksum_\w+)\(\) and 0xFFFF\) != (\d+)", path.read_text()):
+        for symbol, value in re.findall(rf"\(lib\.({re.escape(CHECKSUM_PREFIX)}\w+)\(\) and 0xFFFF\) != (\d+)", path.read_text()):
             if symbol in checksums:
                 raise ValueError("Duplicate Kotlin ABI checksum: " + symbol)
             checksums[symbol] = int(value)
@@ -176,7 +176,7 @@ def artifacts(output, abis, contract, expected_metadata=None):
     require_inventory(checksums, contract["checksums"], "Kotlin ABI")
     metadata = None
     for abi in abis:
-        path = output / "jniLibs" / abi / "libroda_ffi.so"
+        path = output / "jniLibs" / abi / "libclient_core.so"
         blobs, symbols = elf_contract(path, abi)
         require_inventory(blobs, contract["metadata"], f"{abi} DTO/callback/API metadata")
         require_inventory(symbols, contract["checksums"], f"{abi} ABI")
@@ -194,7 +194,7 @@ def finish(root, output, source, host_library, abis, profile):
         raise ValueError("Core inputs changed during Android generation; rebuild the stable source snapshot")
     generated = artifacts(output, abis, current["contract"])
     host = ctypes.CDLL(str(host_library.resolve()))
-    blobs, _ = elf_contract(output / "jniLibs" / abis[0] / "libroda_ffi.so", abis[0])
+    blobs, _ = elf_contract(output / "jniLibs" / abis[0] / "libclient_core.so", abis[0])
     for name, blob in blobs.items():
         native = bytes((ctypes.c_ubyte * len(blob)).in_dll(host, name))
         if native != blob:

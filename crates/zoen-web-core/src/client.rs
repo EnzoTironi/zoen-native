@@ -1,16 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use openmls::prelude::OpenMlsProvider;
-use openmls_rust_crypto::OpenMlsRustCrypto;
-use openmls_traits::signatures::Signer;
-use roda_log::{
+use event_log::{
     content::{InnerEvent, Payload, Sealed, SealedKind, SignedContent},
     SpaceLog,
 };
-use roda_mls::{ExternalDevice, GroupState, Leaf, Opened, SUITE_ID};
-use roda_proto::{ClientFrame, Cursor, Envelope, Op, Reply, Sequenced, ServerFrame};
-use roda_types::{Event, EventBody, Identity, Privacy, Role, Seen, SpaceKind};
+use mls::{ExternalDevice, GroupState, Leaf, Opened, SUITE_ID};
+use openmls::prelude::OpenMlsProvider;
+use openmls_rust_crypto::OpenMlsRustCrypto;
+use openmls_traits::signatures::Signer;
+use protocol::{ClientFrame, Cursor, Envelope, Op, Reply, Sequenced, ServerFrame};
 use serde::{Deserialize, Serialize};
+use types::{Event, EventBody, Identity, Privacy, Role, Seen, SpaceKind};
 
 use crate::LinkedAccount;
 
@@ -30,10 +30,7 @@ const PROFILES_REQUEST: u64 = 0x8000_0002;
 
 // The host supplies time explicitly: SystemTime is unavailable in browser WASM.
 fn browser_id(prefix: &str, now: i64) -> String {
-    format!(
-        "{prefix}_{}",
-        roda_types::new_ulid(now).to_ascii_lowercase()
-    )
+    format!("{prefix}_{}", types::new_ulid(now).to_ascii_lowercase())
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -154,7 +151,7 @@ pub struct MessageView {
     repliers: Vec<String>,
     last_reply_ms: Option<i64>,
     /// A shared file, photo, video or voice note (the chunks to fetch and open).
-    file: Option<roda_types::FileDoc>,
+    file: Option<types::FileDoc>,
     file_item_id: Option<String>,
     file_version: Option<u32>,
     card: Option<serde_json::Value>,
@@ -273,7 +270,7 @@ impl<S: Signer> Client<S> {
                 return Err("outbox belongs to another browser device".into());
             }
             if let Some(inner) = &pending.inner {
-                roda_log::verify_author(inner).map_err(|e| e.to_string())?;
+                event_log::verify_author(inner).map_err(|e| e.to_string())?;
             }
         }
         let provider = OpenMlsRustCrypto::default();
@@ -424,12 +421,12 @@ impl<S: Signer> Client<S> {
 
     fn sign_content(&self, content: Vec<u8>, sealed: bool) -> Result<PendingEnvelope, String> {
         let hash = if sealed {
-            roda_log::content::signed_hash(&content)
+            event_log::content::signed_hash(&content)
         } else {
-            roda_log::content::content_hash(&content)
+            event_log::content::content_hash(&content)
         };
         let message = if sealed {
-            roda_log::content::signature_message(&content, &hash)
+            event_log::content::signature_message(&content, &hash)
         } else {
             hash.into_bytes()
         };
@@ -459,12 +456,12 @@ impl<S: Signer> Client<S> {
         let content = SignedContent {
             v: 3,
             space: space.into(),
-            client_id: roda_types::new_ulid(now_ms),
+            client_id: types::new_ulid(now_ms),
             author: self.account.identity.clone(),
             device: Some(self.account.device.clone()),
             at_ms: now_ms,
             seen: self.head(space).as_ref().map(Into::into),
-            payload: Some(Payload::Body(roda_log::content::encode_body(&body))),
+            payload: Some(Payload::Body(event_log::content::encode_body(&body))),
         }
         .encode();
         self.sign_content(content, false)
@@ -481,7 +478,7 @@ impl<S: Signer> Client<S> {
             .seal(&event.space, &plaintext)
             .map_err(|e| e.to_string())?;
         let content = SignedContent {
-            v: roda_log::content::SEALED_CONTENT_VERSION,
+            v: event_log::content::SEALED_CONTENT_VERSION,
             space: event.space.clone(),
             client_id: event.client_id.clone(),
             author: event.author.clone(),
@@ -533,7 +530,7 @@ impl<S: Signer> Client<S> {
                     .resolve_post(space, &to)
                     .map(|event| event.hash.clone())
                     .unwrap_or(to);
-                Some(roda_types::ReplyRef { to, thread })
+                Some(types::ReplyRef { to, thread })
             }
             None => None,
         };
@@ -543,7 +540,7 @@ impl<S: Signer> Client<S> {
         self.queue_domain_body(
             space,
             EventBody::MessagePosted {
-                message: roda_types::new_secret_id("msg"),
+                message: types::new_secret_id("msg"),
                 text: text.into(),
                 attaches: None,
                 reply,
@@ -559,7 +556,7 @@ impl<S: Signer> Client<S> {
     pub fn queue_file(
         &mut self,
         space: &str,
-        doc: roda_types::FileDoc,
+        doc: types::FileDoc,
         now_ms: i64,
     ) -> Result<Update, String> {
         self.queue_file_inner(space, doc, now_ms)
@@ -570,7 +567,7 @@ impl<S: Signer> Client<S> {
     pub fn queue_file_record(
         &mut self,
         space: &str,
-        doc: roda_types::FileDoc,
+        doc: types::FileDoc,
         now_ms: i64,
     ) -> Result<(Update, String, String), String> {
         let before = self.saved.outbox.keys().cloned().collect::<BTreeSet<_>>();
@@ -584,7 +581,7 @@ impl<S: Signer> Client<S> {
             .find_map(|event| match &event.body {
                 EventBody::ItemCreated {
                     item,
-                    content: roda_types::ItemContent::File(_),
+                    content: types::ItemContent::File(_),
                     ..
                 } => Some((item.clone(), event.client_id.clone())),
                 _ => None,
@@ -611,7 +608,7 @@ impl<S: Signer> Client<S> {
     pub fn queue_failed_file(
         &mut self,
         space: &str,
-        doc: roda_types::FileDoc,
+        doc: types::FileDoc,
         now_ms: i64,
         reason: String,
         chunks: BTreeMap<String, Vec<u8>>,
@@ -628,9 +625,9 @@ impl<S: Signer> Client<S> {
         let mut pending = self.clear_event(
             space,
             EventBody::ItemCreated {
-                item: roda_types::new_secret_id("it"),
-                kind: roda_types::ItemKind::File,
-                content: roda_types::ItemContent::File(doc),
+                item: types::new_secret_id("it"),
+                kind: types::ItemKind::File,
+                content: types::ItemContent::File(doc),
                 origin: "Adicionado".into(),
             },
             now_ms,
@@ -657,7 +654,7 @@ impl<S: Signer> Client<S> {
     fn queue_file_inner(
         &mut self,
         space: &str,
-        mut doc: roda_types::FileDoc,
+        mut doc: types::FileDoc,
         now_ms: i64,
     ) -> Result<Update, String> {
         if doc.chunks.is_empty() {
@@ -675,12 +672,12 @@ impl<S: Signer> Client<S> {
                 .client_id
                 .clone();
         }
-        let item = roda_types::new_secret_id("it");
+        let item = types::new_secret_id("it");
         let voice = doc.is_voice();
         let mut bodies = vec![EventBody::ItemCreated {
             item: item.clone(),
-            kind: roda_types::ItemKind::File,
-            content: roda_types::ItemContent::File(doc),
+            kind: types::ItemKind::File,
+            content: types::ItemContent::File(doc),
             origin: "Adicionado".into(),
         }];
         if !voice {
@@ -714,7 +711,7 @@ impl<S: Signer> Client<S> {
         &mut self,
         space: &str,
         target: &str,
-        note: roda_types::Annotation,
+        note: types::Annotation,
         now_ms: i64,
     ) -> Result<Update, String> {
         let target = self
@@ -729,12 +726,12 @@ impl<S: Signer> Client<S> {
             .map(|e| e.author.clone())
             .ok_or("That message is no longer available.")?;
         if self.logs.get(space).is_some_and(|log| log.events().iter().any(|event| matches!(
-            &event.body, EventBody::MessageAnnotated { target: to, note: roda_types::Annotation::Delete }
+            &event.body, EventBody::MessageAnnotated { target: to, note: types::Annotation::Delete }
                 if self.resolve_post(space, to).is_some_and(|post| post.hash == target) && event.author == author
         ))) {
             return Err("That message is no longer available.".into());
         }
-        if let roda_types::Annotation::React { emoji } = &note {
+        if let types::Annotation::React { emoji } = &note {
             if emoji.trim().is_empty() || emoji.len() > 32 {
                 return Err("Choose an emoji of up to 32 bytes.".into());
             }
@@ -748,7 +745,7 @@ impl<S: Signer> Client<S> {
             let deletes_target = |event: &Event| {
                 event.author == author
                     && matches!(&event.body, EventBody::MessageAnnotated {
-                        target: deleted, note: roda_types::Annotation::Delete,
+                        target: deleted, note: types::Annotation::Delete,
                     } if self.resolve_post(space, deleted).is_some_and(|post| post.hash == target))
             };
             let deleted = self
@@ -770,7 +767,7 @@ impl<S: Signer> Client<S> {
                 return Err("Essa mensagem foi apagada.".into());
             }
         }
-        if let roda_types::Annotation::Edit { text } = &note {
+        if let types::Annotation::Edit { text } = &note {
             if text.trim().is_empty() || text.len() > 32_768 {
                 return Err("Write a message of up to 32 KB.".into());
             }
@@ -805,7 +802,7 @@ impl<S: Signer> Client<S> {
         *mine = (mine.0.max(last), mine.1.max(last));
         self.update(vec![ClientFrame::Ephemeral {
             space: space.into(),
-            kind: roda_proto::EphemeralKind::Read { seq: last },
+            kind: protocol::EphemeralKind::Read { seq: last },
         }
         .encode()])
     }
@@ -831,7 +828,7 @@ impl<S: Signer> Client<S> {
                 frames.push(
                     ClientFrame::Ephemeral {
                         space: space.clone(),
-                        kind: roda_proto::EphemeralKind::Delivered { seq: mine.0 },
+                        kind: protocol::EphemeralKind::Delivered { seq: mine.0 },
                     }
                     .encode(),
                 );
@@ -840,7 +837,7 @@ impl<S: Signer> Client<S> {
                 frames.push(
                     ClientFrame::Ephemeral {
                         space: space.clone(),
-                        kind: roda_proto::EphemeralKind::Read { seq: mine.1 },
+                        kind: protocol::EphemeralKind::Read { seq: mine.1 },
                     }
                     .encode(),
                 );
@@ -861,7 +858,7 @@ impl<S: Signer> Client<S> {
     }
 
     /// The reply link of the message with this entry id in `space`, if it is a message.
-    fn posted(&self, space: &str, entry: &str) -> Option<Option<roda_types::ReplyRef>> {
+    fn posted(&self, space: &str, entry: &str) -> Option<Option<types::ReplyRef>> {
         self.logs
             .get(space)?
             .events()
@@ -871,7 +868,7 @@ impl<S: Signer> Client<S> {
             .and_then(|e| match &e.body {
                 EventBody::MessagePosted { reply, .. } => Some(reply.clone()),
                 EventBody::ItemCreated {
-                    content: roda_types::ItemContent::File(doc),
+                    content: types::ItemContent::File(doc),
                     ..
                 } => Some(doc.voice.as_ref().and_then(|v| v.reply.clone())),
                 _ => None,
@@ -905,14 +902,14 @@ impl<S: Signer> Client<S> {
             if profile.id == self.account.identity {
                 continue;
             }
-            if roda_log::parse_device_key(&profile.id).is_none()
-                || !roda_log::agent_owner::profile_authorized(&profile)
+            if event_log::parse_device_key(&profile.id).is_none()
+                || !event_log::agent_owner::profile_authorized(&profile)
             {
                 continue;
             }
             if self.saved.profiles.get(&profile.id).is_some_and(|known| {
                 known.owner_proof.is_some()
-                    && roda_log::agent_owner::profile_authorized(known)
+                    && event_log::agent_owner::profile_authorized(known)
                     && (known.kind != profile.kind
                         || known.owner != profile.owner
                         || known.owner_proof != profile.owner_proof)
@@ -921,7 +918,7 @@ impl<S: Signer> Client<S> {
             }
             // Directory entries never reveal a person's private fields. Those are
             // overlaid only after the shared encrypted-profile codec authenticates them.
-            if profile.kind == roda_types::IdentityKind::Person {
+            if profile.kind == types::IdentityKind::Person {
                 profile.name.clear();
                 profile.bio.clear();
             }
@@ -970,9 +967,9 @@ impl<S: Signer> Client<S> {
         Ok(ClientFrame::Ephemeral {
             space: space.into(),
             kind: if typing {
-                roda_proto::EphemeralKind::Typing
+                protocol::EphemeralKind::Typing
             } else {
-                roda_proto::EphemeralKind::StoppedTyping
+                protocol::EphemeralKind::StoppedTyping
             },
         }
         .encode())
@@ -985,7 +982,7 @@ impl<S: Signer> Client<S> {
         code: &str,
         now_ms: i64,
     ) -> Result<Update, String> {
-        if !roda_proto::valid_invite_code(code) || space.is_empty() {
+        if !protocol::valid_invite_code(code) || space.is_empty() {
             return Err("Invalid invitation.".into());
         }
         if self.roster(space).contains_key(&self.account.identity) {
@@ -1062,8 +1059,8 @@ impl<S: Signer> Client<S> {
             }
             ServerFrame::Ephemeral { space, from, kind } => {
                 let mark = match kind {
-                    roda_proto::EphemeralKind::Read { seq } => Some((seq, seq)),
-                    roda_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
+                    protocol::EphemeralKind::Read { seq } => Some((seq, seq)),
+                    protocol::EphemeralKind::Delivered { seq } => Some((seq, 0)),
                     _ => None,
                 };
                 if let Some((delivered, read)) = mark {
@@ -1204,7 +1201,7 @@ impl<S: Signer> Client<S> {
             return Ok(());
         }
         envelope.verify().map_err(|e| e.to_string())?;
-        let outer = roda_log::event_from_content(
+        let outer = event_log::event_from_content(
             envelope.content().to_vec(),
             envelope.sig.clone(),
             envelope.cert.clone(),
@@ -1249,7 +1246,7 @@ impl<S: Signer> Client<S> {
                                     opened = inner_event(&sequenced, &plaintext, &from)
                                 }
                                 Ok(_) => {}
-                                Err(roda_mls::MlsError::Storage(error)) => return Err(error),
+                                Err(mls::MlsError::Storage(error)) => return Err(error),
                                 Err(_) => {}
                             }
                         }
@@ -1260,7 +1257,7 @@ impl<S: Signer> Client<S> {
                     {
                         match device.join(&space, ciphertext, &roster) {
                             Ok(joined) => landed = joined,
-                            Err(roda_mls::MlsError::Storage(error)) => return Err(error),
+                            Err(mls::MlsError::Storage(error)) => return Err(error),
                             Err(_) => {}
                         }
                     }
@@ -1268,7 +1265,7 @@ impl<S: Signer> Client<S> {
                         match device.open(&space, ciphertext, &roster, &admitted) {
                             Ok(Opened::Commit { .. }) => landed = true,
                             Ok(_) => {}
-                            Err(roda_mls::MlsError::Storage(error)) => return Err(error),
+                            Err(mls::MlsError::Storage(error)) => return Err(error),
                             Err(_) => {}
                         }
                     }
@@ -1456,7 +1453,7 @@ impl<S: Signer> Client<S> {
     fn folded_files<'a>(
         &'a self,
         space: &str,
-    ) -> BTreeMap<&'a str, (&'a str, Vec<&'a roda_types::FileDoc>)> {
+    ) -> BTreeMap<&'a str, (&'a str, Vec<&'a types::FileDoc>)> {
         let events = self
             .logs
             .get(space)
@@ -1469,12 +1466,12 @@ impl<S: Signer> Client<S> {
                     .filter_map(|pending| pending.inner.as_ref())
                     .filter(|event| event.space == space),
             );
-        let mut files: BTreeMap<&str, (&str, Vec<&roda_types::FileDoc>)> = BTreeMap::new();
+        let mut files: BTreeMap<&str, (&str, Vec<&types::FileDoc>)> = BTreeMap::new();
         for event in events {
             match &event.body {
                 EventBody::ItemCreated {
                     item,
-                    content: roda_types::ItemContent::File(doc),
+                    content: types::ItemContent::File(doc),
                     ..
                 } => {
                     files
@@ -1483,7 +1480,7 @@ impl<S: Signer> Client<S> {
                 }
                 EventBody::ItemVersioned {
                     item,
-                    content: roda_types::ItemContent::File(doc),
+                    content: types::ItemContent::File(doc),
                     ..
                 } => {
                     if let Some((author, versions)) = files.get_mut(item.as_str()) {
@@ -1493,7 +1490,7 @@ impl<S: Signer> Client<S> {
                                 .iter()
                                 .copied()
                                 .chain([doc])
-                                .any(roda_types::FileDoc::is_voice)
+                                .any(types::FileDoc::is_voice)
                         {
                             versions.push(doc);
                         }
@@ -1563,10 +1560,10 @@ impl<S: Signer> Client<S> {
                 if note.author_only() && *author != event.author { continue; }
                 let f = folded.entry((*hash).to_owned()).or_default();
                 match note {
-                    roda_types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
-                    roda_types::Annotation::Delete => { f.deleted = true; f.text = None; f.reactions.clear(); }
-                    roda_types::Annotation::React { emoji } if !f.deleted && !emoji.trim().is_empty() && emoji.len() <= 32 => { f.reactions.insert(event.author.clone(), emoji.clone()); }
-                    roda_types::Annotation::Unreact => { f.reactions.remove(&event.author); }
+                    types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
+                    types::Annotation::Delete => { f.deleted = true; f.text = None; f.reactions.clear(); }
+                    types::Annotation::React { emoji } if !f.deleted && !emoji.trim().is_empty() && emoji.len() <= 32 => { f.reactions.insert(event.author.clone(), emoji.clone()); }
+                    types::Annotation::Unreact => { f.reactions.remove(&event.author); }
                     _ => {}
                 }
             }
@@ -1667,7 +1664,7 @@ impl<S: Signer> Client<S> {
 
     /// Preferences belong to my own personal log. A chat participant cannot set
     /// my preferences by posting the same body in another Space.
-    fn chat_preferences(&self) -> BTreeMap<String, roda_types::ChatPrefs> {
+    fn chat_preferences(&self) -> BTreeMap<String, types::ChatPrefs> {
         let mut preferences = BTreeMap::new();
         for (space, log) in &self.logs {
             if !matches!(self.metadata(space), Some((_, SpaceKind::Personal, _)))
@@ -1715,7 +1712,7 @@ impl<S: Signer> Client<S> {
                 (text.clone(), reply.clone(), *forwarded, file)
             }
             EventBody::ItemCreated {
-                content: roda_types::ItemContent::File(doc),
+                content: types::ItemContent::File(doc),
                 ..
             } if doc.is_voice() || delivery == "failed" => (
                 String::new(),
@@ -1744,7 +1741,7 @@ impl<S: Signer> Client<S> {
             EventBody::MessagePosted { attaches, .. } => attaches.clone(),
             EventBody::ItemCreated {
                 item,
-                content: roda_types::ItemContent::File(_),
+                content: types::ItemContent::File(_),
                 ..
             } => Some(item.clone()),
             _ => None,
@@ -1796,12 +1793,12 @@ impl<S: Signer> Client<S> {
 
 fn is_post(body: &EventBody) -> bool {
     matches!(body, EventBody::MessagePosted { .. })
-        || matches!(body,EventBody::ItemCreated{content:roda_types::ItemContent::File(doc),..} if doc.is_voice())
+        || matches!(body,EventBody::ItemCreated{content:types::ItemContent::File(doc),..} if doc.is_voice())
 }
 
 fn inner_event(sequenced: &Sequenced, plaintext: &[u8], from: &Leaf) -> Option<Event> {
     let inner = InnerEvent::decode(plaintext)?;
-    let event = roda_log::event_from_content(
+    let event = event_log::event_from_content(
         inner.content,
         inner.sig,
         sequenced.env.cert.clone(),

@@ -51,21 +51,23 @@ const scope = profiles
 const sourcePaths = [
   "Cargo.toml",
   "Cargo.lock",
-  "crates/roda-relay-admission/Cargo.toml",
-  "crates/roda-relay-admission/src/auth.rs",
-  "crates/roda-relay-admission/src/auth/fixtures/rsa-test-only.jwk.json",
-  "crates/roda-relay-admission/src/auth/fixtures/rsa-test-only.pk8",
-  "crates/roda-relay-admission/src/directory.rs",
-  "crates/roda-relay-admission/src/directory/key_packages.rs",
-  "crates/roda-relay-admission/src/directory/socket.rs",
-  "crates/roda-relay-admission/src/directory/reads.rs",
-  "crates/roda-relay-admission/src/directory/sealed_profiles.rs",
-  "crates/roda-relay-admission/tests/directory_sealed_profiles.rs",
-  "crates/roda-relay-admission/tests/directory_reads.rs",
-  "crates/roda-relay-admission/tests/directory_socket.rs",
-  "crates/roda-relay-admission/tests/directory_key_packages.rs",
-  "crates/roda-relay-admission/tests/directory.rs",
-  "crates/roda-relay-admission/src/lib.rs",
+  "crates/relay-admission/Cargo.toml",
+  "crates/relay-admission/src/auth.rs",
+  "crates/relay-admission/src/auth/fixtures/rsa-test-only.jwk.json",
+  "crates/relay-admission/src/auth/fixtures/rsa-test-only.pk8",
+  "crates/relay-admission/src/directory.rs",
+  "crates/relay-admission/src/directory/key_packages.rs",
+  "crates/relay-admission/src/directory/socket.rs",
+  "crates/relay-admission/src/directory/reads.rs",
+  "crates/relay-admission/src/directory/sealed_profiles.rs",
+  "crates/relay-admission/tests/directory_sealed_profiles.rs",
+  "crates/relay-admission/tests/directory_reads.rs",
+  "crates/relay-admission/tests/directory_socket.rs",
+  "crates/relay-admission/tests/directory_key_packages.rs",
+  "crates/relay-admission/tests/directory.rs",
+  "crates/relay-admission/src/lib.rs",
+  "crates/relay-admission/src/relay_socket.rs",
+  "crates/relay-admission/tests/relay_socket.rs",
   "crates/zoen-relay/src/db.rs",
   "crates/zoen-relay/src/session.rs",
   "crates/zoen-relay/src/key_package_claims.rs",
@@ -74,6 +76,15 @@ const sourcePaths = [
   "crates/zoen-relay/examples/cloudflare-directory-fixture/sealed_profiles.rs",
   "infra/cloudflare/relay-state/src/directory-state.mjs",
   "infra/cloudflare/relay-state/src/directory-index.mjs",
+  "infra/cloudflare/relay-state/src/relay-entrypoint.mjs",
+  "infra/cloudflare/relay-state/src/relay-route.mjs",
+  "infra/cloudflare/relay-state/src/relay-composition.mjs",
+  "infra/cloudflare/relay-state/src/relay-index.mjs",
+  "infra/cloudflare/relay-state/tests/relay-ingress-fixture.mjs",
+  "infra/cloudflare/relay-state/tests/relay-ingress.test.mjs",
+  "infra/cloudflare/relay-state/tests/relay-profile-notices.test.mjs",
+  "infra/cloudflare/relay-state/wrangler.relay.jsonc",
+  "infra/cloudflare/relay-state/wrangler.closed.jsonc",
   "infra/cloudflare/relay-state/tests/directory-fixture.mjs",
   "infra/cloudflare/relay-state/tests/directory-state.test.mjs",
   "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
@@ -90,10 +101,10 @@ const sourcePaths = [
   "infra/cloudflare/relay-state/src/blob-io.mjs",
   "infra/cloudflare/relay-state/src/blob-quota.mjs",
   "infra/cloudflare/relay-state/src/transfer-blobs.mjs",
-  "crates/roda-relay-admission/src/transfer.rs",
-  "crates/roda-relay-admission/src/auth/enrollment.rs",
-  "crates/roda-relay-admission/src/blobs.rs",
-  "crates/roda-relay-admission/src/gcra.rs",
+  "crates/relay-admission/src/transfer.rs",
+  "crates/relay-admission/src/auth/enrollment.rs",
+  "crates/relay-admission/src/blobs.rs",
+  "crates/relay-admission/src/gcra.rs",
   "infra/cloudflare/package.json",
   "infra/cloudflare/package-lock.json",
 ];
@@ -101,7 +112,7 @@ const sourcePaths = [
 if (http) {
   sourcePaths.splice(sourcePaths.indexOf("infra/cloudflare/relay-state/DIRECTORY.md"), 1);
   sourcePaths.push(
-    "crates/roda-relay-admission/tests/blobs.rs",
+    "crates/relay-admission/tests/blobs.rs",
     "crates/zoen-relay/src/blobs.rs",
     "crates/zoen-relay/src/limits.rs",
     "crates/zoen-relay/tests/http_device_revocation.rs",
@@ -110,7 +121,7 @@ if (http) {
     "infra/cloudflare/relay-state/tests/media-fixture.mjs",
     "infra/cloudflare/relay-state/tests/blob-io.test.mjs",
     "infra/cloudflare/relay-state/tests/media-blobs.test.mjs",
-    "crates/roda-relay-admission/tests/transfer.rs",
+    "crates/relay-admission/tests/transfer.rs",
     "infra/cloudflare/relay-state/tests/transfer-fixture.mjs",
     "infra/cloudflare/relay-state/tests/transfer-blobs.test.mjs",
   );
@@ -171,11 +182,11 @@ try {
         "--others",
         "--exclude-standard",
         "--",
-        "crates/roda-relay-admission/src",
-        "crates/roda-log/src",
-        "crates/roda-proto/src",
-        "crates/roda-mls/src",
-        "crates/roda-types/src",
+        "crates/relay-admission/src",
+        "crates/event-log/src",
+        "crates/protocol/src",
+        "crates/mls/src",
+        "crates/types/src",
         ...(http ? ["crates/zoen-relay/src", "crates/zoen-relay/migrations"] : []),
       ],
       { capture: true },
@@ -186,7 +197,7 @@ try {
     .filter(Boolean);
   sourcePaths.push(
     ...transitive,
-    ...["roda-log", "roda-proto", "roda-mls", "roda-types"].map(
+    ...["event-log", "protocol", "mls", "types"].map(
       (name) => `crates/${name}/Cargo.toml`,
     ),
   );
@@ -322,12 +333,36 @@ try {
               "infra/cloudflare/relay-state/tests/directory-read.test.mjs",
               "infra/cloudflare/relay-state/tests/directory-sealed-profiles.test.mjs",
               "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
+              "infra/cloudflare/relay-state/tests/relay-ingress.test.mjs",
             ];
   const fixtureEnv = transfer
     ? { ZOEN_TRANSFER_FIXTURE: fixturePath }
     : media
       ? { ZOEN_MEDIA_FIXTURE: fixturePath }
       : { ZOEN_DIRECTORY_FIXTURE: fixturePath };
+  // These use real SQLite/WASM with scheduling doubles, not workerd sockets.
+  let profileNoticeUnits = null;
+  if (profiles || (!reads && !http)) {
+    const path = join(output, "profile-notice-units.tap");
+    const tap = await run(
+      process.execPath,
+      [
+        "--test",
+        "--test-reporter=tap",
+        "infra/cloudflare/relay-state/tests/relay-profile-notices.test.mjs",
+      ],
+      { capture: true, env: { ...environment, ...fixtureEnv } },
+    ).catch(async (failure) => {
+      if (typeof failure.stdout === "string") {
+        await writeFile(path, failure.stdout);
+        process.stdout.write(failure.stdout);
+      }
+      throw failure;
+    });
+    await writeFile(path, tap);
+    process.stdout.write(tap);
+    profileNoticeUnits = { ...testTotals(tap), artifact: await artifact(path) };
+  }
   const workerdTap = await run(
     process.execPath,
     ["--test", "--test-reporter=tap", "--test-concurrency=1", ...testFiles],
@@ -387,6 +422,7 @@ try {
       : {}),
     workerdCases: workerd.tests,
     workerd,
+    profileNoticeUnits,
     source: {
       commit: process.env.GITHUB_SHA ?? checkoutHead,
       checkoutHead,

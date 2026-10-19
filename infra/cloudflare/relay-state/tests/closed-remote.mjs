@@ -158,7 +158,7 @@ try {
 
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   const checkoutHead = git('rev-parse', 'HEAD');
-  const sourceScope = ['infra/cloudflare/relay-state', 'crates/roda-relay-admission', 'crates/zoen-relay/examples/cloudflare-closed-fixture.rs'];
+  const sourceScope = ['infra/cloudflare/relay-state', 'crates/relay-admission', 'crates/zoen-relay/examples/cloudflare-closed-fixture.rs'];
   result = {
     passed: true, scope, spaceId: native.space_id, nativePublishSteps: steps.length,
     acceptedEvents: accepted.length, canonicalEventBytes: canonicalBytes,

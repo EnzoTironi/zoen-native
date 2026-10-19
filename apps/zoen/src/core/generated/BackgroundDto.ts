@@ -2,6 +2,6 @@
 import type { MediaRefDto } from "./MediaRefDto";
 
 /**
- * A chat background (see `roda_types::BackgroundSpec`).
+ * A chat background (see `types::BackgroundSpec`).
  */
 export type BackgroundDto = { style: string, media: MediaRefDto | null, zoom_pm: number, offset_x_pm: number, offset_y_pm: number, dim_pm: number | null, blur_pm: number, appearance: string, };

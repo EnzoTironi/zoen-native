@@ -3,6 +3,8 @@ import Foundation
 @main struct ErasureIntentTests {
   static func expect(_ value: ZoenDeviceScope?, _ expected: ZoenDeviceScope?) { precondition(value == expected) }
   static func main() throws {
+    precondition(ZoenDeviceErasure.accountRoot.lastPathComponent == "account")
+    precondition(ZoenDeviceErasure.accountRoot.deletingLastPathComponent() == URL.applicationSupportDirectory)
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("zoen-erasure-fixture-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let a = try ZoenDeviceScope(identityId: String(repeating: "a", count: 64), deviceId: String(repeating: "b", count: 64))

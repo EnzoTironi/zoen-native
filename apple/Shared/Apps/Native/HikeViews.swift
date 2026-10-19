@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 // MARK: - Full screen (the React mini-app, edge to edge)
 

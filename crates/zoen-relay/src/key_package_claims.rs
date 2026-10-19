@@ -1,7 +1,7 @@
 //! Durable replies to destructive MLS claims. A retry cannot consume another package.
 
-use roda_proto::{KeyPackageRecord, Reply, ServerFrame};
-use roda_relay_admission::directory::key_packages;
+use protocol::{KeyPackageRecord, Reply, ServerFrame};
+use relay_admission::directory::key_packages;
 use sqlx::PgPool;
 use std::{fmt, sync::Arc, time::Duration};
 

@@ -1,11 +1,11 @@
 //! Browser host for the shared portable mini-app server. No mini-app state machine
-//! lives here: roda-apps owns creation, tool effects, concurrent reconciliation,
+//! lives here: miniapps owns creation, tool effects, concurrent reconciliation,
 //! schedule roles, resources and privacy projections on every platform.
 use super::*;
-use roda_apps as apps;
-use roda_grants::{evaluate_permission, Decision, Policy};
-use roda_types::{AppDoc, Capability, Grant, GrantScope, ItemContent, ItemKind, TrustLevel};
+use grants::{evaluate_permission, Decision, Policy};
+use miniapps as apps;
 use serde_json::{json, Value};
+use types::{AppDoc, Capability, Grant, GrantScope, ItemContent, ItemKind, TrustLevel};
 
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
@@ -40,15 +40,15 @@ enum Command {
 fn error(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
-fn action_label(action: &roda_types::ActionClass) -> &'static str {
+fn action_label(action: &types::ActionClass) -> &'static str {
     match action {
-        roda_types::ActionClass::Reply => "Responder",
-        roda_types::ActionClass::Reversible => "Alteração reversível",
-        roda_types::ActionClass::External => "Enviar para fora",
-        roda_types::ActionClass::Irreversible => "Ação irreversível",
-        roda_types::ActionClass::Money { .. } => "Pagamento",
-        roda_types::ActionClass::PublicAudience => "Publicar",
-        roda_types::ActionClass::ThirdPartyData => "Usar dados de terceiros",
+        types::ActionClass::Reply => "Responder",
+        types::ActionClass::Reversible => "Alteração reversível",
+        types::ActionClass::External => "Enviar para fora",
+        types::ActionClass::Irreversible => "Ação irreversível",
+        types::ActionClass::Money { .. } => "Pagamento",
+        types::ActionClass::PublicAudience => "Publicar",
+        types::ActionClass::ThirdPartyData => "Usar dados de terceiros",
     }
 }
 
@@ -92,7 +92,7 @@ impl<S: Signer> Client<S> {
         if request.len() > 1 << 20 {
             return Err("Solicitação do mini-app grande demais.".into());
         }
-        let _language = roda_i18n::enter(roda_i18n::Lang::from_tag(locale));
+        let _language = localization::enter(localization::Lang::from_tag(locale));
         let command: Command = serde_json::from_str(request).map_err(error)?;
         let mut mutated = false;
         let result=match command {
@@ -117,7 +117,7 @@ impl<S: Signer> Client<S> {
                 self.queue_domain_batch(&space_id,vec![
                     EventBody::ItemCreated{item:item.clone(),kind:ItemKind::App,content:ItemContent::App(AppDoc{document:None,app:app_id,resource_uri:spec.resource_uri.into(),title,state_json:state.to_string()}),origin:"Instalado por você".into()},
                     EventBody::GrantIssued{grant:Grant{id:browser_id("gr", now),grantor:self.account.identity.clone(),grantee:Some(format!("app:{item}")),scope:GrantScope::Item(item.clone()),capability:Capability::Trust(TrustLevel::Act),expires_at_ms:None}},
-                    EventBody::MessagePosted{message:roda_types::new_secret_id("msg"),text:"Mini-app adicionado a este Espaço.".into(),attaches:Some(item.clone()),reply:None,forwarded:false},
+                    EventBody::MessagePosted{message:types::new_secret_id("msg"),text:"Mini-app adicionado a este Espaço.".into(),attaches:Some(item.clone()),reply:None,forwarded:false},
                 ],now)?;
                 mutated=true;
                 self.item_value(&self.document_item(&item)?,None,&mut Vec::new())?
@@ -156,7 +156,7 @@ impl<S: Signer> Client<S> {
             return Err("Este arquivo não é um mini-app.".into());
         };
         if document.app == "excalidraw" {
-            return Err(roda_i18n::t(
+            return Err(localization::t(
                 "Este desenho precisa do host nativo de documentos.",
                 "This drawing requires the native document host.",
             ));
@@ -297,7 +297,7 @@ impl<S: Signer> Client<S> {
                     .sections
                     .first_mut()
                     .ok_or("O plano não tem uma seção para receber o resultado.")?;
-                section.lines.push(roda_types::PlanLine {
+                section.lines.push(types::PlanLine {
                     id: browser_id("ln", now),
                     text: text.clone(),
                     cost_cents: *cost_cents,

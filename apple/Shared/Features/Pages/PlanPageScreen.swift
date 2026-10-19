@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 struct PlanItemView: View {
     @Environment(AppModel.self) private var model

@@ -18,7 +18,7 @@ test('resource identity, exact bytes and manifest hash are checked before script
     bytes: bytes.length,
   };
   const resource = {
-    uri: 'ui://roda/hike',
+    uri: 'ui://builtin/hike',
     mime_type: 'text/html;profile=mcp-app',
     text,
     manifest_json: JSON.stringify(manifest),
@@ -43,11 +43,11 @@ test('all eight built-in view resources carry verified manifests and exact link 
       uri: `ui://fixture/${id}`,
       mime_type: 'text/html;profile=mcp-app',
       text: readFileSync(
-        new URL(`../../../../crates/roda-apps/resources/${id}.html`, import.meta.url),
+        new URL(`../../../../crates/miniapps/resources/${id}.html`, import.meta.url),
         'utf8',
       ),
       manifest_json: readFileSync(
-        new URL(`../../../../crates/roda-apps/resources/${id}.manifest.json`, import.meta.url),
+        new URL(`../../../../crates/miniapps/resources/${id}.manifest.json`, import.meta.url),
         'utf8',
       ),
       prefers_border: false,

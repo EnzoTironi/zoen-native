@@ -8,11 +8,11 @@ final class ChatReadingJourneyTests: XCTestCase {
 
     @MainActor private func launch(fast: Bool, story: String = "incoming") -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-RodaDemo", "YES", "-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
-                               "-AppleLanguages", "(pt-BR)", "-RodaAppearance", "light",
-                               "-RodaApprovalsExplained", "YES", "-RodaStory", story,
-                               "-RodaIncomingFast", fast ? "YES" : "NO",
-                               "-RodaIncomingManual", !fast && story == "incoming" ? "YES" : "NO"]
+        app.launchArguments = ["-Demo", "YES", "-FreshStart", "YES", "-ResetDemo", "YES",
+                               "-AppleLanguages", "(pt-BR)", "-Appearance", "light",
+                               "-ApprovalsExplained", "YES", "-Story", story,
+                               "-IncomingFast", fast ? "YES" : "NO",
+                               "-IncomingManual", !fast && story == "incoming" ? "YES" : "NO"]
         app.launch()
         return app
     }

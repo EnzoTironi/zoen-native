@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 // MARK: - Universal search
 //
@@ -130,7 +130,7 @@ enum SearchEngine {
 
 /// Recent queries (this device only).
 enum SearchRecents {
-    static let key = "RodaRecentSearches"
+    static let key = "RecentSearches"
     static var all: [String] { UserDefaults.standard.stringArray(forKey: key) ?? [] }
     static func add(_ q: String) {
         let t = q.trimmingCharacters(in: .whitespaces)
@@ -200,7 +200,7 @@ struct UniversalSearchView: View {
                                 .accessibilityIdentifier("search-load-more")
                         }
                     }
-                    if UserDefaults.standard.bool(forKey: "RodaSearchTiming"), !query.isEmpty {
+                    if UserDefaults.standard.bool(forKey: "SearchTiming"), !query.isEmpty {
                         Text(verbatim: "\(outcome.hits.count + outcome.store.count) results · \(String(format: "%.1f", Double(outcome.tookUs) / 1000)) ms on device")
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(Palette.textTertiary)
@@ -223,18 +223,18 @@ struct UniversalSearchView: View {
         }
         .task {
             if let seed = model.searchSeed { query = seed; model.searchSeed = nil }
-            if let s = UserDefaults.standard.string(forKey: "RodaSearchScope"), let sc = SearchScope(rawValue: s) { scope = sc }
+            if let s = UserDefaults.standard.string(forKey: "SearchScope"), let sc = SearchScope(rawValue: s) { scope = sc }
             try? await Task.sleep(for: .milliseconds(250))
-            if !UserDefaults.standard.bool(forKey: "RodaSearchNoFocus") { focused = true }
-            // Video: `-RodaSearchType elk` types the query letter by letter.
-            if let typed = UserDefaults.standard.string(forKey: "RodaSearchType") {
+            if !UserDefaults.standard.bool(forKey: "SearchNoFocus") { focused = true }
+            // Video: `-SearchType elk` types the query letter by letter.
+            if let typed = UserDefaults.standard.string(forKey: "SearchType") {
                 try? await Task.sleep(for: .seconds(0.6))
                 for ch in typed { query.append(ch); try? await Task.sleep(for: .milliseconds(220)) }
                 try? await Task.sleep(for: .milliseconds(400))
                 focused = false
             }
-            // Video: `-RodaSearchJump YES` opens the first message hit after a beat.
-            guard UserDefaults.standard.bool(forKey: "RodaSearchJump") else { return }
+            // Video: `-SearchJump YES` opens the first message hit after a beat.
+            guard UserDefaults.standard.bool(forKey: "SearchJump") else { return }
             try? await Task.sleep(for: .seconds(2.2))
             if let h = outcome.hits.first(where: { $0.kind == "message" }) { open(h) }
         }
@@ -495,7 +495,7 @@ struct UniversalSearchView: View {
                             .lineLimit(1)
                         Spacer(minLength: 6)
                         if h.atMs > 0 && (h.kind == "message" || h.kind == "item" || h.kind == "app") {
-                            Text(RodaTime.short(h.atMs))
+                            Text(MessageTime.short(h.atMs))
                                 .font(.caption)
                                 .foregroundStyle(Palette.textTertiary)
                         }

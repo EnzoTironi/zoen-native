@@ -4,7 +4,7 @@ use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use futures_util::TryStreamExt;
 use object_store::ObjectStoreExt;
-use roda_proto::{auth_message, ClientFrame, Op};
+use protocol::{auth_message, ClientFrame, Op};
 use serde_json::{json, Value};
 
 fn now() -> i64 {
@@ -103,8 +103,8 @@ async fn cloudflare_transfer_native_fixture() {
     let id = Signer::generate().id();
     let other = Signer::generate().id();
     let plain = b"synthetic encrypted device history with messages and pages";
-    let (key, sealed) = roda_log::media::seal(plain);
-    assert_eq!(roda_log::media::open(&key, &sealed).unwrap(), plain);
+    let (key, sealed) = event_log::media::seal(plain);
+    assert_eq!(event_log::media::open(&key, &sealed).unwrap(), plain);
     let profile: Value = sqlx::query_scalar("SELECT profile FROM identities WHERE id=$1")
         .bind(&a.identity)
         .fetch_one(&test.state.pool)
@@ -112,7 +112,7 @@ async fn cloudflare_transfer_native_fixture() {
         .unwrap();
     let nonce = "b8".repeat(32);
     let hello = ClientFrame::Hello {
-        protocol: roda_proto::PROTOCOL_VERSION,
+        protocol: protocol::PROTOCOL_VERSION,
         capabilities: vec![],
         identity: a.identity.clone(),
         device: a.device.clone().unwrap(),

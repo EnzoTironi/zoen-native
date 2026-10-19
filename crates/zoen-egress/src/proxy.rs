@@ -6,7 +6,6 @@ use crate::policy::{
 use crate::tls::{LeaseCa, SandboxRoot, Upstream};
 use crate::webbotauth::SignedAgent;
 use base64::Engine;
-use roda_types::{ActionClass, AgentRequest, Capability, Grant, GrantScope, IdentityId};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -15,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use types::{ActionClass, AgentRequest, Capability, Grant, GrantScope, IdentityId};
 
 /// What one lease (one sandbox running one tool for one owner) may do.
 #[derive(Clone, Debug)]
@@ -351,7 +351,7 @@ impl Egress {
                     .or_default()
                     .push(rule);
                 grant = Some(Grant {
-                    id: roda_types::new_id("grant"),
+                    id: types::new_id("grant"),
                     grantor: p.owner.clone(),
                     grantee: Some(p.agent.clone()),
                     scope: GrantScope::Everywhere,
@@ -796,7 +796,7 @@ impl Egress {
         }) {
             return id.clone();
         }
-        let id = roda_types::new_id("req");
+        let id = types::new_id("req");
         let hash = hex::encode(Sha256::digest(
             format!(
                 "egress/1|{}|{}|{}|{}|{}",

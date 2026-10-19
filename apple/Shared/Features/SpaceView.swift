@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 /// Tela 2: a conversa com pessoas e agentes. O Item nasce da mensagem do agente.
 struct SpaceView: View {
@@ -137,7 +137,7 @@ struct SpaceView: View {
             }
             .accessibilityIdentifier("chat-message-scroll")
             // Screenshot journeys can start at the top; ordinary chats keep their reading position.
-            .defaultScrollAnchor(UserDefaults.standard.bool(forKey: "RodaChatScrollTop") ? .top : .bottom)
+            .defaultScrollAnchor(UserDefaults.standard.bool(forKey: "ChatScrollTop") ? .top : .bottom)
             .scrollEdgeEffectHidden(true, for: .top)
             .scrollPosition($scrollPos)
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in offsetY = y }
@@ -246,7 +246,7 @@ struct SpaceView: View {
             #if DEBUG
             .overlay(alignment: .topTrailing) {
                 if SyncModel.mode == .demo,
-                   UserDefaults.standard.bool(forKey: "RodaIncomingManual"),
+                   UserDefaults.standard.bool(forKey: "IncomingManual"),
                    !demoIncomingSent {
                     Button("Receive demo messages") {
                         demoIncomingSent = true
@@ -262,7 +262,7 @@ struct SpaceView: View {
             .onDisappear { model.sync.stoppedTyping(spaceId) }
             .onChange(of: entries.count) { old, _ in
                 // Screenshot journeys can open at the beginning of message history.
-                if UserDefaults.standard.bool(forKey: "RodaChatScrollTop") {
+                if UserDefaults.standard.bool(forKey: "ChatScrollTop") {
                     if old == 0 {
                         Task { @MainActor in
                             try? await Task.sleep(for: .milliseconds(80))
@@ -312,9 +312,9 @@ struct SpaceView: View {
         .task(id: model.revision) { reload() }
         .task(id: "\(background.token)|\(model.revision)") { model.ensureBackgroundMedia(background) }
         .task {
-            // Screenshots: `-RodaBgSeed file:/path.jpg|asset:<name>` runs the real shared-photo
+            // Screenshots: `-BgSeed file:/path.jpg|asset:<name>` runs the real shared-photo
             // path once (resize → HEIC → put_media → signed BackgroundSet event).
-            guard let seed = UserDefaults.standard.string(forKey: "RodaBgSeed") else { return }
+            guard let seed = UserDefaults.standard.string(forKey: "BgSeed") else { return }
             try? await Task.sleep(for: .seconds(1.2))
             if let cur = try? model.core.background(spaceId: spaceId), cur.media != nil { return }
             let data: Data? = {
@@ -333,17 +333,17 @@ struct SpaceView: View {
             else { return }
             ChatBackgroundStore.shared.cacheMedia(ref.sha256, bytes: enc.data)
             var layout = PhotoBackgroundLayout()
-            if let a = UserDefaults.standard.string(forKey: "RodaBgAppearance") { layout.appearance = a }
+            if let a = UserDefaults.standard.string(forKey: "BgAppearance") { layout.appearance = a }
             _ = model.perform { try model.core.setBackground(spaceId: spaceId, background: layout.dto(style: "photo", media: ref)) }
         }
         .environment(\.colorScheme, forcedScheme ?? systemScheme)
         .task {
-            // Screenshots: scroll up N pt once the story settles (`-RodaChatScrollUp 260`), so
+            // Screenshots: scroll up N pt once the story settles (`-ChatScrollUp 260`), so
             // a message sits between the glass buttons.
-            let up = UserDefaults.standard.double(forKey: "RodaChatScrollUp")
-            let top = UserDefaults.standard.bool(forKey: "RodaChatScrollTop")
+            let up = UserDefaults.standard.double(forKey: "ChatScrollUp")
+            let top = UserDefaults.standard.bool(forKey: "ChatScrollTop")
             guard up > 0 || top else { return }
-            let delay = UserDefaults.standard.double(forKey: "RodaChatScrollDelay")
+            let delay = UserDefaults.standard.double(forKey: "ChatScrollDelay")
             // Screenshot journeys choose an initial reading position after the story loads.
             let wait = delay > 0 ? delay : (top ? 1.2 : 9)
             try? await Task.sleep(for: .seconds(wait))
@@ -352,10 +352,10 @@ struct SpaceView: View {
             }
         }
         .task {
-            // Screenshots: `-RodaVoiceSeed YES` drops one voice note (synthetic audio) in.
-            if let d = UserDefaults.standard.string(forKey: "RodaDraft") { draft = d }
-            guard UserDefaults.standard.bool(forKey: "RodaVoiceSeed") else { return }
-            let wait = UserDefaults.standard.double(forKey: "RodaVoiceSeedDelay")
+            // Screenshots: `-VoiceSeed YES` drops one voice note (synthetic audio) in.
+            if let d = UserDefaults.standard.string(forKey: "Draft") { draft = d }
+            guard UserDefaults.standard.bool(forKey: "VoiceSeed") else { return }
+            let wait = UserDefaults.standard.double(forKey: "VoiceSeedDelay")
             try? await Task.sleep(for: .seconds(wait > 0 ? wait : 1.5))
             let has = entries.contains { e in
                 if e.voice != nil { return true }
@@ -376,8 +376,8 @@ struct SpaceView: View {
             ChatBackgroundPicker(spaceId: spaceId, current: background, isLocal: backgroundState.isLocal)
         }
         .task {
-            // Screenshots: `-RodaBackgroundPicker YES` opens the picker.
-            guard UserDefaults.standard.bool(forKey: "RodaBackgroundPicker") else { return }
+            // Screenshots: `-BackgroundPicker YES` opens the picker.
+            guard UserDefaults.standard.bool(forKey: "BackgroundPicker") else { return }
             try? await Task.sleep(for: .seconds(2.5))
             backgroundPicker = true
         }
@@ -470,11 +470,11 @@ struct SpaceView: View {
     static let pinGap: CGFloat = 0
     #endif
 
-    /// Live title status: who's doing what. `-RodaTitleStatus typing|processing|building|call`
+    /// Live title status: who's doing what. `-TitleStatus typing|processing|building|call`
     /// forces one for screenshots (typing in a group = the first other person).
     private func status(_ s: SpaceSummary) -> ChatStatus? {
         let group = s.counterpart == nil
-        if let forced = UserDefaults.standard.string(forKey: "RodaTitleStatus").flatMap(ChatStatus.Kind.init(rawValue:)) {
+        if let forced = UserDefaults.standard.string(forKey: "TitleStatus").flatMap(ChatStatus.Kind.init(rawValue:)) {
             let who: Persona? = forced == .typing && group
                 ? s.members.first { $0.kind != .agent && !$0.isMe }
                 : (s.counterpart ?? model.zoen)
@@ -728,7 +728,7 @@ struct BubbleMeta: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Text(RodaTime.clock(atMs))
+            Text(MessageTime.clock(atMs))
             if let delivery {
                 switch delivery {
                 case .sending: Image(systemName: "clock").imageScale(.small)
@@ -1140,8 +1140,8 @@ struct Composer: View {
             VoiceReviewSheet(model: m) { clip, text in onVoice?(clip, text) }
         }
         .task {
-            // Screenshots: `-RodaVoiceEditor review|edit` opens the review sheet on a demo clip.
-            guard let mode = UserDefaults.standard.string(forKey: "RodaVoiceEditor"), onVoice != nil else { return }
+            // Screenshots: `-VoiceEditor review|edit` opens the review sheet on a demo clip.
+            guard let mode = UserDefaults.standard.string(forKey: "VoiceEditor"), onVoice != nil else { return }
             try? await Task.sleep(for: .seconds(2.5))
             guard let clip = VoiceStore.makeDemoClip() else { return }
             let m = VoiceEditorModel(clip: clip, transcript: .demo(seconds: 7))
@@ -1166,8 +1166,8 @@ struct Composer: View {
             review = m
         }
         .task {
-            // Screenshots: `-RodaVoiceDemo recording|locked` shows the recorder with fake input.
-            guard let demo = UserDefaults.standard.string(forKey: "RodaVoiceDemo"), ["recording", "locked"].contains(demo),
+            // Screenshots: `-VoiceDemo recording|locked` shows the recorder with fake input.
+            guard let demo = UserDefaults.standard.string(forKey: "VoiceDemo"), ["recording", "locked"].contains(demo),
                   onVoice != nil else { return }
             try? await Task.sleep(for: .seconds(2))
             recorder.demo = true

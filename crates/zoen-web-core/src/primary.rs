@@ -2,13 +2,13 @@
 //! in the worker. Its seed is encrypted into a separate vault record, never a client
 //! snapshot or public command result. Device handover seals it inside this worker.
 use crate::LinkedAccount;
-use openmls_traits::signatures::Signer;
-use roda_log::{
+use event_log::{
     profile::{AgreementKey, ProfileFields, ProfileKey},
     Signer as RootSigner,
 };
-use roda_proto::provider_auth::{provider_bind_message, ProviderBindRequest};
-use roda_types::{Identity, IdentityKind};
+use openmls_traits::signatures::Signer;
+use protocol::provider_auth::{provider_bind_message, ProviderBindRequest};
+use types::{Identity, IdentityKind};
 use zeroize::{Zeroize, Zeroizing};
 
 pub(crate) struct SealedLink {
@@ -16,7 +16,7 @@ pub(crate) struct SealedLink {
     pub cert: String,
     pub box_id: String,
     pub sealed: Vec<u8>,
-    pub peer: roda_link::Peer,
+    pub peer: device_link::Peer,
 }
 
 pub struct Primary {
@@ -26,7 +26,7 @@ pub struct Primary {
 
 impl Primary {
     pub fn new(device: &str, relay: &str, name: &str) -> Result<Self, String> {
-        roda_log::parse_device_key(device).ok_or("Invalid browser device.")?;
+        event_log::parse_device_key(device).ok_or("Invalid browser device.")?;
         let mut seed = Zeroizing::new([0; 32]);
         getrandom::getrandom(seed.as_mut()).map_err(|_| "Could not create account keys.")?;
         let root = RootSigner::from_secret(&seed);
@@ -44,11 +44,11 @@ impl Primary {
         };
         let agreement = AgreementKey::generate();
         let profile = ProfileKey::generate();
-        let (hpke_secret, hpke_public) = roda_link::key_pair();
+        let (hpke_secret, hpke_public) = device_link::key_pair();
         let account = LinkedAccount {
             identity: identity.clone(),
             device: device.into(),
-            cert: root.sign(&roda_log::device_cert_message(device)),
+            cert: root.sign(&event_log::device_cert_message(device)),
             handle: format!("zoen_{}", &identity[..16]),
             name: name.clone(),
             relay: relay.into(),
@@ -79,9 +79,9 @@ impl Primary {
         if account.identity != root.id()
             || account.device != device
             || account.primary != device
-            || !roda_log::verify_sig(
+            || !event_log::verify_sig(
                 &root.id(),
-                &roda_log::device_cert_message(device),
+                &event_log::device_cert_message(device),
                 &account.cert,
             )
             || ProfileKey::from_hex(&account.profile_key).is_none()
@@ -96,7 +96,7 @@ impl Primary {
     /// ciphertext. Both temporary plaintext representations are explicitly erased.
     pub(crate) fn seal_link(
         &self,
-        code: &roda_link::LinkCode,
+        code: &device_link::LinkCode,
         current: &LinkedAccount,
     ) -> Result<SealedLink, String> {
         let root = RootSigner::from_secret(&self.seed);
@@ -109,10 +109,10 @@ impl Primary {
         if code.device == current.device {
             return Err("Este já é o aparelho atual.".into());
         }
-        let (private, public) = roda_link::key_pair();
+        let (private, public) = device_link::key_pair();
         let private = Zeroizing::new(private);
-        let cert = root.sign(&roda_log::device_cert_message(&code.device));
-        let mut identity = roda_link::IdentityBox {
+        let cert = root.sign(&event_log::device_cert_message(&code.device));
+        let mut identity = device_link::IdentityBox {
             identity_secret: hex::encode(self.seed.as_ref()),
             agreement_secret: current.agreement_secret.clone(),
             cert: cert.clone(),
@@ -132,7 +132,7 @@ impl Primary {
         identity.profile_key.zeroize();
         identity.profile_fields.zeroize();
         let plain = encoded.map_err(|_| "Não foi possível preparar o vínculo.")?;
-        let sealed = roda_link::seal(&code.hpke, &code.secret, "identity", &plain)
+        let sealed = device_link::seal(&code.hpke, &code.secret, "identity", &plain)
             .ok_or("Não foi possível proteger o vínculo.")?;
         if sealed.len() > 65_536 {
             return Err("Perfil grande demais para vincular este aparelho.".into());
@@ -140,9 +140,9 @@ impl Primary {
         Ok(SealedLink {
             device: code.device.clone(),
             cert,
-            box_id: roda_link::box_id(&code.secret, "identity"),
+            box_id: device_link::box_id(&code.secret, "identity"),
             sealed,
-            peer: roda_link::Peer {
+            peer: device_link::Peer {
                 device: code.device.clone(),
                 their_hpke: hex::encode(&code.hpke),
                 my_hpke_secret: hex::encode(private.as_slice()),
@@ -193,7 +193,7 @@ impl Primary {
         let profile = self.binding_profile(proof)?;
         let payload = self.binding_message(proof)?;
         let signature = hex::encode(signature);
-        if !roda_log::verify_sig(&self.account.device, &payload, &signature) {
+        if !event_log::verify_sig(&self.account.device, &payload, &signature) {
             return Err("The browser signer belongs to another device.".into());
         }
         Ok(ProviderBindRequest {
@@ -230,7 +230,7 @@ mod tests {
             hex::decode(self.0.sign(bytes)).map_err(|_| SignerError::SigningError)
         }
         fn signature_scheme(&self) -> SignatureScheme {
-            roda_mls::SUITE.signature_algorithm()
+            mls::SUITE.signature_algorithm()
         }
     }
     #[test]
@@ -253,12 +253,12 @@ mod tests {
         let body = serde_json::to_string(&request).unwrap();
         assert!(!body.contains("Nome privado"));
         assert!(!body.contains(&hex::encode(secret)));
-        assert!(roda_log::verify_sig(
+        assert!(event_log::verify_sig(
             &request.profile.id,
-            &roda_log::device_cert_message(&request.device),
+            &event_log::device_cert_message(&request.device),
             &request.certificate
         ));
-        assert!(roda_log::verify_sig(
+        assert!(event_log::verify_sig(
             &request.device,
             &provider_bind_message(
                 &request.proof_token,

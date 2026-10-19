@@ -67,7 +67,7 @@ outbound device fence.
 With an isolated PostgreSQL test environment, run from the repository root:
 
 ```sh
-cargo test --locked -p roda-relay-admission --test directory_reads
+cargo test --locked -p relay-admission --test directory_reads
 node scripts/verify-cloudflare-directory.mjs --reads --out-dir .dev/cloudflare-directory-reads
 ```
 

@@ -3,12 +3,12 @@
 //! her GitHub token is used without ever entering the sandbox; the log holds metadata only.
 
 use base64::Engine;
-use roda_types::{AgentRequest, Capability};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use types::{AgentRequest, Capability};
 use zoen_egress::{
     placeholder, ApprovalScope, ApprovalSink, Decision, Egress, EgressConfig, EgressRule,
     LeasePolicy, Resolver, SecretBinding, SecretSource,

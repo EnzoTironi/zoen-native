@@ -8,7 +8,7 @@ export const auth = defineFeature(
     googleUnavailable: 'Google is unavailable in this version.',
     continueGoogle: 'Continue with Google',
     continueApple: 'Continue with Apple',
-    preparingAccount: 'Preparing your Zoen…',
+    preparingAccount: 'Preparing your account…',
     preparingSignIn: 'Preparing sign-in…',
   },
   {
@@ -18,7 +18,7 @@ export const auth = defineFeature(
     googleUnavailable: 'Google indisponível nesta versão.',
     continueGoogle: 'Continuar com Google',
     continueApple: 'Continuar com Apple',
-    preparingAccount: 'Preparando seu Zoen…',
+    preparingAccount: 'Preparando sua conta…',
     preparingSignIn: 'Preparando entrada…',
   },
 );

@@ -17,13 +17,13 @@ use std::{
 
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
-use roda_proto::{
+use protocol::{
     negotiate, AgentRequest, ClientFrame, ErrorCode, Op, Reply, ServerFrame, MIN_PROTOCOL_VERSION,
     PROTOCOL_VERSION,
 };
-use roda_types::{EventBody, IdentityKind};
 use tokio::sync::{mpsc, Notify};
 use tracing::{field::Empty, Instrument};
+use types::{EventBody, IdentityKind};
 
 use crate::{db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics, Shared};
 
@@ -31,8 +31,8 @@ use crate::{db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics, Shared}
 /// to the author it concerns (`Session::receipt_audience`).
 pub const RECEIPT_BROADCAST_MAX: usize = 16;
 
-pub const MAX_FRAME: usize = roda_relay_admission::portable::MAX_FRAME_BYTES;
-pub const MAX_ENVELOPE: usize = roda_relay_admission::portable::MAX_ENVELOPE_BYTES;
+pub const MAX_FRAME: usize = relay_admission::portable::MAX_FRAME_BYTES;
+pub const MAX_ENVELOPE: usize = relay_admission::portable::MAX_ENVELOPE_BYTES;
 const SYNC_PAGE: usize = 500;
 
 struct Session {
@@ -354,7 +354,7 @@ async fn handshake(
         )
         .await;
     }
-    if !roda_relay_admission::directory::certificate_valid(&identity, &device, &cert) {
+    if !relay_admission::directory::certificate_valid(&identity, &device, &cert) {
         return refuse(
             "bad_certificate",
             ServerFrame::error(ErrorCode::Unauthorized, "device certificate invalid"),
@@ -364,7 +364,7 @@ async fn handshake(
     let capabilities = negotiate(&capabilities);
     let claim_receipts = capabilities
         .iter()
-        .any(|c| c == roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY);
+        .any(|c| c == protocol::KEY_PACKAGE_CLAIM_CAPABILITY);
     let server_time_ms = if claim_receipts {
         match tokio::time::timeout(
             Duration::from_secs(5),
@@ -405,7 +405,7 @@ async fn handshake(
         )
         .await;
     };
-    if !roda_relay_admission::directory::auth_valid(&device, &n, &st.relay_name, &sig) {
+    if !relay_admission::directory::auth_valid(&device, &n, &st.relay_name, &sig) {
         return refuse(
             "bad_signature",
             ServerFrame::error(ErrorCode::Unauthorized, "login signature invalid"),
@@ -498,7 +498,7 @@ impl Session {
     }
 
     /// Tells each claimed device that's running low, wherever it is connected.
-    async fn key_packages_low(&self, claimed: &[roda_proto::KeyPackageRecord]) {
+    async fn key_packages_low(&self, claimed: &[protocol::KeyPackageRecord]) {
         let devices: Vec<(String, String)> = claimed
             .iter()
             .map(|k| (k.identity.clone(), k.device.clone()))
@@ -511,7 +511,7 @@ impl Session {
             }
         };
         for (identity, device, left) in stock {
-            if left < roda_proto::KEY_PACKAGES_LOW as i64 {
+            if left < protocol::KEY_PACKAGES_LOW as i64 {
                 let delivered_here = self.st.fanout.send(
                     std::slice::from_ref(&identity),
                     &ServerFrame::KeyPackagesLow {
@@ -586,7 +586,7 @@ impl Session {
         let me = [(self.identity.clone(), self.device.clone())];
         if let Ok(stock) = db::key_package_stock(&self.st.pool, &me).await {
             for (_, device, left) in stock {
-                if left < roda_proto::KEY_PACKAGES_LOW as i64 {
+                if left < protocol::KEY_PACKAGES_LOW as i64 {
                     self.send(ServerFrame::KeyPackagesLow {
                         device,
                         remaining: left as u32,
@@ -764,7 +764,7 @@ impl Session {
         skip_all,
         fields(identity = %pseudo(&self.identity), space = %pseudo(&space), delivered_here = Empty)
     )]
-    async fn ephemeral(&self, space: String, kind: roda_proto::EphemeralKind) {
+    async fn ephemeral(&self, space: String, kind: protocol::EphemeralKind) {
         if self.st.limits.ephemeral_device.check(&self.device).is_err() {
             return;
         }
@@ -778,8 +778,8 @@ impl Session {
             return;
         }
         let receipt = match kind {
-            roda_proto::EphemeralKind::Read { seq } => Some((0, seq)),
-            roda_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
+            protocol::EphemeralKind::Read { seq } => Some((0, seq)),
+            protocol::EphemeralKind::Delivered { seq } => Some((seq, 0)),
             _ => None,
         };
         if let Some((delivered, read)) = receipt {
@@ -790,8 +790,7 @@ impl Session {
         // Receipts also reach my other devices (read on the phone clears the Mac), never
         // this session itself.
         let to: Vec<String> = match kind {
-            roda_proto::EphemeralKind::Read { seq }
-            | roda_proto::EphemeralKind::Delivered { seq }
+            protocol::EphemeralKind::Read { seq } | protocol::EphemeralKind::Delivered { seq }
                 if members.len() > RECEIPT_BROADCAST_MAX =>
             {
                 self.receipt_audience(&space, seq).await
@@ -893,7 +892,7 @@ impl Session {
                     .map_err(|e| e.to_string())?;
                 // Turning an agent off also takes its share link down, here on the relay
                 // so no client can leave it up.
-                if action == roda_proto::AgentAction::Revoke {
+                if action == protocol::AgentAction::Revoke {
                     self.st.log.revoke_agent_invite(&agent).await?;
                 }
                 return Ok(Reply::Done);
@@ -911,8 +910,7 @@ impl Session {
         let pool = &self.st.pool;
         match op {
             Op::Register { profile } => {
-                let profile =
-                    roda_relay_admission::directory::prepare_profile(profile, &self.identity)?;
+                let profile = relay_admission::directory::prepare_profile(profile, &self.identity)?;
                 let handle = profile.handle.clone();
                 if !registered {
                     self.st
@@ -1015,7 +1013,7 @@ impl Session {
                     .lookup_account
                     .check(&self.identity)
                     .map_err(limits::slow_down)?;
-                let h = roda_relay_admission::directory::reads::normalize_lookup(&handle);
+                let h = relay_admission::directory::reads::normalize_lookup(&handle);
                 if h.is_empty() {
                     return Ok(Reply::Profiles(Vec::new()));
                 }
@@ -1026,7 +1024,7 @@ impl Session {
                 ))
             }
             Op::Profiles { ids } => {
-                let ids = roda_relay_admission::directory::reads::profile_ids(ids);
+                let ids = relay_admission::directory::reads::profile_ids(ids);
                 Ok(Reply::Profiles(
                     db::profiles(pool, &ids).await.map_err(|e| e.to_string())?,
                 ))
@@ -1061,7 +1059,7 @@ impl Session {
                 Ok(Reply::Invite(invite))
             }
             Op::PublishAgreementKey { public, signed } => {
-                roda_relay_admission::directory::sealed_profiles::validate_agreement(
+                relay_admission::directory::sealed_profiles::validate_agreement(
                     &self.identity,
                     &self.device,
                     &public,
@@ -1073,7 +1071,7 @@ impl Session {
                 Ok(Reply::Done)
             }
             Op::AgreementKeys { ids } => {
-                let ids = roda_relay_admission::directory::reads::profile_ids(ids);
+                let ids = relay_admission::directory::reads::profile_ids(ids);
                 Ok(Reply::AgreementKeys(
                     db::agreement_keys(pool, &ids)
                         .await
@@ -1081,7 +1079,7 @@ impl Session {
                 ))
             }
             Op::PutProfile { profile } => {
-                roda_relay_admission::directory::sealed_profiles::validate_profile(
+                relay_admission::directory::sealed_profiles::validate_profile(
                     &self.identity,
                     &self.device,
                     &profile,
@@ -1109,13 +1107,12 @@ impl Session {
                 packages,
                 last_resort,
             } => {
-                let publications =
-                    roda_relay_admission::directory::key_packages::validate_publications(
-                        &self.identity,
-                        &self.device,
-                        &packages,
-                        last_resort.as_deref(),
-                    )?;
+                let publications = relay_admission::directory::key_packages::validate_publications(
+                    &self.identity,
+                    &self.device,
+                    &packages,
+                    last_resort.as_deref(),
+                )?;
                 if !db::put_key_packages(
                     pool,
                     &self.identity,
@@ -1156,7 +1153,7 @@ impl Session {
                 Ok(Reply::KeyPackages(claimed))
             }
             Op::GetProfiles { ids } => {
-                let ids = roda_relay_admission::directory::reads::profile_ids(ids);
+                let ids = relay_admission::directory::reads::profile_ids(ids);
                 Ok(Reply::SealedProfiles(
                     db::sealed_profiles(pool, &ids)
                         .await
@@ -1283,7 +1280,7 @@ impl Session {
             Some(a) => ("agent", a.name.clone()),
             None => ("space", i.title),
         };
-        Ok(Reply::Preview(roda_proto::InvitePreview {
+        Ok(Reply::Preview(protocol::InvitePreview {
             space: i.space,
             role: i.role,
             title,
@@ -1298,8 +1295,8 @@ impl Session {
     /// never its content (sealed envelopes only say whether they're application data).
     fn count_sequenced(
         &self,
-        env: &roda_proto::Envelope,
-        ev: &roda_proto::Sequenced,
+        env: &protocol::Envelope,
+        ev: &protocol::Sequenced,
         audience: &[String],
         joined: Option<&str>,
         started: std::time::Instant,
@@ -1327,7 +1324,7 @@ impl Session {
                 );
                 false
             }
-            _ => env.sealed_kind() == Some(roda_proto::SealedKind::Application),
+            _ => env.sealed_kind() == Some(protocol::SealedKind::Application),
         };
         if is_message {
             a.message_sent(crate::analytics::SentMessage {
@@ -1355,7 +1352,7 @@ impl Session {
             delivered_here = Empty,
         )
     )]
-    async fn publish(&mut self, env: roda_proto::Envelope) {
+    async fn publish(&mut self, env: protocol::Envelope) {
         let started = std::time::Instant::now();
         let span = tracing::Span::current();
         let analytics = &self.st.analytics;
@@ -1509,7 +1506,7 @@ impl Session {
         skip_all,
         fields(identity = %pseudo(&self.identity), all, spaces = Empty, events = Empty)
     )]
-    async fn sync(&mut self, cursors: Vec<roda_proto::Cursor>, all: bool) {
+    async fn sync(&mut self, cursors: Vec<protocol::Cursor>, all: bool) {
         let Ok(Ok(mine)) = tokio::time::timeout(
             Duration::from_secs(5),
             self.st.log.spaces_of(&self.identity),
@@ -1541,11 +1538,11 @@ impl Session {
                 .and_then(Result::ok)
                 .flatten()
             };
-            if let Some(read) = roda_relay_admission::sync::cursor_read(c, member, removed_at) {
+            if let Some(read) = relay_admission::sync::cursor_read(c, member, removed_at) {
                 plan.push(read);
             }
         }
-        roda_relay_admission::sync::include_current(&mut plan, &mine, all);
+        relay_admission::sync::include_current(&mut plan, &mine, all);
         let span = tracing::Span::current();
         span.record("spaces", plan.len() as i64);
         let mut sent = 0usize;
@@ -1660,10 +1657,10 @@ impl Session {
     async fn replay_receipts(&self, space: &str, rows: Vec<(String, i64, i64)>) -> bool {
         for (from, delivered, read) in rows {
             for kind in [
-                roda_proto::EphemeralKind::Delivered {
+                protocol::EphemeralKind::Delivered {
                     seq: delivered as u64,
                 },
-                roda_proto::EphemeralKind::Read { seq: read as u64 },
+                protocol::EphemeralKind::Read { seq: read as u64 },
             ] {
                 let frame = ServerFrame::Ephemeral {
                     space: space.to_string(),

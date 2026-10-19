@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // miniapp-build: one Zoen mini-app → one offline HTML file + a manifest with its sha256.
 //
-//   node tools/miniapp-build/build.mjs miniapps/hike [--out crates/roda-apps/resources]
+//   node tools/miniapp-build/build.mjs miniapps/hike [--out crates/miniapps/resources]
 //
 // Rules it enforces (a bundle that breaks one does not get written):
 // - the manifest is strict (id, name, entry, capabilities with purposes, allowedDomains,
@@ -295,7 +295,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       (mi >= 0 && !args[mi + 1])
     )
       fail('usage: build.mjs <app-dir>… [--out dir] [--manifest relative.json]');
-    const outDir = resolve(oi >= 0 ? args[oi + 1] : join(root, 'crates/roda-apps/resources'));
+    const outDir = resolve(oi >= 0 ? args[oi + 1] : join(root, 'crates/miniapps/resources'));
     for (const app of apps)
       await buildApp(app, outDir, mi >= 0 ? { manifestPath: args[mi + 1] } : undefined);
   } catch (error) {

@@ -8,7 +8,7 @@
 
 mod common;
 use common::*;
-use roda_proto::SealedKind;
+use protocol::SealedKind;
 use std::{path::PathBuf, process::Child, time::Duration};
 
 struct Watch {
@@ -337,14 +337,14 @@ async fn photo_background_travels_encrypted() {
     );
 
     use sha2::{Digest, Sha256};
-    let store = roda_store::Store::open(w.dir.join("ana/zoen.sqlite").to_str().unwrap()).unwrap();
+    let store = store::Store::open(w.dir.join("ana/zoen.sqlite").to_str().unwrap()).unwrap();
     let mut photos = Vec::new();
     let mut contexts = std::collections::HashSet::new();
     for space in store.space_ids().unwrap() {
         let events = store.events(&space).unwrap();
-        roda_log::SpaceLog::from_events(space.clone(), events.clone()).unwrap();
+        event_log::SpaceLog::from_events(space.clone(), events.clone()).unwrap();
         for event in events {
-            if let roda_types::EventBody::BackgroundSet { background } = event.body {
+            if let types::EventBody::BackgroundSet { background } = event.body {
                 if let Some(media) = background.media {
                     photos.push(media);
                 }
@@ -355,7 +355,7 @@ async fn photo_background_travels_encrypted() {
             if let Some(reference) = event
                 .env
                 .recovery()
-                .and_then(roda_log::recovery::RecoveryRef::parse)
+                .and_then(event_log::recovery::RecoveryRef::parse)
             {
                 contexts.insert(reference.blob);
             }

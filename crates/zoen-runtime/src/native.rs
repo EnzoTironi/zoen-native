@@ -8,9 +8,9 @@ pub(crate) use runs::{CleanupAcquisition, CleanupStep, ReplyStep};
 
 use std::collections::BTreeMap;
 
-use roda_ffi::runtime_core::{DeviceCore, NativeImage, UnlockedDevice};
-use roda_types::Identity;
+use client_core::runtime_core::{DeviceCore, NativeImage, UnlockedDevice};
 use serde::{Deserialize, Serialize};
+use types::Identity;
 use zeroize::Zeroizing;
 
 use crate::{custody::Custody, hash, id, NativeInspection, RuntimeAuthority, RuntimeError};
@@ -115,7 +115,7 @@ impl Credential {
         Principal {
             owner: self.owner.id.clone(),
             agent: self.agent.id.clone(),
-            device: roda_log::Signer::from_secret(&self.secret).id(),
+            device: event_log::Signer::from_secret(&self.secret).id(),
             certificate_digest: hash(self.certificate.as_bytes()),
         }
     }
@@ -203,7 +203,7 @@ impl NativeCustody {
                 .unwrap_or(0)
                 .checked_add(1)
                 .ok_or(RuntimeError::InvalidBinding)?,
-            capsule: roda_types::new_id("capsule"),
+            capsule: types::new_id("capsule"),
             image_bytes: bytes.len() as u32,
             image_digest: hash(bytes),
             chunks: bytes.len().div_ceil(CHUNK_BYTES) as u32,

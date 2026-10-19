@@ -34,7 +34,7 @@ import kotlinx.coroutines.withContext
 
 internal data class FileVersionContent(val info: FileDto, val bytes: ByteArray?)
 
-internal fun readFileVersion(core: RodaEngine, id: String, version: UInt, tooLarge: String): FileVersionContent {
+internal fun readFileVersion(core: Client, id: String, version: UInt, tooLarge: String): FileVersionContent {
     val info = core.fileInfoAt(id, version)
     require(info.bytes <= FileAccess.MAX_BYTES.toULong()) { tooLarge }
     return FileVersionContent(info, core.fileBytesBounded(id, version, FileAccess.MAX_BYTES.toULong()))

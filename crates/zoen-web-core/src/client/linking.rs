@@ -2,7 +2,7 @@
 //! root authority only seals the identity box; it never enters this journal.
 use super::*;
 use crate::Primary;
-use roda_link::{DeviceMsg, Peer};
+use device_link::{DeviceMsg, Peer};
 use serde_json::{json, Value};
 
 const LINK_REQUEST_BASE: u64 = 0x9000_0000;
@@ -119,7 +119,7 @@ impl<S: Signer> Client<S> {
         code: &str,
         now: i64,
     ) -> Result<DocumentResponse, String> {
-        let parsed = roda_link::LinkCode::parse(code).ok_or("Código inválido.")?;
+        let parsed = device_link::LinkCode::parse(code).ok_or("Código inválido.")?;
         if !self.synced {
             return Err("Aguarde a conexão terminar de sincronizar.".into());
         }
@@ -188,7 +188,7 @@ impl<S: Signer> Client<S> {
                 | Command::OlderStatus { .. }
         );
         let result = match command {
-            Command::LinkCodeCheck { code } => json!(roda_link::LinkCode::parse(&code)
+            Command::LinkCodeCheck { code } => json!(device_link::LinkCode::parse(&code)
                 .ok_or("Código inválido.")?
                 .check_digits()),
             Command::HistorySend { device_id } => {
@@ -226,7 +226,7 @@ impl<S: Signer> Client<S> {
                     .chunks
                     .get(index)
                     .ok_or("Parte inválida do histórico.")?;
-                if index != sending.uploaded || roda_log::sha256_hex(chunk) != sha256 {
+                if index != sending.uploaded || event_log::sha256_hex(chunk) != sha256 {
                     return Err("A parte enviada não corresponde ao histórico.".into());
                 }
                 sending.uploaded += 1;
@@ -431,31 +431,32 @@ impl<S: Signer> Client<S> {
         }
         let messages = events.len() as u32;
         let plain = zeroize::Zeroizing::new(
-            serde_json::to_vec(&roda_link::Bundle { events }).map_err(|_| "Histórico inválido.")?,
+            serde_json::to_vec(&device_link::Bundle { events })
+                .map_err(|_| "Histórico inválido.")?,
         );
         if plain.len() > 64 << 20 {
             return Err("Histórico grande demais para este navegador.".into());
         }
-        let key = zeroize::Zeroizing::new(roda_link::random::<32>());
-        let transfer = hex::encode(roda_link::random::<32>());
+        let key = zeroize::Zeroizing::new(device_link::random::<32>());
+        let transfer = hex::encode(device_link::random::<32>());
         let chunks = plain
             .chunks(1 << 20)
             .enumerate()
-            .map(|(index, part)| roda_link::seal_chunk(&key, index as u32, part))
+            .map(|(index, part)| device_link::seal_chunk(&key, index as u32, part))
             .collect::<Vec<_>>();
-        let manifest = roda_link::HistoryBox {
+        let manifest = device_link::HistoryBox {
             transfer: transfer.clone(),
             key: hex::encode(key.as_ref()),
             chunks: chunks
                 .iter()
-                .map(|chunk| roda_log::sha256_hex(chunk))
+                .map(|chunk| event_log::sha256_hex(chunk))
                 .collect(),
         };
         let manifest = zeroize::Zeroizing::new(
             serde_json::to_vec(&manifest).map_err(|_| "Histórico inválido.")?,
         );
         let secret = zeroize::Zeroizing::new(peer.secret().ok_or("Chave de vínculo inválida.")?);
-        let sealed_manifest = roda_link::seal(
+        let sealed_manifest = device_link::seal(
             &hex::decode(&peer.their_hpke).map_err(|_| "Aparelho inválido.")?,
             &secret,
             "history",
@@ -493,14 +494,9 @@ impl<S: Signer> Client<S> {
         }
         if let Some(chunk) = sending.chunks.get(sending.uploaded) {
             let index = sending.uploaded;
-            let sha = roda_log::sha256_hex(chunk);
-            let payload = roda_proto::transfer_message(
-                "put",
-                &sending.transfer,
-                &index.to_string(),
-                &sha,
-                now,
-            );
+            let sha = event_log::sha256_hex(chunk);
+            let payload =
+                protocol::transfer_message("put", &sending.transfer, &index.to_string(), &sha, now);
             let signature = self
                 .signer
                 .sign(&payload)
@@ -525,7 +521,7 @@ impl<S: Signer> Client<S> {
                         op: Op::DeliverLink {
                             id: link.box_id.clone(),
                             sealed: link.sealed.clone(),
-                            device: Some(roda_proto::DeviceCertificate {
+                            device: Some(protocol::DeviceCertificate {
                                 device: link.device.clone(),
                                 cert: link.cert.clone(),
                             }),
@@ -554,7 +550,7 @@ impl<S: Signer> Client<S> {
                 ClientFrame::Req {
                     id: sending.request_id,
                     op: Op::DeliverLink {
-                        id: roda_link::box_id(&secret, "history"),
+                        id: device_link::box_id(&secret, "history"),
                         sealed: sending.sealed_manifest.clone(),
                         device: None,
                     },
@@ -848,8 +844,8 @@ impl<S: Signer> Client<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use event_log::{Author, Signer as Root};
     use openmls_traits::{signatures::SignerError, types::SignatureScheme};
-    use roda_log::{Author, Signer as Root};
     #[derive(Clone)]
     struct HostSigner(Root);
     impl Signer for HostSigner {
@@ -857,7 +853,7 @@ mod tests {
             Ok(hex::decode(self.0.sign(value)).unwrap())
         }
         fn signature_scheme(&self) -> SignatureScheme {
-            roda_mls::SUITE.signature_algorithm()
+            mls::SUITE.signature_algorithm()
         }
     }
     fn source() -> (Primary, Client<HostSigner>) {
@@ -974,7 +970,7 @@ mod tests {
         .unwrap();
         assert!(wrong
             .seal_link(
-                &roda_link::LinkCode::parse(&pending.code).unwrap(),
+                &device_link::LinkCode::parse(&pending.code).unwrap(),
                 &client.account
             )
             .is_err());
@@ -999,14 +995,14 @@ mod tests {
         let work = first.result;
         let sealed: Vec<u8> = serde_json::from_value(work["bytes"].clone()).unwrap();
         assert_eq!(work["kind"], "upload");
-        let payload = roda_proto::transfer_message(
+        let payload = protocol::transfer_message(
             "put",
             work["transfer"].as_str().unwrap(),
             "0",
             work["sha256"].as_str().unwrap(),
             103,
         );
-        assert!(roda_log::verify_sig(
+        assert!(event_log::verify_sig(
             &client.account.device,
             &payload,
             work["signature"].as_str().unwrap()
@@ -1067,19 +1063,19 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let plain = roda_link::open(
+        let plain = device_link::open(
             &hex::decode(&pending.hpke_secret).unwrap(),
             &hex::decode(&pending.secret).unwrap().try_into().unwrap(),
             "history",
             &manifest,
         )
         .unwrap();
-        let manifest: roda_link::HistoryBox = serde_json::from_slice(&plain).unwrap();
+        let manifest: device_link::HistoryBox = serde_json::from_slice(&plain).unwrap();
         assert_eq!(manifest.transfer, transfer);
-        assert_eq!(manifest.chunks[0], roda_log::sha256_hex(&sealed));
+        assert_eq!(manifest.chunks[0], event_log::sha256_hex(&sealed));
         let key = hex::decode(manifest.key).unwrap().try_into().unwrap();
-        let bundle: roda_link::Bundle =
-            serde_json::from_slice(&roda_link::open_chunk(&key, 0, &sealed).unwrap()).unwrap();
+        let bundle: device_link::Bundle =
+            serde_json::from_slice(&device_link::open_chunk(&key, 0, &sealed).unwrap()).unwrap();
         assert!(bundle.events.is_empty());
         assert_eq!(
             command(&mut resumed, json!({"op":"history_send_resume"}), 107).result["kind"],
@@ -1186,7 +1182,7 @@ mod tests {
             log.head().as_ref(),
             Sealed::new(SealedKind::Application, SUITE_ID, vec![1]),
         );
-        let outer = roda_log::event_from_content(
+        let outer = event_log::event_from_content(
             content,
             sig,
             author.cert.clone(),
@@ -1197,8 +1193,8 @@ mod tests {
         .unwrap();
         let outer = log.sequence(outer).clone();
         opened.seq = outer.seq;
-        opened.sealed_wire = Some(roda_log::content_hash_of(&outer));
-        let opened = roda_link::opened_history_event(&outer, opened).unwrap();
+        opened.sealed_wire = Some(event_log::content_hash_of(&outer));
+        let opened = device_link::opened_history_event(&outer, opened).unwrap();
         let mut source_events = log.events().to_vec();
         source_events[1] = opened.clone();
         source.logs.insert(
@@ -1323,8 +1319,8 @@ mod tests {
             },
         );
         large.seq = outer.seq;
-        large.sealed_wire = Some(roda_log::content_hash_of(&outer));
-        let large = roda_link::opened_history_event(&outer, large).unwrap();
+        large.sealed_wire = Some(event_log::content_hash_of(&outer));
+        let large = device_link::opened_history_event(&outer, large).unwrap();
         let create = source.logs[space].events()[0].clone();
         source.logs.insert(
             space.into(),

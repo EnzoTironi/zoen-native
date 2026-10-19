@@ -7,7 +7,7 @@ names and biographies stay encrypted; the separate public handle registration
 contract is unchanged.
 
 The shared policy lives in
-`crates/roda-relay-admission/src/directory/sealed_profiles.rs`. Native Session
+`crates/relay-admission/src/directory/sealed_profiles.rs`. Native Session
 validation delegates to the same policy. The host never treats caller-supplied
 identity, registration state or device authorization as authoritative.
 

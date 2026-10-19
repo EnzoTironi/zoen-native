@@ -538,7 +538,7 @@ The client now reconnects for that pre-catch-up error and resets retry backoff o
 SyncDone. Post-catch-up errors, terminal handshake refusals and bounded rate hints retain
 their prior behavior. No protocol, public API or generated binding changed. The source
 passes 415 app tests, including 67 actual compiled-hook cases, TypeScript/Oxlint/Oxfmt,
-394 FFI tests including all 18 network cases, and strict roda-ffi all-target Clippy.
+394 FFI tests including all 18 network cases, and strict client-core all-target Clippy.
 Removing either the keyboard-dismiss await or the catch-up recovery arm fails its negative
 control. The 26 MLS, 11 shared-type and 56 browser-core results remain attributed to v53.
 
@@ -1756,7 +1756,7 @@ AppIntent or AppShortcuts declaration in the baseline Swift sources. Comments de
 future widget-extension reuse. The in-app pinned-card journeys therefore do not prove
 a launcher widget, Live Activity or Siri integration.
 
-The portable `roda-apps::snapshot` supplies each built-in miniapp's canonical compact
+The portable `miniapps::snapshot` supplies each built-in miniapp's canonical compact
 content. Native `ItemDetail.app.snapshot_json` already exposes it. It must remain the
 source of displayed values; an extension must not recreate pet, poll, schedule or
 approval business rules.
@@ -2139,7 +2139,7 @@ a localized notice after injected storage failure. Exact refusal diagnostics sta
 in the outbox/log. v29 adds no wire event or UniFFI ABI change.
 
 After the v29 build, test-only commit `e7097337` changes the `cfg(test)` module of
-`crates/roda-ffi/src/net.rs` to model old-epoch application refusal before the winning
+`crates/client-core/src/net.rs` to model old-epoch application refusal before the winning
 commit arrives during retry. Focused net16/16 passes
 (`/private/tmp/zoen-v29-net-test-ordering.log`). Independent comparison confirms this
 is the only changed input among 742 and its production prefix is byte-identical to

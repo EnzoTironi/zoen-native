@@ -1,5 +1,16 @@
 // Local Miniflare bridge only; never referenced by the private deployment config.
-import { ClosedSpace as ProductionClosedSpace, verifiedPublication } from "../src/closed-space.mjs";
+import {
+  ClosedSpace as ProductionClosedSpace,
+  verifiedPublication,
+  fixturePublication,
+} from "../src/closed-space.mjs";
+
+function base64(bytes) {
+  let result = "";
+  for (let offset = 0; offset < bytes.byteLength; offset += 8192)
+    result += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+  return btoa(result);
+}
 
 export class ClosedSpace extends ProductionClosedSpace {
   #clock = "0";
@@ -9,7 +20,7 @@ export class ClosedSpace extends ProductionClosedSpace {
 
   publishAt(input) {
     this.#clock = input.test_now_ms;
-    return super.publish(input);
+    return fixturePublication(this, input);
   }
 
   inviteAt(input) {
@@ -103,6 +114,26 @@ export default {
           break;
         case "/raw-append":
           result = await stub.appendAdmitted({});
+          break;
+        case "/raw-publish":
+          result = await stub.publish({});
+          break;
+        case "/read-authorized":
+          result = await stub.readAuthorized({
+            spaceId: input.space_id,
+            session: input.session,
+            from: input.from,
+            limit: input.limit,
+          });
+          // The test-only HTTP bridge encodes typed arrays compactly. Production
+          // RPC retains binary Uint8Array; numeric-key JSON can amplify 4MiB pages.
+          result.events = result.events.map((event) => ({ ...event, bytes: base64(event.bytes) }));
+          break;
+        case "/co-members":
+          result = await stub.coMembers({ spaceId: input.space_id, session: input.session });
+          break;
+        case "/visibility":
+          result = await stub.visibility({ spaceId: input.space_id, session: input.session });
           break;
         case "/reject-invite-writes":
           await stub.rejectInviteWrites();

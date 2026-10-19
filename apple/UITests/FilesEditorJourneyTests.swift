@@ -7,9 +7,9 @@ final class FilesEditorJourneyTests: XCTestCase {
     private func launch(_ open: String) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
-            "-RodaFreshStart", "YES", "-RodaDemo", "YES", "-RodaResetDemo", "YES",
-            "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR", "-RodaAppearance", "light",
-            "-RodaOpen", open,
+            "-FreshStart", "YES", "-Demo", "YES", "-ResetDemo", "YES",
+            "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR", "-Appearance", "light",
+            "-Open", open,
         ]
         app.launch()
         return app

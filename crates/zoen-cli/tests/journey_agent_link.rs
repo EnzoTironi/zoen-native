@@ -7,9 +7,9 @@ mod common;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use common::*;
-use roda_log::{agent_owner, Author, Signer};
-use roda_proto::{InviteCreated, Op, Reply};
-use roda_types::{Identity, IdentityKind, Role};
+use event_log::{agent_owner, Author, Signer};
+use protocol::{InviteCreated, Op, Reply};
+use types::{Identity, IdentityKind, Role};
 
 const FINGERPRINT: &str = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
 const APP_ID: &str = "TEAM123456.xyz.tironi.zoen";

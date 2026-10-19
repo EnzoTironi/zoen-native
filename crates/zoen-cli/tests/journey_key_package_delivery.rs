@@ -2,10 +2,10 @@
 
 mod common;
 
+use client_core::{AccountDto, Client, SecretVault};
 use common::{RawClient, World};
 use futures_util::{SinkExt, StreamExt};
-use roda_ffi::{AccountDto, RodaEngine, SecretVault};
-use roda_proto::{ClientFrame, Op, Reply, ServerFrame};
+use protocol::{ClientFrame, Op, Reply, ServerFrame};
 use sqlx::{ConnectOptions, Connection, PgConnection};
 use std::{
     collections::HashMap,
@@ -42,13 +42,13 @@ impl SecretVault for Vault {
 }
 
 struct Device {
-    core: Arc<RodaEngine>,
+    core: Arc<Client>,
     account: AccountDto,
 }
 
 impl Device {
     fn new(w: &World, relay: String) -> Self {
-        let core = RodaEngine::open(
+        let core = Client::open(
             w.dir.join("bruno.sqlite").to_string_lossy().into_owned(),
             "en-US".into(),
         )

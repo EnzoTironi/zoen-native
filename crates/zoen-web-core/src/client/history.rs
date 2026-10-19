@@ -2,7 +2,7 @@
 //! the canonical Space log can receive its opened inner from the linked device.
 
 use super::*;
-use roda_link::{Bundle, HistoryBox};
+use device_link::{Bundle, HistoryBox};
 use zeroize::Zeroizing;
 
 const MAX_MANIFEST: usize = 64 << 10;
@@ -93,13 +93,16 @@ impl<S: Signer> Client<S> {
         {
             return false;
         }
-        let peer = roda_link::Peer {
+        let peer = device_link::Peer {
             device: from.into(),
             their_hpke: self.account.primary_hpke.clone(),
             my_hpke_secret: self.account.hpke_secret.clone(),
             secret: self.account.link_secret.clone(),
         };
-        matches!(peer.open(sealed), Some(roda_link::DeviceMsg::HistoryReady))
+        matches!(
+            peer.open(sealed),
+            Some(device_link::DeviceMsg::HistoryReady)
+        )
     }
 
     pub fn history_status(&self) -> String {
@@ -133,7 +136,7 @@ impl<S: Signer> Client<S> {
             hex::decode(&self.account.hpke_secret).map_err(|_| "Invalid linked-device key.")?,
         );
         let plain = Zeroizing::new(
-            roda_link::open(&private, &secret, "history", sealed)
+            device_link::open(&private, &secret, "history", sealed)
                 .ok_or("The linked device's history could not be opened.")?,
         );
         let manifest: HistoryBox = serde_json::from_slice(&plain)
@@ -180,7 +183,7 @@ impl<S: Signer> Client<S> {
             .ok_or("Invalid history chunk index.")?;
         if sealed.len() < 16
             || sealed.len() > MAX_CHUNK
-            || roda_log::sha256_hex(sealed) != *expected
+            || event_log::sha256_hex(sealed) != *expected
         {
             return Err("A history chunk does not match its authenticated manifest.".into());
         }
@@ -192,7 +195,7 @@ impl<S: Signer> Client<S> {
         }
         let key = Zeroizing::new(hex32(&transfer.manifest.key)?);
         let _plain = Zeroizing::new(
-            roda_link::open_chunk(&key, index, sealed)
+            device_link::open_chunk(&key, index, sealed)
                 .ok_or("A history chunk could not be opened.")?,
         );
         let retained = transfer
@@ -251,8 +254,7 @@ impl<S: Signer> Client<S> {
             let cleanup = if complete.cleaned {
                 None
             } else {
-                let payload =
-                    roda_proto::transfer_message("delete", &complete.transfer, "", "", now);
+                let payload = protocol::transfer_message("delete", &complete.transfer, "", "", now);
                 let signature = self
                     .signer
                     .sign(&payload)
@@ -287,11 +289,11 @@ impl<S: Signer> Client<S> {
                 HistoryWork::WaitingSync
             }
         } else {
-            roda_log::parse_device_key(&self.account.primary)
+            event_log::parse_device_key(&self.account.primary)
                 .ok_or("This browser has no linked primary device.")?;
             let secret = Zeroizing::new(hex32(&self.account.link_secret)?);
             HistoryWork::FetchManifest {
-                box_id: roda_link::box_id(&secret, "history"),
+                box_id: device_link::box_id(&secret, "history"),
             }
         };
         Ok(HistoryResponse {
@@ -316,12 +318,12 @@ impl<S: Signer> Client<S> {
                 .ok_or("A history chunk is missing.")?;
             // Recheck persisted material too; storage never acts as a crypto oracle.
             if sealed.len() > MAX_CHUNK
-                || roda_log::sha256_hex(sealed) != transfer.manifest.chunks[index]
+                || event_log::sha256_hex(sealed) != transfer.manifest.chunks[index]
             {
                 return Err("A retained history chunk does not match.".into());
             }
             let opened = Zeroizing::new(
-                roda_link::open_chunk(&key, index as u32, sealed)
+                device_link::open_chunk(&key, index as u32, sealed)
                     .ok_or("A retained history chunk could not be opened.")?,
             );
             if plain
@@ -370,7 +372,7 @@ impl<S: Signer> Client<S> {
             if !matches!(local.body, EventBody::Sealed { .. }) {
                 continue;
             }
-            let opened = roda_link::opened_history_event(local, event.clone())
+            let opened = device_link::opened_history_event(local, event.clone())
                 .ok_or("A history entry does not match the signed relay record.")?;
             let entries = changed
                 .entry(event.space.clone())
@@ -398,8 +400,8 @@ impl<S: Signer> Client<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use event_log::{Author, Signer as NativeSigner};
     use openmls_traits::{signatures::SignerError, types::SignatureScheme};
-    use roda_log::{Author, Signer as NativeSigner};
 
     #[derive(Clone)]
     struct HostSigner(NativeSigner);
@@ -408,7 +410,7 @@ mod tests {
             Ok(hex::decode(self.0.sign(payload)).unwrap())
         }
         fn signature_scheme(&self) -> SignatureScheme {
-            roda_mls::SUITE.signature_algorithm()
+            mls::SUITE.signature_algorithm()
         }
     }
 
@@ -424,11 +426,11 @@ mod tests {
         let identity = NativeSigner::from_secret(&[41; 32]);
         let device = NativeSigner::from_secret(&[42; 32]);
         let author = Author::device(&identity, NativeSigner::from_secret(&[43; 32]));
-        let (private, public) = roda_link::key_pair();
+        let (private, public) = device_link::key_pair();
         let account = LinkedAccount {
             identity: identity.id(),
             device: device.id(),
-            cert: identity.sign(&roda_log::device_cert_message(&device.id())),
+            cert: identity.sign(&event_log::device_cert_message(&device.id())),
             name: "Owner".into(),
             handle: "owner".into(),
             relay: "http://localhost:8080".into(),
@@ -475,7 +477,7 @@ mod tests {
                 log.head().as_ref(),
                 Sealed::new(SealedKind::Application, SUITE_ID, vec![now as u8]),
             );
-            let event = roda_log::event_from_content(
+            let event = event_log::event_from_content(
                 content,
                 sig,
                 author.cert.clone(),
@@ -486,7 +488,7 @@ mod tests {
             .unwrap();
             let event = log.sequence(event);
             inner.seq = event.seq;
-            inner.sealed_wire = Some(roda_log::content_hash_of(event));
+            inner.sealed_wire = Some(event_log::content_hash_of(event));
             opened.push(inner);
         }
         Fixture {
@@ -502,13 +504,13 @@ mod tests {
     #[test]
     fn history_ready_only_wakes_from_the_pinned_primary_authenticated_device_channel() {
         let f = fixture();
-        let peer = roda_link::Peer {
+        let peer = device_link::Peer {
             device: f.account.device.clone(),
             their_hpke: hex::encode(&f.public),
             my_hpke_secret: String::new(),
             secret: f.account.link_secret.clone(),
         };
-        let sealed = peer.seal(&roda_link::DeviceMsg::HistoryReady).unwrap();
+        let sealed = peer.seal(&device_link::DeviceMsg::HistoryReady).unwrap();
         let mut client = Client::new(f.account.clone(), f.signer, "").unwrap();
         for (from, to) in [
             ("wrong", f.account.device.as_str()),
@@ -569,17 +571,17 @@ mod tests {
         let chunks = plain
             .chunks(plain.len() / 2 + 1)
             .enumerate()
-            .map(|(n, chunk)| roda_link::seal_chunk(&key, n as u32, chunk))
+            .map(|(n, chunk)| device_link::seal_chunk(&key, n as u32, chunk))
             .collect::<Vec<_>>();
         let manifest = HistoryBox {
             transfer: "ab".repeat(32),
             key: hex::encode(key),
             chunks: chunks
                 .iter()
-                .map(|chunk| roda_log::sha256_hex(chunk))
+                .map(|chunk| event_log::sha256_hex(chunk))
                 .collect(),
         };
-        let sealed = roda_link::seal(
+        let sealed = device_link::seal(
             &f.public,
             &[44; 32],
             "history",
@@ -631,9 +633,9 @@ mod tests {
         else {
             panic!("actual verified import expected")
         };
-        assert!(roda_log::verify_sig(
+        assert!(event_log::verify_sig(
             &f.account.device,
-            &roda_proto::transfer_message("delete", &manifest.transfer, "", "", 11),
+            &protocol::transfer_message("delete", &manifest.transfer, "", "", 11),
             &cleanup.signature
         ));
         assert!(resumed.saved.history.transfer.is_none());

@@ -18,7 +18,7 @@ use axum::{
 use object_store::{
     path::Path as ObjPath, ObjectStore, ObjectStoreExt, PutMode, PutOptions, PutPayload,
 };
-use roda_relay_admission::blobs as policy;
+use relay_admission::blobs as policy;
 
 use crate::Shared;
 

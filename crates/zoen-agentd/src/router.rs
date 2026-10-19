@@ -4,9 +4,9 @@
 use crate::manifest::{ManifestError, Needs, SignedManifest, ToolManifest};
 use crate::sandbox::SandboxSpec;
 use ed25519_dalek::VerifyingKey;
-use roda_types::{ActionClass, AgentRequest, Capability, Grant, GrantScope, IdentityId};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use types::{ActionClass, AgentRequest, Capability, Grant, GrantScope, IdentityId};
 
 /// Cheapest first; the order is the escalation order.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -129,7 +129,7 @@ impl Router {
         expires_at_ms: Option<i64>,
     ) -> Grant {
         Grant {
-            id: roda_types::new_id("grant"),
+            id: types::new_id("grant"),
             grantor: owner.clone(),
             grantee: Some(agent.clone()),
             scope: GrantScope::Everywhere,
@@ -200,7 +200,7 @@ fn card(agent: &str, m: &ToolManifest) -> AgentRequest {
         serde_json::to_vec(m).expect("manifest serializes"),
     ));
     AgentRequest {
-        id: roda_types::new_id("req"),
+        id: types::new_id("req"),
         agent: agent.into(),
         title,
         detail: format!("Até {mins} min por vez, {sites}. Ele é apagado quando a tarefa acaba."),

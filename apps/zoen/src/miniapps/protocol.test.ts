@@ -36,7 +36,7 @@ function fixture(overrides: Partial<HostOptions> = {}) {
     arguments: () => ({ launch: 'actual input' }),
     context: () => ({ theme: 'light', displayMode: 'fullscreen' }),
     tools: new Set(['list_add']),
-    resourceUri: 'ui://roda/list',
+    resourceUri: 'ui://builtin/list',
     call: async (name, args) => {
       calls.push({ name, args });
       return {
@@ -47,7 +47,7 @@ function fixture(overrides: Partial<HostOptions> = {}) {
     },
     resource: async () => ({
       contents: [
-        { uri: 'ui://roda/list', mimeType: 'text/html;profile=mcp-app', text: '<html></html>' },
+        { uri: 'ui://builtin/list', mimeType: 'text/html;profile=mcp-app', text: '<html></html>' },
       ],
     }),
     openLink: async () => ({}),
@@ -128,7 +128,7 @@ test('official App connects to production AppBridge and receives actual input, r
   const result = await app.callServerTool({ name: 'list_add', arguments: { text: 'Real' } });
   assert.deepEqual(result._meta, { drawing: 'kept' });
   assert.deepEqual(f.calls, [{ name: 'list_add', args: { text: 'Real' } }]);
-  const resource = await app.readServerResource({ uri: 'ui://roda/list' });
+  const resource = await app.readServerResource({ uri: 'ui://builtin/list' });
   assert.equal(resource.contents[0].mimeType, 'text/html;profile=mcp-app');
   f.session.sync();
   await tick();
@@ -179,7 +179,7 @@ test('official requests keep signed tool/resource authority and the initializati
     jsonrpc: '2.0',
     id: 4,
     method: 'resources/read',
-    params: { uri: 'ui://roda/hike' },
+    params: { uri: 'ui://builtin/hike' },
   });
   assert.equal(f.calls.length, 0);
   assert.ok(JSON.stringify(f.messages.at(-1)).includes('does not belong'));

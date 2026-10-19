@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 /// Agents are citizens: a status (active, paused, revoked) only their owner can read
 /// and change on the relay. Views ask through here so the list and the profile agree.
@@ -9,7 +9,7 @@ final class AgentStatuses {
     private(set) var known: [String: AgentStatus] = [:]
     private(set) var working: Set<String> = []
 
-    func load(_ ids: [String], core: RodaEngine) async {
+    func load(_ ids: [String], core: Client) async {
         for id in ids {
             if let s = try? await core.agentStatus(agentId: id) { known[id] = s }
         }

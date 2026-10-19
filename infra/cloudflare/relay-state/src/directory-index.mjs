@@ -1,5 +1,6 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
 export { DirectoryState } from './directory-state.mjs';
+export { RelayIngress, RelayDispatch } from './relay-entrypoint.mjs';
 
 /** Private service binding only; callers cannot choose a new transaction shard. */
 export default class PrivateDirectory extends WorkerEntrypoint {

@@ -61,7 +61,7 @@ reference: the server keeps a profile it can't read, and contacts get the key.
 - **Own profile across devices.** Fetch the owner's profile too, at session start and on
   a change hint. Displayed fields are distinct from durable local publication intent:
   receiving a verified profile never creates an upload. Both clients use
-  `roda_log::profile_sync::OwnProfileSync` for the authenticated publication floor, pending
+  `event_log::profile_sync::OwnProfileSync` for the authenticated publication floor, pending
   local version and unreadable-key latch. Native stores the journal in SQLite; Web keeps
   it in its durable checkpoint. A linked display seed is clean and has no authenticated
   relay floor until fetched. A new primary explicitly queues its initial publication.

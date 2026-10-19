@@ -28,7 +28,7 @@ class FileVersionJourneyTest {
     private val app get() = ApplicationProvider.getApplicationContext<ZoenApplication>()
     private lateinit var folder: File
     private lateinit var database: File
-    private lateinit var core: RodaEngine
+    private lateinit var core: Client
     private var scenario: ActivityScenario<MainActivity>? = null
     private val tooLarge get() = app.getString(R.string.file_open_too_large)
 
@@ -40,7 +40,7 @@ class FileVersionJourneyTest {
     }
 
     private fun openCore() {
-        core = RodaEngine.open(database.absolutePath, "en")
+        core = Client.open(database.absolutePath, "en")
     }
 
     private fun closeCore() {

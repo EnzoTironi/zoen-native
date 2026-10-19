@@ -47,7 +47,7 @@ pub async fn audience(
                 role: Role::Member,
             },
         );
-        let hash = roda_log::chain_hash(&space, i, &previous, &env.wire_hash());
+        let hash = event_log::chain_hash(&space, i, &previous, &env.wire_hash());
         let ev = Sequenced {
             seq: i,
             prev: previous,
@@ -120,7 +120,7 @@ async fn wait_slots(receiver: &Forwarder, slots: usize) {
 
 pub async fn deadlines(database: &str, author: &Author, target: &Author) {
     let cluster = std::env::var("FDB_CLUSTER_FILE").unwrap();
-    let cell = roda_types::new_id("forward-deadline");
+    let cell = types::new_id("forward-deadline");
     let log = Arc::new(
         FdbLog::open_as(
             Some(&cluster),
@@ -150,7 +150,7 @@ pub async fn deadlines(database: &str, author: &Author, target: &Author) {
         hex::encode(Sha256::digest(cell.as_bytes())),
         hex::encode(Sha256::digest(b"deadline-owner"))
     );
-    let space = roda_types::new_id("sp");
+    let space = types::new_id("sp");
     let db = Database::new(Some(&cluster)).unwrap();
     let root = Subspace::all().subspace(&("zoen", &cell));
     let fence = current(&db, &root, &space).await.fence;

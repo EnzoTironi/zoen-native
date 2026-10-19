@@ -10,16 +10,16 @@ publish.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-roda-types.workspace = true
-roda-log.workspace = true
-roda-proto.workspace = true
-roda-docs.workspace = true
-roda-grants.workspace = true
-roda-apps.workspace = true
-roda-i18n.workspace = true
-roda-link.workspace = true
+types.workspace = true
+event-log.workspace = true
+protocol.workspace = true
+documents.workspace = true
+grants.workspace = true
+miniapps.workspace = true
+localization.workspace = true
+device-link.workspace = true
 base64 = "0.22"
-roda-mls = { workspace = true, features = ["portable"] }
+mls = { workspace = true, features = ["portable"] }
 openmls = { version = "0.9.1", features = ["js"] }
 openmls_rust_crypto = "0.6"
 openmls_traits = "0.6"
@@ -39,5 +39,5 @@ js-sys = "0.3.106"
 getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-roda-mls = { workspace = true, features = ["device", "portable"] }
+mls = { workspace = true, features = ["device", "portable"] }
 rusqlite.workspace = true

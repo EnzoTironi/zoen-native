@@ -9,16 +9,16 @@
 
 use anyhow::{anyhow, ensure, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
-use roda_log::{Author, Signer};
-use roda_proto::{auth_message, ClientFrame, DeviceCertificate, Op, Reply, ServerFrame};
-use roda_relay_admission::directory::{prepare_profile, Session};
-use roda_types::{Identity, IdentityKind};
+use event_log::{Author, Signer};
+use protocol::{auth_message, ClientFrame, DeviceCertificate, Op, Reply, ServerFrame};
+use relay_admission::directory::{prepare_profile, Session};
 use serde_json::{json, Value};
 use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
     Connection, PgConnection, PgPool, Postgres, Transaction,
 };
 use std::{collections::BTreeMap, str::FromStr, time::Duration};
+use types::{Identity, IdentityKind};
 use zoen_relay::{db, key_package_claims};
 
 #[path = "cloudflare-directory-fixture/reads.rs"]
@@ -136,9 +136,9 @@ fn claim_operation(now_ms: i64) -> String {
 // database, private key package material, or runtime account is written to disk.
 fn mls_packages(who: &Author, count: usize, last_resort: bool) -> Result<Vec<Vec<u8>>> {
     let mut connection = rusqlite::Connection::open_in_memory()?;
-    roda_mls::migrate(&mut connection)?;
+    mls::migrate(&mut connection)?;
     let cert = certificate(who)?;
-    let device = roda_mls::Device::new(
+    let device = mls::Device::new(
         &connection,
         [77; 32],
         &who.identity,
@@ -226,8 +226,8 @@ async fn native_login(
     else {
         return Err(anyhow!("fixture did not encode Hello"));
     };
-    ensure!(protocol == roda_proto::PROTOCOL_VERSION);
-    if !roda_log::verify_sig(&identity, &roda_log::device_cert_message(&device), &cert) {
+    ensure!(protocol == protocol::PROTOCOL_VERSION);
+    if !event_log::verify_sig(&identity, &event_log::device_cert_message(&device), &cert) {
         return Ok(Err("device certificate invalid".into()));
     }
     let ClientFrame::Auth { sig } =
@@ -235,7 +235,7 @@ async fn native_login(
     else {
         return Err(anyhow!("fixture did not encode Auth"));
     };
-    if !roda_log::verify_sig(&device, &auth_message(nonce, RELAY), &sig) {
+    if !event_log::verify_sig(&device, &auth_message(nonce, RELAY), &sig) {
         return Ok(Err("login signature invalid".into()));
     }
     if db::device_revoked(pool, &device).await? {
@@ -301,7 +301,7 @@ async fn native_operation(
         }
         _ if !session.registered => Err("register first".into()),
         Op::Lookup { handle, prefix } => {
-            let handle = roda_relay_admission::directory::reads::normalize_lookup(&handle);
+            let handle = relay_admission::directory::reads::normalize_lookup(&handle);
             if handle.is_empty() {
                 Ok(Reply::Profiles(Vec::new()))
             } else {
@@ -312,7 +312,7 @@ async fn native_operation(
             }
         }
         Op::Profiles { ids } => {
-            let ids = roda_relay_admission::directory::reads::profile_ids(ids);
+            let ids = relay_admission::directory::reads::profile_ids(ids);
             db::profiles(pool, &ids)
                 .await
                 .map(Reply::Profiles)
@@ -323,7 +323,7 @@ async fn native_operation(
             .map(Reply::Devices)
             .map_err(|e| e.to_string()),
         Op::PublishAgreementKey { public, signed } => {
-            roda_relay_admission::directory::sealed_profiles::validate_agreement(
+            relay_admission::directory::sealed_profiles::validate_agreement(
                 &session.identity,
                 &session.device,
                 &public,
@@ -334,15 +334,14 @@ async fn native_operation(
                 .map_err(|e| e.to_string())?;
             Ok(Reply::Done)
         }
-        Op::AgreementKeys { ids } => db::agreement_keys(
-            pool,
-            &roda_relay_admission::directory::reads::profile_ids(ids),
-        )
-        .await
-        .map(Reply::AgreementKeys)
-        .map_err(|e| e.to_string()),
+        Op::AgreementKeys { ids } => {
+            db::agreement_keys(pool, &relay_admission::directory::reads::profile_ids(ids))
+                .await
+                .map(Reply::AgreementKeys)
+                .map_err(|e| e.to_string())
+        }
         Op::PutProfile { profile } => {
-            roda_relay_admission::directory::sealed_profiles::validate_profile(
+            relay_admission::directory::sealed_profiles::validate_profile(
                 &session.identity,
                 &session.device,
                 &profile,
@@ -355,13 +354,12 @@ async fn native_operation(
             }
             Ok(Reply::Done)
         }
-        Op::GetProfiles { ids } => db::sealed_profiles(
-            pool,
-            &roda_relay_admission::directory::reads::profile_ids(ids),
-        )
-        .await
-        .map(Reply::SealedProfiles)
-        .map_err(|e| e.to_string()),
+        Op::GetProfiles { ids } => {
+            db::sealed_profiles(pool, &relay_admission::directory::reads::profile_ids(ids))
+                .await
+                .map(Reply::SealedProfiles)
+                .map_err(|e| e.to_string())
+        }
         Op::DeliverLink { id, sealed, device } => {
             if !valid_link_id(&id) || sealed.is_empty() || sealed.len() > db::MAX_LINK_BOX {
                 return Err("bad link box".into());
@@ -402,14 +400,13 @@ async fn native_operation(
             packages,
             last_resort,
         } => {
-            let publications =
-                roda_relay_admission::directory::key_packages::validate_publications(
-                    &session.identity,
-                    &session.device,
-                    &packages,
-                    last_resort.as_deref(),
-                )
-                .map_err(|e| e.to_string())?;
+            let publications = relay_admission::directory::key_packages::validate_publications(
+                &session.identity,
+                &session.device,
+                &packages,
+                last_resort.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
             if !db::put_key_packages(
                 pool,
                 &session.identity,
@@ -497,7 +494,7 @@ impl<'a> Fixture<'a> {
     ) -> Result<()> {
         let device = certificate(who)?;
         let hello = ClientFrame::Hello {
-            protocol: roda_proto::PROTOCOL_VERSION,
+            protocol: protocol::PROTOCOL_VERSION,
             capabilities: Vec::new(),
             identity: who.identity.clone(),
             device: device.device,
@@ -537,7 +534,7 @@ impl<'a> Fixture<'a> {
         let challenge = ServerFrame::Challenge {
             nonce: nonce.clone(),
             relay: RELAY.into(),
-            protocol: roda_proto::PROTOCOL_VERSION,
+            protocol: protocol::PROTOCOL_VERSION,
             capabilities: Vec::new(),
             server_time_ms: None,
         }
@@ -940,18 +937,18 @@ fn socket_fixture() -> Value {
         "ping_base64":STANDARD.encode(ClientFrame::Ping.encode()),
         "pong_base64":encode(ServerFrame::Pong { server_time_ms: None }),
         "malformed_auth_base64":STANDARD.encode(ClientFrame::Ping.encode()),
-        "malformed_auth_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Other,"expected auth")),
+        "malformed_auth_error_base64":encode(ServerFrame::error(protocol::ErrorCode::Other,"expected auth")),
         "large_request_base64":STANDARD.encode(ClientFrame::Req { id:large_id, op:Op::FetchLink { id:"0".repeat(64) } }.encode()),
         "large_reply_base64":encode(ServerFrame::Res { id:large_id, result:Ok(Reply::Link(None)) }),
         "unsupported_request_base64":STANDARD.encode(ClientFrame::Req { id:large_id, op:Op::RegisterPush { platform:"apns".into(), token:String::new() } }.encode()),
         "unsupported_reply_base64":encode(ServerFrame::Res { id:large_id, result:Err("directory operation is outside the private adapter scope".into()) }),
         "unsupported_space_base64":STANDARD.encode(ClientFrame::Sync { cursors:Vec::new(), all:true }.encode()),
-        "unsupported_space_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Other,"private directory socket does not support Space operations")),
-        "expired_hello_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Other,"expected hello")),
-        "expired_auth_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Other,"expected auth")),
-        "already_logged_in_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Other,"already logged in")),
-        "certificate_mismatch_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Unauthorized,"link this device first")),
-        "storage_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Unavailable,"database unavailable"))
+        "unsupported_space_error_base64":encode(ServerFrame::error(protocol::ErrorCode::Other,"private directory socket does not support Space operations")),
+        "expired_hello_error_base64":encode(ServerFrame::error(protocol::ErrorCode::Other,"expected hello")),
+        "expired_auth_error_base64":encode(ServerFrame::error(protocol::ErrorCode::Other,"expected auth")),
+        "already_logged_in_error_base64":encode(ServerFrame::error(protocol::ErrorCode::Other,"already logged in")),
+        "certificate_mismatch_error_base64":encode(ServerFrame::error(protocol::ErrorCode::Unauthorized,"link this device first")),
+        "storage_error_base64":encode(ServerFrame::error(protocol::ErrorCode::Unavailable,"database unavailable"))
     })
 }
 
@@ -1136,10 +1133,10 @@ async fn key_package_timeline(f: &mut Fixture<'_>, a: &Author) -> Result<()> {
         Op::ClaimKeyPackages {
             ids: vec![c.identity.clone()],
             operation_id: Some(claim_operation(
-                now - roda_proto::KEY_PACKAGE_CLAIM_TTL_MS - 1,
+                now - protocol::KEY_PACKAGE_CLAIM_TTL_MS - 1,
             )),
         },
-        Some(roda_proto::KEY_PACKAGE_CLAIM_EXPIRED),
+        Some(protocol::KEY_PACKAGE_CLAIM_EXPIRED),
     )
     .await?;
     f.request(
@@ -1313,7 +1310,7 @@ async fn main() -> Result<()> {
         std::env::var("ZOEN_TEST_PG").context("set ZOEN_TEST_PG to an existing test database")?;
     let options = PgConnectOptions::from_str(&url)?;
     let mut admin = PgConnection::connect_with(&options).await?;
-    let schema = format!("cf_directory_{}", roda_types::new_id("t"));
+    let schema = format!("cf_directory_{}", types::new_id("t"));
     ensure!(
         schema.len() <= 63
             && schema

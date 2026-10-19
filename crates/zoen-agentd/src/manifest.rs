@@ -180,7 +180,7 @@ mod tests {
         ToolManifest {
             id: "python".into(),
             version: "1".into(),
-            summary: "Roda código Python".into(),
+            summary: "Executa código Python".into(),
             needs: Needs::MicroVm {
                 vcpu: 2,
                 mem_mib: 1024,

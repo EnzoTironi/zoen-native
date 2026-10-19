@@ -12,12 +12,12 @@ use axum::{
     routing::post,
     Json, Router,
 };
-use roda_relay_admission::auth::enrollment::{self, Audience, Challenge};
+use relay_admission::auth::enrollment::{self, Audience, Challenge};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-pub use roda_relay_admission::auth::enrollment::{ChallengeRequest, Client, VerifyRequest};
-pub use roda_relay_admission::auth::Provider;
+pub use relay_admission::auth::enrollment::{ChallengeRequest, Client, VerifyRequest};
+pub use relay_admission::auth::Provider;
 #[derive(Clone, Default)]
 pub struct Settings {
     audiences: BTreeMap<(Provider, Client), Audience>,
@@ -343,7 +343,7 @@ async fn bind(
     State(st): State<Shared>,
     ClientIp(ip): ClientIp,
     headers: HeaderMap,
-    Json(request): Json<roda_proto::provider_auth::ProviderBindRequest>,
+    Json(request): Json<protocol::provider_auth::ProviderBindRequest>,
 ) -> Response {
     let run = async {
         limited(st.limits.auth_bind_ip.check(&ip))?;

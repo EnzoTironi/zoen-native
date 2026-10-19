@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 /// Global search: chats, people and agents, mini-apps, then messages and items (the core's
 /// local full-text search). On iPhone it opens as a sheet from the bar's Search button with
@@ -122,7 +122,7 @@ struct SearchScreen: View {
                                         HStack {
                                             Text(h.title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textPrimary)
                                             Spacer()
-                                            Text(RodaTime.short(h.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
+                                            Text(MessageTime.short(h.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
                                         }
                                         Text(h.snippet).font(.subheadline).foregroundStyle(Palette.textSecondary).lineLimit(2)
                                         Text(h.spaceTitle ?? "").font(.caption).foregroundStyle(Palette.textTertiary)

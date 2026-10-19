@@ -1,6 +1,6 @@
 //! Test-only transport faults around actual relay requests and committed replies.
 use futures_util::{SinkExt, StreamExt};
-use roda_proto::{ClientFrame, KeyPackageRecord, Op, Reply, ServerFrame};
+use protocol::{ClientFrame, KeyPackageRecord, Op, Reply, ServerFrame};
 use std::{
     collections::HashMap,
     sync::{
@@ -171,7 +171,7 @@ async fn forward(
                         match frame {
                             ServerFrame::Challenge { nonce, relay, protocol, mut capabilities, mut server_time_ms } => {
                                 match boundary {
-                                    Boundary::AbsentCapability => capabilities.retain(|c| c != roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY),
+                                    Boundary::AbsentCapability => capabilities.retain(|c| c != protocol::KEY_PACKAGE_CLAIM_CAPABILITY),
                                     Boundary::AbsentClock => server_time_ms = None,
                                     Boundary::MalformedClock => server_time_ms = Some(-1),
                                     Boundary::Request | Boundary::Reply | Boundary::ReplyThenRequest => {},
@@ -180,7 +180,7 @@ async fn forward(
                             }
                             ServerFrame::Pong { server_time_ms: Some(time) }
                                 if matches!(boundary, Boundary::AbsentClock | Boundary::MalformedClock)
-                                    && roda_proto::KeyPackageClaimClock::from_server_ms(time).is_some()
+                                    && protocol::KeyPackageClaimClock::from_server_ms(time).is_some()
                                     && once.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() => {
                                 let _ = events.send(Observed::ClockRefreshed);
                             }

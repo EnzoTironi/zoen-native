@@ -1,14 +1,19 @@
-import { WorkerEntrypoint } from 'cloudflare:workers';
-import { ClosedSpace, verifiedPublication } from './closed-space.mjs';
-import { spaceId } from './space-storage.mjs';
+import { WorkerEntrypoint } from "cloudflare:workers";
+import { ClosedSpace, verifiedPublication } from "./closed-space.mjs";
+import { spaceId } from "./space-storage.mjs";
 
 export { ClosedSpace };
 
 /** Only a trusted service binding may supply authenticated sessions and directory facts. */
 export default class ClosedRelay extends WorkerEntrypoint {
-  publish(input) {
+  prepareRelayPublication(input) {
     const { verified } = verifiedPublication(input);
-    return this.env.CLOSED_SPACE.getByName(verified.space_id).publish(input);
+    return this.env.CLOSED_SPACE.getByName(verified.space_id).prepareRelayPublication(input);
+  }
+
+  commitRelayPublication(input) {
+    const { verified } = verifiedPublication(input);
+    return this.env.CLOSED_SPACE.getByName(verified.space_id).commitRelayPublication(input);
   }
 
   createInvite(input) {
@@ -26,5 +31,22 @@ export default class ClosedRelay extends WorkerEntrypoint {
     return this.env.CLOSED_SPACE.getByName(input.spaceId).read(input);
   }
 
-  fetch() { return new Response('Not found', { status: 404 }); }
+  visibility(input) {
+    spaceId(input?.spaceId);
+    return this.env.CLOSED_SPACE.getByName(input.spaceId).visibility(input);
+  }
+
+  coMembers(input) {
+    spaceId(input?.spaceId);
+    return this.env.CLOSED_SPACE.getByName(input.spaceId).coMembers(input);
+  }
+
+  readAuthorized(input) {
+    spaceId(input?.spaceId);
+    return this.env.CLOSED_SPACE.getByName(input.spaceId).readAuthorized(input);
+  }
+
+  fetch() {
+    return new Response("Not found", { status: 404 });
+  }
 }

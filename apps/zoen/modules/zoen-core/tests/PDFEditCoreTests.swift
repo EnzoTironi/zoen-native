@@ -270,7 +270,7 @@ private func corePDFValidate(_ bytes: Data, annotations: [String]) throws {
 
   private static func seed(_ fixture: CorePDFFixture, conflict: Bool) throws {
     let vault = try CorePDFDiskVault(root: fixture.vaultURL)
-    let core = try RodaEngine.open(path: fixture.database.path, locale: "en")
+    let core = try Client.open(path: fixture.database.path, locale: "en")
     let account = try core.createAccount(name: "Synthetic PDF editor", handle: "pdf_core_\(UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "").prefix(12))",
                                          relayUrl: "http://127.0.0.1:1", vault: vault)
     let space = try core.createGroupWith(title: "Synthetic PDF journal", memberIds: [], privacy: .closed)
@@ -336,7 +336,7 @@ private func corePDFValidate(_ bytes: Data, annotations: [String]) throws {
     try corePDFCheck(state.format == corePDFMarker && state.conflict == conflict,
                      "Recovery phase does not match this owned fixture")
     let vault = try CorePDFDiskVault(root: fixture.vaultURL)
-    let core = try RodaEngine.open(path: fixture.database.path, locale: "en")
+    let core = try Client.open(path: fixture.database.path, locale: "en")
     try corePDFCheck(try core.unlock(vault: vault), "Could not unlock the synthetic account")
     try corePDFCheck(core.account()?.identityId == state.identityID && core.account()?.deviceId == state.deviceID,
                      "Cold recovery opened a different account/device")

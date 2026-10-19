@@ -16,12 +16,12 @@ spec.loader.exec_module(core)
 
 SOURCE = """
 #[derive(uniffi::Object)]
-pub struct RodaEngine { inner: PrivateImplementation }
+pub struct Client { inner: PrivateImplementation }
 #[derive(uniffi::Record)]
 #[expect(clippy::large_enum_variant, reason = "source attribute")]
 pub struct PlanPageDto { pub total_cents: Option<i64>, pub legacy_edit_admitted: bool }
 #[uniffi::export]
-impl RodaEngine {
+impl Client {
     #[uniffi::constructor]
     pub fn open(path: String) -> Self { unimplemented!() }
     pub fn plan_page(&self, id: String) -> PlanPageDto { unimplemented!() }
@@ -58,7 +58,7 @@ class CurrentCoreContractTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        self.output = self.root / "android/app/build/generated/roda"
+        self.output = self.root / "android/app/build/generated/core"
         self.addCleanup(patch.stopall)
         patch.object(core, "revision", return_value={"commit": "fixture-main", "branch": "main", "label": "working-tree-dirty"}).start()
         for name in ["Cargo.toml", "Cargo.lock", "android/uniffi.toml", "scripts/build-android-core.sh",
@@ -66,19 +66,19 @@ class CurrentCoreContractTest(unittest.TestCase):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("fixture\n")
-        self.source = self.root / "crates/roda-ffi/src/lib.rs"
+        self.source = self.root / "crates/client-core/src/lib.rs"
         self.source.parent.mkdir(parents=True)
         self.source.write_text(SOURCE)
         self.snapshot = core.capture(self.root)
         self.contract = self.snapshot["contract"]
         self.metadata = {name: (name + shape).encode() for name, shape in self.contract["metadata"].items()}
-        self.kotlin = self.output / "kotlin/xyz/tironi/zoen/core/roda_ffi.kt"
+        self.kotlin = self.output / "kotlin/xyz/tironi/zoen/core/client_core.kt"
         self.kotlin.parent.mkdir(parents=True)
         self.kotlin.write_text("\n".join(f"if ((lib.{name}() and 0xFFFF) != {index}) {{ error(\"ABI\") }}"
                                           for index, name in enumerate(self.contract["checksums"])))
         self.abis = ["arm64-v8a", "x86_64"]
         for abi in self.abis:
-            write_elf(self.output / "jniLibs" / abi / "libroda_ffi.so", abi, self.metadata, self.contract["checksums"])
+            write_elf(self.output / "jniLibs" / abi / "libclient_core.so", abi, self.metadata, self.contract["checksums"])
         generated = core.artifacts(self.output, self.abis, self.contract)
         manifest = {**self.snapshot, "abis": self.abis, "profile": "release", "artifacts": generated,
                     "runtime_validation": "fixture has no runtime acceptance"}
@@ -98,20 +98,20 @@ class CurrentCoreContractTest(unittest.TestCase):
             core.verify(self.root, self.output, self.abis)
 
     def test_missing_exported_plan_api_is_rejected_in_kotlin_and_jni(self):
-        missing = core.CHECKSUM_PREFIX + "method_rodaengine_plan_page"
+        missing = core.CHECKSUM_PREFIX + "method_client_plan_page"
         self.kotlin.write_text("\n".join(line for line in self.kotlin.read_text().splitlines() if missing not in line))
         with self.assertRaisesRegex(ValueError, "Kotlin ABI: missing exports"):
             core.verify(self.root, self.output, self.abis)
         obsolete = dict(self.metadata)
-        del obsolete[core.META_PREFIX + "METHOD_RODAENGINE_PLAN_PAGE"]
-        write_elf(self.output / "jniLibs/arm64-v8a/libroda_ffi.so", "arm64-v8a", obsolete, self.contract["checksums"])
-        blobs, _ = core.elf_contract(self.output / "jniLibs/arm64-v8a/libroda_ffi.so", "arm64-v8a")
+        del obsolete[core.META_PREFIX + "METHOD_CLIENT_PLAN_PAGE"]
+        write_elf(self.output / "jniLibs/arm64-v8a/libclient_core.so", "arm64-v8a", obsolete, self.contract["checksums"])
+        blobs, _ = core.elf_contract(self.output / "jniLibs/arm64-v8a/libclient_core.so", "arm64-v8a")
         with self.assertRaisesRegex(ValueError, "missing exports"):
             core.require_inventory(blobs, self.contract["metadata"], "JNI")
 
     def test_same_named_but_stale_dto_abi_and_modified_binary_are_rejected(self):
         altered = {**self.metadata, core.META_PREFIX + "RECORD_PLANPAGEDTO": b"obsolete-signed-cents-layout"}
-        native = self.output / "jniLibs/x86_64/libroda_ffi.so"
+        native = self.output / "jniLibs/x86_64/libclient_core.so"
         write_elf(native, "x86_64", altered, self.contract["checksums"])
         with self.assertRaisesRegex(ValueError, "stale native UniFFI contract"):
             core.verify(self.root, self.output, self.abis)
@@ -123,7 +123,7 @@ class CurrentCoreContractTest(unittest.TestCase):
     def test_missing_abi_wrong_architecture_or_profile_cannot_certify_release(self):
         with self.assertRaisesRegex(ValueError, "ABIs/profile"):
             core.verify(self.root, self.output, self.abis, "dev")
-        native = self.output / "jniLibs/x86_64/libroda_ffi.so"
+        native = self.output / "jniLibs/x86_64/libclient_core.so"
         write_elf(native, "arm64-v8a", self.metadata, self.contract["checksums"])
         with self.assertRaisesRegex(ValueError, "expected a 64-bit x86_64"):
             core.verify(self.root, self.output, self.abis)
@@ -134,9 +134,14 @@ class CurrentCoreContractTest(unittest.TestCase):
     def test_callbacks_constructor_and_attributes_are_inventory_inputs(self):
         self.assertIn(core.META_PREFIX + "INTERFACE_SECRETVAULT", self.contract["metadata"])
         self.assertIn(core.META_PREFIX + "RECORD_PLANPAGEDTO", self.contract["metadata"])
-        self.assertIn(core.CHECKSUM_PREFIX + "constructor_rodaengine_open", self.contract["checksums"])
+        self.assertIn(core.CHECKSUM_PREFIX + "constructor_client_open", self.contract["checksums"])
         fake = '\nconst EXAMPLE: &str = "#[uniffi::export] impl Fake { pub fn absent(&self) {} }";'
         self.assertEqual(self.contract, core.source_contract({"src/lib.rs": SOURCE + fake}))
+
+    def test_kotlin_checksum_namespace_must_match_the_current_library(self):
+        self.kotlin.write_text(self.kotlin.read_text().replace(core.CHECKSUM_PREFIX, "uniffi_other_core_checksum_"))
+        with self.assertRaisesRegex(ValueError, "Missing generated Kotlin ABI checksum inventory"):
+            core.verify(self.root, self.output, self.abis)
 
 
 if __name__ == "__main__":

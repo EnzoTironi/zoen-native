@@ -1,10 +1,10 @@
 //! The authenticated Plan tape is reconstructed from the same signed Item versions as
 //! native. A claimed PlanV1 manifest never selects its own ancestry or grants write access.
 use super::*;
-use roda_docs::plan::{
+use ::documents::plan::{
     CanonicalPlanSeed, LegacyVersion, PlanBlock, PlanBlockContent, PlanDocument, PlanUpdate,
 };
-use roda_types::{PageManifest, PlanManifestV1};
+use types::{PageManifest, PlanManifestV1};
 
 pub(crate) struct PlanRead {
     pub(crate) document: PlanDoc,
@@ -97,7 +97,7 @@ fn canonical_block(block: &PlanBlock) -> Value {
         }}),
         PlanBlockContent::Prose { kind } => json!({"Prose":{"kind":prose_kind(kind)}}),
     };
-    json!({"id":block.id,"content":content,"text":block.plain_text(),"spans":roda_docs::spans_of(&block.runs)})
+    json!({"id":block.id,"content":content,"text":block.plain_text(),"spans": ::documents::spans_of(&block.runs)})
 }
 
 fn string_field(digest: &mut Sha256, text: &str) {

@@ -1,13 +1,13 @@
-use roda_proto::{ClientFrame, ErrorCode, Op, Reply, ServerFrame, CAPABILITIES, PROTOCOL_VERSION};
-use roda_types::Identity;
+use protocol::{ClientFrame, ErrorCode, Op, Reply, ServerFrame, CAPABILITIES, PROTOCOL_VERSION};
 use serde::{Deserialize, Serialize};
+use types::Identity;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CreateInvite {
     space: String,
     agent: Option<String>,
-    role: roda_types::Role,
+    role: types::Role,
     max_uses: u32,
     ttl_secs: u64,
 }
@@ -20,7 +20,7 @@ struct ControlAgent {
 }
 
 fn identity(value: &str) -> Result<String, String> {
-    roda_log::parse_device_key(value)
+    event_log::parse_device_key(value)
         .map(|_| value.to_owned())
         .ok_or_else(|| "invalid identity public key".into())
 }
@@ -41,12 +41,12 @@ pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
         "register" => {
             let profile: Identity =
                 serde_json::from_str(value).map_err(|error| error.to_string())?;
-            if profile.kind != roda_types::IdentityKind::Person
+            if profile.kind != types::IdentityKind::Person
                 || !profile.name.is_empty()
                 || !profile.bio.is_empty()
                 || profile.owner.is_some()
                 || profile.owner_proof.is_some()
-                || roda_proto::normalize_handle(&profile.handle).as_deref()
+                || protocol::normalize_handle(&profile.handle).as_deref()
                     != Some(profile.handle.as_str())
             {
                 return Err("invalid public profile".into());
@@ -59,7 +59,7 @@ pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
         },
         "devices" => Op::Devices,
         "unlink" => Op::Unlink {
-            device: roda_log::parse_device_key(value)
+            device: event_log::parse_device_key(value)
                 .map(|_| value.to_string())
                 .ok_or("invalid device public key")?,
         },
@@ -98,15 +98,15 @@ pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
         "revoke_agent_invite" => Op::RevokeAgentInvite {
             agent: identity(value)?,
         },
-        "agent_status" => Op::Agent(roda_proto::AgentRequest::Status {
+        "agent_status" => Op::Agent(protocol::AgentRequest::Status {
             agent: identity(value)?,
         }),
         "control_agent" => {
             let args: ControlAgent =
                 serde_json::from_str(value).map_err(|error| error.to_string())?;
-            Op::Agent(roda_proto::AgentRequest::Control {
+            Op::Agent(protocol::AgentRequest::Control {
                 agent: identity(&args.agent)?,
-                action: roda_proto::AgentAction::parse(&args.action)
+                action: protocol::AgentAction::parse(&args.action)
                     .ok_or("invalid agent control")?,
             })
         }
@@ -253,11 +253,11 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
         },
         ServerFrame::Ephemeral { space, from, kind } => {
             let (event, detail) = match kind {
-                roda_proto::EphemeralKind::Typing => ("typing", String::new()),
-                roda_proto::EphemeralKind::StoppedTyping => ("stopped", String::new()),
-                roda_proto::EphemeralKind::Status { status } => ("status", status),
-                roda_proto::EphemeralKind::Read { seq } => ("read", seq.to_string()),
-                roda_proto::EphemeralKind::Delivered { seq } => ("delivered", seq.to_string()),
+                protocol::EphemeralKind::Typing => ("typing", String::new()),
+                protocol::EphemeralKind::StoppedTyping => ("stopped", String::new()),
+                protocol::EphemeralKind::Status { status } => ("status", status),
+                protocol::EphemeralKind::Read { seq } => ("read", seq.to_string()),
+                protocol::EphemeralKind::Delivered { seq } => ("delivered", seq.to_string()),
             };
             ServerMessage::Ephemeral {
                 space,
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn browser_unlink_uses_the_existing_authenticated_device_operation() {
-        let device = roda_log::Signer::generate().id();
+        let device = event_log::Signer::generate().id();
         let frame = ClientFrame::decode(&request(42, "unlink", &device).unwrap()).unwrap();
         assert!(
             matches!(frame, ClientFrame::Req { id: 42, op: Op::Unlink { device: target } } if target == device)
@@ -315,13 +315,13 @@ mod relay_tests {
     use super::*;
     #[test]
     fn owner_controls_and_invites_use_existing_authenticated_protocol_and_exact_times() {
-        let agent = roda_log::Signer::generate().id();
+        let agent = event_log::Signer::generate().id();
         let request_value = serde_json::json!({"agent":agent,"action":"pause"}).to_string();
         assert!(matches!(
             ClientFrame::decode(&request(45, "control_agent", &request_value).unwrap()).unwrap(),
             ClientFrame::Req {
-                op: Op::Agent(roda_proto::AgentRequest::Control {
-                    action: roda_proto::AgentAction::Pause,
+                op: Op::Agent(protocol::AgentRequest::Control {
+                    action: protocol::AgentAction::Pause,
                     ..
                 }),
                 ..
@@ -335,7 +335,7 @@ mod relay_tests {
         .is_err());
         let invite = ServerFrame::Res {
             id: 47,
-            result: Ok(Reply::Invite(roda_proto::InviteCreated {
+            result: Ok(Reply::Invite(protocol::InviteCreated {
                 code: "0123456789".into(),
                 expires_at_ms: i64::MAX,
             })),
@@ -352,7 +352,7 @@ mod relay_tests {
         let read = ServerFrame::Ephemeral {
             space: "sp_fixture".into(),
             from: agent,
-            kind: roda_proto::EphemeralKind::Read { seq: u64::MAX },
+            kind: protocol::EphemeralKind::Read { seq: u64::MAX },
         };
         let json = serde_json::to_value(decode_server(&read.encode()).unwrap()).unwrap();
         assert_eq!(json["detail"], u64::MAX.to_string());

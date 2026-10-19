@@ -19,7 +19,7 @@ Reproducing `llvm-strip --strip-unneeded` matched the packaged JNI exactly.
 | Artifact | SHA256 |
 | --- | --- |
 | Preserved APK | `19e6270d0306470854ba39a8582750182b14e26dc35bac248a664ab3103bedaf` |
-| Generated `libroda_ffi.so` | `85f5961f409c4905b5f04162598fc218b7f1b4d11c69e637172adb6e40ff6d85` |
+| Generated `libclient_core.so` | `85f5961f409c4905b5f04162598fc218b7f1b4d11c69e637172adb6e40ff6d85` |
 | Packaged, stripped JNI | `fa463d010ca416981ab923c17cb0dbda72009c41bb90c333dae154925476b80b` |
 | Android core build stamp | `39a376a1f0efa9a4e1b4394bc8a883cdceb0ecf219565848c4eb6c376177ee76` |
 | Fresh application Metro bundle | `923bf7bf8eeb608ccac0874ed9571057a85ba2e99a1b6f7703860ab7aa35bef3` |

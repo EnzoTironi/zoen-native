@@ -3,7 +3,7 @@ import Foundation
 /// Typed Rust boundary shared by the app session and native integration tests.
 /// Account/item provenance is pinned by ZoenSession before constructing this adapter.
 enum ZoenPDFEditCore {
-  static func make(engine core: RodaEngine, scope: FileEditDraftScope,
+  static func make(engine core: Client, scope: FileEditDraftScope,
                    observedBase: ZoenFilePreview.EditBase, maximumBytes: UInt64) throws -> ZoenPDFEditJournal {
     let backend = ZoenPDFEditJournal.Backend(
       load: { try Self.pdfOperation { try Self.pdfDraftState(core.fileEditDraft(scope: scope)) } },

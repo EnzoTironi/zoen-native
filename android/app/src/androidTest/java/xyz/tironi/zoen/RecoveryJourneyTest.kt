@@ -24,11 +24,11 @@ class RecoveryJourneyTest {
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
         val suffix = UUID.randomUUID().toString().replace("-", "").take(10)
         val folder = File(context.noBackupFilesDir, "recovery-$suffix").apply { mkdirs() }
-        val engines = mutableMapOf<String, RodaEngine>()
+        val engines = mutableMapOf<String, Client>()
         val vaults = mutableMapOf<String, AndroidSecretVault>()
-        fun open(name: String): RodaEngine {
+        fun open(name: String): Client {
             vaults.getOrPut(name) { AndroidSecretVault(context, "recovery-$suffix-$name-vault") }
-            return RodaEngine.open(File(folder, "$name.sqlite").absolutePath, "en").also { engines[name] = it }
+            return Client.open(File(folder, "$name.sqlite").absolutePath, "en").also { engines[name] = it }
         }
         fun close(name: String) {
             engines.remove(name)?.let { it.stopSync(); it.destroy() }
@@ -138,10 +138,10 @@ class RecoveryJourneyTest {
         }
     }
 
-    private fun RodaEngine.hasMessage(chat: String, text: String): Boolean =
+    private fun Client.hasMessage(chat: String, text: String): Boolean =
         timeline(chat).any { (it.kind as? EntryKind.Message)?.text == text }
 
-    private suspend fun await(stage: String, engines: Map<String, RodaEngine>, condition: suspend () -> Boolean) {
+    private suspend fun await(stage: String, engines: Map<String, Client>, condition: suspend () -> Boolean) {
         try {
             withTimeout(30_000) { while (!condition()) delay(50) }
         } catch (timeout: TimeoutCancellationException) {

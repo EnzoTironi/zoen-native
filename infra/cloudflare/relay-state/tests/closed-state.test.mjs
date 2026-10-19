@@ -22,6 +22,7 @@ function runtime(path, production = false) {
     production ? "src/closed-index.mjs" : "tests/closed-fixture.mjs",
     "src/closed-space.mjs",
     "src/space-storage.mjs",
+    "src/relay-publications.mjs",
     "generated/wasm/admission.js",
   ];
   return new Miniflare(
@@ -237,6 +238,9 @@ test("rejected genesis, mismatched directory lookup and absent raw append cannot
     const raw = await call(mf, "/raw-append");
     assert.equal(raw.status, 400);
     assert.match(raw.body.error.reason, /appendAdmitted|not a function|not implemented/);
+    const rawPublish = await call(mf, "/raw-publish");
+    assert.equal(rawPublish.status, 400);
+    assert.match(rawPublish.body.error.reason, /publish|not a function|not implemented/);
     assert.deepEqual(await inspect(mf), empty);
 
     const firstTarget = native.steps.findIndex(

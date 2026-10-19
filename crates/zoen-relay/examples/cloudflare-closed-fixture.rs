@@ -7,20 +7,20 @@
 
 use anyhow::{anyhow, ensure, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
+use event_log::{Author, Signer};
 use foundationdb::{
     tuple::{pack, unpack, Subspace},
     Database,
 };
-use roda_log::{Author, Signer};
-use roda_proto::{ClientFrame, Envelope, Sequenced};
-use roda_relay_admission::{
+use protocol::{ClientFrame, Envelope, Sequenced};
+use relay_admission::{
     code_hash,
     invite::invite_limits,
     portable::{verify_publish, SessionContext},
 };
-use roda_types::{EventBody, Privacy, Role, Seen, SpaceKind};
 use serde_json::{json, Value};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use types::{EventBody, Privacy, Role, Seen, SpaceKind};
 use zoen_relay::log::{fdb::FdbLog, LogStore, Sequencing};
 
 #[path = "cloudflare-closed-fixture/mls.rs"]
@@ -316,7 +316,7 @@ async fn fixture(log: &FdbLog, cell: &str, cluster: Option<&str>) -> Result<Valu
         log,
         db: &db,
         cell,
-        space: roda_types::new_id("sp"),
+        space: types::new_id("sp"),
         head: None,
         steps: Vec::new(),
     };
@@ -531,7 +531,7 @@ async fn fixture(log: &FdbLog, cell: &str, cluster: Option<&str>) -> Result<Valu
     // Negative cases stay outside the oracle timeline. Unsupported families and
     // malformed signatures must not perturb the projection or any durable row.
     let encrypted_genesis = Envelope::plain(&owner.sign_event(
-        &roda_types::new_id("sp"),
+        &types::new_id("sp"),
         &format!("{:026}", 100),
         1_700_000_000_100,
         None,
@@ -542,7 +542,7 @@ async fn fixture(log: &FdbLog, cell: &str, cluster: Option<&str>) -> Result<Valu
         },
     ));
     let encrypt = Envelope::plain(&owner.sign_event(
-        &roda_types::new_id("sp"),
+        &types::new_id("sp"),
         "00000000000000000000000101",
         1_700_000_000_101,
         None,
@@ -598,8 +598,9 @@ async fn fixture(log: &FdbLog, cell: &str, cluster: Option<&str>) -> Result<Valu
         )?,
     ];
     let encrypted = mls::cases(log, &db, cell, cluster).await?;
+    let authorized_reads = mls::read_cases(log, &db, cell).await?;
     Ok(
-        json!({ "space_id": journey.space, "steps": journey.steps, "unsupported": unsupported,"encrypted":encrypted }),
+        json!({ "space_id": journey.space, "steps": journey.steps, "unsupported": unsupported,"encrypted":encrypted,"authorized_reads":authorized_reads }),
     )
 }
 
@@ -613,7 +614,7 @@ fn main() -> Result<()> {
     let result = runtime.block_on(async {
         // Neither command-line arguments nor environment variables can select the
         // namespace to clear. Only FDB_CLUSTER_FILE selects the existing cluster.
-        let cell = roda_types::new_id("qa_mls_v105");
+        let cell = types::new_id("qa_mls_v105");
         ensure!(cell.starts_with("qa_mls_v105_"), "owned QA cell scope");
         let cluster = std::env::var("FDB_CLUSTER_FILE").ok();
         let log = FdbLog::open_as(

@@ -45,7 +45,7 @@ export default function OpenLink() {
   }
   return (
     <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-      <Stack.Screen options={{ title: t('chat.openInZoen') }} />
+      <Stack.Screen options={{ title: t('chat.openLink') }} />
       {!link ? (
         <EmptyState
           title={t('chat.thisLinkIsInvalid')}
@@ -63,7 +63,7 @@ export default function OpenLink() {
         <EmptyState
           title={
             preview?.title ??
-            (link.kind === 'agent' ? `@${link.target.replace(/^@/, '')}` : t('chat.zoenInvite'))
+            (link.kind === 'agent' ? `@${link.target.replace(/^@/, '')}` : t('chat.invite'))
           }
           detail={
             preview

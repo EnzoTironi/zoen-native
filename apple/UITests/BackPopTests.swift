@@ -7,8 +7,8 @@ final class BackPopTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = [
-            "-RodaFreshStart", "YES", "-RodaDemo", "YES",
-            "-RodaOpen", "zoen", "-AppleLanguages", "(en)", "-RodaAppearance", "light",
+            "-FreshStart", "YES", "-Demo", "YES",
+            "-Open", "zoen", "-AppleLanguages", "(en)", "-Appearance", "light",
         ]
         app.launch()
 
@@ -33,8 +33,8 @@ final class BackPopTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = [
-            "-RodaFreshStart", "YES", "-RodaDemo", "YES",
-            "-RodaOpen", "paraty-plan", "-AppleLanguages", "(en)",
+            "-FreshStart", "YES", "-Demo", "YES",
+            "-Open", "paraty-plan", "-AppleLanguages", "(en)",
         ]
         app.launch()
 

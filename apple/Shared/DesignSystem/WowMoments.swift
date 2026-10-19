@@ -5,18 +5,18 @@ import SwiftUI
 enum WowGate {
     /// First-time (or rare) gates so repeats stay subtle.
     static func once(_ key: String) -> Bool {
-        let k = "RodaWow.\(key)"
+        let k = "Wow.\(key)"
         if UserDefaults.standard.bool(forKey: k) { return false }
         UserDefaults.standard.set(true, forKey: k)
         return true
     }
 
     static func seen(_ key: String) -> Bool {
-        UserDefaults.standard.bool(forKey: "RodaWow.\(key)")
+        UserDefaults.standard.bool(forKey: "Wow.\(key)")
     }
 
     static func mark(_ key: String) {
-        UserDefaults.standard.set(true, forKey: "RodaWow.\(key)")
+        UserDefaults.standard.set(true, forKey: "Wow.\(key)")
     }
 }
 

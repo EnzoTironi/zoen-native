@@ -4,7 +4,7 @@ import type { RequestStatus } from "./RequestStatus";
 
 export type AgentRequestDto = { id: string, agent: Persona, space_id: string, space_title: string, title: string, detail: string, audience: string, action_label: string, cost_cents: string | null, reason: string, status: RequestStatus, opened_ms: string, resolved_ms: string | null, item_id: string | null, line_id: string | null, 
 /**
- * What a standing decision on this request would cover (`roda_grants::standing_key`).
+ * What a standing decision on this request would cover (`grants::standing_key`).
  */
 action_key: string, 
 /**

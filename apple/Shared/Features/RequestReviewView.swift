@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 /// Revisar antes de agir (poster #045): quem propôs, o que acontece, e três
 /// escolhas claras. A aprovação fica presa ao hash do conteúdo.
@@ -21,7 +21,7 @@ struct RequestReviewView: View {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("\(r.agent.name) · \(r.agent.isMine ? "seu agente" : "agente de \(r.agent.ownerName ?? "")")")
                                     .font(.subheadline.weight(.semibold))
-                                Text(RodaTime.relative(r.openedMs)).font(.caption).foregroundStyle(Palette.textSecondary)
+                                Text(MessageTime.relative(r.openedMs)).font(.caption).foregroundStyle(Palette.textSecondary)
                             }
                         }
                     }

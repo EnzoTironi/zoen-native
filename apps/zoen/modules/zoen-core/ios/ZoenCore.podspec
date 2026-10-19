@@ -13,7 +13,7 @@ Pod::Spec.new do |s|
 
   s.dependency 'ExpoModulesCore'
   s.dependency 'GoogleSignIn', '~> 10.0'
-  s.vendored_frameworks = 'generated/RodaFFI.xcframework'
+  s.vendored_frameworks = 'generated/ClientFFI.xcframework'
 
   # Swift/Objective-C compatibility
   s.pod_target_xcconfig = {

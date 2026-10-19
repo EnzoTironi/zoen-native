@@ -6,8 +6,8 @@
 //!   ZOEN_TEST_PG=... cargo test -p zoen-cli --test journey_growth
 
 mod common;
+use client_core::{Client, SecretVault};
 use common::*;
-use roda_ffi::{RodaEngine, SecretVault};
 use std::io::{Read, Write};
 use std::{
     path::PathBuf,
@@ -34,7 +34,7 @@ impl SecretVault for Vault {
 
 #[tokio::test]
 async fn reports_use_the_current_ready_relay_domain_and_keep_refused_intents() {
-    use roda_proto::experiments::report_message;
+    use protocol::experiments::report_message;
     use sha2::{Digest, Sha256};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -43,7 +43,7 @@ async fn reports_use_the_current_ready_relay_domain_and_keep_refused_intents() {
     assert_ne!(w.relay_name(), host);
     w.init("ana", "Ana");
     let home = w.dir.join("ana");
-    let key = roda_log::Signer::from_secret(
+    let key = event_log::Signer::from_secret(
         &std::fs::read(home.join("vault/zoen.device.v1"))
             .unwrap()
             .try_into()
@@ -74,7 +74,7 @@ async fn reports_use_the_current_ready_relay_domain_and_keep_refused_intents() {
         "a URL-host signature must not authenticate as the named relay"
     );
 
-    let core = RodaEngine::open(
+    let core = Client::open(
         home.join("zoen.sqlite").to_string_lossy().into(),
         "en-US".into(),
     )
@@ -111,7 +111,7 @@ async fn reports_use_the_current_ready_relay_domain_and_keep_refused_intents() {
                 }
             }
             requests.send(header).unwrap();
-            let body = roda_proto::experiments::DEFAULT_CONFIG;
+            let body = protocol::experiments::DEFAULT_CONFIG;
             socket
                 .get_mut()
                 .write_all(
@@ -274,7 +274,7 @@ async fn signed_source_report_cannot_follow_a_redirect_and_stays_queued() {
     });
     let home = w.dir.join("ana");
     std::fs::create_dir_all(&home).unwrap();
-    let core = RodaEngine::open(
+    let core = Client::open(
         home.join("zoen.sqlite").to_string_lossy().into(),
         "en-US".into(),
     )
@@ -367,7 +367,7 @@ fn auth() -> String {
 /// and no holdout.
 fn config(control: u32, direct: u32) -> String {
     let mut c: serde_json::Value =
-        serde_json::from_str(roda_proto::experiments::DEFAULT_CONFIG).unwrap();
+        serde_json::from_str(protocol::experiments::DEFAULT_CONFIG).unwrap();
     c["holdout"] = serde_json::Value::Null;
     c["flags"]["onboarding_friend_v1"]["variants"][0]["weight"] = control.into();
     c["flags"]["onboarding_friend_v1"]["variants"][1]["weight"] = direct.into();

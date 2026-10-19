@@ -1,5 +1,5 @@
 import Foundation
-import RodaCore
+import ClientCore
 
 /// The document order and CRDT identity stay separate from the old mutation API's row IDs.
 struct PlanPageLayout {

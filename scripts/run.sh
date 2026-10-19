@@ -11,7 +11,7 @@ WHAT="${1:-all}"
 SIM="${SIM:-iPhone 17 Pro}"
 DD="$(pwd)/build/DerivedData"
 
-[[ -d apple/Packages/RodaCore/RodaFFI.xcframework ]] || scripts/build-core.sh
+[[ -d apple/Packages/ClientCore/ClientFFI.xcframework ]] || scripts/build-core.sh
 (cd apple && xcodegen generate --quiet)
 
 if [[ "$WHAT" == "all" || "$WHAT" == "ios" ]]; then

@@ -213,7 +213,7 @@ pub(super) async fn unbound_attempts_cannot_be_reassigned() {
     assert!(matches!(
         RuntimeAuthority::open(config(
             &w.db_url,
-            &roda_types::new_id("replacement"),
+            &types::new_id("replacement"),
             &w.http.base
         ))
         .await,

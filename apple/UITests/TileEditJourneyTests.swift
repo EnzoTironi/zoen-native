@@ -6,14 +6,14 @@ import XCTest
 final class TileEditJourneyTests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
-    /// `-RodaShowcase` re-arranges Home on every launch (stage setting), so only the fresh
+    /// `-Showcase` re-arranges Home on every launch (stage setting), so only the fresh
     /// launch uses it; a relaunch must show what the person left.
     @MainActor private func launch(fresh: Bool, extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        var args = ["-RodaDemo", "YES", "-AppleLanguages", "(pt-BR)",
-                    "-RodaAppearance", "light", "-RodaApprovalsExplained", "YES"]
-        if fresh { args += ["-RodaShowcase", "YES"] }
-        if fresh { args += ["-RodaFreshStart", "YES", "-RodaResetDemo", "YES"] }
+        var args = ["-Demo", "YES", "-AppleLanguages", "(pt-BR)",
+                    "-Appearance", "light", "-ApprovalsExplained", "YES"]
+        if fresh { args += ["-Showcase", "YES"] }
+        if fresh { args += ["-FreshStart", "YES", "-ResetDemo", "YES"] }
         app.launchArguments = args + extra
         app.launch()
         return app
@@ -112,7 +112,7 @@ final class TileEditJourneyTests: XCTestCase {
 
     @MainActor
     func testChatPinsJiggleAndReorder() {
-        let app = launch(fresh: true, extra: ["-RodaOpen", "turma", "-RodaChatScrollTop", "YES"])
+        let app = launch(fresh: true, extra: ["-Open", "turma", "-ChatScrollTop", "YES"])
         let first = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'pin-tile-'")).firstMatch
         XCTAssertTrue(first.waitForExistence(timeout: 20), "the chat shows its pinned tiles")
         sleep(3)

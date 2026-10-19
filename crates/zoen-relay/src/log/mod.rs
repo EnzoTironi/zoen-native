@@ -6,10 +6,10 @@ pub mod admission;
 pub mod fdb;
 pub mod sequencer;
 
-use roda_proto::{Envelope, InviteCreated, Sequenced};
-use roda_types::Role;
+use protocol::{Envelope, InviteCreated, Sequenced};
+use types::Role;
 
-pub use roda_relay_admission::Reject;
+pub use relay_admission::Reject;
 
 #[derive(Debug)]
 pub enum Sequencing {

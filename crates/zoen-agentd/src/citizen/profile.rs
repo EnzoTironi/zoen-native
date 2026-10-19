@@ -1,9 +1,9 @@
 //! Identity, device, definition and avatar for one agent citizen.
 
-use roda_log::{agent_owner, Author, Signer};
-use roda_types::{Identity, IdentityKind};
+use event_log::{agent_owner, Author, Signer};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use types::{Identity, IdentityKind};
 use zeroize::Zeroizing;
 
 /// Default avatar style until content-addressed hand-drawn art lands.

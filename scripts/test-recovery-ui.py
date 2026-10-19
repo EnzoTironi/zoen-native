@@ -20,7 +20,7 @@ class RecoveryWiring(unittest.TestCase):
         self.assertTrue('RecoveryKeySetup' in settings, 'Recovery setup must be reachable')
 
     def test_core_stages_key_before_network_and_has_key_only_restore(self):
-        core = source('crates/roda-ffi/src/backup_api.rs')
+        core = source('crates/client-core/src/backup_api.rs')
         for api in ['pub fn backup_create_recovery_key(', 'pub async fn backup_enable_recovery_key(', 'pub async fn restore_backup_with_recovery_key(']:
             self.assertTrue(api in core, f'Missing staged/key-only API: {api}')
 

@@ -355,8 +355,8 @@ publication needs an explicit product action and validated projection.
 - [Official Apps bridge](../../apps/zoen/src/miniapps/protocol.ts),
   [native parent transport](../../apps/zoen/src/miniapps/host-transport.ts),
   [remote CSP](../../apps/zoen/src/miniapps/remote-sandbox.ts)
-- [Canonical native-surface batch](../../crates/roda-ffi/src/native_surfaces.rs)
-- [Canonical encrypted drawing documents](../../crates/roda-ffi/src/app_documents.rs),
+- [Canonical native-surface batch](../../crates/client-core/src/native_surfaces.rs)
+- [Canonical encrypted drawing documents](../../crates/client-core/src/app_documents.rs),
   [bounded scene transfer](../../apps/zoen/src/miniapps/canonical-scene.ts),
   [native drawing host](../../apps/zoen/src/miniapps/canonical-view.tsx)
 

@@ -1,0 +1,21 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "zoen-relay-ingress",
+  "account_id": "86e8a5b2686413989e8bef1f75c29079",
+  "main": "src/relay-index.mjs",
+  "compatibility_date": "2026-10-18",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
+  "vars": {
+    "RELAY_PROTOCOL_ENABLED": "false",
+    "RELAY_ALLOWED_ORIGINS": "[\"https://app.tryzoen.com\"]"
+  },
+  "services": [
+    {
+      "binding": "DIRECTORY_RELAY",
+      "service": "zoen-relay-directory",
+      "entrypoint": "RelayIngress"
+    }
+  ]
+}

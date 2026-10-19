@@ -4,7 +4,7 @@ For the approvals swipe stack (`apple/Shared/Features/Approvals`). An agent's re
 something it wants to do that its owner must confirm. The stack lets the owner decide
 once (approve or deny) or set a **standing decision** ("always approve" / "always deny")
 for that kind of action from that agent in that Space. Everything below is in the Rust
-core (`roda-ffi`), generated into Swift by UniFFI (`RodaCore`). Plan and mini-app proposals
+core (`client-core`), generated into Swift by UniFFI (`ClientCore`). Plan and mini-app proposals
 retain their complete typed output. The Debug showcase seeds three extra requests (`seedShowcaseApprovals`,
 `#if DEBUG` only).
 
@@ -85,13 +85,13 @@ Grant {
 }
 ```
 
-`action` is `roda_grants::standing_key(&ActionClass)`: `reply`, `reversible`, `external`,
+`action` is `grants::standing_key(&ActionClass)`: `reply`, `reversible`, `external`,
 `irreversible`, `money`, `public_audience`, `third_party_data`. The newest unrevoked
 Standing grant for (agent, Space, key) wins.
 
 ## Evaluation (core and server must agree)
 
-`decide()` wraps `roda_grants::evaluate()`:
+`decide()` wraps `grants::evaluate()`:
 
 1. `evaluate()` says *Act* or *Block*: that stands. Standing grants never widen beyond it.
 2. It says *Request* and there's a matching **standing deny**: *Block(StandingDeny)*. No
@@ -130,7 +130,7 @@ The remaining M3 work includes owner-authorized agent registration, authenticate
 membership, a sealed durable model/tool run loop, budget reservations and provider receipts.
 Local cost values supplied by a caller are not provider settlement evidence.
 
-1. **Redeploy relays with the new `roda-types`.** The relay parses `EventBody`; an old relay
+1. **Redeploy relays with the new `types`.** The relay parses `EventBody`; an old relay
    can't read `Capability::Standing` and breaks signature checks for those events.
 2. **`zoen-agentd` must run the same `decide()`** before opening a request, so an agent with
    a standing allow acts without asking and one with a standing deny stops, on the server

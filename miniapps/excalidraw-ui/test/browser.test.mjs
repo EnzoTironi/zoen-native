@@ -21,7 +21,7 @@ test("real production canvas boots with no network authority; hidden Mermaid men
   const folder = await mkdtemp(join(tmpdir(), "zoen-canonical-browser-"));
   try {
     let html = await readFile(
-      join(root, "../../crates/roda-apps/resources/excalidraw.html"),
+      join(root, "../../crates/miniapps/resources/excalidraw.html"),
       "utf8",
     );
     const negative = process.env.ZOEN_EXCALIDRAW_NEGATIVE;

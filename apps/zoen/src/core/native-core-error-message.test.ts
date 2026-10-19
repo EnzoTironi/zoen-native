@@ -43,7 +43,7 @@ test(
     // Generated Apple artifacts do not exist on the Linux client CI job. Read
     // them only after the Darwin-only test has actually been admitted.
     const generated = readFileSync(
-      new URL('modules/zoen-core/ios/generated/RodaFFI.generated.swift', root),
+      new URL('modules/zoen-core/ios/generated/ClientFFI.generated.swift', root),
       'utf8',
     );
     // Compile the actual generated enum, including its reflective LocalizedError

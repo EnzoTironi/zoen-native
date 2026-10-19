@@ -99,8 +99,8 @@ jobs:
       - name: Shared admission rules and portable boundary regressions
         run: |
           cargo fmt --all --check
-          cargo test --locked -p roda-relay-admission
-          cargo clippy --locked -p roda-relay-admission --all-targets -- -D warnings
+          cargo test --locked -p relay-admission
+          cargo clippy --locked -p relay-admission --all-targets -- -D warnings
       - name: Compare native, WASM and real workerd receipts
         # Public deterministic fixtures only; no account credentials or deployment.
         run: node scripts/verify-cloudflare-admission.mjs --out-dir .dev/cloudflare-admission
@@ -243,7 +243,7 @@ jobs:
           node tools/miniapp-build/check.mjs miniapps/schedule
           node tools/miniapp-build/check.mjs miniapps/hike
           for app in pet poll list maptap recipe countdown; do
-            node tools/miniapp-build/check.mjs miniapps/builtins crates/roda-apps/resources "manifests/$app.json"
+            node tools/miniapp-build/check.mjs miniapps/builtins crates/miniapps/resources "manifests/$app.json"
           done
 
   client:

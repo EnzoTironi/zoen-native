@@ -1,19 +1,18 @@
 //! Real sockets and directory transactions, with blocked reads and queued writes.
 
 use async_trait::async_trait;
-use futures_util::{SinkExt, StreamExt};
-use roda_log::{
+use event_log::{
     profile::{
         seal_profile, sign_agreement, sign_upload, verify_agreement, verify_upload, AgreementKey,
         ProfileFields, ProfileKey,
     },
     Author, Signer,
 };
-use roda_proto::{
+use futures_util::{SinkExt, StreamExt};
+use protocol::{
     auth_message, AgreementKeyRecord, ClientFrame, DeviceCertificate, Envelope, ErrorCode,
     InviteCreated, Op, Reply, SealedProfile, Sequenced, ServerFrame, PROTOCOL_VERSION,
 };
-use roda_types::{Identity, IdentityKind, Role};
 use sqlx::{postgres::PgPoolOptions, Connection, PgConnection};
 use std::{
     sync::{
@@ -24,6 +23,7 @@ use std::{
 };
 use tokio::sync::{oneshot, Notify, Semaphore};
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use types::{Identity, IdentityKind, Role};
 use zoen_relay::{
     analytics, fanout, limits,
     log::{InviteInfo, LogStore, Reject, Sequencing, StoreError},
@@ -66,11 +66,10 @@ impl LogStore for BlockedLog {
         );
         tokio::spawn(async move {
             release.acquire().await.unwrap().forget();
-            let hash =
-                roda_log::chain_hash(env.space(), 0, roda_types::GENESIS_PREV, &env.wire_hash());
+            let hash = event_log::chain_hash(env.space(), 0, types::GENESIS_PREV, &env.wire_hash());
             let ev = Sequenced {
                 seq: 0,
-                prev: roda_types::GENESIS_PREV.into(),
+                prev: types::GENESIS_PREV.into(),
                 hash,
                 env,
             };
@@ -377,8 +376,8 @@ async fn assert_healthy_receipt_replay(socket: &mut Socket, peer: &str) {
     )
     .await;
     for kind in [
-        roda_proto::EphemeralKind::Delivered { seq: 9 },
-        roda_proto::EphemeralKind::Read { seq: 7 },
+        protocol::EphemeralKind::Delivered { seq: 9 },
+        protocol::EphemeralKind::Read { seq: 7 },
     ] {
         let frame = recv(socket).await.expect("receipt replay closed");
         assert!(
@@ -422,7 +421,7 @@ async fn sync_receipt_query_failure_is_unavailable_then_reconnect_replays() {
     send(
         &mut recovered,
         ClientFrame::Sync {
-            cursors: vec![roda_proto::Cursor {
+            cursors: vec![protocol::Cursor {
                 space: EMPTY_RECEIPT_SPACE.into(),
                 next_seq: 0,
             }],
@@ -562,10 +561,10 @@ async fn stalled_operation_revocation(publish: bool) {
                 "admitted-before-revocation",
                 1,
                 None,
-                roda_types::EventBody::SpaceCreated {
+                types::EventBody::SpaceCreated {
                     title: "Already admitted".into(),
-                    kind: roda_types::SpaceKind::Group,
-                    privacy: roda_types::Privacy::Closed,
+                    kind: types::SpaceKind::Group,
+                    privacy: types::Privacy::Closed,
                 },
             )),
         }

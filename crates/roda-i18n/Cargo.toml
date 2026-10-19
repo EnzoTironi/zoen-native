@@ -1,7 +1,0 @@
-[package]
-name = "roda-i18n"
-description = "Shared Zoen core localization for native and browser domain rules."
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-publish.workspace = true

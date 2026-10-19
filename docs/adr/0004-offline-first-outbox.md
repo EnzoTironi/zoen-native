@@ -5,7 +5,7 @@ Status: accepted (milestone 1)
 ## Decision
 Writes never wait for the network. A write to a synced Space is signed, stored in the
 `outbox` table and projected immediately. The core's net task (a small tokio runtime inside
-`roda-ffi`) flushes the outbox after every login and whenever it's poked. The relay's answer
+`client-core`) flushes the outbox after every login and whenever it's poked. The relay's answer
 is `Accepted` (then the sequenced copy arrives like anyone else's) or `Rejected` with
 `permanent`: transient refusals (rate limit, database hiccup) retry; permanent ones mark the
 message "Not delivered" and keep it visible.

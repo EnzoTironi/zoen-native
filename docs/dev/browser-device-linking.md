@@ -10,7 +10,7 @@ to their principal device instead.
 The person pastes the new device's existing `zoen-link:1:` code, compares the six
 check digits on both screens, then confirms authorization. `BrowserPrimary` stays
 inside the worker. Rust signs the recipient device certificate and seals the
-identity box with the shared `roda-link` HPKE/PSK codec. Temporary encoded identity
+identity box with the shared `device-link` HPKE/PSK codec. Temporary encoded identity
 secrets are zeroized. The root seed never enters a client snapshot or a plaintext
 worker result.
 
@@ -46,7 +46,7 @@ or read the messages.
 ## Older pages
 
 A linked browser requests an older page from its pinned principal device using
-`roda-link::DeviceMsg`. The pending request ID and exact sequence boundary survive
+`device-link::DeviceMsg`. The pending request ID and exact sequence boundary survive
 a restart. Replies must match the principal, recipient, request and Space. Every
 opened record must match the already verified signed relay record before the
 atomic import replaces any ciphertext. Completion is retained in the encrypted

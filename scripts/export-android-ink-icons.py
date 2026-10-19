@@ -40,7 +40,7 @@ motion = s[s.index("struct IconMotion {"):s.index("/// The ink icon view:")]
 hand = root / "apple/Shared/DesignSystem/HandDrawn.swift"
 hand_source = source_bytes(hand).decode()
 rng = hand_source[hand_source.index("struct InkRNG {"):hand_source.index("enum InkPalette {")]
-geometry = "enum Ink {\n" + hand_source[hand_source.index("    static func catmull("):hand_source.index("/// `-RodaFreezeArt")]
+geometry = "enum Ink {\n" + hand_source[hand_source.index("    static func catmull("):hand_source.index("/// `-FreezeArt")]
 shape = s[s.index("enum IconLayer {"):s.index("/// The selected state:")].replace("struct InkIconShape: Shape", "struct InkIconShape")
 path_support = """
 struct Path {

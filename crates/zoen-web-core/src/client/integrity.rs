@@ -111,7 +111,7 @@ impl<S: Signer> Client<S> {
 mod tests {
     use super::super::tests::{account, clear, HostSigner};
     use super::*;
-    use roda_log::{Author, Signer as NativeSigner};
+    use event_log::{Author, Signer as NativeSigner};
 
     fn fixture() -> (Client<HostSigner>, String) {
         let identity = NativeSigner::from_secret(&[201; 32]);

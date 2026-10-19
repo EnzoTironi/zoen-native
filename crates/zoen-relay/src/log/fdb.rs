@@ -39,6 +39,7 @@
 //! the transaction of the checkpoint that moves the floor, a bounded batch at a time.
 
 use async_trait::async_trait;
+use event_log::chain_hash;
 use foundationdb::{
     future::FdbValues,
     options::StreamingMode,
@@ -46,10 +47,9 @@ use foundationdb::{
     Database, FdbBindingError, RangeOption, Transaction,
 };
 use futures_util::future::{try_join3, try_join_all};
-use roda_log::chain_hash;
-use roda_proto::{Envelope, InviteCreated, Sequenced};
-use roda_relay_admission::mls_projection::{self, PRUNE_BATCH};
-use roda_types::{EventBody, Privacy, Role, SpaceKind, GENESIS_PREV};
+use protocol::{Envelope, InviteCreated, Sequenced};
+use relay_admission::mls_projection::{self, PRUNE_BATCH};
+use types::{EventBody, Privacy, Role, SpaceKind, GENESIS_PREV};
 
 fn extend_co_members(
     out: &mut Vec<String>,
@@ -171,7 +171,7 @@ fn parse<T: serde::de::DeserializeOwned>(s: &str) -> Option<T> {
     serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
 }
 
-pub use roda_relay_admission::code_hash;
+pub use relay_admission::code_hash;
 
 fn random_code() -> String {
     const A: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -314,7 +314,7 @@ impl FdbLog {
         code: &str,
         fence: Fence,
     ) -> Result<InviteCreated, String> {
-        let (max, ttl_ms) = roda_relay_admission::invite::invite_limits(max_uses, ttl_secs);
+        let (max, ttl_ms) = relay_admission::invite::invite_limits(max_uses, ttl_secs);
         let expires = now_ms() + ttl_ms;
         let key = self.cell.root.pack(&("inv", code_hash(code)));
         let fence = &fence;
@@ -332,12 +332,11 @@ impl FdbLog {
                     {
                         return Ok(Err("stale partition owner"));
                     }
-                    if !roda_proto::valid_invite_code(code) {
+                    if !protocol::valid_invite_code(code) {
                         return Ok(Err("invalid invite code"));
                     }
                     let mine = self.cell.role_in(&trx, space, who).await?;
-                    if let Err(reason) = roda_relay_admission::invite::authorize_inviter(mine, role)
-                    {
+                    if let Err(reason) = relay_admission::invite::authorize_inviter(mine, role) {
                         return Ok(Err(reason));
                     }
                     let kind = match trx.get(&self.cell.space_key(space, "meta"), false).await? {
@@ -349,9 +348,7 @@ impl FdbLog {
                         None => return Ok(Err("unknown space")),
                     };
                     if let Some(kind) = parse::<SpaceKind>(&kind) {
-                        if let Err(reason) =
-                            roda_relay_admission::invite::authorize_invite_kind(kind)
-                        {
+                        if let Err(reason) = relay_admission::invite::authorize_invite_kind(kind) {
                             return Ok(Err(reason));
                         }
                     }

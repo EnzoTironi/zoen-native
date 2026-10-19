@@ -29,12 +29,12 @@ class RelayJourneyTest {
         val vaultA = AndroidSecretVault(context, "relay-vault-a-$suffix")
         val vaultB = AndroidSecretVault(context, "relay-vault-b-$suffix")
         val pathA = File(folder, "a.sqlite").absolutePath
-        var a = RodaEngine.open(pathA, "en")
-        var ownedA: RodaEngine? = a
-        var ownedB: RodaEngine? = null
+        var a = Client.open(pathA, "en")
+        var ownedA: Client? = a
+        var ownedB: Client? = null
         var journeyFailure: Throwable? = null
         try {
-            val b = RodaEngine.open(File(folder, "b.sqlite").absolutePath, "en").also { ownedB = it }
+            val b = Client.open(File(folder, "b.sqlite").absolutePath, "en").also { ownedB = it }
             val accountA = a.createAccount("Android Alice", "aa_$suffix", relay!!, vaultA)
             val accountB = b.createAccount("Android Bob", "ab_$suffix", relay, vaultB)
             assertNotEquals(accountA.identityId, accountB.identityId)
@@ -72,7 +72,7 @@ class RelayJourneyTest {
             assertTrue(a.connection().pending > 0uL)
             ownedA = null
             a.destroy()
-            a = RodaEngine.open(pathA, "en").also { ownedA = it }
+            a = Client.open(pathA, "en").also { ownedA = it }
             assertTrue(a.unlock(vaultA))
             assertTrue(a.connection().pending > 0uL)
             a.startSync(null)

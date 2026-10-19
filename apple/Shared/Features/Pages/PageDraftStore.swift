@@ -1,6 +1,6 @@
 import Foundation
 import CryptoKit
-import RodaCore
+import ClientCore
 
 struct PageEditorDraft: Codable {
     let mutationId: String

@@ -2,8 +2,8 @@ use crate::{Binding, Capture, FinancialState, PeriodBalance, RuntimeError};
 #[cfg(test)]
 use chrono::Datelike;
 use chrono::{TimeZone, Utc};
-use roda_types::{owner_budget::SignedOwnerPolicy, Identity, IdentityKind};
 use sqlx::{postgres::PgPoolOptions, types::Json, PgPool, Postgres, Transaction};
+use types::{owner_budget::SignedOwnerPolicy, Identity, IdentityKind};
 
 pub(crate) struct Finance {
     pub(super) pool: PgPool,
@@ -379,8 +379,8 @@ impl Finance {
         };
         let policy = &signed.policy;
         let (start, end) = period(policy.year, policy.month)?;
-        if !roda_log::owner_budget::verify(&signed)
-            || roda_log::owner_budget::digest(policy).as_deref() != Some(&digest)
+        if !event_log::owner_budget::verify(&signed)
+            || event_log::owner_budget::digest(policy).as_deref() != Some(&digest)
             || policy.owner != owner
             || now < start
             || now >= end
@@ -420,7 +420,7 @@ impl Finance {
                 && parent.is_none()
                 && p.id == owner
                 && p.kind == IdentityKind::Person
-                && roda_log::agent_owner::profile_authorized(&p)
+                && event_log::agent_owner::profile_authorized(&p)
         }) {
             return Err(RuntimeError::Denied);
         }
@@ -442,7 +442,7 @@ impl Finance {
                 && p.id == b.context.agent
                 && p.kind == IdentityKind::Agent
                 && p.owner == owner
-                && roda_log::agent_owner::profile_authorized(&p)
+                && event_log::agent_owner::profile_authorized(&p)
         }) {
             return Err(RuntimeError::Denied);
         }
@@ -474,7 +474,7 @@ impl Finance {
                         IdentityKind::Person => "Person",
                         IdentityKind::Agent => "Agent",
                     }
-                || !roda_log::agent_owner::profile_authorized(&actual)
+                || !event_log::agent_owner::profile_authorized(&actual)
             {
                 return Err(RuntimeError::Denied);
             }
@@ -533,8 +533,8 @@ impl Finance {
         let now = Self::clock(tx).await?;
         let p = &signed.policy;
         let (start, end) = period(p.year, p.month)?;
-        if !roda_log::owner_budget::verify(&signed)
-            || roda_log::owner_budget::digest(p).as_deref() != Some(&digest)
+        if !event_log::owner_budget::verify(&signed)
+            || event_log::owner_budget::digest(p).as_deref() != Some(&digest)
             || digest != b.policy_digest
             || p.owner != b.context.owner
             || start != b.period_start
@@ -592,11 +592,11 @@ impl Finance {
         Ok(())
     }
     pub async fn install_policy(&self, signed: SignedOwnerPolicy) -> Result<String, RuntimeError> {
-        if !roda_log::owner_budget::verify(&signed) {
+        if !event_log::owner_budget::verify(&signed) {
             return Err(RuntimeError::InvalidPolicy);
         }
         let p = &signed.policy;
-        let digest = roda_log::owner_budget::digest(p).ok_or(RuntimeError::InvalidPolicy)?;
+        let digest = event_log::owner_budget::digest(p).ok_or(RuntimeError::InvalidPolicy)?;
         let (start, end) = period(p.year, p.month)?;
         if p.expires_at_ms <= start || p.expires_at_ms > end {
             return Err(RuntimeError::InvalidPolicy);

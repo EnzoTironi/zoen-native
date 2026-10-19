@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 struct VersionHistorySheet: View {
     let item: ItemDetail
@@ -68,7 +68,7 @@ struct VersoesView: View {
                         Text("current").font(.caption2.weight(.bold)).foregroundStyle(Palette.success)
                     }
                     Spacer()
-                    Text(RodaTime.relative(v.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
+                    Text(MessageTime.relative(v.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
                 }
                 Text("\(v.author.isMe ? String(localized: "You") : v.author.name) · \(v.note)")
                     .font(.subheadline).foregroundStyle(Palette.textSecondary)

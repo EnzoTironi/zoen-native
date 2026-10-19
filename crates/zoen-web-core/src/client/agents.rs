@@ -1,16 +1,14 @@
 //! Disposable agent/approval views over the verified Space logs. Permission decisions
-//! use roda-grants; writes use the same signed and MLS-encrypted outbox as messages.
+//! use grants; writes use the same signed and MLS-encrypted outbox as messages.
 //! No agent key, second document store, or approval authority lives in JavaScript.
 
 use super::*;
-use roda_grants::{
-    evaluate, standing_allow_permitted, standing_key, Budget, Decision, Policy, Reason,
-};
-use roda_types::{
+use grants::{evaluate, standing_allow_permitted, standing_key, Budget, Decision, Policy, Reason};
+use serde_json::{json, Value};
+use types::{
     ActionClass, AgentRequest, Capability, Grant, GrantScope, IdentityKind, ItemContent, ItemKind,
     RequestResolution, TrustLevel,
 };
-use serde_json::{json, Value};
 
 #[derive(Clone)]
 struct GrantRead {
@@ -177,7 +175,7 @@ impl<S: Signer> Client<S> {
             .get(agent)
             .filter(|profile| {
                 profile.kind == IdentityKind::Agent
-                    && roda_log::agent_owner::profile_authorized(profile)
+                    && event_log::agent_owner::profile_authorized(profile)
             })
             .and_then(|profile| profile.owner.as_deref())
     }
@@ -536,7 +534,7 @@ impl<S: Signer> Client<S> {
                     .iter()
                     .any(|section| !section.lines.is_empty()),
                 (ItemKind::App, ItemContent::App(app)) => {
-                    roda_apps::spec(&app.app).is_some_and(|spec| {
+                    miniapps::spec(&app.app).is_some_and(|spec| {
                         app.resource_uri == spec.resource_uri
                             && serde_json::from_str::<Value>(&app.state_json).is_ok()
                     })
@@ -574,7 +572,7 @@ impl<S: Signer> Client<S> {
                 }
                 Ok(
                     if read.document.line(line).is_some_and(|line| {
-                        roda_log::content_hash(&(&line.text, line.cost_cents))
+                        event_log::content_hash(&(&line.text, line.cost_cents))
                             == request.content_hash
                     }) {
                         RequestScope::Current
@@ -585,8 +583,11 @@ impl<S: Signer> Client<S> {
             }
             (None, None) => Ok(
                 if request.action != ActionClass::Reversible
-                    || roda_log::content_hash(&(&request.title, &request.detail, &request.audience))
-                        == request.content_hash
+                    || event_log::content_hash(&(
+                        &request.title,
+                        &request.detail,
+                        &request.audience,
+                    )) == request.content_hash
                 {
                     RequestScope::Current
                 } else {
@@ -859,7 +860,7 @@ impl<S: Signer> Client<S> {
         {
             return Err("Capacidade inválida.".into());
         }
-        let id = format!("gr_{}", roda_types::new_ulid(now));
+        let id = format!("gr_{}", types::new_ulid(now));
         let grant = Grant {
             id: id.clone(),
             grantor: self.account.identity.clone(),
@@ -1118,7 +1119,7 @@ impl<S: Signer> Client<S> {
             }).collect()),
             Command::SetTrust { agent_id, space_id, level } => {
                 if self.agent_owner(&agent_id) != Some(self.account.identity.as_str()) || !writer(&state, &space_id, &self.account.identity) || !state.rosters.get(&space_id).is_some_and(|roster|roster.contains_key(&agent_id)) { return Err("Só o dono pode mudar a autonomia de um agente que participa desta conversa.".into()); }
-                self.queue_domain_body(&space_id, EventBody::GrantIssued { grant: Grant { id: format!("gr_{}",roda_types::new_ulid(now)), grantor:self.account.identity.clone(),grantee:Some(agent_id),scope:GrantScope::Space(space_id.clone()),capability:Capability::Trust(level),expires_at_ms:None}},now,Vec::new())?;
+                self.queue_domain_body(&space_id, EventBody::GrantIssued { grant: Grant { id: format!("gr_{}",types::new_ulid(now)), grantor:self.account.identity.clone(),grantee:Some(agent_id),scope:GrantScope::Space(space_id.clone()),capability:Capability::Trust(level),expires_at_ms:None}},now,Vec::new())?;
                 changed=true; Value::Null
             }
             Command::RaiseBudget { agent_id, extra_cents } => {
@@ -1126,7 +1127,7 @@ impl<S: Signer> Client<S> {
                 let budget=self.agent_budget(&state,&agent_id,now).ok_or("Este orçamento não está disponível para esta conta.")?;
                 let limit=budget.limit_cents.checked_add(extra).ok_or("O orçamento ultrapassa o limite permitido.")?;
                 let personal=self.logs.keys().find(|space| self.metadata(space).is_some_and(|(_,kind,_)|kind==SpaceKind::Personal) && writer(&state,space,&self.account.identity)).cloned().ok_or("O espaço pessoal ainda não chegou neste aparelho.")?;
-                self.queue_domain_body(&personal,EventBody::GrantIssued{grant:Grant{id:format!("gr_{}",roda_types::new_ulid(now)),grantor:self.account.identity.clone(),grantee:Some(agent_id.clone()),scope:GrantScope::Everywhere,capability:Capability::MonthlyBudget{cents:limit},expires_at_ms:None}},now,Vec::new())?;
+                self.queue_domain_body(&personal,EventBody::GrantIssued{grant:Grant{id:format!("gr_{}",types::new_ulid(now)),grantor:self.account.identity.clone(),grantee:Some(agent_id.clone()),scope:GrantScope::Everywhere,capability:Capability::MonthlyBudget{cents:limit},expires_at_ms:None}},now,Vec::new())?;
                 changed=true; self.agent_profile_value(&self.agent_projection()?,&agent_id,now)
             }
             Command::DecideRequest { request_id, decision } => { let result=self.decide_browser_request(&request_id,decision,now)?; changed=true; result }
@@ -1153,7 +1154,7 @@ impl<S: Signer> Client<S> {
                 let mut mentions=Vec::new();for chat in self.conversations(){for message in &chat.messages{if message.author!=self.account.identity && !message.deleted && message.text.to_lowercase().contains(&token){mentions.push((message.at_ms,json!({"space_id":chat.id,"space_title":chat.title,"message_id":message.entry.as_ref().unwrap_or(&message.id)})));}}}
                 mentions.sort_by_key(|(at,_)|std::cmp::Reverse(*at));Value::Array(mentions.into_iter().map(|(_,value)|value).collect())
             }
-            Command::AppDeviceGrants {} => Value::Array(state.grants.iter().rev().filter(|grant|!grant.revoked && grant.grant.grantor==self.account.identity && grant.grant.expires_at_ms.is_none_or(|at|at>now)).filter_map(|grant|{let Capability::Device{capability,purpose}=&grant.grant.capability else{return None;};let GrantScope::Item(item)=&grant.grant.scope else{return None;};let item=state.items.get(item)?;let ItemContent::App(app)=&item.current().content else{return None;};Some(json!({"grant_id":grant.grant.id,"item_id":item.id,"item_title":app.title,"app_name":roda_apps::spec(&app.app).map(|spec|spec.name).unwrap_or(&app.app),"space_title":self.metadata(&item.space).map(|(title,_,_)|title).unwrap_or_default(),"capability":capability,"purpose":purpose,"always":grant.grant.expires_at_ms.is_none(),"at_ms":grant.at.to_string()}))}).collect()),
+            Command::AppDeviceGrants {} => Value::Array(state.grants.iter().rev().filter(|grant|!grant.revoked && grant.grant.grantor==self.account.identity && grant.grant.expires_at_ms.is_none_or(|at|at>now)).filter_map(|grant|{let Capability::Device{capability,purpose}=&grant.grant.capability else{return None;};let GrantScope::Item(item)=&grant.grant.scope else{return None;};let item=state.items.get(item)?;let ItemContent::App(app)=&item.current().content else{return None;};Some(json!({"grant_id":grant.grant.id,"item_id":item.id,"item_title":app.title,"app_name":miniapps::spec(&app.app).map(|spec|spec.name).unwrap_or(&app.app),"space_title":self.metadata(&item.space).map(|(title,_,_)|title).unwrap_or_default(),"capability":capability,"purpose":purpose,"always":grant.grant.expires_at_ms.is_none(),"at_ms":grant.at.to_string()}))}).collect()),
         };
         Ok(documents::DocumentResponse {
             result,
@@ -1171,9 +1172,9 @@ impl<S: Signer> Client<S> {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
+    use event_log::{Author, Signer as NativeSigner};
     use openmls_traits::{signatures::SignerError, types::SignatureScheme};
-    use roda_log::{Author, Signer as NativeSigner};
-    use roda_types::{ItemProposal, PlanDoc, PlanLine, PlanSection};
+    use types::{ItemProposal, PlanDoc, PlanLine, PlanSection};
 
     #[derive(Clone)]
     struct HostSigner(NativeSigner);
@@ -1182,7 +1183,7 @@ mod tests {
             hex::decode(self.0.sign(bytes)).map_err(|_| SignerError::SigningError)
         }
         fn signature_scheme(&self) -> SignatureScheme {
-            roda_mls::SUITE.signature_algorithm()
+            mls::SUITE.signature_algorithm()
         }
     }
     struct Fixture {
@@ -1203,7 +1204,7 @@ mod tests {
             let account = LinkedAccount {
                 identity: identity.id(),
                 device: device.id(),
-                cert: identity.sign(&roda_log::device_cert_message(&device.id())),
+                cert: identity.sign(&event_log::device_cert_message(&device.id())),
                 name: "Owner".into(),
                 handle: "owner".into(),
                 relay: "http://localhost".into(),
@@ -1229,7 +1230,7 @@ mod tests {
                 owner: Some(identity.id()),
                 bio: String::new(),
                 owner_proof: Some(Box::new(
-                    roda_log::agent_owner::authorize(&owner, &agent.identity).unwrap(),
+                    event_log::agent_owner::authorize(&owner, &agent.identity).unwrap(),
                 )),
             };
             client.saved.profiles.insert(profile.id.clone(), profile);
@@ -1300,7 +1301,7 @@ mod tests {
                 .or_insert_with(|| SpaceLog::new(space));
             let event = author.sign_event(
                 space,
-                &roda_types::new_ulid(self.now),
+                &types::new_ulid(self.now),
                 self.now,
                 log.head(),
                 body,
@@ -1536,7 +1537,7 @@ mod tests {
             action: ActionClass::Money {
                 cents: line.cost_cents,
             },
-            content_hash: roda_log::content_hash(&(&line.text, line.cost_cents)),
+            content_hash: event_log::content_hash(&(&line.text, line.cost_cents)),
             item: Some(proposal.item.clone()),
             line: Some(line.id.clone()),
             proposal: None,

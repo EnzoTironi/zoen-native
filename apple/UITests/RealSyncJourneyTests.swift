@@ -17,7 +17,7 @@ final class RealSyncJourneyTests: XCTestCase {
         let reply = env["ZOEN_REPLY"] ?? "oi Ana, aqui é o Bruno no terminal"
 
         let app = XCUIApplication()
-        app.launchArguments = ["-RodaFreshStart", "YES", "-RodaAccount", "Ana:\(me)", "-RodaRelay", relay, "-AppleLanguages", "(en)"]
+        app.launchArguments = ["-FreshStart", "YES", "-Account", "Ana:\(me)", "-Relay", relay, "-AppleLanguages", "(en)"]
         app.launch()
 
         // New chat → find @peer → open the DM.
@@ -47,7 +47,7 @@ final class RealSyncJourneyTests: XCTestCase {
 
         // Kill and relaunch: the account, the chat and both messages are still here.
         app.terminate()
-        app.launchArguments = ["-RodaRelay", relay, "-AppleLanguages", "(en)"]
+        app.launchArguments = ["-Relay", relay, "-AppleLanguages", "(en)"]
         app.launch()
         let chat = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", reply)).firstMatch
         let found = chat.waitForExistence(timeout: 15)

@@ -16,8 +16,8 @@
 //! journaled under its source message before anything else happens: a restart mid-turn
 //! hands the model what already ran instead of running it twice.
 
-use roda_ffi::{AppCallStatus, ConnectionDto, CoreListener, EntryKind, RodaEngine, TimelineEntry};
-use roda_gate::{Clef, ClefModel, Gate, HttpTransport};
+use client_core::{AppCallStatus, Client, ConnectionDto, CoreListener, EntryKind, TimelineEntry};
+use gate::{Clef, ClefModel, Gate, HttpTransport};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -128,7 +128,7 @@ fn say(line: impl std::fmt::Display) {
 
 /// The agent's first definition, at registration (`agent-init --definition`). Only a
 /// plain User agent defines itself; a Creator's kind is the owner's call (`agent-define`).
-pub async fn define_first(e: &Arc<RodaEngine>, def_path: &str) {
+pub async fn define_first(e: &Arc<Client>, def_path: &str) {
     let def: Definition = read_definition(def_path);
     if def.kind.relay_kind() != "User" {
         say(format_args!(
@@ -164,7 +164,7 @@ struct Ctx {
 }
 
 /// Runs the wake loop for `for_secs` (or until revoked).
-pub async fn host(e: &Arc<RodaEngine>, home: &Path, for_secs: Option<u64>) {
+pub async fn host(e: &Arc<Client>, home: &Path, for_secs: Option<u64>) {
     let runtime = Runtime::new(
         gate().unwrap_or_else(|err| crate::die(err)),
         brain().unwrap_or_else(|err| crate::die(err)),
@@ -366,7 +366,7 @@ fn text_of(t: &TimelineEntry) -> Option<&str> {
 
 /// One message. `true` once it is handled: replied, or deliberately silent or blocked.
 async fn turn(
-    e: &Arc<RodaEngine>,
+    e: &Arc<Client>,
     cx: &Ctx,
     def: &Definition,
     space: &str,
@@ -464,7 +464,7 @@ async fn turn(
     }
 }
 
-fn reply(e: &Arc<RodaEngine>, space: &str, text: &str, source: &str) -> bool {
+fn reply(e: &Arc<Client>, space: &str, text: &str, source: &str) -> bool {
     fault("before-send");
     match e.send_reply(space.into(), text.into(), source.into(), false) {
         Ok(_) => {
@@ -484,7 +484,7 @@ fn reply(e: &Arc<RodaEngine>, space: &str, text: &str, source: &str) -> bool {
 /// The Creator's proposal goes to the owner's DM for approval on the owner's device; its
 /// own words go to the chat it was asked in.
 fn propose(
-    e: &Arc<RodaEngine>,
+    e: &Arc<Client>,
     cx: &Ctx,
     space: &str,
     t: &TimelineEntry,
@@ -507,7 +507,7 @@ fn propose(
 }
 
 /// A structured note to the owner (their app renders it), tagged with its source message.
-fn tell_owner(e: &Arc<RodaEngine>, cx: &Ctx, body: serde_json::Value) -> bool {
+fn tell_owner(e: &Arc<Client>, cx: &Ctx, body: serde_json::Value) -> bool {
     let Ok(dm) = e.start_direct(cx.owner.clone()) else {
         return false;
     };
@@ -525,7 +525,7 @@ fn tell_owner(e: &Arc<RodaEngine>, cx: &Ctx, body: serde_json::Value) -> bool {
 }
 
 /// Our earlier note to the owner about `source`, if one went out.
-fn owner_note(e: &Arc<RodaEngine>, cx: &Ctx, source: &str) -> Option<serde_json::Value> {
+fn owner_note(e: &Arc<Client>, cx: &Ctx, source: &str) -> Option<serde_json::Value> {
     let dm = e.start_direct(cx.owner.clone()).ok()?;
     let needle = format!("\"source\":\"{source}\"");
     e.timeline(dm).unwrap_or_default().iter().find_map(|m| {
@@ -540,7 +540,7 @@ fn owner_note(e: &Arc<RodaEngine>, cx: &Ctx, source: &str) -> Option<serde_json:
 
 /// The mini-app tools of one chat, for one turn: calls run as the agent serving `serving`.
 struct SpaceTools<'a> {
-    e: &'a Arc<RodaEngine>,
+    e: &'a Arc<Client>,
     journal: &'a Path,
     source: &'a str,
     serving: &'a str,
@@ -550,7 +550,7 @@ struct SpaceTools<'a> {
 
 impl<'a> SpaceTools<'a> {
     fn new(
-        e: &'a Arc<RodaEngine>,
+        e: &'a Arc<Client>,
         cx: &'a Ctx,
         space: &str,
         serving: &'a str,

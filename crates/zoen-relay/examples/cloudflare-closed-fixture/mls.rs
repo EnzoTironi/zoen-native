@@ -1,10 +1,14 @@
 //! Actual MLS ciphertext and native FDB state for the private adapter oracle.
 use super::*;
+use ::mls::{sealed::state_key, Device, Opened};
+use event_log::content::InnerEvent;
 use foundationdb::RangeOption;
-use roda_log::content::InnerEvent;
-use roda_mls::{sealed::state_key, Device, Opened};
-use roda_proto::{Sealed, SealedKind, STALE_COMMIT, STALE_SEAL};
+use protocol::{Sealed, SealedKind, STALE_COMMIT, STALE_SEAL};
 use std::collections::BTreeSet;
+
+#[path = "reads.rs"]
+mod reads;
+pub(super) use reads::cases as read_cases;
 
 pub(super) struct Tracking {
     epoch: Option<(u64, String)>,
@@ -124,7 +128,7 @@ impl Person {
     fn new(identity: u8, device: u8) -> Result<Self> {
         let author = author(identity, device);
         let mut db = rusqlite::Connection::open_in_memory()?;
-        roda_mls::migrate(&mut db)?;
+        ::mls::migrate(&mut db)?;
         Ok(Self { author, db })
     }
     fn device(&self) -> Result<Device<'_>> {
@@ -148,7 +152,7 @@ fn sealed(j: &Journey<'_>, who: &Author, kind: SealedKind, data: Vec<u8>) -> Env
         &format!("{:026}", j.steps.len() + 1000),
         1_700_000_000_000 + j.steps.len() as i64,
         j.head.as_ref(),
-        Sealed::new(kind, roda_mls::SUITE_ID, data),
+        Sealed::new(kind, ::mls::SUITE_ID, data),
     )
 }
 async fn plain(
@@ -175,7 +179,7 @@ async fn accepted(
 fn application(j: &Journey<'_>, who: &Person, text: &str) -> Result<(Envelope, Vec<u8>)> {
     let inner = who.author.sign_event(
         &j.space,
-        &roda_types::new_ulid(now_ms()?),
+        &types::new_ulid(now_ms()?),
         1_700_000_000_000 + j.steps.len() as i64,
         j.head.clone(),
         message(j.steps.len() as u32, text),
@@ -192,7 +196,7 @@ fn application(j: &Journey<'_>, who: &Person, text: &str) -> Result<(Envelope, V
         &inner.client_id,
         inner.at_ms,
         inner.seen.as_ref(),
-        Sealed::new(SealedKind::Application, roda_mls::SUITE_ID, data),
+        Sealed::new(SealedKind::Application, ::mls::SUITE_ID, data),
     );
     Ok((outer, encoded))
 }
@@ -264,7 +268,7 @@ pub(super) async fn cases(
             log,
             db,
             cell,
-            space: roda_types::new_id("sp"),
+            space: types::new_id("sp"),
             head: None,
             steps: vec![],
         };
@@ -313,7 +317,7 @@ pub(super) async fn cases(
             &BTreeSet::new(),
         )?;
         ensure!(
-            roda_mls::commit_epoch(&first.commit) == Some(0),
+            ::mls::commit_epoch(&first.commit) == Some(0),
             "actual first commit epoch"
         );
         let env = sealed(&j, &owner.author, SealedKind::Commit, first.commit.clone());
@@ -356,7 +360,7 @@ pub(super) async fn cases(
             &owner.author,
             clear,
             None,
-            Expected::Rejected(roda_proto::SEAL_REQUIRED),
+            Expected::Rejected(protocol::SEAL_REQUIRED),
         )
         .await?;
 

@@ -5,7 +5,7 @@ use zoen_relay::{db, metrics::Metrics, receipts::Receipts};
 
 async fn database() -> (PgPool, String, String) {
     let admin = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG for receipt tests");
-    let name = format!("zoen_rcpt_{}", &roda_log::Signer::generate().id()[..16]);
+    let name = format!("zoen_rcpt_{}", &event_log::Signer::generate().id()[..16]);
     let mut c = PgConnection::connect(&admin).await.unwrap();
     sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
         .execute(&mut c)

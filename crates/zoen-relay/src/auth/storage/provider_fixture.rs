@@ -3,23 +3,23 @@
 
 use super::*;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as B64, Engine as _};
+use event_log::Signer;
+use protocol::provider_auth::provider_bind_message;
+use relay_admission::auth::{verify_with_key, Jwk, VerificationContext};
 use ring::{
     rand::SystemRandom,
     signature::{RsaKeyPair, RSA_PKCS1_SHA256},
 };
-use roda_log::Signer;
-use roda_proto::provider_auth::provider_bind_message;
-use roda_relay_admission::auth::{verify_with_key, Jwk, VerificationContext};
-use roda_types::{Identity, IdentityKind};
 use serde_json::{json, Value};
 use sqlx::{postgres::PgPoolOptions, Connection, PgConnection};
 use std::io::Write;
+use types::{Identity, IdentityKind};
 
 const ORIGIN: &str = "https://app.example";
 
 fn key() -> Jwk {
     serde_json::from_str(include_str!(
-        "../../../../roda-relay-admission/src/auth/fixtures/rsa-test-only.jwk.json"
+        "../../../../relay-admission/src/auth/fixtures/rsa-test-only.jwk.json"
     ))
     .unwrap()
 }
@@ -27,7 +27,7 @@ fn key() -> Jwk {
 fn assertion(challenge: &Challenge, subject: &str, expires_secs: i64) -> (String, Jwk) {
     let key = key();
     let signer = RsaKeyPair::from_pkcs8(include_bytes!(
-        "../../../../roda-relay-admission/src/auth/fixtures/rsa-test-only.pk8"
+        "../../../../relay-admission/src/auth/fixtures/rsa-test-only.pk8"
     ))
     .unwrap();
     let input = format!("{}.{}", B64.encode(serde_json::to_vec(&json!({"alg":"RS256","kid":key.kid,"typ":"JWT"})).unwrap()), B64.encode(serde_json::to_vec(&json!({
@@ -60,7 +60,7 @@ fn binding(root_seed: u8, device_seed: u8, proof: &str, handle: &str) -> Provide
         bio: String::new(),
         owner_proof: None,
     };
-    let certificate = root.sign(&roda_log::device_cert_message(&device.id()));
+    let certificate = root.sign(&event_log::device_cert_message(&device.id()));
     let signature =
         device.sign(&provider_bind_message(proof, &profile, &device.id(), &certificate).unwrap());
     ProviderBindRequest {

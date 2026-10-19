@@ -1,7 +1,7 @@
 # Shared catch-up visibility
 
 The native relay and Workers/WASM now use the same Rust catch-up policy in
-`roda_relay_admission::sync`. This implements planning only. It does not expose a
+`relay_admission::sync`. This implements planning only. It does not expose a
 public socket or make the private Cloudflare log a complete encrypted relay.
 
 For each requested cursor, current members read from that sequence to the head.
@@ -55,7 +55,7 @@ remain integration work.
 From the repository root, run:
 
 ```sh
-cargo test --locked -p roda-relay-admission --test sync
+cargo test --locked -p relay-admission --test sync
 node scripts/verify-cloudflare-sync.mjs
 ```
 

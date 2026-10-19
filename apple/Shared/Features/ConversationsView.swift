@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 enum ChatInboxFilter: String, CaseIterable, Identifiable {
     case all, direct, groups, communities
@@ -186,7 +186,7 @@ struct ConversationRow: View {
                         .foregroundStyle(Palette.textPrimary)
                         .lineLimit(1)
                     Spacer(minLength: 6)
-                    Text(RodaTime.short(space.lastAtMs))
+                    Text(MessageTime.short(space.lastAtMs))
                         .font(.footnote)
                         .foregroundStyle(Palette.textTertiary)
                 }
@@ -253,7 +253,7 @@ struct ConversationRow: View {
         if muted { parts.append(String(localized: "Muted")) }
         if space.unread > 0 { parts.append(String(localized: "\(space.unread) unread")) }
         parts.append((space.lastAuthor?.isMe == true ? String(localized: "You: ") : otherPrefix) + space.lastPreview)
-        parts.append(RodaTime.short(space.lastAtMs))
+        parts.append(MessageTime.short(space.lastAtMs))
         return parts.joined(separator: ", ")
     }
 }
@@ -365,7 +365,7 @@ struct ConversationsScreen: View {
             .accessibilityIdentifier("chats-list-scroll")
             .scrollDismissesKeyboard(.interactively)
             .scrollEdgeEffectStyle(.soft, for: .top)
-            .defaultScrollAnchor(UserDefaults.standard.bool(forKey: "RodaScrollChats") ? .bottom : .top)
+            .defaultScrollAnchor(UserDefaults.standard.bool(forKey: "ScrollChats") ? .bottom : .top)
         }
         .background(NightBackdrop())
         .navigationTitle("Chats")

@@ -8,8 +8,8 @@ use object_store::{
     ObjectMeta, ObjectStore, ObjectStoreExt, PutMultipartOptions, PutOptions, PutPayload,
     PutResult,
 };
-use roda_proto::{auth_message, ClientFrame, Op};
-use roda_relay_admission::blobs as policy;
+use protocol::{auth_message, ClientFrame, Op};
+use relay_admission::blobs as policy;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -255,7 +255,7 @@ async fn produce(test: &TestRelay, store: &ControlledStore) -> Value {
         .unwrap();
     let nonce = "a7".repeat(32);
     let hello = ClientFrame::Hello {
-        protocol: roda_proto::PROTOCOL_VERSION,
+        protocol: protocol::PROTOCOL_VERSION,
         capabilities: vec![],
         identity: a.identity.clone(),
         device: a.device.clone().unwrap(),
@@ -274,7 +274,7 @@ async fn produce(test: &TestRelay, store: &ControlledStore) -> Value {
     }
     .encode();
     let plain = b"synthetic encrypted media native oracle";
-    let (key, sealed) = roda_log::media::seal(plain);
+    let (key, sealed) = event_log::media::seal(plain);
     let sha = hex::encode(Sha256::digest(&sealed));
     let mut f = Fixture {
         test,
@@ -570,7 +570,7 @@ async fn admitted_blob_put_can_finish_after_unlink_and_never_restores_device() {
     let test = TestRelay::with_store(store.clone()).await;
     let result = std::panic::AssertUnwindSafe(async {
         let a = test.register().await;
-        let (_,body) = roda_log::media::seal(b"admitted before unlink");
+        let (_,body) = event_log::media::seal(b"admitted before unlink");
         let sha = hex::encode(Sha256::digest(&body));
         store.hold_next.store(true,Ordering::SeqCst);
         let path = format!("/v1/blobs/{sha}");
@@ -638,7 +638,7 @@ async fn malformed_digest_and_duplicate_uploads_both_spend_device_quota() {
             .unwrap();
         assert!((3590..=3600).contains(&seconds));
         let text = refused.text().await.unwrap();
-        let wait = roda_proto::retry_hint(&text).expect("native shared slow-down message");
+        let wait = protocol::retry_hint(&text).expect("native shared slow-down message");
         assert!((3590..=3600).contains(&wait.as_secs()));
         let retained = test
             .client
@@ -661,7 +661,7 @@ async fn create_only_concurrency_and_storage_failure_keep_media_contract() {
     let test = TestRelay::with_store(store.clone()).await;
     let result = std::panic::AssertUnwindSafe(async {
         let a = test.register().await;
-        let (_, body) = roda_log::media::seal(b"create once");
+        let (_, body) = event_log::media::seal(b"create once");
         let sha = hex::encode(Sha256::digest(&body));
         let path = format!("/v1/blobs/{sha}");
         let left = test.signed(&a, Method::PUT, &path, &body, |ts| {

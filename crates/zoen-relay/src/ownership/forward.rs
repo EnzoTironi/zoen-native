@@ -4,12 +4,12 @@
 use async_nats::{Client, HeaderMap};
 use bytes::Bytes;
 use futures_util::StreamExt;
-use roda_proto::{ClientFrame, Envelope, InviteCreated, Sequenced};
-use roda_types::{EventBody, Role};
+use protocol::{ClientFrame, Envelope, InviteCreated, Sequenced};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{sync::Arc, time::Duration};
 use tokio::{sync::Semaphore, task::JoinHandle};
+use types::{EventBody, Role};
 
 use super::Fence;
 use crate::log::{fdb::FdbLog, Reject, Sequencing};
@@ -473,7 +473,7 @@ fn decode(bytes: &[u8]) -> Result<Sequencing, Reject> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use roda_log::{Author, Signer};
+    use event_log::{Author, Signer};
 
     #[test]
     fn new_and_duplicate_responses_retain_supported_audiences_and_joined() {
@@ -485,8 +485,8 @@ mod tests {
             None,
             EventBody::SpaceCreated {
                 title: "Group".into(),
-                kind: roda_types::SpaceKind::Group,
-                privacy: roda_types::Privacy::Closed,
+                kind: types::SpaceKind::Group,
+                privacy: types::Privacy::Closed,
             },
         ));
         for size in [
@@ -499,7 +499,7 @@ mod tests {
             let ev = Sequenced {
                 env: env.clone(),
                 seq: 0,
-                prev: roda_types::GENESIS_PREV.into(),
+                prev: types::GENESIS_PREV.into(),
                 hash: "h".into(),
             };
             for duplicate in [false, true] {

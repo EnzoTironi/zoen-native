@@ -4,8 +4,8 @@
 
 # Artefatos gerados (recriados por scripts/build-core.sh)
 /build/
-apple/Packages/RodaCore/RodaFFI.xcframework/
-apple/Packages/RodaCore/Sources/RodaCore/RodaFFI.generated.swift
+apple/Packages/ClientCore/ClientFFI.xcframework/
+apple/Packages/ClientCore/Sources/ClientCore/ClientFFI.generated.swift
 
 # Xcode (o projeto é gerado pelo XcodeGen a partir de apple/project.yml)
 apple/Zoen.xcodeproj/

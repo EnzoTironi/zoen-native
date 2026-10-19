@@ -13,7 +13,7 @@ struct ZoenDeviceScope: Codable, Equatable, Sendable {
 }
 
 final class ZoenDeviceErasure {
-  static var accountRoot: URL { URL.applicationSupportDirectory.appending(path: "Roda", directoryHint: .isDirectory) }
+  static var accountRoot: URL { URL.applicationSupportDirectory.appending(path: "account", directoryHint: .isDirectory) }
   private let root: URL
   init(root: URL = ZoenDeviceErasure.accountRoot) { self.root = root }
   private var marker: URL { root.appending(path: "erase-device-v1.json") }

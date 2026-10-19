@@ -25,7 +25,7 @@ existing 8 MiB host verifier. `--check` compares exact output bytes and notices.
 
 Outputs are `apps/zoen/src/miniapps/vendor/excalidraw-ui.ts` (default HTML and named
 `manifest`), its JSON integrity manifest, and the same HTML/manifest under
-`crates/roda-apps/resources/excalidraw.*`. Resource identity is
+`crates/miniapps/resources/excalidraw.*`. Resource identity is
 `ui://zoen/excalidraw.html`. Provenance distinguishes this patched presentation
 from the original remote provider resource; it does not attest a vendor signature.
 

@@ -104,7 +104,7 @@ async function fixture(id, initial) {
           state: () => ({ content: [], structuredContent: state }),
           context,
           tools: new Set(tools[id]),
-          resourceUri: `ui://roda/${id}`,
+          resourceUri: `ui://builtin/${id}`,
           resource: async () => ({ contents: [] }),
           async call(name, args) {
             calls.push({ name, args });

@@ -1,7 +1,7 @@
 use super::*;
+use event_log::{Author, Signer as NativeSigner};
+use mls::Device;
 use openmls_traits::{signatures::SignerError, types::SignatureScheme};
-use roda_log::{Author, Signer as NativeSigner};
-use roda_mls::Device;
 
 #[path = "client_tests_drawings.rs"]
 mod drawings;
@@ -13,7 +13,7 @@ impl Signer for HostSigner {
         hex::decode(self.0.sign(payload)).map_err(|_| SignerError::SigningError)
     }
     fn signature_scheme(&self) -> SignatureScheme {
-        roda_mls::SUITE.signature_algorithm()
+        mls::SUITE.signature_algorithm()
     }
 }
 
@@ -21,7 +21,7 @@ pub(super) fn account(identity: &NativeSigner, device: &NativeSigner) -> LinkedA
     LinkedAccount {
         identity: identity.id(),
         device: device.id(),
-        cert: identity.sign(&roda_log::device_cert_message(&device.id())),
+        cert: identity.sign(&event_log::device_cert_message(&device.id())),
         name: "Fixture".into(),
         handle: "fixture".into(),
         relay: "http://127.0.0.1:9000".into(),
@@ -38,7 +38,7 @@ pub(super) fn account(identity: &NativeSigner, device: &NativeSigner) -> LinkedA
 }
 
 pub(super) fn sequence(log: &mut SpaceLog, env: Envelope) -> Vec<u8> {
-    let outer = roda_log::event_from_content(
+    let outer = event_log::event_from_content(
         env.content().to_vec(),
         env.sig.clone(),
         env.cert.clone(),
@@ -60,13 +60,7 @@ pub(super) fn sequence(log: &mut SpaceLog, env: Envelope) -> Vec<u8> {
 }
 
 pub(super) fn clear(log: &mut SpaceLog, author: &Author, body: EventBody, now: i64) -> Vec<u8> {
-    let event = author.sign_event(
-        log.space(),
-        &roda_types::new_ulid(now),
-        now,
-        log.head(),
-        body,
-    );
+    let event = author.sign_event(log.space(), &types::new_ulid(now), now, log.head(), body);
     sequence(log, Envelope::plain(&event))
 }
 
@@ -79,7 +73,7 @@ fn sealed(
 ) -> Vec<u8> {
     let (content, sig) = author.sign_sealed(
         log.space(),
-        &roda_types::new_ulid(now),
+        &types::new_ulid(now),
         now,
         log.head().as_ref(),
         Sealed::new(kind, SUITE_ID, data),
@@ -98,7 +92,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
     let account = account(&identity, &host.0);
     let author = Author::device(&identity, native_key.clone());
     let mut sqlite = rusqlite::Connection::open_in_memory().unwrap();
-    roda_mls::migrate(&mut sqlite).unwrap();
+    mls::migrate(&mut sqlite).unwrap();
     let native = Device::new(
         &sqlite,
         [14; 32],
@@ -167,7 +161,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
 
     let inner = author.sign_event(
         space,
-        &roda_types::new_ulid(9),
+        &types::new_ulid(9),
         9,
         log.head(),
         EventBody::MessagePosted {
@@ -274,7 +268,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         ("caption", None, false, item.clone()),
         (
             "",
-            Some(roda_types::ReplyRef {
+            Some(types::ReplyRef {
                 to: "root".into(),
                 thread: false,
             }),
@@ -283,7 +277,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         ),
         (
             "",
-            Some(roda_types::ReplyRef {
+            Some(types::ReplyRef {
                 to: "root".into(),
                 thread: true,
             }),
@@ -337,8 +331,8 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
     let mut voice = crate::media::seal_file("voice.webm", "audio/webm", b"voice", None)
         .unwrap()
         .doc;
-    voice.voice = Some(roda_types::VoiceMeta {
-        reply: Some(roda_types::ReplyRef {
+    voice.voice = Some(types::VoiceMeta {
+        reply: Some(types::ReplyRef {
             to: target,
             thread: false,
         }),
@@ -351,7 +345,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         .values()
         .filter_map(|p| p.inner.as_ref())
         .any(|e| matches!(&e.body,
-        EventBody::ItemCreated { content: roda_types::ItemContent::File(doc), .. }
+        EventBody::ItemCreated { content: types::ItemContent::File(doc), .. }
         if doc.voice.as_ref().and_then(|v| v.reply.as_ref()).is_some_and(|r| r.to == expected))));
     client.saved.outbox = before_media;
 
@@ -415,7 +409,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         panic!("real MLS application expected")
     };
     let opened = InnerEvent::decode(&plaintext).unwrap();
-    let event = roda_log::event_from_content(
+    let event = event_log::event_from_content(
         opened.content,
         opened.sig,
         Some(account.cert.clone()),
@@ -424,7 +418,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         String::new(),
     )
     .unwrap();
-    roda_log::verify_author(&event).unwrap();
+    event_log::verify_author(&event).unwrap();
     assert!(matches!(event.body, EventBody::MessagePosted { text, .. } if text == "Web to native"));
     let accepted = client.receive(&sequence(&mut log, env), 12).unwrap();
     assert_eq!(accepted.conversations[0].messages.len(), 2);
@@ -528,7 +522,7 @@ fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_me
 
 #[test]
 fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
-    use roda_types::{FileDoc, ItemContent, ItemKind, ReplyRef, VoiceMeta};
+    use types::{FileDoc, ItemContent, ItemKind, ReplyRef, VoiceMeta};
 
     let identity = NativeSigner::from_secret(&[31; 32]);
     let host = HostSigner(NativeSigner::from_secret(&[32; 32]));
@@ -696,7 +690,7 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
         &other,
         EventBody::MessageAnnotated {
             target: native_target.clone(),
-            note: roda_types::Annotation::Delete,
+            note: types::Annotation::Delete,
         },
     );
     client.logs.insert(space.into(), log.clone());
@@ -706,7 +700,7 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
         &author,
         EventBody::MessageAnnotated {
             target: native_target,
-            note: roda_types::Annotation::Delete,
+            note: types::Annotation::Delete,
         },
     );
     client.logs.insert(space.into(), log);
@@ -717,7 +711,7 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
 
 #[test]
 fn native_forwarded_voice_is_one_destination_only_message_after_receive_and_saved_reload() {
-    use roda_types::{ItemContent, ItemKind, VoiceMeta};
+    use types::{ItemContent, ItemKind, VoiceMeta};
 
     for forwarded in [false, true] {
         let identity = NativeSigner::from_secret(&[34; 32]);
@@ -824,7 +818,7 @@ fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
     (client, author, other, log, target)
 }
 
-fn annotate(log: &mut SpaceLog, author: &Author, target: &str, note: roda_types::Annotation) {
+fn annotate(log: &mut SpaceLog, author: &Author, target: &str, note: types::Annotation) {
     let now = log.next_seq() as i64 + 10;
     clear(
         log,
@@ -849,7 +843,7 @@ fn conversation_metadata_comes_from_logs_and_only_my_personal_log_controls_prefe
         },
         3,
     );
-    let prefs = roda_types::ChatPrefs {
+    let prefs = types::ChatPrefs {
         pinned: true,
         archived: true,
         muted_until_ms: Some(i64::MAX),
@@ -903,7 +897,7 @@ fn conversation_metadata_comes_from_logs_and_only_my_personal_log_controls_prefe
     client.logs.insert(impostor.space().into(), impostor);
     let profile = Identity {
         id: other.identity.clone(),
-        kind: roda_types::IdentityKind::Agent,
+        kind: types::IdentityKind::Agent,
         name: "Garden".into(),
         handle: "garden".into(),
         tint_hex: "#34752A".into(),
@@ -977,7 +971,7 @@ fn conversation_metadata_comes_from_logs_and_only_my_personal_log_controls_prefe
 #[test]
 fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
     let (mut client, author, other, mut log, target) = web_fixture();
-    let react = |emoji: &str| roda_types::Annotation::React {
+    let react = |emoji: &str| types::Annotation::React {
         emoji: emoji.into(),
     };
     annotate(&mut log, &author, &target, react("👍"));
@@ -998,7 +992,7 @@ fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
     client.logs.insert(log.space().into(), log.clone());
     let view = client.conversations();
     assert_eq!(view[0].messages[0].reactions.len(), 2);
-    annotate(&mut log, &author, &target, roda_types::Annotation::Unreact);
+    annotate(&mut log, &author, &target, types::Annotation::Unreact);
     client.logs.insert(log.space().into(), log.clone());
     let view = client.conversations();
     let reactions = &view[0].messages[0].reactions;
@@ -1006,7 +1000,7 @@ fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
     assert_eq!(reactions[0].emoji, "👍");
     assert_eq!(reactions[0].count, 1);
     assert!(!reactions[0].mine);
-    annotate(&mut log, &author, &target, roda_types::Annotation::Delete);
+    annotate(&mut log, &author, &target, types::Annotation::Delete);
     annotate(&mut log, &other, &target, react("❤️"));
     client.logs.insert(log.space().into(), log);
     assert!(client.conversations()[0].messages[0].reactions.is_empty());
@@ -1026,7 +1020,7 @@ fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption() 
             .queue_annotation(
                 "sp_web_receipts",
                 &target,
-                roda_types::Annotation::React { emoji },
+                types::Annotation::React { emoji },
                 90
             )
             .err()
@@ -1040,11 +1034,11 @@ fn receipt_marks(frames: &[Vec<u8>]) -> Vec<(&'static str, u64)> {
         .iter()
         .filter_map(|frame| match ClientFrame::decode(frame).unwrap() {
             ClientFrame::Ephemeral {
-                kind: roda_proto::EphemeralKind::Delivered { seq },
+                kind: protocol::EphemeralKind::Delivered { seq },
                 ..
             } => Some(("delivered", seq)),
             ClientFrame::Ephemeral {
-                kind: roda_proto::EphemeralKind::Read { seq },
+                kind: protocol::EphemeralKind::Read { seq },
                 ..
             } => Some(("read", seq)),
             _ => None,
@@ -1126,7 +1120,7 @@ fn confirm_documents(
 fn browser_new_document_notes_follow_language_without_rewriting_received_history() {
     for (language, created, imported, untitled, page_label, restore_note) in [
         (
-            roda_i18n::Lang::En,
+            localization::Lang::En,
             "Created",
             "Imported",
             "Untitled",
@@ -1134,7 +1128,7 @@ fn browser_new_document_notes_follow_language_without_rewriting_received_history
             "Restored v1",
         ),
         (
-            roda_i18n::Lang::Pt,
+            localization::Lang::Pt,
             "Criado",
             "Importado",
             "Sem título",
@@ -1142,7 +1136,7 @@ fn browser_new_document_notes_follow_language_without_rewriting_received_history
             "Restaurou a v1",
         ),
     ] {
-        let _language = roda_i18n::enter(language);
+        let _language = localization::enter(language);
         let (mut client, author, mut log) = document_fixture();
         let made = doc(
             &mut client,
@@ -1168,8 +1162,8 @@ fn browser_new_document_notes_follow_language_without_rewriting_received_history
             &author,
             EventBody::ItemCreated {
                 item: "it_literal_history".into(),
-                kind: roda_types::ItemKind::Note,
-                content: roda_types::ItemContent::Text {
+                kind: types::ItemKind::Note,
+                content: types::ItemContent::Text {
                     text: "Texto original em português".into(),
                 },
                 origin: "Criado no iOS — manter literal".into(),
@@ -1182,7 +1176,7 @@ fn browser_new_document_notes_follow_language_without_rewriting_received_history
             &author,
             EventBody::ItemVersioned {
                 item: "it_literal_history".into(),
-                content: roda_types::ItemContent::Text {
+                content: types::ItemContent::Text {
                     text: "Outra versão em português".into(),
                 },
                 note: "Editou no iOS — manter literal".into(),
@@ -1270,8 +1264,8 @@ fn browser_pages_share_native_codec_persist_drafts_and_replay_receipts() {
 fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_new_change() {
     use base64::Engine as _;
     let (mut client, author, mut log) = document_fixture();
-    let page = roda_docs::Page::from_markdown("# Original\n\nTexto antigo\n").unwrap();
-    let content = roda_types::PageContent {
+    let page = ::documents::Page::from_markdown("# Original\n\nTexto antigo\n").unwrap();
+    let content = types::PageContent {
         title: "Original".into(),
         path: String::new(),
         loro: base64::engine::general_purpose::STANDARD.encode(page.snapshot()),
@@ -1283,8 +1277,8 @@ fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_new_change()
         &author,
         EventBody::ItemCreated {
             item: "it_merge".into(),
-            kind: roda_types::ItemKind::Page,
-            content: roda_types::ItemContent::Page(content),
+            kind: types::ItemKind::Page,
+            content: types::ItemContent::Page(content),
             origin: "Criado no nativo".into(),
         },
         10,
@@ -1305,9 +1299,9 @@ fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_new_change()
     order.push("remote-block".into());
     page.apply(
         &order,
-        &[roda_docs::BlockEdit {
+        &[::documents::BlockEdit {
             id: "remote-block".into(),
-            kind: roda_docs::Kind::Paragraph,
+            kind: ::documents::Kind::Paragraph,
             text: "Mudança remota".into(),
             spans: vec![],
         }],
@@ -1318,7 +1312,7 @@ fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_new_change()
         &author,
         EventBody::ItemVersioned {
             item: "it_merge".into(),
-            content: roda_types::ItemContent::Page(roda_types::PageContent {
+            content: types::ItemContent::Page(types::PageContent {
                 title: "Original".into(),
                 path: String::new(),
                 loro: base64::engine::general_purpose::STANDARD.encode(page.updates_since(&before)),
@@ -1403,9 +1397,9 @@ fn browser_large_page_upload_barrier_survives_reload_and_missing_download_waits(
         .values()
         .find_map(|p| p.inner.clone().or_else(|| p.envelope().ok()?.plain_event()))
         .unwrap();
-    let roda_types::EventBody::ItemCreated {
+    let types::EventBody::ItemCreated {
         item,
-        content: roda_types::ItemContent::Page(content),
+        content: types::ItemContent::Page(content),
         ..
     } = queued.body
     else {
@@ -1414,7 +1408,7 @@ fn browser_large_page_upload_barrier_survives_reload_and_missing_download_waits(
     let reference = content.blob.unwrap();
     let sealed = reopened.local_chunk(&reference.blob);
     let bytes = crate::media::open_chunk(&reference, &sealed).unwrap();
-    let page = roda_docs::Page::new();
+    let page = ::documents::Page::new();
     page.import(&bytes).unwrap();
     assert!(page.to_markdown().contains("Parágrafo 7999"));
     reopened.synced = true;
@@ -1428,8 +1422,8 @@ fn browser_large_page_upload_barrier_survives_reload_and_missing_download_waits(
         &author,
         EventBody::ItemCreated {
             item: item.clone(),
-            kind: roda_types::ItemKind::Page,
-            content: roda_types::ItemContent::Page(roda_types::PageContent {
+            kind: types::ItemKind::Page,
+            content: types::ItemContent::Page(types::PageContent {
                 title: "Grande".into(),
                 path: "large.md".into(),
                 loro: String::new(),
@@ -1477,13 +1471,13 @@ fn browser_large_page_upload_barrier_survives_reload_and_missing_download_waits(
 #[test]
 fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_undo() {
     let (mut client, author, mut log) = document_fixture();
-    let plan = roda_types::PlanDoc {
+    let plan = types::PlanDoc {
         title: "Plano exato".into(),
         summary: "Centavos sem float".into(),
         budget_cents: Some(i64::MAX),
-        sections: vec![roda_types::PlanSection {
+        sections: vec![types::PlanSection {
             title: "Custos".into(),
-            lines: vec![roda_types::PlanLine {
+            lines: vec![types::PlanLine {
                 id: "ln_exact".into(),
                 text: "Custo grande".into(),
                 cost_cents: 9_007_199_254_740_993,
@@ -1496,8 +1490,8 @@ fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_undo() {
         &author,
         EventBody::ItemCreated {
             item: "it_plan".into(),
-            kind: roda_types::ItemKind::Plan,
-            content: roda_types::ItemContent::Plan(plan),
+            kind: types::ItemKind::Plan,
+            content: types::ItemContent::Plan(plan),
             origin: "Criado no nativo".into(),
         },
         10,
@@ -1592,21 +1586,21 @@ fn browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmations() {
     assert_eq!(released.result["item"]["version"], 3);
     let resource = client
         .app_request(
-            &serde_json::json!({"op":"app_resource","uri":"ui://roda/pet"}).to_string(),
+            &serde_json::json!({"op":"app_resource","uri":"ui://builtin/pet"}).to_string(),
             16,
             "pt-BR",
         )
         .unwrap();
     assert_eq!(
         resource.result["text"],
-        roda_apps::spec("pet").unwrap().html.unwrap()
+        miniapps::spec("pet").unwrap().html.unwrap()
     );
     let specs = client
         .app_request(r#"{"op":"app_specs"}"#, 17, "pt-BR")
         .unwrap();
     assert_eq!(
         specs.result.as_array().unwrap().len(),
-        roda_apps::specs().len()
+        miniapps::specs().len()
     );
 }
 
@@ -1648,7 +1642,7 @@ fn browser_file_cards_keep_the_native_message_identity_for_deletion_and_replies(
     confirm_documents(&mut client, &mut log, update, 11);
     let posted = client.conversations()[0].messages[0].entry.clone().unwrap();
     let deleted = client
-        .queue_annotation(log.space(), &posted, roda_types::Annotation::Delete, 12)
+        .queue_annotation(log.space(), &posted, types::Annotation::Delete, 12)
         .unwrap();
     confirm_documents(&mut client, &mut log, deleted, 13);
     let after = client.conversations();
@@ -1662,7 +1656,7 @@ fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven_agent_owne
     let person = NativeSigner::from_secret(&[81; 32]);
     let mut record = Identity {
         id: person.id(),
-        kind: roda_types::IdentityKind::Person,
+        kind: types::IdentityKind::Person,
         name: "Directory must not reveal this".into(),
         handle: "person".into(),
         tint_hex: "#123456".into(),
@@ -1678,7 +1672,7 @@ fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven_agent_owne
     assert_eq!(cached.result[0]["bio"], "");
     let agent = NativeSigner::from_secret(&[82; 32]);
     record.id = agent.id();
-    record.kind = roda_types::IdentityKind::Agent;
+    record.kind = types::IdentityKind::Agent;
     record.name = "Verified agent".into();
     record.owner = Some(owner.identity.clone());
     // Public ownership metadata without the certified device proof has no authority.
@@ -1687,7 +1681,7 @@ fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven_agent_owne
         .unwrap();
     assert!(!client.saved.profiles.contains_key(&agent.id()));
     record.owner_proof = Some(Box::new(
-        roda_log::agent_owner::authorize(&owner, &agent.id()).unwrap(),
+        event_log::agent_owner::authorize(&owner, &agent.id()).unwrap(),
     ));
     client
         .directory_profiles(&serde_json::to_string(&vec![record.clone()]).unwrap())
@@ -1702,7 +1696,7 @@ fn browser_directory_never_trusts_person_fields_or_reassigns_a_proven_agent_owne
     );
     record.owner = Some(other.identity.clone());
     record.owner_proof = Some(Box::new(
-        roda_log::agent_owner::authorize(&other, &agent.id()).unwrap(),
+        event_log::agent_owner::authorize(&other, &agent.id()).unwrap(),
     ));
     client
         .directory_profiles(&serde_json::to_string(&vec![record]).unwrap())
@@ -1720,14 +1714,14 @@ fn browser_typing_is_connection_local_and_requires_a_current_writing_member() {
     assert!(matches!(
         ClientFrame::decode(&client.typing_frame(log.space(), true).unwrap()).unwrap(),
         ClientFrame::Ephemeral {
-            kind: roda_proto::EphemeralKind::Typing,
+            kind: protocol::EphemeralKind::Typing,
             ..
         }
     ));
     assert!(matches!(
         ClientFrame::decode(&client.typing_frame(log.space(), false).unwrap()).unwrap(),
         ClientFrame::Ephemeral {
-            kind: roda_proto::EphemeralKind::StoppedTyping,
+            kind: protocol::EphemeralKind::StoppedTyping,
             ..
         }
     ));
@@ -1925,7 +1919,7 @@ fn received_app_owned_documents_keep_manifest_history_without_becoming_file_card
         None,
     )
     .unwrap();
-    let document = roda_types::AppDoc {
+    let document = types::AppDoc {
         app: "excalidraw".into(),
         resource_uri: "ui://zoen/excalidraw.html".into(),
         title: "Drawing".into(),
@@ -1937,8 +1931,8 @@ fn received_app_owned_documents_keep_manifest_history_without_becoming_file_card
         &author,
         EventBody::ItemCreated {
             item: "it_drawing".into(),
-            kind: roda_types::ItemKind::App,
-            content: roda_types::ItemContent::App(document),
+            kind: types::ItemKind::App,
+            content: types::ItemContent::App(document),
             origin: "Created".into(),
         },
         10,

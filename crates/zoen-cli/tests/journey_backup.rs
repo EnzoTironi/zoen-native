@@ -8,7 +8,7 @@
 mod backup_store;
 mod common;
 use common::*;
-use roda_types::EventBody;
+use types::EventBody;
 
 const VAULT_KEY: &str = "5ec0e7d5ec0e7d5ec0e7d5ec0e7d5ec0e7d5ec0e7d5ec0e7d5ec0e7d5ec0e7d0";
 const PASSWORD: &str = "trilha no sábado 42";
@@ -48,14 +48,14 @@ fn contains(hay: &[u8], needle: &str) -> bool {
     hay.windows(needle.len()).any(|w| w == needle.as_bytes())
 }
 
-fn device_key(w: &World, who: &str) -> roda_log::Signer {
+fn device_key(w: &World, who: &str) -> event_log::Signer {
     let bytes = std::fs::read(w.dir.join(who).join("vault/zoen.device.v1")).unwrap();
-    roda_log::Signer::from_secret(&bytes.try_into().unwrap())
+    event_log::Signer::from_secret(&bytes.try_into().unwrap())
 }
 
 fn signed_backup_request(
     w: &World,
-    key: &roda_log::Signer,
+    key: &event_log::Signer,
     identity: &str,
     method: &str,
     op: &str,
@@ -65,7 +65,7 @@ fn signed_backup_request(
     use sha2::{Digest, Sha256};
     let ts = now_ms();
     let relay = format!("127.0.0.1:{}", w.port);
-    let sig = key.sign(&roda_proto::backup_message(
+    let sig = key.sign(&protocol::backup_message(
         w.relay_name(),
         identity,
         op,
@@ -108,7 +108,7 @@ async fn backup_http(w: &World, request: &[u8]) -> (u16, Vec<u8>) {
 
 async fn signed_backup_write(
     w: &World,
-    key: &roda_log::Signer,
+    key: &event_log::Signer,
     identity: &str,
     method: &str,
     op: &str,
@@ -130,7 +130,7 @@ async fn restore_post(w: &World, path: &str, body: serde_json::Value) -> (u16, V
 
 #[tokio::test]
 async fn restore_enrollment_requires_current_recovery_authority_and_never_revives_revoked_keys() {
-    use roda_log::{Author, Signer};
+    use event_log::{Author, Signer};
     use sha2::Sha256;
 
     let w = world("backup_enrollment").await;
@@ -154,7 +154,7 @@ async fn restore_enrollment_requires_current_recovery_authority_and_never_revive
     let request = serde_json::json!({
         "handle": "ana", "auth_key": auth, "generation": generation,
         "device": device.key.id(), "cert": cert,
-        "sig": device.key.sign(&roda_proto::backup_enroll_message(
+        "sig": device.key.sign(&protocol::backup_enroll_message(
             &root.id(), &device.key.id(), cert, &generation,
         )),
     });
@@ -178,7 +178,7 @@ async fn restore_enrollment_requires_current_recovery_authority_and_never_revive
     wrong_certificate["cert"] = invalid_cert.clone().into();
     wrong_certificate["sig"] = device
         .key
-        .sign(&roda_proto::backup_enroll_message(
+        .sign(&protocol::backup_enroll_message(
             &root.id(),
             &device.key.id(),
             &invalid_cert,
@@ -219,7 +219,7 @@ async fn restore_enrollment_requires_current_recovery_authority_and_never_revive
     let stale = serde_json::json!({
         "handle": "ana", "auth_key": auth, "generation": generation,
         "device": next.key.id(), "cert": cert,
-        "sig": next.key.sign(&roda_proto::backup_enroll_message(
+        "sig": next.key.sign(&protocol::backup_enroll_message(
             &root.id(), &next.key.id(), cert, &generation,
         )),
     });
@@ -288,7 +288,7 @@ async fn replayed_uploads_use_distinct_objects_and_survive_delayed_cleanup() {
     let original_key = w.scalar("SELECT blob_key FROM backup_vaults").await;
     let sealed = std::fs::read(w.dir.join("blobs").join(original_key)).unwrap();
     let body = [
-        roda_proto::BACKUP_UPLOAD_MAGIC.as_slice(),
+        protocol::BACKUP_UPLOAD_MAGIC.as_slice(),
         hex::decode(&generation).unwrap().as_slice(),
         sealed.as_slice(),
     ]
@@ -559,7 +559,7 @@ async fn password_backups_require_explicit_dev_opt_in_and_preserve_existing_data
             "blob",
             "/v1/backup/blob",
             [
-                roda_proto::BACKUP_UPLOAD_MAGIC.as_slice(),
+                protocol::BACKUP_UPLOAD_MAGIC.as_slice(),
                 hex::decode(&generation).unwrap().as_slice(),
                 sealed.as_slice(),
             ]
@@ -701,7 +701,7 @@ async fn stalled_backup_storage_is_bounded_and_does_not_block_unlink() {
     let sha = w.scalar("SELECT blob_sha FROM backup_vaults").await;
     let original = store.bytes(&original_key);
     let body = [
-        roda_proto::BACKUP_UPLOAD_MAGIC.as_slice(),
+        protocol::BACKUP_UPLOAD_MAGIC.as_slice(),
         hex::decode(&generation).unwrap().as_slice(),
         original.as_slice(),
     ]

@@ -1,6 +1,6 @@
 use super::*;
-use roda_proto::provider_auth::{ProviderBindRequest, ProviderBindResponse};
-use roda_relay_admission::auth::enrollment::{Proof, ProofUse};
+use protocol::provider_auth::{ProviderBindRequest, ProviderBindResponse};
+use relay_admission::auth::enrollment::{Proof, ProofUse};
 use sqlx::{PgPool, Row};
 
 #[cfg(test)]
@@ -168,10 +168,10 @@ pub(super) async fn bind(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use roda_log::Signer;
-    use roda_proto::provider_auth::provider_bind_message;
-    use roda_types::{Identity, IdentityKind};
+    use event_log::Signer;
+    use protocol::provider_auth::provider_bind_message;
     use sqlx::{postgres::PgPoolOptions, Connection, PgConnection};
+    use types::{Identity, IdentityKind};
 
     fn request(seed: u8, proof: &str, handle: &str) -> ProviderBindRequest {
         request_with_device(seed, seed + 1, proof, handle)
@@ -195,7 +195,7 @@ mod tests {
             bio: String::new(),
             owner_proof: None,
         };
-        let certificate = identity.sign(&roda_log::device_cert_message(&device.id()));
+        let certificate = identity.sign(&event_log::device_cert_message(&device.id()));
         let signature = device
             .sign(&provider_bind_message(proof, &profile, &device.id(), &certificate).unwrap());
         ProviderBindRequest {

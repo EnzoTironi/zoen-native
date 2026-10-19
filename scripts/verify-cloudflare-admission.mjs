@@ -13,8 +13,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runnerPath = fileURLToPath(import.meta.url);
 const sourceScope = [
-  "Cargo.toml", "Cargo.lock", "crates/roda-relay-admission", "crates/roda-log",
-  "crates/roda-proto", "crates/roda-mls", "crates/roda-types", "crates/zoen-relay",
+  "Cargo.toml", "Cargo.lock", "crates/relay-admission", "crates/event-log",
+  "crates/protocol", "crates/mls", "crates/types", "crates/zoen-relay",
   "scripts/verify-cloudflare-admission.mjs",
 ];
 let requestedOutput;
@@ -157,18 +157,18 @@ export default {
 try {
   if (!skipBuild) {
     const generated = await run("cargo", [
-      "run", "--quiet", "--locked", "-p", "roda-relay-admission", "--example", "portable-fixture",
+      "run", "--quiet", "--locked", "-p", "relay-admission", "--example", "portable-fixture",
     ], true);
     JSON.parse(generated);
     await writeFile(fixturesPath, generated);
     await run("cargo", [
-      "build", "--locked", "--release", "-p", "roda-relay-admission", "--target", "wasm32-unknown-unknown",
+      "build", "--locked", "--release", "-p", "relay-admission", "--target", "wasm32-unknown-unknown",
     ], false, await wasmEnvironment());
     const target = process.env.CARGO_TARGET_DIR
       ? resolve(root, process.env.CARGO_TARGET_DIR)
       : join(root, "target");
     await run("wasm-bindgen", [
-      join(target, "wasm32-unknown-unknown/release/roda_relay_admission.wasm"),
+      join(target, "wasm32-unknown-unknown/release/relay_admission.wasm"),
       "--target", "web", "--out-name", "admission", "--out-dir", wasmDirectory,
     ]);
   }

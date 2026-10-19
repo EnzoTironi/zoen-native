@@ -2,6 +2,6 @@
 
 export type InviteDto = { code: string, 
 /**
- * Space: `zoen://join/CODE`. Agent: `https://tryzoen.com/a/CODE`.
+ * Canonical public link from `protocol::links`, shared by every platform.
  */
 link: string, expires_at_ms: string, };

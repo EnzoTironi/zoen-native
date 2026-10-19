@@ -5,8 +5,8 @@ mod storage;
 #[cfg(test)]
 pub(crate) mod testing;
 
+use client_core::runtime_core::{PreparedReply, ReplyReceipt};
 use foundationdb::Transaction;
-use roda_ffi::runtime_core::{PreparedReply, ReplyReceipt};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use zoen_models::OutputBlock;
 
@@ -22,7 +22,7 @@ pub(crate) struct FreshOutputNamespace {
     deployment: String,
     source: String,
     #[cfg(test)]
-    observed: std::sync::Mutex<std::collections::BTreeMap<String, roda_proto::Envelope>>,
+    observed: std::sync::Mutex<std::collections::BTreeMap<String, protocol::Envelope>>,
     #[cfg(test)]
     output_expiry_remaining: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }

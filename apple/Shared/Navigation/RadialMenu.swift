@@ -397,17 +397,17 @@ struct FanMenu: View {
     }
 
     /// Screenshot/recording hooks (the simulator can't inject touches):
-    /// `-RodaRadialHover <id>` opens with that item highlighted; `-RodaRadialDemo YES` plays
+    /// `-RadialHover <id>` opens with that item highlighted; `-RadialDemo YES` plays
     /// open → drag across the items → cancel → open → drag to Files → release.
     private func runDemoIfAsked() async {
         let d = UserDefaults.standard
-        if let id = d.string(forKey: "RodaRadialHover") {
+        if let id = d.string(forKey: "RadialHover") {
             try? await Task.sleep(for: .seconds(1.0))
             setOpen(true)
             try? await Task.sleep(for: .seconds(0.5))
             hover(id)
         }
-        guard d.bool(forKey: "RodaRadialDemo") else { return }
+        guard d.bool(forKey: "RadialDemo") else { return }
         func wait(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }
         await wait(1.6)
         touching = true; setOpen(true); await wait(0.15); touching = false

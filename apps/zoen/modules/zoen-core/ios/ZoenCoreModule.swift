@@ -101,7 +101,7 @@ public class ZoenCoreModule: Module {
 }
 
 private actor ZoenSession {
-  private var core: RodaEngine?
+  private var core: Client?
   private var mode = "account"
   private var sessionLocale = "en"
   private let vault = ZoenVault()
@@ -136,7 +136,7 @@ private actor ZoenSession {
     let device: String
   }
   private struct PreviewBinding: Sendable {
-    let engine: RodaEngine
+    let engine: Client
     let generation: UInt64
     let mode: String
     let scope: FileScope?
@@ -148,7 +148,7 @@ private actor ZoenSession {
     let mime: String
   }
 
-  private func fileScope(spaceId: String, engine: RodaEngine) throws -> FileScope {
+  private func fileScope(spaceId: String, engine: Client) throws -> FileScope {
     guard !erasing, self.core === engine else { throw SessionError.closed }
     let space = try engine.space(spaceId: spaceId)
     guard let member = space.members.first(where: { $0.isMe }) else { throw SessionError.closed }
@@ -167,7 +167,7 @@ private actor ZoenSession {
     return current == expected
   }
 
-  private func assistantMember(_ spaceId: String, core engine: RodaEngine) throws -> (String, String) {
+  private func assistantMember(_ spaceId: String, core engine: Client) throws -> (String, String) {
     guard !erasing, !closing, self.core === engine, spaceId.utf8.count <= 256 else { throw ZoenAssistantFailure.closed }
     let space = try engine.space(spaceId: spaceId)
     guard let member = space.members.first(where: { $0.isMe }) else { throw ZoenAssistantFailure.closed }
@@ -179,7 +179,7 @@ private actor ZoenSession {
     return (member.id, "demo")
   }
 
-  private func assistantIsCurrent(_ lease: ZoenAssistantLease, core engine: RodaEngine) -> Bool {
+  private func assistantIsCurrent(_ lease: ZoenAssistantLease, core engine: Client) -> Bool {
     guard generation == lease.generation, mode == lease.mode,
           let member = try? assistantMember(lease.spaceId, core: engine) else { return false }
     return member.0 == lease.identity && member.1 == lease.device
@@ -273,15 +273,14 @@ private actor ZoenSession {
     try await close(cancelOpening: false)
     guard openingAttempt == attempt, !erasing else { throw SessionError.closed }
     let openingGeneration = generation
-    // The shared app keeps the engine's existing primary store, rather than creating
-    // a second account database beside the same Keychain identity.
-    let root = URL.applicationSupportDirectory.appending(path: mode == "account" ? "Roda" : "Zoen/demo", directoryHint: .isDirectory)
+    let root = mode == "account" ? ZoenDeviceErasure.accountRoot
+      : URL.applicationSupportDirectory.appending(path: "demo", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     var excluded = URLResourceValues()
     excluded.isExcludedFromBackup = true
     var directory = root
     try directory.setResourceValues(excluded)
-    let engine = try RodaEngine.open(path: root.appending(path: mode == "account" ? "roda.sqlite" : "zoen.sqlite").path, locale: sessionLocale)
+    let engine = try Client.open(path: root.appending(path: "client.sqlite").path, locale: sessionLocale)
     let bridge = ZoenListener(changed) { [weak self] in
       Task { await self?.resumePendingHistory() }
     }
@@ -340,7 +339,7 @@ private actor ZoenSession {
     return try await core.clientRequest(request: #"{"op":"snapshot"}"#)
   }
 
-  private func mediaDraftCore(_ scope: ZoenMediaDraftBridge.Scope) throws -> RodaEngine {
+  private func mediaDraftCore(_ scope: ZoenMediaDraftBridge.Scope) throws -> Client {
     guard !erasing, !closing, mode == "account", let core else { throw SessionError.closed }
     let owner = try fileScope(spaceId: scope.spaceId, engine: core)
     guard owner.identity == scope.expectedIdentityId, owner.device == scope.expectedDeviceId else { throw SessionError.closed }
@@ -758,7 +757,7 @@ private actor ZoenSession {
     }
   }
 
-  private func resumeInitialHistory(engine: RodaEngine, expectedGeneration: UInt64, progress: ZoenHistoryListener) async {
+  private func resumeInitialHistory(engine: Client, expectedGeneration: UInt64, progress: ZoenHistoryListener) async {
     defer {
       if generation == expectedGeneration, core === engine {
         historyTask = nil
@@ -813,7 +812,7 @@ private actor ZoenSession {
     guard mode == "account" else { throw ZoenDeviceErasure.Failure.changed }
     let pending = try erasure.pending()
     if core == nil, pending != expected, completedErasure != expected { throw ZoenDeviceErasure.Failure.changed }
-    let engine = try core ?? RodaEngine.open(path: ZoenDeviceErasure.accountRoot.appending(path: "roda.sqlite").path, locale: sessionLocale)
+    let engine = try core ?? Client.open(path: ZoenDeviceErasure.accountRoot.appending(path: "client.sqlite").path, locale: sessionLocale)
     if let account = engine.account() {
       guard account.identityId == expected.identityId, account.deviceId == expected.deviceId else { throw ZoenDeviceErasure.Failure.changed }
     } else {
@@ -1054,7 +1053,7 @@ private enum ZoenAssistantModel {
     """
   }
 
-  static func context(core: RodaEngine, spaceId: String) throws -> (value: [String: Any], messages: Int) {
+  static func context(core: Client, spaceId: String) throws -> (value: [String: Any], messages: Int) {
     let space = try core.space(spaceId: spaceId)
     let entries = try core.timeline(spaceId: spaceId)
     var messages: [[String: String]] = []

@@ -62,7 +62,7 @@ relays. An authored runner or passing unit tests alone do not establish acceptan
 
 Adapter `10329c8c` supports drawing read/save/copy and installation through the
 existing encrypted snapshot/upload pipeline. Scene validation is shared with the
-native client in `roda-apps::excalidraw` (`ac7f6cb7`). The shared library's 17 tests,
+native client in `miniapps::excalidraw` (`ac7f6cb7`). The shared library's 17 tests,
 16 existing native document regressions, 65 Web core tests including eight drawing
 regressions, and strict all-target Clippy passed. Tests cover immutable retries,
 stale writes, upload barriers, unchanged saves, copied ownership and denied current

@@ -34,7 +34,7 @@ revocation fences. The projection must encode the resulting membership/MLS facts
 it is not a client-controlled event or a substitute for those checks. No public
 request can call `appendAdmitted` directly.
 
-The next adapter must reuse `log/admission.rs`, `roda-log` and `roda-proto` in Rust
+The next adapter must reuse `log/admission.rs`, `event-log` and `protocol` in Rust
 compiled for Workers/WASM. It must compare the exact observed head when committing
 its effects, derive duplicate delivery audiences from the current projection, and
 preserve directory/device revocation fences before enabling public traffic. The

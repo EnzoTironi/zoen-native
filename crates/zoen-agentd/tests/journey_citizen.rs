@@ -5,12 +5,12 @@
 //! no booking code). The bot exists only once the owner's own device approves it. Only
 //! the owner's requests count, and anything the gate wants decided goes to the owner.
 
-use roda_gate::{Clef, ClefModel, Gate, HttpTransport};
-use roda_log::{Author, Signer};
-use roda_types::{Identity, IdentityKind};
+use event_log::{Author, Signer};
+use gate::{Clef, ClefModel, Gate, HttpTransport};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use types::{Identity, IdentityKind};
 use zoen_agentd::citizen::testing::scripted::ScriptedBrain;
 use zoen_agentd::{
     approve_agent, claim_citizen, creator_definition, AgentKind, Avatar, Definition, Host,
