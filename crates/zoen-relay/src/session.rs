@@ -17,10 +17,9 @@ use std::{
 
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
-use roda_log::{device_cert_message, verify_sig};
 use roda_proto::{
-    auth_message, negotiate, normalize_handle, AgentRequest, ClientFrame, ErrorCode, Op, Reply,
-    ServerFrame, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+    negotiate, AgentRequest, ClientFrame, ErrorCode, Op, Reply, ServerFrame, MIN_PROTOCOL_VERSION,
+    PROTOCOL_VERSION,
 };
 use roda_types::{EventBody, IdentityKind};
 use tokio::sync::{mpsc, Notify};
@@ -358,7 +357,7 @@ async fn handshake(
         )
         .await;
     }
-    if !verify_sig(&identity, &device_cert_message(&device), &cert) {
+    if !roda_relay_admission::directory::certificate_valid(&identity, &device, &cert) {
         return refuse(
             "bad_certificate",
             ServerFrame::error(ErrorCode::Unauthorized, "device certificate invalid"),
@@ -409,7 +408,7 @@ async fn handshake(
         )
         .await;
     };
-    if !verify_sig(&device, &auth_message(&n, &st.relay_name), &sig) {
+    if !roda_relay_admission::directory::auth_valid(&device, &n, &st.relay_name, &sig) {
         return refuse(
             "bad_signature",
             ServerFrame::error(ErrorCode::Unauthorized, "login signature invalid"),
@@ -914,30 +913,10 @@ impl Session {
     ) -> Result<Reply, String> {
         let pool = &self.st.pool;
         match op {
-            Op::Register { mut profile } => {
-                if profile.id != self.identity {
-                    return Err("profile is for another identity".into());
-                }
-                let handle = normalize_handle(&profile.handle).ok_or(
-                    "handle must be 3–24 letters, digits, '.' or '_', starting with a letter",
-                )?;
-                profile.handle = handle.clone();
-                match profile.kind {
-                    IdentityKind::Person => {
-                        profile.name.clear();
-                        profile.bio.clear();
-                    }
-                    IdentityKind::Agent => {
-                        profile.name = profile.name.trim().chars().take(64).collect();
-                        profile.bio = profile.bio.chars().take(280).collect();
-                        if profile.name.is_empty() {
-                            return Err("name is required".into());
-                        }
-                        if profile.owner.is_none() {
-                            return Err("an agent needs an owner".into());
-                        }
-                    }
-                }
+            Op::Register { profile } => {
+                let profile =
+                    roda_relay_admission::directory::prepare_profile(profile, &self.identity)?;
+                let handle = profile.handle.clone();
                 if !registered {
                     self.st
                         .limits

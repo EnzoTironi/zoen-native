@@ -29,9 +29,12 @@ pub async fn authorize_device(
     .await?;
     // A pending link polls as its own key until it opens its identity box. Enrollment
     // can assign that key to the account before this provisional fetch completes.
-    let provisional = !require_device
-        && enrolled.is_none_or(|(_, revoked)| !revoked)
-        && (enrolled.is_none() || identity == device);
+    let provisional = roda_relay_admission::directory::provisional_allowed(
+        enrolled,
+        identity,
+        device,
+        require_device,
+    );
     let unregistered = if provisional {
         !sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM identities WHERE id = $1)")
             .bind(identity)
@@ -40,7 +43,7 @@ pub async fn authorize_device(
     } else {
         false
     };
-    if enrolled == Some((true, false)) || unregistered {
+    if roda_relay_admission::directory::request_authorized(enrolled, unregistered) {
         Ok(Some(tx))
     } else {
         tx.rollback().await?;
@@ -124,10 +127,7 @@ pub async fn enroll_device(
     device: &str,
     cert: &str,
 ) -> Result<(), EnrollmentError> {
-    if device.len() != 64
-        || !device.bytes().all(|b| b.is_ascii_hexdigit())
-        || !roda_log::verify_sig(identity, &roda_log::device_cert_message(device), cert)
-    {
+    if !roda_relay_admission::directory::enrollment_certificate_valid(identity, device, cert) {
         return Err(EnrollmentError::InvalidCertificate);
     }
     let changed = sqlx::query(

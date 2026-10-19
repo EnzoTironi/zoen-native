@@ -11,7 +11,10 @@
     "build:closed": "node ../../../scripts/build-cloudflare-closed.mjs",
     "test:closed": "node --test tests/closed-state.test.mjs",
     "verify:closed": "node ../../../scripts/verify-cloudflare-closed.mjs",
-    "deploy:closed": "wrangler deploy --config wrangler.closed.jsonc"
+    "deploy:closed": "wrangler deploy --config wrangler.closed.jsonc",
+    "test:directory": "node --test tests/directory-state.test.mjs",
+    "verify:directory": "node ../../../scripts/verify-cloudflare-directory.mjs",
+    "deploy:directory": "wrangler deploy --config wrangler.directory.jsonc"
   },
   "devDependencies": {
     "miniflare": "5.20261012.1-beta"
