@@ -171,30 +171,36 @@ configuration text. Artifact/hosting checks do not establish encrypted messaging
 ## Public hosting and remaining scope
 
 On 19 October 2026, production frontend deployment
-`30341e79-f049-4c4c-88b9-bb5fb4942fbf` at
+`4546641a-e125-48a7-a2ba-6be2b99939af` at
+[app.tryzoen.com](https://app.tryzoen.com) and
 [zoen-web.agenttironi.workers.dev](https://zoen-web.agenttironi.workers.dev)
-passed all ten public HTTP paths and exact signing-worker integrity. This fresh
-production build includes the decorative accessibility and localized connection
+passed all ten public HTTP paths and exact signing-worker integrity on each origin.
+This fresh production build includes the decorative accessibility and localized connection
 failure corrections. Receipt:
-`/private/tmp/zoen-cloudflare-web-v96/live-hosting-03.json`. Its worker integrity is
+`/private/tmp/zoen-app-domain-v96/live-hosting.json`. Its worker integrity is
 `sha384-5lhNMH1yUGXCJcds6hQwwqxce9rFjyYH5ABCkzRUpP70btnwC/2vOLvpz4P6rhtw`;
 this is distinct from the CI build's bytes. Neither 19-step journey ran against
-the public preview.
+the public domain. The exact fail-closed `app.tryzoen.com/*` route uses the two
+existing DNS records with Proxied enabled; their contents and Auto TTL were retained.
+`no-transform` prevents the zone's analytics injection from modifying the served
+HTML. Both public origins and the real local Pages/Workers checks verify that
+policy and exact body bytes.
 
-A separate empty-profile browser observation belongs to the preceding deployment
-`bd443adb-9461-452d-9c30-9a4f4005c23a`. It rendered Portuguese onboarding, observed
-root `crossOriginIsolated: true` and `/sign-in: false`, and recorded no unhandled
-page errors. Both provider controls were unavailable; Google challenge preparation
-showed handled `Failed to fetch` against the unavailable production relay. No
-provider or device-link action was taken. Receipt and screenshot:
-`/private/tmp/zoen-web-v96/public-preview/{acceptance.json,onboarding.png}`.
-This does not establish WASM initialization, authentication or public encrypted
-sync, nor a rendered check of the newer friendly error message.
+An empty-profile Chrome `155.0.8059.85` on the current canonical domain rendered
+Portuguese onboarding, the localized connection error and popup-safe sign-in,
+with no unhandled page errors or injected analytics script. Both providers remain
+unavailable against the dead relay. No provider/device-link action was taken.
+Receipt and screenshot: `/private/tmp/zoen-app-domain-v96/guest-boot.json` and
+`canonical-onboarding.png`. This is guest rendering evidence, without WASM
+initialization, authentication or encrypted-sync acceptance. The preceding
+workers.dev guest observation retains its separate attribution in
+`/private/tmp/zoen-web-v96/public-preview/acceptance.json`.
 
 See the [Cloudflare deployment guide](../../infra/cloudflare/README.md) for
-production reproduction and the outstanding domain/relay boundary. Shared Rust
-admission extraction is being validated; it is not an accepted or deployed relay
-adapter. No DNS/provider-origin change or R2 activation is implied.
+production reproduction and the outstanding relay boundary. The
+[shared Rust admission foundation](../../infra/cloudflare/admission.md) passed
+native/Node/workerd checks; a complete relay adapter remains unfinished.
+Provider origins and R2 activation are unchanged.
 
 Additional manual baseline checks confirmed quoted replies, thread replies and
 scoped search against the canonical peer. Warm offline queuing was bounded:

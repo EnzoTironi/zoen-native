@@ -636,18 +636,45 @@
     },
     "publicWebHostingV96": {
       "status": "PASS_HTTP_HOSTING_AND_WORKER_INTEGRITY_ONLY",
-      "url": "https://zoen-web.agenttironi.workers.dev",
-      "version": "30341e79-f049-4c4c-88b9-bb5fb4942fbf",
+      "url": "https://app.tryzoen.com",
+      "version": "4546641a-e125-48a7-a2ba-6be2b99939af",
       "date": "2026-10-19",
       "hostingPathsPassed": 10,
       "exactSigningWorkerIntegrity": "PASS",
-      "build": "Fresh production configuration; separate from loopback QA; includes final decorative accessibility and localized auth connection failure corrections.",
+      "build": "Fresh production configuration including final accessibility/auth corrections and no-transform policy; separate from loopback QA.",
       "documentation": "infra/cloudflare/README.md",
-      "limits": "Local encrypted journeys were not run against this preview. Production relay is unavailable; public encrypted sync and provider OAuth remain unaccepted. No custom-domain or provider-origin change.",
-      "receipt": "/private/tmp/zoen-cloudflare-web-v96/live-hosting-03.json",
+      "limits": "Encrypted journeys were not run against the public domain. Production relay remains unavailable; public encrypted sync and provider OAuth unaccepted. Provider origins, separateOAuthWorker and otherhostnames unchanged.",
+      "receipt": "/private/tmp/zoen-app-domain-v96/live-hosting.json",
       "priorGuestBoot": {
         "receipt": "/private/tmp/zoen-web-v96/public-preview/acceptance.json",
         "scope": "Guest onboarding boot on prior deployment02, crossOriginIsolated=true, no JavaScript page errors. Provider challenge calls failed against unavailable configured relay; no provider login, WASM initialization or encrypted-sync acceptance."
+      },
+      "previewUrl": "https://zoen-web.agenttironi.workers.dev",
+      "origins": ["https://app.tryzoen.com", "https://zoen-web.agenttironi.workers.dev"],
+      "hostingPathsPassedEach": 10,
+      "exactSpaBytesAndNoTransform": "PASS",
+      "domainRoute": {
+        "pattern": "app.tryzoen.com/*",
+        "worker": "zoen-web",
+        "failOpen": false,
+        "recordChanges": "Only original app A/AAAA toggled toProxied; contents/AutoTTL unchanged; no deletion",
+        "receipt": "/private/tmp/zoen-app-domain-v96/migration-proxy-acceptance.json"
+      },
+      "currentGuestBoot": {
+        "receipt": "/private/tmp/zoen-app-domain-v96/guest-boot.json",
+        "browser": "155.0.8059.85",
+        "friendlyLocalizedErrorVisible": true,
+        "unhandledPageErrors": 0,
+        "unrequestedAnalyticsScript": false,
+        "scope": "Own empty-profile guest onboarding and popup-safe sign-in on canonical domain; provider preparation failed against unavailable configured relay. No provider confirmation, account/device linking, WASM initialization or encrypted sync."
+      },
+      "localHeaderChecks": {
+        "pagesPaths": 9,
+        "workersPaths": 10,
+        "receipts": [
+          "/private/tmp/zoen-app-domain-v96/local-header-check-final.log",
+          "/private/tmp/zoen-app-domain-v96/local-workers-hosting.log"
+        ]
       }
     },
     "androidV96": {

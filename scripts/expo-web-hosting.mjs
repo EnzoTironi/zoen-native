@@ -50,6 +50,12 @@ export async function verifyExpoWebHosting(origin, directory, runtime = "pages")
     const auth = /^\/sign-in(?:\?|\/$|\.html$|$)/.test(path);
     const redirect = path === "/sign-in/" || path === "/sign-in.html";
     assert.equal(response.status, redirect ? 308 : 200, `${path}: status`);
+    if (!redirect)
+      assert.match(
+        response.headers.get("Cache-Control") ?? "",
+        /(?:^|,)\s*no-transform\s*(?:,|$)/i,
+        `${path}: preserve exact assets against edge rewrites`,
+      );
     assert.equal(
       response.headers.get("Cross-Origin-Opener-Policy"),
       auth ? "same-origin-allow-popups" : "same-origin",

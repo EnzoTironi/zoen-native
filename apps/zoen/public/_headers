@@ -1,5 +1,7 @@
 # Keep the MLS signing worker isolated throughout the application.
+# Preserve exact app/worker bytes instead of automatic edge script injection.
 /*
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
 

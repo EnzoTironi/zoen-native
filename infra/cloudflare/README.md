@@ -21,13 +21,27 @@ It checks worker/WASM integrity and Cloudflare's 25 MiB asset limit before uploa
 popup-safe sign-in routes. The hosting check exercises the actual Workers runtime,
 including document-navigation SPA fallback and ordinary worker/WASM fetches.
 
-On 19 October 2026, deployment `30341e79-f049-4c4c-88b9-bb5fb4942fbf`
-published at <https://zoen-web.agenttironi.workers.dev>. All ten public hosting
-checks and exact signing-worker integrity passed; receipt:
-`/private/tmp/zoen-cloudflare-web-v96/live-hosting-03.json`. This fresh production
+On 19 October 2026, deployment `4546641a-e125-48a7-a2ba-6be2b99939af`
+published at <https://app.tryzoen.com> and
+<https://zoen-web.agenttironi.workers.dev>. All ten hosting checks and exact
+signing-worker integrity passed on **each** origin; receipt:
+`/private/tmp/zoen-app-domain-v96/live-hosting.json`. This fresh production
 build includes the decorative-sky accessibility correction and localized sign-in
 connection failure. Public worker integrity is
 `sha384-5lhNMH1yUGXCJcds6hQwwqxce9rFjyYH5ABCkzRUpP70btnwC/2vOLvpz4P6rhtw`.
+
+The exact `app.tryzoen.com/*` Worker Route is fail-closed. Only the two existing
+app DNS records changed to Proxied; their values and Auto TTL were retained, with
+no deletion. The asset-only Worker serves the application without an origin fetch.
+Root, www, relay, auth and mail DNS are unchanged. The reversible before/after
+snapshot is `/private/tmp/zoen-app-domain-v96/migration-proxy-acceptance.json`.
+
+The zone's automatic analytics injection initially changed the served HTML.
+The app now emits `Cache-Control: public, max-age=0, must-revalidate, no-transform`,
+preserving exact document/worker bytes. The real Pages fixture, local Worker and
+both public origins passed the strengthened header/exact-body checks. This uses
+Cloudflare's documented [no-transform policy](https://developers.cloudflare.com/web-analytics/get-started/),
+without changing analytics settings for other sites.
 
 Separate [CI run 39194529436](https://github.com/EnzoTironi/zoen-native/actions/runs/39194529436)
 passed all 19 browser checkpoints in each locale on merge
@@ -39,20 +53,18 @@ bytes. The later ten-file change `762ceb51` has a separate 795-test full app che
 at `/private/tmp/zoen-web-v96/final-app-check.json`. These are distinct source and
 artifact boundaries; see [Web acceptance](../../docs/dev/expo-web-acceptance.md).
 
-The actual guest-browser check belongs to the preceding deployment
-`bd443adb-9461-452d-9c30-9a4f4005c23a`: onboarding rendered, root/sign-in isolation
-matched policy and unhandled page errors were empty. Provider controls remained
-unavailable, with a handled challenge-fetch error against the unavailable relay.
-Its receipt/screenshot are under `/private/tmp/zoen-web-v96/public-preview/`.
-It establishes neither WASM initialization nor auth/sync, and predates the friendly
-error-message fix; the latest deployment has HTTP/integrity evidence only.
+An actual guest browser on the current canonical domain rendered Portuguese
+onboarding and the friendly connection error without unhandled page errors or an
+injected analytics script. The sign-in document remained popup-safe. Its receipt
+and screenshot are `/private/tmp/zoen-app-domain-v96/guest-boot.json` and
+`canonical-onboarding.png`. Both providers remain unavailable against the dead
+configured relay; this does not establish WASM initialization or auth/sync.
 
 The preview does not establish provider login or public encrypted sync. The
 configured production origin is `https://app.tryzoen.com`, and the configured relay
 is `https://relay.tryzoen.com`; the latter currently resolves through an unavailable
-Fly application. No custom domain, DNS record or provider origin was changed by
-this deployment. Connect the healthy Cloudflare relay and configure the canonical
-app domain before accepting production OAuth flows.
+Fly application. Connect the healthy Cloudflare relay before accepting production
+OAuth flows. Provider origins and the separate OAuth integration Worker are unchanged.
 
 ## Persistent relay storage
 

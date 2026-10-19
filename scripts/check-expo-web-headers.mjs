@@ -103,6 +103,14 @@ try {
   for (const path of paths) {
     const response = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: "manual" });
     const auth = entry.has(path);
+    // Pages' generated missing-page response owns its no-store policy; app
+    // documents and assets must retain our exact no-transform policy.
+    if (response.status === 200)
+      assert.match(
+        response.headers.get("Cache-Control") ?? "",
+        /(?:^|,)\s*no-transform\s*(?:,|$)/i,
+        `${path}: no automatic edge payload transformations`,
+      );
     assert.equal(
       response.headers.get("Cross-Origin-Opener-Policy"),
       auth ? "same-origin-allow-popups" : "same-origin",
