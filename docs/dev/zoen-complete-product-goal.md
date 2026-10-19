@@ -24,9 +24,16 @@ independentes, regras duplicadas, estado durável concorrente e caminhos legados
 sem uso. Recursos exclusivos de um sistema precisam de alternativas explícitas
 e adequadas nas outras plataformas.
 
-Cloudflare é a preferência inicial de hospedagem. A arquitetura e os limites
-de cada serviço precisam sustentar o volume declarado, sem um gargalo global
-oculto nem dependência operacional que inviabilize manter o produto sozinho.
+O backend deve executar os serviços Rust nativos, sem reimplementá-los para um
+runtime específico de hospedagem. Cloudflare pode servir DNS, CDN, frontend
+estático ou armazenamento compatível com S3. A escolha final de hospedagem deve
+favorecer operação simples e o volume declarado, sem um gargalo global oculto.
+
+Na fase atual, desenvolver e validar localmente com os serviços reais em
+containers, persistência, migrations, arquivos criptografados, verificações de
+saúde e recuperação após falhas. O ambiente local deve aproximar a composição de
+produção. Sua aprovação não substitui as jornadas no backend público, exigidas
+na entrega final.
 
 ## Produto completo
 

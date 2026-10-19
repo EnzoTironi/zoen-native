@@ -81,7 +81,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "Current source uses Expo SDK 58.0.16, purpose-based Rust packages, a regenerated Client ABI, separate account/demo storage and no old-name aliases. TypeScript, Oxlint, Oxfmt and 816 app tests pass. Earlier native Android arm64/JVM/API35 and signed Expo iOS Debug checks retain their bounded artifact attribution. The local native/Cloudflare baseline now passes actual authentication, presence, 520 encrypted messages crossing history pages and complete history recovery after server/client SQLite reopen; all 48 Directory runtime cases pass. This is not public deployment, real provider login, complete platform journeys or measured production/scale acceptance.",
+  "currentAcceptanceSummary": "Current source uses Expo SDK 58.0.16, purpose-based Rust packages, a regenerated Client ABI, separate account/demo storage and no old-name aliases. TypeScript, Oxlint, Oxfmt and 825 app tests pass; the bounded iOS miniapp-activity checkpoint preserves canonical IDs, search and history. The active backend direction is the native Rust server with real PostgreSQL/FoundationDB/S3-compatible storage, developed locally in a production-like composition for now. The custom Cloudflare runtime port is retired; its earlier proofs retain their original artifact attribution. Native receipt/replay work and the local environment remain under validation. Public backend, real provider login, complete platform journeys and production/scale acceptance remain open.",
   "historicalEvidence": {
     "commit": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
     "path": "apps/zoen/acceptance.json",
@@ -2127,5 +2127,30 @@
     "webGap": "Browser message projection omits typed item version/revert events; current runtime qualification requires that path and a fresh matching WASM artifact.",
     "publicDeliveryVerified": false,
     "fullAppParityAccepted": false
+  },
+  "backendExecutionDecision": {
+    "id": "native-rust-local-production-environment-v118",
+    "decision": "Run the existing native Rust backend; retire custom Cloudflare Workers/Durable Objects adaptation. Keep Cloudflare DNS/CDN/static hosting/S3-compatible storage where useful.",
+    "immediatePhase": "LOCAL_PRODUCTION_SIMULATION_IN_PROGRESS",
+    "requiredServices": [
+      "native Rust relay container",
+      "real PostgreSQL",
+      "real FoundationDB",
+      "S3-compatible encrypted object storage"
+    ],
+    "requiredLocalProof": [
+      "persistent data and migrations",
+      "health/readiness",
+      "real client sync/media/receipts/recovery",
+      "process restart and interrupted operations",
+      "backup/restore and release rollback"
+    ],
+    "archivedPendingAdapterChanges": "/private/tmp/zoen-cloudflare-retired-v118/manifest.json",
+    "historicalAdapterCheckpoint": "currentBackendCheckpoint retains historical v114a attribution; it is not the active runtime decision.",
+    "cloudProvisioningRequestedNow": false,
+    "publicBackendStillRequiredForFinalGoal": true,
+    "localEnvironmentVerified": false,
+    "productionReadinessAccepted": false,
+    "scaleReadinessAccepted": false
   }
 }
