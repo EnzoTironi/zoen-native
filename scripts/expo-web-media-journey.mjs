@@ -24,7 +24,7 @@ export async function acceptMediaJourney({
   const choosing = page.waitForEvent("filechooser");
   // Click with a mouse: keyboard activation would conceal a pointer-events fence
   // accidentally inherited by the universal Host's browser dialog.
-  await page.getByRole("button", { name: ui.chooseFile, exact: true }).click();
+  await page.getByRole("menuitem", { name: ui.chooseFile, exact: true }).click();
   await (await choosing).setFiles(path);
   await page.getByTestId("attachment-draft-strip").waitFor();
   await page.getByTestId("send-attachments").click();
