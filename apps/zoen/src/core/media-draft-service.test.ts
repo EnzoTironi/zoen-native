@@ -197,9 +197,14 @@ test('failed preserve retirement retains old owner and retries failed preparatio
     /Prepare unavailable/,
   );
   driver.snapshot = account('new-owner', 'new-device');
+  const previous = store.getSnapshot();
+  const epoch = store.sessionEpoch;
   const closes = driver.events.filter((event) => event === 'close').length;
   await store.open();
-  assert.equal(store.getSnapshot().phase, 'failed');
+  assert.equal(store.getSnapshot().phase, 'ready');
+  assert.equal(store.getSnapshot().snapshot, previous.snapshot);
+  assert.equal(store.sessionEpoch, epoch);
+  assert.equal(channel.scope.expected_identity_id, 'owner');
   assert.equal(driver.events.filter((event) => event === 'close').length, closes);
   assert.equal(store.mediaDrafts.channel('chat', null), null);
   fail = false;

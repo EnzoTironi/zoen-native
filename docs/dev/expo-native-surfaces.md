@@ -40,6 +40,31 @@ recovery UI, safe teardown and source/plain producers remain integration work;
 canonical Plan Apply remains closed. No combined iPhone recovery journey is
 accepted by these separate results.
 
+### Session retirement and empty input release (v95)
+
+Graceful account replacement keeps the existing UI, snapshot and native owner
+mounted until admitted draft cleanup and native close acknowledge completion.
+Separate work generations stop new work and fence late responses. Failed cleanup
+or close retains the previous owner and exposes a retry notice. Concurrent
+replacement coalesces; confirmed erasure drains superseded closes before an empty
+account reopens. Provider teardown can escalate a native close after admitted
+message and media writes finish.
+
+The core can also release an exact empty input binding after a rejected first
+checkpoint. Its encrypted receipt survives cold reopen and lost responses; replay
+cannot discard a newer capture. Plan projections expose pending input without
+granting edit authority. All 512 FFI tests and the client's 791 tests pass, alongside
+TypeScript, Oxlint and Oxfmt. These results validate source behavior, not a newly
+signed application build.
+
+The next enriched-markdown producer and editor bridge remain external candidates.
+The v95 producer's Swift public API check passed, but its UIKit run could not start
+because the prepared React frameworks and archive were absent. The unfinished
+bridge was preserved externally and removed from the app. No producer patch,
+raw-input bridge or recovery UI was installed. Evidence is kept separately under
+`/private/tmp/zoen-page-editor-v95/` and
+`/private/tmp/zoen-page-native-producer-v95/`.
+
 ## Bounded v85 private PDF edit recovery
 
 The existing v2 PDF in History download QA1018v63b receives one black ink stroke.

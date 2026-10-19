@@ -22,6 +22,7 @@ export class NormalMessageDraftService {
   }
 
   channel(spaceId: string, threadRootId: string | null): NormalDraftChannel | null {
+    if (this.store.isSessionRetiring) return null;
     const state = this.store.getSnapshot();
     const owner = homeOwnerFor(state);
     if (!owner || !homeSpacesFor(state).has(spaceId)) return null;

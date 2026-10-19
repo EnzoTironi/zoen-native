@@ -160,8 +160,10 @@ export function createDriver(): CoreDriver {
     async eraseDevice(expected) {
       await core().eraseDevice(expected.identity_id, expected.device_id);
     },
-    async close() {
-      await NativeCore?.close();
+    async close(options) {
+      if (options?.force && typeof NativeCore?.closeForce === 'function')
+        await NativeCore.closeForce();
+      else await NativeCore?.close();
     },
   };
 }

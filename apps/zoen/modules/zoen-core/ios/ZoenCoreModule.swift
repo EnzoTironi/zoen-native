@@ -92,6 +92,9 @@ public class ZoenCoreModule: Module {
       try await self.session.eraseDevice(expected: ZoenDeviceScope(identityId: identityId, deviceId: deviceId))
     }
     AsyncFunction("close") { () async throws in try await self.session.close() }
+    AsyncFunction("closeForce") { () async throws in
+      try await self.session.close(discardEdits: true)
+    }
     OnAppBecomesActive { [session] in Task { await session.resumePendingHistory() } }
     OnDestroy { Task { try? await self.session.close(discardEdits: true) } }
   }

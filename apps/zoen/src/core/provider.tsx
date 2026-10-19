@@ -18,7 +18,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     void store.open();
     return () => {
       detachCacheCleanup();
-      void store.close().catch(() => {});
+      void store.close({ force: true }).catch(() => {});
     };
   }, [store]);
   return <Context value={store}>{children}</Context>;

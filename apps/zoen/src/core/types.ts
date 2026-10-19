@@ -163,7 +163,7 @@ export interface CoreDriver {
   request<C extends Command>(command: C): Promise<CommandResult<C>>;
   createAccount(name: string, handle: string, relay: string): Promise<Snapshot>;
   subscribe(listener: (event: CoreEvent) => void): () => void;
-  close(): Promise<void>;
+  close(options?: { force?: boolean }): Promise<void>;
   /** Erase this local device and its keys; never deletes the relay account. */
   eraseDevice(expected: DeviceScope): Promise<void>;
   pair?(

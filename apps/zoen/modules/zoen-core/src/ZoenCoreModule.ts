@@ -50,6 +50,7 @@ declare class ZoenCoreModule extends NativeModule<{ onChange: (event: CoreEvent)
   ): Promise<string>;
   releaseProfilePhoto(uri: string): Promise<void>;
   close(): Promise<void>;
+  closeForce?(): Promise<void>;
   eraseDevice(identityId: string, deviceId: string): Promise<void>;
 }
 

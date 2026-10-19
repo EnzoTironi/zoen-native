@@ -15,6 +15,7 @@ export class MediaDraftService {
   }
 
   channel(spaceId: string, threadRootId: string | null): MediaDraftChannel | null {
+    if (this.store.isSessionRetiring) return null;
     const state = this.store.getSnapshot();
     const owner = homeOwnerFor(state);
     const port = this.store.driver.media?.drafts;

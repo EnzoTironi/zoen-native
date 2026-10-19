@@ -142,14 +142,44 @@ test('unregistering a preflight allows the normal retirement and replacement seq
   stop();
   driver.calls.length = 0;
   await store.open('demo');
-  assert.deepEqual(driver.calls, ['retire', 'unsubscribe', 'close', 'subscribe', 'open']);
+  assert.deepEqual(driver.calls, ['unsubscribe', 'retire', 'close', 'subscribe', 'open']);
   assert.ok(store.sessionEpoch > epoch);
   assert.equal(store.getSnapshot().phase, 'ready');
   assert.equal(store.getSnapshot().mode, 'demo');
   await store.close();
 });
 
-test('provider unmount close bypasses replacement preflights and still fences and closes the owner', async () => {
+test('ordinary close honors preflight before cleanup, admission fences or publication', async () => {
+  const driver = new Driver();
+  const store = new ClientStore(driver);
+  await store.open();
+  const before = store.getSnapshot();
+  const epoch = store.sessionEpoch;
+  const listener = driver.listener;
+  let retired = false;
+  let publications = 0;
+  store.registerSessionCleanup(async () => {
+    retired = true;
+  });
+  const stop = store.registerSessionPreflight(() => {
+    throw new Error('Keep the current editor mounted.');
+  });
+  const unsubscribe = store.subscribe(() => publications++);
+  driver.calls.length = 0;
+  await assert.rejects(store.close(), /current editor mounted/);
+  assert.equal(store.getSnapshot(), before);
+  assert.equal(store.sessionEpoch, epoch);
+  assert.equal(store.isSessionRetiring, false);
+  assert.equal(driver.listener, listener);
+  assert.equal(retired, false);
+  assert.equal(publications, 0);
+  assert.deepEqual(driver.calls, []);
+  unsubscribe();
+  stop();
+  await store.close();
+});
+
+test('explicit provider teardown bypasses replacement preflights and still fences and closes the owner', async () => {
   const driver = new Driver();
   const store = new ClientStore(driver);
   await store.open();
@@ -164,9 +194,9 @@ test('provider unmount close bypasses replacement preflights and still fences an
     driver.calls.push('retire');
   });
   driver.calls.length = 0;
-  await store.close();
+  await store.close({ force: true });
   assert.equal(checks, 0);
-  assert.deepEqual(driver.calls, ['retire', 'unsubscribe', 'close']);
+  assert.deepEqual(driver.calls, ['unsubscribe', 'retire', 'close']);
   assert.ok(store.sessionEpoch > epoch);
   assert.equal(store.getSnapshot().snapshot, null);
   assert.equal(driver.listener, null);
@@ -177,7 +207,7 @@ test('confirmed device erasure bypasses preflights through the final empty-accou
   const store = new ClientStore(driver);
   await store.open();
   let checks = 0;
-  store.registerSessionPreflight(() => {
+  const stopPreflight = store.registerSessionPreflight(() => {
     checks++;
     throw new Error('Drawing open');
   });
@@ -191,8 +221,8 @@ test('confirmed device erasure bypasses preflights through the final empty-accou
   });
   assert.equal(checks, 0);
   assert.deepEqual(driver.calls, [
-    'discard',
     'unsubscribe',
+    'discard',
     'erase',
     'retire',
     'close',
@@ -203,5 +233,6 @@ test('confirmed device erasure bypasses preflights through the final empty-accou
   assert.equal(store.getSnapshot().phase, 'onboarding');
   assert.equal(store.getSnapshot().erasePending, false);
   stopCleanup();
+  stopPreflight();
   await store.close();
 });

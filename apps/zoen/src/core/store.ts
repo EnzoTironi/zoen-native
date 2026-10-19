@@ -32,6 +32,14 @@ export type ClientState = {
 const failure = (error: unknown) =>
   error instanceof Error ? error.message : 'Não deu para concluir. Tente novamente.';
 
+type SessionRetirement = {
+  task: Promise<void>;
+  cancelled: boolean;
+  force: boolean;
+  nativeCloseStarted: boolean;
+  forceTask?: Promise<void>;
+};
+
 /** One observable UI projection. Rust remains the durable source of truth. */
 export class ClientStore {
   private state: ClientState = {
@@ -45,7 +53,11 @@ export class ClientStore {
   };
   private readonly listeners = new Set<() => void>();
   private generation = 0;
+  private ownerEpoch = 0;
+  private retiring = false;
+  private retirement: SessionRetirement | undefined;
   private erasure: Promise<void> | undefined;
+  private eraseRetirement: Promise<void> | undefined;
   private eraseScope: DeviceScope | null = null;
   private eraseCleanup: readonly (() => Promise<void>)[] | null = null;
   private readonly deviceCleanup = new Set<() => Promise<void>>();
@@ -79,6 +91,7 @@ export class ClientStore {
         const me = snapshot?.me?.id ?? snapshot?.account?.identity_id;
         return (
           this.live.isConnected() &&
+          !this.retiring &&
           this.state.phase === 'ready' &&
           snapshot?.connection.state === 'online' &&
           snapshot.connection.synced &&
@@ -103,7 +116,10 @@ export class ClientStore {
   }
   getSnapshot = (): ClientState => this.state;
   get sessionEpoch(): number {
-    return this.generation;
+    return this.ownerEpoch;
+  }
+  get isSessionRetiring(): boolean {
+    return this.retiring;
   }
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -130,7 +146,7 @@ export class ClientStore {
     };
   }
 
-  /** Reject replacement before retiring any current owner; cleanup and erasure still run. */
+  /** Reject graceful replacement or close before retiring any current owner. */
   registerSessionPreflight(check: () => void): () => void {
     this.sessionPreflight.add(check);
     return () => {
@@ -144,6 +160,7 @@ export class ClientStore {
 
   /** External pushes must not blur an editor that still owns unsaved content. */
   assertExternalNavigationAllowed() {
+    this.requireAvailableSession();
     this.checkSessionPreflight();
   }
 
@@ -157,7 +174,74 @@ export class ClientStore {
         return Promise.reject(error);
       }
     });
-    return Promise.all(work).then(() => {});
+    return Promise.allSettled(work).then((results) => {
+      const rejected = results.find((result) => result.status === 'rejected');
+      if (rejected?.status === 'rejected') throw rejected.reason;
+    });
+  }
+
+  private fenceSessionWork(): number {
+    this.retiring = true;
+    const generation = ++this.generation;
+    this.stopEvents?.();
+    this.stopEvents = undefined;
+    ++this.activityGeneration;
+    this.live.reset();
+    this.typing.reset();
+    this.refreshTask = undefined;
+    this.refreshAgain = false;
+    this.olderTasks.clear();
+    this.timelineVersions.clear();
+    return generation;
+  }
+
+  private beginSessionRetirement(force = false): Promise<void> {
+    if (this.retirement) {
+      const retirement = this.retirement;
+      if (force && !retirement.force) {
+        retirement.force = true;
+        if (retirement.nativeCloseStarted) {
+          // A native seal can be waiting on UI that has already unmounted.
+          // Escalate it now instead of waiting for the graceful close to return.
+          retirement.forceTask = (async () => this.driver.close({ force: true }))();
+          void retirement.forceTask.catch(() => {});
+        }
+      }
+      return retirement.task;
+    }
+    let resolve!: () => void;
+    let reject!: (error: unknown) => void;
+    const task = new Promise<void>((done, failed) => {
+      resolve = done;
+      reject = failed;
+    });
+    const retirement: SessionRetirement = {
+      task,
+      cancelled: false,
+      force,
+      nativeCloseStarted: false,
+    };
+    this.retirement = retirement;
+    // Cleanup freezes its own controllers synchronously. Keep the visible owner
+    // and its epoch alive until admitted native saves and the final seal finish.
+    const cleanup = this.retireSession(false);
+    void (async () => {
+      if (cleanup) await cleanup;
+      if (retirement.cancelled) return;
+      retirement.nativeCloseStarted = true;
+      try {
+        await this.driver.close(retirement.force ? { force: true } : undefined);
+      } catch (error) {
+        if (!retirement.forceTask) throw error;
+      }
+      if (retirement.forceTask) await retirement.forceTask;
+      if (!retirement.cancelled) ++this.ownerEpoch;
+    })().then(resolve, reject);
+    const settled = () => {
+      if (this.retirement === retirement) this.retirement = undefined;
+    };
+    void task.then(settled, settled);
+    return task;
   }
 
   async open(mode: Mode = 'account'): Promise<void> {
@@ -168,26 +252,26 @@ export class ClientStore {
 
   private async openSession(mode: Mode, preflight = true): Promise<void> {
     if (preflight) this.checkSessionPreflight();
-    const retirement = this.retireSession(false);
-    const generation = ++this.generation;
-    this.stopEvents?.();
-    this.resetActivity(true);
-    this.refreshTask = undefined;
-    this.refreshAgain = false;
-    this.activeSpace = null;
-    this.olderTasks.clear();
-    this.timelineVersions.clear();
-    this.publish({ phase: 'opening', mode, snapshot: null, timelines: {}, notice: null });
+    const generation = this.fenceSessionWork();
     try {
-      if (retirement) await retirement;
+      await this.beginSessionRetirement();
       if (generation !== this.generation) return;
-      await this.driver.close();
+      this.activeSpace = null;
+      this.resetActivity(true);
       if (generation !== this.generation) return;
-      this.stopEvents = this.driver.subscribe((event) => {
+      this.publish({ phase: 'opening', mode, snapshot: null, timelines: {}, notice: null });
+      if (generation !== this.generation) return;
+      const stopEvents = this.driver.subscribe((event) => {
         if (generation === this.generation) this.event(event);
       });
+      if (generation !== this.generation) {
+        stopEvents();
+        return;
+      }
+      this.stopEvents = stopEvents;
       const snapshot = await this.driver.open(mode);
       if (generation !== this.generation) return;
+      this.retiring = false;
       this.live.synchronize(snapshot);
       this.publish({
         snapshot,
@@ -199,7 +283,11 @@ export class ClientStore {
       });
       if (this.refreshAgain) void this.refresh();
     } catch (error) {
-      if (generation === this.generation) this.publish({ phase: 'failed', notice: failure(error) });
+      if (generation === this.generation)
+        this.publish({
+          ...(this.state.snapshot ? {} : { phase: 'failed' as const }),
+          notice: failure(error),
+        });
     }
   }
 
@@ -222,7 +310,7 @@ export class ClientStore {
   }
 
   refresh(): Promise<void> {
-    if (this.state.erasePending) return Promise.resolve();
+    if (this.state.erasePending || this.retiring) return Promise.resolve();
     if (this.refreshTask) {
       this.refreshAgain = true;
       return this.refreshTask;
@@ -275,6 +363,7 @@ export class ClientStore {
 
   loadTimeline(space: string, older = false): Promise<void> {
     if (this.state.erasePending) return Promise.reject(new Error('A sessão está sendo apagada.'));
+    if (this.retiring) return Promise.reject(new Error('A sessão está sendo encerrada.'));
     if (older) {
       const pending = this.olderTasks.get(space);
       if (pending) return pending;
@@ -340,6 +429,7 @@ export class ClientStore {
   }
 
   selectSpace(space: string | null) {
+    if (this.retiring) return;
     this.activeSpace = space;
     const generation = this.generation;
     if (space)
@@ -372,6 +462,7 @@ export class ClientStore {
   private requireAvailableSession() {
     if (this.state.erasePending)
       throw new Error('Conclua a saída deste aparelho antes de continuar.');
+    if (this.retiring) throw new Error('A sessão está sendo encerrada. Tente novamente.');
   }
 
   eraseDevice(expected: DeviceScope): Promise<void> {
@@ -389,12 +480,29 @@ export class ClientStore {
     // Clearing the snapshot can unmount account-bound providers. Preserve the
     // original cleanup owners through every retry, including that publication.
     const cleanups = (this.eraseCleanup ??= [...this.deviceCleanup]);
+    let resolve!: () => void;
+    let reject!: (error: unknown) => void;
+    const task = new Promise<void>((done, failed) => {
+      resolve = done;
+      reject = failed;
+    });
+    // Subscribers and cleanup owners may synchronously request another open,
+    // close or erase. They must all observe this same confirmed erasure.
+    this.erasure = task;
+    const superseded = this.retirement;
+    if (superseded) {
+      superseded.cancelled = true;
+      // Keep this drain through failed erase attempts as well: an old native
+      // close must settle before any successful retry opens a replacement core.
+      this.eraseRetirement = Promise.all([
+        this.eraseRetirement,
+        superseded.task.catch(() => {}),
+      ]).then(() => {});
+    }
+    this.retirement = undefined;
+    this.fenceSessionWork();
     const retirement = this.retireSession(true);
-    ++this.generation;
-    this.stopEvents?.();
-    this.stopEvents = undefined;
-    this.refreshTask = undefined;
-    this.refreshAgain = false;
+    ++this.ownerEpoch;
     this.activeSpace = null;
     this.olderTasks.clear();
     this.timelineVersions.clear();
@@ -407,7 +515,7 @@ export class ClientStore {
       activity: emptyActivity(),
     });
     this.resetActivity();
-    const task = (async () => {
+    void (async () => {
       const cleanup = await Promise.allSettled([
         ...cleanups.map((work) => Promise.resolve().then(work)),
         ...(retirement ? [retirement] : []),
@@ -420,6 +528,9 @@ export class ClientStore {
             'Não foi possível apagar todas as prévias deste aparelho. Tente sair novamente.',
           );
         await this.driver.eraseDevice(scope);
+        // Native erasure may be what releases a suspended graceful seal. Start
+        // it first, then drain the obsolete close before opening the empty core.
+        await this.eraseRetirement;
       } catch (error) {
         const message = failure(error);
         this.publish({ phase: 'failed', erasePending: true, notice: message });
@@ -427,11 +538,11 @@ export class ClientStore {
       }
       this.eraseScope = null;
       this.eraseCleanup = null;
+      this.eraseRetirement = undefined;
       this.publish({ erasePending: false });
       // The confirmed erasure already discarded the old owners and must reopen empty.
       await this.openSession('account', false);
-    })();
-    this.erasure = task;
+    })().then(resolve, reject);
     void task
       .finally(() => {
         if (this.erasure === task) this.erasure = undefined;
@@ -440,15 +551,25 @@ export class ClientStore {
     return task;
   }
 
-  async close() {
-    if (this.erasure) await this.erasure.catch(() => {});
-    const retirement = this.retireSession(false);
-    ++this.generation;
-    this.stopEvents?.();
-    this.stopEvents = undefined;
-    this.resetActivity();
-    this.publish({ phase: 'opening', snapshot: null, timelines: {} });
-    if (retirement) await retirement;
-    await this.driver.close();
+  async close({ force = false }: { force?: boolean } = {}) {
+    const erasure = this.erasure;
+    if (erasure) await erasure.catch(() => {});
+    if (!force && !erasure && !this.state.erasePending) this.checkSessionPreflight();
+    const generation = this.fenceSessionWork();
+    try {
+      await this.beginSessionRetirement(force);
+      if (generation !== this.generation) return;
+      this.activeSpace = null;
+      this.resetActivity();
+      if (generation !== this.generation) return;
+      this.publish({ phase: 'opening', snapshot: null, timelines: {}, notice: null });
+    } catch (error) {
+      if (generation !== this.generation) return;
+      this.publish({
+        ...(this.state.snapshot ? {} : { phase: 'failed' as const }),
+        notice: failure(error),
+      });
+      throw error;
+    }
   }
 }
