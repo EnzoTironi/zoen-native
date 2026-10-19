@@ -84,6 +84,11 @@ export function nativeMiniappMessage(encoded: string, nonce: string): string | n
   }
 }
 
+/** Android's modern WebMessageListener reports the opaque shell origin, not its URL. */
+export function nativeMiniappMessageSource(url: string, platform: string): boolean {
+  return url === 'about:blank' || url === '' || (platform === 'android' && url === 'null');
+}
+
 export function nativeMiniappCommand(
   nonce: string,
   action: 'send' | 'title' | 'dispose',
