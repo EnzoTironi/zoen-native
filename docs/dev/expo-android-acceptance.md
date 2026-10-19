@@ -113,8 +113,19 @@ A real Android DEX/minSdk28 probe with JNA 5.18.1, R8 9.2.14 and 84 compiled
 UniFFI classes passed. Native names, public RustBuffer fields, FieldOrder
 annotations and callback methods survived; an unused control was removed.
 Receipt: `/private/tmp/zoen-android-v96/r8-consumer-check/actual-uniffi-final.json`.
-This is a focused shrinker proof, not a new APK/runtime acceptance. The independent
-Expo Release/JVM CI result must be recorded separately.
+This is a focused shrinker proof, not a new APK/runtime acceptance.
+
+[Run 39201639333](https://github.com/EnzoTironi/zoen-native/actions/runs/39201639333)
+advanced past the missing-class failure but exhausted the default 2 GiB Gradle heap
+inside R8. Its artifact contains only the generated native contract, with **no APK
+or JVM test report**. Fix `52da9729` changes only CI: a 4 GiB heap, 1 GiB metaspace,
+two workers and serial projects, while retaining application minification. A real
+isolated Gradle 9.4.1 task using the exact workflow arguments confirmed those
+effective settings; it did not compile an app. The failure and probe index is
+`/private/tmp/zoen-android-v96/ci-39201639333-failure/index.json` (SHA256
+`dfa19d6817bda33b0f0195f3a4da10a9cb5b4797bb5e74b9b7522d30736b3db6`).
+The fresh [run 39204333306](https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306)
+on head `52da9729` must establish its own Release/JVM result.
 
 Release runtime, API 28 minimum-runtime behavior, physical devices, public OAuth
 and Cloudflare sync, Android media/voice/profile-photo parity, and forced

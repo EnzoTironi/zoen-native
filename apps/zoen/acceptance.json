@@ -822,6 +822,32 @@
         "actualCompiledClasses": 84,
         "fullApkOrRuntimeAcceptance": false,
         "scope": "Real DEX optimized/obfuscated JNA/UniFFI probe; native names/layout/annotations/callbacks retained and unused control removed. Full Release/JVM build and runtime remain independent."
+      },
+      "releaseBuildCI": {
+        "failedRun": 39201639333,
+        "failedHead": "db60c33efb998bde7f8b455ac8f9712c9747589f",
+        "testedMergeCommit": "d126484348aded89d131b018933545dd858374c2",
+        "failure": "R8 Java heap space exhaustion in the default2GiB Gradle daemon; previousmissing-class diagnostic absent",
+        "artifactId": 12164777800,
+        "apkPresent": false,
+        "jvmReportsPresent": false,
+        "receipt": "/private/tmp/zoen-android-v96/ci-39201639333-failure/index.json",
+        "receiptSha256": "dfa19d6817bda33b0f0195f3a4da10a9cb5b4797bb5e74b9b7522d30736b3db6",
+        "ciOnlyFix": {
+          "commit": "52da9729e76e74fbfb3156c4ce39885717ccb653",
+          "gradleHeapBytes": 4294967296,
+          "maxMetaspace": "1GiB",
+          "workers": 2,
+          "parallelProjects": false,
+          "actionlint": "PASS",
+          "actualGradleEffectiveConfigurationProbe": "PASS (Gradle9.4.1,2.26s; no app/native build)",
+          "applicationMinification": "enabled, unchanged"
+        },
+        "freshRun": 39204333306,
+        "freshRunUrl": "https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306",
+        "freshRunHead": "52da9729e76e74fbfb3156c4ce39885717ccb653",
+        "freshRunStatus": "PENDING_INDEPENDENT_RELEASE_AND_JVM_RESULT",
+        "scope": "Failedbuild and effectiveCIconfiguration proof only. Neither establishes a ReleaseAPK, newJVMtest execution or Release runtime."
       }
     },
     "cloudflareAdmissionFoundationV96": {
