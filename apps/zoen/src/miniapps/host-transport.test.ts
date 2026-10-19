@@ -38,6 +38,9 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
     ],
     { stdio: ['ignore', 'ignore', 'pipe'] },
   );
+  // Register before awaiting anything: a signaled process can exit before cleanup,
+  // and its stdio may still be open after 'exit'.
+  const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
   let socket: WebSocket | undefined;
   let deadline: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -135,13 +138,16 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
   } finally {
     clearTimeout(deadline);
     socket?.close();
-    if (child.exitCode === null) {
-      const exited = new Promise<void>((resolve) => {
-        child.once('exit', () => resolve());
-      });
-      child.kill('SIGTERM');
-      const timer = setTimeout(() => child.kill('SIGKILL'), 2_000);
-      await exited;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGTERM');
+        timer = setTimeout(() => {
+          if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+        }, 2_000);
+      }
+      await closed;
+    } finally {
       clearTimeout(timer);
     }
   }
@@ -346,7 +352,8 @@ test(
         'qa/done',
       ]);
     } finally {
-      await rm(folder, { recursive: true, force: true });
+      // Chrome descendants may finish writing their owned profile after close.
+      await rm(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   },
 );

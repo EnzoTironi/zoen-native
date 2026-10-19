@@ -1,11 +1,44 @@
 # iPhone native surfaces and acceptance
 
-Current signed checkpoint, 18 October: **v85**, source `7245d02a`, is preserving-installed
+Whole-application acceptance baseline, 18 October: **v85**, source `7245d02a`, is preserving-installed
 and publicly verified on both iPhone QA simulators with 839 frozen inputs. Private
 PDF edit recovery after controlled process death, Keep without publication and
 explicit Save/cold to exactly one v3 pass on the isolated device; human retention
 passes separately. App 696/696, Rust 476/476, separate Swift/host checks and all three
 exact-source Expo jobs pass. Full product parity remains open.
+
+Later bounded miniapp checks reach signed **v92**; their scope and Excalidraw
+recordings are indexed in [MCP Apps](mcp-apps.md). They do not replace the whole-app
+baseline above.
+
+## Page input storage foundation (v94; app integration pending)
+
+Core source `68b9900c` retains exact native input bytes, UTF-16 selection and IME
+composition in the existing encrypted private Page/Plan journal. Captures are
+account/device/item scoped, revision checked and bounded together with the saved
+document. Page Apply consumes the capture in the same write as the edit receipt;
+Discard is exact and retryable. Repeating an older request returns its original
+acceptance without replacing newer input. Untouched legacy journals keep their
+existing envelope; input activation uses a distinct authenticated v3 domain.
+
+All 509 FFI tests, strict Clippy, Rust formatting, generated client types and the
+client's TypeScript/Oxlint/Oxfmt/777 tests pass. New tests use actual SQLite,
+encrypted journals and cold Engine reopen; injected write failures and lost
+responses preserve the previous state. Evidence:
+`/private/tmp/zoen-page-input-v94/verified-core-foundation.json`.
+
+Separately, an external enriched-markdown producer candidate passes 16 real UIKit
+tests and public Swift 6 conformance, including composition, paste, undo/redo,
+retention failure/retry and final immutable capture. Evidence:
+`/private/tmp/zoen-page-native-producer-v94/native-seal-api-v94-06.json`.
+The separate Swift 6 host proof compiles the lease against real generated UniFFI
+bindings and Rust, then verifies capture recovery across processes, an actual SQL
+write failure, exact retry, completed Apply/Discard replay and invalidation:
+`/private/tmp/zoen-page-input-bridge-v94/host-proof/acceptance.json`.
+The producer patch is not installed in the app. Native session ownership,
+recovery UI, safe teardown and source/plain producers remain integration work;
+canonical Plan Apply remains closed. No combined iPhone recovery journey is
+accepted by these separate results.
 
 ## Bounded v85 private PDF edit recovery
 
