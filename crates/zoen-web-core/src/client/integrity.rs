@@ -49,7 +49,10 @@ impl<S: Signer> Client<S> {
                     .integrity_errors
                     .get(&space_id)
                     .cloned()
-                    .or_else(|| result.err());
+                    .or_else(|| result.err())
+                    // A verified hash chain may still contain conflicting Item
+                    // identities. Reuse the same accepted fold on explicit audit.
+                    .or_else(|| self.document_items().err());
                 Ok(
                     json!({"space_id":space_id,"space_title":self.metadata(&space_id).map(|m|m.0).unwrap_or_default(),
                     "events":log.len().to_string(),"head_hash":if error.is_none(){log.head_hash()}else{""},"valid":error.is_none(),"error":error}),

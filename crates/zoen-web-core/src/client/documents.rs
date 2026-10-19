@@ -325,6 +325,42 @@ impl Item {
     }
 }
 
+/// Views refer to the exact source event accepted by the existing Item fold.
+/// The four-part key keeps conversation, author, optimistic id and canonical hash
+/// separate, including while a pending write receives its relay confirmation.
+pub(super) fn item_edits(items: &BTreeMap<String, Item>) -> BTreeMap<ItemEditKey, ItemEditView> {
+    let mut edits = BTreeMap::new();
+    for item in items.values() {
+        let title = item.current().content.title();
+        for (index, version) in item.versions.iter().enumerate().skip(1) {
+            let source_item = match &version.event.body {
+                EventBody::ItemVersioned { item, .. } | EventBody::ItemReverted { item, .. } => {
+                    item
+                }
+                _ => continue,
+            };
+            if *source_item != item.id || version.event.space != item.space {
+                continue;
+            }
+            let Ok(number) = u32::try_from(index + 1) else {
+                continue;
+            };
+            edits.insert(
+                item_edit_key(&version.event),
+                ItemEditView {
+                    space_id: item.space.clone(),
+                    item_id: item.id.clone(),
+                    title: title.clone(),
+                    version: number,
+                    note: version.note.clone(),
+                    is_undo: version.is_undo,
+                },
+            );
+        }
+    }
+    edits
+}
+
 struct PageRead {
     shadow: Page,
     live: Page,

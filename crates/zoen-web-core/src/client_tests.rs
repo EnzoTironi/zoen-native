@@ -231,16 +231,32 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         .iter()
         .find(|e| matches!(e.body, EventBody::MessagePosted { .. }))
         .unwrap();
-    assert!(client
-        .message_view(companion, "sending", None)
-        .unwrap()
-        .file
-        .is_some());
+    assert!(
+        client
+            .message_view(
+                companion,
+                "sending",
+                None,
+                &documents::item_edits(&client.document_items().unwrap())
+            )
+            .unwrap()
+            .file
+            .is_some()
+    );
     let creation = events
         .iter()
         .find(|event| matches!(event.body, EventBody::ItemCreated { .. }))
         .unwrap();
-    assert!(client.message_view(creation, "sending", None).is_none());
+    assert!(
+        client
+            .message_view(
+                creation,
+                "sending",
+                None,
+                &documents::item_edits(&client.document_items().unwrap())
+            )
+            .is_none()
+    );
     assert_eq!(client.conversations()[0].messages.len(), 2);
     // A later empty reshare is not the generated companion, even by its owner.
     let mut reshare = companion.clone();
@@ -248,22 +264,43 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         *message = "later-reshare".into();
     }
     reshare.at_ms += 60_000;
-    let shared = client.message_view(&reshare, "sending", None).unwrap();
+    let shared = client
+        .message_view(
+            &reshare,
+            "sending",
+            None,
+            &documents::item_edits(&client.document_items().unwrap()),
+        )
+        .unwrap();
     assert_eq!(shared.file.as_ref().unwrap().name, "report.txt");
     let mut other_author = companion.clone();
     other_author.author = "another-author".into();
-    assert!(client
-        .message_view(&other_author, "sending", None)
-        .unwrap()
-        .file
-        .is_some());
+    assert!(
+        client
+            .message_view(
+                &other_author,
+                "sending",
+                None,
+                &documents::item_edits(&client.document_items().unwrap())
+            )
+            .unwrap()
+            .file
+            .is_some()
+    );
     let mut other_space = companion.clone();
     other_space.space = "another-space".into();
-    assert!(client
-        .message_view(&other_space, "sending", None)
-        .unwrap()
-        .file
-        .is_none());
+    assert!(
+        client
+            .message_view(
+                &other_space,
+                "sending",
+                None,
+                &documents::item_edits(&client.document_items().unwrap())
+            )
+            .unwrap()
+            .file
+            .is_none()
+    );
     for (text, reply, forwarded, attachment) in [
         ("caption", None, false, item.clone()),
         (
@@ -302,7 +339,12 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
             *attaches = Some(attachment.clone());
         }
         let view = client
-            .message_view(&post, "sending", None)
+            .message_view(
+                &post,
+                "sending",
+                None,
+                &documents::item_edits(&client.document_items().unwrap()),
+            )
             .expect("meaningful attachment post must survive");
         assert_eq!(view.text, text);
         if attachment == item {
@@ -339,14 +381,16 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         ..Default::default()
     });
     client.queue_file(space, voice, 11).unwrap();
-    assert!(client
-        .saved
-        .outbox
-        .values()
-        .filter_map(|p| p.inner.as_ref())
-        .any(|e| matches!(&e.body,
+    assert!(
+        client
+            .saved
+            .outbox
+            .values()
+            .filter_map(|p| p.inner.as_ref())
+            .any(|e| matches!(&e.body,
         EventBody::ItemCreated { content: types::ItemContent::File(doc), .. }
-        if doc.voice.as_ref().and_then(|v| v.reply.as_ref()).is_some_and(|r| r.to == expected))));
+        if doc.voice.as_ref().and_then(|v| v.reply.as_ref()).is_some_and(|r| r.to == expected)))
+    );
     client.saved.outbox = before_media;
 
     let sealed =
@@ -361,10 +405,12 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
     let failed = client
         .queue_failed_file(space, sealed.doc.clone(), 11, "offline".into(), chunks)
         .unwrap();
-    assert!(failed
-        .frames
-        .iter()
-        .all(|f| !matches!(ClientFrame::decode(f).unwrap(), ClientFrame::Publish { .. })));
+    assert!(
+        failed
+            .frames
+            .iter()
+            .all(|f| !matches!(ClientFrame::decode(f).unwrap(), ClientFrame::Publish { .. }))
+    );
     let restored_failed = Client::new(account.clone(), host.clone(), &failed.snapshot).unwrap();
     let bytes = restored_failed.local_chunk(&sealed.doc.chunks[0].blob);
     assert_eq!(
@@ -496,9 +542,11 @@ fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_me
     let identity = NativeSigner::from_secret(&[21; 32]);
     let host = HostSigner(NativeSigner::from_secret(&[22; 32]));
     let mut client = Client::new(account(&identity, &host.0), host, "").unwrap();
-    assert!(client
-        .queue_join("sp_invite", Role::Member, "invalid", 1)
-        .is_err());
+    assert!(
+        client
+            .queue_join("sp_invite", Role::Member, "invalid", 1)
+            .is_err()
+    );
     let update = client
         .queue_join("sp_invite", Role::Member, "0123456789", 2)
         .unwrap();
@@ -515,9 +563,11 @@ fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_me
     assert!(
         matches!(env.plain_event().unwrap().body, EventBody::MemberAdded { identity: ref added, role: Role::Member } if added == &identity.id())
     );
-    assert!(client
-        .queue_message("sp_invite", "plain text forbidden", 3)
-        .is_err());
+    assert!(
+        client
+            .queue_message("sp_invite", "plain text forbidden", 3)
+            .is_err()
+    );
 }
 
 #[test]
@@ -584,6 +634,11 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
 
     let conversation = &client.conversations()[0];
     assert_eq!(conversation.messages.len(), 3);
+    let original_ids = conversation
+        .messages
+        .iter()
+        .map(|message| message.id.clone())
+        .collect::<Vec<_>>();
     let voice = &conversation.messages[1];
     assert_eq!(voice.file.as_ref(), Some(&original));
     assert_eq!(voice.quote.as_ref().unwrap().id, root);
@@ -633,7 +688,14 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
         },
     );
     let assert_attachment = |client: &Client<HostSigner>, expected: &FileDoc| {
-        let view = client.message_view(&attachment, "confirmed", None).unwrap();
+        let view = client
+            .message_view(
+                &attachment,
+                "confirmed",
+                None,
+                &documents::item_edits(&client.document_items().unwrap()),
+            )
+            .unwrap();
         assert_eq!(view.text, "caption");
         assert!(view.forwarded);
         assert_eq!(view.file.as_ref().unwrap().chunks, expected.chunks);
@@ -643,7 +705,21 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     assert_attachment(&client, &edited);
     let conversation = &client.conversations()[0];
     let voice = &conversation.messages[1];
-    assert_eq!(conversation.messages.len(), 3);
+    assert_eq!(conversation.messages.len(), 4);
+    assert_eq!(
+        conversation.messages[..3]
+            .iter()
+            .map(|message| &message.id)
+            .collect::<Vec<_>>(),
+        original_ids.iter().collect::<Vec<_>>()
+    );
+    let activity = conversation.messages[3].item_edit.as_ref().unwrap();
+    assert_eq!(activity.item_id, "it_voice");
+    assert_eq!(activity.version, 2);
+    assert_eq!(activity.note, "Trimmed");
+    assert!(!activity.is_undo);
+    assert!(conversation.messages[3].file.is_none());
+    assert_eq!(conversation.messages[0].replies, 1);
     assert_eq!(voice.entry.as_deref(), Some(entry.as_str()));
     assert_eq!(voice.file.as_ref(), Some(&edited));
     assert!(voice.edited);
@@ -663,6 +739,11 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
         Some(&edited)
     );
     assert_attachment(&client, &edited);
+    assert_eq!(
+        client.conversations()[0].messages.len(),
+        4,
+        "Foreign-author and invalid restore targets add no activity"
+    );
     append(&mut log, &author, revert(1)); // Version 3 is a copy of version 1.
     client.logs.insert(space.into(), log.clone());
     assert_eq!(
@@ -674,7 +755,36 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     append(&mut log, &author, revert(3)); // Reverts can target earlier reverts.
     client.logs.insert(space.into(), log);
     let conversation = &client.conversations()[0];
-    assert_eq!(conversation.messages.len(), 3);
+    assert_eq!(conversation.messages.len(), 7);
+    assert_eq!(
+        conversation.messages[..3]
+            .iter()
+            .map(|message| &message.id)
+            .collect::<Vec<_>>(),
+        original_ids.iter().collect::<Vec<_>>()
+    );
+    let activities = conversation.messages[3..]
+        .iter()
+        .map(|message| message.item_edit.as_ref().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        activities
+            .iter()
+            .map(|edit| (edit.version, edit.is_undo))
+            .collect::<Vec<_>>(),
+        [(2, false), (3, true), (4, true), (5, true)]
+    );
+    assert!(
+        activities
+            .iter()
+            .all(|edit| edit.item_id == "it_voice" && edit.space_id == space)
+    );
+    assert_eq!(conversation.messages[0].replies, 1);
+    assert_eq!(conversation.messages[1].quote.as_ref().unwrap().id, root);
+    assert_eq!(
+        conversation.messages[2].thread.as_deref(),
+        Some(root.as_str())
+    );
     assert_eq!(conversation.messages[1].file.as_ref(), Some(&original));
     assert!(conversation.messages[1].edited);
     let native_target = client.logs[space]
@@ -982,10 +1092,12 @@ fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
     assert_eq!(reaction.count, 2);
     assert_eq!(reaction.participants.len(), 2);
     assert!(reaction.mine);
-    assert!(reaction
-        .participants
-        .iter()
-        .any(|p| p.identity == client.account.identity && p.name == "Fixture"));
+    assert!(
+        reaction
+            .participants
+            .iter()
+            .any(|p| p.identity == client.account.identity && p.name == "Fixture")
+    );
     annotate(&mut log, &author, &target, react("❤️"));
     annotate(&mut log, &other, &target, react(" "));
     annotate(&mut log, &other, &target, react(&"😀".repeat(9)));
@@ -1004,11 +1116,13 @@ fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
     annotate(&mut log, &other, &target, react("❤️"));
     client.logs.insert(log.space().into(), log);
     assert!(client.conversations()[0].messages[0].reactions.is_empty());
-    assert!(client
-        .queue_annotation("sp_web_receipts", &target, react("👍"), 90)
-        .err()
-        .unwrap()
-        .contains("no longer available"));
+    assert!(
+        client
+            .queue_annotation("sp_web_receipts", &target, react("👍"), 90)
+            .err()
+            .unwrap()
+            .contains("no longer available")
+    );
 }
 
 #[test]
@@ -1016,16 +1130,18 @@ fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption() 
     let (mut client, _, _, log, target) = web_fixture();
     client.logs.insert(log.space().into(), log);
     for emoji in [" ".into(), "😀".repeat(9)] {
-        assert!(client
-            .queue_annotation(
-                "sp_web_receipts",
-                &target,
-                types::Annotation::React { emoji },
-                90
-            )
-            .err()
-            .unwrap()
-            .contains("32 bytes"));
+        assert!(
+            client
+                .queue_annotation(
+                    "sp_web_receipts",
+                    &target,
+                    types::Annotation::React { emoji },
+                    90
+                )
+                .err()
+                .unwrap()
+                .contains("32 bytes")
+        );
     }
 }
 
@@ -1329,11 +1445,13 @@ fn browser_stale_page_editor_merges_unseen_blocks_and_restores_as_a_new_change()
     let request = serde_json::json!({"op":"page_apply","item_id":"it_merge","mutation_id":"merge","edit_context":read["edit_context"],"order":read["blocks"].as_array().unwrap().iter().map(|b|b["id"].clone()).collect::<Vec<_>>(),"changed":[heading]});
     let merged = doc(&mut client, request, 15).result;
     assert_eq!(merged["page"]["blocks"].as_array().unwrap().len(), 3);
-    assert!(merged["page"]["blocks"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|b| b["text"] == "Mudança remota"));
+    assert!(
+        merged["page"]["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|b| b["text"] == "Mudança remota")
+    );
     let committed = doc(
         &mut client,
         serde_json::json!({"op":"page_commit","item_id":"it_merge","note":"Mesclou"}),
@@ -1379,10 +1497,12 @@ fn browser_large_page_upload_barrier_survives_reload_and_missing_download_waits(
     );
     assert!(!made.uploads.is_empty());
     let update = made.update.unwrap();
-    assert!(!update
-        .frames
-        .iter()
-        .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. }))));
+    assert!(
+        !update
+            .frames
+            .iter()
+            .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. })))
+    );
     let mut reopened = Client::new(
         client.account.clone(),
         client.signer.clone(),
@@ -1413,10 +1533,12 @@ fn browser_large_page_upload_barrier_survives_reload_and_missing_download_waits(
     assert!(page.to_markdown().contains("Parágrafo 7999"));
     reopened.synced = true;
     let released = reopened.document_uploaded(&resumed).unwrap();
-    assert!(released
-        .frames
-        .iter()
-        .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. }))));
+    assert!(
+        released
+            .frames
+            .iter()
+            .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. })))
+    );
     let received = clear(
         &mut log,
         &author,
@@ -1449,9 +1571,11 @@ fn browser_large_page_upload_barrier_survives_reload_and_missing_download_waits(
     assert_eq!(waiting.result["ready"], false);
     assert_eq!(waiting.result["can_edit"], false);
     assert_eq!(waiting.downloads.len(), 1);
-    assert!(remote
-        .document_cache_blob(reference.clone(), b"wrong".to_vec())
-        .is_err());
+    assert!(
+        remote
+            .document_cache_blob(reference.clone(), b"wrong".to_vec())
+            .is_err()
+    );
     remote.document_cache_blob(reference, bytes).unwrap();
     let ready = doc(
         &mut remote,
@@ -1534,12 +1658,14 @@ fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_undo() {
         undo.result["plan"]["sections"][0]["lines"][0]["done"],
         false
     );
-    assert!(client
-        .document_request(
-            &serde_json::json!({"op":"undo","token":toggle.result["undo"]}).to_string(),
-            17
-        )
-        .is_err());
+    assert!(
+        client
+            .document_request(
+                &serde_json::json!({"op":"undo","token":toggle.result["undo"]}).to_string(),
+                17
+            )
+            .is_err()
+    );
 }
 
 #[test]
@@ -1615,10 +1741,12 @@ fn browser_closed_chat_posts_queue_offline_and_never_publish_plaintext_after_enc
         client.conversations()[0].messages.last().unwrap().text,
         "Uma mensagem offline"
     );
-    assert!(!queued
-        .frames
-        .iter()
-        .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. }))));
+    assert!(
+        !queued
+            .frames
+            .iter()
+            .any(|frame| matches!(ClientFrame::decode(frame), Ok(ClientFrame::Publish { .. })))
+    );
     let upgraded = clear(&mut log, &author, EventBody::SpaceEncrypted, 11);
     client.receive(&upgraded, 12).unwrap();
     let resumed = client.receive(&ServerFrame::SyncDone.encode(), 13).unwrap();
@@ -1981,4 +2109,197 @@ fn received_app_owned_documents_keep_manifest_history_without_becoming_file_card
     let before = restored.saved.outbox.len();
     assert!(restored.app_request(&serde_json::json!({"op":"app_call_tool","item_id":"it_drawing","tool":"app_document_read","args_json":"{}","confirmed":false}).to_string(),17,"en").is_err());
     assert_eq!(restored.saved.outbox.len(), before);
+}
+
+#[test]
+fn actual_public_receive_emits_delivery_and_mark_read_replays_after_serialized_snapshot_reload() {
+    // Actual signed canonical Event ingestion, not direct logs/receipt-map writes.
+    // This is the Rust browser adapter, not WebCrypto/IDB or browser runtime proof.
+    let (mut client, author, mut log) = document_fixture();
+    let space = log.space().to_string();
+    let wire = clear(
+        &mut log,
+        &author,
+        EventBody::MessagePosted {
+            message: "msg_actual_receipt_ingest".into(),
+            text: "genuine receive receipt".into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+        },
+        50,
+    );
+    let seq = log.next_seq() - 1;
+    let received = client.receive(&wire, 51).unwrap();
+    assert!(receipt_marks(&received.frames).contains(&("delivered", seq)));
+    let read = client.mark_read(&space).unwrap();
+    assert_eq!(receipt_marks(&read.frames), vec![("read", seq)]);
+    let mut restored = Client::new(
+        client.account.clone(),
+        client.signer.clone(),
+        &read.snapshot,
+    )
+    .unwrap();
+    restored.bootstrap().unwrap();
+    let replay = restored
+        .receive(&ServerFrame::SyncDone.encode(), 60)
+        .unwrap();
+    assert_eq!(
+        receipt_marks(&replay.frames),
+        vec![("delivered", seq), ("read", seq)]
+    );
+    assert!(restored.delivered().is_empty());
+}
+
+#[test]
+fn actual_signed_removal_discards_new_receipts_and_rejoin_cannot_authorize_the_discarded_arrival() {
+    for remove_reader in [false, true] {
+        let (mut client, owner, mut log) = document_fixture();
+        let space = log.space().to_string();
+        let peer = Author::device(
+            &NativeSigner::from_secret(&[121; 32]),
+            NativeSigner::from_secret(&[122; 32]),
+        );
+        let added = clear(
+            &mut log,
+            &owner,
+            EventBody::MemberAdded {
+                identity: peer.identity.clone(),
+                role: Role::Owner,
+            },
+            60,
+        );
+        client.receive(&added, 61).unwrap();
+        let incoming = |kind| {
+            ServerFrame::Ephemeral {
+                space: space.clone(),
+                from: peer.identity.clone(),
+                kind,
+            }
+            .encode()
+        };
+        client
+            .receive(&incoming(protocol::EphemeralKind::Read { seq: 7 }), 62)
+            .unwrap();
+        assert_eq!(client.saved.receipts[&space][&peer.identity], (7, 7));
+        let subject = if remove_reader {
+            owner.identity.clone()
+        } else {
+            peer.identity.clone()
+        };
+        let active_owner = if remove_reader { &peer } else { &owner };
+        let removed = clear(
+            &mut log,
+            active_owner,
+            EventBody::MemberRemoved {
+                identity: subject.clone(),
+            },
+            63,
+        );
+        client.receive(&removed, 64).unwrap();
+        for kind in [
+            protocol::EphemeralKind::Delivered { seq: u64::MAX },
+            protocol::EphemeralKind::Read { seq: u64::MAX },
+        ] {
+            let update = client.receive(&incoming(kind), 65).unwrap();
+            assert_eq!(client.saved.receipts[&space][&peer.identity], (7, 7));
+            assert!(client.deferred_receipts.is_empty());
+            // Historical authorized marks persist through serialized reload.
+            let restored = Client::new(
+                client.account.clone(),
+                client.signer.clone(),
+                &update.snapshot,
+            )
+            .unwrap();
+            assert_eq!(restored.saved.receipts[&space][&peer.identity], (7, 7));
+        }
+        let rejoined = clear(
+            &mut log,
+            active_owner,
+            EventBody::MemberAdded {
+                identity: subject,
+                role: Role::Owner,
+            },
+            66,
+        );
+        client.receive(&rejoined, 67).unwrap();
+        assert_eq!(client.saved.receipts[&space][&peer.identity], (7, 7));
+        client
+            .receive(&incoming(protocol::EphemeralKind::Read { seq: 11 }), 68)
+            .unwrap();
+        assert_eq!(client.saved.receipts[&space][&peer.identity], (11, 11));
+        client
+            .receive(&incoming(protocol::EphemeralKind::Delivered { seq: 1 }), 69)
+            .unwrap();
+        assert_eq!(client.saved.receipts[&space][&peer.identity], (11, 11));
+    }
+}
+#[test]
+fn actual_early_receipt_waits_for_confirmed_signed_membership_and_connection_buffer_is_bounded() {
+    let (mut client, owner, mut log) = document_fixture();
+    let space = log.space().to_string();
+    let peer = NativeSigner::from_secret(&[123; 32]).id();
+    let early = ServerFrame::Ephemeral {
+        space: space.clone(),
+        from: peer.clone(),
+        kind: protocol::EphemeralKind::Read { seq: 25 },
+    }
+    .encode();
+    let update = client.receive(&early, 70).unwrap();
+    assert!(
+        !client
+            .saved
+            .receipts
+            .get(&space)
+            .is_some_and(|rows| rows.contains_key(&peer))
+    );
+    assert_eq!(client.deferred_receipts.len(), 1);
+    let restored = Client::new(
+        client.account.clone(),
+        client.signer.clone(),
+        &update.snapshot,
+    )
+    .unwrap();
+    assert!(
+        restored.deferred_receipts.is_empty(),
+        "Unvalidated pairs never enter durable snapshot"
+    );
+    let added = clear(
+        &mut log,
+        &owner,
+        EventBody::MemberAdded {
+            identity: peer.clone(),
+            role: Role::Member,
+        },
+        71,
+    );
+    client.receive(&added, 72).unwrap();
+    assert_eq!(client.saved.receipts[&space][&peer], (25, 25));
+    assert!(client.deferred_receipts.is_empty());
+    for n in 0..1024 {
+        client
+            .receive(
+                &ServerFrame::Ephemeral {
+                    space: space.clone(),
+                    from: format!("{n:064x}"),
+                    kind: protocol::EphemeralKind::Delivered { seq: 1 },
+                }
+                .encode(),
+                73,
+            )
+            .unwrap();
+    }
+    let overflow = ServerFrame::Ephemeral {
+        space: space.clone(),
+        from: "ff".repeat(32),
+        kind: protocol::EphemeralKind::Read { seq: 2 },
+    }
+    .encode();
+    assert_eq!(
+        client.receive(&overflow, 74).err().unwrap(),
+        "receipt catch-up buffer exceeded"
+    );
+    client.bootstrap().unwrap();
+    assert!(client.deferred_receipts.is_empty());
+    assert_eq!(client.saved.receipts[&space][&peer], (25, 25));
 }

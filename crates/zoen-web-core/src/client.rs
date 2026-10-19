@@ -23,6 +23,7 @@ mod linking;
 mod membership;
 mod profile;
 mod profile_photo;
+mod receipts;
 pub use documents::DocumentResponse;
 
 const PACKAGES_REQUEST: u64 = 0x8000_0001;
@@ -123,6 +124,27 @@ pub struct Quote {
     text: String,
 }
 
+/// Typed activity from an accepted Item version in this conversation's signed log.
+#[derive(Clone, Serialize)]
+pub(super) struct ItemEditView {
+    space_id: String,
+    item_id: String,
+    title: String,
+    version: u32,
+    note: String,
+    is_undo: bool,
+}
+
+type ItemEditKey = (String, String, String, String);
+fn item_edit_key(event: &Event) -> ItemEditKey {
+    (
+        event.space.clone(),
+        event.author.clone(),
+        event.client_id.clone(),
+        event.hash.clone(),
+    )
+}
+
 #[derive(Serialize)]
 pub struct MessageView {
     id: String,
@@ -155,6 +177,7 @@ pub struct MessageView {
     file_item_id: Option<String>,
     file_version: Option<u32>,
     card: Option<serde_json::Value>,
+    item_edit: Option<ItemEditView>,
 }
 
 #[derive(Default)]
@@ -193,6 +216,7 @@ pub struct ConversationView {
     event_count: String,
     can_send: bool,
     waiting: Option<String>,
+    integrity_error: Option<String>,
     unreadable: usize,
     unread: usize,
     mentions: usize,
@@ -233,6 +257,8 @@ pub struct Client<S> {
     view_now_ms: i64,
     /// Ephemeral receipt announcements are connection-local, never durable acknowledgements.
     announced_receipts: BTreeMap<String, (u64, u64)>,
+    /// Unresolved live marks are connection-local, never a durable authority.
+    deferred_receipts: BTreeMap<(String, String), (u64, u64)>,
     profile_net: profile::Network,
     membership_net: membership::Network,
     linking_net: linking::Network,
@@ -290,6 +316,7 @@ impl<S: Signer> Client<S> {
             packages_in_flight: false,
             view_now_ms: 0,
             announced_receipts: BTreeMap::new(),
+            deferred_receipts: BTreeMap::new(),
             profile_net: profile::Network::default(),
             membership_net: membership::Network::default(),
             linking_net: linking::Network::default(),
@@ -879,6 +906,7 @@ impl<S: Signer> Client<S> {
         self.synced = false;
         self.sent.clear();
         self.announced_receipts.clear();
+        self.deferred_receipts.clear();
         self.packages_in_flight = false;
         self.profile_net = profile::Network::default();
         self.membership_net.restart();
@@ -1064,14 +1092,7 @@ impl<S: Signer> Client<S> {
                     _ => None,
                 };
                 if let Some((delivered, read)) = mark {
-                    let entry = self
-                        .saved
-                        .receipts
-                        .entry(space)
-                        .or_default()
-                        .entry(from)
-                        .or_default();
-                    *entry = (entry.0.max(delivered), entry.1.max(read));
+                    self.receive_receipt(&space, &from, delivered, read)?;
                 }
             }
             ServerFrame::SyncDone => {
@@ -1148,6 +1169,7 @@ impl<S: Signer> Client<S> {
             }
             _ => {}
         }
+        self.flush_receipts();
         self.update(extra)
     }
 
@@ -1533,6 +1555,12 @@ impl<S: Signer> Client<S> {
 
     pub fn conversations(&self) -> Vec<ConversationView> {
         let preferences = self.chat_preferences();
+        // The existing document fold enforces author roles, item ownership and valid
+        // restores. Build one disposable index; never infer activity from note text.
+        let (item_edits, item_projection_error) = match self.document_items() {
+            Ok(items) => (documents::item_edits(&items), None),
+            Err(reason) => (BTreeMap::new(), Some(reason)),
+        };
         let mut conversations = self.logs.keys().filter_map(|space| {
             let (title, kind, privacy) = self.metadata(space)?;
             let roster = self.roster(space);
@@ -1575,7 +1603,7 @@ impl<S: Signer> Client<S> {
             let (all_delivered, all_read) = (watermark(|r| r.0.max(r.1)), watermark(|r| r.1));
             let my_read = receipts.and_then(|r| r.get(me)).map(|r| r.1).unwrap_or(0);
             let mut messages = events.iter().filter_map(|event| {
-                let mut view = self.message_view(event, "confirmed", None)?;
+                let mut view = self.message_view(event, "confirmed", None, &item_edits)?;
                 view.entry = Some(event.hash.clone());
                 view.seq = Some(event.seq);
                 if let EventBody::ItemCreated { item, .. } = &event.body {
@@ -1611,7 +1639,7 @@ impl<S: Signer> Client<S> {
             messages.extend(self.saved.outbox.values().filter_map(|pending| {
                 let inner = pending.inner.as_ref()?;
                 if inner.space != *space { return None; }
-                self.message_view(inner, if pending.failure.is_some() { "failed" } else { "sending" }, pending.failure.clone())
+                self.message_view(inner, if pending.failure.is_some() { "failed" } else { "sending" }, pending.failure.clone(), &item_edits)
             }));
             // Native references may use client ids. Normalize before folding replies,
             // preserving real hash targets if an alias collides.
@@ -1656,9 +1684,14 @@ impl<S: Signer> Client<S> {
             Some(ConversationView { id: space.clone(), title, kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
                 privacy, profiles, prefs: ChatPreferencesView { pinned: prefs.pinned, archived: prefs.archived, muted_until_ms: prefs.muted_until_ms.map(|time| time.to_string()) },
                 event_count: self.logs.get(space)?.next_seq().to_string(),
-                can_send: waiting.is_none(), waiting, unreadable, unread, mentions, members: roster.len(), roster, messages })
+                can_send: waiting.is_none(), waiting,
+                integrity_error: self.saved.integrity_errors.get(space).cloned().or_else(|| item_projection_error.clone()),
+                unreadable, unread, mentions, members: roster.len(), roster, messages })
         }).collect::<Vec<_>>();
-        conversations.extend(self.creating_views());
+        conversations.extend(self.creating_views().into_iter().map(|mut view| {
+            view.integrity_error = item_projection_error.clone();
+            view
+        }));
         conversations
     }
 
@@ -1692,7 +1725,9 @@ impl<S: Signer> Client<S> {
         event: &Event,
         delivery: &'static str,
         failure: Option<String>,
+        item_edits: &BTreeMap<ItemEditKey, ItemEditView>,
     ) -> Option<MessageView> {
+        let item_edit = item_edits.get(&item_edit_key(event)).cloned();
         let (text, reply, forwarded, file) = match &event.body {
             EventBody::MessagePosted {
                 text,
@@ -1720,6 +1755,10 @@ impl<S: Signer> Client<S> {
                 doc.voice.as_ref().is_some_and(|v| v.forwarded),
                 Some(doc.clone()),
             ),
+            EventBody::ItemVersioned { .. } | EventBody::ItemReverted { .. } => {
+                let edit = item_edit.as_ref()?;
+                (edit.note.clone(), None, false, None)
+            }
             _ => return None,
         };
         let name = if event.author == self.account.identity {
@@ -1787,6 +1826,7 @@ impl<S: Signer> Client<S> {
             file_item_id,
             file_version,
             card,
+            item_edit,
         })
     }
 }

@@ -64,8 +64,23 @@ exact search/jump to version 21, read-only history and an existing thread.
 The receipt is `/private/tmp/zoen-miniapp-activity-v116/receipt.json`, SHA-256
 `62a291dd2e471e76c0f052257519a26f2b2dda555f293628cc35a278fa124fc1`.
 This uses the existing native miniapp snapshot, without a scene thumbnail or
-new permission grant. Current-source Web and Android qualification remains
-separate; the browser projection still omits typed item-update events.
+new permission grant. Current-source Web and Android runtime qualification remains
+separate.
+
+The browser core now exposes accepted item versions and restores from the existing
+document fold as typed activity, through the parser and browser driver to the same
+conversation projection. Signed replies to activity retain their original thread;
+ambiguous item ownership surfaces an integrity warning while preserving human
+history and existing saved fork warnings. Receipt catch-up also respects confirmed
+membership removal and cannot carry stale marks into a later rejoin.
+
+Current source passes all 828 app checks, all 72 Rust browser-core tests, strict
+all-target Clippy and two actual signed Rust DTO-to-parser/driver/projection
+qualifications. The receipt is
+`/private/tmp/zoen-miniapp-web-v118/rust-verification-v3-1.json`, SHA-256
+`f29a98fffbc367d80cb6786b7ce3f5cd8a07ba1f0fabfde75447832e33dea61b`.
+These checks do not qualify a new WASM bundle, actual browser delivery or Android
+runtime parity; those remain separate work. The user's iOS session was untouched.
 
 ## Backend and local production environment
 

@@ -21,7 +21,7 @@ import assets from './generated/web-assets.json';
 import { locale as appLocale } from '../i18n/index.ts';
 import { searchBrowser, searchBrowserMessages } from './browser-search';
 import { activateBrowserMediaHost } from './browser-media';
-import { browserMediaEntry } from './browser-media-entry';
+import { browserMessageEntry } from './browser-message-entry';
 import { createBrowserMediaDriver } from '../media/driver.web';
 import { createBrowserProfilePhotoDriver } from '../profile/driver.web';
 import { array, integer, object, string } from '../../../../packages/zoen-ui/web/boundary';
@@ -284,10 +284,7 @@ class BrowserDriver implements CoreDriver {
       seq: message.seq ?? '0',
       author: this.persona(message.author, message.name),
       at_ms: String(message.at_ms),
-      ...browserMediaEntry(message),
-      ...(message.card && !message.deleted
-        ? { kind: { Message: { text: message.text, card: message.card } } }
-        : {}),
+      ...browserMessageEntry(message),
       delivery:
         message.delivery === 'sending'
           ? 'Sending'
@@ -393,7 +390,11 @@ class BrowserDriver implements CoreDriver {
         error: this.state.kind === 'failed' ? this.state.message : null,
       },
       conversations,
-      integrity_warnings: {},
+      integrity_warnings: Object.fromEntries(
+        this.conversations().flatMap((chat) =>
+          chat.integrity_error ? [[chat.id, chat.integrity_error]] : [],
+        ),
+      ),
       has_unreadable_local_history: false,
       requests: [],
       agents: [],
@@ -460,7 +461,10 @@ class BrowserDriver implements CoreDriver {
         snapshot = this.snapshot();
         snapshot.agents = agents as Snapshot['agents'];
         snapshot.requests = requests as Snapshot['requests'];
-        snapshot.integrity_warnings = warnings as Snapshot['integrity_warnings'];
+        snapshot.integrity_warnings = {
+          ...snapshot.integrity_warnings,
+          ...(warnings as Snapshot['integrity_warnings']),
+        };
       }
       result = snapshot;
     } else if (!messages) throw new Error('Vincule este navegador pelo seu celular primeiro.');

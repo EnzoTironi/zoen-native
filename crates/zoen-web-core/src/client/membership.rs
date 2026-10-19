@@ -744,6 +744,7 @@ impl<S: Signer> Client<S> {
                     roster,
                     can_send: false,
                     waiting: Some("Criando a conversa…".into()),
+                    integrity_error: None,
                     unread: 0,
                     mentions: 0,
                     unreadable: 0,

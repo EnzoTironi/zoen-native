@@ -11,7 +11,18 @@ function timestamp(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) throw new Error('Invalid message timestamp.');
   return value;
 }
-function parseMessage(input: unknown) {
+function parseItemEdit(input: unknown, space: string) {
+  if (input === null || input === undefined) return null;
+  const value = object(input);
+  const space_id = string(value.space_id);
+  const item_id = string(value.item_id);
+  const version = integer(value.version);
+  if (space_id !== space || !item_id || version < 2 || version > 4294967295)
+    throw new Error('Invalid mini-app activity identity or version.');
+  return { space_id, item_id, title: string(value.title), version,
+    note: string(value.note), is_undo: boolean(value.is_undo) };
+}
+function parseMessage(input: unknown, space: string) {
   const value = object(input);
   const delivery = string(value.delivery);
   if (delivery !== 'confirmed' && delivery !== 'sending' && delivery !== 'failed') throw new Error('Invalid message delivery state.');
@@ -21,6 +32,11 @@ function parseMessage(input: unknown) {
   const sequence = value.seq === null || value.seq === undefined ? null : string(value.seq);
   if (sequence !== null && (!/^[0-9]+$/.test(sequence) || BigInt(sequence) > 18446744073709551615n)) throw new Error('Invalid message sequence.');
   let text = string(value.text);
+  const item_edit = parseItemEdit(value.item_edit, space);
+  if (item_edit && (text !== item_edit.note || value.card || value.file || value.quote || value.thread ||
+    value.deleted === true || value.edited === true || value.forwarded === true ||
+    array(value.reactions ?? []).length))
+    throw new Error('Invalid mixed mini-app activity.');
   let file: FileDoc | null = null;
   let fileItemId: string | null = null;
   let fileVersion: number | null = null;
@@ -44,7 +60,7 @@ function parseMessage(input: unknown) {
     quote: quote ? { id: string(quote.id), name: string(quote.name), text: string(quote.text) } : null,
     thread: value.thread ? string(value.thread) : null, replies: integer(value.replies ?? 0),
     repliers: array(value.repliers ?? []).map(string), last_reply_ms: typeof value.last_reply_ms === 'number' ? value.last_reply_ms : null,
-    file, file_item_id: fileItemId, file_version: fileVersion, card: value.card ? parseCard(value.card) : null };
+    file, file_item_id: fileItemId, file_version: fileVersion, card: value.card ? parseCard(value.card) : null, item_edit };
 }
 
 function parseCard(input: unknown) {
@@ -124,6 +140,7 @@ export type Profile = ReturnType<typeof parseProfile>;
 
 export function parseConversation(input: unknown) {
   const value = object(input);
+  const space = string(value.id);
   const kind = string(value.kind);
   if (kind !== 'direct' && kind !== 'group' && kind !== 'community' && kind !== 'personal') throw new Error('Invalid conversation kind.');
   const privacy = string(value.privacy);
@@ -137,8 +154,8 @@ export function parseConversation(input: unknown) {
   return { id: string(value.id), title: string(value.title), kind, privacy: privacy as 'EndToEnd' | 'Closed' | 'Public', roster, profiles: array(value.profiles).map(parseProfile),
     prefs: { pinned: boolean(prefs.pinned), archived: boolean(prefs.archived), muted_until_ms: prefs.muted_until_ms === null ? null : decimal(prefs.muted_until_ms, 9223372036854775807n, true) },
     event_count: decimal(value.event_count, 18446744073709551615n), can_send: boolean(value.can_send),
-    waiting: nullableText(value.waiting), unreadable: integer(value.unreadable),
-    unread: integer(value.unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), messages: array(value.messages).map(parseMessage) };
+    waiting: nullableText(value.waiting), integrity_error: nullableText(value.integrity_error ?? null), unreadable: integer(value.unreadable),
+    unread: integer(value.unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), messages: array(value.messages).map((message) => parseMessage(message, space)) };
 }
 export type Conversation = ReturnType<typeof parseConversation>;
 export type Message = ReturnType<typeof parseMessage>;
