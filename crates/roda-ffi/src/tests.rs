@@ -524,11 +524,7 @@ fn mcp_specs_follow_the_apps_extension() {
                 .any(|t| t.visibility == vec!["model".to_string()]),
             "uma ferramenta para o agente criar"
         );
-        if !s.has_view {
-            // Nativos (MapTap, receita): sem View MCP, e o host não inventa uma.
-            assert!(e.read_app_resource(s.resource_uri.clone()).is_err());
-            continue;
-        }
+        assert!(s.has_view, "every built-in has an MCP Apps view: {}", s.id);
         let r = e.read_app_resource(s.resource_uri.clone()).unwrap();
         assert_eq!(r.mime_type, "text/html;profile=mcp-app");
         assert!(r.text.to_lowercase().starts_with("<!doctype html>"));
@@ -538,17 +534,62 @@ fn mcp_specs_follow_the_apps_extension() {
                 .any(|t| t.visibility == vec!["model".to_string()]),
             "uma ferramenta para o agente criar"
         );
-        let app_tools = s
+        let mut app_tools = s
             .tools
             .iter()
             .filter(|t| t.visibility.contains(&"app".to_string()))
             .map(|t| t.name.as_str())
             .collect::<Vec<_>>();
-        if s.id == "excalidraw" {
-            assert_eq!(app_tools, vec!["app_document_read", "app_document_save"]);
-        } else {
-            assert!(app_tools.len() >= 3);
-        }
+        let mut expected_tools = match s.id.as_str() {
+            "excalidraw" => vec!["app_document_read", "app_document_save"],
+            "pet" => vec![
+                "pet_feed",
+                "pet_nap",
+                "pet_wake",
+                "pet_play",
+                "pet_rename",
+                "pet_dash_score",
+                "pet_get_state",
+                "pet_release",
+            ],
+            "maptap" => vec!["maptap_guess", "maptap_get_state"],
+            "recipe" => vec![
+                "recipe_servings",
+                "recipe_check",
+                "recipe_cook",
+                "recipe_get_state",
+            ],
+            "poll" => vec![
+                "poll_vote",
+                "poll_add_option",
+                "poll_get_state",
+                "poll_close",
+            ],
+            "list" => vec!["list_add", "list_toggle", "list_get_state"],
+            "countdown" => vec!["countdown_get_state"],
+            "hike" => vec![
+                "hike_vote",
+                "hike_decide",
+                "hike_set_itinerary",
+                "hike_add_photos",
+                "hike_get_state",
+            ],
+            "schedule" => vec![
+                "schedule_configure",
+                "schedule_book",
+                "schedule_resolve",
+                "schedule_cancel",
+                "schedule_get_state",
+            ],
+            _ => panic!("unexpected built-in {}", s.id),
+        };
+        app_tools.sort_unstable();
+        expected_tools.sort_unstable();
+        assert_eq!(
+            app_tools, expected_tools,
+            "app-visible contract for {}",
+            s.id
+        );
     }
     assert!(e.read_app_resource("ui://outro/x".into()).is_err());
 }

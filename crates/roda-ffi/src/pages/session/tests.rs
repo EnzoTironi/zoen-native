@@ -2453,3 +2453,220 @@ fn blob_publication_and_two_first_writers_converge_without_cas() {
             .any(|b| b.plain_text().len() == 55_000));
     }
 }
+
+// Both document tags use the existing device-key-sealed page.draft namespace.
+// Exercise actual journals and a newly certified device, not fabricated ciphertext.
+fn private_document_backup_source(
+    kind: ItemKind,
+) -> (Fixture, crate::backup::Header, DocumentView, DocumentView) {
+    let mut engine = Engine::open(":memory:").unwrap();
+    let (identity_secret, _, agreement_secret) = engine
+        .create_account("Backup author", "backup_author", "http://127.0.0.1:1")
+        .unwrap();
+    let owner = engine.me.clone().unwrap();
+    let mut f = Fixture {
+        engine,
+        owner: owner.clone(),
+        space: new_id("document-backup-space"),
+        item: new_id("document-backup-item"),
+    };
+    f.ordered(EventBody::SpaceCreated {
+        title: "Document backup".into(),
+        kind: SpaceKind::Group,
+        privacy: Privacy::Public,
+    });
+    let content = match kind {
+        ItemKind::Page => {
+            let page = Page::from_markdown("# Published page\n\nPublished paragraph\n").unwrap();
+            ItemContent::Page(PageContent {
+                title: "Published page".into(),
+                path: "notes/published.md".into(),
+                loro: encode_bytes(&page.snapshot()),
+                blob: None,
+                manifest: None,
+            })
+        }
+        ItemKind::Plan => ItemContent::Plan(original()),
+        _ => panic!("document backup fixture requires Page or Plan"),
+    };
+    f.ordered(EventBody::ItemCreated {
+        item: f.item.clone(),
+        kind,
+        content,
+        origin: "Synthetic canonical backup fixture".into(),
+    });
+    f.engine.store.set_synced(&f.space).unwrap();
+    f.engine.net.synced.insert(f.space.clone());
+    let mut session = f.session();
+    let observed = session.read(&f.engine).unwrap();
+    assert!(observed.can_edit);
+    assert!(!observed.unsaved);
+    let events = f.engine.store.event_count().unwrap();
+    let outbox = f.engine.store.outbox_len().unwrap();
+    let accepted = private_document_backup_edit(
+        &f,
+        &mut session,
+        &observed,
+        "private-before-backup",
+        "Device-private unsaved 雨 😀",
+    )
+    .unwrap();
+    assert!(accepted.current.unsaved);
+    assert_ne!(accepted.current.view, observed.view);
+    assert_eq!(f.engine.store.event_count().unwrap(), events);
+    assert_eq!(f.engine.store.outbox_len().unwrap(), outbox);
+    assert_eq!(f.engine.item(&f.item).unwrap().version, 1);
+    let header = crate::backup::Header {
+        version: 1,
+        identity: owner,
+        relay_url: "http://127.0.0.1:1".into(),
+        identity_secret: hex::encode(identity_secret),
+        agreement_secret: hex::encode(agreement_secret),
+        created_ms: 1,
+    };
+    (f, header, observed.view, accepted.current.view)
+}
+
+fn private_document_backup_edit(
+    f: &Fixture,
+    session: &mut PageSession,
+    observed: &SessionRead,
+    mutation: &str,
+    text: &str,
+) -> R<AcceptedEdit> {
+    match &observed.view {
+        DocumentView::Plan { .. } => {
+            apply(f, session, observed, mutation, &[text_edit(observed, text)])
+        }
+        DocumentView::BinaryPage { .. } => {
+            let page = f.engine.page(&f.item)?;
+            let mut changed = page.blocks.last().unwrap().clone();
+            changed.text = text.into();
+            session.apply_from(
+                &f.engine,
+                mutation,
+                &observed.edit_context,
+                DocumentEdit::BinaryPage {
+                    order: &page
+                        .blocks
+                        .iter()
+                        .map(|block| block.id.clone())
+                        .collect::<Vec<_>>(),
+                    changed: &[changed],
+                },
+            )
+        }
+    }
+}
+
+#[test]
+fn backup_export_excludes_actual_page_and_plan_private_journals_without_mutating_source() {
+    for kind in [ItemKind::Page, ItemKind::Plan] {
+        let (f, _, _, private) = private_document_backup_source(kind);
+        let ciphertext = f.cipher().unwrap();
+        let head = f.engine.logs[&f.space]
+            .head()
+            .map(|head| (head.seq, head.hash));
+        let events = f.engine.store.event_count().unwrap();
+        let outbox = f.engine.store.outbox_len().unwrap();
+        let db = Database::new();
+        std::fs::write(db.path(), f.engine.backup_snapshot().unwrap()).unwrap();
+        let connection = rusqlite::Connection::open(db.path()).unwrap();
+        let rows: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM meta WHERE key LIKE 'page.draft.%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            rows, 0,
+            "a backup must not carry device-private document journals"
+        );
+        assert_eq!(f.cipher().as_deref(), Some(ciphertext.as_str()));
+        let mut source_session = f.session();
+        let source = source_session.read(&f.engine).unwrap();
+        assert_eq!(source.view, private);
+        assert!(source.can_edit && source.unsaved);
+        assert_eq!(f.engine.store.event_count().unwrap(), events);
+        assert_eq!(f.engine.store.outbox_len().unwrap(), outbox);
+        assert_eq!(
+            f.engine.logs[&f.space]
+                .head()
+                .map(|head| (head.seq, head.hash)),
+            head
+        );
+    }
+}
+
+#[test]
+fn backup_restore_strips_authentic_old_device_page_and_plan_journals_before_edit_admission() {
+    for kind in [ItemKind::Page, ItemKind::Plan] {
+        let (f, header, canonical, private) = private_document_backup_source(kind);
+        let ciphertext = f.cipher().unwrap();
+        let row = row_id(&f.engine, f.engine.item_state(&f.item).unwrap()).unwrap();
+        let original_device = f.engine.account().unwrap().device.clone();
+        let head = f.engine.logs[&f.space]
+            .head()
+            .map(|head| (head.seq, head.hash));
+        let db = Database::new();
+        std::fs::write(db.path(), f.engine.backup_snapshot().unwrap()).unwrap();
+        let connection = rusqlite::Connection::open(db.path()).unwrap();
+        // Test restore independently of export using the real old device's sealed row.
+        connection
+            .execute(
+                "INSERT OR REPLACE INTO meta(key,value) VALUES (?1,?2)",
+                rusqlite::params![row, ciphertext],
+            )
+            .unwrap();
+        drop(connection);
+        let mut restored = Engine::open(":memory:").unwrap();
+        restored
+            .restore_snapshot(
+                &header,
+                &std::fs::read(db.path()).unwrap(),
+                roda_log::Signer::generate(),
+            )
+            .unwrap();
+        assert_eq!(restored.account().unwrap().identity, f.owner);
+        assert_ne!(restored.account().unwrap().device, original_device);
+        assert!(restored.store.meta(&row).unwrap().is_none());
+        assert_eq!(
+            restored.logs[&f.space]
+                .head()
+                .map(|head| (head.seq, head.hash)),
+            head
+        );
+        assert_eq!(restored.item(&f.item).unwrap().version, 1);
+        let restored = Fixture {
+            engine: restored,
+            owner: f.owner.clone(),
+            space: f.space.clone(),
+            item: f.item.clone(),
+        };
+        let mut session = restored.session();
+        let current = session.read(&restored.engine).unwrap();
+        assert_eq!(current.view, canonical);
+        assert!(!current.unsaved);
+        assert!(
+            current.can_edit,
+            "foreign ciphertext must not lock the canonical document"
+        );
+        assert!(current.save_error.is_none());
+        let accepted = private_document_backup_edit(
+            &restored,
+            &mut session,
+            &current,
+            "new-device-edit",
+            "Fresh edit after recovery",
+        )
+        .unwrap();
+        assert!(accepted.current.unsaved && accepted.current.can_edit);
+        assert_ne!(accepted.current.view, canonical);
+        assert_ne!(restored.cipher().as_deref(), Some(ciphertext.as_str()));
+        assert_eq!(restored.engine.item(&restored.item).unwrap().version, 1);
+        let mut original_session = f.session();
+        assert_eq!(original_session.read(&f.engine).unwrap().view, private);
+        assert_eq!(f.cipher().as_deref(), Some(ciphertext.as_str()));
+    }
+}

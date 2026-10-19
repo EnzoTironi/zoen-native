@@ -338,7 +338,8 @@ impl Engine {
             c.execute_batch(
                 "DELETE FROM meta WHERE key = 'account' OR key = 'relay_name' OR key LIKE 'backup.%'
                     OR key LIKE 'mls.%' OR key LIKE 'invite:%' OR key LIKE 'message.draft.%'
-                    OR key LIKE 'media.draft.%' OR key LIKE 'file.edit.draft.%';
+                    OR key LIKE 'media.draft.%' OR key LIKE 'file.edit.draft.%'
+                    OR key LIKE 'page.draft.%';
                  VACUUM;",
             )
             .map_err(storage)?;
@@ -416,7 +417,7 @@ impl Engine {
                 }
                 // Device-key-encrypted drafts are never portable to a new device,
                 // even when importing a retained snapshot from another revision.
-                conn.execute("DELETE FROM main.meta WHERE key LIKE 'message.draft.%' OR key LIKE 'media.draft.%' OR key LIKE 'file.edit.draft.%'", [])
+                conn.execute("DELETE FROM main.meta WHERE key LIKE 'message.draft.%' OR key LIKE 'media.draft.%' OR key LIKE 'file.edit.draft.%' OR key LIKE 'page.draft.%'", [])
                     .map_err(storage)?;
                 conn.execute_batch("COMMIT").map_err(storage)
             })();
