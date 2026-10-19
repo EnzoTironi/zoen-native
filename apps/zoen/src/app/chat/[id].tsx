@@ -34,9 +34,13 @@ import {
   ConversationViewport,
 } from '../../components/conversation-viewport';
 import { ConversationRail, ConversationRailSpacer } from '../../components/conversation-rail';
-import { ConversationMessage } from '../../components/conversation-message';
+import { ConversationTimelineMessage as ConversationMessage } from '../../components/conversation-timeline-message';
 import { useMessageActions } from '../../components/use-message-actions';
 import { messageCard } from '../../core/message-presentation';
+import {
+  projectConversationTimeline,
+  type ConversationTimelineRow,
+} from '../../core/conversation-timeline';
 import { useMessageDraft } from '../../core/use-message-draft';
 import { ChatHeader } from '../../components/chat-header';
 import { useHome } from '../../home/provider';
@@ -63,7 +67,7 @@ export default function Chat() {
   const conversationMiniapps = cards.visible;
   const { inform } = useDialogs();
   const input = useRef<TextInputInstance>(null);
-  const list = useRef<FlashListRef<TimelineEntry>>(null);
+  const list = useRef<FlashListRef<ConversationTimelineRow>>(null);
   const focused = useRef(false);
   const normalDraft = useMessageDraft(id);
   const { messageDraft, updateDraft } = normalDraft;
@@ -128,6 +132,22 @@ export default function Chat() {
         : timelines[id],
     [searchThread, timelines, id],
   );
+  const [revealedActivity, setRevealedActivity] = useState<{ scope: string; id: string } | null>(
+    null,
+  );
+  const rows = useMemo(
+    () =>
+      projectConversationTimeline(
+        page?.entries ?? [],
+        items,
+        id,
+        selectedSearchId ??
+          (revealedActivity?.scope === `${id}:${owner}` ? revealedActivity.id : null) ??
+          jump,
+      ),
+    [page, items, id, owner, selectedSearchId, revealedActivity, jump],
+  );
+  const visibleEntries = useMemo(() => rows.map((row) => row.entry), [rows]);
   const timelineKey = searchState.active && searchThread ? `${id}:${searchThread.root}` : id;
   const initialEnd = useMemo(
     () =>
@@ -202,7 +222,7 @@ export default function Chat() {
   }, [searchReveal, search, keyboardProgress]);
   useLayoutEffect(() => {
     revealLayout.current = {
-      entries: page?.entries ?? [],
+      entries: visibleEntries,
       ready:
         loadedSpace === timelineKey &&
         !cards.loading &&
@@ -212,9 +232,10 @@ export default function Chat() {
       railHeight,
       noticeHeight,
     };
-    searchReveal.onData(page?.entries ?? []);
+    searchReveal.onData(visibleEntries);
   }, [
     page,
+    visibleEntries,
     loadedSpace,
     timelineKey,
     cards.loading,
@@ -304,13 +325,14 @@ export default function Chat() {
     }, [id, store, initialEnd, searchReveal]),
   );
   const reveal = useCallback(
-    async (messageId: string) => {
+    async (messageId: string, keepActivityVisible = true) => {
       cancelInitialEnd();
       const index = await store.revealMessage(id, messageId);
       if (index < 0) throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
+      if (keepActivityVisible) setRevealedActivity({ scope: `${id}:${owner}`, id: messageId });
       return messageId;
     },
-    [id, store, cancelInitialEnd],
+    [id, owner, store, cancelInitialEnd],
   );
   useEffect(() => {
     let active = true;
@@ -336,7 +358,7 @@ export default function Chat() {
         if (!entries.some((entry) => entry.id === selectedHit.ref_id))
           throw new Error(t('chat.thisMessageIsNoLongerInThisDevice'));
         thread = { root: message.in_thread, entries };
-      } else await reveal(selectedHit.ref_id);
+      } else await reveal(selectedHit.ref_id, false);
       if (current()) {
         setSearchRead({ search, hit: selectedHit, thread, error: null });
         if (process.env.EXPO_OS === 'ios') searchReveal.request(selectedHit.ref_id, captured);
@@ -384,7 +406,7 @@ export default function Chat() {
       (conversationMiniapps.length > 0 && railHeight === 0)
     )
       return;
-    const index = page.entries.findIndex((entry) => entry.id === scrollTarget);
+    const index = visibleEntries.findIndex((entry) => entry.id === scrollTarget);
     if (index < 0) return;
     // Wait until the loaded history has committed before addressing list indices.
     const frame = requestAnimationFrame(() => {
@@ -413,6 +435,7 @@ export default function Chat() {
     timelineKey,
     id,
     page,
+    visibleEntries,
     inform,
     headerHeight,
     statusBarHeight,
@@ -710,7 +733,7 @@ export default function Chat() {
               }}
               onCommitLayoutEffect={() => {
                 initialEnd.onCommitLayoutEffect();
-                searchReveal.onCommit(page.entries);
+                searchReveal.onCommit(visibleEntries);
                 // Preserve the native keyboard scroller when search changes the
                 // timeline, and address its new indices only after SDK commit.
                 if (loadedSpace !== timelineKey) setLoadedSpace(timelineKey);
@@ -719,8 +742,8 @@ export default function Chat() {
                 cancelInitialEnd();
                 searchReveal.cancel();
               }}
-              data={page.entries}
-              keyExtractor={(entry) => entry.id}
+              data={rows}
+              keyExtractor={(row) => row.key}
               keyboardDismissMode="interactive"
               keyboardShouldPersistTaps="handled"
               contentInsetAdjustmentBehavior="never"
@@ -746,12 +769,13 @@ export default function Chat() {
                   detail={t('chat.writeTheFirstMessageInThisChat')}
                 />
               }
-              renderItem={({ item: entry, index }) => (
+              renderItem={({ item: { entry, activity }, index }) => (
                 <ConversationMessage
                   spaceId={id}
                   entry={entry}
-                  previous={page.entries[index - 1]}
-                  next={page.entries[index + 1]}
+                  activity={activity}
+                  previous={visibleEntries[index - 1]}
+                  next={visibleEntries[index + 1]}
                   groupChat={chat.kind !== 'Direct'}
                   item={items.find((item) => item.id === messageCard(entry)?.item_id)}
                   highlighted={entry.id === selectedSearchId}

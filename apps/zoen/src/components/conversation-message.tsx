@@ -19,7 +19,7 @@ import { MessageInteraction, MessagePressable as Pressable } from './message-int
 import { MessageReceipt, messageDeliveryLabel } from './message-receipt';
 import type { MessageActionMode, MessageAnchor } from './use-message-actions';
 
-type Props = {
+export type ConversationMessageProps = {
   spaceId: string;
   entry: TimelineEntry;
   previous?: TimelineEntry;
@@ -59,7 +59,7 @@ export const ConversationMessage = memo(function ConversationMessage({
   onAuthor,
   onMenu,
   onQuote,
-}: Props) {
+}: ConversationMessageProps) {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const bubble = useRef<ComponentRef<typeof View>>(null);

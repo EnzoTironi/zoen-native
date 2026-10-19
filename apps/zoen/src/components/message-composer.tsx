@@ -121,6 +121,8 @@ export function MessageComposer({
                 : t('chat.message')
         }
         placeholderTextColor={colors.tertiary}
+        autoCorrect={search ? false : undefined}
+        autoCapitalize={search ? 'none' : undefined}
         multiline
         returnKeyType={search ? 'search' : 'default'}
         submitBehavior={search ? 'submit' : undefined}

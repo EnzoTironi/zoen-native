@@ -426,8 +426,13 @@ test('search takes over the message field while attachment drafts stay outside i
   };
   const root = f.render(f.file, { search, value: 'Search text' });
   assert.equal(find(root, byId('message-input')).props.value, 'Search text');
+  assert.equal(find(root, byId('message-input')).props.autoCorrect, false);
+  assert.equal(find(root, byId('message-input')).props.autoCapitalize, 'none');
   assert.equal(scan(root).some(byId('send-attachments')), false);
   assert.ok(find(root, byId('older-search-result')));
+  const normal = find(f.render(), byId('message-input'));
+  assert.equal(normal.props.autoCorrect, undefined, 'Normal messages keep native correction');
+  assert.equal(normal.props.autoCapitalize, undefined, 'Normal messages keep sentence casing');
 });
 
 test('a sent file caption can be cleared without allowing empty ordinary text edits', () => {

@@ -6,7 +6,7 @@ export function isSystemMessage(entry: TimelineEntry) {
 
 /** Group by continuity, not just by author: old messages never inherit a new bubble's tail. */
 export function messagesAreGrouped(previous: TimelineEntry | undefined, entry: TimelineEntry) {
-  if (!previous || isSystemMessage(previous) || isSystemMessage(entry)) return false;
+  if (!previous || !('Message' in previous.kind) || !('Message' in entry.kind)) return false;
   const elapsed = Number(entry.at_ms) - Number(previous.at_ms);
   return previous.author.id === entry.author.id && elapsed >= 0 && elapsed < 180_000;
 }

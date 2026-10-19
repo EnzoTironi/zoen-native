@@ -35,7 +35,7 @@ unchanged after real producer runs. The 15 source-verifier tests pass.
 ## Current validation boundary
 
 - Expo SDK 58.0.16 compatibility and Expo Doctor 20/20 passed. Current app checks
-  pass TypeScript, Oxlint, Oxfmt and 816/816 tests without skips.
+  pass TypeScript, Oxlint, Oxfmt and 825/825 tests without skips.
 - Renamed client, relay, admission and browser-core targets compile. The actual
   offline-invite regression confirms that no local signed grant is manufactured.
 - Fresh Android arm64 bindings and native ABI pass verification. All 123 JVM
@@ -55,6 +55,17 @@ The native artifact proof predates this small JavaScript follow-up. A separate
 current-bundle recheck passes cold/warm development links and explicit demo entry,
 with all five card IDs and four conversation message IDs retained. The Expo
 development-client link reloads JavaScript; demo selection is session-only.
+
+Miniapp autosaves now appear as compact activity in conversations, with one
+current native card and a direct history action. Only adjacent typed updates to
+the same item can group; all original event IDs, ordering, delivery states and
+human messages remain intact. Actual iOS checks covered 22 drawing updates,
+exact search/jump to version 21, read-only history and an existing thread.
+The receipt is `/private/tmp/zoen-miniapp-activity-v116/receipt.json`, SHA-256
+`62a291dd2e471e76c0f052257519a26f2b2dda555f293628cc35a278fa124fc1`.
+This uses the existing native miniapp snapshot, without a scene thumbnail or
+new permission grant. Current-source Web and Android qualification remains
+separate; the browser projection still omits typed item-update events.
 
 ## Backend and remaining work
 

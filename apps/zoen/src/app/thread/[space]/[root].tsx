@@ -1,5 +1,5 @@
 import { t } from '../../../i18n/index.ts';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,9 +7,12 @@ import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Text, View, type TextInputInstance } from 'react-native';
 import { useCoreQuery } from '../../../core/query';
 import { useClient } from '../../../core/provider';
-import type { TimelineEntry } from '../../../core/types';
 import { messageText } from '../../../core/presentation';
 import { messageCard } from '../../../core/message-presentation';
+import {
+  projectConversationTimeline,
+  type ConversationTimelineRow,
+} from '../../../core/conversation-timeline';
 import { useMessageDraft } from '../../../core/use-message-draft';
 import { EmptyState, Loading, NativeButton } from '../../../components/primitives';
 import { useTheme } from '../../../theme';
@@ -19,7 +22,7 @@ import {
   ConversationContainer,
   ConversationViewport,
 } from '../../../components/conversation-viewport';
-import { ConversationMessage } from '../../../components/conversation-message';
+import { ConversationTimelineMessage as ConversationMessage } from '../../../components/conversation-timeline-message';
 import { useMessageActions } from '../../../components/use-message-actions';
 
 export default function Thread() {
@@ -31,7 +34,7 @@ export default function Thread() {
   const { top: statusBarHeight } = useSafeAreaInsets();
   const { items } = useHome();
   const input = useRef<TextInputInstance>(null);
-  const list = useRef<FlashListRef<TimelineEntry>>(null);
+  const list = useRef<FlashListRef<ConversationTimelineRow>>(null);
   const sending = useRef(false);
   useFocusEffect(useCallback(() => () => store.setTyping(space, false), [space, store]));
   const {
@@ -39,6 +42,10 @@ export default function Thread() {
     error,
     retry,
   } = useCoreQuery({ op: 'thread', space_id: space, root_id: root });
+  const rows = useMemo(
+    () => projectConversationTimeline(entries ?? [], items, space, root),
+    [entries, items, space, root],
+  );
   const { colors } = useTheme();
   const normalDraft = useMessageDraft(space, root);
   const { messageDraft, updateDraft } = normalDraft;
@@ -157,8 +164,8 @@ export default function Thread() {
               ref={list}
               testID="conversation-timeline"
               renderScrollComponent={ScrollComponent}
-              data={entries}
-              keyExtractor={(entry) => entry.id}
+              data={rows}
+              keyExtractor={(row) => row.key}
               keyboardDismissMode="interactive"
               keyboardShouldPersistTaps="handled"
               contentInsetAdjustmentBehavior="never"
@@ -172,13 +179,14 @@ export default function Thread() {
                 startRenderingFromBottom: false,
                 autoscrollToBottomThreshold: 0.15,
               }}
-              renderItem={({ item: entry, index }) => (
+              renderItem={({ item: { entry, activity }, index }) => (
                 <View>
                   <ConversationMessage
                     spaceId={space}
                     entry={entry}
-                    previous={index > 1 ? entries[index - 1] : undefined}
-                    next={index > 0 ? entries[index + 1] : undefined}
+                    activity={activity}
+                    previous={index > 1 ? rows[index - 1]?.entry : undefined}
+                    next={index > 0 ? rows[index + 1]?.entry : undefined}
                     groupChat={groupChat}
                     item={items.find((item) => item.id === messageCard(entry)?.item_id)}
                     reactionPending={actions.busy}
@@ -190,7 +198,7 @@ export default function Thread() {
                       void actions.react(message, emoji);
                     }}
                     onQuote={(messageId) => {
-                      const target = entries.findIndex((message) => message.id === messageId);
+                      const target = rows.findIndex((row) => row.entry.id === messageId);
                       if (target >= 0)
                         void list.current
                           ?.scrollToIndex({ index: target, animated: true, viewPosition: 0.5 })

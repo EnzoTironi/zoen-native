@@ -2092,5 +2092,40 @@
     "taskOwnedCleanupVerified": true,
     "publicDeploymentAccepted": false,
     "fullProtocolQualified": false
+  },
+  "currentMiniappTimelineCheckpoint": {
+    "id": "miniapp-timeline-activity-v116",
+    "receipt": {
+      "path": "/private/tmp/zoen-miniapp-activity-v116/receipt.json",
+      "sha256": "62a291dd2e471e76c0f052257519a26f2b2dda555f293628cc35a278fa124fc1"
+    },
+    "scope": "Conversation presentation only; actual iOS synthetic local demo with existing signed v110 Debug native artifact and current JavaScript. No Release, public delivery or complete platform acceptance.",
+    "checks": {
+      "typecheck": true,
+      "oxlint": true,
+      "oxfmt": true,
+      "tests": 825,
+      "failures": 0,
+      "skipped": 0
+    },
+    "canonicalEventsPreserved": true,
+    "grouping": "Only adjacent typed ItemEdited updates with matching item, author, thread, note, delivery, consecutive versions and exact u64 sequences; annotated, failed, undo and human messages keep their original boundaries.",
+    "actualIos": {
+      "drawingUpdates": 22,
+      "activityRuns": [
+        20,
+        2
+      ],
+      "currentVersion": 23,
+      "readOnlyHistoryVersion": 21,
+      "exactSearchAndInternalJumpId": "01M5AN54JSD1HQEKFGNGQCT9QD",
+      "existingThreadRetained": true
+    },
+    "preview": "Existing native item snapshot; no actual scene thumbnail and no permission mutation.",
+    "webRuntimeVerified": false,
+    "androidRuntimeVerified": false,
+    "webGap": "Browser message projection omits typed item version/revert events; current runtime qualification requires that path and a fresh matching WASM artifact.",
+    "publicDeliveryVerified": false,
+    "fullAppParityAccepted": false
   }
 }

@@ -3,6 +3,10 @@ import { defineFeature } from '../catalog.ts';
 export const miniapps = defineFeature(
   {
     theAccountHasChangedOpenTheMiniappAgain: 'The account has changed. Open the miniapp again.',
+    timelineUpdates: '%{name} · %{count} updates',
+    timelineHistory: 'Version history for %{title}',
+    timelineVersionHistory: 'v%{version} · View history',
+    timelineCurrentHistory: 'Current · v%{version} · History',
     confirmMiniappAction: 'Confirm miniapp action?',
     confirmAction: 'Confirm action',
     thePermissionHasChangedReviewTheActionAgain:
@@ -261,6 +265,10 @@ export const miniapps = defineFeature(
   },
   {
     theAccountHasChangedOpenTheMiniappAgain: 'A conta mudou. Abra o miniapp novamente.',
+    timelineUpdates: '%{name} · %{count} atualizações',
+    timelineHistory: 'Histórico de versões de %{title}',
+    timelineVersionHistory: 'v%{version} · Ver histórico',
+    timelineCurrentHistory: 'Atual · v%{version} · Histórico',
     confirmMiniappAction: 'Confirmar ação do miniapp?',
     confirmAction: 'Confirmar ação',
     thePermissionHasChangedReviewTheActionAgain: 'A permissão mudou. Revise a ação novamente.',
