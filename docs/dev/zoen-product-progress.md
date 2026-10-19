@@ -12,7 +12,7 @@ The earlier sections below retain their original artifact boundaries.
 
 The new source uses **Apps** in 224 English/Portuguese display strings, including
 permissions, widgets, Siri and shared-core messages. Internal IDs, routes and
-signed historical content remain unchanged. All 836 app checks pass. The Web
+signed historical content remain unchanged. All 840 app checks pass. The Web
 attachment menu now uses a browser-native popover anchored to the composer;
 actual pointer, keyboard, focus, file chooser and narrow-window checks pass.
 
@@ -20,14 +20,34 @@ Cold relay-offline sending no longer hides the conversation: a pending message's
 null event hash previously matched every message's null thread reference. The
 driver now resolves only actual thread references. Both browser locales pass
 all 24 checkpoints, retaining original IDs and one native-peer occurrence after
-reconnect and cold-route reload. This uses the genuine retained WASM; current
-Apps-copy WASM and complete offline PWA startup remain separate qualifications.
+reconnect and cold-route reload. A fresh current WASM, native CLI and normal
+release export now repeat all 24 checkpoints in each locale. Excalidraw installs
+through the real catalog/form UI, preserves earlier message IDs and UTF-8 bytes,
+and reaches the native peer as exactly one additional message from its author.
+Complete offline PWA asset startup remains unaccepted.
 
 The managed local gateway also passes actual encrypted messaging and Delivered/
 Read across different native processes on unchanged connections. All seven
-services are healthy, with the original six processes intact. Its 24 ownership/
-lifecycle cases pass; enabled-gateway backup/restore and HA remain unaccepted.
+services are healthy, with the original six processes intact. Its 26 ownership/
+lifecycle cases pass. A separate two-relay gateway-enabled cold backup restores
+four fresh volumes with exact historical images, vault keys and runtime config,
+even when the original runtime config is corrupt. The same client authenticates
+and writes after restore; a newly linked device decrypts history and downloads
+the exact 1,049,393-byte attachment. Stateless GET verifies restored ciphertext.
+The actual drill exposed a released-port `TIME_WAIT` check failure; its regression
+fails before the correction and passes afterward, while an active listener still
+blocks startup. All original development services remain intact. HA remains
+unaccepted.
 See the receipts in `postMergeCheckpoint` and the [gateway guide](../../infra/local/FRONTDOOR.md).
+
+The optimized Android Release passes real secure linking, encrypted history,
+group and direct messaging, Delivered receipts, cold retention and native search.
+Its native app transport now accepts Android's exact opaque origin while
+retaining nonce and document-generation checks; nine focused tests pass. The
+updated APK still shows initial Excalidraw loading after a bounded 72-second
+observation, before that callback can be qualified. Connection/edit/reopen remain
+pending causal phase measurements. Android media and the generic Home card menu
+also remain open; their candidates are outside the checkout and unqualified.
 
 ## One product model and simple names
 

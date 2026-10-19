@@ -81,7 +81,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "Expo SDK 58.0.16 source passes TypeScript, Oxlint, Oxfmt and 836 app tests. The product now uses Apps in visible EN/PT copy. The Web attachment menu passes actual keyboard, pointer and native-picker checks. Cold relay-offline messaging passes 24 browser checkpoints per locale with exact retained IDs and one native-peer occurrence after reconnect. A managed standard local gateway proves live encrypted delivery and receipts across two native processes without reconnect. PR136 is merged; continued work is in PR140. Fresh Apps-copy Web core, installed current Android journeys, providers, public deployment, complete platform journeys, release rollback, HA and production/scale acceptance remain open.",
+  "currentAcceptanceSummary": "Expo SDK 58.0.16 source passes TypeScript, Oxlint, Oxfmt and 840 app tests. Fresh current Web WASM, native CLI and normal release export pass all 24 browser checkpoints in each locale, including UI App installation, exact original IDs/history bytes, encrypted media/Excalidraw and relay-offline reconnect. Android Release passes secure linking, encrypted history, group/direct exchange, Delivered, cold retention and native search. Its updated app transport passes nonce/origin tests, but Excalidraw still shows initial loading after 72 seconds and remains unaccepted. Local two-relay gateway delivery and gateway-enabled cold restore pass with four fresh volumes, exact image/key/config pins and a new linked device downloading exact attachment bytes. PR136 is merged; continued work is in PR140. Providers, complete platform journeys, public deployment, PWA offline asset startup, release rollback, HA and production/scale acceptance remain open.",
   "retiredBackend": {
     "id": "custom-cloudflare-runtime",
     "status": "RETIRED",
@@ -2262,7 +2262,7 @@
     "webAccountRecoveredAfterExternalRestart": true
   },
   "postMergeCheckpoint": {
-    "id": "apps-and-web-reliability-v121",
+    "id": "apps-platform-and-local-durability-v123",
     "mergedBaseline": {
       "pullRequest": 136,
       "head": "c05b0bdd4924ca6a5d668faa9f0f58826bcd3d4f",
@@ -2271,12 +2271,12 @@
     },
     "activePullRequest": 140,
     "appChecks": {
-      "testsPassed": 836,
+      "testsPassed": 840,
       "failed": 0,
       "skipped": 0,
       "receipt": {
-        "path": "/private/tmp/zoen-web-attachments-v120/v121-finalcheck.json",
-        "sha256": "cf571b476921869acb433c7e152ad9ff58f9bcf85956eaf82e5adcde9e9f4224"
+        "path": "/private/tmp/zoen-android-app-transport-v123/live-check-receipt.json",
+        "sha256": "9b2ae21b9c52c8b8c90e0c249fe3b454875199e4986b5da9b23c530b4a85fdf2"
       }
     },
     "appsTerminology": {
@@ -2288,7 +2288,19 @@
       },
       "optimizedAndroidCoreBuildPassed": true,
       "installedNativeCopyAccepted": false,
-      "freshWebCoreCopyAccepted": false
+      "freshWebCoreCopyAccepted": true,
+      "freshWebRelease": {
+        "receipt": {
+          "path": "/private/tmp/zoen-apps-web-v122/final-seal-current-cli/acceptance.json",
+          "sha256": "814a3c0e8a8cc8cd423f0ebf0bd04e246a067722014f88eb4b8ff0fa3410e7d8"
+        },
+        "actualUiCatalogAndFormInstallation": true,
+        "newMessageIdAndAuthorVerified": true,
+        "nativePeerAdditionalOccurrences": 1,
+        "historicalIdsAndUtf8MessageBytesPreserved": true,
+        "currentNativeCliAndWasmUsed": true,
+        "locales": ["en-US", "pt-BR"]
+      }
     },
     "webAttachmentMenu": {
       "nativeBrowserPopover": true,
@@ -2306,29 +2318,84 @@
       "realNativePeerOccurrencesAfterReconnect": 1,
       "actualAuthAndEncryptedHistoryUsed": true,
       "fullPwaOfflineColdLoadAccepted": false,
-      "retainedWasmPredatesAppsCopy": true,
-      "receipt": {
+      "retainedWasmPredatesAppsCopy": false,
+      "initialRetainedCoreReceipt": {
         "path": "/private/tmp/zoen-web-offline-v121/final-seal/acceptance.json",
         "sha256": "5c34237918cfab5e33ab5ab74850228883815a74bdf03a8884ae1fd3655698f9"
-      }
+      },
+      "receipt": {
+        "path": "/private/tmp/zoen-apps-web-v122/final-seal-current-cli/acceptance.json",
+        "sha256": "814a3c0e8a8cc8cd423f0ebf0bd04e246a067722014f88eb4b8ff0fa3410e7d8"
+      },
+      "currentNativeCliAndWasmUsed": true
     },
     "localMultiRelay": {
       "guide": "infra/local/FRONTDOOR.md",
-      "ownershipIntegrityUnitCases": 24,
+      "ownershipIntegrityUnitCases": 26,
       "healthyServices": 7,
       "actualPublicClientChecksPassed": 7,
       "differentLiveUpstreamsWithoutReconnect": true,
       "encryptedMessageAndDeliveredReadVerified": true,
       "originalSixNativeProcessesPreserved": true,
-      "enabledGatewayBackupRestoreDrillAccepted": false,
+      "enabledGatewayBackupRestoreDrillAccepted": true,
       "highAvailabilityAccepted": false,
       "receipt": {
         "path": "/private/tmp/zoen-local-frontdoor-v120/management-activation-01/final-receipt.json",
         "sha256": "739f0d792c51f9260dd1a78509dcb9d535f1cd6e961ef8148789e0a2304c3ab0"
+      },
+      "enabledGatewayBackupRestore": {
+        "receipt": {
+          "path": "/private/tmp/zoen-gateway-restore-v122/acceptance.json",
+          "sha256": "702911d9630a413b0343e400d2636df81677ca21ca710a7c38737b39bfad3f97"
+        },
+        "freshVolumes": 4,
+        "sameHistoricalImagesVaultKeysAndRuntimeConfig": true,
+        "validArchiveRestoresDespiteCorruptCurrentRuntimeConfig": true,
+        "sameCanonicalUrlWithoutIdentityOrStorageRewrite": true,
+        "samePersistentClientReopensAndMakesAuthenticatedWrite": true,
+        "newPubliclyLinkedDeviceDecryptsRestoredHistory": true,
+        "newDeviceAttachmentBytesExact": 1049393,
+        "statelessRestoredCiphertextGetBytesExact": 1049433,
+        "originalDefaultSevenProcessesPreserved": true,
+        "releasedPortTimeWaitRegressionAndActiveListenerRefusalVerified": true,
+        "limits": "Local cold backup only. No public TLS, WAN, HA, power-loss, physical-device or scale acceptance."
       }
     },
     "fullAppParityAccepted": false,
     "productionReadinessAccepted": false,
-    "scaleReadinessAccepted": false
+    "scaleReadinessAccepted": false,
+    "androidRelease": {
+      "baselineReceipt": {
+        "path": "/private/tmp/zoen-expo-android-v121/baseline-acceptance.json",
+        "sha256": "19314338316b36613430c1559962c2ea38795b1865b4122737c96f0db4ff4c00"
+      },
+      "optimizedRustCoreAndReleaseApkBuilt": true,
+      "actualSecureLinkAndEncryptedHistoryVerified": true,
+      "actualGroupAndTwoIdentityDirectMessageExchangeVerified": true,
+      "actualDeliveredReceiptAndColdRetainedMessageIdsVerified": true,
+      "actualNativeSearchRetainsOriginalMessageId": true,
+      "fullAndroidJourneyAccepted": false,
+      "opaqueOriginTransport": {
+        "androidOnlyExactNullOrigin": true,
+        "exactNonceAndDocumentGenerationRequired": true,
+        "compiledActualFrameAndHostTestsPassed": 9,
+        "actualNativeEventUrlObserved": false,
+        "updatedReleaseApk": "71689f40e8dd5211a70e7ebb85052e304e35622acf3ec55517bd75bf705d737a",
+        "sourceInputsUnchangedDuringBuild": 496,
+        "genuineOptimizedJniReusedWithTwoExplicitUnusedWebInputDeltas": true,
+        "runtimeAttempt": {
+          "path": "/private/tmp/zoen-expo-android-apps-v122/attempt-01-runtime.json",
+          "sha256": "babc3f1725ed9d110ce9ad65c31c6877a4d860f3c7f644198b4c8fda851e1b24"
+        },
+        "loadingObservedSeconds": 72.35,
+        "actualExcalidrawConnectEditReopenAccepted": false,
+        "nextStep": "Measure resource/document request, verification, frame preparation and handshake phases before changing performance code."
+      },
+      "remainingObservedGaps": [
+        "Android media bridge is unavailable; its coherent source candidate remains outside the checkout and uncompiled.",
+        "Generic Home card menu renders a long action label over the card; native Android and Web menu treatments remain pending.",
+        "Excalidraw initial resource loading exceeds the bounded 72-second observation; the native-origin callback correction has no runtime acceptance yet."
+      ]
+    }
   }
 }
