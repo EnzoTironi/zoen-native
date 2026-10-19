@@ -12,6 +12,8 @@ import {
 } from './guards.ts';
 import { authAudiences, providerConfiguration } from './configuration.ts';
 import type { AuthChallenge, AuthService, AuthVerification } from './types';
+import { authProviders } from '../i18n/catalogs/authProviders.ts';
+import { createLocalization } from '../i18n/runtime.ts';
 
 const now = Date.now();
 const challenge = (): AuthChallenge => ({
@@ -222,4 +224,100 @@ test('public config remains missing when invalid and Apple popup return is exact
     'https://app.tryzoen.com/auth?redirect=foreign',
   ])
     assert.throws(() => webAppleRedirect(uri, 'https://app.tryzoen.com'));
+});
+
+test('auth transport failures give localized guidance and a fresh attempt can retry', async () => {
+  const expected = 'Could not connect to Zoen. Please try again.';
+  assert.equal(
+    createLocalization({ authProviders }, ['en-US']).t('authProviders.signInConnectionFailed'),
+    expected,
+  );
+  assert.equal(
+    createLocalization({ authProviders }, ['pt-BR']).t('authProviders.signInConnectionFailed'),
+    'Não foi possível conectar ao Zoen. Tente novamente.',
+  );
+  let unavailable = true;
+  const api = createAuthService(
+    'https://relay.tryzoen.com',
+    { google: { web: challenge().audience } },
+    async (input) => {
+      if (unavailable) throw new TypeError('Failed to fetch');
+      return Response.json(
+        String(input).endsWith('/challenge')
+          ? {
+              id: 'a'.repeat(64),
+              nonce: 'b'.repeat(64),
+              state: 'c'.repeat(64),
+              audience: challenge().audience,
+              expires_ms: Date.now() + 300_000,
+            }
+          : {
+              proof_token: 'd'.repeat(64),
+              expires_ms: Date.now() + 300_000,
+              account: { status: 'unbound' },
+            },
+      );
+    },
+  );
+  const attempt = new AuthAttempt(api);
+  await assert.rejects(attempt.prepare('google', 'web'), { message: expected });
+  unavailable = false;
+  const first = await attempt.prepare('google', 'web');
+  unavailable = true;
+  await assert.rejects(
+    attempt.complete(first, { id_token: token(first.challenge), state: first.challenge.state }),
+    { message: expected },
+  );
+  unavailable = false;
+  const retry = await attempt.prepare('google', 'web');
+  const result = await attempt.complete(retry, {
+    id_token: token(retry.challenge),
+    state: retry.challenge.state,
+  });
+  assert.deepEqual(result.account, { kind: 'unbound' });
+  attempt.dispose();
+});
+
+test('auth transport mapping preserves cancellation and HTTP errors but explains interrupted bodies', async () => {
+  const controller = new AbortController();
+  const aborted = new DOMException('The operation was aborted.', 'AbortError');
+  let response: Response | undefined;
+  let failure: unknown = aborted;
+  const api = createAuthService(
+    'https://relay.tryzoen.com',
+    { google: { web: 'audience' } },
+    async () => {
+      if (failure) throw failure;
+      return response!;
+    },
+  );
+  await assert.rejects(
+    api.challenge('google', 'web', controller.signal),
+    (reason) => reason === aborted,
+  );
+  controller.abort();
+  failure = new TypeError('Network request failed');
+  await assert.rejects(
+    api.challenge('google', 'web', controller.signal),
+    (reason) => reason === failure,
+  );
+  failure = undefined;
+  const active = new AbortController();
+  for (const [status, message] of [
+    [503, 'This sign-in is not yet available on the server.'],
+    [429, 'Too many attempts. Wait a moment and try again.'],
+  ] as const) {
+    response = new Response('', { status });
+    await assert.rejects(api.challenge('google', 'web', active.signal), { message });
+  }
+  response = new Response(
+    new ReadableStream({
+      start(stream) {
+        stream.error(new TypeError('network body interrupted'));
+      },
+    }),
+  );
+  await assert.rejects(api.challenge('google', 'web', active.signal), {
+    message: 'Could not connect to Zoen. Please try again.',
+  });
 });

@@ -1,3 +1,4 @@
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- React Native Text supports role="status"; HTML output is not a native component. */
 import { t, formatLocale } from '../i18n';
 import { useRef, useState } from 'react';
 import { Stack, usePreventRemove } from 'expo-router';
@@ -267,7 +268,11 @@ export default function Backup() {
         </Surface>
       ) : null}
       {status ? (
-        <Text accessibilityRole="status" style={{ color: colors.secondary, lineHeight: 23 }}>
+        <Text
+          role="status"
+          accessibilityLiveRegion="polite"
+          style={{ color: colors.secondary, lineHeight: 23 }}
+        >
           {status}
         </Text>
       ) : null}

@@ -1,3 +1,4 @@
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- React Native Text supports role="status"; HTML output is not a native component. */
 import { t } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
@@ -172,7 +173,11 @@ export function AuthorizeDevice({ onLinked }: { onLinked: () => void }) {
         </>
       )}
       {progress ? (
-        <Text accessibilityRole="status" style={{ color: colors.secondary, lineHeight: 23 }}>
+        <Text
+          role="status"
+          accessibilityLiveRegion="polite"
+          style={{ color: colors.secondary, lineHeight: 23 }}
+        >
           {progress}
         </Text>
       ) : null}

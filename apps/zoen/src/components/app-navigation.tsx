@@ -3,12 +3,16 @@ import { router, usePathname } from 'expo-router';
 import { Pressable, Text } from 'react-native';
 import { Icon } from './primitives';
 import { NativeTabs } from 'expo-router/native-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import { skyGradient } from './sky-background';
 export default function AppNavigation() {
   const { colors, sky } = useTheme();
   const pathname = usePathname();
+  const insets = useSafeAreaInsets();
   const contentStyle = {
+    // NativeTabs handles Android's bottom inset; the headerless tab screens own the top.
+    ...(process.env.EXPO_OS === 'android' ? { paddingTop: insets.top } : {}),
     backgroundColor: sky.bottom,
     experimental_backgroundImage: skyGradient(sky),
   };

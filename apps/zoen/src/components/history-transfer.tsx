@@ -1,3 +1,4 @@
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- React Native Text supports role="status"; HTML output is not a native component. */
 import { t } from '../i18n';
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
@@ -90,7 +91,11 @@ export function HistoryTransfer() {
       >
         {t('access.historyOnDevice')}
       </Text>
-      <Text accessibilityRole="status" style={{ color: colors.secondary, lineHeight: 24 }}>
+      <Text
+        role="status"
+        accessibilityLiveRegion="polite"
+        style={{ color: colors.secondary, lineHeight: 24 }}
+      >
         {status?.manifest_received
           ? t('access.partsReceived', {
               received: status.chunks_received,

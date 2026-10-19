@@ -8,7 +8,7 @@ export default function ChatsLayout() {
       screenLayout={({ children }) => <SkyScene>{children}</SkyScene>}
       screenOptions={{
         headerShadowVisible: false,
-        headerTransparent: true,
+        headerTransparent: process.env.EXPO_OS !== 'android',
         headerBlurEffect: 'none',
         headerStyle: { backgroundColor: 'transparent' },
         headerLargeStyle: { backgroundColor: 'transparent' },

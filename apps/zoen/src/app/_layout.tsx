@@ -57,7 +57,7 @@ function Navigation() {
             screenOptions={{
               headerBackButtonDisplayMode: 'minimal',
               headerShadowVisible: false,
-              headerTransparent: true,
+              headerTransparent: process.env.EXPO_OS !== 'android',
               headerBlurEffect: 'none',
               headerStyle: { backgroundColor: 'transparent' },
               headerLargeStyle: { backgroundColor: 'transparent' },

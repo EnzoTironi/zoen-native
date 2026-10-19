@@ -1,5 +1,5 @@
 import { t } from '../i18n/index.ts';
-import { challengeFromWire, serviceOrigin, verificationFromWire } from './guards.ts';
+import { cancelled, challengeFromWire, serviceOrigin, verificationFromWire } from './guards.ts';
 import type { AuthClient, AuthProvider, AuthService } from './types';
 
 export type AuthAudiences = Partial<Record<AuthProvider, Partial<Record<AuthClient, string>>>>;
@@ -11,16 +11,28 @@ export function createAuthService(
   fetcher: typeof fetch,
 ): AuthService {
   const origin = serviceOrigin(baseUrl);
+  async function transport<T>(operation: () => Promise<T>, signal: AbortSignal): Promise<T> {
+    try {
+      return await operation();
+    } catch (reason) {
+      if (signal.aborted || cancelled(reason)) throw reason;
+      throw new Error(t('authProviders.signInConnectionFailed'));
+    }
+  }
   async function post(path: string, input: unknown, signal: AbortSignal): Promise<unknown> {
-    const response = await fetcher(`${origin}${path}`, {
-      method: 'POST',
-      redirect: 'error',
-      credentials: 'omit',
-      cache: 'no-store',
+    const response = await transport(
+      () =>
+        fetcher(`${origin}${path}`, {
+          method: 'POST',
+          redirect: 'error',
+          credentials: 'omit',
+          cache: 'no-store',
+          signal,
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(input),
+        }),
       signal,
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(input),
-    });
+    );
     if (!response.ok) {
       if (response.status === 404 || response.status === 503)
         throw new Error(t('authProviders.thisSignInIsNotYetAvailableOn'));
@@ -34,7 +46,7 @@ export function createAuthService(
     let bytes = 0;
     try {
       for (;;) {
-        const part = await reader.read();
+        const part = await transport(() => reader.read(), signal);
         if (part.done) break;
         bytes += part.value.byteLength;
         if (bytes > 32_768) throw new Error(t('authProviders.theServerReturnedAnInvalidResponse'));
