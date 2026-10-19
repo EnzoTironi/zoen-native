@@ -9,7 +9,7 @@ ready: boolean,
 /**
  * Edits on this device not saved as a version yet.
  */
-unsaved: boolean, pending_sync: boolean, save_error: string | null, 
+unsaved: boolean, input_pending: boolean, input_revision: string, pending_sync: boolean, save_error: string | null, 
 /**
  * Whether the current account may edit this page now.
  */

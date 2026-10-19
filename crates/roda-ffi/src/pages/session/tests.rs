@@ -2670,3 +2670,6 @@ fn backup_restore_strips_authentic_old_device_page_and_plan_journals_before_edit
         assert_eq!(f.cipher().as_deref(), Some(ciphertext.as_str()));
     }
 }
+
+#[path = "input_tests.rs"]
+mod input_tests;

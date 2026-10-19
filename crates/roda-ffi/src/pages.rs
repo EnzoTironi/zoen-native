@@ -17,6 +17,11 @@ use crate::i18n::t;
 use crate::CoreError;
 
 mod drafts;
+mod input;
+pub use input::{
+    PageInputAck, PageInputApplyResult, PageInputBindingDto, PageInputCaptureDto, PageInputDto,
+    PageInputMode, PageInputTarget,
+};
 mod plan;
 pub(crate) use plan::projection::{
     BeforeEvent, Currentness, PlanOrigin, PlanRead, PlanReplay, Projection,
@@ -84,6 +89,8 @@ pub struct PageDto {
     pub ready: bool,
     /// Edits on this device not saved as a version yet.
     pub unsaved: bool,
+    pub input_pending: bool,
+    pub input_revision: String,
     pub pending_sync: bool,
     pub save_error: Option<String>,
     /// Whether the current account may edit this page now.
@@ -376,6 +383,8 @@ impl Engine {
             version: it.versions.len() as u32,
             ready: read.ready,
             unsaved: read.unsaved,
+            input_pending: read.input_pending,
+            input_revision: read.input_revision.to_string(),
             pending_sync: read.pending_sync,
             save_error: read.save_error,
             can_edit: read.can_edit,

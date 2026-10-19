@@ -11,7 +11,8 @@ pub(super) mod tagged;
 
 const RETAINED_RECEIPTS: usize = 512;
 
-#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct Journal {
     pub generation: u64,
     pub minimum_generation: u64,
@@ -20,6 +21,8 @@ pub(super) struct Journal {
     pub has_draft: bool,
     pub commit: Option<String>,
     receipts: Vec<Receipt>,
+    #[serde(default, skip_serializing_if = "super::input::InputStateV1::is_unused")]
+    pub input: super::input::InputStateV1,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,14 +159,29 @@ impl Engine {
             return Ok(Journal::default());
         };
         let (_, aad, key) = self.draft_scope(item)?;
-        let plain = open(&key, &aad, &encoded)?;
-        serde_json::from_slice(&plain).map_err(|_| storage_error())
+        let plain = if encoded.starts_with("v3:") {
+            tagged::open_v3(&key, &aad, &encoded, b"binary-page")?
+        } else {
+            crate::local_sealed::open(&key, &aad, &encoded, tagged::MAX_JOURNAL_BYTES)
+                .map_err(|_| storage_error())?
+        };
+        let journal: Journal = tagged::strict_legacy(&plain)?;
+        journal.input.validate()?;
+        if !encoded.starts_with("v3:") && journal.input != super::input::InputStateV1::default() {
+            return Err(storage_error());
+        }
+        Ok(journal)
     }
 
     pub(super) fn save_page_journal(&self, item: &ItemState, journal: &Journal) -> R<()> {
         let (id, aad, key) = self.draft_scope(item)?;
-        let plain = serde_json::to_vec(journal).map_err(|_| storage_error())?;
-        let encoded = seal(&key, &aad, &plain)?;
+        journal.input.validate()?;
+        let plain = tagged::bounded_json(journal, tagged::MAX_JOURNAL_BYTES)?;
+        let encoded = if journal.input.is_unused() {
+            seal(&key, &aad, &plain)?
+        } else {
+            tagged::seal_v3(&key, &aad, &plain, b"binary-page")?
+        };
         self.store.set_meta(&id, &encoded)?;
         Ok(())
     }

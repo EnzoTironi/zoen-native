@@ -1,11 +1,8 @@
 //! # roda-ffi
 //!
-//! A fachada do núcleo para os apps (Swift hoje, Kotlin em 2027) via UniFFI.
-//! API **síncrona** e pequena: o app chama, o núcleo avalia Concessões, assina,
-//! grava e devolve visões prontas para a UI.
-//!
-//! Seams reservados (não implementados neste protótipo): Roda Sync (relay + outbox),
-//! MLS (OpenMLS) nos Espaços privados, Loro para Itens, callbacks de mudança → AsyncStream.
+//! Interface do núcleo compartilhado para os clientes nativos e Web.
+//! Mantém identidade, permissões, criptografia, documentos e sincronização no
+//! núcleo Rust; UniFFI e a ponte JSON expõem comandos e visões para os clientes.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -44,8 +41,10 @@ pub use message_drafts::{MessageDraftDto, MessageDraftSendResult};
 mod pages;
 pub use files::FileDto;
 pub use pages::{
-    MarkdownFileDto, PageBlockDto, PageDto, PageEditResult, PlanPageBlockDto, PlanPageContentDto,
-    PlanPageDto, PlanPageReadSourceDto, PlanProseKindDto, TextSpanDto,
+    MarkdownFileDto, PageBlockDto, PageDto, PageEditResult, PageInputAck, PageInputApplyResult,
+    PageInputBindingDto, PageInputCaptureDto, PageInputDto, PageInputMode, PageInputTarget,
+    PlanPageBlockDto, PlanPageContentDto, PlanPageDto, PlanPageReadSourceDto, PlanProseKindDto,
+    TextSpanDto,
 };
 mod https;
 mod link;

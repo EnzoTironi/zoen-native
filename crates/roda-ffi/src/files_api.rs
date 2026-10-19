@@ -363,3 +363,78 @@ impl RodaEngine {
         }).await
     }
 }
+
+#[uniffi::export]
+impl RodaEngine {
+    pub fn page_input_load(
+        &self,
+        scope: crate::FileEditDraftScope,
+    ) -> Result<crate::PageInputDto, CoreError> {
+        self.lock().page_input_load(&scope)
+    }
+    pub fn page_input_open(
+        &self,
+        scope: crate::FileEditDraftScope,
+        expected_revision: u64,
+        writer_id: String,
+        target: crate::PageInputTarget,
+        mode: crate::PageInputMode,
+        observed_edit_context: String,
+    ) -> Result<crate::PageInputDto, CoreError> {
+        self.lock().page_input_open(
+            &scope,
+            expected_revision,
+            &writer_id,
+            target,
+            mode,
+            &observed_edit_context,
+        )
+    }
+    pub fn page_input_checkpoint(
+        &self,
+        scope: crate::FileEditDraftScope,
+        writer_id: String,
+        expected_revision: u64,
+        sequence: u64,
+        payload: Vec<u8>,
+    ) -> Result<crate::PageInputAck, CoreError> {
+        self.lock()
+            .page_input_checkpoint(&scope, &writer_id, expected_revision, sequence, &payload)
+    }
+    pub fn page_input_apply(
+        &self,
+        scope: crate::FileEditDraftScope,
+        writer_id: String,
+        expected_revision: u64,
+        sequence: u64,
+        payload_sha256: String,
+        mutation_id: String,
+    ) -> Result<crate::PageInputApplyResult, CoreError> {
+        self.lock().page_input_apply(
+            &scope,
+            &writer_id,
+            expected_revision,
+            sequence,
+            &payload_sha256,
+            &mutation_id,
+        )
+    }
+    pub fn page_input_discard(
+        &self,
+        scope: crate::FileEditDraftScope,
+        writer_id: String,
+        expected_revision: u64,
+        sequence: u64,
+        payload_sha256: String,
+        mutation_id: String,
+    ) -> Result<crate::PageInputAck, CoreError> {
+        self.lock().page_input_discard(
+            &scope,
+            &writer_id,
+            expected_revision,
+            sequence,
+            &payload_sha256,
+            &mutation_id,
+        )
+    }
+}
