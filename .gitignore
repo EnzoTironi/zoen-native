@@ -38,6 +38,7 @@ tools/dev-relay/blobs/
 
 # local dev stack (scripts/dev-stack.sh)
 /.dev/
+.wrangler/
 .env
 .env.*
 /.tools/

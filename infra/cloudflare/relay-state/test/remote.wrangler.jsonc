@@ -1,0 +1,9 @@
+{
+  "name": "zoen-relay-state-qa-bridge",
+  "main": "remote-fixture.mjs",
+  "account_id": "86e8a5b2686413989e8bef1f75c29079",
+  "compatibility_date": "2026-10-18",
+  "workers_dev": false,
+  "preview_urls": false,
+  "services": [{ "binding": "RELAY_STATE", "service": "zoen-relay-state", "remote": true }]
+}

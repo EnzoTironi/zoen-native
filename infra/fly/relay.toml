@@ -5,6 +5,13 @@ primary_region = "gru"
 
 [env]
   ZOEN_RELAY_NAME = "relay.tryzoen.com"
+  # Public provider bindings; keep aligned with apps/zoen/config/identity-providers.json.
+  # Native Google emits the Web client audience and the iOS client as azp.
+  ZOEN_AUTH_APPLE_IOS_AUDIENCE = "xyz.tironi.zoen"
+  ZOEN_AUTH_GOOGLE_IOS_AUDIENCE = "325478030576-2b1200lljfof4b89iq7mh5ufju55dni1.apps.googleusercontent.com"
+  ZOEN_AUTH_GOOGLE_IOS_PRESENTER = "325478030576-giiqrc2gq04t7l0jhf7i48k3vbc528qo.apps.googleusercontent.com"
+  ZOEN_AUTH_GOOGLE_WEB_AUDIENCE = "325478030576-2b1200lljfof4b89iq7mh5ufju55dni1.apps.googleusercontent.com"
+  ZOEN_AUTH_WEB_ORIGINS = "https://app.tryzoen.com"
   ZOEN_S3_BUCKET = "zoen-staging-media"
   ZOEN_DB_POOL = "8"
   FDB_CLUSTER = "zoen:staging@zoen-staging-fdb.internal:4500"

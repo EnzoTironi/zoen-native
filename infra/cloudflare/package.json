@@ -1,0 +1,9 @@
+{
+  "name": "zoen-cloudflare",
+  "private": true,
+  "type": "module",
+  "workspaces": ["relay-state"],
+  "devDependencies": {
+    "wrangler": "4.151.1"
+  }
+}

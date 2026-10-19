@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Actual exported application, actual Pages runtime, HTTP only. No browser or relay required.
+// Actual Expo export in Pages or Workers. HTTP only; no browser or relay required.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -23,7 +23,7 @@ async function freePort() {
   );
   return port;
 }
-export async function verifyExpoWebHosting(origin, directory) {
+export async function verifyExpoWebHosting(origin, directory, runtime = "pages") {
   const index = await readFile(join(directory, "index.html"), "utf8");
   const results = [];
   for (const path of [
@@ -41,6 +41,11 @@ export async function verifyExpoWebHosting(origin, directory) {
     const response = await fetch(origin + path, {
       redirect: "manual",
       signal: AbortSignal.timeout(5000),
+      // Workers' SPA fallback intentionally applies only to document navigation.
+      // Asset fetches retain their ordinary request mode and MIME assertions.
+      ...(runtime === "workers" && !/\.(js|wasm)$/.test(path)
+        ? { headers: { "Sec-Fetch-Mode": "navigate", Accept: "text/html" } }
+        : {}),
     });
     const auth = /^\/sign-in(?:\?|\/$|\.html$|$)/.test(path);
     const redirect = path === "/sign-in/" || path === "/sign-in.html";
@@ -76,20 +81,29 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.argv[2] ?? process.env.ZOEN_EXPO_DIST ?? join(root, "apps/zoen/dist"),
   );
   const artifact = await inspectExpoWebArtifact(directory);
+  const runtime = process.argv.includes("--workers") ? "workers" : "pages";
   const work = await mkdtemp(join(tmpdir(), "zoen-expo-hosting-"));
   let child, done;
   try {
     const [port, inspector] = await Promise.all([freePort(), freePort()]);
     const tools = resolve(process.env.ZOEN_E2E_TOOLS ?? join(root, "scripts/expo-web-tests"));
     const cli = process.env.WRANGLER_CLI ?? join(tools, "node_modules/wrangler/bin/wrangler.js");
+    const config = join(work, "wrangler.json");
+    if (runtime === "workers")
+      await writeFile(
+        config,
+        JSON.stringify({
+          name: "zoen-web-hosting-qa",
+          compatibility_date: "2026-10-18",
+          assets: { directory, not_found_handling: "single-page-application" },
+        }),
+      );
     let output = "";
     child = spawn(
       process.execPath,
       [
         cli,
-        "pages",
-        "dev",
-        directory,
+        ...(runtime === "workers" ? ["dev", "--config", config] : ["pages", "dev", directory]),
         "--ip",
         "127.0.0.1",
         "--port",
@@ -131,7 +145,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     let ready = false;
     for (let attempt = 0; attempt < 200; attempt++) {
       if (spawnError) throw spawnError;
-      if (child.exitCode !== null) throw new Error(`Pages exited before readiness: ${output}`);
+      if (child.exitCode !== null) throw new Error(`${runtime} exited before readiness: ${output}`);
       try {
         const response = await fetch(origin, { signal: AbortSignal.timeout(500) });
         await response.body?.cancel();
@@ -140,13 +154,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
           break;
         }
       } catch {
-        /* Wait for this owned Pages process. */
+        /* Wait for this owned local Cloudflare process. */
       }
       await delay(100);
     }
-    assert.ok(ready, `Pages did not become ready: ${output}`);
-    const paths = await verifyExpoWebHosting(origin, directory);
-    console.log(JSON.stringify({ passed: true, artifact, paths }, null, 2));
+    assert.ok(ready, `${runtime} did not become ready: ${output}`);
+    const paths = await verifyExpoWebHosting(origin, directory, runtime);
+    console.log(JSON.stringify({ passed: true, runtime, artifact, paths }, null, 2));
   } finally {
     if (child?.pid && child.exitCode === null && child.signalCode === null) {
       const signal = (value) => {
