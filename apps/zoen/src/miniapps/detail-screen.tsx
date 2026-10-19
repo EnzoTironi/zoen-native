@@ -232,6 +232,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{
         padding: 24,
+        paddingTop: process.env.EXPO_OS === 'web' ? headerHeight + 24 : 24,
         paddingBottom: 48,
         gap: 22,
         maxWidth: 850,
