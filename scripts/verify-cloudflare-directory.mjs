@@ -20,18 +20,27 @@ for (let index = 0; index < args.length; index++) {
 output ??= await mkdtemp(join(tmpdir(), 'zoen-cloudflare-directory-'));
 await mkdir(output, { recursive: true });
 const environment = { ...process.env, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? '2' };
-const scope = 'Private single-cell Person/device directory and MLS key-package publication/claims (128 records/768 KiB response bound). Native PostgreSQL policy versus shared Rust/WASM and SQLite transactions; no public socket/auth provider, delivery fence, recovery or agent registration.';
+const scope = 'Private single-cell Person/device directory, Directory-owned native binary sockets and MLS key-package publication/claims (128 records/768 KiB response bound). Native PostgreSQL policy versus shared Rust/WASM and SQLite transactions; no public endpoint, Space audience authorization, provider auth, recovery or agent registration.';
 const sourcePaths = [
-  'Cargo.toml', 'Cargo.lock', 'crates/roda-relay-admission/src/directory.rs',
+  'Cargo.toml', 'Cargo.lock', 'crates/roda-relay-admission/Cargo.toml',
+  'crates/roda-relay-admission/src/auth.rs',
+  'crates/roda-relay-admission/src/auth/fixtures/rsa-test-only.jwk.json',
+  'crates/roda-relay-admission/src/auth/fixtures/rsa-test-only.pk8',
+  'crates/roda-relay-admission/src/directory.rs',
   'crates/roda-relay-admission/src/directory/key_packages.rs',
+  'crates/roda-relay-admission/src/directory/socket.rs',
+  'crates/roda-relay-admission/tests/directory_socket.rs',
   'crates/roda-relay-admission/tests/directory_key_packages.rs',
   'crates/roda-relay-admission/tests/directory.rs', 'crates/roda-relay-admission/src/lib.rs',
   'crates/zoen-relay/src/db.rs', 'crates/zoen-relay/src/session.rs', 'crates/zoen-relay/src/key_package_claims.rs',
   'crates/zoen-relay/examples/cloudflare-directory-fixture.rs',
   'infra/cloudflare/relay-state/src/directory-state.mjs', 'infra/cloudflare/relay-state/src/directory-index.mjs',
   'infra/cloudflare/relay-state/tests/directory-fixture.mjs', 'infra/cloudflare/relay-state/tests/directory-state.test.mjs',
+  'infra/cloudflare/relay-state/tests/directory-socket.test.mjs',
   'infra/cloudflare/relay-state/wrangler.directory.jsonc', 'infra/cloudflare/relay-state/package.json',
   'infra/cloudflare/relay-state/DIRECTORY.md', 'scripts/verify-cloudflare-directory.mjs',
+  'scripts/verify-cloudflare-admission.mjs', 'scripts/build-cloudflare-closed.mjs',
+  'infra/cloudflare/package.json', 'infra/cloudflare/package-lock.json',
 ];
 function run(command, commandArgs, { capture = false, env = environment } = {}) {
   console.log(`Running ${command} ${commandArgs.join(' ')}`);
@@ -76,7 +85,7 @@ try {
   const fixturePath = join(output, 'directory-native-fixtures.json');
   await writeFile(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`);
   const workerdTapPath = join(output, 'directory-workerd.tap');
-  const workerdTap = await run(process.execPath, ['--test', '--test-reporter=tap', 'infra/cloudflare/relay-state/tests/directory-state.test.mjs'], {
+  const workerdTap = await run(process.execPath, ['--test', '--test-reporter=tap', '--test-concurrency=1', 'infra/cloudflare/relay-state/tests/directory-state.test.mjs', 'infra/cloudflare/relay-state/tests/directory-socket.test.mjs'], {
     capture: true, env: { ...environment, ZOEN_DIRECTORY_FIXTURE: fixturePath },
   }).catch(async failure => {
     if (typeof failure.stdout === 'string') {

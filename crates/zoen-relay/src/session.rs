@@ -9,8 +9,8 @@
 use crate::pseudonym::pseudo;
 use std::{
     sync::{
-        Arc, OnceLock,
         atomic::{AtomicBool, Ordering},
+        Arc, OnceLock,
     },
     time::Duration,
 };
@@ -18,14 +18,14 @@ use std::{
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
 use roda_proto::{
-    AgentRequest, ClientFrame, ErrorCode, MIN_PROTOCOL_VERSION, Op, PROTOCOL_VERSION, Reply,
-    ServerFrame, negotiate,
+    negotiate, AgentRequest, ClientFrame, ErrorCode, Op, Reply, ServerFrame, MIN_PROTOCOL_VERSION,
+    PROTOCOL_VERSION,
 };
 use roda_types::{EventBody, IdentityKind};
-use tokio::sync::{Notify, mpsc};
-use tracing::{Instrument, field::Empty};
+use tokio::sync::{mpsc, Notify};
+use tracing::{field::Empty, Instrument};
 
-use crate::{Shared, db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics};
+use crate::{db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics, Shared};
 
 /// Spaces up to this size hear every member's receipts; larger ones route each receipt
 /// to the author it concerns (`Session::receipt_audience`).

@@ -14,6 +14,7 @@ export class DirectoryState extends ProductionDirectory {
   #nonce = '0'.repeat(64);
   #singleClock = false;
   #clockReads = 0;
+  #socketCloseTransitions = {};
   constructor(ctx, env) {
     super(ctx, env);
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS directory_test_actors (actor TEXT PRIMARY KEY, session TEXT NOT NULL)');
@@ -23,7 +24,72 @@ export class DirectoryState extends ProductionDirectory {
     return this.#clock;
   }
   _nonce() { return this.#nonce; }
+  // Fixed native fixture clocks predate the host. Exercise alarms explicitly in
+  // socket tests instead of scheduling them against the host wall clock.
+  _scheduleSocketAlarm() {}
   clock(input) { this.#clock = Number(input.now_ms); }
+  socketConfig(input) {
+    this.#clock = Number(input.now_ms ?? 1_700_000_000_000);
+    this.#nonce = input.nonce;
+  }
+  socketDeliver(input) {
+    return super.deliver({ identity: input.identity, device: input.device,
+      frame: bytes(input.frame_base64) });
+  }
+  _socketClose(socket, code = 1008) {
+    const before = socket.readyState;
+    try { return super._socketClose(socket, code); }
+    finally {
+      const transition = `${before}->${socket.readyState}`;
+      this.#socketCloseTransitions[transition] = (this.#socketCloseTransitions[transition] ?? 0) + 1;
+    }
+  }
+  async socketAlarm(input) {
+    this.#clock = Number(input.now_ms);
+    await super.alarm();
+    const serverReadyStates = {};
+    for (const socket of this.ctx.getWebSockets())
+      serverReadyStates[socket.readyState] = (serverReadyStates[socket.readyState] ?? 0) + 1;
+    return { ...this.socketState(), serverReadyStates,
+      closeTransitions: { ...this.#socketCloseTransitions },
+      scheduledAlarm: (await this.ctx.storage.getAlarm()) !== null };
+  }
+  socketState() {
+    const sql = this.ctx.storage.sql;
+    return {
+      connections: sql.exec('SELECT stage,expires_ms,challenge_id IS NOT NULL AS challenge,session_id IS NOT NULL AS session FROM directory_connections ORDER BY stage,expires_ms').toArray()
+        .map(row => ({ stage: row.stage, expires_ms: String(row.expires_ms),
+          challenge: Boolean(row.challenge), session: Boolean(row.session) })),
+      challenges: sql.exec('SELECT count(*) AS count FROM directory_challenges').toArray()[0].count,
+      sessions: sql.exec('SELECT count(*) AS count FROM directory_sessions').toArray()[0].count,
+    };
+  }
+  socketReconstruct(input) {
+    // Reuse the actual accepted socket and SQL storage with a fresh production
+    // handler. This is controlled reconstruction, not runtime-forced hibernation.
+    this.#clock = Number(input.now_ms);
+    const clock = this.#clock;
+    class ReconstructedDirectory extends ProductionDirectory {
+      _nowMs() { return clock; }
+      _scheduleSocketAlarm() {}
+    }
+    const sockets = this.ctx.getWebSockets().filter(socket => socket.readyState === 1);
+    const original = sockets.map(socket => JSON.stringify(socket.deserializeAttachment()));
+    const handler = new ReconstructedDirectory(this.ctx, this.env);
+    if (input.alarm) return handler.alarm();
+    if (sockets.length !== 1) throw new Error('Reconstruction requires one actual socket');
+    handler.webSocketMessage(sockets[0], bytes(input.frame_base64).buffer);
+    return { attachmentUnchanged: JSON.stringify(sockets[0].deserializeAttachment()) === original[0] };
+  }
+  socketAttachments() {
+    // Return shape only; opaque connection/session/challenge IDs stay inside DO.
+    return this.ctx.getWebSockets().map(socket => {
+      const value = socket.deserializeAttachment();
+      return { keys: Object.keys(value).sort(), version: value.version,
+        opaqueConnectionId: typeof value.connection_id === 'string' &&
+          /^[a-f0-9]{64}$/.test(value.connection_id) };
+    });
+  }
   start(input) {
     this.#nonce = input.nonce;
     this.#clock = Number(input.now_ms ?? 1_700_000_000_000);
@@ -82,6 +148,11 @@ export class DirectoryState extends ProductionDirectory {
       BEGIN SELECT RAISE(ABORT, 'test-only receipt failure'); END`);
     else if (input.table === 'unlink') this.ctx.storage.sql.exec(`CREATE TRIGGER directory_test_failure BEFORE DELETE ON directory_key_packages
       BEGIN SELECT RAISE(ABORT, 'test-only unlink failure'); END`);
+    else if (input.table === 'socket-auth' || input.table === 'socket-ready') {
+      const stage = input.table === 'socket-auth' ? 'auth' : 'ready';
+      this.ctx.storage.sql.exec(`CREATE TRIGGER directory_test_failure BEFORE UPDATE ON directory_connections
+        WHEN NEW.stage='${stage}' BEGIN SELECT RAISE(ABORT, 'test-only socket stage failure'); END`);
+    }
     else throw new Error('Unsupported failure table');
   }
   allow() { this.ctx.storage.sql.exec('DROP TRIGGER directory_test_failure'); }
@@ -122,11 +193,14 @@ export class DirectoryState extends ProductionDirectory {
 
 export default {
   async fetch(request, env) {
-    const input = await request.json();
     const stub = env.DIRECTORY.getByName('private-native-fixture');
+    const pathname = new URL(request.url).pathname;
+    if (pathname === '/socket') return stub.fetch(new Request(
+      'https://directory-private.test/v1/sync', request));
+    const input = await request.json();
     try {
       let result;
-      switch (new URL(request.url).pathname) {
+      switch (pathname) {
         case '/step': result = await stub.step(input); break;
         case '/inspect': result = await stub.inspect(); break;
         case '/sessions': result = await stub.sessions(); break;
@@ -139,6 +213,12 @@ export default {
         case '/late-package': result = await stub.latePackage(input); break;
         case '/fill-receipts': result = await stub.fillReceipts(input); break;
         case '/fill-sessions': result = await stub.fillSessions(); break;
+        case '/socket-config': result = await stub.socketConfig(input); break;
+        case '/socket-deliver': result = await stub.socketDeliver(input); break;
+        case '/socket-alarm': result = await stub.socketAlarm(input); break;
+        case '/socket-state': result = await stub.socketState(); break;
+        case '/socket-reconstruct': result = await stub.socketReconstruct(input); break;
+        case '/socket-attachments': result = await stub.socketAttachments(); break;
         case '/raw-enroll': result = await stub.enroll(input); break;
         default: return new Response('Not found', { status: 404 });
       }

@@ -8,5 +8,6 @@ export default class PrivateDirectory extends WorkerEntrypoint {
   authenticate(input) { return this.#directory().authenticate(input); }
   request(input) { return this.#directory().request(input); }
   authorize(input) { return this.#directory().authorize(input); }
+  deliver(input) { return this.#directory().deliver(input); }
   fetch() { return new Response('Not found', { status: 404 }); }
 }

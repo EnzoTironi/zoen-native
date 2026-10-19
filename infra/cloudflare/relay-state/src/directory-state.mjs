@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import { initSync, directoryHello, directoryAuthenticate, directoryLookup,
-  directoryRequest, directoryAuthorize } from '../generated/wasm/admission.js';
+  directoryRequest, directoryAuthorize, directorySocketFrame, directorySocketControl, directorySocketDelivery } from '../generated/wasm/admission.js';
 import wasmModule from '../generated/wasm/admission_bg.wasm';
 
 initSync({ module: wasmModule });
@@ -38,9 +38,10 @@ function token(value) {
   return value;
 }
 
-/** One private transaction domain per relay cell. No raw enroll or public fetch exists.
+/** One private transaction domain per relay cell. The outer Worker stays HTTP404.
  * Sessions are DO-owned capabilities, never caller-supplied registered/device facts.
- * authorize() is a request-admission snapshot, NOT an outbound delivery fence.
+ * authorize() is a request-admission snapshot; socket sends/deliver add the final
+ * durable fence here. Internal DO fetch is available only through private bindings.
  */
 export class DirectoryState extends DurableObject {
   constructor(ctx, env) {
@@ -72,6 +73,10 @@ export class DirectoryState extends DurableObject {
       targets TEXT NOT NULL, response BLOB NOT NULL, expires_ms INTEGER NOT NULL,
       PRIMARY KEY(source_identity,source_device,operation_id))`);
     sql.exec('CREATE INDEX IF NOT EXISTS directory_claims_expiry ON directory_claims(source_identity,source_device,expires_ms)');
+    sql.exec(`CREATE TABLE IF NOT EXISTS directory_connections (
+      id TEXT PRIMARY KEY, stage TEXT NOT NULL, challenge_id TEXT, session_id TEXT,
+      identity TEXT, device TEXT, claim_receipts INTEGER NOT NULL DEFAULT 0, expires_ms INTEGER NOT NULL)`);
+
   }
 
   _nowMs() { return Date.now(); }
@@ -145,7 +150,8 @@ export class DirectoryState extends DurableObject {
       throw error('private directory session capacity reached', 'private_capacity');
   }
 
-  hello(input) {
+  hello(input) { return this.#hello(input); }
+  #hello(input, connectionId = null) {
     const bytes = frame(input?.frame);
     return this.ctx.storage.transactionSync(() => {
       const now = this._nowMs();
@@ -156,15 +162,26 @@ export class DirectoryState extends DurableObject {
       const id = this._randomToken();
       this.ctx.storage.sql.exec('INSERT INTO directory_challenges VALUES (?,?,?,?,?)',
         id, JSON.stringify(result.hello), nonce, relay, now + CHALLENGE_MS);
+      if (connectionId !== null) {
+        const row = this.#one('SELECT stage,expires_ms FROM directory_connections WHERE id=?', connectionId);
+        if (!row || row.stage !== 'hello' || row.expires_ms <= now) throw error('private connection expired');
+        this.ctx.storage.sql.exec('UPDATE directory_connections SET stage=?,challenge_id=?,claim_receipts=?,expires_ms=? WHERE id=?',
+          'auth', id, Number(invoke(directorySocketFrame, bytes).claim_receipts), now + CHALLENGE_MS, connectionId);
+      }
       return { challenge_id: id, challenge_base64: result.challenge_base64 };
     });
   }
 
-  authenticate(input) {
+  authenticate(input) { return this.#authenticate(input); }
+  #authenticate(input, connectionId = null) {
     const outcome = this.ctx.storage.transactionSync(() => {
       const now = this._nowMs();
       const id = token(input?.challengeId);
       const challenge = this.#one('SELECT * FROM directory_challenges WHERE id=?', id);
+      if (connectionId !== null) {
+        const row = this.#one('SELECT stage,challenge_id,expires_ms FROM directory_connections WHERE id=?', connectionId);
+        if (!row || row.stage !== 'auth' || row.challenge_id !== id || row.expires_ms <= now) return { failure: 'private challenge unavailable' };
+      }
       if (!challenge) return { failure: 'private challenge unavailable' };
       // Commit consumption even on a failed signature/expired challenge. Like the
       // native handshake, a failed attempt must begin again with a fresh challenge.
@@ -181,6 +198,8 @@ export class DirectoryState extends DurableObject {
       const sessionId = this._randomToken();
       this.ctx.storage.sql.exec('INSERT INTO directory_sessions VALUES (?,?,?)',
         sessionId, JSON.stringify(session), now + SESSION_MS);
+      if (connectionId !== null) this.ctx.storage.sql.exec('UPDATE directory_connections SET stage=?,challenge_id=NULL,session_id=?,identity=?,device=?,expires_ms=? WHERE id=?',
+        'ready', sessionId, session.identity, session.device, now + SESSION_MS, connectionId);
       return { session_id: sessionId, session };
     });
     if (outcome.failure) throw error(outcome.failure, 'private_challenge');
@@ -198,13 +217,15 @@ export class DirectoryState extends DurableObject {
 
   request(input) {
     const bytes = frame(input?.frame);
-    return this.ctx.storage.transactionSync(() => {
+    let authorizationChanged = false;
+    const outcome = this.ctx.storage.transactionSync(() => {
       const now = this._nowMs();
       const session = this.#session(input?.sessionId, now);
       // Every request, including unsupported/replayed Req ids, is freshly fenced.
       invoke(directoryAuthorize, JSON.stringify({ session, facts: this.#facts(session, {}, now) }));
       const lookup = invoke(directoryLookup, bytes, JSON.stringify(session));
       const plan = invoke(directoryRequest, bytes, JSON.stringify({ session, facts: this.#facts(session, lookup, now) }));
+      authorizationChanged = plan.action === 'register' || plan.action === 'unlink';
       const sql = this.ctx.storage.sql;
       switch (plan.action) {
         case 'register': {
@@ -272,5 +293,181 @@ export class DirectoryState extends DurableObject {
       }
       return { reply_base64: plan.reply_base64 };
     });
+    if (authorizationChanged) this._retireSockets();
+    return outcome;
+  }
+
+  _socketId(socket) {
+    const value = socket.deserializeAttachment();
+    return value?.version === 1 && typeof value.connection_id === 'string' && /^[a-f0-9]{64}$/.test(value.connection_id)
+      ? value.connection_id : null;
+  }
+  _socketRow(socket) {
+    const id = this._socketId(socket);
+    return id ? this.#one('SELECT * FROM directory_connections WHERE id=?', id) : null;
+  }
+  _socketClose(socket, code = 1008) {
+    try {
+      this.ctx.storage.transactionSync(() => {
+        const row = this._socketRow(socket);
+        if (row) this._dropConnection(row);
+      });
+    } finally {
+      // Storage failure cannot keep an unauthorized/expired network socket open.
+      try { socket.close(code, 'private directory connection closed'); } catch (_) {}
+    }
+  }
+  _dropConnection(row) {
+    if (row.challenge_id) this.ctx.storage.sql.exec('DELETE FROM directory_challenges WHERE id=?', row.challenge_id);
+    if (row.session_id) this.ctx.storage.sql.exec('DELETE FROM directory_sessions WHERE id=?', row.session_id);
+    this.ctx.storage.sql.exec('DELETE FROM directory_connections WHERE id=?', row.id);
+  }
+  _socketControl(input) { return unbase64(invoke(directorySocketControl, JSON.stringify(input)).frame_base64); }
+  _socketFailure(failure) {
+    try {
+      const value = JSON.parse(failure.message ?? String(failure));
+      if (typeof value.reason === 'string') return value;
+    } catch (_) {}
+    return { reason: 'database unavailable', permanent: false };
+  }
+  _socketAuthenticated(row, now) {
+    if (!row || row.stage !== 'ready' || row.expires_ms <= now) throw error('private session expired', 'private_session');
+    const session = this.#session(row.session_id, now);
+    invoke(directoryAuthorize, JSON.stringify({ session, facts: this.#facts(session, {}, now) }));
+    return session;
+  }
+  _sendSocket(socket, bytes) {
+    try {
+      // Read authorization and enqueue the actual frame in ONE synchronous turn.
+      // No await, external RPC, automatic Pong or caller-supplied auth snapshot.
+      this.ctx.storage.transactionSync(() => {
+        this._socketAuthenticated(this._socketRow(socket), this._nowMs());
+        socket.send(bytes);
+      });
+      return true;
+    } catch (_) { this._socketClose(socket); return false; }
+  }
+  _retireSockets() {
+    const sockets = this.ctx.getWebSockets();
+    if (!sockets.length && !this.#one('SELECT id FROM directory_connections LIMIT 1')) return;
+    const now = this._nowMs();
+    for (const socket of sockets) {
+      const row = this._socketRow(socket);
+      try {
+        if (row && row.stage !== 'ready' && row.expires_ms <= now) socket.send(this._socketControl({
+          kind: 'error', stage: row.stage, reason: row.stage === 'hello' ? 'expected hello' : 'expected auth', permanent: true }));
+        if (!row || row.expires_ms <= now) throw error('private connection expired');
+        if (row.stage === 'ready') this._socketAuthenticated(row, now);
+      } catch (_) { this._socketClose(socket); }
+    }
+    // Also retire a connection whose client aborted before an accepted socket was
+    // retained. This prevents an expired orphan row from spinning the shared alarm.
+    this.ctx.storage.transactionSync(() => {
+      for (const row of this.ctx.storage.sql.exec('SELECT * FROM directory_connections WHERE expires_ms<=? LIMIT 256', now).toArray()) this._dropConnection(row);
+    });
+  }
+  async _scheduleSocketAlarm() {
+    const row = this.#one('SELECT min(expires_ms) AS deadline FROM directory_connections');
+    if (row.deadline !== null) await this.ctx.storage.setAlarm(row.deadline);
+    else await this.ctx.storage.deleteAlarm();
+  }
+  async alarm() { this._retireSockets(); await this._scheduleSocketAlarm(); }
+
+  async fetch(request) {
+    if (new URL(request.url).pathname !== '/v1/sync' || request.method !== 'GET'
+      || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return new Response('Not found', { status: 404 });
+    this._retireSockets();
+    // Private one-cell transport bound, not a claim of full public-relay capacity.
+    if (this.ctx.getWebSockets().filter(socket => socket.readyState === 1 || socket.readyState === 2).length >= MAX_PENDING
+      || this.#one('SELECT count(*) AS count FROM directory_connections').count >= MAX_PENDING)
+      return new Response('Private connection capacity reached', { status: 429 });
+    const pair = new WebSocketPair(); const [client, socket] = Object.values(pair);
+    const id = this._randomToken();
+    this.ctx.storage.sql.exec('INSERT INTO directory_connections(id,stage,expires_ms) VALUES (?, ?, ?)', id, 'hello', this._nowMs() + CHALLENGE_MS);
+    socket.serializeAttachment({ version: 1, connection_id: id });
+    this.ctx.acceptWebSocket(socket);
+    try { await this._scheduleSocketAlarm(); }
+    catch (_) { this._socketClose(socket, 1011); throw new Error('Private connection scheduling unavailable'); }
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  webSocketMessage(socket, message) {
+    let row;
+    try { row = this._socketRow(socket); }
+    catch (_) { try { socket.close(1011, 'private directory unavailable'); } catch (_) {} return; }
+    if (!row) { this._socketClose(socket); return; }
+    const stage = row.stage;
+    const refuseHandshake = failure => {
+      try {
+        const { reason, permanent } = this._socketFailure(failure);
+        socket.send(this._socketControl({ kind: 'error', stage, reason, permanent }));
+      }
+      finally { this._socketClose(socket); }
+    };
+    if (row.expires_ms <= this._nowMs()) {
+      if (stage === 'ready') this._socketClose(socket);
+      else refuseHandshake(error(stage === 'hello' ? 'expected hello' : 'expected auth'));
+      return;
+    }
+    // Text and noncanonical/oversized binary inputs are an explicit private bound.
+    if (!(message instanceof ArrayBuffer) || message.byteLength === 0 || message.byteLength > MAX_BYTES) {
+      this._socketClose(socket, 1003); return;
+    }
+    const bytes = new Uint8Array(message);
+    let input;
+    try { input = invoke(directorySocketFrame, bytes); }
+    catch (_) { this._socketClose(socket, 1003); return; }
+    if (stage === 'hello') {
+      try {
+        if (input.kind !== 'hello') throw error('expected hello');
+        const challenge = this.#hello({ frame: bytes }, row.id);
+        socket.send(unbase64(challenge.challenge_base64));
+      } catch (failure) { refuseHandshake(failure); return; }
+    } else if (stage === 'auth') {
+      try {
+        if (input.kind !== 'auth') throw error('expected auth');
+        const result = this.#authenticate({ challengeId: row.challenge_id, frame: bytes }, row.id);
+        this._sendSocket(socket, this._socketControl({ kind: 'ready', session: result.session }));
+      } catch (failure) { refuseHandshake(failure); return; }
+    } else {
+      try {
+        // Admission is independently fresh, before executing even replayed requests.
+        this._socketAuthenticated(row, this._nowMs());
+        if (input.kind === 'request') {
+          let reply;
+          try { reply = unbase64(this.request({ sessionId: row.session_id, frame: bytes }).reply_base64); }
+          catch (failure) { reply = this._socketControl({ kind: 'refused', id: input.id, reason: this._socketFailure(failure).reason }); }
+          this._sendSocket(socket, reply);
+        } else if (input.kind === 'ping') {
+          this._sendSocket(socket, this._socketControl({ kind: 'pong', server_time_ms: row.claim_receipts ? String(this._nowMs()) : null }));
+        } else {
+          const reason = ['hello','auth'].includes(input.kind) ? 'already logged in' : 'private directory socket does not support Space operations';
+          this._sendSocket(socket, this._socketControl({ kind: 'error', stage: 'ready', reason, permanent: true }));
+        }
+      } catch (_) { this._socketClose(socket); return; }
+    }
+    this.ctx.waitUntil(Promise.resolve(this._scheduleSocketAlarm()).catch(() => this._socketClose(socket, 1011)));
+  }
+  webSocketClose(socket, code = 1000) {
+    // A peer's normal disconnect is an acknowledgement, not a policy refusal.
+    // The empty/aborted codes cannot be sent in an outgoing Close frame.
+    this._socketClose(socket, [1005, 1006].includes(code) ? 1000 : code);
+    this.ctx.waitUntil(Promise.resolve(this._scheduleSocketAlarm()));
+  }
+  webSocketError(socket) { this._socketClose(socket, 1011); this.ctx.waitUntil(Promise.resolve(this._scheduleSocketAlarm())); }
+
+  // Trusted backend fanout seam only. The caller owns Space audience decisions;
+  // this operation adds the durable device/session fence immediately before send.
+  deliver(input) {
+    token(input?.identity); token(input?.device);
+    const bytes = frame(input?.frame);
+    const canonical = unbase64(invoke(directorySocketDelivery, bytes).frame_base64);
+    let delivered = 0, refused = 0;
+    for (const socket of this.ctx.getWebSockets()) {
+      const row = this._socketRow(socket);
+      if (row?.stage !== 'ready' || row.identity !== input.identity || row.device !== input.device) continue;
+      if (this._sendSocket(socket, canonical)) delivered++; else refused++;
+    }
+    return { delivered, refused };
   }
 }

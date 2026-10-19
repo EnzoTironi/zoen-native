@@ -7,16 +7,16 @@
 //! before the single JSON stdout document is printed. Diagnostics use stderr.
 //! Public fixed seed bytes are fixture data, never account credentials.
 
-use anyhow::{Context, Result, anyhow, ensure};
-use base64::{Engine, engine::general_purpose::STANDARD};
+use anyhow::{anyhow, ensure, Context, Result};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use roda_log::{Author, Signer};
-use roda_proto::{ClientFrame, DeviceCertificate, Op, Reply, ServerFrame, auth_message};
-use roda_relay_admission::directory::{Session, prepare_profile};
+use roda_proto::{auth_message, ClientFrame, DeviceCertificate, Op, Reply, ServerFrame};
+use roda_relay_admission::directory::{prepare_profile, Session};
 use roda_types::{Identity, IdentityKind};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sqlx::{
-    Connection, PgConnection, PgPool, Postgres, Transaction,
     postgres::{PgConnectOptions, PgPoolOptions},
+    Connection, PgConnection, PgPool, Postgres, Transaction,
 };
 use std::{collections::BTreeMap, str::FromStr, time::Duration};
 use zoen_relay::{db, key_package_claims};
@@ -457,9 +457,32 @@ impl<'a> Fixture<'a> {
             before == after,
             "{label}: native login mutated directory data"
         );
+        let challenge = ServerFrame::Challenge {
+            nonce: nonce.clone(),
+            relay: RELAY.into(),
+            protocol: roda_proto::PROTOCOL_VERSION,
+            capabilities: Vec::new(),
+            server_time_ms: None,
+        }
+        .encode();
+        let ready = self
+            .sessions
+            .get(actor)
+            .filter(|_| rejected.is_none())
+            .map(|session| {
+                STANDARD.encode(
+                    ServerFrame::Ready {
+                        identity: session.identity.clone(),
+                        registered: session.registered,
+                    }
+                    .encode(),
+                )
+            });
+
         self.steps
             .push(json!({"op":"login","label":label,"actor":actor,
             "hello_base64":STANDARD.encode(hello),"nonce":nonce,"auth_base64":STANDARD.encode(auth),
+            "challenge_base64":STANDARD.encode(challenge),"ready_base64":ready,
             "now_ms":self.now_ms,"expected":expected,"state_after":after}));
         Ok(())
     }
@@ -513,8 +536,21 @@ impl<'a> Fixture<'a> {
                 "{label}: refused native transaction left a partial write"
             );
         }
+        let refused_reply = expected
+            .get("reason")
+            .and_then(Value::as_str)
+            .map(|reason| {
+                STANDARD.encode(
+                    ServerFrame::Res {
+                        id,
+                        result: Err(reason.into()),
+                    }
+                    .encode(),
+                )
+            });
         self.steps.push(json!({"op":"request","label":label,"actor":actor,
-            "frame_base64":STANDARD.encode(bytes),"now_ms":self.now_ms,"expected":expected,"state_after":after}));
+            "frame_base64":STANDARD.encode(bytes),"now_ms":self.now_ms,"expected":expected,"state_after":after,
+            "refused_reply_base64":refused_reply}));
         Ok(())
     }
 
@@ -808,7 +844,33 @@ async fn timeline(pool: &PgPool) -> Result<Value> {
     .await?;
 
     key_package_timeline(&mut f, &a).await?;
-    Ok(json!({"schema":1,"cell":"isolated_directory_fixture","initial_empty":true,"steps":f.steps}))
+    Ok(
+        json!({"schema":1,"cell":"isolated_directory_fixture","initial_empty":true,"steps":f.steps,"transport":socket_fixture()}),
+    )
+}
+
+// Native codec oracle for the new PRIVATE socket transport. It adds no request
+// steps or persistence writes; normal native operation results remain above.
+fn socket_fixture() -> Value {
+    let large_id = 9_007_199_254_740_993;
+    let encode = |frame: ServerFrame| STANDARD.encode(frame.encode());
+    json!({
+        "ping_base64":STANDARD.encode(ClientFrame::Ping.encode()),
+        "pong_base64":encode(ServerFrame::Pong { server_time_ms: None }),
+        "malformed_auth_base64":STANDARD.encode(ClientFrame::Ping.encode()),
+        "malformed_auth_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Other,"expected auth")),
+        "large_request_base64":STANDARD.encode(ClientFrame::Req { id:large_id, op:Op::FetchLink { id:"0".repeat(64) } }.encode()),
+        "large_reply_base64":encode(ServerFrame::Res { id:large_id, result:Ok(Reply::Link(None)) }),
+        "unsupported_request_base64":STANDARD.encode(ClientFrame::Req { id:large_id, op:Op::GetProfiles { ids:Vec::new() } }.encode()),
+        "unsupported_reply_base64":encode(ServerFrame::Res { id:large_id, result:Err("directory operation is outside the private adapter scope".into()) }),
+        "unsupported_space_base64":STANDARD.encode(ClientFrame::Sync { cursors:Vec::new(), all:true }.encode()),
+        "unsupported_space_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Other,"private directory socket does not support Space operations")),
+        "expired_hello_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Other,"expected hello")),
+        "expired_auth_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Other,"expected auth")),
+        "already_logged_in_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Other,"already logged in")),
+        "certificate_mismatch_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Unauthorized,"link this device first")),
+        "storage_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Unavailable,"database unavailable"))
+    })
 }
 
 async fn key_package_timeline(f: &mut Fixture<'_>, a: &Author) -> Result<()> {

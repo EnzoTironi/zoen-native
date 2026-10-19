@@ -2,6 +2,7 @@
 //! and a single transaction covering all facts and returned writes. No delivery lease
 //! or public protocol endpoint is provided by this module.
 pub mod key_packages;
+pub mod socket;
 use crate::portable::{BoundaryError, MAX_FRAME_BYTES};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use roda_proto::{auth_message, normalize_handle, ClientFrame, Op, Reply, ServerFrame};
@@ -524,6 +525,18 @@ mod wasm {
     #[wasm_bindgen(js_name = directoryKeyPackageReply)]
     pub fn key_package_reply(bytes: &[u8]) -> Result<String, JsValue> {
         super::key_packages::reply_json(bytes).map_err(error)
+    }
+    #[wasm_bindgen(js_name = directorySocketFrame)]
+    pub fn socket_frame(bytes: &[u8]) -> Result<String, JsValue> {
+        super::socket::incoming_json(bytes).map_err(error)
+    }
+    #[wasm_bindgen(js_name = directorySocketControl)]
+    pub fn socket_control(context: &str) -> Result<String, JsValue> {
+        super::socket::control_json(context).map_err(error)
+    }
+    #[wasm_bindgen(js_name = directorySocketDelivery)]
+    pub fn socket_delivery(bytes: &[u8]) -> Result<String, JsValue> {
+        super::socket::delivery_json(bytes).map_err(error)
     }
     #[wasm_bindgen(js_name = directoryRequest)]
     pub fn request(bytes: &[u8], context: &str) -> Result<String, JsValue> {
