@@ -52,10 +52,42 @@ actual workerd/WASM, without provider network calls, credentials or deployment.
 The full library build contains no test signing key. The native cache regression
 and all-target strict Clippy also retain their separate checks.
 
-The portable exports require trusted provider keys, a persisted challenge and
-the host clock. They establish assertion verification only. A complete Cloudflare
-HTTP adapter still needs origin/settings/rate policy, fixed-endpoint JWKS caching,
-atomic one-use challenge/proof consumption and account/device/provider binding in
-the Directory transaction domain before Apple/Google can be enabled publicly.
+The assertion exports require trusted provider keys, a persisted challenge and
+the host clock. Their assertion-only result does not authorize account enrollment.
 The existing native HTTP enrollment and secure new-device recovery boundaries
 above remain authoritative.
+
+## Private Cloudflare enrollment host
+
+`094a5bb0` adds the private host to the existing Directory Durable Object, sharing
+its Person/device tables and SQLite transaction boundary. Shared Rust owns strict
+challenge/bind validation, signatures and enrollment decisions. The host owns
+entropy, fixed-endpoint HTTPS/cache I/O and atomic SQL writes. No second account
+store or provider-subject injection API is introduced.
+
+Original request text reaches Rust before JavaScript parses fields, so duplicate
+JSON fields are refused. Request bodies are bounded to 32 KiB, JWKS streams to 64 KiB,
+provider fetches to 5 seconds and operations to 10 seconds. Workers fetch cannot
+separately enforce the native three-second connect timeout. Only proof hashes are
+durable; assertions and authorization codes are not retained. Provider confirmation
+still cannot enroll a new device into an existing account or recover its keys.
+
+With an isolated test database configured, run:
+
+```sh
+node scripts/verify-cloudflare-provider.mjs --host --out-dir .dev/cloudflare-provider-host
+```
+
+The exact command passes 18 native/18 Node/18 workerd assertion cases, 20 actual
+PostgreSQL issue/bind scenarios and 35 workerd host cases, with zero skips. Existing
+Directory 18 workerd regressions also pass with the same generated WASM. Coverage
+includes concurrent verification/binding, retry after expiry with the original
+receipt, exact current certificates, unchanged existing profiles, late SQL rollback,
+fixed URL/redirect refusal, body limits, cache refresh and malformed requests.
+Receipt: `/private/tmp/zoen-cloudflare-admission-v96/validation/provider-host-final-acceptance/acceptance.json`
+(SHA256 `52ef524c34eb50a2787645190bcd2817441d96dfd1b5b1af02b486b6d5a9e8e1`).
+
+This host is not deployed. Outer Worker HTTP remains 404 and missing provider/client
+configuration remains disabled. Public gateway IP limits, actual Apple/Google
+confirmation, recovery integration and complete public synchronization remain
+separate work. These private checks do not establish public login acceptance.
