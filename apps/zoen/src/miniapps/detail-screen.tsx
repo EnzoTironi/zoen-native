@@ -142,9 +142,9 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
     <Stack.Screen
       options={{
         title: manage ? t('common.details') : item.title,
-        // A canvas owns horizontal drags, including strokes near the back-swipe edge.
+        // Interactive app views own their drags, including the back-swipe edge.
         // The native Back button still runs the acknowledged document-close guard.
-        gestureEnabled: !(fullscreen && spec?.id === 'excalidraw'),
+        gestureEnabled: !fullscreen,
         headerRight: () =>
           fullscreen ? (
             <NativeButton

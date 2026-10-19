@@ -1,7 +1,8 @@
 import { t } from '../i18n/index.ts';
+import { Host, Picker } from '@expo/ui';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text } from 'react-native';
 import { useClient } from '../core/provider';
 import { useCoreQuery } from '../core/query';
 import type { AppSpecDto } from '../core/generated/AppSpecDto';
@@ -22,12 +23,15 @@ function Install({
   onBack: () => void;
 }) {
   const { store, snapshot } = useClient();
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const dialogs = useDialogs();
   const [space, setSpace] = useState(initialSpace);
   const [draft, setDraft] = useState<unknown>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const chats =
+    snapshot?.conversations.filter((chat) => chat.members.some((person) => person.is_me)) ?? [];
+  const target = chats.find((chat) => chat.id === space);
   const finish = useDirtyEditor(JSON.stringify(draft) !== '{}', busy);
   const creator = spec.tools.find(
     (tool) => tool.visibility.includes('model') && !tool.visibility.includes('app'),
@@ -62,29 +66,28 @@ function Install({
         {spec.description}
       </Text>
       <Text style={{ color: colors.secondary, fontWeight: '600' }}>{t('miniapps.addToChat')}</Text>
-      <View style={{ gap: 8 }}>
-        {snapshot?.conversations
-          .filter((chat) => chat.members.some((person) => person.is_me))
-          .map((chat) => (
-            <Pressable
-              key={chat.id}
-              disabled={busy}
-              accessibilityRole="radio"
-              aria-checked={space === chat.id}
-              onPress={() => setSpace(chat.id)}
-              style={{
-                minHeight: 48,
-                padding: 15,
-                borderRadius: 16,
-                backgroundColor: space === chat.id ? colors.muted : colors.surface,
-              }}
-            >
-              <Text style={{ color: colors.text }}>
-                {space === chat.id ? '●' : '○'} {chat.title}
-              </Text>
-            </Pressable>
+      <Host
+        matchContents={{ vertical: true }}
+        style={{ width: '100%' }}
+        colorScheme={scheme}
+        seedColor={colors.accent}
+      >
+        <Picker
+          testID="miniapp-install-conversation"
+          appearance="menu"
+          selectedValue={target?.id ?? ''}
+          onValueChange={setSpace}
+          enabled={!busy && chats.length > 0}
+        >
+          <Picker.Item label={t('miniapps.chooseChat')} value="" />
+          {chats.map((chat) => (
+            <Picker.Item key={chat.id} label={chat.title} value={chat.id} />
           ))}
-      </View>
+        </Picker>
+      </Host>
+      {chats.length === 0 ? (
+        <Text style={{ color: colors.secondary }}>{t('miniapps.createChatToAddMiniapp')}</Text>
+      ) : null}
       <SchemaForm schema={schema} value={draft} onChange={setDraft} disabled={busy} />
       {error ? (
         <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
@@ -93,15 +96,16 @@ function Install({
       ) : null}
       <NativeButton
         label={busy ? t('miniapps.adding') : t('miniapps.addMiniapp')}
-        disabled={busy || !space}
+        disabled={busy || !target}
         onPress={() => {
+          if (!target) return;
           setBusy(true);
           setError(null);
           void (async () => {
             const args_json = exactJson(formValue(schema, draft)!);
             const item = await store.request({
               op: 'install_app',
-              space_id: space,
+              space_id: target.id,
               app_id: spec.id,
               args_json,
             });
@@ -149,6 +153,7 @@ export default function Miniapps() {
   const [selected, setSelected] = useState<AppSpecDto | null>(null);
   return (
     <ScrollView
+      key={selected?.id ?? 'catalog'}
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{
