@@ -1,9 +1,16 @@
 {
-  "objective": "Complete and validate the shared Expo application on iOS, Web and Android, with one product model and platform-appropriate interactions. Desktop acceptance is deferred.",
-  "platforms": ["ios", "web", "android"],
+  "objective": "Deliver the complete Zoen product across iOS, Android, Web, macOS, Windows and Linux, including the production backend, refined native interactions, end-to-end privacy, data integrity and verified operation at declared production scale. Compete with WhatsApp, Slack and Wabi through demonstrable product quality, reliability and scalability. Completion requires reproducible end-to-end, security, integrity, load, recovery and release evidence across the supported platform matrix.",
+  "goalDocument": "docs/dev/zoen-complete-product-goal.md",
+  "comparisonReferences": ["WhatsApp", "Slack", "Wabi"],
+  "platforms": ["ios", "web", "android", "macos", "windows", "linux"],
+  "deliveryPhases": [
+    { "id": "mobile-web", "platforms": ["ios", "web", "android"] },
+    { "id": "desktop", "platforms": ["macos", "windows", "linux"] }
+  ],
+  "backendIncluded": true,
   "sdk": 58,
   "policy": "Prelaunch: one coherent product model, no compatibility shims or duplicate durable state.",
-  "completion": "Required journeys need evidence against the exact signed iOS Release, exported Web application and Android APK. Source tests, hosted assets and bounded UI checks retain their own scope; full comparative product parity is incomplete.",
+  "completion": "Complete all required product journeys on production artifacts for every in-scope platform and on the deployed public backend. Declare numerical workload, latency, availability, recovery and cost targets before verification, then pass sustained/peak load, fault, security, accessibility, migration, update, restore and rollback gates. Reproduce delivery, offline/reconnect, multi-device recovery, cryptographic integrity and acknowledged-write durability within a documented fault model. Product comparisons require versioned evidence; private adapters, hosted assets, source tests, builds and bounded UI checks cannot establish whole-product readiness on their own.",
   "requiredJourneys": [
     "apple-google-single-action-signup-login-editable-profile-and-secure-new-device-recovery",
     "create-account-secure-storage-cold-reopen",
@@ -28,10 +35,43 @@
     "release-without-metro-and-reproducible-ci",
     "local-device-signout-erasure-keys-data-cache-cleanup",
     "english-pt-br-consistent-ui-provider-formatting",
-    "damaged-log-integrity-warnings-verification-audit"
+    "damaged-log-integrity-warnings-verification-audit",
+    "encrypted-voice-video-calls-reconnect-permissions-and-platform-lifecycle",
+    "desktop-install-signing-updates-and-native-system-integration",
+    "production-public-backend-complete-protocol-and-client-interoperability",
+    "multi-device-offline-recovery-and-data-integrity-under-declared-faults",
+    "declared-production-load-latency-availability-recovery-and-cost-verified",
+    "production-observability-abuse-controls-incident-restore-and-rollback"
   ],
-  "deferredPlatforms": ["macos", "windows", "linux"],
+  "deferredPlatforms": [],
   "fullAppParityAccepted": false,
+  "productionReadinessAccepted": false,
+  "scaleReadinessAccepted": false,
+  "productionCompletionGates": {
+    "completeProductAndCompetitiveJourneyMatrix": "PENDING",
+    "exactProductionArtifactsAcrossAllPlatforms": "PENDING",
+    "completePublicBackendAndRealProviders": "PENDING",
+    "cryptographicIntegrityOfflineAndSecureRecovery": "PENDING",
+    "declaredScaleLatencyAvailabilityRecoveryAndCost": "PENDING",
+    "loadFaultSecurityAndAccessibilityVerification": "PENDING",
+    "observabilityAbuseProtectionAndIncidentOperations": "PENDING",
+    "reproducibleReleasesDataMigrationsAndRollback": "PENDING",
+    "maintainableArchitectureAndLegacyRemoval": "PENDING"
+  },
+  "operatingEnvelope": {
+    "status": "MUST_BE_DECLARED_AND_VERIFIED_BEFORE_ACCEPTANCE",
+    "targetsMustPrecedeVerification": true,
+    "requiredMetrics": [
+      "concurrent-active-connections-and-workload-mix",
+      "sustained-and-peak-messages-events-media-and-call-throughput",
+      "p50-p95-p99-interaction-delivery-and-sync-latency",
+      "availability-error-budget-and-backpressure",
+      "history-size-device-count-and-offline-reconnect-backlog",
+      "recovery-time-recovery-point-and-acknowledged-write-durability",
+      "cost-per-active-user-message-media-and-operating-tier"
+    ],
+    "comparisonPolicy": "Measured product comparisons and declared workload envelopes only. Architecture diagrams, private capacity bounds and a successful load test do not establish parity with a competitor's global scale."
+  },
   "currentAcceptanceSummary": "Whole-application iPhone baseline remains v85; preserving-installed v92 has bounded MCP/gesture/Home evidence. v94/v95 Page input/session work remains source/host proof without new signed editor recovery. Web passes22 checkpoints per locale locally and in CI, including actual Excalidraw edits, exact native-peer bytes and cold reload. Android API 35 Debug passed linking/history/Page/headers/erasure; the minified CI Release APK and 14 JVM tests passed, and the unchanged non-debuggable APK passed normal onboarding and connection-code generation only. Cloudflare hosts the frontend, private closed-group storage and a private Person/device directory including MLS key packages. Public encrypted relay/provider paths and full comparative parity remain incomplete.",
   "historicalEvidence": {
     "commit": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
