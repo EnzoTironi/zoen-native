@@ -99,7 +99,7 @@ The separately deployed [private Person/device directory](relay-state/DIRECTORY.
 keeps registration, globally unique handles/devices, sponsored linking, one-time
 boxes, revocation and MLS key-package publication/claims in one SQLite transaction
 domain. Reviewed runtime `8bb0ae1e` passed 47 shared Rust tests, three native receipt
-regressions, 71 native PostgreSQL scenarios and 18 workerd cases. It is privately
+regressions, 71 native PostgreSQL scenarios and 18 workerd cases. It was privately
 deployed as `1fd4bab4-7013-4749-bb1e-3c59efa146c3`, retaining the existing namespace
 and bindings, with no routes, custom domains, workers.dev or previews. Receipt:
 `/private/tmp/zoen-cloudflare-admission-v96/validation/directory-keypackages-deployment-acceptance.json`
@@ -109,10 +109,32 @@ bounded to 128 records and 768 KiB canonical response bytes; Rust contexts remai
 bounded to 1 MiB. These private limits do not establish full native capacity parity.
 
 The public relay still needs Directory/Space integration and final delivery
-authorization, provider proofs, backup recovery, agents, package-refill notifications,
-Space MLS epochs/commits/checkpoints/holds and WebSockets. Encrypted media in private
-R2 still requires its separate activation/terms confirmation. Existing OAuth Workers,
-other DNS and R2 activation are unchanged.
+authorization, real provider integration, backup recovery, agents, package-refill notifications,
+Space MLS epochs/commits/checkpoints/holds and WebSockets. Public media integration
+and backup recovery remain separate acceptance gates.
+
+On 19 October 2026, after explicit user authorization for R2, the dashboard already
+exposed active R2. Bucket `zoen-private-blobs` was created with Standard storage and
+automatic placement (ENAM). Official pinned Wrangler verified zero objects/bytes,
+disabled public `r2.dev` access and no custom domains. No subscription agreement,
+card change, API token or DNS change was submitted. Receipt:
+`/private/tmp/zoen-cloudflare-r2-v100/provisioning-acceptance.json` (SHA256
+`bd9864fffc859dfc803bf998b2d64cdc8e6cf4da28032a57a06ef2a8a77ee41b`).
+That receipt proves bucket provisioning only. Subsequent [private media acceptance](relay-state/MEDIA.md)
+deploys source `86cc9a74` as Directory version `9882fa56-24bb-4573-a592-a50b4c138972`,
+preserving its namespace, fixed cell, relay name and migration tag. The added R2
+binding is private; routes, workers.dev and preview URLs stay disabled.
+Twenty-eight native HTTP vectors, three storage-fault vectors, 13 media workerd
+cases and the existing 18 Directory/35 provider cases pass. A real R2 journey passes
+seven checkpoints, including native decryption and post-Unlink upload refusal.
+Its one 647-byte encrypted QA object was removed; both exact allowlisted keys are
+confirmed missing. Small revoked metadata may remain only in the fresh QA cell.
+The production fixed cell was not addressed by that journey. Receipt:
+`/private/tmp/zoen-cloudflare-r2-v100/remote-acceptance.json` (SHA256
+`648f8479451c33f794aa484d75b1a38f7ccf43b53a261c7d4e9a6fa830e7c743`).
+Existing OAuth Workers and DNS are unchanged. Public media, transfer, backup recovery
+and complete public relay integration remain unaccepted; the two known local
+socket-close gates remain red.
 
 The `expo` workflow runs the actual local workerd storage tests without account
 credentials or deployment. Public hosting and encrypted browser journeys are

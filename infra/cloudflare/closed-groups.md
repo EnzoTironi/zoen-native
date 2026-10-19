@@ -70,8 +70,12 @@ Machine-local receipt
 `/private/tmp/zoen-cloudflare-admission-v96/validation/closed-acceptance.json`
 has SHA256 `524a38f64b3572e51a6d94b77f022bc5f203668958a4032ce03d28a2157b3d82`.
 All 32 recorded source hashes match `c7de156f`. These temporary paths are not
-portable CI proof; the latest CI integration remains pending.
+portable CI proof. Later [CI run 39215512310](https://github.com/EnzoTironi/zoen-native/actions/runs/39215512310)
+passes the closed-group differential lane at head `f43b23f3`; that CI attribution
+remains separate from the earlier remote proof.
 
 Next gates are transactional directory/identity/revocation authorization, global
 invite resolution, MLS epochs/holds/checkpoints/pruning, the public WebSocket
-protocol and delivery, and separately authorized private R2 media activation.
+protocol and delivery, public media integration and backup recovery. The separate
+[private R2 media adapter](relay-state/MEDIA.md) has bounded real encrypted-object
+proof; it does not establish public sync, transfer or backup recovery acceptance.

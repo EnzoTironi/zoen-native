@@ -4,6 +4,13 @@ host sessions, public MLS key packages, publication tombstones and durable claim
 belong to the same SQLite Durable Object. A caller cannot choose an
 account shard or supply `registered`, an enrollment row, or an authenticated session.
 
+Current private version `9882fa56-24bb-4573-a592-a50b4c138972` composes the reviewed
+Directory/socket/provider sources with [encrypted R2 media](MEDIA.md) from `86cc9a74`.
+The namespace, fixed production cell and migration tag are preserved; all public
+HTTP remains 404. Historical provisioning and socket proofs below retain their
+original source/version boundaries. The two known local socket-close gates remain
+red; private media deployment does not accept a complete public transport.
+
 `hello({frame})` accepts the canonical native binary Hello, verifies the identity's device
 certificate in shared Rust, and returns a native protocol-4 Challenge plus an opaque
 challenge ID. Its nonce comes from the host's secure random generator. `authenticate`
@@ -32,8 +39,8 @@ First registration still cannot claim that globally enrolled device for its self
 `authorize({sessionId})` returns a request-admission snapshot. It is not an outbound
 delivery lease. Returned binary reply bytes are private operation results, not permission
 to send them to an external socket. Native delivery holds a durable device fence through
-the actual send; the deployed `8bb0ae1e` adapter has no sockets. The private `8d64d762`
-candidate below adds its synchronous outbound fence. An already
+the actual send; the original `8bb0ae1e` deployment had no sockets. The private `8d64d762`
+source below adds its synchronous outbound fence. An already
 admitted native Space append may finish after revocation, while fresh admission and every
 future public delivery must reject the revoked device.
 
@@ -72,10 +79,11 @@ Cloudflare's 2 MiB whole-row limit. Local workerd stress fixtures prove 128 reco
 bytes and pre-consumption refusal at 129, independently of genuine signed MLS fixtures.
 
 The Worker has no HTTP routes, workers.dev or preview URLs. It is not connected to the
-closed-Space service. Provider proofs/JWTs, backup recovery, agent registration, profile
+closed-Space service. Real/public provider integration, backup recovery, agent registration, profile
 fanout, global rate limits, KeyPackagesLow/refill notifications, Space MLS epochs, encrypted
 commit/checkpoint/hold handling and the complete public session protocol remain separate
-gates. Encrypted blob transport and R2 activation are also unfinished. No caller may
+gates. Private encrypted blob transport has separate bounded acceptance; public
+media and backup/transfer integration remain unfinished. No caller may
 use this slice as a public authentication facade.
 
 With an existing PostgreSQL test environment, run
@@ -133,8 +141,9 @@ frame. Revocation, self-unlink, authenticated expiry, normal client close and SQ
 cleanup pass. Its 71 native scenarios and 32 of 34 local workerd cases pass, with
 zero skips. Two untouched pre-Hello timeout cases fail to complete the client close
 within five seconds on the pinned local runtime. These two gates remain red; the
-candidate has not replaced production version `1fd4bab4-7013-4749-bb1e-3c59efa146c3`
-and is not accepted as a full transport. The blocked receipt remains immutable at
+candidate had not replaced production version `1fd4bab4-7013-4749-bb1e-3c59efa146c3`
+at that proof. The later private media composition is recorded above and remains
+unaccepted as a full transport. The blocked receipt remains immutable at
 `/private/tmp/zoen-cloudflare-admission-v96/validation/directory-socket-blocked-acceptance/acceptance.json`.
 
 A separate minimal probe with no Zoen authentication, SQL or Rust code passes all
@@ -185,5 +194,25 @@ delegation, including canonical signed profiles and exact active-certificate ret
 Receipt: `/private/tmp/zoen-provider-enrollment-v96/enrollment-extraction-acceptance.json`
 (SHA256 `c34792223683369c17fd61afd28cea208b3a075eba0d330da120827a3f6fc15a`).
 The receipt captured those sources before their commit; it is local extraction evidence.
-Provider host validation and public HTTP/provider deployment remain separate, unaccepted
-gates. Public relay/MLS delivery, recovery integration and R2 activation remain unfinished.
+Private provider host validation is recorded separately in the acceptance index and
+its source is included in the private media composition. Real provider confirmation,
+public HTTP/provider integration, public relay/MLS delivery and recovery remain
+unaccepted. Private R2 media proof does not accept those journeys.
+
+## Latest CI and local runtime boundary
+
+[CI run 39215512310](https://github.com/EnzoTironi/zoen-native/actions/runs/39215512310)
+on head `f43b23f3` and merge `14e32b20` has identical source trees. It passes 71
+native Directory scenarios, 32 of 34 workerd cases, the separate provider host's
+20 native SQL scenarios and 35 workerd cases, and all 22 browser checkpoints in
+each locale. The overall workflow remains failed on the same two untouched-socket
+close gates, with zero skipped Directory cases. Source/archive verification found
+no drift. Receipt: `/private/tmp/zoen-cloudflare-web-v96/ci-f43b-evidence/acceptance.json`
+(SHA256 `f34fc45232adfeecf9c1872f3e11ad9f5fa0ed49479cc696cd58993c28c14a53`).
+
+An isolated A/B using the official `workerd 2026-10-19` binary did not fix the
+unchanged minimal reproduction: all six untouched variants remained CLOSING beyond
+five seconds; the inbound-message control reached CLOSED. Repository pins and test
+deadlines remain unchanged. This is recorded separately from the passing remote
+edge proof, under `/private/tmp/zoen-cloudflare-web-v96/workerd-ab-20261019-01/acceptance.json`
+(SHA256 `1e0fb2ba591a377780d29c453d42c9ce08977ddee532717ddc50b995eee69da0`).

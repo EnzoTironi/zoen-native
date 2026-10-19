@@ -76,9 +76,9 @@ storage contract; they do not accept a public relay or login journey.
 
 | Current dependency | Cloudflare target | Status |
 | --- | --- | --- |
-| FoundationDB per-Space transaction | SQLite Durable Object per Space | Append/dedupe/head/opaque projection storage implemented; Rust admission and full `LogStore` adapter remain |
-| PostgreSQL directory, provider proofs, key-package claims, device revocations | Directory Durable Objects with SQLite transactions | Adapter and cross-Space membership/revocation protocol remain |
-| S3-compatible encrypted blobs and backups | Private R2 | Existing Rust `object_store` supports R2; account activation still requires its separate subscription acceptance |
+| FoundationDB per-Space transaction | SQLite Durable Object per Space | Storage and private closed-group Rust admission implemented; complete MLS projection and public `LogStore` integration remain |
+| PostgreSQL directory, provider proofs, key-package claims, device revocations | Directory Durable Objects with SQLite transactions | Private Directory/provider/key-package adapter implemented; cross-Space integration, public provider flows and recovery remain |
+| S3-compatible encrypted blobs and backups | Private R2 | [Private encrypted media](MEDIA.md) passes local differential and bounded real R2 QA; public integration, transfers and backup recovery remain |
 | NATS fanout and native socket sessions | Durable Object WebSockets | Protocol/authentication and ordered fanout adapter remain |
 | Native axum/Tokio process | Worker using shared Rust/WASM validation | Native Linux dependencies prevent deploying the existing process unchanged as a Worker |
 
