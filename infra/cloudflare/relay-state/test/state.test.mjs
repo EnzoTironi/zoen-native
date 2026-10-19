@@ -9,6 +9,7 @@ import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 const fixture = fileURLToPath(new URL('./fixture.mjs', import.meta.url));
 const source = fileURLToPath(new URL('../src/index.mjs', import.meta.url));
 const moduleRoot = fileURLToPath(new URL('../', import.meta.url));
+const storage = fileURLToPath(new URL('../src/space-storage.mjs', import.meta.url));
 const zero = '0'.repeat(64);
 const author = 'a'.repeat(64);
 function proposal(clientId, seq = '0', previous = null, bytes = [10, 20, 30]) {
@@ -21,7 +22,7 @@ function proposal(clientId, seq = '0', previous = null, bytes = [10, 20, 30]) {
 }
 function runtime(path, entryScript = fixture) {
   return new Miniflare(convertV4MiniflareOptions({
-    modules: [...new Set([entryScript, source])].map(path => ({ type: 'ESModule', path })),
+    modules: [...new Set([entryScript, source, storage])].map(path => ({ type: 'ESModule', path })),
     modulesRoot: moduleRoot,
     compatibilityDate: '2026-10-18',
     durableObjects: { SPACE_LOG: { className: 'SpaceLog', useSQLite: true } },

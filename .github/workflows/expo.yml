@@ -22,6 +22,8 @@ on:
         'scripts/expo-web-*.mjs',
         'scripts/expo-web-tests/**',
         'scripts/verify-cloudflare-admission.mjs',
+        'scripts/verify-cloudflare-closed.mjs',
+        'scripts/build-cloudflare-closed.mjs',
         'infra/cloudflare/**',
         '.github/workflows/expo.yml',
       ]
@@ -47,6 +49,8 @@ on:
         'scripts/expo-web-*.mjs',
         'scripts/expo-web-tests/**',
         'scripts/verify-cloudflare-admission.mjs',
+        'scripts/verify-cloudflare-closed.mjs',
+        'scripts/build-cloudflare-closed.mjs',
         'infra/cloudflare/**',
         '.github/workflows/expo.yml',
       ]
@@ -294,6 +298,7 @@ jobs:
         run: |
           npm ci --prefix apps/zoen
           npm ci --prefix scripts/expo-web-tests
+          npm ci --prefix infra/cloudflare
           cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - name: Disposable Postgres and FoundationDB
         run: |
@@ -350,6 +355,18 @@ jobs:
             fi
           done
           exit "$expo_status"
+      - name: Compare native FDB and private Cloudflare closed-group transactions
+        # Reuses this job's isolated FDB and canonical native build. No account
+        # credentials, public relay, DNS changes or deployment are involved.
+        run: node scripts/verify-cloudflare-closed.mjs --out-dir .dev/cloudflare-closed
+      - name: Retain private closed-group differential evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cloudflare-closed-evidence
+          path: .dev/cloudflare-closed
+          if-no-files-found: warn
+          retention-days: 7
       - name: Retain release acceptance evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

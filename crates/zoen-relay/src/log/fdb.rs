@@ -341,8 +341,8 @@ impl FdbLog {
         code: &str,
         fence: Fence,
     ) -> Result<InviteCreated, String> {
-        let expires = now_ms() + ttl_secs.clamp(60, 30 * 24 * 3600) as i64 * 1000;
-        let max = max_uses.clamp(1, 10_000) as i64;
+        let (max, ttl_ms) = roda_relay_admission::invite::invite_limits(max_uses, ttl_secs);
+        let expires = now_ms() + ttl_ms;
         let key = self.cell.root.pack(&("inv", code_hash(code)));
         let fence = &fence;
         let r = self
@@ -363,11 +363,9 @@ impl FdbLog {
                         return Ok(Err("invalid invite code"));
                     }
                     let mine = self.cell.role_in(&trx, space, who).await?;
-                    if !matches!(mine, Some(Role::Owner | Role::Admin)) {
-                        return Ok(Err("only owners and admins create invites"));
-                    }
-                    if role <= Role::Admin && mine != Some(Role::Owner) {
-                        return Ok(Err("only the owner invites admins"));
+                    if let Err(reason) = roda_relay_admission::invite::authorize_inviter(mine, role)
+                    {
+                        return Ok(Err(reason));
                     }
                     let kind = match trx.get(&self.cell.space_key(space, "meta"), false).await? {
                         Some(m) => {
@@ -377,8 +375,12 @@ impl FdbLog {
                         }
                         None => return Ok(Err("unknown space")),
                     };
-                    if parse::<SpaceKind>(&kind) == Some(SpaceKind::Direct) {
-                        return Ok(Err("direct chats don't take invites"));
+                    if let Some(kind) = parse::<SpaceKind>(&kind) {
+                        if let Err(reason) =
+                            roda_relay_admission::invite::authorize_invite_kind(kind)
+                        {
+                            return Ok(Err(reason));
+                        }
                     }
                     if let Some(existing) = trx.get(&key, false).await? {
                         let inv: Invite = unpack(&existing).map_err(|e| custom(e.to_string()))?;

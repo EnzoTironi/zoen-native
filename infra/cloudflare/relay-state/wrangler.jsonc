@@ -1,5 +1,5 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "../node_modules/wrangler/config-schema.json",
   "name": "zoen-relay-state",
   "main": "src/index.mjs",
   "account_id": "86e8a5b2686413989e8bef1f75c29079",

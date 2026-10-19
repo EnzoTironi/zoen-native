@@ -7,7 +7,11 @@
     "test": "node --test test/*.test.mjs",
     "test:remote": "node test/remote.mjs",
     "check": "node --check src/index.mjs",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "build:closed": "node ../../../scripts/build-cloudflare-closed.mjs",
+    "test:closed": "node --test tests/closed-state.test.mjs",
+    "verify:closed": "node ../../../scripts/verify-cloudflare-closed.mjs",
+    "deploy:closed": "wrangler deploy --config wrangler.closed.jsonc"
   },
   "devDependencies": {
     "miniflare": "5.20261012.1-beta"

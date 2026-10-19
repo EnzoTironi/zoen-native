@@ -84,7 +84,7 @@ pub struct SessionContext {
 /// Private fields prevent callers from constructing a verified token directly.
 #[derive(Debug)]
 pub struct VerifiedPublish {
-    env: Envelope,
+    pub(crate) env: Envelope,
 }
 
 impl VerifiedPublish {
@@ -107,7 +107,7 @@ pub struct BoundaryError {
 }
 
 impl BoundaryError {
-    fn no(code: &'static str, reason: impl Into<String>) -> Self {
+    pub(crate) fn no(code: &'static str, reason: impl Into<String>) -> Self {
         Self {
             code,
             reason: reason.into(),
@@ -117,7 +117,7 @@ impl BoundaryError {
 
     /// A trusted context/storage/encoding failure says nothing permanent about
     /// the signed client envelope. A host may reload facts and retry it.
-    fn internal(code: &'static str, reason: impl Into<String>) -> Self {
+    pub(crate) fn internal(code: &'static str, reason: impl Into<String>) -> Self {
         Self {
             code,
             reason: reason.into(),
@@ -371,8 +371,22 @@ pub fn verify_publish_json(frame: &[u8], context: &str) -> Result<String, Bounda
     let context = serde_json::from_str(context)
         .map_err(|_| BoundaryError::internal("invalid_session", "invalid trusted session"))?;
     let verified = verify_publish(frame, &context)?;
+    let env = &verified.env;
+    let body = env.body();
+    let target_identity = match &body {
+        Some(EventBody::MemberAdded { identity, .. } | EventBody::MemberRemoved { identity }) => {
+            Some(identity.clone())
+        }
+        _ => None,
+    };
+    let upto_seq = match &body {
+        Some(EventBody::Checkpoint { upto, .. }) => Some(upto.seq.to_string()),
+        _ => None,
+    };
     serde_json::to_string(&serde_json::json!({
         "space_id": verified.space(), "author": verified.author(), "client_id": verified.client_id(),
+        "lookup": { "target_identity": target_identity, "seen_seq": env.seen().map(|seen| seen.seq.to_string()),
+            "upto_seq": upto_seq, "invite_hash": env.invite.as_deref().map(crate::code_hash) },
     })).map_err(|_| BoundaryError::internal("encoding", "could not encode verified publication"))
 }
 
