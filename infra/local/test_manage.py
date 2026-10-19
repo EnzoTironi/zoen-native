@@ -1,9 +1,11 @@
 """Integrity and resource-ownership gates; these tests never start Docker resources."""
 import copy
+import errno
 import importlib.util
 import json
 import pathlib
 import re
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -42,6 +44,38 @@ class LifecycleTests(unittest.TestCase):
     def tearDown(self):
         self.root_patch.stop()
         self.temp.cleanup()
+
+    def test_restart_accepts_a_released_port_with_a_recent_connection(self):
+        # An active server-side close leaves TIME_WAIT after its listener exits.
+        # No Docker process or active listener owns this ephemeral port now.
+        with socket.socket() as listener:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(('127.0.0.1', 0))
+            listener.listen(1)
+            port = listener.getsockname()[1]
+            with socket.create_connection(('127.0.0.1', port), timeout=2) as client:
+                connection, _ = listener.accept()
+                with connection:
+                    connection.sendall(b'owned connection')
+                    connection.shutdown(socket.SHUT_WR)
+                    self.assertEqual(client.recv(64), b'owned connection')
+                    self.assertEqual(client.recv(64), b'')
+        owner = {**self.owner, 'port': port}
+        with mock.patch.object(manage, 'owned'), mock.patch.object(manage, 'installed_images'), mock.patch.object(manage, 'ready'), mock.patch.object(manage, 'command', return_value='') as command:
+            manage.up(self.path, owner)
+        self.assertTrue(any('up' in call.args[0] for call in command.call_args_list))
+
+    def test_restart_still_refuses_an_active_listener_that_allows_address_reuse(self):
+        with socket.socket() as listener:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(('127.0.0.1', 0))
+            listener.listen(1)
+            owner = {**self.owner, 'port': listener.getsockname()[1]}
+            with mock.patch.object(manage, 'owned'), mock.patch.object(manage, 'installed_images'), mock.patch.object(manage, 'ready'), mock.patch.object(manage, 'command', return_value='') as command:
+                with self.assertRaises(OSError) as raised:
+                    manage.up(self.path, owner)
+            self.assertEqual(raised.exception.errno, errno.EADDRINUSE)
+            self.assertFalse(any('up' in call.args[0] for call in command.call_args_list))
 
     def test_vault_key_bitrot_rejected_before_resources_created(self):
         p = self.source / 'private' / 'relay.env'

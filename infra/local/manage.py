@@ -241,6 +241,15 @@ def ready(owner, timeout=180, include_frontdoor=True):
             time.sleep(1)
 
 
+def require_available_port(port):
+    with socket.socket() as listener:
+        # Permit a stopped server's TIME_WAIT sockets, but never share a live
+        # listener. listen() also rejects an existing SO_REUSEADDR listener.
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(('127.0.0.1', port))
+        listener.listen(1)
+
+
 def up(path, owner):
     owned(path, owner)
     installed_images(owner.get('images', {}), owner)
@@ -248,8 +257,7 @@ def up(path, owner):
     if not current:
         ports = [owner['port']] + ([owner['port'] + 1] if owner['nodes'] == 2 else []) + ([owner['frontdoor']['port']] if frontdoor_info(owner) else [])
         for port in ports:
-            with socket.socket() as listener:
-                listener.bind(('127.0.0.1', port))
+            require_available_port(port)
     command(compose(path, owner) + ['up', '-d', '--wait', '--wait-timeout', '180'], capture=False, timeout=240)
     ready(owner)
     print(f'Native relay ready: http://127.0.0.1:{owner["port"]}')
@@ -371,8 +379,7 @@ def frontdoor(path, owner, port=None, disable=False):
         # A running owned retry already holds the port; otherwise it must be free.
         current = command(compose(path, owner) + ['ps', '-q', 'frontdoor']).strip() if info else ''
         if not current:
-            with socket.socket() as listener:
-                listener.bind(('127.0.0.1', selected))
+            require_available_port(selected)
         check_frontdoor_parser(prospective, prospective['images']['frontdoor'], candidate)
         config(path, prospective, output=temporary / 'compose.env')
         command(compose(path, prospective, env_file=temporary / 'compose.env') + ['config', '--quiet'])
@@ -505,8 +512,7 @@ def restore(source, name, port, frontdoor_port=None):
     if frontdoor_info(old):
         selected = port + 2 if frontdoor_port is None else frontdoor_port
         validate_frontdoor_port({**old, 'port': port}, selected)
-        with socket.socket() as listener:
-            listener.bind(('127.0.0.1', selected))
+        require_available_port(selected)
     else:
         require(frontdoor_port is None, 'Backup has no enabled frontdoor')
     path, owner = init(name, port, old['nodes'], old['image_refs']['relay'], old['image_refs']['fdb'])
@@ -534,8 +540,7 @@ def cluster(path, owner):
     installed_images(owner['images'], owner)
     value = inspect('image', IMAGE_REFS['bus'])
     require(value is not None, 'Pull the declared NATS image explicitly first')
-    with socket.socket() as listener:
-        listener.bind(('127.0.0.1', owner['port'] + 1))
+    require_available_port(owner['port'] + 1)
     command(compose(path, owner) + ['stop', '--timeout', '45', 'relay'], capture=False, timeout=100)
     owner['nodes'] = 2
     owner['images']['bus'] = value['Id']
