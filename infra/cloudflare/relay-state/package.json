@@ -14,7 +14,9 @@
     "deploy:closed": "wrangler deploy --config wrangler.closed.jsonc",
     "test:directory": "node --test tests/directory-state.test.mjs",
     "verify:directory": "node ../../../scripts/verify-cloudflare-directory.mjs",
-    "deploy:directory": "wrangler deploy --config wrangler.directory.jsonc"
+    "deploy:directory": "wrangler deploy --config wrangler.directory.jsonc",
+    "test:provider": "node --test tests/provider-state.test.mjs",
+    "verify:provider": "node ../../../scripts/verify-cloudflare-provider.mjs --host"
   },
   "devDependencies": {
     "miniflare": "5.20261012.1-beta"

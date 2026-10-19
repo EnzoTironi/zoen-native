@@ -10,18 +10,24 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let output,
-  skipBuild = false;
+  skipBuild = false,
+  host = false;
 const args = process.argv.slice(2);
 for (let index = 0; index < args.length; index++) {
   if (args[index] === "--skip-build") skipBuild = true;
+  else if (args[index] === "--host") host = true;
   else if (args[index] === "--out-dir" && args[index + 1] && !args[index + 1].startsWith("--"))
     output = resolve(args[++index]);
-  else throw new Error("Usage: verify-cloudflare-provider.mjs [--out-dir DIR] [--skip-build]");
+  else
+    throw new Error(
+      "Usage: verify-cloudflare-provider.mjs [--out-dir DIR] [--skip-build] [--host]",
+    );
 }
 output ??= await mkdtemp(join(tmpdir(), "zoen-cloudflare-provider-"));
 await mkdir(join(output, "wasm"), { recursive: true });
-const scope =
-  "Synthetic native/Node/workerd provider assertion equivalence only; no public HTTP auth, challenge/proof consumption, account binding, provider confirmation or deployment acceptance.";
+const scope = host
+  ? "Private provider host: actual isolated native PostgreSQL issue/bind oracle versus shared Rust/WASM+SQLite, plus bounded host I/O and HTTP-origin checks. Outer Worker stays404; no public provider confirmation or deployment acceptance."
+  : "Synthetic native/Node/workerd provider assertion equivalence only; no public HTTP auth, challenge/proof consumption, account binding, provider confirmation or deployment acceptance.";
 const sourceScopes = [
   ".github/workflows/expo.yml",
   "infra/cloudflare/package.json",
@@ -38,13 +44,26 @@ const sourceScopes = [
   "scripts/verify-cloudflare-provider.mjs",
   "scripts/verify-cloudflare-admission.mjs",
   "scripts/build-cloudflare-closed.mjs",
+  ...(host
+    ? [
+        "infra/cloudflare/relay-state/src/directory-state.mjs",
+        "infra/cloudflare/relay-state/src/directory-index.mjs",
+        "infra/cloudflare/relay-state/src/provider-auth.mjs",
+        "infra/cloudflare/relay-state/package.json",
+        "infra/cloudflare/relay-state/wrangler.directory.jsonc",
+        "infra/cloudflare/relay-state/tests/directory-state.test.mjs",
+        "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
+        "infra/cloudflare/relay-state/tests/provider-fixture.mjs",
+        "infra/cloudflare/relay-state/tests/provider-state.test.mjs",
+      ]
+    : []),
 ];
 const git = (...a) => execFileSync("git", a, { cwd: root, encoding: "utf8" }).trim();
-function run(command, commandArgs, capture = false) {
+function run(command, commandArgs, capture = false, environment = process.env) {
   return new Promise((accept, reject) => {
     const child = spawn(command, commandArgs, {
       cwd: root,
-      env: process.env,
+      env: environment,
       stdio: ["ignore", capture ? "pipe" : "inherit", "inherit"],
     });
     const chunks = [];
@@ -53,7 +72,11 @@ function run(command, commandArgs, capture = false) {
     child.once("close", (code, signal) =>
       code === 0
         ? accept(capture ? Buffer.concat(chunks).toString("utf8") : undefined)
-        : reject(new Error(`${command} failed (${signal ?? code})`)),
+        : reject(
+            Object.assign(new Error(`${command} failed (${signal ?? code})`), {
+              stdout: capture ? Buffer.concat(chunks).toString("utf8") : undefined,
+            }),
+          ),
     );
   });
 }
@@ -203,6 +226,65 @@ try {
     results: workerdResults,
     scope,
   });
+  let hostResult;
+  if (host) {
+    const database = process.env.ZOEN_TEST_PG ?? process.env.DATABASE_URL;
+    assert.ok(database, "Set ZOEN_TEST_PG or DATABASE_URL for the isolated native provider oracle");
+    const fixturePath = join(output, "native-provider-enrollment.json");
+    await run(
+      "cargo",
+      [
+        "test",
+        "--quiet",
+        "--locked",
+        "-p",
+        "zoen-relay",
+        "--lib",
+        "auth::storage::provider_fixture::write_native_provider_enrollment_fixture",
+        "--",
+        "--ignored",
+        "--exact",
+      ],
+      true,
+      { ...process.env, ZOEN_TEST_PG: database, ZOEN_PROVIDER_FIXTURE: fixturePath },
+    ).then((text) => writeFile(join(output, "native-provider-oracle.log"), text));
+    const nativeHost = JSON.parse(await readFile(fixturePath, "utf8"));
+    assert.equal(nativeHost.schema, 1);
+    assert.equal(nativeHost.scenarios.length, 20);
+    const tapPath = join(output, "provider-host-workerd.tap");
+    const tap = await run(
+      process.execPath,
+      [
+        "--test",
+        "--test-reporter=tap",
+        "--test-concurrency=1",
+        "infra/cloudflare/relay-state/tests/provider-state.test.mjs",
+      ],
+      true,
+      { ...process.env, ZOEN_PROVIDER_FIXTURE: fixturePath },
+    ).catch(async (error) => {
+      if (typeof error.stdout === "string") await writeFile(tapPath, error.stdout);
+      throw error;
+    });
+    await writeFile(tapPath, tap);
+    process.stdout.write(tap);
+    const totals = {};
+    for (const name of ["tests", "pass", "fail", "cancelled", "skipped", "todo"]) {
+      const matches = [...tap.matchAll(new RegExp(`^# ${name} (\\d+)\\r?$`, "gm"))];
+      assert.ok(matches.length, `Missing provider TAP ${name} total`);
+      totals[name] = Number(matches.at(-1)[1]);
+    }
+    assert.ok(totals.tests >= 20, "All twenty native scenarios and host regressions must run");
+    assert.equal(totals.pass, totals.tests);
+    for (const name of ["fail", "cancelled", "skipped", "todo"]) assert.equal(totals[name], 0);
+    hostResult = {
+      nativeSqlScenarios: nativeHost.scenarios.length,
+      workerd: totals,
+      artifacts: await Promise.all(
+        [fixturePath, tapPath, join(output, "native-provider-oracle.log")].map(artifact),
+      ),
+    };
+  }
   for (const source of sources)
     assert.deepEqual(
       await artifact(source.path),
@@ -222,6 +304,7 @@ try {
     nodeCases: 18,
     workerdCases: 18,
     skipBuild,
+    ...(hostResult ? { host: hostResult } : {}),
     artifacts: await Promise.all(
       [
         "native-fixtures.json",

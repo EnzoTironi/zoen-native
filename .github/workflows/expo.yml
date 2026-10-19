@@ -382,6 +382,20 @@ jobs:
           path: .dev/cloudflare-closed
           if-no-files-found: warn
           retention-days: 7
+      - name: Compare native Postgres and private Cloudflare provider enrollment
+        # Synthetic assertions only. Shares this job's disposable database and
+        # the WASM built above; no provider credentials or deployment.
+        env:
+          ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
+        run: node scripts/verify-cloudflare-provider.mjs --host --skip-build --out-dir .dev/cloudflare-provider-host
+      - name: Retain private provider enrollment evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cloudflare-provider-host-evidence
+          path: .dev/cloudflare-provider-host
+          if-no-files-found: warn
+          retention-days: 7
       - name: Compare native Postgres and private Cloudflare directory transactions
         # The oracle creates and removes only its own schema in this job's
         # disposable database. Reuse the current shared WASM from the closed check.

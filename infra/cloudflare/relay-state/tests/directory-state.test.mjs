@@ -20,7 +20,7 @@ function runtime(path, production = false) {
   return new Miniflare(convertV4MiniflareOptions({
     modulesRoot: moduleRoot,
     modules: [production ? 'src/directory-index.mjs' : 'tests/directory-fixture.mjs',
-      'src/directory-state.mjs', 'generated/wasm/admission.js']
+      'src/directory-state.mjs', 'src/provider-auth.mjs', 'generated/wasm/admission.js']
       .map(path => ({ type: 'ESModule', path: join(moduleRoot, path) }))
       .concat({ type: 'CompiledWasm', path: join(moduleRoot, 'generated/wasm/admission_bg.wasm') }),
     compatibilityDate: '2026-10-18',

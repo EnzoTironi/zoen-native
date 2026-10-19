@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { initSync, directoryHello, directoryAuthenticate, directoryLookup,
   directoryRequest, directoryAuthorize, directorySocketFrame, directorySocketControl, directorySocketDelivery } from '../generated/wasm/admission.js';
 import wasmModule from '../generated/wasm/admission_bg.wasm';
+import { ProviderAuthState } from './provider-auth.mjs';
 
 initSync({ module: wasmModule });
 const MAX_BYTES = 1024 * 1024;
@@ -44,6 +45,7 @@ function token(value) {
  * durable fence here. Internal DO fetch is available only through private bindings.
  */
 export class DirectoryState extends DurableObject {
+  #providerAuth;
   constructor(ctx, env) {
     super(ctx, env);
     const sql = ctx.storage.sql;
@@ -80,6 +82,16 @@ export class DirectoryState extends DurableObject {
   }
 
   _nowMs() { return Date.now(); }
+  _providerCacheNow() { return performance.now(); }
+  _fetchProviderKeys(url, options) { return fetch(url, options); }
+  provider(request) {
+    this.#providerAuth ??= new ProviderAuthState(this.ctx, this.env, {
+      nowMs: () => this._nowMs(), cacheNow: () => this._providerCacheNow(), randomToken: () => this._randomToken(),
+      fetchKeys: (url, options) => this._fetchProviderKeys(url, options),
+      authorizationChanged: () => this._retireSockets(),
+    });
+    return this.#providerAuth.fetch(request);
+  }
   _nonce() { return this._randomToken(); }
   _randomToken() {
     return Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -374,6 +386,7 @@ export class DirectoryState extends DurableObject {
   async alarm() { this._retireSockets(); await this._scheduleSocketAlarm(); }
 
   async fetch(request) {
+    if (new URL(request.url).pathname.startsWith('/v1/auth/')) return this.provider(request);
     if (new URL(request.url).pathname !== '/v1/sync' || request.method !== 'GET'
       || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return new Response('Not found', { status: 404 });
     this._retireSockets();
