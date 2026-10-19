@@ -6,6 +6,29 @@ The full goal remains active: 30 journeys, six platforms and the public backend.
 it does not replace the [complete goal](zoen-complete-product-goal.md) or its
 [acceptance matrix](../../apps/zoen/acceptance.json).
 
+PR136 merged into `main` at `edc0e684` after all 12 CI checks passed on
+`c05b0bdd`. Continued work is in [PR140](https://github.com/EnzoTironi/zoen-native/pull/140).
+The earlier sections below retain their original artifact boundaries.
+
+The new source uses **Apps** in 224 English/Portuguese display strings, including
+permissions, widgets, Siri and shared-core messages. Internal IDs, routes and
+signed historical content remain unchanged. All 836 app checks pass. The Web
+attachment menu now uses a browser-native popover anchored to the composer;
+actual pointer, keyboard, focus, file chooser and narrow-window checks pass.
+
+Cold relay-offline sending no longer hides the conversation: a pending message's
+null event hash previously matched every message's null thread reference. The
+driver now resolves only actual thread references. Both browser locales pass
+all 24 checkpoints, retaining original IDs and one native-peer occurrence after
+reconnect and cold-route reload. This uses the genuine retained WASM; current
+Apps-copy WASM and complete offline PWA startup remain separate qualifications.
+
+The managed local gateway also passes actual encrypted messaging and Delivered/
+Read across different native processes on unchanged connections. All seven
+services are healthy, with the original six processes intact. Its 24 ownership/
+lifecycle cases pass; enabled-gateway backup/restore and HA remain unaccepted.
+See the receipts in `postMergeCheckpoint` and the [gateway guide](../../infra/local/FRONTDOOR.md).
+
 ## One product model and simple names
 
 The 13 shared packages now use purpose-based names, including `miniapps`,

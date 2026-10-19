@@ -81,7 +81,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "Current Expo SDK 58.0.16 source passes TypeScript, Oxlint, Oxfmt and 828 app tests. Native iOS activity preserves canonical IDs, search and history; Web source passes 72 Rust tests and typed signed DTO boundary checks, and a bounded actual Web linking, Excalidraw, exact-ID search and backend/cold-browser restart journey passed. The custom Cloudflare backend runtime is removed. The native Rust backend now runs locally with real PostgreSQL 17, FoundationDB 7.3.71, private S3-compatible storage and optional NATS/two relays. 151 unique native/shared tests, the actual public Client 7 checkpoints, S3 concurrency/restart and cold backup/restore passed. Provider confirmation, public deployment, complete platform journeys, release rollback, cross-relay delivery and production/scale acceptance remain open.",
+  "currentAcceptanceSummary": "Expo SDK 58.0.16 source passes TypeScript, Oxlint, Oxfmt and 836 app tests. The product now uses Apps in visible EN/PT copy. The Web attachment menu passes actual keyboard, pointer and native-picker checks. Cold relay-offline messaging passes 24 browser checkpoints per locale with exact retained IDs and one native-peer occurrence after reconnect. A managed standard local gateway proves live encrypted delivery and receipts across two native processes without reconnect. PR136 is merged; continued work is in PR140. Fresh Apps-copy Web core, installed current Android journeys, providers, public deployment, complete platform journeys, release rollback, HA and production/scale acceptance remain open.",
   "retiredBackend": {
     "id": "custom-cloudflare-runtime",
     "status": "RETIRED",
@@ -2027,12 +2027,11 @@
     "v94/v95 native Page input foundations are not integrated into a signed editor recovery journey; Plan Apply remains closed and external producer/bridge candidates are not installed.",
     "iPhone evidence is bounded: undelivered Quick Look edits, conflict/MIME recovery UI, multi-capture faults, backup/restore, broader accessibility/performance and native failure paths remain open.",
     "MCP observations across v89/v90/v91/v92 do not certify all features/providers. Management back-drag, broader accessibility/reduced motion and physical-device journeys remain open; native Back buttons are accepted.",
-    "Web canonical drawing operations and actual canvas/reload/peer bytes are accepted locally. Image import, broader collaborative/fault paths, rich file captions/replies/threads/retry metadata and cold-start offline recovery still need acceptance.",
+    "Web canonical drawing operations and actual canvas/reload/peer bytes are accepted locally. Image import, broader collaborative/fault paths, rich file captions/replies/threads/retry metadata and full PWA offline cold-load still need acceptance. The bounded relay-unavailable cold-route/history/outbox journey now passes separately.",
     "Web onboarding axe found no violations but contrast review remains incomplete; whole-app keyboard/screen-reader, Safari/WebKit, camera/microphone and performance are unaccepted.",
     "Public hosting proves HTTP routing/isolation/assets only; unavailable production relay blocks public encrypted sync/provider acceptance.",
     "Android acceptance is bounded to API35 arm64 Debug synthetic linking/history/Page/erasure and unchanged minified Release onboarding/key-generation only. Release linked-account runtime/performance, API28/physical devices and remaining media/voice/profile/assistant features remain unaccepted.",
-    "Native extensions, Push delivery, agent/community/permissions workflows and remaining media/document/history failure boundaries need their own current-artifact journeys.",
-    "Web attachments still use a stock sheet; the iOS attachment dropdown is not yet implemented on Web."
+    "Native extensions, Push delivery, agent/community/permissions workflows and remaining media/document/history failure boundaries need their own current-artifact journeys."
   ],
   "currentSourceCheckpoint": {
     "id": "prelaunch-core-cleanup-v111",
@@ -2148,7 +2147,7 @@
   "backendExecutionDecision": {
     "id": "native-rust-local-production-environment-v118",
     "decision": "Run the existing native Rust backend; retire custom Cloudflare Workers/Durable Objects adaptation. Keep Cloudflare DNS/CDN/static hosting/S3-compatible storage where useful.",
-    "immediatePhase": "LOCAL_STACK_AND_WEB_RECOVERY_VERIFIED",
+    "immediatePhase": "LOCAL_MULTI_RELAY_DELIVERY_VERIFIED",
     "requiredServices": [
       "native Rust relay container",
       "real PostgreSQL",
@@ -2171,7 +2170,7 @@
     "scaleReadinessAccepted": false,
     "localVerificationScope": "Real local native server/storage/client and cold restore on fresh volumes. Actual client completed before external restart/restore; ciphertext and datastore comparisons follow it. Not production/scale, provider or post-restore device-key recovery acceptance.",
     "releaseRollbackVerified": false,
-    "crossRelayDeliveryVerified": false
+    "crossRelayDeliveryVerified": true
   },
   "currentWebActivitySourceCheckpoint": {
     "id": "typed-web-miniapp-activity-v118",
@@ -2249,17 +2248,87 @@
     "clientReopenedAfterExternalRestore": false,
     "osKeychainRecoveryVerified": false,
     "twoNativeRelaysAndNatsHealthy": true,
-    "crossRelayDeliveryVerified": false,
+    "crossRelayDeliveryVerified": true,
     "highAvailabilityVerified": false,
     "releaseRollbackVerified": false,
     "productionReadinessAccepted": false,
     "scaleReadinessAccepted": false,
-    "postBuildSourceDeltas": "Three test-only deltas: two integration fixture refinements and canonical whitespace-only formatting of the browser-core test file. All production inputs remain identical to the validated image.",
+    "postBuildSourceDeltas": "At the original v118 seal, three test-only deltas remained and production inputs matched the image. Subsequent Apps terminology changes alter display strings in Client/shared/Web sources; new artifacts retain their own source and build attribution. The deployed relay image and original restore evidence keep their original scope.",
     "clientReceiptGuardTestsPassed": 13,
     "clientReceiptGuardReceipt": {
       "path": "/private/tmp/zoen-native-policy-v119/client-guards-xci_0lfb/receipt.json",
       "sha256": "4c5c70847aabfe8d10d95a424e2be64e6314bfe151296899b1ab716bb3b151bf"
     },
     "webAccountRecoveredAfterExternalRestart": true
+  },
+  "postMergeCheckpoint": {
+    "id": "apps-and-web-reliability-v121",
+    "mergedBaseline": {
+      "pullRequest": 136,
+      "head": "c05b0bdd4924ca6a5d668faa9f0f58826bcd3d4f",
+      "mergeCommit": "edc0e684d958911a5d6ee7ebd5e40c022dc46891",
+      "ciChecksPassed": 12
+    },
+    "activePullRequest": 140,
+    "appChecks": {
+      "testsPassed": 836,
+      "failed": 0,
+      "skipped": 0,
+      "receipt": {
+        "path": "/private/tmp/zoen-web-attachments-v120/v121-finalcheck.json",
+        "sha256": "cf571b476921869acb433c7e152ad9ff58f9bcf85956eaf82e5adcde9e9f4224"
+      }
+    },
+    "appsTerminology": {
+      "visibleLiteralsChanged": 224,
+      "internalIdentifiersPreserved": true,
+      "receipt": {
+        "path": "/private/tmp/zoen-apps-copy-v121/final-source-receipt.json",
+        "sha256": "f12cfc8c516ff11e272a918421a03c8921b0be266b2114a30b86476e31fc2c8f"
+      },
+      "optimizedAndroidCoreBuildPassed": true,
+      "installedNativeCopyAccepted": false,
+      "freshWebCoreCopyAccepted": false
+    },
+    "webAttachmentMenu": {
+      "nativeBrowserPopover": true,
+      "actualKeyboardPointerAndFileChooserVerified": true,
+      "actualNarrowViewportVerified": true,
+      "receipt": {
+        "path": "/private/tmp/zoen-web-attachments-v120/attachment-qualification.json",
+        "sha256": "7690e3ebb7d78411a6ac5750412222b96036fc11f25e033eb3057308bc254098"
+      }
+    },
+    "webOfflineMessaging": {
+      "actualCheckpointsPerLocale": 24,
+      "locales": ["en-US", "pt-BR"],
+      "originalIdsRetainedAcrossColdRouteReload": true,
+      "realNativePeerOccurrencesAfterReconnect": 1,
+      "actualAuthAndEncryptedHistoryUsed": true,
+      "fullPwaOfflineColdLoadAccepted": false,
+      "retainedWasmPredatesAppsCopy": true,
+      "receipt": {
+        "path": "/private/tmp/zoen-web-offline-v121/final-seal/acceptance.json",
+        "sha256": "5c34237918cfab5e33ab5ab74850228883815a74bdf03a8884ae1fd3655698f9"
+      }
+    },
+    "localMultiRelay": {
+      "guide": "infra/local/FRONTDOOR.md",
+      "ownershipIntegrityUnitCases": 24,
+      "healthyServices": 7,
+      "actualPublicClientChecksPassed": 7,
+      "differentLiveUpstreamsWithoutReconnect": true,
+      "encryptedMessageAndDeliveredReadVerified": true,
+      "originalSixNativeProcessesPreserved": true,
+      "enabledGatewayBackupRestoreDrillAccepted": false,
+      "highAvailabilityAccepted": false,
+      "receipt": {
+        "path": "/private/tmp/zoen-local-frontdoor-v120/management-activation-01/final-receipt.json",
+        "sha256": "739f0d792c51f9260dd1a78509dcb9d535f1cd6e961ef8148789e0a2304c3ab0"
+      }
+    },
+    "fullAppParityAccepted": false,
+    "productionReadinessAccepted": false,
+    "scaleReadinessAccepted": false
   }
 }
