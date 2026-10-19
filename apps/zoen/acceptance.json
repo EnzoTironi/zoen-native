@@ -2112,10 +2112,7 @@
     "grouping": "Only adjacent typed ItemEdited updates with matching item, author, thread, note, delivery, consecutive versions and exact u64 sequences; annotated, failed, undo and human messages keep their original boundaries.",
     "actualIos": {
       "drawingUpdates": 22,
-      "activityRuns": [
-        20,
-        2
-      ],
+      "activityRuns": [20, 2],
       "currentVersion": 23,
       "readOnlyHistoryVersion": 21,
       "exactSearchAndInternalJumpId": "01M5AN54JSD1HQEKFGNGQCT9QD",
