@@ -60,11 +60,13 @@ The Expo CI workflow runs the generated-contract check, TypeScript, Oxlint, Oxfm
 the shared client tests and Expo Doctor. `npm run lint` uses Oxlint; `npm run format`
 uses Oxfmt. Generated bindings and native projects stay outside formatter/linter input.
 
-## Cloudflare Pages web deployment
+## Web export and hosting
 
-`npm run export:web` exports static pages and copies `public/_headers` into `dist/`.
-Serve this output through Cloudflare Pages for the intended `app.tryzoen.com` domain;
-this configuration does not create a Pages project, change DNS or deploy anything.
+`npm run export:web` exports the application and its isolation policy into `dist/`.
+The [Cloudflare deployment guide](../../infra/cloudflare/README.md) describes the
+production Workers preview, fresh production builds and the outstanding canonical
+domain/relay setup. Local acceptance uses the actual Pages runtime; an export with
+loopback QA configuration must never be deployed.
 
 The app and its MLS signing worker require `Cross-Origin-Opener-Policy: same-origin`
 and `Cross-Origin-Embedder-Policy: require-corp`. Only the `/sign-in` document and its
@@ -100,10 +102,19 @@ isolated local relay and dedicated simulators/emulators.
 
 ## Verification and remaining work
 
-The iOS development app builds and opens on a dedicated simulator. Shared-client
-concurrency/history/money tests and the existing web regression suite have passed.
-See `acceptance.json` for the current evidence and limitations. Full media integration,
-device linking/recovery, document-editor completion, mini-apps, native extensions,
-Android runtime acceptance, web parity and release acceptance remain required.
-Do not remove the current native clients or claim a completed migration from scaffolding
-or compilation alone.
+The whole-application iPhone acceptance baseline remains signed v85; the latest
+installed v92 artifact has bounded MCP/gesture/Home evidence. The later v94/v95
+Page input and session work has source/host proof without a new signed editor
+recovery journey. Exact artifacts and the immutable history are in
+[`acceptance.json`](acceptance.json).
+
+The [Web release journey](../../docs/dev/expo-web-acceptance.md) passed 19 local
+checkpoints in each of English and Portuguese, including normal linking, encrypted
+messages, Markdown drafts, a builtin MCP list, plain files and local erasure.
+Onboarding accessibility and public HTTP hosting have separate bounded evidence.
+Android's current APK and 14 JVM tests pass; live emulator acceptance is pending.
+
+Current validation covers iOS, Web and Android; desktop is deferred. Full product
+parity, provider/physical-device paths, remaining media/document workflows,
+extensions and broad accessibility/performance remain open. Keep the existing
+clients until their required replacement journeys pass.

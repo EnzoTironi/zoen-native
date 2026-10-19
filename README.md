@@ -4,29 +4,28 @@ Talk to people and agents in the same place. Keep the plans, pages, files and mi
 
 © 2026 Enzo Tironi. All rights reserved. Public for viewing only. See [LICENSE](LICENSE).
 
-Zoen is being built as a complete product for one billion monthly users. The shared Rust core powers native iPhone and Mac clients. Android and the reusable web shell are being integrated with the same conversation and document model.
+The shared Rust core powers the existing native clients and the Expo application for iOS, Android and Web. Current validation covers those three Expo platforms; desktop replacement is deferred.
 
 ## Current progress
 
-Reviewed on 12 October 2026 against the verified product baseline [`ff5b519`](https://github.com/EnzoTironi/zoen-native/commit/ff5b519f1734e9d28018ab33d3919d12c9147e45). Native/web consolidation [PR 67](https://github.com/EnzoTironi/zoen-native/pull/67), bounded confirmed Plan history [PR 68](https://github.com/EnzoTironi/zoen-native/pull/68), keyboard controls [PR 69](https://github.com/EnzoTironi/zoen-native/pull/69) and native motion [PR 71](https://github.com/EnzoTironi/zoen-native/pull/71) are merged. PR 71's [complete Linux run](https://github.com/EnzoTironi/zoen-native/actions/runs/38309704131) passed **573 standard tests, zero failed or filtered, with one original cross-process helper ignored**, including all 198 actual FFI cases. Its tested, published and merged whole trees match. Custom log-store 10 and ownership 17 cases retain separate counts.
+The [Expo acceptance manifest](apps/zoen/acceptance.json) records current artifacts,
+required journeys and exact evidence. Full comparative product parity is incomplete.
 
-The merged native interface packages Core193. Its [reviewed images and screenshot walkthroughs](https://github.com/EnzoTironi/zoen-native/pull/67) cover exact Plan save/cold reopen/removal/restore, scoped Escape, themes, chat opening, Cards/List/Cards and actual TextKit typing, Unicode paste, undo and saved-version restoration. [PR 69's evidence](https://github.com/EnzoTironi/zoen-native/pull/69) verifies request review/back with focus return, change-event opening and quoted-message navigation. PR 71 adds three full arm64 Debug builds and bounded chat/thread/notification journeys. Its [settings evidence](https://github.com/EnzoTironi/zoen-native/pull/71#issuecomment-6132977105) also covers actual Reduce Motion, Reduce Transparency and Increase Contrast checks, with all temporary preferences restored.
-
-The 12 October [shared-main checkpoint and complete handoff](docs/dev/handoff-2026-10-12.md) includes the current backend, Android, authenticated web and Apple work. Fresh checks pass 13 web behavior tests, 17 portable MLS tests, three web-Core Rust tests, seven attachment journeys, five push-boundary journeys and six Android verifier cases. Current full Core/CLI execution, generated bindings, browser pairing, Android device validation, native UI cleanup, push delivery, Release and full HIG remain open. The user requested pausing after publishing this checkpoint. New work uses one branch per unit. The coordinator merges that branch into `main` after the unit's proof, following the pstack playbooks.
-
-| Area | Implemented and verified boundary | Remaining completion gates |
+| Platform | Accepted boundary | Remaining scope |
 | --- | --- | --- |
-| Messaging | Accounts, signed events, durable outbox, relay sync and OpenMLS encryption. Reviewed claim/M2 journeys retain the original 50-group workload. | Compatible production rollout, release journeys and sustained distributed capacity. |
-| Devices and recovery | Enrollment/revocation, encrypted history transfer, backups and recovery after loss of every original MLS device. | Native recovery/device controls, current Android device proof and production backup authority. |
-| Relay | Renewable ownership leases, transaction fencing, bounded forwarding and retry deduplication. | TLS workloads, cell placement, regional recovery, operating SLOs and complete costs. |
-| Apple clients | PRs 67, 69 and 71 integrate unified Chats, shared themes, transparent overlays, pinned cards, notifications and keyboard controls. Scoped Core216 native builds also pass. | Current bounded media APIs, physical iOS, Release, complete accessibility/settings and remaining product workflows. |
-| Android | [PR 41](https://github.com/EnzoTironi/zoen-native/pull/41) retains Android 28/35 and Rust CI. Current Plan and generated-ABI verification units are on shared main for integration. | Fresh bindings and current-main builds/device journeys, release and public relay compatibility. |
-| Live Pages and Plans | Shared observed document session, encrypted drafts/retries/versions, typed Plan reads and common cards. Offline legacy edits, validated cache repair and private authenticated history prefixes are integrated. | Canonical Plan writers/history/approvals, complete block UX, comments/nested pages/live updates and two-device convergence. |
-| Web | Themed shell and authenticated browser source; fresh typecheck/13 TS tests, 17 portable MLS tests and three web-Core Rust tests pass. | Real pairing/MLS messaging and reload/reconnect journeys, shared editor and native-equivalent accessibility/workflows. |
-| Agents | Approval/authorization, financial claims and certified-runtime source are merged through PR 63. Scoped canonical decisions pass 216 local FFI cases, but PR 70's full hosted run failed a file-import journey. | Fix and verify that failure on current main; canonical writers, managed custody/continuity, productive model/tool/approval lifecycle and live provider reconciliation. |
-| Media, push and shared resources | Encrypted blob, file, sandbox and infrastructure foundations. | Apple photo/voice delivery, APNs/FCM, remote MCP/catalog, community moderation, commerce and deployment/restore drills. |
+| iPhone | Signed v85 whole-application baseline; later v89–v92 bounded Excalidraw/MCP and preserving Home checks. | v94/v95 Page-input/session foundations remain source/host proof; integrated editor recovery and remaining product journeys need signed runtime evidence. |
+| Web | 19 local release checkpoints pass independently in English and Portuguese: normal linking, encrypted roundtrip/reload, Markdown drafts/exports, builtin list, plain files and erasure. | Canonical Excalidraw, rich file replies/captions/threads, startup offline recovery and broad accessibility remain open. |
+| Android | Current Debug APK assembled, packaged JNI verified against frozen sources/resources, and 14 JVM tests passed. | Live emulator linking/recovery, cold restart and erasure acceptance is pending. |
+| Public hosting | Fresh Cloudflare frontend passes ten HTTP paths and exact worker integrity. | Provider login and public encrypted sync remain unaccepted while production relay/domain integration is incomplete. |
 
-Production and billion-user capacity require deployment, failure-recovery and cost evidence.
+See [Web acceptance](docs/dev/expo-web-acceptance.md),
+[iPhone native evidence](docs/dev/expo-native-surfaces.md) and
+[Cloudflare deployment](infra/cloudflare/README.md) for the boundaries and reproduction.
+Builds and bounded checks do not establish complete replacement or billion-user capacity.
+
+The earlier merged-client results retain their dated attribution in the
+[12 October handoff](docs/dev/handoff-2026-10-12.md) and the
+[immutable prior README](https://github.com/EnzoTironi/zoen-native/blob/e76c74be4af4bfe483f4de4b63b6f932a83f0d8b/README.md).
 
 ## Product navigation
 
