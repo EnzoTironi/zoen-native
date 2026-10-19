@@ -15,7 +15,7 @@ ready: boolean,
  * Existing legacy controls only; canonical writes remain closed.
  * Uses the actual legacy gates; private or unreadable sessions remain read-only.
  */
-legacy_edit_admitted: boolean, unsaved: boolean, pending_sync: boolean, save_error: string | null, 
+legacy_edit_admitted: boolean, unsaved: boolean, input_pending: boolean, input_revision: string, pending_sync: boolean, save_error: string | null, 
 /**
  * Admitted PlanDoc binding. LocalPendingLegacy and DocumentSession share it.
  * A pure relay confirmation does not change it, and a private session draft does

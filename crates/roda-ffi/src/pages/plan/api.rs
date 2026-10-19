@@ -160,6 +160,8 @@ pub struct PlanPageDto {
     /// Uses the actual legacy gates; private or unreadable sessions remain read-only.
     pub legacy_edit_admitted: bool,
     pub unsaved: bool,
+    pub input_pending: bool,
+    pub input_revision: String,
     pub pending_sync: bool,
     pub save_error: Option<String>,
     /// Admitted PlanDoc binding. LocalPendingLegacy and DocumentSession share it.
@@ -221,6 +223,8 @@ impl Engine {
             ready: true,
             legacy_edit_admitted,
             unsaved: false,
+            input_pending: false,
+            input_revision: "0".to_owned(),
             pending_sync: true,
             save_error: None,
             content_hash: plan_observed_hash(&blocks),
@@ -262,7 +266,13 @@ impl Engine {
                 && self.require_legacy_plan(item).is_ok()
                 && matches!(&it.current().content, ItemContent::Plan(_))
             {
-                return self.local_legacy_plan_page(it, read.version, legacy_edit_admitted);
+                let mut local =
+                    self.local_legacy_plan_page(it, read.version, legacy_edit_admitted)?;
+                // A pending legacy projection does not erase an already
+                // authenticated input slot or grant authority to release it.
+                local.input_pending = read.input_pending;
+                local.input_revision = read.input_revision.to_string();
+                return Ok(local);
             }
             let DocumentView::Plan { blocks } = read.view else {
                 return Err(invalid(
@@ -293,6 +303,8 @@ impl Engine {
                 ready: read.ready,
                 legacy_edit_admitted,
                 unsaved: read.unsaved,
+                input_pending: read.input_pending,
+                input_revision: read.input_revision.to_string(),
                 pending_sync: read.pending_sync,
                 save_error: read.save_error,
                 content_hash,

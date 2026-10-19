@@ -1619,6 +1619,40 @@ impl PageSession {
             replayed: false,
         })
     }
+    /// Releases an owned binding which has no accepted pending input.
+    /// Captured input must still be consumed through its exact capture CAS.
+    pub(super) fn input_release_empty(
+        &mut self,
+        engine: &Engine,
+        writer: &str,
+        revision: u64,
+        id: &str,
+    ) -> R<super::input::PageInputAck> {
+        use super::input::*;
+        validate_writer(writer)?;
+        validate_writer(id)?;
+        let fingerprint = fingerprint(&("release-empty", writer, revision, id))?;
+        if let Some(receipt) = self.input_state().replay(&fingerprint) {
+            return Ok(PageInputAck {
+                accepted_revision: receipt.accepted_revision,
+                current: self.input_state().dto()?,
+                replayed: true,
+            });
+        }
+        self.input_state().check(writer, revision)?;
+        if self.input_state().capture.is_some() {
+            return Err(invalid("captured input requires an exact Apply or Discard"));
+        }
+        let mut state = self.input_state().clone();
+        state.binding = None;
+        state.accept(fingerprint, None)?;
+        self.save_input(engine, state)?;
+        Ok(PageInputAck {
+            accepted_revision: self.input_state().revision,
+            current: self.input_state().dto()?,
+            replayed: false,
+        })
+    }
     pub(super) fn input_apply(
         &mut self,
         engine: &Engine,

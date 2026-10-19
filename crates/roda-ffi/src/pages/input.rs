@@ -679,6 +679,15 @@ impl Engine {
     ) -> R<PageInputAck> {
         self.with_input(s, |p| p.input_discard(self, w, r, q, h, id))
     }
+    pub(crate) fn page_input_release_empty(
+        &self,
+        s: &FileEditDraftScope,
+        w: &str,
+        r: u64,
+        id: &str,
+    ) -> R<PageInputAck> {
+        self.with_input(s, |p| p.input_release_empty(self, w, r, id))
+    }
     pub(crate) fn page_input_apply(
         &self,
         s: &FileEditDraftScope,

@@ -437,4 +437,15 @@ impl RodaEngine {
             &mutation_id,
         )
     }
+    /// Explicitly releases an owned input binding with no accepted capture.
+    pub fn page_input_release_empty(
+        &self,
+        scope: crate::FileEditDraftScope,
+        writer_id: String,
+        expected_revision: u64,
+        mutation_id: String,
+    ) -> Result<crate::PageInputAck, CoreError> {
+        self.lock()
+            .page_input_release_empty(&scope, &writer_id, expected_revision, &mutation_id)
+    }
 }
