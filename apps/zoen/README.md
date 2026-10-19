@@ -108,11 +108,16 @@ Page input and session work has source/host proof without a new signed editor
 recovery journey. Exact artifacts and the immutable history are in
 [`acceptance.json`](acceptance.json).
 
-The [Web release journey](../../docs/dev/expo-web-acceptance.md) passed 19 local
-checkpoints in each of English and Portuguese, including normal linking, encrypted
+The [Web release journey](../../docs/dev/expo-web-acceptance.md) passed 19
+checkpoints in each of English and Portuguese locally and in CI, including normal linking, encrypted
 messages, Markdown drafts, a builtin MCP list, plain files and local erasure.
 Onboarding accessibility and public HTTP hosting have separate bounded evidence.
-Android's current APK and 14 JVM tests pass; live emulator acceptance is pending.
+The [Android Debug journey](../../docs/dev/expo-android-acceptance.md) passed
+normal linking, history recovery, Page creation/read, corrected headers/status and
+local erasure with retained peer history on an API35 emulator. The APK/JNI and
+14 JVM tests have separate build evidence. Current shared source passes 795 tests,
+TypeScript, Oxlint and Oxfmt. Release/runtime performance and missing Android
+media features remain open.
 
 Current validation covers iOS, Web and Android; desktop is deferred. Full product
 parity, provider/physical-device paths, remaining media/document workflows,

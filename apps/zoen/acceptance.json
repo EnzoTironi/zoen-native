@@ -32,7 +32,7 @@
   ],
   "deferredPlatforms": ["macos", "windows", "linux"],
   "fullAppParityAccepted": false,
-  "currentAcceptanceSummary": "Whole-application iPhone baseline remains v85; the latest preserving-installed v92 artifact has bounded MCP/gesture/Home evidence. v94/v95 validate source and separate host foundations without a new signed iPhone editor recovery journey. v96 Web passes 19 local checkpoints in each locale; final onboarding accessibility and public HTTP hosting are separate artifacts. Android APK/JVM tests pass while live emulator acceptance is pending.",
+  "currentAcceptanceSummary": "Whole-application iPhone baseline remains v85; the latest preserving-installed v92 artifact has bounded MCP/gesture/Home evidence. v94/v95 validate source and separate host foundations without a new signed iPhone editor recovery journey. v96 Web passes 19 checkpoints in each locale locally and in CI; onboarding accessibility and public HTTP hosting are separate bounded proofs. Android API35 Debug passes actual linking, history/Page, corrected headers/status and erasure journeys plus 14 JVM tests. Full parity remains incomplete.",
   "historicalEvidence": {
     "commit": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
     "path": "apps/zoen/acceptance.json",
@@ -476,7 +476,7 @@
       "limits": "External producer public Swift API passed; UIKit run could not start without prepared dependencies. Unfinished bridge preserved externally and removed from app. No producer patch, raw-input bridge, recovery UI or new signed app journey was installed."
     },
     "webV96": {
-      "status": "PASS_LOCAL_EN_PT_19_CHECKPOINTS_BOUNDED_SCOPE",
+      "status": "PASS_LOCAL_AND_CI_EN_PT_19_CHECKPOINTS_BOUNDED_SCOPE",
       "documentation": "docs/dev/expo-web-acceptance.md",
       "ciBaseline": {
         "run": 39189115561,
@@ -588,7 +588,7 @@
           "incompleteRules": 1
         },
         "receipts": ["a11y-artifact.json", "onboarding-final-wcag.json", "onboarding-final.png"],
-        "limits": "No second 19-checkpoint run for the final decorative attribute delta; manual contrast, screen-reader and whole-app accessibility remain pending."
+        "limits": "Manual contrast, screen-reader and whole-app accessibility remain pending. Separate local onboarding axe proof; the later exact-merge CI independently passed all19 checkpoints including the decorative attribute correction."
       },
       "manualBaseline": {
         "source": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
@@ -603,24 +603,45 @@
         "No provider login, Safari/WebKit, real camera/microphone, whole-app accessibility or full-parity acceptance."
       ],
       "sourceChecks": {
-        "appPassed": 793,
+        "appPassed": 795,
         "typescriptOxlintOxfmt": "PASS",
-        "scope": "Final source including the decorative accessibility delta; separate from the 19-checkpoint artifact and onboarding DOM/axe receipts."
+        "sourceCommit": "762ceb51",
+        "receipt": "/private/tmp/zoen-web-v96/final-app-check.json",
+        "logSha256": "6921996d0baa20f3460063aa5a2ebffb30ffce60e18f1a2291db0c1fec901eec",
+        "scope": "Combined final source including Android status/header changes and localized sign-in connection failure. Separate from the19-checkpoint CI artifact and onboarding axe receipts."
+      },
+      "ciCurrent": {
+        "run": 39194529436,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39194529436",
+        "head": "e2b0ea0736a51ff23737a5de3ddc48f3c86c982c",
+        "testedMergeCommit": "10276df12927fd6c562ca9e64920089224639770",
+        "artifactId": 12161960284,
+        "artifactName": "expo-release-web-evidence",
+        "passed": true,
+        "checkpointsEach": 19,
+        "locales": ["en-US", "pt-BR"],
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-e2b-receipts.json",
+        "scope": "Includes the decorative sky attribute correction. Separate from the later 762ceb51 Android layout/status and auth error copy; no claim that all jobs of this workflow passed."
       }
     },
     "publicWebHostingV96": {
       "status": "PASS_HTTP_HOSTING_AND_WORKER_INTEGRITY_ONLY",
       "url": "https://zoen-web.agenttironi.workers.dev",
-      "version": "bd443adb-9461-452d-9c30-9a4f4005c23a",
+      "version": "30341e79-f049-4c4c-88b9-bb5fb4942fbf",
       "date": "2026-10-19",
       "hostingPathsPassed": 10,
       "exactSigningWorkerIntegrity": "PASS",
-      "build": "Fresh production configuration; separate from loopback QA; includes the final decorative accessibility correction.",
+      "build": "Fresh production configuration; separate from loopback QA; includes final decorative accessibility and localized auth connection failure corrections.",
       "documentation": "infra/cloudflare/README.md",
-      "limits": "Local encrypted journeys were not run against this preview. Production relay is unavailable; public encrypted sync and provider OAuth remain unaccepted. No custom-domain or provider-origin change."
+      "limits": "Local encrypted journeys were not run against this preview. Production relay is unavailable; public encrypted sync and provider OAuth remain unaccepted. No custom-domain or provider-origin change.",
+      "receipt": "/private/tmp/zoen-cloudflare-web-v96/live-hosting-03.json",
+      "priorGuestBoot": {
+        "receipt": "/private/tmp/zoen-web-v96/public-preview/acceptance.json",
+        "scope": "Guest onboarding boot on prior deployment02, crossOriginIsolated=true, no JavaScript page errors. Provider challenge calls failed against unavailable configured relay; no provider login, WASM initialization or encrypted-sync acceptance."
+      }
     },
     "androidV96": {
-      "status": "APK_AND_14_JVM_TESTS_PASS_LIVE_UI_PENDING",
+      "status": "PASS_BOUNDED_API35_DEBUG_LINK_HISTORY_PAGE_HEADERS_AND_ERASURE",
       "receipt": "/private/tmp/zoen-android-v96/native-final-acceptance.json",
       "apkSha256": "19e6270d0306470854ba39a8582750182b14e26dc35bac248a664ab3103bedaf",
       "apkBytes": 243541703,
@@ -643,8 +664,25 @@
         }
       ],
       "resourceBinding": "/private/tmp/zoen-android-v96/final-core-resource-binding.json",
-      "scope": "Debug APK assembled and packaged JNI matched reproduced stripping of frozen Rust/resources. 14 pure JVM tests, not Android instrumentation or device UI tests.",
-      "pending": "Owned API35 emulator: normal account/link recovery, cold restart, erasure and retained peer evidence. No live UI pass or release acceptance claimed."
+      "scope": "Debug APK/JNI/native-source proof and14 pure JVM regressions; separate actual API35 arm64 Expo development runtime with fresh Metro JavaScript. No forced interruption fault injection or Release runtime acceptance.",
+      "pending": "Release/runtime performance, API28 and physical devices, public provider login, media/voice/profile photo and assistant parity. Actual SDK logo cache cleanup does not establish account-photo upload.",
+      "runtimeReceipt": "/private/tmp/zoen-android-v96/runtime-final-acceptance.json",
+      "documentation": "docs/dev/expo-android-acceptance.md",
+      "apkPath": "/private/tmp/zoen-android-v96/zoen-v96-arm64-debug.apk",
+      "runtimeSourceCommit": "762ceb51",
+      "javascriptBundle": {
+        "sha256": "923bf7bf8eeb608ccac0874ed9571057a85ba2e99a1b6f7703860ab7aa35bef3",
+        "bytes": 21520341,
+        "receipt": "/private/tmp/zoen-android-v96/fresh-metro-bundle-receipt.json",
+        "scope": "Seven current Android JS source hashes and actual app bundle; dev-launcher bundle and earlier unwatched Metro snapshot are not proof of the later corrections."
+      },
+      "runtimeAccepted": [
+        "Normal synthetic device linking and encrypted history recovery; linked/history status mounted without crash",
+        "Page creation/read and Files listing; corrected Chats/Files/new-Page header placement",
+        "Cancel erasure retains account/history; confirmed UI erasure clears account, vault keys, durable journal and actual SDK image cache",
+        "Earlier actual process restart remains signed out; canonical peer retains earlier history",
+        "Second confirmed erasure replay on fresh current JavaScript returns onboarding with empty account/conversations and no pending erase"
+      ]
     }
   },
   "knownParityGaps": [
@@ -656,7 +694,7 @@
     "Web canonical Excalidraw document operations, rich file captions/replies/threads/retry metadata and cold-start offline recovery remain incomplete.",
     "Web onboarding axe found no violations but contrast review remains incomplete; whole-app keyboard/screen-reader, Safari/WebKit, camera/microphone and performance are unaccepted.",
     "Public hosting proves HTTP routing/isolation/assets only; unavailable production relay blocks public encrypted sync/provider acceptance.",
-    "Android APK/JVM checks are bounded build/source evidence; live emulator journeys and full platform parity remain pending.",
+    "Android acceptance is bounded to API35 arm64 Debug and synthetic linking/history/Page/erasure. Release runtime/performance, API28/physical devices and remaining media/voice/profile/assistant features remain unaccepted.",
     "Native extensions, Push delivery, agent/community/permissions workflows and remaining media/document/history failure boundaries need their own current-artifact journeys."
   ]
 }

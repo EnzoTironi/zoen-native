@@ -14,11 +14,12 @@ required journeys and exact evidence. Full comparative product parity is incompl
 | Platform | Accepted boundary | Remaining scope |
 | --- | --- | --- |
 | iPhone | Signed v85 whole-application baseline; later v89–v92 bounded Excalidraw/MCP and preserving Home checks. | v94/v95 Page-input/session foundations remain source/host proof; integrated editor recovery and remaining product journeys need signed runtime evidence. |
-| Web | 19 local release checkpoints pass independently in English and Portuguese: normal linking, encrypted roundtrip/reload, Markdown drafts/exports, builtin list, plain files and erasure. | Canonical Excalidraw, rich file replies/captions/threads, startup offline recovery and broad accessibility remain open. |
-| Android | Current Debug APK assembled, packaged JNI verified against frozen sources/resources, and 14 JVM tests passed. | Live emulator linking/recovery, cold restart and erasure acceptance is pending. |
-| Public hosting | Fresh Cloudflare frontend passes ten HTTP paths and exact worker integrity. | Provider login and public encrypted sync remain unaccepted while production relay/domain integration is incomplete. |
+| Web | 19 release checkpoints pass in English and Portuguese locally and in CI: normal linking, encrypted roundtrip/reload, Markdown drafts/exports, builtin list, plain files and erasure. | Canonical Excalidraw, rich file replies/captions/threads, startup offline recovery and broad accessibility remain open. |
+| Android | Actual API35 Debug app passed linking, history recovery, Page creation/read, header/status checks and local erasure with retained peer history. Packaged JNI and 14 JVM tests passed. | Release/runtime performance, API28/physical devices and remaining media/platform features need acceptance. |
+| Cloudflare | Production-configured frontend passes ten public HTTP paths and exact worker integrity. Private Durable Object storage passed local and remote synthetic checks. | Shared Rust admission, directory/auth, WebSockets and R2 integration must establish a complete public relay before provider login or encrypted sync can be accepted. |
 
 See [Web acceptance](docs/dev/expo-web-acceptance.md),
+[Android acceptance](docs/dev/expo-android-acceptance.md),
 [iPhone native evidence](docs/dev/expo-native-surfaces.md) and
 [Cloudflare deployment](infra/cloudflare/README.md) for the boundaries and reproduction.
 Builds and bounded checks do not establish complete replacement or billion-user capacity.

@@ -5,8 +5,8 @@ application. The older `ci / web-e2e` job exercises the separate
 `packages/zoen-ui/web` messenger shell and does not establish Expo acceptance.
 
 The current runner retains the original 14 checkpoints and adds five real browser
-checks for a sandboxed builtin list and plain file attachments. The v96 local
-release passed all **19 checkpoints separately in `en-US` and `pt-BR`**. Each run
+checks for a sandboxed builtin list and plain file attachments. The latest exact-source
+CI release passed all **19 checkpoints separately in `en-US` and `pt-BR`**. Each run
 uses fresh synthetic CLI identities, browser context/process and Pages state.
 Locale expectations are authored independently in `expo-web-expectations.mjs`.
 
@@ -52,56 +52,65 @@ relays. An authored runner or passing unit tests alone do not establish acceptan
 
 ## Recorded source and artifacts
 
-The immutable [CI baseline, run 39189115561](https://github.com/EnzoTironi/zoen-native/actions/runs/39189115561),
-passed the original 14 checkpoints in both locales on Chromium `155.0.8059.39`.
-Its tested checkout was merge `165d67cd7c023e2e4e4e267b6f12bdc2e7582259`,
-combining head `e76c74be4af4bfe483f4de4b63b6f932a83f0d8b` with base
-`bf31bb2717d746344589c3762df7f883b79de5cc`. Artifact
-`expo-release-web-evidence` (ID `12158963205`) contains its locale receipts.
-
-The v96 local 19-checkpoint runs used Chromium `155.0.8059.85`, Node `26.12.0`,
-Rust `1.99.1` and Expo SDK 58. Both receipts have `passed: true` and the same
-90-file release manifest. This was the head above **plus working-tree fixes**,
-not an export of the unmodified committed head. Its source receipt records the
-diff over `apps/zoen/src`, `packages/zoen-ui/web`, `miniapps/builtins`,
-`crates/roda-apps` and `crates/zoen-web-core`, plus individual test-script hashes.
+[CI run 39194529436](https://github.com/EnzoTironi/zoen-native/actions/runs/39194529436)
+passed all 19 checkpoints in both locales on Chromium `155.0.8059.39`. It tested
+merge `10276df12927fd6c562ca9e64920089224639770` for head
+`e2b0ea0736a51ff23737a5de3ddc48f3c86c982c`. Artifact
+`expo-release-web-evidence` (ID `12161960284`) contains both successful receipts,
+with the same 90-file manifest:
 
 ```text
-source patch SHA256:
-7fe52d40a4d9e10964c5919c685465a988b6f80583caf7bda49d038c2f8dd365
-19-checkpoint manifest SHA256:
-18eb0166ab4c911825bf25099152480c451cd2810a797e94d022074cb1188bc5
+manifest SHA256:
+44abaf303e2e6890431895ba275ce99e4965cbd65b5d6c03de00bf3e848270c7
 worker integrity:
-sha384-5lhNMH1yUGXCJcds6hQwwqxce9rFjyYH5ABCkzRUpP70btnwC/2vOLvpz4P6rhtw
-core/zoen_web_core_bg.wasm: 25,718,302 bytes; SHA256:
-25d558b47a6182bef979cccdc753100dc1ab508556490a112a89e8d325a6b896
+sha384-L+9+jxotxheYp9vbLHFT/KfMrU8ylmtaxzcR1mU6cbJiA47p+Ozdyg03C3VnJx2S
+core/zoen_web_core_bg.wasm: 25,721,313 bytes; SHA256:
+95c666cd9451d48fcc40b2fe251dc1087973b5edb36f62536c813e8b25c44701
 ```
 
-Manifest hashes here mean SHA256 of `JSON.stringify(artifact.manifest)`. The
-machine-local evidence root is `/private/tmp/zoen-web-v96/`: `tested-source.json`,
-`artifact-final.json`, `receipts.json`, and
-`final-evidence/{en-US,pt-BR}/acceptance.json`. These paths identify the retained
-local proof, not a downloadable CI artifact or a promise that temporary files
-exist on another machine. Later commits require their own source-specific run.
+The downloaded proof is
+`/private/tmp/zoen-cloudflare-web-v96/ci-e2b-evidence/{en-US,pt-BR}/acceptance.json`,
+indexed by `ci-e2b-receipts.json` in the same parent directory. Manifest hashes
+mean SHA256 of `JSON.stringify(artifact.manifest)`. Temporary local paths identify
+retained evidence; they are not portable downloads. The CI artifact is the hosted
+receipt. Its source already includes the decorative-sky accessibility correction.
 
-### Separate final accessibility export
+The following ten-file source change, committed as
+`762ceb51f36196f638074e59fc1ab8bf429004c5`, passed a separate local full app check:
+TypeScript, Oxlint, Oxfmt and **795/795 tests**, zero failures or skips. This adds
+Android access/layout corrections and the localized sign-in connection failure;
+it is not part of the 19-checkpoint CI source above. The exact file hashes and
+source-diff hash are in `/private/tmp/zoen-web-v96/final-app-check.json`; its log
+SHA256 is `6921996d0baa20f3460063aa5a2ebffb30ffce60e18f1a2291db0c1fec901eec`.
 
-The 19-checkpoint export includes the builtin form and attachment pointer fixes.
-A subsequent release adds the decorative sky's `aria-hidden` and image
-`accessibilityLabel` correction. Only the common JavaScript chunk and `index.html`
-differ; the worker and WASM are identical. Its manifest SHA256 is:
+Earlier evidence retains its original attribution. The first local v96 19-step
+EN/PT proof used head `e76c74be4af4bfe483f4de4b63b6f932a83f0d8b` plus source patch
+`7fe52d40a4d9e10964c5919c685465a988b6f80583caf7bda49d038c2f8dd365`,
+Chromium `155.0.8059.85`, and manifest
+`18eb0166ab4c911825bf25099152480c451cd2810a797e94d022074cb1188bc5`.
+Its `tested-source.json`, `artifact-final.json`, `receipts.json` and
+`final-evidence/{en-US,pt-BR}/acceptance.json` remain under
+`/private/tmp/zoen-web-v96/`. The older
+[14-checkpoint CI baseline](https://github.com/EnzoTironi/zoen-native/actions/runs/39189115561)
+tested merge `165d67cd7c023e2e4e4e267b6f12bdc2e7582259` for that e76 head;
+artifact `12158963205` predates the five new browser checkpoints.
 
-```text
-cc14c9d16e66e7d14025185a64299986ca7c4a71d77ac43ec62d601c11765970
-```
+### Accessibility evidence
 
-Actual onboarding DOM inspection confirmed both decorative images have empty
-alternative text and a hidden ancestor. Axe with `wcag2a`/`wcag2aa` reported
-**zero violations**, 16 passes and one incomplete rule: manual color-contrast
-review remains for eight nodes. This is onboarding evidence, not whole-app WCAG
-or screen-reader acceptance. The final attribute delta did not receive another
-19-checkpoint run. Its receipts are `a11y-artifact.json`,
-`onboarding-final-wcag.json` and `onboarding-final.png` under the same local root.
+The automated accessibility result belongs to a separate local release, manifest
+`cc14c9d16e66e7d14025185a64299986ca7c4a71d77ac43ec62d601c11765970`.
+It added the sky's `aria-hidden` and image `accessibilityLabel` correction to the
+first local 19-step export; that pair differed only in common JavaScript and
+`index.html`, with identical worker/WASM bytes. These are separate from the CI
+artifact identities above.
+
+Actual onboarding DOM inspection confirmed empty alternative text and a hidden
+ancestor for both decorative images. Axe with `wcag2a`/`wcag2aa` reported **zero
+violations**, 16 passes and one incomplete rule: manual color-contrast review
+remains for eight nodes. Receipts are `a11y-artifact.json`,
+`onboarding-final-wcag.json` and `onboarding-final.png` under the local v96 root.
+The later 19-step CI includes the source correction but does not rerun this axe
+check or establish whole-app WCAG, contrast or screen-reader acceptance.
 
 ## Reproduce
 
@@ -162,15 +171,30 @@ configuration text. Artifact/hosting checks do not establish encrypted messaging
 ## Public hosting and remaining scope
 
 On 19 October 2026, production frontend deployment
-`bd443adb-9461-452d-9c30-9a4f4005c23a` at
+`30341e79-f049-4c4c-88b9-bb5fb4942fbf` at
 [zoen-web.agenttironi.workers.dev](https://zoen-web.agenttironi.workers.dev)
-passed all ten public hosting paths and exact signing-worker integrity. It is a
-separate production-configured build including the final decorative
-accessibility correction. The local 19-checkpoint journeys were not run against this
-public preview. Provider login and public encrypted sync remain unaccepted;
-the configured production relay is unavailable. See the
-[Cloudflare deployment guide](../../infra/cloudflare/README.md) for production
-build commands and the current domain/relay boundary.
+passed all ten public HTTP paths and exact signing-worker integrity. This fresh
+production build includes the decorative accessibility and localized connection
+failure corrections. Receipt:
+`/private/tmp/zoen-cloudflare-web-v96/live-hosting-03.json`. Its worker integrity is
+`sha384-5lhNMH1yUGXCJcds6hQwwqxce9rFjyYH5ABCkzRUpP70btnwC/2vOLvpz4P6rhtw`;
+this is distinct from the CI build's bytes. Neither 19-step journey ran against
+the public preview.
+
+A separate empty-profile browser observation belongs to the preceding deployment
+`bd443adb-9461-452d-9c30-9a4f4005c23a`. It rendered Portuguese onboarding, observed
+root `crossOriginIsolated: true` and `/sign-in: false`, and recorded no unhandled
+page errors. Both provider controls were unavailable; Google challenge preparation
+showed handled `Failed to fetch` against the unavailable production relay. No
+provider or device-link action was taken. Receipt and screenshot:
+`/private/tmp/zoen-web-v96/public-preview/{acceptance.json,onboarding.png}`.
+This does not establish WASM initialization, authentication or public encrypted
+sync, nor a rendered check of the newer friendly error message.
+
+See the [Cloudflare deployment guide](../../infra/cloudflare/README.md) for
+production reproduction and the outstanding domain/relay boundary. Shared Rust
+admission extraction is being validated; it is not an accepted or deployed relay
+adapter. No DNS/provider-origin change or R2 activation is implied.
 
 Additional manual baseline checks confirmed quoted replies, thread replies and
 scoped search against the canonical peer. Warm offline queuing was bounded:
