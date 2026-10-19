@@ -1,16 +1,9 @@
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type CSSProperties,
-  type KeyboardEvent,
-} from 'react';
+import type { CSSProperties } from 'react';
+import { useAnchoredMenu } from '../components/use-anchored-menu.web';
 import { Icon } from '../components/primitives';
 import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
-import type { MediaActionsProps, MediaPickKind } from './media-actions.types';
+import type { MediaActionsProps } from './media-actions.types';
 
 const styles = `
 .zoen-attachment-trigger, .zoen-attachment-item {
@@ -61,11 +54,7 @@ const styles = `
 
 export function MediaActions({ disabled, hasVoiceEditor, onChoose }: MediaActionsProps) {
   const { colors, scheme } = useTheme();
-  const id = useId();
-  const trigger = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  const openingFocus = useRef<'first' | 'last'>('first');
-  const [open, setOpen] = useState(false);
+  const { trigger, menu, select, triggerProps, menuProps } = useAnchoredMenu({ disabled });
   const variables = {
     '--attachment-surface': colors.surface,
     '--attachment-raised': colors.raised,
@@ -77,95 +66,6 @@ export function MediaActions({ disabled, hasVoiceEditor, onChoose }: MediaAction
     colorScheme: scheme,
   } as CSSProperties;
 
-  const position = useCallback(() => {
-    const button = trigger.current;
-    const panel = menu.current;
-    if (!button || !panel) return;
-    const rect = button.getBoundingClientRect();
-    const viewport = window.visualViewport;
-    const left = viewport?.offsetLeft ?? 0;
-    const top = viewport?.offsetTop ?? 0;
-    const width = viewport?.width ?? window.innerWidth;
-    const height = viewport?.height ?? window.innerHeight;
-    const panelWidth = Math.min(248, Math.max(0, width - 24));
-    const above = Math.max(0, rect.top - top - 20);
-    const below = Math.max(0, top + height - rect.bottom - 20);
-    const alignRight = getComputedStyle(button).direction === 'rtl';
-    panel.style.left = `${Math.max(left + 12, Math.min(alignRight ? rect.right - panelWidth : rect.left, left + width - panelWidth - 12))}px`;
-    panel.style.width = `${panelWidth}px`;
-    const showAbove = above >= below;
-    panel.style.top = showAbove ? 'auto' : `${rect.bottom + 8}px`;
-    panel.style.bottom = showAbove ? `${window.innerHeight - rect.top + 8}px` : 'auto';
-    panel.style.maxHeight = `${showAbove ? above : below}px`;
-    panel.style.transformOrigin = `${alignRight ? 'right' : 'left'} ${showAbove ? 'bottom' : 'top'}`;
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    // The visual viewport also changes when the software keyboard opens or closes.
-    window.addEventListener('resize', position);
-    window.addEventListener('scroll', position, true);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener('resize', position);
-    viewport?.addEventListener('scroll', position);
-    return () => {
-      window.removeEventListener('resize', position);
-      window.removeEventListener('scroll', position, true);
-      viewport?.removeEventListener('resize', position);
-      viewport?.removeEventListener('scroll', position);
-    };
-  }, [open, position]);
-  useEffect(() => {
-    if (disabled) menu.current?.hidePopover();
-  }, [disabled]);
-
-  function items() {
-    return Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
-  }
-  function onTriggerKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    event.preventDefault();
-    openingFocus.current = event.key === 'ArrowUp' ? 'last' : 'first';
-    menu.current?.showPopover({ source: event.currentTarget });
-    const buttons = items();
-    (openingFocus.current === 'last' ? buttons.at(-1) : buttons[0])?.focus();
-  }
-  function onMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === 'Tab') {
-      // Return to the invoker before the browser advances focus; this is not a focus trap.
-      menu.current?.hidePopover();
-      trigger.current?.focus();
-      return;
-    }
-    const buttons = items();
-    const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    let next: HTMLButtonElement | undefined;
-    if (event.key === 'ArrowDown') next = buttons[(index + 1) % buttons.length];
-    else if (event.key === 'ArrowUp') next = buttons[(index - 1 + buttons.length) % buttons.length];
-    else if (event.key === 'Home') next = buttons[0];
-    else if (event.key === 'End') next = buttons.at(-1);
-    else if (event.key.length === 1 && !event.altKey && !event.ctrlKey && !event.metaKey) {
-      const ordered = [...buttons.slice(index + 1), ...buttons.slice(0, index + 1)];
-      next = ordered.find((button) =>
-        button
-          .getAttribute('aria-label')
-          ?.toLocaleLowerCase()
-          .startsWith(event.key.toLocaleLowerCase()),
-      );
-    }
-    if (next) {
-      event.preventDefault();
-      next.focus();
-    }
-  }
-  function choose(kind: MediaPickKind) {
-    if (disabled) return;
-    menu.current?.hidePopover();
-    trigger.current?.focus();
-    // File pickers require the original user activation: never defer this callback.
-    onChoose(kind);
-  }
-
   return (
     <>
       <style>{styles}</style>
@@ -176,36 +76,17 @@ export function MediaActions({ disabled, hasVoiceEditor, onChoose }: MediaAction
         className="zoen-attachment-trigger"
         style={variables}
         aria-label={t('media.addAttachment')}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={id}
         disabled={disabled}
-        popoverTarget={id}
-        onKeyDown={onTriggerKeyDown}
+        {...triggerProps}
       >
         <Icon name={{ web: 'add', android: 'add', ios: 'plus' }} size={26} />
       </button>
       <div
         ref={menu}
-        id={id}
-        popover="auto"
-        role="menu"
-        tabIndex={-1}
+        {...menuProps}
         aria-label={t('media.addAttachment')}
         className="zoen-attachment-menu"
         style={variables}
-        onBeforeToggle={(event) => {
-          if (event.newState === 'open') position();
-        }}
-        onToggle={(event) => {
-          const visible = event.newState === 'open';
-          setOpen(visible);
-          if (visible) {
-            const buttons = items();
-            (openingFocus.current === 'last' ? buttons.at(-1) : buttons[0])?.focus();
-          } else openingFocus.current = 'first';
-        }}
-        onKeyDown={onMenuKeyDown}
       >
         {(
           [
@@ -225,7 +106,7 @@ export function MediaActions({ disabled, hasVoiceEditor, onChoose }: MediaAction
             tabIndex={-1}
             disabled={disabled}
             className="zoen-attachment-item"
-            onClick={() => choose(kind)}
+            onClick={() => select(() => onChoose(kind))}
           >
             <span aria-hidden="true">
               <Icon name={{ web: icon, android: icon }} size={22} />
