@@ -18,17 +18,68 @@ core = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(core)
 
 
+def contract_delta(baseline, current):
+    before, after = baseline["metadata"], current["metadata"]
+    return {"added": sorted(after.keys() - before.keys()),
+            "removed": sorted(before.keys() - after.keys()),
+            "changed": sorted(name for name in before.keys() & after.keys() if before[name] != after[name])}
+
+
+def compare_exports(root, main_revision, source):
+    """Report exact historical ABI changes; internal APIs may change prelaunch.
+
+    The current-source Kotlin/JNI ABI check remains blocking after generation.
+    No historical identifiers, paths, or object names are normalized or aliased.
+    """
+    baseline = core.library_at(root, main_revision)
+    delta = contract_delta(baseline["contract"], source["contract"])
+    return {"baseline_library": baseline["library"], "source_library": source["library"],
+            "raw_abi_delta": delta,
+            "raw_abi_compatible": not delta["removed"] and not delta["changed"],
+            "policy": "Prelaunch internal API changes are report-only; current-source generated ABI, ancestry and artwork integrity remain blocking"}
+
+
+def verified_art_variants(root, kind, payload_sha256, original_sources):
+    """Accept source fingerprints only through exact producer/corpus receipts."""
+    directory = root / "android/app/src/test/resources"
+    ledger = json.loads((directory / "art-source-equivalence.json").read_text())
+    if ledger.get("schema") != 1:
+        raise ValueError("Unsupported original-art source equivalence")
+    variants = {}
+    for entry in ledger["proofs"][kind]:
+        raw = (directory / entry["path"]).read_bytes()
+        proof = json.loads(raw)
+        if (core.digest(raw) != entry["sha256"] or
+                proof.get("reference_payload_sha256", proof.get("reference_icons_sha256")) != payload_sha256):
+            raise ValueError("Original-art equivalence does not match its actual producer/corpus")
+        refs = proof.get("verified_refs", [proof.get("verified_ref")])
+        if not refs or any(not isinstance(ref, str) or not re.fullmatch(r"[0-9a-f]{40}", ref) for ref in refs):
+            raise ValueError("Original-art equivalence requires immutable source revisions")
+        for path, values in proof["source_variants"].items():
+            source_hashes = {core.digest(subprocess.run(["git", "show", ref + ":" + path], cwd=root,
+                                                       capture_output=True, check=True).stdout) for ref in refs}
+            allowed = source_hashes | {original_sources[path]}
+            if not source_hashes.issubset(values) or set(values) - allowed:
+                raise ValueError("Original-art source variant is not proved by its immutable source")
+            variants.setdefault(path, set()).update(values)
+    return variants
+
+
 def artwork(root, main):
     sources = {}
     for fixture in ["ink-swift-reference.json.gz", "ink-icons-swift-reference.json.gz"]:
         directory = root / "android/app/src/test/resources"
         document = json.loads(gzip.decompress((directory / fixture).read_bytes()))
-        variants = {}
+        payload = document["icons"] if fixture == "ink-icons-swift-reference.json.gz" else {
+            key: value for key, value in document.items() if key != "sources"}
+        variants = verified_art_variants(root, "icons" if "icons" in fixture else "ink",
+                                         core.json_digest(payload), document["sources"])
         if fixture == "ink-icons-swift-reference.json.gz":
             equivalence = json.loads((directory / "ink-icons-source-equivalence.json").read_text())
             if core.json_digest(document["icons"]) != equivalence["reference_icons_sha256"]:
                 raise ValueError("Swift source equivalence does not match the icon corpus")
-            variants = equivalence["source_variants"]
+            for path, values in equivalence["source_variants"].items():
+                variants.setdefault(path, set()).update(values)
         for path, expected in document["sources"].items():
             accepted = set(variants.get(path, [expected]))
             if expected not in accepted:
@@ -40,9 +91,15 @@ def artwork(root, main):
     path = "apple/Shared/Apps/Native/PetViews.swift"
     expected = re.search(r'const val sourceSha256 = "([a-f0-9]{64})"',
                          (root / "android/app/src/main/java/xyz/tironi/zoen/ui/GeneratedPetArt.kt").read_text())[1]
+    pet = (root / "android/app/src/main/java/xyz/tironi/zoen/ui/GeneratedPetArt.kt").read_text()
+    pixels, count = re.subn(r'^    const val sourceSha256 = "[0-9a-f]{64}"\n', '', pet, flags=re.M)
+    if count != 1:
+        raise ValueError("Original pet provenance field is missing or duplicated")
+    accepted = verified_art_variants(root, "pet", core.digest(pixels.encode()), {path: expected})[path]
     upstream = subprocess.run(["git", "show", main + ":" + path], cwd=root, capture_output=True, check=True).stdout
     hashes = {"main": core.digest(upstream), "source_snapshot": core.digest((root / path).read_bytes())}
-    sources[path] = {"fixture_sha256": expected, "input_sha256": hashes, "matches": all(value == expected for value in hashes.values())}
+    sources[path] = {"fixture_sha256": expected, "verified_equivalent_sha256": sorted(accepted - {expected}),
+                     "input_sha256": hashes, "matches": all(value in accepted for value in hashes.values())}
     generated = subprocess.run(["python3", str(root / "scripts/export-android-pet.py"), "--check"],
                                cwd=root, capture_output=True, text=True)
     return {"original_sources": sources, "generated_pet_matches_original_source": generated.returncode == 0,
@@ -66,12 +123,8 @@ def main():
         head = source["source"]["commit"]
         minimum = core.git(ROOT, "merge-base", "--is-ancestor", MINIMUM_MAIN, main_revision, check=False).returncode == 0
         ancestor = core.git(ROOT, "merge-base", "--is-ancestor", main_revision, head, check=False).returncode == 0
-        baseline = core.contract_at(ROOT, main_revision)
-        current = source["contract"]
-        main_delta = {"added": sorted(current["metadata"].keys() - baseline["metadata"].keys()),
-                      "removed": sorted(baseline["metadata"].keys() - current["metadata"].keys()),
-                      "changed": sorted(name for name, shape in baseline["metadata"].items()
-                                        if name in current["metadata"] and current["metadata"][name] != shape)}
+        comparison = compare_exports(ROOT, main_revision, source)
+        main_delta = comparison["raw_abi_delta"]
         art = artwork(ROOT, main_revision)
         apple_inputs = {path.relative_to(ROOT).as_posix(): core.digest(path.read_bytes())
                         for path in sorted((ROOT / "apple/Shared").rglob("*"))
@@ -81,8 +134,6 @@ def main():
             errors.append("Main reference predates the merged PR71 minimum")
         if not ancestor:
             errors.append("Current Main is not an ancestor of the Android source revision")
-        if main_delta["removed"]:
-            errors.append("Current source removes exported Main APIs: " + ", ".join(main_delta["removed"]))
         if not all(value["matches"] for value in art["original_sources"].values()) or not art["generated_pet_matches_original_source"]:
             errors.append("Current original art needs regenerated or independently verified equivalence fixtures")
         generated = {"status": "not-checked-pre-build", "runtime_validation": "not established by this source gate"}
@@ -96,6 +147,7 @@ def main():
                   "main_ref": args.main_ref, "main_revision": main_revision, "minimum_main_revision": MINIMUM_MAIN,
                   "minimum_main_is_ancestor": minimum, "latest_main_is_ancestor": ancestor,
                   "source_snapshot": source, "exported_api_delta_from_main": main_delta,
+                  "source_contract_comparison": comparison,
                   "apple_source_snapshot": {"revision": source["source"], "inputs": apple_inputs,
                                             "input_sha256": core.json_digest(apple_inputs),
                                             "changed_paths_from_main": core.git(ROOT, "diff", "--name-only", main_revision, "--", "apple/Shared").stdout.splitlines(),

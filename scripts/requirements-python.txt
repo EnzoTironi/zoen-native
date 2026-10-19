@@ -1,0 +1,2 @@
+# Python 3.11+ supplies tomllib. Older macOS Python needs the same TOML grammar.
+tomli==2.2.1; python_version < "3.11"

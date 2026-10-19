@@ -16,9 +16,14 @@ args = parser.parse_args()
 if args.equivalence_output and not args.verify_ref:
     parser.error("--equivalence-output requires --verify-ref")
 
+verified_ref = (subprocess.run(
+    ["git", "rev-parse", "--verify", args.verify_ref + "^{commit}"],
+    cwd=root, check=True, capture_output=True, text=True,
+).stdout.strip() if args.verify_ref else None)
+
 def source_bytes(path):
-    if args.verify_ref:
-        return subprocess.run(["git", "show", args.verify_ref + ":" + str(path.relative_to(root))],
+    if verified_ref:
+        return subprocess.run(["git", "show", verified_ref + ":" + str(path.relative_to(root))],
                               cwd=root, check=True, capture_output=True).stdout
     return path.read_bytes()
 
@@ -40,7 +45,8 @@ motion = s[s.index("struct IconMotion {"):s.index("/// The ink icon view:")]
 hand = root / "apple/Shared/DesignSystem/HandDrawn.swift"
 hand_source = source_bytes(hand).decode()
 rng = hand_source[hand_source.index("struct InkRNG {"):hand_source.index("enum InkPalette {")]
-geometry = "enum Ink {\n" + hand_source[hand_source.index("    static func catmull("):hand_source.index("/// `-FreezeArt")]
+geometry_start = hand_source.index("    static func catmull(")
+geometry = "enum Ink {\n" + hand_source[geometry_start:hand_source.index("\n}\n", geometry_start) + 3]
 shape = s[s.index("enum IconLayer {"):s.index("/// The selected state:")].replace("struct InkIconShape: Shape", "struct InkIconShape")
 path_support = """
 struct Path {
@@ -81,15 +87,15 @@ with tempfile.TemporaryDirectory(prefix="zoen-ink-icons-") as directory:
     source = Path(directory) / "icons.swift"
     executable = Path(directory) / "icons"
     source.write_text("import Foundation\nimport CoreGraphics\n" + path_support + rng + geometry + enum + seed + art + shape + motion + export)
-    subprocess.run(["swiftc", "-O", str(source), "-o", str(executable)], check=True)
+    subprocess.run(["swiftc", "-j1", "-O", str(source), "-o", str(executable)], check=True)
     data = json.loads(subprocess.run([str(executable)], check=True, capture_output=True).stdout)
 
-if args.verify_ref:
+if verified_ref:
     reference = json.loads(gzip.decompress((root / "android/app/src/test/resources/ink-icons-swift-reference.json.gz").read_bytes()))
     if reference["icons"] != data:
         raise SystemExit("The newer Swift source changes the original icon geometry or motion corpus; adapt Android before accepting it")
     verified = {
-        "verified_ref": subprocess.run(["git", "rev-parse", args.verify_ref], cwd=root, check=True, capture_output=True, text=True).stdout.strip(),
+        "verified_ref": verified_ref,
         "reference_icons_sha256": hashlib.sha256(json.dumps(data, separators=(",", ":"), sort_keys=True).encode()).hexdigest(),
         "icons_compared": len(data),
         "comparison": "Exact independently compiled Swift control points, paths, partial strokes and animated motion samples; existing corpus unchanged",

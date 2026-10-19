@@ -49,8 +49,8 @@
     "sourceInputs": {
       "LICENSE": "1b2ee57f0f797d2475ed4e723e905725531e88d1bb9ea37d81dd213faf4bdbea",
       "NOTICE.md": "d549aeea7c029cd1a0a1697025bb5e043e01e75792d3c22c6086738b80485f3b",
-      "README.md": "1be71a4235856b64228c73db3bcc68a5fd3d94e8367af5238e716212733122e1",
-      "build.mjs": "67c41f54871619a6f41611a554f75f9fccd0f811bb8a994c388ac68671fc68e0",
+      "README.md": "262bb3aee76e5534c6041f2d453811679b8fd8f18e85bd423d60c74d36239b4f",
+      "build.mjs": "afb122ddb4c1ea5114655b7e55f5621e8f9c167873b79a0fc3bf4101416c96dc",
       "library-assets.mjs": "7671fbb009fad62088336dc1c0fbf303e0a432e642d1f8ae9df924d33b9eed9e",
       "licenses/excalidraw-v0.18.0-MIT.txt": "1352d204fdb90d5e482c13139d848bc2c9300a9a7de358a0a558a23e72d0d8be",
       "licenses/fuzzy-MIT.txt": "a4aca837172fb1f6188c426e38835202e96bc853e25b7029cc5c933964f8401e",

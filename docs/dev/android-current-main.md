@@ -2,6 +2,21 @@
 
 Source checkpoint: 12 October 2026, shared `main` checkout. The merged PR71 revision `ff5b519` is the minimum ancestor, not a frozen Apple UI reference. The current revision and all Core generation inputs are resolved into the verification artifact. Dirty working source has the `working-tree-dirty` label and its own input digest. Earlier [Android native results](android-native-experience.md) and PR41 media retain their original revisions and do not certify this integration.
 
+## Source-gate tools — 19 October 2026
+
+The source verifier reads actual Cargo TOML at each immutable revision. Python 3.11 or newer includes the parser. With macOS's Python 3.9, create a tool environment and install the pinned dependency before running Android build scripts:
+
+```sh
+python3 -m venv .dev/python-tools
+source .dev/python-tools/bin/activate
+python -m pip install -r scripts/requirements-python.txt
+python3 scripts/test-android-core-contract.py
+```
+
+Keep that environment active for build scripts that invoke `python3`. The verifier never installs packages or resolves Cargo dependencies itself. The historical results below retain their original source and runtime scope.
+
+During prelaunch, internal Rust/UniFFI APIs may change atomically with their consumers. The gate reports the actual Main/current library paths and raw ABI additions, removals and shape changes without historical aliases or a compatibility registry. Current-source generated Kotlin/JNI metadata and checksum validation, Main ancestry and original-art integrity remain blocking. Revisit the API compatibility policy before public launch.
+
 ## First Plan unit
 
 The current Plan screen consumes `PlanPageDto` in supplied block order, including prose, exact text and UTF-16 marks. Signed costs use integer cents throughout display and decimal editing. Negative stored costs remain visible; existing legacy writers still reject negative replacements. Duplicate legacy line IDs disable ambiguous controls while distinct document block IDs preserve rendering order. An unrepresentable total has an explicit unavailable label.
