@@ -16,7 +16,9 @@
     "verify:directory": "node ../../../scripts/verify-cloudflare-directory.mjs",
     "deploy:directory": "wrangler deploy --config wrangler.directory.jsonc",
     "test:provider": "node --test tests/provider-state.test.mjs",
-    "verify:provider": "node ../../../scripts/verify-cloudflare-provider.mjs --host"
+    "verify:provider": "node ../../../scripts/verify-cloudflare-provider.mjs --host",
+    "test:media": "node --test tests/media-blobs.test.mjs",
+    "verify:media": "node ../../../scripts/verify-cloudflare-directory.mjs --media"
   },
   "devDependencies": {
     "miniflare": "5.20261012.1-beta"

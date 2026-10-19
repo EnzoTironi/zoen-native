@@ -396,6 +396,20 @@ jobs:
           path: .dev/cloudflare-provider-host
           if-no-files-found: warn
           retention-days: 7
+      - name: Compare native encrypted media HTTP and private Cloudflare R2 adapter
+        # Native ciphertext and actual HTTP responses versus local workerd/R2.
+        # No Cloudflare credentials, real bucket writes or deployment.
+        env:
+          ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
+        run: node scripts/verify-cloudflare-directory.mjs --media --skip-build --out-dir .dev/cloudflare-media
+      - name: Retain private encrypted media differential evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cloudflare-media-evidence
+          path: .dev/cloudflare-media
+          if-no-files-found: warn
+          retention-days: 7
       - name: Compare native Postgres and private Cloudflare directory transactions
         # The oracle creates and removes only its own schema in this job's
         # disposable database. Reuse the current shared WASM from the closed check.

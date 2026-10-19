@@ -18,16 +18,12 @@ use axum::{
 use object_store::{
     path::Path as ObjPath, ObjectStore, ObjectStoreExt, PutMode, PutOptions, PutPayload,
 };
-use roda_log::verify_sig;
-use roda_proto::blob_put_message;
-use sha2::{Digest, Sha256};
+use roda_relay_admission::blobs as policy;
 
 use crate::Shared;
 
-/// Largest blob accepted (a resized photo is ~0.5 MB; voice notes and files come later).
-pub const MAX_BLOB_BYTES: usize = 25 * 1024 * 1024;
-/// How far a signed upload's timestamp may be from the relay's clock.
-const MAX_SKEW_MS: i64 = 5 * 60 * 1000;
+/// Largest encrypted media object accepted by the shared policy.
+pub use policy::MAX_BLOB_BYTES;
 
 /// Where blobs live, from the environment:
 /// `ZOEN_S3_BUCKET` (+ the usual `AWS_*` variables, `AWS_ENDPOINT_URL` for R2/Tigris/MinIO)
@@ -49,17 +45,6 @@ pub fn store_from_env(dir: &std::path::Path) -> anyhow::Result<(Arc<dyn ObjectSt
     Ok((Arc::new(local), dir.display().to_string()))
 }
 
-fn valid_sha(s: &str) -> bool {
-    s.len() == 64
-        && s.bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-
-fn key(sha: &str) -> ObjPath {
-    // Two-level fan-out keeps directories (and S3 listings) small.
-    ObjPath::from(format!("blobs/{}/{}", &sha[..2], sha))
-}
-
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -71,15 +56,19 @@ fn err(code: StatusCode, msg: &'static str) -> Response {
     (code, msg).into_response()
 }
 
+fn policy_error(error: policy::Failure) -> Response {
+    err(
+        StatusCode::from_u16(error.status).expect("media policy HTTP status"),
+        error.body,
+    )
+}
+
 pub async fn put(
     State(st): State<Shared>,
     Path(sha): Path<String>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if !valid_sha(&sha) {
-        return err(StatusCode::BAD_REQUEST, "bad hash");
-    }
     let h = |name: &str| {
         headers
             .get(name)
@@ -88,28 +77,19 @@ pub async fn put(
             .to_string()
     };
     let (device, ts, sig) = (h("x-zoen-device"), h("x-zoen-ts"), h("x-zoen-sig"));
-    let Ok(ts_ms) = ts.parse::<i64>() else {
-        return err(StatusCode::UNAUTHORIZED, "missing signature");
+    let admitted = match policy::put_policy(&sha, &device, &ts, &sig, &st.relay_name, now_ms()) {
+        Ok(admitted) => admitted,
+        Err(error) => return policy_error(error),
     };
-    if (now_ms() - ts_ms).abs() > MAX_SKEW_MS {
-        return err(StatusCode::UNAUTHORIZED, "stale signature");
-    }
-    if !verify_sig(
-        &device,
-        &blob_put_message(&sha, ts_ms, &st.relay_name),
-        &sig,
-    ) {
-        return err(StatusCode::UNAUTHORIZED, "bad signature");
-    }
     match crate::db::device_active(&st.pool, &device).await {
         Ok(true) => {}
         Ok(false) => return err(StatusCode::FORBIDDEN, "unlinked device"),
         Err(_) => return err(StatusCode::SERVICE_UNAVAILABLE, "database unavailable"),
     }
-    if body.is_empty() || body.len() > MAX_BLOB_BYTES {
-        return err(StatusCode::PAYLOAD_TOO_LARGE, "empty or too large");
-    }
-    let kib = body.len().div_ceil(1024).min(u32::MAX as usize) as u32;
+    let kib = match policy::body_cost(body.len() as u64) {
+        Ok(cost) => cost,
+        Err(error) => return policy_error(error),
+    };
     if let Err(wait) = st.limits.blob_kib_device.check_n(&device, kib) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
@@ -118,8 +98,8 @@ pub async fn put(
         )
             .into_response();
     }
-    if hex::encode(Sha256::digest(&body)) != sha {
-        return err(StatusCode::BAD_REQUEST, "hash mismatch");
+    if let Err(error) = policy::verify_body(&body, &sha) {
+        return policy_error(error);
     }
     let n = body.len();
     let opts = PutOptions {
@@ -128,7 +108,11 @@ pub async fn put(
     };
     match st
         .blobs
-        .put_opts(&key(&sha), PutPayload::from_bytes(body), opts)
+        .put_opts(
+            &ObjPath::from(admitted.key),
+            PutPayload::from_bytes(body),
+            opts,
+        )
         .await
     {
         Ok(_) => {
@@ -161,10 +145,11 @@ pub fn cors() -> tower_http::cors::CorsLayer {
 }
 
 pub async fn get(State(st): State<Shared>, Path(sha): Path<String>) -> Response {
-    if !valid_sha(&sha) {
-        return err(StatusCode::BAD_REQUEST, "bad hash");
-    }
-    match st.blobs.get(&key(&sha)).await {
+    let key = match policy::get_key(&sha) {
+        Ok(key) => ObjPath::from(key),
+        Err(error) => return policy_error(error),
+    };
+    match st.blobs.get(&key).await {
         Ok(r) => match r.bytes().await {
             Ok(b) => (
                 [

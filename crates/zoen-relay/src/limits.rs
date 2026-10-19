@@ -99,15 +99,21 @@ impl Limiter {
     fn check_at(&self, key: &str, cost: u32, now: Duration) -> Result<(), Duration> {
         let now = now.as_nanos() as u64;
         let t = self.quota.interval.as_nanos() as u64;
-        let window = t.saturating_mul(self.quota.burst as u64);
         let shard = &self.shards[(self.hasher.hash_one(key) as usize) % SHARDS];
         let mut map = shard.lock().unwrap_or_else(|e| e.into_inner());
-        let tat = map.get(key).copied().unwrap_or(now).max(now);
-        let next = tat.saturating_add(t.saturating_mul(cost as u64));
-        if next - now > window {
-            self.refused.fetch_add(1, Relaxed);
-            return Err(Duration::from_nanos(next - now - window));
-        }
+        let next = match roda_relay_admission::gcra::decide(
+            now,
+            map.get(key).copied(),
+            cost,
+            t,
+            self.quota.burst,
+        ) {
+            roda_relay_admission::gcra::Decision::Accepted { next_ns } => next_ns,
+            roda_relay_admission::gcra::Decision::Rejected { wait_ns } => {
+                self.refused.fetch_add(1, Relaxed);
+                return Err(Duration::from_nanos(wait_ns));
+            }
+        };
         if map.len() >= self.sweep_at && !map.contains_key(key) {
             map.retain(|_, v| *v > now);
         }
@@ -168,7 +174,12 @@ impl Limits {
             agent_page_ip: Limiter::new("agent_page_ip", Quota::per_minute(60, 60)),
             blob_kib_device: Limiter::new(
                 "blob_kib_device",
-                Quota::per_minute(100 * 1024, 200 * 1024),
+                Quota {
+                    interval: Duration::from_nanos(
+                        roda_relay_admission::blobs::DEFAULT_INTERVAL_NS,
+                    ),
+                    burst: roda_relay_admission::blobs::DEFAULT_BURST,
+                },
             ),
             backup_device: Limiter::new("backup_device", Quota::per_minute(10, 20)),
             backup_restore_ip: Limiter::new("backup_restore_ip", Quota::per_hour(60, 60)),

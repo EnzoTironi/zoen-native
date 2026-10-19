@@ -22,6 +22,7 @@ const require = createRequire(join(root, "infra/cloudflare/package.json"));
 const { unstable_DevEnv } = require("wrangler");
 const Ws = require("ws");
 const fixture = JSON.parse(await readFile(job.fixture, "utf8"));
+const mediaFixture = job.media ? JSON.parse(await readFile(job.mediaFixture, "utf8")) : null;
 const environment = new unstable_DevEnv();
 const channels = [];
 const results = [];
@@ -43,13 +44,36 @@ const bounded = async (promise, ms) => {
     clearTimeout(timer);
   }
 };
+const httpBodies = new Map();
+async function httpFetch(url, options = {}) {
+  const controller = new AbortController();
+  try {
+    const response = await bounded(fetch(url, { ...options, signal: controller.signal }), 15_000);
+    httpBodies.set(response, controller);
+    return response;
+  } catch (failure) {
+    controller.abort();
+    throw failure;
+  }
+}
+async function readBody(response, kind) {
+  try {
+    return await bounded(response[kind](), 5000);
+  } catch (failure) {
+    httpBodies.get(response)?.abort();
+    throw failure;
+  } finally {
+    httpBodies.delete(response);
+  }
+}
 const save = async () =>
   writeFile(
     join(job.output, "remote-observations.json"),
     `${JSON.stringify(
       {
-        scope:
-          "Exact reviewed private Directory runtime, one new synthetic cell, actual authenticated edge sockets. No public relay, provider login, SQL inspection or forced hibernation proof.",
+        scope: job.media
+          ? "Existing private Directory namespace, one hardcoded OWN QA cell and real R2 via direct DO adapter. No production fixed-cell mutation, facade-forwarding, public bucket/provider or whole-application acceptance."
+          : "Exact reviewed private Directory runtime, one new synthetic cell, actual authenticated edge sockets. No public relay, provider login, SQL inspection or forced hibernation proof.",
         results,
         failure,
         diagnostic,
@@ -64,25 +88,25 @@ async function checkpoint(name, action) {
   results.push({ name, passed: true, ...detail });
   await save();
 }
-function signChallenge(bytes) {
+function nativeCommand(command) {
   const result = spawnSync(job.clientBin, [], {
     input: JSON.stringify({
-      op: "auth",
       home: job.secretHome,
-      challenge_base64: bytes.toString("base64"),
+      ...command,
     }),
     encoding: "utf8",
     stdio: ["pipe", "pipe", "pipe"],
     timeout: 5000,
     maxBuffer: 2 * 1024 * 1024,
   });
-  assert.equal(
-    result.status,
-    0,
-    "Native synthetic client must accept the real canonical challenge",
+  assert.equal(result.status, 0, "Native synthetic client command must succeed");
+  return JSON.parse(result.stdout);
+}
+function signChallenge(bytes) {
+  return Buffer.from(
+    nativeCommand({ op: "auth", challenge_base64: bytes.toString("base64") }).auth_base64,
+    "base64",
   );
-  const value = JSON.parse(result.stdout);
-  return Buffer.from(value.auth_base64, "base64");
 }
 try {
   const ready = new Promise((accept, reject) => {
@@ -109,7 +133,7 @@ try {
   const edge = new URL(`https://${proxy.userWorkerUrl.hostname}`);
   const headers = { ...proxy.headers };
   async function call(path, method = "GET") {
-    return bounded(fetch(new URL(path, edge), { method, headers, redirect: "manual" }), 15_000);
+    return httpFetch(new URL(path, edge), { method, headers, redirect: "manual" });
   }
   async function open() {
     const url = new URL("/socket", edge);
@@ -180,120 +204,254 @@ try {
     await channel.expect(registered ? fixture.ready_registered_base64 : fixture.ready_new_base64);
     return { channel, challengeHash: sha256(challenge) };
   }
-  await checkpoint("private-preview-and-outer-http-refusal", async () => {
-    const unauthorized = await bounded(
-      fetch(new URL("/socket", edge), { redirect: "manual" }),
-      15_000,
-    );
-    assert.ok([400, 401, 403, 404].includes(unauthorized.status));
-    const routes = ["/public", "/", "/v1/sync", "/arbitrary"];
-    const statuses = [];
-    for (const route of routes) {
-      const response = await call(route);
-      statuses.push(response.status);
-      await response.arrayBuffer();
-      assert.equal(response.status, 404);
-    }
-    await unauthorized.arrayBuffer();
-    const payload = await bounded(
-      fetch(new URL("/deliver", edge), { method: "POST", headers, body: "refused" }),
-      15_000,
-    );
-    assert.equal(payload.status, 404, "Preview cannot accept caller-chosen delivery input");
-    await payload.arrayBuffer();
-    return {
-      unauthorizedStatus: unauthorized.status,
-      routes,
-      statuses,
-      deliveryPayloadStatus: payload.status,
+  async function mediaJourney() {
+    assert.equal(mediaFixture.schema, 1);
+    assert.equal(mediaFixture.objects.length, 2);
+    assert.ok(mediaFixture.total_ciphertext_bytes <= 8192);
+    const [one, two] = mediaFixture.objects;
+    assert.equal(one.slot, "one");
+    assert.equal(two.slot, "two");
+    const transport = async (object, method, signed = false) => {
+      const requestHeaders = { ...headers };
+      if (signed) {
+        const signature = nativeCommand({ op: "media-sign", slot: object.slot });
+        assert.equal(signature.sha, object.sha);
+        assert.equal(signature.device, fixture.device);
+        requestHeaders["x-zoen-device"] = signature.device;
+        requestHeaders["x-zoen-ts"] = signature.timestamp;
+        requestHeaders["x-zoen-sig"] = signature.signature;
+        requestHeaders["content-type"] = "application/octet-stream";
+      }
+      return httpFetch(new URL(`/media/${object.sha}`, edge), {
+        method,
+        headers: requestHeaders,
+        redirect: "manual",
+        ...(method === "PUT" ? { body: Buffer.from(object.ciphertext_base64, "base64") } : {}),
+      });
     };
-  });
-  let first;
-  let stale;
-  await checkpoint("two-real-challenges-and-provisional-ready", async () => {
-    first = await login(false);
-    stale = await login(false);
-    assert.notEqual(
-      first.challengeHash,
-      stale.challengeHash,
-      "Fresh server-owned nonce per connection",
-    );
-    return {
-      challengeHashes: [first.challengeHash, stale.challengeHash],
-      canonicalChallengesVerifiedByRust: 2,
+    const exactGet = async () => {
+      const response = await transport(one, "GET");
+      diagnostic = { stage: "media-get", status: response.status };
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("content-type"), "application/octet-stream");
+      assert.equal(response.headers.get("cross-origin-resource-policy"), "cross-origin");
+      assert.equal(response.headers.get("cache-control"), "public, max-age=31536000, immutable");
+      const bytes = Buffer.from(await readBody(response, "arrayBuffer"));
+      assert.ok(bytes.length <= 8192);
+      assert.deepEqual(bytes, Buffer.from(one.ciphertext_base64, "base64"));
+      const opened = nativeCommand({
+        op: "media-open",
+        slot: one.slot,
+        ciphertext_base64: bytes.toString("base64"),
+      });
+      assert.deepEqual(opened, {
+        opened: true,
+        plaintext_sha256: one.plaintext_sha256,
+        plaintext_bytes: one.plaintext_bytes,
+      });
+      diagnostic = null;
+      return {
+        ciphertextBytes: bytes.length,
+        plaintextBytes: opened.plaintext_bytes,
+        plaintextSha256: opened.plaintext_sha256,
+      };
     };
-  });
-  await checkpoint("first-registration-and-stale-provisional-refusal", async () => {
-    first.channel.send(fixture.register_base64);
-    await first.channel.expect(fixture.registered_base64);
-    stale.channel.send(fixture.stale_register_base64);
-    await stale.channel.expect(fixture.stale_reply_base64);
-    first.channel.send(fixture.large_request_base64);
-    await first.channel.expect(fixture.large_reply_base64);
-    first.channel.send(fixture.ping_base64);
-    await first.channel.expect(fixture.pong_base64);
-    return { exactRequestId: "9007199254740993", exactNativeResponses: 4 };
-  });
-  await checkpoint("normal-client-disconnect", async () => {
-    first.channel.socket.close(1000, "owned synthetic disconnect");
-    await first.channel.expectClose(1000);
-    stale.channel.socket.close(1000, "owned synthetic disconnect");
-    await stale.channel.expectClose(1000);
-    return { actualClosedClients: 2, durableRowInspection: false };
-  });
-  let active;
-  await checkpoint("registered-reconnect-and-canonical-service-delivery", async () => {
-    active = await login(true);
-    diagnostic = { stage: "registered-ready-received" };
-    const response = await call("/deliver", "POST");
-    diagnostic = { stage: "delivery-http", status: response.status };
-    assert.equal(response.status, 200);
-    const delivered = await response.json();
-    diagnostic = {
-      stage: "delivery-result",
-      delivered: delivered.delivered,
-      refused: delivered.refused,
-    };
-    assert.deepEqual(delivered, { delivered: 1, refused: 0 });
-    await active.channel.expect(fixture.pong_base64);
-    diagnostic = null;
-    return { registered: true, delivered: 1, exactNativeFrame: true };
-  });
-  await checkpoint("self-unlink-final-send-fence-and-revoked-reconnect", async () => {
-    const before = active.channel.frames.length;
-    active.channel.send(fixture.unlink_base64);
-    await active.channel.expectClose(1008);
-    assert.equal(
-      active.channel.frames.length,
-      before,
-      "No stale ResDone may follow self-revocation",
+    await checkpoint("media-private-preview-and-outer404", async () => {
+      const unauthenticated = await httpFetch(new URL(`/media/${one.sha}`, edge), {
+        redirect: "manual",
+      });
+      assert.ok([400, 401, 403, 404].includes(unauthenticated.status));
+      await readBody(unauthenticated, "arrayBuffer");
+      const outer = await call("/public");
+      assert.equal(outer.status, 404);
+      await readBody(outer, "arrayBuffer");
+      return { unauthenticatedStatus: unauthenticated.status, productionOuterFetch: 404 };
+    });
+    await checkpoint("media-missing-capability404-has-no-public-cache", async () => {
+      for (const object of [one, two]) {
+        const response = await transport(object, "GET");
+        assert.equal(response.status, 404);
+        assert.equal(await readBody(response, "text"), "missing");
+        assert.ok(!response.headers.get("cache-control")?.includes("public"));
+      }
+      return { status: 404, publicCache: false, sameCapabilityLaterPutAndGet: one.sha };
+    });
+    let account;
+    await checkpoint("media-normal-native-socket-registration-own-cell", async () => {
+      account = await login(false);
+      account.channel.send(fixture.register_base64);
+      await account.channel.expect(fixture.registered_base64);
+      return { canonicalReadyAndRegistered: true, injectedFacts: false };
+    });
+    await checkpoint("media-native-signed-put201-and-retry200", async () => {
+      const first = await transport(one, "PUT", true);
+      diagnostic = { stage: "media-put-new", status: first.status };
+      assert.equal(first.status, 201);
+      await readBody(first, "arrayBuffer");
+      const retry = await transport(one, "PUT", true);
+      diagnostic = { stage: "media-put-retry", status: retry.status };
+      assert.equal(retry.status, 200);
+      await readBody(retry, "arrayBuffer");
+      diagnostic = null;
+      return {
+        first: 201,
+        retry: 200,
+        objectKey: one.object_key,
+        ciphertextBytes: one.ciphertext_bytes,
+      };
+    });
+    await checkpoint("media-exact-get-and-native-open", exactGet);
+    await checkpoint("media-unlink-refuses-fresh-and-duplicate-put", async () => {
+      const before = account.channel.frames.length;
+      account.channel.send(fixture.unlink_base64);
+      await account.channel.expectClose(1008);
+      assert.equal(account.channel.frames.length, before);
+      const statuses = [];
+      for (const object of [two, one]) {
+        const response = await transport(object, "PUT", true);
+        statuses.push(response.status);
+        assert.equal(response.status, 403);
+        assert.equal(await readBody(response, "text"), "unlinked device");
+      }
+      return {
+        actualClosed: true,
+        noStaleReply: true,
+        freshPut: statuses[0],
+        duplicatePut: statuses[1],
+      };
+    });
+    await checkpoint("media-ciphertext-capability-survives-device-unlink", exactGet);
+    await writeFile(
+      join(job.output, "r2-object-cleanup.json"),
+      `${JSON.stringify(
+        {
+          bucket: "zoen-private-blobs",
+          allowedKeys: [one.object_key, two.object_key],
+          storedKeys: [one.object_key],
+          ownerCleanupPending: true,
+          instructions:
+            "Owner deletes/verifies only these exact two QA keys. No helper Delete RPC or public bucket. The tiny revoked OWN QA-cell row remains; production fixed cell was untouched.",
+        },
+        null,
+        2,
+      )}\n`,
     );
-    const response = await call("/deliver", "POST");
-    assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { delivered: 0, refused: 0 });
-    const revoked = await open();
-    revoked.send(fixture.hello_base64);
-    revoked.socket.send(signChallenge(await revoked.next()));
-    await revoked.expect(fixture.revoked_error_base64);
-    await revoked.expectClose(1008);
-    return { noStaleReply: true, delayedDeliveryCount: 0, exactRevokedError: true };
-  });
-  await checkpoint("real-clock-untouched-hello-idle-close", async () => {
-    const untouched = await open();
-    // Production owns its 10s idle deadline. The additional 5s is the unchanged
-    // network-close observation window; no clock override or forced cleanup.
-    await untouched.expect(fixture.expired_hello_error_base64, 15_000);
-    await untouched.expectClose(1008);
-    return { productionIdleMs: 10_000, closeObservationMs: 5000, actualClosed: true };
-  });
-  await checkpoint("real-clock-auth-idle-close", async () => {
-    const waiting = await open();
-    waiting.send(fixture.hello_base64);
-    signChallenge(await waiting.next()); // Canonical challenge check only: send no Auth.
-    await waiting.expect(fixture.expired_auth_error_base64, 15_000);
-    await waiting.expectClose(1008);
-    return { productionIdleMs: 10_000, closeObservationMs: 5000, actualClosed: true };
-  });
+  }
+  if (job.media) await mediaJourney();
+  else {
+    await checkpoint("private-preview-and-outer-http-refusal", async () => {
+      const unauthorized = await httpFetch(new URL("/socket", edge), { redirect: "manual" });
+      assert.ok([400, 401, 403, 404].includes(unauthorized.status));
+      const routes = ["/public", "/", "/v1/sync", "/arbitrary"];
+      const statuses = [];
+      for (const route of routes) {
+        const response = await call(route);
+        statuses.push(response.status);
+        await readBody(response, "arrayBuffer");
+        assert.equal(response.status, 404);
+      }
+      await readBody(unauthorized, "arrayBuffer");
+      const payload = await httpFetch(new URL("/deliver", edge), {
+        method: "POST",
+        headers,
+        body: "refused",
+      });
+      assert.equal(payload.status, 404, "Preview cannot accept caller-chosen delivery input");
+      await readBody(payload, "arrayBuffer");
+      return {
+        unauthorizedStatus: unauthorized.status,
+        routes,
+        statuses,
+        deliveryPayloadStatus: payload.status,
+      };
+    });
+    let first;
+    let stale;
+    await checkpoint("two-real-challenges-and-provisional-ready", async () => {
+      first = await login(false);
+      stale = await login(false);
+      assert.notEqual(
+        first.challengeHash,
+        stale.challengeHash,
+        "Fresh server-owned nonce per connection",
+      );
+      return {
+        challengeHashes: [first.challengeHash, stale.challengeHash],
+        canonicalChallengesVerifiedByRust: 2,
+      };
+    });
+    await checkpoint("first-registration-and-stale-provisional-refusal", async () => {
+      first.channel.send(fixture.register_base64);
+      await first.channel.expect(fixture.registered_base64);
+      stale.channel.send(fixture.stale_register_base64);
+      await stale.channel.expect(fixture.stale_reply_base64);
+      first.channel.send(fixture.large_request_base64);
+      await first.channel.expect(fixture.large_reply_base64);
+      first.channel.send(fixture.ping_base64);
+      await first.channel.expect(fixture.pong_base64);
+      return { exactRequestId: "9007199254740993", exactNativeResponses: 4 };
+    });
+    await checkpoint("normal-client-disconnect", async () => {
+      first.channel.socket.close(1000, "owned synthetic disconnect");
+      await first.channel.expectClose(1000);
+      stale.channel.socket.close(1000, "owned synthetic disconnect");
+      await stale.channel.expectClose(1000);
+      return { actualClosedClients: 2, durableRowInspection: false };
+    });
+    let active;
+    await checkpoint("registered-reconnect-and-canonical-service-delivery", async () => {
+      active = await login(true);
+      diagnostic = { stage: "registered-ready-received" };
+      const response = await call("/deliver", "POST");
+      diagnostic = { stage: "delivery-http", status: response.status };
+      assert.equal(response.status, 200);
+      const delivered = await readBody(response, "json");
+      diagnostic = {
+        stage: "delivery-result",
+        delivered: delivered.delivered,
+        refused: delivered.refused,
+      };
+      assert.deepEqual(delivered, { delivered: 1, refused: 0 });
+      await active.channel.expect(fixture.pong_base64);
+      diagnostic = null;
+      return { registered: true, delivered: 1, exactNativeFrame: true };
+    });
+    await checkpoint("self-unlink-final-send-fence-and-revoked-reconnect", async () => {
+      const before = active.channel.frames.length;
+      active.channel.send(fixture.unlink_base64);
+      await active.channel.expectClose(1008);
+      assert.equal(
+        active.channel.frames.length,
+        before,
+        "No stale ResDone may follow self-revocation",
+      );
+      const response = await call("/deliver", "POST");
+      assert.equal(response.status, 200);
+      assert.deepEqual(await readBody(response, "json"), { delivered: 0, refused: 0 });
+      const revoked = await open();
+      revoked.send(fixture.hello_base64);
+      revoked.socket.send(signChallenge(await revoked.next()));
+      await revoked.expect(fixture.revoked_error_base64);
+      await revoked.expectClose(1008);
+      return { noStaleReply: true, delayedDeliveryCount: 0, exactRevokedError: true };
+    });
+    await checkpoint("real-clock-untouched-hello-idle-close", async () => {
+      const untouched = await open();
+      // Production owns its 10s idle deadline. The additional 5s is the unchanged
+      // network-close observation window; no clock override or forced cleanup.
+      await untouched.expect(fixture.expired_hello_error_base64, 15_000);
+      await untouched.expectClose(1008);
+      return { productionIdleMs: 10_000, closeObservationMs: 5000, actualClosed: true };
+    });
+    await checkpoint("real-clock-auth-idle-close", async () => {
+      const waiting = await open();
+      waiting.send(fixture.hello_base64);
+      signChallenge(await waiting.next()); // Canonical challenge check only: send no Auth.
+      await waiting.expect(fixture.expired_auth_error_base64, 15_000);
+      await waiting.expectClose(1008);
+      return { productionIdleMs: 10_000, closeObservationMs: 5000, actualClosed: true };
+    });
+  }
 } catch {
   failure = {
     phase,
@@ -302,6 +460,8 @@ try {
   };
   await save();
 } finally {
+  for (const controller of httpBodies.values()) controller.abort();
+  httpBodies.clear();
   // Failure observations are saved BEFORE cleanup. A forced OWN client teardown
   // cannot turn a failed actual-CLOSED assertion into a pass.
   const clients = channels.map((channel) => ({

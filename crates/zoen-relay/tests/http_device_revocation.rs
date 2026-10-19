@@ -88,6 +88,14 @@ struct TestRelay {
 
 impl TestRelay {
     async fn new() -> Self {
+        Self::with_store(Arc::new(object_store::memory::InMemory::new())).await
+    }
+
+    async fn with_store(blobs: Arc<dyn object_store::ObjectStore>) -> Self {
+        Self::configured(blobs, "").await
+    }
+
+    async fn configured(blobs: Arc<dyn object_store::ObjectStore>, limit_spec: &str) -> Self {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let admin_url = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
         let database = format!(
@@ -122,11 +130,11 @@ impl TestRelay {
             delivery_auth: auth_pool(),
             log: Arc::new(UnusedLog),
             fanout: fanout::Fanout::local("http-revocation".into()),
-            limits: limits::Limits::from_spec("").unwrap(),
+            limits: limits::Limits::from_spec(limit_spec).unwrap(),
             client_ip_header: None,
             relay_name: "test-relay".into(),
             metrics: metrics::Metrics::default(),
-            blobs: Arc::new(object_store::memory::InMemory::new()),
+            blobs,
             backup_vault: None,
             backup_settings: Default::default(),
             apple_app_ids: Vec::new(),
@@ -228,6 +236,9 @@ impl TestRelay {
         .unwrap();
     }
 }
+
+#[path = "http_device_revocation/media_fixture.rs"]
+mod media_fixture;
 
 #[tokio::test]
 async fn provider_auth_failures_keep_wire_contract_and_retry_policy() {

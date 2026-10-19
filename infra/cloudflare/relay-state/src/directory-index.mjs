@@ -11,5 +11,6 @@ export default class PrivateDirectory extends WorkerEntrypoint {
   deliver(input) { return this.#directory().deliver(input); }
   // Request/Response RPC is private; the original Origin header reaches the DO.
   provider(request) { return this.#directory().provider(request); }
+  media(request) { return this.#directory().media(request); }
   fetch() { return new Response('Not found', { status: 404 }); }
 }

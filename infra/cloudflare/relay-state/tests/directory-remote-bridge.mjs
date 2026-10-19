@@ -28,7 +28,27 @@ export default {
         new Request("https://private-directory.test/v1/sync", request),
       );
     }
-    if (path === "/deliver" && request.method === "POST" && (await emptyBody(request))) {
+    if (env.QA_MEDIA === "1") {
+      const match = /^\/media\/([a-f0-9]{64})$/.exec(path);
+      if (
+        match &&
+        [env.QA_MEDIA_ONE, env.QA_MEDIA_TWO].includes(match[1]) &&
+        ["GET", "HEAD", "PUT"].includes(request.method) &&
+        (request.method !== "PUT" || request.headers.get("x-zoen-device") === env.QA_DEVICE)
+      ) {
+        // One hardcoded OWN cell and exactly two native-generated hashes. No
+        // arbitrary bucket key, cell, identity or verified-device injection.
+        return env.DIRECTORY.getByName(env.DIRECTORY_CELL).media(
+          new Request(`https://private-directory.test/v1/blobs/${match[1]}`, request),
+        );
+      }
+    }
+    if (
+      env.QA_MEDIA !== "1" &&
+      path === "/deliver" &&
+      request.method === "POST" &&
+      (await emptyBody(request))
+    ) {
       const frame = Uint8Array.from(atob(env.QA_PONG), (char) => char.charCodeAt(0));
       return Response.json(
         await env.DIRECTORY.getByName(env.DIRECTORY_CELL).deliver({

@@ -33,6 +33,7 @@ function runtime() {
         "tests/provider-fixture.mjs",
         "src/directory-state.mjs",
         "src/provider-auth.mjs",
+        "src/media-blobs.mjs",
         "generated/wasm/admission.js",
       ]
         .map((path) => ({ type: "ESModule", path: join(root, path) }))

@@ -1,56 +1,98 @@
 #!/usr/bin/env node
 // Isolated native PostgreSQL oracle versus a private Rust/WASM Directory DO.
-import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { copyFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let output;
 let skipBuild = false;
+let media = false;
 const args = process.argv.slice(2);
 for (let index = 0; index < args.length; index++) {
-  if (args[index] === '--skip-build') skipBuild = true;
-  else if (args[index] === '--out-dir' && args[index + 1] && !args[index + 1].startsWith('--')) output = resolve(args[++index]);
-  else throw new Error('Usage: verify-cloudflare-directory.mjs [--out-dir DIR] [--skip-build]');
+  if (args[index] === "--skip-build") skipBuild = true;
+  else if (args[index] === "--media") media = true;
+  else if (args[index] === "--out-dir" && args[index + 1] && !args[index + 1].startsWith("--"))
+    output = resolve(args[++index]);
+  else
+    throw new Error(
+      "Usage: verify-cloudflare-directory.mjs [--out-dir DIR] [--skip-build] [--media]",
+    );
 }
-output ??= await mkdtemp(join(tmpdir(), 'zoen-cloudflare-directory-'));
+output ??= await mkdtemp(join(tmpdir(), "zoen-cloudflare-directory-"));
 await mkdir(output, { recursive: true });
-const environment = { ...process.env, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? '2' };
-const scope = 'Private single-cell Person/device directory, Directory-owned native binary sockets and MLS key-package publication/claims (128 records/768 KiB response bound). Native PostgreSQL policy versus shared Rust/WASM and SQLite transactions; no public endpoint, Space audience authorization, provider auth, recovery or agent registration.';
+assert.deepEqual(await readdir(output), [], "Use a fresh empty evidence directory");
+const environment = { ...process.env, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "2" };
+const scope = media
+  ? "Private media HTTP/R2 adapter on the same fixed Directory. Native actual HTTP oracle versus shared Rust/WASM, current device rows, weighted quota and immutable encrypted objects. No public HTTP, real R2 write or deployment. Private one-body/8-waiter/10s-idle/default-quota/25MiB-read bounds; no transfer or backup."
+  : "Private single-cell Person/device directory, Directory-owned native binary sockets and MLS key-package publication/claims (128 records/768 KiB response bound). Native PostgreSQL policy versus shared Rust/WASM and SQLite transactions; no public endpoint, Space audience authorization, provider auth, recovery or agent registration.";
 const sourcePaths = [
-  'Cargo.toml', 'Cargo.lock', 'crates/roda-relay-admission/Cargo.toml',
-  'crates/roda-relay-admission/src/auth.rs',
-  'crates/roda-relay-admission/src/auth/fixtures/rsa-test-only.jwk.json',
-  'crates/roda-relay-admission/src/auth/fixtures/rsa-test-only.pk8',
-  'crates/roda-relay-admission/src/directory.rs',
-  'crates/roda-relay-admission/src/directory/key_packages.rs',
-  'crates/roda-relay-admission/src/directory/socket.rs',
-  'crates/roda-relay-admission/tests/directory_socket.rs',
-  'crates/roda-relay-admission/tests/directory_key_packages.rs',
-  'crates/roda-relay-admission/tests/directory.rs', 'crates/roda-relay-admission/src/lib.rs',
-  'crates/zoen-relay/src/db.rs', 'crates/zoen-relay/src/session.rs', 'crates/zoen-relay/src/key_package_claims.rs',
-  'crates/zoen-relay/examples/cloudflare-directory-fixture.rs',
-  'infra/cloudflare/relay-state/src/directory-state.mjs', 'infra/cloudflare/relay-state/src/directory-index.mjs',
-  'infra/cloudflare/relay-state/tests/directory-fixture.mjs', 'infra/cloudflare/relay-state/tests/directory-state.test.mjs',
-  'infra/cloudflare/relay-state/tests/directory-socket.test.mjs',
-  'infra/cloudflare/relay-state/wrangler.directory.jsonc', 'infra/cloudflare/relay-state/package.json',
-  'infra/cloudflare/relay-state/DIRECTORY.md', 'scripts/verify-cloudflare-directory.mjs',
-  'scripts/verify-cloudflare-admission.mjs', 'scripts/build-cloudflare-closed.mjs',
-  'infra/cloudflare/package.json', 'infra/cloudflare/package-lock.json',
+  "Cargo.toml",
+  "Cargo.lock",
+  "crates/roda-relay-admission/Cargo.toml",
+  "crates/roda-relay-admission/src/auth.rs",
+  "crates/roda-relay-admission/src/auth/fixtures/rsa-test-only.jwk.json",
+  "crates/roda-relay-admission/src/auth/fixtures/rsa-test-only.pk8",
+  "crates/roda-relay-admission/src/directory.rs",
+  "crates/roda-relay-admission/src/directory/key_packages.rs",
+  "crates/roda-relay-admission/src/directory/socket.rs",
+  "crates/roda-relay-admission/tests/directory_socket.rs",
+  "crates/roda-relay-admission/tests/directory_key_packages.rs",
+  "crates/roda-relay-admission/tests/directory.rs",
+  "crates/roda-relay-admission/src/lib.rs",
+  "crates/zoen-relay/src/db.rs",
+  "crates/zoen-relay/src/session.rs",
+  "crates/zoen-relay/src/key_package_claims.rs",
+  "crates/zoen-relay/examples/cloudflare-directory-fixture.rs",
+  "infra/cloudflare/relay-state/src/directory-state.mjs",
+  "infra/cloudflare/relay-state/src/directory-index.mjs",
+  "infra/cloudflare/relay-state/tests/directory-fixture.mjs",
+  "infra/cloudflare/relay-state/tests/directory-state.test.mjs",
+  "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
+  "infra/cloudflare/relay-state/wrangler.directory.jsonc",
+  "infra/cloudflare/relay-state/package.json",
+  "infra/cloudflare/relay-state/DIRECTORY.md",
+  "scripts/verify-cloudflare-directory.mjs",
+  "scripts/verify-cloudflare-admission.mjs",
+  "scripts/build-cloudflare-closed.mjs",
+  "infra/cloudflare/relay-state/src/provider-auth.mjs",
+  "infra/cloudflare/relay-state/src/media-blobs.mjs",
+  "crates/roda-relay-admission/src/auth/enrollment.rs",
+  "crates/roda-relay-admission/src/blobs.rs",
+  "crates/roda-relay-admission/src/gcra.rs",
+  "infra/cloudflare/package.json",
+  "infra/cloudflare/package-lock.json",
 ];
+// Media evidence binds runtime imports and tests, not independently edited docs.
+if (media) {
+  sourcePaths.splice(sourcePaths.indexOf("infra/cloudflare/relay-state/DIRECTORY.md"), 1);
+  sourcePaths.push(
+    "crates/roda-relay-admission/tests/blobs.rs",
+    "crates/zoen-relay/src/blobs.rs",
+    "crates/zoen-relay/src/limits.rs",
+    "crates/zoen-relay/tests/http_device_revocation.rs",
+    "crates/zoen-relay/tests/http_device_revocation/media_fixture.rs",
+    "infra/cloudflare/relay-state/tests/media-fixture.mjs",
+    "infra/cloudflare/relay-state/tests/media-blobs.test.mjs",
+  );
+}
 function run(command, commandArgs, { capture = false, env = environment } = {}) {
-  console.log(`Running ${command} ${commandArgs.join(' ')}`);
+  console.log(`Running ${command} ${commandArgs.join(" ")}`);
   return new Promise((accept, reject) => {
-    const child = spawn(command, commandArgs, { cwd: root, env, stdio: ['ignore', capture ? 'pipe' : 'inherit', 'inherit'] });
+    const child = spawn(command, commandArgs, {
+      cwd: root,
+      env,
+      stdio: ["ignore", capture ? "pipe" : "inherit", "inherit"],
+    });
     const chunks = [];
-    if (capture) child.stdout.on('data', chunk => chunks.push(chunk));
-    child.once('error', reject);
-    child.once('close', (code, signal) => {
-      const stdout = capture ? Buffer.concat(chunks).toString('utf8') : undefined;
+    if (capture) child.stdout.on("data", (chunk) => chunks.push(chunk));
+    child.once("error", reject);
+    child.once("close", (code, signal) => {
+      const stdout = capture ? Buffer.concat(chunks).toString("utf8") : undefined;
       if (code === 0) accept(stdout);
       else reject(Object.assign(new Error(`${command} failed (${signal ?? code})`), { stdout }));
     });
@@ -58,37 +100,176 @@ function run(command, commandArgs, { capture = false, env = environment } = {}) 
 }
 function testTotals(tap) {
   const totals = {};
-  for (const name of ['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo']) {
-    const matches = [...tap.matchAll(new RegExp(`^# ${name} (\\d+)\\r?$`, 'gm'))];
+  for (const name of ["tests", "pass", "fail", "cancelled", "skipped", "todo"]) {
+    const matches = [...tap.matchAll(new RegExp(`^# ${name} (\\d+)\\r?$`, "gm"))];
     assert.ok(matches.length, `Missing Node TAP ${name} total`);
     totals[name] = Number(matches.at(-1)[1]);
   }
-  assert.ok(totals.tests > 0, 'The workerd suite must run actual cases');
-  assert.equal(totals.pass, totals.tests, 'Every workerd case must pass');
-  for (const name of ['fail', 'cancelled', 'skipped', 'todo']) assert.equal(totals[name], 0, `Unexpected workerd ${name}`);
+  assert.ok(totals.tests > 0, "The workerd suite must run actual cases");
+  assert.equal(totals.pass, totals.tests, "Every workerd case must pass");
+  for (const name of ["fail", "cancelled", "skipped", "todo"])
+    assert.equal(totals[name], 0, `Unexpected workerd ${name}`);
   return totals;
 }
 async function artifact(path) {
   const bytes = await readFile(path);
-  return { path, bytes: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') };
+  return {
+    path,
+    bytes: bytes.byteLength,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  };
 }
-async function summary(value) { await writeFile(join(output, 'summary.json'), `${JSON.stringify(value, null, 2)}\n`); }
+async function summary(value) {
+  await writeFile(join(output, "summary.json"), `${JSON.stringify(value, null, 2)}\n`);
+}
 try {
-  if (!skipBuild) await run(process.execPath, [join(root, 'scripts/build-cloudflare-closed.mjs')]);
+  if (!skipBuild) await run(process.execPath, [join(root, "scripts/build-cloudflare-closed.mjs")]);
   const database = environment.ZOEN_TEST_PG ?? environment.DATABASE_URL;
-  if (!database) throw new Error('Set ZOEN_TEST_PG or DATABASE_URL to an existing PostgreSQL test database');
-  const fixture = JSON.parse(await run('cargo', ['run', '--quiet', '--locked', '-p', 'zoen-relay', '--example', 'cloudflare-directory-fixture'], {
-    capture: true, env: { ...environment, ZOEN_TEST_PG: database },
-  }));
+  if (!database)
+    throw new Error("Set ZOEN_TEST_PG or DATABASE_URL to an existing PostgreSQL test database");
+  const transitive = (
+    await run(
+      "git",
+      [
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        "crates/roda-relay-admission/src",
+        "crates/roda-log/src",
+        "crates/roda-proto/src",
+        "crates/roda-mls/src",
+        "crates/roda-types/src",
+        ...(media ? ["crates/zoen-relay/src", "crates/zoen-relay/migrations"] : []),
+      ],
+      { capture: true },
+    )
+  )
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+  sourcePaths.push(
+    ...transitive,
+    ...["roda-log", "roda-proto", "roda-mls", "roda-types"].map(
+      (name) => `crates/${name}/Cargo.toml`,
+    ),
+  );
+  sourcePaths.splice(0, sourcePaths.length, ...new Set(sourcePaths));
+  const beforeSources = await Promise.all(sourcePaths.map((path) => artifact(join(root, path))));
+  const runtimePaths = ["admission.js", "admission_bg.wasm"].map((name) =>
+    join(root, "infra/cloudflare/relay-state/generated/wasm", name),
+  );
+  const beforeRuntime = await Promise.all(runtimePaths.map(artifact));
+  let fixture;
+  let nativeHttp;
+  const fixturePath = join(
+    output,
+    media ? "media-native-fixtures.json" : "directory-native-fixtures.json",
+  );
+  if (media) {
+    const nativeLog = await run(
+      "cargo",
+      [
+        "test",
+        "--quiet",
+        "--locked",
+        "-p",
+        "zoen-relay",
+        "--test",
+        "http_device_revocation",
+        "--",
+        "--include-ignored",
+        "--test-threads=1",
+      ],
+      {
+        capture: true,
+        env: { ...environment, ZOEN_TEST_PG: database, ZOEN_MEDIA_FIXTURE_OUTPUT: fixturePath },
+      },
+    ).catch(async (failure) => {
+      if (typeof failure.stdout === "string")
+        await writeFile(join(output, "media-native-http.log"), failure.stdout);
+      throw failure;
+    });
+    await writeFile(join(output, "media-native-http.log"), nativeLog);
+    const totals = /^test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored;/m.exec(nativeLog);
+    assert.ok(totals, "Native HTTP runner must report actual passing tests");
+    nativeHttp = { pass: Number(totals[1]), fail: Number(totals[2]), ignored: Number(totals[3]) };
+    assert.ok(nativeHttp.pass >= 6);
+    assert.equal(nativeHttp.fail, 0);
+    assert.equal(nativeHttp.ignored, 0);
+    fixture = JSON.parse(await readFile(fixturePath, "utf8"));
+    assert.equal(fixture.scope, "native-media-http");
+    assert.ok(fixture.steps.length >= 28, "Every actual native HTTP boundary must run");
+    for (const label of [
+      "max",
+      "max-plus-one",
+      "extractor-limit",
+      "extractor-limit-auth-first",
+      "percent-encoded-hash",
+      "malformed-percent",
+      "invalid-utf8",
+      "encoded-slash",
+      "long-bad-hash",
+      "long-bad-device",
+      "long-bad-signature",
+      "long-leading-zero-timestamp",
+    ])
+      assert.ok(
+        fixture.steps.some((step) => step.label === label),
+        `Missing native media case: ${label}`,
+      );
+    assert.equal(
+      fixture.storage_failures.length,
+      3,
+      "Native put/get/read storage failures required",
+    );
+  } else {
+    fixture = JSON.parse(
+      await run(
+        "cargo",
+        [
+          "run",
+          "--quiet",
+          "--locked",
+          "-p",
+          "zoen-relay",
+          "--example",
+          "cloudflare-directory-fixture",
+        ],
+        {
+          capture: true,
+          env: { ...environment, ZOEN_TEST_PG: database },
+        },
+      ),
+    );
+    assert.equal(
+      fixture.steps.length,
+      71,
+      "Every native directory and key-package scenario must run",
+    );
+    await writeFile(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`);
+  }
   assert.equal(fixture.schema, 1);
-  assert.equal(fixture.steps.length, 71, 'Every native directory and key-package scenario must run');
-  const fixturePath = join(output, 'directory-native-fixtures.json');
-  await writeFile(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`);
-  const workerdTapPath = join(output, 'directory-workerd.tap');
-  const workerdTap = await run(process.execPath, ['--test', '--test-reporter=tap', '--test-concurrency=1', 'infra/cloudflare/relay-state/tests/directory-state.test.mjs', 'infra/cloudflare/relay-state/tests/directory-socket.test.mjs'], {
-    capture: true, env: { ...environment, ZOEN_DIRECTORY_FIXTURE: fixturePath },
-  }).catch(async failure => {
-    if (typeof failure.stdout === 'string') {
+  const workerdTapPath = join(output, media ? "media-workerd.tap" : "directory-workerd.tap");
+  const testFiles = media
+    ? ["infra/cloudflare/relay-state/tests/media-blobs.test.mjs"]
+    : [
+        "infra/cloudflare/relay-state/tests/directory-state.test.mjs",
+        "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
+      ];
+  const fixtureEnv = media
+    ? { ZOEN_MEDIA_FIXTURE: fixturePath }
+    : { ZOEN_DIRECTORY_FIXTURE: fixturePath };
+  const workerdTap = await run(
+    process.execPath,
+    ["--test", "--test-reporter=tap", "--test-concurrency=1", ...testFiles],
+    {
+      capture: true,
+      env: { ...environment, ...fixtureEnv },
+    },
+  ).catch(async (failure) => {
+    if (typeof failure.stdout === "string") {
       await writeFile(workerdTapPath, failure.stdout);
       process.stdout.write(failure.stdout);
     }
@@ -97,17 +278,56 @@ try {
   await writeFile(workerdTapPath, workerdTap);
   process.stdout.write(workerdTap);
   const workerd = testTotals(workerdTap);
-  const copied = join(output, 'wasm');
+  const afterSources = await Promise.all(sourcePaths.map((path) => artifact(join(root, path))));
+  assert.deepEqual(
+    afterSources,
+    beforeSources,
+    "Runtime/test sources must remain frozen throughout validation",
+  );
+  assert.deepEqual(
+    await Promise.all(runtimePaths.map(artifact)),
+    beforeRuntime,
+    "Runtime WASM/glue must remain frozen throughout validation",
+  );
+  const copied = join(output, "wasm");
   await mkdir(copied, { recursive: true });
-  for (const name of ['admission.js', 'admission_bg.wasm']) await copyFile(join(root, 'infra/cloudflare/relay-state/generated/wasm', name), join(copied, name));
-  const checkoutHead = (await run('git', ['rev-parse', 'HEAD'], { capture: true })).trim();
-  const dirty = Boolean((await run('git', ['status', '--porcelain', '--', ...sourcePaths], { capture: true })).trim());
-  await summary({ passed: true, scope, output, skipBuild, nativeSteps: fixture.steps.length, workerdCases: workerd.tests, workerd,
-    source: { commit: process.env.GITHUB_SHA ?? checkoutHead, checkoutHead, dirty, dirtyScope: sourcePaths },
-    sources: await Promise.all(sourcePaths.map(path => artifact(join(root, path)))),
-    artifacts: await Promise.all([fixturePath, workerdTapPath, join(copied, 'admission.js'), join(copied, 'admission_bg.wasm')].map(artifact)),
+  for (const name of ["admission.js", "admission_bg.wasm"])
+    await copyFile(
+      join(root, "infra/cloudflare/relay-state/generated/wasm", name),
+      join(copied, name),
+    );
+  const checkoutHead = (await run("git", ["rev-parse", "HEAD"], { capture: true })).trim();
+  const dirty = Boolean(
+    (await run("git", ["status", "--porcelain", "--", ...sourcePaths], { capture: true })).trim(),
+  );
+  await summary({
+    passed: true,
+    scope,
+    output,
+    skipBuild,
+    media,
+    nativeHttp,
+    nativeSteps: fixture.steps.length,
+    workerdCases: workerd.tests,
+    workerd,
+    source: {
+      commit: process.env.GITHUB_SHA ?? checkoutHead,
+      checkoutHead,
+      dirty,
+      dirtyScope: sourcePaths,
+    },
+    sources: afterSources,
+    artifacts: await Promise.all(
+      [
+        fixturePath,
+        workerdTapPath,
+        ...(media ? [join(output, "media-native-http.log")] : []),
+        join(copied, "admission.js"),
+        join(copied, "admission_bg.wasm"),
+      ].map(artifact),
+    ),
   });
-  console.log(`Private directory verification passed; receipt ${join(output, 'summary.json')}`);
+  console.log(`Private directory verification passed; receipt ${join(output, "summary.json")}`);
 } catch (failure) {
   await summary({ passed: false, scope, output, skipBuild, error: failure.message });
   throw failure;

@@ -3,6 +3,7 @@ import { initSync, directoryHello, directoryAuthenticate, directoryLookup,
   directoryRequest, directoryAuthorize, directorySocketFrame, directorySocketControl, directorySocketDelivery } from '../generated/wasm/admission.js';
 import wasmModule from '../generated/wasm/admission_bg.wasm';
 import { ProviderAuthState } from './provider-auth.mjs';
+import { MediaBlobsState } from './media-blobs.mjs';
 
 initSync({ module: wasmModule });
 const MAX_BYTES = 1024 * 1024;
@@ -46,6 +47,7 @@ function token(value) {
  */
 export class DirectoryState extends DurableObject {
   #providerAuth;
+  #mediaBlobs;
   constructor(ctx, env) {
     super(ctx, env);
     const sql = ctx.storage.sql;
@@ -91,6 +93,10 @@ export class DirectoryState extends DurableObject {
       authorizationChanged: () => this._retireSockets(),
     });
     return this.#providerAuth.fetch(request);
+  }
+  media(request) {
+    this.#mediaBlobs ??= new MediaBlobsState(this.ctx, this.env, { nowMs: () => this._nowMs() });
+    return this.#mediaBlobs.fetch(request);
   }
   _nonce() { return this._randomToken(); }
   _randomToken() {
