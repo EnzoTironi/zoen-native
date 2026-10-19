@@ -41,7 +41,7 @@ await run('cargo', [
   '--profile',
   profile,
 ]);
-await run('wasm-bindgen', [
+const bindgenArgs = [
   join(target, `wasm32-unknown-unknown/${folder}/zoen_web_core.wasm`),
   '--target',
   'web',
@@ -49,7 +49,10 @@ await run('wasm-bindgen', [
   generated,
   '--out-name',
   'zoen_web_core',
-]);
+];
+// Keep development stack names; production does not need the large debug table.
+if (profile === 'release') bindgenArgs.push('--remove-name-section');
+await run('wasm-bindgen', bindgenArgs);
 await cp(join(generated, 'zoen_web_core_bg.wasm'), join(output, 'core/zoen_web_core_bg.wasm'));
 const integrity = async (path) =>
   `sha384-${createHash('sha384')
