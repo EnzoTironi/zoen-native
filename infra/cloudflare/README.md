@@ -21,17 +21,20 @@ It checks worker/WASM integrity and Cloudflare's 25 MiB asset limit before uploa
 popup-safe sign-in routes. The hosting check exercises the actual Workers runtime,
 including document-navigation SPA fallback and ordinary worker/WASM fetches.
 
-On 19 October 2026, deployment `4d56e30f-a989-4de4-be9b-60b70d03d430`
-published clean source `d4a0590d` at <https://app.tryzoen.com> and
+On 19 October 2026, deployment `359e0cd0-41c5-4e53-b64c-fef8e1b4d0e1`
+published clean Web source `891d6d9b` at <https://app.tryzoen.com> and
 <https://zoen-web.agenttironi.workers.dev>. All ten hosting checks, exact SPA bytes,
 signing-worker integrity and WASM bytes passed on **each** origin. Receipt:
-`/private/tmp/zoen-app-domain-v96/release-07-public/acceptance.json` (SHA256
-`306b367117f5e39a8bc0ac05abfb1a692cf88abd4e243ad2a6df8c257aa9541b`).
+`/private/tmp/zoen-app-domain-v96/release-09-public/acceptance.json` (SHA256
+`5c9210eccb0267bd60d59255c830ccdfc0f79fd29097532054e03a8444394ac0`).
 This fresh production build includes canonical Web Excalidraw and the measured
 miniapp header inset. Public worker integrity is
-`sha384-dYc1Ds6ChZA3cp5LAy6/3BNbEuwGze2+MlxwJotYmJoXyigQWBHsMy9h5GHmbjwN`.
-The WASM is 25,876,496 bytes, below the 25 MiB individual asset limit. Previous
-release06 and its evidence remain separately retained.
+`sha384-pImaTmN20eB49OhAsS9/4uCr8hZDDmu0NhVTfWUyy5IEBLeeGXkVY+YR8YeYLGlH`.
+The WASM is 23,251,769 bytes (SHA256
+`f1e077a46b914c8098d9448b42e694fd47bffdc944cb73a553d16c50ae17e096`),
+below the 25 MiB individual asset limit. Release builds omit only the debugging
+name section; all remaining WASM sections are unchanged. Worker output is identical
+from the repository and app directories. Releases07/06 retain their separate evidence.
 
 The exact `app.tryzoen.com/*` Worker Route is fail-closed. Only the two existing
 app DNS records changed to Proxied; their values and Auto TTL were retained, with
@@ -46,29 +49,31 @@ both public origins passed the strengthened header/exact-body checks. This uses
 Cloudflare's documented [no-transform policy](https://developers.cloudflare.com/web-analytics/get-started/),
 without changing analytics settings for other sites.
 
-Separate [CI run 39201639333](https://github.com/EnzoTironi/zoen-native/actions/runs/39201639333)
-passed all 19 browser checkpoints in each locale on merge
-`d126484348aded89d131b018933545dd858374c2` for head `db60c33e`;
-artifact `12163494249` is retained in
-`/private/tmp/zoen-cloudflare-web-v96/ci-db60-evidence`. The later local 22-step
-journey includes actual canvas edits, cold reload and canonical peer byte comparison;
-its final app check passed 795 tests. That successor and the new Directory CI step
-still require their own CI run. Android Release failed separately on R8 heap
-exhaustion; this is not a whole-workflow pass. See
+Separate [CI run 39204333306](https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306)
+passed all 22 browser checkpoints in each locale on merge
+`59998b677ce581bd49a045538ee62f3d17b55347` for head `52da9729`, including real
+canvas edits, cold reload and canonical peer byte comparison. Its Directory baseline
+passed 33 native PostgreSQL scenarios and nine workerd cases; it predates the
+key-package extension below. Artifacts `12165466316` (Web) and `12164869200`
+(Directory) are retained with verified source/archive hashes in
+`/private/tmp/zoen-cloudflare-web-v96/ci-52da-evidence`. Linux discovered 795 client
+tests: 793 passed and two Darwin-only Swift harnesses were skipped; the separate
+local macOS check passed all 795. These checks and the later stripped production
+artifact have distinct receipts. No Android or whole-workflow result is inferred. See
 [Web acceptance](../../docs/dev/expo-web-acceptance.md) for source boundaries.
 
 Actual empty-profile browsers on **both** public origins rendered Portuguese
 onboarding, the friendly connection error and system Retry font without unhandled
 page errors or an injected analytics script. Root documents remained isolated;
 sign-in documents remained popup-safe. Receipts and screenshots are under
-`/private/tmp/zoen-app-domain-v96/release-07-public/{canonical,workers-preview}/`.
+`/private/tmp/zoen-app-domain-v96/release-09-public/{canonical,workers-preview}/`.
 Both providers remain unavailable against the dead configured relay; this does not
 establish successful WASM initialization or auth/sync.
 
 The preview does not establish provider login or public encrypted sync. The
 configured production origin is `https://app.tryzoen.com`, and the configured relay
-is `https://relay.tryzoen.com`; the latter currently resolves through an unavailable
-Fly application. Connect the healthy Cloudflare relay before accepting production
+is `https://relay.tryzoen.com`; its challenge request failed DNS lookup in both
+guest browser checks. Connect the healthy Cloudflare relay before accepting production
 OAuth flows. Provider origins and the separate OAuth integration Worker are unchanged.
 
 ## Persistent relay storage
@@ -88,18 +93,25 @@ session. It exposes no public HTTP endpoint or raw append RPC.
 
 The separately deployed [private Person/device directory](relay-state/DIRECTORY.md)
 keeps registration, globally unique handles/devices, sponsored linking, one-time
-boxes and revocation in one SQLite transaction domain. Its shared Rust policy passed
-40 tests, 33 real native PostgreSQL scenarios and nine workerd cases. Private version
-`759ffee3-0ef9-4ff5-a53b-1c971a3e2197` uses clean source `46128a65`; it has no public
-routes. Those local scenarios and private provisioning are distinct; no remote
-Directory journey was run.
+boxes, revocation and MLS key-package publication/claims in one SQLite transaction
+domain. Reviewed runtime `8bb0ae1e` passed 47 shared Rust tests, three native receipt
+regressions, 71 native PostgreSQL scenarios and 18 workerd cases. It is privately
+deployed as `1fd4bab4-7013-4749-bb1e-3c59efa146c3`, retaining the existing namespace
+and bindings, with no routes, custom domains, workers.dev or previews. Receipt:
+`/private/tmp/zoen-cloudflare-admission-v96/validation/directory-keypackages-deployment-acceptance.json`
+(SHA256 `4b3cb67beee155ae69e724520805f04f170849aae83f2b2bc312c8633f92067a`).
+This provisioning proof adds no remote Directory journey claim. Fresh claims are
+bounded to 128 records and 768 KiB canonical response bytes; Rust contexts remain
+bounded to 1 MiB. These private limits do not establish full native capacity parity.
 
 The public relay still needs Directory/Space integration and final delivery
-authorization, provider proofs, backup recovery, agents, key-package claims, MLS
-state and WebSockets. Encrypted media in private R2 still requires its separate
-activation/terms confirmation. Existing OAuth Workers, other DNS and R2 activation
-are unchanged.
+authorization, provider proofs, backup recovery, agents, package-refill notifications,
+Space MLS epochs/commits/checkpoints/holds and WebSockets. Encrypted media in private
+R2 still requires its separate activation/terms confirmation. Existing OAuth Workers,
+other DNS and R2 activation are unchanged.
 
 The `expo` workflow runs the actual local workerd storage tests without account
 credentials or deployment. Public hosting and encrypted browser journeys are
 separate acceptance checks; neither replaces relay protocol validation.
+The `/private/tmp` receipt paths above are machine-local evidence, not portable CI
+artifacts; the linked CI run and artifact IDs preserve their separate attribution.

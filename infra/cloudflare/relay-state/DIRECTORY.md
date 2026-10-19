@@ -74,8 +74,8 @@ The Worker has no HTTP routes, workers.dev or preview URLs. It is not connected 
 closed-Space service. Provider proofs/JWTs, backup recovery, agent registration, profile
 fanout, global rate limits, KeyPackagesLow/refill notifications, Space MLS epochs, encrypted
 commit/checkpoint/hold handling and the complete public session protocol remain separate
-gates. No caller may use this slice as a
-public authentication facade.
+gates. Encrypted blob transport and R2 activation are also unfinished. No caller may
+use this slice as a public authentication facade.
 
 With an existing PostgreSQL test environment, run
 `node scripts/verify-cloudflare-directory.mjs --out-dir .dev/cloudflare-directory` from
@@ -94,9 +94,23 @@ cases. Capacity fixtures populate trusted synthetic storage only; they do not cl
 MLS enrollment of 128 devices. These checks validate private request operations, not
 remote public sessions or delivery.
 
-The private `zoen-relay-directory` Worker was provisioned on 2026-10-19 at version
-`759ffee3-0ef9-4ff5-a53b-1c971a3e2197`, from source commit `46128a65`. It has no
-public route, workers.dev or preview URL. The 33 PostgreSQL scenarios and nine
-workerd cases are local validation; no remote Directory journey was run in this
-checkpoint. This source extension adds the key-package lane locally; it has not updated
-that deployed version.
+The key-package extension was privately deployed on 2026-10-19 as
+`1fd4bab4-7013-4749-bb1e-3c59efa146c3`, using reviewed runtime `8bb0ae1e`.
+The deployment checkout was descendant `819e58cb`; its only changes from the reviewed
+commit were outside the shared runtime/build inputs. All 19 reviewed source hashes
+and the rebuilt 1,636,277-byte WASM matched before upload and afterward. Its WASM
+SHA256 is `ae04d9d2969eae654fcfbdcc2924137d018105d5def6523ba6df3a0ee64d5bb0`.
+The existing namespace `66f8e984ecda4663944a760b49d31254`, all three bindings and
+the migration tag were preserved. Read-only API checks confirmed active version 2,
+`has_preview=false`, no routes/custom domains and disabled workers.dev/previews.
+Receipt: `/private/tmp/zoen-cloudflare-admission-v96/validation/directory-keypackages-deployment-acceptance.json`
+(SHA256 `4b3cb67beee155ae69e724520805f04f170849aae83f2b2bc312c8633f92067a`).
+This is private provisioning evidence; no remote Directory request journey was run.
+The previous `759ffee3-0ef9-4ff5-a53b-1c971a3e2197` provisioning proof remains retained.
+
+The earlier [CI run 39204333306](https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306)
+validated the original 33 PostgreSQL scenarios and nine workerd cases on merge
+`59998b677ce581bd49a045538ee62f3d17b55347` for head `52da9729`. Artifact
+`12164869200` predates this key-package extension. The later 47 Rust tests, three
+native receipt regressions and 71/18 differential cases above are separate local
+evidence. Machine-local receipt paths do not replace that portable CI attribution.
