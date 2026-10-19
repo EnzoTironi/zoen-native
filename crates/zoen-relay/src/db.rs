@@ -454,7 +454,7 @@ pub async fn sealed_profiles(
 }
 
 /// Single-use key packages a device may keep stored; publishing past it is refused.
-pub const MAX_KEY_PACKAGES: i64 = 200;
+pub const MAX_KEY_PACKAGES: i64 = roda_relay_admission::directory::key_packages::MAX_STOCK as i64;
 
 /// Stores a device's key packages, and its last-resort one in place of the previous.
 /// `false` when that would keep more than [`MAX_KEY_PACKAGES`] single-use ones.

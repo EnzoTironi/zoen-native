@@ -7,25 +7,25 @@
 //! before the single JSON stdout document is printed. Diagnostics use stderr.
 //! Public fixed seed bytes are fixture data, never account credentials.
 
-use anyhow::{anyhow, ensure, Context, Result};
-use base64::{engine::general_purpose::STANDARD, Engine};
+use anyhow::{Context, Result, anyhow, ensure};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use roda_log::{Author, Signer};
-use roda_proto::{auth_message, ClientFrame, DeviceCertificate, Op, Reply, ServerFrame};
-use roda_relay_admission::directory::{prepare_profile, Session};
+use roda_proto::{ClientFrame, DeviceCertificate, Op, Reply, ServerFrame, auth_message};
+use roda_relay_admission::directory::{Session, prepare_profile};
 use roda_types::{Identity, IdentityKind};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::{
-    postgres::{PgConnectOptions, PgPoolOptions},
     Connection, PgConnection, PgPool, Postgres, Transaction,
+    postgres::{PgConnectOptions, PgPoolOptions},
 };
 use std::{collections::BTreeMap, str::FromStr, time::Duration};
-use zoen_relay::db;
+use zoen_relay::{db, key_package_claims};
 
 const RELAY: &str = "zoen-cloudflare-private";
 const NOW_MS: &str = "1700000000000";
 
 // These are exactly the directory columns/constraints used by the native APIs
-// below (migrations 0001, 0005, 0012). Person-only inputs never touch agent tables.
+// below (migrations 0001, 0005, 0012, 0022, 0024). No agent tables are touched.
 const TABLES: &str = r#"
 CREATE TABLE identities (
     id TEXT PRIMARY KEY, handle TEXT UNIQUE, kind TEXT NOT NULL,
@@ -50,6 +50,22 @@ CREATE TABLE key_packages (
 );
 CREATE INDEX key_packages_by_device ON key_packages(identity, device, last_resort, id);
 CREATE UNIQUE INDEX key_packages_one_last_resort ON key_packages(identity, device) WHERE last_resort;
+CREATE TABLE key_package_publications (
+    identity TEXT NOT NULL REFERENCES identities(id), device TEXT NOT NULL,
+    package_hash BYTEA NOT NULL CHECK (octet_length(package_hash) = 32),
+    expires_at BIGINT NOT NULL, PRIMARY KEY(identity, device, package_hash)
+);
+CREATE INDEX key_package_publications_expiry ON key_package_publications(expires_at);
+CREATE TABLE key_package_claim_receipts (
+    source_identity TEXT NOT NULL REFERENCES identities(id),
+    source_device TEXT NOT NULL REFERENCES devices(device),
+    operation_id TEXT NOT NULL CHECK(length(operation_id) = 26),
+    targets TEXT[] NOT NULL,
+    response BYTEA NOT NULL CHECK(octet_length(response) <= 8388608),
+    expires_at_ms BIGINT NOT NULL,
+    PRIMARY KEY(source_identity, source_device, operation_id)
+);
+CREATE INDEX key_package_claim_receipts_expiry ON key_package_claim_receipts(expires_at_ms);
 "#;
 
 fn author(root: u8, device: u8) -> Author {
@@ -86,6 +102,37 @@ fn profile(who: &Author, handle: &str) -> Identity {
     }
 }
 
+// Explicit timestamp fixtures must bypass new_ulid's process-monotonic clock:
+// testing a future operation must not move all later expiry/retry fixtures forward.
+fn claim_operation(now_ms: i64) -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let mut value = ((now_ms as u128) << 80)
+        | u128::from(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    let mut encoded = [0; 26];
+    const ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    for index in (0..26).rev() {
+        encoded[index] = ALPHABET[(value & 31) as usize];
+        value >>= 5;
+    }
+    String::from_utf8(encoded.to_vec()).expect("ASCII fixture operation")
+}
+
+// Only public MLS packages leave this in-memory synthetic device. No device
+// database, private key package material, or runtime account is written to disk.
+fn mls_packages(who: &Author, count: usize, last_resort: bool) -> Result<Vec<Vec<u8>>> {
+    let mut connection = rusqlite::Connection::open_in_memory()?;
+    roda_mls::migrate(&mut connection)?;
+    let cert = certificate(who)?;
+    let device = roda_mls::Device::new(
+        &connection,
+        [77; 32],
+        &who.identity,
+        who.key.secret(),
+        &cert.cert,
+    )?;
+    Ok(device.key_packages(count, last_resort)?)
+}
+
 async fn snapshot(pool: &PgPool) -> Result<Value> {
     let profiles: Vec<Value> = sqlx::query_scalar("SELECT profile FROM identities ORDER BY id")
         .fetch_all(pool)
@@ -99,13 +146,50 @@ async fn snapshot(pool: &PgPool) -> Result<Value> {
         sqlx::query_as("SELECT id, sealed FROM link_boxes ORDER BY id")
             .fetch_all(pool)
             .await?;
+    let rows: Vec<(String, String, Vec<u8>, bool)> =
+        sqlx::query_as("SELECT identity, device, data, last_resort FROM key_packages")
+            .fetch_all(pool)
+            .await?;
+    let mut packages = rows
+        .into_iter()
+        .map(|(identity, device, data, last)| (identity, device, last, STANDARD.encode(data)))
+        .collect::<Vec<_>>();
+    packages.sort();
+    let rows: Vec<(String, String, Vec<u8>, i64)> = sqlx::query_as(
+        "SELECT identity, device, package_hash, expires_at FROM key_package_publications",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut publications = rows
+        .into_iter()
+        .map(|(identity, device, hash, expires)| (identity, device, hex::encode(hash), expires))
+        .collect::<Vec<_>>();
+    publications.sort();
+    type ClaimRow = (String, String, String, Vec<String>, Vec<u8>, i64);
+    let mut claims: Vec<ClaimRow> = sqlx::query_as(
+        "SELECT source_identity, source_device, operation_id, targets, response, expires_at_ms
+         FROM key_package_claim_receipts",
+    )
+    .fetch_all(pool)
+    .await?;
+    claims.sort_by(|a, b| (&a.0, &a.1, &a.2).cmp(&(&b.0, &b.1, &b.2)));
     Ok(json!({
         "identities": profiles,
         "devices": devices.into_iter().map(|(device, identity, cert, revoked)|
             json!({"device":device,"identity":identity,"cert":cert,"revoked":revoked}))
             .collect::<Vec<_>>(),
         "boxes": boxes.into_iter().map(|(id, sealed)|
-            json!({"id":id,"sealed_base64":STANDARD.encode(sealed)})).collect::<Vec<_>>()
+            json!({"id":id,"sealed_base64":STANDARD.encode(sealed)})).collect::<Vec<_>>(),
+        "packages": packages.into_iter().map(|(identity,device,last_resort,data)|
+            json!({"identity":identity,"device":device,"data_base64":data,"last_resort":last_resort}))
+            .collect::<Vec<_>>(),
+        "publications": publications.into_iter().map(|(identity,device,hash,expires)|
+            json!({"identity":identity,"device":device,"package_hash":hash,"expires_secs":expires.to_string()}))
+            .collect::<Vec<_>>(),
+        "claims": claims.into_iter().map(|(identity,device,operation,targets,response,expires)|
+            json!({"source_identity":identity,"source_device":device,"operation_id":operation,
+                "targets":targets,"response_base64":STANDARD.encode(response),"expires_ms":expires.to_string()}))
+            .collect::<Vec<_>>()
     }))
 }
 
@@ -169,7 +253,7 @@ fn valid_link_id(id: &str) -> bool {
     id.len() == 64 && id.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
-// Only the four private-adapter operations are dispatched. The native SQL APIs
+// Only the private-adapter operations are dispatched. The native SQL APIs
 // perform every durable write; no expected state is supplied by the WASM planner.
 async fn native_operation(
     pool: &PgPool,
@@ -237,6 +321,51 @@ async fn native_operation(
             }
             Ok(Reply::Done)
         }
+        Op::PublishKeyPackages {
+            packages,
+            last_resort,
+        } => {
+            let publications =
+                roda_relay_admission::directory::key_packages::validate_publications(
+                    &session.identity,
+                    &session.device,
+                    &packages,
+                    last_resort.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            if !db::put_key_packages(
+                pool,
+                &session.identity,
+                &session.device,
+                &publications,
+                last_resort.as_deref(),
+            )
+            .await
+            .map_err(|e| e.to_string())?
+            {
+                return Err("too many key packages stored".into());
+            }
+            Ok(Reply::Done)
+        }
+        Op::ClaimKeyPackages { ids, operation_id } => {
+            let records = if let Some(operation) = operation_id {
+                key_package_claims::claim(
+                    pool,
+                    &session.identity,
+                    &session.device,
+                    &operation,
+                    &ids,
+                )
+                .await
+                .map_err(|e| e.to_string())?
+            } else {
+                let ids = ids.into_iter().take(50).collect::<Vec<_>>();
+                db::claim_key_packages(pool, &ids)
+                    .await
+                    .map_err(|e| e.to_string())?
+            };
+            Ok(Reply::KeyPackages(records))
+        }
         _ => Err("fixture operation outside private Directory scope".into()),
     }
 }
@@ -278,6 +407,7 @@ struct Fixture<'a> {
     pool: &'a PgPool,
     sessions: BTreeMap<String, Session>,
     steps: Vec<Value>,
+    now_ms: String,
 }
 
 impl<'a> Fixture<'a> {
@@ -330,7 +460,7 @@ impl<'a> Fixture<'a> {
         self.steps
             .push(json!({"op":"login","label":label,"actor":actor,
             "hello_base64":STANDARD.encode(hello),"nonce":nonce,"auth_base64":STANDARD.encode(auth),
-            "now_ms":NOW_MS,"expected":expected,"state_after":after}));
+            "now_ms":self.now_ms,"expected":expected,"state_after":after}));
         Ok(())
     }
 
@@ -384,7 +514,7 @@ impl<'a> Fixture<'a> {
             );
         }
         self.steps.push(json!({"op":"request","label":label,"actor":actor,
-            "frame_base64":STANDARD.encode(bytes),"now_ms":NOW_MS,"expected":expected,"state_after":after}));
+            "frame_base64":STANDARD.encode(bytes),"now_ms":self.now_ms,"expected":expected,"state_after":after}));
         Ok(())
     }
 
@@ -405,11 +535,16 @@ impl<'a> Fixture<'a> {
 
 async fn timeline(pool: &PgPool) -> Result<Value> {
     sqlx::raw_sql(TABLES).execute(pool).await?;
-    ensure!(snapshot(pool).await? == json!({"identities":[],"devices":[],"boxes":[]}));
+    ensure!(
+        snapshot(pool).await?
+            == json!({"identities":[],"devices":[],"boxes":[],
+        "packages":[],"publications":[],"claims":[]})
+    );
     let mut f = Fixture {
         pool,
         sessions: BTreeMap::new(),
         steps: Vec::new(),
+        now_ms: NOW_MS.into(),
     };
     let a = author(11, 21);
     let b = author(12, 22);
@@ -672,7 +807,360 @@ async fn timeline(pool: &PgPool) -> Result<Value> {
     )
     .await?;
 
+    key_package_timeline(&mut f, &a).await?;
     Ok(json!({"schema":1,"cell":"isolated_directory_fixture","initial_empty":true,"steps":f.steps}))
+}
+
+async fn key_package_timeline(f: &mut Fixture<'_>, a: &Author) -> Result<()> {
+    let now = key_package_claims::clock_ms(f.pool).await?;
+    f.now_ms = now.to_string();
+    // The private host's bounded sessions from the 2023 prefix have expired.
+    f.login("kp-login-active-source", "a-kp", a, None).await?;
+    let c = author(13, 33);
+    let d = author(14, 34);
+    f.login("kp-login-target-c", "c", &c, None).await?;
+    f.request(
+        "kp-register-target-c",
+        "c",
+        Op::Register {
+            profile: profile(&c, "kp_c_fixture"),
+        },
+        None,
+    )
+    .await?;
+    f.login("kp-login-target-d", "d", &d, None).await?;
+    f.request(
+        "kp-register-target-d",
+        "d",
+        Op::Register {
+            profile: profile(&d, "kp_d_fixture"),
+        },
+        None,
+    )
+    .await?;
+    let cp = mls_packages(&c, 4, true)?;
+    let dp = mls_packages(&d, 2, true)?;
+    let replacement = mls_packages(&c, 0, true)?.remove(0);
+    f.request(
+        "kp-publish-first",
+        "c",
+        Op::PublishKeyPackages {
+            packages: vec![cp[0].clone(), cp[0].clone()],
+            last_resort: Some(cp[4].clone()),
+        },
+        None,
+    )
+    .await?;
+    // Separate successful publications give an authoritative native FIFO order;
+    // the test projection never compares native BIGSERIAL/SQLite rowid gaps.
+    f.request(
+        "kp-publish-second",
+        "c",
+        Op::PublishKeyPackages {
+            packages: vec![cp[1].clone()],
+            last_resort: None,
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "kp-publish-other-target",
+        "d",
+        Op::PublishKeyPackages {
+            packages: vec![dp[0].clone()],
+            last_resort: Some(dp[2].clone()),
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "kp-publish-wrong-device",
+        "c",
+        Op::PublishKeyPackages {
+            packages: vec![dp[1].clone()],
+            last_resort: None,
+        },
+        Some("key package is for another device"),
+    )
+    .await?;
+    f.request(
+        "kp-publish-malformed",
+        "c",
+        Op::PublishKeyPackages {
+            packages: vec![vec![0]],
+            last_resort: None,
+        },
+        Some("not a valid key package"),
+    )
+    .await?;
+    f.request(
+        "kp-publish-oversized",
+        "c",
+        Op::PublishKeyPackages {
+            packages: vec![vec![0; 4097]],
+            last_resort: None,
+        },
+        Some("key package too large"),
+    )
+    .await?;
+    f.request(
+        "kp-publish-over100",
+        "c",
+        Op::PublishKeyPackages {
+            packages: vec![cp[2].clone(); 101],
+            last_resort: None,
+        },
+        Some("at most 100 key packages at a time"),
+    )
+    .await?;
+
+    let operation = claim_operation(now);
+    let first_claim = ClientFrame::Req {
+        id: 2000,
+        op: Op::ClaimKeyPackages {
+            ids: vec![c.identity.clone()],
+            operation_id: Some(operation.clone()),
+        },
+    };
+    f.frame("kp-claim-first", "a-kp", &first_claim, None)
+        .await?;
+    f.frame("kp-claim-replay", "a-kp", &first_claim, None)
+        .await?;
+    f.request(
+        "kp-publish-consumed-retry",
+        "c",
+        Op::PublishKeyPackages {
+            packages: vec![cp[0].clone()],
+            last_resort: None,
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "kp-claim-changed-targets",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: vec![d.identity.clone()],
+            operation_id: Some(operation.clone()),
+        },
+        Some("key-package claim operation reused with different targets"),
+    )
+    .await?;
+    f.request(
+        "kp-claim-noncanonical-target",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: vec![c.identity.to_ascii_uppercase()],
+            operation_id: Some(claim_operation(now)),
+        },
+        Some("claim targets must be canonical identity keys"),
+    )
+    .await?;
+    f.request(
+        "kp-claim-empty-targets",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: Vec::new(),
+            operation_id: Some(claim_operation(now)),
+        },
+        Some("claim one to fifty identities"),
+    )
+    .await?;
+    f.request(
+        "kp-claim-malformed-operation",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: vec![c.identity.clone()],
+            operation_id: Some("invalid-operation".into()),
+        },
+        Some("invalid key-package claim operation"),
+    )
+    .await?;
+    f.request(
+        "kp-claim-future-operation",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: vec![c.identity.clone()],
+            operation_id: Some(claim_operation(now + 60_000)),
+        },
+        Some("key-package claim operation is in the future"),
+    )
+    .await?;
+    f.request(
+        "kp-claim-expired-operation",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: vec![c.identity.clone()],
+            operation_id: Some(claim_operation(
+                now - roda_proto::KEY_PACKAGE_CLAIM_TTL_MS - 1,
+            )),
+        },
+        Some(roda_proto::KEY_PACKAGE_CLAIM_EXPIRED),
+    )
+    .await?;
+    f.request(
+        "kp-claim-fifo-second",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: vec![c.identity.clone()],
+            operation_id: Some(claim_operation(now)),
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "kp-last-resort-replacement",
+        "c",
+        Op::PublishKeyPackages {
+            packages: Vec::new(),
+            last_resort: Some(replacement),
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "kp-claim-fallback",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: vec![c.identity.clone()],
+            operation_id: Some(claim_operation(now)),
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "kp-claim-fallback-retained",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: vec![c.identity.clone()],
+            operation_id: Some(claim_operation(now)),
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "kp-publish-third",
+        "c",
+        Op::PublishKeyPackages {
+            packages: vec![cp[2].clone()],
+            last_resort: None,
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "kp-publish-other-target-second",
+        "d",
+        Op::PublishKeyPackages {
+            packages: vec![dp[1].clone()],
+            last_resort: None,
+        },
+        None,
+    )
+    .await?;
+    // SQL does not promise inter-device result order. Keep the actual native
+    // bytes, and mark only this fresh multi-target comparison as set-valued.
+    f.request(
+        "kp-claim-two-targets",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: vec![d.identity.clone(), c.identity.clone(), c.identity.clone()],
+            operation_id: Some(claim_operation(now)),
+        },
+        None,
+    )
+    .await?;
+    f.steps.last_mut().context("multi-target step missing")?["unordered_reply"] = json!(true);
+    f.request(
+        "kp-publish-multi-consumed-retry",
+        "c",
+        Op::PublishKeyPackages {
+            packages: vec![cp[2].clone()],
+            last_resort: None,
+        },
+        None,
+    )
+    .await?;
+    let mut first_fifty = vec![d.identity.clone(); 50];
+    first_fifty.push(c.identity.clone());
+    f.request(
+        "kp-legacy-first50-duplicates",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: first_fifty,
+            operation_id: None,
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "kp-legacy-empty",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: Vec::new(),
+            operation_id: None,
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "kp-publish-before-target-revoke",
+        "c",
+        Op::PublishKeyPackages {
+            packages: vec![cp[3].clone()],
+            last_resort: None,
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "kp-unlink-target",
+        "c",
+        Op::Unlink {
+            device: certificate(&c)?.device,
+        },
+        None,
+    )
+    .await?;
+    f.frame("kp-claim-target-revoked-replay", "a-kp", &first_claim, None)
+        .await?;
+    f.request(
+        "kp-claim-target-revoked-fresh",
+        "a-kp",
+        Op::ClaimKeyPackages {
+            ids: vec![c.identity.clone()],
+            operation_id: Some(claim_operation(now)),
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "kp-publish-revoked-target",
+        "c",
+        Op::PublishKeyPackages {
+            packages: vec![cp[3].clone()],
+            last_resort: None,
+        },
+        Some("this device was unlinked"),
+    )
+    .await?;
+    f.request(
+        "kp-unlink-caller",
+        "a-kp",
+        Op::Unlink {
+            device: certificate(a)?.device,
+        },
+        None,
+    )
+    .await?;
+    f.frame(
+        "kp-claim-caller-revoked",
+        "a-kp",
+        &first_claim,
+        Some("this device was unlinked"),
+    )
+    .await?;
+    Ok(())
 }
 
 #[tokio::main]

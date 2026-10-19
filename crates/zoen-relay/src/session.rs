@@ -9,8 +9,8 @@
 use crate::pseudonym::pseudo;
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, OnceLock,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
@@ -18,21 +18,18 @@ use std::{
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
 use roda_proto::{
-    negotiate, AgentRequest, ClientFrame, ErrorCode, Op, Reply, ServerFrame, MIN_PROTOCOL_VERSION,
-    PROTOCOL_VERSION,
+    AgentRequest, ClientFrame, ErrorCode, MIN_PROTOCOL_VERSION, Op, PROTOCOL_VERSION, Reply,
+    ServerFrame, negotiate,
 };
 use roda_types::{EventBody, IdentityKind};
-use tokio::sync::{mpsc, Notify};
-use tracing::{field::Empty, Instrument};
+use tokio::sync::{Notify, mpsc};
+use tracing::{Instrument, field::Empty};
 
-use crate::{db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics, Shared};
+use crate::{Shared, db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics};
 
 /// Spaces up to this size hear every member's receipts; larger ones route each receipt
 /// to the author it concerns (`Session::receipt_audience`).
 pub const RECEIPT_BROADCAST_MAX: usize = 16;
-
-/// An X25519/Ed25519 key package is about 300 bytes; this leaves room for extensions.
-const MAX_KEY_PACKAGE: usize = 4096;
 
 pub const MAX_FRAME: usize = roda_relay_admission::portable::MAX_FRAME_BYTES;
 pub const MAX_ENVELOPE: usize = roda_relay_admission::portable::MAX_ENVELOPE_BYTES;
@@ -1125,31 +1122,13 @@ impl Session {
                 packages,
                 last_resort,
             } => {
-                if packages.len() > 100 {
-                    return Err("at most 100 key packages at a time".into());
-                }
-                let mut publications = Vec::with_capacity(packages.len());
-                for kp in &packages {
-                    if kp.len() > MAX_KEY_PACKAGE {
-                        return Err("key package too large".into());
-                    }
-                    let (leaf, expires) = roda_mls::key_package_publication(kp)
-                        .map_err(|_| "not a valid key package".to_string())?;
-                    if leaf.identity != self.identity || leaf.device != self.device {
-                        return Err("key package is for another device".into());
-                    }
-                    publications.push((kp.clone(), expires));
-                }
-                if let Some(kp) = &last_resort {
-                    if kp.len() > MAX_KEY_PACKAGE {
-                        return Err("key package too large".into());
-                    }
-                    let (leaf, _) = roda_mls::key_package_publication(kp)
-                        .map_err(|_| "not a valid key package".to_string())?;
-                    if leaf.identity != self.identity || leaf.device != self.device {
-                        return Err("key package is for another device".into());
-                    }
-                }
+                let publications =
+                    roda_relay_admission::directory::key_packages::validate_publications(
+                        &self.identity,
+                        &self.device,
+                        &packages,
+                        last_resort.as_deref(),
+                    )?;
                 if !db::put_key_packages(
                     pool,
                     &self.identity,

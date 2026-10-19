@@ -5,12 +5,17 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
+import { initSync, directoryKeyPackageReply } from '../generated/wasm/admission.js';
 
 const moduleRoot = fileURLToPath(new URL('../', import.meta.url));
 const native = JSON.parse(await readFile(process.env.ZOEN_DIRECTORY_FIXTURE
   ? resolve(process.env.ZOEN_DIRECTORY_FIXTURE) : join(moduleRoot, 'generated/directory-fixture.json'), 'utf8'));
 assert.equal(native.schema, 1);
-assert.equal(native.steps.length, 33, 'Every isolated native PostgreSQL scenario is required');
+assert.equal(native.steps.length, 71, 'Every isolated native PostgreSQL scenario is required');
+initSync({ module: new WebAssembly.Module(await readFile(join(moduleRoot, 'generated/wasm/admission_bg.wasm'))) });
+const records = value => JSON.parse(directoryKeyPackageReply(Buffer.from(value, 'base64')))
+  .sort((a, b) => JSON.stringify(a) < JSON.stringify(b) ? -1 : JSON.stringify(a) > JSON.stringify(b) ? 1 : 0);
+const normalized = value => ({ ...value, claims: value.claims.map(({ response_base64, ...claim }) => ({ ...claim, records: records(response_base64) })) });
 function runtime(path, production = false) {
   return new Miniflare(convertV4MiniflareOptions({
     modulesRoot: moduleRoot,
@@ -38,9 +43,16 @@ async function apply(mf, step) {
     assert.deepEqual(await inspect(mf), before, 'Rejection cannot mutate identities, devices, or boxes');
   } else {
     assert.equal(response.status, 200, JSON.stringify(response.body));
-    assert.deepEqual(response.body.result, step.expected);
+    if (step.unordered_reply) {
+      assert.deepEqual(records(response.body.result.reply_base64), records(step.expected.reply_base64));
+    } else assert.deepEqual(response.body.result, step.expected);
   }
-  assert.deepEqual(await inspect(mf), step.state_after, step.label);
+  const after = await inspect(mf);
+  assert.deepEqual(normalized(after), normalized(step.state_after), step.label);
+  for (const receipt of before.claims) {
+    const retained = after.claims.find(row => row.source_identity === receipt.source_identity && row.source_device === receipt.source_device && row.operation_id === receipt.operation_id);
+    if (retained) assert.equal(retained.response_base64, receipt.response_base64, 'Stored original receipt bytes must never be reordered or rewritten');
+  }
   return response;
 }
 
@@ -62,7 +74,7 @@ test('private Directory matches native PostgreSQL enrollment, sponsorship, uniqu
   } finally { await mf.dispose(); await rm(path, { recursive: true, force: true }); }
 });
 
-for (const [label, table] of [['register-first', 'device'], ['deliver-first', 'box']]) {
+for (const [label, table] of [['register-first', 'device'], ['deliver-first', 'box'], ['kp-publish-first', 'publication'], ['kp-claim-first', 'receipt'], ['kp-unlink-target', 'unlink']]) {
   test(`failed late ${label} write rolls back identity, enrollment, box and session transition before exact retry`, async () => {
     const mf = runtime();
     try {
@@ -180,6 +192,140 @@ test('one transaction clock governs last-fresh-millisecond box lookup and consum
     assert.equal(result.status, 200, JSON.stringify(result.body));
     assert.deepEqual(result.body.result, step.expected);
     assert.deepEqual(await inspect(mf), step.state_after);
+  } finally { await mf.dispose(); }
+});
+
+const named = label => {
+  const step = native.steps.find(value => value.label === label);
+  assert.ok(step, `Required native scenario ${label}`); return step;
+};
+async function before(mf, label) {
+  const index = native.steps.findIndex(step => step.label === label); assert.ok(index >= 0);
+  for (const step of native.steps.slice(0, index)) await apply(mf, step);
+}
+const source = () => {
+  const { identity: source_identity, device: source_device } = named('kp-login-active-source').expected;
+  return { source_identity, source_device };
+};
+
+test('simultaneous valid publication and claim retries store one stock entry and one exact durable receipt', async () => {
+  const mf = runtime();
+  try {
+    await before(mf, 'kp-publish-first');
+    const publish = named('kp-publish-first');
+    const published = await Promise.all([call(mf, '/step', publish), call(mf, '/step', publish)]);
+    assert.deepEqual(published.map(value => value.status), [200, 200]);
+    assert.deepEqual(await inspect(mf), publish.state_after);
+    const claim = named('kp-claim-first');
+    const claimed = await Promise.all([call(mf, '/step', claim), call(mf, '/step', claim)]);
+    assert.deepEqual(claimed.map(value => value.status), [200, 200]);
+    assert.deepEqual(claimed[0].body.result, claimed[1].body.result);
+    assert.deepEqual(claimed[0].body.result, claim.expected);
+    const after = await inspect(mf);
+    assert.equal(after.claims.length, 1);
+    assert.equal(after.packages.filter(row => !row.last_resort).length, 0);
+    assert.equal(after.publications.length, 1, 'Consumption retains the publication tombstone');
+  } finally { await mf.dispose(); }
+});
+
+test('canonical destructive claim and removed-target retry survive a durable runtime restart unchanged', async () => {
+  const path = await mkdtemp(join(tmpdir(), 'zoen-directory-key-packages-'));
+  let mf = runtime(path);
+  try {
+    await before(mf, 'kp-claim-replay');
+    const stored = await inspect(mf);
+    await mf.dispose(); mf = runtime(path);
+    assert.deepEqual(await inspect(mf), stored);
+    await apply(mf, named('kp-claim-replay'));
+    const start = native.steps.findIndex(step => step.label === 'kp-publish-consumed-retry');
+    const end = native.steps.findIndex(step => step.label === 'kp-claim-target-revoked-replay');
+    for (const step of native.steps.slice(start, end + 1)) await apply(mf, step);
+    const receipt = (await inspect(mf)).claims.find(row => row.operation_id === stored.claims[0].operation_id);
+    assert.equal(receipt.response_base64, stored.claims[0].response_base64);
+  } finally { await mf.dispose(); await rm(path, { recursive: true, force: true }); }
+});
+
+test('claim versus target unlink serializes and never leaves revoked target inventory', async () => {
+  for (const revokeFirst of [false, true]) {
+    const mf = runtime();
+    try {
+      await before(mf, 'kp-claim-first');
+      const claim = named('kp-claim-first'); const unlink = named('kp-unlink-target');
+      let claimed; let revoked;
+      if (revokeFirst) {
+        revoked = await call(mf, '/step', unlink); claimed = await call(mf, '/step', claim);
+      } else [claimed, revoked] = await Promise.all([call(mf, '/step', claim), call(mf, '/step', unlink)]);
+      assert.equal(claimed.status, 200); assert.equal(revoked.status, 200);
+      const selected = records(claimed.body.result.reply_base64);
+      if (revokeFirst) assert.deepEqual(selected, []);
+      else assert.ok(selected.length === 0 || JSON.stringify(selected) === JSON.stringify(records(claim.expected.reply_base64)));
+      const after = await inspect(mf); const target = named('kp-login-target-c').expected.identity;
+      assert.equal(after.packages.filter(row => row.identity === target).length, 0);
+      assert.equal(after.publications.filter(row => row.identity === target).length, 2);
+      assert.equal(after.claims.length, 1);
+      assert.deepEqual(records(after.claims[0].response_base64), selected);
+    } finally { await mf.dispose(); }
+  }
+});
+
+test('late already-admitted inventory cannot be delivered from a now-revoked target device', async () => {
+  const mf = runtime();
+  try {
+    await before(mf, 'kp-claim-target-revoked-replay');
+    const { identity, device } = named('kp-login-target-c').expected;
+    const data_base64 = named('kp-publish-first').state_after.packages.find(row => !row.last_resort).data_base64;
+    assert.equal((await call(mf, '/late-package', { identity, device, data_base64 })).status, 200);
+    const beforeState = await inspect(mf);
+    const result = await call(mf, '/step', named('kp-claim-target-revoked-fresh'));
+    assert.equal(result.status, 200); assert.deepEqual(records(result.body.result.reply_base64), []);
+    const after = await inspect(mf);
+    assert.deepEqual(after.packages, beforeState.packages, 'Revoked late stock stays undelivered');
+    assert.deepEqual(after.publications, beforeState.publications);
+  } finally { await mf.dispose(); }
+});
+
+test('real workerd refuses the 129th record before consumption and preserves 128 records plus aggregate binary-byte quota', async () => {
+  const mf = runtime();
+  try {
+    await before(mf, 'kp-publish-first');
+    const identity = named('kp-login-target-c').expected.identity;
+    assert.equal((await call(mf, '/capacity-inventory', { identity, count: 129 })).status, 200);
+    const initial = await inspect(mf); const claim = named('kp-claim-first');
+    const refused = await call(mf, '/step', claim);
+    assert.equal(refused.status, 400); assert.equal(refused.body.error.code, 'private_key_package_capacity');
+    assert.equal(refused.body.error.permanent, false); assert.deepEqual(await inspect(mf), initial);
+    assert.equal((await call(mf, '/capacity-inventory', { identity, count: 128 })).status, 200);
+    const accepted = await call(mf, '/step', claim);
+    assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+    assert.equal(records(accepted.body.result.reply_base64).length, 128);
+    const wireBytes = Buffer.from(accepted.body.result.reply_base64, 'base64').length;
+    assert.ok(wireBytes > 512 * 1024 && wireBytes < 768 * 1024);
+    const committed = await inspect(mf); assert.equal(committed.packages.length, 0); assert.equal(committed.claims.length, 1);
+    assert.equal((await call(mf, '/fill-receipts', { ...source(), count: 14 })).status, 200);
+    assert.equal((await call(mf, '/capacity-inventory', { identity, count: 128 })).status, 200);
+    const beforeQuota = await inspect(mf);
+    assert.ok(beforeQuota.claims.reduce((sum, row) => sum + Buffer.from(row.response_base64, 'base64').length, 0) < 8 * 1024 * 1024);
+    const quota = await call(mf, '/step', named('kp-claim-fifo-second'));
+    assert.equal(quota.status, 400); assert.equal(quota.body.error.reason, 'key-package claim receipt capacity reached');
+    assert.deepEqual(await inspect(mf), beforeQuota, 'Post-encoding quota failure must roll back all consumption');
+    const replay = await call(mf, '/step', claim);
+    assert.equal(replay.status, 200); assert.deepEqual(replay.body.result, accepted.body.result);
+    assert.deepEqual(await inspect(mf), beforeQuota, 'Exact replay bypasses fresh quota without consuming stock');
+  } finally { await mf.dispose(); }
+});
+
+test('4096 scoped receipt quota refuses fresh consumption while the exact original retry succeeds', async () => {
+  const mf = runtime();
+  try {
+    await before(mf, 'kp-claim-replay');
+    assert.equal((await call(mf, '/fill-receipts', { ...source(), count: 4095 })).status, 200);
+    const state = await inspect(mf); assert.equal(state.claims.length, 4096);
+    const refused = await call(mf, '/step', named('kp-claim-fifo-second'));
+    assert.equal(refused.status, 400); assert.equal(refused.body.error.reason, 'key-package claim receipt capacity reached');
+    assert.deepEqual(await inspect(mf), state);
+    const replay = await call(mf, '/step', named('kp-claim-replay'));
+    assert.equal(replay.status, 200); assert.deepEqual(replay.body.result, named('kp-claim-first').expected);
+    assert.deepEqual(await inspect(mf), state);
   } finally { await mf.dispose(); }
 });
 

@@ -1,14 +1,12 @@
 //! Durable replies to destructive MLS claims. A retry cannot consume another package.
 
-use roda_proto::{
-    key_package_claim_time_ms, KeyPackageRecord, Reply, ServerFrame, KEY_PACKAGE_CLAIM_EXPIRED,
-    KEY_PACKAGE_CLAIM_TTL_MS,
-};
+use roda_proto::{KeyPackageRecord, Reply, ServerFrame};
+use roda_relay_admission::directory::key_packages;
 use sqlx::PgPool;
 use std::{fmt, sync::Arc, time::Duration};
 
-pub const MAX_RECEIPTS: i64 = 4096;
-pub const MAX_RECEIPT_BYTES: i64 = 8 * 1024 * 1024;
+pub const MAX_RECEIPTS: i64 = key_packages::MAX_RECEIPTS;
+pub const MAX_RECEIPT_BYTES: i64 = key_packages::MAX_RECEIPT_BYTES;
 pub const GC_BATCH: i64 = 256;
 
 #[derive(Debug)]
@@ -48,23 +46,9 @@ pub async fn claim(
     operation: &str,
     targets: &[String],
 ) -> Result<Vec<KeyPackageRecord>, ClaimError> {
-    let created = key_package_claim_time_ms(operation)
-        .ok_or(ClaimError::Refused("invalid key-package claim operation"))?;
-    if targets
-        .iter()
-        .any(|id| id.len() != 64 || !id.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')))
-    {
-        return Err(ClaimError::Refused(
-            "claim targets must be canonical identity keys",
-        ));
-    }
-    let mut targets = targets.to_vec();
-    targets.sort_unstable();
-    targets.dedup();
-    if targets.is_empty() || targets.len() > 50 {
-        return Err(ClaimError::Refused("claim one to fifty identities"));
-    }
-    let expires = created + KEY_PACKAGE_CLAIM_TTL_MS;
+    let input = key_packages::claim_input(operation, targets).map_err(ClaimError::Refused)?;
+    let targets = input.targets.clone();
+    let expires = input.expires_ms;
     let mut tx = pool.begin().await?;
     // Serialize quota accounting and same-id retries, across nodes and connections.
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
@@ -76,14 +60,7 @@ pub async fn claim(
         sqlx::query_scalar("SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint")
             .fetch_one(&mut *tx)
             .await?;
-    if created > now {
-        return Err(ClaimError::Refused(
-            "key-package claim operation is in the future",
-        ));
-    }
-    if expires <= now {
-        return Err(ClaimError::Refused(KEY_PACKAGE_CLAIM_EXPIRED));
-    }
+    key_packages::claim_time(&input, now).map_err(ClaimError::Refused)?;
     sqlx::query(
         "DELETE FROM key_package_claim_receipts
          WHERE source_identity = $1 AND source_device = $2 AND expires_at_ms <= $3",
@@ -116,7 +93,7 @@ pub async fn claim(
             _ => {
                 return Err(
                     sqlx::Error::Protocol("corrupt key-package claim receipt".into()).into(),
-                )
+                );
             }
         };
         tx.commit().await?;

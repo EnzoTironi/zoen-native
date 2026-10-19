@@ -2,7 +2,12 @@
 // actor aliases, or failure injection from this module.
 import { DirectoryState as ProductionDirectory } from '../src/directory-state.mjs';
 const bytes = value => Uint8Array.from(atob(value), char => char.charCodeAt(0));
-const base64 = value => btoa(String.fromCharCode(...new Uint8Array(value)));
+const base64 = value => {
+  const data = new Uint8Array(value); let text = '';
+  for (let index = 0; index < data.length; index += 8192) text += String.fromCharCode(...data.subarray(index, index + 8192));
+  return btoa(text);
+};
+const compare = (left, right) => left < right ? -1 : left > right ? 1 : 0;
 
 export class DirectoryState extends ProductionDirectory {
   #clock = 1_700_000_000_000;
@@ -54,6 +59,13 @@ export class DirectoryState extends ProductionDirectory {
         .map(row => ({ ...row, revoked: Boolean(row.revoked) })),
       boxes: sql.exec('SELECT id,sealed FROM directory_boxes ORDER BY id').toArray()
         .map(row => ({ id: row.id, sealed_base64: base64(row.sealed) })),
+      packages: sql.exec('SELECT identity,device,data,last_resort FROM directory_key_packages').toArray()
+        .map(row => ({ identity: row.identity, device: row.device, data_base64: base64(row.data), last_resort: Boolean(row.last_resort) }))
+        .sort((a, b) => compare([a.identity, a.device, Number(a.last_resort), a.data_base64].join('\0'), [b.identity, b.device, Number(b.last_resort), b.data_base64].join('\0'))),
+      publications: sql.exec('SELECT identity,device,package_hash,CAST(expires_secs AS TEXT) AS expires_secs FROM directory_publications ORDER BY identity,device,package_hash').toArray(),
+      claims: sql.exec('SELECT source_identity,source_device,operation_id,targets,response,CAST(expires_ms AS TEXT) AS expires_ms FROM directory_claims ORDER BY source_identity,source_device,operation_id').toArray()
+        .map(row => ({ source_identity: row.source_identity, source_device: row.source_device, operation_id: row.operation_id,
+          targets: JSON.parse(row.targets), response_base64: base64(row.response), expires_ms: row.expires_ms })),
     };
   }
   sessions() {
@@ -64,9 +76,44 @@ export class DirectoryState extends ProductionDirectory {
       BEGIN SELECT RAISE(ABORT, 'test-only device failure'); END`);
     else if (input.table === 'box') this.ctx.storage.sql.exec(`CREATE TRIGGER directory_test_failure BEFORE INSERT ON directory_boxes
       BEGIN SELECT RAISE(ABORT, 'test-only box failure'); END`);
+    else if (input.table === 'publication') this.ctx.storage.sql.exec(`CREATE TRIGGER directory_test_failure BEFORE INSERT ON directory_key_packages
+      BEGIN SELECT RAISE(ABORT, 'test-only publication failure'); END`);
+    else if (input.table === 'receipt') this.ctx.storage.sql.exec(`CREATE TRIGGER directory_test_failure BEFORE INSERT ON directory_claims
+      BEGIN SELECT RAISE(ABORT, 'test-only receipt failure'); END`);
+    else if (input.table === 'unlink') this.ctx.storage.sql.exec(`CREATE TRIGGER directory_test_failure BEFORE DELETE ON directory_key_packages
+      BEGIN SELECT RAISE(ABORT, 'test-only unlink failure'); END`);
     else throw new Error('Unsupported failure table');
   }
   allow() { this.ctx.storage.sql.exec('DROP TRIGGER directory_test_failure'); }
+  // Trusted-storage stress setup only: exercises bounded encoding/selection,
+  // not MLS publication or enrolling real devices with fabricated certificates.
+  capacityInventory(input) {
+    if (!Number.isInteger(input.count) || input.count < 0 || input.count > 129) throw new Error('Invalid capacity fixture count');
+    const sql = this.ctx.storage.sql;
+    this.ctx.storage.transactionSync(() => {
+      sql.exec("DELETE FROM directory_key_packages WHERE identity=? AND device IN (SELECT device FROM directory_devices WHERE cert='test-only-capacity')", input.identity);
+      sql.exec("DELETE FROM directory_devices WHERE identity=? AND cert='test-only-capacity'", input.identity);
+      for (let index = 0; index < input.count; index++) {
+        const device = 'f'.repeat(56) + index.toString(16).padStart(8, '0');
+        sql.exec('INSERT INTO directory_devices VALUES (?,?,?,0)', device, input.identity, 'test-only-capacity');
+        sql.exec('INSERT INTO directory_key_packages(identity,device,data,last_resort) VALUES (?,?,?,0)', input.identity, device, new Uint8Array(4096).fill(7));
+      }
+    });
+  }
+  latePackage(input) {
+    this.ctx.storage.sql.exec('INSERT INTO directory_key_packages(identity,device,data,last_resort) VALUES (?,?,?,0)', input.identity, input.device, bytes(input.data_base64));
+  }
+  fillReceipts(input) {
+    if (!Number.isInteger(input.count) || input.count < 0 || input.count > 4096) throw new Error('Invalid receipt fixture count');
+    const sql = this.ctx.storage.sql;
+    const row = sql.exec('SELECT * FROM directory_claims WHERE source_identity=? AND source_device=? ORDER BY operation_id LIMIT 1', input.source_identity, input.source_device).toArray()[0];
+    if (!row) throw new Error('Existing real canonical receipt required');
+    this.ctx.storage.transactionSync(() => {
+      for (let index = 0; index < input.count; index++) sql.exec('INSERT INTO directory_claims VALUES (?,?,?,?,?,?)',
+        row.source_identity, row.source_device, row.operation_id.slice(0, 10) + (index + 1000).toString(16).toUpperCase().padStart(16, '0'),
+        row.targets, row.response, row.expires_ms);
+    });
+  }
   fillSessions() {
     for (let index = 0; index < 256; index++) this.ctx.storage.sql.exec(
       'INSERT INTO directory_sessions VALUES (?,?,?)', index.toString(16).padStart(64, '0'), '{}', this.#clock + 900_000);
@@ -88,6 +135,9 @@ export default {
         case '/clock': result = await stub.clock(input); break;
         case '/reject': result = await stub.reject(input); break;
         case '/allow': result = await stub.allow(); break;
+        case '/capacity-inventory': result = await stub.capacityInventory(input); break;
+        case '/late-package': result = await stub.latePackage(input); break;
+        case '/fill-receipts': result = await stub.fillReceipts(input); break;
         case '/fill-sessions': result = await stub.fillSessions(); break;
         case '/raw-enroll': result = await stub.enroll(input); break;
         default: return new Response('Not found', { status: 404 });

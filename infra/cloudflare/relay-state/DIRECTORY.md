@@ -1,6 +1,7 @@
 This private adapter keeps one directory transaction domain per relay cell. Identities,
 unique handles, globally unique devices, sealed one-time link boxes, handshake challenges
-and host sessions belong to the same SQLite Durable Object. A caller cannot choose an
+host sessions, public MLS key packages, publication tombstones and durable claim receipts
+belong to the same SQLite Durable Object. A caller cannot choose an
 account shard or supply `registered`, an enrollment row, or an authenticated session.
 
 `hello({frame})` accepts the canonical native binary Hello, verifies the identity's device
@@ -12,7 +13,8 @@ and derives the session from current directory rows. Challenges expire after ten
 the private adapter caps pending challenges and sessions at 256 each. Its sessions expire
 after fifteen minutes; this bound is not a proposed public WebSocket lifetime.
 
-`request({sessionId,frame})` supports Person Register, DeliverLink, FetchLink and Unlink.
+`request({sessionId,frame})` supports Person Register, DeliverLink, FetchLink, Unlink,
+PublishKeyPackages and ClaimKeyPackages.
 Each request re-reads its active device in the same synchronous SQL transaction as its
 writes. Root certification alone cannot link a new device to an existing account. A
 registered active sponsor is required; exact active enrollment retries are read-only,
@@ -34,12 +36,45 @@ the actual send; this adapter has no sockets and does not implement that fence. 
 admitted native Space append may finish after revocation, while fresh admission and every
 future public delivery must reject the revoked device.
 
+MLS publication validates the entire batch and last-resort package in shared Rust before
+writing anything: at most 100 packages, each at most 4096 bytes, using the native TLS,
+ciphersuite, signature, lifetime and identity/device checks. The original package bytes
+are stored unchanged. Single-use SHA256 publication tombstones survive consumption until
+the signed expiry; retrying publication cannot resurrect consumed stock. Capacity is 200
+single-use packages per device; the independent last-resort package is replaced in place.
+Expiry maintenance removes at most 256 scoped rows per operation, plus an exact expired
+publication hash when needed. Unlike native bulk cleanup, unused expired physical metadata
+can linger; expired rows never affect deduplication or live receipt quota accounting.
+
+Claims select one oldest single-use package per currently active target device, or retain
+its last-resort fallback. Native SQL does not promise inter-device result order; fresh
+cross-backend comparisons use record sets, while each backend preserves its exact original
+receipt bytes and order for retries. Receipt-mode operations retain the native canonical
+ULID/time rules, sorted/deduplicated one-to-fifty canonical targets, and source-device scope.
+The original canonical id-zero binary response is durable for 24 hours, and a replay uses
+the current request ID without consuming stock again. Fresh source authorization precedes
+every lookup, even replay: revoking a target does not erase an existing caller's receipt,
+while revoking the caller prevents its retry. Unlink deletes that device's inventory in
+the same transaction and retains publication tombstones and claim receipts. A late already
+admitted publication cannot deliver from a revoked target. Legacy claims without an
+operation retain the native first-50-before-dedup behavior and create no receipt.
+
+The native per-source quotas of 4096 receipts and 8 MiB aggregate canonical binary response
+bytes are preserved, including replay before quota and rollback if a new encoded response
+would exceed quota. This private adapter additionally caps a fresh claim at 128 records
+and 768 KiB canonical response bytes. SQL reads a 129th sentinel and refuses with retryable
+`private_key_package_capacity` before deleting stock or storing a receipt; it never silently
+truncates devices. This is an explicit private capacity bound, not full native capacity
+parity. Selected data and receipt facts use base64; the existing shared context limit is
+1 MiB of actual UTF-8 bytes. SQL bindings stay bounded and each stored response stays below
+Cloudflare's 2 MiB whole-row limit. Local workerd stress fixtures prove 128 records of 4096
+bytes and pre-consumption refusal at 129, independently of genuine signed MLS fixtures.
+
 The Worker has no HTTP routes, workers.dev or preview URLs. It is not connected to the
 closed-Space service. Provider proofs/JWTs, backup recovery, agent registration, profile
-fanout, global rate limits, key-package publication/claims and their revocation deletion,
-and the complete public session/MLS protocol remain separate gates. In particular this
-namespace cannot contain key packages, so its Unlink is not yet a complete replacement
-for native device revocation across those tables. No caller may use this slice as a
+fanout, global rate limits, KeyPackagesLow/refill notifications, Space MLS epochs, encrypted
+commit/checkpoint/hold handling and the complete public session protocol remain separate
+gates. No caller may use this slice as a
 public authentication facade.
 
 With an existing PostgreSQL test environment, run
@@ -51,8 +86,17 @@ and SQL failure triggers are local fixtures and are absent from the deployment c
 The shared WASM build command is reused from `scripts/build-cloudflare-closed.mjs`; it
 does not require PostgreSQL or deploy either Worker.
 
+The current key-package extension passed 71 fresh native PostgreSQL scenarios and 18
+local workerd cases, including real signed MLS publications, exact receipt retries,
+revocation, durable restart, concurrency and late SQL-failure rollback. The shared Rust
+crate passed 47 tests, and the existing native receipt transaction suite passed all three
+cases. Capacity fixtures populate trusted synthetic storage only; they do not claim real
+MLS enrollment of 128 devices. These checks validate private request operations, not
+remote public sessions or delivery.
+
 The private `zoen-relay-directory` Worker was provisioned on 2026-10-19 at version
 `759ffee3-0ef9-4ff5-a53b-1c971a3e2197`, from source commit `46128a65`. It has no
 public route, workers.dev or preview URL. The 33 PostgreSQL scenarios and nine
 workerd cases are local validation; no remote Directory journey was run in this
-checkpoint.
+checkpoint. This source extension adds the key-package lane locally; it has not updated
+that deployed version.

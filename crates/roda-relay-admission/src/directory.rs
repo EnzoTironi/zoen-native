@@ -1,6 +1,7 @@
 //! Private directory policy. The host owns challenge entropy, one-use/session storage,
 //! and a single transaction covering all facts and returned writes. No delivery lease
 //! or public protocol endpoint is provided by this module.
+pub mod key_packages;
 use crate::portable::{BoundaryError, MAX_FRAME_BYTES};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use roda_proto::{auth_message, normalize_handle, ClientFrame, Op, Reply, ServerFrame};
@@ -103,6 +104,8 @@ pub struct Facts {
     pub profile: Option<Identity>,
     pub handle_owner: Option<String>,
     pub link_box: Option<Vec<u8>>,
+    #[serde(default)]
+    pub key_packages: Option<key_packages::Facts>,
 }
 
 fn no(reason: impl Into<String>) -> BoundaryError {
@@ -222,6 +225,36 @@ pub fn lookup(bytes: &[u8]) -> Result<Value, BoundaryError> {
         Op::DeliverLink { id, device, .. } => (device.map(|value| value.device), None, Some(id)),
         Op::Unlink { device } => (Some(device), None, None),
         Op::FetchLink { id } => (None, None, Some(id)),
+        Op::PublishKeyPackages { packages, .. } => {
+            let hashes: Vec<_> = if packages.len() <= key_packages::MAX_PUBLICATIONS
+                && packages
+                    .iter()
+                    .all(|bytes| bytes.len() <= key_packages::MAX_PACKAGE_BYTES)
+            {
+                packages
+                    .iter()
+                    .map(|bytes| roda_log::sha256_hex(bytes))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            return Ok(
+                json!({"id":id.to_string(),"kind":"publish_key_packages","publication_hashes":hashes}),
+            );
+        }
+        Op::ClaimKeyPackages { ids, operation_id } => {
+            let targets = match &operation_id {
+                Some(operation) => {
+                    key_packages::claim_input(operation, &ids)
+                        .map_err(no)?
+                        .targets
+                }
+                None => ids.into_iter().take(50).collect(),
+            };
+            return Ok(
+                json!({"id":id.to_string(),"kind":"claim_key_packages","targets":targets,"operation_id":operation_id}),
+            );
+        }
         _ => {
             return Err(BoundaryError::no(
                 "unsupported_directory",
@@ -230,6 +263,21 @@ pub fn lookup(bytes: &[u8]) -> Result<Value, BoundaryError> {
         }
     };
     Ok(json!({"id":id.to_string(),"target_device":target,"handle":handle,"link_id":link_id}))
+}
+
+pub fn lookup_for_session(bytes: &[u8], session: &Session) -> Result<Value, BoundaryError> {
+    if !session.registered
+        && matches!(
+            decode(bytes)?,
+            ClientFrame::Req {
+                op: Op::PublishKeyPackages { .. } | Op::ClaimKeyPackages { .. },
+                ..
+            }
+        )
+    {
+        return Err(no("register first"));
+    }
+    lookup(bytes)
 }
 
 pub fn request(bytes: &[u8], session: &Session, facts: &Facts) -> Result<Value, BoundaryError> {
@@ -305,6 +353,27 @@ pub fn request(bytes: &[u8], session: &Session, facts: &Facts) -> Result<Value, 
             )
         }
         _ if !session.registered => return Err(no("register first")),
+        Op::PublishKeyPackages {
+            packages,
+            last_resort,
+        } => {
+            let facts = facts
+                .key_packages
+                .as_ref()
+                .ok_or_else(|| internal("missing key-package publication facts"))?;
+            (
+                key_packages::publications(session, &packages, last_resort.as_deref(), facts)?,
+                Reply::Done,
+            )
+        }
+        Op::ClaimKeyPackages { ids, operation_id } => {
+            let facts = facts
+                .key_packages
+                .as_ref()
+                .ok_or_else(|| internal("missing key-package claim facts"))?;
+            let (plan, records) = key_packages::claim(&ids, operation_id.as_deref(), facts)?;
+            (plan, Reply::KeyPackages(records))
+        }
         Op::DeliverLink { id, sealed, device } => {
             if !valid_hex64(&id) || sealed.is_empty() || sealed.len() > MAX_LINK_BOX {
                 return Err(no("bad link box"));
@@ -446,10 +515,15 @@ mod wasm {
         super::authenticate_json(bytes, context).map_err(error)
     }
     #[wasm_bindgen(js_name = directoryLookup)]
-    pub fn lookup(bytes: &[u8]) -> Result<String, JsValue> {
-        super::lookup(bytes)
+    pub fn lookup(bytes: &[u8], session: &str) -> Result<String, JsValue> {
+        super::parse(session)
+            .and_then(|session| super::lookup_for_session(bytes, &session))
             .and_then(|value| super::encoded(&value))
             .map_err(error)
+    }
+    #[wasm_bindgen(js_name = directoryKeyPackageReply)]
+    pub fn key_package_reply(bytes: &[u8]) -> Result<String, JsValue> {
+        super::key_packages::reply_json(bytes).map_err(error)
     }
     #[wasm_bindgen(js_name = directoryRequest)]
     pub fn request(bytes: &[u8], context: &str) -> Result<String, JsValue> {
