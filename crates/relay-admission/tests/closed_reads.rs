@@ -172,22 +172,22 @@ fn inconsistent_or_invalid_retention_state_and_invalid_session_are_refused() {
 fn profile_co_members_only_current_peers_excludes_self_and_removed_or_unrelated_callers() {
     let (mut state, owner, peer, stranger) = state();
     assert_eq!(
-        co_members(&state, &session(&owner)).unwrap(),
+        co_members(&state, &owner.identity).unwrap(),
         vec![peer.identity.clone()]
     );
     assert_eq!(
-        co_members(&state, &session(&peer)).unwrap(),
+        co_members(&state, &peer.identity).unwrap(),
         vec![owner.identity.clone()]
     );
-    assert!(co_members(&state, &session(&stranger)).unwrap().is_empty());
+    assert!(co_members(&state, &stranger.identity).unwrap().is_empty());
     state.members.remove(&peer.identity);
     state.removed_at.insert(peer.identity.clone(), "37".into());
-    assert!(co_members(&state, &session(&peer)).unwrap().is_empty());
-    assert!(co_members(&state, &session(&owner)).unwrap().is_empty());
+    assert!(co_members(&state, &peer.identity).unwrap().is_empty());
+    assert!(co_members(&state, &owner.identity).unwrap().is_empty());
     state.removed_at.remove(&peer.identity);
     state.members.insert(peer.identity.clone(), Role::Member);
     assert_eq!(
-        co_members(&state, &session(&peer)).unwrap(),
+        co_members(&state, &peer.identity).unwrap(),
         vec![owner.identity]
     );
 }
@@ -196,16 +196,35 @@ fn profile_co_members_only_current_peers_excludes_self_and_removed_or_unrelated_
 fn unknown_co_member_lookup_is_empty_and_invalid_or_forged_context_never_grants() {
     let (state, owner, _, _) = state();
     let unknown =
-        serde_json::json!({"space_id":state.space,"projection":null,"session":session(&owner)});
+        serde_json::json!({"space_id":state.space,"projection":null,"identity":owner.identity});
     assert_eq!(co_members_json(&unknown.to_string()).unwrap(), "[]");
     let mut forged = unknown;
     forged["member"] = true.into();
     assert!(co_members_json(&forged.to_string()).is_err());
     forged.as_object_mut().unwrap().remove("member");
-    forged["session"]["authenticated_device"] = "bad-device".into();
+    forged["identity"] = "bad-identity".into();
     assert!(co_members_json(&forged.to_string()).is_err());
-    forged["session"] = serde_json::to_value(session(&owner)).unwrap();
+    forged["identity"] = owner.identity.clone().into();
     forged["projection"] = serde_json::to_value(state).unwrap();
     forged["space_id"] = "sp_other".into();
     assert!(co_members_json(&forged.to_string()).is_err());
+}
+
+#[test]
+fn notification_subject_never_accepts_fabricated_session_or_registration_facts() {
+    let (state, owner, peer, _) = state();
+    let subject =
+        serde_json::json!({"space_id":state.space,"projection":state,"identity":owner.identity});
+    let peers: Vec<String> =
+        serde_json::from_str(&co_members_json(&subject.to_string()).unwrap()).unwrap();
+    assert_eq!(peers, vec![peer.identity]);
+    for (key, value) in [
+        ("session", serde_json::to_value(session(&owner)).unwrap()),
+        ("registered", serde_json::json!(true)),
+        ("member", serde_json::json!(true)),
+    ] {
+        let mut forged = subject.clone();
+        forged[key] = value;
+        assert!(co_members_json(&forged.to_string()).is_err());
+    }
 }

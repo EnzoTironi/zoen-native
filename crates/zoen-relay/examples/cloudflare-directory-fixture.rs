@@ -936,6 +936,7 @@ fn socket_fixture() -> Value {
     json!({
         "ping_base64":STANDARD.encode(ClientFrame::Ping.encode()),
         "pong_base64":encode(ServerFrame::Pong { server_time_ms: None }),
+        "sync_done_base64":encode(ServerFrame::SyncDone),
         "malformed_auth_base64":STANDARD.encode(ClientFrame::Ping.encode()),
         "malformed_auth_error_base64":encode(ServerFrame::error(protocol::ErrorCode::Other,"expected auth")),
         "large_request_base64":STANDARD.encode(ClientFrame::Req { id:large_id, op:Op::FetchLink { id:"0".repeat(64) } }.encode()),

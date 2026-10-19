@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { actualRestartReconnect } from './socket-lifecycle-harness.mjs';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 
 const moduleRoot = fileURLToPath(new URL('../', import.meta.url));
@@ -25,7 +26,7 @@ function runtime(production = false) {
   return new Miniflare(convertV4MiniflareOptions({
     modulesRoot: moduleRoot,
     modules: [production ? 'src/directory-index.mjs' : 'tests/directory-fixture.mjs',
-      'src/relay-entrypoint.mjs', 'src/relay-route.mjs', 'src/directory-state.mjs', 'src/relay-composition.mjs', 'src/provider-auth.mjs', 'src/media-blobs.mjs', 'src/blob-io.mjs', 'src/blob-quota.mjs', 'src/transfer-blobs.mjs', 'generated/wasm/admission.js']
+      'src/relay-entrypoint.mjs', 'src/relay-route.mjs', 'src/directory-state.mjs', 'src/relay-composition.mjs', 'src/relay-presence.mjs', 'src/socket-transport.mjs', 'src/socket-alarm.mjs', 'src/provider-auth.mjs', 'src/media-blobs.mjs', 'src/blob-io.mjs', 'src/blob-quota.mjs', 'src/transfer-blobs.mjs', 'generated/wasm/admission.js']
       .map(path => ({ type: 'ESModule', path: join(moduleRoot, path) }))
       .concat({ type: 'CompiledWasm', path: join(moduleRoot, 'generated/wasm/admission_bg.wasm') }),
     compatibilityDate: '2026-10-18',
@@ -275,28 +276,10 @@ for (const stage of ['hello', 'auth']) {
   });
 }
 
-test('fresh production-handler reconstruction keeps the accepted socket and original authenticated deadline', async () => {
-  const mf = runtime();
-  try {
-    const login = named('login-first'); const channel = await connect(mf, login);
-    const original = (await call(mf, '/socket-state')).body.result;
-    const attachments = (await call(mf, '/socket-attachments')).body.result;
-    const deadline = String(Number(login.now_ms) + 900_000);
-    assert.deepEqual(original, { connections: [{ stage: 'ready', expires_ms: deadline,
-      challenge: false, session: true }], challenges: 0, sessions: 1 });
-    const restored = await call(mf, '/socket-reconstruct', {
-      now_ms: String(Number(deadline) - 1), frame_base64: native.transport.ping_base64,
-    });
-    assert.equal(restored.status, 200);
-    assert.deepEqual(restored.body.result, { attachmentUnchanged: true });
-    assert.deepEqual(await channel.next(), transport('pong_base64'));
-    assert.deepEqual((await call(mf, '/socket-state')).body.result, original, 'Activity must not renew the stored session or connection deadline');
-    assert.deepEqual((await call(mf, '/socket-attachments')).body.result, attachments);
-    assert.equal((await call(mf, '/socket-reconstruct', { now_ms: deadline, alarm: true })).status, 200);
-    assert.equal((await channel.closed()).code, 1008);
-    assert.deepEqual(channel.messages, [], 'No authenticated payload may follow session expiry');
-    assert.deepEqual((await call(mf, '/socket-state')).body.result, emptySocketState);
-  } finally { await mf.dispose(); }
+test('actual ordinary runtime restart preserves registration through fresh Auth and empty Sync', async () => {
+  // Empty Sync is transport proof. Committed MLS history recovery remains the
+  // independent actual 520-message native/candidate cold-restart qualification.
+  await actualRestartReconnect();
 });
 
 test('expired idle sockets actually close and release the bounded 256-connection capacity', async () => {

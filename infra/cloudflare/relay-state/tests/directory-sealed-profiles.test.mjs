@@ -41,7 +41,7 @@ function runtime(path) {
       modules: [
         "tests/directory-fixture.mjs",
         "src/directory-state.mjs",
-        "src/relay-composition.mjs",
+        "src/relay-composition.mjs", "src/relay-presence.mjs", "src/socket-transport.mjs", "src/socket-alarm.mjs",
         "src/provider-auth.mjs",
         "src/media-blobs.mjs",
         "src/blob-io.mjs",

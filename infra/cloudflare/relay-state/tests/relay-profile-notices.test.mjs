@@ -76,6 +76,7 @@ function harness({ failedReply = false, failureAt = null, additional = [] } = {}
     Buffer.from(failedReply ? refusal.refused_reply_base64 : step.expected.reply_base64, "base64"),
   );
   const host = {
+    sockets: () => sockets,
     socketId: (socket) => socket.row.id,
     socketFor: (connection) =>
       sockets.find((socket) => socket.row.id === connection && socket.readyState === 1),
@@ -109,10 +110,10 @@ function harness({ failedReply = false, failureAt = null, additional = [] } = {}
     reason: (error) => ({ reason: error.message }),
   };
   const spaces = {
-    async coMembers({ spaceId, session }) {
+    async coMembers({ spaceId, identity: subject }) {
       order.push("co-members");
       reads.push(spaceId);
-      assert.equal(session.authenticated_identity, identity);
+      assert.equal(subject, identity);
       if (spaceId === failureAt) throw new Error("Unit co-members dependency failure");
       return { members: spaceId.endsWith("removed") ? [] : [peer, identity, ...additional] };
     },

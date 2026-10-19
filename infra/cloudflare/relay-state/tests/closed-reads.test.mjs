@@ -89,7 +89,9 @@ test("actual native removal/rejoin visibility and byte-limited MLS pages agree t
         const visibility = await call(mf, "/visibility", { session: step.session });
         assert.equal(visibility.status, 200);
         assert.deepEqual(visibility.body.result, step.expected.visibility);
-        const peers = await call(mf, "/co-members", { session: step.session });
+        const peers = await call(mf, "/co-members", {
+          identity: step.session.authenticated_identity,
+        });
         assert.equal(peers.status, 200);
         assert.ok(Array.isArray(peers.body.result.members));
         assert.ok(!peers.body.result.members.includes(step.session.authenticated_identity));
@@ -150,17 +152,13 @@ test("authorized read input cannot assert membership or mutate an unknown Space"
       assert.equal((await call(mf, "/read-authorized", input)).status, 400);
       assert.deepEqual((await call(mf, "/inspect")).body.result, expectedEmpty);
     }
-    const peers = await call(mf, "/co-members", { session: step.session, member: true });
+    const peers = await call(mf, "/co-members", {
+      identity: step.session.authenticated_identity,
+      member: true,
+    });
     assert.equal(peers.status, 200);
     assert.deepEqual(peers.body.result, { members: [] });
-    assert.equal(
-      (
-        await call(mf, "/co-members", {
-          session: { ...step.session, authenticated_device: "bad-device" },
-        })
-      ).status,
-      400,
-    );
+    assert.equal((await call(mf, "/co-members", { identity: "bad-identity" })).status, 400);
     assert.deepEqual((await call(mf, "/inspect")).body.result, expectedEmpty);
     const result = await call(mf, "/read-authorized", {
       session: step.session,

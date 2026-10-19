@@ -322,3 +322,30 @@ fn actual_signed_profile_metadata_and_notice_keep_exact_native_version() {
         .is_err());
     }
 }
+
+#[test]
+fn actual_native_presence_wire_is_unconditional_and_preserves_both_states() {
+    let identity = "ab".repeat(32);
+    for online in [false, true] {
+        let encoded = wire(json!({"kind":"presence","identity":identity,"online":online}));
+        assert_eq!(
+            encoded,
+            ServerFrame::Presence {
+                identity: identity.clone(),
+                online
+            }
+            .encode()
+        );
+        assert_eq!(
+            ServerFrame::decode(&encoded).unwrap(),
+            ServerFrame::Presence {
+                identity: identity.clone(),
+                online
+            }
+        );
+    }
+    assert!(relay_socket::control_json(
+        &json!({"kind":"presence","identity":"not-an-identity","online":false}).to_string()
+    )
+    .is_err());
+}

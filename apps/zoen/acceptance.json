@@ -81,7 +81,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "Current source uses Expo SDK 58.0.16 and purpose-based Rust packages with a regenerated Client ABI, separate account/demo storage and no old-name aliases. TypeScript, Oxlint, Oxfmt and 815 app tests pass. Fresh native Android arm64 passes 123 JVM tests and two API 35 MCP App flows. A signed Expo iOS Debug simulator app passes onboarding, demo Home, Hike and conversation checks; its JavaScript startup-link follow-up is recorded separately. Earlier Release artifacts remain v85/v92; they do not certify current source. Public backend/provider interoperability, complete platform journeys and measured production/scale acceptance remain incomplete.",
+  "currentAcceptanceSummary": "Current source uses Expo SDK 58.0.16, purpose-based Rust packages, a regenerated Client ABI, separate account/demo storage and no old-name aliases. TypeScript, Oxlint, Oxfmt and 815 app tests pass. Earlier native Android arm64/JVM/API35 and signed Expo iOS Debug checks retain their bounded artifact attribution. The local native/Cloudflare baseline now passes actual authentication, presence, 520 encrypted messages crossing history pages and complete history recovery after server/client SQLite reopen; all 48 Directory runtime cases pass. This is not public deployment, real provider login, complete platform journeys or measured production/scale acceptance.",
   "historicalEvidence": {
     "commit": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
     "path": "apps/zoen/acceptance.json",
@@ -2044,5 +2044,43 @@
       "scope": "Current served bundle, cold/warm development-client links followed by explicit demo entry, retained five card IDs/four message IDs; no invalid-link detour. Development-client redelivery reloads JavaScript; demo mode is session-only."
     },
     "checkpointReceipt": "/private/tmp/zoen-naming-v110/acceptance.json"
+  },
+  "currentPrelaunchVerification": {
+    "id": "prelaunch-contract-checks-v114",
+    "historicalApiChanges": "report-only; update current callers directly without aliases or compatibility registry",
+    "currentGeneratedAbiChecks": "blocking; stale source/generated metadata/checksum mismatches still fail",
+    "sourceVerifierTests": 15,
+    "actualArtAndRuntimePayloadsUnchanged": true,
+    "receipt": {
+      "path": "/private/tmp/zoen-ci-cbb-v111/acceptance.json",
+      "sha256": "76cb338d98f89bf8720ded7f666ccb5e21d829152fec33052b1b00b8ae45c721"
+    }
+  },
+  "currentBackendCheckpoint": {
+    "id": "ordinary-transport-presence-v114a",
+    "progressDocument": "docs/dev/zoen-product-progress.md",
+    "receipt": {
+      "path": "/private/tmp/zoen-ordinary-presence-v114/acceptance.json",
+      "sha256": "f5d9e83a79e7319af9050b601a728233b75b4c15dc4214cc5adbb0c1df3046d0"
+    },
+    "scope": "Actual local native and candidate protocol baseline only; standalone wire oracle has retained source/binary/raw evidence, portable checked-in integration pending. No public deployment or full app/platform/protocol/scale acceptance.",
+    "sharedRustTests": 147,
+    "presenceRegistrySchedulerUnits": 28,
+    "directoryWorkerdCases": 48,
+    "directoryNativeSignedSteps": 71,
+    "originalIdleAndCapacityDeadlinesMs": 5000,
+    "originalIdleAndCapacityBodiesUnchanged": true,
+    "actualAbruptOrphanRecovery": true,
+    "actualCloseSqlFaultRecoveredByRealAlarm": true,
+    "actualMlsPageCrossingMessages": 520,
+    "canonicalDirectEvents": 531,
+    "canonicalGroupEvents": 20,
+    "realAccounts": 2,
+    "sameIdentitySecondDevice": true,
+    "actualServerAndClientSQLiteReopen": true,
+    "completePostRestartSyncAndMlsDecrypt": true,
+    "taskOwnedCleanupVerified": true,
+    "publicDeploymentAccepted": false,
+    "fullProtocolQualified": false
   }
 }

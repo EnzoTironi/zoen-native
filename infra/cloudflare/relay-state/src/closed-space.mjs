@@ -305,15 +305,22 @@ export class ClosedSpace extends DurableObject {
     return this.ctx.storage.transactionSync(() => this.#store.read(input, { bind: false }));
   }
 
-  #readContext(input) {
-    const snapshot = this.#store.snapshot(input?.spaceId, { bind: false });
+  #readProjection(spaceId) {
+    const snapshot = this.#store.snapshot(spaceId, { bind: false });
     const projection = decode(snapshot.admissionState);
     if (
       snapshot.head?.seq !== projection?.head?.seq ||
       snapshot.head?.hash !== projection?.head?.hash
     )
       throw internal("Space projection does not match its authoritative head");
-    return JSON.stringify({ space_id: input.spaceId, session: input.session, projection });
+    return projection;
+  }
+  #readContext(input) {
+    return JSON.stringify({
+      space_id: input.spaceId,
+      session: input.session,
+      projection: this.#readProjection(input.spaceId),
+    });
   }
 
   /** Private Directory-derived session only. This is not active-device auth. */
@@ -326,7 +333,15 @@ export class ClosedSpace extends DurableObject {
   /** Current membership only; unknown Spaces are not bound by this read. */
   coMembers(input) {
     return this.ctx.storage.transactionSync(() => ({
-      members: invoke(closedCoMembers, this.#readContext(input)),
+      // Server-only membership subject, not active-device authorization.
+      members: invoke(
+        closedCoMembers,
+        JSON.stringify({
+          space_id: input.spaceId,
+          identity: input.identity,
+          projection: this.#readProjection(input.spaceId),
+        }),
+      ),
     }));
   }
 

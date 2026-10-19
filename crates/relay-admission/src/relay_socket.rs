@@ -118,6 +118,10 @@ enum Control {
         identity: String,
         version: String,
     },
+    Presence {
+        identity: String,
+        online: bool,
+    },
 }
 
 /// Actual native ServerFrame codec. JSON is internal metadata, never public wire.
@@ -153,6 +157,12 @@ pub fn control_json(value: &str) -> Result<String, BoundaryError> {
             identity,
             version: parse_u64(&version)?,
         },
+        Control::Presence { identity, online } => {
+            if !crate::identity_key(&identity) {
+                return Err(internal("invalid presence subject"));
+            }
+            ServerFrame::Presence { identity, online }
+        }
     };
     let bytes = frame.encode();
     if bytes.len() > MAX_FRAME_BYTES {

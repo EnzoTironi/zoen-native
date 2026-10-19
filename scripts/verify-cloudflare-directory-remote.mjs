@@ -617,7 +617,8 @@ else {
   await mkdir(join(frozen, "src"), { recursive: true });
   await mkdir(join(frozen, "generated/wasm"), { recursive: true });
   const sourceArtifacts = [];
-  for (const name of ["directory-state.mjs", "directory-index.mjs"]) {
+  const selectedModules = ["directory-state.mjs", "directory-index.mjs"];
+  for (const name of selectedModules) {
     const sourcePath = `infra/cloudflare/relay-state/src/${name}`;
     const bytes = execFileSync("git", ["show", `${candidate}:${sourcePath}`], {
       cwd: root,
@@ -625,8 +626,17 @@ else {
       maxBuffer: 2 * 1024 * 1024,
     });
     const path = join(frozen, "src", name);
+    await mkdir(dirname(path), { recursive: true });
     await writeFile(path, bytes);
     sourceArtifacts.push({ sourceCommit: candidate, sourcePath, ...(await artifact(path)) });
+    // Follow the immutable selected revision's actual relative import closure.
+    // New transport/presence modules must be sealed without rewriting old proofs.
+    for (const match of bytes.toString().matchAll(/\b(?:from|import)\s*["'](\.[^"']+\.mjs)["']/g)) {
+      const dependency = posix.normalize(posix.join(posix.dirname(name), match[1]));
+      assert.match(dependency, /^(?:[\w-]+\/)*[\w-]+\.mjs$/,
+        "Selected private module must stay inside src");
+      if (!selectedModules.includes(dependency)) selectedModules.push(dependency);
+    }
   }
   for (const [name, expected] of Object.entries(expectedWasm)) {
     const input = join(wasmDir, name);

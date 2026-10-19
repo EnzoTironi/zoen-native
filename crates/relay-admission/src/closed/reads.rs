@@ -48,18 +48,22 @@ pub fn visibility(
 
 /// Current co-members for profile invalidation. Discovery is not membership:
 /// unknown/removed callers learn no roster, and an identity never returns itself.
-/// The trusted Directory owns active-device authorization and final socket sends.
-pub fn co_members(
-    state: &ClosedProjection,
-    session: &SessionContext,
-) -> Result<Vec<String>, BoundaryError> {
-    if !visibility(state, session)?.member {
+/// Trusted server subject only: no active-device authorization is implied.
+/// The Directory independently owns active-device admission and final sends.
+pub fn co_members(state: &ClosedProjection, identity: &str) -> Result<Vec<String>, BoundaryError> {
+    // Trusted server subject only, NOT an authenticated device/session. Offline
+    // lifecycle callers cannot resurrect a retired Session merely to read peers.
+    state.validate(&state.space, true)?;
+    if !crate::identity_key(identity) {
+        return Err(internal("invalid trusted co-member subject"));
+    }
+    if !state.members.contains_key(identity) {
         return Ok(vec![]);
     }
     Ok(state
         .members
         .keys()
-        .filter(|identity| *identity != &session.authenticated_identity)
+        .filter(|member| member.as_str() != identity)
         .cloned()
         .collect())
 }
@@ -128,8 +132,19 @@ pub fn visibility_json(input: &str) -> Result<String, BoundaryError> {
 }
 
 pub fn co_members_json(input: &str) -> Result<String, BoundaryError> {
-    let (state, session) = context(input)?;
-    encode(&co_members(&state, &session)?)
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SubjectContext {
+        space_id: String,
+        identity: String,
+        projection: Option<ClosedProjection>,
+    }
+    let subject: SubjectContext = read_json(input)?;
+    let state = subject
+        .projection
+        .unwrap_or_else(|| ClosedProjection::empty(&subject.space_id));
+    state.validate(&subject.space_id, true)?;
+    encode(&co_members(&state, &subject.identity)?)
 }
 
 pub fn plan_json(input: &str, from: &str, limit: u32) -> Result<String, BoundaryError> {

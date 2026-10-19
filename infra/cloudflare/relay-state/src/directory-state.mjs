@@ -25,6 +25,8 @@ import { ProviderAuthState } from "./provider-auth.mjs";
 import { MediaBlobsState } from "./media-blobs.mjs";
 import { TransferBlobsState } from "./transfer-blobs.mjs";
 import { RelayComposition } from "./relay-composition.mjs";
+import { SocketTransport } from "./socket-transport.mjs";
+import { SocketAlarm } from "./socket-alarm.mjs";
 
 initSync({ module: wasmModule });
 const MAX_BYTES = 1024 * 1024;
@@ -77,8 +79,11 @@ export class DirectoryState extends DurableObject {
   #mediaBlobs;
   #transferBlobs;
   #relay;
+  #transport = new SocketTransport(MAX_PENDING);
+  #socketAlarm;
   constructor(ctx, env) {
     super(ctx, env);
+    this.#socketAlarm = new SocketAlarm(ctx, () => this._socketAlarmDeadline());
     const sql = ctx.storage.sql;
     sql.exec(`CREATE TABLE IF NOT EXISTS directory_identities (
       id TEXT PRIMARY KEY, handle TEXT UNIQUE NOT NULL, profile TEXT NOT NULL)`);
@@ -124,8 +129,18 @@ export class DirectoryState extends DurableObject {
       id TEXT PRIMARY KEY, stage TEXT NOT NULL, challenge_id TEXT, session_id TEXT,
       identity TEXT, device TEXT, claim_receipts INTEGER NOT NULL DEFAULT 0, expires_ms INTEGER NOT NULL)`);
     if (this.env.RELAY_PROTOCOL_ENABLED === "true") {
+      // Eagerly restore composition/presence SQL bookkeeping on every cold
+      // constructor before any alarm or transport-end callback can run. Creating
+      // helpers is not an attach: no existing connection is announced here.
       this.#relayProtocol();
       this.#relayGenesis();
+    }
+    // Ordinary handles never survive a genuine runtime replacement. Retire only
+    // old connection authority, preserving actual-ended/offline work for retry.
+    try {
+      this._retireOrphanSocketRows();
+    } finally {
+      this._queueSocketAlarm();
     }
   }
 
@@ -774,11 +789,9 @@ export class DirectoryState extends DurableObject {
     if (this.env.RELAY_PROTOCOL_ENABLED !== "true") return null;
     if (!this.env.CLOSED_RELAY) throw error("relay Space binding unavailable", "relay_unavailable");
     this.#relay ??= new RelayComposition(this.ctx, this.env.CLOSED_RELAY, {
+      sockets: () => this._sockets(),
       socketId: (socket) => this._socketId(socket),
-      socketFor: (id) =>
-        this.ctx
-          .getWebSockets()
-          .find((socket) => socket.readyState === 1 && this._socketId(socket) === id) ?? null,
+      socketFor: (id) => this.#transport.forId(id),
       socketRow: (socket) => this._socketRow(socket),
       incoming: (bytes) => invoke(relaySocketFrame, bytes),
       control: (input) => unbase64(invoke(relaySocketControl, JSON.stringify(input)).frame_base64),
@@ -791,6 +804,25 @@ export class DirectoryState extends DurableObject {
       request: (admitted, bytes) =>
         unbase64(this.request({ sessionId: admitted.session_id, frame: bytes }).reply_base64),
       effects: (bytes) => invoke(relaySocketRequestEffects, bytes),
+      presence: {
+        current: (id) => this.#relayPresenceCurrent(id),
+        active: () =>
+          this._sockets().flatMap((socket) => {
+            if (socket.readyState !== 1) return [];
+            const current = this.#relayPresenceCurrent(this._socketId(socket));
+            return current ? [current] : [];
+          }),
+        ended: (id) =>
+          this.#one(
+            "SELECT id,identity FROM directory_connections WHERE id=? AND stage='ended'",
+            id,
+          ),
+        discardEnded: (id) =>
+          this.ctx.storage.sql.exec(
+            "DELETE FROM directory_connections WHERE id=? AND stage='ended'",
+            id,
+          ),
+      },
       ownStock: (socket, admitted) => this.#relayNotifyOwnStock(socket, admitted),
       claimedStock: (devices) => this.#relayNotifyClaimedStock(devices),
       reason: (failure) => this._socketFailure(failure),
@@ -986,6 +1018,26 @@ export class DirectoryState extends DurableObject {
       target,
     };
   }
+  #relayPresenceCurrent(id) {
+    const socket = this.#transport.forId(id);
+    if (!socket) return null;
+    try {
+      return this.ctx.storage.transactionSync(() => {
+        const row = this.#one("SELECT * FROM directory_connections WHERE id=?", id);
+        const session = this._socketAuthenticated(row, this._nowMs());
+        if (
+          !session.registered ||
+          row.identity !== session.identity ||
+          row.device !== session.device
+        )
+          return null;
+        return { id, identity: session.identity, socket };
+      });
+    } catch {
+      return null;
+    }
+  }
+
   #relaySendBudget(row, bytes) {
     if (this.env.RELAY_PROTOCOL_ENABLED !== "true") return;
     // INTERIM DISABLED-CANDIDATE guard only. It is not queue feedback or final
@@ -1049,7 +1101,7 @@ export class DirectoryState extends DurableObject {
       throw error("invalid claim stock work", "relay_context");
     try {
       let attempts = 0;
-      const sockets = this.ctx.getWebSockets();
+      const sockets = this._sockets();
       for (const record of devices) {
         const remaining = this.#relayStock(record.identity, record.device);
         if (remaining === null) continue;
@@ -1071,19 +1123,53 @@ export class DirectoryState extends DurableObject {
     }
   }
 
+  _sockets() {
+    return this.#transport.sockets();
+  }
   _socketId(socket) {
-    const value = socket.deserializeAttachment();
-    return value?.version === 1 &&
-      typeof value.connection_id === "string" &&
-      /^[a-f0-9]{64}$/.test(value.connection_id)
-      ? value.connection_id
-      : null;
+    return this.#transport.id(socket);
+  }
+  _queueSocketAlarm() {
+    // A fallible terminal SQL write must not skip the next actual recovery alarm.
+    this._scheduleSocketAlarm();
+  }
+  _terminalSocketId(id) {
+    if (!id) return;
+    this.ctx.storage.transactionSync(() => {
+      const row = this.#one("SELECT * FROM directory_connections WHERE id=?", id);
+      if (!row || row.stage === "ended") return;
+      this._dropConnection(row);
+      // Attached generations retain only lifecycle correlation, never a Session.
+      this.ctx.storage.sql.exec(
+        "UPDATE directory_connections SET stage='ended' WHERE id=? AND stage='closing'",
+        id,
+      );
+    });
+    // Also retry a previously ended generation whose first queue INSERT failed.
+    // Presence preserves an existing offline job and never restores sourceSession.
+    this.#relay?.presenceEnded(id);
+  }
+  _retireOrphanSocketRows() {
+    const rows = this.ctx.storage.sql
+      .exec("SELECT * FROM directory_connections ORDER BY id LIMIT 257")
+      .toArray();
+    if (rows.length > MAX_PENDING) throw error("connection inventory exceeds bound");
+    for (const row of rows) if (!this.#transport.has(row.id)) this._terminalSocketId(row.id);
+  }
+  _socketRetirementPending() {
+    if (this._sockets().some((socket) => socket.readyState === 3)) return true;
+    const rows = this.ctx.storage.sql
+      .exec("SELECT id FROM directory_connections WHERE stage!='ended' LIMIT 257")
+      .toArray();
+    if (rows.length > MAX_PENDING) throw error("connection inventory exceeds bound");
+    return rows.some((row) => !this.#transport.has(row.id));
   }
   _socketRow(socket) {
     const id = this._socketId(socket);
     return id ? this.#one("SELECT * FROM directory_connections WHERE id=?", id) : null;
   }
   _socketClose(socket, code = 1008) {
+    this.#transport.markClosing(socket);
     try {
       this.ctx.storage.transactionSync(() => {
         const row = this._socketRow(socket);
@@ -1092,11 +1178,16 @@ export class DirectoryState extends DurableObject {
     } finally {
       // Storage failure cannot keep an unauthorized/expired network socket open.
       try {
-        socket.close(code, "private directory connection closed");
+        this.#transport.close(socket, code, "private directory connection closed");
       } catch {}
     }
   }
   _dropConnection(row) {
+    // A duplicate error/close cannot erase the subject of an outstanding offline
+    // notification. This ended row has no Session and grants no active authority.
+    if (this.#relay && row.stage === "ended") return;
+    const attached = this.#relay?.presenceAttached(row.id) ?? false;
+    if (attached) this.#relay.presenceClosing(row.id);
     if (this.#relay) {
       this.#relay.drop(row.id);
       this.ctx.storage.sql.exec(
@@ -1108,7 +1199,14 @@ export class DirectoryState extends DurableObject {
       this.ctx.storage.sql.exec("DELETE FROM directory_challenges WHERE id=?", row.challenge_id);
     if (row.session_id)
       this.ctx.storage.sql.exec("DELETE FROM directory_sessions WHERE id=?", row.session_id);
-    this.ctx.storage.sql.exec("DELETE FROM directory_connections WHERE id=?", row.id);
+    if (attached) {
+      // Retain public lifecycle correlation in the authoritative Directory row;
+      // session authority is gone, and no closing/ended row may authenticate.
+      this.ctx.storage.sql.exec(
+        "UPDATE directory_connections SET stage='closing',challenge_id=NULL,session_id=NULL WHERE id=?",
+        row.id,
+      );
+    } else this.ctx.storage.sql.exec("DELETE FROM directory_connections WHERE id=?", row.id);
   }
   _socketControl(input) {
     return unbase64(invoke(directorySocketControl, JSON.stringify(input)).frame_base64);
@@ -1141,6 +1239,7 @@ export class DirectoryState extends DurableObject {
       // Read authorization and enqueue the actual frame in ONE synchronous turn.
       // No await, external RPC, automatic Pong or caller-supplied auth snapshot.
       this.ctx.storage.transactionSync(() => {
+        if (!this.#transport.isOpen(socket)) throw error("connection is closing");
         const row = this._socketRow(socket);
         this._socketAuthenticated(row, this._nowMs());
         this.#relaySendBudget(row, bytes);
@@ -1157,47 +1256,62 @@ export class DirectoryState extends DurableObject {
     }
   }
   _retireSockets() {
-    const sockets = this.ctx.getWebSockets();
-    if (!sockets.length && !this.#one("SELECT id FROM directory_connections LIMIT 1")) return;
-    const now = this._nowMs();
-    for (const socket of sockets) {
-      const row = this._socketRow(socket);
-      try {
-        if (row && row.stage !== "ready" && row.expires_ms <= now)
-          socket.send(
-            this._socketControl({
-              kind: "error",
-              stage: row.stage,
-              reason: row.stage === "hello" ? "expected hello" : "expected auth",
-              permanent: true,
-            }),
-          );
-        if (!row || row.expires_ms <= now) throw error("private connection expired");
-        if (row.stage === "ready") this._socketAuthenticated(row, now);
-      } catch {
-        this._socketClose(socket);
+    try {
+      this._retireOrphanSocketRows();
+      const sockets = this._sockets();
+      if (!sockets.length) return;
+      const now = this._nowMs();
+      for (const socket of sockets) {
+        const id = this._socketId(socket);
+        if (socket.readyState === 3) {
+          // Keep the real id/handle if SQL terminalization or enqueue fails.
+          this._terminalSocketId(id);
+          this.#transport.releaseTerminal(socket);
+          continue;
+        }
+        const row = this._socketRow(socket);
+        if (row?.stage === "closing" || row?.stage === "ended") continue;
+        try {
+          if (row && row.stage !== "ready" && row.expires_ms <= now)
+            socket.send(
+              this._socketControl({
+                kind: "error",
+                stage: row.stage,
+                reason: row.stage === "hello" ? "expected hello" : "expected auth",
+                permanent: true,
+              }),
+            );
+          if (!row || row.expires_ms <= now) throw error("private connection expired");
+          if (row.stage === "ready") this._socketAuthenticated(row, now);
+        } catch {
+          this._socketClose(socket);
+        }
       }
+    } finally {
+      this._queueSocketAlarm();
     }
-    // Also retire a connection whose client aborted before an accepted socket was
-    // retained. This prevents an expired orphan row from spinning the shared alarm.
-    this.ctx.storage.transactionSync(() => {
-      for (const row of this.ctx.storage.sql
-        .exec("SELECT * FROM directory_connections WHERE expires_ms<=? LIMIT 256", now)
-        .toArray())
-        this._dropConnection(row);
-    });
   }
-  async _scheduleSocketAlarm() {
-    const row = this.#one("SELECT min(expires_ms) AS deadline FROM directory_connections");
+  _scheduleSocketAlarm() {
+    return this.#socketAlarm.schedule();
+  }
+  _socketAlarmDeadline() {
+    const row = this.#one(
+      "SELECT min(expires_ms) AS deadline FROM directory_connections WHERE stage NOT IN ('closing','ended')",
+    );
     let deadline = row.deadline;
-    if (this.#relay?.pending()) deadline = Math.min(deadline ?? Infinity, this._nowMs() + 250);
-    if (deadline !== null) await this.ctx.storage.setAlarm(deadline);
-    else await this.ctx.storage.deleteAlarm();
+    if (this._socketRetirementPending() || this.#relay?.pending())
+      deadline = Math.min(deadline ?? Infinity, this._nowMs() + 250);
+    return deadline;
   }
+
   async alarm() {
-    this._retireSockets();
-    this.#relay?.kick();
-    await this._scheduleSocketAlarm();
+    this.#relayProtocol();
+    try {
+      this._retireSockets();
+      this.#relay?.kick();
+    } finally {
+      await this._scheduleSocketAlarm();
+    }
   }
 
   async fetch(request) {
@@ -1211,10 +1325,8 @@ export class DirectoryState extends DurableObject {
     this._retireSockets();
     // Private one-cell transport bound, not a claim of full public-relay capacity.
     if (
-      this.ctx
-        .getWebSockets()
-        .filter((socket) => socket.readyState === 1 || socket.readyState === 2).length >=
-        MAX_PENDING ||
+      this._sockets().filter((socket) => socket.readyState === 1 || socket.readyState === 2)
+        .length >= MAX_PENDING ||
       this.#one("SELECT count(*) AS count FROM directory_connections").count >= MAX_PENDING
     )
       return new Response("Private connection capacity reached", { status: 429 });
@@ -1227,12 +1339,34 @@ export class DirectoryState extends DurableObject {
       "hello",
       this._nowMs() + CHALLENGE_MS,
     );
-    socket.serializeAttachment({ version: 1, connection_id: id });
-    this.ctx.acceptWebSocket(socket);
     try {
+      this.#transport.accept(socket, id, {
+        message: (actual, data) => {
+          try {
+            this.webSocketMessage(actual, data);
+          } catch {
+            this._socketClose(actual, 1011);
+          }
+        },
+        close: (actual, code) => this.webSocketClose(actual, code),
+        error: (actual) => this.webSocketError(actual),
+      });
       await this._scheduleSocketAlarm();
     } catch {
-      this._socketClose(socket, 1011);
+      try {
+        // Listener/accept failure may forget an unaccepted handle. Its exact
+        // server-generated SQL id remains known here and is rolled back now.
+        this.ctx.storage.transactionSync(() => {
+          const owned = this.#one("SELECT * FROM directory_connections WHERE id=?", id);
+          if (owned) this._dropConnection(owned);
+        });
+        if (socket.readyState === 0 || socket.readyState === 3) this._terminalSocketId(id);
+      } finally {
+        try {
+          this.#transport.close(socket, 1011, "connection setup failed");
+        } catch {}
+        this._queueSocketAlarm();
+      }
       throw new Error("Private connection scheduling unavailable");
     }
     return new Response(null, { status: 101, webSocket: client });
@@ -1301,8 +1435,14 @@ export class DirectoryState extends DurableObject {
       try {
         if (input.kind !== "auth") throw error("expected auth");
         const result = this.#authenticate({ challengeId: row.challenge_id, frame: bytes }, row.id);
-        this._sendSocket(socket, this._socketControl({ kind: "ready", session: result.session }));
-        if (relay && result.session.registered) this.#relayNotifyOwnStock(socket, result.session);
+        const ready = this._sendSocket(
+          socket,
+          this._socketControl({ kind: "ready", session: result.session }),
+        );
+        if (ready && relay && result.session.registered) {
+          relay.attached(row.id);
+          this.#relayNotifyOwnStock(socket, result.session);
+        }
       } catch (failure) {
         refuseHandshake(failure);
         return;
@@ -1352,14 +1492,36 @@ export class DirectoryState extends DurableObject {
     );
   }
   webSocketClose(socket, code = 1000) {
-    // A peer's normal disconnect is an acknowledgement, not a policy refusal.
-    // The empty/aborted codes cannot be sent in an outgoing Close frame.
-    this._socketClose(socket, [1005, 1006].includes(code) ? 1000 : code);
-    this.ctx.waitUntil(Promise.resolve(this._scheduleSocketAlarm()));
+    this.#relayProtocol();
+    const id = this._socketId(socket);
+    this.#transport.markClosing(socket);
+    try {
+      // This genuine runtime terminal callback never reconstructs a Session.
+      this._terminalSocketId(id);
+    } finally {
+      try {
+        this.#transport.close(
+          socket,
+          [1005, 1006].includes(code) ? 1000 : code,
+          "private directory connection closed",
+        );
+      } catch {}
+      this._queueSocketAlarm();
+    }
   }
   webSocketError(socket) {
-    this._socketClose(socket, 1011);
-    this.ctx.waitUntil(Promise.resolve(this._scheduleSocketAlarm()));
+    this.#relayProtocol();
+    const id = this._socketId(socket);
+    try {
+      this._socketClose(socket, 1011);
+    } finally {
+      try {
+        // Some runtime errors are already terminal with no later close event.
+        if (socket.readyState === 3) this._terminalSocketId(id);
+      } finally {
+        this._queueSocketAlarm();
+      }
+    }
   }
 
   // Trusted backend fanout seam only. The caller owns Space audience decisions;
@@ -1371,7 +1533,7 @@ export class DirectoryState extends DurableObject {
     const canonical = unbase64(invoke(directorySocketDelivery, bytes).frame_base64);
     let delivered = 0,
       refused = 0;
-    for (const socket of this.ctx.getWebSockets()) {
+    for (const socket of this._sockets()) {
       const row = this._socketRow(socket);
       if (row?.stage !== "ready" || row.identity !== input.identity || row.device !== input.device)
         continue;

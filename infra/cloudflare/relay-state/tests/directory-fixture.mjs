@@ -62,7 +62,7 @@ export class DirectoryState extends ProductionDirectory {
     this.#clock = Number(input.now_ms);
     await super.alarm();
     const serverReadyStates = {};
-    for (const socket of this.ctx.getWebSockets())
+    for (const socket of this._sockets())
       serverReadyStates[socket.readyState] = (serverReadyStates[socket.readyState] ?? 0) + 1;
     return {
       ...this.socketState(),
@@ -89,31 +89,10 @@ export class DirectoryState extends ProductionDirectory {
       sessions: sql.exec("SELECT count(*) AS count FROM directory_sessions").toArray()[0].count,
     };
   }
-  socketReconstruct(input) {
-    // Reuse the actual accepted socket and SQL storage with a fresh production
-    // handler. This is controlled reconstruction, not runtime-forced hibernation.
-    this.#clock = Number(input.now_ms);
-    const clock = this.#clock;
-    class ReconstructedDirectory extends ProductionDirectory {
-      _nowMs() {
-        return clock;
-      }
-      _scheduleSocketAlarm() {}
-    }
-    const sockets = this.ctx.getWebSockets().filter((socket) => socket.readyState === 1);
-    const original = sockets.map((socket) => JSON.stringify(socket.deserializeAttachment()));
-    const handler = new ReconstructedDirectory(this.ctx, this.env);
-    if (input.alarm) return handler.alarm();
-    if (sockets.length !== 1) throw new Error("Reconstruction requires one actual socket");
-    handler.webSocketMessage(sockets[0], bytes(input.frame_base64).buffer);
-    return {
-      attachmentUnchanged: JSON.stringify(sockets[0].deserializeAttachment()) === original[0],
-    };
-  }
   socketAttachments() {
     // Return shape only; opaque connection/session/challenge IDs stay inside DO.
-    return this.ctx.getWebSockets().map((socket) => {
-      const value = socket.deserializeAttachment();
+    return this._sockets().map((socket) => {
+      const value = { version: 1, connection_id: this._socketId(socket) };
       return {
         keys: Object.keys(value).sort(),
         version: value.version,
@@ -471,9 +450,6 @@ export default {
           break;
         case "/socket-state":
           result = await stub.socketState();
-          break;
-        case "/socket-reconstruct":
-          result = await stub.socketReconstruct(input);
           break;
         case "/socket-attachments":
           result = await stub.socketAttachments();

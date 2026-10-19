@@ -130,7 +130,7 @@ export default {
           result.events = result.events.map((event) => ({ ...event, bytes: base64(event.bytes) }));
           break;
         case "/co-members":
-          result = await stub.coMembers({ spaceId: input.space_id, session: input.session });
+          result = await stub.coMembers({ spaceId: input.space_id, identity: input.identity });
           break;
         case "/visibility":
           result = await stub.visibility({ spaceId: input.space_id, session: input.session });

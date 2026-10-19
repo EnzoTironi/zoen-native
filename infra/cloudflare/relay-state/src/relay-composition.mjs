@@ -1,3 +1,4 @@
+import { RelayPresence } from "./relay-presence.mjs";
 // Authenticated protocol composition; Directory owns sessions/devices and Space owns log/membership.
 // Host hooks below MUST close over DirectoryState's actual private SQL/session methods.
 // Tests may pause I/O but must not supply authenticated facts or replace these hooks.
@@ -8,6 +9,7 @@ const MAX_CELL_BYTES = 8 * 1024 * 1024;
 const MAX_PUMPS = 32;
 const MAX_UNSETTLED_RPC = 32;
 const MAX_UNSETTLED_READS = 2;
+const MAX_UNSETTLED_PRESENCE = 8;
 const JOBS_PER_TURN = 4;
 const RPC_TIMEOUT_MS = 5000;
 const SYNC_DEADLINE_MS = 30000;
@@ -27,6 +29,7 @@ const decimal = (value) =>
  * Fixed, server-only Space service binding passed as `spaces` by Directory.
  * host hooks:
  * - socketId/socketFor/socketRow: existing opaque attachment and SQL lookups.
+ * - sockets(): actual generation-local handles only; Directory owns authorization.
  * - incoming/control/event/plan: shared Rust/WASM only.
  * - admit(connectionId,bytes,input): synchronous Directory transaction returning
  *   {state:'admitted',identity,device,session:{authenticated_identity,authenticated_device},target,
@@ -48,9 +51,11 @@ export class RelayComposition {
   #sql;
   #spaces;
   #host;
+  #presence;
   #pumps = new Set();
   #unsettled = new Set();
   #unsettledReads = new Set();
+  #unsettledPresence = new Set();
   constructor(ctx, spaces, host) {
     this.#ctx = ctx;
     this.#sql = ctx.storage.sql;
@@ -64,12 +69,35 @@ export class RelayComposition {
     );
     this.#sql.exec(`CREATE TABLE IF NOT EXISTS relay_discovery (
       identity TEXT NOT NULL,space_id TEXT NOT NULL,PRIMARY KEY(identity,space_id))`);
+    this.#presence = new RelayPresence(ctx, {
+      ...host.presence,
+      coMembers: (identity, timeoutMs) => this.#coMembers(identity, timeoutMs, 4, "presence"),
+      control: (notice) => host.control({ kind: "presence", ...notice }),
+      send: (socket, bytes) => host.send(socket, bytes),
+      wake: () => host.wake(),
+    });
   }
+  attached(connectionId) {
+    return this.#presence.attach(connectionId);
+  }
+  presenceAttached(connectionId) {
+    return this.#presence.isAttached(connectionId);
+  }
+  presenceClosing(connectionId) {
+    this.#presence.closing(connectionId);
+  }
+  presenceEnded(connectionId) {
+    this.#presence.transportEnded(connectionId);
+  }
+
   #one(query, ...args) {
     return this.#sql.exec(query, ...args).toArray()[0] ?? null;
   }
   pending() {
-    return Boolean(this.#one("SELECT CAST(id AS TEXT) AS id FROM relay_pending LIMIT 1"));
+    return (
+      Boolean(this.#one("SELECT CAST(id AS TEXT) AS id FROM relay_pending LIMIT 1")) ||
+      this.#presence.pending()
+    );
   }
   drop(connectionId) {
     this.#sql.exec("DELETE FROM relay_pending WHERE connection_id=?", connectionId);
@@ -118,6 +146,7 @@ export class RelayComposition {
     );
   }
   kick() {
+    this.#presence.kick();
     for (const row of this.#sql.exec(
       "SELECT connection_id,CAST(min(id) AS TEXT) AS oldest FROM relay_pending GROUP BY connection_id ORDER BY min(id) LIMIT 32",
     )) {
@@ -133,7 +162,7 @@ export class RelayComposition {
     } catch (error) {
       // No unhandled rejection or accepted pending work with a lost alarm.
       // Closing bounded sockets makes queued, not-yet-admitted work retryable.
-      for (const socket of this.#ctx.getWebSockets()) {
+      for (const socket of this.#host.sockets()) {
         try {
           this.#host.close(socket, 1011);
         } catch {}
@@ -141,20 +170,24 @@ export class RelayComposition {
       throw error;
     }
   }
-  async #rpc(operation, read = false) {
+  async #rpc(operation, read = false, timeoutMs = RPC_TIMEOUT_MS, lane = "ordinary") {
     if (read && this.#unsettledReads.size >= MAX_UNSETTLED_READS)
       throw failure("relay read capacity reached");
     if (this.#unsettled.size >= MAX_UNSETTLED_RPC)
       throw failure("relay dependency capacity reached");
+    if (lane === "presence" && this.#unsettledPresence.size >= MAX_UNSETTLED_PRESENCE)
+      throw failure("presence dependency capacity reached");
     const lease = {};
     this.#unsettled.add(lease);
     if (read) this.#unsettledReads.add(lease);
+    if (lane === "presence") this.#unsettledPresence.add(lease);
     let underlying;
     try {
       underlying = Promise.resolve(operation());
     } catch (error) {
       this.#unsettled.delete(lease);
       this.#unsettledReads.delete(lease);
+      this.#unsettledPresence.delete(lease);
       throw error;
     }
     // A timeout does not cancel a Workers RPC. Keep its slot until real settle,
@@ -162,6 +195,7 @@ export class RelayComposition {
     const release = () => {
       this.#unsettled.delete(lease);
       this.#unsettledReads.delete(lease);
+      this.#unsettledPresence.delete(lease);
     };
     underlying.then(release, release);
     let timeout;
@@ -169,7 +203,7 @@ export class RelayComposition {
       return await Promise.race([
         underlying,
         new Promise((_, reject) => {
-          timeout = setTimeout(() => reject(failure("relay dependency timeout")), RPC_TIMEOUT_MS);
+          timeout = setTimeout(() => reject(failure("relay dependency timeout")), timeoutMs);
         }),
       ]);
     } finally {
@@ -261,7 +295,10 @@ export class RelayComposition {
     if (effects.ok) {
       // Native go_online precedes first Register Res; Claim low notices precede
       // claimant Res. Notifications query real remaining stock, never input counts.
-      if (input.register && !admitted.registered) this.#host.ownStock(socket, admitted);
+      if (input.register && !admitted.registered) {
+        this.attached(admitted.origin_connection);
+        this.#host.ownStock(socket, admitted);
+      }
       if (effects.claimed.length) this.#host.claimedStock(effects.claimed);
       // Native PutProfile invalidates other current sessions BEFORE Reply::Done.
       // Resolve the complete audience first: a failed lookup leaks no partial set.
@@ -272,6 +309,59 @@ export class RelayComposition {
     if (effects.ok && input.refill) this.#host.ownStock(socket, admitted);
   }
 
+  async #coMembers(identity, timeoutMs, width, lane = "ordinary") {
+    if (!key(identity)) throw failure("invalid trusted co-member subject");
+    const deadline = performance.now() + timeoutMs;
+    const current = () => {
+      if (performance.now() > deadline) throw failure("profile audience deadline reached");
+    };
+    const spaces = [];
+    let after = "";
+    while (true) {
+      const rows = this.#sql
+        .exec(
+          "SELECT space_id FROM relay_discovery WHERE identity=? AND space_id>? ORDER BY space_id LIMIT 64",
+          identity,
+          after,
+        )
+        .toArray();
+      for (const row of rows) spaces.push(row.space_id);
+      if (spaces.length > MAX_CANDIDATES) throw failure("profile discovery capacity reached");
+      if (rows.length < 64) break;
+      after = rows[rows.length - 1].space_id;
+    }
+    const audience = new Set();
+    // Each Space owns current membership. Catalogue rows are conservative hints;
+    // retained rows for removal/unknown Spaces grant no invalidation audience.
+    for (let offset = 0; offset < spaces.length; offset += width) {
+      current();
+      const results = await Promise.all(
+        spaces
+          .slice(offset, offset + width)
+          .map((spaceId) =>
+            this.#rpc(
+              () => this.#spaces.coMembers({ spaceId, identity }),
+              false,
+              Math.max(1, Math.min(RPC_TIMEOUT_MS, deadline - performance.now())),
+              lane,
+            ),
+          ),
+      );
+      current();
+      for (const result of results) {
+        if (!Array.isArray(result?.members) || result.members.length > 1000)
+          throw failure("invalid profile audience response");
+        for (const identity of result.members) {
+          if (!key(identity)) throw failure("invalid profile audience identity");
+          audience.add(identity);
+          if (audience.size > 5000) throw failure("profile audience capacity reached");
+        }
+      }
+    }
+    audience.delete(identity);
+    return [...audience];
+  }
+
   async #profileChanged(profile, admitted) {
     try {
       if (
@@ -280,55 +370,15 @@ export class RelayComposition {
         !decimal(profile.version)
       )
         throw failure("invalid successful profile metadata");
-      const deadline = performance.now() + RPC_TIMEOUT_MS;
-      const current = () => {
-        if (performance.now() > deadline) throw failure("profile audience deadline reached");
-      };
-      const spaces = [];
-      let after = "";
-      while (true) {
-        const rows = this.#sql
-          .exec(
-            "SELECT space_id FROM relay_discovery WHERE identity=? AND space_id>? ORDER BY space_id LIMIT 64",
-            admitted.identity,
-            after,
-          )
-          .toArray();
-        for (const row of rows) spaces.push(row.space_id);
-        if (spaces.length > MAX_CANDIDATES) throw failure("profile discovery capacity reached");
-        if (rows.length < 64) break;
-        after = rows[rows.length - 1].space_id;
-      }
-      const audience = new Set([admitted.identity]);
-      // Each Space owns current membership. Catalogue rows are conservative hints;
-      // retained rows for removal/unknown Spaces grant no invalidation audience.
-      for (let offset = 0; offset < spaces.length; offset += 8) {
-        current();
-        const results = await Promise.all(
-          spaces
-            .slice(offset, offset + 8)
-            .map((spaceId) =>
-              this.#rpc(() => this.#spaces.coMembers({ spaceId, session: admitted.session })),
-            ),
-        );
-        current();
-        for (const result of results) {
-          if (!Array.isArray(result?.members) || result.members.length > 1000)
-            throw failure("invalid profile audience response");
-          for (const identity of result.members) {
-            if (!key(identity)) throw failure("invalid profile audience identity");
-            audience.add(identity);
-            if (audience.size > 5000) throw failure("profile audience capacity reached");
-          }
-        }
-      }
+      const audience = new Set(await this.#coMembers(admitted.identity, RPC_TIMEOUT_MS, 8));
+      audience.add(admitted.identity);
       const bytes = this.#host.control({
         kind: "profile_changed",
         identity: profile.identity,
         version: profile.version,
       });
       const recipients = [];
-      for (const socket of this.#ctx.getWebSockets()) {
+      for (const socket of this.#host.sockets()) {
         const row = this.#host.socketRow(socket);
         if (
           socket.readyState === 1 &&
@@ -610,8 +660,8 @@ export class RelayComposition {
       );
     if (input.kind === "duplicate" && validOrigin) send(origin, canonical.frame);
     const joined = input.joined !== input.origin_identity ? input.joined : null;
-    // getWebSockets bounded by existing256 connection limit. No audience×devices RPC fanout.
-    const sockets = this.#ctx.getWebSockets();
+    // Actual sockets bounded by existing256 connection limit. No audience×devices RPC fanout.
+    const sockets = this.#host.sockets();
     if (sockets.length > 256) throw failure("relay socket inventory exceeds private bound");
     for (const socket of sockets) {
       const row = this.#host.socketRow(socket);

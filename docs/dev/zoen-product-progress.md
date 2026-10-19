@@ -25,6 +25,13 @@ Generators clear their owned output directories and verify exact inventories.
 Actual stale native-library and Swift-source probes cause regeneration instead
 of packaging extra artifacts. Existing installed device data was not deleted.
 
+Prelaunch API changes update callers directly. The Android source verifier now
+discovers each revision's actual library manifest and reports historical ABI
+changes without a compatibility registry. Current generated-source, Kotlin/JNI
+and checksum checks remain blocking. Independently compiled Swift geometry and
+motion match the original art corpora; pet pixels and Excalidraw runtime HTML are
+unchanged after real producer runs. The 15 source-verifier tests pass.
+
 ## Current validation boundary
 
 - Expo SDK 58.0.16 compatibility and Expo Doctor 20/20 passed. Current app checks
@@ -57,13 +64,39 @@ reference outboxes and current-device send fences. The public routes remain
 disabled. Earlier native/WASM/SQLite proofs retain their version-specific
 receipts; package renaming does not make those whole-product acceptance.
 
-Four actual dual-wire runs remain retained as failed journeys. The latest passed
-520 encrypted publications per runtime and complete initial history pagination,
-then exposed missing offline presence. Cold restart was not reached. Presence,
-ephemeral receipt replay and device-message fanout still need complete wire and
-real-client verification. Two untouched hibernating-socket close assertions also
-remain red at their original deadlines; an isolated newer runtime reproduces
-the failure.
+The ordinary WebSocket adapter now passes the original Hello/Auth idle and
+256-connection capacity checks at their unchanged five-second deadlines. Its
+handle registry stores no account or session authority. Directory retains all
+device/session admission and actual-write fences; Space retains membership.
+Closing sockets keep their reservation until actual transport termination. One
+shared alarm scheduler serializes installation and recomputes pending work after
+awaits. The explicit binary type follows the current
+[Cloudflare WebSocket API](https://developers.cloudflare.com/workers/runtime-apis/websockets/#binary-messages).
+
+The current local checkpoint passes 147 shared Rust tests, strict Clippy,
+28 presence/registry/scheduler unit tests and 48 actual workerd Directory cases.
+The runtime cases include genuine native signed authentication/registration,
+actual abrupt process death followed by persisted-orphan retirement and fresh
+authentication, and recovery of a real close-callback SQL failure through the
+next actual durable alarm. Separate closed-group publication/read suites pass.
+
+The first complete native/candidate wire baseline now passes with two real
+accounts and a second linked device: actual HPKE enrollment, Direct/Group MLS,
+520 encrypted messages crossing history pages, profile/presence, removal/rejoin,
+duplicate publication, unlink fences and complete history recovery after real
+server/client SQLite reopen. The comparison retains 19,054 raw frame rows and
+only the documented nonce/clock and distinct-device stock-notice ordering rules.
+It does not filter missing frames. All task-owned services stopped and exact
+test namespaces were verified clean. No protected shared service was reset.
+
+The bounded receipt is `/private/tmp/zoen-ordinary-presence-v114/acceptance.json`,
+SHA-256 `f5d9e83a79e7319af9050b601a728233b75b4c15dc4214cc5adbb0c1df3046d0`.
+The four earlier failed wire runs and first integration failure remain retained.
+The old hibernation diagnosis remains historical evidence, rather than a runtime
+fallback. Ephemeral receipt replay, device-message fanout, final processing
+credit, slow-reader/flood and concurrent fault cases still require completion.
+The portable checked-in form of the standalone wire oracle is being prepared;
+the checked-in Directory verifier already includes its lifecycle cases.
 
 Real providers, public deployment, push/headless execution, encrypted calls,
 remaining media/editor recovery, desktop, accessibility and production operation

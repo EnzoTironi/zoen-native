@@ -79,6 +79,17 @@ const sourcePaths = [
   "infra/cloudflare/relay-state/src/relay-entrypoint.mjs",
   "infra/cloudflare/relay-state/src/relay-route.mjs",
   "infra/cloudflare/relay-state/src/relay-composition.mjs",
+  "infra/cloudflare/relay-state/src/relay-presence.mjs",
+  "infra/cloudflare/relay-state/src/socket-transport.mjs",
+  "infra/cloudflare/relay-state/src/socket-alarm.mjs",
+  "infra/cloudflare/relay-state/src/closed-index.mjs",
+  "infra/cloudflare/relay-state/src/closed-space.mjs",
+  "infra/cloudflare/relay-state/src/space-storage.mjs",
+  "infra/cloudflare/relay-state/src/relay-publications.mjs",
+  "crates/relay-admission/src/closed/reads.rs",
+  "crates/relay-admission/tests/closed_reads.rs",
+  "infra/cloudflare/relay-state/tests/socket-transport.unit.test.mjs",
+  "infra/cloudflare/relay-state/tests/socket-alarm.unit.test.mjs",
   "infra/cloudflare/relay-state/src/relay-index.mjs",
   "infra/cloudflare/relay-state/tests/relay-ingress-fixture.mjs",
   "infra/cloudflare/relay-state/tests/relay-ingress.test.mjs",
@@ -88,6 +99,13 @@ const sourcePaths = [
   "infra/cloudflare/relay-state/tests/directory-fixture.mjs",
   "infra/cloudflare/relay-state/tests/directory-state.test.mjs",
   "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
+  "infra/cloudflare/relay-state/tests/socket-lifecycle-harness.mjs",
+  "infra/cloudflare/relay-state/tests/socket-lifecycle-child.mjs",
+  "infra/cloudflare/relay-state/tests/socket-lifecycle-process.mjs",
+  "infra/cloudflare/relay-state/tests/directory-lifecycle-fixture.mjs",
+  "infra/cloudflare/relay-state/tests/socket-lifecycle.test.mjs",
+  "infra/cloudflare/relay-state/tests/presence-unit-harness.mjs",
+  "infra/cloudflare/relay-state/tests/relay-presence.unit.test.mjs",
   "infra/cloudflare/relay-state/tests/directory-read.test.mjs",
   "infra/cloudflare/relay-state/tests/directory-sealed-profiles.test.mjs",
   "infra/cloudflare/relay-state/wrangler.directory.jsonc",
@@ -333,6 +351,7 @@ try {
               "infra/cloudflare/relay-state/tests/directory-read.test.mjs",
               "infra/cloudflare/relay-state/tests/directory-sealed-profiles.test.mjs",
               "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
+              "infra/cloudflare/relay-state/tests/socket-lifecycle.test.mjs",
               "infra/cloudflare/relay-state/tests/relay-ingress.test.mjs",
             ];
   const fixtureEnv = transfer
@@ -342,6 +361,7 @@ try {
       : { ZOEN_DIRECTORY_FIXTURE: fixturePath };
   // These use real SQLite/WASM with scheduling doubles, not workerd sockets.
   let profileNoticeUnits = null;
+  let transportPresenceUnits = null;
   if (profiles || (!reads && !http)) {
     const path = join(output, "profile-notice-units.tap");
     const tap = await run(
@@ -362,6 +382,20 @@ try {
     await writeFile(path, tap);
     process.stdout.write(tap);
     profileNoticeUnits = { ...testTotals(tap), artifact: await artifact(path) };
+  }
+  if (!profiles && !reads && !http) {
+    const path = join(output, "transport-presence-units.tap");
+    const tap = await run(process.execPath, ["--test", "--test-reporter=tap", "--test-concurrency=1",
+      "infra/cloudflare/relay-state/tests/socket-transport.unit.test.mjs",
+      "infra/cloudflare/relay-state/tests/socket-alarm.unit.test.mjs",
+      "infra/cloudflare/relay-state/tests/relay-presence.unit.test.mjs"],
+      { capture: true, env: { ...environment, ...fixtureEnv } }).catch(async (failure) => {
+        if (typeof failure.stdout === "string") await writeFile(path, failure.stdout);
+        throw failure;
+      });
+    await writeFile(path, tap);
+    process.stdout.write(tap);
+    transportPresenceUnits = { ...testTotals(tap), artifact: await artifact(path) };
   }
   const workerdTap = await run(
     process.execPath,
@@ -423,6 +457,7 @@ try {
     workerdCases: workerd.tests,
     workerd,
     profileNoticeUnits,
+    transportPresenceUnits,
     source: {
       commit: process.env.GITHUB_SHA ?? checkoutHead,
       checkoutHead,

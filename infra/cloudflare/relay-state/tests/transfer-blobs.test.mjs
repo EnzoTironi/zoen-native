@@ -33,7 +33,7 @@ function runtime() {
         "tests/media-fixture.mjs",
         "tests/directory-fixture.mjs",
         "src/directory-index.mjs",
-        "src/relay-entrypoint.mjs", "src/relay-route.mjs", "src/directory-state.mjs", "src/relay-composition.mjs",
+        "src/relay-entrypoint.mjs", "src/relay-route.mjs", "src/directory-state.mjs", "src/relay-composition.mjs", "src/relay-presence.mjs", "src/socket-transport.mjs", "src/socket-alarm.mjs",
         "src/provider-auth.mjs",
         "src/media-blobs.mjs",
         "src/blob-io.mjs",
