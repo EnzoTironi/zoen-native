@@ -41,22 +41,36 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
   // Register before awaiting anything: a signaled process can exit before cleanup,
   // and its stdio may still be open after 'exit'.
   const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+  let stderr = '';
+  const failure = (message: string, cause?: Error) =>
+    new Error(
+      `${message}: ${JSON.stringify({
+        binary: chrome,
+        pid: child.pid ?? null,
+        exitCode: child.exitCode,
+        signalCode: child.signalCode,
+        ...(cause ? { spawnError: cause.message } : {}),
+        stderr,
+      })}`,
+    );
   let socket: WebSocket | undefined;
   let deadline: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       (async () => {
         const endpoint = await new Promise<string>((resolve, reject) => {
-          let output = '';
-          const timer = setTimeout(() => reject(new Error('Owned Chrome did not start')), 10_000);
-          child.once('error', reject);
+          const timer = setTimeout(() => reject(failure('Owned Chrome did not start')), 10_000);
+          child.once('error', (error) => {
+            clearTimeout(timer);
+            reject(failure('Owned Chrome could not spawn', error));
+          });
           child.once('exit', () => {
             clearTimeout(timer);
-            reject(new Error('Owned Chrome exited before connection'));
+            reject(failure('Owned Chrome exited before connection'));
           });
           child.stderr.on('data', (data: Buffer) => {
-            output = (output + data.toString()).slice(-16_384);
-            const match = output.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/);
+            stderr = (stderr + data.toString()).slice(-16_384);
+            const match = stderr.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/);
             if (match) {
               clearTimeout(timer);
               resolve(match[1]!);
@@ -130,7 +144,7 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
       })(),
       new Promise<never>((_, reject) => {
         deadline = setTimeout(
-          () => reject(new Error('Owned Chrome transport check timed out')),
+          () => reject(failure('Owned Chrome transport check timed out')),
           20_000,
         );
       }),
@@ -152,6 +166,33 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
     }
   }
 }
+
+test('owned browser startup failures retain executable, process and bounded stderr diagnostics', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'zoen-browser-startup-'));
+  try {
+    await assert.rejects(realBrowserResult(process.execPath, folder, ''), (error: Error) => {
+      assert.match(error.message, /Owned Chrome exited before connection/);
+      const detail = JSON.parse(error.message.slice(error.message.indexOf(': ') + 2));
+      assert.equal(detail.binary, process.execPath);
+      assert.equal(typeof detail.pid, 'number');
+      assert.notEqual(detail.exitCode, 0);
+      assert.match(detail.stderr, /bad option|unknown option/);
+      assert.ok(detail.stderr.length <= 16_384);
+      return true;
+    });
+    const missing = join(folder, 'missing-chrome');
+    await assert.rejects(realBrowserResult(missing, folder, ''), (error: Error) => {
+      assert.match(error.message, /Owned Chrome could not spawn/);
+      const detail = JSON.parse(error.message.slice(error.message.indexOf(': ') + 2));
+      assert.equal(detail.binary, missing);
+      assert.equal(detail.pid, null);
+      assert.match(detail.spawnError, /ENOENT/);
+      return true;
+    });
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
 
 test('native messages require the current document envelope and bounded JSON-RPC', () => {
   const encoded = JSON.stringify(message);

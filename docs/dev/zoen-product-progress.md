@@ -35,7 +35,7 @@ unchanged after real producer runs. The 15 source-verifier tests pass.
 ## Current validation boundary
 
 - Expo SDK 58.0.16 compatibility and Expo Doctor 20/20 passed. Current app checks
-  pass TypeScript, Oxlint, Oxfmt and 815/815 tests without skips.
+  pass TypeScript, Oxlint, Oxfmt and 816/816 tests without skips.
 - Renamed client, relay, admission and browser-core targets compile. The actual
   offline-invite regression confirms that no local signed grant is manufactured.
 - Fresh Android arm64 bindings and native ABI pass verification. All 123 JVM
