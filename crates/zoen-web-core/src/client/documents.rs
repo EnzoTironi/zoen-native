@@ -754,7 +754,7 @@ impl<S: Signer> Client<S> {
             ItemKind::Note => ("note", t("Nota", "Note")),
             ItemKind::Page => ("page", t("Página", "Page")),
             ItemKind::File => ("file", t("Arquivo", "File")),
-            ItemKind::App => ("app", t("Miniapp", "Miniapp")),
+            ItemKind::App => ("app", t("App", "App")),
         };
         Ok(json!({ "id": item.id, "space_id": item.space,
             "space_title": self.metadata(&item.space).map(|metadata| metadata.0).unwrap_or_default(),

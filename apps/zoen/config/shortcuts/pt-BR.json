@@ -1,4 +1,4 @@
 {
-  "Open a miniapp in ${applicationName}": "Abrir miniapp no ${applicationName}",
+  "Open an app in ${applicationName}": "Abrir app no ${applicationName}",
   "Open a conversation in ${applicationName}": "Abrir conversa no ${applicationName}"
 }

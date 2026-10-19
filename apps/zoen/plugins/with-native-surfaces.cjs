@@ -24,7 +24,7 @@ function withNativeSurfaces(config) {
         widgets: [
           {
             name: 'ZoenMiniapp',
-            displayName: 'Zoen miniapp',
+            displayName: 'Zoen app',
             description: 'A preview you choose. Content hidden by default.',
             ios: {
               supportedFamilies: [
@@ -35,14 +35,14 @@ function withNativeSurfaces(config) {
               ],
               initialLayout: 'src/native-surfaces/miniapp-widget.ios.tsx',
               configuration: {
-                title: 'Miniapp',
-                description: 'Choose a different miniapp for each widget.',
+                title: 'App',
+                description: 'Choose a different app for each widget.',
                 parameters: {
                   miniapp: {
-                    title: 'Miniapp',
+                    title: 'App',
                     type: 'enum',
                     default: 'none',
-                    values: [{ name: 'Choose a miniapp', value: 'none' }],
+                    values: [{ name: 'Choose an app', value: 'none' }],
                     dynamic: true,
                   },
                 },

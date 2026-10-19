@@ -3500,13 +3500,13 @@ impl Engine {
             .items
             .get(item)
             .map(|it| it.space.clone())
-            .ok_or_else(|| not_found(&t("mini-app", "mini-app")))?;
+            .ok_or_else(|| not_found(&t("app", "app")))?;
         if !matches!(
             self.state.items.get(item).map(|it| &it.current().content),
             Some(ItemContent::App(_))
         ) {
             return Err(CoreError::Invalid {
-                reason: t("não é um mini-app", "not a mini-app"),
+                reason: t("não é um app", "not an app"),
             });
         }
         let cap = capability.trim();
@@ -3550,7 +3550,7 @@ impl Engine {
             .ok_or_else(|| not_found(&t("concessão", "grant")))?;
         let GrantScope::Item(item) = &g.grant.scope else {
             return Err(CoreError::Invalid {
-                reason: t("não é de um mini-app", "not a mini-app grant"),
+                reason: t("não é de um app", "not an app grant"),
             });
         };
         let space = self
@@ -3558,7 +3558,7 @@ impl Engine {
             .items
             .get(item)
             .map(|it| it.space.clone())
-            .ok_or_else(|| not_found(&t("mini-app", "mini-app")))?;
+            .ok_or_else(|| not_found(&t("app", "app")))?;
         let me = self.me_id()?;
         self.append(
             &space,
@@ -3700,8 +3700,8 @@ impl Engine {
             .ok_or_else(|| not_found(&t("recurso de interface", "UI resource")))?;
         let html = spec.html.ok_or_else(|| {
             not_found(&t(
-                "View MCP (este mini-app é desenhado nativamente)",
-                "MCP View (this mini-app is drawn natively)",
+                "View MCP (este app é desenhado nativamente)",
+                "MCP View (this app is drawn natively)",
             ))
         })?;
         Ok(AppResourceDto {
@@ -3819,10 +3819,7 @@ impl Engine {
             space,
             agent,
             prompt,
-            tr!(
-                "Criar o mini-app “{title}”",
-                "Create the mini-app “{title}”"
-            ),
+            tr!("Criar o app “{title}”", "Create the app “{title}”"),
             proposal,
         )
     }
@@ -3846,7 +3843,7 @@ impl Engine {
             .into_iter()
             .find(|spec| spec.id == app_id)
             .ok_or_else(|| CoreError::Invalid {
-                reason: t("mini-app desconhecido", "unknown mini-app"),
+                reason: t("app desconhecido", "unknown app"),
             })?;
         let args: Value = serde_json::from_str(args_json).map_err(|_| CoreError::Invalid {
             reason: t("argumentos inválidos", "invalid arguments"),
@@ -3906,10 +3903,7 @@ impl Engine {
         self.post_as(
             space,
             &me,
-            &t(
-                "Mini-app adicionado a este Espaço.",
-                "Mini-app added to this Space.",
-            ),
+            &t("App adicionado a este Espaço.", "App added to this Space."),
             Some(item.clone()),
         )?;
         self.item(&item)
@@ -4025,10 +4019,10 @@ impl Engine {
         let it = self.item_state(item)?.clone();
         let ItemContent::App(doc) = it.current().content.clone() else {
             return Err(CoreError::Invalid {
-                reason: t("este Item não é um mini-app", "this Item is not a mini-app"),
+                reason: t("este Item não é um app", "this Item is not an app"),
             });
         };
-        let spec = apps::spec(&doc.app).ok_or_else(|| not_found("mini-app"))?;
+        let spec = apps::spec(&doc.app).ok_or_else(|| not_found("app"))?;
         if doc.app == "excalidraw" {
             return Err(CoreError::Invalid {
                 reason: t(
@@ -4317,7 +4311,7 @@ pub(crate) fn kind_label(k: ItemKind) -> &'static str {
         ItemKind::Plan => ts("Plano", "Plan"),
         ItemKind::Task => ts("Tarefa", "Task"),
         ItemKind::Note => ts("Nota", "Note"),
-        ItemKind::App => ts("Mini-app", "Mini-app"),
+        ItemKind::App => ts("App", "App"),
         ItemKind::Page => ts("Página", "Page"),
         ItemKind::File => ts("Arquivo", "File"),
     }
@@ -4449,8 +4443,8 @@ pub(crate) fn event_label(b: &EventBody) -> String {
             ),
             Capability::Invite { .. } => t("Concessão: link de convite", "Grant: invite link"),
             Capability::Device { capability, .. } => tr!(
-                "Concessão: {} para um mini-app",
-                "Grant: {} for a mini-app",
+                "Concessão: {} para um app",
+                "Grant: {} for an app",
                 capability
             ),
             Capability::ConsentMode { mode } => tr!(

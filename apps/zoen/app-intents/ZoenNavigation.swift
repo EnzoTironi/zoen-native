@@ -3,7 +3,7 @@ import Foundation
 internal import ExpoAppIntents
 private enum ZoenNavigationError: Error { case unavailable }
 struct ZoenItemEntity: AppEntity {
-  static let typeDisplayRepresentation: TypeDisplayRepresentation = "Zoen miniapp"
+  static let typeDisplayRepresentation: TypeDisplayRepresentation = "Zoen app"
   static let defaultQuery = ZoenItemQuery()
   var id: String
   @Property(title: "Name") var name: String
@@ -22,10 +22,10 @@ struct ZoenItemQuery: EntityStringQuery {
   }
 }
 struct ZoenOpenItemIntent: AppIntent {
-  static let title: LocalizedStringResource = "Open miniapp"
+  static let title: LocalizedStringResource = "Open app"
   static let openAppWhenRun = true
   static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
-  @Parameter(title: "Miniapp") var selection: ZoenItemEntity
+  @Parameter(title: "App") var selection: ZoenItemEntity
   static var parameterSummary: some ParameterSummary { Summary("Open \(\.$selection)") }
   @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
     // Saved shortcuts re-resolve IDs against the currently selected local catalog.
@@ -79,7 +79,7 @@ struct ZoenOpenChatIntent: AppIntent {
 }
 struct ZoenShortcuts: AppShortcutsProvider {
   static var appShortcuts: [AppShortcut] {
-    AppShortcut(intent: ZoenOpenItemIntent(), phrases: ["Open a miniapp in \(.applicationName)"], shortTitle: "Open miniapp", systemImageName: "square.grid.2x2")
+    AppShortcut(intent: ZoenOpenItemIntent(), phrases: ["Open an app in \(.applicationName)"], shortTitle: "Open app", systemImageName: "square.grid.2x2")
     AppShortcut(intent: ZoenOpenChatIntent(), phrases: ["Open a conversation in \(.applicationName)"], shortTitle: "Open conversation", systemImageName: "bubble.left.and.bubble.right")
   }
 }

@@ -90,7 +90,7 @@ impl<S: Signer> Client<S> {
     ) -> Result<documents::DocumentResponse, String> {
         self.view_now_ms = now;
         if request.len() > 1 << 20 {
-            return Err("Solicitação do mini-app grande demais.".into());
+            return Err("Solicitação do app grande demais.".into());
         }
         let _language = localization::enter(localization::Lang::from_tag(locale));
         let command: Command = serde_json::from_str(request).map_err(error)?;
@@ -102,12 +102,12 @@ impl<S: Signer> Client<S> {
                     "input_schema_json":tool.schema.to_string(),"visibility":tool.visibility,"action_label":action_label(&tool.action),"read_only":tool.read_only})).collect::<Vec<_>>() })).collect::<Vec<_>>()),
             Command::AppResource{uri}=>{
                 let spec=apps::spec_for_uri(&uri).ok_or("Recurso de interface indisponível.")?;
-                let html=spec.html.ok_or("Este mini-app usa uma interface nativa.")?;
+                let html=spec.html.ok_or("Este app usa uma interface nativa.")?;
                 json!({"uri":uri,"mime_type":apps::MIME,"text":html,"prefers_border":false,"manifest_json":spec.manifest.unwrap_or("")})
             }
             Command::InstallApp{space_id,app_id,args_json}=>{
                 if app_id=="excalidraw" { return self.install_browser_drawing(&space_id,&args_json,now); }
-                let spec=apps::spec(&app_id).ok_or("Mini-app desconhecido.")?;
+                let spec=apps::spec(&app_id).ok_or("App desconhecido.")?;
                 let args:Value=serde_json::from_str(&args_json).map_err(error)?;
                 if !args.is_object(){return Err("Argumentos inválidos.".into())}
                 let profile=self.saved.profiles.get(&self.account.identity);
@@ -117,7 +117,7 @@ impl<S: Signer> Client<S> {
                 self.queue_domain_batch(&space_id,vec![
                     EventBody::ItemCreated{item:item.clone(),kind:ItemKind::App,content:ItemContent::App(AppDoc{document:None,app:app_id,resource_uri:spec.resource_uri.into(),title,state_json:state.to_string()}),origin:"Instalado por você".into()},
                     EventBody::GrantIssued{grant:Grant{id:browser_id("gr", now),grantor:self.account.identity.clone(),grantee:Some(format!("app:{item}")),scope:GrantScope::Item(item.clone()),capability:Capability::Trust(TrustLevel::Act),expires_at_ms:None}},
-                    EventBody::MessagePosted{message:types::new_secret_id("msg"),text:"Mini-app adicionado a este Espaço.".into(),attaches:Some(item.clone()),reply:None,forwarded:false},
+                    EventBody::MessagePosted{message:types::new_secret_id("msg"),text:"App adicionado a este Espaço.".into(),attaches:Some(item.clone()),reply:None,forwarded:false},
                 ],now)?;
                 mutated=true;
                 self.item_value(&self.document_item(&item)?,None,&mut Vec::new())?
@@ -153,7 +153,7 @@ impl<S: Signer> Client<S> {
     ) -> Result<(Value, bool), String> {
         let item = self.document_item(id)?;
         let ItemContent::App(document) = &item.current().content else {
-            return Err("Este arquivo não é um mini-app.".into());
+            return Err("Este arquivo não é um app.".into());
         };
         if document.app == "excalidraw" {
             return Err(localization::t(
@@ -161,7 +161,7 @@ impl<S: Signer> Client<S> {
                 "This drawing requires the native document host.",
             ));
         }
-        let spec = apps::spec(&document.app).ok_or("Mini-app desconhecido.")?;
+        let spec = apps::spec(&document.app).ok_or("App desconhecido.")?;
         let tool = spec
             .tools
             .iter()
@@ -206,7 +206,7 @@ impl<S: Signer> Client<S> {
                 return Ok((
                     response(
                         "Denied",
-                        "A autonomia deste mini-app não permite esta ação.",
+                        "A autonomia deste app não permite esta ação.",
                         &Value::Null,
                         true,
                         None,
@@ -289,7 +289,7 @@ impl<S: Signer> Client<S> {
                 let read = self.plan_read(&target)?;
                 if !read.ready || read.error.is_some() || !self.plan_legacy_writable(&target)? {
                     return Err(
-                        "O plano precisa do editor de página; o mini-app não foi alterado.".into(),
+                        "O plano precisa do editor de página; o app não foi alterado.".into(),
                     );
                 }
                 let mut plan = read.document;
@@ -314,7 +314,7 @@ impl<S: Signer> Client<S> {
                     .is_none()
                 {
                     return Err(
-                        "O total do plano excederia o limite; o mini-app não foi alterado.".into(),
+                        "O total do plano excederia o limite; o app não foi alterado.".into(),
                     );
                 }
                 bodies.push(EventBody::ItemVersioned {

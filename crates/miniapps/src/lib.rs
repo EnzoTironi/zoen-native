@@ -596,10 +596,7 @@ pub fn create(app: &str, args: &Value, actor: &str, now: i64) -> Result<(String,
             );
             Ok((title, st))
         }
-        _ => Err(tr!(
-            "mini-app desconhecido: {app}",
-            "unknown mini-app: {app}"
-        )),
+        _ => Err(tr!("app desconhecido: {app}", "unknown app: {app}")),
     }
 }
 

@@ -821,7 +821,7 @@ impl<S: Signer> Client<S> {
             .get(item)
             .is_some_and(|item| matches!(item.current().content, ItemContent::App(_)))
         {
-            return Err("Mini-app indisponível.".into());
+            return Err("App indisponível.".into());
         }
         let subject = format!("app:{item}");
         Ok(state
@@ -850,7 +850,7 @@ impl<S: Signer> Client<S> {
             .items
             .get(item)
             .filter(|item| matches!(item.current().content, ItemContent::App(_)))
-            .ok_or("Mini-app indisponível.")?;
+            .ok_or("App indisponível.")?;
         let capability = capability.trim();
         if capability.is_empty()
             || capability.len() > 64

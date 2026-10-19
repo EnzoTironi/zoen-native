@@ -21,7 +21,7 @@ export const activity = defineFeature(
     noOpenTasks: 'No open tasks',
     tasksAndPlansWithUnfinishedLinesAppearHere:
       'Tasks and plans with unfinished lines appear here.',
-    exploreMiniapps: 'Explore miniapps',
+    exploreMiniapps: 'Explore apps',
     agentNearLimit: '%{name} is approaching the limit',
     budgetUsage: '%{spent} of %{limit}',
   },
@@ -45,7 +45,7 @@ export const activity = defineFeature(
     noOpenTasks: 'Nenhuma tarefa em aberto',
     tasksAndPlansWithUnfinishedLinesAppearHere:
       'Tarefas e planos com linhas pendentes aparecem aqui.',
-    exploreMiniapps: 'Explorar miniapps',
+    exploreMiniapps: 'Explorar apps',
     agentNearLimit: '%{name} está perto do limite',
     budgetUsage: '%{spent} de %{limit}',
   },
