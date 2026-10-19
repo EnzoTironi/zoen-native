@@ -59,6 +59,7 @@ const integrity = async (path) =>
     .update(await readFile(path))
     .digest('base64')}`;
 await build({
+  absWorkingDir: root,
   bundle: true,
   format: 'esm',
   platform: 'browser',
