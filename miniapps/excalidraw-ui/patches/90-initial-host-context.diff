@@ -1,0 +1,56 @@
+--- a/src/mcp-app.tsx
++++ b/src/mcp-app.tsx
+@@ -20,6 +20,7 @@
+   partialInput?: any;
+   input?: any;
+   result?: any;
++  hostContext?: any;
+ };
+ 
+ const pendingToolEvents = new WeakMap<App, PendingToolEvents>();
+@@ -40,6 +41,9 @@
+   };
+   app.ontoolresult = (result) => {
+     pending.result = result;
++  };
++  app.onhostcontextchanged = (context) => {
++    pending.hostContext = { ...pending.hostContext, ...context };
+   };
+ }
+ 
+@@ -682,7 +686,9 @@
+ export function ExcalidrawAppCore({ app }: { app: App }) {
+   const [toolInput, setToolInput] = useState<any>(null);
+   const [inputIsFinal, setInputIsFinal] = useState(false);
+-  const [displayMode, setDisplayMode] = useState<"inline" | "fullscreen">("inline");
++  const [displayMode, setDisplayMode] = useState<"inline" | "fullscreen">(() =>
++    app.getHostContext()?.displayMode === "fullscreen" ? "fullscreen" : "inline"
++  );
+   const [elements, setElements] = useState<any[]>([]);
+   const [userEdits, setUserEdits] = useState<any[] | null>(null);
+   const [containerHeight, setContainerHeight] = useState<number | null>(null);
+@@ -807,7 +813,7 @@
+     if (initCtx?.containerDimensions?.height) setContainerHeight(initCtx.containerDimensions.height);
+     if (initCtx?.safeAreaInsets) setSafeAreaInsets(initCtx.safeAreaInsets);
+ 
+-    app.onhostcontextchanged = (ctx: any) => {
++    const handleHostContextChanged = (ctx: any) => {
+       if (ctx.containerDimensions?.height) {
+         setContainerHeight(ctx.containerDimensions.height);
+       }
+@@ -857,6 +863,7 @@
+       }
+     };
+ 
++    app.onhostcontextchanged = handleHostContextChanged;
+     app.ontoolinputpartial = handleToolInputPartial;
+     app.ontoolinput = handleToolInput;
+     app.ontoolresult = handleToolResult;
+@@ -864,6 +871,7 @@
+     const pending = pendingToolEvents.get(app);
+     pendingToolEvents.delete(app);
+     if (pending) {
++      if (pending.hostContext) handleHostContextChanged(pending.hostContext);
+       if (pending.partialInput) handleToolInputPartial(pending.partialInput);
+       if (pending.input) handleToolInput(pending.input);
+       if (pending.result) handleToolResult(pending.result);

@@ -1,18 +1,47 @@
-# Zoen naming cutover
+# Naming
 
-The product and built-in agent are Zoen. Some source packages, generated bindings, preferences and development flags still use Roda. Their presence is unfinished naming work. Zoen has not launched and has no production users or data; the [prelaunch policy](prelaunch-policy.md) supersedes the previous compatibility-preservation plan.
+The product and built-in agent are **Zoen**. Internal modules use their purpose,
+without a product prefix. Reserve product names for app identity, user-visible
+branding, executable entry points and externally scoped integrations.
 
-## Atomic cutover inventory
+## Current source layout
 
-| Current identifiers | Target | Required coordinated work |
-| --- | --- | --- |
-| `crates/roda-*`, `roda_*` Rust imports | `crates/zoen-*`, `zoen_*` | Move packages, workspace/lock/features, callers, scripts and tests together; verify complete CI/setup. |
-| `RodaCore`, `RodaFFI`, `RodaEngine`, `roda_ffi` | `ZoenCore`, `ZoenFFI`, `ZoenEngine`, `zoen_ffi` | Regenerate Swift/Kotlin and native libraries together; update every client and supported ABI. |
-| Apple `Roda…` preferences and launch flags | `Zoen…` | Replace names and callers directly; reset affected disposable preferences/fixtures, without old aliases or dual reads. |
-| `buildRodaCore`, generated build directories | Zoen task/directory names | Update Gradle inputs/outputs, producer/verifier scripts and CI in one unit; clean rebuild. |
-| Old local database names and resource URI namespaces | One current Zoen namespace | Reset affected development/test databases and seed fixtures coherently. Do not add old-path discovery or URI aliases. |
-| Cryptographic/protocol domains, if changed | One current explicit domain/version | Update both peers, proof/signature/encryption tests and setup atomically. Preserve domain separation and authenticated-byte correctness; recreate affected disposable signed history instead of silently rewriting it. |
+The shared Rust packages are `types`, `localization`, `miniapps`, `device-link`,
+`event-log`, `grants`, `store`, `client-core`, `documents`, `gate`, `protocol`,
+`relay-admission` and `mls`. Their workspace dependencies, source imports, build
+scripts, CI paths and living documentation must refer to these names directly.
+`event-log` avoids a collision with the third-party logging crate; `client-core`
+avoids Rust's standard `core` namespace.
 
-Complete each coherent unit on shared main with one owner/coordinator, update documentation and validate its callers. Do not move another owner's files while they are being edited. Database migration-baseline consolidation is a separate explicit coordinated operation with affected database resets; this handoff performs no consolidation.
+The native client object is `Client`; its internal state machine remains
+`engine::Engine`. UniFFI generates the `client_core` ABI. The Apple package is
+`ClientCore`, with the `ClientFFI` binary target. Regenerate language bindings and
+native libraries from the same source; renaming an old generated artifact does
+not make it a valid new one. The Expo module's public registration remains
+`ZoenCore`.
 
-The [12 October checkpoint](handoff-2026-10-12.md) records the current names and unfinished bindings/caller work. It does not claim that this cutover is complete. Revisit the prelaunch policy before the first production deployment.
+Built-in MCP App resources use `ui://builtin/`. These identifiers are part of
+signed app content, so new fixtures must come from actual signing producers.
+Never edit the bytes of previously signed events to make a test match.
+
+Account and demo databases use `account/client.sqlite` and `demo/client.sqlite`
+under Application Support on Apple and `noBackupFilesDir` on Android. The app's
+container already provides its namespace. Preserve backup exclusion, file protection,
+secure key storage and restartable erasure. Development data is disposable;
+an existing installed test account must not be silently destroyed by a source
+rename or a build command.
+
+## Prelaunch changes and verification
+
+Follow the [prelaunch policy](prelaunch-policy.md): update callers and tests
+directly, without compatibility aliases or duplicate reads/writes. Existing
+cryptographic domains already identify Zoen and retain their exact bytes.
+Product renaming alone is no reason to alter authenticated content.
+
+Verify workspace resolution, generated client contracts, each native artifact,
+MCP resource access and real encrypted interoperability. Source changes and
+package metadata do not establish a passed native runtime journey. Until fresh
+artifacts pass, earlier evidence keeps its original source and limitations.
+
+Historical receipts, source manifests, commit links and dated documents retain
+their original attribution. They are evidence, not active compatibility paths.

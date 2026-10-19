@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 #if canImport(UIKit)
 import UIKit

@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 // MARK: - Drag a message to reply (Telegram) or to reply in a thread (Slack)
 

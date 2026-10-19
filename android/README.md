@@ -19,7 +19,7 @@ cd android
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
-The Gradle `buildRodaCore` task compiles the Rust library and generates matching Kotlin bindings before Android compilation. Its inputs include Rust source, bundled mini-app resources, Cargo.lock, and the UniFFI configuration. Generated files live under `app/build/generated/roda`; do not edit or commit them.
+The Gradle `buildClientCore` task compiles the Rust library and generates matching Kotlin bindings before Android compilation. Its inputs include Rust source, bundled mini-app resources, Cargo.lock, and the UniFFI configuration. Generated files live under `app/build/generated/core`; do not edit or commit them.
 
 For a faster build on an ARM64 emulator or phone:
 

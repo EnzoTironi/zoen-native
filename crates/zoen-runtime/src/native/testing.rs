@@ -180,7 +180,7 @@ pub(crate) async fn storage_cuts(runtime: &RuntimeAuthority, agent: &str, device
             9 => candidate.root.context.image_bytes = u32::MAX,
             10 => candidate.root.context.chunks = u32::MAX,
             11 => candidate.manifest.resize(MANIFEST_BYTES, 0),
-            12 => candidate.root.context.principal.device = roda_log::Signer::generate().id(),
+            12 => candidate.root.context.principal.device = event_log::Signer::generate().id(),
             _ => unreachable!(),
         }
         assert!(
@@ -262,19 +262,19 @@ pub(crate) async fn authorization_cuts(runtime: &RuntimeAuthority, agent: &str, 
         match mutation {
             0 => wrong.namespace.push(0),
             1 => wrong.deployment = hash(b"other deployment"),
-            2 => wrong.target.context.principal.owner = roda_log::Signer::generate().id(),
-            3 => wrong.target.context.principal.agent = roda_log::Signer::generate().id(),
-            4 => wrong.target.context.principal.device = roda_log::Signer::generate().id(),
+            2 => wrong.target.context.principal.owner = event_log::Signer::generate().id(),
+            3 => wrong.target.context.principal.agent = event_log::Signer::generate().id(),
+            4 => wrong.target.context.principal.device = event_log::Signer::generate().id(),
             5 => wrong.target.context.principal.certificate_digest = hash(b"other certificate"),
-            6 => wrong.target.context.capsule = roda_types::new_id("capsule"),
+            6 => wrong.target.context.capsule = types::new_id("capsule"),
             7 => wrong.target.context.generation += 1,
             8 => wrong.target.manifest_digest = hash(b"other manifest"),
             9 => wrong.target.context.image_digest = hash(b"other image"),
             10 => {
                 wrong.previous.as_mut().unwrap().manifest_digest = hash(b"other previous manifest")
             }
-            11 => wrong.previous.as_mut().unwrap().context.capsule = roda_types::new_id("capsule"),
-            12 => wrong.fence.holder = roda_types::new_id("other holder"),
+            11 => wrong.previous.as_mut().unwrap().context.capsule = types::new_id("capsule"),
+            12 => wrong.fence.holder = types::new_id("other holder"),
             13 => wrong.fence.token += 1,
             14 => wrong.previous = None,
             _ => unreachable!(),

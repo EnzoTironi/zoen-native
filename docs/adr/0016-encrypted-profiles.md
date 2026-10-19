@@ -58,6 +58,26 @@ reference: the server keeps a profile it can't read, and contacts get the key.
   the newest fields each one opened. `peer_agreement_keys` holds verified public keys and
   `blocked` holds the block list. All of it is in the same SQLite file, with the same
   protection class as message content (SQLCipher seam, ADR 0011).
+- **Own profile across devices.** Fetch the owner's profile too, at session start and on
+  a change hint. Displayed fields are distinct from durable local publication intent:
+  receiving a verified profile never creates an upload. Both clients use
+  `event_log::profile_sync::OwnProfileSync` for the authenticated publication floor, pending
+  local version and unreadable-key latch. Native stores the journal in SQLite; Web keeps
+  it in its durable checkpoint. A linked display seed is clean and has no authenticated
+  relay floor until fetched. A new primary explicitly queues its initial publication.
+- **Concurrent edits and retries.** A pending local edit keeps its complete field record
+  and rebases above an authenticated remote version; there is no inferred field merge.
+  Persist the exact signed ciphertext before sending and reuse it after a lost reply or
+  restart. Only the matching version's acknowledgement can clear that intent. Invalid,
+  stale or missing known publications leave lookup work pending with a bounded retry.
+  Superseded lookup and upload request IDs cannot consume a replacement's response.
+  Upload the encrypted photo blob before publishing its reference, as for other media.
+- **Unknown rotated key.** A verified own publication that cannot be opened durably blocks
+  further publication under the held key, preserving pending fields. An old-key record or
+  upload acknowledgement cannot clear that block. Recovery must authenticate both the
+  current key and its distribution policy; automatically sharing the new key through a
+  sibling device could disclose it to a blocked contact. That recovery flow and its UI
+  remain unimplemented; authenticated relinking replaces the local state.
 
 ## Consequences
 - The name in a chat comes from the profile, so a brand-new contact appears as `@handle` for

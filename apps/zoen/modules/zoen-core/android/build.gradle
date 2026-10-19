@@ -1,0 +1,27 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'xyz.tironi.zoen.core'
+version = '0.1.0'
+
+android {
+  namespace "xyz.tironi.zoen.core"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+    consumerProguardFiles 'consumer-rules.pro'
+  }
+  sourceSets {
+    main {
+      java.srcDir '../generated/android/kotlin'
+      jniLibs.srcDir '../generated/android/jniLibs'
+    }
+  }
+}
+
+dependencies {
+  implementation 'net.java.dev.jna:jna:5.18.1@aar'
+  testImplementation 'junit:junit:4.13.2'
+}

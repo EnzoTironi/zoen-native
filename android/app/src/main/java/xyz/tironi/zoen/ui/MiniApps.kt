@@ -162,7 +162,6 @@ private fun ListApp(data: JSONObject, action: AppAction, modifier: Modifier) {
             OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.add_item)) })
             FilledIconButton(onClick = { action("list_add", JSONObject().put("text", text)); text = "" }, enabled = text.isNotBlank()) { Icon(Icons.Rounded.Add, stringResource(R.string.add_item)) }
         } }
-        item { GlassOutlinedButton(onClick = { action("list_send_whatsapp", JSONObject()) }, Modifier.fillMaxWidth()) { Icon(Icons.Rounded.Share, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.miniapp_send_whatsapp)) } }
         item { AppLog(data) }
     }
 }

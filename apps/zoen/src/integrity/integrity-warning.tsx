@@ -1,0 +1,53 @@
+import { router } from 'expo-router';
+import { Text } from 'react-native';
+import { useClient } from '../core/provider';
+import { NativeButton, Surface } from '../components/primitives';
+import { useTheme } from '../theme';
+import { t } from '../i18n';
+
+/** Cheap canonical known-error projection. Absence of a warning is not verification. */
+export function IntegrityWarning({ spaceId }: { spaceId: string }) {
+  const { snapshot } = useClient();
+  const error = snapshot?.integrity_warnings[spaceId];
+  const chat = snapshot?.conversations.find((chat) => chat.id === spaceId);
+  const { colors } = useTheme();
+  if (!error || !chat) return null;
+  return (
+    <Surface>
+      <Text accessibilityRole="alert" style={{ color: colors.danger, fontWeight: '600' }}>
+        {t('integrity.needsAttention')}
+      </Text>
+      <Text style={{ color: colors.secondary }}>
+        {t('integrity.conversationWarning', { title: chat.title })}
+      </Text>
+      <NativeButton
+        secondary
+        label={t('integrity.verify')}
+        onPress={() => router.push({ pathname: '/integrity/[id]', params: { id: spaceId } })}
+      />
+    </Surface>
+  );
+}
+
+/** Optional account overview entry: only warnings are rendered. */
+export function IntegrityWarnings() {
+  const { snapshot } = useClient();
+  const { colors } = useTheme();
+  return (
+    <>
+      {snapshot?.has_unreadable_local_history ? (
+        <Surface>
+          <Text accessibilityRole="alert" style={{ color: colors.danger, fontWeight: '600' }}>
+            {t('integrity.unreadable')}
+          </Text>
+          <Text style={{ color: colors.secondary }}>{t('integrity.checkCopy')}</Text>
+        </Surface>
+      ) : null}
+      {snapshot?.conversations
+        .filter((chat) => snapshot.integrity_warnings[chat.id])
+        .map((chat) => (
+          <IntegrityWarning key={chat.id} spaceId={chat.id} />
+        ))}
+    </>
+  );
+}

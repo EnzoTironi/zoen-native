@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 enum AgentState: Equatable {
     case idle
@@ -78,7 +78,7 @@ struct AgentAvatar: View {
     private var radius: CGFloat { size * 0.3 }
     private var inkSeed: UInt64 { persona.id.unicodeScalars.reduce(UInt64(5)) { $0 &* 31 &+ UInt64($1.value) } }
 
-    @AppStorage("RodaAvatarArtVersion") private var artVersion = 0
+    @AppStorage("AvatarArtVersion") private var artVersion = 0
 
     var body: some View {
         Group { face }.id(artVersion)
@@ -168,7 +168,7 @@ extension AgentAvatar {
             case "list.clipboard", "doc.text", "creditcard": .notepad
             case "briefcase", "checklist", "calendar": .tasks
             case "map", "figure.walk": .trip
-            default: .roda
+            default: .community
             }
         }
     }
@@ -183,7 +183,7 @@ struct ContactAvatar: View {
     var working = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @AppStorage("RodaAvatarArtVersion") private var artVersion = 0
+    @AppStorage("AvatarArtVersion") private var artVersion = 0
 
     var body: some View {
         if persona.kind == .agent {
@@ -282,7 +282,7 @@ struct FacePile: View {
 
 /// A group's picture: its own photo once one is set; until then a default in our pen-and-paper
 /// style, a doodle that fits the group on a coloured circle. Stable per group (keyed by its name, so it survives a demo reset). The choice is
-/// stored under `RodaGroupAvatar.<id>` (doodle name) so chat info can change it later.
+/// stored under `GroupAvatar.<id>` (doodle name) so chat info can change it later.
 struct GroupAvatar: View {
     let space: SpaceSummary
     var size: CGFloat = 42
@@ -290,7 +290,7 @@ struct GroupAvatar: View {
     static let fills: [Color] = [InkPalette.butter, InkPalette.mint, InkPalette.sky, InkPalette.lilac, InkPalette.blush, InkPalette.cardboard]
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("RodaAvatarArtVersion") private var artVersion = 0
+    @AppStorage("AvatarArtVersion") private var artVersion = 0
 
     var body: some View {
         let h = Self.hash(space.title)
@@ -316,7 +316,7 @@ struct GroupAvatar: View {
     private var fill: Color { Self.fills[Self.hash(space.title + "fill") % Self.fills.count] }
 
     private var doodle: Doodle {
-        if let saved = UserDefaults.standard.string(forKey: "RodaGroupAvatar.\(space.id)").flatMap(Doodle.named) { return saved }
+        if let saved = UserDefaults.standard.string(forKey: "GroupAvatar.\(space.id)").flatMap(Doodle.named) { return saved }
         let t = space.title.lowercased()
         let rules: [([String], Doodle)] = [
             (["hike", "trail", "trilha", "crew", "saturday", "sábado", "turma"], .hike),

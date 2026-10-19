@@ -39,6 +39,7 @@
 //! the transaction of the checkpoint that moves the floor, a bounded batch at a time.
 
 use async_trait::async_trait;
+use event_log::chain_hash;
 use foundationdb::{
     future::FdbValues,
     options::StreamingMode,
@@ -46,10 +47,9 @@ use foundationdb::{
     Database, FdbBindingError, RangeOption, Transaction,
 };
 use futures_util::future::{try_join3, try_join_all};
-use roda_log::chain_hash;
-use roda_proto::{Envelope, InviteCreated, Sequenced};
-use roda_types::{EventBody, Privacy, Role, SpaceKind, GENESIS_PREV};
-use sha2::{Digest, Sha256};
+use protocol::{Envelope, InviteCreated, Sequenced};
+use relay_admission::mls_projection::{self, PRUNE_BATCH};
+use types::{EventBody, Privacy, Role, SpaceKind, GENESIS_PREV};
 
 fn extend_co_members(
     out: &mut Vec<String>,
@@ -123,12 +123,6 @@ struct SpaceState {
 /// Recent hashes kept per Space. Clients mostly cite the newest entries they saw.
 const RECENT: usize = 1024;
 
-/// The device name of a member's hold from when they were added until they checkpoint.
-const ADDED: &str = "*";
-
-/// Entries one transaction prunes at most; the next checkpoint goes on from there.
-const PRUNE_BATCH: usize = 256;
-
 /// How long a device's hold counts after its last checkpoint (ADR 0026): 30 days. Devices
 /// in use checkpoint at least daily, so one past this never came back; it stops holding
 /// pruning back and, if it returns, rejoins from a new Welcome. `ZOEN_PRUNE_CEILING_SECS`
@@ -136,12 +130,7 @@ const PRUNE_BATCH: usize = 256;
 fn prune_ceiling_ms() -> i64 {
     static CEILING: std::sync::OnceLock<i64> = std::sync::OnceLock::new();
     *CEILING.get_or_init(|| {
-        std::env::var("ZOEN_PRUNE_CEILING_SECS")
-            .ok()
-            .and_then(|v| v.parse::<i64>().ok())
-            .filter(|s| *s > 0)
-            .unwrap_or(30 * 24 * 3600)
-            * 1000
+        mls_projection::ceiling_ms(std::env::var("ZOEN_PRUNE_CEILING_SECS").ok().as_deref())
     })
 }
 
@@ -159,24 +148,7 @@ impl SpaceState {
     /// holds, once every current member holds something. `None` while anyone is missing.
     /// A hold older than the ceiling (`now_ms - ceiling_ms`) no longer counts.
     fn prune_floor(&self, now_ms: i64, ceiling_ms: i64) -> Option<u64> {
-        if self.privacy != Some(Privacy::EndToEnd) || self.members.is_empty() {
-            return None;
-        }
-        let all_hold = self.members.keys().all(|m| {
-            self.holds
-                .range((m.clone(), String::new())..)
-                .next()
-                .is_some_and(|((who, _), _)| who == m)
-        });
-        all_hold
-            .then(|| {
-                self.holds
-                    .values()
-                    .filter(|(_, at)| now_ms - at < ceiling_ms)
-                    .map(|(seq, _)| *seq)
-                    .min()
-            })
-            .flatten()
+        mls_projection::prune_floor(self.privacy, &self.members, &self.holds, now_ms, ceiling_ms)
     }
 
     fn advance(&mut self, seq: u64, hash: &str) {
@@ -199,9 +171,7 @@ fn parse<T: serde::de::DeserializeOwned>(s: &str) -> Option<T> {
     serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
 }
 
-pub fn code_hash(code: &str) -> String {
-    hex::encode(Sha256::digest(code.trim().to_uppercase().as_bytes()))
-}
+pub use relay_admission::code_hash;
 
 fn random_code() -> String {
     const A: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -344,8 +314,8 @@ impl FdbLog {
         code: &str,
         fence: Fence,
     ) -> Result<InviteCreated, String> {
-        let expires = now_ms() + ttl_secs.clamp(60, 30 * 24 * 3600) as i64 * 1000;
-        let max = max_uses.clamp(1, 10_000) as i64;
+        let (max, ttl_ms) = relay_admission::invite::invite_limits(max_uses, ttl_secs);
+        let expires = now_ms() + ttl_ms;
         let key = self.cell.root.pack(&("inv", code_hash(code)));
         let fence = &fence;
         let r = self
@@ -362,15 +332,12 @@ impl FdbLog {
                     {
                         return Ok(Err("stale partition owner"));
                     }
-                    if !roda_proto::valid_invite_code(code) {
+                    if !protocol::valid_invite_code(code) {
                         return Ok(Err("invalid invite code"));
                     }
                     let mine = self.cell.role_in(&trx, space, who).await?;
-                    if !matches!(mine, Some(Role::Owner | Role::Admin)) {
-                        return Ok(Err("only owners and admins create invites"));
-                    }
-                    if role <= Role::Admin && mine != Some(Role::Owner) {
-                        return Ok(Err("only the owner invites admins"));
+                    if let Err(reason) = relay_admission::invite::authorize_inviter(mine, role) {
+                        return Ok(Err(reason));
                     }
                     let kind = match trx.get(&self.cell.space_key(space, "meta"), false).await? {
                         Some(m) => {
@@ -380,8 +347,10 @@ impl FdbLog {
                         }
                         None => return Ok(Err("unknown space")),
                     };
-                    if parse::<SpaceKind>(&kind) == Some(SpaceKind::Direct) {
-                        return Ok(Err("direct chats don't take invites"));
+                    if let Some(kind) = parse::<SpaceKind>(&kind) {
+                        if let Err(reason) = relay_admission::invite::authorize_invite_kind(kind) {
+                            return Ok(Err(reason));
+                        }
                     }
                     if let Some(existing) = trx.get(&key, false).await? {
                         let inv: Invite = unpack(&existing).map_err(|e| custom(e.to_string()))?;
@@ -774,6 +743,21 @@ impl Cell {
                 Some((s, h)) => (s + 1, h.clone()),
                 None => (0, GENESIS_PREV.to_string()),
             };
+            let mls_writes = match mls_projection::transition(
+                &effect,
+                state.privacy,
+                env.author(),
+                seq,
+                now_ms(),
+                &state.members,
+                &state.holds,
+            ) {
+                Ok(writes) => writes,
+                Err(reason) => {
+                    results.push(Err(Reject::no(reason)));
+                    continue;
+                }
+            };
             let hash = chain_hash(space, seq, &prev, &env.wire_hash());
             let mut stored = env.clone();
             stored.invite = None;
@@ -798,10 +782,6 @@ impl Cell {
                     state.kind = Some(kind);
                     state.privacy = Some(privacy);
                     state.creator = env.author().to_string();
-                    if privacy == Privacy::EndToEnd {
-                        self.put_mls(trx, space, &mut state, 0, String::new());
-                        self.put_hold(trx, space, &mut state, env.author(), ADDED, seq);
-                    }
                     self.put_member(trx, space, env.author(), Role::Owner);
                     state.members.insert(env.author().to_string(), Role::Owner);
                 }
@@ -819,11 +799,6 @@ impl Cell {
                     self.put_member(trx, space, &identity, role);
                     trx.clear(&self.space_key(space, ("gone", identity.as_str())));
                     state.members.insert(identity.clone(), role);
-                    if state.privacy == Some(Privacy::EndToEnd) {
-                        // Their Welcome comes after this: nothing from here on is pruned
-                        // until they checkpoint.
-                        self.put_hold(trx, space, &mut state, &identity, ADDED, seq);
-                    }
                     joined = Some(identity);
                 }
                 Effect::Remove { identity } => {
@@ -834,7 +809,6 @@ impl Cell {
                         &pack(&(seq as i64)),
                     );
                     state.members.remove(&identity);
-                    self.drop_holds(trx, space, &mut state, &identity);
                     removed = Some(identity);
                 }
                 Effect::Encrypt => {
@@ -848,38 +822,31 @@ impl Cell {
                         )),
                     );
                     state.privacy = Some(Privacy::EndToEnd);
-                    self.put_mls(trx, space, &mut state, 0, String::new());
-                    let members: Vec<String> = state.members.keys().cloned().collect();
-                    for m in members {
-                        self.put_hold(trx, space, &mut state, &m, ADDED, seq);
-                    }
                 }
-                Effect::Commit { epoch, device } => {
-                    self.put_mls(trx, space, &mut state, epoch + 1, device);
-                }
-                Effect::Checkpoint { device, upto } => {
-                    if state.privacy == Some(Privacy::EndToEnd) && !device.is_empty() {
-                        let who = env.author().to_string();
-                        let had = state.holds.get(&(who.clone(), device.clone())).copied();
-                        // Same place again still counts: the device is alive.
-                        if had.is_none_or(|(h, _)| h <= upto) {
-                            self.put_hold(trx, space, &mut state, &who, &device, upto);
-                        }
-                        if state
-                            .holds
-                            .remove(&(who.clone(), ADDED.to_string()))
-                            .is_some()
-                        {
-                            trx.clear(&self.space_key(space, ("ck", who.as_str(), ADDED)));
-                        }
-                    }
-                }
-                Effect::Hold { device } => {
-                    // A device joining afresh: what comes from here waits for it, whatever
-                    // it held before.
-                    self.put_hold(trx, space, &mut state, env.author(), &device, seq);
-                }
+                Effect::Commit { .. } | Effect::Checkpoint { .. } | Effect::Hold { .. } => {}
                 Effect::Nothing => {}
+            }
+            for write in mls_writes {
+                match write {
+                    mls_projection::Write::Epoch { next, device } => {
+                        self.put_mls(trx, space, &mut state, next, device)
+                    }
+                    mls_projection::Write::Hold {
+                        identity,
+                        device,
+                        seq,
+                        when_ms,
+                    } => self.put_hold(trx, space, &mut state, &identity, &device, (seq, when_ms)),
+                    mls_projection::Write::ClearHold { identity, device } => {
+                        state.holds.remove(&(identity.clone(), device.clone()));
+                        trx.clear(
+                            &self.space_key(space, ("ck", identity.as_str(), device.as_str())),
+                        );
+                    }
+                    mls_projection::Write::ClearIdentity { identity } => {
+                        self.drop_holds(trx, space, &mut state, &identity)
+                    }
+                }
             }
             let mut audience: Vec<String> = state.members.keys().cloned().collect();
             audience.extend(removed);
@@ -939,18 +906,21 @@ impl Cell {
         let begin = self.space_key(space, ("log", state.pruned as i64));
         let end = self.space_key(space, ("log", floor as i64));
         let rows = Self::scan(trx, (begin, end), PRUNE_BATCH, true).await?;
-        let mut next = floor;
-        if rows.len() == PRUNE_BATCH {
-            let last = rows.last().map(|(k, _)| k.clone()).unwrap_or_default();
-            let log = self.space_range(space, "log");
-            let (seq,): (i64,) = log.unpack(&last).map_err(|e| custom(e.to_string()))?;
-            next = seq as u64 + 1;
-        }
-        for (k, v) in rows {
-            let ev = Sequenced::decode(&v).map_err(|e| custom(e.to_string()))?;
-            if let Some(stub) = ev.env.pruned() {
-                let stub = Sequenced { env: stub, ..ev };
-                trx.set(&k, &stub.encode());
+        let last = rows
+            .last()
+            .map(|(key, _)| {
+                let (seq,): (i64,) = self
+                    .space_range(space, "log")
+                    .unpack(key)
+                    .map_err(|error| custom(error.to_string()))?;
+                Ok::<u64, FdbBindingError>(seq as u64)
+            })
+            .transpose()?;
+        let next =
+            mls_projection::pruned_cursor(state.pruned, floor, rows.len(), last).map_err(custom)?;
+        for (key, bytes) in rows {
+            if let Some(stub) = mls_projection::pruned_bytes(&bytes).map_err(custom)? {
+                trx.set(&key, &stub);
             }
         }
         trx.set(&self.space_key(space, "pruned"), &pack(&(next as i64)));
@@ -965,9 +935,9 @@ impl Cell {
         state: &mut SpaceState,
         who: &str,
         device: &str,
-        at: u64,
+        hold: (u64, i64),
     ) {
-        let when = now_ms();
+        let (at, when) = hold;
         trx.set(
             &self.space_key(space, ("ck", who, device)),
             &pack(&(at as i64, when)),

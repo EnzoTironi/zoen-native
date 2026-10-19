@@ -2,9 +2,9 @@
 
 mod common;
 use common::{RawClient, World};
-use roda_log::{agent_owner, Author, Signer};
-use roda_proto::{DeviceCertificate, Op, Reply};
-use roda_types::{Identity, IdentityKind};
+use event_log::{agent_owner, Author, Signer};
+use protocol::{DeviceCertificate, Op, Reply};
+use types::{Identity, IdentityKind};
 
 fn profile(author: &Author, handle: &str, owner: Option<String>) -> Identity {
     Identity {
@@ -83,10 +83,10 @@ async fn a_legacy_false_agent_cache_accepts_the_real_person_and_survives_restart
     let path = w.dir.join("reader.db");
     let false_agent = profile(&person.author, "person", Some(owner.identity()));
     {
-        let cache = roda_store::Store::open(path.to_str().unwrap()).unwrap();
+        let cache = store::Store::open(path.to_str().unwrap()).unwrap();
         cache.put_identity(&false_agent, None).unwrap();
     }
-    let mut reader = roda_ffi::Engine::open(path.to_str().unwrap()).unwrap();
+    let mut reader = client_core::Engine::open(path.to_str().unwrap()).unwrap();
     assert!(
         reader.agents().is_empty(),
         "unsigned legacy cache advertised an agent"
@@ -98,11 +98,11 @@ async fn a_legacy_false_agent_cache_accepts_the_real_person_and_survives_restart
     assert!(reader.agents().is_empty());
     assert!(reader.personas().iter().any(|p| p.id == person.identity()));
     drop(reader);
-    let reader = roda_ffi::Engine::open(path.to_str().unwrap()).unwrap();
+    let reader = client_core::Engine::open(path.to_str().unwrap()).unwrap();
     assert!(reader.agents().is_empty());
     assert!(reader.personas().iter().any(|p| p.id == person.identity()));
     drop(reader);
-    let cache = roda_store::Store::open(path.to_str().unwrap()).unwrap();
+    let cache = store::Store::open(path.to_str().unwrap()).unwrap();
     let cached = cache.identities().unwrap();
     assert_eq!(cached.len(), 1);
     assert_eq!(cached[0].0.id, correct[0].id);
@@ -129,27 +129,27 @@ async fn a_legacy_wrong_owner_cache_adopts_then_pins_the_authenticated_agent() {
         .unwrap();
     let path = w.dir.join("reader.db");
     {
-        let cache = roda_store::Store::open(path.to_str().unwrap()).unwrap();
+        let cache = store::Store::open(path.to_str().unwrap()).unwrap();
         let wrong = profile(&agent.author, "real_agent", Some(other.identity()));
         cache.put_identity(&wrong, None).unwrap();
     }
-    let mut reader = roda_ffi::Engine::open(path.to_str().unwrap()).unwrap();
+    let mut reader = client_core::Engine::open(path.to_str().unwrap()).unwrap();
     reader
         .put_profiles(lookup(&mut owner, "real_agent").await)
         .unwrap();
     assert_eq!(reader.agents().len(), 1);
     drop(reader);
-    let mut reader = roda_ffi::Engine::open(path.to_str().unwrap()).unwrap();
+    let mut reader = client_core::Engine::open(path.to_str().unwrap()).unwrap();
     let transferred = authorized_profile(&other.author, &agent.author, "real_agent");
     reader.put_profiles(vec![transferred]).unwrap();
     reader
         .put_profiles(vec![profile(&agent.author, "real_agent", None)])
         .unwrap();
     drop(reader);
-    let cache = roda_store::Store::open(path.to_str().unwrap()).unwrap();
+    let cache = store::Store::open(path.to_str().unwrap()).unwrap();
     assert_eq!(cache.identities().unwrap(), vec![(correct, None)]);
     drop(cache);
-    let reader = roda_ffi::Engine::open(path.to_str().unwrap()).unwrap();
+    let reader = client_core::Engine::open(path.to_str().unwrap()).unwrap();
     assert_eq!(reader.agents().len(), 1);
 }
 

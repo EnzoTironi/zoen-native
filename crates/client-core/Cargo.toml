@@ -1,0 +1,57 @@
+[package]
+name = "client-core"
+description = "Motor do Zoen exposto para Swift (e Kotlin, depois) via UniFFI."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]
+name = "client_core"
+
+[features]
+client-types = ["dep:ts-rs"]
+
+[dependencies]
+types.workspace = true
+localization.workspace = true
+miniapps.workspace = true
+device-link.workspace = true
+event-log.workspace = true
+grants.workspace = true
+store.workspace = true
+mls = { workspace = true, features = ["device"] }
+rusqlite.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+sha2.workspace = true
+hex.workspace = true
+uniffi = { workspace = true, features = ["tokio"] }
+protocol.workspace = true
+serde.workspace = true
+getrandom.workspace = true
+zeroize.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "net"] }
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+chacha20poly1305.workspace = true
+documents.workspace = true
+zoen-liveview.workspace = true
+hkdf.workspace = true
+curve25519-dalek.workspace = true
+argon2.workspace = true
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
+fastcdc = "5"
+ts-rs = { version = "12.0.1", optional = true }
+
+[dev-dependencies]
+sha2.workspace = true
+prost.workspace = true
+rcgen = { version = "0.14", default-features = false, features = ["ring"] }

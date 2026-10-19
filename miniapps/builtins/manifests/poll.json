@@ -1,0 +1,10 @@
+{
+  "id": "poll",
+  "name": "Enquete",
+  "description": "Votar e levar a escolha do grupo ao plano.",
+  "entry": "src/entries/poll.tsx",
+  "capabilities": [],
+  "allowedDomains": [],
+  "linkDomains": [],
+  "maxKB": 768
+}

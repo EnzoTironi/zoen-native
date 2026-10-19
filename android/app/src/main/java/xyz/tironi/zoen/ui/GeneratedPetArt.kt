@@ -4,7 +4,7 @@ package xyz.tironi.zoen.ui
 internal object OriginalPetArt {
     const val width = 26
     const val height = 22
-    const val sourceSha256 = "acbbe17cb17d0c81f0aebcf939957e441299b3dde8a89b03bb138bf72174876c"
+    const val sourceSha256 = "6002078e5db07cd3ca319035459c911c0ac6059635fc9a557630c6ff79313983"
     private val side = listOf(
         "................OO.OO.....",
         "...............OPO.OPO....",

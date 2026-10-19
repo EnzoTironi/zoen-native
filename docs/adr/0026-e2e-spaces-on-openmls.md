@@ -17,7 +17,7 @@ everything people say. Two questions shape it:
 ## Decision
 
 ### Library and suite
-- `roda-mls` over **OpenMLS 0.9** (MIT) with the RustCrypto provider (pure Rust, builds for
+- `mls` over **OpenMLS 0.9** (MIT) with the RustCrypto provider (pure Rust, builds for
   iOS and the simulator), ciphersuite **`MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519`
   (0x0003)**. The suite id travels in `Sealed.suite`, so a future suite (post-quantum KEM) is a
   new value, not a new format.
@@ -32,14 +32,14 @@ everything people say. Two questions shape it:
   `<protocol>:auth:`, MLS `SignWithLabel`), so no signature can be replayed across them.
 
 ### State on the device, sealed
-- MLS state uses `openmls_sqlite_storage` tables in the device database next to `roda-store`.
+- MLS state uses `openmls_sqlite_storage` tables in the device database next to `store`.
   Their migrations are applied at open, so state changes commit in the same database as the
   log. Group state is full of secrets, and ADR 0003 keeps secrets out of SQLite. So every value
   is **sealed with XChaCha20-Poly1305 under a 32-byte state key**, derived from the device's
   Ed25519 secret by HKDF (`zoen-mls-state-key/1`). It lives exactly where that secret lives
   (the Keychain), needs no vault entry or app change of its own, and dies with the device key.
   The storage codec has no instance to hold a
-  key, so `roda-mls` puts the key in a thread-local scope for exactly the span of each
+  key, so `mls` puts the key in a thread-local scope for exactly the span of each
   (synchronous) OpenMLS call, and the codec fails closed outside one. The same codec encodes
   row keys (group ids, key package refs), and lookups need them stable, so the nonce is
   synthetic: HMAC-SHA256 of the plaintext under a second HKDF subkey (SIV). Keys and values
@@ -79,6 +79,12 @@ order.
   own commit is refused clears it. A Welcome whose roster disagrees
   with the log is refused, and its key package is spent with it. The adder re-adds from a
   fresh package; no one can retry the bad Welcome. Removal is the mirror image.
+- **Direct-message delivery.** A Direct Space never seals an application message while a
+  listed identity is missing from its MLS roster, including after an empty key-package
+  claim. The original message stays pending until the recipient can join and the Commit
+  and Welcome are confirmed; a later Welcome cannot decrypt an earlier epoch. Groups
+  may continue for existing readers while an unavailable newcomer waits. An additional
+  device of an identity already represented does not count as a missing identity.
 - **Who commits:** the log is the intent and the group follows it. Any Owner or Admin device
   that sees a difference (listed but not in the group, or in the group but no longer listed)
   claims packages for the missing devices and puts all of it in one Commit plus Welcome. The
@@ -102,7 +108,7 @@ order.
 - **Concurrent commits:** every member applies the first commit for the current epoch in log
   order and ignores later ones for an epoch already gone, so correctness never depends on
   the relay. On top of that the relay grants **one commit per epoch**: it reads the epoch
-  from the commit's clear MLS framing (`roda_mls::commit_epoch`) and keeps
+  from the commit's clear MLS framing (`mls::commit_epoch`) and keeps
   `("s", space, "mls") -> (next epoch, device of the last commit)`, reset to `(0, "")` when
   the Space becomes end-to-end. A commit for any other epoch is refused with
   `STALE_COMMIT` (`stale_epoch: ...`), and a Welcome is admitted only while the last commit

@@ -4,12 +4,12 @@ Status: accepted (milestone 1)
 
 ## Decision
 A normal launch is real: no seeded people or chats. Onboarding asks for a name and @handle
-and creates the account (works offline). `-RodaDemo YES` (or the screenshot flags
-`-RodaStory` / `-RodaResetDemo`, which imply it) seeds the old story into a device that has no
+and creates the account (works offline). `-Demo YES` (or the screenshot flags
+`-Story` / `-ResetDemo`, which imply it) seeds the old story into a device that has no
 account. Creating an account wipes demo data.
 
 ## Consequences
-Screenshot scripts need `-RodaDemo YES`. The demo's agent replies and mini-apps keep using
+Screenshot scripts need `-Demo YES`. The demo's agent replies and mini-apps keep using
 the on-device planner until the agent runtime (milestone 3).
 
 ## At 1B users

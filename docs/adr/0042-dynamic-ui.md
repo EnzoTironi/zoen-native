@@ -1,7 +1,7 @@
 # ADR 0042: Dynamic UI: native declarative views first, MCP Apps HTML in a sandbox second
 
 Status: proposed (2026-10-08). Extends the mini-app host (`docs/mini-apps.md`, MCP Apps
-`2026-01-26` already implemented in `crates/roda-ffi/src/apps.rs` and the sandboxed WKWebView).
+`2026-01-26` already implemented in `crates/client-core/src/apps.rs` and the sandboxed WKWebView).
 
 ## Context
 Enzo wants MCP-Apps-style dynamic UI wherever Zoen is dynamic:
@@ -63,7 +63,7 @@ Three tiers, picked by the host in this order.
   remote images. Limits: 64 KB per view, 500 nodes, depth 12, 10 updates per second per
   surface.
 - **Actions** name a tool (MCP `visibility: ["app"]`) with typed arguments bound from the
-  data model. Every action goes through `roda-grants` (Cedar):
+  data model. Every action goes through `grants` (Cedar):
   - allowed and reversible: it runs, with Desfazer;
   - `needsConfirmation`: the native approval card or sheet appears, drawn by Zoen, never by
     the view;

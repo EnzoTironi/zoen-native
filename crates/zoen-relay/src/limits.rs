@@ -99,15 +99,21 @@ impl Limiter {
     fn check_at(&self, key: &str, cost: u32, now: Duration) -> Result<(), Duration> {
         let now = now.as_nanos() as u64;
         let t = self.quota.interval.as_nanos() as u64;
-        let window = t.saturating_mul(self.quota.burst as u64);
         let shard = &self.shards[(self.hasher.hash_one(key) as usize) % SHARDS];
         let mut map = shard.lock().unwrap_or_else(|e| e.into_inner());
-        let tat = map.get(key).copied().unwrap_or(now).max(now);
-        let next = tat.saturating_add(t.saturating_mul(cost as u64));
-        if next - now > window {
-            self.refused.fetch_add(1, Relaxed);
-            return Err(Duration::from_nanos(next - now - window));
-        }
+        let next = match relay_admission::gcra::decide(
+            now,
+            map.get(key).copied(),
+            cost,
+            t,
+            self.quota.burst,
+        ) {
+            relay_admission::gcra::Decision::Accepted { next_ns } => next_ns,
+            relay_admission::gcra::Decision::Rejected { wait_ns } => {
+                self.refused.fetch_add(1, Relaxed);
+                return Err(Duration::from_nanos(wait_ns));
+            }
+        };
         if map.len() >= self.sweep_at && !map.contains_key(key) {
             map.retain(|_, v| *v > now);
         }
@@ -126,6 +132,9 @@ pub struct Limits {
     pub connect_ip: Limiter,
     /// New accounts per client IP.
     pub register_ip: Limiter,
+    pub auth_challenge_ip: Limiter,
+    pub auth_verify_ip: Limiter,
+    pub auth_bind_ip: Limiter,
     /// Events per device, and per account across all of its devices.
     pub publish_device: Limiter,
     pub publish_account: Limiter,
@@ -153,16 +162,30 @@ impl Limits {
         Self {
             connect_ip: Limiter::new("connect_ip", Quota::per_minute(60, 60)),
             register_ip: Limiter::new("register_ip", Quota::per_hour(10, 10)),
+            auth_challenge_ip: Limiter::new("auth_challenge_ip", Quota::per_hour(30, 10)),
+            auth_verify_ip: Limiter::new("auth_verify_ip", Quota::per_hour(60, 20)),
+            auth_bind_ip: Limiter::new("auth_bind_ip", Quota::per_hour(30, 10)),
             publish_device: Limiter::new("publish_device", Quota::per_second(20, 60)),
             publish_account: Limiter::new("publish_account", Quota::per_second(40, 120)),
             ephemeral_device: Limiter::new("ephemeral_device", Quota::per_second(10, 30)),
             request_device: Limiter::new("request_device", Quota::per_second(50, 200)),
-            lookup_account: Limiter::new("lookup_account", Quota::per_minute(60, 60)),
+            lookup_account: Limiter::new(
+                "lookup_account",
+                Quota {
+                    interval: Duration::from_nanos(
+                        relay_admission::directory::reads::LOOKUP_INTERVAL_NS,
+                    ),
+                    burst: relay_admission::directory::reads::LOOKUP_BURST,
+                },
+            ),
             invite_account: Limiter::new("invite_account", Quota::per_minute(30, 30)),
             agent_page_ip: Limiter::new("agent_page_ip", Quota::per_minute(60, 60)),
             blob_kib_device: Limiter::new(
                 "blob_kib_device",
-                Quota::per_minute(100 * 1024, 200 * 1024),
+                Quota {
+                    interval: Duration::from_nanos(relay_admission::blobs::DEFAULT_INTERVAL_NS),
+                    burst: relay_admission::blobs::DEFAULT_BURST,
+                },
             ),
             backup_device: Limiter::new("backup_device", Quota::per_minute(10, 20)),
             backup_restore_ip: Limiter::new("backup_restore_ip", Quota::per_hour(60, 60)),
@@ -194,6 +217,9 @@ impl Limits {
         vec![
             &mut self.connect_ip,
             &mut self.register_ip,
+            &mut self.auth_challenge_ip,
+            &mut self.auth_verify_ip,
+            &mut self.auth_bind_ip,
             &mut self.publish_device,
             &mut self.publish_account,
             &mut self.ephemeral_device,
@@ -208,10 +234,13 @@ impl Limits {
         ]
     }
 
-    fn all(&self) -> [&Limiter; 13] {
+    fn all(&self) -> [&Limiter; 16] {
         [
             &self.connect_ip,
             &self.register_ip,
+            &self.auth_challenge_ip,
+            &self.auth_verify_ip,
+            &self.auth_bind_ip,
             &self.publish_device,
             &self.publish_account,
             &self.ephemeral_device,
@@ -241,7 +270,7 @@ impl Limits {
     }
 }
 
-pub use roda_proto::slow_down;
+pub use protocol::slow_down;
 
 #[cfg(test)]
 mod tests {

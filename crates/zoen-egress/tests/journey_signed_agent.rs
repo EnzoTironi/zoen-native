@@ -30,7 +30,7 @@ impl SecretSource for NoSecrets {
 }
 struct NoCards;
 impl ApprovalSink for NoCards {
-    fn opened(&self, _: &str, _: &roda_types::AgentRequest) {}
+    fn opened(&self, _: &str, _: &types::AgentRequest) {}
 }
 
 fn now_s() -> u64 {

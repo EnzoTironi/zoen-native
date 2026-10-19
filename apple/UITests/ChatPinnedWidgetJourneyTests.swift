@@ -6,9 +6,9 @@ final class ChatPinnedWidgetJourneyTests: XCTestCase {
     @MainActor
     func testPinnedWidgetStaysAtTheTopWhileMessagesScrollAndStillOpens() {
         let app = XCUIApplication()
-        app.launchArguments = ["-RodaDemo", "YES", "-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
-                               "-AppleLanguages", "(pt-BR)", "-RodaAppearance", "light",
-                               "-RodaApprovalsExplained", "YES", "-RodaStory", "unread"]
+        app.launchArguments = ["-Demo", "YES", "-FreshStart", "YES", "-ResetDemo", "YES",
+                               "-AppleLanguages", "(pt-BR)", "-Appearance", "light",
+                               "-ApprovalsExplained", "YES", "-Story", "unread"]
         app.launch()
 
         // This story adds unread messages to Saturday Crew, which already has live apps.

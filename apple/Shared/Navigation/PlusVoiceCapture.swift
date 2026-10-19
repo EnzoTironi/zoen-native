@@ -48,8 +48,8 @@ struct PlusVoiceCapture: View {
             }
         }
         .task {
-            // UITest / screenshots: `-RodaVoiceDemo plus` (or any value) fakes input (no mic permission).
-            if UserDefaults.standard.string(forKey: "RodaVoiceDemo") != nil {
+            // UITest / screenshots: `-VoiceDemo plus` (or any value) fakes input (no mic permission).
+            if UserDefaults.standard.string(forKey: "VoiceDemo") != nil {
                 recorder.demo = true
             }
             withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.42, bounce: 0.28)) {

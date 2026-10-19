@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 /// "You" → your account on the relay: who you are there, whether you're connected,
 /// fixing a taken @, and signing this device out.

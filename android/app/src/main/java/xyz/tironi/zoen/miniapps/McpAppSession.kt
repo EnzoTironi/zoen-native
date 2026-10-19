@@ -373,7 +373,7 @@ class McpAppSession(
             .put("hostContext", context())
     }
     private fun context(): JSONObject {
-        val variables = JSONObject(MiniAppAppearance.variables(dark))
+        val variables = JSONObject(MiniAppAppearance.protocolVariables(dark))
         val ctx = JSONObject().put("theme", if (dark) "dark" else "light").put("styles", JSONObject().put("variables", variables))
             .put("displayMode", displayMode).put("availableDisplayModes", JSONArray(listOf("inline", "fullscreen")))
             .put("containerDimensions", JSONObject().put("width", width.toDouble()).also { if (displayMode == "inline") it.put("maxHeight", 640) })

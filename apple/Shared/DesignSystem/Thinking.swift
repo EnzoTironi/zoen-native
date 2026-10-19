@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Roda's brand shimmer: moss green → lime → blush pink (the mascot's colors), sliding.
+/// The app's brand shimmer: moss green → lime → blush pink (the mascot's colors), sliding.
 enum BrandShimmer {
     static let colors = [Color(hex: "#4F8A2B"), Color(hex: "#A6D05A"), Color(hex: "#F49A9A"), Color(hex: "#4F8A2B")]
     static func gradient(phase: CGFloat) -> LinearGradient {

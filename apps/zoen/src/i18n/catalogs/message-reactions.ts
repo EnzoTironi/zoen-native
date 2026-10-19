@@ -1,0 +1,48 @@
+import { defineFeature } from '../catalog.ts';
+
+export const messageReactions = defineFeature(
+  {
+    title: 'Reactions',
+    close: 'Close reactions',
+    whoReacted: 'Reacted with %{emoji}',
+    people: { one: '%{count} person', other: '%{count} people' },
+    you: 'You',
+    addReaction: 'React with %{emoji}',
+    removeMine: 'Remove my reaction',
+    chooseAnother: 'Choose another reaction',
+    chooseEmoji: 'Choose an emoji',
+    emojiPlaceholder: 'Type or paste an emoji',
+    emojiHint: 'Use the emoji keyboard for skin tones, flags, and more.',
+    emojiInvalid: 'Choose a supported emoji.',
+    react: 'React',
+    back: 'Back to reactions',
+    changing: 'Saving reaction…',
+    empty: 'No reactions yet',
+    participants: {
+      one: '%{emoji}, %{count} person. View reactions.',
+      other: '%{emoji}, %{count} people. View reactions.',
+    },
+  },
+  {
+    title: 'Reações',
+    close: 'Fechar reações',
+    whoReacted: 'Reagiram com %{emoji}',
+    people: { one: '%{count} pessoa', other: '%{count} pessoas' },
+    you: 'Você',
+    addReaction: 'Reagir com %{emoji}',
+    removeMine: 'Remover minha reação',
+    chooseAnother: 'Escolher outra reação',
+    chooseEmoji: 'Escolher um emoji',
+    emojiPlaceholder: 'Digite ou cole um emoji',
+    emojiHint: 'Use o teclado de emojis para tons de pele, bandeiras e mais.',
+    emojiInvalid: 'Escolha um emoji compatível.',
+    react: 'Reagir',
+    back: 'Voltar às reações',
+    changing: 'Salvando reação…',
+    empty: 'Nenhuma reação ainda',
+    participants: {
+      one: '%{emoji}, %{count} pessoa. Ver reações.',
+      other: '%{emoji}, %{count} pessoas. Ver reações.',
+    },
+  },
+);

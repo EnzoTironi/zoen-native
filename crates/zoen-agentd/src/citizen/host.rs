@@ -6,7 +6,7 @@
 
 use super::profile::{AgentKind, Avatar, CitizenRecord, Definition, ModelTier};
 use async_trait::async_trait;
-use roda_gate::{Check, Gate, Outcome, Point};
+use gate::{Check, Gate, Outcome, Point};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;

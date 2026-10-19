@@ -1,0 +1,2265 @@
+{
+  "objective": "Deliver the complete Zoen product across iOS, Android, Web, macOS, Windows and Linux, including the production backend, refined native interactions, end-to-end privacy, data integrity and verified operation at declared production scale. Compete with WhatsApp, Slack and Wabi through demonstrable product quality, reliability and scalability. Completion requires reproducible end-to-end, security, integrity, load, recovery and release evidence across the supported platform matrix.",
+  "goalDocument": "docs/dev/zoen-complete-product-goal.md",
+  "comparisonReferences": ["WhatsApp", "Slack", "Wabi"],
+  "platforms": ["ios", "web", "android", "macos", "windows", "linux"],
+  "deliveryPhases": [
+    {
+      "id": "mobile-web",
+      "platforms": ["ios", "web", "android"]
+    },
+    {
+      "id": "desktop",
+      "platforms": ["macos", "windows", "linux"]
+    }
+  ],
+  "backendIncluded": true,
+  "sdk": 58,
+  "policy": "Prelaunch: one coherent product model, no compatibility shims or duplicate durable state.",
+  "completion": "Complete all required product journeys on production artifacts for every in-scope platform and on the deployed public backend. Declare numerical workload, latency, availability, recovery and cost targets before verification, then pass sustained/peak load, fault, security, accessibility, migration, update, restore and rollback gates. Reproduce delivery, offline/reconnect, multi-device recovery, cryptographic integrity and acknowledged-write durability within a documented fault model. Product comparisons require versioned evidence; private adapters, hosted assets, source tests, builds and bounded UI checks cannot establish whole-product readiness on their own.",
+  "requiredJourneys": [
+    "apple-google-single-action-signup-login-editable-profile-and-secure-new-device-recovery",
+    "create-account-secure-storage-cold-reopen",
+    "link-revoke-device-recovery-history",
+    "encrypted-ios-messaging-and-canonical-peer-interoperability",
+    "offline-send-reconnect-cold-reopen-no-duplicate",
+    "message-reply-quote-jump-thread-edit-delete-reaction-forward",
+    "timeline-long-history-reading-position-keyboard-ime",
+    "search-filters-unread-delivery-read-preferences",
+    "conversation-hud-search-result-navigation-and-temporary-assistant",
+    "page-richtext-crdt-draft-undo-import-export-history-restore",
+    "plan-exact-money-conflict-approval-history-restore",
+    "encrypted-photo-camera-document-voice-video-delivery",
+    "agents-owner-controls-grants-budgets-approvals",
+    "miniapps-native-and-origin-isolated-web-capabilities",
+    "home-miniapp-cards-native-pin-menus-account-device-scope-and-conversation-rails",
+    "communities-membership-permissions-invites",
+    "push-token-refresh-content-free-wake-deep-links",
+    "widgets-live-activities-app-intents-scoped-actions",
+    "local-time-sky-manual-phases-auto-reduced-motion-contrast-accessibility",
+    "iphone-layout-voiceover-dynamic-type-and-keyboard-navigation",
+    "release-without-metro-and-reproducible-ci",
+    "local-device-signout-erasure-keys-data-cache-cleanup",
+    "english-pt-br-consistent-ui-provider-formatting",
+    "damaged-log-integrity-warnings-verification-audit",
+    "encrypted-voice-video-calls-reconnect-permissions-and-platform-lifecycle",
+    "desktop-install-signing-updates-and-native-system-integration",
+    "production-public-backend-complete-protocol-and-client-interoperability",
+    "multi-device-offline-recovery-and-data-integrity-under-declared-faults",
+    "declared-production-load-latency-availability-recovery-and-cost-verified",
+    "production-observability-abuse-controls-incident-restore-and-rollback"
+  ],
+  "deferredPlatforms": [],
+  "fullAppParityAccepted": false,
+  "productionReadinessAccepted": false,
+  "scaleReadinessAccepted": false,
+  "productionCompletionGates": {
+    "completeProductAndCompetitiveJourneyMatrix": "PENDING",
+    "exactProductionArtifactsAcrossAllPlatforms": "PENDING",
+    "completePublicBackendAndRealProviders": "PENDING",
+    "cryptographicIntegrityOfflineAndSecureRecovery": "PENDING",
+    "declaredScaleLatencyAvailabilityRecoveryAndCost": "PENDING",
+    "loadFaultSecurityAndAccessibilityVerification": "PENDING",
+    "observabilityAbuseProtectionAndIncidentOperations": "PENDING",
+    "reproducibleReleasesDataMigrationsAndRollback": "PENDING",
+    "maintainableArchitectureAndLegacyRemoval": "PENDING"
+  },
+  "operatingEnvelope": {
+    "status": "DECLARED_NOT_MEASURED",
+    "targetsMustPrecedeVerification": true,
+    "requiredMetrics": [
+      "concurrent-active-connections-and-workload-mix",
+      "sustained-and-peak-messages-events-media-and-call-throughput",
+      "p50-p95-p99-interaction-delivery-and-sync-latency",
+      "availability-error-budget-and-backpressure",
+      "history-size-device-count-and-offline-reconnect-backlog",
+      "recovery-time-recovery-point-and-acknowledged-write-durability",
+      "cost-per-active-user-message-media-and-operating-tier"
+    ],
+    "comparisonPolicy": "Measured product comparisons and declared workload envelopes only. Architecture diagrams, private capacity bounds and a successful load test do not establish parity with a competitor's global scale.",
+    "specification": "docs/dev/zoen-operating-envelope-v1.json",
+    "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
+    "qualificationAccepted": false
+  },
+  "currentAcceptanceSummary": "Current Expo SDK 58.0.16 source passes TypeScript, Oxlint, Oxfmt and 828 app tests. Native iOS activity preserves canonical IDs, search and history; Web source passes 72 Rust tests and typed signed DTO boundary checks, and a bounded actual Web linking, Excalidraw, exact-ID search and backend/cold-browser restart journey passed. The custom Cloudflare backend runtime is removed. The native Rust backend now runs locally with real PostgreSQL 17, FoundationDB 7.3.71, private S3-compatible storage and optional NATS/two relays. 151 unique native/shared tests, the actual public Client 7 checkpoints, S3 concurrency/restart and cold backup/restore passed. Provider confirmation, public deployment, complete platform journeys, release rollback, cross-relay delivery and production/scale acceptance remain open.",
+  "retiredBackend": {
+    "id": "custom-cloudflare-runtime",
+    "status": "RETIRED",
+    "activeProductRuntime": false,
+    "currentBackend": "native Rust with PostgreSQL, FoundationDB and S3-compatible object storage",
+    "retainedCloudflareScope": [
+      "static Expo Web hosting",
+      "edge DNS",
+      "optional private S3-compatible R2 storage"
+    ],
+    "historicalProofsPolicy": "Earlier Cloudflare adapter receipts below retain their original source/artifact attribution. Removed runtime paths are historical references and do not qualify the native local composition or public production.",
+    "historicalSource": "https://github.com/EnzoTironi/zoen-native/blob/b4cffb7163888d34e47e470f6bb007672a1ed028/infra/cloudflare/README.md",
+    "nativeLocalQualificationAccepted": true,
+    "publicBackendQualificationAccepted": false
+  },
+  "historicalEvidence": {
+    "commit": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
+    "path": "apps/zoen/acceptance.json",
+    "url": "https://github.com/EnzoTironi/zoen-native/blob/e76c74be4af4bfe483f4de4b63b6f932a83f0d8b/apps/zoen/acceptance.json",
+    "read": "git show e76c74be4af4bfe483f4de4b63b6f932a83f0d8b:apps/zoen/acceptance.json",
+    "sha256": "7560cde52823722c871a05c834f334ffdf6140de23ded7085467cb84a9661ba7",
+    "scope": "Immutable full trial history, earlier artifact objects and superseded gap statements. Older documentation evidence keys resolve in this historical manifest; external receipts and recordings retain their original attribution. Compaction changes documentation only."
+  },
+  "currentIphoneArtifact": {
+    "checkpoint": "v85",
+    "commit": "7245d02aa4d4230f504c0aedcde2bef16a67d112",
+    "configuration": "signed Release ARM64",
+    "preservingInstall": true,
+    "inputs": 839,
+    "sourceSha256": "9101e92963c880a0fb70e2fda8164c17a48ee44da50af3e88cd80105bb851320",
+    "bundleSha256": "002f520906148ed3062044977a363e2a38b8454f051ce00c36fd9a8838802aae",
+    "bundleBytes": 6784644,
+    "executableSha256": "c5418d45fc45bcfbf5b743c1c2c4852330c01865ea6c4fc83ae2d7a3f2efd542",
+    "appTreeSha256": "a1b2e6cc21a5c381c7ecb66956f6495f941bdb79a67d3769f0b0bcd28a0166ac",
+    "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
+    "appBytes": 175786540,
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v85/Zoen.app",
+    "installedExecutableVerified": true,
+    "installedJavascriptVerified": true,
+    "strictSignatureVerified": true,
+    "buildVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/accepted-artifact-verification.json",
+    "device": "isolated iPhone18 Pro / iOS27 simulator",
+    "deviceUdid": "388CA707-A103-4845-B5FE-BAA9526D3D57",
+    "status": "BOUNDED PASS private PDF capture after process death, Keep without publication and explicit Save/cold exactly one v3; full parity remains open.",
+    "runtimeAcceptance": "Existing History download QA1018v63b PDF starts at v2. Controlled kill after synchronous encrypted capture and before canonical save recovers the same black ink stroke. Keep returns to chat with exactly v1/v2; a second cold then explicit Save produces one Anotações event Enviando → Enviada. Third cold shows exactly v1/v2/v3, the same stroke and no private recovery choice. /private/tmp/zoen-pdf-edit-journal-qa-v85/native-acceptance.json",
+    "fullAppParityAccepted": false,
+    "installedPublicVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/isolated-v85-verify-after.json"
+  },
+  "humanIphoneArtifact": {
+    "checkpoint": "v85",
+    "commit": "7245d02aa4d4230f504c0aedcde2bef16a67d112",
+    "configuration": "signed Release ARM64",
+    "preservingInstall": true,
+    "inputs": 839,
+    "sourceSha256": "9101e92963c880a0fb70e2fda8164c17a48ee44da50af3e88cd80105bb851320",
+    "bundleSha256": "002f520906148ed3062044977a363e2a38b8454f051ce00c36fd9a8838802aae",
+    "bundleBytes": 6784644,
+    "executableSha256": "c5418d45fc45bcfbf5b743c1c2c4852330c01865ea6c4fc83ae2d7a3f2efd542",
+    "appTreeSha256": "a1b2e6cc21a5c381c7ecb66956f6495f941bdb79a67d3769f0b0bcd28a0166ac",
+    "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
+    "appBytes": 175786540,
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v85/Zoen.app",
+    "installedExecutableVerified": true,
+    "installedJavascriptVerified": true,
+    "strictSignatureVerified": true,
+    "buildVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/accepted-artifact-verification.json",
+    "device": "human iPhone18 Pro / iOS27 simulator",
+    "deviceUdid": "E2B33D1A-D73F-4793-96E7-5FC43E64053F",
+    "status": "BOUNDED PASS preserving v84-to-v85 update, Home/recipe/larger text/six-page history and existing Delivered voice; no human content changes.",
+    "runtimeAcceptance": "Preserving update retains four Home cards, Plantain 6/8 with inner 75%/VERSION 16, Zo sleep 100%, larger text and Bilingual six-page history at 100%. Old Delivered 0:11 voice plays 0:00 → 0:11; explicit Pause leaves Reproduzir áudio at 0:11 / 0:11. Composer is empty with microphone control and keyboard closed; no new content/draft Send. Public executable/JavaScript/strict signatures match after runtime. /private/tmp/zoen-pdf-edit-journal-qa-v85/native-acceptance.json",
+    "fullAppParityAccepted": false,
+    "installedPublicVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/human-v85-verify-after.json"
+  },
+  "installedIphoneArtifacts": {
+    "checkpoint": "v92",
+    "sourceCommit": "11ce6ac3810a30f8e92821fb0bd43f3a14f70392",
+    "sourceManifest": "/private/tmp/zoen-iphone-release-v92-inputs.json",
+    "sourceInputs": 941,
+    "sourceSha256": "f875c20abe46309aaacc9d50c2aa20fa6a7a7eacea96d0bbdaa70b86b6144d27",
+    "configuration": "signed Release ARM64 iOS Simulator; no Metro",
+    "archivePath": "/private/tmp/zoen-iphone-artifacts/v92/Zoen.app",
+    "appBytes": 158808595,
+    "appFileCount": 342,
+    "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
+    "appTreeSha256": "8141390104e6514abe3a67bafd5b56ee8d596307beb45c45a439c2c034ee1975",
+    "executableSha256": "c2a27828392b71a6b57aab7149bbda1d462e738069639a286704bb03552a892b",
+    "javascript": {
+      "bytes": 21033107,
+      "sha256": "58432b00c8d0e1afe488f3fb6ba49846203d320633a736517d9ed4787f736db3"
+    },
+    "buildVerification": "/private/tmp/zoen-iphone-release-v92-verification.json",
+    "scope": "Latest recorded public bundle/signature verification and bounded native MCP/Home checks on both simulators. These do not replace the v85 whole-application baseline or certify later source.",
+    "controlled": {
+      "device": "isolated iPhone18 Pro / iOS27 simulator",
+      "deviceUdid": "388CA707-A103-4845-B5FE-BAA9526D3D57",
+      "preservingInstall": "/private/tmp/zoen-builtins-native-iphone-v92/isolated-v92-install.json",
+      "installedPublicVerification": "/private/tmp/zoen-builtins-native-iphone-v92/isolated-v92-verify-after.json",
+      "executableJavascriptStrictSignature": "PASS"
+    },
+    "human": {
+      "device": "human iPhone18 Pro / iOS27 simulator",
+      "deviceUdid": "E2B33D1A-D73F-4793-96E7-5FC43E64053F",
+      "preservingInstall": "/private/tmp/zoen-builtins-native-iphone-v92/human-v92-install.json",
+      "installedPublicVerification": "/private/tmp/zoen-builtins-native-iphone-v92/human-v92-verify-after.json",
+      "executableJavascriptStrictSignature": "PASS",
+      "homeSmoke": {
+        "receipt": "/private/tmp/zoen-builtins-native-iphone-v92/human-home-smoke.json",
+        "sha256": "5584423f4ad4ab4e0b48c8e90859a2956ec3d9db582802721bc39479318c6ac0",
+        "retained": "Recipe 6/8 and 2 servings; Pet asleep/rest 100%; Praia Nov 15; ExactBRL one cost line 100%/alternative 0%. Keyboard closed, no modal or visible error."
+      },
+      "scope": "Home/larger-text retention only; no human data mutations or full history/media/provider reacceptance."
+    }
+  },
+  "evidence": {
+    "nativePdfEditDraftRecoveryV85": {
+      "status": "BOUNDED_PASS_ISOLATED_PDF_RECOVERY_AND_HUMAN_RETENTION",
+      "checkpoint": "v85",
+      "sourceCommit": "7245d02aa4d4230f504c0aedcde2bef16a67d112",
+      "sourceInputs": 839,
+      "sourceSha256": "9101e92963c880a0fb70e2fda8164c17a48ee44da50af3e88cd80105bb851320",
+      "runtime": "/private/tmp/zoen-pdf-edit-journal-qa-v85/native-acceptance.json",
+      "artifactVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/accepted-artifact-verification.json",
+      "sourceHeadExpoCi": {
+        "head": "7245d02aa4d4230f504c0aedcde2bef16a67d112",
+        "run": 39159913407,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39159913407",
+        "jobs": {
+          "release-web-e2e": "success",
+          "schedule-miniapp": "success",
+          "client": "success"
+        },
+        "receipt": "/private/tmp/zoen-pdf-edit-journal-qa-v85/documentation/source-ci.json",
+        "scope": "Exact-source Expo jobs only, separate from native UI. Web 39159913405 and messenger-search-edit 39159913406 also succeed; no blanket claim about other workflows."
+      },
+      "limits": [
+        "Recovery begins after Quick Look delivers a complete edited copy and synchronous encrypted retention acknowledges it. Strokes not yet delivered by Quick Look are not promised recoverable.",
+        "Actual iOS Simulator acceptance covers one writable existing PDF, Keep across cold reopen and explicit Save to one new version. Remote-conflict/MIME-changed recovery UI, multi-capture fault interleavings and backup exclusion are covered by source/host tests where recorded, not equivalent native UI journeys.",
+        "No physical iPhone, independent recipient or edited-PDF byte comparison, backup/restore UI, performance/allocation boundary, broader accessibility/provider/Push/calls or complete comparative product-parity claim."
+      ],
+      "fullAppParityAccepted": false,
+      "scope": "Controlled process death after acknowledged encrypted PDF capture; same stroke recovered, Keep/cold retains v2, explicit Save/cold yields exactly one v3. Both preserving installs and human Home/recipe/larger-text/six-page history/old Delivered voice retention pass.",
+      "sourceChecks": {
+        "appPassed": 696,
+        "ffiPassed": 476,
+        "pdfJournalSubset": 13,
+        "typescriptOxlintOxfmt": "PASS",
+        "receipt": "/private/tmp/zoen-pdf-edit-journal-qa-v85/documentation/source-checks.json",
+        "separateSwiftHostChecks": "14 journal, 21 PDF-owner, 11 preview-owner scenarios and four core-process phases; separate counts, not additions to suite totals."
+      }
+    },
+    "nativeCanonicalExcalidrawV89": {
+      "status": "PASS_NATIVE_CANONICAL_EDIT_AND_COLD_REOPEN",
+      "checkpoint": "v89",
+      "sourceCommit": "85c4a1f3b319b0cd016f03a6c9118229e6be7907",
+      "sourceManifest": "/private/tmp/zoen-iphone-release-v89-inputs.json",
+      "sourceSha256": "adda8004b473561b4eaa520eed0123572a47a79af3d9189f4ccc695ca36b5e6c",
+      "sourceInputs": 901,
+      "signedArtifactVerification": "/private/tmp/zoen-iphone-release-v89-verification.json",
+      "evidenceRoot": "/private/tmp/zoen-excalidraw-canonical-iphone-qa-v89",
+      "nativeProof": "/private/tmp/zoen-excalidraw-canonical-iphone-qa-v89/native-proof.json",
+      "canonicalItem": {
+        "id": "it_01m58hskre9krj16jhx2125qtd",
+        "title": "Zoen + MCP",
+        "observedElements": 5,
+        "scope": "The same canonical Zoen App Item and Home card, not an external provider checkpoint."
+      },
+      "nativeAcceptance": "The preserving v89 update opened the rectangle saved under v88. Native touch added a second horizontal rectangle, iOS keyboard labels Zoen and MCP Apps, and a connecting arrow. Saved status and guarded Back returned a Home card with 5 elementos. A full process restart retained that count; opening the same card rendered both rectangles, both labels and the arrow. No Metro or runtime JavaScript injection; native instrumentation was used for accessibility inspection.",
+      "coldReopenReplay": {
+        "flow": ".argent/flows/excalidraw-canonical-iphone-v89-reopen.yaml",
+        "passed": 4,
+        "failed": 0,
+        "errored": 0,
+        "skipped": 0,
+        "durationSeconds": 13.7,
+        "scope": "One uninterrupted replay of process restart, Home count, same-card open and editor readiness. The first recorded take supplies the visible five-element diagram proof. Not a two-pass regression or full editing replay."
+      },
+      "screenshot": ".argent/screenshots/excalidraw-canonical-iphone-v89.png",
+      "sourceChecks": {
+        "receipt": "/private/tmp/zoen-excalidraw-canonical-iphone-qa-v89/source-checks.json",
+        "app": 775,
+        "typescript": true,
+        "oxlint": true,
+        "oxfmt": true,
+        "rendererTests": 15,
+        "scopedRustAppsTests": 11,
+        "documentCases": 16,
+        "fullFfiAttribution": "501 passed under prior v88; the v89 caption change has scoped checks, not a fresh full FFI run.",
+        "exactSourceExpoCiRun": 39172474600,
+        "exactSourceExpoCiReceipt": "/private/tmp/zoen-excalidraw-canonical-iphone-qa-v89/exact-source-expo-ci.json",
+        "exactSourceExpoCiJobs": "client, schedule-miniapp and release-web-e2e all PASS"
+      },
+      "limits": [
+        "Single synthetic account on an iOS Simulator. No independent recipient or encrypted-document byte comparison, physical iPhone, timing/performance, new accessibility or full native-surface acceptance.",
+        "This native take does not insert an image or induce conflicts, copy failures or owner-retirement faults. Image bytes and those failure boundaries retain their separate source/browser-test attribution.",
+        "No arbitrary MCP provider, Notion OAuth, remote export or complete Excalidraw/product-parity acceptance. The v87 real remote-server readback remains separate evidence.",
+        "Human acceptance here is limited to the preserving install and retained Home cards/larger text. Whole-application main and human acceptance remains attributed to the unchanged v85 artifact objects."
+      ],
+      "fullAppParityAccepted": false,
+      "combinedVideo": {
+        "path": ".argent/recordings/excalidraw-canonical-iphone-v89-proof.mp4",
+        "seconds": 62.3,
+        "composition": "Sequential stream-copy concatenation of the two original recordings, retaining their static trimming. No new app actions or frame overlays.",
+        "bytes": 4686291,
+        "sha256": "a1f3160f6f8ef90bddb3264c30e6dbebcb65eafa99346446cb7a9a8f31f8481e"
+      },
+      "videos": [
+        {
+          "path": ".argent/recordings/screen-recording-388CA707-A103-4845-B5FE-BAA9526D3D57-1792363094692.mp4",
+          "seconds": 44.067,
+          "wallClockSeconds": 137.351,
+          "trimmedSeconds": 93.284,
+          "bytes": 2600440,
+          "sha256": "4748d280af93c3e34c9da610ebfcb9ff49ddfe7321655bb6db41be93e4166ca3"
+        },
+        {
+          "path": ".argent/recordings/screen-recording-388CA707-A103-4845-B5FE-BAA9526D3D57-1792363242116.mp4",
+          "seconds": 18.233,
+          "wallClockSeconds": 27.402,
+          "trimmedSeconds": 9.169,
+          "bytes": 2086263,
+          "sha256": "328dd0f58384b815c7e297deeb4ec7ecdb23c770d3df5d294a64f3302774f27e"
+        }
+      ]
+    },
+    "nativeExcalidrawImageV90": {
+      "status": "PASS_NATIVE_PHOTOS_COLD_REOPEN_AND_LINKED_DEVICE_READBACK",
+      "checkpoint": "v90",
+      "runtimeSourceCommit": "db626dce7f1a8525047b409b1727bd2fd6d78556",
+      "testPortabilityCommit": "6902ce6a52406e6b9d710b80ccebaf6553f3444a",
+      "sourceManifest": "/private/tmp/zoen-iphone-release-v90-inputs.json",
+      "sourceSha256": "df5cba505a84e171ea31032b0040cf2562adde9dd1aa8dc3821e88adc74ddf00",
+      "sourceInputs": 904,
+      "signedArtifactVerification": "/private/tmp/zoen-iphone-release-v90-verification.json",
+      "evidenceRoot": "/private/tmp/zoen-excalidraw-native-image-v90",
+      "evidenceManifest": "/private/tmp/zoen-excalidraw-native-image-v90/evidence-manifest.json",
+      "evidenceManifestSha256": "5feaa50a8676ce4607aca75b3673aee560748916d370379a86524618d83a249a",
+      "nativeProof": "/private/tmp/zoen-excalidraw-native-image-v90/native-v90-acceptance.json",
+      "video": {
+        "path": ".argent/recordings/excalidraw-photo-iphone-v90-proof.mp4",
+        "seconds": 47.233333,
+        "sha256": "9231c14e428b880866084f42fa6ac82a8308b1e44b7321d3a754bdc3e690f45a",
+        "losslessPacketConcat": true,
+        "recordedWallSeconds": 122.042,
+        "existingStaticTrim": true,
+        "bytes": 5330447
+      },
+      "nativeAcceptance": "Normal native Photos picker inserted one synthetic image into the original canonical drawing, guarded Back returned its six-element Home card, and a full process restart reopened the same image. Prior copy remained at six elements. Both preserving installs and public executable/JavaScript/strict signature checks passed. Main Home retained recipe6/8 and four existing cards with larger text.",
+      "canonicalItem": {
+        "id": "it_01m58hskre9krj16jhx2125qtd",
+        "version": 13,
+        "elements": 6,
+        "images": 1,
+        "sceneBytes": 32316,
+        "sha256": "d98ae817c85f02e793e50c355de2f33891290ad8ef03c65ced07a35df8e3ae3a"
+      },
+      "linkedDeviceReadback": {
+        "receipt": "/private/tmp/zoen-excalidraw-native-image-v90/linked-device-readback.json",
+        "scope": "new memory-only linked device of same synthetic identity, not a second recipient identity or cryptographic author-device proof",
+        "receivedHistoryEvents": 146,
+        "receivedHistoryChunks": 1,
+        "verifiedDrawings": 2,
+        "unchangedSecondCheck": true,
+        "jpegBytesEach": 21025,
+        "jpegSha256": "8e2f41bdd949d7def08785a747000c129cf0dfb533d4d3071a451e7dd670bbe0",
+        "stoppedAndOwnedVolatileVaultCleared": true,
+        "ownedDeviceRevokedThroughNativeUi": true,
+        "cleanupReceipt": "/private/tmp/zoen-excalidraw-native-image-v90/owned-device-cleanup.json"
+      },
+      "chatCards": "Exact conversation opened with one message-input; both pinned drawing cards show6 elements and the copy inline card also shows6. No message or item mutation.",
+      "checks": {
+        "macAppPassed": 776,
+        "rendererPassed": 24,
+        "nativeSwiftProbePassed": 1,
+        "exactSourceExpoCiRun": 39175638131,
+        "exactSourceExpoCiCommit": "6902ce6a52406e6b9d710b80ccebaf6553f3444a",
+        "exactSourceExpoCiConclusion": "success"
+      },
+      "limitations": [
+        "Narrow image/cold-reopen and preserving Home proof; whole-app v85 acceptance remains unchanged.",
+        "Recorded native walkthroughs, no full import replay or two-pass regression.",
+        "No physical-iPhone, every-provider, accessibility or comparative whole-app parity claim.",
+        "Does not accept later v91 builtin MCP renderer integration."
+      ]
+    },
+    "bundledMcpViewsV91": {
+      "status": "SOURCE_CHECKS_PASS_PARTIAL_NATIVE_V91_WITH_GESTURE_FAILURE",
+      "sourceCommit": "1ea2477649b047afae1ad3a299b59e09821f9638",
+      "receipt": "/private/tmp/zoen-builtins-v91/source-checks/source-freeze-final.json",
+      "receiptSha256": "8b085972de08fcbab6661323a3e042a8d8e2f966d742353dc617a563f863b3d9",
+      "sourceManifestSha256": "6dffd215708be99650490bd5e60f22401026a77e79980d7def042d1a64232ee0",
+      "sourceFiles": 63,
+      "standardViews": ["pet", "poll", "list", "maptap", "recipe", "countdown"],
+      "coverage": "Six existing core-bundled apps use shared React UI and official MCP Apps; Hike/Schedule shared-SDK resources regenerated, Excalidraw unchanged. Legacy six-app native mutation fallback removed; historical state retained read-only.",
+      "checks": {
+        "clientTests": 777,
+        "clientAttribution": "777 passed plus current TypeScript/Oxlint/Oxfmt. Final readonly historical checkbox semantics have focused static checks after the suite.",
+        "rustAppTests": 13,
+        "focusedFfiTests": 2,
+        "strictAppClippy": "PASS",
+        "builderFocusedTests": 11,
+        "embeddedResourcePairsRebuiltExactly": 8,
+        "nativeAcceptance": "Bounded v91 Pet, Recipe, Countdown and MapTap interactions/reopen observed; MapTap horizontal drag still popped Home. Poll/List not tested in v91; v92 gesture correction is separately attributed."
+      },
+      "limitations": [
+        "Source/DOM bridge and scoped Rust proof plus bounded signed v91 native observations; not all-six native or whole-app acceptance.",
+        "Old Swift Pet unboxing, ambient doodles and local emotes remain visual differences.",
+        "Whole-app v85 baseline and bounded v90 drawing evidence remain separately attributed."
+      ],
+      "nativeFindings": {
+        "receipt": "/private/tmp/zoen-builtins-native-iphone-v91/native-acceptance.json",
+        "observations": "/private/tmp/zoen-builtins-native-iphone-v91/observations.json",
+        "screenshots": "/private/tmp/zoen-builtins-native-iphone-v91/screenshots.json",
+        "scopedViews": ["pet", "recipe", "countdown", "maptap"],
+        "scope": "Pet care/sleep/tab-paused Dash/score and reopen; Recipe servings/checklist/reopen and a separately observed shared cooking step, whose persistence was not rechecked; Countdown local date/ticking; MapTap accessible rotation/guess/result and reopen.",
+        "maptapResult": "One guess acknowledged 6,983 km and 48 points, retained as 1/5 on reopen; native horizontal globe drag incorrectly navigated Home in v91.",
+        "diagnostics": "71-step retired one-use recording, 18 cross-tree warnings and one offscreen-control wait; no replay or process-restart claim."
+      },
+      "diagnosticRecording": {
+        "path": "/private/tmp/zoen-builtins-native-iphone-v91/.argent/flows/builtin-six-v91-continuation.yaml",
+        "bytes": 6515,
+        "sha256": "df00fa8606ea478d7418be0593b9eb84717c4c1bc3c17546a717ee7c50889243"
+      }
+    },
+    "nativeBundledMcpViewsV92": {
+      "status": "BOUNDED_NATIVE_GLOBE_POLL_LIST_PASS",
+      "checkpoint": "v92",
+      "evidenceManifest": "/private/tmp/zoen-builtins-native-iphone-v92/evidence-manifest.json",
+      "sourceCommit": "11ce6ac3810a30f8e92821fb0bd43f3a14f70392",
+      "sourceInputs": 941,
+      "sourceManifest": "/private/tmp/zoen-iphone-release-v92-inputs.json",
+      "sourceSha256": "f875c20abe46309aaacc9d50c2aa20fa6a7a7eacea96d0bbdaa70b86b6144d27",
+      "signedArtifactVerification": "/private/tmp/zoen-iphone-release-v92-verification.json",
+      "nativeProof": "/private/tmp/zoen-builtins-native-iphone-v92/root-native-map-acceptance.json",
+      "nativeAcceptance": "Signed preserving v91-to-v92 update retains the MapTap 48-point result and 1/5 state. The previously failing rightward globe drag, opposite horizontal drag and vertical drag rotate without leaving the editor. Details and its native Back return to MapTap; another native Back returns Home. Rotation does not submit a new guess.",
+      "priorGuestChecks": "The Pet, Recipe, Countdown and MapTap functional observations belong to v91. Their guest/core bytes match v92; this is not a repeat of all four interactions on v92.",
+      "coreReuse": {
+        "receipt": "/private/tmp/zoen-native-v92-xcode-core-after.json",
+        "selectedInputs": 533,
+        "sha256": "8b4e9a97a0299a6e032145e1b36b70f867e5d8e765679decc70be5b0e0758699",
+        "scope": "Exact v91-to-v92 native/core, generated resources, shared dependencies, CNG and bindings match; no new Rust build/test claim."
+      },
+      "checks": {
+        "clientTests": 777,
+        "clientStages": "npm run check: tests, TypeScript, Oxlint and Oxfmt PASS",
+        "clientLog": "/private/tmp/zoen-miniapps-v92-client-check.log",
+        "clientLogSha256": "89fd66e5cf8039810f21a5ef8a3cceaee493b77cfe56c6746ebc570b928a554f",
+        "exactSourceExpoCiRun": 39179002573,
+        "exactSourceExpoCiCommit": "11ce6ac3810a30f8e92821fb0bd43f3a14f70392",
+        "exactSourceExpoCiConclusion": "success, all three jobs",
+        "exactSourceExpoCiUrl": "https://github.com/EnzoTironi/zoen-native/actions/runs/39179002573"
+      },
+      "limitations": [
+        "Management body/edge back-drag did not complete; only native Back buttons are accepted.",
+        "Six guest views have bounded observations across v91/v92, not every feature on v92. Poll Plan line count is Rust/FFI proof only, not native UI proof.",
+        "Both v92 public installed bundles/signatures and bounded human Home retention pass; accepted whole-app main/human v85 objects remain unchanged. No historic chat/media/provider reacceptance.",
+        "Only the four-action MapTap fragment replay passed once; no full E2E/two-pass, VoiceOver, reduced-motion, physical-iPhone, broad performance or full comparative parity acceptance."
+      ],
+      "fullAppParityAccepted": false,
+      "pollList": {
+        "receipt": "/private/tmp/zoen-builtins-native-iphone-v92/native-poll-list-acceptance.json",
+        "receiptSha256": "9b561deb56e2f5e1b4b54fc240201faab31b7f7d461fa3b036b204bde9682a6c",
+        "catalog": "Normal Home Add/catalog installs both items in History download QA1018v63b. Compact native picker forms start at scroll 0%; question/title survive selecting and changing the conversation.",
+        "poll": {
+          "itemId": "it_01m58r52kdw3egmzb3z1xf6fca",
+          "voteSequence": [
+            [0, 0],
+            [1, 0],
+            [0, 1]
+          ],
+          "closedWinner": "B - Fruta",
+          "observedVersion": 4,
+          "sameItemReopen": "Closed with 0/1 votes and no close button.",
+          "planEffectBoundary": "The close ACK, winner, version4 and one visible close/comment sequence were observed. The actual Plan line was not located/counted in native UI; exact once-only canonical effect remains covered by the existing Rust/FFI tests, separately attributed."
+        },
+        "list": {
+          "itemId": "it_01m58rc9fj9w3hdej4e61wesny",
+          "title": "QA v92 - mochila",
+          "sameItemReopen": "One checked item out of one, attributed to QA disposable device; observed version 3.",
+          "share": "One explicit Na conversa confirmation produced one matching visible message; no independent whole-history count.",
+          "messageId": "01M58REC4HMS3Z7HHHNGH07EE3",
+          "message": "QA v92 - mochila\n☑ QA v92 - agua",
+          "receipt": "Enviada",
+          "whatsApp": "Explicit native external-link confirmation was canceled. No external app opened and no WhatsApp delivery is claimed."
+        },
+        "diagnostics": "99-step retired one-use recording, 11 cross-tree warnings and two corrected unmet waits. Normal same-item navigation, not a cold process restart or formal replay. Synthetic input/autocorrection ambiguity is retained in the raw receipt."
+      },
+      "maptapFragmentReplay": {
+        "receipt": "/private/tmp/zoen-builtins-native-iphone-v92/maptap-fragment-replay.json",
+        "runs": 1,
+        "actionStepsPassed": 4,
+        "failed": 0,
+        "errored": 0,
+        "skipped": 0,
+        "seconds": 2.4,
+        "scope": "Three recorded globe drags followed by native Details visibility; exact fragment from the diagnostic first walkthrough, not full editing/E2E or two-pass acceptance."
+      },
+      "evidenceManifestSha256": "b5cec656ad199a4bf1a0d074907de54cb413650d4319fad5a4cb86c2992d5c21",
+      "recordings": [
+        {
+          "path": "/Users/enzotironi/project/zoen-native/.argent/recordings/screen-recording-388CA707-A103-4845-B5FE-BAA9526D3D57-1792368544501.mp4",
+          "bytes": 1976013,
+          "sha256": "4a20922addb702690798ca24100365f9085553edcd3958fa1a8ebcd06d2d8ec3",
+          "scope": "Recorded walkthrough, not full replay or two-pass regression."
+        },
+        {
+          "path": "/private/tmp/zoen-builtins-native-iphone-v92/.argent/flows/builtin-poll-list-v92-first.yaml",
+          "bytes": 7313,
+          "sha256": "e71f0bac93d335f594c393b506b73ab8ce42caa3fc9b69461544ab068536a257",
+          "scope": "Retired one-use 99-step diagnostic, not a cold-process proof or formal replay."
+        }
+      ]
+    },
+    "pageInputFoundationV94": {
+      "status": "SOURCE_AND_SEPARATE_HOST_CHECKS_PASS_NATIVE_APP_INTEGRATION_PENDING",
+      "sourceCommit": "68b9900c7a725b6d5cc5de5570c95154b6a806f1",
+      "sourceValidationOnly": true,
+      "ffiPassed": 509,
+      "clientPassed": 777,
+      "typescriptOxlintOxfmtStrictClippy": "PASS",
+      "scope": "Encrypted native input capture, UTF-16 selection/IME state, revision checks and durable exact Apply/Discard receipts; real SQLite/cold Engine and failure tests. Separate UIKit producer 16 tests and Swift 6/UniFFI host proof do not establish a combined app journey.",
+      "receipts": [
+        {
+          "path": "/private/tmp/zoen-page-input-v94/verified-core-foundation.json",
+          "bytes": 1121,
+          "sha256": "1ebfdf2a687b0b228c02350e4cbb0d26731d8ca7e69352a245f995ccfe55640e"
+        },
+        {
+          "path": "/private/tmp/zoen-page-input-bridge-v94/host-proof/acceptance.json",
+          "bytes": 10187,
+          "sha256": "e158073cfd54abd6bcda26e69116aa35fbd6d780ac0869ea8969ceab8a2ea94d"
+        },
+        {
+          "path": "/private/tmp/zoen-page-native-producer-v94/native-seal-api-v94-06.json",
+          "bytes": 5102,
+          "sha256": "73d353bce8c8d4deafc4a97ae5dbe8fe5823d539199104b03725b8f8b379ba22"
+        }
+      ],
+      "limits": "Producer patch not installed; source/plain producers, native ownership/recovery UI and safe teardown remain integration work. Canonical Plan Apply remains closed. No new signed iPhone acceptance."
+    },
+    "sessionRetirementAndInputReleaseV95": {
+      "status": "SOURCE_CHECKS_PASS_NO_NEW_SIGNED_IPHONE_ACCEPTANCE",
+      "sourceCommits": [
+        "e191fd1ce400ebc0a57efd79c642116adcff7861",
+        "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b"
+      ],
+      "sourceValidationOnly": true,
+      "ffiPassed": 512,
+      "clientPassed": 791,
+      "typescriptOxlintOxfmt": "PASS",
+      "scope": "Owner-preserving session retirement drains admitted writes/closes with retry; exact empty-input release receipts survive cold reopen and lost responses without discarding newer captures. Plan projections expose pending input without edit authority.",
+      "receipt": {
+        "path": "/private/tmp/zoen-page-editor-v95/verified-source-and-proof-index.json",
+        "bytes": 5979,
+        "sha256": "6abd453180ac9f7fd5ac82a1ef5b7d8c30adde5595d24979f9a29d6d27cbb511"
+      },
+      "limits": "External producer public Swift API passed; UIKit run could not start without prepared dependencies. Unfinished bridge preserved externally and removed from app. No producer patch, raw-input bridge, recovery UI or new signed app journey was installed."
+    },
+    "webV96": {
+      "status": "PASS_LOCAL_AND_CI_EN_PT_22_CHECKPOINTS_BOUNDED_SCOPE",
+      "documentation": "docs/dev/expo-web-acceptance.md",
+      "ciBaseline": {
+        "run": 39189115561,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39189115561",
+        "testedMergeCommit": "165d67cd7c023e2e4e4e267b6f12bdc2e7582259",
+        "head": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
+        "artifactId": 12158963205,
+        "artifactName": "expo-release-web-evidence",
+        "locales": ["en-US", "pt-BR"],
+        "passed": true,
+        "checkpointsEach": 14,
+        "browser": "155.0.8059.39"
+      },
+      "source": {
+        "head": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
+        "workingTreePatchSha256": "7fe52d40a4d9e10964c5919c685465a988b6f80583caf7bda49d038c2f8dd365",
+        "sourcePaths": [
+          "apps/zoen/src",
+          "packages/zoen-ui/web",
+          "miniapps/builtins",
+          "crates/roda-apps",
+          "crates/zoen-web-core"
+        ],
+        "testScriptsSha256": {
+          "scripts/expo-web-e2e.mjs": "0e92fa8e28a8bf9a70c34d9ba81069eaf03d39e0a2d51dac4109f843d79efd0d",
+          "scripts/expo-web-miniapp-journey.mjs": "276c5a48aa80df7703c121ff086239ff487c595b86de05f7dfe4c1641ea048a4",
+          "scripts/expo-web-media-journey.mjs": "f3680e6c708908cde2bd25db9f420321f6223c5a0a0e18280a550d4794364601",
+          "scripts/expo-web-expectations.mjs": "3fb3fbeb4417891fa52d956c900524de6c1ed56effab7aac428e48a74551b338"
+        },
+        "builtWith": "rustc 1.99.1, Node v26.12.0, Expo SDK58",
+        "configuration": "synthetic loopback relay; OAuth providers disabled for QA",
+        "workerIntegrity": "sha384-5lhNMH1yUGXCJcds6hQwwqxce9rFjyYH5ABCkzRUpP70btnwC/2vOLvpz4P6rhtw",
+        "notes": "19-step EN/PT export predates decorative SkyLayer aria-hidden and accessibilityLabel correction; that two-line delta has separate release/axe evidence."
+      },
+      "evidenceRoot": "/private/tmp/zoen-web-v96",
+      "locales": {
+        "en-US": {
+          "passed": true,
+          "steps": 19,
+          "browser": "155.0.8059.85",
+          "sourceHead": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
+          "manifestSHA256": "18eb0166ab4c911825bf25099152480c451cd2810a797e94d022074cb1188bc5"
+        },
+        "pt-BR": {
+          "passed": true,
+          "steps": 19,
+          "browser": "155.0.8059.85",
+          "sourceHead": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
+          "manifestSHA256": "18eb0166ab4c911825bf25099152480c451cd2810a797e94d022074cb1188bc5"
+        }
+      },
+      "acceptanceReceipts": [
+        "/private/tmp/zoen-web-v96/final-evidence/en-US/acceptance.json",
+        "/private/tmp/zoen-web-v96/final-evidence/pt-BR/acceptance.json"
+      ],
+      "checkpointNames": [
+        "release-asset-integrity",
+        "cloudflare-auth-isolation-and-dynamic-route-policy",
+        "synthetic-encrypted-history-created",
+        "normal-device-link-and-encrypted-history-recovery",
+        "expo-to-native-core-message-roundtrip",
+        "cold-dynamic-chat-reload-retains-keys-and-history",
+        "markdown-file-chooser-imports-encrypted-page",
+        "markdown-checkbox-interaction-updates-visible-state-and-draft",
+        "markdown-block-edit-draft-survives-cold-route-reload",
+        "markdown-commit-and-browser-download-preserve-edited-content",
+        "markdown-browser-and-native-core-exports-match",
+        "sandboxed-builtin-list-toggle-button-and-keyboard-use-canonical-mcp-tools",
+        "builtin-list-cold-route-reload-retains-canonical-changes",
+        "builtin-list-browser-changes-match-canonical-native-peer",
+        "mouse-attachment-menu-and-file-chooser-publish-encrypted-file",
+        "browser-and-canonical-native-peer-download-exact-attachment-bytes",
+        "cancel-local-erasure-retains-account-and-encrypted-history",
+        "confirmed-local-erasure-cold-reload-keeps-onboarding",
+        "browser-erasure-preserves-canonical-peer-history"
+      ],
+      "artifact": {
+        "workerIntegrity": "sha384-5lhNMH1yUGXCJcds6hQwwqxce9rFjyYH5ABCkzRUpP70btnwC/2vOLvpz4P6rhtw",
+        "wasm": {
+          "path": "core/zoen_web_core_bg.wasm",
+          "bytes": 25718302,
+          "sha256": "25d558b47a6182bef979cccdc753100dc1ab508556490a112a89e8d325a6b896"
+        },
+        "journeyArtifactManifestSHA256": "18eb0166ab4c911825bf25099152480c451cd2810a797e94d022074cb1188bc5"
+      },
+      "artifactFiles": 90,
+      "manifestHashAlgorithm": "sha256 of JSON.stringify(artifact.manifest)",
+      "accessibility": {
+        "status": "SEPARATE_FINAL_ONBOARDING_EXPORT_ONLY",
+        "manifestSha256": "cc14c9d16e66e7d14025185a64299986ca7c4a71d77ac43ec62d601c11765970",
+        "sourceBoundary": "Journey artifact includes form and media Host fixes; separate a11y export adds final decorative SkyLayer aria-hidden and Image accessibilityLabel. Only common JS chunk and index.html differ; worker/WASM identical.",
+        "dom": {
+          "decorativeImages": [
+            {
+              "alt": "",
+              "ancestorAriaHidden": true
+            },
+            {
+              "alt": "",
+              "ancestorAriaHidden": true
+            }
+          ]
+        },
+        "axe": {
+          "violations": 0,
+          "tags": ["wcag2a", "wcag2aa"],
+          "manualReviewRemaining": ["color-contrast:8 nodes"],
+          "passes": 16,
+          "incompleteRules": 1
+        },
+        "receipts": ["a11y-artifact.json", "onboarding-final-wcag.json", "onboarding-final.png"],
+        "limits": "Manual contrast, screen-reader and whole-app accessibility remain pending. Separate local onboarding axe proof; the later exact-merge CI independently passed all19 checkpoints including the decorative attribute correction."
+      },
+      "manualBaseline": {
+        "source": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
+        "quotedReplyThreadAndScopedSearch": "Observed in actual browser and independent canonical peer, separately from the 19-checkpoint runner.",
+        "warmOffline": "After settled history: queued message absent at peer while offline, automatically delivered after reconnect. History transiently empty offline.",
+        "coldStartupOfflineGap": "Cutoff during startup produced closed-session error after reconnect; page reload did not restore history. Full browser restart recovered history and delivered preserved queue. Unresolved; PWA cold offline load not tested."
+      },
+      "limits": [
+        "This prior19 source did not support canonical Excalidraw read/save/copy. Successor webDrawingsV97 accepts those operations and actual22 canvas/reload/peer journeys locally.",
+        "Plain file upload/preview/download accepted; captions, file inline replies/threads and immutable retry metadata incomplete.",
+        "Loopback QA uses synthetic identities and unavailable external providers; never deploy this export.",
+        "No provider login, Safari/WebKit, real camera/microphone, whole-app accessibility or full-parity acceptance."
+      ],
+      "sourceChecks": {
+        "appPassed": 795,
+        "typescriptOxlintOxfmt": "PASS",
+        "sourceCommit": "762ceb51",
+        "receipt": "/private/tmp/zoen-web-v96/final-app-check.json",
+        "logSha256": "6921996d0baa20f3460063aa5a2ebffb30ffce60e18f1a2291db0c1fec901eec",
+        "scope": "Combined final source including Android status/header changes and localized sign-in connection failure. Separate from the19-checkpoint CI artifact and onboarding axe receipts."
+      },
+      "ciCurrent": {
+        "run": 39204333306,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306",
+        "head": "52da9729e76e74fbfb3156c4ce39885717ccb653",
+        "testedMergeCommit": "59998b677ce581bd49a045538ee62f3d17b55347",
+        "artifactId": 12165466316,
+        "artifactName": "expo-release-web-evidence",
+        "passed": true,
+        "checkpointsEach": 22,
+        "locales": ["en-US", "pt-BR"],
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-52da-evidence/acceptance.json",
+        "receiptSha256": "433598e928827681ac6d3d062d30f5dceddc3eec8a9bc51e46d4c9d551b965ed",
+        "artifact": {
+          "manifestSha256": "e8b53caaa16a41bf70180a199e23d8a4a408fbdaa55dee3d1e58c0da07135148",
+          "workerIntegrity": "sha384-G+FBawXSjU8xvICEvECAGpBEexoGFpJ5t5OgBpqDgu+EGsUuU0XGjZphgoKMMfBS",
+          "wasmBytes": 25879517
+        },
+        "client": {
+          "discovered": 795,
+          "passed": 793,
+          "skipped": 2,
+          "reason": "Linux CI skips exactly two Darwin-only Swift harnesses; both passed in separate local macOS795 check.",
+          "darwinOnly": [
+            {
+              "path": "apps/zoen/src/core/native-core-error-message.test.ts",
+              "line": 41,
+              "name": "native CoreError presentation preserves real reasons and localizes safe fallbacks without reflection"
+            },
+            {
+              "path": "apps/zoen/src/core/native-media-draft-bridge.test.ts",
+              "line": 65,
+              "name": "native voice admission accepts JSON-rounded Float32 peaks and rejects changed audio metadata"
+            }
+          ]
+        },
+        "scope": "Allsix Expo jobs passed. Actual22 browser checkpoints per locale, original Directory33/9 and Closed17+4+5+4. CI uses namedWASM and precedes release-only name stripping and key-package extension. Separate Android artifact inspection accepts the minified Release build and14 JVM tests, without full runtime parity."
+      },
+      "ciPrior19": {
+        "run": 39194529436,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39194529436",
+        "head": "e2b0ea0736a51ff23737a5de3ddc48f3c86c982c",
+        "testedMergeCommit": "10276df12927fd6c562ca9e64920089224639770",
+        "artifactId": 12161960284,
+        "artifactName": "expo-release-web-evidence",
+        "passed": true,
+        "checkpointsEach": 19,
+        "locales": ["en-US", "pt-BR"],
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-e2b-receipts.json",
+        "scope": "Includes the decorative sky attribute correction. Separate from the later 762ceb51 Android layout/status and auth error copy; no claim that all jobs of this workflow passed.",
+        "artifact": {
+          "manifestSHA256": "44abaf303e2e6890431895ba275ce99e4965cbd65b5d6c03de00bf3e848270c7",
+          "workerIntegrity": "sha384-L+9+jxotxheYp9vbLHFT/KfMrU8ylmtaxzcR1mU6cbJiA47p+Ozdyg03C3VnJx2S",
+          "wasm": {
+            "path": "core/zoen_web_core_bg.wasm",
+            "bytes": 25721313,
+            "sha256": "95c666cd9451d48fcc40b2fe251dc1087973b5edb36f62536c813e8b25c44701"
+          }
+        },
+        "browser": "155.0.8059.39"
+      },
+      "retryFont": {
+        "sourceCommit": "75fffd98",
+        "typeScriptOxlintOxfmt": "PASS",
+        "renderedSystemFont": "system-ui",
+        "receipt": "/private/tmp/zoen-app-domain-v96/final-web/guest-boot.json",
+        "scope": "One font-family correction after the795-test source checkpoint; scoped compile/lint/format and actual canonical guest render."
+      },
+      "ciPrior7c71": {
+        "run": 39198364287,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39198364287",
+        "head": "7c71cecbf3e71fb502c9213b97bd909854dfa2d2",
+        "testedMergeCommit": "bfd35da7d52271a332e8b439b69d23850e87a973",
+        "artifactId": 12162482735,
+        "artifactName": "expo-release-web-evidence",
+        "passed": true,
+        "checkpointsEach": 19,
+        "locales": ["en-US", "pt-BR"],
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-7c71-receipts.json",
+        "browser": "155.0.8059.39",
+        "artifact": {
+          "manifestSHA256": "184a76ed4667d5d37a4acdce7f3a90fe55fa5d75e1595972f7643cf2bee74570",
+          "workerIntegrity": "sha384-L+9+jxotxheYp9vbLHFT/KfMrU8ylmtaxzcR1mU6cbJiA47p+Ozdyg03C3VnJx2S",
+          "wasm": {
+            "path": "core/zoen_web_core_bg.wasm",
+            "bytes": 25721313,
+            "sha256": "95c666cd9451d48fcc40b2fe251dc1087973b5edb36f62536c813e8b25c44701"
+          }
+        },
+        "scope": "Includes the Android access/layout and localized auth failure source. The later no-transform header and font-only correction have separate hosting/render proof. AndroidRelease job was pending at receipt creation; no wholeworkflowpass claim."
+      },
+      "ciPriorDb60": {
+        "run": 39201639333,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39201639333",
+        "head": "db60c33efb998bde7f8b455ac8f9712c9747589f",
+        "testedMergeCommit": "d126484348aded89d131b018933545dd858374c2",
+        "artifactId": 12163494249,
+        "artifactName": "expo-release-web-evidence",
+        "passed": true,
+        "checkpointsEach": 19,
+        "locales": ["en-US", "pt-BR"],
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-db60-evidence/index.json",
+        "receiptSha256": "2f4f8ac748da80c90d0eea998f78485ff9af6a56350e9dd8905e5318cbb05110",
+        "browser": "155.0.8059.39",
+        "artifact": {
+          "manifestSHA256": "884e16ad8b831309c7b085701822e665d1fd1c7c4e460afa4ba2dc4a0aecc44e",
+          "workerIntegrity": "sha384-cuuu51ynijNnOGbPsp+HZT6jZ2MKTk6eJ+qkhJN74KZ1CALnCghCv4KMk4KVTOXW",
+          "wasm": {
+            "path": "core/zoen_web_core_bg.wasm",
+            "bytes": 25775772,
+            "sha256": "2bb7d8e1185f117834bfd4f5b646cd8f8785aedb15e366381e1ded5575376f29"
+          }
+        },
+        "scope": "19-checkpoint browser and closed-group CI passed; predates local22 drawing/Directory changes. Android Release failed on R8 heap exhaustion; no whole-workflow pass."
+      },
+      "latestCi": {
+        "run": 39207994304,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39207994304",
+        "head": "c727b1f94ccfbf31f7cd42d748fc8370024bfd00",
+        "merge": "85c7f2d58aef38fc5853fb7b8efab3641aee0d91",
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json",
+        "receiptSha256": "47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0",
+        "limits": "Five Expo jobs pass; admission stops at formatting before its tests. Formatting corrected in8d64d762; no full-green inference. Linux artifacts are separate from deployed Mac release09 bytes.",
+        "checkpointsPerLocale": 22,
+        "locales": ["en-US", "pt-BR"],
+        "browserErrors": 0,
+        "artifact": 12167030781,
+        "wasmBytes": 23250613
+      }
+    },
+    "publicWebHostingV96": {
+      "status": "PASS_PUBLIC_HOSTING_AND_GUEST_ONBOARDING_ONLY",
+      "url": "https://app.tryzoen.com",
+      "version": "359e0cd0-41c5-4e53-b64c-fef8e1b4d0e1",
+      "date": "2026-10-19",
+      "hostingPathsPassed": 10,
+      "exactSigningWorkerIntegrity": "PASS",
+      "build": "Fresh production export of891d6d9b with canonical Excalidraw, measured header inset, release-only WASM name removal and reproducible worker output. Separate from loopback QA.",
+      "documentation": "infra/cloudflare/README.md",
+      "limits": "Encrypted journeys were not run against the public domain. Production relay remains unavailable; public encrypted sync and provider OAuth unaccepted. Provider origins, separateOAuthWorker and otherhostnames unchanged.",
+      "receipt": "/private/tmp/zoen-app-domain-v96/release-09-public/acceptance.json",
+      "priorGuestBoot": {
+        "receipt": "/private/tmp/zoen-web-v96/public-preview/acceptance.json",
+        "scope": "Guest onboarding boot on prior deployment02, crossOriginIsolated=true, no JavaScript page errors. Provider challenge calls failed against unavailable configured relay; no provider login, WASM initialization or encrypted-sync acceptance."
+      },
+      "previewUrl": "https://zoen-web.agenttironi.workers.dev",
+      "origins": ["https://app.tryzoen.com", "https://zoen-web.agenttironi.workers.dev"],
+      "hostingPathsPassedEach": 10,
+      "exactSpaBytesAndNoTransform": "PASS",
+      "domainRoute": {
+        "pattern": "app.tryzoen.com/*",
+        "worker": "zoen-web",
+        "failOpen": false,
+        "recordChanges": "Only original app A/AAAA toggled toProxied; contents/AutoTTL unchanged; no deletion",
+        "receipt": "/private/tmp/zoen-app-domain-v96/migration-proxy-acceptance.json"
+      },
+      "currentGuestBoot": {
+        "receipts": [
+          {
+            "path": "/private/tmp/zoen-app-domain-v96/release-09-public/canonical/guest-boot.json",
+            "bytes": 3879,
+            "sha256": "efdc2ce5242d3d66c3e0c04ad45fd3b011c40272a17e47cc6c72f2dd87a0e2df"
+          },
+          {
+            "path": "/private/tmp/zoen-app-domain-v96/release-09-public/workers-preview/guest-boot.json",
+            "bytes": 4317,
+            "sha256": "767d692bdb29d43e62e9be32f4e83d115610d6b07580379a748a7cd4885e9442"
+          }
+        ],
+        "browser": "155.0.8059.85",
+        "origins": ["https://app.tryzoen.com", "https://zoen-web.agenttironi.workers.dev"],
+        "friendlyLocalizedErrorVisible": true,
+        "unhandledPageErrors": 0,
+        "unrequestedAnalyticsScript": false,
+        "rootIsolated": true,
+        "signInIsolated": false,
+        "retryFont": "system-ui",
+        "providerState": {
+          "apple": "unavailable",
+          "google": "unavailable"
+        },
+        "scope": "Publicrelease09hosting+empty-profile guest rendering bothorigins. No successfulWASMinitialization, login/account/linking/authenticatedsync or fullparity acceptance."
+      },
+      "localHeaderChecks": {
+        "pagesPaths": 9,
+        "workersPaths": 10,
+        "receipts": [
+          "/private/tmp/zoen-app-domain-v96/local-header-check-final.log",
+          "/private/tmp/zoen-app-domain-v96/local-workers-hosting.log"
+        ]
+      },
+      "priorRelease06": {
+        "version": "13975cc7-93e5-47f6-9f89-c769f1bd0756",
+        "receipt": "/private/tmp/zoen-app-domain-v96/live-hosting-final.json",
+        "build": "Fresh production configuration including final accessibility/auth corrections and no-transform policy; separate from loopback QA.",
+        "currentGuestBoot": {
+          "receipt": "/private/tmp/zoen-app-domain-v96/final-web/guest-boot.json",
+          "browser": "155.0.8059.85",
+          "friendlyLocalizedErrorVisible": true,
+          "unhandledPageErrors": 0,
+          "unrequestedAnalyticsScript": false,
+          "scope": "Own empty-profile guest onboarding and popup-safe sign-in on canonical domain; provider preparation failed against unavailable configured relay. No provider confirmation, account/device linking, WASM initialization or encrypted sync.",
+          "retryFont": "system-ui"
+        }
+      },
+      "sourceCommit": "891d6d9b170148708f01a250ab6d5c3d09fc4b27",
+      "receiptSha256": "5c9210eccb0267bd60d59255c830ccdfc0f79fd29097532054e03a8444394ac0",
+      "workerIntegrity": "sha384-pImaTmN20eB49OhAsS9/4uCr8hZDDmu0NhVTfWUyy5IEBLeeGXkVY+YR8YeYLGlH",
+      "wasmBytes": 23251769,
+      "artifactManifestSha256": "d182d994fcd239b770aaa2035e3f5914aa2d72e3e1456744f237ffdabfc83110",
+      "priorRelease07": {
+        "version": "4d56e30f-a989-4de4-be9b-60b70d03d430",
+        "build": "Fresh production export of d4a0590d, including canonical Web Excalidraw and measured Web miniapp header inset. Separate from loopback QA.",
+        "receipt": "/private/tmp/zoen-app-domain-v96/release-07-public/acceptance.json",
+        "receiptSha256": "306b367117f5e39a8bc0ac05abfb1a692cf88abd4e243ad2a6df8c257aa9541b",
+        "sourceCommit": "d4a0590d68b33aa9d5a13039af26c9bcd77ede3c",
+        "workerIntegrity": "sha384-dYc1Ds6ChZA3cp5LAy6/3BNbEuwGze2+MlxwJotYmJoXyigQWBHsMy9h5GHmbjwN",
+        "wasmBytes": 25876496,
+        "artifactManifestSha256": "fb32ad206989bb24e8842a56a26c0d7d6ea2ccd13647010ccbffde86b93607bc",
+        "currentGuestBoot": {
+          "receipts": [
+            {
+              "path": "/private/tmp/zoen-app-domain-v96/release-07-public/canonical/guest-boot.json",
+              "sha256": "afb5fe24b4ba60b183abb7b723b33bd4a02b520c4e1fa8596c83d4a0c0a3d06c",
+              "bytes": 3879
+            },
+            {
+              "path": "/private/tmp/zoen-app-domain-v96/release-07-public/workers-preview/guest-boot.json",
+              "sha256": "95ac5a41c92e7f0359c53233438d33463e168a8b69e7904fd0ee7266e5f55868",
+              "bytes": 4307
+            }
+          ],
+          "browser": "155.0.8059.85",
+          "origins": ["https://app.tryzoen.com", "https://zoen-web.agenttironi.workers.dev"],
+          "friendlyLocalizedErrorVisible": true,
+          "unhandledPageErrors": 0,
+          "unrequestedAnalyticsScript": false,
+          "rootIsolated": true,
+          "signInIsolated": false,
+          "retryFont": "system-ui",
+          "providerState": {
+            "apple": "unavailable",
+            "google": "unavailable"
+          },
+          "scope": "Public release07 hosting + empty-profile guest onboarding on canonical and workers.dev origins only. No provider login/account/linking, successful WASM initialization, authenticated sync, or whole-platform acceptance."
+        }
+      }
+    },
+    "androidV96": {
+      "status": "PASS_BOUNDED_API35_DEBUG_JOURNEYS_AND_RELEASE_ONBOARDING_CODE_GENERATION",
+      "receipt": "/private/tmp/zoen-android-v96/native-final-acceptance.json",
+      "apkSha256": "19e6270d0306470854ba39a8582750182b14e26dc35bac248a664ab3103bedaf",
+      "apkBytes": 243541703,
+      "nativeSourceSha256": "85f5961f409c4905b5f04162598fc218b7f1b4d11c69e637172adb6e40ff6d85",
+      "packagedStrippedNativeSha256": "fa463d010ca416981ab923c17cb0dbda72009c41bb90c333dae154925476b80b",
+      "stripReproductionMatches": true,
+      "sourceDrift": [],
+      "jvmTests": [
+        {
+          "suite": "xyz.tironi.zoen.core.ZoenProcessLifecycleTest",
+          "tests": 8,
+          "failures": 0,
+          "errors": 0
+        },
+        {
+          "suite": "xyz.tironi.zoen.core.ZoenDeviceErasureTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0
+        }
+      ],
+      "resourceBinding": "/private/tmp/zoen-android-v96/final-core-resource-binding.json",
+      "scope": "Original Debug APK/JNI/native-source proof and 14 JVM regressions, with separately attributed API 35 development linking/history/Page/headers/erasure on fresh Metro JavaScript. The unchanged minified CI Release APK separately passed normal onboarding and local connection-code generation only; no forced interruption fault injection or full Release account journey.",
+      "pending": "Release post-link connected status, completed linking, history/messages/Page/account erasure; performance, API 28 runtime and physical devices, public provider login/Cloudflare sync, media/voice/profile photo and assistant parity. Actual SDK logo cache cleanup does not establish account-photo upload; CI Debug signing is not store signing.",
+      "runtimeReceipt": "/private/tmp/zoen-android-v96/runtime-final-acceptance.json",
+      "documentation": "docs/dev/expo-android-acceptance.md",
+      "apkPath": "/private/tmp/zoen-android-v96/zoen-v96-arm64-debug.apk",
+      "runtimeSourceCommit": "762ceb51",
+      "javascriptBundle": {
+        "sha256": "923bf7bf8eeb608ccac0874ed9571057a85ba2e99a1b6f7703860ab7aa35bef3",
+        "bytes": 21520341,
+        "receipt": "/private/tmp/zoen-android-v96/fresh-metro-bundle-receipt.json",
+        "scope": "Seven current Android JS source hashes and actual app bundle; dev-launcher bundle and earlier unwatched Metro snapshot are not proof of the later corrections."
+      },
+      "runtimeAccepted": [
+        "Normal synthetic device linking and encrypted history recovery; linked/history status mounted without crash",
+        "Page creation/read and Files listing; corrected Chats/Files/new-Page header placement",
+        "Cancel erasure retains account/history; confirmed UI erasure clears account, vault keys, durable journal and actual SDK image cache",
+        "Earlier actual process restart remains signed out; canonical peer retains earlier history",
+        "Second confirmed erasure replay on fresh current JavaScript returns onboarding with empty account/conversations and no pending erase"
+      ],
+      "releaseShrinker": {
+        "sourceCommit": "db60c33e",
+        "receipt": "/private/tmp/zoen-android-v96/r8-consumer-check/actual-uniffi-final.json",
+        "passed": true,
+        "r8": "9.2.14",
+        "jna": "5.18.1",
+        "minApi": 28,
+        "actualCompiledClasses": 84,
+        "fullApkOrRuntimeAcceptance": false,
+        "scope": "Real DEX optimized/obfuscated JNA/UniFFI probe; native names/layout/annotations/callbacks retained and unused control removed. Full Release/JVM build and runtime remain independent."
+      },
+      "releaseBuildCI": {
+        "failedRun": 39201639333,
+        "failedHead": "db60c33efb998bde7f8b455ac8f9712c9747589f",
+        "testedMergeCommit": "d126484348aded89d131b018933545dd858374c2",
+        "failure": "R8 Java heap space exhaustion in the default2GiB Gradle daemon; previousmissing-class diagnostic absent",
+        "artifactId": 12164777800,
+        "apkPresent": false,
+        "jvmReportsPresent": false,
+        "receipt": "/private/tmp/zoen-android-v96/ci-39201639333-failure/index.json",
+        "receiptSha256": "dfa19d6817bda33b0f0195f3a4da10a9cb5b4797bb5e74b9b7522d30736b3db6",
+        "ciOnlyFix": {
+          "commit": "52da9729e76e74fbfb3156c4ce39885717ccb653",
+          "gradleHeapBytes": 4294967296,
+          "maxMetaspace": "1GiB",
+          "workers": 2,
+          "parallelProjects": false,
+          "actionlint": "PASS",
+          "actualGradleEffectiveConfigurationProbe": "PASS (Gradle9.4.1,2.26s; no app/native build)",
+          "applicationMinification": "enabled, unchanged"
+        },
+        "freshRun": 39204333306,
+        "freshRunUrl": "https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306",
+        "freshRunHead": "52da9729e76e74fbfb3156c4ce39885717ccb653",
+        "freshRunStatus": "PASS_MINIFIED_RELEASE_APK_AND_14_JVM_TESTS",
+        "scope": "Previous failures/probe retained separately. Actual CI Release build and 14 JVM tests passed on head 52da merge 59998; bounded normal Release onboarding/code generation is recorded separately below. No store signing, public sync, API 28 runtime or physical-device claim.",
+        "freshTestedMergeCommit": "59998b677ce581bd49a045538ee62f3d17b55347",
+        "freshArtifactId": 12165977835,
+        "freshReceipt": "/private/tmp/zoen-android-v96/ci-39204333306-watch/release-build-acceptance.json",
+        "freshReceiptSha256": "1c0796bc675dc276c366eb1521ec6e84bf9339f58c517188eb010612a4b76360",
+        "freshApk": {
+          "path": "/private/tmp/zoen-android-v96/zoen-v96-ci-39204333306-release.apk",
+          "bytes": 124609341,
+          "sha256": "55bb795d3083f20179bc128cbf63a662ba915984de2438ca4d6467d9cf82d46a",
+          "signatureVerified": true,
+          "signer": "Generated CI Android Debug certificate; not store distribution signing",
+          "minSdk": 28,
+          "targetSdk": 37,
+          "abi": "arm64-v8a",
+          "r8Enabled": true
+        },
+        "freshJvm": {
+          "tests": 14,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "freshPackagedJniSha256": "6816a6b8d3561284037e0f32e1a7fa4bc5e766cc5e1c7941c4d11e2de92b4830",
+        "freshHermesSha256": "47f12cac1c25f98f79e8da4f3227271d6c86e2a76d67d342eace41cc1d7f5ad3"
+      },
+      "releaseRuntime": {
+        "status": "PASS_BOUNDED_API35_RELEASE_ONBOARDING_AND_CODE_GENERATION_ONLY",
+        "receipt": "/private/tmp/zoen-android-v96/release-runtime/release-runtime-acceptance.json",
+        "receiptSha256": "9c9c31bbba76575a8e5496741e3bc7c0040aff9e658db2e0904c01c8aec85d7f",
+        "ciRun": 39204333306,
+        "ciHead": "52da9729e76e74fbfb3156c4ce39885717ccb653",
+        "testedMergeCommit": "59998b677ce581bd49a045538ee62f3d17b55347",
+        "installedApkSha256": "55bb795d3083f20179bc128cbf63a662ba915984de2438ca4d6467d9cf82d46a",
+        "installedApkMatchesCI": true,
+        "installedAppDebuggable": false,
+        "deviceApi": 35,
+        "abi": "arm64-v8a",
+        "flow": [
+          "Launch unchanged CI Release APK",
+          "Recover access",
+          "Another device",
+          "Generate connection code"
+        ],
+        "nativeCryptoCallback": "The normal native link_request returned a typed result only after SecretVault.save acknowledged success. No private vault inspection claimed.",
+        "connectedStatusMounted": false,
+        "appLogLines": 239,
+        "matchedFatalOrNativeLoadingSignatures": 0,
+        "noPatchOrInjection": {
+          "apk_unchanged": true,
+          "no_debugger_or_runtime_evaluation": true,
+          "no_Metro": true,
+          "no_native_bridge_fixture": true,
+          "no_relay_override": true,
+          "no_session_or_account_injection": true
+        },
+        "privacy": {
+          "fullCodeOrQrExported": false,
+          "fingerprintLabelAndValueRedacted": true,
+          "rawPairingScreenshotRemoved": true,
+          "exportedScreenshotsBeforeCodeGeneration": [
+            "/private/tmp/zoen-android-v96/release-runtime/onboarding-release.png",
+            "/private/tmp/zoen-android-v96/release-runtime/recover-release.png"
+          ],
+          "keysOrPrivateDatabasesCopied": false
+        },
+        "earlierFailedInstall": {
+          "acceptedAsRuntime": false,
+          "reason": "The 5 GiB guard stopped only the owned emulator during transient installation; retained separately from the successful retry after scoped generated-output cleanup.",
+          "receipt": "/private/tmp/zoen-android-v96/release-runtime/disk-guard-triggered.json"
+        },
+        "minimumAcceptedRuntimeFreeBytes": 6455939072,
+        "ownedAvdPreservedStopped": true,
+        "ownedRuntimeAndGuardProcessesStopped": true,
+        "limits": [
+          "No public provider/account authentication or completed device-link acceptance",
+          "No linked connected-status role, history, message, Page or account-erasure Release runtime acceptance",
+          "No media, API28 runtime, performance or store-distribution signing acceptance",
+          "Debug full-account journeys remain separately attributed to their earlier immutable Debug APK and loaded JS evidence",
+          "Later source commits are not attributed to this CI APK"
+        ]
+      }
+    },
+    "cloudflareAdmissionFoundationV96": {
+      "status": "PASS_SHARED_RUST_NATIVE_AND_LOCAL_WORKERD_FOUNDATION_ONLY",
+      "sourceCommit": "db3f3885",
+      "documentation": "infra/cloudflare/admission.md",
+      "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/foundation-acceptance.json",
+      "receiptSha256": "2f3f5733350e2475e78540c7561de198afd048db0282083b7c413327332ddbbc",
+      "frozenSourceInputs": 14,
+      "nativeRuleTests": 9,
+      "portableBoundaryTests": 11,
+      "nativeFdbContractScenarios": 11,
+      "strictClippyAndFormatting": "PASS",
+      "lockedCargoResolution": "PASS",
+      "wasm": {
+        "bytes": 885129,
+        "sha256": "24c629124795efc9c7ea8f2382259a5370a18163fbf6a303972b71106cf6bdc6"
+      },
+      "localRuntime": {
+        "node": "PASS",
+        "workerd": "PASS",
+        "fixturesEach": 2,
+        "checks": [
+          "exact native canonical protobuf bytes and effects",
+          "verified authenticated lookup keys",
+          "invalid signature rejection",
+          "genesis and UInt64 above2^53"
+        ],
+        "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/complete-run/summary.json"
+      },
+      "limits": "Extraction and portable validation foundation only. No deployed admission adapter, directory/revocation/auth, complete MLS projection, WebSockets or public encrypted synchronization.",
+      "ci": {
+        "run": 39198364287,
+        "testedMergeCommit": "bfd35da7d52271a332e8b439b69d23850e87a973",
+        "artifactId": 12163470298,
+        "passed": true,
+        "receipt": "/private/tmp/zoen-cloudflare-admission-v96/ci-7c71-evidence/summary.json",
+        "scope": "Exact-merge standalone admission foundation job, before the closed-group adapter source."
+      }
+    },
+    "cloudflareClosedGroupsV96": {
+      "status": "PASS_PRIVATE_CLOSED_GROUP_NATIVE_LOCAL_AND_DEPLOYED_REMOTE_ONLY",
+      "sourceCommit": "c7de156f",
+      "documentation": "infra/cloudflare/closed-groups.md",
+      "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/closed-acceptance.json",
+      "receiptSha256": "524a38f64b3572e51a6d94b77f022bc5f203668958a4032ce03d28a2157b3d82",
+      "frozenSourceInputs": 32,
+      "checks": {
+        "rustTests": 29,
+        "strictSharedClippy": "passed",
+        "strictNativeOracleClippy": "passed",
+        "nativeDifferentialSteps": 17,
+        "negativeNoWriteCases": 4,
+        "closedWorkerdCases": 5,
+        "sharedSqlContractCases": 4,
+        "rootConfigDryRun": "passed after cwd repair",
+        "npmWorkspaceDryRun": "passed",
+        "formatAndDiff": "passed"
+      },
+      "deployment": {
+        "worker": "zoen-relay-closed",
+        "version": "b5a34a7e-4305-46de-b595-06a909864e8a",
+        "publicRoutes": [],
+        "workersDev": false,
+        "previewUrls": false,
+        "namespace": "separate ClosedSpace; original zoen-relay-state untouched",
+        "wasmBytes": 987417,
+        "wasmSha256": "8b8c407bb0dbc27256b2acd2168654194bfe403d37adecc2925fd52c30369023"
+      },
+      "remoteProof": {
+        "summary": "/private/tmp/zoen-cloudflare-admission-v96/validation/closed-remote-run/summary.json",
+        "summarySha256": "91084d9f9429421809a8bc46ba831f9413c101bb612cffe9dab9957b7c2c849c",
+        "spaceId": "sp_01m596rwp7pd2tqr7v4xwx635e",
+        "nativePublishSteps": 11,
+        "acceptedEvents": 6,
+        "canonicalEventBytes": 4608,
+        "privateHttpPaths404": 7,
+        "invalidSignatureRejected": true,
+        "previewClientReopened": true,
+        "forcedRemoteDoRestartClaim": false,
+        "scope": "Deployed private closed Group via authenticated remote service binding; one fresh synthetic Space and a second preview client session. No public authentication/sync, invite/clock overrides, encrypted groups, or forced remote Durable Object restart acceptance."
+      },
+      "limits": "Private trusted-service closed Group only; no public protocol/auth, global invite resolver, MLS/holds/pruning or encrypted sync",
+      "ci": {
+        "run": 39204333306,
+        "testedMergeCommit": "59998b677ce581bd49a045538ee62f3d17b55347",
+        "artifactId": 12165337045,
+        "passed": true,
+        "nativeSteps": 17,
+        "negativeCases": 4,
+        "workerdCases": 5,
+        "sharedSQLCases": 4,
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-52da-evidence/acceptance.json",
+        "receiptSha256": "433598e928827681ac6d3d062d30f5dceddc3eec8a9bc51e46d4c9d551b965ed"
+      },
+      "ciPriorDb60": {
+        "run": 39201639333,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39201639333",
+        "testedMergeCommit": "d126484348aded89d131b018933545dd858374c2",
+        "head": "db60c33efb998bde7f8b455ac8f9712c9747589f",
+        "artifactId": 12164510542,
+        "artifactName": "cloudflare-closed-evidence",
+        "passed": true,
+        "nativeSteps": 17,
+        "negativeCases": 4,
+        "workerdCases": 5,
+        "sharedStorageCases": 4,
+        "sourceDirty": false,
+        "index": "/private/tmp/zoen-cloudflare-web-v96/ci-db60-evidence/index.json"
+      }
+    },
+    "webDrawingsV97": {
+      "status": "PASS_LOCAL_AND_CI_EN_PT_22_CHECKPOINTS_BOUNDED_SCOPE",
+      "documentation": "docs/dev/expo-web-acceptance.md",
+      "adapterCommit": "10329c8c",
+      "runnerCommit": "fc4feece",
+      "sharedSceneCommit": "ac7f6cb7",
+      "testedHead": "46128a6506d13eaf93407630564f50ea73258711",
+      "headerInsetCommit": "d4a0590d",
+      "headerInsetSourceSha256": "975c69d7644c377701071a590365ec16252b66c51aefc33c180143305c77e2a1",
+      "receipt": "/private/tmp/zoen-web-v96/drawing-release-22/acceptance.json",
+      "receiptSha256": "6cd706271bb594da8b659214f332b211bc872fb5499c22a6f3a70b180500545c",
+      "frozenSources": 16,
+      "sourceDrift": [],
+      "checks": {
+        "sharedLibraryTests": 17,
+        "nativeDocumentRegressions": 16,
+        "webCoreTests": 65,
+        "drawingRegressions": 8,
+        "clientTests": 795,
+        "typescriptOxlintOxfmt": "passed",
+        "strictClippy": "passed",
+        "locales": [
+          {
+            "locale": "en-US",
+            "passed": true,
+            "checkpoints": 22,
+            "browserErrors": [],
+            "drawing": {
+              "name": "cold-canonical-drawing-reload-matches-peer-bytes-and-retains-original-version",
+              "bytes": 1278,
+              "sha256": "202452e58d85146f53b84e13c720d6e0bb1b23a6860df20c67dfe4b3674811c7",
+              "version": 4
+            },
+            "receipt": "/private/tmp/zoen-web-v96/drawing-release-22/polished-attempt01/evidence/en-US/acceptance.json"
+          },
+          {
+            "locale": "pt-BR",
+            "passed": true,
+            "checkpoints": 22,
+            "browserErrors": [],
+            "drawing": {
+              "name": "cold-canonical-drawing-reload-matches-peer-bytes-and-retains-original-version",
+              "bytes": 1277,
+              "sha256": "ca019786d0239d09b48c467f6605c1923891d3f0c16f642a0ad42a3fb53854ca",
+              "version": 4
+            },
+            "receipt": "/private/tmp/zoen-web-v96/drawing-release-22/polished-attempt01/evidence/pt-BR/acceptance.json"
+          }
+        ]
+      },
+      "artifact": {
+        "directory": "/private/tmp/zoen-web-v96/drawing-release-22/qa-dist-polished",
+        "manifestReceipt": {
+          "path": "/private/tmp/zoen-web-v96/drawing-release-22/qa-artifact-polished.json",
+          "sha256": "d9d6d181f2f80e151b5fd5db7ea95695e0717ae4ad0224c24ea793d3f73f4240",
+          "bytes": 18399
+        },
+        "manifestSha256": "745309d8ee986060b90b0c59df391fb2816d8e26a0e52d267bfacc0ff3db6f4d",
+        "workerIntegrity": "sha384-dYc1Ds6ChZA3cp5LAy6/3BNbEuwGze2+MlxwJotYmJoXyigQWBHsMy9h5GHmbjwN",
+        "wasmBytes": 25876496,
+        "cloudflareAssetCapBytes": 26214400,
+        "assetHeadroomBytes": 337904,
+        "sameCoreAsBeforeInset": true
+      },
+      "scope": "Controlled loopback release with fresh linked accounts, actual canvas rectangle/text, exact guest/native-peer bytes, cold reload and original encrypted version retained. Header placement visually corrected. No public provider or encrypted-sync acceptance; image import/broader collaborative/fault paths remain open.",
+      "ci": {
+        "run": 39204333306,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306",
+        "head": "52da9729e76e74fbfb3156c4ce39885717ccb653",
+        "testedMergeCommit": "59998b677ce581bd49a045538ee62f3d17b55347",
+        "artifactId": 12165466316,
+        "artifactName": "expo-release-web-evidence",
+        "passed": true,
+        "checkpointsEach": 22,
+        "locales": ["en-US", "pt-BR"],
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-52da-evidence/acceptance.json",
+        "receiptSha256": "433598e928827681ac6d3d062d30f5dceddc3eec8a9bc51e46d4c9d551b965ed",
+        "artifact": {
+          "manifestSha256": "e8b53caaa16a41bf70180a199e23d8a4a408fbdaa55dee3d1e58c0da07135148",
+          "workerIntegrity": "sha384-G+FBawXSjU8xvICEvECAGpBEexoGFpJ5t5OgBpqDgu+EGsUuU0XGjZphgoKMMfBS",
+          "wasmBytes": 25879517
+        },
+        "client": {
+          "discovered": 795,
+          "passed": 793,
+          "skipped": 2,
+          "reason": "Linux CI skips exactly two Darwin-only Swift harnesses; both passed in separate local macOS795 check.",
+          "darwinOnly": [
+            {
+              "path": "apps/zoen/src/core/native-core-error-message.test.ts",
+              "line": 41,
+              "name": "native CoreError presentation preserves real reasons and localizes safe fallbacks without reflection"
+            },
+            {
+              "path": "apps/zoen/src/core/native-media-draft-bridge.test.ts",
+              "line": 65,
+              "name": "native voice admission accepts JSON-rounded Float32 peaks and rejects changed audio metadata"
+            }
+          ]
+        },
+        "scope": "Allsix Expo jobs passed. Actual22 browser checkpoints per locale, original Directory33/9 and Closed17+4+5+4. CI uses namedWASM and precedes release-only name stripping and key-package extension. Separate Android artifact inspection accepts the minified Release build and14 JVM tests, without full runtime parity."
+      },
+      "latestCi": {
+        "run": 39207994304,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39207994304",
+        "head": "c727b1f94ccfbf31f7cd42d748fc8370024bfd00",
+        "merge": "85c7f2d58aef38fc5853fb7b8efab3641aee0d91",
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json",
+        "receiptSha256": "47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0",
+        "limits": "Five Expo jobs pass; admission stops at formatting before its tests. Formatting corrected in8d64d762; no full-green inference. Linux artifacts are separate from deployed Mac release09 bytes.",
+        "checkpointsPerLocale": 22,
+        "locales": ["en-US", "pt-BR"],
+        "browserErrors": 0,
+        "artifact": 12167030781,
+        "wasmBytes": 23250613
+      }
+    },
+    "cloudflareDirectoryV97": {
+      "status": "PASS_PRIVATE_LOCAL_DIFFERENTIAL_AND_DEPLOYMENT_ONLY",
+      "sourceCommit": "46128a65",
+      "documentation": "infra/cloudflare/relay-state/DIRECTORY.md",
+      "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-acceptance.json",
+      "receiptSha256": "1ac38254fee308706603f7cc09571c75d6bdc6f4d1cb3181539ff2a2c12a894e",
+      "frozenSources": 16,
+      "checks": {
+        "sharedRustTests": 40,
+        "directoryRustTests": 11,
+        "nativePostgresSteps": 33,
+        "workerdCases": 9,
+        "strictNativeAndOracleClippy": true,
+        "strictAdmissionAllTargetClippy": true,
+        "privateDryRun": true,
+        "ownedPgStoppedAndRemoved": true
+      },
+      "deployment": {
+        "worker": "zoen-relay-directory",
+        "version": "759ffee3-0ef9-4ff5-a53b-1c971a3e2197",
+        "sourceCommit": "46128a6506d13eaf93407630564f50ea73258711",
+        "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-deployment-acceptance.json",
+        "receiptSha256": "ccf3f1d6b54701e69962b62e9a6b0ef14fd5709835628c3977dbe68ca554314c",
+        "publicRoutes": [],
+        "workersDev": false,
+        "previewUrls": false,
+        "wasmBytes": 1167482,
+        "wasmSha256": "6a718562c996b2fba75cf11918fa6fb0abadd00223a6f67f814401ece83233b7",
+        "remoteDirectoryJourneyRun": false
+      },
+      "scope": "Private single-cell Person/device directory only. Native PostgreSQL policy versus shared Rust/WASM and SQLite transactions; no public socket/auth provider, delivery fence, recovery, agent registration or MLS key-package claims.",
+      "remainingGates": [
+        "public sockets and final durable send fence",
+        "provider proof/JWT unique binding",
+        "backup/recovery authorization and enrollment",
+        "agent ownership/directory state",
+        "MLS key-package claims across identities and revoke cleanup",
+        "Space/directory integration and public encrypted protocol"
+      ],
+      "ci": {
+        "run": 39204333306,
+        "testedMergeCommit": "59998b677ce581bd49a045538ee62f3d17b55347",
+        "artifactId": 12164869200,
+        "passed": true,
+        "nativePostgresSteps": 33,
+        "workerdCases": 9,
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-52da-evidence/acceptance.json",
+        "receiptSha256": "433598e928827681ac6d3d062d30f5dceddc3eec8a9bc51e46d4c9d551b965ed",
+        "scope": "Private Directory registration/link/revocation source46128a65 included in exactmerge. Predates subsequent key-package extension; no publicrelay acceptance."
+      }
+    },
+    "webReleaseArtifactV97": {
+      "status": "PASS_RELEASE_DEBUG_NAME_REMOVAL_AND_EXACT_REPRODUCIBLE_OUTPUT",
+      "sourceCommits": ["945170ea", "891d6d9b"],
+      "receipt": "/private/tmp/zoen-web-v96/release-strip-01/acceptance.json",
+      "receiptSha256": "33259fb5c08f0b6bbd7c7ec13c817ad8ae0e36f45f0a2a070465087e9bb0e63e",
+      "twoCwdProof": "/private/tmp/zoen-web-v96/release-strip-01/reproducible-build.json",
+      "twoCwdProofSha256": "a69eb6c19362ee8dacb3d98f2d87b9df2ea5c01af1b89f1719d7e96a1fab14ee",
+      "beforeBytes": 25876496,
+      "afterBytes": 23251769,
+      "savedBytes": 2624727,
+      "savedPercent": 10.14,
+      "wasmSha256": "f1e077a46b914c8098d9448b42e694fd47bffdc944cb73a553d16c50ae17e096",
+      "headroomUnderCloudflareAssetCap": 2962631,
+      "allRemainingSectionsByteIdentical": true,
+      "developmentKeepsNames": true,
+      "actualLocalCheckpointsEach": 22,
+      "locales": ["en-US", "pt-BR"],
+      "browserErrors": 0,
+      "clientPassed": 795,
+      "typescriptOxlintOxfmt": "PASS",
+      "workerIntegrity": "sha384-pImaTmN20eB49OhAsS9/4uCr8hZDDmu0NhVTfWUyy5IEBLeeGXkVY+YR8YeYLGlH",
+      "qaArtifactManifestSha256": "8bf046313cc9898ef7cc66104828d2a4c9d07d6fbd1b74e4214f162e2a12c726",
+      "limits": "Exactdownload-byte reduction, without measuredstartup/transferperformance. Root/app working-directory builds produce byte-identical wasm/glue/worker/pin and match the acceptedQAartifact. QAloopbackexport is neverpublished; public09proof separate."
+    },
+    "cloudflareDirectoryKeyPackagesV98": {
+      "status": "PASS_PRIVATE_NATIVE_WORKERD_AND_DEPLOYMENT_ONLY",
+      "sourceCommit": "8bb0ae1e643e09ade5489b39da60087d3ef5f0a6",
+      "documentation": "infra/cloudflare/relay-state/DIRECTORY.md",
+      "sharedRustTests": 47,
+      "nativeReceiptRegressions": 3,
+      "nativePostgresScenarios": 71,
+      "workerdCases": 18,
+      "workerdSkipped": 0,
+      "strictClippyAndFormatting": "PASS",
+      "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/key-packages-acceptance.json",
+      "receiptSha256": "e6c40ce4be1f6bb11bf24e5c8dfc36ef404a821d77a2aece902f92ca48cd2b8e",
+      "independentReviewReceipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/key-packages-reviewed-acceptance.json",
+      "independentReviewReceiptSha256": "32e8eea170a81448bad56f2dc663a305e93cd276f4bcfe9fbc24e956237f250b",
+      "deployment": {
+        "worker": "zoen-relay-directory",
+        "version": "1fd4bab4-7013-4749-bb1e-3c59efa146c3",
+        "previousVersion": "759ffee3-0ef9-4ff5-a53b-1c971a3e2197",
+        "namespaceUnchanged": true,
+        "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-keypackages-deployment-acceptance.json",
+        "receiptSha256": "4b3cb67beee155ae69e724520805f04f170849aae83f2b2bc312c8633f92067a",
+        "publicRoutes": [],
+        "workersDev": false,
+        "previewUrls": false,
+        "remoteDirectoryJourneyRun": false
+      },
+      "privateCapacity": {
+        "recordsPerReply": 128,
+        "responseBytes": 786432,
+        "contextBytes": 1048576,
+        "overflow": "Explicit refusal before key consumption; no truncation"
+      },
+      "covers": [
+        "Native-valid MLS package publication and identity/device binding",
+        "Single-use inventory and replaceable last-resort package",
+        "Original24h receipt replay with fresh source authorization",
+        "Revocation, claim/publication races and late SQL rollback",
+        "4096 receipt capacity and8MiB aggregate quota"
+      ],
+      "ci": {
+        "run": 39207994304,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39207994304",
+        "head": "c727b1f94ccfbf31f7cd42d748fc8370024bfd00",
+        "merge": "85c7f2d58aef38fc5853fb7b8efab3641aee0d91",
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json",
+        "receiptSha256": "47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0",
+        "limits": "Five Expo jobs pass; admission stops at formatting before its tests. Formatting corrected in8d64d762; no full-green inference.",
+        "nativePostgresScenarios": 71,
+        "workerdCases": 18,
+        "skipped": 0,
+        "artifact": 12166444089,
+        "sourceFilesVerified": 19
+      },
+      "limits": "Private bounded Directory extension only. No stock-low/refill notification, final outbound fence, complete Space MLS/public WebSockets, provider recovery or remote Directory journey."
+    },
+    "legacyAndroidSourceV98": {
+      "ciRun": 39204333325,
+      "head": "52da9729e76e74fbfb3156c4ce39885717ccb653",
+      "api28": {
+        "discovered": 106,
+        "passed": 104,
+        "skipped": 2,
+        "skipReason": "Unsupported WebView MCP cases"
+      },
+      "api35": {
+        "discovered": 106,
+        "passed": 103,
+        "failed": 3,
+        "failures": [
+          "MCP list/native confirmation",
+          "MCP offline Hike",
+          "Recovered Page final save timeout"
+        ]
+      },
+      "mcpFixCommit": "819e58cb110fc4b31c6494819b90e5b1ef33ee1c",
+      "browserProtocolTests": 2,
+      "browserReceipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/legacy-native-shim-acceptance.json",
+      "browserReceiptSha256": "df648978b837590e88cee1e0481d973beeba6cc916ecc096aafc10f48636b353",
+      "pageDiagnosticCommit": "fd85a05e",
+      "limits": "Original52da failures retained above. Fresh c727 API35 CI passes recovered Page final save; the two MCP native WebView cases still fail despite the separate Chromium SDK proof. No Expo parity is inferred from legacy tests.",
+      "latestCi": {
+        "run": 39207994306,
+        "head": "c727b1f94ccfbf31f7cd42d748fc8370024bfd00",
+        "api35": {
+          "discovered": 106,
+          "passed": 104,
+          "failed": 2,
+          "skipped": 0,
+          "failures": ["MCP list/native confirmation", "MCP offline Hike"],
+          "recoveredPageFinalSave": "PASS"
+        },
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json",
+        "receiptSha256": "47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0"
+      }
+    },
+    "cloudflareProviderAssertionV99": {
+      "status": "PASS_PRIVATE_ASSERTION_EQUIVALENCE_ONLY",
+      "sourceCommit": "b7813e534233f5c65ab10aa41e93e05c60e21cc0",
+      "nativeCases": 18,
+      "nodeWasmCases": 18,
+      "workerdWasmCases": 18,
+      "committedReceipt": "/private/tmp/zoen-cloudflare-auth-v99/committed-acceptance.json",
+      "committedReceiptSha256": "7700acc635dfd9238af98f0ea31fcfab1aac93f45fa2e6d7e08e351cb40252b9",
+      "limits": "Shared RS256 assertion rules and fixed native cache delegation only. Enrollment/HTTP host work is separate; no public provider flow/deployment. Original working-tree build also contained then-uncommitted socket sources, retained in original receipt."
+    },
+    "cloudflareDirectorySocketV99": {
+      "status": "PASS_BOUNDED_REMOTE_8_OF_8_LOCAL_GATES_BLOCKED",
+      "sourceCommit": "8d64d762780a97b7d50c4c2bf23d0172061ebdf3",
+      "nativePostgresScenarios": 71,
+      "workerdCases": 34,
+      "workerdPassed": 32,
+      "workerdFailed": 2,
+      "workerdSkipped": 0,
+      "blockedReceipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-socket-blocked-acceptance/acceptance.json",
+      "blockedReceiptSha256": "829854f01a3d0a2412f2d4e50019b01774b623f5392024e0e958456b1cd0e80a",
+      "failedGates": "Untouched pre-Hello timeout and256-untouched-socket timeout do not reach client CLOSED within5s on pinned local workerd. Auth-idle, revocation fences and normal client-close cleanup pass.",
+      "separateRemoteRuntimeProbe": {
+        "cases": 4,
+        "passed": 4,
+        "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/socket-remote-runtime-02/acceptance.json",
+        "receiptSha256": "8fdc13155568c4c256d8cc80451fbb0c6db6b134b57d099486d24b64b63be47d",
+        "temporaryResourcesRemoved": true,
+        "existingAccountInventoryRestored": true,
+        "limits": "Minimal synthetic lifecycle on actual authenticated Cloudflare edge; no Directory/auth/sync journey."
+      },
+      "limits": "Bounded private remote 8/8 is separate from retained local 32/34 and earlier minimal four-case runtime proof. Production Directory was 1fd4bab4 at this proof; subsequent private media deployment is recorded in V100. No complete transport, public sync, provider login or forced remote hibernation acceptance.",
+      "productionDirectoryVersionAtOriginalProof": "1fd4bab4-7013-4749-bb1e-3c59efa146c3",
+      "remoteDirectoryJourney": {
+        "status": "PASS_TEMPORARY_PRIVATE_8_CHECKPOINTS_ONLY",
+        "checkpoints": 8,
+        "passed": 8,
+        "actualClientsClosed": 6,
+        "forcedClientCleanup": false,
+        "runtimeSourceCommit": "8d64d762780a97b7d50c4c2bf23d0172061ebdf3",
+        "wasmBytes": 1787533,
+        "wasmSha256": "5f9011928d6b56b92039c093debd9934a8d57978c939d21ea146146cd90bd9cd",
+        "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-socket-remote-8d64-02/acceptance.json",
+        "receiptSha256": "60cdba67da220ba017ef18359eec7a25b1cd78da719f46670a26982ea78f8e02",
+        "verifiedSummary": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-socket-remote-8d64-02/verified-summary.json",
+        "verifiedSummarySha256": "1548c2b0d5d16fb2e2cf3d02fb057c6660c15953383f3906b8e232bab1f0c477",
+        "temporaryWorker": "zoen-directory-socket-qa-v99-57308e60cc",
+        "temporaryVersion": "f702119e-2197-414c-9236-0228fb0a1aca",
+        "temporaryNamespace": "0fe94a11b87e4561ba82d8db6a77d140",
+        "temporaryWorkerAndNamespaceRemoved": true,
+        "previewStopped": true,
+        "ownedKeysRemoved": true,
+        "existingProductionResourcesUnchanged": true,
+        "exactAccountInventoryRestored": true,
+        "beforeAndAfterInventorySha256": "ee04ab70752e368fa501e90d6206befda8d9c9fc897bc780dda6d48a97823e35",
+        "covers": [
+          "Authenticated preview refusal and private outer HTTP404",
+          "Real server challenges signed by the native Rust client; two provisional Ready responses",
+          "First registration/stale provisional refusal and exact native request ID 9007199254740993/Ping responses",
+          "Normal client close 1000; registered reconnect and canonical private delivery",
+          "Self-Unlink close 1008 without late reply; post-revocation delivery 0 and fresh revoked login refusal",
+          "Real 10s Hello/Auth idle deadlines and actual client CLOSED within an additional 5s"
+        ],
+        "injectedClockSqlOrSessionFacts": false,
+        "helperAttribution": {
+          "executedSourceCopies": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-socket-remote-8d64-02/executed-helpers",
+          "executedSourceMapping": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-socket-remote-8d64-02/executed-helper-sources.json",
+          "executedSourceMappingSha256": "1ba7d325fc5a147a87ac70975872750af8a314c8eab36c20b3213e158a9fd83e",
+          "postExecutionReview": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-socket-remote-8d64-02/formatted-helper-review.json",
+          "postExecutionReviewSha256": "1faddc403c72e2e1a3915aa437a665a2fee33dc7645fc7ee57f5a0943734ffbb",
+          "laterChanges": "Catch bindings, sanitized artifact-read failures and formatting only; lint/format/syntax/default preparation passed.",
+          "remoteRerunAfterHygiene": false
+        },
+        "limits": "One fresh private synthetic cell only. No remote 256-connection capacity, fifteen-minute expiry, forced hibernation, Space audience authorization, provider login or public relay acceptance. Initial harness-only delivery refusal and complete cleanup remain in verified summary; local 32/34 is unchanged."
+      }
+    },
+    "cloudflareProviderEnrollmentExtractionV99": {
+      "status": "PASS_SHARED_POLICY_EXTRACTION_AND_NATIVE_SQL_ONLY",
+      "sourceCommit": "d54b0829cc1343d1ba5fc76fb747179dc19f6fa5",
+      "sharedRustTests": 18,
+      "nativeAuthTests": 4,
+      "nativePostgresScenarios": 20,
+      "strictClippy": "PASS both packages lib+tests -D warnings",
+      "receipt": "/private/tmp/zoen-provider-enrollment-v96/enrollment-extraction-acceptance.json",
+      "receiptSha256": "c34792223683369c17fd61afd28cea208b3a075eba0d330da120827a3f6fc15a",
+      "receiptCheckoutBase": "839b0e26303706f14d25b70439b7db83cd9359e1",
+      "receiptCapturedUncommittedSources": true,
+      "committedSourceHashesVerified": 6,
+      "sourceHashDrift": [],
+      "scope": "Shared challenge/bind policy and native transaction delegation: canonical signed profile, active exact-certificate retry, existing-account immutability, expiry/races and SQL atomicity.",
+      "limits": "Extraction/native SQL scope only. Private Directory host has separate evidence; no real external credentials or public deployment acceptance. Whole-app parity remains false."
+    },
+    "cloudflareProviderHostV99": {
+      "status": "PASS_PRIVATE_NATIVE_AND_WORKERD_ONLY",
+      "sourceCommit": "094a5bb0",
+      "nativeAssertionCases": 18,
+      "nodeAssertionCases": 18,
+      "workerdAssertionCases": 18,
+      "nativePostgresScenarios": 20,
+      "providerWorkerdCases": 35,
+      "providerWorkerdSkipped": 0,
+      "existingDirectoryRegressionCases": 18,
+      "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/provider-host-final-acceptance/acceptance.json",
+      "receiptSha256": "52ef524c34eb50a2787645190bcd2817441d96dfd1b5b1af02b486b6d5a9e8e1",
+      "fullRunnerSummary": "/private/tmp/zoen-cloudflare-admission-v96/validation/provider-host-complete-run-01/summary.json",
+      "sameDirectoryTransactionDomain": true,
+      "separateAccountDatabase": false,
+      "publicRoutesEnabled": false,
+      "deployedAtOriginalProof": false,
+      "includedInPrivateMediaDeploymentV100": true,
+      "privateDeploymentVersion": "9882fa56-24bb-4573-a592-a50b4c138972",
+      "checks": [
+        "Atomic one-use challenge/proof issuance and provider/account/device binding",
+        "Original request JSON reaches strict Rust parsing; duplicate fields refused before writes",
+        "Exact active-certificate retry and existing-account immutability",
+        "Fixed provider HTTPS URLs, manual redirect refusal, bounded JWKS and refresh/cache rules",
+        "Late SQL rollback and concurrent verification/binding",
+        "No raw provider assertions, authorization codes or opaque proof tokens persisted"
+      ],
+      "limits": "Private adapter/source evidence only. Public gateway IP limits, real Apple/Google confirmation, secure recovery integration and complete public relay/MLS remain open. Worker fetch cannot separately impose native3s connect timeout; overall JWKS5s and operation10s limits remain. No public deployment or full parity claim."
+    },
+    "cloudflareCiBoundaryV100": {
+      "status": "PARTIAL_PASS_WORKFLOW_FAILED_TWO_RETAINED_LOCAL_SOCKET_GATES",
+      "run": 39215512310,
+      "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39215512310",
+      "head": "f43b23f32474fc91c5e7597ba17c7733494a2212",
+      "merge": "14e32b200061d7ca53db7fee8316b5ba685c3d05",
+      "headAndMergeTree": "96eda73c6649912647dc9cfd055a78bf7187b22a",
+      "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-f43b-evidence/acceptance.json",
+      "receiptSha256": "f34fc45232adfeecf9c1872f3e11ad9f5fa0ed49479cc696cd58993c28c14a53",
+      "browserCheckpointsPerLocale": 22,
+      "browserErrors": 0,
+      "providerNativeSqlScenarios": 20,
+      "providerWorkerdCases": 35,
+      "directoryWorkerd": {
+        "passed": 32,
+        "failed": 2,
+        "skipped": 0
+      },
+      "client": {
+        "passed": 793,
+        "failed": 0,
+        "darwinOnlySkipped": 2
+      },
+      "androidBuild": "PASS_BUILD_LOG_ONLY_NO_NEW_RUNTIME_ACCEPTANCE",
+      "sourceFilesVerified": 79,
+      "recordedArtifactHashesVerified": 21,
+      "sourceHashDrift": [],
+      "isolatedRuntimeCandidate": {
+        "workerd": "1.20261019.1",
+        "status": "DOES_NOT_FIX_UNCHANGED_MINIMAL_REPRODUCTION",
+        "untouchedCasesClosedWithin5s": 0,
+        "untouchedCases": 6,
+        "inboundControlClosed": true,
+        "repositoryPinsAndDeadlinesUnchanged": true,
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/workerd-ab-20261019-01/acceptance.json",
+        "receiptSha256": "1e0fb2ba591a377780d29c453d42c9ce08977ddee532717ddc50b995eee69da0"
+      },
+      "limits": "Audit of this exact CI run and isolated official runtime A/B only. Overall workflow stays red; separate remote8/8, previous Android runtime and public hosting retain their original artifact boundaries. No deployment or whole-app parity inference."
+    },
+    "cloudflareR2BucketV100": {
+      "status": "PASS_PRIVATE_BUCKET_PROVISIONING_ONLY",
+      "bucket": "zoen-private-blobs",
+      "createdAt": "2026-10-19T10:23:12.997Z",
+      "storageClass": "Standard",
+      "location": "ENAM",
+      "publicAccessEnabled": false,
+      "r2DevEnabled": false,
+      "customDomains": [],
+      "initialObjects": 0,
+      "initialBytes": 0,
+      "billingAgreementSubmittedThisTurn": false,
+      "newApiTokens": false,
+      "receipt": "/private/tmp/zoen-cloudflare-r2-v100/provisioning-acceptance.json",
+      "receiptSha256": "bd9864fffc859dfc803bf998b2d64cdc8e6cf4da28032a57a06ef2a8a77ee41b",
+      "limits": "Dashboard already exposed active R2 after explicit user authorization. Bucket creation and official Wrangler read-only privacy checks only. Encrypted-object roundtrip/deployment is recorded separately in V100; no backup recovery or public app acceptance."
+    },
+    "cloudflareMediaV100": {
+      "status": "PASS_PRIVATE_NATIVE_DIFFERENTIAL_AND_BOUNDED_REAL_R2_WITH_QA_CLEANUP",
+      "sourceCommit": "86cc9a74f9cdc1082d3ad9dbbdfc641229c62613",
+      "documentation": "infra/cloudflare/relay-state/MEDIA.md",
+      "sharedRustTests": 11,
+      "nativeLimiterTests": 4,
+      "nativeHttpTests": 6,
+      "nativeHttpVectors": 28,
+      "nativeStorageFaultVectors": 3,
+      "mediaWorkerdCases": 13,
+      "workerdSkipped": 0,
+      "existingDirectoryWorkerdCases": 18,
+      "existingProviderWorkerdCases": 35,
+      "sourceFilesVerifiedAgainstCommit": 133,
+      "helperSourcesVerifiedAgainstCommit": 4,
+      "sourceHashDrift": [],
+      "localReceipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/media-final-acceptance/acceptance.json",
+      "localReceiptSha256": "99a343afe9de6be158275805b8fd407099f538535186245f73ff4be718d0fb63",
+      "sharedNativeReceipt": "/private/tmp/zoen-media-v96/shared-native-media-acceptance-02.json",
+      "sharedNativeReceiptSha256": "b2eb601fcf19847760a6c5be86829073edf5dff444d4b45ab3380c46b9d19074",
+      "privateDeployment": {
+        "worker": "zoen-relay-directory",
+        "previousVersion": "1fd4bab4-7013-4749-bb1e-3c59efa146c3",
+        "version": "9882fa56-24bb-4573-a592-a50b4c138972",
+        "namespace": "66f8e984ecda4663944a760b49d31254",
+        "migrationTag": "directory-v1",
+        "sameNamespaceFixedCellAndRelayName": true,
+        "publicRoutesEnabled": false,
+        "workersDevEnabled": false,
+        "previewUrlsEnabled": false,
+        "wasmBytes": 1937479,
+        "wasmSha256": "a5bbfca2908b2d90e19760e223d17bb123f31aa430522fc17a03703236997234",
+        "receipt": "/private/tmp/zoen-cloudflare-r2-v100/deployment-acceptance.json",
+        "receiptSha256": "37970a1069e8c4e4a5a3c375f3af7c9c71dcb005317f523fba92e2ef62bb28fe",
+        "attribution": "Frozen committed modules/sealed passed-test WASM and actual version metadata; remote module bytes were not downloaded."
+      },
+      "realR2": {
+        "checkpoints": 7,
+        "passed": 7,
+        "bucket": "zoen-private-blobs",
+        "storedSyntheticObjects": 1,
+        "storedCiphertextBytes": 647,
+        "distinctNativeCiphertextBytes": 1422,
+        "nativeSealSignAndOpen": true,
+        "normalNativeEnrollment": true,
+        "injectedClockSqlOrSessionFacts": false,
+        "freshAndDuplicatePutAfterUnlink": 403,
+        "exactQaKeysConfirmedMissingAfterCleanup": 2,
+        "ownedKeysRemoved": true,
+        "previewStopped": true,
+        "productionFixedCellAddressed": false,
+        "smallRevokedQaCellMetadataMayRemain": true,
+        "r2DevEnabled": false,
+        "customDomains": [],
+        "receipt": "/private/tmp/zoen-cloudflare-r2-v100/remote-acceptance.json",
+        "receiptSha256": "648f8479451c33f794aa484d75b1a38f7ccf43b53a261c7d4e9a6fa830e7c743"
+      },
+      "privateBounds": "One 25 MiB body lease per isolate; at most 8 waiting unread streams; 10 s queue/read-idle deadlines; 64 KiB WASM digest chunks; native default quota, durable nondecreasing wall clock and 25 MiB GET cap. Native transfers and quota configuration remain separate.",
+      "limits": "Private adapter: 7 checkpoints through direct DO.media in one fresh fixed QA cell. Fixed service forwarding has separate local proof. Actual 25 MiB, race, quota, restart and fault coverage is local. Two known local socket-close gates stay red. Public gateway/media, transfer/backup/recovery, real Apple/Google, remote capacity/performance and whole-app parity remain unaccepted."
+    },
+    "productExecutionV102": {
+      "status": "BOUNDED_LOCAL_PROGRESS_NOT_COMPLETE",
+      "document": "docs/dev/zoen-product-progress-v102.md",
+      "sourceBaseCommit": "4da0d9f759ea59dce1f7c2476f7ff89b96c44d39",
+      "sourceAtVerification": "Working-tree inputs and exact frozen artifacts are identified separately in each receipt; no single final production artifact is accepted.",
+      "fullAppParityAccepted": false,
+      "productionReadinessAccepted": false,
+      "scaleReadinessAccepted": false,
+      "publicDeploymentAccepted": false,
+      "app": {
+        "typecheck": true,
+        "oxlintDenyWarnings": true,
+        "oxfmt": true,
+        "tests": 801,
+        "passed": 801,
+        "failed": 0,
+        "skipped": 0,
+        "receipt": "/private/tmp/zoen-android-auth-v102/app-check.json",
+        "receiptSha256": "c43e5bfb94421685ef879fbb144aa17f682b63d1c363600484b2437edbc8cd25"
+      },
+      "androidGoogle": {
+        "status": "PASS_SOURCE_AND_SYNTHETIC_CONTRACTS_ONLY",
+        "clientContext": "android",
+        "explicitAndroidRegistrationAndMandatoryPresenter": true,
+        "sharedEnrollmentTests": 19,
+        "originalNativeSqlScenarios": 20,
+        "androidNativeSqlScenarios": 3,
+        "frozenProviderWorkerdTests": 40,
+        "frozenProviderWorkerdPassed": 40,
+        "frozenProviderWorkerdSkipped": 0,
+        "realRsaSignaturesWithSyntheticKey": true,
+        "productionMigrationAccepted": false,
+        "realProviderConfirmationAccepted": false,
+        "signedAndroidRuntimeAccepted": false,
+        "receipt": "/private/tmp/zoen-android-auth-v102/acceptance.json",
+        "receiptSha256": "c6d6fa935c84d13e1f499e95166f553fa1214c924620d519d220c87c93c3d85e"
+      },
+      "syncPlanning": {
+        "status": "PASS_SHARED_VISIBILITY_PLANNING_ONLY",
+        "rustTests": 7,
+        "nativeProtobufVectorsPerRuntime": 8,
+        "nodeTestInvocations": 1,
+        "workerdTestInvocations": 1,
+        "publicSyncAccepted": false,
+        "receipt": "/private/tmp/zoen-sync-v102/acceptance.json",
+        "receiptSha256": "385100a3dd52bbbee41846fa86313182f4fab5dd99c37f9fa78f1b3ca8a0d09e"
+      },
+      "privateHistoryTransfer": {
+        "status": "PASS_LOCAL_NATIVE_HTTP_WASM_R2_ADAPTER",
+        "nativeHttpTests": 1,
+        "nativeHttpVectors": 31,
+        "workerdTests": 7,
+        "workerdPassed": 7,
+        "workerdSkipped": 0,
+        "publicEndpointAccepted": false,
+        "remoteR2AcceptedForThisSlice": false,
+        "fullHistoryRecoveryAccepted": false,
+        "receipt": "/private/tmp/zoen-transfer-v102/differential-03/summary.json",
+        "receiptSha256": "1f38270e8c9c12a7094745fffd8c5924cd0e4d01623fc5fd20a466d2108dd646"
+      },
+      "mediaCompatibility": {
+        "status": "PASS_LOCAL_NATIVE_HTTP_AND_SHARED_IO",
+        "nativeHttpTests": 7,
+        "nativeHttpVectors": 28,
+        "workerdTests": 16,
+        "workerdPassed": 16,
+        "workerdSkipped": 0,
+        "sharedStorageDeadlineMs": 15000,
+        "realStorageDeadlineExercised": true,
+        "boundedOwnedBuffers": true,
+        "uncancellableStorageFencesNewReadersUntilSettlement": true,
+        "receipt": "/private/tmp/zoen-transfer-v102/media-compatibility-01/summary.json",
+        "receiptSha256": "168c4548b2673238653b3e0952acf4d33d4560d21d0986cefa090fa686d57bbb"
+      },
+      "auditedCi": {
+        "status": "NOT_GREEN",
+        "head": "4da0d9f759ea59dce1f7c2476f7ff89b96c44d39",
+        "expoRun": 39253948698,
+        "androidRun": 39253948550,
+        "ciRun": 39253948641,
+        "mediaNativeHttpTests": 6,
+        "mediaNativeHttpVectors": 28,
+        "mediaWorkerdTests": 13,
+        "webCheckpointsPerLocale": 22,
+        "webLocales": ["en-US", "pt-BR"],
+        "webBrowserErrors": 0,
+        "directorySocketTests": 34,
+        "directorySocketPassed": 32,
+        "directorySocketFailed": 2,
+        "directorySocketSkipped": 0,
+        "legacyAndroidApi28": {
+          "discovered": 106,
+          "passed": 104,
+          "mcpSkipped": 2
+        },
+        "legacyAndroidApi35": {
+          "discovered": 106,
+          "passed": 104,
+          "mcpFailed": 2
+        },
+        "limits": "Audit applies to the earlier exact CI head. New local app/auth/sync/transfer/media results do not make that run green or certify final Expo Android journeys.",
+        "receipt": "/private/tmp/zoen-ci-v102/acceptance.json",
+        "receiptSha256": "dbbc80bfb83d8f419ec742b312b6ee994e116f367fbb79f39ad56c36a79c0edf"
+      },
+      "ciFixtureIsolation": {
+        "status": "PASS_LOCAL_ACTUAL_FIXTURE_COMPILATION_ONLY",
+        "fixture": "journey_m1",
+        "noRun": true,
+        "journeyRuntimeAccepted": false,
+        "newCiAccepted": false,
+        "receipt": "/private/tmp/zoen-ci-v102/fixture-compile-acceptance.json",
+        "receiptSha256": "b1e2801e364df54a893e7c5bda5f3b099c25a5095d94845a46035077f02f3204"
+      },
+      "directoryReadsV103": {
+        "status": "IN_PROGRESS_NOT_ACCEPTED",
+        "accepted": false,
+        "limits": "Root is implementing the next Directory read slice; no passed-case or runtime claim is attached at this checkpoint."
+      },
+      "limits": [
+        "Canonical scope remains 30 required journeys and six platforms; full-product readiness flags stay false and production completion gates stay pending.",
+        "No new public backend/deployment, real provider confirmation, final-device release, complete recovery, scale, operational or whole-product acceptance.",
+        "Android provider Workerd evidence uses its own frozen files; later shared I/O and Directory work retain separate artifact attribution.",
+        "Existing local socket-close failures and legacy Android MCP skips/failures remain visible; no deadlines or tests were relaxed.",
+        "Prior evidence and artifact objects are preserved without reattribution."
+      ]
+    },
+    "productExecutionV103": {
+      "scope": "Directory read/capacity integration, latest stable Expo58 patch and Android FCM source; local proofs only. No public backend, final native artifact, real provider delivery or full product acceptance.",
+      "sourceBaseHead": "4da0d9f759ea59dce1f7c2476f7ff89b96c44d39",
+      "directoryReads": {
+        "nativeOriginalScenarios": 71,
+        "nativeReadSteps": 70,
+        "finalWorkerdTestsPassed": 21,
+        "skipped": 0,
+        "aggregateFactsLimitBytes": 786432,
+        "partialSuccessForbidden": true,
+        "proof": {
+          "path": "/private/tmp/zoen-directory-read-v102/final-acceptance.json",
+          "sha256": "137d76d3b8479bfc4949a4b23875d82c44ad0d070472e7d627db412cff643535"
+        },
+        "knownSocketGate": {
+          "passed": 14,
+          "failed": 2,
+          "skipped": 0,
+          "unchangedTimeouts": true
+        },
+        "limits": [
+          "Private Person directory; revoked devices included, SQLite enrollment order preserved without invented historical timestamps.",
+          "Signed/encrypted profiles, agent enrollment, custom limits and complete public delivery remain pending.",
+          "ClaimKeyPackages native shared lookup-budget integration remains pending; existing bounded claim/state proofs retain their original scope."
+        ]
+      },
+      "combinedHostCompatibility": {
+        "proof": {
+          "path": "/private/tmp/zoen-transfer-v102/final-compatible-01/acceptance.json",
+          "sha256": "9c137c1a4f4351110595d7f6cdac9e61208cbd7dfae6ff386d46037eab3247e4"
+        },
+        "passed": 83,
+        "failed": 0,
+        "skipped": 0,
+        "boundary": "Combined83 tests preceded the final streaming Directory capacity delta; that delta has its own21-test proof. Both retain exact WASM and source hashes."
+      },
+      "androidNotifications": {
+        "proof": {
+          "path": "/private/tmp/zoen-android-notifications-v103/acceptance.json",
+          "sha256": "65f0879d5891ff95639cdd262618054a452794eee5345178b9095e3c1823be78"
+        },
+        "appTestsPassed": 813,
+        "failed": 0,
+        "skipped": 0,
+        "realExpoConfigBranches": [
+          "inert-default",
+          "explicit-synthetic-FCM-client",
+          "wrong-package-refused"
+        ],
+        "providerDeliveryAccepted": false,
+        "headlessBackgroundAccepted": false,
+        "nativeArtifactAccepted": false,
+        "constraints": "Explicit opt-in Firebase app/server configuration and later permission request; current authenticated Rust register_push operation, no Expo Push Service and no second engine."
+      },
+      "expoStablePatch": {
+        "proof": {
+          "path": "/private/tmp/zoen-transfer-v102/expo58-patch-acceptance.json",
+          "sha256": "3181627842ce6677e84356dc6447581ff0a4a0c610755452258aafb719e80f61"
+        },
+        "expo": "58.0.15",
+        "sdkCompatibility": "PASS",
+        "doctorChecksPassed": 20,
+        "newNativeBuildAccepted": false
+      },
+      "dependencyAudit": {
+        "proof": {
+          "path": "/private/tmp/zoen-transfer-v102/npm-audit-expo58-01.json",
+          "sha256": "b6cd466299e73ce98717f175997a287a6f5f404cf212e33d9eaf1f8824227971"
+        },
+        "reportedDependencyGraphNodes": 31,
+        "underlyingAdvisories": [
+          "GHSA-vfj7-8cjw-p6xm",
+          "GHSA-86w9-cpqp-85rv",
+          "GHSA-w5hq-g745-h8pq"
+        ],
+        "status": "OPEN_PENDING_REACHABILITY_AND_UPSTREAM_FIX_VALIDATION",
+        "forcedDowngradesApplied": false
+      },
+      "productionReadinessAccepted": false,
+      "scaleReadinessAccepted": false,
+      "fullAppParityAccepted": false
+    },
+    "productExecutionV105": {
+      "status": "PRIVATE_BACKEND_VERIFIED_PRODUCTION_GOAL_ACTIVE",
+      "proof": {
+        "path": "/private/tmp/zoen-backend-v105/acceptance.json",
+        "bytes": 2065,
+        "sha256": "617aaaa08b68965341b2dc7feb443a3df33eeb40bc154c721cb8bc2598b6f743"
+      },
+      "mls": {
+        "nativeOriginalSteps": 17,
+        "encryptedTransitions": 302,
+        "peerDecryptions": 275,
+        "workerdCases": 8,
+        "originalStorageContracts": 4,
+        "wasmSha256": "2b3dac526ecbb26c31a36e5c4af67bcc964bbc43ffbf8fcc935cabd07831d37c"
+      },
+      "encryptedDirectory": {
+        "proof": {
+          "path": "/private/tmp/zoen-claim-quota-v103/final-acceptance.json",
+          "bytes": 54099,
+          "sha256": "31dd98f2a4fc9c5af894dece720279282e279b99f3ac77be4c28e45f7bfbeb6f"
+        },
+        "nativeOriginalSteps": 71,
+        "nativeReadSteps": 76,
+        "nativeEncryptedProfileSteps": 45,
+        "nativeAeadOpenWrongKeyAndWrongVersionProof": true,
+        "workerdPass": 27,
+        "workerdFail": 0,
+        "workerdSkipped": 0,
+        "claimBudgetOrdering": "Active-device/registration admission then durable account charge before bounded operation-specific validation; invalid claims spend budget without consuming stock or receipts.",
+        "profileVersions": "Exact decimal through WASM/SQLite; monotonic update and identical-ciphertext retry; shared native guard prevents UInt64 to signed BIGINT overflow."
+      },
+      "ciE2a": {
+        "proof": {
+          "path": "/private/tmp/zoen-ci-e2a-audit-v104/audit-checkpoint.json",
+          "bytes": 16146,
+          "sha256": "2ceed0770034493af84b6dae0612e4942de3fc38df3548f75605d1de7401df86"
+        },
+        "client": "811pass and2Darwin-only skips in Linux CI; local813/813 proof remains separately attributed to V103.",
+        "web": "22checkpoints per locale with exact Excalidraw/native-peer bytes.",
+        "remainingFailures": "Two Rust formatting differences corrected in source; existing Directory32/34 idle closure gate and legacy Android MCP matrix remain red in that immutable revision."
+      },
+      "dependencyTriage": {
+        "proof": {
+          "path": "/Users/enzotironi/.codex/state/plugins/codex-security/scans/zoen-native/artifacts-207778a518289d9c4800312967d78d226788435dc764ef75f9479ae190cb49f2/artifacts/triage/zoen-expo58-npm-e2a-v104.json",
+          "bytes": 15967,
+          "sha256": "6917a4b81d07e426c477f6824322e3953a1ac1d46b705be6baa5271db08d6b66"
+        },
+        "uuidXcode": "Installed sole caller uses no-argument v4 outside the affected v3/v5/v6 output-buffer paths.",
+        "bracesAndForge": "needs_review; supported lower-trust input reachability or upstream mitigation still unestablished.",
+        "fullDependencySecurityAccepted": false
+      },
+      "operatingEnvelope": {
+        "path": "/Users/enzotironi/project/zoen-native/docs/dev/zoen-operating-envelope-v1.json",
+        "bytes": 10638,
+        "sha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d"
+      },
+      "boundaries": [
+        "All new backend proofs are private/local and bind exact source/fixture/WASM; existing remote artifacts retain their older source attribution.",
+        "Public Directory/Space protocol composition, discovery, removal visibility, paginated delivery, fanout, provider auth, recovery and real push/calls remain required.",
+        "No fresh whole-app acceptance across six platforms, load/cost qualification, production availability or release/migration/rollback approval."
+      ],
+      "fullAppParityAccepted": false,
+      "productionReadinessAccepted": false,
+      "scaleReadinessAccepted": false,
+      "ciCompletedAndroid": {
+        "proof": {
+          "path": "/private/tmp/zoen-ci-e2a-audit-v104/audit-completed-android.json",
+          "sha256": "9bbdc351c04a0aec23e9b4fbefbf66e02a1e91885cefcc0f0d6d3f8aff827749"
+        },
+        "commit": "e2a002cd95aefb7676a2939ce47cf42d5208fe8d",
+        "expoReleaseBuildPassed": true,
+        "nativeJvmTestsPassed": 14,
+        "nativeJvmTestsSkipped": 0,
+        "releaseApk": {
+          "bytes": 124622009,
+          "sha256": "094d9b9ba3a22bbf4eb56a52111234f9d2fc1f735e275bac0cca8c9fb419a186",
+          "debuggable": false,
+          "signing": "Android Debug certificate; not production signing"
+        },
+        "legacyAndroid35": {
+          "passed": 104,
+          "failed": 2,
+          "skipped": 0
+        },
+        "legacyAndroid28": {
+          "passed": 104,
+          "failed": 0,
+          "skipped": 2
+        },
+        "coldProcessTlsPerLegacyApi": {
+          "passed": 1,
+          "failed": 0
+        },
+        "verifiedImmutableSourceInputs": 422,
+        "finalApkNativeMetadataVerified": true,
+        "newExpoRuntimeJourneysAccepted": false,
+        "productionSigningAccepted": false
+      }
+    }
+  },
+  "knownParityGaps": [
+    "Full comparative parity with the existing clients and all required journeys remains incomplete; no whole-app superiority claim.",
+    "Google/Apple credential login, provider-account creation/recovery, physical-device distribution and production relay compatibility require their own acceptance.",
+    "v94/v95 native Page input foundations are not integrated into a signed editor recovery journey; Plan Apply remains closed and external producer/bridge candidates are not installed.",
+    "iPhone evidence is bounded: undelivered Quick Look edits, conflict/MIME recovery UI, multi-capture faults, backup/restore, broader accessibility/performance and native failure paths remain open.",
+    "MCP observations across v89/v90/v91/v92 do not certify all features/providers. Management back-drag, broader accessibility/reduced motion and physical-device journeys remain open; native Back buttons are accepted.",
+    "Web canonical drawing operations and actual canvas/reload/peer bytes are accepted locally. Image import, broader collaborative/fault paths, rich file captions/replies/threads/retry metadata and cold-start offline recovery still need acceptance.",
+    "Web onboarding axe found no violations but contrast review remains incomplete; whole-app keyboard/screen-reader, Safari/WebKit, camera/microphone and performance are unaccepted.",
+    "Public hosting proves HTTP routing/isolation/assets only; unavailable production relay blocks public encrypted sync/provider acceptance.",
+    "Android acceptance is bounded to API35 arm64 Debug synthetic linking/history/Page/erasure and unchanged minified Release onboarding/key-generation only. Release linked-account runtime/performance, API28/physical devices and remaining media/voice/profile/assistant features remain unaccepted.",
+    "Native extensions, Push delivery, agent/community/permissions workflows and remaining media/document/history failure boundaries need their own current-artifact journeys.",
+    "Web attachments still use a stock sheet; the iOS attachment dropdown is not yet implemented on Web."
+  ],
+  "currentSourceCheckpoint": {
+    "id": "prelaunch-core-cleanup-v111",
+    "progressDocument": "docs/dev/zoen-product-progress.md",
+    "expoVersion": "58.0.16",
+    "sharedPackagesRenamed": 13,
+    "nativeObject": "Client",
+    "nativeBindings": "client_core",
+    "compatibilityAliasesAdded": false,
+    "nativeProof": {
+      "path": "/private/tmp/zoen-client-rename-v110/acceptance.json",
+      "sha256": "4d39212739054d7d70a773cf02e8aca4ebc0c95b07c7e6b4dc40a17caac6340d"
+    },
+    "javascriptChecks": {
+      "path": "/private/tmp/zoen-transfer-v102/v111-development-link-app-check.json",
+      "sha256": "9acc5013924872e48ac0f3aaf1ec36b5a592ae26f6fd747525bbd6fb6827fc0d",
+      "tests": 815,
+      "failures": 0,
+      "skipped": 0
+    },
+    "scope": "Bounded source, regenerated ABI, native Android host and signed Expo iOS Debug simulator checks. Earlier receipts retain their original source; no complete Expo Android, signed Release, public provider/backend, full-app or scale acceptance follows.",
+    "javascriptRuntimeProof": {
+      "path": "/private/tmp/zoen-client-routing-v111/acceptance.json",
+      "sha256": "32357c97359875e1ce2d1e6cf541b5a0c109bdf2cbf864b544f45ccbde27673d",
+      "scope": "Current served bundle, cold/warm development-client links followed by explicit demo entry, retained five card IDs/four message IDs; no invalid-link detour. Development-client redelivery reloads JavaScript; demo mode is session-only."
+    },
+    "checkpointReceipt": "/private/tmp/zoen-naming-v110/acceptance.json"
+  },
+  "currentPrelaunchVerification": {
+    "id": "prelaunch-contract-checks-v114",
+    "historicalApiChanges": "report-only; update current callers directly without aliases or compatibility registry",
+    "currentGeneratedAbiChecks": "blocking; stale source/generated metadata/checksum mismatches still fail",
+    "sourceVerifierTests": 15,
+    "actualArtAndRuntimePayloadsUnchanged": true,
+    "receipt": {
+      "path": "/private/tmp/zoen-ci-cbb-v111/acceptance.json",
+      "sha256": "76cb338d98f89bf8720ded7f666ccb5e21d829152fec33052b1b00b8ae45c721"
+    },
+    "browserLaunchDiagnostics": {
+      "receipt": {
+        "path": "/private/tmp/zoen-chrome-startup-v114/acceptance.json",
+        "sha256": "c960ebdd177246501f86c5ddcca8459d4fe1453f80e93ede282adf819ae9c615"
+      },
+      "appChecksPassed": true,
+      "tests": 816,
+      "skipped": 0,
+      "scope": "Bounded stderr/exit/spawn diagnostics, original real-browser flow and deadlines unchanged. Linux CI startup cause is still unknown; no causal browser fix is claimed."
+    }
+  },
+  "currentBackendCheckpoint": {
+    "id": "ordinary-transport-presence-v114a",
+    "progressDocument": "docs/dev/zoen-product-progress.md",
+    "receipt": {
+      "path": "/private/tmp/zoen-ordinary-presence-v114/acceptance.json",
+      "sha256": "f5d9e83a79e7319af9050b601a728233b75b4c15dc4214cc5adbb0c1df3046d0"
+    },
+    "scope": "Actual local native and candidate protocol baseline only; standalone wire oracle has retained source/binary/raw evidence, portable checked-in integration pending. No public deployment or full app/platform/protocol/scale acceptance.",
+    "sharedRustTests": 147,
+    "presenceRegistrySchedulerUnits": 28,
+    "directoryWorkerdCases": 48,
+    "directoryNativeSignedSteps": 71,
+    "originalIdleAndCapacityDeadlinesMs": 5000,
+    "originalIdleAndCapacityBodiesUnchanged": true,
+    "actualAbruptOrphanRecovery": true,
+    "actualCloseSqlFaultRecoveredByRealAlarm": true,
+    "actualMlsPageCrossingMessages": 520,
+    "canonicalDirectEvents": 531,
+    "canonicalGroupEvents": 20,
+    "realAccounts": 2,
+    "sameIdentitySecondDevice": true,
+    "actualServerAndClientSQLiteReopen": true,
+    "completePostRestartSyncAndMlsDecrypt": true,
+    "taskOwnedCleanupVerified": true,
+    "publicDeploymentAccepted": false,
+    "fullProtocolQualified": false
+  },
+  "currentMiniappTimelineCheckpoint": {
+    "id": "miniapp-timeline-activity-v116",
+    "receipt": {
+      "path": "/private/tmp/zoen-miniapp-activity-v116/receipt.json",
+      "sha256": "62a291dd2e471e76c0f052257519a26f2b2dda555f293628cc35a278fa124fc1"
+    },
+    "scope": "Conversation presentation only; actual iOS synthetic local demo with existing signed v110 Debug native artifact and current JavaScript. No Release, public delivery or complete platform acceptance.",
+    "checks": {
+      "typecheck": true,
+      "oxlint": true,
+      "oxfmt": true,
+      "tests": 825,
+      "failures": 0,
+      "skipped": 0
+    },
+    "canonicalEventsPreserved": true,
+    "grouping": "Only adjacent typed ItemEdited updates with matching item, author, thread, note, delivery, consecutive versions and exact u64 sequences; annotated, failed, undo and human messages keep their original boundaries.",
+    "actualIos": {
+      "drawingUpdates": 22,
+      "activityRuns": [20, 2],
+      "currentVersion": 23,
+      "readOnlyHistoryVersion": 21,
+      "exactSearchAndInternalJumpId": "01M5AN54JSD1HQEKFGNGQCT9QD",
+      "existingThreadRetained": true
+    },
+    "preview": "Existing native item snapshot; no actual scene thumbnail and no permission mutation.",
+    "webRuntimeVerified": true,
+    "androidRuntimeVerified": false,
+    "webGap": "Bounded native-backend Web activity, exact-ID search, drawing history and backend/cold-browser restart passed; wider Web/Android feature parity, provider login and production acceptance remain open.",
+    "publicDeliveryVerified": false,
+    "fullAppParityAccepted": false,
+    "webRuntimeProof": {
+      "path": "/private/tmp/zoen-miniapp-web-v118/session_rw7tefs6/web-runtime-receipt.json",
+      "sha256": "8dbfc2d61997022ae7a19d9f63cac05c8f58a887cd1c924ccdafc2db800a0c19"
+    }
+  },
+  "backendExecutionDecision": {
+    "id": "native-rust-local-production-environment-v118",
+    "decision": "Run the existing native Rust backend; retire custom Cloudflare Workers/Durable Objects adaptation. Keep Cloudflare DNS/CDN/static hosting/S3-compatible storage where useful.",
+    "immediatePhase": "LOCAL_STACK_AND_WEB_RECOVERY_VERIFIED",
+    "requiredServices": [
+      "native Rust relay container",
+      "real PostgreSQL",
+      "real FoundationDB",
+      "S3-compatible encrypted object storage"
+    ],
+    "requiredLocalProof": [
+      "persistent data and migrations",
+      "health/readiness",
+      "real client sync/media/receipts/recovery",
+      "process restart and interrupted operations",
+      "backup/restore and release rollback"
+    ],
+    "archivedPendingAdapterChanges": "/private/tmp/zoen-cloudflare-retired-v118/manifest.json",
+    "historicalAdapterCheckpoint": "currentBackendCheckpoint retains historical v114a attribution; it is not the active runtime decision.",
+    "cloudProvisioningRequestedNow": false,
+    "publicBackendStillRequiredForFinalGoal": true,
+    "localEnvironmentVerified": true,
+    "productionReadinessAccepted": false,
+    "scaleReadinessAccepted": false,
+    "localVerificationScope": "Real local native server/storage/client and cold restore on fresh volumes. Actual client completed before external restart/restore; ciphertext and datastore comparisons follow it. Not production/scale, provider or post-restore device-key recovery acceptance.",
+    "releaseRollbackVerified": false,
+    "crossRelayDeliveryVerified": false
+  },
+  "currentWebActivitySourceCheckpoint": {
+    "id": "typed-web-miniapp-activity-v118",
+    "receipt": {
+      "path": "/private/tmp/zoen-miniapp-web-v118/rust-verification-v3-1.json",
+      "sha256": "f29a98fffbc367d80cb6786b7ce3f5cd8a07ba1f0fabfde75447832e33dea61b"
+    },
+    "appTests": 828,
+    "rustTests": 72,
+    "strictAllTargetClippy": true,
+    "actualSignedDtoBoundaryCases": 2,
+    "canonicalDocumentFoldReused": true,
+    "humanThreadAndVoiceHistoryPreserved": true,
+    "ambiguousItemOwnershipWarningSurfaced": true,
+    "savedIntegrityWarningsPreserved": true,
+    "freshWasmBuilt": true,
+    "actualBrowserRuntimeVerified": true,
+    "androidRuntimeVerified": false,
+    "testFormattingFollowup": "Canonical cargo fmt through the crate module changed only whitespace in client_tests.rs after the receipt; all production source is identical.",
+    "actualBrowserRuntimeProof": {
+      "path": "/private/tmp/zoen-miniapp-web-v118/session_rw7tefs6/web-runtime-receipt.json",
+      "sha256": "8dbfc2d61997022ae7a19d9f63cac05c8f58a887cd1c924ccdafc2db800a0c19"
+    },
+    "actualRuntimeScope": {
+      "canonicalTimelineEntries": 7,
+      "typedItemEditedEntries": 4,
+      "projectedRows": 5,
+      "activityRuns": [3, 1],
+      "exactSearchResults": 4,
+      "currentDrawingVersion": 5,
+      "visibleElementsAfterBackendAndBrowserRestart": 4,
+      "nativeVerifiedSignedEvents": 18,
+      "sameAccountAndDeviceAfterRestart": true,
+      "selectedCanonicalFieldsExact": true,
+      "rawSceneByteDigestCompared": false,
+      "osKeychainRecoveryVerified": false
+    },
+    "releaseJourneyProof": {
+      "path": "/private/tmp/zoen-ci-2908-release-web/final-existing-entrypoint.json",
+      "sha256": "a288d78947174599901e1b21f609153c0e4205e0e8e5020077c7f0f259d83c66",
+      "entrypoint": "node scripts/expo-web-e2e.mjs",
+      "scriptSha256": "cac1e982aac9ee6ffeada2b5465e46b83dbb628d554b107ddfb88c83e3f2a03d",
+      "locales": ["en-US", "pt-BR"],
+      "checkpointsPerLocale": 22,
+      "actualPass": true,
+      "uncaughtBrowserErrors": 0,
+      "originalMessageIdsAuthorsAndFullBodiesRequired": true,
+      "sameRetainedExportAndCli": true,
+      "backendRestartDuringThisJourney": false,
+      "otherCiJobsQualified": false
+    }
+  },
+  "currentNativeBackendCheckpoint": {
+    "id": "native-local-production-environment-v118",
+    "guide": "infra/local/README.md",
+    "receipt": {
+      "path": "/private/tmp/zoen-native-deploy-v118/final-seal/acceptance.json",
+      "sha256": "a5fa24612efefc755dbe6ecb2a087e8469424a7c66545244ca44ae3ca660a756"
+    },
+    "nativePolicyReceipt": {
+      "path": "/private/tmp/zoen-native-policy-v119/final-receipt.json",
+      "sha256": "9b29d88f53fe04916e9b2254839606391828d0644a227c9c428bb7df83e15071"
+    },
+    "nativeRelayImage": "sha256:29225876d19e78c021c871f35503dc13548ce91c31505c8cef345165b3da6a05",
+    "nativeSharedUniqueTestsPassed": 151,
+    "ownershipIntegrityTestsPassed": 10,
+    "actualPublicClientChecksPassed": 7,
+    "actualS3ConditionalCreateRaceAndImmutableRetry": true,
+    "actualStorageRestart": true,
+    "actualColdRestoreOnNewVolumesWithExactImages": true,
+    "postgresTablesCompared": 41,
+    "observedFdbSpaceKeysCompared": 30,
+    "actualAttachmentCiphertextBytesRestored": 1049393,
+    "actualRecoveryCiphertextBytesRestored": 1465,
+    "clientReopenedAfterExternalRestore": false,
+    "osKeychainRecoveryVerified": false,
+    "twoNativeRelaysAndNatsHealthy": true,
+    "crossRelayDeliveryVerified": false,
+    "highAvailabilityVerified": false,
+    "releaseRollbackVerified": false,
+    "productionReadinessAccepted": false,
+    "scaleReadinessAccepted": false,
+    "postBuildSourceDeltas": "Three test-only deltas: two integration fixture refinements and canonical whitespace-only formatting of the browser-core test file. All production inputs remain identical to the validated image.",
+    "clientReceiptGuardTestsPassed": 13,
+    "clientReceiptGuardReceipt": {
+      "path": "/private/tmp/zoen-native-policy-v119/client-guards-xci_0lfb/receipt.json",
+      "sha256": "4c5c70847aabfe8d10d95a424e2be64e6314bfe151296899b1ab716bb3b151bf"
+    },
+    "webAccountRecoveredAfterExternalRestart": true
+  }
+}

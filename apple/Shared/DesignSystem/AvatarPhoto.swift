@@ -7,12 +7,16 @@ import AppKit
 #endif
 
 /// Local avatar photos keyed by persona id. Until the core stores photos, this is the
-/// source of truth on device (Application Support/Roda/avatars/<id>.jpg).
+/// source of truth in the current account or demo container's avatars directory.
 enum AvatarPhotoStore {
     private static var dir: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("Roda/avatars", isDirectory: true)
+            .appendingPathComponent(SyncModel.mode == .demo ? "demo/avatars" : "account/avatars", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        var directory = base
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? directory.setResourceValues(values)
         return base
     }
 

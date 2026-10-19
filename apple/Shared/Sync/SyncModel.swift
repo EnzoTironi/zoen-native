@@ -1,6 +1,6 @@
 import SwiftUI
 import Observation
-import RodaCore
+import ClientCore
 
 /// The app's side of Zoen Sync: the account on this device, the relay connection, and
 /// the ephemeral signals (typing, what someone is doing, who's online) that never touch
@@ -11,18 +11,18 @@ import RodaCore
 final class SyncModel {
     enum Mode { case demo, real }
 
-    /// Demo data only behind a dev flag: `-RodaDemo YES` (screenshot stories imply it).
+    /// Demo data only behind a dev flag: `-Demo YES` (screenshot stories imply it).
     /// Without it the app is real: an account on this device, chats through the relay.
     nonisolated static var mode: Mode {
         let d = UserDefaults.standard
-        if d.bool(forKey: "RodaDemo") || d.bool(forKey: "RodaResetDemo") || d.bool(forKey: "RodaShowcase") || d.string(forKey: "RodaStory") != nil { return .demo }
+        if d.bool(forKey: "Demo") || d.bool(forKey: "ResetDemo") || d.bool(forKey: "Showcase") || d.string(forKey: "Story") != nil { return .demo }
         return .real
     }
 
-    /// The relay this device signs up with: `-RodaRelay URL`, else the build's
+    /// The relay this device signs up with: `-Relay URL`, else the build's
     /// `ZoenRelayURL`, else a relay on this Mac (`scripts/dev-stack.sh`).
     nonisolated static var defaultRelayURL: String {
-        if let s = UserDefaults.standard.string(forKey: "RodaRelay"), !s.isEmpty { return s }
+        if let s = UserDefaults.standard.string(forKey: "Relay"), !s.isEmpty { return s }
         if let s = Bundle.main.object(forInfoDictionaryKey: "ZoenRelayURL") as? String, !s.isEmpty { return s }
         return "http://127.0.0.1:8787"
     }
@@ -41,7 +41,7 @@ final class SyncModel {
     @ObservationIgnored let vault = KeychainVault()
     @ObservationIgnored private var bridge: SyncBridge?
     @ObservationIgnored weak var app: AppModel?
-    @ObservationIgnored private var core: RodaEngine?
+    @ObservationIgnored private var core: Client?
     @ObservationIgnored private var lastTypingSent: [String: Date] = [:]
     @ObservationIgnored private var refreshQueued = false
     @ObservationIgnored private var started = false
@@ -50,7 +50,7 @@ final class SyncModel {
     var isOnline: Bool { connection.state == "online" }
 
     /// Opens the account (if any) and starts syncing. Safe to call more than once.
-    func start(core: RodaEngine) {
+    func start(core: Client) {
         self.core = core
         account = core.account()
         guard let acct = account, !started else { return }
@@ -89,7 +89,7 @@ final class SyncModel {
 
     /// Creates this device's identity (keys go to the Keychain) and starts syncing. Works
     /// offline: the relay learns about you the first time it's reachable.
-    func createAccount(core: RodaEngine, name: String, handle: String, relay: String = SyncModel.defaultRelayURL) throws {
+    func createAccount(core: Client, name: String, handle: String, relay: String = SyncModel.defaultRelayURL) throws {
         account = try core.createAccount(name: name, handle: handle, relayUrl: relay, vault: vault)
         start(core: core)
         app?.refresh()
@@ -99,7 +99,7 @@ final class SyncModel {
         guard let core else { return }
         account = try core.updateProfile(name: name, handle: handle, bio: bio)
         if !bio.isEmpty, let id = account?.identityId {
-            UserDefaults.standard.set(bio, forKey: "RodaBio.\(id)")
+            UserDefaults.standard.set(bio, forKey: "Bio.\(id)")
         }
         app?.refresh()
     }

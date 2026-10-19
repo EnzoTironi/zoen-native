@@ -1,0 +1,17 @@
+{
+  "id": "pet",
+  "name": "Jumento do grupo",
+  "description": "Cuidar do bichinho e jogar Donkey Dash.",
+  "capabilities": [],
+  "allowedDomains": [],
+  "networkPurpose": "",
+  "linkDomains": [],
+  "sha256": "8446af6f7a3f35742d947580637797a42d068a60130081f7b1bf7da67068303a",
+  "bytes": 679327,
+  "deps": {
+    "react": "19.1.1",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "scheduler": "0.26.0",
+    "react-dom": "19.1.1"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "pet",
+  "name": "Jumento do grupo",
+  "description": "Cuidar do bichinho e jogar Donkey Dash.",
+  "entry": "src/entries/pet.tsx",
+  "capabilities": [],
+  "allowedDomains": [],
+  "linkDomains": [],
+  "maxKB": 768
+}

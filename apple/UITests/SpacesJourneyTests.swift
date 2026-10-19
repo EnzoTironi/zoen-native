@@ -7,11 +7,11 @@ final class SpacesJourneyTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = [
-            "-RodaFreshStart", "YES",
-            "-RodaDemo", "YES",
-            "-RodaTab", "chats",
+            "-FreshStart", "YES",
+            "-Demo", "YES",
+            "-Tab", "chats",
             "-AppleLanguages", "(en)",
-            "-RodaAppearance", "light",
+            "-Appearance", "light",
         ]
         app.launch()
 

@@ -12,28 +12,36 @@ use std::{
     time::Duration,
 };
 
+use event_log::{content::SignedContent, Author, Signer};
 use futures_util::{SinkExt, StreamExt};
-use roda_log::{content::SignedContent, Author, Signer};
-use roda_proto::{
-    auth_message, ClientFrame, Envelope, Op, Sequenced, ServerFrame, PROTOCOL_VERSION,
-};
-use roda_types::{EventBody, Identity, IdentityKind, Seen};
+use protocol::{auth_message, ClientFrame, Envelope, Op, Sequenced, ServerFrame, PROTOCOL_VERSION};
 use sqlx::{Connection, PgConnection};
 use tokio_tungstenite::tungstenite::Message;
+use types::{EventBody, Identity, IdentityKind, Seen};
 
 /// The relay binary, built from this checkout once per test run: a stale relay that
 /// predates a wire-type change silently drops new fields and breaks every signature.
 pub fn relay_bin() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
+    // A package-only build has a different feature graph from the workspace tests.
+    // cdylib dependencies emit un-hashed rlibs, so sharing the outer target would
+    // overwrite the metadata still needed by later workspace doctests.
+    let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("journey-relay");
     BUILT.call_once(|| {
         let ok = Command::new(env!("CARGO"))
-            .args(["build", "-q", "-p", "zoen-relay"])
+            .args(["build", "--locked", "-q", "-p", "zoen-relay"])
+            .arg("--manifest-path")
+            .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+            .arg("--target-dir")
+            .arg(&target)
             .status()
             .expect("cargo")
             .success();
         assert!(ok, "cargo build -p zoen-relay failed");
     });
-    PathBuf::from(env!("CARGO_BIN_EXE_zoen")).with_file_name("zoen-relay")
+    target
+        .join("debug")
+        .join(format!("zoen-relay{}", std::env::consts::EXE_SUFFIX))
 }
 
 struct PortReservation {
@@ -695,7 +703,7 @@ impl RawClient {
         c
     }
 
-    pub async fn request(&mut self, op: Op) -> Result<roda_proto::Reply, String> {
+    pub async fn request(&mut self, op: Op) -> Result<protocol::Reply, String> {
         self.send(&ClientFrame::Req { id: 1, op }).await;
         loop {
             if let ServerFrame::Res { id: 1, result } = self.recv().await {
@@ -819,7 +827,7 @@ impl RawClient {
     pub async fn publish_message(&mut self, space: &str, text: &str) -> String {
         let e = self.author.sign_event(
             space,
-            &roda_types::new_ulid(1),
+            &types::new_ulid(1),
             1,
             None,
             EventBody::MessagePosted {
@@ -836,7 +844,7 @@ impl RawClient {
     pub async fn publish_as(&mut self, space: &str, someone: &str, text: &str) -> String {
         let e = self.author.sign_event(
             space,
-            &roda_types::new_ulid(1),
+            &types::new_ulid(1),
             1,
             None,
             EventBody::MessagePosted {
@@ -864,17 +872,17 @@ impl RawClient {
         seen: Option<Seen>,
         body: EventBody,
     ) -> Result<Sequenced, String> {
-        let e =
-            self.author
-                .sign_event(space, &roda_types::new_ulid(now_ms()), now_ms(), seen, body);
+        let e = self
+            .author
+            .sign_event(space, &types::new_ulid(now_ms()), now_ms(), seen, body);
         self.publish_signed(e.content, e.sig, e.cert).await
     }
 
     /// Publishes bytes this client signed itself (any content a newer client could write).
     pub async fn publish_content(&mut self, content: Vec<u8>) -> Result<Sequenced, String> {
-        let sig = self.author.key.sign(&roda_log::content::signature_message(
+        let sig = self.author.key.sign(&event_log::content::signature_message(
             &content,
-            &roda_log::content::signed_hash(&content),
+            &event_log::content::signed_hash(&content),
         ));
         let cert = self.author.cert.clone();
         self.publish_signed(content, sig, cert).await
@@ -884,11 +892,11 @@ impl RawClient {
     pub async fn join(&mut self, space: &str, code: &str) -> Result<Sequenced, String> {
         let body = EventBody::MemberAdded {
             identity: self.identity(),
-            role: roda_types::Role::Member,
+            role: types::Role::Member,
         };
-        let e =
-            self.author
-                .sign_event(space, &roda_types::new_ulid(now_ms()), now_ms(), None, body);
+        let e = self
+            .author
+            .sign_event(space, &types::new_ulid(now_ms()), now_ms(), None, body);
         let mut env = Envelope::new(e.content, e.sig, e.cert, None).ok_or("not a v3 content")?;
         env.invite = Some(code.to_string());
         self.publish_env(env).await

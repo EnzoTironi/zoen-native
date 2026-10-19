@@ -12,14 +12,14 @@ doesn't stop the relay from omitting, reordering or forking history: it can reha
 variant and every check passes.
 
 ## Decision
-- **Event format v3** (`roda_log::content`). The author encodes `SignedContent` once as
+- **Event format v3** (`event_log::content`). The author encodes `SignedContent` once as
   protobuf: space, client id, author, device, time, causal link, payload. The content hash
   is `SHA-256("zoen-content-v3\0" ‖ bytes)` and the signature covers it. Every other field
   of an `Event` is a view decoded from those bytes; verification rejects a view that
   disagrees with them. Nobody re-encodes the bytes, so unknown fields and unknown body
   kinds survive every hop, and verification never depends on the verifier's schema.
 - **The body stays typed by the Rust enum**, encoded as JSON inside the protobuf `body`
-  field. The schema of the 15 body kinds stays in one place (`roda_types::EventBody`), and
+  field. The schema of the 15 body kinds stays in one place (`types::EventBody`), and
   a body kind this build doesn't know decodes to `EventBody::Unsupported { kind }`: it
   verifies, chains and syncs, it just isn't shown. A per-kind protobuf body can replace the
   JSON later behind the same oneof without touching signatures.
@@ -31,7 +31,7 @@ variant and every check passes.
   no link. A Space the device created but the relay hasn't confirmed yet links to the
   genesis it will get (the creator's `SpaceCreated` always lands at seq 0, so its chain
   hash is known in advance); offline-first still works.
-- **Wire protocol v2** (`roda_proto::wire`, `zoen.sync.v2`): one protobuf message per
+- **Wire protocol v2** (`protocol::wire`, `zoen.sync.v2`): one protobuf message per
   binary WebSocket frame, schema declared with `prost` derives next to the domain types so
   they can't drift. Field numbers are append-only.
 - **Version negotiation.** `Hello` carries the protocol version and capabilities; the relay
@@ -59,13 +59,13 @@ format bump (the existing `event_format` marker). From v3 on, no format change n
 reset: new fields and kinds pass through old relays and clients verbatim.
 
 ## Proof
-- `roda-log`: tampered bytes, a view that disagrees with the bytes, forged authors, a newer
+- `event-log`: tampered bytes, a view that disagrees with the bytes, forged authors, a newer
   client's unknown field and kind surviving JSON storage, a sequencer moving an event before
   what its author saw, words signed on one history shown on another, and the rule for
   unlinked events.
-- `roda-proto`: every client and server frame round-trips; an envelope crosses the wire
+- `protocol`: every client and server frame round-trips; an envelope crosses the wire
   byte for byte; garbage never panics the decoder.
-- `roda-ffi`: a device refuses a relay that hides a message and rehashes the chain.
+- `client-core`: a device refuses a relay that hides a message and rehashes the chain.
 - `zoen-cli/tests/journey_wire.rs` (real relay, real Postgres, real `zoen` processes): a
   newer client's event survives the relay and an older peer, who verifies it and replies on
   top; the relay refuses events signed on a history it doesn't have; an outdated client is

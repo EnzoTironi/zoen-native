@@ -1,0 +1,10 @@
+{
+  "id": "recipe",
+  "name": "Jantar",
+  "description": "Ingredientes, porções e modo cozinhar.",
+  "entry": "src/entries/recipe.tsx",
+  "capabilities": [],
+  "allowedDomains": [],
+  "linkDomains": [],
+  "maxKB": 768
+}

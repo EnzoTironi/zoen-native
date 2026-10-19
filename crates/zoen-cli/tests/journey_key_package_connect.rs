@@ -4,9 +4,9 @@
 
 mod common;
 use common::*;
+use event_log::{Author, Signer};
 use futures_util::StreamExt;
-use roda_log::{Author, Signer};
-use roda_proto::{Op, ServerFrame};
+use protocol::{Op, ServerFrame};
 use sha2::{Digest, Sha256};
 use std::time::Duration;
 

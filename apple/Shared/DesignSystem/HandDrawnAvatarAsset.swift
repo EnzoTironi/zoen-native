@@ -114,7 +114,7 @@ enum HandDrawnAvatarAsset {
     }
 
     static func pickAgent(handle: String, id: String, hintTags: [String] = []) -> Asset? {
-        if let saved = UserDefaults.standard.string(forKey: "RodaAgentAvatar.\(id)"),
+        if let saved = UserDefaults.standard.string(forKey: "AgentAvatar.\(id)"),
            let a = asset(named: saved) { return a }
         var tags = hintTags
         switch handle.lowercased() {
@@ -128,7 +128,7 @@ enum HandDrawnAvatarAsset {
     }
 
     static func pickGroup(spaceId: String, title: String, hintTags: [String] = []) -> Asset? {
-        if let saved = UserDefaults.standard.string(forKey: "RodaGroupAvatar.\(spaceId)"),
+        if let saved = UserDefaults.standard.string(forKey: "GroupAvatar.\(spaceId)"),
            let a = asset(named: saved) { return a }
         var tags = hintTags
         let t = title.lowercased()
@@ -162,10 +162,10 @@ enum HandDrawnAvatarAsset {
     }
 
     static func saveGroup(_ spaceId: String, assetName: String) {
-        UserDefaults.standard.set(assetName, forKey: "RodaGroupAvatar.\(spaceId)")
+        UserDefaults.standard.set(assetName, forKey: "GroupAvatar.\(spaceId)")
     }
     static func saveAgent(_ agentId: String, assetName: String) {
-        UserDefaults.standard.set(assetName, forKey: "RodaAgentAvatar.\(agentId)")
+        UserDefaults.standard.set(assetName, forKey: "AgentAvatar.\(agentId)")
     }
 
     static func stableHash(_ s: String) -> Int {

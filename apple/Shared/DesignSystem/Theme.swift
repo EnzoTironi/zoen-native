@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 #if canImport(UIKit)
 import UIKit
@@ -115,7 +115,7 @@ extension Font {
 
 // MARK: - Tempo
 
-enum RodaTime {
+enum MessageTime {
     static func short(_ ms: Int64) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
         let cal = Calendar.current

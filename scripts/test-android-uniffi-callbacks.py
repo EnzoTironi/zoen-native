@@ -41,7 +41,7 @@ class CallbackGenerationTest(unittest.TestCase):
             directory = Path(name)
             with self.assertRaises(ValueError):
                 callbacks.fix_directory(directory)
-            kotlin = directory / "xyz/tironi/zoen/core/roda_ffi.kt"
+            kotlin = directory / "xyz/tironi/zoen/core/client_core.kt"
             kotlin.parent.mkdir(parents=True)
             kotlin.write_text(ORIGINAL)
             unrelated = directory / "Other.kt"

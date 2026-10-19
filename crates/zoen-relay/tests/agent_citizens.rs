@@ -1,9 +1,9 @@
 //! Agent citizens in the directory (migration 0028): who may claim, define, pause and
 //! revoke an agent, and the runtime's cursors as the single source of truth.
-use roda_log::{agent_owner, Author, Signer};
-use roda_proto::AgentAction;
-use roda_types::{Identity, IdentityKind};
+use event_log::{agent_owner, Author, Signer};
+use protocol::AgentAction;
 use sqlx::{Connection, PgConnection, PgPool};
+use types::{Identity, IdentityKind};
 use zoen_relay::agents::{self, AgentCitizenError, CitizenClaim};
 use zoen_relay::db;
 

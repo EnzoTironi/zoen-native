@@ -209,7 +209,12 @@ class AgentPlannerTest {
     }
 
     @Test fun hikeUsesExplicitDriverAndRsvpWithoutInventingRealAddresses() {
-        fun person(name: String) = Persona(name, PersonaKind.PERSON, name, name.lowercase(), name.take(1), "#ffffff", null, "", null, null, null, false, false)
+        fun person(name: String) = Persona(
+            id = name, kind = PersonaKind.PERSON, name = name, handle = name.lowercase(),
+            initials = name.take(1), tintHex = "#ffffff", glyph = null, bio = "",
+            ownerId = null, ownerName = null, ownerTintHex = null,
+            photoSha256 = null, photoReady = false, photoMime = null, isMe = false, isMine = false,
+        )
         fun message(name: String, text: String, at: Long = 100) = TimelineEntry(name, 1uL, person(name), at, EntryKind.Message(text, null), Delivery.SENT)
         val entries = listOf(message("Lucas", "I can drive, room for 3"), message("Marina", "I'm in"), message("Ana", "conta comigo"))
         val demo = Json.parseToJsonElement(HikePlanner.plan(entries, 0, listOf("Enzo", "Marina"), true)!!).jsonObject

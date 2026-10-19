@@ -1,5 +1,5 @@
 import Foundation
-import RodaCore
+import ClientCore
 
 /// ⚠️ FALLBACK DETERMINÍSTICO — não é IA.
 ///

@@ -1,0 +1,18 @@
+[package]
+name = "miniapps"
+description = "Portable Zoen mini-app catalog, domain rules, resources, and privacy projections."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+types.workspace = true
+localization.workspace = true
+serde_json.workspace = true
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+sha2.workspace = true

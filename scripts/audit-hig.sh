@@ -27,7 +27,7 @@ trap 'rm -f -- "$HIG_OUTPUT"' EXIT
 # Advisory JSON only. Do not absorb findings into a baseline or change sources.
 if node "$TOOL" "$SOURCE" "$ROOT/tools/hig-audit/references" \
   --json --no-config --no-baseline \
-  --exclude '**/RodaFFI.generated.swift' \
+  --exclude '**/ClientFFI.generated.swift' \
   --exclude 'Tests/**' --exclude 'MacUITests/**' > "$HIG_OUTPUT"; then
   cat "$HIG_OUTPUT"
 else

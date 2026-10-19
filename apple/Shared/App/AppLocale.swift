@@ -1,5 +1,5 @@
 import Foundation
-import RodaCore
+import ClientCore
 
 /// The app's language. English is the development language; Portuguese (pt-BR) is the
 /// second full translation (Localizable.xcstrings). The Rust core, the Foundation Models

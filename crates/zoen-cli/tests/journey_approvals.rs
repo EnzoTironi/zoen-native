@@ -2,13 +2,13 @@
 //! These are core approval effects, not cloud model or provider billing proof.
 
 mod common;
+use client_core::{Engine, Ingest, RequestDecision, RequestStatus};
 use common::{RawClient, World};
-use roda_ffi::{Engine, Ingest, RequestDecision, RequestStatus};
-use roda_log::{Author, Signer};
-use roda_proto::{DeviceCertificate, Op, Reply, Sequenced};
-use roda_types::*;
+use event_log::{Author, Signer};
+use protocol::{DeviceCertificate, Op, Reply, Sequenced};
 use std::path::Path;
 use std::time::Duration;
+use types::*;
 
 struct Owner {
     root: Signer,
@@ -163,7 +163,7 @@ fn fault(path: &Path, sql: &str) {
         .unwrap();
 }
 
-async fn publish_after_restart(person: &mut RawClient, env: roda_proto::Envelope) -> Sequenced {
+async fn publish_after_restart(person: &mut RawClient, env: protocol::Envelope) -> Sequenced {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     loop {
         match person.publish_env(env.clone()).await {

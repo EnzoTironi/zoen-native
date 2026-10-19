@@ -4,29 +4,32 @@ Talk to people and agents in the same place. Keep the plans, pages, files and mi
 
 © 2026 Enzo Tironi. All rights reserved. Public for viewing only. See [LICENSE](LICENSE).
 
-Zoen is being built as a complete product for one billion monthly users. The shared Rust core powers native iPhone and Mac clients. Android and the reusable web shell are being integrated with the same conversation and document model.
+The shared Rust core powers the existing native clients and the Expo application for iOS, Android and Web. Current validation covers those three Expo platforms; desktop replacement is deferred.
 
 ## Current progress
 
-Reviewed on 12 October 2026 against the verified product baseline [`ff5b519`](https://github.com/EnzoTironi/zoen-native/commit/ff5b519f1734e9d28018ab33d3919d12c9147e45). Native/web consolidation [PR 67](https://github.com/EnzoTironi/zoen-native/pull/67), bounded confirmed Plan history [PR 68](https://github.com/EnzoTironi/zoen-native/pull/68), keyboard controls [PR 69](https://github.com/EnzoTironi/zoen-native/pull/69) and native motion [PR 71](https://github.com/EnzoTironi/zoen-native/pull/71) are merged. PR 71's [complete Linux run](https://github.com/EnzoTironi/zoen-native/actions/runs/38309704131) passed **573 standard tests, zero failed or filtered, with one original cross-process helper ignored**, including all 198 actual FFI cases. Its tested, published and merged whole trees match. Custom log-store 10 and ownership 17 cases retain separate counts.
+The [Expo acceptance manifest](apps/zoen/acceptance.json) records current artifacts,
+required journeys and exact evidence. Full comparative product parity is incomplete.
 
-The merged native interface packages Core193. Its [reviewed images and screenshot walkthroughs](https://github.com/EnzoTironi/zoen-native/pull/67) cover exact Plan save/cold reopen/removal/restore, scoped Escape, themes, chat opening, Cards/List/Cards and actual TextKit typing, Unicode paste, undo and saved-version restoration. [PR 69's evidence](https://github.com/EnzoTironi/zoen-native/pull/69) verifies request review/back with focus return, change-event opening and quoted-message navigation. PR 71 adds three full arm64 Debug builds and bounded chat/thread/notification journeys. Its [settings evidence](https://github.com/EnzoTironi/zoen-native/pull/71#issuecomment-6132977105) also covers actual Reduce Motion, Reduce Transparency and Increase Contrast checks, with all temporary preferences restored.
+| Platform           | Accepted boundary                                                                                                                                                                                                                            | Remaining scope                                                                                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iPhone             | Signed v85 whole-application baseline; later v89–v92 bounded Excalidraw/MCP and preserving Home checks.                                                                                                                                      | v94/v95 Page-input/session foundations remain source/host proof; integrated editor recovery and remaining product journeys need signed runtime evidence. |
+| Web                | 22 release checkpoints pass in English and Portuguese locally and in CI, including actual Excalidraw canvas edits, exact native-peer bytes and cold reload.                                                                                  | Broader drawing/media failures, rich file replies/captions/threads, startup offline recovery and broad accessibility remain open.                        |
+| Android            | Actual API35 Debug app passed linking, history recovery, Page creation/read, header/status checks and local erasure with retained peer history. Packaged JNI and 14 JVM tests passed; independent CI also produced the minified Release APK. | Release runtime/performance, API28/physical devices and remaining media/platform features need acceptance.                                               |
+| Backend            | Native Rust with PostgreSQL/FDB/S3-compatible storage; the local production-like composition is being qualified.                                                                                                                             | Public provider login, complete production/restore/load evidence remain open.                                                                            |
+| Static Web hosting | app.tryzoen.com has dated public asset/header/integrity evidence.                                                                                                                                                                            | A hosted frontend does not qualify the native backend.                                                                                                   |
 
-The 12 October [shared-main checkpoint and complete handoff](docs/dev/handoff-2026-10-12.md) includes the current backend, Android, authenticated web and Apple work. Fresh checks pass 13 web behavior tests, 17 portable MLS tests, three web-Core Rust tests, seven attachment journeys, five push-boundary journeys and six Android verifier cases. Current full Core/CLI execution, generated bindings, browser pairing, Android device validation, native UI cleanup, push delivery, Release and full HIG remain open. The user requested pausing after publishing this checkpoint. New work uses one branch per unit. The coordinator merges that branch into `main` after the unit's proof, following the pstack playbooks.
+See [Web acceptance](docs/dev/expo-web-acceptance.md),
+[Android acceptance](docs/dev/expo-android-acceptance.md),
+[iPhone native evidence](docs/dev/expo-native-surfaces.md) and
+[static Web hosting](infra/cloudflare/README.md) for the boundaries and reproduction.
+The custom Cloudflare backend port is retired; native development and operation use
+the [owned local environment](infra/local/compose.yaml).
+Builds and bounded checks do not establish complete replacement or billion-user capacity.
 
-| Area | Implemented and verified boundary | Remaining completion gates |
-| --- | --- | --- |
-| Messaging | Accounts, signed events, durable outbox, relay sync and OpenMLS encryption. Reviewed claim/M2 journeys retain the original 50-group workload. | Compatible production rollout, release journeys and sustained distributed capacity. |
-| Devices and recovery | Enrollment/revocation, encrypted history transfer, backups and recovery after loss of every original MLS device. | Native recovery/device controls, current Android device proof and production backup authority. |
-| Relay | Renewable ownership leases, transaction fencing, bounded forwarding and retry deduplication. | TLS workloads, cell placement, regional recovery, operating SLOs and complete costs. |
-| Apple clients | PRs 67, 69 and 71 integrate unified Chats, shared themes, transparent overlays, pinned cards, notifications and keyboard controls. Scoped Core216 native builds also pass. | Current bounded media APIs, physical iOS, Release, complete accessibility/settings and remaining product workflows. |
-| Android | [PR 41](https://github.com/EnzoTironi/zoen-native/pull/41) retains Android 28/35 and Rust CI. Current Plan and generated-ABI verification units are on shared main for integration. | Fresh bindings and current-main builds/device journeys, release and public relay compatibility. |
-| Live Pages and Plans | Shared observed document session, encrypted drafts/retries/versions, typed Plan reads and common cards. Offline legacy edits, validated cache repair and private authenticated history prefixes are integrated. | Canonical Plan writers/history/approvals, complete block UX, comments/nested pages/live updates and two-device convergence. |
-| Web | Themed shell and authenticated browser source; fresh typecheck/13 TS tests, 17 portable MLS tests and three web-Core Rust tests pass. | Real pairing/MLS messaging and reload/reconnect journeys, shared editor and native-equivalent accessibility/workflows. |
-| Agents | Approval/authorization, financial claims and certified-runtime source are merged through PR 63. Scoped canonical decisions pass 216 local FFI cases, but PR 70's full hosted run failed a file-import journey. | Fix and verify that failure on current main; canonical writers, managed custody/continuity, productive model/tool/approval lifecycle and live provider reconciliation. |
-| Media, push and shared resources | Encrypted blob, file, sandbox and infrastructure foundations. | Apple photo/voice delivery, APNs/FCM, remote MCP/catalog, community moderation, commerce and deployment/restore drills. |
-
-Production and billion-user capacity require deployment, failure-recovery and cost evidence.
+The earlier merged-client results retain their dated attribution in the
+[12 October handoff](docs/dev/handoff-2026-10-12.md) and the
+[immutable prior README](https://github.com/EnzoTironi/zoen-native/blob/e76c74be4af4bfe483f4de4b63b6f932a83f0d8b/README.md).
 
 ## Product navigation
 
@@ -48,20 +51,21 @@ The certified runtime reads reply receipts in batches of at most 64 real history
 Run the receipt and fork regressions with:
 
 ```sh
-cargo test --locked -j2 -p roda-ffi --lib runtime_core::tests::receipt_prefix_keeps_exact_pending_bytes_and_resumes_beyond_64_real_positions -- --exact --test-threads=1
-cargo test --locked -j2 -p roda-ffi --lib runtime_core::tests -- --test-threads=1
-cargo test --locked -j2 -p roda-ffi --lib mls::tests -- --test-threads=1
+cargo test --locked -j2 -p client-core --lib runtime_core::tests::receipt_prefix_keeps_exact_pending_bytes_and_resumes_beyond_64_real_positions -- --exact --test-threads=1
+cargo test --locked -j2 -p client-core --lib runtime_core::tests -- --test-threads=1
+cargo test --locked -j2 -p client-core --lib mls::tests -- --test-threads=1
 ```
+
 ### Markdown import performance
 
 `journey_files` measures import through relay acceptance of every sealed page. It exports every page on another device and compares the original bytes. The default hosted budget is 250 ms per page. The F5 measurement corpus had 94 UTF-8 Markdown files under `docs`, with 1,137,578 bytes in total. F7 adds documentation to the imported corpus; the aggregate candidate needs fresh corpus counts, hashes, timing and round-trip evidence.
 
-Debug import spends most of its time on one CPU in Loro documents, message cryptography, and durable-queue decoding. `Cargo.toml` sets `opt-level = 3` for the sampled dependencies `loro-internal`, `loro-kv-store`, `sha2`, `chacha20`, `poly1305`, `serde_json`, `memchr`, and `foldhash`. The four core libraries `roda-docs`, `roda-log`, `roda-mls`, and `roda-store` have the same override because generic code uses the profile of the crate that instantiates it. [Cargo profile overrides](https://doc.rust-lang.org/cargo/reference/profiles.html#overrides-and-generics) explain that boundary. Debug assertions and overflow checks retain the development defaults. The application publish window is five messages per Space, matching the MLS receiver's out-of-order tolerance.
+Debug import spends most of its time on one CPU in Loro documents, message cryptography, and durable-queue decoding. `Cargo.toml` sets `opt-level = 3` for the sampled dependencies `loro-internal`, `loro-kv-store`, `sha2`, `chacha20`, `poly1305`, `serde_json`, `memchr`, and `foldhash`. The four core libraries `documents`, `event-log`, `mls`, and `store` have the same override because generic code uses the profile of the crate that instantiates it. [Cargo profile overrides](https://doc.rust-lang.org/cargo/reference/profiles.html#overrides-and-generics) explain that boundary. Debug assertions and overflow checks retain the development defaults. The application publish window is five messages per Space, matching the MLS receiver's out-of-order tolerance.
 
 Compare five runs of `cargo test --locked -j2 -p zoen-cli --test journey_files -- --test-threads=1 --nocapture` on each revision. Keep the Rust toolchain, debug settings, two build jobs, disabled incremental compilation, and private Postgres and FoundationDB instances identical. Record the median and range of `IMPORT`, the successful byte count from `ROUND TRIP`, and compile cost from a separate `--timings` run. Profile CPU separately from reported timings. Keep the corpus unchanged between sides. These notes live in the root README so documentation does not add a page to that corpus.
 
 ## Documentation
 
-Start with the [documentation index](docs/README.md), [current roadmap](docs/roadmap-status.md), [architecture](docs/architecture.md) and [system design](docs/system-design.md). The [Live Page contract](docs/product/live-pages.md), [session API](docs/dev/live-page-session.md) and [HIG matrix](docs/product/hig-compliance.md) separate implemented behavior from required acceptance. The [source auditor](tools/hig-audit/README.md) is advisory. [Dated history](docs/history/roadmap-2026-10-12-before-consolidation.md) preserves older results.
+Start with the [documentation index](docs/README.md), [current product checkpoint](docs/dev/zoen-product-progress.md), [current roadmap](docs/roadmap-status.md), [architecture](docs/architecture.md) and [system design](docs/system-design.md). The [Live Page contract](docs/product/live-pages.md), [session API](docs/dev/live-page-session.md) and [HIG matrix](docs/product/hig-compliance.md) separate implemented behavior from required acceptance. The [source auditor](tools/hig-audit/README.md) is advisory. [Dated history](docs/history/roadmap-2026-10-12-before-consolidation.md) preserves older results.
 
-The product and built-in agent are Zoen. Technical `roda-*`, `RodaCore` and some preference/protocol identifiers still need the [atomic naming cutover](docs/dev/naming.md). Zoen has not launched: the [prelaunch policy](docs/dev/prelaunch-policy.md) requires direct caller/test updates and coordinated disposable database resets, without compatibility aliases or dual reads/writes.
+The product and built-in agent are Zoen. Internal modules use purpose-based names such as `miniapps`, `protocol` and `client-core`; see the [naming policy](docs/dev/naming.md). Zoen has not launched: the [prelaunch policy](docs/dev/prelaunch-policy.md) requires direct caller/test updates and coherent disposable fixtures, without compatibility aliases or dual reads/writes. Native artifacts must be regenerated and verified after interface changes.

@@ -38,7 +38,8 @@ import java.util.Locale
 class OwnerAgentNoteCardTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private val agent = Persona("agenda", PersonaKind.AGENT, "Agenda do Bruno", "agenda_bruno", "A", "#19B5A5", null, "", "bruno", "Bruno", null, false, true)
+    private val agent = Persona("agenda", PersonaKind.AGENT, "Agenda do Bruno", "agenda_bruno", "A", "#19B5A5", null, "", "bruno", "Bruno", null,
+        photoSha256 = null, photoReady = false, photoMime = null, isMe = false, isMine = true)
 
     @Test fun parsesOnlyTheKnownNoteShapes() {
         assertEquals(OwnerAgentNote.Ask("s1", "carla", "Oi"), OwnerAgentNote.parse("""{"ask_owner":{"space":"s1","from":"carla","draft":"Oi","rule":"r"}}"""))

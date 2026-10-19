@@ -1,20 +1,20 @@
 //! Signed HTTP admission uses the durable device row, even when the device keeps its key.
 
 use async_trait::async_trait;
-use reqwest::{Method, Response, StatusCode};
-use roda_log::{Author, Signer};
-use roda_proto::{
+use event_log::{Author, Signer};
+use protocol::{
     blob_put_message,
     experiments::{report_message, unit_for, ClientReport, Health},
     transfer_message, Envelope, InviteCreated, Sequenced,
 };
-use roda_types::{Identity, IdentityKind, Role};
+use reqwest::{Method, Response, StatusCode};
 use sha2::{Digest, Sha256};
 use sqlx::{postgres::PgPoolOptions, Connection, PgConnection};
 use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use types::{Identity, IdentityKind, Role};
 use zoen_relay::{
     analytics, db, fanout, limits,
     log::{InviteInfo, LogStore, Reject, Sequencing, StoreError},
@@ -88,6 +88,14 @@ struct TestRelay {
 
 impl TestRelay {
     async fn new() -> Self {
+        Self::with_store(Arc::new(object_store::memory::InMemory::new())).await
+    }
+
+    async fn with_store(blobs: Arc<dyn object_store::ObjectStore>) -> Self {
+        Self::configured(blobs, "").await
+    }
+
+    async fn configured(blobs: Arc<dyn object_store::ObjectStore>, limit_spec: &str) -> Self {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let admin_url = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
         let database = format!(
@@ -115,17 +123,18 @@ impl TestRelay {
                 .unwrap()
         };
         let state = Arc::new(AppState {
+            auth: zoen_relay::auth::Service::disabled(),
             analytics: analytics::Analytics::load(&pool).await.unwrap(),
             pool,
             session_auth: auth_pool(),
             delivery_auth: auth_pool(),
             log: Arc::new(UnusedLog),
             fanout: fanout::Fanout::local("http-revocation".into()),
-            limits: limits::Limits::from_spec("").unwrap(),
+            limits: limits::Limits::from_spec(limit_spec).unwrap(),
             client_ip_header: None,
             relay_name: "test-relay".into(),
             metrics: metrics::Metrics::default(),
-            blobs: Arc::new(object_store::memory::InMemory::new()),
+            blobs,
             backup_vault: None,
             backup_settings: Default::default(),
             apple_app_ids: Vec::new(),
@@ -202,6 +211,7 @@ impl TestRelay {
             .as_millis() as i64;
         self.client
             .request(method, format!("{}{path}", self.url))
+            .header("origin", "https://app.tryzoen.com")
             .header("x-zoen-device", author.device.as_deref().unwrap())
             .header("x-zoen-ts", ts.to_string())
             .header("x-zoen-sig", author.key.sign(&message(ts)))
@@ -227,11 +237,95 @@ impl TestRelay {
     }
 }
 
+#[path = "http_device_revocation/media_fixture.rs"]
+mod media_fixture;
+#[path = "http_device_revocation/transfer_fixture.rs"]
+mod transfer_fixture;
+
+#[tokio::test]
+async fn provider_auth_failures_keep_wire_contract_and_retry_policy() {
+    let test = TestRelay::new().await;
+    // No provider is configured in this fixture. The HTTP boundary still applies
+    // privacy headers and admission limits before any provider or database work.
+    for attempt in 0..11 {
+        let response = test
+            .client
+            .post(format!("{}/v1/auth/challenge", test.url))
+            .header("content-type", "application/json")
+            .body(serde_json::json!({"provider":"google","client":"ios"}).to_string())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        assert_eq!(response.headers()["pragma"], "no-cache");
+        assert_eq!(response.headers()["x-content-type-options"], "nosniff");
+        let expected = if attempt < 10 {
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+            assert!(response.headers().get("retry-after").is_none());
+            "provider_not_configured"
+        } else {
+            assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+            assert!(
+                response.headers()["retry-after"]
+                    .to_str()
+                    .unwrap()
+                    .parse::<u64>()
+                    .unwrap()
+                    >= 1
+            );
+            "rate_limited"
+        };
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&response.bytes().await.unwrap()).unwrap(),
+            serde_json::json!({"error":expected})
+        );
+    }
+    let malformed = test.client
+        .post(format!("{}/v1/auth/verify", test.url))
+        .header("content-type", "application/json")
+        .body(serde_json::json!({"challenge_id":"bad","state":"bad","id_token":"must-not-be-reflected"}).to_string())
+        .send().await.unwrap();
+    assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&malformed.bytes().await.unwrap()).unwrap(),
+        serde_json::json!({"error":"invalid_authentication"})
+    );
+    test.close().await;
+}
+
 #[tokio::test]
 async fn revoked_device_cannot_upload_or_delete_or_report_with_valid_signatures() {
     let test = TestRelay::new().await;
     let author = test.register().await;
     let transfer = Signer::generate().id();
+
+    for (path, method) in [
+        (format!("/v1/transfer/{transfer}/0"), "PUT"),
+        (format!("/v1/transfer/{transfer}"), "DELETE"),
+    ] {
+        let preflight = test
+            .client
+            .request(Method::OPTIONS, format!("{}{path}", test.url))
+            .header("origin", "https://app.tryzoen.com")
+            .header("access-control-request-method", method)
+            .header(
+                "access-control-request-headers",
+                "content-type,x-zoen-device,x-zoen-ts,x-zoen-sig",
+            )
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(preflight.status(), StatusCode::OK);
+        assert_eq!(preflight.headers()["access-control-allow-origin"], "*");
+        assert!(preflight.headers()["access-control-allow-methods"]
+            .to_str()
+            .unwrap()
+            .contains(method));
+        assert!(preflight
+            .headers()
+            .get("access-control-allow-credentials")
+            .is_none());
+    }
 
     for revoked in [false, true] {
         if revoked {
@@ -309,6 +403,9 @@ async fn revoked_device_cannot_upload_or_delete_or_report_with_valid_signatures(
             ("report POST", report, StatusCode::OK),
             ("transfer DELETE", delete, StatusCode::NO_CONTENT),
         ] {
+            if endpoint.starts_with("transfer") {
+                assert_eq!(response.headers()["access-control-allow-origin"], "*");
+            }
             assert_eq!(
                 response.status(),
                 if revoked {
@@ -326,10 +423,12 @@ async fn revoked_device_cannot_upload_or_delete_or_report_with_valid_signatures(
     let retained = test
         .client
         .get(format!("{}/v1/transfer/{transfer}/0", test.url))
+        .header("origin", "https://app.tryzoen.com")
         .send()
         .await
         .unwrap();
     assert_eq!(retained.status(), StatusCode::OK);
+    assert_eq!(retained.headers()["access-control-allow-origin"], "*");
     assert_eq!(
         retained.bytes().await.unwrap().as_ref(),
         b"ciphertext before revocation"

@@ -3,6 +3,7 @@ package xyz.tironi.zoen
 import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -16,6 +17,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.json.JSONObject
 import xyz.tironi.zoen.pages.PageDraft
 import xyz.tironi.zoen.pages.PageDraftStore
 import xyz.tironi.zoen.pages.PageEditing
@@ -99,10 +101,40 @@ class PageDraftRecoveryJourneyTest {
         val fresh = runBlocking { app.repository.query { it.page(itemId) } }
         assertEquals(saved.contentHash, fresh.contentHash)
         assertEquals(saved.version, fresh.version)
-        compose.onNodeWithTag("page-block:${fresh.blocks.first { it.kind == "paragraph" }.id}").performTextReplacement("Editing resumed after explicit discard")
-        compose.onNodeWithTag("page-save").performClick()
-        compose.waitUntil(10_000) { runBlocking { app.repository.query { it.page(itemId).version > saved.version } } }
-        assertTrue(runBlocking { app.repository.query { it.verifyLog(fresh.spaceId).valid } })
+        val resumedText = "Editing resumed after explicit discard"
+        val paragraphId = fresh.blocks.first { it.kind == "paragraph" }.id
+        try {
+            compose.onNodeWithTag("page-block:$paragraphId").performTextReplacement(resumedText)
+            compose.onNodeWithTag("page-block:$paragraphId").assertTextContains(resumedText)
+            compose.waitUntil(10_000) {
+                runBlocking { app.repository.query { it.page(itemId).version > saved.version } } ||
+                    runCatching { compose.onNodeWithTag("page-save").assertIsEnabled() }.isSuccess
+            }
+            // Normal autosave may already have committed while the semantics tree settled.
+            if (runBlocking { app.repository.query { it.page(itemId).version == saved.version } }) {
+                compose.onNodeWithTag("page-save").performClick()
+            }
+            compose.waitUntil(10_000) { runBlocking { app.repository.query { it.page(itemId).version > saved.version } } }
+            val committed = runBlocking { app.repository.query { it.page(itemId) } }
+            assertEquals(resumedText, committed.blocks.first { it.id == paragraphId }.text)
+            assertTrue(runBlocking { app.repository.query { it.verifyLog(fresh.spaceId).valid } })
+        } catch (error: Throwable) {
+            runCatching {
+                val observed = runBlocking { app.repository.query { it.page(itemId) } }
+                val checkpoint = runCatching { store.load(app.repository.preferences, legacyKey) }
+                val status = JSONObject().put("expectedVersionAfter", saved.version.toLong())
+                    .put("observedVersion", observed.version.toLong()).put("ready", observed.ready)
+                    .put("unsaved", observed.unsaved).put("pendingSync", observed.pendingSync)
+                    .put("inputPending", observed.inputPending).put("inputRevision", observed.inputRevision)
+                    .put("canEdit", observed.canEdit).put("saveError", observed.saveError ?: JSONObject.NULL)
+                    .put("hasExpectedText", observed.blocks.any { it.id == paragraphId && it.text == resumedText })
+                    .put("draftReadable", checkpoint.isSuccess).put("draftPresent", checkpoint.getOrNull() != null)
+                    .put("saveEnabled", runCatching { compose.onNodeWithTag("page-save").assertIsEnabled() }.isSuccess)
+                Log.e("PageDraftRecoveryJourney", "Final save observation: $status")
+                capture("recovered-stale-draft-final-save-failure")
+            }.exceptionOrNull()?.let(error::addSuppressed)
+            throw error
+        }
     }
 
     @Test fun unreadableDraftCanBeExportedAsCiphertextAndDiscardedWithoutASharedWrite() {

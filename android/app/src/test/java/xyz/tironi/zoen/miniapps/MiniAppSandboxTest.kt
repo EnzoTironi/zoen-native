@@ -52,4 +52,15 @@ class MiniAppSandboxTest {
         assertTrue(MiniAppSandbox.openLink("zoen://app/it_123"))
         listOf("javascript:alert(1)", "intent://anything", "file:///data/data/xyz.tironi.zoen/", "content://contacts/1", "zoen://app/../../account", "https://user:secret@example.com").forEach { assertFalse(it, MiniAppSandbox.openLink(it)) }
     }
+    @Test fun protocolThemeContainsOnlyMcpStyleKeysWhileDocumentKeepsNativeOverlays() {
+        val standard = setOf("--font-sans", "--color-background-primary", "--color-background-secondary", "--color-text-primary", "--color-text-secondary", "--color-border-primary")
+        for (dark in listOf(false, true)) {
+            val protocol = MiniAppAppearance.protocolVariables(dark)
+            assertEquals(standard, protocol.keys)
+            assertTrue(protocol.values.all { it.isNotEmpty() })
+            val document = MiniAppSandbox.document("<html><head></head></html>", emptySet(), dark)
+            assertTrue(document.contains("root.style.setProperty('--z-glass-filter', 'none')"))
+            assertTrue(document.contains("root.style.setProperty('--z-glass', '${if (dark) "#252A22" else "#F0EEE6"}')"))
+        }
+    }
 }

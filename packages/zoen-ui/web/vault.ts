@@ -1,5 +1,6 @@
 import { bytes, hex, object } from './boundary.ts';
 import { parseSession, type StoredSession } from './session.ts';
+import {parseAuthority,type SealedAuthority} from './authority.ts';
 
 const DB = 'zoen-browser-v1';
 const AAD = new TextEncoder().encode('zoen-browser-session-v1');
@@ -52,6 +53,11 @@ export class BrowserVault {
     this.publicSigningKey = publicSigningKey;
     this.sealingKey = sealingKey;
   }
+  private terminal = false;
+  private erasure: Promise<void> | null = null;
+  private active(): void {
+    if (this.terminal) throw new Error('This browser vault is closed.');
+  }
   private readonly db: IDBDatabase;
   private readonly signingKey: CryptoKey;
   private readonly publicSigningKey: CryptoKey;
@@ -66,14 +72,15 @@ export class BrowserVault {
     const store = reading.objectStore('vault');
     const keysRead = request(store.get('keys'));
     const sessionRead = request(store.get('session'));
-    const [keys, session]: [unknown, unknown] = await Promise.all([keysRead, sessionRead]);
+    const authorityRead=request(store.get('authority'));
+    const [keys, session, authority]: [unknown, unknown,unknown] = await Promise.all([keysRead, sessionRead,authorityRead]);
     await readDone;
     if (keys !== undefined) {
       const record = object(keys);
       return new BrowserVault(db, validKey(record.privateKey, 'Ed25519', 'private'),
         validKey(record.publicKey, 'Ed25519', 'public'), validKey(record.sealingKey, 'AES-GCM', 'secret'));
     }
-    if (session !== undefined) { db.close(); throw new Error('This browser session is missing its protected keys. Restore the browser data or pair a new device.'); }
+    if (session !== undefined||authority!==undefined) { db.close(); throw new Error('This browser session is missing its protected keys. Restore the browser data or pair a new device.'); }
     const signing = await crypto.subtle.generateKey('Ed25519', false, ['sign', 'verify']);
     if (!('privateKey' in signing)) throw new Error('This browser cannot create an Ed25519 device.');
     const sealingKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
@@ -86,14 +93,39 @@ export class BrowserVault {
   }
 
   async device(): Promise<string> {
+    this.active();
     return hex(new Uint8Array(await crypto.subtle.exportKey('raw', this.publicSigningKey)));
   }
 
+  /** Structured-cloned into the worker; the nonextractable key never becomes bytes. */
+  authorityKey():CryptoKey{this.active();return this.sealingKey;}
+
+  async authority():Promise<SealedAuthority|null>{
+    this.active();
+    const transaction=this.db.transaction('vault','readonly');const done=completed(transaction);
+    const value:unknown=await request(transaction.objectStore('vault').get('authority'));await done;
+    return value===undefined?null:parseAuthority(value);
+  }
+
+  async preparePrimary(session:Extract<StoredSession,{kind:'provider_pending'}>,authority:SealedAuthority,signal?:AbortSignal):Promise<void>{
+    this.active();signal?.throwIfAborted();const record=parseAuthority(authority);
+    if(record.device!==await this.device()||record.identity!==session.account.identity||record.device!==session.account.device)throw new Error('A conta mudou durante a entrada.');
+    const encrypted=await sealSession(session,this.sealingKey);this.active();signal?.throwIfAborted();
+    const transaction=this.db.transaction('vault','readwrite',{durability:'strict'});const done=completed(transaction);
+    const abort=()=>{try{transaction.abort();}catch{}};signal?.addEventListener('abort',abort,{once:true});
+    try{const store=transaction.objectStore('vault');store.add(record,'authority');store.put(encrypted,'session');await done;}
+    finally{signal?.removeEventListener('abort',abort);}
+  }
+
   async sign(payload: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
-    return new Uint8Array(await crypto.subtle.sign('Ed25519', this.signingKey, Uint8Array.from(payload)));
+    this.active();
+    const signature = new Uint8Array(await crypto.subtle.sign('Ed25519', this.signingKey, Uint8Array.from(payload)));
+    if (this.terminal) { signature.fill(0); this.active(); }
+    return signature;
   }
 
   async load(): Promise<StoredSession> {
+    this.active();
     const transaction = this.db.transaction('vault', 'readonly');
     const done = completed(transaction);
     const encrypted: unknown = await request(transaction.objectStore('vault').get('session'));
@@ -103,8 +135,10 @@ export class BrowserVault {
   }
 
   async save(session: StoredSession, signal?: AbortSignal): Promise<void> {
+    this.active();
     signal?.throwIfAborted();
     const encrypted = await sealSession(session, this.sealingKey);
+    this.active();
     signal?.throwIfAborted();
     const transaction = this.db.transaction('vault', 'readwrite', { durability: 'strict' });
     const done = completed(transaction);
@@ -116,10 +150,20 @@ export class BrowserVault {
     } finally { signal?.removeEventListener('abort', abort); }
   }
 
-  close(): void { this.db.close(); }
+  close(): void { this.terminal = true; this.db.close(); }
 
-  async erase(): Promise<void> {
-    this.db.close();
-    await request(indexedDB.deleteDatabase(DB));
+  erase(): Promise<void> {
+    // Fence encryption already in flight before awaiting any storage work. A
+    // queued write transaction finishes before this clear; a later write is refused.
+    this.terminal = true;
+    if (this.erasure) return this.erasure;
+    this.erasure = (async () => {
+      const transaction = this.db.transaction('vault', 'readwrite', { durability: 'strict' });
+      const done = completed(transaction);
+      transaction.objectStore('vault').clear();
+      await done;
+      this.db.close();
+    })().catch(error => { this.erasure = null; throw error; });
+    return this.erasure;
   }
 }

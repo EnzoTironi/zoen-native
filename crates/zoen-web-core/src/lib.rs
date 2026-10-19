@@ -3,10 +3,12 @@
 mod client;
 mod link;
 pub mod media;
+mod primary;
 mod wire;
 
-pub use client::{Client, Update};
+pub use client::{Client, DocumentResponse, Update};
 pub use link::{complete_link, create_link, LinkedAccount, PendingLink};
+pub use primary::Primary;
 pub use wire::{decode_server, hello, request, ServerMessage};
 
 #[cfg(target_arch = "wasm32")]
@@ -29,14 +31,14 @@ mod browser {
                 .map_err(|_| SignerError::SigningError)?
                 .to_vec();
             if signature.len() != 64
-                || !roda_log::verify_sig(&self.public, payload, &hex::encode(&signature))
+                || !event_log::verify_sig(&self.public, payload, &hex::encode(&signature))
             {
                 return Err(SignerError::InvalidSignature);
             }
             Ok(signature)
         }
         fn signature_scheme(&self) -> openmls_traits::types::SignatureScheme {
-            roda_mls::SUITE.signature_algorithm()
+            mls::SUITE.signature_algorithm()
         }
     }
 
@@ -50,27 +52,104 @@ mod browser {
         Ok(value as i64)
     }
 
+    fn session_language(locale: &str) -> Result<localization::Lang, JsValue> {
+        match locale {
+            "en" => Ok(localization::Lang::En),
+            "pt-BR" => Ok(localization::Lang::Pt),
+            _ => Err(error("invalid browser session language")),
+        }
+    }
+
+    #[wasm_bindgen]
+    pub struct BrowserPrimary {
+        primary: super::Primary,
+        lang: localization::Lang,
+    }
+    #[wasm_bindgen]
+    impl BrowserPrimary {
+        #[wasm_bindgen(constructor)]
+        pub fn new(
+            device: &str,
+            relay: &str,
+            name: &str,
+            locale: &str,
+        ) -> Result<BrowserPrimary, JsValue> {
+            let lang = session_language(locale)?;
+            let _language = localization::enter(lang);
+            Ok(Self {
+                primary: super::Primary::new(device, relay, name).map_err(error)?,
+                lang,
+            })
+        }
+        pub fn restore(
+            seed: &[u8],
+            account: &str,
+            device: &str,
+            locale: &str,
+        ) -> Result<BrowserPrimary, JsValue> {
+            let lang = session_language(locale)?;
+            let _language = localization::enter(lang);
+            Ok(Self {
+                primary: super::Primary::restore(
+                    seed,
+                    serde_json::from_str(account).map_err(error)?,
+                    device,
+                )
+                .map_err(error)?,
+                lang,
+            })
+        }
+        pub fn account(&self) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(self.primary.account()).map_err(error)
+        }
+        pub fn authority_bytes(&self) -> Vec<u8> {
+            let _language = localization::enter(self.lang);
+            self.primary.authority_bytes()
+        }
+        pub fn bind_message(&self, proof: &str) -> Result<Vec<u8>, JsValue> {
+            let _language = localization::enter(self.lang);
+            self.primary.binding_message(proof).map_err(error)
+        }
+        pub fn finish_bind(&self, proof: &str, signature: &[u8]) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .primary
+                    .finish_binding(proof, signature)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+    }
+
     #[wasm_bindgen]
     pub struct BrowserCore {
         client: super::Client<BrowserSigner>,
+        lang: localization::Lang,
     }
 
     #[wasm_bindgen]
     impl BrowserCore {
         #[wasm_bindgen(constructor)]
-        pub fn new(account: &str, snapshot: &str) -> Result<BrowserCore, JsValue> {
+        pub fn new(account: &str, snapshot: &str, locale: &str) -> Result<BrowserCore, JsValue> {
+            let lang = session_language(locale)?;
+            let _language = localization::enter(lang);
             let account: super::LinkedAccount = serde_json::from_str(account).map_err(error)?;
             let signer = BrowserSigner {
                 public: account.device.clone(),
             };
             Ok(Self {
                 client: super::Client::new(account, signer, snapshot).map_err(error)?,
+                lang,
             })
         }
         pub fn bootstrap(&mut self) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
             serde_json::to_string(&self.client.bootstrap().map_err(error)?).map_err(error)
         }
         pub fn receive(&mut self, bytes: &[u8], now_ms: f64) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
             serde_json::to_string(&self.client.receive(bytes, time(now_ms)?).map_err(error)?)
                 .map_err(error)
         }
@@ -80,6 +159,7 @@ mod browser {
             text: &str,
             now_ms: f64,
         ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
             serde_json::to_string(
                 &self
                     .client
@@ -97,6 +177,7 @@ mod browser {
             forwarded: bool,
             now_ms: f64,
         ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
             let reply = reply_to.filter(|to| !to.is_empty()).map(|to| (to, thread));
             serde_json::to_string(
                 &self
@@ -114,6 +195,7 @@ mod browser {
             note: &str,
             now_ms: f64,
         ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
             let note = serde_json::from_str(note).map_err(error)?;
             serde_json::to_string(
                 &self
@@ -129,12 +211,30 @@ mod browser {
             doc: &str,
             now_ms: f64,
         ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
             let doc = serde_json::from_str(doc).map_err(error)?;
             serde_json::to_string(
                 &self
                     .client
                     .queue_file(space, doc, time(now_ms)?)
                     .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn queue_file_record(
+            &mut self,
+            space: &str,
+            doc: &str,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            let doc = serde_json::from_str(doc).map_err(error)?;
+            let (update, item, message) = self
+                .client
+                .queue_file_record(space, doc, time(now_ms)?)
+                .map_err(error)?;
+            serde_json::to_string(
+                &serde_json::json!({"update":update,"result":{"itemId":item,"messageId":message}}),
             )
             .map_err(error)
         }
@@ -146,6 +246,7 @@ mod browser {
             reason: &str,
             chunks: &str,
         ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
             let doc = serde_json::from_str(doc).map_err(error)?;
             let chunks = serde_json::from_str(chunks).map_err(error)?;
             serde_json::to_string(
@@ -157,10 +258,12 @@ mod browser {
             .map_err(error)
         }
         pub fn local_chunk(&self, blob: &str) -> Vec<u8> {
+            let _language = localization::enter(self.lang);
             self.client.local_chunk(blob)
         }
 
         pub fn fail_outbox(&mut self, client_id: &str, reason: &str) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
             serde_json::to_string(
                 &self
                     .client
@@ -170,6 +273,7 @@ mod browser {
             .map_err(error)
         }
         pub fn mark_read(&mut self, space: &str) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
             serde_json::to_string(&self.client.mark_read(space).map_err(error)?).map_err(error)
         }
         pub fn queue_join(
@@ -179,6 +283,7 @@ mod browser {
             code: &str,
             now_ms: f64,
         ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
             let role = serde_json::from_value(serde_json::Value::String(role.to_string()))
                 .map_err(error)?;
             serde_json::to_string(
@@ -190,7 +295,238 @@ mod browser {
             .map_err(error)
         }
         pub fn view(&self) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
             serde_json::to_string(&self.client.conversations()).map_err(error)
+        }
+        pub fn claim_clock(&mut self, value: &str) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            self.client.claim_clock(value).map_err(error)?;
+            Ok(String::new())
+        }
+        pub fn maintenance(&mut self, now_ms: f64) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(&self.client.maintenance(time(now_ms)?).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn integrity_request(&self, request: &str) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(&self.client.integrity_request(request).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn membership_request(
+            &mut self,
+            request: &str,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .client
+                    .membership_request(request, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn document_request(&mut self, request: &str, now_ms: f64) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .client
+                    .document_request(request, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn agent_request(&mut self, request: &str, now_ms: f64) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .client
+                    .agent_request(request, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn profile_request(&mut self, request: &str, now_ms: f64) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .client
+                    .profile_request(request, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn profile_save(
+            &mut self,
+            request: &str,
+            bytes: Vec<u8>,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .client
+                    .profile_save(request, bytes, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn profile_photo_framed(
+            &self,
+            identity: &str,
+            expected: &str,
+        ) -> Result<Vec<u8>, JsValue> {
+            let _language = localization::enter(self.lang);
+            self.client
+                .profile_photo_framed(identity, expected)
+                .map_err(error)
+        }
+        pub fn profile_photo_received(
+            &mut self,
+            identity: &str,
+            expected: &str,
+            sealed: Vec<u8>,
+        ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .client
+                    .profile_photo_received(identity, expected, sealed)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn handle_profile(&self, handle: &str) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            self.client.handle_profile(handle).map_err(error)
+        }
+        pub fn handle_confirmed(
+            &mut self,
+            profile: &str,
+            expected: &str,
+        ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .client
+                    .handle_confirmed(profile, expected)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn link_prepare(
+            &mut self,
+            primary: &BrowserPrimary,
+            code: &str,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .client
+                    .link_prepare(&primary.primary, code, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn link_request(&mut self, request: &str, now_ms: f64) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .client
+                    .link_request(request, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn history_status(&self) -> String {
+            let _language = localization::enter(self.lang);
+            self.client.history_status()
+        }
+        pub fn history_start(&mut self, now_ms: f64) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(&self.client.history_start(time(now_ms)?).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn history_manifest(&mut self, sealed: &[u8], now_ms: f64) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .client
+                    .history_manifest(sealed, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn history_chunk(
+            &mut self,
+            index: u32,
+            sealed: &[u8],
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .client
+                    .history_chunk(index, sealed, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn history_finish(&mut self, now_ms: f64) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(&self.client.history_finish(time(now_ms)?).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn history_cleaned(&mut self, now_ms: f64) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(&self.client.history_cleaned(time(now_ms)?).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn directory_profiles(&mut self, profiles: &str) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(&self.client.directory_profiles(profiles).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn typing_frame(&self, space: &str, typing: bool) -> Result<Vec<u8>, JsValue> {
+            let _language = localization::enter(self.lang);
+            self.client.typing_frame(space, typing).map_err(error)
+        }
+        pub fn app_request(&mut self, request: &str, now_ms: f64) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            serde_json::to_string(
+                &self
+                    .client
+                    .app_request(request, time(now_ms)?, self.lang.tag())
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn document_uploads(&self) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            self.client.document_uploads().map_err(error)
+        }
+        pub fn document_uploaded(&mut self, blobs: &str) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            let blobs = serde_json::from_str::<Vec<String>>(blobs).map_err(error)?;
+            serde_json::to_string(&self.client.document_uploaded(&blobs).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn document_cache_blob(
+            &mut self,
+            reference: &str,
+            bytes: &[u8],
+        ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            let reference = serde_json::from_str(reference).map_err(error)?;
+            serde_json::to_string(
+                &self
+                    .client
+                    .document_cache_blob(reference, bytes.to_vec())
+                    .map_err(error)?,
+            )
+            .map_err(error)
         }
     }
 
@@ -232,7 +568,7 @@ mod browser {
 
     #[wasm_bindgen]
     pub fn blob_put_message(sha: &str, ts_ms: f64, relay: &str) -> Vec<u8> {
-        roda_proto::blob_put_message(sha, ts_ms as i64, relay)
+        protocol::blob_put_message(sha, ts_ms as i64, relay)
     }
 
     #[wasm_bindgen]
@@ -254,17 +590,22 @@ mod browser {
 
     #[wasm_bindgen]
     pub fn auth_message(nonce: &str, relay: &str) -> Vec<u8> {
-        roda_proto::auth_message(nonce, relay)
+        protocol::auth_message(nonce, relay)
     }
 
     #[wasm_bindgen]
     pub fn device_cert_message(device: &str) -> Vec<u8> {
-        roda_log::device_cert_message(device)
+        event_log::device_cert_message(device)
+    }
+
+    #[wasm_bindgen]
+    pub fn ping() -> Vec<u8> {
+        protocol::ClientFrame::Ping.encode()
     }
 
     #[wasm_bindgen]
     pub fn auth(signature: &str) -> Vec<u8> {
-        roda_proto::ClientFrame::Auth {
+        protocol::ClientFrame::Auth {
             sig: signature.to_string(),
         }
         .encode()

@@ -6,7 +6,7 @@ mod finance;
 mod native;
 mod pricing;
 pub use pricing::PriceProfile;
-pub use roda_types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
+pub use types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
 
 use async_trait::async_trait;
 use foundationdb::{tuple::Subspace, Database};
@@ -150,11 +150,11 @@ pub struct ReplyOutputInspection {
 pub enum ReplyReceiptProgress {
     Waiting,
     CatchingUp {
-        through: roda_types::Seen,
+        through: types::Seen,
         generation: u64,
     },
     Accepted {
-        accepted: roda_types::Seen,
+        accepted: types::Seen,
         generation: u64,
     },
 }

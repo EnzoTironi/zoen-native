@@ -1,0 +1,17 @@
+{
+  "id": "poll",
+  "name": "Enquete",
+  "description": "Votar e levar a escolha do grupo ao plano.",
+  "capabilities": [],
+  "allowedDomains": [],
+  "networkPurpose": "",
+  "linkDomains": [],
+  "sha256": "096a974eec4e3daf0894911f222fd794a961dd47c4dffe0c26baba63d07892c9",
+  "bytes": 671512,
+  "deps": {
+    "react": "19.1.1",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "scheduler": "0.26.0",
+    "react-dom": "19.1.1"
+  }
+}

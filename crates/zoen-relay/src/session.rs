@@ -17,14 +17,13 @@ use std::{
 
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
-use roda_log::{device_cert_message, verify_sig};
-use roda_proto::{
-    auth_message, negotiate, normalize_handle, AgentRequest, ClientFrame, ErrorCode, Op, Reply,
-    ServerFrame, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+use protocol::{
+    negotiate, AgentRequest, ClientFrame, ErrorCode, Op, Reply, ServerFrame, MIN_PROTOCOL_VERSION,
+    PROTOCOL_VERSION,
 };
-use roda_types::{EventBody, IdentityKind};
 use tokio::sync::{mpsc, Notify};
 use tracing::{field::Empty, Instrument};
+use types::{EventBody, IdentityKind};
 
 use crate::{db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics, Shared};
 
@@ -32,11 +31,8 @@ use crate::{db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics, Shared}
 /// to the author it concerns (`Session::receipt_audience`).
 pub const RECEIPT_BROADCAST_MAX: usize = 16;
 
-/// An X25519/Ed25519 key package is about 300 bytes; this leaves room for extensions.
-const MAX_KEY_PACKAGE: usize = 4096;
-
-pub const MAX_FRAME: usize = 1024 * 1024;
-pub const MAX_ENVELOPE: usize = 90 * 1024;
+pub const MAX_FRAME: usize = relay_admission::portable::MAX_FRAME_BYTES;
+pub const MAX_ENVELOPE: usize = relay_admission::portable::MAX_ENVELOPE_BYTES;
 const SYNC_PAGE: usize = 500;
 
 struct Session {
@@ -358,7 +354,7 @@ async fn handshake(
         )
         .await;
     }
-    if !verify_sig(&identity, &device_cert_message(&device), &cert) {
+    if !relay_admission::directory::certificate_valid(&identity, &device, &cert) {
         return refuse(
             "bad_certificate",
             ServerFrame::error(ErrorCode::Unauthorized, "device certificate invalid"),
@@ -368,7 +364,7 @@ async fn handshake(
     let capabilities = negotiate(&capabilities);
     let claim_receipts = capabilities
         .iter()
-        .any(|c| c == roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY);
+        .any(|c| c == protocol::KEY_PACKAGE_CLAIM_CAPABILITY);
     let server_time_ms = if claim_receipts {
         match tokio::time::timeout(
             Duration::from_secs(5),
@@ -409,7 +405,7 @@ async fn handshake(
         )
         .await;
     };
-    if !verify_sig(&device, &auth_message(&n, &st.relay_name), &sig) {
+    if !relay_admission::directory::auth_valid(&device, &n, &st.relay_name, &sig) {
         return refuse(
             "bad_signature",
             ServerFrame::error(ErrorCode::Unauthorized, "login signature invalid"),
@@ -502,7 +498,7 @@ impl Session {
     }
 
     /// Tells each claimed device that's running low, wherever it is connected.
-    async fn key_packages_low(&self, claimed: &[roda_proto::KeyPackageRecord]) {
+    async fn key_packages_low(&self, claimed: &[protocol::KeyPackageRecord]) {
         let devices: Vec<(String, String)> = claimed
             .iter()
             .map(|k| (k.identity.clone(), k.device.clone()))
@@ -515,7 +511,7 @@ impl Session {
             }
         };
         for (identity, device, left) in stock {
-            if left < roda_proto::KEY_PACKAGES_LOW as i64 {
+            if left < protocol::KEY_PACKAGES_LOW as i64 {
                 let delivered_here = self.st.fanout.send(
                     std::slice::from_ref(&identity),
                     &ServerFrame::KeyPackagesLow {
@@ -590,7 +586,7 @@ impl Session {
         let me = [(self.identity.clone(), self.device.clone())];
         if let Ok(stock) = db::key_package_stock(&self.st.pool, &me).await {
             for (_, device, left) in stock {
-                if left < roda_proto::KEY_PACKAGES_LOW as i64 {
+                if left < protocol::KEY_PACKAGES_LOW as i64 {
                     self.send(ServerFrame::KeyPackagesLow {
                         device,
                         remaining: left as u32,
@@ -768,7 +764,7 @@ impl Session {
         skip_all,
         fields(identity = %pseudo(&self.identity), space = %pseudo(&space), delivered_here = Empty)
     )]
-    async fn ephemeral(&self, space: String, kind: roda_proto::EphemeralKind) {
+    async fn ephemeral(&self, space: String, kind: protocol::EphemeralKind) {
         if self.st.limits.ephemeral_device.check(&self.device).is_err() {
             return;
         }
@@ -782,8 +778,8 @@ impl Session {
             return;
         }
         let receipt = match kind {
-            roda_proto::EphemeralKind::Read { seq } => Some((0, seq)),
-            roda_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
+            protocol::EphemeralKind::Read { seq } => Some((0, seq)),
+            protocol::EphemeralKind::Delivered { seq } => Some((seq, 0)),
             _ => None,
         };
         if let Some((delivered, read)) = receipt {
@@ -794,11 +790,10 @@ impl Session {
         // Receipts also reach my other devices (read on the phone clears the Mac), never
         // this session itself.
         let to: Vec<String> = match kind {
-            roda_proto::EphemeralKind::Read { seq }
-            | roda_proto::EphemeralKind::Delivered { seq }
+            protocol::EphemeralKind::Read { seq } | protocol::EphemeralKind::Delivered { seq }
                 if members.len() > RECEIPT_BROADCAST_MAX =>
             {
-                self.receipt_audience(&space, seq).await
+                self.receipt_audience(&space, seq, &members).await
             }
             _ => members
                 .into_iter()
@@ -825,8 +820,12 @@ impl Session {
     /// 250 to 5 accepted msgs/s under it, SCALE.md §3). Authors are the ones whose ticks
     /// change. The watermark covers the last [`crate::recent::WINDOW`] messages up to `seq`
     /// live; an author further back learns it from the stored watermark on the next sync.
-    async fn receipt_audience(&self, space: &str, seq: u64) -> Vec<String> {
-        let mut to = vec![self.identity.clone()];
+    async fn receipt_audience(
+        &self,
+        space: &str,
+        seq: u64,
+        members: &[(String, types::Role)],
+    ) -> Vec<String> {
         let authors = match self.st.fanout.recent.authors_through(space, seq) {
             Some(authors) => authors,
             None => {
@@ -842,12 +841,20 @@ impl Session {
                 }
             }
         };
-        for author in authors {
-            if !to.contains(&author) {
-                to.push(author);
-            }
-        }
-        to
+        // Intentional fresh native+portable contract correction: canonical old
+        // authorship cannot grant receipt metadata after membership removal.
+        relay_admission::receipts::recipients(
+            &self.identity,
+            &members
+                .iter()
+                .map(|(identity, _)| identity.clone())
+                .collect::<Vec<_>>(),
+            true,
+            &authors,
+        )
+        .ok()
+        .flatten()
+        .unwrap_or_default()
     }
 
     /// Agent citizens: the runtime's own state and cursors, or an owner's control.
@@ -897,7 +904,7 @@ impl Session {
                     .map_err(|e| e.to_string())?;
                 // Turning an agent off also takes its share link down, here on the relay
                 // so no client can leave it up.
-                if action == roda_proto::AgentAction::Revoke {
+                if action == protocol::AgentAction::Revoke {
                     self.st.log.revoke_agent_invite(&agent).await?;
                 }
                 return Ok(Reply::Done);
@@ -914,30 +921,9 @@ impl Session {
     ) -> Result<Reply, String> {
         let pool = &self.st.pool;
         match op {
-            Op::Register { mut profile } => {
-                if profile.id != self.identity {
-                    return Err("profile is for another identity".into());
-                }
-                let handle = normalize_handle(&profile.handle).ok_or(
-                    "handle must be 3–24 letters, digits, '.' or '_', starting with a letter",
-                )?;
-                profile.handle = handle.clone();
-                match profile.kind {
-                    IdentityKind::Person => {
-                        profile.name.clear();
-                        profile.bio.clear();
-                    }
-                    IdentityKind::Agent => {
-                        profile.name = profile.name.trim().chars().take(64).collect();
-                        profile.bio = profile.bio.chars().take(280).collect();
-                        if profile.name.is_empty() {
-                            return Err("name is required".into());
-                        }
-                        if profile.owner.is_none() {
-                            return Err("an agent needs an owner".into());
-                        }
-                    }
-                }
+            Op::Register { profile } => {
+                let profile = relay_admission::directory::prepare_profile(profile, &self.identity)?;
+                let handle = profile.handle.clone();
                 if !registered {
                     self.st
                         .limits
@@ -1039,7 +1025,7 @@ impl Session {
                     .lookup_account
                     .check(&self.identity)
                     .map_err(limits::slow_down)?;
-                let h = handle.trim().trim_start_matches('@').to_lowercase();
+                let h = relay_admission::directory::reads::normalize_lookup(&handle);
                 if h.is_empty() {
                     return Ok(Reply::Profiles(Vec::new()));
                 }
@@ -1050,7 +1036,7 @@ impl Session {
                 ))
             }
             Op::Profiles { ids } => {
-                let ids: Vec<String> = ids.into_iter().take(500).collect();
+                let ids = relay_admission::directory::reads::profile_ids(ids);
                 Ok(Reply::Profiles(
                     db::profiles(pool, &ids).await.map_err(|e| e.to_string())?,
                 ))
@@ -1085,20 +1071,19 @@ impl Session {
                 Ok(Reply::Invite(invite))
             }
             Op::PublishAgreementKey { public, signed } => {
-                // The request admission check authorizes only this session's device.
-                if signed.device != self.device {
-                    return Err("agreement key is for another device".into());
-                }
-                if !roda_log::profile::verify_agreement(&self.identity, &public, &signed) {
-                    return Err("agreement key isn't signed by this identity".into());
-                }
+                relay_admission::directory::sealed_profiles::validate_agreement(
+                    &self.identity,
+                    &self.device,
+                    &public,
+                    &signed,
+                )?;
                 db::put_agreement_key(pool, &self.identity, &public, &signed)
                     .await
                     .map_err(|e| e.to_string())?;
                 Ok(Reply::Done)
             }
             Op::AgreementKeys { ids } => {
-                let ids: Vec<String> = ids.into_iter().take(500).collect();
+                let ids = relay_admission::directory::reads::profile_ids(ids);
                 Ok(Reply::AgreementKeys(
                     db::agreement_keys(pool, &ids)
                         .await
@@ -1106,23 +1091,11 @@ impl Session {
                 ))
             }
             Op::PutProfile { profile } => {
-                if profile.identity != self.identity {
-                    return Err("profile is for another identity".into());
-                }
-                if profile.signed.device != self.device {
-                    return Err("profile is for another device".into());
-                }
-                if profile.ciphertext.len() > roda_log::profile::MAX_CIPHERTEXT {
-                    return Err("profile too large".into());
-                }
-                if !roda_log::profile::verify_upload(
-                    &profile.identity,
-                    profile.version,
-                    &profile.ciphertext,
-                    &profile.signed,
-                ) {
-                    return Err("profile isn't signed by this identity".into());
-                }
+                relay_admission::directory::sealed_profiles::validate_profile(
+                    &self.identity,
+                    &self.device,
+                    &profile,
+                )?;
                 if !db::put_profile(pool, &profile)
                     .await
                     .map_err(|e| e.to_string())?
@@ -1146,31 +1119,12 @@ impl Session {
                 packages,
                 last_resort,
             } => {
-                if packages.len() > 100 {
-                    return Err("at most 100 key packages at a time".into());
-                }
-                let mut publications = Vec::with_capacity(packages.len());
-                for kp in &packages {
-                    if kp.len() > MAX_KEY_PACKAGE {
-                        return Err("key package too large".into());
-                    }
-                    let (leaf, expires) = roda_mls::key_package_publication(kp)
-                        .map_err(|_| "not a valid key package".to_string())?;
-                    if leaf.identity != self.identity || leaf.device != self.device {
-                        return Err("key package is for another device".into());
-                    }
-                    publications.push((kp.clone(), expires));
-                }
-                if let Some(kp) = &last_resort {
-                    if kp.len() > MAX_KEY_PACKAGE {
-                        return Err("key package too large".into());
-                    }
-                    let (leaf, _) = roda_mls::key_package_publication(kp)
-                        .map_err(|_| "not a valid key package".to_string())?;
-                    if leaf.identity != self.identity || leaf.device != self.device {
-                        return Err("key package is for another device".into());
-                    }
-                }
+                let publications = relay_admission::directory::key_packages::validate_publications(
+                    &self.identity,
+                    &self.device,
+                    &packages,
+                    last_resort.as_deref(),
+                )?;
                 if !db::put_key_packages(
                     pool,
                     &self.identity,
@@ -1211,7 +1165,7 @@ impl Session {
                 Ok(Reply::KeyPackages(claimed))
             }
             Op::GetProfiles { ids } => {
-                let ids: Vec<String> = ids.into_iter().take(500).collect();
+                let ids = relay_admission::directory::reads::profile_ids(ids);
                 Ok(Reply::SealedProfiles(
                     db::sealed_profiles(pool, &ids)
                         .await
@@ -1338,7 +1292,7 @@ impl Session {
             Some(a) => ("agent", a.name.clone()),
             None => ("space", i.title),
         };
-        Ok(Reply::Preview(roda_proto::InvitePreview {
+        Ok(Reply::Preview(protocol::InvitePreview {
             space: i.space,
             role: i.role,
             title,
@@ -1353,8 +1307,8 @@ impl Session {
     /// never its content (sealed envelopes only say whether they're application data).
     fn count_sequenced(
         &self,
-        env: &roda_proto::Envelope,
-        ev: &roda_proto::Sequenced,
+        env: &protocol::Envelope,
+        ev: &protocol::Sequenced,
         audience: &[String],
         joined: Option<&str>,
         started: std::time::Instant,
@@ -1382,7 +1336,7 @@ impl Session {
                 );
                 false
             }
-            _ => env.sealed_kind() == Some(roda_proto::SealedKind::Application),
+            _ => env.sealed_kind() == Some(protocol::SealedKind::Application),
         };
         if is_message {
             a.message_sent(crate::analytics::SentMessage {
@@ -1410,7 +1364,7 @@ impl Session {
             delivered_here = Empty,
         )
     )]
-    async fn publish(&mut self, env: roda_proto::Envelope) {
+    async fn publish(&mut self, env: protocol::Envelope) {
         let started = std::time::Instant::now();
         let span = tracing::Span::current();
         let analytics = &self.st.analytics;
@@ -1564,7 +1518,7 @@ impl Session {
         skip_all,
         fields(identity = %pseudo(&self.identity), all, spaces = Empty, events = Empty)
     )]
-    async fn sync(&mut self, cursors: Vec<roda_proto::Cursor>, all: bool) {
+    async fn sync(&mut self, cursors: Vec<protocol::Cursor>, all: bool) {
         let Ok(Ok(mine)) = tokio::time::timeout(
             Duration::from_secs(5),
             self.st.log.spaces_of(&self.identity),
@@ -1580,45 +1534,75 @@ impl Session {
         };
         // (space, from, through): a member reads to the head; someone removed reads up to
         // and including their removal, so their device learns of it, and nothing after.
-        let mut plan: Vec<(String, u64, Option<u64>)> = Vec::new();
+        let mut plan = Vec::new();
+        let current: std::collections::BTreeSet<_> = mine.iter().map(String::as_str).collect();
         for c in cursors {
-            if mine.contains(&c.space) {
-                plan.push((c.space, c.next_seq, None));
-            } else if let Ok(Ok(Some(gone))) = tokio::time::timeout(
-                Duration::from_secs(5),
-                self.st.log.removed_at(&c.space, &self.identity),
-            )
-            .await
-            {
-                if c.next_seq <= gone {
-                    plan.push((c.space, c.next_seq, Some(gone)));
-                }
+            let member = current.contains(c.space.as_str());
+            let removed_at = if member {
+                None
+            } else {
+                tokio::time::timeout(
+                    Duration::from_secs(5),
+                    self.st.log.removed_at(&c.space, &self.identity),
+                )
+                .await
+                .ok()
+                .and_then(Result::ok)
+                .flatten()
+            };
+            if let Some(read) = relay_admission::sync::cursor_read(c, member, removed_at) {
+                plan.push(read);
             }
         }
-        if all {
-            for s in &mine {
-                if !plan.iter().any(|(p, ..)| p == s) {
-                    plan.push((s.clone(), 0, None));
-                }
-            }
-        }
+        relay_admission::sync::include_current(&mut plan, &mine, all);
         let span = tracing::Span::current();
         span.record("spaces", plan.len() as i64);
         let mut sent = 0usize;
-        // Receipt watermarks for every Space this sync reads to the head, in one query
-        // instead of one per Space (a 500-chat reconnect was 500 queries).
+        // One identity ceiling per eligible Space, never a per-connection copy
+        // of all marks. Current membership is admitted again at begin and every
+        // bounded keyset page; an admitted page may finish after a later removal.
+        // PG receipt storage and the membership log are not one atomic store.
         let heads: Vec<String> = plan
             .iter()
-            .filter(|(_, _, through)| through.is_none())
-            .map(|(s, ..)| s.clone())
+            .filter(|read| read.through.is_none())
+            .map(|read| read.space.clone())
             .collect();
-        let mut marks = self
-            .st
-            .receipts
-            .of_spaces(&self.st.pool, &heads)
-            .await
-            .unwrap_or_default();
-        for (space, mut next, through) in plan {
+        let Ok(Ok(current_receipt_spaces)) = tokio::time::timeout(
+            Duration::from_secs(5),
+            self.st.log.spaces_of(&self.identity),
+        )
+        .await
+        else {
+            self.send_sync(ServerFrame::error(
+                ErrorCode::Unavailable,
+                "membership unavailable",
+            ))
+            .await;
+            return;
+        };
+        let current_receipt_spaces: std::collections::BTreeSet<_> =
+            current_receipt_spaces.into_iter().collect();
+        let heads: Vec<_> = heads
+            .into_iter()
+            .filter(|space| current_receipt_spaces.contains(space))
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let Ok(Ok(mut ceilings)) = tokio::time::timeout(
+            Duration::from_secs(5),
+            self.st.receipts.ceilings(&self.st.pool, &heads),
+        )
+        .await
+        else {
+            self.send_sync(ServerFrame::error(
+                ErrorCode::Unavailable,
+                "database unavailable",
+            ))
+            .await;
+            return;
+        };
+        for read in plan {
+            let (space, mut next, through) = (read.space, read.from, read.through);
             #[cfg(debug_assertions)]
             if crate::log::sequencer::fork_histories::armed(&space) {
                 let Ok(Ok(full)) = tokio::time::timeout(
@@ -1680,11 +1664,7 @@ impl Session {
                     break;
                 }
             }
-            if through.is_none()
-                && !self
-                    .replay_receipts(&space, marks.remove(&space).unwrap_or_default())
-                    .await
-            {
+            if through.is_none() && !self.replay_receipts(&space, ceilings.remove(&space)).await {
                 return;
             }
         }
@@ -1703,27 +1683,68 @@ impl Session {
 }
 
 impl Session {
-    /// The newest receipt watermarks of a Space, so a device that was away still learns
-    /// what was delivered and read while it was gone.
-    async fn replay_receipts(&self, space: &str, rows: Vec<(String, i64, i64)>) -> bool {
-        for (from, delivered, read) in rows {
-            for kind in [
-                roda_proto::EphemeralKind::Delivered {
-                    seq: delivered as u64,
-                },
-                roda_proto::EphemeralKind::Read { seq: read as u64 },
-            ] {
-                let frame = ServerFrame::Ephemeral {
-                    space: space.to_string(),
-                    from: from.clone(),
-                    kind,
-                };
-                if !self.send_sync(frame).await {
+    /// Deterministic identity order, each Delivered immediately followed by Read.
+    /// Initial ceiling + monotonic, never-deleted identity rows guarantees every
+    /// pre-cut row with >= its pre-cut mark, even across concurrent flush/raises.
+    async fn replay_receipts(&self, space: &str, ceiling: Option<String>) -> bool {
+        let Some(ceiling) = ceiling else { return true };
+        let mut after = String::new();
+        loop {
+            // The role read is the page admission boundary. A removed reader
+            // starts no further page; a page admitted before removal may finish.
+            match tokio::time::timeout(
+                Duration::from_secs(5),
+                self.st.log.role(space, &self.identity),
+            )
+            .await
+            {
+                Ok(Ok(Some(_))) => {}
+                Ok(Ok(None)) => return true,
+                _ => {
+                    self.send_sync(ServerFrame::error(
+                        ErrorCode::Unavailable,
+                        "membership unavailable",
+                    ))
+                    .await;
                     return false;
                 }
             }
+            let Ok(Ok(page)) = tokio::time::timeout(
+                Duration::from_secs(5),
+                self.st
+                    .receipts
+                    .page(&self.st.pool, space, &after, &ceiling),
+            )
+            .await
+            else {
+                self.send_sync(ServerFrame::error(
+                    ErrorCode::Unavailable,
+                    "database unavailable",
+                ))
+                .await;
+                return false;
+            };
+            for (from, delivered, read) in page.rows {
+                for kind in [
+                    protocol::EphemeralKind::Delivered { seq: delivered },
+                    protocol::EphemeralKind::Read { seq: read },
+                ] {
+                    if !self
+                        .send_sync(ServerFrame::Ephemeral {
+                            space: space.into(),
+                            from: from.clone(),
+                            kind,
+                        })
+                        .await
+                    {
+                        return false;
+                    }
+                }
+            }
+            let Some(next) = page.next else { return true };
+            after = next;
+            tokio::task::yield_now().await;
         }
-        true
     }
 }
 

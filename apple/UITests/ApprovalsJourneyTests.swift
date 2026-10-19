@@ -12,10 +12,10 @@ final class ApprovalsJourneyTests: XCTestCase {
     /// which would wipe what the person just decided.
     private func launch(fresh: Bool = true, open: String = "aprovacoes", showcase: Bool = true) -> XCUIApplication {
         let app = XCUIApplication()
-        var args = ["-RodaDemo", "YES", "-AppleLanguages", "(pt-BR)",
-                    "-RodaAppearance", "light", "-RodaApprovalsExplained", "YES", "-RodaOpen", open]
-        if showcase { args += ["-RodaShowcase", "YES"] }
-        if fresh { args += ["-RodaFreshStart", "YES", "-RodaResetDemo", "YES"] }
+        var args = ["-Demo", "YES", "-AppleLanguages", "(pt-BR)",
+                    "-Appearance", "light", "-ApprovalsExplained", "YES", "-Open", open]
+        if showcase { args += ["-Showcase", "YES"] }
+        if fresh { args += ["-FreshStart", "YES", "-ResetDemo", "YES"] }
         app.launchArguments = args
         app.launch()
         return app

@@ -1,0 +1,15 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "zoen-web",
+  "account_id": "86e8a5b2686413989e8bef1f75c29079",
+  "compatibility_date": "2026-10-18",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "app.tryzoen.com/*", "zone_name": "tryzoen.com" },
+  ],
+  "assets": {
+    "directory": "../../../apps/zoen/dist",
+    "not_found_handling": "single-page-application",
+  },
+}

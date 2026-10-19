@@ -1,0 +1,31 @@
+# Optional second native process and the existing native NATS bus.
+services:
+  bus:
+    pull_policy: never
+    image: ${BUS_IMAGE}
+    command: [-js, -sd, /data, -m, '8222']
+    networks: [private]
+    volumes: [bus:/data]
+    labels: {app: zoen.local, owner: '${OWNER_NONCE}'}
+    restart: unless-stopped
+    mem_limit: 256m
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1:8222/healthz']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  relay:
+    environment:
+      ZOEN_NATS_URL: nats://bus:4222
+    depends_on:
+      bus: {condition: service_healthy}
+  relay2:
+    extends: {file: compose.yaml, service: relay}
+    environment:
+      ZOEN_NATS_URL: nats://bus:4222
+    ports: !override ['127.0.0.1:${SECOND_PORT}:8080']
+    depends_on:
+      bus: {condition: service_healthy}
+volumes:
+  bus:
+    labels: {app: zoen.local, owner: '${OWNER_NONCE}'}

@@ -1,0 +1,505 @@
+{
+  "resourceUri": "ui://zoen/excalidraw.html",
+  "mimeType": "text/html;profile=mcp-app",
+  "presentation": "pinned-upstream-patched-build",
+  "sha256": "03ee7971cabefd9b6ae56ed43d25dbc8c005a10ff755be9f955568d4129a2f96",
+  "bytes": 6195280,
+  "csp": {
+    "connectDomains": [],
+    "resourceDomains": [],
+    "frameDomains": [],
+    "baseUriDomains": []
+  },
+  "permissions": {},
+  "provenance": {
+    "repository": "https://github.com/excalidraw/excalidraw-mcp",
+    "upstreamCommit": "157aa23ceb1976008aadc89eb05e3444060f09d6",
+    "upstreamVersion": "0.3.2",
+    "patchPullRequest": "https://github.com/excalidraw/excalidraw-mcp/pull/89",
+    "patchCommit": "aafc247efb8ba0689e193557749784ea80ee4996",
+    "patchSha256": "1449b6a7176c032ea36e3d6a1cf293ce05ea353063b009c568bef69999f93675",
+    "sourceSha256": {
+      "src/mcp-app.tsx": "c70e54d3d6a3fdf20d83e40acf703bb06309d77d4a21cdee1fc9f6aabc9051a8",
+      "src/mcp-entry.tsx": "41314dcc1fbbdccc32e38bcd3431f55c210b198aa55d4c3cae70dac36639dc8a",
+      "src/mcp-app.html": "be7f7457a602100feaf13f37c5dc1f22f8e30ff2469d210708542aa7be2cf179",
+      "src/edit-context.ts": "de7d1aa4032455ff3e012b3b16c3fdc086bc6324f8cd7697d0e2ded5b94474f2",
+      "src/pencil-audio.ts": "13f6ff769d5d2140faeeffa4b49d5a9f7a85b357b20d0c2603e53bdd288b98bf",
+      "src/sounds.ts": "c197a890a699a9ed3348cc5ff12d676b2e9923ab25fcb80045cdad10f4baff4f",
+      "src/global.css": "79ad7aa44ae3224a802909724e18d1ca62acbdda5bd61ad592b22619bcbd1707"
+    },
+    "licenseDeclaration": {
+      "upstreamPackageJson": "MIT",
+      "upstreamReadme": "MIT",
+      "upstreamLicenseFile": null
+    },
+    "modifications": [
+      "PR89: buffer initial MCP tool notifications before App.connect, drain after React handler registration.",
+      "Initialize fullscreen from the negotiated host context and buffer early context changes until React handler registration.",
+      "Self-contained dependency and font assets; native system font fallback replaces optional Xiaolai CJK font without changing text.",
+      "Canonical full-scene image/appState persistence, acknowledged chunked save/retry/flush via standard MCP tools.",
+      "Public aiEnabled=false additionally gates manual Mermaid menu and Mermaid paste paths; optional converter branch excluded."
+    ],
+    "externalResources": [],
+    "prSourceSha256": "e311cfa69aa3c67a0dbfecdbc3005857c12590de3c1d871afe7c853703acd928",
+    "localPatchSha256": "c1e576a21d82e7a976a09b69c653d2d079b86cd1a08fecf9e814232b54a428ae",
+    "librarySourceSha256": {
+      "@excalidraw/excalidraw/dist/prod/index.js": "6ed19fd70ef6ecbdafc47b66a405910c9a6e5982c72f2f4d3d94f37da8b6ad77",
+      "@excalidraw/excalidraw/dist/prod/chunk-FX7ZIABN.js": "5d42242a4c5c7d7b835d154c291b838e2f0fcdccd649c8b2fcbe05b3a7c2b346"
+    },
+    "sourceInputs": {
+      "LICENSE": "1b2ee57f0f797d2475ed4e723e905725531e88d1bb9ea37d81dd213faf4bdbea",
+      "NOTICE.md": "d549aeea7c029cd1a0a1697025bb5e043e01e75792d3c22c6086738b80485f3b",
+      "README.md": "262bb3aee76e5534c6041f2d453811679b8fd8f18e85bd423d60c74d36239b4f",
+      "build.mjs": "afb122ddb4c1ea5114655b7e55f5621e8f9c167873b79a0fc3bf4101416c96dc",
+      "library-assets.mjs": "7671fbb009fad62088336dc1c0fbf303e0a432e642d1f8ae9df924d33b9eed9e",
+      "licenses/excalidraw-v0.18.0-MIT.txt": "1352d204fdb90d5e482c13139d848bc2c9300a9a7de358a0a558a23e72d0d8be",
+      "licenses/fuzzy-MIT.txt": "a4aca837172fb1f6188c426e38835202e96bc853e25b7029cc5c933964f8401e",
+      "licenses/radix-primitives-MIT.txt": "0e80a2d229d2fd4fc7e8636142ec5d0ff0bc031f14c15b682e2ac01dfd5b5138",
+      "package-lock.json": "46f1ca747f4f7153d029bf08e15888b36210eb4c03b2525bb1eaf263f2111872",
+      "package.json": "792e69dcdea768bdeeb16e0918257376dfdb6bf88c72201d5c10e23df4083b41",
+      "patches/89-buffer-initial-events.diff": "1449b6a7176c032ea36e3d6a1cf293ce05ea353063b009c568bef69999f93675",
+      "patches/90-initial-host-context.diff": "c1e576a21d82e7a976a09b69c653d2d079b86cd1a08fecf9e814232b54a428ae",
+      "src/canonical-app.tsx": "d18a3b677094514cacb382257a3d52b3312c426b00a2b2bf183e308b02da0dbc",
+      "src/canonical-saves.ts": "b0bdaf228813f3f350020edfc3864e7df076ab7b428c7e0953e77da7dc6f059f",
+      "src/canonical-transfer.ts": "6f6285b6563e698b342a891643ac87bfa2ef0c6584eaac6a3fa28d3936835f6c",
+      "src/edit-context.ts": "de7d1aa4032455ff3e012b3b16c3fdc086bc6324f8cd7697d0e2ded5b94474f2",
+      "src/global.css": "79ad7aa44ae3224a802909724e18d1ca62acbdda5bd61ad592b22619bcbd1707",
+      "src/mcp-app.html": "be7f7457a602100feaf13f37c5dc1f22f8e30ff2469d210708542aa7be2cf179",
+      "src/mcp-app.tsx": "c70e54d3d6a3fdf20d83e40acf703bb06309d77d4a21cdee1fc9f6aabc9051a8",
+      "src/mcp-entry.tsx": "41314dcc1fbbdccc32e38bcd3431f55c210b198aa55d4c3cae70dac36639dc8a",
+      "src/pencil-audio.ts": "13f6ff769d5d2140faeeffa4b49d5a9f7a85b357b20d0c2603e53bdd288b98bf",
+      "src/sounds.ts": "c197a890a699a9ed3348cc5ff12d676b2e9923ab25fcb80045cdad10f4baff4f",
+      "upstream.json": "83b96354cec6f24e73b5db738f1066c0d77c1ef5dce6432e53f08fe7580c4f32"
+    },
+    "fontAssetSha256": {
+      "./fonts/Assistant/Assistant-Bold.woff2": "e0cdd332ce039770e93ec44336b6db65f931940f42b0342aad35a06e7f991d29",
+      "./fonts/Assistant/Assistant-Medium.woff2": "81a9f280ce6a790f20ca8cd521183caa430f1f7fdc0752c36ef1cc6dc828ac57",
+      "./fonts/Assistant/Assistant-Regular.woff2": "76945f09225aae65bdbd204cb4ac40d4caa4ff67150e5074bab1a04d1b778fc3",
+      "./fonts/Assistant/Assistant-SemiBold.woff2": "bba47a7d1b185a4a2e0d265ec82aeac5dbc2dc9cb0f482a2ff57cbdfe4e5045d",
+      "./fonts/Cascadia/CascadiaCode-Regular.woff2": "5bce041e0fcce617e35efbc335b1372d27a84acb65fb464c65ff80ab3424a885",
+      "./fonts/ComicShanns/ComicShanns-Regular-279a7b317d12eb88de06167bd672b4b4.woff2": "fa930fceb529a4b51ba3055d590302722c27704f6a6357495873950136b1e2ea",
+      "./fonts/ComicShanns/ComicShanns-Regular-6e066e8de2ac57ea9283adb9c24d7f0c.woff2": "782f24081b810b8de9f04da055007ce4f1445c18abbf096c831f8888d65935c1",
+      "./fonts/ComicShanns/ComicShanns-Regular-dc6a8806fa96795d7b3be5026f989a17.woff2": "61c376d32e1773588f6163599aed24fe0387b5a5cb622bd200455f20c2b36a87",
+      "./fonts/ComicShanns/ComicShanns-Regular-fcb0fc02dcbee4c9846b3e2508668039.woff2": "ee641c2e35730c3e6e3826855f1b6cc3b343a017c3e216e4e4a2e47010c53ad1",
+      "./fonts/Excalifont/Excalifont-Regular-349fac6ca4700ffec595a7150a0d1e1d.woff2": "a0637cff365c7344d2f7a15905a1f74dceaf56b5ac2ff913d150358bed6921f0",
+      "./fonts/Excalifont/Excalifont-Regular-3f2c5db56cc93c5a6873b1361d730c16.woff2": "18ea9be1dd6b5a67b057f44eba8e34cb290f88308c272bcf35c79c1a220d0d7b",
+      "./fonts/Excalifont/Excalifont-Regular-41b173a47b57366892116a575a43e2b6.woff2": "c96649a5f96e2faa9143ee94e5b590b5afb08092f8d67c67f09cef332d66e4a7",
+      "./fonts/Excalifont/Excalifont-Regular-623ccf21b21ef6b3a0d87738f77eb071.woff2": "b004007be100261e58188cf8a0f7e850e997702f35d57110915995cd880e49f1",
+      "./fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2": "e4423b318e11432aff2e6e865e300b7ca270f92321a3f56632268fede01c1b48",
+      "./fonts/Excalifont/Excalifont-Regular-b9dcf9d2e50a1eaf42fc664b50a3fd0d.woff2": "b424d16da4398be3e9852857a54ff70e043c8e2ec5c4444dbf7f88d7469b9859",
+      "./fonts/Excalifont/Excalifont-Regular-be310b9bcd4f1a43f571c46df7809174.woff2": "4fb8ad69be9aeac5664d99e5aa3a68a27ea40c98943b80387f7cd55c034fcc93",
+      "./fonts/Liberation/LiberationSans-Regular.woff2": "006a2b28cbbeeaec937d1b367d0949f5f48ef4b2e7b4e1d8dc7a799d2d639be8",
+      "./fonts/Lilita/Lilita-Regular-i7dPIFZ9Zz-WBtRtedDbYE98RXi4EwSsbg.woff2": "2b6568c7a0f16300bc6c8d292bd426c361fcdb40699c2cbfab2bd3e9e6993dea",
+      "./fonts/Lilita/Lilita-Regular-i7dPIFZ9Zz-WBtRtedDbYEF8RXi4EwQ.woff2": "8d6cd0f298738a92ca9bf6e13f54a9191afd06ce04ea00ebbf24499c017191b7",
+      "./fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTA3j6zbXWjgevT5.woff2": "e512f2d7c9fe062b1acf8f6ea64d4bfd89a77d26728150977627e445c7b6e937",
+      "./fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTQ3j6zbXWjgeg.woff2": "6d1626aac658786e37e78e0adce3ffffddbd75abc923d72e45a7168bd80053da",
+      "./fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTk3j6zbXWjgevT5.woff2": "3e7f76fcc8798b8bba4d6bcc06bdb0d788f6e89706c1d6e64ac81d65ca683c14",
+      "./fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTo3j6zbXWjgevT5.woff2": "7928f47b21192cb6fdb2f46b71a474a3bd2fd608945c5ad7d7ed6bde8b0ae24c",
+      "./fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTs3j6zbXWjgevT5.woff2": "5117398298dd0dba3c95a406ff12fbeb88289fa4e913e3a5cf482cafe7f7071a",
+      "./fonts/Virgil/Virgil-Regular.woff2": "2279cf7daf1c42a3a53b2c1437ad72f0050efb67ac263e0245f67612fd766714"
+    },
+    "runtimePolicy": {
+      "selfContained": true,
+      "optionalCjkFont": "Native system-ui fallback; all Unicode text retained",
+      "providerAiAndMermaid": false
+    },
+    "bundledDependencies": [
+      {
+        "name": "@babel/runtime",
+        "version": "7.29.10",
+        "license": "MIT"
+      },
+      {
+        "name": "@braintree/sanitize-url",
+        "version": "6.0.2",
+        "license": "MIT"
+      },
+      {
+        "name": "@excalidraw/excalidraw",
+        "version": "0.18.0",
+        "license": "MIT"
+      },
+      {
+        "name": "@excalidraw/laser-pointer",
+        "version": "1.3.1",
+        "license": "MIT"
+      },
+      {
+        "name": "@floating-ui/core",
+        "version": "1.8.0",
+        "license": "MIT"
+      },
+      {
+        "name": "@floating-ui/dom",
+        "version": "1.8.0",
+        "license": "MIT"
+      },
+      {
+        "name": "@floating-ui/react-dom",
+        "version": "2.1.9",
+        "license": "MIT"
+      },
+      {
+        "name": "@floating-ui/utils",
+        "version": "0.2.12",
+        "license": "MIT"
+      },
+      {
+        "name": "@modelcontextprotocol/client",
+        "version": "2.3.1",
+        "license": "Apache-2.0"
+      },
+      {
+        "name": "@modelcontextprotocol/core",
+        "version": "2.3.1",
+        "license": "Apache-2.0"
+      },
+      {
+        "name": "@modelcontextprotocol/ext-apps",
+        "version": "2.0.3",
+        "license": "MIT"
+      },
+      {
+        "name": "@noble/hashes",
+        "version": "2.0.1",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/primitive",
+        "version": "1.1.1",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-arrow",
+        "version": "1.1.2",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-compose-refs",
+        "version": "1.1.1",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-context",
+        "version": "1.1.1",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-dismissable-layer",
+        "version": "1.1.5",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-focus-guards",
+        "version": "1.1.1",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-focus-scope",
+        "version": "1.1.2",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-id",
+        "version": "1.1.0",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-popover",
+        "version": "1.1.6",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-popper",
+        "version": "1.2.2",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-portal",
+        "version": "1.1.4",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-presence",
+        "version": "1.1.2",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-primitive",
+        "version": "2.0.2",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-slot",
+        "version": "1.1.2",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-use-callback-ref",
+        "version": "1.1.0",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-use-controllable-state",
+        "version": "1.1.0",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-use-escape-keydown",
+        "version": "1.1.0",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-use-layout-effect",
+        "version": "1.1.0",
+        "license": "MIT"
+      },
+      {
+        "name": "@radix-ui/react-use-size",
+        "version": "1.1.0",
+        "license": "MIT"
+      },
+      {
+        "name": "aria-hidden",
+        "version": "1.2.6",
+        "license": "MIT"
+      },
+      {
+        "name": "browser-fs-access",
+        "version": "0.29.1",
+        "license": "Apache-2.0"
+      },
+      {
+        "name": "canvas-roundrect-polyfill",
+        "version": "0.0.1",
+        "license": "MIT"
+      },
+      {
+        "name": "clsx",
+        "version": "1.1.1",
+        "license": "MIT"
+      },
+      {
+        "name": "crc-32",
+        "version": "0.3.0",
+        "license": "Apache-2.0"
+      },
+      {
+        "name": "detect-node-es",
+        "version": "1.1.0",
+        "license": "MIT"
+      },
+      {
+        "name": "es6-promise-pool",
+        "version": "2.5.0",
+        "license": "MIT"
+      },
+      {
+        "name": "eventsource",
+        "version": "3.0.7",
+        "license": "MIT"
+      },
+      {
+        "name": "eventsource-parser",
+        "version": "3.1.1",
+        "license": "MIT"
+      },
+      {
+        "name": "fractional-indexing",
+        "version": "3.2.0",
+        "license": "CC0-1.0"
+      },
+      {
+        "name": "fuzzy",
+        "version": "0.1.3",
+        "license": "MIT (upstream README)"
+      },
+      {
+        "name": "get-nonce",
+        "version": "1.0.1",
+        "license": "MIT"
+      },
+      {
+        "name": "hachure-fill",
+        "version": "0.5.2",
+        "license": "MIT"
+      },
+      {
+        "name": "image-blob-reduce",
+        "version": "3.0.1",
+        "license": "MIT"
+      },
+      {
+        "name": "jose",
+        "version": "6.2.12",
+        "license": "MIT"
+      },
+      {
+        "name": "jotai",
+        "version": "2.11.0",
+        "license": "MIT"
+      },
+      {
+        "name": "jotai-scope",
+        "version": "0.7.2",
+        "license": "MIT"
+      },
+      {
+        "name": "lodash.debounce",
+        "version": "4.0.8",
+        "license": "MIT"
+      },
+      {
+        "name": "lodash.throttle",
+        "version": "4.1.1",
+        "license": "MIT"
+      },
+      {
+        "name": "morphdom",
+        "version": "2.7.8",
+        "license": "MIT"
+      },
+      {
+        "name": "nanoid",
+        "version": "3.3.3",
+        "license": "MIT"
+      },
+      {
+        "name": "open-color",
+        "version": "1.9.1",
+        "license": "MIT"
+      },
+      {
+        "name": "pako",
+        "version": "2.0.3",
+        "license": "(MIT AND Zlib)"
+      },
+      {
+        "name": "path-data-parser",
+        "version": "0.1.0",
+        "license": "MIT"
+      },
+      {
+        "name": "perfect-freehand",
+        "version": "1.2.0",
+        "license": "MIT"
+      },
+      {
+        "name": "pica",
+        "version": "7.1.1",
+        "license": "MIT"
+      },
+      {
+        "name": "pkce-challenge",
+        "version": "5.0.1",
+        "license": "MIT"
+      },
+      {
+        "name": "png-chunk-text",
+        "version": "1.0.0",
+        "license": "MIT"
+      },
+      {
+        "name": "png-chunks-encode",
+        "version": "1.0.0",
+        "license": "MIT"
+      },
+      {
+        "name": "png-chunks-extract",
+        "version": "1.0.0",
+        "license": "MIT"
+      },
+      {
+        "name": "points-on-curve",
+        "version": "1.0.1",
+        "license": "MIT"
+      },
+      {
+        "name": "points-on-path",
+        "version": "0.2.1",
+        "license": "MIT"
+      },
+      {
+        "name": "react",
+        "version": "19.0.0",
+        "license": "MIT"
+      },
+      {
+        "name": "react-dom",
+        "version": "19.0.0",
+        "license": "MIT"
+      },
+      {
+        "name": "react-remove-scroll",
+        "version": "2.7.2",
+        "license": "MIT"
+      },
+      {
+        "name": "react-remove-scroll-bar",
+        "version": "2.3.8",
+        "license": "MIT"
+      },
+      {
+        "name": "react-style-singleton",
+        "version": "2.2.3",
+        "license": "MIT"
+      },
+      {
+        "name": "roughjs",
+        "version": "4.6.4",
+        "license": "MIT"
+      },
+      {
+        "name": "scheduler",
+        "version": "0.25.0",
+        "license": "MIT"
+      },
+      {
+        "name": "sliced",
+        "version": "1.0.1",
+        "license": "MIT"
+      },
+      {
+        "name": "tslib",
+        "version": "2.8.1",
+        "license": "0BSD"
+      },
+      {
+        "name": "tunnel-rat",
+        "version": "0.1.2",
+        "license": "MIT"
+      },
+      {
+        "name": "use-callback-ref",
+        "version": "1.3.3",
+        "license": "MIT"
+      },
+      {
+        "name": "use-sidecar",
+        "version": "1.1.3",
+        "license": "MIT"
+      },
+      {
+        "name": "use-sync-external-store",
+        "version": "1.7.0",
+        "license": "MIT"
+      },
+      {
+        "name": "zod",
+        "version": "4.3.6",
+        "license": "MIT"
+      },
+      {
+        "name": "zustand",
+        "version": "4.5.7",
+        "license": "MIT"
+      }
+    ]
+  },
+  "id": "excalidraw",
+  "name": "Excalidraw",
+  "capabilities": [],
+  "allowedDomains": [],
+  "linkDomains": [],
+  "networkPurpose": ""
+}

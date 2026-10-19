@@ -1,5 +1,5 @@
 import Foundation
-import RodaCore
+import ClientCore
 
 private struct LayoutFailure: Error { let message: String }
 
@@ -47,7 +47,7 @@ struct PlanPageLayoutJourney {
         try expect(layout.textBlock(blocks[8]).level == 2 && layout.blocks[8].content == blocks[8].content,
                    "A displayed heading keeps its original setext identity in the document")
 
-        let core = try RodaEngine.open(path: ":memory:", locale: "pt-BR")
+        let core = try Client.open(path: ":memory:", locale: "pt-BR")
         _ = try core.seedDemoIfEmpty()
         let result = try core.universalSearch(query: "Paraty", kinds: ["item"], limit: 20)
         let itemId = try unwrap(result.hits.first(where: { $0.kind == "item" })?.refId)

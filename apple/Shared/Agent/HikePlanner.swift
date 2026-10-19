@@ -1,5 +1,5 @@
 import Foundation
-import RodaCore
+import ClientCore
 
 /// Reads the chat after a hike was proposed and works out the day: who drives (the person
 /// who offered a car) and who rides (whoever said they're in, plus everyone who voted).

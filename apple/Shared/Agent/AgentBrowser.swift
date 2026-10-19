@@ -1,7 +1,7 @@
 import SwiftUI
 import ImageIO
 import UniformTypeIdentifiers
-import RodaCore
+import ClientCore
 
 /// An agent using its browser in a chat (ADR 0028 §7), as the owner sees it on the phone.
 ///

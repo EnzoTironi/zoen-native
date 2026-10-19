@@ -1,0 +1,23 @@
+{
+  "inspector": "argent-environment-inspector via mcp__argent__gather_workspace_data",
+  "workspace": "apps/zoen",
+  "is_react_native": true,
+  "is_native_ios": true,
+  "is_native_android": true,
+  "framework": { "expo": "~58.0.14", "react_native": "0.88.0", "react": "19.3.0", "entry": "expo-router/entry" },
+  "package_manager": "npm/package-lock.json",
+  "start": "npm run start -- --port 8084 --localhost",
+  "build": {
+    "ios": "node ../../scripts/build-expo-core.mjs ios --simulator && expo run:ios",
+    "ios_release": "node ../../scripts/build-expo-core.mjs ios --release && expo run:ios --configuration Release",
+    "web": "node ../../scripts/build-expo-web-core.mjs && expo start --web",
+    "export_web": "node ../../scripts/build-expo-web-core.mjs --release && expo export --platform web"
+  },
+  "native": { "ios_workspace": "Zoen.xcworkspace", "podfile": true, "android_gradlew": true, "cng": true, "bundle": "xyz.tironi.zoen" },
+  "metro": { "configured_port": null, "session_port": 8084, "watch_folders": ["../../packages/zoen-ui"], "headers": { "COOP": "same-origin", "COEP": "require-corp" } },
+  "tests": { "check": "npm run check", "test": "node --test src/core/*.test.ts" },
+  "tools": { "node": "26.12.0", "npm": "11.20.0", "cocoapods": "1.17.0" },
+  "local_ios_environment": "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer",
+  "initial_scope": ["ios", "web"],
+  "deferred": ["android", "macos", "windows", "linux"]
+}

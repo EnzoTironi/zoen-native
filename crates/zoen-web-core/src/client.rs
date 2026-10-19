@@ -1,21 +1,38 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use openmls::prelude::OpenMlsProvider;
-use openmls_rust_crypto::OpenMlsRustCrypto;
-use openmls_traits::signatures::Signer;
-use roda_log::{
+use event_log::{
     content::{InnerEvent, Payload, Sealed, SealedKind, SignedContent},
     SpaceLog,
 };
-use roda_mls::{ExternalDevice, GroupState, Leaf, Opened, SUITE_ID};
-use roda_proto::{ClientFrame, Cursor, Envelope, Op, Reply, Sequenced, ServerFrame};
-use roda_types::{Event, EventBody, Identity, Privacy, Role, Seen, SpaceKind};
+use mls::{ExternalDevice, GroupState, Leaf, Opened, SUITE_ID};
+use openmls::prelude::OpenMlsProvider;
+use openmls_rust_crypto::OpenMlsRustCrypto;
+use openmls_traits::signatures::Signer;
+use protocol::{ClientFrame, Cursor, Envelope, Op, Reply, Sequenced, ServerFrame};
 use serde::{Deserialize, Serialize};
+use types::{Event, EventBody, Identity, Privacy, Role, Seen, SpaceKind};
 
 use crate::LinkedAccount;
 
+mod agents;
+mod apps;
+mod documents;
+mod history;
+mod integrity;
+mod linking;
+mod membership;
+mod profile;
+mod profile_photo;
+mod receipts;
+pub use documents::DocumentResponse;
+
 const PACKAGES_REQUEST: u64 = 0x8000_0001;
 const PROFILES_REQUEST: u64 = 0x8000_0002;
+
+// The host supplies time explicitly: SystemTime is unavailable in browser WASM.
+fn browser_id(prefix: &str, now: i64) -> String {
+    format!("{prefix}_{}", types::new_ulid(now).to_ascii_lowercase())
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 struct PendingEnvelope {
@@ -27,6 +44,12 @@ struct PendingEnvelope {
     failure: Option<String>,
     #[serde(default)]
     invite: Option<String>,
+    #[serde(default)]
+    blob_uploads: Vec<String>,
+    #[serde(default)]
+    order: Option<u64>,
+    #[serde(default)]
+    after_commit: Option<String>,
 }
 
 impl PendingEnvelope {
@@ -64,6 +87,20 @@ struct SavedClient {
     /// Per Space, each member's (delivered, read) watermarks, as the relay replays them.
     #[serde(default)]
     receipts: BTreeMap<String, BTreeMap<String, (u64, u64)>>,
+    #[serde(default)]
+    documents: documents::Journal,
+    #[serde(default)]
+    outbox_sequence: u64,
+    #[serde(default)]
+    profile: profile::Journal,
+    #[serde(default)]
+    history: history::Journal,
+    #[serde(default)]
+    own_handle: Option<String>,
+    #[serde(default)]
+    linking: linking::Journal,
+    #[serde(default)]
+    membership: membership::Journal,
 }
 
 #[derive(Serialize)]
@@ -87,12 +124,34 @@ pub struct Quote {
     text: String,
 }
 
+/// Typed activity from an accepted Item version in this conversation's signed log.
+#[derive(Clone, Serialize)]
+pub(super) struct ItemEditView {
+    space_id: String,
+    item_id: String,
+    title: String,
+    version: u32,
+    note: String,
+    is_undo: bool,
+}
+
+type ItemEditKey = (String, String, String, String);
+fn item_edit_key(event: &Event) -> ItemEditKey {
+    (
+        event.space.clone(),
+        event.author.clone(),
+        event.client_id.clone(),
+        event.hash.clone(),
+    )
+}
+
 #[derive(Serialize)]
 pub struct MessageView {
     id: String,
     /// Timeline entry id (event hash) once the relay ordered it: the target of replies,
     /// threads, reactions, edits and deletes.
     entry: Option<String>,
+    #[serde(serialize_with = "serialize_message_sequence")]
     seq: Option<u64>,
     author: String,
     name: String,
@@ -114,7 +173,11 @@ pub struct MessageView {
     repliers: Vec<String>,
     last_reply_ms: Option<i64>,
     /// A shared file, photo, video or voice note (the chunks to fetch and open).
-    file: Option<roda_types::FileDoc>,
+    file: Option<types::FileDoc>,
+    file_item_id: Option<String>,
+    file_version: Option<u32>,
+    card: Option<serde_json::Value>,
+    item_edit: Option<ItemEditView>,
 }
 
 #[derive(Default)]
@@ -125,12 +188,35 @@ struct Folded {
 }
 
 #[derive(Serialize)]
+pub struct ChatPreferencesView {
+    pinned: bool,
+    archived: bool,
+    // i64::MAX means forever; keep every bit across the JavaScript boundary.
+    muted_until_ms: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ConversationProfile {
+    #[serde(flatten)]
+    identity: Identity,
+    photo_sha256: Option<String>,
+    photo_ready: bool,
+    photo_mime: Option<String>,
+}
+
+#[derive(Serialize)]
 pub struct ConversationView {
     id: String,
     title: String,
     kind: &'static str,
+    privacy: Privacy,
+    roster: BTreeMap<String, Role>,
+    profiles: Vec<ConversationProfile>,
+    prefs: ChatPreferencesView,
+    event_count: String,
     can_send: bool,
     waiting: Option<String>,
+    integrity_error: Option<String>,
     unreadable: usize,
     unread: usize,
     mentions: usize,
@@ -138,11 +224,23 @@ pub struct ConversationView {
     messages: Vec<MessageView>,
 }
 
+fn serialize_message_sequence<S: serde::Serializer>(
+    value: &Option<u64>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match value {
+        Some(sequence) => serializer.serialize_some(&sequence.to_string()),
+        None => serializer.serialize_none(),
+    }
+}
+
 #[derive(Serialize)]
 pub struct Update {
     pub snapshot: String,
     pub frames: Vec<Vec<u8>>,
     pub conversations: Vec<ConversationView>,
+    pub maintenance_ms: Option<u32>,
+    pub history_ready: bool,
 }
 
 /// The same OpenMLS crypto, log verification and binary protocol used by native clients.
@@ -156,8 +254,15 @@ pub struct Client<S> {
     synced: bool,
     sent: BTreeSet<String>,
     packages_in_flight: bool,
+    view_now_ms: i64,
     /// Ephemeral receipt announcements are connection-local, never durable acknowledgements.
     announced_receipts: BTreeMap<String, (u64, u64)>,
+    /// Unresolved live marks are connection-local, never a durable authority.
+    deferred_receipts: BTreeMap<(String, String), (u64, u64)>,
+    profile_net: profile::Network,
+    membership_net: membership::Network,
+    linking_net: linking::Network,
+    history_ready: bool,
 }
 
 impl<S: Signer> Client<S> {
@@ -191,7 +296,7 @@ impl<S: Signer> Client<S> {
                 return Err("outbox belongs to another browser device".into());
             }
             if let Some(inner) = &pending.inner {
-                roda_log::verify_author(inner).map_err(|e| e.to_string())?;
+                event_log::verify_author(inner).map_err(|e| e.to_string())?;
             }
         }
         let provider = OpenMlsRustCrypto::default();
@@ -200,7 +305,7 @@ impl<S: Signer> Client<S> {
             .values
             .write()
             .map_err(|_| "MLS storage lock failed")? = saved.storage.iter().cloned().collect();
-        let client = Self {
+        let mut client = Self {
             account,
             signer,
             provider,
@@ -209,9 +314,25 @@ impl<S: Signer> Client<S> {
             synced: false,
             sent: BTreeSet::new(),
             packages_in_flight: false,
+            view_now_ms: 0,
             announced_receipts: BTreeMap::new(),
+            deferred_receipts: BTreeMap::new(),
+            profile_net: profile::Network::default(),
+            membership_net: membership::Network::default(),
+            linking_net: linking::Network::default(),
+            history_ready: false,
         };
         client.device()?;
+        client.load_linked_profile();
+        for event in client
+            .logs
+            .values()
+            .flat_map(|log| log.events())
+            .cloned()
+            .collect::<Vec<_>>()
+        {
+            client.note_profile_event(&event);
+        }
         Ok(client)
     }
 
@@ -277,6 +398,13 @@ impl<S: Signer> Client<S> {
         if !self.synced {
             return Err("Catching up with the conversation…".into());
         }
+        self.queue_epoch(space)
+    }
+
+    /// An already provisioned MLS group can seal a local outbox entry while
+    /// offline. Publishing still waits for SyncDone and reseals after an epoch
+    /// change, so no cached membership state authorizes a network publication.
+    fn queue_epoch(&self, space: &str) -> Result<u64, String> {
         if let Some(error) = self.saved.integrity_errors.get(space) {
             return Err(error.clone());
         }
@@ -291,13 +419,24 @@ impl<S: Signer> Client<S> {
             None => return Err("You are no longer a member of this conversation.".into()),
         }
         let device = self.device()?;
+        if self.membership_waiting(space) {
+            return Err("Waiting for the encrypted membership update…".into());
+        }
         if device.group_state(space).map_err(|e| e.to_string())? != GroupState::Ready {
             return Err(
                 "Waiting for your phone to add this browser to the encrypted conversation…".into(),
             );
         }
         let members = device.roster(space).map_err(|e| e.to_string())?;
-        if members != roster.keys().cloned().collect() {
+        if members
+            .iter()
+            .any(|identity| !roster.contains_key(identity))
+            || (matches!(
+                roster.get(&self.account.identity),
+                Some(Role::Owner | Role::Admin)
+            ) && !self.membership_net.stuck.contains(space)
+                && members != roster.keys().cloned().collect())
+        {
             return Err("Waiting for the encrypted membership update…".into());
         }
         let epoch = device.epoch(space).map_err(|e| e.to_string())?;
@@ -309,12 +448,12 @@ impl<S: Signer> Client<S> {
 
     fn sign_content(&self, content: Vec<u8>, sealed: bool) -> Result<PendingEnvelope, String> {
         let hash = if sealed {
-            roda_log::content::signed_hash(&content)
+            event_log::content::signed_hash(&content)
         } else {
-            roda_log::content::content_hash(&content)
+            event_log::content::content_hash(&content)
         };
         let message = if sealed {
-            roda_log::content::signature_message(&content, &hash)
+            event_log::content::signature_message(&content, &hash)
         } else {
             hash.into_bytes()
         };
@@ -327,6 +466,9 @@ impl<S: Signer> Client<S> {
             epoch: None,
             failure: None,
             invite: None,
+            blob_uploads: Vec::new(),
+            order: None,
+            after_commit: None,
         };
         pending.envelope()?.verify().map_err(|e| e.to_string())?;
         Ok(pending)
@@ -341,12 +483,12 @@ impl<S: Signer> Client<S> {
         let content = SignedContent {
             v: 3,
             space: space.into(),
-            client_id: roda_types::new_ulid(now_ms),
+            client_id: types::new_ulid(now_ms),
             author: self.account.identity.clone(),
             device: Some(self.account.device.clone()),
             at_ms: now_ms,
             seen: self.head(space).as_ref().map(Into::into),
-            payload: Some(Payload::Body(roda_log::content::encode_body(&body))),
+            payload: Some(Payload::Body(event_log::content::encode_body(&body))),
         }
         .encode();
         self.sign_content(content, false)
@@ -363,7 +505,7 @@ impl<S: Signer> Client<S> {
             .seal(&event.space, &plaintext)
             .map_err(|e| e.to_string())?;
         let content = SignedContent {
-            v: roda_log::content::SEALED_CONTENT_VERSION,
+            v: event_log::content::SEALED_CONTENT_VERSION,
             space: event.space.clone(),
             client_id: event.client_id.clone(),
             author: event.author.clone(),
@@ -415,29 +557,25 @@ impl<S: Signer> Client<S> {
                     .resolve_post(space, &to)
                     .map(|event| event.hash.clone())
                     .unwrap_or(to);
-                Some(roda_types::ReplyRef { to, thread })
+                Some(types::ReplyRef { to, thread })
             }
             None => None,
         };
         if text.trim().is_empty() || text.len() > 32_768 {
             return Err("Write a message of up to 32 KB.".into());
         }
-        let epoch = self.ready_epoch(space)?;
-        let inner = self.clear_event(
+        self.queue_domain_body(
             space,
             EventBody::MessagePosted {
-                message: roda_types::new_secret_id("msg"),
+                message: types::new_secret_id("msg"),
                 text: text.into(),
                 attaches: None,
                 reply,
                 forwarded,
             },
             now_ms,
+            Vec::new(),
         )?;
-        let envelope = inner.envelope()?;
-        let event = envelope.plain_event().ok_or("invalid inner message")?;
-        let pending = self.seal_inner(&event, epoch)?;
-        self.saved.outbox.insert(event.client_id.clone(), pending);
         self.update(Vec::new())
     }
 
@@ -445,17 +583,59 @@ impl<S: Signer> Client<S> {
     pub fn queue_file(
         &mut self,
         space: &str,
-        doc: roda_types::FileDoc,
+        doc: types::FileDoc,
         now_ms: i64,
     ) -> Result<Update, String> {
-        self.queue_file_inner(space, doc, now_ms, None)
+        self.queue_file_inner(space, doc, now_ms)
+    }
+
+    /// Explicit signed item/message identities; callers never guess from a filename
+    /// or search the latest timeline entry after an asynchronous upload.
+    pub fn queue_file_record(
+        &mut self,
+        space: &str,
+        doc: types::FileDoc,
+        now_ms: i64,
+    ) -> Result<(Update, String, String), String> {
+        let before = self.saved.outbox.keys().cloned().collect::<BTreeSet<_>>();
+        let update = self.queue_file(space, doc, now_ms)?;
+        let (item, message) = self
+            .saved
+            .outbox
+            .iter()
+            .filter(|(id, _)| !before.contains(*id))
+            .filter_map(|(_, pending)| pending.inner.as_ref())
+            .find_map(|event| match &event.body {
+                EventBody::ItemCreated {
+                    item,
+                    content: types::ItemContent::File(_),
+                    ..
+                } => Some((item.clone(), event.client_id.clone())),
+                _ => None,
+            })
+            .ok_or("The shared file was not queued.")?;
+        let message = self
+            .saved
+            .outbox
+            .iter()
+            .filter(|(id, _)| !before.contains(*id))
+            .filter_map(|(_, pending)| pending.inner.as_ref())
+            .find_map(|event| match &event.body {
+                EventBody::MessagePosted {
+                    attaches: Some(target),
+                    ..
+                } if *target == item => Some(event.client_id.clone()),
+                _ => None,
+            })
+            .unwrap_or(message);
+        Ok((update, item, message))
     }
 
     /// Persist failed media atomically without ever publishing its incomplete manifest.
     pub fn queue_failed_file(
         &mut self,
         space: &str,
-        doc: roda_types::FileDoc,
+        doc: types::FileDoc,
         now_ms: i64,
         reason: String,
         chunks: BTreeMap<String, Vec<u8>>,
@@ -472,9 +652,9 @@ impl<S: Signer> Client<S> {
         let mut pending = self.clear_event(
             space,
             EventBody::ItemCreated {
-                item: roda_types::new_secret_id("it"),
-                kind: roda_types::ItemKind::File,
-                content: roda_types::ItemContent::File(doc),
+                item: types::new_secret_id("it"),
+                kind: types::ItemKind::File,
+                content: types::ItemContent::File(doc),
                 origin: "Adicionado".into(),
             },
             now_ms,
@@ -501,62 +681,42 @@ impl<S: Signer> Client<S> {
     fn queue_file_inner(
         &mut self,
         space: &str,
-        mut doc: roda_types::FileDoc,
+        mut doc: types::FileDoc,
         now_ms: i64,
-        failure: Option<String>,
     ) -> Result<Update, String> {
         if doc.chunks.is_empty() {
             return Err("file empty or too large".into());
         }
         if let Some(reply) = doc.voice.as_mut().and_then(|voice| voice.reply.as_mut()) {
-            let target = self
-                .resolve_post(space, &reply.to)
-                .ok_or("That message is no longer available.")?;
-            reply.to = target.client_id.clone();
+            let reference = match self.posted(space, &reply.to) {
+                Some(Some(root)) if reply.thread && root.thread => root.to,
+                Some(_) => reply.to.clone(),
+                None => return Err("That message is no longer available.".into()),
+            };
+            reply.to = self
+                .resolve_post(space, &reference)
+                .ok_or("That message is no longer available.")?
+                .client_id
+                .clone();
         }
-        let item = roda_types::new_secret_id("it");
-        let attachment = (!doc.is_voice()).then(|| format!("msg_attachment_{item}"));
-        let epoch = self.ready_epoch(space)?;
-        let inner = self.clear_event(
-            space,
-            EventBody::ItemCreated {
-                item: item.clone(),
-                kind: roda_types::ItemKind::File,
-                content: roda_types::ItemContent::File(doc),
-                origin: "Adicionado".into(),
-            },
-            now_ms,
-        )?;
-        let event = inner
-            .envelope()?
-            .plain_event()
-            .ok_or("invalid inner message")?;
-        let mut pending = self.seal_inner(&event, epoch)?;
-        pending.failure = failure;
-        let chat = if let Some(message) = attachment {
-            let inner = self.clear_event(
-                space,
-                EventBody::MessagePosted {
-                    message,
-                    text: String::new(),
-                    attaches: Some(item),
-                    reply: None,
-                    forwarded: false,
-                },
-                now_ms,
-            )?;
-            let event = inner
-                .envelope()?
-                .plain_event()
-                .ok_or("invalid inner message")?;
-            Some((event.client_id.clone(), self.seal_inner(&event, epoch)?))
-        } else {
-            None
-        };
-        self.saved.outbox.insert(event.client_id.clone(), pending);
-        if let Some((id, pending)) = chat {
-            self.saved.outbox.insert(id, pending);
+        let item = types::new_secret_id("it");
+        let voice = doc.is_voice();
+        let mut bodies = vec![EventBody::ItemCreated {
+            item: item.clone(),
+            kind: types::ItemKind::File,
+            content: types::ItemContent::File(doc),
+            origin: "Adicionado".into(),
+        }];
+        if !voice {
+            bodies.push(EventBody::MessagePosted {
+                message: format!("msg_attachment_{item}"),
+                text: String::new(),
+                attaches: Some(item),
+                reply: None,
+                forwarded: false,
+            });
         }
+        self.queue_domain_batch(space, bodies, now_ms)?;
         self.update(Vec::new())
     }
 
@@ -578,7 +738,7 @@ impl<S: Signer> Client<S> {
         &mut self,
         space: &str,
         target: &str,
-        note: roda_types::Annotation,
+        note: types::Annotation,
         now_ms: i64,
     ) -> Result<Update, String> {
         let target = self
@@ -593,12 +753,12 @@ impl<S: Signer> Client<S> {
             .map(|e| e.author.clone())
             .ok_or("That message is no longer available.")?;
         if self.logs.get(space).is_some_and(|log| log.events().iter().any(|event| matches!(
-            &event.body, EventBody::MessageAnnotated { target: to, note: roda_types::Annotation::Delete }
+            &event.body, EventBody::MessageAnnotated { target: to, note: types::Annotation::Delete }
                 if self.resolve_post(space, to).is_some_and(|post| post.hash == target) && event.author == author
         ))) {
             return Err("That message is no longer available.".into());
         }
-        if let roda_types::Annotation::React { emoji } = &note {
+        if let types::Annotation::React { emoji } = &note {
             if emoji.trim().is_empty() || emoji.len() > 32 {
                 return Err("Choose an emoji of up to 32 bytes.".into());
             }
@@ -612,7 +772,7 @@ impl<S: Signer> Client<S> {
             let deletes_target = |event: &Event| {
                 event.author == author
                     && matches!(&event.body, EventBody::MessageAnnotated {
-                        target: deleted, note: roda_types::Annotation::Delete,
+                        target: deleted, note: types::Annotation::Delete,
                     } if self.resolve_post(space, deleted).is_some_and(|post| post.hash == target))
             };
             let deleted = self
@@ -634,20 +794,17 @@ impl<S: Signer> Client<S> {
                 return Err("Essa mensagem foi apagada.".into());
             }
         }
-        if let roda_types::Annotation::Edit { text } = &note {
+        if let types::Annotation::Edit { text } = &note {
             if text.trim().is_empty() || text.len() > 32_768 {
                 return Err("Write a message of up to 32 KB.".into());
             }
         }
-        let epoch = self.ready_epoch(space)?;
-        let inner =
-            self.clear_event(space, EventBody::MessageAnnotated { target, note }, now_ms)?;
-        let event = inner
-            .envelope()?
-            .plain_event()
-            .ok_or("invalid inner message")?;
-        let pending = self.seal_inner(&event, epoch)?;
-        self.saved.outbox.insert(event.client_id.clone(), pending);
+        self.queue_domain_body(
+            space,
+            EventBody::MessageAnnotated { target, note },
+            now_ms,
+            Vec::new(),
+        )?;
         self.update(Vec::new())
     }
 
@@ -672,7 +829,7 @@ impl<S: Signer> Client<S> {
         *mine = (mine.0.max(last), mine.1.max(last));
         self.update(vec![ClientFrame::Ephemeral {
             space: space.into(),
-            kind: roda_proto::EphemeralKind::Read { seq: last },
+            kind: protocol::EphemeralKind::Read { seq: last },
         }
         .encode()])
     }
@@ -698,7 +855,7 @@ impl<S: Signer> Client<S> {
                 frames.push(
                     ClientFrame::Ephemeral {
                         space: space.clone(),
-                        kind: roda_proto::EphemeralKind::Delivered { seq: mine.0 },
+                        kind: protocol::EphemeralKind::Delivered { seq: mine.0 },
                     }
                     .encode(),
                 );
@@ -707,7 +864,7 @@ impl<S: Signer> Client<S> {
                 frames.push(
                     ClientFrame::Ephemeral {
                         space: space.clone(),
-                        kind: roda_proto::EphemeralKind::Read { seq: mine.1 },
+                        kind: protocol::EphemeralKind::Read { seq: mine.1 },
                     }
                     .encode(),
                 );
@@ -728,7 +885,7 @@ impl<S: Signer> Client<S> {
     }
 
     /// The reply link of the message with this entry id in `space`, if it is a message.
-    fn posted(&self, space: &str, entry: &str) -> Option<Option<roda_types::ReplyRef>> {
+    fn posted(&self, space: &str, entry: &str) -> Option<Option<types::ReplyRef>> {
         self.logs
             .get(space)?
             .events()
@@ -738,7 +895,7 @@ impl<S: Signer> Client<S> {
             .and_then(|e| match &e.body {
                 EventBody::MessagePosted { reply, .. } => Some(reply.clone()),
                 EventBody::ItemCreated {
-                    content: roda_types::ItemContent::File(doc),
+                    content: types::ItemContent::File(doc),
                     ..
                 } => Some(doc.voice.as_ref().and_then(|v| v.reply.clone())),
                 _ => None,
@@ -749,7 +906,11 @@ impl<S: Signer> Client<S> {
         self.synced = false;
         self.sent.clear();
         self.announced_receipts.clear();
+        self.deferred_receipts.clear();
         self.packages_in_flight = false;
+        self.profile_net = profile::Network::default();
+        self.membership_net.restart();
+        self.linking_net = linking::Network::default();
         if !self.saved.packages_published && self.saved.packages.is_none() {
             self.prepare_packages(true)?;
         }
@@ -764,6 +925,84 @@ impl<S: Signer> Client<S> {
         self.update(vec![ClientFrame::Sync { cursors, all: true }.encode()])
     }
 
+    fn put_directory_profiles(&mut self, profiles: Vec<Identity>) {
+        for mut profile in profiles {
+            if profile.id == self.account.identity {
+                continue;
+            }
+            if event_log::parse_device_key(&profile.id).is_none()
+                || !event_log::agent_owner::profile_authorized(&profile)
+            {
+                continue;
+            }
+            if self.saved.profiles.get(&profile.id).is_some_and(|known| {
+                known.owner_proof.is_some()
+                    && event_log::agent_owner::profile_authorized(known)
+                    && (known.kind != profile.kind
+                        || known.owner != profile.owner
+                        || known.owner_proof != profile.owner_proof)
+            }) {
+                continue;
+            }
+            // Directory entries never reveal a person's private fields. Those are
+            // overlaid only after the shared encrypted-profile codec authenticates them.
+            if profile.kind == types::IdentityKind::Person {
+                profile.name.clear();
+                profile.bio.clear();
+            }
+            self.saved.profiles.insert(profile.id.clone(), profile);
+        }
+        self.overlay_saved_profiles();
+    }
+
+    pub fn directory_profiles(&mut self, encoded: &str) -> Result<DocumentResponse, String> {
+        if encoded.len() > 1 << 20 {
+            return Err("Resposta de perfis grande demais.".into());
+        }
+        let profiles: Vec<Identity> =
+            serde_json::from_str(encoded).map_err(|error| error.to_string())?;
+        if profiles.len() > 500 {
+            return Err("Perfis demais em uma consulta.".into());
+        }
+        let ids = profiles
+            .iter()
+            .map(|profile| profile.id.clone())
+            .collect::<Vec<_>>();
+        self.put_directory_profiles(profiles);
+        let result = serde_json::Value::Array(
+            ids.iter()
+                .filter(|id| **id == self.account.identity || self.saved.profiles.contains_key(*id))
+                .map(|id| self.persona_value(id))
+                .collect(),
+        );
+        Ok(DocumentResponse {
+            result,
+            update: Some(self.update(Vec::new())?),
+            downloads: Vec::new(),
+            uploads: Vec::new(),
+        })
+    }
+
+    pub fn typing_frame(&self, space: &str, typing: bool) -> Result<Vec<u8>, String> {
+        if !self.synced
+            || !self
+                .roster(space)
+                .get(&self.account.identity)
+                .is_some_and(|role| *role != Role::Reader)
+        {
+            return Ok(Vec::new());
+        }
+        Ok(ClientFrame::Ephemeral {
+            space: space.into(),
+            kind: if typing {
+                protocol::EphemeralKind::Typing
+            } else {
+                protocol::EphemeralKind::StoppedTyping
+            },
+        }
+        .encode())
+    }
+
     pub fn queue_join(
         &mut self,
         space: &str,
@@ -771,7 +1010,7 @@ impl<S: Signer> Client<S> {
         code: &str,
         now_ms: i64,
     ) -> Result<Update, String> {
-        if !roda_proto::valid_invite_code(code) || space.is_empty() {
+        if !protocol::valid_invite_code(code) || space.is_empty() {
             return Err("Invalid invitation.".into());
         }
         if self.roster(space).contains_key(&self.account.identity) {
@@ -805,8 +1044,19 @@ impl<S: Signer> Client<S> {
     }
 
     pub fn receive(&mut self, bytes: &[u8], now_ms: i64) -> Result<Update, String> {
+        self.view_now_ms = now_ms;
         let mut extra = Vec::new();
         match ServerFrame::decode(bytes).map_err(|e| e.to_string())? {
+            ServerFrame::Res { id, result } if self.linking_reply(id, &result)? => {}
+            ServerFrame::Res { id, result } if self.membership_reply(id, &result)? => {}
+            ServerFrame::Res { id, result } if self.profile_reply(id, &result)? => {}
+            ServerFrame::DeviceMessage { from, to, sealed } => {
+                self.history_ready |= self.history_hint(&from, &to, &sealed);
+                self.linked_device_message(&from, &to, &sealed, &mut extra)?;
+            }
+            ServerFrame::ProfileChanged { identity, .. } => {
+                self.profile_changed(&identity);
+            }
             ServerFrame::Event { ev } => {
                 let space = ev.env.space().to_string();
                 let next = self.logs.get(&space).map(SpaceLog::next_seq).unwrap_or(0);
@@ -837,19 +1087,12 @@ impl<S: Signer> Client<S> {
             }
             ServerFrame::Ephemeral { space, from, kind } => {
                 let mark = match kind {
-                    roda_proto::EphemeralKind::Read { seq } => Some((seq, seq)),
-                    roda_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
+                    protocol::EphemeralKind::Read { seq } => Some((seq, seq)),
+                    protocol::EphemeralKind::Delivered { seq } => Some((seq, 0)),
                     _ => None,
                 };
                 if let Some((delivered, read)) = mark {
-                    let entry = self
-                        .saved
-                        .receipts
-                        .entry(space)
-                        .or_default()
-                        .entry(from)
-                        .or_default();
-                    *entry = (entry.0.max(delivered), entry.1.max(read));
+                    self.receive_receipt(&space, &from, delivered, read)?;
                 }
             }
             ServerFrame::SyncDone => {
@@ -902,9 +1145,7 @@ impl<S: Signer> Client<S> {
                 result: Ok(Reply::Profiles(profiles)),
                 ..
             } => {
-                for profile in profiles {
-                    self.saved.profiles.insert(profile.id.clone(), profile);
-                }
+                self.put_directory_profiles(profiles);
             }
             ServerFrame::Rejected {
                 client_id,
@@ -912,6 +1153,9 @@ impl<S: Signer> Client<S> {
                 permanent,
                 ..
             } => {
+                if permanent && self.membership_refused(&client_id)? {
+                    return self.update(extra);
+                }
                 if let Some(pending) = self.saved.outbox.get_mut(&client_id) {
                     if permanent {
                         pending.failure = Some(reason);
@@ -925,6 +1169,7 @@ impl<S: Signer> Client<S> {
             }
             _ => {}
         }
+        self.flush_receipts();
         self.update(extra)
     }
 
@@ -978,7 +1223,7 @@ impl<S: Signer> Client<S> {
             return Ok(());
         }
         envelope.verify().map_err(|e| e.to_string())?;
-        let outer = roda_log::event_from_content(
+        let outer = event_log::event_from_content(
             envelope.content().to_vec(),
             envelope.sig.clone(),
             envelope.cert.clone(),
@@ -1023,7 +1268,7 @@ impl<S: Signer> Client<S> {
                                     opened = inner_event(&sequenced, &plaintext, &from)
                                 }
                                 Ok(_) => {}
-                                Err(roda_mls::MlsError::Storage(error)) => return Err(error),
+                                Err(mls::MlsError::Storage(error)) => return Err(error),
                                 Err(_) => {}
                             }
                         }
@@ -1034,7 +1279,7 @@ impl<S: Signer> Client<S> {
                     {
                         match device.join(&space, ciphertext, &roster) {
                             Ok(joined) => landed = joined,
-                            Err(roda_mls::MlsError::Storage(error)) => return Err(error),
+                            Err(mls::MlsError::Storage(error)) => return Err(error),
                             Err(_) => {}
                         }
                     }
@@ -1042,7 +1287,7 @@ impl<S: Signer> Client<S> {
                         match device.open(&space, ciphertext, &roster, &admitted) {
                             Ok(Opened::Commit { .. }) => landed = true,
                             Ok(_) => {}
-                            Err(roda_mls::MlsError::Storage(error)) => return Err(error),
+                            Err(mls::MlsError::Storage(error)) => return Err(error),
                             Err(_) => {}
                         }
                     }
@@ -1061,6 +1306,8 @@ impl<S: Signer> Client<S> {
         };
         log.accept(event.clone()).map_err(|e| e.to_string())?;
         self.logs.insert(space.clone(), log);
+        self.note_profile_event(&event);
+        self.note_membership_event(&event)?;
         if own.is_some() {
             self.saved.outbox.remove(envelope.client_id());
             self.sent.remove(envelope.client_id());
@@ -1100,7 +1347,15 @@ impl<S: Signer> Client<S> {
         Ok(())
     }
 
+    pub fn maintenance(&mut self, now: i64) -> Result<Update, String> {
+        self.view_now_ms = now;
+        self.update(Vec::new())
+    }
+
     pub fn update(&mut self, mut frames: Vec<Vec<u8>>) -> Result<Update, String> {
+        self.profile_frames(&mut frames)?;
+        self.membership_frames(&mut frames)?;
+        self.linking_frames(&mut frames)?;
         let reseal = self
             .saved
             .outbox
@@ -1113,7 +1368,14 @@ impl<S: Signer> Client<S> {
             })
             .collect::<Vec<_>>();
         for (id, event, epoch) in reseal {
-            let pending = self.seal_inner(&event, epoch)?;
+            let mut pending = self.seal_inner(&event, epoch)?;
+            pending.blob_uploads = self
+                .saved
+                .outbox
+                .get(&id)
+                .map(|pending| pending.blob_uploads.clone())
+                .unwrap_or_default();
+            pending.order = self.saved.outbox.get(&id).and_then(|pending| pending.order);
             self.sent.remove(&id);
             self.saved.outbox.insert(id, pending);
         }
@@ -1136,17 +1398,38 @@ impl<S: Signer> Client<S> {
             );
             self.packages_in_flight = true;
         }
-        for (id, pending) in self
+        let mut outgoing = self
             .saved
             .outbox
             .iter()
-            .filter(|(_, pending)| pending.failure.is_none())
-        {
-            if self.sent.contains(id) {
+            .filter(|(_, pending)| pending.failure.is_none() && pending.blob_uploads.is_empty())
+            .filter(|(_, pending)| {
+                pending
+                    .after_commit
+                    .as_ref()
+                    .is_none_or(|id| !self.saved.outbox.contains_key(id))
+            })
+            .collect::<Vec<_>>();
+        outgoing.sort_by_key(|(id, pending)| (pending.order.unwrap_or(0), *id));
+        for (id, pending) in outgoing {
+            if self.sent.contains(id)
+                || (!self.synced
+                    && matches!(
+                        pending.envelope()?.body(),
+                        Some(EventBody::ProfileKeyShared { .. })
+                    ))
+            {
                 continue;
             }
             if let Some(inner) = &pending.inner {
-                if self.ready_epoch(&inner.space).ok() != pending.epoch {
+                let encrypted = self
+                    .metadata(&inner.space)
+                    .is_some_and(|(_, _, privacy)| privacy == Privacy::EndToEnd);
+                if !self.synced
+                    || encrypted
+                        && (pending.epoch.is_none()
+                            || self.ready_epoch(&inner.space).ok() != pending.epoch)
+                {
                     continue;
                 }
             }
@@ -1176,7 +1459,15 @@ impl<S: Signer> Client<S> {
         Ok(Update {
             snapshot,
             frames,
+            history_ready: std::mem::take(&mut self.history_ready),
             conversations: self.conversations(),
+            maintenance_ms: self
+                .membership_deadline()
+                .into_iter()
+                .chain(self.profile_deadline())
+                .chain(self.linking_deadline())
+                .min()
+                .map(|deadline| deadline.saturating_sub(self.view_now_ms).clamp(50, 60_000) as u32),
         })
     }
 
@@ -1184,7 +1475,7 @@ impl<S: Signer> Client<S> {
     fn folded_files<'a>(
         &'a self,
         space: &str,
-    ) -> BTreeMap<&'a str, (&'a str, Vec<&'a roda_types::FileDoc>)> {
+    ) -> BTreeMap<&'a str, (&'a str, Vec<&'a types::FileDoc>)> {
         let events = self
             .logs
             .get(space)
@@ -1197,12 +1488,12 @@ impl<S: Signer> Client<S> {
                     .filter_map(|pending| pending.inner.as_ref())
                     .filter(|event| event.space == space),
             );
-        let mut files: BTreeMap<&str, (&str, Vec<&roda_types::FileDoc>)> = BTreeMap::new();
+        let mut files: BTreeMap<&str, (&str, Vec<&types::FileDoc>)> = BTreeMap::new();
         for event in events {
             match &event.body {
                 EventBody::ItemCreated {
                     item,
-                    content: roda_types::ItemContent::File(doc),
+                    content: types::ItemContent::File(doc),
                     ..
                 } => {
                     files
@@ -1211,7 +1502,7 @@ impl<S: Signer> Client<S> {
                 }
                 EventBody::ItemVersioned {
                     item,
-                    content: roda_types::ItemContent::File(doc),
+                    content: types::ItemContent::File(doc),
                     ..
                 } => {
                     if let Some((author, versions)) = files.get_mut(item.as_str()) {
@@ -1221,7 +1512,7 @@ impl<S: Signer> Client<S> {
                                 .iter()
                                 .copied()
                                 .chain([doc])
-                                .any(roda_types::FileDoc::is_voice)
+                                .any(types::FileDoc::is_voice)
                         {
                             versions.push(doc);
                         }
@@ -1249,9 +1540,29 @@ impl<S: Signer> Client<S> {
         files
     }
 
+    fn conversation_profile(&self, id: &str) -> Option<ConversationProfile> {
+        let identity = self.saved.profiles.get(id)?.clone();
+        let photo = self.fields_of(id).and_then(|(_, fields)| fields.photo);
+        Some(ConversationProfile {
+            photo_sha256: photo.as_ref().map(|photo| photo.sha256.clone()),
+            photo_ready: photo
+                .as_ref()
+                .is_some_and(|photo| self.profile_photo_cached(photo)),
+            photo_mime: photo.as_ref().map(|photo| photo.mime.clone()),
+            identity,
+        })
+    }
+
     pub fn conversations(&self) -> Vec<ConversationView> {
-        self.logs.keys().filter_map(|space| {
-            let (title, kind, _) = self.metadata(space)?;
+        let preferences = self.chat_preferences();
+        // The existing document fold enforces author roles, item ownership and valid
+        // restores. Build one disposable index; never infer activity from note text.
+        let (item_edits, item_projection_error) = match self.document_items() {
+            Ok(items) => (documents::item_edits(&items), None),
+            Err(reason) => (BTreeMap::new(), Some(reason)),
+        };
+        let mut conversations = self.logs.keys().filter_map(|space| {
+            let (title, kind, privacy) = self.metadata(space)?;
             let roster = self.roster(space);
             if kind == SpaceKind::Personal || !roster.contains_key(&self.account.identity) { return None; }
             let events = self.logs.get(space)?.events();
@@ -1277,10 +1588,10 @@ impl<S: Signer> Client<S> {
                 if note.author_only() && *author != event.author { continue; }
                 let f = folded.entry((*hash).to_owned()).or_default();
                 match note {
-                    roda_types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
-                    roda_types::Annotation::Delete => { f.deleted = true; f.text = None; f.reactions.clear(); }
-                    roda_types::Annotation::React { emoji } if !f.deleted && !emoji.trim().is_empty() && emoji.len() <= 32 => { f.reactions.insert(event.author.clone(), emoji.clone()); }
-                    roda_types::Annotation::Unreact => { f.reactions.remove(&event.author); }
+                    types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
+                    types::Annotation::Delete => { f.deleted = true; f.text = None; f.reactions.clear(); }
+                    types::Annotation::React { emoji } if !f.deleted && !emoji.trim().is_empty() && emoji.len() <= 32 => { f.reactions.insert(event.author.clone(), emoji.clone()); }
+                    types::Annotation::Unreact => { f.reactions.remove(&event.author); }
                     _ => {}
                 }
             }
@@ -1292,12 +1603,13 @@ impl<S: Signer> Client<S> {
             let (all_delivered, all_read) = (watermark(|r| r.0.max(r.1)), watermark(|r| r.1));
             let my_read = receipts.and_then(|r| r.get(me)).map(|r| r.1).unwrap_or(0);
             let mut messages = events.iter().filter_map(|event| {
-                let mut view = self.message_view(event, "confirmed", None)?;
+                let mut view = self.message_view(event, "confirmed", None, &item_edits)?;
                 view.entry = Some(event.hash.clone());
                 view.seq = Some(event.seq);
                 if let EventBody::ItemCreated { item, .. } = &event.body {
                     if let Some((_, versions)) = files.get(item.as_str()) {
                         view.file = versions.last().map(|doc| (*doc).clone());
+                        view.file_version = u32::try_from(versions.len()).ok();
                         view.edited = versions.len() > 1;
                     }
                 }
@@ -1306,7 +1618,7 @@ impl<S: Signer> Client<S> {
                 }
                 if let Some(f) = folded.get(&event.hash) {
                     view.deleted = f.deleted;
-                    if f.deleted { view.text.clear(); view.file = None; }
+                    if f.deleted { view.text.clear(); view.file = None; view.file_item_id = None; view.file_version = None; view.card = None; }
                     if let Some(text) = &f.text { view.text = text.clone(); view.edited = true; }
                     let mut groups: BTreeMap<&str, Vec<ReactionParticipant>> = BTreeMap::new();
                     for (who, emoji) in &f.reactions {
@@ -1327,7 +1639,7 @@ impl<S: Signer> Client<S> {
             messages.extend(self.saved.outbox.values().filter_map(|pending| {
                 let inner = pending.inner.as_ref()?;
                 if inner.space != *space { return None; }
-                self.message_view(inner, if pending.failure.is_some() { "failed" } else { "sending" }, pending.failure.clone())
+                self.message_view(inner, if pending.failure.is_some() { "failed" } else { "sending" }, pending.failure.clone(), &item_edits)
             }));
             // Native references may use client ids. Normalize before folding replies,
             // preserving real hash targets if an alias collides.
@@ -1362,11 +1674,50 @@ impl<S: Signer> Client<S> {
             let mention = format!("@{}", self.account.name.to_lowercase());
             let incoming = messages.iter().filter(|m| m.author != *me && !m.deleted && m.seq.is_some_and(|s| s > my_read) && (my_read > 0 || m.seq.is_some()));
             let (unread, mentions) = incoming.fold((0, 0), |(u, n), m| (u + 1, n + usize::from(!self.account.name.is_empty() && m.text.to_lowercase().contains(&mention))));
-            let waiting = self.ready_epoch(space).err();
+            let waiting = self.document_writer(space).err();
             let unreadable = events.iter().filter(|event| matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")).count();
+            let prefs = preferences.get(space).cloned().unwrap_or_default();
+            let mut people: BTreeSet<_> = roster.keys().cloned().chain(events.iter().map(|event| event.author.clone())).collect();
+            let owners: Vec<_> = people.iter().filter_map(|id| self.saved.profiles.get(id)?.owner.clone()).collect();
+            people.extend(owners);
+            let profiles = people.iter().filter_map(|id| self.conversation_profile(id)).collect();
             Some(ConversationView { id: space.clone(), title, kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
-                can_send: waiting.is_none(), waiting, unreadable, unread, mentions, members: roster.len(), messages })
-        }).collect()
+                privacy, profiles, prefs: ChatPreferencesView { pinned: prefs.pinned, archived: prefs.archived, muted_until_ms: prefs.muted_until_ms.map(|time| time.to_string()) },
+                event_count: self.logs.get(space)?.next_seq().to_string(),
+                can_send: waiting.is_none(), waiting,
+                integrity_error: self.saved.integrity_errors.get(space).cloned().or_else(|| item_projection_error.clone()),
+                unreadable, unread, mentions, members: roster.len(), roster, messages })
+        }).collect::<Vec<_>>();
+        conversations.extend(self.creating_views().into_iter().map(|mut view| {
+            view.integrity_error = item_projection_error.clone();
+            view
+        }));
+        conversations
+    }
+
+    /// Preferences belong to my own personal log. A chat participant cannot set
+    /// my preferences by posting the same body in another Space.
+    fn chat_preferences(&self) -> BTreeMap<String, types::ChatPrefs> {
+        let mut preferences = BTreeMap::new();
+        for (space, log) in &self.logs {
+            if !matches!(self.metadata(space), Some((_, SpaceKind::Personal, _)))
+                || !log
+                    .events()
+                    .first()
+                    .is_some_and(|event| event.author == self.account.identity)
+            {
+                continue;
+            }
+            for event in log.events() {
+                if event.author != self.account.identity {
+                    continue;
+                }
+                if let EventBody::ChatPrefsSet { space, prefs } = &event.body {
+                    preferences.insert(space.clone(), prefs.clone());
+                }
+            }
+        }
+        preferences
     }
 
     fn message_view(
@@ -1374,48 +1725,17 @@ impl<S: Signer> Client<S> {
         event: &Event,
         delivery: &'static str,
         failure: Option<String>,
+        item_edits: &BTreeMap<ItemEditKey, ItemEditView>,
     ) -> Option<MessageView> {
+        let item_edit = item_edits.get(&item_edit_key(event)).cloned();
         let (text, reply, forwarded, file) = match &event.body {
             EventBody::MessagePosted {
                 text,
                 reply,
                 forwarded,
                 attaches,
-                message,
+                ..
             } => {
-                // Hide only an explicitly generated, context-free companion whose same-author
-                // file card is actually present. Other attachment posts are real
-                // timeline entries (including non-file items and forwards).
-                if text.is_empty()
-                    && reply.is_none()
-                    && !forwarded
-                    && attaches
-                        .as_ref()
-                        .is_some_and(|item| *message == format!("msg_attachment_{item}"))
-                {
-                    if let Some(item) = attaches {
-                        let is_file_card = |candidate: &Event| {
-                            candidate.space == event.space
-                                && candidate.author == event.author
-                                && matches!(&candidate.body, EventBody::ItemCreated {
-                                    item: id, content: roda_types::ItemContent::File(_), ..
-                                } if id == item)
-                        };
-                        let confirmed = self
-                            .logs
-                            .get(&event.space)
-                            .is_some_and(|log| log.events().iter().any(is_file_card));
-                        let pending = self
-                            .saved
-                            .outbox
-                            .values()
-                            .filter_map(|p| p.inner.as_ref())
-                            .any(is_file_card);
-                        if confirmed || pending {
-                            return None;
-                        }
-                    }
-                }
                 // Resolve only from this conversation's readable events, never the
                 // global media cache (which may contain another space's files).
                 let files = self.folded_files(&event.space);
@@ -1427,14 +1747,18 @@ impl<S: Signer> Client<S> {
                 (text.clone(), reply.clone(), *forwarded, file)
             }
             EventBody::ItemCreated {
-                content: roda_types::ItemContent::File(doc),
+                content: types::ItemContent::File(doc),
                 ..
-            } => (
+            } if doc.is_voice() || delivery == "failed" => (
                 String::new(),
                 doc.voice.as_ref().and_then(|v| v.reply.clone()),
-                false,
+                doc.voice.as_ref().is_some_and(|v| v.forwarded),
                 Some(doc.clone()),
             ),
+            EventBody::ItemVersioned { .. } | EventBody::ItemReverted { .. } => {
+                let edit = item_edit.as_ref()?;
+                (edit.note.clone(), None, false, None)
+            }
             _ => return None,
         };
         let name = if event.author == self.account.identity {
@@ -1451,6 +1775,28 @@ impl<S: Signer> Client<S> {
                     }
                 })
                 .unwrap_or_else(|| "Alguém".into())
+        };
+        let file_item_id = match &event.body {
+            EventBody::MessagePosted { attaches, .. } => attaches.clone(),
+            EventBody::ItemCreated {
+                item,
+                content: types::ItemContent::File(_),
+                ..
+            } => Some(item.clone()),
+            _ => None,
+        }
+        .filter(|_| file.is_some());
+        let file_version = file_item_id.as_ref().and_then(|item| {
+            self.folded_files(&event.space)
+                .get(item.as_str())
+                .and_then(|(_, versions)| u32::try_from(versions.len()).ok())
+        });
+        let card = match &event.body {
+            EventBody::MessagePosted {
+                attaches: Some(item),
+                ..
+            } if file.is_none() => self.item_card_value(&event.space, item).ok().flatten(),
+            _ => None,
         };
         Some(MessageView {
             id: event.client_id.clone(),
@@ -1477,24 +1823,22 @@ impl<S: Signer> Client<S> {
             repliers: Vec::new(),
             last_reply_ms: None,
             file,
+            file_item_id,
+            file_version,
+            card,
+            item_edit,
         })
     }
 }
 
 fn is_post(body: &EventBody) -> bool {
-    matches!(
-        body,
-        EventBody::MessagePosted { .. }
-            | EventBody::ItemCreated {
-                content: roda_types::ItemContent::File(_),
-                ..
-            }
-    )
+    matches!(body, EventBody::MessagePosted { .. })
+        || matches!(body,EventBody::ItemCreated{content:types::ItemContent::File(doc),..} if doc.is_voice())
 }
 
 fn inner_event(sequenced: &Sequenced, plaintext: &[u8], from: &Leaf) -> Option<Event> {
     let inner = InnerEvent::decode(plaintext)?;
-    let event = roda_log::event_from_content(
+    let event = event_log::event_from_content(
         inner.content,
         inner.sig,
         sequenced.env.cert.clone(),

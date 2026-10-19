@@ -8,9 +8,9 @@ final class SheetConfirmJourneyTests: XCTestCase {
 
     @MainActor private func launch(_ open: String) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-RodaDemo", "YES", "-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
-                               "-AppleLanguages", "(pt-BR)", "-RodaAppearance", "light",
-                               "-RodaApprovalsExplained", "YES", "-RodaOpen", open]
+        app.launchArguments = ["-Demo", "YES", "-FreshStart", "YES", "-ResetDemo", "YES",
+                               "-AppleLanguages", "(pt-BR)", "-Appearance", "light",
+                               "-ApprovalsExplained", "YES", "-Open", open]
         app.launch()
         return app
     }

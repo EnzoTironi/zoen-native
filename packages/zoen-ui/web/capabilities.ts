@@ -1,6 +1,6 @@
-export async function unavailableCapability(): Promise<string | undefined> {
+export async function unavailableCapability(options:{onboarding?:boolean}={}): Promise<string | undefined> {
   if (!window.isSecureContext) return 'Open Zoen over HTTPS or on localhost to protect your browser device.';
-  if (!window.crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') {
+  if (!options.onboarding&&(!window.crossOriginIsolated || typeof SharedArrayBuffer === 'undefined')) {
     return 'This host does not support the isolation required for encrypted browser messaging.';
   }
   if (!crypto.subtle || !window.indexedDB || !window.Worker || !navigator.locks) {

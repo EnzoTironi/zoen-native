@@ -47,7 +47,7 @@ class McpWebViewTest {
         assumeTrue("The installed WebView must support origin-scoped messaging and isolated profiles", MiniAppWebProvider.supported())
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
         val folder = File(context.noBackupFilesDir, "web-test-${UUID.randomUUID()}").apply { mkdirs() }
-        val core = RodaEngine.open(File(folder, "core.sqlite").absolutePath, "en")
+        val core = Client.open(File(folder, "core.sqlite").absolutePath, "en")
         core.seedDemoIfEmpty()
         val space = core.spaces().first { it.counterpart?.handle == "zoen" }
         val item = core.installApp(space.id, "list", "{\"title\":\"Android WebView list\",\"items\":[\"Water\"]}")
@@ -85,27 +85,38 @@ class McpWebViewTest {
             assertTrue(loaded.await(20, TimeUnit.SECONDS))
             assertNull(failure.get())
             awaitNativeWindow(probe.get())
-            waitUntil { evaluate(web.get(), "document.querySelectorAll('#items .it').length") == "1" }
+            waitUntil { evaluate(web.get(), "document.querySelectorAll('label.item input[type=checkbox]').length") == "1" }
             observeHtmlInput(web.get())
             awaitFrame(web.get(), probe.get())
             val before = core.item(item.id).version
-            touch(web.get(), "#items .it")
+            touch(web.get(), "label.item")
             waitUntil { JSONObject(core.item(item.id).app!!.viewJson).getJSONArray("items").getJSONObject(0).getBoolean("done") }
             assertTrue(core.item(item.id).version > before)
-            waitUntil { evaluate(web.get(), "document.querySelector('#items .it').classList.contains('done')") == "true" }
+            waitUntil { evaluate(web.get(), "document.querySelector('label.item input[type=checkbox]').checked") == "true" }
             awaitFrame(web.get(), probe.get())
             assertTrue(core.verifyAll().all { it.valid })
             val evidence = evidenceFile("mcp-webview-list.png")
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> evidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
 
             // This request travels through the same HTML protocol, but cannot read another app's resource.
-            evaluate(web.get(), "rpc.request('resources/read',{uri:'ui://roda/pet'}).then(()=>window.resourceOutcome='allowed').catch(e=>window.resourceOutcome=String(e.code)); null")
+            evaluate(web.get(), """
+                (() => {
+                  const id = 'native-test-resource-scope';
+                  const receive = event => {
+                    if (event.source !== window.parent || event.data?.id !== id) return;
+                    window.removeEventListener('message', receive);
+                    window.resourceOutcome = event.data.error ? String(event.data.error.code) : 'allowed';
+                  };
+                  window.addEventListener('message', receive);
+                  window.parent.postMessage({jsonrpc:'2.0',id,method:'resources/read',params:{uri:'ui://builtin/pet'}}, '*');
+                })(); null
+            """.trimIndent())
             waitUntil { evaluate(web.get(), "window.resourceOutcome") == "\"-32003\"" }
-            touch(web.get(), "#send")
+            touchButton(web.get(), "In this chat")
             waitUntil { prompts.get() == 1 }
             assertEquals(0, confirmedCalls.get())
             confirm.set(true)
-            touch(web.get(), "#send")
+            touchButton(web.get(), "In this chat")
             waitUntil { confirmedCalls.get() == 1 }
             assertEquals(2, prompts.get())
             htmlInputEvidence(web.get(), "mcp-list-input-success.json", lastTool.get())
@@ -134,7 +145,7 @@ class McpWebViewTest {
         assumeTrue("The installed WebView must support origin-scoped messaging and isolated profiles", MiniAppWebProvider.supported())
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
         val folder = File(context.noBackupFilesDir, "hike-web-test-${UUID.randomUUID()}").apply { mkdirs() }
-        val core = RodaEngine.open(File(folder, "core.sqlite").absolutePath, "en")
+        val core = Client.open(File(folder, "core.sqlite").absolutePath, "en")
         core.seedDemoIfEmpty()
         val space = core.spaces().first { it.counterpart?.handle == "zoen" }
         val item = core.installApp(space.id, "hike", "{}")
@@ -225,7 +236,7 @@ class McpWebViewTest {
         }
     }
 
-    private fun gateway(core: RodaEngine, confirmedCalls: AtomicInteger = AtomicInteger(), lastTool: AtomicReference<String>? = null): MiniAppGateway = object : MiniAppGateway {
+    private fun gateway(core: Client, confirmedCalls: AtomicInteger = AtomicInteger(), lastTool: AtomicReference<String>? = null): MiniAppGateway = object : MiniAppGateway {
         override suspend fun item(id: String) = withContext(Dispatchers.IO) { core.item(id) }
         override suspend fun specs() = withContext(Dispatchers.IO) { core.appSpecs() }
         override suspend fun resource(uri: String) = withContext(Dispatchers.IO) { core.readAppResource(uri) }
@@ -245,7 +256,10 @@ class McpWebViewTest {
         }
         override suspend fun allowed(item: String, capability: String) = withContext(Dispatchers.IO) { core.appDeviceAllowed(item, capability) }
         override suspend fun grant(item: String, capability: String, purpose: String, always: Boolean) { withContext(Dispatchers.IO) { core.grantAppDevice(item, capability, purpose, always) } }
-        override suspend fun message(space: String, text: String) { withContext(Dispatchers.IO) { core.sendMessage(space, text) } }
+        override suspend fun message(space: String, text: String) { withContext(Dispatchers.IO) {
+            core.sendMessage(space, text)
+            confirmedCalls.incrementAndGet()
+        } }
         override suspend fun refresh() {}
     }
 
@@ -291,6 +305,19 @@ class McpWebViewTest {
             .put("lastCoreTool", lastTool)
         evidenceFile(name).writeText(result.toString(2))
         Log.i("McpWebViewTest", "Hike input evidence $name: $result")
+    }
+    private fun touchButton(web: WebView, label: String) {
+        // Only this instrumentation test adds a selector; shipped HTML exports no QA API.
+        waitUntil(description = "The real $label button must be ready for a system touch") { evaluate(web, """
+            (() => {
+              document.querySelectorAll('[data-mcp-test-button]').forEach(button => button.removeAttribute('data-mcp-test-button'));
+              const button = [...document.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSONObject.quote(label)});
+              if (!button || button.disabled) return false;
+              button.setAttribute('data-mcp-test-button', 'target');
+              return true;
+            })()
+        """.trimIndent()) == "true" }
+        touch(web, "button[data-mcp-test-button=target]")
     }
     private fun touch(web: WebView, selector: String) {
         val target = JSONObject(evaluate(web, """

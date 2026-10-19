@@ -95,7 +95,15 @@ object MiniAppSandbox {
           const bridge = window.zoenMcp;
           const host = Object.freeze({postMessage: (m) => bridge.postMessage(JSON.stringify(m))});
           Object.defineProperty(window, 'parent', {get: () => host});
-          bridge.onmessage = (e) => {try {window.dispatchEvent(new MessageEvent('message', {data: JSON.parse(e.data)}));} catch (_) {}};
+          bridge.onmessage = (e) => {
+            try {
+              const event = new MessageEvent('message', {data: JSON.parse(e.data)});
+              // The official SDK checks parent identity. The native host is not a Window,
+              // so MessageEventInit.source cannot represent it; attribute only this bridge delivery.
+              Object.defineProperty(event, 'source', {value: host});
+              window.dispatchEvent(event);
+            } catch (_) {}
+          };
           window.open = () => null;
           for (const name of ['RTCPeerConnection','webkitRTCPeerConnection','WebTransport']) {
             try {Object.defineProperty(window, name, {value: undefined, writable: false, configurable: false});} catch (_) {}

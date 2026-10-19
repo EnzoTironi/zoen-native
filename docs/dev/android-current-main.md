@@ -2,6 +2,21 @@
 
 Source checkpoint: 12 October 2026, shared `main` checkout. The merged PR71 revision `ff5b519` is the minimum ancestor, not a frozen Apple UI reference. The current revision and all Core generation inputs are resolved into the verification artifact. Dirty working source has the `working-tree-dirty` label and its own input digest. Earlier [Android native results](android-native-experience.md) and PR41 media retain their original revisions and do not certify this integration.
 
+## Source-gate tools — 19 October 2026
+
+The source verifier reads actual Cargo TOML at each immutable revision. Python 3.11 or newer includes the parser. With macOS's Python 3.9, create a tool environment and install the pinned dependency before running Android build scripts:
+
+```sh
+python3 -m venv .dev/python-tools
+source .dev/python-tools/bin/activate
+python -m pip install -r scripts/requirements-python.txt
+python3 scripts/test-android-core-contract.py
+```
+
+Keep that environment active for build scripts that invoke `python3`. The verifier never installs packages or resolves Cargo dependencies itself. The historical results below retain their original source and runtime scope.
+
+During prelaunch, internal Rust/UniFFI APIs may change atomically with their consumers. The gate reports the actual Main/current library paths and raw ABI additions, removals and shape changes without historical aliases or a compatibility registry. Current-source generated Kotlin/JNI metadata and checksum validation, Main ancestry and original-art integrity remain blocking. Revisit the API compatibility policy before public launch.
+
 ## First Plan unit
 
 The current Plan screen consumes `PlanPageDto` in supplied block order, including prose, exact text and UTF-16 marks. Signed costs use integer cents throughout display and decimal editing. Negative stored costs remain visible; existing legacy writers still reject negative replacements. Duplicate legacy line IDs disable ambiguous controls while distinct document block IDs preserve rendering order. An unrepresentable total has an explicit unavailable label.
@@ -50,7 +65,7 @@ For a separately coordinated batched producer, use the same capture/finish seque
 ```sh
 python3 scripts/android-core-contract.py capture --abis arm64-v8a --profile dev
 # Compile the stable Main snapshot and generate Kotlin/JNI through the coordinated producer.
-python3 scripts/android-core-contract.py finish --host-library "$CARGO_TARGET_DIR/debug/libroda_ffi.dylib" --abis arm64-v8a --profile dev
+python3 scripts/android-core-contract.py finish --host-library "$CARGO_TARGET_DIR/debug/libclient_core.dylib" --abis arm64-v8a --profile dev
 ```
 
 The Linux host input ends in `.so`. The `finish` step reads only the host's UniFFI metadata and checksum exports; Android libraries are parsed without executing them.
@@ -61,8 +76,8 @@ After the matching coordinated generation, the minimum first-unit build is:
 
 ```sh
 cd android
-./gradlew :app:testDebugUnitTest --tests xyz.tironi.zoen.pages.PlanPagePresentationTest :app:assembleDebug :app:assembleDebugAndroidTest -x :app:buildRodaCore -PandroidAbis=arm64-v8a -PcoreProfile=dev
-./gradlew :app:connectedDebugAndroidTest -x :app:buildRodaCore -PandroidAbis=arm64-v8a -PcoreProfile=dev -Pandroid.testInstrumentationRunnerArguments.class=xyz.tironi.zoen.PlanPageJourneyTest,xyz.tironi.zoen.FileVersionJourneyTest
+./gradlew :app:testDebugUnitTest --tests xyz.tironi.zoen.pages.PlanPagePresentationTest :app:assembleDebug :app:assembleDebugAndroidTest -x :app:buildClientCore -PandroidAbis=arm64-v8a -PcoreProfile=dev
+./gradlew :app:connectedDebugAndroidTest -x :app:buildClientCore -PandroidAbis=arm64-v8a -PcoreProfile=dev -Pandroid.testInstrumentationRunnerArguments.class=xyz.tironi.zoen.PlanPageJourneyTest,xyz.tironi.zoen.FileVersionJourneyTest
 ```
 
 The existing CI matrix retains API28 and API35, both native ABIs, full JVM/lint and owned relay/device journeys. It records the pre-build source report and verifies the generated Core after building. Current-source release, complete device results and actual image/video evidence remain pending. The coordinator captures stable app/test artifacts and attaches real images and video with `gh --attach` to the existing UI review.

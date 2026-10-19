@@ -1,19 +1,18 @@
 //! Real sockets and directory transactions, with blocked reads and queued writes.
 
 use async_trait::async_trait;
-use futures_util::{SinkExt, StreamExt};
-use roda_log::{
+use event_log::{
     profile::{
         seal_profile, sign_agreement, sign_upload, verify_agreement, verify_upload, AgreementKey,
         ProfileFields, ProfileKey,
     },
     Author, Signer,
 };
-use roda_proto::{
+use futures_util::{FutureExt, SinkExt, StreamExt};
+use protocol::{
     auth_message, AgreementKeyRecord, ClientFrame, DeviceCertificate, Envelope, ErrorCode,
     InviteCreated, Op, Reply, SealedProfile, Sequenced, ServerFrame, PROTOCOL_VERSION,
 };
-use roda_types::{Identity, IdentityKind, Role};
 use sqlx::{postgres::PgPoolOptions, Connection, PgConnection};
 use std::{
     sync::{
@@ -24,6 +23,7 @@ use std::{
 };
 use tokio::sync::{oneshot, Notify, Semaphore};
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use types::{Identity, IdentityKind, Role};
 use zoen_relay::{
     analytics, fanout, limits,
     log::{InviteInfo, LogStore, Reject, Sequencing, StoreError},
@@ -31,6 +31,8 @@ use zoen_relay::{
 };
 
 struct BlockedLog {
+    sync_spaces: std::sync::Mutex<Option<Vec<String>>>,
+    sync_members: std::sync::Mutex<std::collections::BTreeSet<(String, String)>>,
     block_presence: AtomicBool,
     presence_entered: Notify,
     entered: Notify,
@@ -65,11 +67,10 @@ impl LogStore for BlockedLog {
         );
         tokio::spawn(async move {
             release.acquire().await.unwrap().forget();
-            let hash =
-                roda_log::chain_hash(env.space(), 0, roda_types::GENESIS_PREV, &env.wire_hash());
+            let hash = event_log::chain_hash(env.space(), 0, types::GENESIS_PREV, &env.wire_hash());
             let ev = Sequenced {
                 seq: 0,
-                prev: roda_types::GENESIS_PREV.into(),
+                prev: types::GENESIS_PREV.into(),
                 hash,
                 env,
             };
@@ -85,10 +86,18 @@ impl LogStore for BlockedLog {
         answer.await.unwrap_or_else(|_| Err(Reject::unavailable()))
     }
     async fn read(&self, _: &str, _: u64, _: usize) -> Result<Vec<Sequenced>, StoreError> {
+        if self.sync_spaces.lock().unwrap().is_some() {
+            return Ok(Vec::new());
+        }
         unreachable!("spaces_of never returns")
     }
-    async fn role(&self, _: &str, _: &str) -> Result<Option<Role>, StoreError> {
-        Ok(None)
+    async fn role(&self, space: &str, identity: &str) -> Result<Option<Role>, StoreError> {
+        Ok(self
+            .sync_members
+            .lock()
+            .unwrap()
+            .contains(&(space.into(), identity.into()))
+            .then_some(Role::Member))
     }
     async fn removed_at(&self, _: &str, _: &str) -> Result<Option<u64>, StoreError> {
         Ok(None)
@@ -97,6 +106,9 @@ impl LogStore for BlockedLog {
         Ok(Vec::new())
     }
     async fn spaces_of(&self, _: &str) -> Result<Vec<String>, StoreError> {
+        if let Some(spaces) = self.sync_spaces.lock().unwrap().as_ref() {
+            return Ok(spaces.clone());
+        }
         self.reading.store(true, Ordering::Release);
         let _reading = Reading(&self.reading, &self.cancelled);
         self.entered.notify_one();
@@ -149,8 +161,12 @@ async fn send(socket: &mut Socket, frame: ClientFrame) {
 }
 
 async fn recv(socket: &mut Socket) -> Option<ServerFrame> {
+    recv_with_timeout(socket, Duration::from_secs(3)).await
+}
+
+async fn recv_with_timeout(socket: &mut Socket, timeout: Duration) -> Option<ServerFrame> {
     loop {
-        match tokio::time::timeout(Duration::from_secs(3), socket.next())
+        match tokio::time::timeout(timeout, socket.next())
             .await
             .expect("socket stalled")
         {
@@ -205,6 +221,7 @@ struct TestRelay {
     ws_url: String,
     server: tokio::task::JoinHandle<()>,
     database: String,
+    database_url: String,
     admin: PgConnection,
 }
 
@@ -236,6 +253,8 @@ impl TestRelay {
                 .unwrap()
         };
         let log = Arc::new(BlockedLog {
+            sync_spaces: Default::default(),
+            sync_members: Default::default(),
             block_presence: AtomicBool::new(false),
             presence_entered: Notify::new(),
             entered: Notify::new(),
@@ -246,6 +265,7 @@ impl TestRelay {
             finished: Arc::default(),
         });
         let state = Arc::new(AppState {
+            auth: zoen_relay::auth::Service::disabled(),
             analytics: analytics::Analytics::load(&pool).await.unwrap(),
             pool,
             session_auth: auth_pool(),
@@ -282,6 +302,7 @@ impl TestRelay {
             ws_url: format!("ws://{address}/v1/sync"),
             server,
             database,
+            database_url: url,
             admin,
         }
     }
@@ -299,6 +320,205 @@ impl TestRelay {
         .await
         .unwrap();
     }
+}
+
+const RECEIPT_SPACE: &str = "sp_receipt_replay";
+const EMPTY_RECEIPT_SPACE: &str = "sp_receipt_empty";
+
+async fn receipt_sync_fixture() -> (TestRelay, Author, String, Socket) {
+    let test = TestRelay::new().await;
+    *test.log.sync_spaces.lock().unwrap() =
+        Some(vec![RECEIPT_SPACE.into(), EMPTY_RECEIPT_SPACE.into()]);
+    let author = Author::device(&Signer::generate(), Signer::generate());
+    let mut socket = connect(&test.ws_url, &author).await;
+    request(
+        &mut socket,
+        1,
+        Op::Register {
+            profile: profile(&author, "qa_receipt_replay"),
+        },
+    )
+    .await
+    .unwrap();
+    // This LogStore double must authorize exactly the registered fixture reader
+    // at each receipt-page boundary; discovery alone is not current membership.
+    test.log.sync_members.lock().unwrap().extend([
+        (RECEIPT_SPACE.into(), author.identity.clone()),
+        (EMPTY_RECEIPT_SPACE.into(), author.identity.clone()),
+    ]);
+    let peer = Signer::generate().id();
+    test.state.receipts.raise(RECEIPT_SPACE, &peer, 9, 7);
+    assert_eq!(
+        test.state
+            .receipts
+            .flush(&test.state.pool, &test.state.metrics)
+            .await
+            .unwrap(),
+        1
+    );
+    (test, author, peer, socket)
+}
+
+async fn assert_sync_receipt_failure(socket: &mut Socket, timeout: Duration) {
+    assert!(
+        matches!(
+            recv_with_timeout(socket, timeout).await,
+            Some(ServerFrame::Error {
+                code: ErrorCode::Unavailable,
+                ..
+            })
+        ),
+        "receipt-query failure must be typed Unavailable, never SyncDone"
+    );
+    // This is an ordered frame barrier, not a sleep-based absence assertion: Sync
+    // returns before the same session handles Ping, and the writer preserves order.
+    send(socket, ClientFrame::Ping).await;
+    assert!(
+        matches!(recv(socket).await, Some(ServerFrame::Pong { .. })),
+        "failed receipt replay must not enqueue SyncDone before Pong"
+    );
+}
+
+async fn assert_healthy_receipt_replay(socket: &mut Socket, peer: &str) {
+    send(
+        socket,
+        ClientFrame::Sync {
+            cursors: Vec::new(),
+            all: true,
+        },
+    )
+    .await;
+    for kind in [
+        protocol::EphemeralKind::Delivered { seq: 9 },
+        protocol::EphemeralKind::Read { seq: 7 },
+    ] {
+        let frame = recv(socket).await.expect("receipt replay closed");
+        assert!(
+            matches!(frame,
+                ServerFrame::Ephemeral { space, from, kind: actual }
+                    if space == RECEIPT_SPACE && from == peer && actual == kind
+            ),
+            "healthy retry must replay each exact receipt before SyncDone"
+        );
+    }
+    assert!(matches!(recv(socket).await, Some(ServerFrame::SyncDone)));
+}
+
+#[tokio::test]
+async fn receipt_sync_requires_current_membership_even_when_discovery_is_stale() {
+    let (test, author, peer, mut socket) = receipt_sync_fixture().await;
+    assert_healthy_receipt_replay(&mut socket, &peer).await;
+    let pair = (RECEIPT_SPACE.into(), author.identity.clone());
+    assert!(test.log.sync_members.lock().unwrap().remove(&pair));
+    assert!(test
+        .log
+        .spaces_of(&author.identity)
+        .await
+        .unwrap()
+        .contains(&RECEIPT_SPACE.into()));
+    send(
+        &mut socket,
+        ClientFrame::Sync {
+            cursors: Vec::new(),
+            all: true,
+        },
+    )
+    .await;
+    // A strict ordered barrier: no receipt may precede SyncDone or follow it
+    // before this same Session handles Ping. Discovery did not grant a role.
+    assert!(matches!(
+        recv(&mut socket).await,
+        Some(ServerFrame::SyncDone)
+    ));
+    send(&mut socket, ClientFrame::Ping).await;
+    assert!(matches!(
+        recv(&mut socket).await,
+        Some(ServerFrame::Pong { .. })
+    ));
+    assert!(test.log.sync_members.lock().unwrap().insert(pair));
+    assert_healthy_receipt_replay(&mut socket, &peer).await;
+    socket.close(None).await.unwrap();
+    test.close().await;
+}
+
+#[tokio::test]
+async fn sync_receipt_query_failure_is_unavailable_then_reconnect_replays() {
+    let (test, author, peer, mut socket) = receipt_sync_fixture().await;
+    // No receipt SELECT has run on this fresh pool, so renaming the table makes
+    // the real query fail independently of statement-cache invalidation behavior.
+    sqlx::query("ALTER TABLE space_receipts RENAME TO receipt_replay_unavailable")
+        .execute(&test.state.pool)
+        .await
+        .unwrap();
+    send(
+        &mut socket,
+        ClientFrame::Sync {
+            cursors: Vec::new(),
+            all: true,
+        },
+    )
+    .await;
+    assert_sync_receipt_failure(&mut socket, Duration::from_secs(3)).await;
+    sqlx::query("ALTER TABLE receipt_replay_unavailable RENAME TO space_receipts")
+        .execute(&test.state.pool)
+        .await
+        .unwrap();
+    socket.close(None).await.unwrap();
+    let mut recovered = connect(&test.ws_url, &author).await;
+    assert_healthy_receipt_replay(&mut recovered, &peer).await;
+
+    // A known Space with no stored or pending rows is a successful empty replay.
+    send(
+        &mut recovered,
+        ClientFrame::Sync {
+            cursors: vec![protocol::Cursor {
+                space: EMPTY_RECEIPT_SPACE.into(),
+                next_seq: 0,
+            }],
+            all: false,
+        },
+    )
+    .await;
+    assert!(matches!(
+        recv(&mut recovered).await,
+        Some(ServerFrame::SyncDone)
+    ));
+    recovered.close(None).await.unwrap();
+    test.close().await;
+}
+
+#[tokio::test]
+async fn sync_receipt_query_deadline_is_unavailable_then_reconnect_replays() {
+    let (test, author, peer, mut socket) = receipt_sync_fixture().await;
+    // A separate connection blocks only the receipt SELECT. Request admission
+    // and outgoing delivery keep their ordinary independent authorization pools.
+    let mut lock = PgConnection::connect(&test.database_url).await.unwrap();
+    let mut transaction = lock.begin().await.unwrap();
+    sqlx::query("LOCK TABLE space_receipts IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+    let started = std::time::Instant::now();
+    send(
+        &mut socket,
+        ClientFrame::Sync {
+            cursors: Vec::new(),
+            all: true,
+        },
+    )
+    .await;
+    assert_sync_receipt_failure(&mut socket, Duration::from_secs(8)).await;
+    assert!(
+        started.elapsed() >= Duration::from_secs(4),
+        "the real SELECT should wait for the sync deadline"
+    );
+    transaction.rollback().await.unwrap();
+    socket.close(None).await.unwrap();
+    let mut recovered = connect(&test.ws_url, &author).await;
+    assert_healthy_receipt_replay(&mut recovered, &peer).await;
+    recovered.close(None).await.unwrap();
+    drop(lock);
+    test.close().await;
 }
 
 async fn request(socket: &mut Socket, id: u64, op: Op) -> Result<Reply, String> {
@@ -391,10 +611,10 @@ async fn stalled_operation_revocation(publish: bool) {
                 "admitted-before-revocation",
                 1,
                 None,
-                roda_types::EventBody::SpaceCreated {
+                types::EventBody::SpaceCreated {
                     title: "Already admitted".into(),
-                    kind: roda_types::SpaceKind::Group,
-                    privacy: roda_types::Privacy::Closed,
+                    kind: types::SpaceKind::Group,
+                    privacy: types::Privacy::Closed,
                 },
             )),
         }
@@ -1134,4 +1354,163 @@ async fn an_enrollment_retry_can_finish_while_a_backup_writer_waits_for_its_vaul
         "an enrollment retry mutated the device row"
     );
     test.close().await;
+}
+
+/// Actual Session authentication/signatures and PostgreSQL replacement semantics.
+/// The existing BlockedLog fixture is not a canonical-history/FDB acceptance proof.
+#[tokio::test]
+async fn sealed_profile_retries_versions_and_linked_resigning_use_authoritative_sql() {
+    let test = TestRelay::new().await;
+    let result = std::panic::AssertUnwindSafe(async {
+        let root = Signer::generate();
+        let first = Author::device(&root, Signer::generate());
+        let second = Author::device(&root, Signer::generate());
+        let mut a = connect(&test.ws_url, &first).await;
+        request(
+            &mut a,
+            1,
+            Op::Register {
+                profile: profile(&first, "profile_versions"),
+            },
+        )
+        .await
+        .unwrap();
+        request(&mut a, 2, link_op(&second, &Signer::generate().id()))
+            .await
+            .unwrap();
+        let mut b = connect(&test.ws_url, &second).await;
+        let key = ProfileKey::generate();
+        let fields = ProfileFields {
+            name: "Synthetic profile".into(),
+            bio: "Private".into(),
+            photo: None,
+        };
+        let version = 9_007_199_254_740_993;
+        let make = |who: &Author, version: u64, ciphertext: Vec<u8>| SealedProfile {
+            identity: who.identity.clone(),
+            signed: sign_upload(who, version, &ciphertext).unwrap(),
+            version,
+            ciphertext,
+        };
+        let original = make(
+            &first,
+            version,
+            seal_profile(&key, &first.identity, version, &fields),
+        );
+        assert_eq!(
+            request(
+                &mut a,
+                3,
+                Op::PutProfile {
+                    profile: original.clone()
+                }
+            )
+            .await,
+            Ok(Reply::Done)
+        );
+        assert_eq!(
+            request(
+                &mut a,
+                4,
+                Op::PutProfile {
+                    profile: original.clone()
+                }
+            )
+            .await,
+            Ok(Reply::Done)
+        );
+        let resigned = make(&second, version, original.ciphertext.clone());
+        assert_eq!(
+            request(
+                &mut b,
+                5,
+                Op::PutProfile {
+                    profile: resigned.clone()
+                }
+            )
+            .await,
+            Ok(Reply::Done)
+        );
+        let ids = vec![first.identity.clone()];
+        assert_eq!(
+            zoen_relay::db::sealed_profiles(&test.state.pool, &ids)
+                .await
+                .unwrap(),
+            vec![resigned]
+        );
+        for (id, p) in [
+            (6, make(&first, version, vec![9])),
+            (7, make(&first, version - 1, original.ciphertext.clone())),
+        ] {
+            assert_eq!(
+                request(&mut a, id, Op::PutProfile { profile: p }).await,
+                Err("stale profile version".into())
+            );
+        }
+        let lower = make(
+            &first,
+            version + 1,
+            seal_profile(&key, &first.identity, version + 1, &fields),
+        );
+        let higher = make(
+            &first,
+            version + 2,
+            seal_profile(&key, &first.identity, version + 2, &fields),
+        );
+        let (left, right) = tokio::join!(
+            zoen_relay::db::put_profile(&test.state.pool, &lower),
+            zoen_relay::db::put_profile(&test.state.pool, &higher)
+        );
+        left.unwrap();
+        assert!(right.unwrap());
+        assert_eq!(
+            zoen_relay::db::sealed_profiles(&test.state.pool, &ids)
+                .await
+                .unwrap(),
+            vec![higher]
+        );
+        let maximum = make(
+            &first,
+            i64::MAX as u64,
+            seal_profile(&key, &first.identity, i64::MAX as u64, &fields),
+        );
+        assert_eq!(
+            request(
+                &mut a,
+                8,
+                Op::PutProfile {
+                    profile: maximum.clone()
+                }
+            )
+            .await,
+            Ok(Reply::Done)
+        );
+        let overflow = make(&first, u64::MAX, vec![1]);
+        assert_eq!(
+            request(
+                &mut a,
+                9,
+                Op::PutProfile {
+                    profile: overflow.clone()
+                }
+            )
+            .await,
+            Err("profile version out of range".into())
+        );
+        assert!(zoen_relay::db::put_profile(&test.state.pool, &overflow)
+            .await
+            .is_err());
+        assert_eq!(
+            zoen_relay::db::sealed_profiles(&test.state.pool, &ids)
+                .await
+                .unwrap(),
+            vec![maximum]
+        );
+        let _ = a.close(None).await;
+        let _ = b.close(None).await;
+    })
+    .catch_unwind()
+    .await;
+    test.close().await;
+    result.unwrap();
 }

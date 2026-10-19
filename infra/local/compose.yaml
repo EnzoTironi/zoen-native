@@ -1,0 +1,104 @@
+# The native server and real production dependencies. Only relay HTTP is published.
+name: ${PROJECT_NAME}
+x-owned: &owned
+  app: zoen.local
+  owner: ${OWNER_NONCE}
+services:
+  postgres:
+    pull_policy: never
+    image: ${POSTGRES_IMAGE}
+    env_file: ${STATE_DIR}/postgres.env
+    command: [postgres, -c, shared_buffers=128MB, -c, max_connections=64]
+    networks: [private]
+    volumes: [postgres:/var/lib/postgresql/data]
+    labels: *owned
+    restart: unless-stopped
+    mem_limit: 512m
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U zoen -d zoen_relay']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  fdb:
+    pull_policy: never
+    image: ${FDB_IMAGE}
+    platform: linux/amd64
+    environment:
+      FDB_CLUSTER: 'zoen:local@fdb:4500'
+      FDB_MACHINE_ID: local-fdb
+      FDB_MEMORY: 1024MiB
+      FDB_CACHE: 256MiB
+    networks: [private]
+    volumes: [fdb:/data]
+    labels: *owned
+    restart: unless-stopped
+    stop_grace_period: 30s
+    mem_limit: 1536m
+    healthcheck:
+      test: [CMD-SHELL, 'fdbcli -C /data/fdb/fdb.cluster --timeout 3 --exec "status minimal" | grep -q "is available"']
+      interval: 3s
+      timeout: 5s
+      retries: 40
+  storage:
+    pull_policy: never
+    image: ${STORAGE_IMAGE}
+    command: [mini, '-dir=/data', '-master.telemetry=false']
+    env_file: ${STATE_DIR}/storage.env
+    environment:
+      GOMEMLIMIT: 384MiB
+    networks: [private]
+    volumes: [objects:/data]
+    labels: *owned
+    restart: unless-stopped
+    mem_limit: 512m
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1:9333/cluster/status']
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  relay:
+    pull_policy: never
+    image: ${RELAY_IMAGE}
+    platform: linux/amd64
+    env_file: ${STATE_DIR}/relay.env
+    environment:
+      ZOEN_BIND: 0.0.0.0:8080
+      ZOEN_METRICS_BIND: 0.0.0.0:9091
+      ZOEN_RELAY_NAME: zoen-local
+      ZOEN_FDB_CELL: local
+      ZOEN_DB_POOL: '8'
+      FDB_CLUSTER_FILE: /tmp/fdb.cluster
+      FDB_CLUSTER: 'zoen:local@fdb:4500'
+      ZOEN_S3_BUCKET: encrypted
+      AWS_ENDPOINT_URL_S3: http://storage:8333
+      AWS_ALLOW_HTTP: 'true'
+      AWS_REGION: us-east-1
+      LOG_FORMAT: json
+      RUST_LOG: info,sqlx=warn,tower_http=warn
+    networks: [private, edge]
+    ports: ['127.0.0.1:${BIND_PORT}:8080']
+    tmpfs: [/tmp]
+    read_only: true
+    labels: *owned
+    restart: unless-stopped
+    stop_grace_period: 45s
+    mem_limit: 768m
+    depends_on:
+      postgres: {condition: service_healthy}
+      fdb: {condition: service_healthy}
+      storage: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --max-time, '3', 'http://127.0.0.1:8080/readyz']
+      interval: 3s
+      timeout: 4s
+      retries: 30
+networks:
+  private:
+    internal: true
+    labels: *owned
+  edge:
+    labels: *owned
+volumes:
+  postgres: {labels: *owned}
+  fdb: {labels: *owned}
+  objects: {labels: *owned}

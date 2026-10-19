@@ -28,9 +28,9 @@ Não inclui recuperação/senha (g), threads, presença, mídia ou mudanças na 
   primeiro Ready, prazo durante pedido travado, cancelamento e prazo preservado/migração de registro
   antigo). Um sétimo teste novo comprova que cancelamento durante a criptografia não grava a sessão.
   Não são E2E; a fixture de Pairing não valida criptografia ou um relay real.
-- `cargo test -p roda-ffi pickup_ --lib`: duas regressões falharam com a função original de main
+- `cargo test -p client-core pickup_ --lib`: duas regressões falharam com a função original de main
   (sem reconexão; timeout de conexão ignora o prazo do pickup). A mesma checagem passou com a correção.
-- `cargo test -p roda-ffi net::tests --lib`: 12 testes passaram, incluindo as duas regressões
+- `cargo test -p client-core net::tests --lib`: 12 testes passaram, incluindo as duas regressões
   e o novo teste de prazo já vencido sem abrir conexão. Fixture TCP, não vínculo real entre aparelhos.
 - `cargo test -p zoen-web-core --lib`: quatro testes passaram, incluindo serialização do pedido
   Unlink com validação da chave, usando a operação autenticada existente, sem mudar autorização.

@@ -7,9 +7,9 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-roda-types.workspace = true
-roda-log.workspace = true
-roda-gate.workspace = true
+types.workspace = true
+event-log.workspace = true
+gate.workspace = true
 # Model gateway boundary; cheap-tier chat uses this when a provider is configured.
 zoen-models = { path = "../zoen-models" }
 serde.workspace = true

@@ -5,7 +5,6 @@
 mod common;
 
 use common::*;
-use roda_types::AgentRequest;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
@@ -13,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use types::AgentRequest;
 use zoen_agentd::{ExecRequest, SandboxProvider};
 use zoen_egress::{
     placeholder, ApprovalScope, ApprovalSink, Egress, EgressConfig, EgressRule, Resolver,

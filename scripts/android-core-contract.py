@@ -6,16 +6,26 @@ import ctypes
 import hashlib
 import json
 from pathlib import Path
+from pathlib import PurePosixPath
+import posixpath
 import re
 import struct
 import subprocess
+try:
+    import tomllib
+except ModuleNotFoundError:
+    try:
+        import tomli as tomllib
+    except ModuleNotFoundError as error:
+        raise SystemExit("Python <3.11 requires tomli. Activate a tool virtual environment and run "
+                         "python -m pip install -r scripts/requirements-python.txt") from error
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "android/app/build/generated/roda"
+OUTPUT = ROOT / "android/app/build/generated/core"
 ABI_MACHINES = {"arm64-v8a": 183, "x86_64": 62}
-META_PREFIX = "UNIFFI_META_RODA_FFI_"
-CHECKSUM_PREFIX = "uniffi_roda_ffi_checksum_"
+META_PREFIX = "UNIFFI_META_CLIENT_CORE_"
+CHECKSUM_PREFIX = "uniffi_client_core_checksum_"
 
 
 def digest(value):
@@ -63,8 +73,12 @@ def body_end(masked, opening):
     raise ValueError("Unclosed exported Rust definition")
 
 
-def source_contract(sources):
+def source_contract(sources, library_name="client_core"):
     """Inventory every exported object, callback, function, record, enum and error."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", library_name):
+        raise ValueError("Invalid UniFFI library name")
+    meta_prefix = f"UNIFFI_META_{library_name.upper()}_"
+    checksum_prefix = f"uniffi_{library_name}_checksum_"
     metadata, checksums = {}, set()
     for path, source in sources.items():
         if not path.endswith(".rs") or "tests" in Path(path).parts or path.endswith("/tests.rs"):
@@ -74,45 +88,94 @@ def source_contract(sources):
             kind, name = derived[1], derived[2]
             opening = derived.end() - 1
             shape = masked[opening + 1:body_end(masked, opening)]
-            metadata[META_PREFIX + ("INTERFACE" if kind == "Object" else kind.upper()) + "_" + name.upper()] = (
+            metadata[meta_prefix + ("INTERFACE" if kind == "Object" else kind.upper()) + "_" + name.upper()] = (
                 "object" if kind == "Object" else digest(re.sub(r"\s+", "", shape).encode()))
         for exported in re.finditer(r"#\[uniffi::export(?:\([^\]]*\))?\]\s*(?:impl\s+(\w+)|pub\s+trait\s+(\w+)[^{]*)\s*\{", masked):
             owner = exported[1] or exported[2]
             trait = bool(exported[2])
             if trait:
-                metadata[META_PREFIX + "INTERFACE_" + owner.upper()] = "callback"
+                metadata[meta_prefix + "INTERFACE_" + owner.upper()] = "callback"
             opening = exported.end() - 1
             body = masked[opening + 1:body_end(masked, opening)]
             for method in re.finditer(r"(?P<constructor>#\[uniffi::constructor\]\s*)?(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*(\([^{}]*?\)[^{};]*?)[{;]", body):
                 kind = "constructor" if method["constructor"] else "method"
                 name = f"{kind}_{owner.lower()}_{method[2]}"
-                symbol = META_PREFIX + name.upper()
+                symbol = meta_prefix + name.upper()
                 if symbol in metadata:
                     raise ValueError("Duplicate exported method: " + symbol)
                 metadata[symbol] = digest(re.sub(r"\s+", "", method[3]).encode())
-                checksums.add(CHECKSUM_PREFIX + name)
+                checksums.add(checksum_prefix + name)
         for exported in re.finditer(r"#\[uniffi::export(?:\([^\]]*\))?\]\s*pub\s+(?:async\s+)?fn\s+(\w+)\s*(\([^{}]*?\)[^{}]*?)\{", masked):
-            metadata[META_PREFIX + "FUNC_" + exported[1].upper()] = digest(re.sub(r"\s+", "", exported[2]).encode())
-            checksums.add(CHECKSUM_PREFIX + "func_" + exported[1])
+            metadata[meta_prefix + "FUNC_" + exported[1].upper()] = digest(re.sub(r"\s+", "", exported[2]).encode())
+            checksums.add(checksum_prefix + "func_" + exported[1])
     if not metadata or not checksums:
         raise ValueError("No exported UniFFI contract found")
     return {"metadata": dict(sorted(metadata.items())), "checksums": sorted(checksums)}
 
 
-def contract_at(root, ref=None):
+def library_at(root, ref=None):
+    """Read the actual workspace cdylib manifest, including at an immutable Git ref.
+
+    A historical revision may place its library anywhere in its workspace. No
+    current path, package name, or checked-out file is substituted for that tree.
+    """
+    root = Path(root).resolve()
+    read = (lambda path: (root / path).read_text()) if ref is None else (
+        lambda path: git(root, "show", ref + ":" + path).stdout)
+    workspace = tomllib.loads(read("Cargo.toml")).get("workspace", {})
+    members = workspace.get("members", [])
+    excludes = workspace.get("exclude", [])
     if ref is None:
-        sources = {path.relative_to(root).as_posix(): path.read_text()
-                   for path in (root / "crates/roda-ffi/src").rglob("*.rs")}
+        manifests = {path.relative_to(root).as_posix() + "/Cargo.toml"
+                     for pattern in members for path in root.glob(pattern)
+                     if path.is_dir() and (path / "Cargo.toml").is_file()}
     else:
-        paths = git(root, "ls-tree", "-r", "--name-only", ref, "crates/roda-ffi/src").stdout.splitlines()
-        sources = {path: git(root, "show", ref + ":" + path).stdout for path in paths if path.endswith(".rs")}
-    return source_contract(sources)
+        manifests = {path for path in git(root, "ls-tree", "-r", "--name-only", ref).stdout.splitlines()
+                     if path.endswith("/Cargo.toml")}
+    candidates = []
+    for path in sorted(manifests):
+        member = str(PurePosixPath(path).parent)
+        matches = lambda pattern: PurePosixPath("/" + member).match("/" + posixpath.normpath(pattern))
+        if not any(matches(pattern) for pattern in members) or any(matches(pattern) for pattern in excludes):
+            continue
+        manifest = tomllib.loads(read(path))
+        package = manifest.get("package", {})
+        library = manifest.get("lib", {})
+        dependencies = manifest.get("dependencies", {})
+        uniffi = any(name == "uniffi" or isinstance(value, dict) and value.get("package") == "uniffi"
+                     for name, value in dependencies.items())
+        if not uniffi or "cdylib" not in library.get("crate-type", []):
+            continue
+        name = library.get("name", package.get("name", "").replace("-", "_"))
+        entry = posixpath.normpath(posixpath.join(member, library.get("path", "src/lib.rs")))
+        if entry.startswith("../") or entry.startswith("/") or not entry.endswith(".rs"):
+            raise ValueError("UniFFI library target must be a Rust source inside the workspace")
+        candidates.append({"manifest": path, "package": package["name"], "name": name,
+                           "entry": entry, "source_directory": str(PurePosixPath(entry).parent)})
+    if len(candidates) != 1:
+        raise ValueError(f"Expected exactly one UniFFI cdylib workspace library at {ref or 'working tree'}; found {len(candidates)}")
+    library = candidates[0]
+    # Confirm that the manifest's target exists, rather than accepting a nearby source directory.
+    read(library["entry"])
+    if ref is None:
+        paths = [path.relative_to(root).as_posix()
+                 for path in (root / library["source_directory"]).rglob("*.rs")]
+    else:
+        paths = git(root, "ls-tree", "-r", "--name-only", ref, library["source_directory"]).stdout.splitlines()
+    sources = {path: read(path) for path in paths if path.endswith(".rs")}
+    return {"library": library, "sources": sources,
+            "contract": source_contract(sources, library["name"])}
+
+
+def contract_at(root, ref=None):
+    return library_at(root, ref)["contract"]
 
 
 def capture(root):
-    inputs, contract = input_hashes(root), contract_at(root)
+    inputs, snapshot = input_hashes(root), library_at(root)
+    contract = snapshot["contract"]
     return {"schema": 1, "source": revision(root), "inputs": inputs,
-            "input_sha256": json_digest(inputs), "contract": contract,
+            "library": snapshot["library"], "input_sha256": json_digest(inputs), "contract": contract,
             "contract_sha256": json_digest(contract)}
 
 
@@ -155,7 +218,7 @@ def kotlin_checksums(directory):
         raise ValueError("Missing generated Kotlin bindings")
     checksums = {}
     for path in files:
-        for symbol, value in re.findall(r"\(lib\.(uniffi_roda_ffi_checksum_\w+)\(\) and 0xFFFF\) != (\d+)", path.read_text()):
+        for symbol, value in re.findall(rf"\(lib\.({re.escape(CHECKSUM_PREFIX)}\w+)\(\) and 0xFFFF\) != (\d+)", path.read_text()):
             if symbol in checksums:
                 raise ValueError("Duplicate Kotlin ABI checksum: " + symbol)
             checksums[symbol] = int(value)
@@ -176,7 +239,7 @@ def artifacts(output, abis, contract, expected_metadata=None):
     require_inventory(checksums, contract["checksums"], "Kotlin ABI")
     metadata = None
     for abi in abis:
-        path = output / "jniLibs" / abi / "libroda_ffi.so"
+        path = output / "jniLibs" / abi / "libclient_core.so"
         blobs, symbols = elf_contract(path, abi)
         require_inventory(blobs, contract["metadata"], f"{abi} DTO/callback/API metadata")
         require_inventory(symbols, contract["checksums"], f"{abi} ABI")
@@ -194,7 +257,7 @@ def finish(root, output, source, host_library, abis, profile):
         raise ValueError("Core inputs changed during Android generation; rebuild the stable source snapshot")
     generated = artifacts(output, abis, current["contract"])
     host = ctypes.CDLL(str(host_library.resolve()))
-    blobs, _ = elf_contract(output / "jniLibs" / abis[0] / "libroda_ffi.so", abis[0])
+    blobs, _ = elf_contract(output / "jniLibs" / abis[0] / "libclient_core.so", abis[0])
     for name, blob in blobs.items():
         native = bytes((ctypes.c_ubyte * len(blob)).in_dll(host, name))
         if native != blob:

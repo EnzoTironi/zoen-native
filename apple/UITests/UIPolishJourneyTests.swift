@@ -7,9 +7,9 @@ final class UIPolishJourneyTests: XCTestCase {
     private func launch(_ extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
-            "-RodaDemo", "YES", "-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
-            "-RodaShowcase", "YES", "-RodaApprovalsExplained", "YES",
-            "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR", "-RodaAppearance", "light",
+            "-Demo", "YES", "-FreshStart", "YES", "-ResetDemo", "YES",
+            "-Showcase", "YES", "-ApprovalsExplained", "YES",
+            "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR", "-Appearance", "light",
         ] + extra
         app.launch()
         return app
@@ -25,7 +25,7 @@ final class UIPolishJourneyTests: XCTestCase {
 
     @MainActor
     func testCaptureOnboardingAndChatsThroughTheLastRow() {
-        let onboarding = launch(["-RodaOnboarding", "YES", "-RodaOnboardingStep", "0"])
+        let onboarding = launch(["-Onboarding", "YES", "-OnboardingStep", "0"])
         let hello = onboarding.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Oi, eu sou")).firstMatch
         XCTAssertTrue(hello.waitForExistence(timeout: 20))
         // The invite paste stays, as a quiet line next to "Recebeu um convite?", not a floating chip.
@@ -67,7 +67,7 @@ final class UIPolishJourneyTests: XCTestCase {
 
     @MainActor
     func testCaptureGroupThreadAndLongPressActions() {
-        let app = launch(["-RodaOpen", "turma", "-RodaChatScrollTop", "YES"])
+        let app = launch(["-Open", "turma", "-ChatScrollTop", "YES"])
         let scroll = app.scrollViews["chat-message-scroll"]
         XCTAssertTrue(scroll.waitForExistence(timeout: 20))
         let chip = app.buttons["thread-chip"].firstMatch

@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 /// Reusable edit/delete confirmation. Only success closes the sheet; failures stay retryable.
 struct MessageMutationSheet: View {

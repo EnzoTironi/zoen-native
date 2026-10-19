@@ -207,10 +207,10 @@ struct ZoenIcon: View {
 
     var body: some View {
         // Chrome uses Apple's SF Symbols for now (user call, Oct 8). The hand-drawn sets stay
-        // in the code behind flags: `-RodaInkIcons YES` (ink v2) and `-RodaIconsV1 YES`.
+        // in the code behind flags: `-InkIcons YES` (ink v2) and `-IconsV1 YES`.
         if ZoenIconStyle.ink {
             InkIcon(glyph: glyph, direction: .shipping, selected: selected, size: size, trigger: wiggle)
-        } else if UserDefaults.standard.bool(forKey: "RodaIconsV1") {
+        } else if UserDefaults.standard.bool(forKey: "IconsV1") {
             ZoenIconV1(glyph, selected: selected, size: size, wiggle: wiggle)
         } else {
             SymbolIcon(glyph: glyph, selected: selected, size: size, wiggle: wiggle)
@@ -220,7 +220,7 @@ struct ZoenIcon: View {
 
 enum ZoenIconStyle {
     /// Hand-drawn ink icons instead of SF Symbols (off by default).
-    static var ink: Bool { UserDefaults.standard.bool(forKey: "RodaInkIcons") }
+    static var ink: Bool { UserDefaults.standard.bool(forKey: "InkIcons") }
 }
 
 /// SF Symbol for each glyph: outline at rest, `.fill` when selected; bounces on taps and
@@ -285,7 +285,7 @@ extension ZoenGlyph {
     }
 }
 
-/// v1 outline icons, kept for the before/after shots (`-RodaIconsV1 YES`).
+/// v1 outline icons, kept for the before/after shots (`-IconsV1 YES`).
 struct ZoenIconV1: View {
     @Environment(\.ambientPaused) private var ambientPaused
     let glyph: ZoenGlyph
@@ -355,7 +355,7 @@ extension ZoenGlyph {
     }
 }
 
-/// `-RodaIconSheet YES`: every icon at 20/24/32pt plus the selected state (24pt), fixed
+/// `-IconSheet YES`: every icon at 20/24/32pt plus the selected state (24pt), fixed
 /// cells so nothing overlaps.
 struct ZoenIconSheet: View {
     var body: some View {

@@ -1,10 +1,10 @@
 //! PostgreSQL transaction/retention boundaries. Uses a fresh database and actual signed
 //! MLS publications; socket authorization and message readability are CLI journeys.
-use roda_log::{Author, Signer};
-use roda_proto::{KeyPackageRecord, Reply, ServerFrame, KEY_PACKAGE_CLAIM_TTL_MS};
-use roda_types::{Identity, IdentityKind};
+use event_log::{Author, Signer};
+use protocol::{KeyPackageRecord, Reply, ServerFrame, KEY_PACKAGE_CLAIM_TTL_MS};
 use sqlx::{Connection, PgConnection, PgPool};
 use std::time::{SystemTime, UNIX_EPOCH};
+use types::{Identity, IdentityKind};
 use zoen_relay::{
     db,
     key_package_claims::{self, GC_BATCH, MAX_RECEIPTS, MAX_RECEIPT_BYTES},
@@ -78,8 +78,8 @@ impl Database {
     }
     async fn publish(&self, author: &Author) {
         let mut connection = rusqlite::Connection::open_in_memory().unwrap();
-        roda_mls::migrate(&mut connection).unwrap();
-        let device = roda_mls::Device::new(
+        mls::migrate(&mut connection).unwrap();
+        let device = mls::Device::new(
             &connection,
             Signer::generate().secret(),
             &author.identity,
@@ -92,7 +92,7 @@ impl Database {
             .unwrap()
             .into_iter()
             .map(|p| {
-                let (_, expires) = roda_mls::key_package_publication(&p).unwrap();
+                let (_, expires) = mls::key_package_publication(&p).unwrap();
                 (p, expires)
             })
             .collect();
@@ -140,7 +140,7 @@ async fn concurrent_retries_use_one_transactional_receipt() {
     let actor = d.person("ana").await;
     let target = d.person("bruno").await;
     d.publish(&target).await;
-    let operation = roda_types::new_ulid(now());
+    let operation = types::new_ulid(now());
     let (first, second) = tokio::join!(
         claim(&d.pool, &actor, &target, &operation),
         claim(&d.pool, &actor, &target, &operation)
@@ -157,7 +157,7 @@ async fn receipt_capacity_preserves_replay_and_rolls_back_new_consumption() {
     let actor = d.person("ana").await;
     let target = d.person("bruno").await;
     d.publish(&target).await;
-    let operation = roda_types::new_ulid(now());
+    let operation = types::new_ulid(now());
     let original = claim(&d.pool, &actor, &target, &operation).await;
     let empty = ServerFrame::Res {
         id: 0,
@@ -171,7 +171,7 @@ async fn receipt_capacity_preserves_replay_and_rolls_back_new_consumption() {
         .bind(&actor.identity).bind(actor.device.as_deref().unwrap()).bind(vec![target.identity.clone()])
         .bind(&empty).bind(now() + KEY_PACKAGE_CLAIM_TTL_MS).bind(MAX_RECEIPTS - 1).execute(&d.pool).await.unwrap();
     assert_eq!(claim(&d.pool, &actor, &target, &operation).await, original);
-    let next = roda_types::new_ulid(now());
+    let next = types::new_ulid(now());
     let error = key_package_claims::claim(
         &d.pool,
         &actor.identity,
@@ -218,7 +218,7 @@ async fn indexed_cleanup_deletes_at_most_a_batch_and_retains_live_receipts() {
     let actor = d.person("ana").await;
     let target = d.person("bruno").await;
     d.publish(&target).await;
-    let operation = roda_types::new_ulid(now());
+    let operation = types::new_ulid(now());
     let original = claim(&d.pool, &actor, &target, &operation).await;
     let empty = ServerFrame::Res {
         id: 0,

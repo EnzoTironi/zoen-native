@@ -13,7 +13,7 @@ What exists today (origin/main `406515f`):
 - **Bytes.** `MediaRef { sha256, mime, width, height, bytes, key?, blob? }` and the ADR 0007
   pipeline: fresh 32-byte key per attachment, XChaCha20-Poly1305, ciphertext addressed by
   sha256, signed `PUT /v1/blobs/{sha256}`, upload queue and verified downloads
-  (`crates/roda-ffi/src/media.rs`). Used for chat backgrounds and profile photos; voice notes
+  (`crates/client-core/src/media.rs`). Used for chat backgrounds and profile photos; voice notes
   and files are "remaining". No chunking or resumable upload yet (plan: 4 MB chunks).
 - **App.** `FilesView.swift` lists Items grouped by Space ("Folders", "Recent"); `ItemView.swift`
   renders a Plan as cards and a Note as a read-only `Text`. No document picker, no QuickLook,
@@ -132,7 +132,7 @@ changed, with a visual diff), "Restaurar" creates a new version (never deletes, 
 Page history is Loro's own; File history is the list of `MediaRef` versions.
 
 ## Consequences
-- New core crate `roda-crdt` (Loro) and `roda-docs` (comrak import/export, CSV, DOCX, XLSX).
+- New core crate `crdt` (Loro) and `documents` (comrak import/export, CSV, DOCX, XLSX).
 - `ItemContent::Text` stays readable for old Notes; a Note opens in the new editor and is
   migrated to a Page on first edit (expand then contract, as for every migration).
 - QuickLook gives every format a viewer in the first phase; the editor list grows by phase.
@@ -165,7 +165,7 @@ Page history is Loro's own; File history is the list of `MediaRef` versions.
 Each phase ships with journeys; nothing is called done on mocks.
 
 0. **Foundations:**
-   - `roda-crdt` (Loro) and `roda-docs` (comrak import/export);
+   - `crdt` (Loro) and `documents` (comrak import/export);
    - `ItemKind::{File, Page}` with `path`;
    - files on the ADR 0007 pipeline with 4 MB chunked, resumable uploads;
    - on-device thumbnails;

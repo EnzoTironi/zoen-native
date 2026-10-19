@@ -138,7 +138,7 @@ signals raise risk but never block; app-switcher snapshot redaction; Keychain ac
 shared with the Notification Service Extension; lock-screen notifications show "New message"
 unless the user opts in; mini-apps in WKWebView with a strict CSP and no network except
 through the bridge, with per-app grants; agents shown as declared readers with a visible
-disclosure in chat info; one Cedar grant evaluator (`roda-grants`) compiled into the core and
+disclosure in chat info; one Cedar grant evaluator (`grants`) compiled into the core and
 the server.
 
 ## Agents
@@ -146,7 +146,7 @@ the server.
 Content from messages, the web and mini-apps is untrusted input. Agents follow a quarantined
 pattern: a privileged planner never reads untrusted text directly; a quarantined model
 summarizes it into structured fields the planner can use, with spotlighting markers around
-any quoted content. Every tool call passes Cedar grants and the safety gate (`roda-gate`).
+any quoted content. Every tool call passes Cedar grants and the safety gate (`gate`).
 Agent actions are signed events in the Space's log, so members see a tamper-evident audit
 trail. Anything that would send data outside the Space needs the owner's confirmation.
 

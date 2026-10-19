@@ -9,7 +9,7 @@ chat with that friend, a Space link the Space, an ad its own intro. All of it ha
 ADR 0043: aggregates only, no content, pseudonyms that expire, no fingerprinting.
 
 ## Decision
-- **One remote config document** (`roda-proto/src/experiments.rs`, built-in default
+- **One remote config document** (`protocol/src/experiments.rs`, built-in default
   `remote-config.json`): flags (salt, rollout %, weighted variants, `experiment`,
   guardrails), copy defaults and per-arm overrides, onboarding flows (steps, landing, copy)
   and rules mapping source/campaign (optionally through an experiment's arms) to a flow.
@@ -71,7 +71,7 @@ offline. PostHog still draws the daily aggregates.
 
 ## Proof
 `crates/zoen-cli/tests/journey_growth.rs` (real relay, Postgres, FoundationDB, `zoen`
-installs) and the unit tests in `roda-proto` (link parsing, bucketing uniformity and
+installs) and the unit tests in `protocol` (link parsing, bucketing uniformity and
 determinism, flow selection, validation) and `zoen-relay` (normal and mSPRT p-values,
 CUPED recovering an effect under heavy pre-period noise).
 

@@ -1,4 +1,4 @@
-use roda_proto::{ClientFrame, Sequenced};
+use protocol::{ClientFrame, Sequenced};
 
 use super::*;
 

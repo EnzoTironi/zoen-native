@@ -1,9 +1,9 @@
 //! Postgres: the directory (identities, handles, devices). Logs and membership live in
 //! the log store (`crate::log`).
 
-use roda_proto::{AgreementKeyRecord, DeviceSigned, KeyPackageRecord, SealedProfile};
-use roda_types::{Identity, IdentityKind};
+use protocol::{AgreementKeyRecord, DeviceSigned, KeyPackageRecord, SealedProfile};
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
+use types::{Identity, IdentityKind};
 
 /// Holds the device row for request admission or delivery. Ordinary requests commit
 /// before work. Directory mutations keep the fence through their SQL transaction.
@@ -29,9 +29,8 @@ pub async fn authorize_device(
     .await?;
     // A pending link polls as its own key until it opens its identity box. Enrollment
     // can assign that key to the account before this provisional fetch completes.
-    let provisional = !require_device
-        && enrolled.is_none_or(|(_, revoked)| !revoked)
-        && (enrolled.is_none() || identity == device);
+    let provisional =
+        relay_admission::directory::provisional_allowed(enrolled, identity, device, require_device);
     let unregistered = if provisional {
         !sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM identities WHERE id = $1)")
             .bind(identity)
@@ -40,7 +39,7 @@ pub async fn authorize_device(
     } else {
         false
     };
-    if enrolled == Some((true, false)) || unregistered {
+    if relay_admission::directory::request_authorized(enrolled, unregistered) {
         Ok(Some(tx))
     } else {
         tx.rollback().await?;
@@ -124,10 +123,7 @@ pub async fn enroll_device(
     device: &str,
     cert: &str,
 ) -> Result<(), EnrollmentError> {
-    if device.len() != 64
-        || !device.bytes().all(|b| b.is_ascii_hexdigit())
-        || !roda_log::verify_sig(identity, &roda_log::device_cert_message(device), cert)
-    {
+    if !relay_admission::directory::enrollment_certificate_valid(identity, device, cert) {
         return Err(EnrollmentError::InvalidCertificate);
     }
     let changed = sqlx::query(
@@ -171,7 +167,7 @@ pub async fn register(
     cert: &str,
     first: bool,
 ) -> Result<(), String> {
-    if !roda_log::agent_owner::profile_authorized(profile) {
+    if !event_log::agent_owner::profile_authorized(profile) {
         return Err("profile ownership authorization invalid".into());
     }
     let kind = match profile.kind {
@@ -322,7 +318,7 @@ pub async fn lookup(
     prefix: bool,
 ) -> Result<Vec<Identity>, sqlx::Error> {
     let rows: Vec<DirectoryRow> = if prefix {
-        let pattern = format!("{}%", handle.replace(['\\', '%'], "").replace('_', "\\_"));
+        let pattern = relay_admission::directory::reads::prefix_pattern(handle);
         sqlx::query_as(
             "SELECT id, kind, owner, profile FROM identities WHERE handle LIKE $1 ORDER BY handle LIMIT 20",
         )
@@ -356,16 +352,7 @@ pub async fn profiles(pool: &PgPool, ids: &[String]) -> Result<Vec<Identity>, sq
 type DirectoryRow = (String, String, Option<String>, serde_json::Value);
 
 fn authorized_directory_profile((id, kind, owner, json): DirectoryRow) -> Option<Identity> {
-    let profile: Identity = serde_json::from_value(json).ok()?;
-    let expected = match profile.kind {
-        IdentityKind::Person => "Person",
-        IdentityKind::Agent => "Agent",
-    };
-    (profile.id == id
-        && expected == kind
-        && profile.owner == owner
-        && roda_log::agent_owner::profile_authorized(&profile))
-    .then_some(profile)
+    relay_admission::directory::reads::authorized_profile(&id, &kind, owner.as_deref(), json)
 }
 
 pub async fn put_agreement_key(
@@ -412,6 +399,8 @@ pub async fn agreement_keys(
 /// Stores `p` if its version is newer than the stored one. `false` = stale.
 /// Stores a newer version; resending the exact stored bytes is a no-op success.
 pub async fn put_profile(pool: &PgPool, p: &SealedProfile) -> Result<bool, sqlx::Error> {
+    let version = i64::try_from(p.version)
+        .map_err(|_| sqlx::Error::Protocol("profile version out of range".into()))?;
     let r = sqlx::query(
         "INSERT INTO profiles (identity, version, ciphertext, device, sig, cert) VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (identity) DO UPDATE SET version = excluded.version, ciphertext = excluded.ciphertext,
@@ -420,7 +409,7 @@ pub async fn put_profile(pool: &PgPool, p: &SealedProfile) -> Result<bool, sqlx:
             OR (profiles.version = excluded.version AND profiles.ciphertext = excluded.ciphertext)",
     )
     .bind(&p.identity)
-    .bind(p.version as i64)
+    .bind(version)
     .bind(&p.ciphertext)
     .bind(&p.signed.device)
     .bind(&p.signed.sig)
@@ -454,7 +443,7 @@ pub async fn sealed_profiles(
 }
 
 /// Single-use key packages a device may keep stored; publishing past it is refused.
-pub const MAX_KEY_PACKAGES: i64 = 200;
+pub const MAX_KEY_PACKAGES: i64 = relay_admission::directory::key_packages::MAX_STOCK as i64;
 
 /// Stores a device's key packages, and its last-resort one in place of the previous.
 /// `false` when that would keep more than [`MAX_KEY_PACKAGES`] single-use ones.
@@ -661,7 +650,7 @@ pub async fn take_link_box(pool: &PgPool, id: &str) -> Result<Option<Vec<u8>>, s
 pub async fn devices_of(
     pool: &PgPool,
     identity: &str,
-) -> Result<Vec<roda_proto::DeviceRecord>, sqlx::Error> {
+) -> Result<Vec<protocol::DeviceRecord>, sqlx::Error> {
     let rows: Vec<(String, bool)> = sqlx::query_as(
         "SELECT device, revoked_at IS NOT NULL FROM devices WHERE identity = $1 ORDER BY created_at",
     )
@@ -670,7 +659,7 @@ pub async fn devices_of(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(device, revoked)| roda_proto::DeviceRecord { device, revoked })
+        .map(|(device, revoked)| protocol::DeviceRecord { device, revoked })
         .collect())
 }
 
@@ -712,61 +701,89 @@ pub async fn revoke_device(
     Ok(r.rows_affected() == 1)
 }
 
-/// ((space, identity), (delivered, read)).
 pub type ReceiptRow = ((String, String), (u64, u64));
 
-/// Raises many watermarks in one statement, never lowering any. Each key appears once
-/// (the caller folds duplicates), which `ON CONFLICT` requires.
-pub async fn raise_receipts(pool: &PgPool, batch: &[ReceiptRow]) -> Result<(), sqlx::Error> {
+fn receipt_decode(delivered: String, read: String) -> Result<(u64, u64), sqlx::Error> {
+    let dto = relay_admission::receipts::WatermarkDto { delivered, read };
+    relay_admission::receipts::Watermark::from_dto(&dto)
+        .map(|mark| mark.pair())
+        .map_err(|error| {
+            sqlx::Error::Decode(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid stored unsigned receipt: {error:?}"),
+            )))
+        })
+}
+
+pub async fn raise_receipts(pool: &sqlx::PgPool, batch: &[ReceiptRow]) -> Result<(), sqlx::Error> {
     let mut spaces = Vec::with_capacity(batch.len());
     let mut ids = Vec::with_capacity(batch.len());
     let mut delivered = Vec::with_capacity(batch.len());
     let mut read = Vec::with_capacity(batch.len());
-    // Sorted keys take row locks in one order, so concurrent flushes from two nodes can't
-    // deadlock.
     let mut sorted: Vec<_> = batch.iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
     for ((space, who), (d, r)) in sorted {
+        let dto = relay_admission::receipts::raise(None, *d, *r)
+            .watermark
+            .dto();
         spaces.push(space.as_str());
         ids.push(who.as_str());
-        delivered.push((*d).max(*r).min(i64::MAX as u64) as i64);
-        read.push((*r).min(i64::MAX as u64) as i64);
+        delivered.push(dto.delivered);
+        read.push(dto.read);
     }
     sqlx::query(
-        "INSERT INTO space_receipts (space, identity, delivered, read)
-         SELECT * FROM UNNEST($1::text[], $2::text[], $3::bigint[], $4::bigint[])
-         ON CONFLICT (space, identity) DO UPDATE SET
-           delivered = GREATEST(space_receipts.delivered, EXCLUDED.delivered),
-           read = GREATEST(space_receipts.read, EXCLUDED.read)",
-    )
-    .bind(&spaces)
-    .bind(&ids)
-    .bind(&delivered)
-    .bind(&read)
-    .execute(pool)
-    .await
-    .map(|_| ())
+        "INSERT INTO space_receipts(space,identity,delivered,read)
+         SELECT space,identity,delivered::NUMERIC(20,0),read::NUMERIC(20,0)
+         FROM UNNEST($1::text[],$2::text[],$3::text[],$4::text[])
+         AS input(space,identity,delivered,read)
+         ON CONFLICT(space,identity) DO UPDATE SET
+           delivered=GREATEST(space_receipts.delivered,EXCLUDED.delivered),
+           read=GREATEST(space_receipts.read,EXCLUDED.read)
+         WHERE EXCLUDED.delivered > space_receipts.delivered OR EXCLUDED.read > space_receipts.read",
+    ).bind(&spaces).bind(&ids).bind(&delivered).bind(&read).execute(pool).await.map(|_|())
 }
 
-/// Receipt watermarks of many Spaces at once: (space, identity, delivered, read).
-pub async fn receipts_of_spaces(
+/// One bounded initial ceiling per Space; identities are never deleted from this table.
+pub async fn receipt_ceilings(
     pool: &PgPool,
     spaces: &[String],
-) -> Result<Vec<(String, String, i64, i64)>, sqlx::Error> {
+) -> Result<Vec<(String, String)>, sqlx::Error> {
     sqlx::query_as(
-        "SELECT space, identity, delivered, read FROM space_receipts WHERE space = ANY($1)",
+        "SELECT space,MAX(identity) FROM space_receipts WHERE space=ANY($1) GROUP BY space",
     )
     .bind(spaces)
     .fetch_all(pool)
     .await
 }
 
-/// Every member's receipt watermarks in a Space: (identity, delivered, read).
-pub async fn receipts(pool: &PgPool, space: &str) -> Result<Vec<(String, i64, i64)>, sqlx::Error> {
-    sqlx::query_as("SELECT identity, delivered, read FROM space_receipts WHERE space = $1")
-        .bind(space)
-        .fetch_all(pool)
-        .await
+/// Sorted keyset page plus lookahead. No whole-Space receipt materialization.
+pub async fn receipt_page(
+    pool: &PgPool,
+    space: &str,
+    after: &str,
+    ceiling: &str,
+    limit: usize,
+) -> Result<Vec<(String, u64, u64)>, sqlx::Error> {
+    if limit == 0 || limit > relay_admission::receipts::PAGE_ROWS + 1 {
+        return Err(sqlx::Error::Protocol("invalid receipt page size".into()));
+    }
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT identity,delivered::TEXT,read::TEXT FROM space_receipts
+         WHERE space=$1 AND identity>$2 COLLATE \"C\" AND identity<=$3 COLLATE \"C\"
+         ORDER BY identity COLLATE \"C\" LIMIT $4",
+    )
+    .bind(space)
+    .bind(after)
+    .bind(ceiling)
+    .bind(limit as i64)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|(who, d, r)| {
+            let (d, r) = receipt_decode(d, r)?;
+            Ok((who, d, r))
+        })
+        .collect()
 }
 
 /// Sets (or, with an empty token, clears) this device's push token. A token moves with

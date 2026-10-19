@@ -1,0 +1,10 @@
+{
+  "id": "maptap",
+  "name": "MapTap",
+  "description": "Cinco lugares, um palpite por rodada.",
+  "entry": "src/entries/maptap.tsx",
+  "capabilities": [],
+  "allowedDomains": [],
+  "linkDomains": [],
+  "maxKB": 768
+}

@@ -7,8 +7,8 @@ final class PlusVoiceZoenTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = [
-            "-RodaFreshStart", "YES", "-RodaDemo", "YES", "-RodaResetDemo", "YES",
-            "-RodaVoiceDemo", "plus",
+            "-FreshStart", "YES", "-Demo", "YES", "-ResetDemo", "YES",
+            "-VoiceDemo", "plus",
             "-AppleLanguages", "(en)",
         ]
         app.launch()

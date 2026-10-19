@@ -1,15 +1,19 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/roda-types",
-  "crates/roda-log",
-  "crates/roda-grants",
-  "crates/roda-store",
-  "crates/roda-ffi",
-  "crates/roda-docs",
-  "crates/roda-gate",
-  "crates/roda-proto",
-  "crates/roda-mls",
+  "crates/types",
+  "crates/localization",
+  "crates/miniapps",
+  "crates/device-link",
+  "crates/event-log",
+  "crates/grants",
+  "crates/store",
+  "crates/client-core",
+  "crates/documents",
+  "crates/gate",
+  "crates/protocol",
+  "crates/relay-admission",
+  "crates/mls",
   "crates/zoen-web-core",
   "crates/zoen-relay",
   "crates/zoen-cli",
@@ -47,14 +51,18 @@ argon2 = "0.5"
 rusqlite = { version = "0.37", features = ["bundled", "serialize"] }
 uniffi = "0.32"
 prost = "0.14"
-roda-types = { path = "crates/roda-types" }
-roda-log = { path = "crates/roda-log" }
-roda-grants = { path = "crates/roda-grants" }
-roda-gate = { path = "crates/roda-gate" }
-roda-store = { path = "crates/roda-store" }
-roda-proto = { path = "crates/roda-proto" }
-roda-docs = { path = "crates/roda-docs" }
-roda-mls = { path = "crates/roda-mls", default-features = false }
+types = { path = "crates/types" }
+localization = { path = "crates/localization" }
+miniapps = { path = "crates/miniapps" }
+device-link = { path = "crates/device-link" }
+event-log = { path = "crates/event-log" }
+grants = { path = "crates/grants" }
+gate = { path = "crates/gate" }
+store = { path = "crates/store" }
+protocol = { path = "crates/protocol" }
+relay-admission = { path = "crates/relay-admission" }
+documents = { path = "crates/documents" }
+mls = { path = "crates/mls", default-features = false }
 zoen-egress = { path = "crates/zoen-egress" }
 zoen-liveview = { path = "crates/zoen-liveview" }
 
@@ -66,11 +74,11 @@ opt-level = 3
 
 # Debug imports build Loro pages, decode the durable queue, and seal MLS messages.
 # Generic serializers and crypto use the profile of their core-library callers.
-[profile.dev.package.roda-log]
+[profile.dev.package.event-log]
 opt-level = 3
-[profile.dev.package.roda-mls]
+[profile.dev.package.mls]
 opt-level = 3
-[profile.dev.package.roda-docs]
+[profile.dev.package.documents]
 opt-level = 3
 [profile.dev.package.sha2]
 opt-level = 3
@@ -82,7 +90,7 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.loro-kv-store]
 opt-level = 3
-[profile.dev.package.roda-store]
+[profile.dev.package.store]
 opt-level = 3
 [profile.dev.package.serde_json]
 opt-level = 3

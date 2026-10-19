@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use roda_proto::ServerFrame;
+use protocol::ServerFrame;
 use tokio::sync::{mpsc, Notify};
 
 pub type Outbox = mpsc::Sender<ServerFrame>;

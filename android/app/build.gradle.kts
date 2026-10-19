@@ -7,8 +7,8 @@ plugins {
 val coreAbis = providers.gradleProperty("androidAbis").orElse("arm64-v8a,x86_64")
 val coreProfile = providers.gradleProperty("coreProfile").orElse("release")
 require(coreProfile.get() in setOf("dev", "release")) { "coreProfile must be dev or release" }
-val coreOutput = layout.buildDirectory.dir("generated/roda")
-val buildRodaCore by tasks.registering(Exec::class) {
+val coreOutput = layout.buildDirectory.dir("generated/core")
+val buildClientCore by tasks.registering(Exec::class) {
     group = "build"
     description = "Build the shared Rust engine and generate UniFFI Kotlin bindings."
     workingDir(rootProject.projectDir.parentFile)
@@ -21,10 +21,10 @@ val buildRodaCore by tasks.registering(Exec::class) {
     inputs.property("profile", coreProfile)
     outputs.dir(coreOutput)
 }
-val verifyRodaCore by tasks.registering(Exec::class) {
+val verifyClientCore by tasks.registering(Exec::class) {
     group = "verification"
     description = "Reject Kotlin/JNI artifacts generated from stale shared-core inputs."
-    dependsOn(buildRodaCore)
+    dependsOn(buildClientCore)
     workingDir(rootProject.projectDir.parentFile)
     commandLine("python3", "scripts/android-core-contract.py", "verify",
         "--abis=${coreAbis.get()}", "--profile=${coreProfile.get()}")
@@ -74,7 +74,7 @@ android {
 }
 
 kotlin { jvmToolchain(17) }
-tasks.named("preBuild") { dependsOn(verifyRodaCore) }
+tasks.named("preBuild") { dependsOn(verifyClientCore) }
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     val selectedCoreProfile = coreProfile.get()
     doFirst {

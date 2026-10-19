@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 /// Aba 4: você, seus agentes, seus Itens, segurança e uma única tela de ajustes.
 struct YouScreen: View {
@@ -114,8 +114,8 @@ struct YouScreen: View {
         .navigationTitle("Your context")
         .sheet(item: $settings) { SettingsRoot(start: $0.start).environment(model) }
         .onAppear {
-            // `-RodaSettings tema`: opens Ajustes on that screen (journey tests, screenshots).
-            if let raw = UserDefaults.standard.string(forKey: "RodaSettings"), settings == nil {
+            // `-Settings tema`: opens Ajustes on that screen (journey tests, screenshots).
+            if let raw = UserDefaults.standard.string(forKey: "Settings"), settings == nil {
                 settings = SettingsLaunch(start: SettingsScreen(rawValue: raw))
             }
         }
@@ -401,7 +401,7 @@ struct LogEventsView: View {
                     Text("#\(e.seq)").font(.caption.monospaced().weight(.bold)).foregroundStyle(Palette.action)
                     Text(e.label).font(.subheadline.weight(.medium)).lineLimit(1)
                     Spacer()
-                    Text(RodaTime.relative(e.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
+                    Text(MessageTime.relative(e.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
                 }
                 HStack(spacing: 6) {
                     Avatar(persona: e.author, size: 16)

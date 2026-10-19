@@ -18,7 +18,7 @@ const { createRoot } = await import('react-dom/client');
 const { Messenger } = await import(pathToFileURL(output).href);
 const own = '11'.repeat(32);
 function msg(id: string, text: string) { return { id, entry: id, author: own, name: 'Ana', text, at_ms: 1000, delivery: 'confirmed', failure: null, ticks: 'sent', edited: false, deleted: false, forwarded: false, reactions: [], quote: null, thread: null, replies: 0, repliers: [], last_reply_ms: null }; }
-const conversations = [{ id: 'chat', title: 'Amigos', kind: 'group', can_send: true, waiting: null, unreadable: 0, unread: 0, mentions: 0, members: 2, messages: [msg('first', 'pousada antiga'), msg('second', 'Texto para editar')] }];
+const conversations = [{ id: 'chat', title: 'Amigos', kind: 'group', privacy: 'EndToEnd', roster: {}, profiles: [], prefs: { pinned: false, archived: false, muted_until_ms: null }, event_count: '0', can_send: true, waiting: null, unreadable: 0, unread: 0, mentions: 0, members: 2, messages: [msg('first', 'pousada antiga'), msg('second', 'Texto para editar')] }];
 async function input(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const proto = el.tagName === 'TEXTAREA' ? dom.window.HTMLTextAreaElement.prototype : dom.window.HTMLInputElement.prototype;
   await act(async () => { Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(el, value); el.dispatchEvent(new dom.window.Event('input', { bubbles: true })); });

@@ -1,6 +1,6 @@
 import Foundation
 import Security
-import RodaCore
+import ClientCore
 
 /// Where this device's account keys live: the Keychain, never the SQLite file.
 ///

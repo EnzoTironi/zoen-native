@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 #if canImport(UserNotifications)
 import UserNotifications
 #endif
@@ -122,7 +122,7 @@ struct OnboardingFlow: View {
         .environment(\.colorScheme, .light)
         .sheet(isPresented: $recoverAccount) {
             RecoveryKeyRestore {
-                UserDefaults.standard.set(true, forKey: "RodaOnboarded")
+                UserDefaults.standard.set(true, forKey: "Onboarded")
                 onFinish()
             }
         }
@@ -132,14 +132,14 @@ struct OnboardingFlow: View {
             route = OnboardingRoute(model.core.growthOnboardingPlan())
             Task { await model.growthSync() }
             // Numbers keep their meaning from before the profile step existed; "profile" opens it.
-            let raw = UserDefaults.standard.string(forKey: "RodaOnboardingStep") ?? ""
+            let raw = UserDefaults.standard.string(forKey: "OnboardingStep") ?? ""
             if let st = raw == "profile" ? Step.profile : Int(raw).flatMap({ Step(rawValue: $0 >= 1 ? $0 + 1 : $0) }) {
                 if st.rawValue >= Step.areas.rawValue { areas = [.trips, .food] }   // demo jump (launch arg only)
                 step = st
                 if st == .plan { await makePlan() }
             }
-            // `-RodaOnboardingAuto YES`: plays the whole flow by itself (screen recordings, demos).
-            if UserDefaults.standard.bool(forKey: "RodaOnboardingAuto") {
+            // `-OnboardingAuto YES`: plays the whole flow by itself (screen recordings, demos).
+            if UserDefaults.standard.bool(forKey: "OnboardingAuto") {
                 for _ in 0..<route.steps.count {
                     try? await Task.sleep(for: .seconds(step == .plan ? 3.4 : 2.8))
                     if step == .areas && areas.isEmpty {
@@ -473,7 +473,7 @@ struct OnboardingFlow: View {
     }
 
     private func finish() {
-        UserDefaults.standard.set(true, forKey: "RodaOnboarded")
+        UserDefaults.standard.set(true, forKey: "Onboarded")
         let route = route
         Task { @MainActor in
             // A friend's link lands in the chat with them, a Space link in the Space.
@@ -484,12 +484,12 @@ struct OnboardingFlow: View {
     }
 
     /// First launch only. Launch arguments (demo shortcuts, screenshots) skip it, except
-    /// `-RodaOnboarding YES`, which forces it.
+    /// `-Onboarding YES`, which forces it.
     static var shouldShow: Bool {
         let d = UserDefaults.standard
-        if d.bool(forKey: "RodaOnboarding") { return true }
-        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-Roda") }) { return false }
-        return !d.bool(forKey: "RodaOnboarded")
+        return OnboardingLaunch.shouldShow(onboarded: d.bool(forKey: "Onboarded"),
+                                          forced: d.bool(forKey: "Onboarding"),
+                                          arguments: ProcessInfo.processInfo.arguments)
     }
 }
 

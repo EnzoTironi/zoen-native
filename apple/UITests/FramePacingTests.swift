@@ -9,10 +9,10 @@ final class FramePacingTests: XCTestCase {
     @MainActor
     func testCardDragFramePacing() {
         let app = XCUIApplication()
-        app.launchArguments = ["-RodaDemo", "YES", "-RodaShowcase", "YES", "-AppleLanguages", "(pt-BR)",
-                               "-RodaAppearance", "light", "-RodaApprovalsExplained", "YES",
-                               "-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
-                               "-RodaOpen", "aprovacoes", "-RodaFramePacing", "YES"]
+        app.launchArguments = ["-Demo", "YES", "-Showcase", "YES", "-AppleLanguages", "(pt-BR)",
+                               "-Appearance", "light", "-ApprovalsExplained", "YES",
+                               "-FreshStart", "YES", "-ResetDemo", "YES",
+                               "-Open", "aprovacoes", "-FramePacing", "YES"]
         app.launch()
         let card = app.descendants(matching: .any)["approval-card"].firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 20), "the stack opens on a card")

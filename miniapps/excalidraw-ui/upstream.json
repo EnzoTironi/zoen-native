@@ -1,0 +1,36 @@
+{
+  "repository": "https://github.com/excalidraw/excalidraw-mcp",
+  "upstreamCommit": "157aa23ceb1976008aadc89eb05e3444060f09d6",
+  "upstreamVersion": "0.3.2",
+  "patchPullRequest": "https://github.com/excalidraw/excalidraw-mcp/pull/89",
+  "patchCommit": "aafc247efb8ba0689e193557749784ea80ee4996",
+  "patchSha256": "1449b6a7176c032ea36e3d6a1cf293ce05ea353063b009c568bef69999f93675",
+  "sourceSha256": {
+    "src/mcp-app.tsx": "c70e54d3d6a3fdf20d83e40acf703bb06309d77d4a21cdee1fc9f6aabc9051a8",
+    "src/mcp-entry.tsx": "41314dcc1fbbdccc32e38bcd3431f55c210b198aa55d4c3cae70dac36639dc8a",
+    "src/mcp-app.html": "be7f7457a602100feaf13f37c5dc1f22f8e30ff2469d210708542aa7be2cf179",
+    "src/edit-context.ts": "de7d1aa4032455ff3e012b3b16c3fdc086bc6324f8cd7697d0e2ded5b94474f2",
+    "src/pencil-audio.ts": "13f6ff769d5d2140faeeffa4b49d5a9f7a85b357b20d0c2603e53bdd288b98bf",
+    "src/sounds.ts": "c197a890a699a9ed3348cc5ff12d676b2e9923ab25fcb80045cdad10f4baff4f",
+    "src/global.css": "79ad7aa44ae3224a802909724e18d1ca62acbdda5bd61ad592b22619bcbd1707"
+  },
+  "licenseDeclaration": {
+    "upstreamPackageJson": "MIT",
+    "upstreamReadme": "MIT",
+    "upstreamLicenseFile": null
+  },
+  "modifications": [
+    "PR89: buffer initial MCP tool notifications before App.connect, drain after React handler registration.",
+    "Initialize fullscreen from the negotiated host context and buffer early context changes until React handler registration.",
+    "Self-contained dependency and font assets; native system font fallback replaces optional Xiaolai CJK font without changing text.",
+    "Canonical full-scene image/appState persistence, acknowledged chunked save/retry/flush via standard MCP tools.",
+    "Public aiEnabled=false additionally gates manual Mermaid menu and Mermaid paste paths; optional converter branch excluded."
+  ],
+  "externalResources": [],
+  "prSourceSha256": "e311cfa69aa3c67a0dbfecdbc3005857c12590de3c1d871afe7c853703acd928",
+  "localPatchSha256": "c1e576a21d82e7a976a09b69c653d2d079b86cd1a08fecf9e814232b54a428ae",
+  "librarySourceSha256": {
+    "@excalidraw/excalidraw/dist/prod/index.js": "6ed19fd70ef6ecbdafc47b66a405910c9a6e5982c72f2f4d3d94f37da8b6ad77",
+    "@excalidraw/excalidraw/dist/prod/chunk-FX7ZIABN.js": "5d42242a4c5c7d7b835d154c291b838e2f0fcdccd649c8b2fcbe05b3a7c2b346"
+  }
+}

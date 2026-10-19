@@ -9,9 +9,9 @@ use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
 };
 use hkdf::Hkdf;
-use roda_types::{ChunkRef, FileDoc};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use types::{ChunkRef, FileDoc};
 
 const MIN_CHUNK: usize = 1 << 20;
 const AVG_CHUNK: usize = 4 << 20;
@@ -68,6 +68,18 @@ fn seal_chunk(file_key: &[u8; 32], plain: &[u8], uploads: &mut Vec<Upload>) -> C
     }
 }
 
+/// One page payload, with the same authenticated chunk format as native pages.
+pub(crate) fn seal_page(bytes: &[u8]) -> Result<(ChunkRef, Upload), String> {
+    if bytes.is_empty() || bytes.len() > 32 << 20 {
+        return Err("page payload empty or too large".into());
+    }
+    let mut key = [0; 32];
+    getrandom::getrandom(&mut key).map_err(|error| error.to_string())?;
+    let mut uploads = Vec::new();
+    let reference = seal_chunk(&key, bytes, &mut uploads);
+    Ok((reference, uploads.remove(0)))
+}
+
 /// Seals a file for a relay-synced chat. The caller uploads every `Upload`, then queues
 /// the `ItemCreated` carrying `doc`.
 pub fn seal_file(
@@ -115,6 +127,83 @@ pub fn seal_file(
         },
         uploads,
     })
+}
+
+/// Reuse already-signed immutable chunks when their plaintext is unchanged.
+/// Every fresh chunk still uses the same Rust encryption and FileDoc format.
+pub(crate) fn seal_file_reusing(
+    name: &str,
+    mime: &str,
+    bytes: &[u8],
+    prior: &[ChunkRef],
+) -> Result<Sealed, String> {
+    let mut sealed = seal_file(name, mime, bytes, None)?;
+    for chunk in &mut sealed.doc.chunks {
+        if let Some(old) = prior
+            .iter()
+            .find(|old| old.sha256 == chunk.sha256 && old.bytes == chunk.bytes)
+        {
+            *chunk = old.clone();
+        }
+    }
+    sealed.uploads.retain(|upload| {
+        sealed
+            .doc
+            .chunks
+            .iter()
+            .any(|chunk| chunk.blob == upload.blob)
+    });
+    Ok(sealed)
+}
+
+pub(crate) fn validate_owned_file(file: &FileDoc, max_bytes: usize) -> Result<(), String> {
+    let valid_hash =
+        |value: &str| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit());
+    if file.bytes == 0
+        || file.bytes > max_bytes as u64
+        || file.chunks.is_empty()
+        || file.chunks.len() > MAX_FILE_BYTES / MIN_CHUNK + 1
+        || !valid_hash(&file.sha256)
+        || file.voice.is_some()
+    {
+        return Err("invalid owned file".into());
+    }
+    let metadata = [&file.name, &file.path, &file.mime, &file.sha256]
+        .iter()
+        .try_fold(0usize, |size, value| size.checked_add(value.len()))
+        .and_then(|size| {
+            size.checked_add((file.chunks.len() + usize::from(file.thumb.is_some())) * (3 * 64 + 8))
+        })
+        .ok_or("invalid owned file")?;
+    if metadata > 128 << 10 {
+        return Err("invalid owned file".into());
+    }
+    let mut total = 0u64;
+    for chunk in &file.chunks {
+        if chunk.bytes == 0
+            || chunk.bytes > MAX_CHUNK as u64
+            || !valid_hash(&chunk.sha256)
+            || !valid_hash(&chunk.blob)
+            || !valid_hash(&chunk.key)
+        {
+            return Err("invalid owned file".into());
+        }
+        total = total.checked_add(chunk.bytes).ok_or("invalid owned file")?;
+    }
+    if total != file.bytes {
+        return Err("invalid owned file".into());
+    }
+    if let Some(chunk) = &file.thumb {
+        if chunk.bytes == 0
+            || chunk.bytes > MAX_THUMBNAIL_BYTES as u64
+            || !valid_hash(&chunk.sha256)
+            || !valid_hash(&chunk.blob)
+            || !valid_hash(&chunk.key)
+        {
+            return Err("invalid owned file".into());
+        }
+    }
+    Ok(())
 }
 
 /// Opens one downloaded chunk only if it is exactly what the event promised.

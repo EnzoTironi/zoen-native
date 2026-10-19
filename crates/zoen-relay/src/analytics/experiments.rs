@@ -129,7 +129,7 @@ pub fn compare(arms: &BTreeMap<String, Vec<Unit>>, control: &str) -> BTreeMap<St
 /// Every experiment with exposures in the window, arm by arm.
 pub async fn experiments(
     pool: &PgPool,
-    config: &roda_proto::experiments::RemoteConfig,
+    config: &protocol::experiments::RemoteConfig,
     everyone: bool,
     counters: &BTreeMap<String, i64>,
 ) -> anyhow::Result<Value> {
@@ -250,7 +250,7 @@ pub async fn experiments(
 /// onboarding experiment.
 pub async fn funnels(
     pool: &PgPool,
-    config: &roda_proto::experiments::RemoteConfig,
+    config: &protocol::experiments::RemoteConfig,
     everyone: bool,
 ) -> anyhow::Result<(Value, Value)> {
     let t = today();

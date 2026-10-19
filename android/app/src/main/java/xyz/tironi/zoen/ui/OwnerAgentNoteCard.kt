@@ -25,7 +25,7 @@ import xyz.tironi.zoen.R
 import xyz.tironi.zoen.core.Persona
 
 /** A note your own agent sends you. The core decides whether a message is one
- *  (`RodaEngine.ownerAgentNote`: the author is your agent with a verified ownership proof);
+ *  (`Client.ownerAgentNote`: the author is your agent with a verified ownership proof);
  *  the app only renders the JSON it hands back. */
 sealed interface OwnerAgentNote {
     val space: String

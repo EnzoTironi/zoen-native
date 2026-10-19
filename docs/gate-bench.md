@@ -1,8 +1,8 @@
 # Safety gate: local decision models on the Mac
 
 Measured 2026-10-08 on Enzo's MacBook Pro (Apple M5, **16 GB** RAM, not 32; about 18 GB of swap
-already in use from Xcode, the simulator and OrbStack), with `crates/roda-gate/examples/gate_bench.rs`
-running the 21 red-team fixtures (`crates/roda-gate/fixtures/redteam.json`: 15 unsafe, 6 benign)
+already in use from Xcode, the simulator and OrbStack), with `crates/gate/examples/gate_bench.rs`
+running the 21 red-team fixtures (`crates/gate/fixtures/redteam.json`: 15 unsafe, 6 benign)
 through `SystemOneHttp` → `http://127.0.0.1:<port>/v1/systemone`.
 
 "Model only" turns the hard rules off. "Rules+model" is the real gate. Precision and recall treat
@@ -42,13 +42,13 @@ Laya typed (807 MB) were removed after benchmarking. Free disk: 13 GB before, 14
 (`target/debug` and the uv cache were also cleaned).
 
 Run it: `tools/gate-serve/run.sh` (port 8011), then
-`GATE_PROVIDERS="laya=http://127.0.0.1:8011#laya" cargo run -p roda-gate --example gate_bench`.
+`GATE_PROVIDERS="laya=http://127.0.0.1:8011#laya" cargo run -p gate --example gate_bench`.
 
 ## Held-out set (2026-10-08)
 
-`crates/roda-gate/fixtures/heldout.json`: 20 new cases (10 unsafe, 10 safe), written after
+`crates/gate/fixtures/heldout.json`: 20 new cases (10 unsafe, 10 safe), written after
 `Thresholds::laya_local()` was calibrated and never used to tune it. Run with
-`GATE_FIXTURES=heldout GATE_PROVIDERS="laya=http://127.0.0.1:8011#laya" cargo run -p roda-gate --example gate_bench`.
+`GATE_FIXTURES=heldout GATE_PROVIDERS="laya=http://127.0.0.1:8011#laya" cargo run -p gate --example gate_bench`.
 
 | provider · mode | precision | recall | exact | tp/fp/fn/tn | AUROC | p50 | p95 |
 |---|---|---|---|---|---|---|---|

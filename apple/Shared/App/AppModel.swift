@@ -1,6 +1,6 @@
 import SwiftUI
 import Observation
-import RodaCore
+import ClientCore
 
 /// Top-level destinations. On iPhone, two live in the bottom bar's pill (`barTabs`),
 /// Search has its own button, and the rest open from the + fan menu.
@@ -74,7 +74,7 @@ enum Route: Hashable {
 @MainActor
 @Observable
 final class AppModel {
-    let core: RodaEngine
+    let core: Client
     let planner = AgentPlanner()
     /// Account, relay connection and the live signals (typing, presence).
     let sync = SyncModel()
@@ -122,7 +122,7 @@ final class AppModel {
     /// iPhone: the bar's search field is open (it filters Chats live).
     var chatSearch = false
     var chatQuery = ""
-    /// Pre-filled query for the search screen (`-RodaSearch <query>`).
+    /// Pre-filled query for the search screen (`-Search <query>`).
     var searchSeed: String?
     /// iPhone: the universal search screen is open (it grows out of the bar's circle).
     var searchOpen = false
@@ -131,13 +131,13 @@ final class AppModel {
     /// A search result asked to open a chat at this message (scroll + brief highlight).
     var jumpTarget: JumpTarget?
     /// Home strip: pinned mini-app order and the ones you unpinned (UserDefaults).
-    private(set) var homePins: [String] = UserDefaults.standard.stringArray(forKey: "RodaHomePins") ?? []
-    private(set) var homeUnpinned: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "RodaHomeUnpinned") ?? [])
+    private(set) var homePins: [String] = UserDefaults.standard.stringArray(forKey: "HomePins") ?? []
+    private(set) var homeUnpinned: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "HomeUnpinned") ?? [])
     /// Mini-apps you unpinned from a chat's tile row (they stay in the chat as cards).
-    private(set) var chatAppsUnpinned: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "RodaChatAppsUnpinned") ?? [])
+    private(set) var chatAppsUnpinned: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "ChatAppsUnpinned") ?? [])
     func unpinChatApp(_ itemId: String) {
         chatAppsUnpinned.insert(itemId)
-        UserDefaults.standard.set(Array(chatAppsUnpinned), forKey: "RodaChatAppsUnpinned")
+        UserDefaults.standard.set(Array(chatAppsUnpinned), forKey: "ChatAppsUnpinned")
         revision &+= 1
     }
     /// Pinned chats (Zoen is pinned until you unpin it).
@@ -178,21 +178,21 @@ final class AppModel {
         // pieces are here; until then the player waits.
         VoicePlayer.shared.fetch = { [core] id in (try? core.fileBytes(itemId: id, version: nil)) ?? nil }
         #if DEBUG
-        // Tests and demos of the real thing: `-RodaFreshStart YES` forgets this device's
-        // account and chats; `-RodaAccount "Ana:ana"` signs up without onboarding.
+        // Tests and demos of the real thing: `-FreshStart YES` forgets this device's
+        // account and chats; `-Account "Ana:ana"` signs up without onboarding.
         let d = UserDefaults.standard
-        if d.bool(forKey: "RodaWowReset") {
+        if d.bool(forKey: "WowReset") {
             // Proof videos: replay first-time WOW moments (stamp, flourish).
-            for k in d.dictionaryRepresentation().keys where k.hasPrefix("RodaWow.") { d.removeObject(forKey: k) }
+            for k in d.dictionaryRepresentation().keys where k.hasPrefix("Wow.") { d.removeObject(forKey: k) }
         }
-        if d.bool(forKey: "RodaFreshStart") {
+        if d.bool(forKey: "FreshStart") {
             try? core.eraseDevice(vault: sync.vault)
             // Pins and their order are per device too: start from the default strip.
-            for k in ["RodaHomePins", "RodaHomeUnpinned", "RodaChatAppsUnpinned", "RodaChatTileOrder", "RodaPendingRevokes"] { d.removeObject(forKey: k) }
+            for k in ["HomePins", "HomeUnpinned", "ChatAppsUnpinned", "ChatTileOrder", "PendingRevokes"] { d.removeObject(forKey: k) }
             homePins = []; homeUnpinned = []; chatAppsUnpinned = []; chatTileOrder = []
             if SyncModel.mode == .demo { _ = try? core.seedDemoIfEmpty() }
         }
-        if let spec = d.string(forKey: "RodaAccount"), core.account() == nil {
+        if let spec = d.string(forKey: "Account"), core.account() == nil {
             let parts = spec.split(separator: ":", maxSplits: 1).map(String.init)
             try? sync.createAccount(core: core, name: parts[0], handle: parts.count > 1 ? parts[1] : parts[0])
         }
@@ -205,16 +205,16 @@ final class AppModel {
         }
     }
 
-    private static func boot() -> (RodaEngine, String?) {
+    private static func boot() -> (Client, String?) {
         do {
             Money.locale = AppLocale.tag
-            let engine = try RodaEngine.openDefault(locale: AppLocale.tag)
-            // The demo story only behind the dev flag (`-RodaDemo YES`); a real install
+            let engine = try Client.openDefault(locale: AppLocale.tag, demo: SyncModel.mode == .demo)
+            // The demo story only behind the dev flag (`-Demo YES`); a real install
             // starts empty and creates its account in onboarding.
             if SyncModel.mode == .demo && engine.account() == nil {
                 // Showcase always reseeds so investor shots get the rich pinned apps.
-                let reset = UserDefaults.standard.bool(forKey: "RodaResetDemo")
-                    || UserDefaults.standard.bool(forKey: "RodaShowcase")
+                let reset = UserDefaults.standard.bool(forKey: "ResetDemo")
+                    || UserDefaults.standard.bool(forKey: "Showcase")
                 if reset {
                     try engine.resetDemo()
                 } else {
@@ -225,7 +225,7 @@ final class AppModel {
         } catch {
             // Último recurso: banco em memória, para o app nunca abrir vazio.
             let message = (error as? CoreError)?.message ?? error.localizedDescription
-            let engine = try! RodaEngine.open(path: ":memory:", locale: AppLocale.tag)
+            let engine = try! Client.open(path: ":memory:", locale: AppLocale.tag)
             _ = try? engine.seedDemoIfEmpty()
             return (engine, message)
         }
@@ -422,7 +422,7 @@ final class AppModel {
 
     /// The pending revokes are written down as they happen, so a kill inside the undo window
     /// still revokes: the next launch applies whatever is left (`applyPendingRevokesFromLastRun`).
-    private static let pendingRevokesKey = "RodaPendingRevokes"
+    private static let pendingRevokesKey = "PendingRevokes"
     private func savePendingRevokes() {
         UserDefaults.standard.set(Array(pendingRevokes), forKey: Self.pendingRevokesKey)
     }
@@ -603,10 +603,10 @@ final class AppModel {
 
     // MARK: atalhos de demonstração (launch arguments, para screenshots e demos)
 
-    /// `-RodaAppearance dark|light` força o tema só neste app (demos e screenshots);
+    /// `-Appearance dark|light` força o tema só neste app (demos e screenshots);
     /// sem o argumento, segue o sistema.
     nonisolated static var launchColorScheme: ColorScheme? {
-        switch UserDefaults.standard.string(forKey: "RodaAppearance") {
+        switch UserDefaults.standard.string(forKey: "Appearance") {
         case "dark": .dark
         case "light": .light
         default: nil
@@ -614,7 +614,7 @@ final class AppModel {
     }
 
 
-    /// Deep-link into a seeded space / screen (`-RodaOpen`). Called after showcase polish.
+    /// Deep-link into a seeded space / screen (`-Open`). Called after showcase polish.
     static let samplePage = """
     # Roteiro: Paraty
 
@@ -663,8 +663,8 @@ final class AppModel {
         #endif
     }
 
-    private func applyRodaOpen(_ d: UserDefaults) {
-        guard let open = d.string(forKey: "RodaOpen") else { return }
+    private func applyOpen(_ d: UserDefaults) {
+        guard let open = d.string(forKey: "Open") else { return }
         switch open {
         case "paraty":
             if let id = spaceId(titled: DemoSpace.paraty) { go(.space(id)) }
@@ -723,7 +723,7 @@ final class AppModel {
     func applyLaunchOptions() async {
         let d = UserDefaults.standard
         applyPendingRevokesFromLastRun()
-        if let tab = d.string(forKey: "RodaTab") {
+        if let tab = d.string(forKey: "Tab") {
             self.tab = switch tab {
             case "atividade", "activity": .activity
             case "loja", "store", "explore": .store
@@ -737,8 +737,8 @@ final class AppModel {
             macSelection = MacSidebarItem(tab: self.tab) ?? macSelection
         }
         // With a story, search opens once the story has played (see below).
-        if let q = d.string(forKey: "RodaSearch"), d.string(forKey: "RodaStory") == nil {
-            let extra = d.double(forKey: "RodaSearchDelay")
+        if let q = d.string(forKey: "Search"), d.string(forKey: "Story") == nil {
+            let extra = d.double(forKey: "SearchDelay")
             try? await Task.sleep(for: .seconds(0.8 + extra))
             #if os(iOS)
             searchSeed = q == "YES" ? nil : q
@@ -748,26 +748,26 @@ final class AppModel {
             select(.search)
             #endif
         }
-        if d.bool(forKey: "RodaRadial") {
+        if d.bool(forKey: "Radial") {
             try? await Task.sleep(for: .seconds(0.8))
             withAnimation(.spring(duration: 0.5, bounce: 0.3)) { radialOpen = true }
         }
         #if DEBUG
-        if d.bool(forKey: "RodaShowcase") {
+        if d.bool(forKey: "Showcase") {
             await prepareShowcase()
         }
         #endif
-        // After showcase seed polish so `-RodaOpen` is not wiped by `paths = []`.
-        applyRodaOpen(d)
-        // `-RodaAgentBrowser YES`: Zoen books the inn in Paraty's browser and stops at the
+        // After showcase seed polish so `-Open` is not wiped by `paths = []`.
+        applyOpen(d)
+        // `-AgentBrowser YES`: Zoen books the inn in Paraty's browser and stops at the
         // sign-in for you to take over (showcase until the relay carries real sessions).
-        if d.bool(forKey: "RodaAgentBrowser"), let id = spaceId(titled: DemoSpace.paraty), let agent = zoen {
+        if d.bool(forKey: "AgentBrowser"), let id = spaceId(titled: DemoSpace.paraty), let agent = zoen {
             try? await Task.sleep(for: .seconds(1.2))
             browser.startDemo(spaceId: id, agent: agent)
         }
-        if let story = d.string(forKey: "RodaStory") {
+        if let story = d.string(forKey: "Story") {
             await runStory(story)
-            if let q = d.string(forKey: "RodaSearch") {
+            if let q = d.string(forKey: "Search") {
                 try? await Task.sleep(for: .seconds(0.6))
                 searchSeed = q == "YES" ? nil : q
                 #if os(iOS)
@@ -776,47 +776,47 @@ final class AppModel {
                 select(.search)
                 #endif
             }
-            if d.string(forKey: "RodaTab") == "conversas" {
+            if d.string(forKey: "Tab") == "conversas" {
                 try? await Task.sleep(for: .seconds(0.5))
                 appSheet = nil
                 paths[.conversations] = []
             }
         }
-        // `-RodaGroupPrompt "e se a gente adotasse um burro?||…"`: manda no grupo de Paraty.
-        // `-RodaAppActions "pet_feed,pet_play"` toca no mini-app criado; `-RodaOpenApp YES`
-        // abre em tela cheia; `-RodaAppConfirm pet_release` mostra a folha nativa.
-        if let prompts = d.string(forKey: "RodaGroupPrompt"), let id = spaceId(titled: DemoSpace.paraty) {
+        // `-GroupPrompt "e se a gente adotasse um burro?||…"`: manda no grupo de Paraty.
+        // `-AppActions "pet_feed,pet_play"` toca no mini-app criado; `-OpenApp YES`
+        // abre em tela cheia; `-AppConfirm pet_release` mostra a folha nativa.
+        if let prompts = d.string(forKey: "GroupPrompt"), let id = spaceId(titled: DemoSpace.paraty) {
             go(.space(id))
             for prompt in prompts.components(separatedBy: "||") {
                 try? await Task.sleep(for: .seconds(1.0))
                 await send(prompt, in: id)
             }
             let app = core.items().first { $0.app != nil && $0.spaceId == id }
-            if let app, let actions = d.string(forKey: "RodaAppActions") {
+            if let app, let actions = d.string(forKey: "AppActions") {
                 for a in actions.split(separator: ",") {
                     try? await Task.sleep(for: .seconds(0.4))
                     let parts = a.split(separator: ":", maxSplits: 1)
                     callAppTool(app.id, String(parts[0]), args: parts.count > 1 ? String(parts[1]) : "{}")
                 }
             }
-            if let app, d.bool(forKey: "RodaOpenApp") {
+            if let app, d.bool(forKey: "OpenApp") {
                 try? await Task.sleep(for: .seconds(0.8))
                 openApp(app.id)
             }
-            if let app, let tool = d.string(forKey: "RodaAppConfirm") {
+            if let app, let tool = d.string(forKey: "AppConfirm") {
                 try? await Task.sleep(for: .seconds(1.2))
                 callAppTool(app.id, tool)
             }
-            if d.string(forKey: "RodaTab") == "conversas" {
+            if d.string(forKey: "Tab") == "conversas" {
                 try? await Task.sleep(for: .seconds(0.6))
                 paths[.conversations] = []
             }
         }
-        if let prompt = d.string(forKey: "RodaPrompt"), let id = zoenSpaceId() {
+        if let prompt = d.string(forKey: "Prompt"), let id = zoenSpaceId() {
             go(.space(id))
             try? await Task.sleep(for: .seconds(1.2))
             await send(prompt, in: id)
-            if d.bool(forKey: "RodaOpenResult"), let item = core.items().first {
+            if d.bool(forKey: "OpenResult"), let item = core.items().first {
                 try? await Task.sleep(for: .seconds(0.6))
                 go(.item(item.id))
             }
@@ -909,7 +909,7 @@ final class AppModel {
     func prepareShowcase() async {
         homeUnpinned = []
         chatAppsUnpinned = []
-        UserDefaults.standard.set([] as [String], forKey: "RodaChatAppsUnpinned")
+        UserDefaults.standard.set([] as [String], forKey: "ChatAppsUnpinned")
         refresh()
         let preferred = ["hike", "pet", "maptap", "countdown"]
         var pins: [String] = []
@@ -933,8 +933,8 @@ final class AppModel {
             togglePin(z)
         }
         // AvatarV1 art: clear stale picks, then pin distinct themed defaults for the investor home.
-        for s in spaces { UserDefaults.standard.removeObject(forKey: "RodaGroupAvatar.\(s.id)") }
-        for a in agents { UserDefaults.standard.removeObject(forKey: "RodaAgentAvatar.\(a.persona.id)") }
+        for s in spaces { UserDefaults.standard.removeObject(forKey: "GroupAvatar.\(s.id)") }
+        for a in agents { UserDefaults.standard.removeObject(forKey: "AgentAvatar.\(a.persona.id)") }
         let artPins: [(String, String)] = [
             (DemoSpace.coastalTravelers, "GroupBeachTrip"),
             (DemoSpace.saturdayCrew, "GroupMountainHike"),
@@ -949,10 +949,10 @@ final class AppModel {
         #if DEBUG
         seedShowcaseApprovals()
         #endif
-        // Keep an intentional `-RodaTab` (Spaces / Store investor shots).
-        if UserDefaults.standard.string(forKey: "RodaTab") == nil { tab = .conversations }
-        // Keep an intentional `-RodaOpen` navigation (investor chat shots).
-        if UserDefaults.standard.string(forKey: "RodaOpen") == nil {
+        // Keep an intentional `-Tab` (Spaces / Store investor shots).
+        if UserDefaults.standard.string(forKey: "Tab") == nil { tab = .conversations }
+        // Keep an intentional `-Open` navigation (investor chat shots).
+        if UserDefaults.standard.string(forKey: "Open") == nil {
             paths[.conversations] = []
         }
         revision &+= 1
@@ -1057,8 +1057,8 @@ final class AppModel {
         // `incoming`: two friends write while you're reading further up (journey for the
         // "novas mensagens" pill: the chat must keep your place).
         case "incoming":
-            if d("RodaIncomingManual") { return }
-            await wait(d("RodaIncomingFast") ? 2 : 5)
+            if d("IncomingManual") { return }
+            await wait(d("IncomingFast") ? 2 : 5)
             await receiveIncomingStoryMessages()
         case let s where s.hasPrefix("pet"):
             await send(AppLocale.pick("e se a gente adotasse um jumento pro grupo?", "what if we adopted a donkey for the group?"), in: turma)
@@ -1143,7 +1143,7 @@ final class AppModel {
                 act(poll.id, "lucas", "poll_vote", "{\"option\":\"o2\"}")
                 act(poll.id, "ana", "poll_vote", "{\"option\":\"o1\"}")
                 await wait(0.6)
-                if d("RodaOpenApp") { openApp(poll.id) }
+                if d("OpenApp") { openApp(poll.id) }
             }
         default: break
         }
@@ -1221,10 +1221,10 @@ final class AppModel {
     }
 
     /// Chat pins edit mode: tile order (tile ids are "<item>#<n>") and its persistence.
-    private(set) var chatTileOrder: [String] = UserDefaults.standard.stringArray(forKey: "RodaChatTileOrder") ?? []
+    private(set) var chatTileOrder: [String] = UserDefaults.standard.stringArray(forKey: "ChatTileOrder") ?? []
     func setChatTileOrder(_ ids: [String]) {
         chatTileOrder = ids + chatTileOrder.filter { !ids.contains($0) }
-        UserDefaults.standard.set(chatTileOrder, forKey: "RodaChatTileOrder")
+        UserDefaults.standard.set(chatTileOrder, forKey: "ChatTileOrder")
     }
 
     /// Moves a Home card one step left (-1) or right (+1).
@@ -1239,8 +1239,8 @@ final class AppModel {
     }
 
     private func saveHome() {
-        UserDefaults.standard.set(homePins, forKey: "RodaHomePins")
-        UserDefaults.standard.set(Array(homeUnpinned), forKey: "RodaHomeUnpinned")
+        UserDefaults.standard.set(homePins, forKey: "HomePins")
+        UserDefaults.standard.set(Array(homeUnpinned), forKey: "HomeUnpinned")
         revision &+= 1
     }
 

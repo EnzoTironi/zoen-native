@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ClientCore
 
 /// Aba 2: o que precisa de você e o que os agentes fizeram por você.
 /// É aqui que o modelo de confiança vive: pedidos em lote, orçamento e menções.
@@ -262,7 +262,7 @@ struct MentionRow: View {
                 HStack {
                     Text("\(mention.entry.author.name) mentioned you").font(.subheadline.weight(.semibold))
                     Spacer()
-                    Text(RodaTime.relative(mention.entry.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
+                    Text(MessageTime.relative(mention.entry.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
                 }
                 if case .message(let text, _) = mention.entry.kind {
                     Text(text).font(.subheadline).foregroundStyle(Palette.textSecondary).lineLimit(3)

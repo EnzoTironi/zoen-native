@@ -21,7 +21,7 @@ async fn count(db: &Database, nodes: &Subspace) -> usize {
 pub async fn run() {
     let cluster = std::env::var("FDB_CLUSTER_FILE").unwrap();
     let db = Arc::new(Database::new(Some(&cluster)).unwrap());
-    let root = Subspace::all().subspace(&("zoen", roda_types::new_id("registry")));
+    let root = Subspace::all().subspace(&("zoen", types::new_id("registry")));
     let nodes = root.subspace(&("ownership", "nodes"));
     db.run(|trx, _| {
         let nodes = &nodes;

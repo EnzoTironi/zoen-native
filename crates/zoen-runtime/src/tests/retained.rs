@@ -3,11 +3,11 @@
 mod admission;
 pub(super) mod output;
 use super::*;
-use roda_log::content::{InnerEvent, Sealed, SealedKind};
-use roda_mls::{Device, Opened, SUITE_ID};
-use roda_proto::{Envelope, Sequenced};
-use roda_store::Store;
-use roda_types::*;
+use event_log::content::{InnerEvent, Sealed, SealedKind};
+use mls::{Device, Opened, SUITE_ID};
+use protocol::{Envelope, Sequenced};
+use store::Store;
+use types::*;
 use zoen_relay::log::{fdb::FdbLog, LogStore, Sequencing};
 
 const ORIGINAL: &str = "PRIVATE-RETAINED-NATIVE-ORIGINAL-7c0";
@@ -104,7 +104,7 @@ impl Fixture {
         )
         .unwrap();
         let mut store = Store::open(":memory:").unwrap();
-        roda_mls::migrate(store.conn_mut()).unwrap();
+        mls::migrate(store.conn_mut()).unwrap();
         let mut fixture = Self {
             world,
             log,

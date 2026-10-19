@@ -1,37 +1,67 @@
 import { integer, message, object, string } from './boundary.ts';
 import type { BrowserVault } from './vault.ts';
+import { sessionLocale, type AppLocale } from './locale.ts';
 
 export type CoreOperation =
   | { kind: 'create_link'; device: string; relay: string }
   | { kind: 'complete_link'; pending: string; sealed: Uint8Array }
+  | {kind:'primary_prepare';device:string;relay:string;name:string}
+  | {kind:'primary_restore';device:string;account:string;authority:string}
+  | {kind:'primary_bind_message';proof:string}
+  | {kind:'primary_finish_bind';proof:string;signature:Uint8Array}
   | { kind: 'hello'; identity: string; device: string; cert: string }
   | { kind: 'auth_message'; nonce: string; relay: string }
   | { kind: 'device_cert_message'; device: string }
+  | {kind:'ping'}
   | { kind: 'auth'; signature: string }
   | { kind: 'request'; requestId: number; op: string; value: string }
   | { kind: 'decode_server'; bytes: Uint8Array }
   | { kind: 'restore'; account: string; snapshot: string }
   | { kind: 'bootstrap' }
+  | {kind:'claim_clock';value:string}
+  | {kind:'maintenance';now:number}
+  | {kind:'membership_request';request:string;now:number}
   | { kind: 'receive'; bytes: Uint8Array; now: number }
   | { kind: 'queue_message'; space: string; text: string; now: number }
   | { kind: 'queue_post'; space: string; text: string; replyTo: string; thread: boolean; forwarded: boolean; now: number }
   | { kind: 'queue_annotation'; space: string; target: string; note: string; now: number }
   | { kind: 'mark_read'; space: string }
   | { kind: 'queue_file'; space: string; doc: string; now: number }
+  | { kind: 'queue_file_record'; space: string; doc: string; now: number }
   | { kind: 'queue_failed_file'; space: string; doc: string; now: number; reason: string; chunks: string }
   | { kind: 'local_chunk'; blob: string }
   | { kind: 'fail_outbox'; client_id: string; reason: string }
   | { kind: 'seal_file'; name: string; mime: string; bytes: Uint8Array; thumb: Uint8Array }
   | { kind: 'open_chunk'; chunk: string; sealed: Uint8Array }
   | { kind: 'blob_put_message'; sha: string; ts: number; relay: string }
-  | { kind: 'queue_join'; space: string; role: string; code: string; now: number };
+  | { kind: 'queue_join'; space: string; role: string; code: string; now: number }
+  | { kind: 'document_request'; request: string; now: number }
+  | { kind: 'agent_request'; request: string; now: number }
+  | { kind: 'integrity_request'; request: string }
+  | { kind: 'profile_request'; request: string; now: number }
+  | { kind: 'profile_save'; request: string; bytes: Uint8Array; now: number }
+  | { kind: 'profile_photo_framed'; identity: string; expected: string }
+  | { kind: 'profile_photo_received'; identity: string; expected: string; sealed: Uint8Array }
+  | {kind:'handle_profile';handle:string}
+  | {kind:'handle_confirmed';profile:string;expected:string}
+  | {kind:'link_prepare';code:string;now:number}
+  | {kind:'link_request';request:string;now:number}
+  | {kind:'history_status'}
+  | {kind:'history_start'|'history_finish'|'history_cleaned';now:number}
+  | {kind:'history_manifest';sealed:Uint8Array;now:number}
+  | {kind:'history_chunk';index:number;sealed:Uint8Array;now:number}
+  | { kind: 'app_request'; request: string; now: number }
+  | { kind: 'directory_profiles'; profiles: string }
+  | { kind: 'typing_frame'; space: string; typing: boolean }
+  | { kind: 'document_uploads' }
+  | { kind: 'document_uploaded'; blobs: string }
+  | { kind: 'document_cache_blob'; reference: string; bytes: Uint8Array };
 
-declare const ZOEN_WORKER_INTEGRITY: string;
 type Awaiting = { resolve: (result: string | Uint8Array) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
 
 export class CoreWorker {
   private readonly worker: Worker;
-  private readonly bridge = new SharedArrayBuffer(128);
+  private readonly bridge = typeof SharedArrayBuffer === 'undefined'||globalThis.crossOriginIsolated===false ? null : new SharedArrayBuffer(128);
   private readonly waiting = new Map<number, Awaiting>();
   private sequence = 0;
   private disposed = false;
@@ -39,17 +69,18 @@ export class CoreWorker {
   private loading: ReturnType<typeof setTimeout> | undefined;
   private rejectReady: (error: Error) => void = () => {};
 
-  static async create(vault: BrowserVault): Promise<CoreWorker> {
-    const response = await fetch(new URL('/worker.js', window.location.origin), { integrity: ZOEN_WORKER_INTEGRITY });
+  static async create(vault: BrowserVault, workerIntegrity: string, locale: AppLocale): Promise<CoreWorker> {
+    sessionLocale(locale);
+    const response = await fetch(new URL('/worker.js', window.location.origin), { integrity: workerIntegrity });
     if (!response.ok) throw new Error('The encrypted browser core could not be downloaded.');
     const blob = URL.createObjectURL(new Blob([await response.text()], { type: 'text/javascript' }));
-    const core = new CoreWorker(new Worker(blob, { type: 'module', name: 'zoen-mls' }), vault);
+    const core = new CoreWorker(new Worker(blob, { type: 'module', name: 'zoen-mls' }), vault, locale);
     try { await core.ready; return core; }
     catch (error) { core.close(); throw error; }
     finally { URL.revokeObjectURL(blob); }
   }
 
-  private constructor(worker: Worker, vault: BrowserVault) {
+  private constructor(worker: Worker, vault: BrowserVault, locale: AppLocale) {
     this.worker = worker;
     this.ready = new Promise((resolve, reject) => {
       this.rejectReady = reject;
@@ -62,15 +93,19 @@ export class CoreWorker {
         try {
           const data = object(event.data);
           switch (data.kind) {
-            case 'ready': clearTimeout(this.loading); resolve(); return;
+            case 'ready':
+              if (sessionLocale(data.locale) !== locale) throw new Error('Browser core language mismatch.');
+              clearTimeout(this.loading); resolve(); return;
             case 'sign': {
+              if(!this.bridge)throw new Error('Encrypted messaging requires an isolated browser page.');
+              const bridge=this.bridge;
               if (!(data.payload instanceof Uint8Array)) throw new Error('Invalid signing request.');
-              const control = new Int32Array(this.bridge, 0, 4);
+              const control = new Int32Array(bridge, 0, 4);
               const nonce = integer(data.nonce);
               void vault.sign(data.payload).then((signature) => {
                 if (Atomics.load(control, 1) !== nonce || this.disposed) return;
                 if (signature.length !== 64) throw new Error('Invalid Ed25519 signature length.');
-                new Uint8Array(this.bridge, 16, 64).set(signature);
+                new Uint8Array(bridge, 16, 64).set(signature);
                 Atomics.store(control, 0, 1);
                 Atomics.notify(control, 0);
               }).catch(() => {
@@ -103,7 +138,7 @@ export class CoreWorker {
           }
         } catch (error) { this.close(new Error(message(error))); }
       };
-      this.worker.postMessage({ kind: 'init', bridge: this.bridge,
+      this.worker.postMessage({ kind: 'init', locale, bridge: this.bridge, authorityKey:vault.authorityKey(),
         wasmUrl: new URL('/core/zoen_web_core_bg.wasm', window.location.origin).toString() });
     });
   }
@@ -141,9 +176,9 @@ export class CoreWorker {
     this.disposed = true;
     clearTimeout(this.loading);
     this.rejectReady(error);
-    const control = new Int32Array(this.bridge, 0, 4);
+    if(this.bridge){const control = new Int32Array(this.bridge, 0, 4);
     Atomics.store(control, 0, -1);
-    Atomics.notify(control, 0);
+    Atomics.notify(control, 0);}
     this.worker.terminate();
     this.fail(error);
   }

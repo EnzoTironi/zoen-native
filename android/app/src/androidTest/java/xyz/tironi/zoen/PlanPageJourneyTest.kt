@@ -155,7 +155,7 @@ class PlanPageJourneyTest {
         val folder = File(app.noBackupFilesDir, namespace).apply { mkdirs() }
         val vault = AndroidSecretVault(app, "$namespace-vault")
         val database = File(folder, "account.sqlite").absolutePath
-        var core = RodaEngine.open(database, "en")
+        var core = Client.open(database, "en")
         try {
             core.createAccount("Plan Test", "plan_test", "http://10.0.2.2:18787", vault)
             val chat = core.spaces().first { it.counterpart?.handle == "zoen" }
@@ -171,7 +171,7 @@ class PlanPageJourneyTest {
             core.editPlanLine(created.id, line.legacyId, exact, cents, initial.contentHash)
             val saved = core.planPage(created.id)
             core.destroy()
-            core = RodaEngine.open(database, "en")
+            core = Client.open(database, "en")
             assertTrue(core.unlock(vault))
             val reopened = core.planPage(created.id)
             assertEquals(saved.blocks, reopened.blocks)

@@ -1,5 +1,5 @@
 import Foundation
-import RodaCore
+import ClientCore
 import UserNotifications
 #if os(iOS)
 import UIKit
