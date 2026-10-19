@@ -2,7 +2,6 @@
 use crate::engine::{Engine, R};
 use crate::i18n::t;
 use crate::{CoreError, RodaEngine};
-use base64::Engine as _;
 use roda_types::{
     new_id, AppDoc, Capability, EventBody, Grant, GrantScope, ItemContent, ItemKind, TrustLevel,
 };
@@ -11,12 +10,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
 
-pub(crate) const MAX_SCENE_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) use roda_apps::excalidraw::MAX_SCENE_BYTES;
+use roda_apps::excalidraw::{Scene, EMPTY, MIME, RESOURCE};
 const MAX_RECEIPTS: usize = 64;
-const RESOURCE: &str = "ui://zoen/excalidraw.html";
-const MIME: &str = "application/vnd.excalidraw+json";
-const EMPTY: &str =
-    r#"{"type":"excalidraw","version":2,"source":"zoen","elements":[],"appState":{},"files":{}}"#;
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record, Serialize, Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
@@ -92,184 +88,11 @@ fn valid_hash(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-fn bounded_json(v: &Value, depth: usize, nodes: &mut usize) -> R<()> {
-    *nodes += 1;
-    if depth > 64 || *nodes > 500_000 {
-        return Err(invalid());
-    }
-    match v {
-        Value::Number(n)
-            if n.as_f64()
-                .is_none_or(|n| !n.is_finite() || n.abs() > 9_007_199_254_740_991.0) =>
-        {
-            return Err(invalid())
-        }
-        Value::Array(a) => {
-            for child in a {
-                bounded_json(child, depth + 1, nodes)?;
-            }
-        }
-        Value::Object(o) => {
-            for (key, child) in o {
-                if key.contains('\0') {
-                    return Err(invalid());
-                }
-                bounded_json(child, depth + 1, nodes)?;
-            }
-        }
-        Value::String(s) if s.contains('\0') => return Err(invalid()),
-        _ => {}
-    }
-    Ok(())
+fn validate_scene(text: &str) -> R<Scene> {
+    Scene::parse(text).map_err(|_| invalid())
 }
-
-/// Unknown passive JSON fields survive byte-for-byte; executable embeds and remote assets do not.
-fn validate_scene(text: &str) -> R<Value> {
-    if text.is_empty() || text.len() > MAX_SCENE_BYTES {
-        return Err(invalid());
-    }
-    let scene: Value = serde_json::from_str(text).map_err(|_| invalid())?;
-    bounded_json(&scene, 0, &mut 0)?;
-    if scene["type"] != "excalidraw" || scene["version"] != 2 || !scene["appState"].is_object() {
-        return Err(invalid());
-    }
-    let elements = scene["elements"]
-        .as_array()
-        .filter(|e| e.len() <= 10_000)
-        .ok_or_else(invalid)?;
-    let files = scene["files"]
-        .as_object()
-        .filter(|f| f.len() <= 256)
-        .ok_or_else(invalid)?;
-    for (id, file) in files {
-        if !valid_id(id) || file["id"].as_str() != Some(id) {
-            return Err(invalid());
-        }
-        let mime = file["mimeType"].as_str().ok_or_else(invalid)?;
-        if !matches!(
-            mime,
-            "image/png" | "image/jpeg" | "image/webp" | "image/gif"
-        ) {
-            return Err(invalid());
-        }
-        let url = file["dataURL"].as_str().ok_or_else(invalid)?;
-        let data = url
-            .strip_prefix(&format!("data:{mime};base64,"))
-            .ok_or_else(invalid)?;
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(data)
-            .map_err(|_| invalid())?;
-        let signature = match mime {
-            "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
-            "image/jpeg" => bytes.starts_with(b"\xff\xd8\xff"),
-            "image/webp" => bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP"),
-            _ => bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"),
-        };
-        if !signature || bytes.len() > MAX_SCENE_BYTES {
-            return Err(invalid());
-        }
-    }
-    let mut ids = BTreeSet::new();
-    for e in elements {
-        let id = e["id"]
-            .as_str()
-            .filter(|id| valid_id(id))
-            .ok_or_else(invalid)?;
-        if !ids.insert(id) || !e.is_object() {
-            return Err(invalid());
-        }
-        let kind = e["type"].as_str().ok_or_else(invalid)?;
-        if !matches!(
-            kind,
-            "rectangle"
-                | "diamond"
-                | "ellipse"
-                | "line"
-                | "arrow"
-                | "freedraw"
-                | "text"
-                | "image"
-                | "frame"
-                | "magicframe"
-        ) {
-            return Err(invalid());
-        }
-        for field in ["x", "y", "width", "height"] {
-            let n = e[field]
-                .as_f64()
-                .filter(|n| n.is_finite() && n.abs() <= 1_000_000_000.0)
-                .ok_or_else(invalid)?;
-            if matches!(field, "width" | "height") && n < 0.0 {
-                return Err(invalid());
-            }
-        }
-        if kind == "image"
-            && !e["fileId"]
-                .as_str()
-                .is_some_and(|id| files.contains_key(id))
-        {
-            return Err(invalid());
-        }
-        if e.get("text")
-            .is_some_and(|v| !v.is_string() || v.as_str().is_some_and(|s| s.len() > 65_536))
-        {
-            return Err(invalid());
-        }
-        if e.get("isDeleted").is_some_and(|v| !v.is_boolean()) {
-            return Err(invalid());
-        }
-        if e.get("points").is_some_and(|v| {
-            !v.is_array()
-                || v.as_array().is_some_and(|a| {
-                    a.len() > 100_000
-                        || a.iter().any(|p| {
-                            p.as_array()
-                                .is_none_or(|p| p.len() != 2 || p.iter().any(|n| !n.is_number()))
-                        })
-                })
-        }) {
-            return Err(invalid());
-        }
-    }
-    for e in elements {
-        for field in ["containerId", "frameId"] {
-            if let Some(id) = e.get(field).filter(|v| !v.is_null()) {
-                if !id.as_str().is_some_and(|id| ids.contains(id)) {
-                    return Err(invalid());
-                }
-            }
-        }
-        for field in ["startBinding", "endBinding"] {
-            if let Some(binding) = e.get(field).filter(|v| !v.is_null()) {
-                if !binding["elementId"]
-                    .as_str()
-                    .is_some_and(|id| ids.contains(id))
-                {
-                    return Err(invalid());
-                }
-            }
-        }
-        if let Some(bound) = e.get("boundElements").filter(|v| !v.is_null()) {
-            let bound = bound.as_array().ok_or_else(invalid)?;
-            if bound
-                .iter()
-                .any(|b| !b["id"].as_str().is_some_and(|id| ids.contains(id)))
-            {
-                return Err(invalid());
-            }
-        }
-    }
-    Ok(scene)
-}
-fn metadata(scene: &Value) -> String {
-    let live = scene["elements"]
-        .as_array()
-        .expect("validated")
-        .iter()
-        .filter(|e| e["isDeleted"] != true)
-        .collect::<Vec<_>>();
-    json!({"elementCount":live.len(),"textCount":live.iter().filter(|e| e["type"]=="text").count()})
-        .to_string()
+fn metadata(scene: &Scene) -> String {
+    scene.metadata()
 }
 
 impl Engine {
@@ -654,7 +477,7 @@ impl Engine {
         app: AppDoc,
         title: &str,
         text: &str,
-        scene: &Value,
+        scene: &Scene,
         forwarded: bool,
         caption: &str,
         item_id: Option<String>,

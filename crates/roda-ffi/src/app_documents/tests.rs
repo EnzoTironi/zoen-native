@@ -1,5 +1,6 @@
 use super::*;
 use crate::{EntryKind, PrivacyDto, SecretVault};
+use base64::Engine as _;
 use roda_types::{EventBody, Role};
 use std::sync::{Arc, Mutex};
 

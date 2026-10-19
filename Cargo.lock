@@ -4946,6 +4946,7 @@ dependencies = [
 name = "roda-apps"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "chrono-tz",
  "roda-i18n",

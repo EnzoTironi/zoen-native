@@ -24,6 +24,7 @@ use roda_i18n as i18n;
 use roda_i18n::{is_en, t, thousands, tr, ts};
 use serde_json::{json, Value};
 
+pub mod excalidraw;
 mod schedule;
 pub use schedule::Actor;
 
