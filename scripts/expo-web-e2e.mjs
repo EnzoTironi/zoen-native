@@ -15,6 +15,7 @@ import { verifyExpoWebHosting } from "./expo-web-hosting.mjs";
 import { acceptMarkdownJourney } from "./expo-web-markdown-journey.mjs";
 import { acceptBuiltinMiniappJourney } from "./expo-web-miniapp-journey.mjs";
 import { acceptMediaJourney } from "./expo-web-media-journey.mjs";
+import { acceptDrawingJourney } from "./expo-web-drawing-journey.mjs";
 import { expoWebExpectations, pairingScreenshotMasks } from "./expo-web-expectations.mjs";
 
 const locale = process.env.ZOEN_EXPO_TEST_LOCALE;
@@ -46,7 +47,7 @@ const processes = new Map();
 const logs = [];
 const errors = [];
 const evidence = {
-  journey: "expo-linked-browser-release-v3",
+  journey: "expo-linked-browser-release-v4",
   locale,
   commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
   steps: [],
@@ -433,6 +434,18 @@ try {
     step,
   });
   await acceptMediaJourney({
+    page,
+    ui,
+    origin,
+    space,
+    tag,
+    privateRoot,
+    peerHome: bruno.home,
+    cli,
+    screenshot,
+    step,
+  });
+  await acceptDrawingJourney({
     page,
     ui,
     origin,

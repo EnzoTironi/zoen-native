@@ -27,6 +27,7 @@ const expectations = Object.freeze({
     openFile: (name) => `Open ${name}`,
     downloadFile: "Download file",
     closePreview: "Close preview",
+    drawingSaved: "Saved in this chat",
   }),
   "pt-BR": Object.freeze({
     developmentOptions: "Opções de desenvolvimento",
@@ -53,6 +54,7 @@ const expectations = Object.freeze({
     openFile: (name) => `Abrir ${name}`,
     downloadFile: "Baixar arquivo",
     closePreview: "Fechar visualização",
+    drawingSaved: "Salvo nesta conversa",
   }),
 });
 
