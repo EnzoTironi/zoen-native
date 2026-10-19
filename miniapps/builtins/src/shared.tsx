@@ -5,6 +5,22 @@ import '@zoen/ui/tokens.css';
 import './styles.css';
 
 export { zoen };
+/** Sandboxed MCP views cannot submit HTML forms, including React onSubmit. */
+export function ActionForm({ children, onSubmit }: { children: ReactNode; onSubmit: () => void }) {
+  return (
+    <div
+      className="form"
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+          event.preventDefault();
+          onSubmit();
+        }
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 export function useBuiltin<T>() {
   const state = useZoenState<T>();
   useTheme();

@@ -6,7 +6,7 @@
   "allowedDomains": [],
   "networkPurpose": "",
   "linkDomains": [],
-  "sha256": "5c5c114d004a7f1d7d231308d236d0de90235b44b69828c49c2469486a931f29",
+  "sha256": "0fdd874b7e6f464556f64680ceb75eb2925aeeec3534c78f254d22348e9c4a38",
   "bytes": 735353,
   "deps": {
     "react": "19.1.1",

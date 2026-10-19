@@ -24,7 +24,7 @@ export function MediaActions({ disabled, hasVoiceEditor, onChoose }: MediaAction
       />
       <Host
         style={{ position: 'absolute' }}
-        pointerEvents="none"
+        pointerEvents={process.env.EXPO_OS === 'web' ? 'box-none' : 'none'}
         colorScheme={scheme}
         seedColor={colors.accent}
       >

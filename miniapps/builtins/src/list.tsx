@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pill } from '@zoen/ui';
 import {
   Activity,
+  ActionForm,
   Empty,
   Refresh,
   Section,
@@ -26,6 +27,13 @@ export function List() {
     );
   const items = state.items,
     done = items.filter((item) => item.done).length;
+  const add = () => {
+    const captured = text.trim();
+    if (captured)
+      void call('list_add', { text: captured }).then((ok) => {
+        if (ok) setText((current) => (current.trim() === captured ? '' : current));
+      });
+  };
   const share = () => {
     const current = zoen.state.get<ListState>();
     return `${current.title}\n${current.items.map((item) => `${item.done ? '☑' : '☐'} ${item.text}`).join('\n')}`;
@@ -64,17 +72,7 @@ export function List() {
         )}
       </Section>
       <Section title={L('Adicionar item', 'Add an item')}>
-        <form
-          className="form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const captured = text.trim();
-            if (captured)
-              void call('list_add', { text: captured }).then((ok) => {
-                if (ok) setText((current) => (current.trim() === captured ? '' : current));
-              });
-          }}
-        >
+        <ActionForm onSubmit={add}>
           <label className="field">
             {L('O que levar?', 'What to bring?')}
             <input
@@ -84,10 +82,10 @@ export function List() {
               onChange={(event) => setText(event.target.value)}
             />
           </label>
-          <Pill disabled={busy || !text.trim()} onClick={undefined}>
+          <Pill disabled={busy || !text.trim()} onClick={add}>
             {L('Adicionar', 'Add')}
           </Pill>
-        </form>
+        </ActionForm>
       </Section>
       <Section title={L('Compartilhar', 'Share')}>
         <div className="row">

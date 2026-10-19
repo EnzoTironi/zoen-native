@@ -21,6 +21,12 @@ const expectations = Object.freeze({
     blockContent: "Block content in Markdown",
     saveDraft: "Save draft",
     exportMarkdown: "Export Markdown",
+    builtinListInput: "What to bring?",
+    builtinAdd: "Add",
+    chooseFile: "File",
+    openFile: (name) => `Open ${name}`,
+    downloadFile: "Download file",
+    closePreview: "Close preview",
   }),
   "pt-BR": Object.freeze({
     developmentOptions: "Opções de desenvolvimento",
@@ -41,6 +47,12 @@ const expectations = Object.freeze({
     blockContent: "Conteúdo do bloco em Markdown",
     saveDraft: "Guardar rascunho",
     exportMarkdown: "Exportar Markdown",
+    builtinListInput: "O que levar?",
+    builtinAdd: "Adicionar",
+    chooseFile: "Arquivo",
+    openFile: (name) => `Abrir ${name}`,
+    downloadFile: "Baixar arquivo",
+    closePreview: "Fechar visualização",
   }),
 });
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pill } from '@zoen/ui';
 import {
   Activity,
+  ActionForm,
   Empty,
   Refresh,
   Section,
@@ -28,6 +29,13 @@ export function Poll() {
     );
   const total = state.options.reduce((sum, option) => sum + option.votes.length, 0);
   const myName = zoen.members.me()?.name;
+  const addOption = () => {
+    const captured = text.trim();
+    if (captured)
+      void call('poll_add_option', { text: captured }).then((ok) => {
+        if (ok) setText((current) => (current.trim() === captured ? '' : current));
+      });
+  };
   return (
     <Shell
       title={state.question}
@@ -79,17 +87,7 @@ export function Poll() {
       {!state.closed && (
         <>
           <Section title={L('Sugerir outra opção', 'Suggest another option')}>
-            <form
-              className="form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const captured = text.trim();
-                if (captured)
-                  void call('poll_add_option', { text: captured }).then((ok) => {
-                    if (ok) setText((current) => (current.trim() === captured ? '' : current));
-                  });
-              }}
-            >
+            <ActionForm onSubmit={addOption}>
               <label className="field">
                 {L('Opção', 'Option')}
                 <input
@@ -99,8 +97,10 @@ export function Poll() {
                   onChange={(event) => setText(event.target.value)}
                 />
               </label>
-              <Pill disabled={busy || !text.trim()}>{L('Adicionar', 'Add')}</Pill>
-            </form>
+              <Pill disabled={busy || !text.trim()} onClick={addOption}>
+                {L('Adicionar', 'Add')}
+              </Pill>
+            </ActionForm>
           </Section>
           <Pill disabled={busy || total === 0} onClick={() => void call('poll_close')}>
             {L('Fechar e levar ao plano', 'Close and add to plan')}

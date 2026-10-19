@@ -331,6 +331,39 @@ const list = {
   items: [{ id: 'l1', text: 'Water', done: false, by: null }],
   log: [],
 };
+test('List accepts Enter through MCP without submitting a sandboxed HTML form or committing composed input', async () => {
+  const f = await fixture('list', list);
+  try {
+    f.input('Hat');
+    await tick();
+    const input = f.dom.window.document.querySelector('input:not([type=checkbox])');
+    input.dispatchEvent(
+      new f.dom.window.KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+        isComposing: true,
+      }),
+    );
+    await tick();
+    assert.equal(f.calls.length, 0);
+    f.expect(
+      'list_add',
+      { text: 'Hat' },
+      {
+        ...list,
+        items: [...list.items, { id: 'l2', text: 'Hat', done: false, by: null }],
+      },
+    );
+    input.dispatchEvent(
+      new f.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    await f.wait(() => input.value === '');
+    assert.equal(f.calls.filter((call) => call.name === 'list_add').length, 1);
+  } finally {
+    await f.close();
+  }
+});
 test('List preserves failed add text, toggles canonical state, and shares through standard MCP without simulated delivery', async () => {
   const f = await fixture('list', list);
   try {

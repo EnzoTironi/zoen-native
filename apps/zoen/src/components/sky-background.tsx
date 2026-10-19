@@ -26,6 +26,7 @@ export function SkyLayer({ sky }: { sky: Sky }) {
     });
   return (
     <View
+      aria-hidden
       style={[
         StyleSheet.absoluteFill,
         {
@@ -41,6 +42,7 @@ export function SkyLayer({ sky }: { sky: Sky }) {
             key={name}
             source={photographs[name]}
             accessible={false}
+            accessibilityLabel=""
             contentFit="cover"
             contentPosition={{ left: '42%', top: '38%' }}
             blurRadius={20}

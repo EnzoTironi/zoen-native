@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pill } from '@zoen/ui';
-import { Activity, Empty, Refresh, Section, Shell, useBuiltin, type LogEntry } from './shared';
+import {
+  Activity,
+  ActionForm,
+  Empty,
+  Refresh,
+  Section,
+  Shell,
+  useBuiltin,
+  type LogEntry,
+} from './shared';
 import { newDash, jumpDash, stepDash, type DashState } from './dash';
 import { Sprite } from './sprite';
 type PetState = {
@@ -25,6 +34,13 @@ export function Pet() {
       </Shell>
     );
   const selectedTab = state.released && tab === 'play' ? 'care' : tab;
+  const rename = () => {
+    const captured = name.trim();
+    if (captured)
+      void call('pet_rename', { name: captured }).then((ok) => {
+        if (ok) setName((current) => (current.trim() === captured ? '' : current));
+      });
+  };
   const tabs = [
     ['care', L('Cuidar', 'Care')],
     ['play', L('Brincar', 'Play')],
@@ -137,17 +153,7 @@ export function Pet() {
         {!state.released && (
           <>
             <Section title={L('Nome do bichinho', 'Pet name')}>
-              <form
-                className="form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const captured = name.trim();
-                  if (captured)
-                    void call('pet_rename', { name: captured }).then((ok) => {
-                      if (ok) setName((current) => (current.trim() === captured ? '' : current));
-                    });
-                }}
-              >
+              <ActionForm onSubmit={rename}>
                 <label className="field">
                   {L('Novo nome', 'New name')}
                   <input
@@ -157,8 +163,10 @@ export function Pet() {
                     onChange={(event) => setName(event.target.value)}
                   />
                 </label>
-                <Pill disabled={busy || !name.trim()}>{L('Renomear', 'Rename')}</Pill>
-              </form>
+                <Pill disabled={busy || !name.trim()} onClick={rename}>
+                  {L('Renomear', 'Rename')}
+                </Pill>
+              </ActionForm>
             </Section>
             <Section>
               <button className="danger" disabled={busy} onClick={() => void call('pet_release')}>
