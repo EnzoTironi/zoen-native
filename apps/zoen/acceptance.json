@@ -81,7 +81,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "Expo SDK 58.0.16 source passes TypeScript, Oxlint, Oxfmt and 840 app tests. Fresh current Web WASM, native CLI and normal release export pass all 24 browser checkpoints in each locale, including UI App installation, exact original IDs/history bytes, encrypted media/Excalidraw and relay-offline reconnect. Android Release passes secure linking, encrypted history, group/direct exchange, Delivered, cold retention and native search. Its updated app transport passes nonce/origin tests, but Excalidraw still shows initial loading after 72 seconds and remains unaccepted. Local two-relay gateway delivery and gateway-enabled cold restore pass with four fresh volumes, exact image/key/config pins and a new linked device downloading exact attachment bytes. PR136 is merged; continued work is in PR140. Providers, complete platform journeys, public deployment, PWA offline asset startup, release rollback, HA and production/scale acceptance remain open.",
+  "currentAcceptanceSummary": "Expo SDK 58.0.16 source passes TypeScript, Oxlint, Oxfmt and 874 app tests on the integrated 19-file Android bar, Home-menu and asynchronous App-resource cut. Actual component Chrome passes 18 English/Portuguese menu checks; native bar mapping and resource/focus policy tests pass. The prior instrumented Android attempt measured the first SHA-256 at 23.850 seconds, a second hash unfinished at the 90-second stop threshold and shell creation at 5.211 seconds. The source now verifies one immutable resource/manifest pair asynchronously with focus ownership, and the current Release APK builds with 500 exact inputs in 234.92 seconds. Its retained Home shows the corrected dark bar and native 48dp ellipsis trigger; day/tab behavior, popup actions and editor acceptance remain pending. Unattributed signed scene drift caused the device to be protected and further QA stopped. The 48-checkpoint current-WASM/CLI Web release remains qualified for its exact prior artifact receipt, sealed at head 2b879f17 with uncommitted source changes; it predates the new shared host/menu source, whose release and persisted Home checks are pending. Prior Android secure-link/messaging and local two-relay gateway/restore receipts remain bounded historical evidence. The API35 timeline-readiness correction is integrated; its CI rerun and the API28 rich-page repeat crash remain open. PR136 is merged; continued work is in PR140. Providers, complete platform journeys, public deployment, PWA offline asset startup, rollback, HA and production/scale acceptance remain open.",
   "retiredBackend": {
     "id": "custom-cloudflare-runtime",
     "status": "RETIRED",
@@ -2262,7 +2262,7 @@
     "webAccountRecoveredAfterExternalRestart": true
   },
   "postMergeCheckpoint": {
-    "id": "apps-platform-and-local-durability-v123",
+    "id": "apps-android-surfaces-source-v125",
     "mergedBaseline": {
       "pullRequest": 136,
       "head": "c05b0bdd4924ca6a5d668faa9f0f58826bcd3d4f",
@@ -2271,13 +2271,18 @@
     },
     "activePullRequest": 140,
     "appChecks": {
-      "testsPassed": 840,
+      "testsPassed": 874,
       "failed": 0,
       "skipped": 0,
       "receipt": {
-        "path": "/private/tmp/zoen-android-app-transport-v123/live-check-receipt.json",
-        "sha256": "9b2ae21b9c52c8b8c90e0c249fe3b454875199e4986b5da9b23c530b4a85fdf2"
-      }
+        "path": "/private/tmp/zoen-android-apps-and-tabs-v125/live-check-receipt.json",
+        "sha256": "613fc6fe360cd9e7cf99e49625e1a53b0904bd75ca2d41cfccf32afc2bdb4a4c"
+      },
+      "sourceHead": "365dde865258853f4a04268e011189e924af5918",
+      "integratedSourcePaths": 19,
+      "sourceBytesMatchReceipt": true,
+      "qualification": "Source checks and the current Release build pass; only current dark Home bar/ellipsis appearance is accepted, with other runtime checks pending.",
+      "sourceCutIncludesUncommittedChanges": true
     },
     "appsTerminology": {
       "visibleLiteralsChanged": 224,
@@ -2299,7 +2304,12 @@
         "nativePeerAdditionalOccurrences": 1,
         "historicalIdsAndUtf8MessageBytesPreserved": true,
         "currentNativeCliAndWasmUsed": true,
-        "locales": ["en-US", "pt-BR"]
+        "locales": ["en-US", "pt-BR"],
+        "qualificationBoundary": "Historical qualified WASM/CLI/export; predates the new shared App host and Home/media menu controller. The 48 checks are not a qualification of the current 19-file cut.",
+        "headAtSeal": "2b879f177baa03df4eaa41c235943383380d42d1",
+        "sourceCutIncludesUncommittedChanges": true,
+        "ownedSourcePathsAtSeal": 6,
+        "relatedSourcePathsAtSeal": 3
       }
     },
     "webAttachmentMenu": {
@@ -2309,7 +2319,8 @@
       "receipt": {
         "path": "/private/tmp/zoen-web-attachments-v120/attachment-qualification.json",
         "sha256": "7690e3ebb7d78411a6ac5750412222b96036fc11f25e033eb3057308bc254098"
-      }
+      },
+      "currentSharedControllerReleaseRecheckPending": true
     },
     "webOfflineMessaging": {
       "actualCheckpointsPerLocale": 24,
@@ -2327,7 +2338,10 @@
         "path": "/private/tmp/zoen-apps-web-v122/final-seal-current-cli/acceptance.json",
         "sha256": "814a3c0e8a8cc8cd423f0ebf0bd04e246a067722014f88eb4b8ff0fa3410e7d8"
       },
-      "currentNativeCliAndWasmUsed": true
+      "currentNativeCliAndWasmUsed": true,
+      "currentSharedHostReleaseRecheckPending": true,
+      "headAtSeal": "2b879f177baa03df4eaa41c235943383380d42d1",
+      "sourceCutIncludesUncommittedChanges": true
     },
     "localMultiRelay": {
       "guide": "infra/local/FRONTDOOR.md",
@@ -2389,13 +2403,110 @@
         },
         "loadingObservedSeconds": 72.35,
         "actualExcalidrawConnectEditReopenAccepted": false,
-        "nextStep": "Measure resource/document request, verification, frame preparation and handshake phases before changing performance code."
+        "nextStep": "Use a fresh distinct owned AVD with genuine public enrollment/link for remaining App-origin/editor checks. The retained emulator is protected after unattributed external state drift."
       },
       "remainingObservedGaps": [
-        "Android media bridge is unavailable; its coherent source candidate remains outside the checkout and uncompiled.",
-        "Generic Home card menu renders a long action label over the card; native Android and Web menu treatments remain pending.",
-        "Excalidraw initial resource loading exceeds the bounded 72-second observation; the native-origin callback correction has no runtime acceptance yet."
-      ]
+        "Current Release App connect/edit/reopen, exact peer scene bytes and native source-origin observation remain pending after the integrated async verification/focus correction.",
+        "Current dark Home bar and 48dp ellipsis trigger appearance pass. Day sky, tab focus/routing, popup/Back, pin/reorder and accessibility remain pending; the retained emulator is protected.",
+        "Android outgoing media bridge remains unavailable; its source candidate is not qualified.",
+        "API35 timeline-readiness correction is integrated but its CI rerun remains pending; API28 mandatory rich-page repeat4 process crash remains open."
+      ],
+      "causalLoadDiagnostic": {
+        "receipt": {
+          "path": "/private/tmp/zoen-expo-android-diagnostic-v124/acceptance.json",
+          "sha256": "a2aa7f75a29c9625c04bc2e2012b9d242f79456d351cbd57e3952e9b214568d4"
+        },
+        "temporaryInstrumentedApkOnly": true,
+        "firstSha256Seconds": 23.8504,
+        "duplicateSha256EndObserved": false,
+        "stopThresholdSeconds": 90,
+        "nativeShellHtmlSeconds": 5.2114,
+        "nativeSourceOriginObserved": false,
+        "actualEditorReadyEditReopenAccepted": false,
+        "limits": "Old measured path only. No production speedup claim; shell cost remains a separate unresolved residual."
+      },
+      "currentReleaseQualification": {
+        "receipt": {
+          "path": "/private/tmp/zoen-expo-android-final-v125/acceptance.json",
+          "sha256": "4470f8acd702727c4ec529ca2143a206a7b2316839af6b4d975161d52e4b837e"
+        },
+        "apkSha256": "ba0c8ad1f95885fd91c6ca03dd02be0538c4424e2f20b13a4aedc822216f5a5f",
+        "buildElapsedSeconds": 234.92,
+        "exactBeforeAfterRuntimeInputs": 500,
+        "peakOwnedRssBytes": 2659188736,
+        "genuineOptimizedJniReusedWithTwoExplicitUnusedWebInputDeltas": true,
+        "actualRetainedHomeDarkBarAnd48dpEllipsisAppearanceAccepted": true,
+        "actualDayTabPopupPinReorderEditorAccepted": false,
+        "unattributedSignedSceneDrift": {
+          "previousVersion": 1,
+          "previousElements": 0,
+          "currentVersion": 7,
+          "currentElements": 3,
+          "actorOrAuthoringDeviceKnown": false
+        },
+        "protectedDeviceHandoff": {
+          "path": "/private/tmp/zoen-android-user-handoff-v125/handoff.json",
+          "sha256": "6b113b5aa4e4ad1be6ccc20a363e00116bab71f1f33719e8896675d9db5aafb8"
+        },
+        "limits": "Bounded first Home visual observation only; no popup/tab/theme/editor interaction. Treat emulator-5554/account as potentially human-owned: no further control, reset or force-stop. Next QA requires a fresh distinct owned AVD and genuine public enrollment/link. QA signing is not store-distribution acceptance."
+      }
+    },
+    "appsResourceVerification": {
+      "receipt": {
+        "path": "/private/tmp/zoen-app-resource-verification-v125/async-verified-resource-v2-proof.json",
+        "sha256": "baf25ca25fbb2b293adb9f40478eb3fc83f4f61fd1d7d36328fdeca9ed47a33b"
+      },
+      "independentSourceReview": {
+        "path": "/private/tmp/zoen-app-resource-review-v125/review.json",
+        "sha256": "2623fb22432f596c0ec9d6a777e4e4bc1b9edc6d5cc673b07282b59a33619605"
+      },
+      "integratedSourcePaths": 8,
+      "causalSourceTestsPassed": 18,
+      "oneAsyncVerifiedResourceManifestPair": true,
+      "resourceManifestIntegrityAndOwnerFencesPreserved": true,
+      "pendingLoaderAndMountedDocumentRetiredByExactFocusGroup": true,
+      "performanceImprovementAccepted": false,
+      "actualCurrentAndroidEditorAccepted": false,
+      "limits": "Source/counterfactual tests and review only. No global cache, native ABI or backend change; current Release App editor load/edit/reopen runtime remains pending."
+    },
+    "homeCardMenus": {
+      "receipt": {
+        "path": "/private/tmp/zoen-home-card-menu-v123/implementation/final-seal/acceptance.json",
+        "sha256": "e34a7164dae32663cd5d7b1eba06188f065d9b5804eea583dd7908aa02c7dae3"
+      },
+      "integratedSourcePaths": 10,
+      "combinedFocusedComponentTestsPassed": 25,
+      "actualChromeComponentChecksPassed": 18,
+      "actualComponentLocales": ["en-US", "pt-BR"],
+      "currentNativeAndroidPopupAccepted": false,
+      "currentPersistedWebHomePinReorderAccepted": false,
+      "limits": "Actual Chrome component/focus/keyboard/chooser evidence only, without Auth or durable Home state. Current release shared-host/Home/media recheck and remaining HomeActions/conversation/detail caller parity are open.",
+      "actualCurrentAndroid48dpTriggerAppearanceAccepted": true
+    },
+    "androidBottomNavigation": {
+      "receipt": {
+        "path": "/private/tmp/zoen-android-tab-sky-v124/acceptance.json",
+        "sha256": "1252db1c319680c1f1a803051cb956cb33ce84f6ef58cc4e9122275dbae5b4e8"
+      },
+      "integratedProductionPaths": 1,
+      "outsideCompiledMappingChecksPassed": 4,
+      "scopedNativeSchemeAndSkyBarColors": true,
+      "iosPropsPreserved": true,
+      "actualCurrentDayNightAppearanceAndTabFocusAccepted": false,
+      "limits": "Current dark Home bar appearance passes in the exact Release APK; day sky, tab focus/routing, popup behavior, photo seam, insets and accessibility remain unqualified. No further control of the protected retained device.",
+      "actualCurrentDarkHomeBarAppearanceAccepted": true
+    },
+    "currentAndroidCiRegressions": {
+      "receipt": {
+        "path": "/private/tmp/zoen-ci-pr140-365-android/classification.json",
+        "sha256": "b06b838839d0a38d344798458dc13920e9cdf943851fd94d74c07b73be5eeb5d"
+      },
+      "failedSourceHead": "365dde865258853f4a04268e011189e924af5918",
+      "api35": "Two ParityJourneys scrolled before the independently loaded timeline existed. Both original readiness predicates now also require the real chat-timeline; assertions and 10s deadlines remain. The correction is committed; actual CI rerun remains pending.",
+      "api28": "Main106 tests had no failures and two declared skips; mandatory rich-page repeats1-3 passed, repeat4 crashed during Compose measure/layout. Cause unproven; gate and dependency pins unchanged.",
+      "resolved": false,
+      "api35FixCommit": "475f72548827a580ef4827f976411d620b860988",
+      "api35CiRerunAccepted": false
     }
   }
 }

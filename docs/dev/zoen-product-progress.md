@@ -8,46 +8,72 @@ it does not replace the [complete goal](zoen-complete-product-goal.md) or its
 
 PR136 merged into `main` at `edc0e684` after all 12 CI checks passed on
 `c05b0bdd`. Continued work is in [PR140](https://github.com/EnzoTironi/zoen-native/pull/140).
-The earlier sections below retain their original artifact boundaries.
+The sections below retain historical source and artifact boundaries; their older
+test totals do not describe the current cut.
 
-The new source uses **Apps** in 224 English/Portuguese display strings, including
-permissions, widgets, Siri and shared-core messages. Internal IDs, routes and
-signed historical content remain unchanged. All 840 app checks pass. The Web
-attachment menu now uses a browser-native popover anchored to the composer;
-actual pointer, keyboard, focus, file chooser and narrow-window checks pass.
+The integrated 19-file source cut passes TypeScript, Oxlint, Oxfmt and all
+874 app tests without failures or skips. It includes the Android sky-aware native
+bar, native Android and browser Home menus, and asynchronous App-resource
+verification. The bar uses the selected sky and a scoped native color scheme;
+iOS props remain unchanged. The menus share six existing action descriptors.
+Actual Chrome component checks pass 18 cases across English and Portuguese,
+including keyboard/focus, positioning and the real media file chooser. These
+component checks do not establish Auth, persisted Home pin/reorder, native Popup/
+Back behavior or accessibility acceptance. The current optimized Release APK
+builds in 234.92 seconds with all 500 inputs exact before/after build and the
+bounded observation, peaking at 2.66 GB. Its retained Home shows the corrected
+dark sky bar and native 48dp ellipsis trigger with the App-card body preserved.
+Day sky, tab focus/routing, popup/Back, pin/reorder and Excalidraw editor checks
+remain pending. An unexpected process and signed scene drift from version 1 with
+zero elements to version 7 with three elements have no established actor. Further
+QA stopped; the retained emulator/account are protected as potentially human-
+owned. Remaining checks require a fresh distinct owned AVD and genuine public
+linking/enrollment, without cloning the existing identity.
 
-Cold relay-offline sending no longer hides the conversation: a pending message's
-null event hash previously matched every message's null thread reference. The
-driver now resolves only actual thread references. Both browser locales pass
-all 24 checkpoints, retaining original IDs and one native-peer occurrence after
-reconnect and cold-route reload. A fresh current WASM, native CLI and normal
-release export now repeat all 24 checkpoints in each locale. Excalidraw installs
-through the real catalog/form UI, preserves earlier message IDs and UTF-8 bytes,
-and reaches the native peer as exactly one additional message from its author.
-Complete offline PWA asset startup remains unaccepted.
+A bounded instrumented Android attempt measured the old first SHA-256 operation
+at 23.850 seconds and shell HTML creation at 5.211 seconds. A second verification
+started but had no completion at the 90-second stop threshold. The app had not
+reached editor readiness or the native-origin callback. The integrated source now
+uses one asynchronously verified immutable resource/manifest pair, with the
+original integrity and owner checks and a focus-owned group that retires both
+pending loads and mounted sessions. Its 18 causal source tests and independent
+review pass. This establishes the source correction, without claiming a measured
+speedup or resolved shell cost.
 
-The managed local gateway also passes actual encrypted messaging and Delivered/
-Read across different native processes on unchanged connections. All seven
-services are healthy, with the original six processes intact. Its 26 ownership/
-lifecycle cases pass. A separate two-relay gateway-enabled cold backup restores
-four fresh volumes with exact historical images, vault keys and runtime config,
-even when the original runtime config is corrupt. The same client authenticates
-and writes after restore; a newly linked device decrypts history and downloads
-the exact 1,049,393-byte attachment. Stateless GET verifies restored ciphertext.
-The actual drill exposed a released-port `TIME_WAIT` check failure; its regression
-fails before the correction and passes afterward, while an active listener still
-blocks startup. All original development services remain intact. HA remains
-unaccepted.
-See the receipts in `postMergeCheckpoint` and the [gateway guide](../../infra/local/FRONTDOOR.md).
+The **Apps** terminology update retains internal IDs, routes and signed historical
+content. The current-WASM/current-CLI release export passed all 24 real browser
+checkpoints in each locale, including UI App installation,
+exact original IDs and UTF-8 history, encrypted media/Excalidraw and cold relay-
+offline reconnect. Its artifact receipt records head-at-seal `2b879f17` plus six
+owned and three related source hashes, including uncommitted changes. That
+qualified export predates the new shared App host and Home/media menu controller.
+Its 48 passes remain historical copy/offline proof;
+a current release recheck of those shared paths and genuine persisted Home
+pin/reorder is pending. Complete offline PWA asset startup remains unaccepted.
 
-The optimized Android Release passes real secure linking, encrypted history,
-group and direct messaging, Delivered receipts, cold retention and native search.
-Its native app transport now accepts Android's exact opaque origin while
-retaining nonce and document-generation checks; nine focused tests pass. The
-updated APK still shows initial Excalidraw loading after a bounded 72-second
-observation, before that callback can be qualified. Connection/edit/reopen remain
-pending causal phase measurements. Android media and the generic Home card menu
-also remain open; their candidates are outside the checkout and unqualified.
+The prior optimized Android Release retains its bounded secure-link, encrypted
+history, group/direct messaging, Delivered, cold-retention and native-search
+proof. CI on `365dde86` remains red: two API35 journeys scroll before the timeline
+is ready, and API28's mandatory rich-page repeat4 crashes in Compose measure/
+layout after repeats1-3 pass. The test-only API35 readiness correction is now
+integrated in `475f7254`, preserving the original assertions and ten-second waits;
+its actual CI rerun remains pending. API28's cause is unproven and its gate and
+dependency pins remain unchanged. The separate Expo source checks do not qualify
+these CI gates.
+Android outgoing media and the remaining Home/conversation caller parity also
+remain open.
+
+The managed local gateway retains actual encrypted messaging and Delivered/Read
+across different native processes on unchanged connections. Its seven-service
+activation preserves the original six processes; 26 ownership/lifecycle cases
+pass. A separate gateway-enabled cold backup restores four fresh volumes with
+exact historical images, vault keys and runtime config despite corrupt original
+runtime config. The same client authenticates and writes; a newly linked device
+decrypts history and downloads the exact 1,049,393-byte attachment. Stateless GET
+verifies restored ciphertext. The released-port `TIME_WAIT` regression passes
+while an active listener still blocks startup. These are bounded local receipts;
+HA, public deployment and scale remain unaccepted. See `postMergeCheckpoint` and
+the [gateway guide](../../infra/local/FRONTDOOR.md) for exact receipts.
 
 ## One product model and simple names
 
