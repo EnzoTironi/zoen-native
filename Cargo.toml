@@ -12,6 +12,7 @@ members = [
   "crates/roda-docs",
   "crates/roda-gate",
   "crates/roda-proto",
+  "crates/roda-relay-admission",
   "crates/roda-mls",
   "crates/zoen-web-core",
   "crates/zoen-relay",
@@ -59,6 +60,7 @@ roda-grants = { path = "crates/roda-grants" }
 roda-gate = { path = "crates/roda-gate" }
 roda-store = { path = "crates/roda-store" }
 roda-proto = { path = "crates/roda-proto" }
+roda-relay-admission = { path = "crates/roda-relay-admission" }
 roda-docs = { path = "crates/roda-docs" }
 roda-mls = { path = "crates/roda-mls", default-features = false }
 zoen-egress = { path = "crates/zoen-egress" }

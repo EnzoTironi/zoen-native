@@ -35,8 +35,8 @@ pub const RECEIPT_BROADCAST_MAX: usize = 16;
 /// An X25519/Ed25519 key package is about 300 bytes; this leaves room for extensions.
 const MAX_KEY_PACKAGE: usize = 4096;
 
-pub const MAX_FRAME: usize = 1024 * 1024;
-pub const MAX_ENVELOPE: usize = 90 * 1024;
+pub const MAX_FRAME: usize = roda_relay_admission::portable::MAX_FRAME_BYTES;
+pub const MAX_ENVELOPE: usize = roda_relay_admission::portable::MAX_ENVELOPE_BYTES;
 const SYNC_PAGE: usize = 500;
 
 struct Session {

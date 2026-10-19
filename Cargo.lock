@@ -5102,6 +5102,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "roda-relay-admission"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.2.17",
+ "getrandom 0.4.3",
+ "openmls",
+ "roda-log",
+ "roda-mls",
+ "roda-proto",
+ "roda-types",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "roda-store"
 version = "0.1.0"
 dependencies = [
@@ -7978,6 +7995,7 @@ dependencies = [
  "roda-log",
  "roda-mls",
  "roda-proto",
+ "roda-relay-admission",
  "roda-types",
  "rusqlite",
  "rustls",

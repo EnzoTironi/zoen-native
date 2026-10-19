@@ -49,7 +49,6 @@ use futures_util::future::{try_join3, try_join_all};
 use roda_log::chain_hash;
 use roda_proto::{Envelope, InviteCreated, Sequenced};
 use roda_types::{EventBody, Privacy, Role, SpaceKind, GENESIS_PREV};
-use sha2::{Digest, Sha256};
 
 fn extend_co_members(
     out: &mut Vec<String>,
@@ -199,9 +198,7 @@ fn parse<T: serde::de::DeserializeOwned>(s: &str) -> Option<T> {
     serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
 }
 
-pub fn code_hash(code: &str) -> String {
-    hex::encode(Sha256::digest(code.trim().to_uppercase().as_bytes()))
-}
+pub use roda_relay_admission::code_hash;
 
 fn random_code() -> String {
     const A: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";

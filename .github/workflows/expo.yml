@@ -21,6 +21,7 @@ on:
         'scripts/deploy-expo-web.mjs',
         'scripts/expo-web-*.mjs',
         'scripts/expo-web-tests/**',
+        'scripts/verify-cloudflare-admission.mjs',
         'infra/cloudflare/**',
         '.github/workflows/expo.yml',
       ]
@@ -45,6 +46,7 @@ on:
         'scripts/deploy-expo-web.mjs',
         'scripts/expo-web-*.mjs',
         'scripts/expo-web-tests/**',
+        'scripts/verify-cloudflare-admission.mjs',
         'infra/cloudflare/**',
         '.github/workflows/expo.yml',
       ]
@@ -57,6 +59,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  cloudflare-admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: infra/cloudflare/package-lock.json
+      - name: Portable Rust and WASM toolchains
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
+          rustup default 1.99.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          key: cloudflare-admission
+      - name: Install pinned Worker and WASM tools
+        run: |
+          npm ci --prefix infra/cloudflare
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked
+      - name: Shared admission rules and portable boundary regressions
+        run: |
+          cargo fmt --all --check
+          cargo test --locked -p roda-relay-admission
+          cargo clippy --locked -p roda-relay-admission --all-targets -- -D warnings
+      - name: Compare native, WASM and real workerd receipts
+        # Public deterministic fixtures only; no account credentials or deployment.
+        run: node scripts/verify-cloudflare-admission.mjs --out-dir .dev/cloudflare-admission
+      - name: Retain portable admission evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cloudflare-admission-evidence
+          path: .dev/cloudflare-admission
+          if-no-files-found: warn
+          retention-days: 7
+
   cloudflare-state:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

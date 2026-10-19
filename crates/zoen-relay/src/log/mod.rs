@@ -9,35 +9,7 @@ pub mod sequencer;
 use roda_proto::{Envelope, InviteCreated, Sequenced};
 use roda_types::Role;
 
-/// Why an envelope was refused. `permanent` = retrying the same envelope can't succeed.
-#[derive(Debug)]
-pub struct Reject {
-    pub reason: String,
-    pub permanent: bool,
-}
-
-impl Reject {
-    pub fn no(reason: impl Into<String>) -> Self {
-        Self {
-            reason: reason.into(),
-            permanent: true,
-        }
-    }
-
-    pub fn retry(reason: impl Into<String>) -> Self {
-        Self {
-            reason: reason.into(),
-            permanent: false,
-        }
-    }
-
-    pub fn unavailable() -> Self {
-        Self {
-            reason: "log store unavailable".into(),
-            permanent: false,
-        }
-    }
-}
+pub use roda_relay_admission::Reject;
 
 #[derive(Debug)]
 pub enum Sequencing {

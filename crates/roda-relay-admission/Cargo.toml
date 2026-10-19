@@ -1,0 +1,25 @@
+[package]
+name = "roda-relay-admission"
+description = "Shared native and portable Rust relay admission policy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+roda-types.workspace = true
+roda-log.workspace = true
+roda-proto.workspace = true
+roda-mls.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+base64 = "0.22"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.129"
+openmls = { version = "0.9.1", features = ["js"] }
+getrandom = { workspace = true, features = ["js"] }
+getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
