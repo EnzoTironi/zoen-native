@@ -37,6 +37,15 @@ profile hint, separate from verified identity claims.
   with exact nonce, explicit iOS/web client IDs and no additional API/offline scopes.
   The declared RN range includes 0.88, but upstream's detailed compatibility matrix
   currently stops at 0.87; a successful native build/runtime check is still required.
+- Android Google uses the same library's Credential Manager explicit button flow.
+  Set `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` to the Android OAuth registration for
+  the app's package and signing SHA-1; the SDK receives the Web/server client ID.
+  Requests use `client: "android"`, and both relay hosts require the separate
+  `ZOEN_AUTH_GOOGLE_ANDROID_AUDIENCE` and mandatory
+  `ZOEN_AUTH_GOOGLE_ANDROID_PRESENTER`. iOS/Web configuration cannot enable Android
+  by fallback. Native Apple remains iOS-only. Android registration and a successful
+  signed-device provider flow are still required; adapter/contract tests are not
+  a real provider-login acceptance.
 - Google plugin without Firebase:
   `['react-native-nitro-google-signin', {iosUrlScheme: '<REVERSED_IOS_CLIENT_ID>'}]`.
   The iOS OAuth client uses bundle `xyz.tironi.zoen`; web/server audience uses a Web

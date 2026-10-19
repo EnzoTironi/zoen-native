@@ -66,8 +66,10 @@ function settingsFromEnv(env) {
   ]) {
     for (const [client, suffix] of [
       ["ios", "IOS"],
+      ["android", "ANDROID"],
       ["web", "WEB"],
     ]) {
+      if (provider === "apple" && client === "android") continue;
       const name = `ZOEN_AUTH_${prefix}_${suffix}_AUDIENCE`;
       if (env[name] === undefined) continue;
       const validate = (input) => {
@@ -84,6 +86,7 @@ function settingsFromEnv(env) {
         return value;
       };
       const presenter = env[`ZOEN_AUTH_${prefix}_${suffix}_PRESENTER`];
+      if (client === "android" && presenter === undefined) throw unavailable();
       audiences.push({
         provider,
         client,

@@ -469,6 +469,55 @@ fn challenge_configuration_precedes_origin_and_web_origin_is_exact() {
 }
 
 #[test]
+fn android_configuration_is_explicit_and_never_inherits_ios_or_web_audiences() {
+    let request = r#"{"provider":"google","client":"android"}"#;
+    let without_android = json!({"settings":settings(),"origin":null});
+    failure(
+        challenge_policy_json(request, &without_android.to_string()),
+        503,
+        "provider_not_configured",
+    );
+    let mut configured = settings();
+    configured["audiences"].as_array_mut().unwrap().push(json!({
+        "provider":"google","client":"android","audience":{"id":"android-server","presenter":"android-client"}
+    }));
+    let context = json!({"settings":configured,"origin":null});
+    let policy: Value =
+        serde_json::from_str(&challenge_policy_json(request, &context.to_string()).unwrap())
+            .unwrap();
+    assert_eq!(
+        policy,
+        json!({"audience":{"id":"android-server","presenter":"android-client"},"origin":null})
+    );
+    failure(
+        challenge_policy_json(
+            r#"{"provider":"apple","client":"android"}"#,
+            &context.to_string(),
+        ),
+        503,
+        "provider_not_configured",
+    );
+    failure(
+        challenge_policy_json(
+            request,
+            &json!({"settings":configured,"origin":"https://evil.example"}).to_string(),
+        ),
+        403,
+        "origin_refused",
+    );
+    assert_eq!(Client::Android.name(), "android");
+    configured["audiences"][1]["audience"]["presenter"] = Value::Null;
+    failure(
+        challenge_policy_json(
+            request,
+            &json!({"settings":configured,"origin":null}).to_string(),
+        ),
+        503,
+        "provider_not_configured",
+    );
+}
+
+#[test]
 fn bind_http_config_and_origin_precede_crypto_without_requiring_the_proofs_pair() {
     let mut request = request();
     request.signature.clear();

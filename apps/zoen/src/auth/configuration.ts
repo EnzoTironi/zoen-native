@@ -18,9 +18,10 @@ export function providerConfiguration(
   const values = extra && typeof extra === 'object' ? (extra as Record<string, unknown>) : {};
   const webClientId = googleId(values.googleWebClientId);
   const iosClientId = googleId(values.googleIosClientId);
+  const androidClientId = googleId(values.googleAndroidClientId);
   const iosAudience = appleId(bundleIdentifier);
   return {
-    ...(webClientId ? { google: { webClientId, iosClientId } } : {}),
+    ...(webClientId ? { google: { webClientId, iosClientId, androidClientId } } : {}),
     ...(iosAudience
       ? {
           apple: {
@@ -36,7 +37,11 @@ export function providerConfiguration(
 
 export function authAudiences(configuration: ProviderConfiguration): AuthAudiences {
   return {
-    google: { ios: configuration.google?.webClientId, web: configuration.google?.webClientId },
+    google: {
+      ios: configuration.google?.webClientId,
+      android: configuration.google?.androidClientId ? configuration.google.webClientId : undefined,
+      web: configuration.google?.webClientId,
+    },
     apple: { ios: configuration.apple?.iosAudience, web: configuration.apple?.serviceId },
   };
 }

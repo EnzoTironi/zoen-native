@@ -41,6 +41,7 @@ const sourceScopes = [
   "crates/roda-types",
   "crates/zoen-relay/src/auth.rs",
   "crates/zoen-relay/src/auth",
+  "crates/zoen-relay/migrations/0033_android_provider_client.sql",
   "scripts/verify-cloudflare-provider.mjs",
   "scripts/verify-cloudflare-admission.mjs",
   "scripts/build-cloudflare-closed.mjs",
@@ -49,6 +50,10 @@ const sourceScopes = [
         "infra/cloudflare/relay-state/src/directory-state.mjs",
         "infra/cloudflare/relay-state/src/directory-index.mjs",
         "infra/cloudflare/relay-state/src/provider-auth.mjs",
+        "infra/cloudflare/relay-state/src/media-blobs.mjs",
+        "infra/cloudflare/relay-state/src/blob-io.mjs",
+        "infra/cloudflare/relay-state/src/blob-quota.mjs",
+        "infra/cloudflare/relay-state/src/transfer-blobs.mjs",
         "infra/cloudflare/relay-state/package.json",
         "infra/cloudflare/relay-state/wrangler.directory.jsonc",
         "infra/cloudflare/relay-state/tests/directory-state.test.mjs",
@@ -251,6 +256,7 @@ try {
     const nativeHost = JSON.parse(await readFile(fixturePath, "utf8"));
     assert.equal(nativeHost.schema, 1);
     assert.equal(nativeHost.scenarios.length, 20);
+    assert.equal(nativeHost.android.scenarios.length, 3);
     const tapPath = join(output, "provider-host-workerd.tap");
     const tap = await run(
       process.execPath,
@@ -279,6 +285,7 @@ try {
     for (const name of ["fail", "cancelled", "skipped", "todo"]) assert.equal(totals[name], 0);
     hostResult = {
       nativeSqlScenarios: nativeHost.scenarios.length,
+      androidNativeSqlScenarios: nativeHost.android.scenarios.length,
       workerd: totals,
       artifacts: await Promise.all(
         [fixturePath, tapPath, join(output, "native-provider-oracle.log")].map(artifact),

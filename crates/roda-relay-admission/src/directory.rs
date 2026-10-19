@@ -2,6 +2,7 @@
 //! and a single transaction covering all facts and returned writes. No delivery lease
 //! or public protocol endpoint is provided by this module.
 pub mod key_packages;
+pub mod reads;
 pub mod socket;
 use crate::portable::{BoundaryError, MAX_FRAME_BYTES};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -107,6 +108,8 @@ pub struct Facts {
     pub link_box: Option<Vec<u8>>,
     #[serde(default)]
     pub key_packages: Option<key_packages::Facts>,
+    #[serde(default)]
+    pub reads: Option<reads::Facts>,
 }
 
 fn no(reason: impl Into<String>) -> BoundaryError {
@@ -221,6 +224,12 @@ pub fn lookup(bytes: &[u8]) -> Result<Value, BoundaryError> {
     let ClientFrame::Req { id, op } = decode(bytes)? else {
         return Err(no("expected request"));
     };
+    let charge_lookup = reads::spends_lookup_budget(&op);
+    if let Some(read) = reads::query(&op) {
+        return Ok(
+            json!({"id":id.to_string(),"kind":"directory_read","read":read,"charge_lookup":charge_lookup}),
+        );
+    }
     let (target, handle, link_id) = match op {
         Op::Register { profile } => (None, normalize_handle(&profile.handle), None),
         Op::DeliverLink { id, device, .. } => (device.map(|value| value.device), None, Some(id)),
@@ -263,7 +272,9 @@ pub fn lookup(bytes: &[u8]) -> Result<Value, BoundaryError> {
             ))
         }
     };
-    Ok(json!({"id":id.to_string(),"target_device":target,"handle":handle,"link_id":link_id}))
+    Ok(
+        json!({"id":id.to_string(),"target_device":target,"handle":handle,"link_id":link_id,"charge_lookup":charge_lookup}),
+    )
 }
 
 pub fn lookup_for_session(bytes: &[u8], session: &Session) -> Result<Value, BoundaryError> {
@@ -271,7 +282,11 @@ pub fn lookup_for_session(bytes: &[u8], session: &Session) -> Result<Value, Boun
         && matches!(
             decode(bytes)?,
             ClientFrame::Req {
-                op: Op::PublishKeyPackages { .. } | Op::ClaimKeyPackages { .. },
+                op: Op::PublishKeyPackages { .. }
+                    | Op::ClaimKeyPackages { .. }
+                    | Op::Lookup { .. }
+                    | Op::Profiles { .. }
+                    | Op::Devices,
                 ..
             }
         )
@@ -354,6 +369,16 @@ pub fn request(bytes: &[u8], session: &Session, facts: &Facts) -> Result<Value, 
             )
         }
         _ if !session.registered => return Err(no("register first")),
+        op @ (Op::Lookup { .. } | Op::Profiles { .. } | Op::Devices) => {
+            let selected = facts
+                .reads
+                .as_ref()
+                .ok_or_else(|| internal("missing directory read facts"))?;
+            (
+                json!({"action":"read"}),
+                reads::reply(&op, session, selected)?,
+            )
+        }
         Op::PublishKeyPackages {
             packages,
             last_resort,
@@ -525,6 +550,14 @@ mod wasm {
     #[wasm_bindgen(js_name = directoryKeyPackageReply)]
     pub fn key_package_reply(bytes: &[u8]) -> Result<String, JsValue> {
         super::key_packages::reply_json(bytes).map_err(error)
+    }
+    #[wasm_bindgen(js_name = directoryReadReply)]
+    pub fn read_reply(bytes: &[u8]) -> Result<String, JsValue> {
+        super::reads::reply_json(bytes).map_err(error)
+    }
+    #[wasm_bindgen(js_name = directoryLookupRate)]
+    pub fn lookup_rate(context: &str) -> Result<String, JsValue> {
+        super::reads::lookup_rate_json(context).map_err(error)
     }
     #[wasm_bindgen(js_name = directorySocketFrame)]
     pub fn socket_frame(bytes: &[u8]) -> Result<String, JsValue> {

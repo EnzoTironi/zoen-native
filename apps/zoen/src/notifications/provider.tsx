@@ -13,7 +13,8 @@ import { useClient } from '../core/provider';
 import { useDialogs } from '../components/dialogs';
 import { PushCoordinator } from './coordinator';
 import { validLocalNotification } from './links';
-import { decodeWake } from './wake';
+import { nativeNotificationPlatform } from './native-adapter';
+import { pushPlatform } from './configuration';
 import { localNotes } from './local';
 import { NotificationJobs } from './jobs';
 import {
@@ -52,13 +53,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
               throw new Error(t('notifications.accountChanged'));
             await store.driver.request({
               op: 'register_push',
-              platform: configuration.environment === 'sandbox' ? 'apns-sandbox' : 'apns',
+              platform: pushPlatform(configuration),
               token,
             });
             return { kind: 'acknowledged' };
           },
         },
-        Platform.OS === 'ios' ? nativePushConfiguration() : null,
+        nativePushConfiguration(),
       ),
     [store, deviceId],
   );
@@ -75,7 +76,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     coordinator.activate();
-    if (!deviceId || !jobs || Platform.OS !== 'ios') return () => coordinator.dispose();
+    if (!deviceId || !jobs || !nativeNotificationPlatform(Platform.OS))
+      return () => coordinator.dispose();
     const current = () =>
       store.getSnapshot().mode === 'account' &&
       store.getSnapshot().snapshot?.account?.device_id === deviceId;
@@ -99,9 +101,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       void coordinator.receivedToken(token);
     });
     const stopEvents = listenNotificationEvents(
-      (payload) => {
-        const wake = decodeWake(payload);
-        if (!wake || !current()) return;
+      (_wake) => {
+        if (!current()) return;
         // A wake only asks the already-authenticated core for its current projection.
         // Membership, decryption and signed-log validation remain inside Rust sync.
         void store.refresh();

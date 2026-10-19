@@ -379,7 +379,9 @@ fn pending_self_key_fetch_survives_assignment_but_registration_cannot_claim_that
 #[test]
 fn unsupported_operations_are_explicit_and_malformed_trusted_context_is_retryable() {
     assert_eq!(
-        directory::lookup(&req(Op::Devices)).unwrap_err().code,
+        directory::lookup(&req(Op::GetProfiles { ids: vec![] }))
+            .unwrap_err()
+            .code,
         "unsupported_directory"
     );
     let error =

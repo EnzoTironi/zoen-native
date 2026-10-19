@@ -1,5 +1,5 @@
 export type AuthProvider = 'apple' | 'google';
-export type AuthClient = 'ios' | 'web';
+export type AuthClient = 'ios' | 'android' | 'web';
 
 /** Ephemeral server challenge; nonce is passed unchanged to each official SDK. */
 export type AuthChallenge = {
@@ -44,7 +44,7 @@ export type AuthService = {
 };
 
 export type ProviderConfiguration = {
-  google?: { iosClientId?: string; webClientId: string };
+  google?: { iosClientId?: string; androidClientId?: string; webClientId: string };
   apple?: { iosAudience: string; serviceId?: string; redirectUri?: string };
 };
 

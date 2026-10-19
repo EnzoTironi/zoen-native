@@ -382,6 +382,31 @@ mod tests {
         assert!(verify_with_key(&token(apple), &key(), &apple_challenge, 1_000_000).is_ok());
     }
     #[test]
+    fn android_google_assertions_require_the_android_presenter_even_with_a_shared_server_audience()
+    {
+        let mut android = challenge(Provider::Google);
+        android.presenter = Some("android-client");
+        let mut android_claims = claims();
+        android_claims["azp"] = json!("android-client");
+        let assertion = token(android_claims.clone());
+        assert!(verify_with_key(&assertion, &key(), &android, 1_000_000).is_ok());
+        // Both apps request the same backend audience. The authorized presenter
+        // still separates Android credentials from iOS and browser credentials.
+        assert!(
+            verify_with_key(&assertion, &key(), &challenge(Provider::Google), 1_000_000).is_err()
+        );
+        for presenter in [json!("ios-client"), json!("web-client"), Value::Null] {
+            android_claims["azp"] = presenter;
+            assert!(
+                verify_with_key(&token(android_claims.clone()), &key(), &android, 1_000_000)
+                    .is_err()
+            );
+        }
+        android_claims["azp"] = json!("android-client");
+        android_claims["aud"] = json!("android-client");
+        assert!(verify_with_key(&token(android_claims), &key(), &android, 1_000_000).is_err());
+    }
+    #[test]
     fn jwt_algorithms_header_urls_key_uses_and_signature_tampering_are_refused() {
         let challenge = challenge(Provider::Google);
         for header in [

@@ -169,7 +169,15 @@ impl Limits {
             publish_account: Limiter::new("publish_account", Quota::per_second(40, 120)),
             ephemeral_device: Limiter::new("ephemeral_device", Quota::per_second(10, 30)),
             request_device: Limiter::new("request_device", Quota::per_second(50, 200)),
-            lookup_account: Limiter::new("lookup_account", Quota::per_minute(60, 60)),
+            lookup_account: Limiter::new(
+                "lookup_account",
+                Quota {
+                    interval: Duration::from_nanos(
+                        roda_relay_admission::directory::reads::LOOKUP_INTERVAL_NS,
+                    ),
+                    burst: roda_relay_admission::directory::reads::LOOKUP_BURST,
+                },
+            ),
             invite_account: Limiter::new("invite_account", Quota::per_minute(30, 30)),
             agent_page_ip: Limiter::new("agent_page_ip", Quota::per_minute(60, 60)),
             blob_kib_device: Limiter::new(

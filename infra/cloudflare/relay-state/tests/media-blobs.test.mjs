@@ -41,6 +41,7 @@ function runtime(persistence) {
         "src/directory-state.mjs",
         "src/provider-auth.mjs",
         "src/media-blobs.mjs",
+        "src/blob-io.mjs", "src/blob-quota.mjs", "src/transfer-blobs.mjs",
         "generated/wasm/admission.js",
       ]
         .map((path) => ({ type: "ESModule", path: join(root, path) }))

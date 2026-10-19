@@ -1,9 +1,11 @@
 import { DurableObject } from 'cloudflare:workers';
 import { initSync, directoryHello, directoryAuthenticate, directoryLookup,
-  directoryRequest, directoryAuthorize, directorySocketFrame, directorySocketControl, directorySocketDelivery } from '../generated/wasm/admission.js';
+  directoryRequest, directoryAuthorize, directorySocketFrame, directorySocketControl, directorySocketDelivery,
+  directoryLookupRate } from '../generated/wasm/admission.js';
 import wasmModule from '../generated/wasm/admission_bg.wasm';
 import { ProviderAuthState } from './provider-auth.mjs';
 import { MediaBlobsState } from './media-blobs.mjs';
+import { TransferBlobsState } from './transfer-blobs.mjs';
 
 initSync({ module: wasmModule });
 const MAX_BYTES = 1024 * 1024;
@@ -13,6 +15,8 @@ const SESSION_MS = 15 * 60_000;
 const BOX_MS = 15 * 60_000;
 const MAX_PENDING = 256;
 const MAX_CLAIM_RECORDS = 128;
+const MAX_READ_FACT_BYTES = 768 * 1024;
+const utf8 = new TextEncoder();
 const GC_BATCH = 256;
 function base64(value) {
   const bytes = new Uint8Array(value);
@@ -48,6 +52,7 @@ function token(value) {
 export class DirectoryState extends DurableObject {
   #providerAuth;
   #mediaBlobs;
+  #transferBlobs;
   constructor(ctx, env) {
     super(ctx, env);
     const sql = ctx.storage.sql;
@@ -98,6 +103,10 @@ export class DirectoryState extends DurableObject {
     this.#mediaBlobs ??= new MediaBlobsState(this.ctx, this.env, { nowMs: () => this._nowMs() });
     return this.#mediaBlobs.fetch(request);
   }
+  transfer(request) {
+    this.#transferBlobs ??= new TransferBlobsState(this.ctx, this.env, { nowMs: () => this._nowMs() });
+    return this.#transferBlobs.fetch(request);
+  }
   _nonce() { return this._randomToken(); }
   _randomToken() {
     return Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -116,7 +125,70 @@ export class DirectoryState extends DurableObject {
       target: lookup.target_device ? this.#device(lookup.target_device) : null,
       profile: identity ? JSON.parse(identity.profile) : null, handle_owner: owner?.id ?? null,
       link_box: box ? Array.from(new Uint8Array(box.sealed)) : null,
-      key_packages: this.#keyPackageFacts(session, lookup, now) };
+      key_packages: this.#keyPackageFacts(session, lookup, now),
+      reads: this.#readFacts(session, lookup) };
+  }
+  #readFacts(session, lookup) {
+    if (lookup.kind !== 'directory_read') return null;
+    const query = lookup.read;
+    const facts = { query, profiles: [], devices: [] };
+    // Account for the query, object/array punctuation and each selected row before
+    // retaining it. Never materialize an unbounded cursor before Rust's 1MiB
+    // final trusted-context backstop can run.
+    let bytes = utf8.encode(JSON.stringify(facts)).byteLength;
+    const capacity = () => error('directory read exceeds private byte capacity', 'private_directory_read_capacity');
+    if (bytes > MAX_READ_FACT_BYTES) throw capacity();
+    const append = (target, row) => {
+      const length = utf8.encode(JSON.stringify(row)).byteLength + 1;
+      if (bytes + length > MAX_READ_FACT_BYTES) throw capacity();
+      bytes += length;
+      target.push(row);
+    };
+    let rows = null;
+    switch (query.kind) {
+      case 'lookup':
+        if (query.handle) rows = query.prefix
+          ? this.ctx.storage.sql.exec("SELECT id,profile FROM directory_identities WHERE handle LIKE ? ESCAPE '\\' ORDER BY handle LIMIT 20", query.pattern)
+          : this.ctx.storage.sql.exec('SELECT id,profile FROM directory_identities WHERE handle=?', query.handle);
+        break;
+      case 'profiles':
+        // One JSON-table binding preserves native ANY semantics for all 500
+        // requested IDs without exceeding workerd SQLite's bound-variable limit.
+        if (query.ids.length) rows = this.ctx.storage.sql.exec(
+          'SELECT id,profile FROM directory_identities WHERE id IN (SELECT value FROM json_each(?))', JSON.stringify(query.ids));
+        break;
+      case 'devices':
+        // Existing private rows have no wall-clock creation metadata. SQLite's
+        // stable rowid retains their enrollment order, including revoked devices.
+        for (const row of this.ctx.storage.sql.exec(
+          'SELECT identity,device,revoked FROM directory_devices WHERE identity=? ORDER BY rowid', session.identity))
+          append(facts.devices, { ...row, revoked: Boolean(row.revoked) });
+        break;
+      default: throw error('unsupported directory read query', 'invalid_directory_context');
+    }
+    // This Directory currently admits Person registrations only. Do not infer
+    // authoritative kind/owner from a possibly malformed profile payload.
+    if (rows) for (const row of rows)
+      append(facts.profiles, { id: row.id, kind: 'Person', owner: null, profile: JSON.parse(row.profile) });
+    return facts;
+  }
+  #chargeLookup(identity, now) {
+    const sql = this.ctx.storage.sql;
+    // Do not cache DDL success inside a transaction that may still roll back.
+    sql.exec(`CREATE TABLE IF NOT EXISTS directory_lookup_limits (
+      identity TEXT PRIMARY KEY, tat_ns TEXT NOT NULL, last_ns TEXT NOT NULL, expires_ms INTEGER NOT NULL)`);
+    const previous = this.#one('SELECT tat_ns,last_ns FROM directory_lookup_limits WHERE identity=?', identity);
+    const wall = BigInt(now) * 1_000_000n;
+    const clock = previous && BigInt(previous.last_ns) > wall ? BigInt(previous.last_ns) : wall;
+    const rate = invoke(directoryLookupRate, JSON.stringify({ now_ns: String(clock), tat_ns: previous?.tat_ns ?? null }));
+    if (!rate.accepted) throw error(rate.reason, 'rate_limited');
+    const expires = Number((BigInt(rate.next_ns) + 999_999n) / 1_000_000n);
+    if (!Number.isSafeInteger(expires)) throw error('invalid lookup clock', 'invalid_directory_context');
+    sql.exec(`DELETE FROM directory_lookup_limits WHERE identity IN (
+      SELECT identity FROM directory_lookup_limits WHERE expires_ms<=? LIMIT 256)`, now);
+    sql.exec(`INSERT INTO directory_lookup_limits VALUES (?,?,?,?) ON CONFLICT(identity)
+      DO UPDATE SET tat_ns=excluded.tat_ns,last_ns=excluded.last_ns,expires_ms=excluded.expires_ms`,
+      identity, rate.next_ns, String(clock), expires);
   }
   #keyPackageFacts(session, lookup, now) {
     if (!['publish_key_packages', 'claim_key_packages'].includes(lookup.kind)) return null;
@@ -235,17 +307,26 @@ export class DirectoryState extends DurableObject {
 
   request(input) {
     const bytes = frame(input?.frame);
+    const now = this._nowMs();
+    // Like the native account limiter, successful admission spends the lookup
+    // budget even when later work is refused or its mutation rolls back.
+    const lookup = this.ctx.storage.transactionSync(() => {
+      const session = this.#session(input?.sessionId, now);
+      invoke(directoryAuthorize, JSON.stringify({ session, facts: this.#facts(session, {}, now) }));
+      const lookup = invoke(directoryLookup, bytes, JSON.stringify(session));
+      if (session.registered && lookup.charge_lookup) this.#chargeLookup(session.identity, now);
+      return lookup;
+    });
     let authorizationChanged = false;
     const outcome = this.ctx.storage.transactionSync(() => {
-      const now = this._nowMs();
       const session = this.#session(input?.sessionId, now);
       // Every request, including unsupported/replayed Req ids, is freshly fenced.
       invoke(directoryAuthorize, JSON.stringify({ session, facts: this.#facts(session, {}, now) }));
-      const lookup = invoke(directoryLookup, bytes, JSON.stringify(session));
       const plan = invoke(directoryRequest, bytes, JSON.stringify({ session, facts: this.#facts(session, lookup, now) }));
       authorizationChanged = plan.action === 'register' || plan.action === 'unlink';
       const sql = this.ctx.storage.sql;
       switch (plan.action) {
+        case 'read': break;
         case 'register': {
           if (plan.first) {
             sql.exec('INSERT INTO directory_identities VALUES (?,?,?)', session.identity,

@@ -1,6 +1,8 @@
 import { t } from '../i18n/index.ts';
+import { pushToken, type PushConfiguration } from './configuration.ts';
+export { apnsToken, pushConfiguration } from './configuration.ts';
+export type { PushConfiguration } from './configuration.ts';
 export type PushPermission = 'unknown' | 'undetermined' | 'denied' | 'allowed';
-export type PushConfiguration = { environment: 'sandbox' | 'production'; topic: string };
 export type PushRegistrationState =
   | 'unsupported'
   | 'unregistered'
@@ -25,29 +27,6 @@ export interface PushPorts {
   ): Promise<{ kind: 'acknowledged' } | { kind: 'refused' }>;
   current(): boolean;
   schedule?(callback: () => void, milliseconds: number): () => void;
-}
-
-export function apnsToken(value: unknown): string | null {
-  return typeof value === 'string' &&
-    value.length >= 2 &&
-    value.length <= 512 &&
-    value.length % 2 === 0 &&
-    /^[a-f0-9]+$/i.test(value)
-    ? value.toLowerCase()
-    : null;
-}
-
-export function pushConfiguration(value: unknown): PushConfiguration | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  const input = value as Record<string, unknown>;
-  if (
-    !['sandbox', 'production'].includes(String(input.environment)) ||
-    typeof input.topic !== 'string' ||
-    input.topic.length > 255 ||
-    !/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(input.topic)
-  )
-    return null;
-  return { environment: input.environment as PushConfiguration['environment'], topic: input.topic };
 }
 
 /** Owns only transient registration work. Durable queue/ack state belongs to Rust. */
@@ -106,9 +85,12 @@ export class PushCoordinator {
         return;
       }
       if (permission !== 'allowed') return;
+      const tokenRevision = this.revision;
       const token = await this.ports.token();
       if (!this.active(stamp) || revision !== this.permissionRevision) return;
-      const canonical = apnsToken(token);
+      // A native rotation received while the token query was pending is newer.
+      if (tokenRevision !== this.revision) return;
+      const canonical = pushToken(this.configuration, token);
       if (!canonical) throw new Error('invalid token');
       await this.change(canonical);
     } catch {
@@ -123,7 +105,7 @@ export class PushCoordinator {
 
   async receivedToken(value: unknown) {
     if (!this.active() || this.state.permission !== 'allowed' || !this.configuration) return;
-    const token = apnsToken(value);
+    const token = pushToken(this.configuration, value);
     if (!token) {
       this.publish({ failure: t('notifications.theDeviceDidNotReturnAValidNotification') });
       return;

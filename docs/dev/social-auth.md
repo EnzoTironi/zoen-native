@@ -80,6 +80,46 @@ root route without forwarding the authorization code or state into screen parame
 The native Google SDK remains the only credential handler; this navigation hint never
 authenticates an account. A unit regression covers the callback and foreign schemes.
 
+## Android Google registration and client isolation
+
+The native adapter supports Android Credential Manager using Nitro's explicit
+button flow. It requests the exact server nonce, no Google API scopes and no
+offline access, then clears the SDK session. The normal signed Zoen provisioning
+and secure existing-account recovery paths remain shared with iOS.
+
+Create an **Android** OAuth client in the same Google Cloud project as the Web
+client, using package `xyz.tironi.zoen` and the SHA-1 of the actual signing
+certificate. Development, upload and Play app-signing certificates may differ;
+register each artifact that will be tested or distributed. Configure the app and
+both native/Cloudflare relay hosts with public identifiers:
+
+```text
+EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=<Android OAuth client for this signed app>
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=<existing Web/server OAuth client>
+ZOEN_AUTH_GOOGLE_ANDROID_AUDIENCE=<existing Web/server OAuth client>
+ZOEN_AUTH_GOOGLE_ANDROID_PRESENTER=<same Android OAuth client>
+```
+
+The Android client ID identifies the signed app; the SDK's `webClientId` requests
+an ID token addressed to the backend. Challenges are persisted with
+`client: "android"`. The backend requires the configured Android presenter in
+the signed assertion, so sharing the server audience does not make iOS and Android
+credentials interchangeable. Missing Android app/presenter configuration fails
+closed. Native Apple is offered only on iOS; no Apple Android native flow is
+claimed.
+
+Migration `0033_android_provider_client.sql` adds Android to the existing challenge
+constraint without rebuilding tables or resetting active challenges/proofs. Older
+clients continue using their explicit iOS/Web contexts. Complete provider
+acceptance still requires saving the actual Android console registration, applying
+the migration and server environment, then proving successful provider return,
+one-time binding and secure recovery in the final signed Android app. This code
+change does not claim those external steps were completed.
+
+References: [Expo Google authentication](https://docs.expo.dev/guides/google-authentication/),
+[Google Android server authentication](https://developers.google.com/identity/sign-in/android/backend-auth),
+[Credential Manager setup](https://codelabs.developers.google.com/sign-in-with-google-android).
+
 ## Apple portal work remains pending
 
 Apple App ID capability and device provisioning have not been verified. The source
@@ -133,12 +173,12 @@ changed, and the frontend preview does not establish successful provider login.
 
 The public provider values are shared with the native relay configuration:
 
-| Relay setting | Required public value |
-| --- | --- |
-| `ZOEN_AUTH_APPLE_IOS_AUDIENCE` | `xyz.tironi.zoen` |
-| `ZOEN_AUTH_GOOGLE_IOS_AUDIENCE` | `googleWebClientId` in `apps/zoen/config/identity-providers.json` |
-| `ZOEN_AUTH_GOOGLE_IOS_PRESENTER` | `googleIosClientId` in the same file |
-| Google Web origin | `https://app.tryzoen.com` |
+| Relay setting                    | Required public value                                             |
+| -------------------------------- | ----------------------------------------------------------------- |
+| `ZOEN_AUTH_APPLE_IOS_AUDIENCE`   | `xyz.tironi.zoen`                                                 |
+| `ZOEN_AUTH_GOOGLE_IOS_AUDIENCE`  | `googleWebClientId` in `apps/zoen/config/identity-providers.json` |
+| `ZOEN_AUTH_GOOGLE_IOS_PRESENTER` | `googleIosClientId` in the same file                              |
+| Google Web origin                | `https://app.tryzoen.com`                                         |
 
 `infra/fly/relay.toml` contains these public bindings and the matching Google Web
 audience for the existing native relay. It was not deployed. Apple Web remains

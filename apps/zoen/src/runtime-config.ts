@@ -7,6 +7,7 @@ import { providerConfiguration } from './auth/configuration';
 export const identityProviders = providerConfiguration(
   {
     googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? providers.googleIosClientId,
+    googleAndroidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
     googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? providers.googleWebClientId,
     appleServiceId: process.env.EXPO_PUBLIC_APPLE_SERVICE_ID,
     appleRedirectUri: process.env.EXPO_PUBLIC_APPLE_REDIRECT_URI,

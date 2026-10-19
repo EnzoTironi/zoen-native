@@ -1015,7 +1015,7 @@ impl Session {
                     .lookup_account
                     .check(&self.identity)
                     .map_err(limits::slow_down)?;
-                let h = handle.trim().trim_start_matches('@').to_lowercase();
+                let h = roda_relay_admission::directory::reads::normalize_lookup(&handle);
                 if h.is_empty() {
                     return Ok(Reply::Profiles(Vec::new()));
                 }
@@ -1026,7 +1026,7 @@ impl Session {
                 ))
             }
             Op::Profiles { ids } => {
-                let ids: Vec<String> = ids.into_iter().take(500).collect();
+                let ids = roda_relay_admission::directory::reads::profile_ids(ids);
                 Ok(Reply::Profiles(
                     db::profiles(pool, &ids).await.map_err(|e| e.to_string())?,
                 ))
@@ -1169,7 +1169,7 @@ impl Session {
                 Ok(Reply::KeyPackages(claimed))
             }
             Op::GetProfiles { ids } => {
-                let ids: Vec<String> = ids.into_iter().take(500).collect();
+                let ids = roda_relay_admission::directory::reads::profile_ids(ids);
                 Ok(Reply::SealedProfiles(
                     db::sealed_profiles(pool, &ids)
                         .await
@@ -1538,28 +1538,27 @@ impl Session {
         };
         // (space, from, through): a member reads to the head; someone removed reads up to
         // and including their removal, so their device learns of it, and nothing after.
-        let mut plan: Vec<(String, u64, Option<u64>)> = Vec::new();
+        let mut plan = Vec::new();
+        let current: std::collections::BTreeSet<_> = mine.iter().map(String::as_str).collect();
         for c in cursors {
-            if mine.contains(&c.space) {
-                plan.push((c.space, c.next_seq, None));
-            } else if let Ok(Ok(Some(gone))) = tokio::time::timeout(
-                Duration::from_secs(5),
-                self.st.log.removed_at(&c.space, &self.identity),
-            )
-            .await
-            {
-                if c.next_seq <= gone {
-                    plan.push((c.space, c.next_seq, Some(gone)));
-                }
+            let member = current.contains(c.space.as_str());
+            let removed_at = if member {
+                None
+            } else {
+                tokio::time::timeout(
+                    Duration::from_secs(5),
+                    self.st.log.removed_at(&c.space, &self.identity),
+                )
+                .await
+                .ok()
+                .and_then(Result::ok)
+                .flatten()
+            };
+            if let Some(read) = roda_relay_admission::sync::cursor_read(c, member, removed_at) {
+                plan.push(read);
             }
         }
-        if all {
-            for s in &mine {
-                if !plan.iter().any(|(p, ..)| p == s) {
-                    plan.push((s.clone(), 0, None));
-                }
-            }
-        }
+        roda_relay_admission::sync::include_current(&mut plan, &mine, all);
         let span = tracing::Span::current();
         span.record("spaces", plan.len() as i64);
         let mut sent = 0usize;
@@ -1567,8 +1566,8 @@ impl Session {
         // instead of one per Space (a 500-chat reconnect was 500 queries).
         let heads: Vec<String> = plan
             .iter()
-            .filter(|(_, _, through)| through.is_none())
-            .map(|(s, ..)| s.clone())
+            .filter(|read| read.through.is_none())
+            .map(|read| read.space.clone())
             .collect();
         let Ok(Ok(mut marks)) = tokio::time::timeout(
             Duration::from_secs(5),
@@ -1583,7 +1582,8 @@ impl Session {
             .await;
             return;
         };
-        for (space, mut next, through) in plan {
+        for read in plan {
+            let (space, mut next, through) = (read.space, read.from, read.through);
             #[cfg(debug_assertions)]
             if crate::log::sequencer::fork_histories::armed(&space) {
                 let Ok(Ok(full)) = tokio::time::timeout(

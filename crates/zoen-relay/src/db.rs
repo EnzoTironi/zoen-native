@@ -322,7 +322,7 @@ pub async fn lookup(
     prefix: bool,
 ) -> Result<Vec<Identity>, sqlx::Error> {
     let rows: Vec<DirectoryRow> = if prefix {
-        let pattern = format!("{}%", handle.replace(['\\', '%'], "").replace('_', "\\_"));
+        let pattern = roda_relay_admission::directory::reads::prefix_pattern(handle);
         sqlx::query_as(
             "SELECT id, kind, owner, profile FROM identities WHERE handle LIKE $1 ORDER BY handle LIMIT 20",
         )
@@ -356,16 +356,7 @@ pub async fn profiles(pool: &PgPool, ids: &[String]) -> Result<Vec<Identity>, sq
 type DirectoryRow = (String, String, Option<String>, serde_json::Value);
 
 fn authorized_directory_profile((id, kind, owner, json): DirectoryRow) -> Option<Identity> {
-    let profile: Identity = serde_json::from_value(json).ok()?;
-    let expected = match profile.kind {
-        IdentityKind::Person => "Person",
-        IdentityKind::Agent => "Agent",
-    };
-    (profile.id == id
-        && expected == kind
-        && profile.owner == owner
-        && roda_log::agent_owner::profile_authorized(&profile))
-    .then_some(profile)
+    roda_relay_admission::directory::reads::authorized_profile(&id, &kind, owner.as_deref(), json)
 }
 
 pub async fn put_agreement_key(

@@ -7,6 +7,8 @@ import { ClientStore } from './store.ts';
 import type { Command, CommandResult, CoreDriver, CoreEvent, Snapshot } from './types.ts';
 import { validLocalNotification } from '../notifications/links.ts';
 import { NotificationJobs } from '../notifications/jobs.ts';
+import { nativeNotificationPlatform } from '../notifications/native-adapter.ts';
+import { pushPlatform } from '../notifications/configuration.ts';
 import { openSurfaceInvocation, type SurfaceInvocation } from '../native-surfaces/intents.ts';
 import { surfaceOwner, surfaceSpaces } from '../native-surfaces/access.ts';
 
@@ -152,88 +154,90 @@ function mount(name: keyof typeof entries, dependencies: Record<string, unknown>
   };
 }
 
-test('actual notification handler leaves a guarded editor untouched and explains manual navigation', async () => {
-  const driver = new Driver();
-  const store = new ClientStore(driver);
-  await store.open();
-  const before = store.getSnapshot();
-  const epoch = store.sessionEpoch;
-  const routes: unknown[] = [];
-  const dialogs: unknown[] = [];
-  let response: ((data: unknown) => void) | undefined;
-  let dismiss!: () => void;
-  let checks = 0;
-  const allow = store.registerSessionPreflight(() => {
-    checks++;
-    throw new Error('Unsaved drawing');
-  });
-  class Coordinator {
-    activate() {}
-    dispose() {}
-    async foreground() {}
-    async receivedToken() {}
-    getSnapshot() {
-      return { permission: 'denied' };
+for (const platform of ['ios', 'android'])
+  test(`${platform} actual notification handler leaves a guarded editor untouched and explains manual navigation`, async () => {
+    const driver = new Driver();
+    const store = new ClientStore(driver);
+    await store.open();
+    const before = store.getSnapshot();
+    const epoch = store.sessionEpoch;
+    const routes: unknown[] = [];
+    const dialogs: unknown[] = [];
+    let response: ((data: unknown) => void) | undefined;
+    let dismiss!: () => void;
+    let checks = 0;
+    const allow = store.registerSessionPreflight(() => {
+      checks++;
+      throw new Error('Unsaved drawing');
+    });
+    class Coordinator {
+      activate() {}
+      dispose() {}
+      async foreground() {}
+      async receivedToken() {}
+      getSnapshot() {
+        return { permission: 'denied' };
+      }
     }
-  }
-  const unmount = mount('notifications', {
-    '../core/provider': { useClient: () => ({ ...store.getSnapshot(), store }) },
-    '../components/dialogs': {
-      useDialogs: () => ({
-        inform: (title: string, message: string) => {
-          dialogs.push({ title, message });
-          return new Promise<void>((resolve) => {
-            dismiss = resolve;
-          });
-        },
-      }),
-    },
-    'expo-router': { router: { push: (path: unknown) => routes.push(path) } },
-    'react-native': {
-      Platform: { OS: 'ios' },
-      AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
-    },
-    './coordinator': { PushCoordinator: Coordinator },
-    './links': { validLocalNotification },
-    './wake': { decodeWake: () => null },
-    './local': { localNotes: () => [] },
-    './jobs': { NotificationJobs },
-    './system': {
-      clearDeviceNotifications: async () => {},
-      installNotificationHandler: () => () => {},
-      listenNotificationEvents: (_wake: unknown, received: typeof response) => {
-        response = received;
-        return () => {};
+    const unmount = mount('notifications', {
+      '../core/provider': { useClient: () => ({ ...store.getSnapshot(), store }) },
+      '../components/dialogs': {
+        useDialogs: () => ({
+          inform: (title: string, message: string) => {
+            dialogs.push({ title, message });
+            return new Promise<void>((resolve) => {
+              dismiss = resolve;
+            });
+          },
+        }),
       },
-      listenPushToken: () => () => {},
-      nativePushConfiguration: () => null,
-      nativePushToken: async () => '',
-      notificationPermission: async () => 'denied',
-      showLocalNote: async () => {},
-      updateBadge: async () => {},
-    },
+      'expo-router': { router: { push: (path: unknown) => routes.push(path) } },
+      'react-native': {
+        Platform: { OS: platform },
+        AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+      },
+      './coordinator': { PushCoordinator: Coordinator },
+      './links': { validLocalNotification },
+      './native-adapter': { nativeNotificationPlatform },
+      './configuration': { pushPlatform },
+      './local': { localNotes: () => [] },
+      './jobs': { NotificationJobs },
+      './system': {
+        clearDeviceNotifications: async () => {},
+        installNotificationHandler: () => () => {},
+        listenNotificationEvents: (_wake: unknown, received: typeof response) => {
+          response = received;
+          return () => {};
+        },
+        listenPushToken: () => () => {},
+        nativePushConfiguration: () => null,
+        nativePushToken: async () => '',
+        notificationPermission: async () => 'denied',
+        showLocalNote: async () => {},
+        updateBadge: async () => {},
+      },
+    });
+    assert.ok(response);
+    const data = { zoen_local: 1, device_id: 'device', space_id: 'chat', event_seq: '1' };
+    response({ ...data, device_id: 'another-device' });
+    assert.equal(checks, 0);
+    response(data);
+    assert.equal(checks, 1);
+    assert.deepEqual(routes, []);
+    assert.deepEqual(dialogs, [{ title: 'drawing.pending', message: 'drawing.closeFirst' }]);
+    assert.equal(store.getSnapshot(), before);
+    assert.equal(store.sessionEpoch, epoch);
+    assert.deepEqual(driver.calls, []);
+    allow();
+    dismiss();
+    await Promise.resolve();
+    assert.deepEqual(routes, [], 'dismissing the explanation never replays the old click');
+    response(data);
+    assert.equal(routes.length, 1);
+    assert.equal(JSON.stringify(routes[0]), '{"pathname":"/chat/[id]","params":{"id":"chat"}}');
+    unmount();
+    await store.close();
   });
-  assert.ok(response);
-  const data = { zoen_local: 1, device_id: 'device', space_id: 'chat', event_seq: '1' };
-  response({ ...data, device_id: 'another-device' });
-  assert.equal(checks, 0);
-  response(data);
-  assert.equal(checks, 1);
-  assert.deepEqual(routes, []);
-  assert.deepEqual(dialogs, [{ title: 'drawing.pending', message: 'drawing.closeFirst' }]);
-  assert.equal(store.getSnapshot(), before);
-  assert.equal(store.sessionEpoch, epoch);
-  assert.deepEqual(driver.calls, []);
-  allow();
-  dismiss();
-  await Promise.resolve();
-  assert.deepEqual(routes, [], 'dismissing the explanation never replays the old click');
-  response(data);
-  assert.equal(routes.length, 1);
-  assert.equal(JSON.stringify(routes[0]), '{"pathname":"/chat/[id]","params":{"id":"chat"}}');
-  unmount();
-  await store.close();
-});
 
 test('actual native intent consumer retains a blocked invocation and opens it only on a later retry', async () => {
   const driver = new Driver();

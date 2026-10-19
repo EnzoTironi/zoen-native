@@ -32,6 +32,19 @@ export class DirectoryState extends ExistingDirectory {
           if (control.failPut) throw new Error("local-only R2 failure");
           return bucket.put(...args);
         },
+        async list(...args) {
+          if (control.failList) throw new Error("local-only R2 list failure");
+          return bucket.list(...args);
+        },
+        async delete(keys) {
+          if (control.failDelete) throw new Error("local-only R2 delete failure");
+          if (control.partialDelete) {
+            control.partialDelete = false;
+            await bucket.delete(Array.isArray(keys) ? keys[0] : keys);
+            throw new Error("local-only partial R2 delete");
+          }
+          return bucket.delete(keys);
+        },
         async get(...args) {
           if (control.failGet) throw new Error("local-only R2 failure");
           const object = await bucket.get(...args);
@@ -113,7 +126,7 @@ export class DirectoryState extends ExistingDirectory {
 
   configure(input) {
     if (input.now_ms !== undefined) this.clock(input);
-    for (const key of ["failPut", "failGet", "readError", "hold"])
+    for (const key of ["failPut", "failGet", "readError", "hold", "failList", "failDelete", "partialDelete"])
       if (input[key] !== undefined) this.#control[key] = Boolean(input[key]);
     if (input.release) {
       this.#control.hold = false;

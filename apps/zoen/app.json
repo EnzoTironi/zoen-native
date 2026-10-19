@@ -74,6 +74,7 @@
         }
       ],
       "expo-asset",
+      "expo-image",
       [
         "expo-image-picker",
         {

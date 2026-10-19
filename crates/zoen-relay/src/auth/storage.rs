@@ -17,6 +17,7 @@ pub(super) async fn challenge(pool: &PgPool, id: &str) -> Result<Option<Challeng
         };
         let client = match row.try_get::<String, _>("client")?.as_str() {
             "ios" => Client::Ios,
+            "android" => Client::Android,
             "web" => Client::Web,
             _ => return Err(sqlx::Error::Protocol("invalid provider client".into())),
         };

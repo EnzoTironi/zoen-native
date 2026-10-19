@@ -27,7 +27,16 @@ impl Settings {
     pub fn from_env() -> anyhow::Result<Self> {
         let mut settings = Self::default();
         for (provider, prefix) in [(Provider::Apple, "APPLE"), (Provider::Google, "GOOGLE")] {
-            for (client, suffix) in [(Client::Ios, "IOS"), (Client::Web, "WEB")] {
+            for (client, suffix) in [
+                (Client::Ios, "IOS"),
+                (Client::Android, "ANDROID"),
+                (Client::Web, "WEB"),
+            ] {
+                // Apple's native SDK is iOS-only. Android Google uses its own
+                // registered app/presenter; it never inherits iOS configuration.
+                if provider == Provider::Apple && client == Client::Android {
+                    continue;
+                }
                 let key = format!("ZOEN_AUTH_{prefix}_{suffix}_AUDIENCE");
                 if let Ok(value) = std::env::var(&key) {
                     let value = value.trim();
@@ -40,6 +49,7 @@ impl Settings {
                     if presenter
                         .as_ref()
                         .is_some_and(|value| !enrollment::valid_audience_value(value))
+                        || client == Client::Android && presenter.is_none()
                     {
                         anyhow::bail!("Invalid provider presenter");
                     }
@@ -358,6 +368,10 @@ mod tests {
         let mut headers = HeaderMap::new();
         assert!(service.origin(&headers, Some(Client::Web)).is_err());
         assert_eq!(service.origin(&headers, Some(Client::Ios)).unwrap(), None);
+        assert_eq!(
+            service.origin(&headers, Some(Client::Android)).unwrap(),
+            None
+        );
         headers.insert(
             header::ORIGIN,
             HeaderValue::from_static("https://evil.example"),

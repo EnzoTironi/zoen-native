@@ -4,11 +4,16 @@ const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** An untrusted content-free sync hint. It never authorizes a route or mutation. */
-export function decodeWake(payload: unknown): PushWake | null {
+export function decodeWake(payload: unknown, transport: 'apns' | 'fcm' = 'apns'): PushWake | null {
   try {
     const text = typeof payload === 'string' ? payload : JSON.stringify(payload);
     if (typeof text !== 'string' || new TextEncoder().encode(text).length > 4096) return null;
     const input: unknown = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    // Native FCM sends precisely message.data={wake:"1"}, without notification text.
+    if (transport === 'fcm')
+      return object(input) && Object.keys(input).join(',') === 'wake' && input.wake === '1'
+        ? { spaceId: null, eventSequence: null }
+        : null;
     if (
       !object(input) ||
       !object(input.aps) ||

@@ -7,6 +7,8 @@ pub mod directory;
 pub mod gcra;
 pub mod invite;
 pub mod portable;
+pub mod transfer;
+pub mod sync;
 mod rules;
 
 pub use rules::{admit, identity_key, Effect, Facts, MAX_MEMBERS};

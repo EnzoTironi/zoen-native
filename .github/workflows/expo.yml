@@ -25,6 +25,7 @@ on:
         'scripts/verify-cloudflare-provider.mjs',
         'scripts/verify-cloudflare-closed.mjs',
         'scripts/verify-cloudflare-directory.mjs',
+        'scripts/verify-cloudflare-sync.mjs',
         'scripts/build-cloudflare-closed.mjs',
         'infra/cloudflare/**',
         '.github/workflows/expo.yml',
@@ -54,6 +55,7 @@ on:
         'scripts/verify-cloudflare-provider.mjs',
         'scripts/verify-cloudflare-closed.mjs',
         'scripts/verify-cloudflare-directory.mjs',
+        'scripts/verify-cloudflare-sync.mjs',
         'scripts/build-cloudflare-closed.mjs',
         'infra/cloudflare/**',
         '.github/workflows/expo.yml',
@@ -408,6 +410,43 @@ jobs:
         with:
           name: cloudflare-media-evidence
           path: .dev/cloudflare-media
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Compare native encrypted history HTTP and private Cloudflare transfer adapter
+        # Shares the native media budget and this job's disposable database.
+        # No provider credentials, public routes or real bucket writes.
+        env:
+          ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
+        run: node scripts/verify-cloudflare-directory.mjs --transfer --skip-build --out-dir .dev/cloudflare-transfer
+      - name: Retain private encrypted history transfer evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cloudflare-transfer-evidence
+          path: .dev/cloudflare-transfer
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Compare native and portable synchronization visibility policy
+        # Reuses the shared WASM and local workerd; no deployed relay is exposed.
+        run: node scripts/verify-cloudflare-sync.mjs --skip-build --out-dir .dev/cloudflare-sync
+      - name: Retain private synchronization composition evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cloudflare-sync-evidence
+          path: .dev/cloudflare-sync
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Compare native directory reads and private Cloudflare capacity limits
+        env:
+          ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
+        run: node scripts/verify-cloudflare-directory.mjs --reads --skip-build --out-dir .dev/cloudflare-directory-reads
+      - name: Retain private directory read evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cloudflare-directory-read-evidence
+          path: .dev/cloudflare-directory-reads
           if-no-files-found: warn
           retention-days: 7
       - name: Compare native Postgres and private Cloudflare directory transactions

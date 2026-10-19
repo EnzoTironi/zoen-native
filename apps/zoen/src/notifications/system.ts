@@ -1,7 +1,17 @@
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import { pushConfiguration, type PushPermission } from './coordinator';
+import type { PushPermission } from './coordinator';
+import { ANDROID_MESSAGE_CHANNEL } from './configuration';
+import {
+  nativePushConfigurationFor,
+  readNativePermission,
+  readNativeToken,
+  nativeTokenFromWire,
+  decodeNotificationWake,
+} from './native-adapter';
+import type { PushWake } from './wake';
+import { t } from '../i18n';
 import { clearDeviceNotificationState } from './clear';
 import type { LocalNote } from './local';
 
@@ -14,26 +24,29 @@ function isPushTrigger(
 }
 
 export function nativePushConfiguration() {
-  if (Platform.OS !== 'ios') return null;
-  const config: unknown = Constants.expoConfig?.extra?.zoenPush;
-  if (
-    typeof config !== 'object' ||
-    config === null ||
-    !('enabled' in config) ||
-    config.enabled !== true
-  )
-    return null;
-  return pushConfiguration(config);
+  return nativePushConfigurationFor(Platform.OS, Constants.expoConfig?.extra?.zoenPush);
+}
+
+async function messageChannel() {
+  return Notifications.setNotificationChannelAsync(ANDROID_MESSAGE_CHANNEL, {
+    name: t('notifications.notifications'),
+    importance: Notifications.AndroidImportance.DEFAULT,
+    sound: 'default',
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
+  });
 }
 
 export async function notificationPermission(
   request: boolean,
 ): Promise<Exclude<PushPermission, 'unknown'>> {
-  const permission = request
-    ? await Notifications.requestPermissionsAsync({
+  const permission = await readNativePermission(Platform.OS, request, {
+    channel: messageChannel,
+    read: Notifications.getPermissionsAsync,
+    prompt: () =>
+      Notifications.requestPermissionsAsync({
         ios: { allowAlert: true, allowSound: true, allowBadge: true },
-      })
-    : await Notifications.getPermissionsAsync();
+      }),
+  });
   if (
     permission.granted ||
     (permission.ios &&
@@ -48,15 +61,16 @@ export async function notificationPermission(
 }
 
 export async function nativePushToken() {
-  const token = await Notifications.getDevicePushTokenAsync();
-  if (token.type !== 'ios' || typeof token.data !== 'string')
-    throw new Error('unsupported push token');
-  return token.data;
+  return readNativeToken(Platform.OS, {
+    channel: messageChannel,
+    token: Notifications.getDevicePushTokenAsync,
+  });
 }
 
 export function listenPushToken(listener: (token: unknown) => void) {
   const subscription = Notifications.addPushTokenListener((token) => {
-    if (token.type === 'ios') listener(token.data);
+    const value = nativeTokenFromWire(Platform.OS, token);
+    if (value !== null) listener(value);
   });
   return () => subscription.remove();
 }
@@ -79,13 +93,15 @@ export function installNotificationHandler(allowLocal: (data: unknown) => boolea
 }
 
 export function listenNotificationEvents(
-  wake: (payload: unknown) => void,
+  wake: (payload: PushWake) => void,
   tap: (data: unknown) => void,
 ) {
   let active = true;
   const received = Notifications.addNotificationReceivedListener((notification) => {
     const trigger = notification.request.trigger;
-    if (active && isPushTrigger(trigger)) wake(trigger.payload);
+    if (!active) return;
+    const hint = decodeNotificationWake(Platform.OS, trigger);
+    if (hint) wake(hint);
   });
   const respond = (response: Notifications.NotificationResponse | null) => {
     if (
@@ -110,6 +126,7 @@ export function listenNotificationEvents(
 }
 
 export async function showLocalNote(note: LocalNote) {
+  if (Platform.OS === 'android') await messageChannel();
   await Notifications.scheduleNotificationAsync({
     identifier: note.identifier,
     content: {
@@ -124,7 +141,7 @@ export async function showLocalNote(note: LocalNote) {
         event_seq: note.sequence,
       },
     },
-    trigger: null,
+    trigger: Platform.OS === 'android' ? { channelId: ANDROID_MESSAGE_CHANNEL } : null,
   });
 }
 

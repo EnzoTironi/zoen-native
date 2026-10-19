@@ -21,6 +21,9 @@ use sqlx::{
 use std::{collections::BTreeMap, str::FromStr, time::Duration};
 use zoen_relay::{db, key_package_claims};
 
+#[path = "cloudflare-directory-fixture/reads.rs"]
+mod reads_fixture;
+
 const RELAY: &str = "zoen-cloudflare-private";
 const NOW_MS: &str = "1700000000000";
 
@@ -285,6 +288,28 @@ async fn native_operation(
                 .map_err(|e| e.to_string())
         }
         _ if !session.registered => Err("register first".into()),
+        Op::Lookup { handle, prefix } => {
+            let handle = roda_relay_admission::directory::reads::normalize_lookup(&handle);
+            if handle.is_empty() {
+                Ok(Reply::Profiles(Vec::new()))
+            } else {
+                db::lookup(pool, &handle, prefix)
+                    .await
+                    .map(Reply::Profiles)
+                    .map_err(|e| e.to_string())
+            }
+        }
+        Op::Profiles { ids } => {
+            let ids = roda_relay_admission::directory::reads::profile_ids(ids);
+            db::profiles(pool, &ids)
+                .await
+                .map(Reply::Profiles)
+                .map_err(|e| e.to_string())
+        }
+        Op::Devices => db::devices_of(pool, &session.identity)
+            .await
+            .map(Reply::Devices)
+            .map_err(|e| e.to_string()),
         Op::DeliverLink { id, sealed, device } => {
             if !valid_link_id(&id) || sealed.is_empty() || sealed.len() > db::MAX_LINK_BOX {
                 return Err("bad link box".into());
@@ -844,8 +869,11 @@ async fn timeline(pool: &PgPool) -> Result<Value> {
     .await?;
 
     key_package_timeline(&mut f, &a).await?;
+    let steps = std::mem::take(&mut f.steps);
+    reads_fixture::timeline(&mut f).await?;
     Ok(
-        json!({"schema":1,"cell":"isolated_directory_fixture","initial_empty":true,"steps":f.steps,"transport":socket_fixture()}),
+        json!({"schema":1,"cell":"isolated_directory_fixture","initial_empty":true,"steps":steps,
+            "reads":{"steps":f.steps},"transport":socket_fixture()}),
     )
 }
 

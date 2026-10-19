@@ -23,7 +23,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -228,6 +228,11 @@ async function runMediaMode() {
   ];
   const sources = [];
   let config;
+  // Follow the selected commit's module imports rather than adding today's
+  // files to a historical proof whose source tree never contained them.
+  const include = (relative) => {
+    if (!runtimePaths.includes(relative)) runtimePaths.push(relative);
+  };
   for (const relative of runtimePaths) {
     const bytes = mediaSource
       ? execFileSync("git", ["show", `${mediaSource}:${relative}`], {
@@ -242,6 +247,21 @@ async function runMediaMode() {
       sha256: digest(bytes),
     });
     if (relative.endsWith("wrangler.directory.jsonc")) config = JSON.parse(bytes.toString());
+    if (relative.startsWith("infra/cloudflare/relay-state/src/")) {
+      const imports = /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?)["'](\.{1,2}\/[^"']+\.mjs)["']/g;
+      for (const match of bytes.toString().matchAll(imports)) {
+        const dependency = posix.join(posix.dirname(relative), match[1]);
+        assert.match(
+          dependency,
+          /^infra\/cloudflare\/relay-state\/src\/(?:[\w-]+\/)*[\w-]+\.mjs$/,
+          "Private media module dependency must stay in the reviewed source directory",
+        );
+        include(dependency);
+      }
+      if (relative.endsWith("/transfer-blobs.mjs"))
+        include("crates/roda-relay-admission/src/transfer.rs");
+      if (relative.endsWith("/blob-quota.mjs")) include("crates/roda-relay-admission/src/gcra.rs");
+    }
   }
   assert.equal(config.name, worker);
   assert.equal(config.account_id, account);

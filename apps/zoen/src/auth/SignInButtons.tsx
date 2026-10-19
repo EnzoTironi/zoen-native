@@ -1,11 +1,12 @@
 import { t } from '../i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Text, View } from 'react-native';
 import { useTheme } from '../theme';
 import { AuthAttempt, type AuthTicket } from './attempt';
 import { cancelled } from './guards';
 import { loadNativeProviders, nativeCredential, type NativeProviders } from './native-providers';
 import type { AuthProvider, SignInButtonsProps } from './types';
+import { nativeAuthClient } from './native-google';
 
 /** Native, approved provider buttons. Parent automatically provisions or recovers keys. */
 export function SignInButtons({
@@ -16,6 +17,7 @@ export function SignInButtons({
   onVerified,
 }: SignInButtonsProps) {
   const { scheme, colors } = useTheme();
+  const client = nativeAuthClient(Platform.OS);
   const { attempt } = useMemo(
     () => ({ scope, attempt: new AuthAttempt(service) }),
     [service, scope],
@@ -51,13 +53,13 @@ export function SignInButtons({
     // oxlint-disable-next-line react/exhaustive-deps
   }, [attempt, key]);
   async function signIn(provider: AuthProvider) {
-    if (!modules || running.current || disabled || busy) return;
+    if (!client || !modules || running.current || disabled || busy) return;
     running.current = true;
     setBusy(true);
     setError(null);
     let ticket: AuthTicket | undefined;
     try {
-      ticket = await attempt.prepare(provider, 'ios');
+      ticket = await attempt.prepare(provider, client);
       const response = await nativeCredential(ticket, modules, configuration);
       const result = await attempt.complete(ticket, response.credential, response.suggestedName);
       if (mounted.current && latest.current === attempt) await onVerified(result);
@@ -92,7 +94,7 @@ export function SignInButtons({
             }}
           />
         </View>
-      ) : modules ? (
+      ) : modules && client === 'ios' ? (
         <Text style={{ color: colors.secondary }}>{t('auth.appleUnavailable')}</Text>
       ) : null}
       {Google ? (

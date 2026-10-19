@@ -12,24 +12,35 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 let output;
 let skipBuild = false;
 let media = false;
+let transfer = false;
+let reads = false;
 const args = process.argv.slice(2);
 for (let index = 0; index < args.length; index++) {
   if (args[index] === "--skip-build") skipBuild = true;
   else if (args[index] === "--media") media = true;
+  else if (args[index] === "--transfer") transfer = true;
+  else if (args[index] === "--reads") reads = true;
   else if (args[index] === "--out-dir" && args[index + 1] && !args[index + 1].startsWith("--"))
     output = resolve(args[++index]);
   else
     throw new Error(
-      "Usage: verify-cloudflare-directory.mjs [--out-dir DIR] [--skip-build] [--media]",
+      "Usage: verify-cloudflare-directory.mjs [--out-dir DIR] [--skip-build] [--media | --transfer | --reads]",
     );
 }
+assert.ok(Number(media) + Number(transfer) + Number(reads) <= 1, "Choose a single adapter scope");
+const http = media || transfer;
+const label = transfer ? "transfer" : "media";
 output ??= await mkdtemp(join(tmpdir(), "zoen-cloudflare-directory-"));
 await mkdir(output, { recursive: true });
 assert.deepEqual(await readdir(output), [], "Use a fresh empty evidence directory");
 const environment = { ...process.env, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "2" };
-const scope = media
-  ? "Private media HTTP/R2 adapter on the same fixed Directory. Native actual HTTP oracle versus shared Rust/WASM, current device rows, weighted quota and immutable encrypted objects. No public HTTP, real R2 write or deployment. Private one-body/8-waiter/10s-idle/default-quota/25MiB-read bounds; no transfer or backup."
-  : "Private single-cell Person/device directory, Directory-owned native binary sockets and MLS key-package publication/claims (128 records/768 KiB response bound). Native PostgreSQL policy versus shared Rust/WASM and SQLite transactions; no public endpoint, Space audience authorization, provider auth, recovery or agent registration.";
+const scope = reads
+  ? "Private Person-directory read adapter: actual native PostgreSQL lookup/profile/device results versus shared Rust/WASM and SQLite; default account Lookup/DeliverLink quota, own-device revoked-inclusive enrollment order, first500 IDs and literal prefix LIMIT20. No signed GetProfiles, agent enrollment, public routing, MLS Space sync or socket close acceptance."
+  : transfer
+  ? "Private encrypted history-transfer HTTP/R2 adapter on the fixed Directory: actual native HTTP responses versus shared Rust/WASM, active devices, shared media quota, atomic create-only chunks, exact-prefix deletion and capability reads. No public endpoint, remote R2, recovery enrollment or full history UI acceptance."
+  : media
+    ? "Private media HTTP/R2 adapter on the same fixed Directory. Native actual HTTP oracle versus shared Rust/WASM, current device rows, weighted quota and immutable encrypted objects. No public HTTP, real R2 write or deployment. Private one-body/8-waiter/10s-idle/default-quota/25MiB-read bounds; no transfer or backup."
+    : "Private single-cell Person/device directory, Directory-owned native binary sockets and MLS key-package publication/claims (128 records/768 KiB response bound). Native PostgreSQL policy versus shared Rust/WASM and SQLite transactions; no public endpoint, Space audience authorization, provider auth, recovery or agent registration.";
 const sourcePaths = [
   "Cargo.toml",
   "Cargo.lock",
@@ -40,6 +51,8 @@ const sourcePaths = [
   "crates/roda-relay-admission/src/directory.rs",
   "crates/roda-relay-admission/src/directory/key_packages.rs",
   "crates/roda-relay-admission/src/directory/socket.rs",
+  "crates/roda-relay-admission/src/directory/reads.rs",
+  "crates/roda-relay-admission/tests/directory_reads.rs",
   "crates/roda-relay-admission/tests/directory_socket.rs",
   "crates/roda-relay-admission/tests/directory_key_packages.rs",
   "crates/roda-relay-admission/tests/directory.rs",
@@ -48,11 +61,13 @@ const sourcePaths = [
   "crates/zoen-relay/src/session.rs",
   "crates/zoen-relay/src/key_package_claims.rs",
   "crates/zoen-relay/examples/cloudflare-directory-fixture.rs",
+  "crates/zoen-relay/examples/cloudflare-directory-fixture/reads.rs",
   "infra/cloudflare/relay-state/src/directory-state.mjs",
   "infra/cloudflare/relay-state/src/directory-index.mjs",
   "infra/cloudflare/relay-state/tests/directory-fixture.mjs",
   "infra/cloudflare/relay-state/tests/directory-state.test.mjs",
   "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
+  "infra/cloudflare/relay-state/tests/directory-read.test.mjs",
   "infra/cloudflare/relay-state/wrangler.directory.jsonc",
   "infra/cloudflare/relay-state/package.json",
   "infra/cloudflare/relay-state/DIRECTORY.md",
@@ -61,6 +76,10 @@ const sourcePaths = [
   "scripts/build-cloudflare-closed.mjs",
   "infra/cloudflare/relay-state/src/provider-auth.mjs",
   "infra/cloudflare/relay-state/src/media-blobs.mjs",
+  "infra/cloudflare/relay-state/src/blob-io.mjs",
+  "infra/cloudflare/relay-state/src/blob-quota.mjs",
+  "infra/cloudflare/relay-state/src/transfer-blobs.mjs",
+  "crates/roda-relay-admission/src/transfer.rs",
   "crates/roda-relay-admission/src/auth/enrollment.rs",
   "crates/roda-relay-admission/src/blobs.rs",
   "crates/roda-relay-admission/src/gcra.rs",
@@ -68,7 +87,7 @@ const sourcePaths = [
   "infra/cloudflare/package-lock.json",
 ];
 // Media evidence binds runtime imports and tests, not independently edited docs.
-if (media) {
+if (http) {
   sourcePaths.splice(sourcePaths.indexOf("infra/cloudflare/relay-state/DIRECTORY.md"), 1);
   sourcePaths.push(
     "crates/roda-relay-admission/tests/blobs.rs",
@@ -76,8 +95,13 @@ if (media) {
     "crates/zoen-relay/src/limits.rs",
     "crates/zoen-relay/tests/http_device_revocation.rs",
     "crates/zoen-relay/tests/http_device_revocation/media_fixture.rs",
+    "crates/zoen-relay/tests/http_device_revocation/transfer_fixture.rs",
     "infra/cloudflare/relay-state/tests/media-fixture.mjs",
+    "infra/cloudflare/relay-state/tests/blob-io.test.mjs",
     "infra/cloudflare/relay-state/tests/media-blobs.test.mjs",
+    "crates/roda-relay-admission/tests/transfer.rs",
+    "infra/cloudflare/relay-state/tests/transfer-fixture.mjs",
+    "infra/cloudflare/relay-state/tests/transfer-blobs.test.mjs",
   );
 }
 function run(command, commandArgs, { capture = false, env = environment } = {}) {
@@ -141,7 +165,7 @@ try {
         "crates/roda-proto/src",
         "crates/roda-mls/src",
         "crates/roda-types/src",
-        ...(media ? ["crates/zoen-relay/src", "crates/zoen-relay/migrations"] : []),
+        ...(http ? ["crates/zoen-relay/src", "crates/zoen-relay/migrations"] : []),
       ],
       { capture: true },
     )
@@ -165,9 +189,9 @@ try {
   let nativeHttp;
   const fixturePath = join(
     output,
-    media ? "media-native-fixtures.json" : "directory-native-fixtures.json",
+    http ? `${label}-native-fixtures.json` : "directory-native-fixtures.json",
   );
-  if (media) {
+  if (http) {
     const nativeLog = await run(
       "cargo",
       [
@@ -179,51 +203,70 @@ try {
         "--test",
         "http_device_revocation",
         "--",
-        "--include-ignored",
+        ...(transfer ? ["cloudflare_transfer_native_fixture"] : ["--include-ignored"]),
         "--test-threads=1",
       ],
       {
         capture: true,
-        env: { ...environment, ZOEN_TEST_PG: database, ZOEN_MEDIA_FIXTURE_OUTPUT: fixturePath },
+        env: {
+          ...environment,
+          ZOEN_TEST_PG: database,
+          [transfer ? "ZOEN_TRANSFER_FIXTURE_OUTPUT" : "ZOEN_MEDIA_FIXTURE_OUTPUT"]: fixturePath,
+        },
       },
     ).catch(async (failure) => {
       if (typeof failure.stdout === "string")
-        await writeFile(join(output, "media-native-http.log"), failure.stdout);
+        await writeFile(join(output, `${label}-native-http.log`), failure.stdout);
       throw failure;
     });
-    await writeFile(join(output, "media-native-http.log"), nativeLog);
+    await writeFile(join(output, `${label}-native-http.log`), nativeLog);
     const totals = /^test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored;/m.exec(nativeLog);
     assert.ok(totals, "Native HTTP runner must report actual passing tests");
     nativeHttp = { pass: Number(totals[1]), fail: Number(totals[2]), ignored: Number(totals[3]) };
-    assert.ok(nativeHttp.pass >= 6);
+    assert.ok(nativeHttp.pass >= (transfer ? 1 : 6));
     assert.equal(nativeHttp.fail, 0);
     assert.equal(nativeHttp.ignored, 0);
     fixture = JSON.parse(await readFile(fixturePath, "utf8"));
-    assert.equal(fixture.scope, "native-media-http");
-    assert.ok(fixture.steps.length >= 28, "Every actual native HTTP boundary must run");
-    for (const label of [
-      "max",
-      "max-plus-one",
-      "extractor-limit",
-      "extractor-limit-auth-first",
-      "percent-encoded-hash",
-      "malformed-percent",
-      "invalid-utf8",
-      "encoded-slash",
-      "long-bad-hash",
-      "long-bad-device",
-      "long-bad-signature",
-      "long-leading-zero-timestamp",
-    ])
+    assert.equal(fixture.scope, `native-${label}-http`);
+    assert.ok(
+      fixture.steps.length >= (transfer ? 30 : 28),
+      "Every actual native HTTP boundary must run",
+    );
+    for (const label of transfer
+      ? [
+          "max",
+          "max-plus-one-before-signature",
+          "extractor-limit",
+          "invalid-utf8",
+          "delete",
+          "revoked-fresh",
+          "revoked-delete",
+          "immutable-original",
+        ]
+      : [
+          "max",
+          "max-plus-one",
+          "extractor-limit",
+          "extractor-limit-auth-first",
+          "percent-encoded-hash",
+          "malformed-percent",
+          "invalid-utf8",
+          "encoded-slash",
+          "long-bad-hash",
+          "long-bad-device",
+          "long-bad-signature",
+          "long-leading-zero-timestamp",
+        ])
       assert.ok(
         fixture.steps.some((step) => step.label === label),
         `Missing native media case: ${label}`,
       );
-    assert.equal(
-      fixture.storage_failures.length,
-      3,
-      "Native put/get/read storage failures required",
-    );
+    if (media)
+      assert.equal(
+        fixture.storage_failures.length,
+        3,
+        "Native put/get/read storage failures required",
+      );
   } else {
     fixture = JSON.parse(
       await run(
@@ -251,16 +294,26 @@ try {
     await writeFile(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`);
   }
   assert.equal(fixture.schema, 1);
-  const workerdTapPath = join(output, media ? "media-workerd.tap" : "directory-workerd.tap");
-  const testFiles = media
-    ? ["infra/cloudflare/relay-state/tests/media-blobs.test.mjs"]
-    : [
-        "infra/cloudflare/relay-state/tests/directory-state.test.mjs",
-        "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
-      ];
-  const fixtureEnv = media
-    ? { ZOEN_MEDIA_FIXTURE: fixturePath }
-    : { ZOEN_DIRECTORY_FIXTURE: fixturePath };
+  const workerdTapPath = join(output, http ? `${label}-workerd.tap` : "directory-workerd.tap");
+  const testFiles = reads
+    ? ["infra/cloudflare/relay-state/tests/directory-read.test.mjs"]
+    : transfer
+    ? ["infra/cloudflare/relay-state/tests/transfer-blobs.test.mjs"]
+    : media
+      ? [
+          "infra/cloudflare/relay-state/tests/blob-io.test.mjs",
+          "infra/cloudflare/relay-state/tests/media-blobs.test.mjs",
+        ]
+      : [
+          "infra/cloudflare/relay-state/tests/directory-state.test.mjs",
+          "infra/cloudflare/relay-state/tests/directory-read.test.mjs",
+          "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
+        ];
+  const fixtureEnv = transfer
+    ? { ZOEN_TRANSFER_FIXTURE: fixturePath }
+    : media
+      ? { ZOEN_MEDIA_FIXTURE: fixturePath }
+      : { ZOEN_DIRECTORY_FIXTURE: fixturePath };
   const workerdTap = await run(
     process.execPath,
     ["--test", "--test-reporter=tap", "--test-concurrency=1", ...testFiles],
@@ -306,8 +359,11 @@ try {
     output,
     skipBuild,
     media,
+    transfer,
+    reads,
     nativeHttp,
     nativeSteps: fixture.steps.length,
+    ...(reads ? { nativeReadSteps: fixture.reads.steps.length } : {}),
     workerdCases: workerd.tests,
     workerd,
     source: {
@@ -321,7 +377,7 @@ try {
       [
         fixturePath,
         workerdTapPath,
-        ...(media ? [join(output, "media-native-http.log")] : []),
+        ...(http ? [join(output, `${label}-native-http.log`)] : []),
         join(copied, "admission.js"),
         join(copied, "admission_bg.wasm"),
       ].map(artifact),

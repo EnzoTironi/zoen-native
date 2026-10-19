@@ -18,7 +18,10 @@
     "test:provider": "node --test tests/provider-state.test.mjs",
     "verify:provider": "node ../../../scripts/verify-cloudflare-provider.mjs --host",
     "test:media": "node --test tests/media-blobs.test.mjs",
-    "verify:media": "node ../../../scripts/verify-cloudflare-directory.mjs --media"
+    "verify:media": "node ../../../scripts/verify-cloudflare-directory.mjs --media",
+    "test:transfer": "node --test tests/transfer-blobs.test.mjs",
+    "verify:transfer": "node ../../../scripts/verify-cloudflare-directory.mjs --transfer",
+    "verify:sync": "node ../../../scripts/verify-cloudflare-sync.mjs"
   },
   "devDependencies": {
     "miniflare": "5.20261012.1-beta"

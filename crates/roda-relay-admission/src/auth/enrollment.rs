@@ -38,12 +38,14 @@ impl std::error::Error for Failure {}
 #[serde(rename_all = "lowercase")]
 pub enum Client {
     Ios,
+    Android,
     Web,
 }
 impl Client {
     pub fn name(self) -> &'static str {
         match self {
             Self::Ios => "ios",
+            Self::Android => "android",
             Self::Web => "web",
         }
     }
@@ -560,7 +562,16 @@ impl PolicySettings {
     fn audience(&self, provider: Provider, client: Client) -> Option<&Audience> {
         self.audiences
             .iter()
-            .find(|entry| entry.provider == provider && entry.client == client)
+            .find(|entry| {
+                entry.provider == provider
+                    && entry.client == client
+                    && (client != Client::Android
+                        || entry
+                            .audience
+                            .presenter
+                            .as_deref()
+                            .is_some_and(valid_audience_value))
+            })
             .map(|entry| &entry.audience)
     }
 }

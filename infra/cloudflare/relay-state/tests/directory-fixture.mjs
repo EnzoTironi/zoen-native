@@ -137,6 +137,36 @@ export class DirectoryState extends ProductionDirectory {
   sessions() {
     return this.ctx.storage.sql.exec('SELECT bytes FROM directory_sessions ORDER BY id').toArray().map(row => JSON.parse(row.bytes));
   }
+  readCapacity(input) {
+    // Trusted-storage capacity faults only. Accounts below were registered by
+    // normal fixture requests; fabricated inventory is not device-enrollment proof.
+    const sql = this.ctx.storage.sql;
+    if (input.kind === 'profiles') {
+      if (!Number.isInteger(input.bytes) || input.bytes < 0 || input.bytes > 900 * 1024
+        || !Array.isArray(input.identities) || input.identities.length > 2) throw new Error('Invalid read capacity fixture');
+      this.ctx.storage.transactionSync(() => {
+        for (const identity of input.identities) {
+          const row = sql.exec('SELECT profile FROM directory_identities WHERE id=?', identity).toArray()[0];
+          if (!row) throw new Error('Real registered fixture profile required');
+          const profile = JSON.parse(row.profile);
+          if (profile.id !== identity || profile.kind !== 'Person') throw new Error('Valid registered Person required');
+          profile.glyph = input.bytes ? 'x'.repeat(input.bytes) : null;
+          sql.exec('UPDATE directory_identities SET profile=? WHERE id=?', JSON.stringify(profile), identity);
+        }
+      });
+    } else if (input.kind === 'devices') {
+      if (!Number.isInteger(input.count) || input.count < 0 || input.count > 7000) throw new Error('Invalid device read capacity fixture');
+      if (!sql.exec('SELECT id FROM directory_identities WHERE id=?', input.identity).toArray().length)
+        throw new Error('Real registered fixture identity required');
+      this.ctx.storage.transactionSync(() => {
+        for (let index = 0; index < input.count; index++) sql.exec(
+          'INSERT INTO directory_devices VALUES (?,?,?,0)',
+          'c'.repeat(56) + index.toString(16).padStart(8, '0'), input.identity, 'test-only-read-capacity');
+      });
+    } else throw new Error('Unsupported read capacity fixture');
+    return { identities: sql.exec('SELECT count(*) AS count FROM directory_identities').toArray()[0].count,
+      devices: sql.exec('SELECT count(*) AS count FROM directory_devices').toArray()[0].count };
+  }
   reject(input) {
     if (input.table === 'device') this.ctx.storage.sql.exec(`CREATE TRIGGER directory_test_failure BEFORE INSERT ON directory_devices
       BEGIN SELECT RAISE(ABORT, 'test-only device failure'); END`);
@@ -204,6 +234,7 @@ export default {
         case '/step': result = await stub.step(input); break;
         case '/inspect': result = await stub.inspect(); break;
         case '/sessions': result = await stub.sessions(); break;
+        case '/read-capacity': result = await stub.readCapacity(input); break;
         case '/start': result = await stub.start(input); break;
         case '/finish': result = await stub.finish(input); break;
         case '/clock': result = await stub.clock(input); break;

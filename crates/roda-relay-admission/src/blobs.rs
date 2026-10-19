@@ -109,16 +109,19 @@ impl BlobDigest {
         Ok(())
     }
     pub fn finish(self, expected_sha: &str) -> Result<String, Failure> {
-        let hash = self.0.finish();
-        let actual: String = hash
-            .as_ref()
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
+        let actual = self.finish_hash();
         if actual != expected_sha {
             return Err(Failure::new(400, "hash mismatch"));
         }
         Ok(actual)
+    }
+    /// Transfer signatures bind the computed hash rather than a hash in the URL.
+    pub fn finish_hash(self) -> String {
+        self.0.finish()
+            .as_ref()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
     }
 }
 
@@ -255,6 +258,10 @@ mod wasm {
         }
         pub fn finish(self, sha: &str) -> Result<String, String> {
             self.0.finish(sha).map_err(failure)
+        }
+        #[wasm_bindgen(js_name = finishHash)]
+        pub fn finish_hash(self) -> String {
+            self.0.finish_hash()
         }
     }
 }

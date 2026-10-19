@@ -25,15 +25,25 @@ use tokio_tungstenite::tungstenite::Message;
 /// predates a wire-type change silently drops new fields and breaks every signature.
 pub fn relay_bin() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
+    // A package-only build has a different feature graph from the workspace tests.
+    // cdylib dependencies emit un-hashed rlibs, so sharing the outer target would
+    // overwrite the metadata still needed by later workspace doctests.
+    let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("journey-relay");
     BUILT.call_once(|| {
         let ok = Command::new(env!("CARGO"))
-            .args(["build", "-q", "-p", "zoen-relay"])
+            .args(["build", "--locked", "-q", "-p", "zoen-relay"])
+            .arg("--manifest-path")
+            .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+            .arg("--target-dir")
+            .arg(&target)
             .status()
             .expect("cargo")
             .success();
         assert!(ok, "cargo build -p zoen-relay failed");
     });
-    PathBuf::from(env!("CARGO_BIN_EXE_zoen")).with_file_name("zoen-relay")
+    target
+        .join("debug")
+        .join(format!("zoen-relay{}", std::env::consts::EXE_SUFFIX))
 }
 
 struct PortReservation {

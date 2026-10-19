@@ -155,9 +155,30 @@ async fn issue_case(
     proof_token: &str,
     clocks: (i64, i64, i64),
 ) -> Value {
+    issue_case_subject(
+        pool,
+        label,
+        id,
+        challenge,
+        proof_token,
+        clocks,
+        "provider-subject",
+    )
+    .await
+}
+
+async fn issue_case_subject(
+    pool: &PgPool,
+    label: &str,
+    id: &str,
+    challenge: &Challenge,
+    proof_token: &str,
+    clocks: (i64, i64, i64),
+    subject: &str,
+) -> Value {
     let (verification_now, issue_now, expires_secs) = clocks;
     let initial = snapshot(pool).await;
-    let (token, key) = assertion(challenge, "provider-subject", expires_secs);
+    let (token, key) = assertion(challenge, subject, expires_secs);
     let verified = verified(&token, &key, challenge, verification_now);
     let expires = issue_now + enrollment::PROOF_LIFETIME_MS;
     let result = issue(pool, id, challenge, &verified, proof_token, expires, issue_now).await.map(|account| {
@@ -454,6 +475,54 @@ async fn produce(pool: PgPool) -> Value {
         "jwks":{"keys":[key()]},"scenarios":scenarios})
 }
 
+async fn android_scenarios(pool: &PgPool) -> Value {
+    let id = "a3".repeat(32);
+    sqlx::query("INSERT INTO provider_challenges(id,provider,client,audience,presenter,origin,nonce,state,created_ms,expires_ms) VALUES($1,'google','android','audience','android-client',NULL,$2,$3,1000000,1300000)")
+        .bind(&id).bind("aa".repeat(32)).bind("bb".repeat(32)).execute(pool).await.unwrap();
+    let android = challenge(pool, &id).await.unwrap().unwrap();
+    assert_eq!(android.client, Client::Android);
+    assert_eq!(android.origin, None);
+    let proof = "a4".repeat(32);
+    let issued = issue_case_subject(
+        pool,
+        "android-issue-first",
+        &id,
+        &android,
+        &proof,
+        (1_000_000, 1_000_001, 1600),
+        "android-provider-subject",
+    )
+    .await;
+    assert_eq!(issued["steps"][0]["expected"]["status"], 200);
+    let consumed = issue_case_subject(
+        pool,
+        "android-issue-consumed",
+        &id,
+        &android,
+        &"a5".repeat(32),
+        (1_000_002, 1_000_003, 1600),
+        "android-provider-subject",
+    )
+    .await;
+    assert_eq!(
+        consumed["steps"][0]["expected"],
+        json!({"status":401,"body":{"error":"challenge_expired"}})
+    );
+    let bound = bind_case(
+        pool,
+        "android-bind-first",
+        &binding(100, 101, &proof, "android_person"),
+        None,
+        1_000_004,
+    )
+    .await;
+    assert_eq!(bound["steps"][0]["expected"]["status"], 200);
+    json!({
+        "settings":{"audiences":[{"provider":"google","client":"android","audience":{"id":"audience","presenter":"android-client"}}],"origins":[ORIGIN]},
+        "scenarios":[issued,consumed,bound]
+    })
+}
+
 #[tokio::test]
 #[ignore = "requires isolated ZOEN_TEST_PG and a fresh ZOEN_PROVIDER_FIXTURE output path"]
 async fn write_native_provider_enrollment_fixture() {
@@ -491,7 +560,12 @@ async fn write_native_provider_enrollment_fixture() {
             .run(&fixture_pool)
             .await
             .unwrap();
-        produce(fixture_pool).await
+        let mut fixture = produce(fixture_pool.clone()).await;
+        // Keep the original 20-case oracle intact. The additive Android cases
+        // exercise the migrated CHECK, persisted client parser, real RSA token,
+        // atomic proof consumption and ordinary signed device binding.
+        fixture["android"] = android_scenarios(&fixture_pool).await;
+        fixture
     })
     .await;
     pool.close().await;

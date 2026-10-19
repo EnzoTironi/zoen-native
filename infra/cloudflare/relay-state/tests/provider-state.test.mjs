@@ -34,6 +34,7 @@ function runtime() {
         "src/directory-state.mjs",
         "src/provider-auth.mjs",
         "src/media-blobs.mjs",
+        "src/blob-io.mjs", "src/blob-quota.mjs", "src/transfer-blobs.mjs",
         "generated/wasm/admission.js",
       ]
         .map((path) => ({ type: "ESModule", path: join(root, path) }))
@@ -115,6 +116,58 @@ for (const scenario of native.scenarios) {
     }
   });
 }
+
+assert.equal(native.android.scenarios.length, 3, "Every actual Android native SQL scenario is required");
+for (const scenario of native.android.scenarios) {
+  test(`private Android provider host matches actual native SQL: ${scenario.label}`, async () => {
+    const mf = runtime();
+    try {
+      await setup(mf, scenario, { settings: native.android.settings });
+      for (const step of scenario.steps) await apply(mf, step);
+    } finally {
+      await mf.dispose();
+    }
+  });
+}
+
+test("Android challenges require their own presenter configuration and never inherit Web or iOS", async () => {
+  const mf = runtime();
+  try {
+    const body = { provider: "google", client: "android" };
+    await configure(mf);
+    assert.deepEqual((await request(mf, "challenge", body, null)).body, { error: "provider_not_configured" });
+    await configure(mf, { settings: native.android.settings, entropy: ["11".repeat(32), "aa".repeat(32), "bb".repeat(32)] });
+    const response = await request(mf, "challenge", body, null);
+    assert.equal(response.status, 200);
+    const stored = (await fixture(mf, "inspect")).challenges[0];
+    assert.equal(stored.client, "android");
+    assert.equal(stored.presenter, "android-client");
+    assert.equal(stored.origin, null);
+    assert.deepEqual((await request(mf, "challenge", { ...body, provider: "apple" }, null)).body, { error: "provider_not_configured" });
+    const settings = structuredClone(native.android.settings);
+    settings.audiences[0].audience.presenter = null;
+    await configure(mf, { settings });
+    assert.equal((await request(mf, "challenge", body, null)).status, 503);
+  } finally {
+    await mf.dispose();
+  }
+});
+
+test("an iOS presenter cannot consume an Android challenge even with the same server audience", async () => {
+  const mf = runtime();
+  try {
+    const scenario = native.android.scenarios[0];
+    const step = scenario.steps[0];
+    await setup(mf, scenario, { settings: native.android.settings });
+    await fixture(mf, "clock", step);
+    const ios = issue.steps[0].body.id_token;
+    const response = await request(mf, "verify", { ...step.body, id_token: ios }, null);
+    assert.deepEqual({ status: response.status, body: response.body }, { status: 401, body: { error: "invalid_provider_assertion" } });
+    assert.deepEqual(await fixture(mf, "inspect"), scenario.initial_state);
+  } finally {
+    await mf.dispose();
+  }
+});
 
 test("real Request Origin controls challenge policy; body origin or subject cannot become trusted facts", async () => {
   const mf = runtime();

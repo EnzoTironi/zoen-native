@@ -68,7 +68,7 @@ export function NotificationSettings() {
                   ? t('notifications.unavailableInThisBrowser')
                   : t('notifications.checking')}
         </Text>
-        {Platform.OS === 'ios' ? (
+        {Platform.OS === 'ios' || Platform.OS === 'android' ? (
           <NativeButton
             label={
               notifications.busy

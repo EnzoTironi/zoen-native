@@ -17,17 +17,13 @@ use axum::{
 };
 use futures_util::StreamExt;
 use object_store::{path::Path as ObjPath, ObjectStoreExt, PutMode, PutOptions, PutPayload};
-use roda_log::verify_sig;
-use roda_proto::transfer_message;
+use roda_relay_admission::transfer as policy;
 use sha2::{Digest, Sha256};
 
 use crate::Shared;
 
 /// Largest chunk.
-pub const MAX_CHUNK: usize = 4 * 1024 * 1024;
-/// Chunks in one transfer at most.
-const MAX_CHUNKS: u32 = 4096;
-const MAX_SKEW_MS: i64 = 5 * 60 * 1000;
+pub use policy::MAX_CHUNK;
 
 /// Ciphertext downloads use an unguessable capability; mutations still require
 /// a linked device signature. Browser clients never send ambient credentials.
@@ -45,20 +41,6 @@ pub fn cors() -> tower_http::cors::CorsLayer {
         .max_age(std::time::Duration::from_secs(86_400))
 }
 
-fn valid_id(s: &str) -> bool {
-    s.len() == 64
-        && s.bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-
-fn prefix(id: &str) -> ObjPath {
-    ObjPath::from(format!("transfers/{id}"))
-}
-
-fn key(id: &str, n: u32) -> ObjPath {
-    ObjPath::from(format!("transfers/{id}/{n}"))
-}
-
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -70,35 +52,29 @@ fn err(code: StatusCode, msg: &'static str) -> Response {
     (code, msg).into_response()
 }
 
-/// A linked device's signature over `msg(ts)`, or the response refusing it.
-#[allow(clippy::result_large_err)] // the error is the HTTP answer itself
-async fn signed_by_device(
-    st: &Shared,
-    headers: &HeaderMap,
-    msg: impl Fn(i64) -> Vec<u8>,
-) -> Result<String, Response> {
+fn policy_error(error: policy::Failure) -> Response {
+    err(
+        StatusCode::from_u16(error.status).expect("transfer policy HTTP status"),
+        error.body,
+    )
+}
+
+async fn active_device(st: &Shared, device: &str) -> Result<(), (StatusCode, &'static str)> {
+    match crate::db::device_active(&st.pool, device).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err((StatusCode::FORBIDDEN, "unlinked device")),
+        Err(_) => Err((StatusCode::SERVICE_UNAVAILABLE, "database unavailable")),
+    }
+}
+
+fn signed_headers(headers: &HeaderMap) -> (&str, &str, &str) {
     let h = |name: &str| {
         headers
             .get(name)
             .and_then(|v| v.to_str().ok())
             .unwrap_or("")
-            .to_string()
     };
-    let (device, ts, sig) = (h("x-zoen-device"), h("x-zoen-ts"), h("x-zoen-sig"));
-    let Ok(ts_ms) = ts.parse::<i64>() else {
-        return Err(err(StatusCode::UNAUTHORIZED, "missing signature"));
-    };
-    if (now_ms() - ts_ms).abs() > MAX_SKEW_MS {
-        return Err(err(StatusCode::UNAUTHORIZED, "stale signature"));
-    }
-    if !verify_sig(&device, &msg(ts_ms), &sig) {
-        return Err(err(StatusCode::UNAUTHORIZED, "bad signature"));
-    }
-    match crate::db::device_active(&st.pool, &device).await {
-        Ok(true) => Ok(device),
-        Ok(false) => Err(err(StatusCode::FORBIDDEN, "unlinked device")),
-        Err(_) => Err(err(StatusCode::SERVICE_UNAVAILABLE, "database unavailable")),
-    }
+    (h("x-zoen-device"), h("x-zoen-ts"), h("x-zoen-sig"))
 }
 
 pub async fn put(
@@ -107,23 +83,18 @@ pub async fn put(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if !valid_id(&id) || n >= MAX_CHUNKS {
-        return err(StatusCode::BAD_REQUEST, "bad transfer");
-    }
-    if body.is_empty() || body.len() > MAX_CHUNK {
-        return err(StatusCode::PAYLOAD_TOO_LARGE, "empty or too large");
-    }
     let sha = hex::encode(Sha256::digest(&body));
-    let device = match signed_by_device(&st, &headers, |ts| {
-        transfer_message("put", &id, &n.to_string(), &sha, ts)
-    })
-    .await
-    {
-        Ok(d) => d,
-        Err(r) => return r,
-    };
-    let kib = body.len().div_ceil(1024).min(u32::MAX as usize) as u32;
-    if let Err(wait) = st.limits.blob_kib_device.check_n(&device, kib) {
+    let (device, ts, sig) = signed_headers(&headers);
+    let admitted =
+        match policy::put_policy(&id, n, body.len() as u64, &sha, device, ts, sig, now_ms()) {
+            Ok(admitted) => admitted,
+            Err(error) => return policy_error(error),
+        };
+    if let Err((status, body)) = active_device(&st, device).await {
+        return err(status, body);
+    }
+    let kib = admitted.cost_kib;
+    if let Err(wait) = st.limits.blob_kib_device.check_n(device, kib) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             [("retry-after", wait.as_secs().max(1).to_string())],
@@ -137,7 +108,11 @@ pub async fn put(
     };
     match st
         .blobs
-        .put_opts(&key(&id, n), PutPayload::from_bytes(body), opts)
+        .put_opts(
+            &ObjPath::from(admitted.key),
+            PutPayload::from_bytes(body),
+            opts,
+        )
         .await
     {
         Ok(_) => StatusCode::CREATED.into_response(),
@@ -150,10 +125,11 @@ pub async fn put(
 }
 
 pub async fn get(State(st): State<Shared>, Path((id, n)): Path<(String, u32)>) -> Response {
-    if !valid_id(&id) || n >= MAX_CHUNKS {
-        return err(StatusCode::BAD_REQUEST, "bad transfer");
-    }
-    match st.blobs.get(&key(&id, n)).await {
+    let key = match policy::get_key(&id, n) {
+        Ok(key) => ObjPath::from(key),
+        Err(error) => return policy_error(error),
+    };
+    match st.blobs.get(&key).await {
         Ok(r) => match r.bytes().await {
             Ok(b) => (
                 [
@@ -178,17 +154,15 @@ pub async fn delete(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Response {
-    if !valid_id(&id) {
-        return err(StatusCode::BAD_REQUEST, "bad transfer");
+    let (device, ts, sig) = signed_headers(&headers);
+    let prefix = match policy::delete_policy(&id, device, ts, sig, now_ms()) {
+        Ok(prefix) => ObjPath::from(prefix),
+        Err(error) => return policy_error(error),
+    };
+    if let Err((status, body)) = active_device(&st, device).await {
+        return err(status, body);
     }
-    if let Err(r) = signed_by_device(&st, &headers, |ts| {
-        transfer_message("delete", &id, "", "", ts)
-    })
-    .await
-    {
-        return r;
-    }
-    let mut listed = st.blobs.list(Some(&prefix(&id)));
+    let mut listed = st.blobs.list(Some(&prefix));
     let mut gone = 0;
     while let Some(meta) = listed.next().await {
         let Ok(meta) = meta else {

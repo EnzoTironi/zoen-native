@@ -239,6 +239,8 @@ impl TestRelay {
 
 #[path = "http_device_revocation/media_fixture.rs"]
 mod media_fixture;
+#[path = "http_device_revocation/transfer_fixture.rs"]
+mod transfer_fixture;
 
 #[tokio::test]
 async fn provider_auth_failures_keep_wire_contract_and_retry_policy() {
