@@ -474,6 +474,8 @@ try {
   await acceptDrawingJourney({
     page,
     ui,
+    browserAuthor: ana.name,
+    nativeAuthor: bruno.name,
     origin,
     space,
     tag,

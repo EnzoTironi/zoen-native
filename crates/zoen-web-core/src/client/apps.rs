@@ -3,6 +3,7 @@
 //! schedule roles, resources and privacy projections on every platform.
 use super::*;
 use grants::{evaluate_permission, Decision, Policy};
+use localization::t;
 use miniapps as apps;
 use serde_json::{json, Value};
 use types::{AppDoc, Capability, Grant, GrantScope, ItemContent, ItemKind, TrustLevel};
@@ -117,7 +118,7 @@ impl<S: Signer> Client<S> {
                 self.queue_domain_batch(&space_id,vec![
                     EventBody::ItemCreated{item:item.clone(),kind:ItemKind::App,content:ItemContent::App(AppDoc{document:None,app:app_id,resource_uri:spec.resource_uri.into(),title,state_json:state.to_string()}),origin:"Instalado por você".into()},
                     EventBody::GrantIssued{grant:Grant{id:browser_id("gr", now),grantor:self.account.identity.clone(),grantee:Some(format!("app:{item}")),scope:GrantScope::Item(item.clone()),capability:Capability::Trust(TrustLevel::Act),expires_at_ms:None}},
-                    EventBody::MessagePosted{message:types::new_secret_id("msg"),text:"App adicionado a este Espaço.".into(),attaches:Some(item.clone()),reply:None,forwarded:false},
+                    EventBody::MessagePosted{message:types::new_secret_id("msg"),text:t("App adicionado a este Espaço.", "App added to this Space."),attaches:Some(item.clone()),reply:None,forwarded:false},
                 ],now)?;
                 mutated=true;
                 self.item_value(&self.document_item(&item)?,None,&mut Vec::new())?

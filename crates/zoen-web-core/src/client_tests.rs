@@ -1635,6 +1635,85 @@ fn browser_plans_preserve_large_cents_and_refuse_stale_writes_and_undo() {
 }
 
 #[test]
+fn browser_app_install_uses_request_locale_and_preserves_signed_history() {
+    let (mut client, author, mut log) = document_fixture();
+    let historical = clear(
+        &mut log,
+        &author,
+        EventBody::MessagePosted {
+            message: "msg_historical_app_copy".into(),
+            text: "Mini-app added to this Space.".into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+        },
+        4,
+    );
+    let original = log.events().last().unwrap().clone();
+    let original_bytes = serde_json::to_vec(&original).unwrap();
+    client.receive(&historical, 5).unwrap();
+
+    for (locale, expected, now) in [
+        ("en-US", "App added to this Space.", 10),
+        ("pt-BR", "App adicionado a este Espaço.", 20),
+    ] {
+        let installed = client
+            .app_request(
+                &serde_json::json!({
+                    "op": "install_app", "space_id": log.space(), "app_id": "list",
+                    "args_json": serde_json::json!({"title": locale}).to_string(),
+                })
+                .to_string(),
+                now,
+                locale,
+            )
+            .unwrap();
+        let item = installed.result["id"].as_str().unwrap().to_owned();
+        let update = installed.update.unwrap();
+        let published = update
+            .frames
+            .iter()
+            .filter_map(|frame| match ClientFrame::decode(frame).unwrap() {
+                ClientFrame::Publish { env } => env.plain_event(),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(published.len(), 3);
+        assert!(matches!(published[0].body, EventBody::ItemCreated { .. }));
+        assert!(matches!(published[1].body, EventBody::GrantIssued { .. }));
+        assert!(matches!(&published[2].body,
+            EventBody::MessagePosted { text, attaches: Some(attached), .. }
+                if text == expected && attached == &item));
+        confirm_documents(&mut client, &mut log, update, now + 1);
+        let snapshot = client.update(Vec::new()).unwrap().snapshot;
+        client = Client::new(client.account.clone(), client.signer.clone(), &snapshot).unwrap();
+        client.bootstrap().unwrap();
+        client
+            .receive(&ServerFrame::SyncDone.encode(), now + 2)
+            .unwrap();
+        let preserved = client.logs[log.space()]
+            .events()
+            .iter()
+            .find(|event| event.hash == original.hash)
+            .unwrap();
+        assert_eq!(serde_json::to_vec(preserved).unwrap(), original_bytes);
+        let conversation = client.conversations().remove(0);
+        assert!(conversation
+            .messages
+            .iter()
+            .any(|message| message.text == expected
+                && message
+                    .card
+                    .as_ref()
+                    .is_some_and(|card| card["item_id"] == item)));
+        assert!(conversation
+            .messages
+            .iter()
+            .any(|message| message.text == "Mini-app added to this Space."));
+    }
+}
+
+#[test]
 fn browser_miniapps_use_shared_rules_item_scoped_grants_and_confirmations() {
     let (mut client, _, mut log) = document_fixture();
     let made=client.app_request(&serde_json::json!({"op":"install_app","space_id":log.space(),"app_id":"pet","args_json":"{\"name\":\"Jumento\"}"}).to_string(),10,"pt-BR").unwrap();

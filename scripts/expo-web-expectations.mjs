@@ -28,6 +28,11 @@ const expectations = Object.freeze({
     downloadFile: "Download file",
     closePreview: "Close preview",
     drawingSaved: "Saved in this chat",
+    installDrawing: "Add Excalidraw",
+    appTitle: "Title",
+    addApp: "Add app",
+    appAdded: "App added to this Space.",
+    messageActions: (name) => `Actions for ${name}’s message`,
     searchThisChat: "Search this chat",
   }),
   "pt-BR": Object.freeze({
@@ -56,6 +61,11 @@ const expectations = Object.freeze({
     downloadFile: "Baixar arquivo",
     closePreview: "Fechar visualização",
     drawingSaved: "Salvo nesta conversa",
+    installDrawing: "Adicionar Excalidraw",
+    appTitle: "Título",
+    addApp: "Adicionar app",
+    appAdded: "App adicionado a este Espaço.",
+    messageActions: (name) => `Ações da mensagem de ${name}`,
     searchThisChat: "Buscar na conversa",
   }),
 });
