@@ -95,6 +95,19 @@ fault path, public authentication or full comparative parity.
 
 ### Current CI and smaller release artifact
 
+The subsequent [run 39207994304](https://github.com/EnzoTironi/zoen-native/actions/runs/39207994304)
+also passes 22/22 in each locale on merge `85c7f2d58aef38fc5853fb7b8efab3641aee0d91`
+for head `c727b1f9`, with zero browser errors. Its Directory extension passes71
+PostgreSQL scenarios and 18 workerd cases. Web artifact `12167030781` contains
+separate 90-file Linux manifest receipts with a 23,250,613-byte WASM; those bytes
+are not equated with the deployed Mac artifact. The workflow has five passing
+Expo jobs and an admission formatting failure before its tests; the correction is
+in `8d64d762`. The prior fully green run below retains its original attribution.
+Combined source/archive verification receipt:
+`/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json`
+(SHA256 `47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0`).
+
+
 [CI run 39204333306](https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306)
 passed all six Expo jobs on merge `59998b677ce581bd49a045538ee62f3d17b55347`
 for head `52da9729`. Actual browser receipts passed 22/22 per locale with no page

@@ -723,6 +723,20 @@
           }
         },
         "scope": "19-checkpoint browser and closed-group CI passed; predates local22 drawing/Directory changes. Android Release failed on R8 heap exhaustion; no whole-workflow pass."
+      },
+      "latestCi": {
+        "run": 39207994304,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39207994304",
+        "head": "c727b1f94ccfbf31f7cd42d748fc8370024bfd00",
+        "merge": "85c7f2d58aef38fc5853fb7b8efab3641aee0d91",
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json",
+        "receiptSha256": "47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0",
+        "limits": "Five Expo jobs pass; admission stops at formatting before its tests. Formatting corrected in8d64d762; no full-green inference. Linux artifacts are separate from deployed Mac release09 bytes.",
+        "checkpointsPerLocale": 22,
+        "locales": ["en-US", "pt-BR"],
+        "browserErrors": 0,
+        "artifact": 12167030781,
+        "wasmBytes": 23250613
       }
     },
     "publicWebHostingV96": {
@@ -1213,6 +1227,20 @@
           ]
         },
         "scope": "Allsix Expo jobs passed. Actual22 browser checkpoints per locale, original Directory33/9 and Closed17+4+5+4. CI uses namedWASM and precedes release-only name stripping and key-package extension. Separate Android artifact inspection accepts the minified Release build and14 JVM tests, without full runtime parity."
+      },
+      "latestCi": {
+        "run": 39207994304,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39207994304",
+        "head": "c727b1f94ccfbf31f7cd42d748fc8370024bfd00",
+        "merge": "85c7f2d58aef38fc5853fb7b8efab3641aee0d91",
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json",
+        "receiptSha256": "47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0",
+        "limits": "Five Expo jobs pass; admission stops at formatting before its tests. Formatting corrected in8d64d762; no full-green inference. Linux artifacts are separate from deployed Mac release09 bytes.",
+        "checkpointsPerLocale": 22,
+        "locales": ["en-US", "pt-BR"],
+        "browserErrors": 0,
+        "artifact": 12167030781,
+        "wasmBytes": 23250613
       }
     },
     "cloudflareDirectoryV97": {
@@ -1329,7 +1357,20 @@
         "Revocation, claim/publication races and late SQL rollback",
         "4096 receipt capacity and8MiB aggregate quota"
       ],
-      "ci": "New extension requires next exact-source CI; original33/9 remains attributed to52da.",
+      "ci": {
+        "run": 39207994304,
+        "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39207994304",
+        "head": "c727b1f94ccfbf31f7cd42d748fc8370024bfd00",
+        "merge": "85c7f2d58aef38fc5853fb7b8efab3641aee0d91",
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json",
+        "receiptSha256": "47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0",
+        "limits": "Five Expo jobs pass; admission stops at formatting before its tests. Formatting corrected in8d64d762; no full-green inference.",
+        "nativePostgresScenarios": 71,
+        "workerdCases": 18,
+        "skipped": 0,
+        "artifact": 12166444089,
+        "sourceFilesVerified": 19
+      },
       "limits": "Private bounded Directory extension only. No stock-low/refill notification, final outbound fence, complete Space MLS/public WebSockets, provider recovery or remote Directory journey."
     },
     "legacyAndroidSourceV98": {
@@ -1356,7 +1397,53 @@
       "browserReceipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/legacy-native-shim-acceptance.json",
       "browserReceiptSha256": "df648978b837590e88cee1e0481d973beeba6cc916ecc096aafc10f48636b353",
       "pageDiagnosticCommit": "fd85a05e",
-      "limits": "MCP host-source fix has real SDK Chromium proof; actual legacy WebView rerun pending. Page has stronger visible-text/save readiness assertions and failure-only metadata capture, without a speculative production fix. Both require fresh native CI."
+      "limits": "Original52da failures retained above. Fresh c727 API35 CI passes recovered Page final save; the two MCP native WebView cases still fail despite the separate Chromium SDK proof. No Expo parity is inferred from legacy tests.",
+      "latestCi": {
+        "run": 39207994306,
+        "head": "c727b1f94ccfbf31f7cd42d748fc8370024bfd00",
+        "api35": {
+          "discovered": 106,
+          "passed": 104,
+          "failed": 2,
+          "skipped": 0,
+          "failures": ["MCP list/native confirmation", "MCP offline Hike"],
+          "recoveredPageFinalSave": "PASS"
+        },
+        "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json",
+        "receiptSha256": "47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0"
+      }
+    },
+    "cloudflareProviderAssertionV99": {
+      "status": "PASS_PRIVATE_ASSERTION_EQUIVALENCE_ONLY",
+      "sourceCommit": "b7813e534233f5c65ab10aa41e93e05c60e21cc0",
+      "nativeCases": 18,
+      "nodeWasmCases": 18,
+      "workerdWasmCases": 18,
+      "committedReceipt": "/private/tmp/zoen-cloudflare-auth-v99/committed-acceptance.json",
+      "committedReceiptSha256": "7700acc635dfd9238af98f0ea31fcfab1aac93f45fa2e6d7e08e351cb40252b9",
+      "limits": "Shared RS256 assertion rules and fixed native cache delegation only. Enrollment/HTTP host work is separate; no public provider flow/deployment. Original working-tree build also contained then-uncommitted socket sources, retained in original receipt."
+    },
+    "cloudflareDirectorySocketV99": {
+      "status": "WIP_NOT_DEPLOYED_LOCAL_GATES_BLOCKED",
+      "sourceCommit": "8d64d762",
+      "nativePostgresScenarios": 71,
+      "workerdCases": 34,
+      "workerdPassed": 32,
+      "workerdFailed": 2,
+      "workerdSkipped": 0,
+      "blockedReceipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/directory-socket-blocked-acceptance/acceptance.json",
+      "blockedReceiptSha256": "829854f01a3d0a2412f2d4e50019b01774b623f5392024e0e958456b1cd0e80a",
+      "failedGates": "Untouched pre-Hello timeout and256-untouched-socket timeout do not reach client CLOSED within5s on pinned local workerd. Auth-idle, revocation fences and normal client-close cleanup pass.",
+      "separateRemoteRuntimeProbe": {
+        "cases": 4,
+        "passed": 4,
+        "receipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/socket-remote-runtime-02/acceptance.json",
+        "receiptSha256": "8fdc13155568c4c256d8cc80451fbb0c6db6b134b57d099486d24b64b63be47d",
+        "temporaryResourcesRemoved": true,
+        "existingAccountInventoryRestored": true,
+        "limits": "Minimal synthetic lifecycle on actual authenticated Cloudflare edge; no Directory/auth/sync journey."
+      },
+      "limits": "Private socket source only. Local failing gates retained; actual minimal remote result does not certify the application. No forced remote hibernation or public sync."
     }
   },
   "knownParityGaps": [
@@ -1368,7 +1455,7 @@
     "Web canonical drawing operations and actual canvas/reload/peer bytes are accepted locally. Image import, broader collaborative/fault paths, rich file captions/replies/threads/retry metadata and cold-start offline recovery still need acceptance.",
     "Web onboarding axe found no violations but contrast review remains incomplete; whole-app keyboard/screen-reader, Safari/WebKit, camera/microphone and performance are unaccepted.",
     "Public hosting proves HTTP routing/isolation/assets only; unavailable production relay blocks public encrypted sync/provider acceptance.",
-    "Android acceptance is bounded to API35 arm64 Debug and synthetic linking/history/Page/erasure. Release runtime/performance, API28/physical devices and remaining media/voice/profile/assistant features remain unaccepted.",
+    "Android acceptance is bounded to API35 arm64 Debug synthetic linking/history/Page/erasure and unchanged minified Release onboarding/key-generation only. Release linked-account runtime/performance, API28/physical devices and remaining media/voice/profile/assistant features remain unaccepted.",
     "Native extensions, Push delivery, agent/community/permissions workflows and remaining media/document/history failure boundaries need their own current-artifact journeys."
   ]
 }

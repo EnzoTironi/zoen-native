@@ -114,3 +114,33 @@ validated the original 33 PostgreSQL scenarios and nine workerd cases on merge
 `12164869200` predates this key-package extension. The later 47 Rust tests, three
 native receipt regressions and 71/18 differential cases above are separate local
 evidence. Machine-local receipt paths do not replace that portable CI attribution.
+
+The later [CI run 39207994304](https://github.com/EnzoTironi/zoen-native/actions/runs/39207994304)
+passes all 71 PostgreSQL scenarios and 18 workerd cases for head `c727b1f9`, merge
+`85c7f2d58aef38fc5853fb7b8efab3641aee0d91`. Artifact `12166444089` retains the
+fixture and WASM;19 source hashes match that head and all four recorded artifact
+hashes were verified. The overall workflow fails an independent admission-format
+check, corrected by `8d64d762`; its tests were not executed in that job. Receipt:
+`/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json`
+(SHA256 `47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0`).
+
+## Private socket work in progress
+
+Commit `8d64d762` adds a private native-codec Hello/Auth transport with the
+Directory's current device/certificate checked immediately before every outbound
+frame. Revocation, self-unlink, authenticated expiry, normal client close and SQL
+cleanup pass. Its 71 native scenarios and 32 of 34 local workerd cases pass, with
+zero skips. Two untouched pre-Hello timeout cases fail to complete the client close
+within five seconds on the pinned local runtime. This source is not deployed or
+accepted as a full transport. The blocked receipt remains immutable at
+`/private/tmp/zoen-cloudflare-admission-v96/validation/directory-socket-blocked-acceptance/acceptance.json`.
+
+A separate minimal probe with no Zoen authentication, SQL or Rust code passes all
+four lifecycle cases directly against authenticated Cloudflare edge preview,
+including untouched sockets and a real alarm. Clients reached CLOSED within the
+unchanged five-second limit. The temporary Worker and SQLite namespace were removed
+and the exact account resource inventory restored. Receipt:
+`/private/tmp/zoen-cloudflare-admission-v96/validation/socket-remote-runtime-02/acceptance.json`
+(SHA256 `8fdc13155568c4c256d8cc80451fbb0c6db6b134b57d099486d24b64b63be47d`).
+This isolates the bounded local-runtime symptom; it is not a remote Directory,
+provider authentication or encrypted synchronization acceptance.
