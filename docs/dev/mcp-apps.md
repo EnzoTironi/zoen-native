@@ -80,11 +80,56 @@ a matching manifest, and the single builder checks physical source boundaries
 including symlinks before admitting the selected source graph.
 
 Source checkpoint `1ea24776` passes the actual packaged HTML/official bridge
-tests, scoped Rust checks and exact rebuilds of eight resource pairs. Its final
-receipt is indexed by `acceptance.json` → `evidence.bundledMcpViewsV91`. This
-integration still needs signed native acceptance of layout, controls, MapTap
-gesture arbitration, accessibility and reduced motion. The earlier native
-Excalidraw proofs below do not accept these six new guest renderers.
+tests, scoped Rust checks and exact rebuilds of eight resource pairs. Its source
+receipt remains indexed by `acceptance.json` → `evidence.bundledMcpViewsV91`.
+
+### Bounded built-in native checks (v91/v92)
+
+Signed v91 native checks cover Pet care, sleep/wake, a tab-paused Dash run and its
+saved score; Recipe servings, checklist and a shared cooking step; Countdown date
+and ticking; and one MapTap guess/result. Reopening retained scores, servings,
+checklist and date; persistence of the cooking step was not separately checked.
+These v91 checks cover four scoped views. The same walkthrough retains a real
+failure: dragging the globe horizontally navigated back to Home.
+
+Signed v92 source `11ce6ac3` fixes that fullscreen gesture conflict. Rightward,
+opposite horizontal and vertical drags now rotate the globe without leaving the
+editor. Details and native Back work, retaining the prior 48-point result and
+1/5 state without another guess. Management body/edge back-drag did not complete;
+only the native Back buttons are accepted. One extracted four-action globe-drag
+fragment replay passed once in 2.4 seconds; the original fifteen-step walkthrough
+remains diagnostic, not a full replay or two-pass acceptance.
+
+On v92, ordinary catalog creation retained form text while changing the compact
+conversation picker. Poll voting changed 1/0 to 0/1; one close chose B - Fruta,
+and the same item reopened closed at version 4 without a close button. The exact
+Plan line count was not inspected natively; once-only Plan effects retain their
+separate Rust/FFI attribution. List add/check reopened at 1/1 with its author.
+One explicit native chat confirmation produced message
+`01M58REC4HMS3Z7HHHNGH07EE3`, visibly Enviada. The WhatsApp link confirmation was
+canceled; no external opening or delivery is claimed.
+
+The v92 app check passes 777 tests plus TypeScript, Oxlint and Oxfmt; all three
+[exact-source Expo CI jobs](https://github.com/EnzoTironi/zoen-native/actions/runs/39179002573)
+pass. Its 941-input signed build reuses the exact v91 native/core and guest bytes
+(533 selected inputs, closure SHA-256 `8b4e9a97a0299a6e032145e1b36b70f867e5d8e765679decc70be5b0e0758699`),
+without a new Rust build/test claim. Evidence is under
+`/private/tmp/zoen-builtins-native-iphone-v91/native-acceptance.json` and
+`/private/tmp/zoen-builtins-native-iphone-v92/root-native-map-acceptance.json`,
+indexed by `evidence.nativeBundledMcpViewsV92`.
+
+Poll/List proof is in
+`/private/tmp/zoen-builtins-native-iphone-v92/native-poll-list-acceptance.json`.
+Its retired 99-step recording retains eleven cross-tree warnings and two
+corrected unmet waits; same-item reopening is not a cold-process proof. Both v92
+public installed bundles and strict signatures pass. The human preserving update
+and native restart retain its four original Home cards, recipe 6/8 and larger
+text, with no data changes, modal or keyboard. The Home-only receipt is
+`/private/tmp/zoen-builtins-native-iphone-v92/human-home-smoke.json`.
+These bounded observations across v91/v92 do not accept every feature of all six
+views. Accessibility, reduced motion, physical-device and broader comparative
+checks remain open; the earlier
+Excalidraw proofs and whole-app v85 baseline are unchanged.
 
 ## Drawings owned by a Zoen chat
 

@@ -2257,7 +2257,7 @@
       ]
     },
     "bundledMcpViewsV91": {
-      "status": "SOURCE_CHECKS_PASS_NATIVE_ACCEPTANCE_PENDING",
+      "status": "SOURCE_CHECKS_PASS_PARTIAL_NATIVE_V91_WITH_GESTURE_FAILURE",
       "sourceCommit": "1ea2477649b047afae1ad3a299b59e09821f9638",
       "receipt": "/private/tmp/zoen-builtins-v91/source-checks/source-freeze-final.json",
       "receiptSha256": "8b085972de08fcbab6661323a3e042a8d8e2f966d742353dc617a563f863b3d9",
@@ -2279,14 +2279,127 @@
         "builderFocusedTests": 11,
         "oldBuilderEscapeFailures": 4,
         "embeddedResourcePairsRebuiltExactly": 8,
-        "nativeAcceptance": "NOT_RUN_FOR_V91"
+        "nativeAcceptance": "Bounded v91 Pet, Recipe, Countdown and MapTap interactions/reopen observed; MapTap horizontal drag still popped Home. Poll/List not tested in v91; v92 gesture correction is separately attributed."
       },
-      "nativeNext": "Build signed candidate; inspect six real guest interfaces and preserve Excalidraw/Hike/Schedule. Check MapTap horizontal gesture arbitration, content, controls, state mutations, accessibility and reduced motion.",
+      "nativeNext": "Bounded v92 Poll/List results are recorded separately. Management back-drag was not accepted; broader accessibility, reduced motion, physical-device and comparative acceptance remain open.",
       "limitations": [
-        "Source/DOM bridge and scoped Rust proof; no signed native v91 acceptance.",
+        "Source/DOM bridge and scoped Rust proof plus bounded signed v91 native observations; not all-six native or whole-app acceptance.",
         "Old Swift Pet unboxing, ambient doodles and local emotes remain visual differences.",
         "Whole-app v85 baseline and bounded v90 drawing evidence remain separately attributed."
-      ]
+      ],
+      "nativeFindings": {
+        "receipt": "/private/tmp/zoen-builtins-native-iphone-v91/native-acceptance.json",
+        "observations": "/private/tmp/zoen-builtins-native-iphone-v91/observations.json",
+        "screenshots": "/private/tmp/zoen-builtins-native-iphone-v91/screenshots.json",
+        "scopedViews": ["pet", "recipe", "countdown", "maptap"],
+        "scope": "Pet care/sleep/tab-paused Dash/score and reopen; Recipe servings/checklist/reopen and a separately observed shared cooking step, whose persistence was not rechecked; Countdown local date/ticking; MapTap accessible rotation/guess/result and reopen.",
+        "maptapResult": "One guess acknowledged 6,983 km and 48 points, retained as 1/5 on reopen; native horizontal globe drag incorrectly navigated Home in v91.",
+        "diagnostics": "71-step retired one-use recording, 18 cross-tree warnings and one offscreen-control wait; no replay or process-restart claim."
+      }
+    },
+    "nativeBundledMcpViewsV92": {
+      "status": "BOUNDED_NATIVE_GLOBE_POLL_LIST_PASS",
+      "checkpoint": "v92",
+      "evidenceManifest": "/private/tmp/zoen-builtins-native-iphone-v92/evidence-manifest.json",
+      "sourceCommit": "11ce6ac3810a30f8e92821fb0bd43f3a14f70392",
+      "sourceInputs": 941,
+      "sourceManifest": "/private/tmp/zoen-iphone-release-v92-inputs.json",
+      "sourceSha256": "f875c20abe46309aaacc9d50c2aa20fa6a7a7eacea96d0bbdaa70b86b6144d27",
+      "signedArtifactVerification": "/private/tmp/zoen-iphone-release-v92-verification.json",
+      "executableSha256": "c2a27828392b71a6b57aab7149bbda1d462e738069639a286704bb03552a892b",
+      "javascript": {
+        "bytes": 21033107,
+        "sha256": "58432b00c8d0e1afe488f3fb6ba49846203d320633a736517d9ed4787f736db3"
+      },
+      "appTreeSha256": "8141390104e6514abe3a67bafd5b56ee8d596307beb45c45a439c2c034ee1975",
+      "nativeProof": "/private/tmp/zoen-builtins-native-iphone-v92/root-native-map-acceptance.json",
+      "isolatedPreservingInstall": "/private/tmp/zoen-builtins-native-iphone-v92/isolated-v92-install.json",
+      "nativeAcceptance": "Signed preserving v91-to-v92 update retains the MapTap 48-point result and 1/5 state. The previously failing rightward globe drag, opposite horizontal drag and vertical drag rotate without leaving the editor. Details and its native Back return to MapTap; another native Back returns Home. Rotation does not submit a new guess.",
+      "priorGuestChecks": "The Pet, Recipe, Countdown and MapTap functional observations belong to v91. Their guest/core bytes match v92; this is not a repeat of all four interactions on v92.",
+      "coreReuse": {
+        "receipt": "/private/tmp/zoen-native-v92-xcode-core-after.json",
+        "selectedInputs": 533,
+        "sha256": "8b4e9a97a0299a6e032145e1b36b70f867e5d8e765679decc70be5b0e0758699",
+        "scope": "Exact v91-to-v92 native/core, generated resources, shared dependencies, CNG and bindings match; no new Rust build/test claim."
+      },
+      "checks": {
+        "clientTests": 777,
+        "clientStages": "npm run check: tests, TypeScript, Oxlint and Oxfmt PASS",
+        "clientLog": "/private/tmp/zoen-miniapps-v92-client-check.log",
+        "clientLogSha256": "89fd66e5cf8039810f21a5ef8a3cceaee493b77cfe56c6746ebc570b928a554f",
+        "exactSourceExpoCiRun": 39179002573,
+        "exactSourceExpoCiCommit": "11ce6ac3810a30f8e92821fb0bd43f3a14f70392",
+        "exactSourceExpoCiConclusion": "success, all three jobs",
+        "exactSourceExpoCiUrl": "https://github.com/EnzoTironi/zoen-native/actions/runs/39179002573"
+      },
+      "build": {
+        "receipt": "/private/tmp/zoen-native-v92-xcode.json",
+        "seconds": 56.69,
+        "minimumFreeBytes": 5623021568,
+        "diskFloorBytes": 5368709120,
+        "exit": 0
+      },
+      "diagnostics": "15-step first recorded walkthrough, not a passing replay. Management-drag wait was unmet; native Back then succeeded. Three raw wait cross-tree warnings retained.",
+      "pendingNativeViews": [],
+      "limitations": [
+        "Management body/edge back-drag did not complete; only native Back buttons are accepted.",
+        "Six guest views have bounded observations across v91/v92, not every feature on v92. Poll Plan line count is Rust/FFI proof only, not native UI proof.",
+        "Both v92 public installed bundles/signatures and bounded human Home retention pass; accepted whole-app main/human v85 objects remain unchanged. No historic chat/media/provider reacceptance.",
+        "Only the four-action MapTap fragment replay passed once; no full E2E/two-pass, VoiceOver, reduced-motion, physical-iPhone, broad performance or full comparative parity acceptance."
+      ],
+      "fullAppParityAccepted": false,
+      "pollList": {
+        "receipt": "/private/tmp/zoen-builtins-native-iphone-v92/native-poll-list-acceptance.json",
+        "receiptSha256": "9b561deb56e2f5e1b4b54fc240201faab31b7f7d461fa3b036b204bde9682a6c",
+        "catalog": "Normal Home Add/catalog installs both items in History download QA1018v63b. Compact native picker forms start at scroll 0%; question/title survive selecting and changing the conversation.",
+        "poll": {
+          "itemId": "it_01m58r52kdw3egmzb3z1xf6fca",
+          "voteSequence": [
+            [0, 0],
+            [1, 0],
+            [0, 1]
+          ],
+          "closedWinner": "B - Fruta",
+          "observedVersion": 4,
+          "sameItemReopen": "Closed with 0/1 votes and no close button.",
+          "planEffectBoundary": "The close ACK, winner, version4 and one visible close/comment sequence were observed. The actual Plan line was not located/counted in native UI; exact once-only canonical effect remains covered by the existing Rust/FFI tests, separately attributed."
+        },
+        "list": {
+          "itemId": "it_01m58rc9fj9w3hdej4e61wesny",
+          "title": "QA v92 - mochila",
+          "sameItemReopen": "One checked item out of one, attributed to QA disposable device; observed version 3.",
+          "share": "One explicit Na conversa confirmation produced one matching visible message; no independent whole-history count.",
+          "messageId": "01M58REC4HMS3Z7HHHNGH07EE3",
+          "message": "QA v92 - mochila\n☑ QA v92 - agua",
+          "receipt": "Enviada",
+          "whatsApp": "Explicit native external-link confirmation was canceled. No external app opened and no WhatsApp delivery is claimed."
+        },
+        "diagnostics": "99-step retired one-use recording, 11 cross-tree warnings and two corrected unmet waits. Normal same-item navigation, not a cold process restart or formal replay. Synthetic input/autocorrection ambiguity is retained in the raw receipt."
+      },
+      "maptapFragmentReplay": {
+        "receipt": "/private/tmp/zoen-builtins-native-iphone-v92/maptap-fragment-replay.json",
+        "runs": 1,
+        "actionStepsPassed": 4,
+        "failed": 0,
+        "errored": 0,
+        "skipped": 0,
+        "seconds": 2.4,
+        "scope": "Three recorded globe drags followed by native Details visibility; exact fragment from the diagnostic first walkthrough, not full editing/E2E or two-pass acceptance."
+      },
+      "isolatedInstalledPublicVerification": "/private/tmp/zoen-builtins-native-iphone-v92/isolated-v92-verify-after.json",
+      "humanPreservingInstall": {
+        "fromCheckpoint": "v90",
+        "toCheckpoint": "v92",
+        "receipt": "/private/tmp/zoen-builtins-native-iphone-v92/human-v92-install.json",
+        "installedPublicVerification": "/private/tmp/zoen-builtins-native-iphone-v92/human-v92-verify-after.json",
+        "executableJavascriptStrictSignature": "PASS",
+        "appearanceAcceptance": "PASS bounded native restart/Home only: four original cards and larger text retained; no data mutations or history/media/provider reacceptance.",
+        "homeSmoke": {
+          "receipt": "/private/tmp/zoen-builtins-native-iphone-v92/human-home-smoke.json",
+          "sha256": "5584423f4ad4ab4e0b48c8e90859a2956ec3d9db582802721bc39479318c6ac0",
+          "retained": "Recipe 6/8 and 2 servings; Pet asleep/rest 100%; Praia Nov 15; ExactBRL one cost line 100%/alternative 0%. Keyboard closed, no modal or visible error."
+        }
+      }
     }
   },
   "deferredPlatforms": ["web", "android", "macos", "windows", "linux"],
