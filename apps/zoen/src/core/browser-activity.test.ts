@@ -190,3 +190,83 @@ test('the real browser snapshot merges projection diagnostics with every existin
     personal: saved.personal,
   });
 });
+
+test('an unsequenced offline entry cannot turn normal history into a thread', async () => {
+  const { build } = await import('esbuild');
+  const compiled = await build({
+    entryPoints: [new URL('./driver.web.ts', import.meta.url).pathname],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    write: false,
+  });
+  const { createDriver } = await import(
+    `data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0]!.text).toString('base64')}`
+  );
+  const driver = createDriver();
+  // Node-only projection boundary: real Auth/MLS/IDB remains a separate browser journey.
+  driver.session = {
+    kind: 'linked',
+    account: { identity: author, device: '22'.repeat(32), name: 'Enzo', handle: 'enzo' },
+  };
+  const base = chat.messages.at(-1)!;
+  const history = Array.from({ length: 3 }, (_, index) => ({
+    ...base,
+    id: `history-${index}`,
+    entry: `hash-history-${index}`,
+    seq: String(index + 1),
+  }));
+  const queued = { ...base, id: 'offline', entry: null, seq: null, delivery: 'sending' };
+  const reply = {
+    ...queued,
+    id: 'thread-reply',
+    thread: history[0]!.entry,
+    quote: { id: history[0]!.entry, name: 'Enzo', text: history[0]!.text },
+  };
+  driver.state = {
+    kind: 'active',
+    connection: { kind: 'reconnecting', attempt: 1 },
+    conversations: [{ ...chat, messages: [...history, queued, reply] }],
+  };
+  driver.messages = {}; // The public timeline request only reads the current projection.
+  const main = await driver.request({
+    op: 'timeline',
+    space_id: 'marina',
+    before: null,
+    limit: 80,
+  });
+  assert.deepEqual(
+    main.entries.map((entry: TimelineEntry) => entry.id),
+    [...history.map((message) => message.id), queued.id],
+  );
+  assert.ok(main.entries.every((entry: TimelineEntry) => entry.in_thread === null));
+  assert.equal(main.entries.at(-1).delivery, 'Sending');
+  const thread = await driver.request({
+    op: 'thread',
+    space_id: 'marina',
+    root_id: history[0]!.id,
+  });
+  assert.deepEqual(
+    thread.map((entry: TimelineEntry) => entry.id),
+    [history[0]!.id, reply.id],
+  );
+  assert.equal(thread[1].in_thread, history[0]!.id);
+  assert.equal(thread[1].reply_to.id, history[0]!.id);
+
+  driver.state.conversations[0].messages = [
+    ...history,
+    { ...queued, entry: 'hash-offline', seq: '4', delivery: 'confirmed' },
+    reply,
+  ];
+  const confirmed = await driver.request({
+    op: 'timeline',
+    space_id: 'marina',
+    before: null,
+    limit: 80,
+  });
+  assert.deepEqual(
+    confirmed.entries.map((entry: TimelineEntry) => entry.id),
+    main.entries.map((entry: TimelineEntry) => entry.id),
+  );
+  assert.equal(confirmed.entries.at(-1).delivery, 'Sent');
+});
