@@ -126,7 +126,8 @@ jobs:
           node_modules/.bin/expo prebuild --platform android --no-install
       - name: Compile Expo release and native lifecycle regressions
         working-directory: apps/zoen/android
-        run: ./gradlew :app:assembleRelease :zoen-core:testReleaseUnitTest --max-workers=2 -PreactNativeArchitectures=arm64-v8a
+        # The Expo library exposes its JVM host tests on the debug variant.
+        run: ./gradlew :app:assembleRelease :zoen-core:testDebugUnitTest --max-workers=2 -PreactNativeArchitectures=arm64-v8a
       - name: Retain Expo Android build and native test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
