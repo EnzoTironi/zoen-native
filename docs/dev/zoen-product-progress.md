@@ -79,8 +79,24 @@ all-target Clippy and two actual signed Rust DTO-to-parser/driver/projection
 qualifications. The receipt is
 `/private/tmp/zoen-miniapp-web-v118/rust-verification-v3-1.json`, SHA-256
 `f29a98fffbc367d80cb6786b7ce3f5cd8a07ba1f0fabfde75447832e33dea61b`.
-These checks do not qualify a new WASM bundle, actual browser delivery or Android
-runtime parity; those remain separate work. The user's iOS session was untouched.
+These source checks have separate WASM/runtime qualification below; Android
+runtime parity remains open. The user's iOS session was untouched.
+
+A fresh release WASM and production Expo Web export now pass an actual local
+native-backend journey: public device linking, encrypted history, four accepted
+drawing edits, compact activity with a human-message boundary, exact-ID search
+and read-only version history. After restarting all six backend services and
+opening Chrome with the same profile, the account/device, selected canonical
+fields of all seven entries, five projected rows and versions 1–5 matched. The
+current four-shape drawing rendered again; native verification retained all 18
+signed events. This compares canonical fields and visible scene recovery, not a
+raw scene-byte digest or OS-keychain recovery.
+Receipt: `/private/tmp/zoen-miniapp-web-v118/session_rw7tefs6/web-runtime-receipt.json`,
+SHA-256 `8dbfc2d61997022ae7a19d9f63cac05c8f58a887cd1c924ccdafc2db800a0c19`.
+One automation navigation timeout remains recorded with its cause unconfirmed;
+restarting only the owned Chrome recovered. Web attachments still use a sheet,
+and actual Apple/Google confirmation remains unverified. The owned browser/server
+were stopped; the native backend and user's iPhone development session remain.
 
 ## Backend and local production environment
 

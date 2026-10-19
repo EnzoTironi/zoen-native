@@ -81,7 +81,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "Current Expo SDK 58.0.16 source passes TypeScript, Oxlint, Oxfmt and 828 app tests. Native iOS activity preserves canonical IDs, search and history; Web source passes 72 Rust tests and typed signed DTO boundary checks, with fresh Web runtime qualification in progress. The custom Cloudflare backend runtime is removed. The native Rust backend now runs locally with real PostgreSQL 17, FoundationDB 7.3.71, private S3-compatible storage and optional NATS/two relays. 151 unique native/shared tests, the actual public Client 7 checkpoints, S3 concurrency/restart and cold backup/restore passed. Provider confirmation, public deployment, complete platform journeys, release rollback, cross-relay delivery and production/scale acceptance remain open.",
+  "currentAcceptanceSummary": "Current Expo SDK 58.0.16 source passes TypeScript, Oxlint, Oxfmt and 828 app tests. Native iOS activity preserves canonical IDs, search and history; Web source passes 72 Rust tests and typed signed DTO boundary checks, and a bounded actual Web linking, Excalidraw, exact-ID search and backend/cold-browser restart journey passed. The custom Cloudflare backend runtime is removed. The native Rust backend now runs locally with real PostgreSQL 17, FoundationDB 7.3.71, private S3-compatible storage and optional NATS/two relays. 151 unique native/shared tests, the actual public Client 7 checkpoints, S3 concurrency/restart and cold backup/restore passed. Provider confirmation, public deployment, complete platform journeys, release rollback, cross-relay delivery and production/scale acceptance remain open.",
   "retiredBackend": {
     "id": "custom-cloudflare-runtime",
     "status": "RETIRED",
@@ -2031,7 +2031,8 @@
     "Web onboarding axe found no violations but contrast review remains incomplete; whole-app keyboard/screen-reader, Safari/WebKit, camera/microphone and performance are unaccepted.",
     "Public hosting proves HTTP routing/isolation/assets only; unavailable production relay blocks public encrypted sync/provider acceptance.",
     "Android acceptance is bounded to API35 arm64 Debug synthetic linking/history/Page/erasure and unchanged minified Release onboarding/key-generation only. Release linked-account runtime/performance, API28/physical devices and remaining media/voice/profile/assistant features remain unaccepted.",
-    "Native extensions, Push delivery, agent/community/permissions workflows and remaining media/document/history failure boundaries need their own current-artifact journeys."
+    "Native extensions, Push delivery, agent/community/permissions workflows and remaining media/document/history failure boundaries need their own current-artifact journeys.",
+    "Web attachments still use a stock sheet; the iOS attachment dropdown is not yet implemented on Web."
   ],
   "currentSourceCheckpoint": {
     "id": "prelaunch-core-cleanup-v111",
@@ -2134,16 +2135,20 @@
       "existingThreadRetained": true
     },
     "preview": "Existing native item snapshot; no actual scene thumbnail and no permission mutation.",
-    "webRuntimeVerified": false,
+    "webRuntimeVerified": true,
     "androidRuntimeVerified": false,
-    "webGap": "Typed item versions/restores now reach the shared projection; fresh WASM and export are built, while actual browser linking/delivery/search/history qualification is in progress.",
+    "webGap": "Bounded native-backend Web activity, exact-ID search, drawing history and backend/cold-browser restart passed; wider Web/Android feature parity, provider login and production acceptance remain open.",
     "publicDeliveryVerified": false,
-    "fullAppParityAccepted": false
+    "fullAppParityAccepted": false,
+    "webRuntimeProof": {
+      "path": "/private/tmp/zoen-miniapp-web-v118/session_rw7tefs6/web-runtime-receipt.json",
+      "sha256": "8dbfc2d61997022ae7a19d9f63cac05c8f58a887cd1c924ccdafc2db800a0c19"
+    }
   },
   "backendExecutionDecision": {
     "id": "native-rust-local-production-environment-v118",
     "decision": "Run the existing native Rust backend; retire custom Cloudflare Workers/Durable Objects adaptation. Keep Cloudflare DNS/CDN/static hosting/S3-compatible storage where useful.",
-    "immediatePhase": "LOCAL_STACK_VERIFIED_WEB_QA_IN_PROGRESS",
+    "immediatePhase": "LOCAL_STACK_AND_WEB_RECOVERY_VERIFIED",
     "requiredServices": [
       "native Rust relay container",
       "real PostgreSQL",
@@ -2183,9 +2188,27 @@
     "ambiguousItemOwnershipWarningSurfaced": true,
     "savedIntegrityWarningsPreserved": true,
     "freshWasmBuilt": true,
-    "actualBrowserRuntimeVerified": false,
+    "actualBrowserRuntimeVerified": true,
     "androidRuntimeVerified": false,
-    "testFormattingFollowup": "Canonical cargo fmt through the crate module changed only whitespace in client_tests.rs after the receipt; all production source is identical."
+    "testFormattingFollowup": "Canonical cargo fmt through the crate module changed only whitespace in client_tests.rs after the receipt; all production source is identical.",
+    "actualBrowserRuntimeProof": {
+      "path": "/private/tmp/zoen-miniapp-web-v118/session_rw7tefs6/web-runtime-receipt.json",
+      "sha256": "8dbfc2d61997022ae7a19d9f63cac05c8f58a887cd1c924ccdafc2db800a0c19"
+    },
+    "actualRuntimeScope": {
+      "canonicalTimelineEntries": 7,
+      "typedItemEditedEntries": 4,
+      "projectedRows": 5,
+      "activityRuns": [3, 1],
+      "exactSearchResults": 4,
+      "currentDrawingVersion": 5,
+      "visibleElementsAfterBackendAndBrowserRestart": 4,
+      "nativeVerifiedSignedEvents": 18,
+      "sameAccountAndDeviceAfterRestart": true,
+      "selectedCanonicalFieldsExact": true,
+      "rawSceneByteDigestCompared": false,
+      "osKeychainRecoveryVerified": false
+    }
   },
   "currentNativeBackendCheckpoint": {
     "id": "native-local-production-environment-v118",
@@ -2222,6 +2245,7 @@
     "clientReceiptGuardReceipt": {
       "path": "/private/tmp/zoen-native-policy-v119/client-guards-xci_0lfb/receipt.json",
       "sha256": "4c5c70847aabfe8d10d95a424e2be64e6314bfe151296899b1ab716bb3b151bf"
-    }
+    },
+    "webAccountRecoveredAfterExternalRestart": true
   }
 }

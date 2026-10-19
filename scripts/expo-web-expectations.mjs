@@ -28,6 +28,7 @@ const expectations = Object.freeze({
     downloadFile: "Download file",
     closePreview: "Close preview",
     drawingSaved: "Saved in this chat",
+    searchThisChat: "Search this chat",
   }),
   "pt-BR": Object.freeze({
     developmentOptions: "Opções de desenvolvimento",
@@ -55,6 +56,7 @@ const expectations = Object.freeze({
     downloadFile: "Baixar arquivo",
     closePreview: "Fechar visualização",
     drawingSaved: "Salvo nesta conversa",
+    searchThisChat: "Buscar na conversa",
   }),
 });
 

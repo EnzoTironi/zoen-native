@@ -172,7 +172,7 @@ async function freePort() {
   );
   return port;
 }
-async function expectMessage(author, text, timeout = 90_000) {
+async function expectMessage(author, text, timeout = 90_000, messageId) {
   // A hidden conversation preview can repeat the text. Require its exact author
   // and the real interactive message bubble, then the visible body inside it.
   // The accessible name also carries localized quote/time/delivery metadata.
@@ -180,12 +180,17 @@ async function expectMessage(author, text, timeout = 90_000) {
   // nor quoted text or a longer body can satisfy this assertion.
   const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const name = new RegExp(`^${escape(`${author}: `)}`);
-  const bubble = page.getByTestId(/^message-bubble-/).and(page.getByRole("button", { name }));
+  const bubble = page
+    .getByTestId(messageId ? `message-bubble-${messageId}` : /^message-bubble-/)
+    .and(page.getByRole("button", { name }));
   const body = bubble
     .getByTestId(/^message-body-/)
     .filter({ hasText: new RegExp(`^${escape(text)}$`) });
   await body.waitFor({ timeout });
   assert.equal(await body.innerText(), text, "the visible message body must match in full");
+  const testId = await bubble.getAttribute("data-testid");
+  assert.match(testId, /^message-bubble-.+$/, "the original message must have its real ID");
+  return testId.slice("message-bubble-".length);
 }
 async function screenshot(name) {
   await page.screenshot({
@@ -367,7 +372,7 @@ try {
   await row.waitFor({ timeout: 120_000 });
   await row.click();
   await page.waitForURL(`**/chat/${space}`);
-  await expectMessage(ana.name, seed, 120_000);
+  const seedMessageId = await expectMessage(ana.name, seed, 120_000);
   await screenshot("02-recovered-encrypted-history.png");
   step("normal-device-link-and-encrypted-history-recovery", { checkDigitsMatch: true });
 
@@ -385,7 +390,7 @@ try {
     "peer canonical persisted timeline must contain the browser message",
   );
   await cli(bruno.home, "send", space, reply);
-  await expectMessage(bruno.name, reply);
+  const replyMessageId = await expectMessage(bruno.name, reply);
   assert.ok(sentFrames > 0, "journey must observe actual relay frames");
   assert.equal(plaintextOnWire, false, "private text must not appear in outbound relay frames");
   await screenshot("03-cross-core-message-roundtrip.png");
@@ -395,9 +400,9 @@ try {
   assert.equal(reload?.status(), 200, "direct dynamic chat reload must survive real Pages hosting");
   assert.equal(new URL(page.url()).pathname, `/chat/${space}`);
   await page.getByTestId("message-input").waitFor();
-  await expectMessage(ana.name, seed);
-  await expectMessage(ana.name, outbound);
-  await expectMessage(bruno.name, reply);
+  await expectMessage(ana.name, seed, 90_000, seedMessageId);
+  const outboundMessageId = await expectMessage(ana.name, outbound);
+  await expectMessage(bruno.name, reply, 90_000, replyMessageId);
   assert.equal(
     await page.getByRole("button", { name: ui.connectOtherDevice, exact: true }).count(),
     0,
@@ -464,10 +469,24 @@ try {
   await confirmation.getByRole("button", { name: ui.cancel, exact: true }).click();
   await confirmation.waitFor({ state: "hidden" });
   await page.goto(`${origin}/chat/${space}`, { waitUntil: "domcontentloaded" });
-  await expectMessage(ana.name, seed);
-  await expectMessage(ana.name, outbound);
-  await expectMessage(bruno.name, reply);
-  step("cancel-local-erasure-retains-account-and-encrypted-history");
+  // Later miniapp activities correctly reopen this virtualized conversation at
+  // its newest rows. Reveal each original through the real search UI rather
+  // than requiring an old message to already be inside the viewport.
+  await page.getByRole("button", { name: ui.searchThisChat, exact: true }).click();
+  const retainedMessages = [
+    { author: ana.name, text: seed, id: seedMessageId },
+    { author: ana.name, text: outbound, id: outboundMessageId },
+    { author: bruno.name, text: reply, id: replyMessageId },
+  ];
+  for (const message of retainedMessages) {
+    await page.getByTestId("message-input").fill(message.text);
+    await page.getByTestId("message-input").press("Enter");
+    await expectMessage(message.author, message.text, 90_000, message.id);
+  }
+  await page.getByTestId("close-conversation-search").click();
+  step("cancel-local-erasure-retains-account-and-encrypted-history", {
+    originalMessageIds: retainedMessages.map((message) => message.id),
+  });
 
   await page.goto(`${origin}/you`, { waitUntil: "domcontentloaded" });
   await page.getByText(`@${ana.handle}`, { exact: true }).waitFor();
