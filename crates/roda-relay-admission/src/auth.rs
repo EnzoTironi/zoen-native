@@ -1,6 +1,8 @@
 //! Provider assertion policy shared by native HTTP and the portable Worker.
 //! Provider subjects never merge identities by email. Hosts supply a previously
 //! persisted challenge, trusted provider keys and the current trusted clock.
+pub mod enrollment;
+
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD as B64, Engine as _};
 use serde::{Deserialize, Serialize};
 

@@ -12,30 +12,12 @@ use axum::{
     routing::post,
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use roda_relay_admission::auth::enrollment::{self, Audience, Challenge};
+use serde::Serialize;
 use std::collections::BTreeMap;
 
+pub use roda_relay_admission::auth::enrollment::{ChallengeRequest, Client, VerifyRequest};
 pub use roda_relay_admission::auth::Provider;
-#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(rename_all = "lowercase")]
-pub enum Client {
-    Ios,
-    Web,
-}
-impl Client {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Ios => "ios",
-            Self::Web => "web",
-        }
-    }
-}
-#[derive(Clone)]
-struct Audience {
-    id: String,
-    presenter: Option<String>,
-}
 #[derive(Clone, Default)]
 pub struct Settings {
     audiences: BTreeMap<(Provider, Client), Audience>,
@@ -49,20 +31,16 @@ impl Settings {
                 let key = format!("ZOEN_AUTH_{prefix}_{suffix}_AUDIENCE");
                 if let Ok(value) = std::env::var(&key) {
                     let value = value.trim();
-                    if value.is_empty()
-                        || value.len() > 512
-                        || value.chars().any(char::is_whitespace)
-                    {
+                    if !enrollment::valid_audience_value(value) {
                         anyhow::bail!("Invalid {key}");
                     }
                     let presenter = std::env::var(format!("ZOEN_AUTH_{prefix}_{suffix}_PRESENTER"))
                         .ok()
                         .map(|value| value.trim().to_string());
-                    if presenter.as_ref().is_some_and(|value| {
-                        value.is_empty()
-                            || value.len() > 512
-                            || value.chars().any(char::is_whitespace)
-                    }) {
+                    if presenter
+                        .as_ref()
+                        .is_some_and(|value| !enrollment::valid_audience_value(value))
+                    {
                         anyhow::bail!("Invalid provider presenter");
                     }
                     settings.audiences.insert(
@@ -116,19 +94,20 @@ impl Service {
         headers: &HeaderMap,
         client: Option<Client>,
     ) -> Result<Option<String>, Failure> {
-        match headers.get(header::ORIGIN) {
-            Some(origin) if self.settings.origins.contains(origin) => Ok(Some(
-                origin
-                    .to_str()
-                    .map_err(|_| error(StatusCode::FORBIDDEN, "origin_refused"))?
-                    .into(),
-            )),
-            Some(_) => Err(error(StatusCode::FORBIDDEN, "origin_refused")),
-            None if client == Some(Client::Web) => {
-                Err(error(StatusCode::FORBIDDEN, "origin_required"))
-            }
-            None => Ok(None),
-        }
+        let supplied = headers
+            .get(header::ORIGIN)
+            .map(|value| value.to_str())
+            .transpose()
+            .map_err(|_| error(StatusCode::FORBIDDEN, "origin_refused"))?;
+        enrollment::origin(
+            supplied,
+            client,
+            self.settings
+                .origins
+                .iter()
+                .filter_map(|value| value.to_str().ok()),
+        )
+        .map_err(Into::into)
     }
 }
 pub fn router(service: &Service) -> Router<Shared> {
@@ -170,12 +149,6 @@ async fn response_policy(
     );
     response
 }
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ChallengeRequest {
-    provider: Provider,
-    client: Client,
-}
 #[derive(Serialize)]
 struct ChallengeResponse {
     id: String,
@@ -183,26 +156,6 @@ struct ChallengeResponse {
     state: String,
     audience: String,
     expires_ms: i64,
-}
-#[derive(Clone)]
-struct Challenge {
-    provider: Provider,
-    client: Client,
-    audience: String,
-    presenter: Option<String>,
-    origin: Option<String>,
-    nonce: String,
-    state: String,
-    created_ms: i64,
-    expires_ms: i64,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct VerifyRequest {
-    challenge_id: String,
-    id_token: String,
-    state: String,
-    authorization_code: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
@@ -233,19 +186,21 @@ fn random() -> Result<String, Failure> {
     Ok(hex::encode(bytes))
 }
 fn hash(value: &str) -> String {
-    hex::encode(Sha256::digest(value.as_bytes()))
-}
-fn token(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    enrollment::token_hash(value)
 }
 #[derive(Debug)]
 struct Failure {
     status: StatusCode,
     code: &'static str,
     retry_after: Option<u64>,
+}
+impl From<enrollment::Failure> for Failure {
+    fn from(value: enrollment::Failure) -> Self {
+        error(
+            StatusCode::from_u16(value.status).expect("shared provider status is valid"),
+            value.code,
+        )
+    }
 }
 impl IntoResponse for Failure {
     fn into_response(self) -> Response {
@@ -288,20 +243,20 @@ async fn challenge(
 ) -> Response {
     let run = async {
         limited(st.limits.auth_challenge_ip.check(&ip))?;
-        let audience = st
-            .auth
-            .settings
-            .audiences
-            .get(&(request.provider, request.client))
-            .ok_or_else(|| error(StatusCode::SERVICE_UNAVAILABLE, "provider_not_configured"))?;
+        let audience = enrollment::require_audience(
+            st.auth
+                .settings
+                .audiences
+                .get(&(request.provider, request.client)),
+        )?;
         let origin = st.auth.origin(&headers, Some(request.client))?;
         let (id, nonce, state) = (random()?, random()?, random()?);
         let created = now();
-        let expires = created + 300_000;
+        let expires = created + enrollment::CHALLENGE_LIFETIME_MS;
         // Proof rows cascade with old challenges. Cleanup is bounded by the short
         // expiry indexes and occurs only in this rate-limited lane.
         sqlx::query("DELETE FROM provider_challenges WHERE id IN (SELECT id FROM provider_challenges WHERE expires_ms < $1 LIMIT 500)")
-            .bind(created - 600_000)
+            .bind(created - enrollment::CHALLENGE_CLEANUP_DELAY_MS)
             .execute(&st.pool)
             .await
             .map_err(unavailable)?;
@@ -328,34 +283,22 @@ async fn verify(
 ) -> Response {
     let run = async {
         limited(st.limits.auth_verify_ip.check(&ip))?;
-        if !token(&request.challenge_id)
-            || !token(&request.state)
-            || request
-                .authorization_code
-                .as_ref()
-                .is_some_and(|code| code.len() > 4096)
-        {
-            return Err(error(StatusCode::BAD_REQUEST, "invalid_authentication"));
-        }
+        enrollment::validate_verify_request(&request)?;
         let challenge = storage::challenge(&st.pool, &request.challenge_id)
             .await
             .map_err(unavailable)?
             .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "challenge_expired"))?;
         let origin = st.auth.origin(&headers, Some(challenge.client))?;
-        if challenge.origin != origin
-            || challenge.state != request.state
-            || challenge.expires_ms <= now()
-            || !st
-                .auth
+        enrollment::validate_challenge(
+            &challenge,
+            &request.state,
+            origin.as_deref(),
+            st.auth
                 .settings
                 .audiences
-                .get(&(challenge.provider, challenge.client))
-                .is_some_and(|audience| {
-                    audience.id == challenge.audience && audience.presenter == challenge.presenter
-                })
-        {
-            return Err(error(StatusCode::UNAUTHORIZED, "invalid_authentication"));
-        }
+                .get(&(challenge.provider, challenge.client)),
+            now(),
+        )?;
         let verified = st
             .auth
             .verifier
@@ -363,7 +306,7 @@ async fn verify(
             .await
             .map_err(|_| error(StatusCode::UNAUTHORIZED, "invalid_provider_assertion"))?;
         let proof = random()?;
-        let expires = now() + 300_000;
+        let expires = now() + enrollment::PROOF_LIFETIME_MS;
         let account = storage::issue(
             &st.pool,
             &request.challenge_id,
@@ -394,12 +337,7 @@ async fn bind(
 ) -> Response {
     let run = async {
         limited(st.limits.auth_bind_ip.check(&ip))?;
-        if st.auth.settings.audiences.is_empty() {
-            return Err(error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "provider_not_configured",
-            ));
-        }
+        enrollment::require_provider_configured(!st.auth.settings.audiences.is_empty())?;
         let origin = st.auth.origin(&headers, None)?;
         let result = storage::bind(&st.pool, &request, origin.as_deref(), now()).await?;
         Ok::<_, Failure>(Json(result).into_response())
