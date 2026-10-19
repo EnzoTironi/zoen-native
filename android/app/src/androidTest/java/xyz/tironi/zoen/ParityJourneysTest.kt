@@ -115,7 +115,10 @@ class ParityJourneysTest {
         pins.show(plan.id, scope)
         try {
             open("zoen://chat/${plan.spaceId}")
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag(tile).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithTag(tile).fetchSemanticsNodes().isNotEmpty() &&
+                    compose.onAllNodesWithTag("chat-timeline").fetchSemanticsNodes().isNotEmpty()
+            }
             compose.onNodeWithTag("chat-timeline").performScrollToIndex(0)
             val summary = application.getString(R.string.chat_plan_count, plan.plan!!.sections.sumOf { it.lines.size },
                 xyz.tironi.zoen.core.formatMoney(plan.plan!!.totalCents, application.repository.locale))
@@ -159,7 +162,10 @@ class ParityJourneysTest {
             application.repository.change { it.sendReply(space, "Native inline reply", root, false); it.sendReply(space, "Native separate thread", root, true) }
         }
         open("zoen://chat/$space")
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("miniapp-tile:${plan.id}#0").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("miniapp-tile:${plan.id}#0").fetchSemanticsNodes().isNotEmpty() &&
+                compose.onAllNodesWithTag("chat-timeline").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText("Native separate thread").assertDoesNotExist()
         compose.onNodeWithTag("chat-timeline").performScrollToNode(hasTestTag("quote:$root"))
         compose.onNodeWithTag("quote:$root").assertIsDisplayed()
