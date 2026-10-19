@@ -1,4 +1,4 @@
-//! Provider assertion policy shared by native HTTP and the portable Worker.
+//! Bounded provider assertion verification for native HTTP authentication.
 //! Provider subjects never merge identities by email. Hosts supply a previously
 //! persisted challenge, trusted provider keys and the current trusted clock.
 pub mod enrollment;
@@ -97,72 +97,6 @@ pub struct Verified {
     pub name: Option<String>,
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PortableContext {
-    provider: Provider,
-    audience: String,
-    presenter: Option<String>,
-    nonce: String,
-    created_ms: i64,
-}
-
-/// This verifies an assertion, not ownership of a Zoen identity. The host must
-/// consume its persisted challenge/proof atomically before account binding.
-pub fn verify_json(
-    token: &str,
-    key_json: &str,
-    context_json: &str,
-    now_ms: &str,
-) -> Result<String, InvalidAssertion> {
-    if key_json.len() > 4096 || context_json.len() > 4096 {
-        return Err(InvalidAssertion);
-    }
-    let key = serde_json::from_str(key_json).map_err(|_| InvalidAssertion)?;
-    let context: PortableContext =
-        serde_json::from_str(context_json).map_err(|_| InvalidAssertion)?;
-    let now = now_ms.parse().map_err(|_| InvalidAssertion)?;
-    let verified = verify_with_key(
-        token,
-        &key,
-        &VerificationContext {
-            provider: context.provider,
-            audience: &context.audience,
-            presenter: context.presenter.as_deref(),
-            nonce: &context.nonce,
-            created_ms: context.created_ms,
-        },
-        now,
-    )?;
-    serde_json::to_string(&verified).map_err(|_| InvalidAssertion)
-}
-
-#[cfg(target_arch = "wasm32")]
-mod wasm {
-    use super::*;
-    use wasm_bindgen::prelude::*;
-
-    #[wasm_bindgen(js_name = providerKeyId)]
-    pub fn provider_key_id(token: &str) -> Result<String, String> {
-        key_id(token).map_err(|error| error.to_string())
-    }
-
-    #[wasm_bindgen(js_name = providerKeySet)]
-    pub fn provider_key_set(bytes: &[u8]) -> Result<String, String> {
-        let keys = key_set(bytes).map_err(|error| error.to_string())?;
-        serde_json::to_string(&keys).map_err(|error| error.to_string())
-    }
-
-    #[wasm_bindgen(js_name = verifyProviderAssertion)]
-    pub fn verify_provider_assertion(
-        token: &str,
-        key: &str,
-        context: &str,
-        now_ms: &str,
-    ) -> Result<String, String> {
-        verify_json(token, key, context, now_ms).map_err(|error| error.to_string())
-    }
-}
 /// Parses only the bounded JWT header. Provider URLs always come from trusted config.
 pub fn key_id(token: &str) -> Result<String, InvalidAssertion> {
     let (header, _, _) = segments(token)?;
@@ -435,33 +369,24 @@ mod tests {
     }
 
     #[test]
-    fn portable_boundary_preserves_subject_and_sanitizes_only_the_display_hint() {
-        let context = json!({"provider":"google","audience":"audience","presenter":"ios-client",
-            "nonce":"aa".repeat(32),"created_ms":1_000_000})
-        .to_string();
-        let key_json = include_str!("auth/fixtures/rsa-test-only.jwk.json");
+    fn native_verifier_preserves_subject_and_sanitizes_only_the_display_hint() {
+        let context = challenge(Provider::Google);
         let mut first = claims();
         first["email"] = json!("shared@example.invalid");
         first["name"] = json!(format!("\n{}\u{7}", "é".repeat(110)));
-        let verified: serde_json::Value = serde_json::from_str(
-            &verify_json(&token(first.clone()), key_json, &context, "1000000").unwrap(),
-        )
-        .unwrap();
+        let verified = verify_with_key(&token(first.clone()), &key(), &context, 1_000_000).unwrap();
         assert_eq!(
             verified,
-            json!({"issuer":"https://accounts.google.com",
-            "subject":"provider-subject","name":"é".repeat(100)})
+            Verified {
+                issuer: "https://accounts.google.com".into(),
+                subject: "provider-subject".into(),
+                name: Some("é".repeat(100))
+            }
         );
         first["sub"] = json!("another-provider-subject");
-        let second: serde_json::Value = serde_json::from_str(
-            &verify_json(&token(first), key_json, &context, "1000000").unwrap(),
-        )
-        .unwrap();
-        assert_eq!(second["subject"], "another-provider-subject");
-        assert!(second.get("email").is_none());
-        assert!(verify_json(&token(claims()), key_json, &context, "1000000.5").is_err());
-        assert!(verify_json(&token(claims()), &" ".repeat(4097), &context, "1000000").is_err());
-        assert!(verify_json(&token(claims()), key_json, &" ".repeat(4097), "1000000").is_err());
+        let second = verify_with_key(&token(first), &key(), &context, 1_000_000).unwrap();
+        assert_eq!(second.subject, "another-provider-subject");
+        assert!(serde_json::to_value(second).unwrap().get("email").is_none());
     }
 
     #[test]

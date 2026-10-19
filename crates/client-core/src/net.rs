@@ -58,6 +58,12 @@ impl DeferredReceipts {
         if engine.receipt_scope(space, from)? {
             return engine.receipt(space, from, delivered, read);
         }
+        // Explicit native/Web correction: a known signed removal is a cut,
+        // not unresolved membership that can authorize this arrival on rejoin.
+        if engine.receipt_confirmed_removed(space, from)? {
+            self.0.remove(&(space.into(), from.into()));
+            return Ok(false);
+        }
         if delivered == 0 && read == 0 {
             return Ok(false);
         }
@@ -87,10 +93,16 @@ impl DeferredReceipts {
         dirty: &mut HashSet<String>,
     ) -> Result<(), crate::CoreError> {
         let mut ready = Vec::new();
+        let mut discarded = Vec::new();
         for (space, from) in self.0.keys() {
             if engine.receipt_scope(space, from)? {
                 ready.push((space.clone(), from.clone()));
+            } else if engine.receipt_confirmed_removed(space, from)? {
+                discarded.push((space.clone(), from.clone()));
             }
+        }
+        for key in discarded {
+            self.0.remove(&key);
         }
         for (space, from) in ready {
             let (delivered, read) = self.0[&(space.clone(), from.clone())];

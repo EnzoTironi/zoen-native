@@ -1,21 +1,20 @@
-//! Shared relay admission rules, used by the native relay and portable Worker boundary.
+//! Admission and cryptographic policy used by the native relay.
 
 pub mod auth;
 pub mod blobs;
-pub mod closed;
 pub mod directory;
 pub mod gcra;
 pub mod invite;
 pub mod mls_projection;
 pub mod portable;
-pub mod relay_socket;
+pub mod receipts;
 mod rules;
 pub mod sync;
 pub mod transfer;
 
 pub use rules::{admit, identity_key, Effect, Facts, MAX_MEMBERS};
 
-/// Same canonical invite lookup key used by every native and portable backend.
+/// Canonical invite lookup key used by the native relay.
 pub fn code_hash(code: &str) -> String {
     event_log::sha256_hex(code.trim().to_uppercase().as_bytes())
 }

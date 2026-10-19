@@ -784,3 +784,77 @@ fn pending_membership_cannot_admit_a_new_peer_or_suppress_a_confirmed_peers_rece
     assert_eq!(snapshot(&e).rows.len(), 2);
     assert_delivery(&e, &c, Delivery::Read);
 }
+
+#[test]
+fn confirmed_removal_discards_new_and_deferred_marks_so_rejoin_cannot_authorize_them() {
+    for remove_reader in [false, true] {
+        let (_db, e, c) = fixture();
+        membership(
+            &e,
+            &c,
+            EventBody::MemberAdded {
+                identity: c.peer.clone(),
+                role: Role::Owner,
+            },
+        );
+        assert!(e.lock().receipt(&c.space, &c.peer, 10, 5).unwrap());
+        let historical = snapshot(&e).rows;
+        let mut deferred = crate::net::DeferredReceipts::default();
+        let mut dirty = std::collections::HashSet::new();
+        let removed = if remove_reader {
+            c.me.clone()
+        } else {
+            c.peer.clone()
+        };
+        let actor = if remove_reader { &c.peer } else { &c.me };
+        let transition = |body| {
+            let mut engine = e.lock();
+            let signed = engine.author_for(actor).unwrap().sign_event(
+                &c.space,
+                &types::new_id("membership"),
+                crate::engine::now_ms(),
+                engine.logs[&c.space].head(),
+                body,
+            );
+            let mut relay = engine.logs[&c.space].clone();
+            let event = relay.sequence(signed).clone();
+            assert_eq!(
+                engine.ingest(protocol::Sequenced {
+                    seq: event.seq,
+                    prev: event.prev.clone(),
+                    hash: event.hash.clone(),
+                    env: protocol::Envelope::plain(&event)
+                }),
+                crate::sync::Ingest::Applied
+            );
+        };
+        transition(EventBody::MemberRemoved {
+            identity: removed.clone(),
+        });
+        assert!(!deferred
+            .receive(&mut e.lock(), &c.space, &c.peer, u64::MAX, u64::MAX)
+            .unwrap());
+        deferred.flush(&mut e.lock(), &mut dirty).unwrap();
+        assert_eq!(
+            snapshot(&e).rows,
+            historical,
+            "Old authorized historical row is retained; new arrival never persists"
+        );
+        transition(EventBody::MemberAdded {
+            identity: removed,
+            role: Role::Owner,
+        });
+        deferred.flush(&mut e.lock(), &mut dirty).unwrap();
+        assert_eq!(
+            snapshot(&e).rows,
+            historical,
+            "Rejoin cannot authorize the discarded pre-rejoin arrival"
+        );
+        assert!(!dirty.contains(&c.space));
+        assert!(deferred
+            .receive(&mut e.lock(), &c.space, &c.peer, 12, 11)
+            .unwrap());
+        assert_eq!(snapshot(&e).rows[0].2, format!("{:020}", 12));
+        assert_eq!(snapshot(&e).rows[0].3, format!("{:020}", 11));
+    }
+}

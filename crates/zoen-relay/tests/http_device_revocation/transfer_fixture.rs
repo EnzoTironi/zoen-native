@@ -1,5 +1,5 @@
-//! Native HTTP oracle for the private R2 transfer host. Real router, SQL and
-//! ciphertext, with every response recorded before portable differential replay.
+//! Native encrypted history HTTP contract: actual router, PostgreSQL and
+//! ciphertext, with each actual response and decryption checked.
 use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use futures_util::TryStreamExt;
@@ -97,7 +97,7 @@ impl Oracle<'_> {
 }
 
 #[tokio::test]
-async fn cloudflare_transfer_native_fixture() {
+async fn native_encrypted_transfer_http_contract() {
     let test = TestRelay::new().await;
     let a = test.register().await;
     let id = Signer::generate().id();

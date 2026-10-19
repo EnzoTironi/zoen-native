@@ -155,7 +155,7 @@ optional authorization codes; exchange, refresh-token handling and account-delet
 token revocation need a separately verified integration before claiming those provider
 lifecycle features.
 
-## Public relay and Cloudflare migration
+## Public relay and current native backend
 
 Authenticated inspection on 19 October 2026 found no apps in the visible Fly
 organization `enzo-tironi`; its Machines quota is 0/0 and deployment requires a
@@ -163,13 +163,13 @@ payment method. The four DNS aliases `relay`, `api`, `media` and `id.tryzoen.com
 still target `zoen-staging-relay.fly.dev`, which returns NXDOMAIN. This establishes
 an unavailable public relay, not deletion of historical databases or backups.
 
-The user selected Cloudflare for the new deployment. The Expo frontend and private
-SQLite Durable Object storage are deployed there; shared Rust admission,
-directory/provider binding, revocation, WebSockets and private R2 integration remain
-in progress. See [Cloudflare deployment](../../infra/cloudflare/README.md) for the
-actual deployment and acceptance boundaries. The separate `auth.tryzoen.com`
-OAuth Worker is not the Rust sync relay. No existing DNS or OAuth Worker route was
-changed, and the frontend preview does not establish successful provider login.
+The custom Cloudflare backend port is retired. The native Rust relay now runs
+locally with real PostgreSQL, FoundationDB and S3-compatible storage while its
+production-like composition is qualified. Cloudflare continues to host the
+static Expo frontend and DNS; see [static hosting](../../infra/cloudflare/README.md).
+The separate `auth.tryzoen.com` OAuth Worker is not the Rust sync relay. No DNS,
+bucket or OAuth route is changed by this source cleanup, and frontend preview
+acceptance does not establish provider login.
 
 The public provider values are shared with the native relay configuration:
 
@@ -186,7 +186,7 @@ disabled until its Services ID is verified. Native ID-token verification needs n
 client secret or Apple Web Services ID. Missing relay audiences return
 `provider_not_configured`; a mismatched native Google presenter is rejected.
 
-The existing Fly provisioning script is not part of the Cloudflare migration.
+The existing Fly provisioning script is separate from local development.
 Its failed-inventory guard preserves durable credentials instead of treating a
 network error as a missing secret. The six offline inventory cases and shell
 syntax checks pass. Historical deployment/data ownership remains recorded in

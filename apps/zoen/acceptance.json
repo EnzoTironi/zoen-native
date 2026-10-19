@@ -81,7 +81,22 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "Current source uses Expo SDK 58.0.16, purpose-based Rust packages, a regenerated Client ABI, separate account/demo storage and no old-name aliases. TypeScript, Oxlint, Oxfmt and 825 app tests pass; the bounded iOS miniapp-activity checkpoint preserves canonical IDs, search and history. The active backend direction is the native Rust server with real PostgreSQL/FoundationDB/S3-compatible storage, developed locally in a production-like composition for now. The custom Cloudflare runtime port is retired; its earlier proofs retain their original artifact attribution. Native receipt/replay work and the local environment remain under validation. Public backend, real provider login, complete platform journeys and production/scale acceptance remain open.",
+  "currentAcceptanceSummary": "Current Expo SDK 58.0.16 source passes TypeScript, Oxlint, Oxfmt and 828 app tests. Native iOS activity preserves canonical IDs, search and history; Web source passes 72 Rust tests and typed signed DTO boundary checks, with fresh Web runtime qualification in progress. The custom Cloudflare backend runtime is removed. The native Rust backend now runs locally with real PostgreSQL 17, FoundationDB 7.3.71, private S3-compatible storage and optional NATS/two relays. 151 unique native/shared tests, the actual public Client 7 checkpoints, S3 concurrency/restart and cold backup/restore passed. Provider confirmation, public deployment, complete platform journeys, release rollback, cross-relay delivery and production/scale acceptance remain open.",
+  "retiredBackend": {
+    "id": "custom-cloudflare-runtime",
+    "status": "RETIRED",
+    "activeProductRuntime": false,
+    "currentBackend": "native Rust with PostgreSQL, FoundationDB and S3-compatible object storage",
+    "retainedCloudflareScope": [
+      "static Expo Web hosting",
+      "edge DNS",
+      "optional private S3-compatible R2 storage"
+    ],
+    "historicalProofsPolicy": "Earlier Cloudflare adapter receipts below retain their original source/artifact attribution. Removed runtime paths are historical references and do not qualify the native local composition or public production.",
+    "historicalSource": "https://github.com/EnzoTironi/zoen-native/blob/b4cffb7163888d34e47e470f6bb007672a1ed028/infra/cloudflare/README.md",
+    "nativeLocalQualificationAccepted": true,
+    "publicBackendQualificationAccepted": false
+  },
   "historicalEvidence": {
     "commit": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
     "path": "apps/zoen/acceptance.json",
@@ -2121,14 +2136,14 @@
     "preview": "Existing native item snapshot; no actual scene thumbnail and no permission mutation.",
     "webRuntimeVerified": false,
     "androidRuntimeVerified": false,
-    "webGap": "Browser message projection omits typed item version/revert events; current runtime qualification requires that path and a fresh matching WASM artifact.",
+    "webGap": "Typed item versions/restores now reach the shared projection; fresh WASM and export are built, while actual browser linking/delivery/search/history qualification is in progress.",
     "publicDeliveryVerified": false,
     "fullAppParityAccepted": false
   },
   "backendExecutionDecision": {
     "id": "native-rust-local-production-environment-v118",
     "decision": "Run the existing native Rust backend; retire custom Cloudflare Workers/Durable Objects adaptation. Keep Cloudflare DNS/CDN/static hosting/S3-compatible storage where useful.",
-    "immediatePhase": "LOCAL_PRODUCTION_SIMULATION_IN_PROGRESS",
+    "immediatePhase": "LOCAL_STACK_VERIFIED_WEB_QA_IN_PROGRESS",
     "requiredServices": [
       "native Rust relay container",
       "real PostgreSQL",
@@ -2146,8 +2161,67 @@
     "historicalAdapterCheckpoint": "currentBackendCheckpoint retains historical v114a attribution; it is not the active runtime decision.",
     "cloudProvisioningRequestedNow": false,
     "publicBackendStillRequiredForFinalGoal": true,
-    "localEnvironmentVerified": false,
+    "localEnvironmentVerified": true,
     "productionReadinessAccepted": false,
-    "scaleReadinessAccepted": false
+    "scaleReadinessAccepted": false,
+    "localVerificationScope": "Real local native server/storage/client and cold restore on fresh volumes. Actual client completed before external restart/restore; ciphertext and datastore comparisons follow it. Not production/scale, provider or post-restore device-key recovery acceptance.",
+    "releaseRollbackVerified": false,
+    "crossRelayDeliveryVerified": false
+  },
+  "currentWebActivitySourceCheckpoint": {
+    "id": "typed-web-miniapp-activity-v118",
+    "receipt": {
+      "path": "/private/tmp/zoen-miniapp-web-v118/rust-verification-v3-1.json",
+      "sha256": "f29a98fffbc367d80cb6786b7ce3f5cd8a07ba1f0fabfde75447832e33dea61b"
+    },
+    "appTests": 828,
+    "rustTests": 72,
+    "strictAllTargetClippy": true,
+    "actualSignedDtoBoundaryCases": 2,
+    "canonicalDocumentFoldReused": true,
+    "humanThreadAndVoiceHistoryPreserved": true,
+    "ambiguousItemOwnershipWarningSurfaced": true,
+    "savedIntegrityWarningsPreserved": true,
+    "freshWasmBuilt": true,
+    "actualBrowserRuntimeVerified": false,
+    "androidRuntimeVerified": false,
+    "testFormattingFollowup": "Canonical cargo fmt through the crate module changed only whitespace in client_tests.rs after the receipt; all production source is identical."
+  },
+  "currentNativeBackendCheckpoint": {
+    "id": "native-local-production-environment-v118",
+    "guide": "infra/local/README.md",
+    "receipt": {
+      "path": "/private/tmp/zoen-native-deploy-v118/final-seal/acceptance.json",
+      "sha256": "a5fa24612efefc755dbe6ecb2a087e8469424a7c66545244ca44ae3ca660a756"
+    },
+    "nativePolicyReceipt": {
+      "path": "/private/tmp/zoen-native-policy-v119/final-receipt.json",
+      "sha256": "9b29d88f53fe04916e9b2254839606391828d0644a227c9c428bb7df83e15071"
+    },
+    "nativeRelayImage": "sha256:29225876d19e78c021c871f35503dc13548ce91c31505c8cef345165b3da6a05",
+    "nativeSharedUniqueTestsPassed": 151,
+    "ownershipIntegrityTestsPassed": 10,
+    "actualPublicClientChecksPassed": 7,
+    "actualS3ConditionalCreateRaceAndImmutableRetry": true,
+    "actualStorageRestart": true,
+    "actualColdRestoreOnNewVolumesWithExactImages": true,
+    "postgresTablesCompared": 41,
+    "observedFdbSpaceKeysCompared": 30,
+    "actualAttachmentCiphertextBytesRestored": 1049393,
+    "actualRecoveryCiphertextBytesRestored": 1465,
+    "clientReopenedAfterExternalRestore": false,
+    "osKeychainRecoveryVerified": false,
+    "twoNativeRelaysAndNatsHealthy": true,
+    "crossRelayDeliveryVerified": false,
+    "highAvailabilityVerified": false,
+    "releaseRollbackVerified": false,
+    "productionReadinessAccepted": false,
+    "scaleReadinessAccepted": false,
+    "postBuildSourceDeltas": "Three test-only deltas: two integration fixture refinements and canonical whitespace-only formatting of the browser-core test file. All production inputs remain identical to the validated image.",
+    "clientReceiptGuardTestsPassed": 13,
+    "clientReceiptGuardReceipt": {
+      "path": "/private/tmp/zoen-native-policy-v119/client-guards-xci_0lfb/receipt.json",
+      "sha256": "4c5c70847aabfe8d10d95a424e2be64e6314bfe151296899b1ab716bb3b151bf"
+    }
   }
 }

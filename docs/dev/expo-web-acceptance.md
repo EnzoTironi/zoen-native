@@ -107,7 +107,6 @@ Combined source/archive verification receipt:
 `/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json`
 (SHA256 `47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0`).
 
-
 [CI run 39204333306](https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306)
 passed all six Expo jobs on merge `59998b677ce581bd49a045538ee62f3d17b55347`
 for head `52da9729`. Actual browser receipts passed 22/22 per locale with no page
@@ -298,11 +297,13 @@ This establishes guest rendering, without successful WASM initialization,
 authentication or encrypted-sync acceptance. Prior releases07/06, canonical-domain
 and preview observations remain separately attributed in the acceptance manifest.
 
-See the [Cloudflare deployment guide](../../infra/cloudflare/README.md) for
-production reproduction and the outstanding relay boundary. The
-[shared Rust admission foundation](../../infra/cloudflare/admission.md) passed
-native/Node/workerd checks; a complete relay adapter remains unfinished.
-Provider origins and R2 activation are unchanged.
+See the [static hosting guide](../../infra/cloudflare/README.md) for production
+asset reproduction. The custom Cloudflare backend port and its differential
+runners are retired; old private receipts retain their source/artifact attribution.
+The current backend is the native Rust server in the owned local composition.
+Neither historical workerd checks nor these static hosting observations establish
+current native local-stack, provider-login or public production acceptance.
+Provider origins, private R2 ownership and DNS are unchanged by source cleanup.
 
 Additional manual baseline checks confirmed quoted replies, thread replies and
 scoped search against the canonical peer. Warm offline queuing was bounded:

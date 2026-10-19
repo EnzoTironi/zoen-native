@@ -42,9 +42,9 @@ falhas conhecidas de fechamento ocioso permanecem visíveis, com o mesmo prazo.
 O PostgreSQL descartável foi encerrado e removido. Os serviços protegidos não
 foram reiniciados nem limpos.
 
-Contratos: [MLS](../../infra/cloudflare/closed-groups.md),
-[leituras](../../infra/cloudflare/relay-state/DIRECTORY-READS.md) e
-[perfis cifrados](../../infra/cloudflare/relay-state/DIRECTORY-PROFILES.md).
+Contratos: [MLS](https://github.com/EnzoTironi/zoen-native/blob/b4cffb7163888d34e47e470f6bb007672a1ed028/infra/cloudflare/closed-groups.md),
+[leituras](https://github.com/EnzoTironi/zoen-native/blob/b4cffb7163888d34e47e470f6bb007672a1ed028/infra/cloudflare/relay-state/DIRECTORY-READS.md) e
+[perfis cifrados](https://github.com/EnzoTironi/zoen-native/blob/b4cffb7163888d34e47e470f6bb007672a1ed028/infra/cloudflare/relay-state/DIRECTORY-PROFILES.md).
 
 ## Operação e CI
 

@@ -4938,16 +4938,12 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "event-log",
- "getrandom 0.2.17",
- "getrandom 0.4.3",
  "mls",
- "openmls",
  "protocol",
  "ring",
  "serde",
  "serde_json",
  "types",
- "wasm-bindgen",
 ]
 
 [[package]]

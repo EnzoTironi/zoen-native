@@ -1,9 +1,10 @@
--- Aggregated receipts (ADR: "read up to X"): one watermark per person per Space, never
--- one row per message. Only the newest counts, so the relay can replay it on sync.
+-- Fresh prelaunch baseline: full protocol UInt64, exact PostgreSQL decimal.
 CREATE TABLE space_receipts (
-    space     TEXT NOT NULL,
-    identity  TEXT NOT NULL,
-    delivered BIGINT NOT NULL DEFAULT 0,
-    read      BIGINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (space, identity)
+    space TEXT NOT NULL,
+    identity TEXT COLLATE "C" NOT NULL,
+    delivered NUMERIC(20,0) NOT NULL DEFAULT 0
+        CHECK (delivered >= 0 AND delivered <= 18446744073709551615),
+    read NUMERIC(20,0) NOT NULL DEFAULT 0
+        CHECK (read >= 0 AND read <= 18446744073709551615 AND read <= delivered),
+    PRIMARY KEY(space,identity)
 );

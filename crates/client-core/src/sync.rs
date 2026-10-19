@@ -1671,6 +1671,42 @@ impl Engine {
             && members.iter().any(|(member, _)| member == from))
     }
 
+    /// A signed, checked canonical membership transition has removed the reader
+    /// or subject. Outbox/UI optimism cannot erase this cut or resurrect a mark.
+    /// This is only evaluated for unresolved/unauthorized arrivals, not hot valid
+    /// receipts. It reuses the existing checked projection and PlanReplay.
+    pub(crate) fn receipt_confirmed_removed(&self, space: &str, from: &str) -> R<bool> {
+        let Some(me) = self.me.as_deref() else {
+            return Ok(false);
+        };
+        let Some(log) = self.logs.get(space) else {
+            return Ok(false);
+        };
+        let mut confirmed = State::default();
+        let mut plans = PlanReplay::new(&self.store, &self.logs);
+        let mut removed = [false, false];
+        for (end, event) in log.events().iter().enumerate() {
+            let present = |state: &State, who: &str| {
+                state
+                    .spaces
+                    .get(space)
+                    .is_some_and(|room| room.members.iter().any(|(id, _)| id == who))
+            };
+            let before = [present(&confirmed, me), present(&confirmed, from)];
+            let context = plans.before(&confirmed, &self.identities, event, end)?;
+            confirmed.apply_checked(event, &self.identities, &context);
+            for (index, who) in [me, from].into_iter().enumerate() {
+                let after = present(&confirmed, who);
+                if after {
+                    removed[index] = false;
+                } else if before[index] {
+                    removed[index] = true;
+                }
+            }
+        }
+        Ok(removed.into_iter().any(|value| value))
+    }
+
     fn restore_peer_receipts(&mut self) -> R<()> {
         // Older demo databases kept sample ticks in one special metadata blob.
         // Migrate only canonical members, atomically, then use the ordinary cache.

@@ -1,10 +1,9 @@
-//! Policy vectors also exercise the JSON boundary used by the private R2 host.
+//! Native signed media admission, digest and weighted quota regressions.
 use event_log::{Author, Signer};
 use relay_admission::{
     blobs::*,
     gcra::{self, Decision},
 };
-use serde_json::{json, Value};
 
 const NOW: i64 = 1_700_000_000_000;
 const RELAY: &str = "test-relay";
@@ -118,29 +117,22 @@ fn long_public_fields_keep_native_rejections_without_a_context_size_gate() {
     let now = NOW.to_string();
     let signature = a.key.sign(&protocol::blob_put_message(SHA, NOW, RELAY));
     failure(
-        put_policy_wire(
-            &"a".repeat(17 * 1024),
-            device,
-            &now,
-            &signature,
-            RELAY,
-            &now,
-        ),
+        put_policy(&"a".repeat(17 * 1024), device, &now, &signature, RELAY, NOW),
         400,
         "bad hash",
     );
     failure(
-        put_policy_wire(SHA, &"a".repeat(32 * 1024), &now, &signature, RELAY, &now),
+        put_policy(SHA, &"a".repeat(32 * 1024), &now, &signature, RELAY, NOW),
         401,
         "bad signature",
     );
     failure(
-        put_policy_wire(SHA, device, &"1".repeat(32 * 1024), &signature, RELAY, &now),
+        put_policy(SHA, device, &"1".repeat(32 * 1024), &signature, RELAY, NOW),
         401,
         "missing signature",
     );
     failure(
-        put_policy_wire(SHA, device, &now, &"a".repeat(32 * 1024), RELAY, &now),
+        put_policy(SHA, device, &now, &"a".repeat(32 * 1024), RELAY, NOW),
         401,
         "bad signature",
     );
@@ -184,27 +176,19 @@ fn multi_chunk_digest_matches_independent_native_sha256() {
 }
 
 #[test]
-fn json_boundary_keeps_exact_large_integers_and_shared_refusal_text() {
-    let config: Value = serde_json::from_str(&rate_config_json()).unwrap();
-    assert_eq!(config, json!({"interval_ns":"585937","burst":204800}));
-    let input = json!({"now_ns":"9007199254740993","tat_ns":"9007199254740993", "cost":2,"interval_ns":"1000000000","burst":1});
-    let out: Value =
-        serde_json::from_str(&rate_decision_json(&input.to_string()).unwrap()).unwrap();
+fn exact_native_gcra_arithmetic_keeps_large_integer_credit() {
+    assert_eq!(DEFAULT_INTERVAL_NS, 585_937);
+    assert_eq!(DEFAULT_BURST, 204_800);
+    let now = 9_007_199_254_740_993;
     assert_eq!(
-        out,
-        json!({"accepted":false,"wait_ns":"1000000000","retry_after":"1","body":"slow down, retry in 1.0 s"})
+        gcra::decide(now, Some(now), 2, 1_000_000_000, 1),
+        Decision::Rejected {
+            wait_ns: 1_000_000_000
+        }
     );
-    let out: Value = serde_json::from_str(&rate_decision_json(&json!({"now_ns":"9007199254740993","tat_ns":null,"cost":1,"interval_ns":"1","burst":1}).to_string()).unwrap()).unwrap();
-    assert_eq!(out, json!({"accepted":true,"next_ns":"9007199254740994"}));
-    failure(
-        body_policy_json("{\"length\":\"01\"}"),
-        500,
-        "storage unavailable",
-    );
-    failure(
-        body_policy_json("{\"length\":1}"),
-        500,
-        "storage unavailable",
+    assert_eq!(
+        gcra::decide(now, None, 1, 1, 1),
+        Decision::Accepted { next_ns: now + 1 }
     );
 }
 

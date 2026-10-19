@@ -11,17 +11,20 @@ The shared Rust core powers the existing native clients and the Expo application
 The [Expo acceptance manifest](apps/zoen/acceptance.json) records current artifacts,
 required journeys and exact evidence. Full comparative product parity is incomplete.
 
-| Platform | Accepted boundary | Remaining scope |
-| --- | --- | --- |
-| iPhone | Signed v85 whole-application baseline; later v89–v92 bounded Excalidraw/MCP and preserving Home checks. | v94/v95 Page-input/session foundations remain source/host proof; integrated editor recovery and remaining product journeys need signed runtime evidence. |
-| Web | 22 release checkpoints pass in English and Portuguese locally and in CI, including actual Excalidraw canvas edits, exact native-peer bytes and cold reload. | Broader drawing/media failures, rich file replies/captions/threads, startup offline recovery and broad accessibility remain open. |
-| Android | Actual API35 Debug app passed linking, history recovery, Page creation/read, header/status checks and local erasure with retained peer history. Packaged JNI and 14 JVM tests passed; independent CI also produced the minified Release APK. | Release runtime/performance, API28/physical devices and remaining media/platform features need acceptance. |
-| Cloudflare | Frontend at app.tryzoen.com passes ten public HTTP paths and exact worker integrity. Private closed-group storage and the Person/device directory with MLS key packages use shared Rust/WASM; closed-group receipts also match native bytes remotely. | Complete directory/provider integration, MLS, WebSocket delivery and R2 must establish a public relay before provider login or encrypted sync can be accepted. |
+| Platform           | Accepted boundary                                                                                                                                                                                                                            | Remaining scope                                                                                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iPhone             | Signed v85 whole-application baseline; later v89–v92 bounded Excalidraw/MCP and preserving Home checks.                                                                                                                                      | v94/v95 Page-input/session foundations remain source/host proof; integrated editor recovery and remaining product journeys need signed runtime evidence. |
+| Web                | 22 release checkpoints pass in English and Portuguese locally and in CI, including actual Excalidraw canvas edits, exact native-peer bytes and cold reload.                                                                                  | Broader drawing/media failures, rich file replies/captions/threads, startup offline recovery and broad accessibility remain open.                        |
+| Android            | Actual API35 Debug app passed linking, history recovery, Page creation/read, header/status checks and local erasure with retained peer history. Packaged JNI and 14 JVM tests passed; independent CI also produced the minified Release APK. | Release runtime/performance, API28/physical devices and remaining media/platform features need acceptance.                                               |
+| Backend            | Native Rust with PostgreSQL/FDB/S3-compatible storage; the local production-like composition is being qualified.                                                                                                                             | Public provider login, complete production/restore/load evidence remain open.                                                                            |
+| Static Web hosting | app.tryzoen.com has dated public asset/header/integrity evidence.                                                                                                                                                                            | A hosted frontend does not qualify the native backend.                                                                                                   |
 
 See [Web acceptance](docs/dev/expo-web-acceptance.md),
 [Android acceptance](docs/dev/expo-android-acceptance.md),
 [iPhone native evidence](docs/dev/expo-native-surfaces.md) and
-[Cloudflare deployment](infra/cloudflare/README.md) for the boundaries and reproduction.
+[static Web hosting](infra/cloudflare/README.md) for the boundaries and reproduction.
+The custom Cloudflare backend port is retired; native development and operation use
+the [owned local environment](infra/local/compose.yaml).
 Builds and bounded checks do not establish complete replacement or billion-user capacity.
 
 The earlier merged-client results retain their dated attribution in the
@@ -52,6 +55,7 @@ cargo test --locked -j2 -p client-core --lib runtime_core::tests::receipt_prefix
 cargo test --locked -j2 -p client-core --lib runtime_core::tests -- --test-threads=1
 cargo test --locked -j2 -p client-core --lib mls::tests -- --test-threads=1
 ```
+
 ### Markdown import performance
 
 `journey_files` measures import through relay acceptance of every sealed page. It exports every page on another device and compares the original bytes. The default hosted budget is 250 ms per page. The F5 measurement corpus had 94 UTF-8 Markdown files under `docs`, with 1,137,578 bytes in total. F7 adds documentation to the imported corpus; the aggregate candidate needs fresh corpus counts, hashes, timing and round-trip evidence.

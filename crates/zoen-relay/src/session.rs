@@ -793,7 +793,7 @@ impl Session {
             protocol::EphemeralKind::Read { seq } | protocol::EphemeralKind::Delivered { seq }
                 if members.len() > RECEIPT_BROADCAST_MAX =>
             {
-                self.receipt_audience(&space, seq).await
+                self.receipt_audience(&space, seq, &members).await
             }
             _ => members
                 .into_iter()
@@ -820,8 +820,12 @@ impl Session {
     /// 250 to 5 accepted msgs/s under it, SCALE.md §3). Authors are the ones whose ticks
     /// change. The watermark covers the last [`crate::recent::WINDOW`] messages up to `seq`
     /// live; an author further back learns it from the stored watermark on the next sync.
-    async fn receipt_audience(&self, space: &str, seq: u64) -> Vec<String> {
-        let mut to = vec![self.identity.clone()];
+    async fn receipt_audience(
+        &self,
+        space: &str,
+        seq: u64,
+        members: &[(String, types::Role)],
+    ) -> Vec<String> {
         let authors = match self.st.fanout.recent.authors_through(space, seq) {
             Some(authors) => authors,
             None => {
@@ -837,12 +841,20 @@ impl Session {
                 }
             }
         };
-        for author in authors {
-            if !to.contains(&author) {
-                to.push(author);
-            }
-        }
-        to
+        // Intentional fresh native+portable contract correction: canonical old
+        // authorship cannot grant receipt metadata after membership removal.
+        relay_admission::receipts::recipients(
+            &self.identity,
+            &members
+                .iter()
+                .map(|(identity, _)| identity.clone())
+                .collect::<Vec<_>>(),
+            true,
+            &authors,
+        )
+        .ok()
+        .flatten()
+        .unwrap_or_default()
     }
 
     /// Agent citizens: the runtime's own state and cursors, or an owner's control.
@@ -1546,16 +1558,39 @@ impl Session {
         let span = tracing::Span::current();
         span.record("spaces", plan.len() as i64);
         let mut sent = 0usize;
-        // Receipt watermarks for every Space this sync reads to the head, in one query
-        // instead of one per Space (a 500-chat reconnect was 500 queries).
+        // One identity ceiling per eligible Space, never a per-connection copy
+        // of all marks. Current membership is admitted again at begin and every
+        // bounded keyset page; an admitted page may finish after a later removal.
+        // PG receipt storage and the membership log are not one atomic store.
         let heads: Vec<String> = plan
             .iter()
             .filter(|read| read.through.is_none())
             .map(|read| read.space.clone())
             .collect();
-        let Ok(Ok(mut marks)) = tokio::time::timeout(
+        let Ok(Ok(current_receipt_spaces)) = tokio::time::timeout(
             Duration::from_secs(5),
-            self.st.receipts.of_spaces(&self.st.pool, &heads),
+            self.st.log.spaces_of(&self.identity),
+        )
+        .await
+        else {
+            self.send_sync(ServerFrame::error(
+                ErrorCode::Unavailable,
+                "membership unavailable",
+            ))
+            .await;
+            return;
+        };
+        let current_receipt_spaces: std::collections::BTreeSet<_> =
+            current_receipt_spaces.into_iter().collect();
+        let heads: Vec<_> = heads
+            .into_iter()
+            .filter(|space| current_receipt_spaces.contains(space))
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let Ok(Ok(mut ceilings)) = tokio::time::timeout(
+            Duration::from_secs(5),
+            self.st.receipts.ceilings(&self.st.pool, &heads),
         )
         .await
         else {
@@ -1629,11 +1664,7 @@ impl Session {
                     break;
                 }
             }
-            if through.is_none()
-                && !self
-                    .replay_receipts(&space, marks.remove(&space).unwrap_or_default())
-                    .await
-            {
+            if through.is_none() && !self.replay_receipts(&space, ceilings.remove(&space)).await {
                 return;
             }
         }
@@ -1652,27 +1683,68 @@ impl Session {
 }
 
 impl Session {
-    /// The newest receipt watermarks of a Space, so a device that was away still learns
-    /// what was delivered and read while it was gone.
-    async fn replay_receipts(&self, space: &str, rows: Vec<(String, i64, i64)>) -> bool {
-        for (from, delivered, read) in rows {
-            for kind in [
-                protocol::EphemeralKind::Delivered {
-                    seq: delivered as u64,
-                },
-                protocol::EphemeralKind::Read { seq: read as u64 },
-            ] {
-                let frame = ServerFrame::Ephemeral {
-                    space: space.to_string(),
-                    from: from.clone(),
-                    kind,
-                };
-                if !self.send_sync(frame).await {
+    /// Deterministic identity order, each Delivered immediately followed by Read.
+    /// Initial ceiling + monotonic, never-deleted identity rows guarantees every
+    /// pre-cut row with >= its pre-cut mark, even across concurrent flush/raises.
+    async fn replay_receipts(&self, space: &str, ceiling: Option<String>) -> bool {
+        let Some(ceiling) = ceiling else { return true };
+        let mut after = String::new();
+        loop {
+            // The role read is the page admission boundary. A removed reader
+            // starts no further page; a page admitted before removal may finish.
+            match tokio::time::timeout(
+                Duration::from_secs(5),
+                self.st.log.role(space, &self.identity),
+            )
+            .await
+            {
+                Ok(Ok(Some(_))) => {}
+                Ok(Ok(None)) => return true,
+                _ => {
+                    self.send_sync(ServerFrame::error(
+                        ErrorCode::Unavailable,
+                        "membership unavailable",
+                    ))
+                    .await;
                     return false;
                 }
             }
+            let Ok(Ok(page)) = tokio::time::timeout(
+                Duration::from_secs(5),
+                self.st
+                    .receipts
+                    .page(&self.st.pool, space, &after, &ceiling),
+            )
+            .await
+            else {
+                self.send_sync(ServerFrame::error(
+                    ErrorCode::Unavailable,
+                    "database unavailable",
+                ))
+                .await;
+                return false;
+            };
+            for (from, delivered, read) in page.rows {
+                for kind in [
+                    protocol::EphemeralKind::Delivered { seq: delivered },
+                    protocol::EphemeralKind::Read { seq: read },
+                ] {
+                    if !self
+                        .send_sync(ServerFrame::Ephemeral {
+                            space: space.into(),
+                            from: from.clone(),
+                            kind,
+                        })
+                        .await
+                    {
+                        return false;
+                    }
+                }
+            }
+            let Some(next) = page.next else { return true };
+            after = next;
+            tokio::task::yield_now().await;
         }
-        true
     }
 }
 

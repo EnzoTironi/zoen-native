@@ -84,7 +84,7 @@ Após a correção de leitura por cursor e limite agregado de 768 KiB, passaram
 21 testes Workerd sem falhas ou casos ignorados. A recusa por capacidade é
 repetível, sem inventar uma resposta parcial. A integração do orçamento nativo de
 `ClaimKeyPackages` ainda precisa ser concluída; não há aprovação global dos
-controles de abuso. O [contrato de leituras](../../infra/cloudflare/relay-state/DIRECTORY-READS.md)
+controles de abuso. O [contrato de leituras](https://github.com/EnzoTironi/zoen-native/blob/b4cffb7163888d34e47e470f6bb007672a1ed028/infra/cloudflare/relay-state/DIRECTORY-READS.md)
 registra os limites privados.
 
 A base foi atualizada para Expo estável 58.0.15 e os quatro patches recomendados

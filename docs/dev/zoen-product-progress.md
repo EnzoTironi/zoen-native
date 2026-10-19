@@ -89,16 +89,41 @@ Workers/Durable Objects port is retired; no further adapter work or cloud
 activation is planned. Cloudflare can continue to serve DNS, static assets or
 S3-compatible encrypted storage without changing the server runtime.
 
-The immediate environment is local, using real PostgreSQL, FoundationDB and
-S3-compatible object storage with the native relay container. Persistence,
-migrations, health/readiness, restart and recovery must be exercised there.
+The local environment now runs the native relay with real PostgreSQL 17,
+FoundationDB 7.3.71 and private SeaweedFS S3 storage. Its actual public Client
+passed seven checkpoints, including receipt replay, encrypted attachment
+decryption and recovery-blob readback. Concurrent create-only storage writes,
+immutable retries and a real storage restart passed. A cold backup restored into
+fresh volumes with the exact images and original keys; all 41 PostgreSQL tables
+and sequences, 30 observed FDB Space keys and the actual media/recovery ciphertext
+bytes matched. Ten ownership/integrity checks and 151 unique shared/native tests
+passed, with strict backend Clippy. The current native Client receipt guards also
+pass all 13 targeted tests and strict all-target Clippy. One exploratory backend
+benchmark is excluded.
+
+The environment guide is [infra/local/README.md](../../infra/local/README.md).
+Runtime evidence is `/private/tmp/zoen-native-deploy-v118/final-seal/acceptance.json`,
+SHA-256 `a5fa24612efefc755dbe6ecb2a087e8469424a7c66545244ca44ae3ca660a756`;
+the policy/integration receipt is
+`/private/tmp/zoen-native-policy-v119/final-receipt.json`, SHA-256
+`9b29d88f53fe04916e9b2254839606391828d0644a227c9c428bb7df83e15071`.
+The Client completed before the external restart/restore. Subsequent datastore
+and ciphertext comparisons do not establish reopening that Client or recovering
+an OS keychain. Two relays and NATS are healthy; cross-process delivery, HA,
+release rollback and capacity remain unverified. Browser QA uses the same canonical
+relay URL on both sides; pairing deliberately rejects a different relay URL.
+
 The full goal still requires public deployment and final platform artifacts;
 local success does not establish production or scale acceptance.
 
 The pending Cloudflare adapter/oracle changes were archived before scoped
-removal. Native receipt precision, replay paging/race fixes and client receipt
-handling remain under validation. The simulator and development server handed
-to the user are separate protected resources.
+removal. The committed custom adapter source is also removed, retaining the
+native cryptographic policy and static Web tooling. Native receipts now retain
+exact unsigned watermarks with bounded keyset replay and tested SQL flush/query
+races. Current membership controls every replay page and live receipt audience;
+removed identities cannot seed new marks that later reappear on rejoin.
+The simulator and development server handed to the user remain separate protected
+resources.
 
 Earlier Cloudflare results retain their original scope and source attribution
 in the acceptance matrix and commit `1401c3e9`. They are historical adapter

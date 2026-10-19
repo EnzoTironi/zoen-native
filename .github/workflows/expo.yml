@@ -21,13 +21,7 @@ on:
         'scripts/deploy-expo-web.mjs',
         'scripts/expo-web-*.mjs',
         'scripts/expo-web-tests/**',
-        'scripts/verify-cloudflare-admission.mjs',
-        'scripts/verify-cloudflare-provider.mjs',
-        'scripts/verify-cloudflare-closed.mjs',
-        'scripts/verify-cloudflare-directory.mjs',
-        'scripts/verify-cloudflare-sync.mjs',
-        'scripts/build-cloudflare-closed.mjs',
-        'infra/cloudflare/**',
+        'infra/cloudflare/web/**',
         '.github/workflows/expo.yml',
       ]
   push:
@@ -51,13 +45,7 @@ on:
         'scripts/deploy-expo-web.mjs',
         'scripts/expo-web-*.mjs',
         'scripts/expo-web-tests/**',
-        'scripts/verify-cloudflare-admission.mjs',
-        'scripts/verify-cloudflare-provider.mjs',
-        'scripts/verify-cloudflare-closed.mjs',
-        'scripts/verify-cloudflare-directory.mjs',
-        'scripts/verify-cloudflare-sync.mjs',
-        'scripts/build-cloudflare-closed.mjs',
-        'infra/cloudflare/**',
+        'infra/cloudflare/web/**',
         '.github/workflows/expo.yml',
       ]
 
@@ -69,76 +57,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  cloudflare-admission:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    env:
-      CARGO_PROFILE_DEV_DEBUG: '0'
-      CARGO_INCREMENTAL: '0'
-      CARGO_BUILD_JOBS: '2'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '26'
-          cache: npm
-          cache-dependency-path: infra/cloudflare/package-lock.json
-      - name: Portable Rust and WASM toolchains
-        run: |
-          rustup toolchain install 1.99.1 --profile minimal --component clippy,rustfmt,llvm-tools-preview --target wasm32-unknown-unknown
-          rustup default 1.99.1
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
-        with:
-          key: cloudflare-admission
-      - name: Install pinned Worker and WASM tools
-        run: |
-          npm ci --prefix infra/cloudflare
-          cargo install wasm-bindgen-cli --version 0.2.129 --locked
-      - name: Shared admission rules and portable boundary regressions
-        run: |
-          cargo fmt --all --check
-          cargo test --locked -p relay-admission
-          cargo clippy --locked -p relay-admission --all-targets -- -D warnings
-      - name: Compare native, WASM and real workerd receipts
-        # Public deterministic fixtures only; no account credentials or deployment.
-        run: node scripts/verify-cloudflare-admission.mjs --out-dir .dev/cloudflare-admission
-      - name: Verify shared Apple and Google assertion policy in workerd
-        run: node scripts/verify-cloudflare-provider.mjs --out-dir .dev/cloudflare-provider
-      - name: Retain portable admission evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: cloudflare-admission-evidence
-          path: |
-            .dev/cloudflare-admission
-            .dev/cloudflare-provider
-          if-no-files-found: warn
-          retention-days: 7
-
-  cloudflare-state:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: infra/cloudflare
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '26'
-          cache: npm
-          cache-dependency-path: infra/cloudflare/package-lock.json
-      - run: npm ci
-      - run: npm run check --workspace relay-state
-      # Actual workerd/SQLite transactions; CI never deploys or accesses an account.
-      - run: npm test --workspace relay-state
-
-  # Builds the Expo application and its native module, distinct from the legacy
-  # Kotlin client's android.yml. APK compilation is not device-flow acceptance.
   android-build:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -315,7 +233,6 @@ jobs:
         run: |
           npm ci --prefix apps/zoen
           npm ci --prefix scripts/expo-web-tests
-          npm ci --prefix infra/cloudflare
           cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - name: Disposable Postgres and FoundationDB
         run: |
@@ -372,109 +289,6 @@ jobs:
             fi
           done
           exit "$expo_status"
-      - name: Compare native FDB and private Cloudflare closed-group transactions
-        # Reuses this job's isolated FDB and canonical native build. No account
-        # credentials, public relay, DNS changes or deployment are involved.
-        run: node scripts/verify-cloudflare-closed.mjs --out-dir .dev/cloudflare-closed
-      - name: Retain private closed-group differential evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: cloudflare-closed-evidence
-          path: .dev/cloudflare-closed
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Compare native Postgres and private Cloudflare provider enrollment
-        # Synthetic assertions only. Shares this job's disposable database and
-        # the WASM built above; no provider credentials or deployment.
-        env:
-          ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
-        run: node scripts/verify-cloudflare-provider.mjs --host --skip-build --out-dir .dev/cloudflare-provider-host
-      - name: Retain private provider enrollment evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: cloudflare-provider-host-evidence
-          path: .dev/cloudflare-provider-host
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Compare native encrypted media HTTP and private Cloudflare R2 adapter
-        # Native ciphertext and actual HTTP responses versus local workerd/R2.
-        # No Cloudflare credentials, real bucket writes or deployment.
-        env:
-          ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
-        run: node scripts/verify-cloudflare-directory.mjs --media --skip-build --out-dir .dev/cloudflare-media
-      - name: Retain private encrypted media differential evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: cloudflare-media-evidence
-          path: .dev/cloudflare-media
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Compare native encrypted history HTTP and private Cloudflare transfer adapter
-        # Shares the native media budget and this job's disposable database.
-        # No provider credentials, public routes or real bucket writes.
-        env:
-          ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
-        run: node scripts/verify-cloudflare-directory.mjs --transfer --skip-build --out-dir .dev/cloudflare-transfer
-      - name: Retain private encrypted history transfer evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: cloudflare-transfer-evidence
-          path: .dev/cloudflare-transfer
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Compare native and portable synchronization visibility policy
-        # Reuses the shared WASM and local workerd; no deployed relay is exposed.
-        run: node scripts/verify-cloudflare-sync.mjs --skip-build --out-dir .dev/cloudflare-sync
-      - name: Retain private synchronization composition evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: cloudflare-sync-evidence
-          path: .dev/cloudflare-sync
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Compare native directory reads and private Cloudflare capacity limits
-        env:
-          ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
-        run: node scripts/verify-cloudflare-directory.mjs --reads --skip-build --out-dir .dev/cloudflare-directory-reads
-      - name: Retain private directory read evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: cloudflare-directory-read-evidence
-          path: .dev/cloudflare-directory-reads
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Compare native encrypted profiles and private Cloudflare agreement keys
-        env:
-          ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
-        run: node scripts/verify-cloudflare-directory.mjs --profiles --skip-build --out-dir .dev/cloudflare-directory-profiles
-      - name: Retain private encrypted profile evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: cloudflare-directory-profile-evidence
-          path: .dev/cloudflare-directory-profiles
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Compare native Postgres and private Cloudflare directory transactions
-        # The oracle creates and removes only its own schema in this job's
-        # disposable database. Reuse the current shared WASM from the closed check.
-        env:
-          DATABASE_URL: postgres://zoen@127.0.0.1:5432/postgres
-        run: node scripts/verify-cloudflare-directory.mjs --skip-build --out-dir .dev/cloudflare-directory
-      - name: Retain private directory differential evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: cloudflare-directory-evidence
-          path: .dev/cloudflare-directory
-          if-no-files-found: warn
-          retention-days: 7
       - name: Retain release acceptance evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

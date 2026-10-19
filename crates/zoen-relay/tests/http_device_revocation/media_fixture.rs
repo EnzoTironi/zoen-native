@@ -477,14 +477,38 @@ async fn produce(test: &TestRelay, store: &ControlledStore) -> Value {
     )
     .await;
     f.get("capability-after-unlink", &sha, 200).await;
-    let rate_vectors = [json!({"now_ns":"9007199254740993","tat_ns":null,"cost":policy::DEFAULT_BURST,"interval_ns":policy::DEFAULT_INTERVAL_NS.to_string(),"burst":policy::DEFAULT_BURST}),
-        json!({"now_ns":"9007199254740993","tat_ns":(9_007_199_254_740_993_u64+policy::DEFAULT_INTERVAL_NS*u64::from(policy::DEFAULT_BURST)).to_string(),"cost":1,"interval_ns":policy::DEFAULT_INTERVAL_NS.to_string(),"burst":policy::DEFAULT_BURST})]
-        .into_iter().map(|input| { let expected:Value=serde_json::from_str(&policy::rate_decision_json(&input.to_string()).unwrap()).unwrap();json!({"input":input,"expected":expected}) }).collect::<Vec<_>>();
+    // Exercise the real native arithmetic, without a retired host JSON adapter.
+    let clock = 9_007_199_254_740_993;
+    let burst_head = clock + policy::DEFAULT_INTERVAL_NS * u64::from(policy::DEFAULT_BURST);
+    assert_eq!(
+        relay_admission::gcra::decide(
+            clock,
+            None,
+            policy::DEFAULT_BURST,
+            policy::DEFAULT_INTERVAL_NS,
+            policy::DEFAULT_BURST
+        ),
+        relay_admission::gcra::Decision::Accepted {
+            next_ns: burst_head
+        }
+    );
+    assert_eq!(
+        relay_admission::gcra::decide(
+            clock,
+            Some(burst_head),
+            1,
+            policy::DEFAULT_INTERVAL_NS,
+            policy::DEFAULT_BURST
+        ),
+        relay_admission::gcra::Decision::Rejected {
+            wait_ns: policy::DEFAULT_INTERVAL_NS
+        }
+    );
     json!({"schema":1,"scope":"native-media-http","relay":test.state.relay_name,"identity":a.identity,
         "device":a.device,"certificate":a.cert,"profile":profile,"initial_registered":true,
-        "quota":serde_json::from_str::<Value>(&policy::rate_config_json()).unwrap(),"steps":f.steps,
+        "quota":{"interval_ns":policy::DEFAULT_INTERVAL_NS.to_string(),"burst":policy::DEFAULT_BURST},"steps":f.steps,
         "control":{"hello_base64":STANDARD.encode(hello),"nonce":nonce,"auth_base64":STANDARD.encode(auth),"unlink_frame_base64":STANDARD.encode(unlink)},
-        "decryption":{"key_hex":hex::encode(key),"plain_base64":STANDARD.encode(plain)},"rate_vectors":rate_vectors,
+        "decryption":{"key_hex":hex::encode(key),"plain_base64":STANDARD.encode(plain)},
         "storage_failures":storage_failures})
 }
 
@@ -550,9 +574,7 @@ async fn storage_failure_cases(
 }
 
 #[tokio::test]
-#[ignore = "isolated PostgreSQL native HTTP fixture; set ZOEN_TEST_PG and ZOEN_MEDIA_FIXTURE_OUTPUT"]
-async fn cloudflare_media_native_fixture() {
-    let output = std::env::var("ZOEN_MEDIA_FIXTURE_OUTPUT").expect("set owned fixture output path");
+async fn native_media_http_contract() {
     let store = Arc::new(ControlledStore::default());
     let test = TestRelay::with_store(store.clone()).await;
     // Cleanup the freshly-created database even when an assertion/request fails.
@@ -561,7 +583,9 @@ async fn cloudflare_media_native_fixture() {
         .await;
     test.close().await;
     let value = result.unwrap();
-    std::fs::write(output, serde_json::to_vec(&value).unwrap()).unwrap();
+    if let Ok(output) = std::env::var("ZOEN_MEDIA_FIXTURE_OUTPUT") {
+        std::fs::write(output, serde_json::to_vec(&value).unwrap()).unwrap();
+    }
 }
 
 #[tokio::test]

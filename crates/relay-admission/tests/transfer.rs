@@ -134,50 +134,21 @@ fn rejection_precedence_is_path_then_body_then_signature() {
 }
 
 #[test]
-fn wire_boundary_keeps_native_large_raw_fields_and_exact_decimal_limits() {
+fn native_policy_keeps_large_raw_fields_and_full_unsigned_body_bounds() {
     refused(
-        put_wire(
-            &"a".repeat(17000),
-            0,
-            "1",
-            SHA,
-            "",
-            "",
-            "",
-            &NOW.to_string(),
-        ),
+        put_policy(&"a".repeat(17000), 0, 1, SHA, "", "", "", NOW),
         400,
         "bad transfer",
     );
     refused(
-        put_wire(
-            ID,
-            0,
-            "18446744073709551615",
-            SHA,
-            "",
-            "",
-            "",
-            &NOW.to_string(),
-        ),
+        put_policy(ID, 0, u64::MAX, SHA, "", "", "", NOW),
         413,
         "empty or too large",
     );
     refused(
-        put_wire(
-            ID,
-            0,
-            "1",
-            SHA,
-            "",
-            &"1".repeat(32000),
-            "",
-            &NOW.to_string(),
-        ),
+        put_policy(ID, 0, 1, SHA, "", &"1".repeat(32000), "", NOW),
         401,
         "missing signature",
     );
-    assert!(get_wire(ID, 1)
-        .unwrap()
-        .contains(&format!("transfers/{ID}/1")));
+    assert_eq!(get_key(ID, 1).unwrap(), format!("transfers/{ID}/1"));
 }
