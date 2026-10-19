@@ -78,7 +78,10 @@ pub fn query(op: &Op) -> Option<Query> {
 }
 
 pub fn spends_lookup_budget(op: &Op) -> bool {
-    matches!(op, Op::Lookup { .. } | Op::DeliverLink { .. })
+    matches!(
+        op,
+        Op::Lookup { .. } | Op::DeliverLink { .. } | Op::ClaimKeyPackages { .. }
+    )
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

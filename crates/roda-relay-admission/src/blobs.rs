@@ -117,7 +117,8 @@ impl BlobDigest {
     }
     /// Transfer signatures bind the computed hash rather than a hash in the URL.
     pub fn finish_hash(self) -> String {
-        self.0.finish()
+        self.0
+            .finish()
             .as_ref()
             .iter()
             .map(|byte| format!("{byte:02x}"))

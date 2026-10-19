@@ -2,10 +2,10 @@
 //! The host supplies only trusted directory facts and commits the returned state atomically with the receipt.
 use crate::invite::{authorize_invite_kind, authorize_inviter, invite_limits};
 use crate::portable::{
-    admit_verified, parse_u64, verify_publish, BoundaryError, FactSnapshot, InviteFacts,
+    admit_verified, parse_u64, verify_publish, BoundaryError, FactSnapshot, InviteFacts, MlsFacts,
     ObservedHash, SessionContext, TargetFacts,
 };
-use crate::{code_hash, identity_key, Effect, MAX_MEMBERS};
+use crate::{code_hash, identity_key, mls_projection, Effect, MAX_MEMBERS};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use roda_proto::Sequenced;
 use roda_types::{EventBody, Privacy, Role, SpaceKind};
@@ -24,6 +24,34 @@ pub struct ClosedProjection {
     pub privacy: Option<Privacy>,
     pub creator: String,
     pub members: BTreeMap<String, Role>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mls: Option<MlsFacts>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub holds: Vec<ProjectionHold>,
+    #[serde(default = "zero", skip_serializing_if = "is_zero")]
+    pub pruned: String,
+}
+fn zero() -> String {
+    "0".into()
+}
+fn is_zero(value: &str) -> bool {
+    value == "0"
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectionHold {
+    pub identity: String,
+    pub device: String,
+    pub seq: String,
+    pub when_ms: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PruneRange {
+    pub from: String,
+    pub to_exclusive: String,
 }
 
 impl ClosedProjection {
@@ -36,6 +64,9 @@ impl ClosedProjection {
             privacy: None,
             creator: String::new(),
             members: BTreeMap::new(),
+            mls: None,
+            holds: vec![],
+            pruned: zero(),
         }
     }
     fn validate(&self, space: &str, fresh: bool) -> Result<(), BoundaryError> {
@@ -47,13 +78,22 @@ impl ClosedProjection {
             if head.hash.len() != 64 || !head.hash.bytes().all(|v| v.is_ascii_hexdigit()) {
                 return Err(internal("invalid projection head"));
             }
-            if self.kind != Some(SpaceKind::Group) || self.privacy != Some(Privacy::Closed) {
+            if !matches!(self.kind, Some(SpaceKind::Direct | SpaceKind::Group))
+                || !matches!(self.privacy, Some(Privacy::Closed | Privacy::EndToEnd))
+            {
                 return Err(unsupported());
+            }
+            self.tracking()?;
+            if parse_u64(&self.pruned)? > parse_u64(&head.seq)? {
+                return Err(internal("pruning cursor is beyond the Space head"));
             }
         } else if self.kind.is_some()
             || self.privacy.is_some()
             || !self.creator.is_empty()
             || !self.members.is_empty()
+            || self.mls.is_some()
+            || !self.holds.is_empty()
+            || self.pruned != "0"
         {
             return Err(internal("a missing head has nonempty projection state"));
         }
@@ -64,6 +104,79 @@ impl ClosedProjection {
             ));
         }
         Ok(())
+    }
+    fn tracking(&self) -> Result<(Option<(u64, String)>, mls_projection::Holds), BoundaryError> {
+        if self.privacy != Some(Privacy::EndToEnd)
+            && (self.mls.is_some() || !self.holds.is_empty() || self.pruned != "0")
+        {
+            return Err(internal("unencrypted projection has MLS retention state"));
+        }
+        let mls = self
+            .mls
+            .as_ref()
+            .map(|value| {
+                if !value.last_device.is_empty() && !identity_key(&value.last_device) {
+                    return Err(internal("invalid last MLS device"));
+                }
+                Ok((parse_u64(&value.next_epoch)?, value.last_device.clone()))
+            })
+            .transpose()?;
+        let mut holds = mls_projection::Holds::new();
+        for value in &self.holds {
+            if !self.members.contains_key(&value.identity)
+                || !identity_key(&value.identity)
+                || value.device != mls_projection::ADDED && !identity_key(&value.device)
+            {
+                return Err(internal("invalid retained member device"));
+            }
+            let seq = parse_u64(&value.seq)?;
+            if self
+                .head
+                .as_ref()
+                .is_none_or(|head| parse_u64(&head.seq).is_ok_and(|head| seq > head))
+            {
+                return Err(internal("member hold is beyond the Space head"));
+            }
+            let when = i64::try_from(parse_u64(&value.when_ms)?)
+                .map_err(|_| internal("invalid hold timestamp"))?;
+            if holds
+                .insert((value.identity.clone(), value.device.clone()), (seq, when))
+                .is_some()
+            {
+                return Err(internal("duplicate member hold"));
+            }
+        }
+        Ok((mls, holds))
+    }
+    fn apply_tracking(&mut self, writes: &[mls_projection::Write]) -> Result<(), BoundaryError> {
+        let (mut mls, mut holds) = self.tracking()?;
+        mls_projection::apply(&mut mls, &mut holds, writes);
+        self.mls = mls.map(|(epoch, device)| MlsFacts {
+            next_epoch: epoch.to_string(),
+            last_device: device,
+        });
+        self.holds = holds
+            .into_iter()
+            .map(|((identity, device), (seq, when))| ProjectionHold {
+                identity,
+                device,
+                seq: seq.to_string(),
+                when_ms: when.to_string(),
+            })
+            .collect();
+        Ok(())
+    }
+    fn prune_range(&self, now: i64, ceiling: i64) -> Result<Option<PruneRange>, BoundaryError> {
+        let (_, holds) = self.tracking()?;
+        let from = parse_u64(&self.pruned)?;
+        Ok(
+            mls_projection::prune_floor(self.privacy, &self.members, &holds, now, ceiling)
+                .filter(|floor| *floor > from)
+                .map(|floor| PruneRange {
+                    from: from.to_string(),
+                    to_exclusive: floor.to_string(),
+                }),
+        )
     }
     fn supported_roster(&self) -> bool {
         self.members.len() <= MAX_MEMBERS as usize
@@ -100,6 +213,8 @@ pub struct ClosedContext {
     pub target: Option<DirectoryTarget>,
     pub invite: Option<ClosedInvite>,
     pub now_ms: String,
+    #[serde(default)]
+    pub prune_ceiling_secs: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -118,13 +233,15 @@ pub struct ClosedAcceptance {
     pub audience: Vec<String>,
     pub joined: Option<String>,
     pub invite_update: Option<ClosedInvite>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prune: Option<PruneRange>,
 }
 
 fn internal(reason: &str) -> BoundaryError {
     BoundaryError::internal("invalid_projection", reason)
 }
 fn unsupported() -> BoundaryError {
-    BoundaryError::internal("unsupported_projection", "only closed Groups are supported by this private projection; MLS, holds and pruning are not implemented")
+    BoundaryError::internal("unsupported_projection", "only Direct and Group chats with Closed or EndToEnd privacy are supported by this private projection")
 }
 fn event_view(event: &Sequenced, bytes: &[u8]) -> CanonicalEvent {
     CanonicalEvent {
@@ -210,19 +327,33 @@ pub fn closed_publish(
         target,
         history: context.history.clone(),
         invite,
-        mls: None,
+        mls: state.mls.clone(),
     };
     let accepted = admit_verified(verified, &facts)?;
+    let when = i64::try_from(now).map_err(|_| internal("invalid transaction clock"))?;
+    let (_, holds) = state.tracking()?;
+    let writes = mls_projection::transition(
+        &accepted.effect,
+        state.privacy,
+        accepted.event.env.author(),
+        accepted.event.seq,
+        when,
+        &state.members,
+        &holds,
+    )
+    .map_err(|reason| BoundaryError::no("admission", reason))?;
+    // Apply retention against the pre-event membership, exactly as the native log.
+    state.apply_tracking(&writes)?;
     let mut joined = None;
     let mut removed = None;
     let mut invite_update = None;
     match &accepted.effect {
-        Effect::Create {
-            kind: SpaceKind::Group,
-            privacy: Privacy::Closed,
-        } => {
-            state.kind = Some(SpaceKind::Group);
-            state.privacy = Some(Privacy::Closed);
+        Effect::Create { kind, privacy }
+            if matches!(kind, SpaceKind::Direct | SpaceKind::Group)
+                && matches!(privacy, Privacy::Closed | Privacy::EndToEnd) =>
+        {
+            state.kind = Some(*kind);
+            state.privacy = Some(*privacy);
             state.creator = accepted.event.env.author().into();
             state.members.insert(state.creator.clone(), Role::Owner);
         }
@@ -249,7 +380,11 @@ pub fn closed_publish(
             state.members.remove(identity);
             removed = Some(identity.clone());
         }
-        Effect::Nothing => {}
+        Effect::Encrypt => state.privacy = Some(Privacy::EndToEnd),
+        Effect::Commit { .. }
+        | Effect::Checkpoint { .. }
+        | Effect::Hold { .. }
+        | Effect::Nothing => {}
         _ => return Err(unsupported()),
     }
     state.head = Some(ObservedHash {
@@ -260,6 +395,10 @@ pub fn closed_publish(
     audience.extend(removed);
     audience.sort();
     let bytes = accepted.event.encode();
+    let prune = state.prune_range(
+        when,
+        mls_projection::ceiling_ms(context.prune_ceiling_secs.as_deref()),
+    )?;
     Ok(ClosedAcceptance {
         kind: "new",
         event: event_view(&accepted.event, &bytes),
@@ -267,6 +406,7 @@ pub fn closed_publish(
         audience,
         joined,
         invite_update,
+        prune,
     })
 }
 
@@ -389,6 +529,44 @@ pub fn closed_invite_json(projection: &str, input: &str) -> Result<String, Bound
     })
 }
 
+pub fn closed_prune_plan_json(
+    projection: &str,
+    now_ms: &str,
+    ceiling_secs: &str,
+) -> Result<String, BoundaryError> {
+    let state: ClosedProjection = read_json(projection)?;
+    state.validate(&state.space, false)?;
+    let now =
+        i64::try_from(parse_u64(now_ms)?).map_err(|_| internal("invalid compaction clock"))?;
+    encode(&state.prune_range(now, mls_projection::ceiling_ms(Some(ceiling_secs)))?)
+}
+
+pub fn closed_pruned_json(
+    projection: &str,
+    from: &str,
+    floor: &str,
+    count: u32,
+    last: &str,
+) -> Result<String, BoundaryError> {
+    let mut state: ClosedProjection = read_json(projection)?;
+    state.validate(&state.space, false)?;
+    let from = parse_u64(from)?;
+    let floor = parse_u64(floor)?;
+    if from != parse_u64(&state.pruned)?
+        || state
+            .head
+            .as_ref()
+            .is_none_or(|head| parse_u64(&head.seq).is_ok_and(|head| floor > head))
+    {
+        return Err(internal("compaction range does not match the projection"));
+    }
+    let last = (!last.is_empty()).then(|| parse_u64(last)).transpose()?;
+    state.pruned = mls_projection::pruned_cursor(from, floor, count as usize, last)
+        .map_err(internal)?
+        .to_string();
+    encode(&state)
+}
+
 #[cfg(target_arch = "wasm32")]
 mod wasm {
     use wasm_bindgen::prelude::*;
@@ -396,6 +574,30 @@ mod wasm {
         JsValue::from_str(
             &serde_json::to_string(&value).unwrap_or_else(|_| "projection failed".into()),
         )
+    }
+    #[wasm_bindgen(js_name = closedPruneEntry)]
+    pub fn prune_entry(bytes: &[u8]) -> Result<Vec<u8>, JsValue> {
+        crate::mls_projection::pruned_bytes(bytes)
+            .map(|value| value.unwrap_or_default())
+            .map_err(|reason| error(super::internal(&reason)))
+    }
+    #[wasm_bindgen(js_name = closedPrunePlan)]
+    pub fn prune_plan(
+        projection: &str,
+        now_ms: &str,
+        ceiling_secs: &str,
+    ) -> Result<String, JsValue> {
+        super::closed_prune_plan_json(projection, now_ms, ceiling_secs).map_err(error)
+    }
+    #[wasm_bindgen(js_name = closedPruneState)]
+    pub fn prune_state(
+        projection: &str,
+        from: &str,
+        floor: &str,
+        count: u32,
+        last: &str,
+    ) -> Result<String, JsValue> {
+        super::closed_pruned_json(projection, from, floor, count, last).map_err(error)
     }
     #[wasm_bindgen(js_name = closedPublish)]
     pub fn publish(frame: &[u8], context: &str) -> Result<String, JsValue> {

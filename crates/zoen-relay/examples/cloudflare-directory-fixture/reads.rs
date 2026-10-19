@@ -5,11 +5,36 @@ pub(super) async fn timeline(f: &mut Fixture<'_>) -> Result<()> {
     let owner = author(100, 150);
     f.login("read-owner-login", "read-owner", &owner, None)
         .await?;
+    let mut quota_packages = mls_packages(&owner, 2, false)?.into_iter();
     f.request(
         "read-owner-register",
         "read-owner",
         Op::Register {
             profile: profile(&owner, "read_owner"),
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "read-quota-publish",
+        "read-owner",
+        Op::PublishKeyPackages {
+            packages: vec![quota_packages
+                .next()
+                .context("first quota package missing")?],
+            last_resort: None,
+        },
+        None,
+    )
+    .await?;
+    f.request(
+        "read-quota-publish-second",
+        "read-owner",
+        Op::PublishKeyPackages {
+            packages: vec![quota_packages
+                .next()
+                .context("second quota package missing")?],
+            last_resort: None,
         },
         None,
     )
@@ -144,6 +169,48 @@ pub(super) async fn timeline(f: &mut Fixture<'_>) -> Result<()> {
             f.steps.last_mut().context("missing read step")?["unordered_profiles"] = json!(true);
         }
     }
+    let now = key_package_claims::clock_ms(f.pool).await?;
+    for (label, ids, operation, reason) in [
+        (
+            "read-claim-invalid-operation",
+            vec![owner.identity.clone()],
+            "bad".into(),
+            "invalid key-package claim operation",
+        ),
+        (
+            "read-claim-too-many",
+            (0..51).map(|index| format!("{index:064x}")).collect(),
+            claim_operation(now),
+            "claim one to fifty identities",
+        ),
+        (
+            "read-claim-invalid-target",
+            vec!["not-a-key".into()],
+            claim_operation(now),
+            "claim targets must be canonical identity keys",
+        ),
+    ] {
+        f.request(
+            label,
+            "read-owner",
+            Op::ClaimKeyPackages {
+                ids,
+                operation_id: Some(operation),
+            },
+            Some(reason),
+        )
+        .await?;
+    }
+    f.request(
+        "read-claim-legacy",
+        "read-owner",
+        Op::ClaimKeyPackages {
+            ids: vec![owner.identity.clone()],
+            operation_id: None,
+        },
+        None,
+    )
+    .await?;
     f.request(
         "read-revoked-caller",
         "read-linked",

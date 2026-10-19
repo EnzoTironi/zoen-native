@@ -1061,20 +1061,19 @@ impl Session {
                 Ok(Reply::Invite(invite))
             }
             Op::PublishAgreementKey { public, signed } => {
-                // The request admission check authorizes only this session's device.
-                if signed.device != self.device {
-                    return Err("agreement key is for another device".into());
-                }
-                if !roda_log::profile::verify_agreement(&self.identity, &public, &signed) {
-                    return Err("agreement key isn't signed by this identity".into());
-                }
+                roda_relay_admission::directory::sealed_profiles::validate_agreement(
+                    &self.identity,
+                    &self.device,
+                    &public,
+                    &signed,
+                )?;
                 db::put_agreement_key(pool, &self.identity, &public, &signed)
                     .await
                     .map_err(|e| e.to_string())?;
                 Ok(Reply::Done)
             }
             Op::AgreementKeys { ids } => {
-                let ids: Vec<String> = ids.into_iter().take(500).collect();
+                let ids = roda_relay_admission::directory::reads::profile_ids(ids);
                 Ok(Reply::AgreementKeys(
                     db::agreement_keys(pool, &ids)
                         .await
@@ -1082,23 +1081,11 @@ impl Session {
                 ))
             }
             Op::PutProfile { profile } => {
-                if profile.identity != self.identity {
-                    return Err("profile is for another identity".into());
-                }
-                if profile.signed.device != self.device {
-                    return Err("profile is for another device".into());
-                }
-                if profile.ciphertext.len() > roda_log::profile::MAX_CIPHERTEXT {
-                    return Err("profile too large".into());
-                }
-                if !roda_log::profile::verify_upload(
-                    &profile.identity,
-                    profile.version,
-                    &profile.ciphertext,
-                    &profile.signed,
-                ) {
-                    return Err("profile isn't signed by this identity".into());
-                }
+                roda_relay_admission::directory::sealed_profiles::validate_profile(
+                    &self.identity,
+                    &self.device,
+                    &profile,
+                )?;
                 if !db::put_profile(pool, &profile)
                     .await
                     .map_err(|e| e.to_string())?

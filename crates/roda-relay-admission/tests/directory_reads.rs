@@ -269,6 +269,10 @@ fn default_lookup_budget_is_shared_with_link_delivery_and_refills_without_reset(
         sealed: vec![],
         device: None
     }));
+    assert!(reads::spends_lookup_budget(&Op::ClaimKeyPackages {
+        ids: vec![],
+        operation_id: None
+    }));
     assert!(!reads::spends_lookup_budget(&Op::Profiles { ids: vec![] }));
     assert!(!reads::spends_lookup_budget(&Op::Devices));
     let mut tat = None;
@@ -293,4 +297,70 @@ fn default_lookup_budget_is_shared_with_link_delivery_and_refills_without_reset(
     );
     assert_eq!(rate("1001000000000")["accepted"], true);
     assert!(reads::lookup_rate_json(&json!({"now_ns":"01","tat_ns":null}).to_string()).is_err());
+}
+
+#[test]
+fn claim_preflight_spends_before_input_validation_without_selecting_targets() {
+    let s = session();
+    let invalid_claims = [
+        Op::ClaimKeyPackages {
+            ids: vec![s.identity.clone()],
+            operation_id: Some("bad".into()),
+        },
+        Op::ClaimKeyPackages {
+            ids: (0..51).map(|index| format!("{index:064x}")).collect(),
+            operation_id: Some("01HF7YAT000000000000000001".into()),
+        },
+        Op::ClaimKeyPackages {
+            ids: vec!["not-a-key".into()],
+            operation_id: Some("01HF7YAT000000000000000002".into()),
+        },
+    ];
+    for op in invalid_claims {
+        let frame = ClientFrame::Req {
+            id: 9_007_199_254_740_993,
+            op,
+        }
+        .encode();
+        let cost = directory::preflight(&frame, &s).unwrap();
+        assert_eq!(cost, json!({"id":"9007199254740993","charge_lookup":true}));
+        assert!(cost.get("targets").is_none());
+        assert!(
+            directory::lookup_for_session(&frame, &s).is_err(),
+            "Invalid claim must never produce a target SQL plan"
+        );
+        let mut provisional = s.clone();
+        provisional.registered = false;
+        assert_eq!(
+            directory::preflight(&frame, &provisional)
+                .unwrap_err()
+                .reason,
+            "register first"
+        );
+    }
+    let mut provisional = s.clone();
+    provisional.registered = false;
+    for op in [
+        Op::Register {
+            profile: profile(1, "person"),
+        },
+        Op::FetchLink { id: "x".into() },
+    ] {
+        let frame = ClientFrame::Req { id: 1, op }.encode();
+        assert_eq!(
+            directory::preflight(&frame, &provisional).unwrap()["charge_lookup"],
+            false
+        );
+    }
+    assert!(directory::preflight(&ClientFrame::Ping.encode(), &s).is_err());
+    let mut noncanonical = ClientFrame::Req {
+        id: 1,
+        op: Op::ClaimKeyPackages {
+            ids: vec![],
+            operation_id: None,
+        },
+    }
+    .encode();
+    noncanonical.extend([0xf8, 0x07, 1]);
+    assert!(directory::preflight(&noncanonical, &s).is_err());
 }

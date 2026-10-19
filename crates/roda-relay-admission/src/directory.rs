@@ -3,6 +3,7 @@
 //! or public protocol endpoint is provided by this module.
 pub mod key_packages;
 pub mod reads;
+pub mod sealed_profiles;
 pub mod socket;
 use crate::portable::{BoundaryError, MAX_FRAME_BYTES};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -110,6 +111,8 @@ pub struct Facts {
     pub key_packages: Option<key_packages::Facts>,
     #[serde(default)]
     pub reads: Option<reads::Facts>,
+    #[serde(default)]
+    pub sealed_profiles: Option<sealed_profiles::Facts>,
 }
 
 fn no(reason: impl Into<String>) -> BoundaryError {
@@ -225,6 +228,11 @@ pub fn lookup(bytes: &[u8]) -> Result<Value, BoundaryError> {
         return Err(no("expected request"));
     };
     let charge_lookup = reads::spends_lookup_budget(&op);
+    if let Some(query) = sealed_profiles::query(&op) {
+        return Ok(
+            json!({"id":id.to_string(),"kind":"encrypted_directory","query":query,"charge_lookup":charge_lookup}),
+        );
+    }
     if let Some(read) = reads::query(&op) {
         return Ok(
             json!({"id":id.to_string(),"kind":"directory_read","read":read,"charge_lookup":charge_lookup}),
@@ -262,7 +270,7 @@ pub fn lookup(bytes: &[u8]) -> Result<Value, BoundaryError> {
                 None => ids.into_iter().take(50).collect(),
             };
             return Ok(
-                json!({"id":id.to_string(),"kind":"claim_key_packages","targets":targets,"operation_id":operation_id}),
+                json!({"id":id.to_string(),"kind":"claim_key_packages","targets":targets,"operation_id":operation_id,"charge_lookup":charge_lookup}),
             );
         }
         _ => {
@@ -277,21 +285,38 @@ pub fn lookup(bytes: &[u8]) -> Result<Value, BoundaryError> {
     )
 }
 
-pub fn lookup_for_session(bytes: &[u8], session: &Session) -> Result<Value, BoundaryError> {
-    if !session.registered
-        && matches!(
-            decode(bytes)?,
-            ClientFrame::Req {
-                op: Op::PublishKeyPackages { .. }
-                    | Op::ClaimKeyPackages { .. }
-                    | Op::Lookup { .. }
-                    | Op::Profiles { .. }
-                    | Op::Devices,
-                ..
-            }
-        )
-    {
+/// Classify cost before operation-specific validation or any target SQL lookup.
+/// The host must first authorize this exact Directory-owned session against its
+/// current device row, then commit any quota charge before evaluating the lookup.
+pub fn preflight(bytes: &[u8], session: &Session) -> Result<Value, BoundaryError> {
+    let ClientFrame::Req { id, op } = decode(bytes)? else {
+        return Err(no("expected request"));
+    };
+    if !session.registered && !matches!(&op, Op::Register { .. } | Op::FetchLink { .. }) {
         return Err(no("register first"));
+    }
+    Ok(json!({"id":id.to_string(),"charge_lookup":reads::spends_lookup_budget(&op)}))
+}
+
+pub fn lookup_for_session(bytes: &[u8], session: &Session) -> Result<Value, BoundaryError> {
+    preflight(bytes, session)?;
+    // Native rejects invalid signed uploads before touching a stored row. Keep
+    // that order even when a private host has a malformed/oversized old row.
+    if let ClientFrame::Req { op, .. } = decode(bytes)? {
+        match op {
+            Op::PublishAgreementKey { public, signed } => sealed_profiles::validate_agreement(
+                &session.identity,
+                &session.device,
+                &public,
+                &signed,
+            )
+            .map_err(no)?,
+            Op::PutProfile { profile } => {
+                sealed_profiles::validate_profile(&session.identity, &session.device, &profile)
+                    .map_err(no)?
+            }
+            _ => {}
+        }
     }
     lookup(bytes)
 }
@@ -369,6 +394,16 @@ pub fn request(bytes: &[u8], session: &Session, facts: &Facts) -> Result<Value, 
             )
         }
         _ if !session.registered => return Err(no("register first")),
+        op @ (Op::PublishAgreementKey { .. }
+        | Op::AgreementKeys { .. }
+        | Op::PutProfile { .. }
+        | Op::GetProfiles { .. }) => {
+            let selected = facts
+                .sealed_profiles
+                .as_ref()
+                .ok_or_else(|| internal("missing encrypted directory facts"))?;
+            sealed_profiles::plan(&op, session, selected)?
+        }
         op @ (Op::Lookup { .. } | Op::Profiles { .. } | Op::Devices) => {
             let selected = facts
                 .reads
@@ -547,6 +582,13 @@ mod wasm {
             .and_then(|value| super::encoded(&value))
             .map_err(error)
     }
+    #[wasm_bindgen(js_name = directoryPreflight)]
+    pub fn preflight(bytes: &[u8], session: &str) -> Result<String, JsValue> {
+        super::parse(session)
+            .and_then(|session| super::preflight(bytes, &session))
+            .and_then(|value| super::encoded(&value))
+            .map_err(error)
+    }
     #[wasm_bindgen(js_name = directoryKeyPackageReply)]
     pub fn key_package_reply(bytes: &[u8]) -> Result<String, JsValue> {
         super::key_packages::reply_json(bytes).map_err(error)
@@ -558,6 +600,10 @@ mod wasm {
     #[wasm_bindgen(js_name = directoryLookupRate)]
     pub fn lookup_rate(context: &str) -> Result<String, JsValue> {
         super::reads::lookup_rate_json(context).map_err(error)
+    }
+    #[wasm_bindgen(js_name = directorySealedProfileReply)]
+    pub fn sealed_profile_reply(bytes: &[u8]) -> Result<String, JsValue> {
+        super::sealed_profiles::reply_json(bytes).map_err(error)
     }
     #[wasm_bindgen(js_name = directorySocketFrame)]
     pub fn socket_frame(bytes: &[u8]) -> Result<String, JsValue> {

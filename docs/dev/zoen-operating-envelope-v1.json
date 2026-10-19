@@ -1,0 +1,246 @@
+{
+  "schema": 1,
+  "id": "zoen-launch-envelope-v1",
+  "declaredOn": "2026-10-19",
+  "status": "DECLARED_NOT_MEASURED",
+  "purpose": "Initial production qualification target. This is an engineering target, not accepted capacity or competitor parity.",
+  "measurementPolicy": {
+    "freezeSpecAndArtifactHashesBeforeRun": true,
+    "requirePublicBackendAndFinalClientArtifacts": true,
+    "syntheticAccountsAndOwnedNamespacesOnly": true,
+    "independentFullRunsRequired": 2,
+    "reportEveryFailureSkipAndResourceLimit": true,
+    "includeRetriesAndTimeoutsInLatencyAndErrors": true,
+    "excludeUncontrolledProviderConfirmationTimeFromRelayLatencyOnly": true,
+    "monthlyAvailabilityRequiresObservedDays": 30,
+    "localOrPrivateAdapterRunsQualifyProduction": false,
+    "latencyClock": "Monotonic client clock for roundtrips; recipient delivery uses synchronized independently measured clocks with clock-error bounds. Report raw samples and uncertainty.",
+    "p99MinimumSamplesPerSitePlatformMetric": 1000,
+    "percentileConfidencePolicy": "Report sample count and95percent confidence intervals. An upper confidence bound exceeding a target is unaccepted.",
+    "insufficientSampleBucket": "UNACCEPTED; do not pool away a failing or under-sampled site/platform. Extend dedicated runs to reach the minimum. Repeated call setup cycles may end after stable connection; they supplement, never replace,600second call-quality workloads.",
+    "requireFrozenDeviceOsBrowserAndNetworkInventory": true,
+    "inventoryPolicy": "Before any qualification, record exact release/build/device/OS/browser and measured network profiles per site/platform, fixed generator seed and canonical payload/fanout distributions. Missing inventory prevents acceptance."
+  },
+  "population": {
+    "registeredAccounts": 10000,
+    "dailyActiveAccounts": 1000,
+    "typicalDevicesPerAccount": 2,
+    "qualificationDevicesPerAccount": 4,
+    "activeAuthenticatedConnectionsSustained": 200,
+    "reconnectingConnectionsPeak": 1000,
+    "reconnectWindowSeconds": 30,
+    "platformPercent": {
+      "ios": 30,
+      "android": 25,
+      "web": 30,
+      "macos": 5,
+      "windows": 5,
+      "linux": 5
+    },
+    "networkSites": ["Brazil", "US-East", "Western-Europe"],
+    "reportEachSiteAndPlatformSeparately": true
+  },
+  "workload": {
+    "sustainedSeconds": 7200,
+    "peakSeconds": 600,
+    "canonicalWritesPerSecondSustained": 20,
+    "canonicalWritesPerSecondPeak": 100,
+    "writeMixPercent": {
+      "messages": 65,
+      "reactionsEditsAndDeletes": 15,
+      "threads": 10,
+      "pagesAndMcpApps": 10
+    },
+    "eventPayloadBytes": {
+      "p50": 1024,
+      "p95": 8192,
+      "p99": 65536
+    },
+    "conversationMembers": {
+      "typical": 8,
+      "large": 200,
+      "maximumQualification": 1000
+    },
+    "simultaneousRecipientsPerHotConversation": 50,
+    "hotConversationShareOfWritesPercent": 40,
+    "mediaUploadsPerSecondSustained": 0.1,
+    "mediaUploadsPerSecondPeak": 1,
+    "mediaDownloadsPerSecondSustained": 0.5,
+    "mediaDownloadsPerSecondPeak": 5,
+    "encryptedMediaBytes": {
+      "p50": 2097152,
+      "p95": 10485760,
+      "p99": 26214400
+    },
+    "simultaneousEncryptedAudioCalls": 25,
+    "simultaneousEncryptedVideoCalls": 5,
+    "callDurationSeconds": 600,
+    "foregroundHistoryEventsPerConversation": 10000,
+    "largestAccountHistoryEvents": 100000,
+    "offlineBacklogEventsPerDevice": 1000,
+    "offlineDurationSeconds": 86400,
+    "normalRetryPercent": 5,
+    "lostAcknowledgmentPercent": 1,
+    "eventPayloadDistributionPercent": {
+      "1024": 50,
+      "8192": 45,
+      "65536": 4,
+      "262144": 1
+    },
+    "encryptedMediaDistributionPercent": {
+      "2097152": 50,
+      "10485760": 45,
+      "26214400": 5
+    },
+    "audioCallProfile": "Two participants, Opus target32kbit/s per sender; include measured protocol and relay overhead.",
+    "videoCallProfile": "Two participants,720p30 target1.5Mbit/s video plus32kbit/s Opus per sender; include measured protocol and relay overhead.",
+    "conversationTrafficDistributionPercent": [
+      {
+        "members": 8,
+        "onlineIdentitiesIncludingSender": 2,
+        "writePercent": 40,
+        "hot": false
+      },
+      {
+        "members": 200,
+        "onlineIdentitiesIncludingSender": 8,
+        "writePercent": 10,
+        "hot": false
+      },
+      {
+        "members": 1000,
+        "onlineIdentitiesIncludingSender": 8,
+        "writePercent": 10,
+        "hot": false
+      },
+      {
+        "members": 200,
+        "onlineIdentitiesIncludingSender": 50,
+        "writePercent": 40,
+        "hot": true
+      }
+    ]
+  },
+  "latencyMilliseconds": {
+    "canonicalWriteAcknowledgment": {
+      "p50": 200,
+      "p95": 800,
+      "p99": 2500
+    },
+    "foregroundRecipientDecryptedDelivery": {
+      "p50": 300,
+      "p95": 1000,
+      "p99": 3000
+    },
+    "interactiveLocalInputToVisibleResponse": {
+      "p50": 16,
+      "p95": 50,
+      "p99": 100
+    },
+    "reconnectAndDecrypt1000EventBacklog": {
+      "p50": 2000,
+      "p95": 5000,
+      "p99": 10000
+    },
+    "coldOpen10000EventConversation": {
+      "p50": 1500,
+      "p95": 4000,
+      "p99": 8000
+    },
+    "encryptedCallSetupAfterRecipientAccepts": {
+      "p50": 1500,
+      "p95": 4000,
+      "p99": 8000
+    }
+  },
+  "integrityAndAvailability": {
+    "acknowledgedCanonicalWritesLost": 0,
+    "duplicateLogicalEffectsFromRetries": 0,
+    "undetectedCorruptOrMisattributedEvents": 0,
+    "unauthorizedFreshRequestsOrDeliveriesAfterRevocationFence": 0,
+    "monthlyAvailabilityPercent": 99.9,
+    "monthlyErrorBudgetMinutes30Days": 43.2,
+    "ownedProcessOrObjectRestartRecoverySeconds": 60,
+    "backupDisasterRecoveryTimeSeconds": 3600,
+    "overloadPolicy": "Bound memory and queues; explicit retryable refusal with backoff; never acknowledge an uncommitted write or silently return partial history.",
+    "nonFaultAttemptSuccessPercentSustained": 99.9,
+    "nonFaultAttemptSuccessPercentPeak": 99,
+    "successDenominator": "Every scheduled attempt counts, including retries, timeouts, refusals and transport failures. Also report eventual logical-operation success separately; a retry never erases a failed attempt.",
+    "faultWindowPolicy": "Run named fault phases separately from normal sustained/peak phases. Publish their full attempt-error/latency distributions and time to drain; no injected-fault samples are silently dropped from combined totals.",
+    "faultLogicalCompletionDeadlineSecondsAfterRecovery": 120,
+    "faultLogicalCompletionPercent": 100,
+    "acknowledgedWriteRecoveryPointEvents": 0,
+    "backupSnapshotMaximumLagSeconds": 900,
+    "backupDisasterAcknowledgedWriteRecoveryPointEvents": 0,
+    "disasterRestoreRequiresDurableJournalReplay": true
+  },
+  "faultQualification": {
+    "processOrObjectRestartDuringTrafficCount": 20,
+    "networkPartitionSeconds": 60,
+    "reorderedDeliveryWindowEvents": 50,
+    "duplicateDeliveryPercent": 10,
+    "clockSkewSeconds": [-300, 300],
+    "requiredCases": [
+      "crash-before-commit-and-after-commit-before-ack",
+      "restart-and-eviction-with-active-sockets",
+      "revocation-racing-admission-commit-and-final-delivery",
+      "membership-removal-key-rotation-and-new-device-recovery",
+      "media-partial-write-timeout-and-delete-retry",
+      "database-storage-and-provider-unavailability",
+      "full-queues-quota-exhaustion-and-memory-pressure",
+      "backup-restore-ciphertext-integrity-and-key-recovery",
+      "schema-and-client-update-interruption-and-rollback"
+    ]
+  },
+  "costTargetsUsd": {
+    "monthlyInfrastructureAt1000DailyActiveAccounts": 150,
+    "monthlyInfrastructurePerDailyActiveAccount": 0.15,
+    "incrementalInfrastructurePer1000CanonicalWrites": 0.01,
+    "externalAiOrPaidMcpServices": "Separate explicit user or agent budget; never silently included as unlimited infrastructure.",
+    "status": "BUDGET_TARGETS_NOT_PRICING_ESTIMATES",
+    "verification": "Capture actual provider usage, versioned published rates, retained storage, retries, fanout, calls and projected monthly idle/active duration; disclose taxes, fixed fees and exclusions.",
+    "incrementalInfrastructurePerDecimalGbEncryptedMediaStoredMonth": 0.05,
+    "incrementalInfrastructurePerDecimalGbEncryptedMediaTransferred": 0.1,
+    "decimalGbBytes": 1000000000
+  },
+  "runSafety": {
+    "publicRemoteLoadEnabled": false,
+    "remoteRunRequiresOwnedResourcesAndBoundedRequestByteDurationBudgets": true,
+    "remoteRunRequiresCostEstimateAndCleanupManifest": true,
+    "neverTargetHumanAccountsOrProtectedLocalRelay": true
+  },
+  "acceptance": {
+    "fullAppParityAccepted": false,
+    "productionReadinessAccepted": false,
+    "scaleReadinessAccepted": false
+  },
+  "durabilityFaultModel": {
+    "zeroAcknowledgedLossRequiredFor": [
+      "client-crash-and-restart",
+      "relay-process-object-eviction-or-restart",
+      "one-backend-storage-or-region-unavailable",
+      "loss-of-primary-dataset-followed-by-snapshot-and-journal-restore"
+    ],
+    "snapshotLagDoesNotWaiveAcknowledgedDurability": true,
+    "unacknowledgedWrites": "May be absent or committed after a lost response; exact operation retry must resolve the original durable result without a duplicate logical effect.",
+    "excludedCatastrophe": "Simultaneous permanent loss of every independent durability and recovery domain. Document concrete domains and residual risk before production acceptance; do not relabel a tested primary failure as excluded."
+  },
+  "monthlyCostReferenceUsage": {
+    "days": 30,
+    "dailyActiveAccounts": 1000,
+    "registeredAccounts": 10000,
+    "sustainedActiveSecondsPerDay": 7200,
+    "peakReplacesLastSustainedSecondsPerDay": 600,
+    "remainingSecondsPerDay": "No new synthetic writes/media/calls; retain connections at10percent of the sustained population, data, provider/device registrations and operational monitoring. Include actual idle cost.",
+    "canonicalWritesPerDay": 192000,
+    "mediaUploadsPerDay": 1260,
+    "mediaDownloadsPerDay": 6300,
+    "applyFrozenPayloadAndFanoutDistributions": true,
+    "retainedEncryptedMediaDays": 30,
+    "canonicalHistoryRetentionDays": 365,
+    "callConcurrencyDuringActiveWindow": "25audio plus5video throughout7200seconds, each call cycles at600seconds; count both participants, relay traversal and retries.",
+    "audioCallSessionsPerDay": 300,
+    "videoCallSessionsPerDay": 60,
+    "backgroundPushAndAuth": "One content-free wake per disconnected recipient device per new logical message,2devices per account;1provider sign-in per DAU per day plus measured token refresh and retries. Record actual delivery/fanout counts."
+  }
+}

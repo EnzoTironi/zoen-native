@@ -23,6 +23,8 @@ use zoen_relay::{db, key_package_claims};
 
 #[path = "cloudflare-directory-fixture/reads.rs"]
 mod reads_fixture;
+#[path = "cloudflare-directory-fixture/sealed_profiles.rs"]
+mod sealed_profiles_fixture;
 
 const RELAY: &str = "zoen-cloudflare-private";
 const NOW_MS: &str = "1700000000000";
@@ -44,6 +46,16 @@ CREATE TABLE devices (
 CREATE TABLE link_boxes (
     id TEXT PRIMARY KEY, sealed BYTEA NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE agreement_keys (
+    identity TEXT PRIMARY KEY REFERENCES identities(id), public TEXT NOT NULL,
+    device TEXT NOT NULL, sig TEXT NOT NULL, cert TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE profiles (
+    identity TEXT PRIMARY KEY REFERENCES identities(id), version BIGINT NOT NULL,
+    ciphertext BYTEA NOT NULL, device TEXT NOT NULL, sig TEXT NOT NULL, cert TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE key_packages (
     id BIGSERIAL PRIMARY KEY, identity TEXT NOT NULL REFERENCES identities(id),
@@ -310,6 +322,46 @@ async fn native_operation(
             .await
             .map(Reply::Devices)
             .map_err(|e| e.to_string()),
+        Op::PublishAgreementKey { public, signed } => {
+            roda_relay_admission::directory::sealed_profiles::validate_agreement(
+                &session.identity,
+                &session.device,
+                &public,
+                &signed,
+            )?;
+            db::put_agreement_key(pool, &session.identity, &public, &signed)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(Reply::Done)
+        }
+        Op::AgreementKeys { ids } => db::agreement_keys(
+            pool,
+            &roda_relay_admission::directory::reads::profile_ids(ids),
+        )
+        .await
+        .map(Reply::AgreementKeys)
+        .map_err(|e| e.to_string()),
+        Op::PutProfile { profile } => {
+            roda_relay_admission::directory::sealed_profiles::validate_profile(
+                &session.identity,
+                &session.device,
+                &profile,
+            )?;
+            if !db::put_profile(pool, &profile)
+                .await
+                .map_err(|e| e.to_string())?
+            {
+                return Err("stale profile version".into());
+            }
+            Ok(Reply::Done)
+        }
+        Op::GetProfiles { ids } => db::sealed_profiles(
+            pool,
+            &roda_relay_admission::directory::reads::profile_ids(ids),
+        )
+        .await
+        .map(Reply::SealedProfiles)
+        .map_err(|e| e.to_string()),
         Op::DeliverLink { id, sealed, device } => {
             if !valid_link_id(&id) || sealed.is_empty() || sealed.len() > db::MAX_LINK_BOX {
                 return Err("bad link box".into());
@@ -871,9 +923,11 @@ async fn timeline(pool: &PgPool) -> Result<Value> {
     key_package_timeline(&mut f, &a).await?;
     let steps = std::mem::take(&mut f.steps);
     reads_fixture::timeline(&mut f).await?;
+    let read_steps = std::mem::take(&mut f.steps);
+    let crypto_proof = sealed_profiles_fixture::timeline(&mut f).await?;
     Ok(
         json!({"schema":1,"cell":"isolated_directory_fixture","initial_empty":true,"steps":steps,
-            "reads":{"steps":f.steps},"transport":socket_fixture()}),
+            "reads":{"steps":read_steps},"sealed_profiles":{"steps":f.steps,"crypto_proof":crypto_proof},"transport":socket_fixture()}),
     )
 }
 
@@ -889,7 +943,7 @@ fn socket_fixture() -> Value {
         "malformed_auth_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Other,"expected auth")),
         "large_request_base64":STANDARD.encode(ClientFrame::Req { id:large_id, op:Op::FetchLink { id:"0".repeat(64) } }.encode()),
         "large_reply_base64":encode(ServerFrame::Res { id:large_id, result:Ok(Reply::Link(None)) }),
-        "unsupported_request_base64":STANDARD.encode(ClientFrame::Req { id:large_id, op:Op::GetProfiles { ids:Vec::new() } }.encode()),
+        "unsupported_request_base64":STANDARD.encode(ClientFrame::Req { id:large_id, op:Op::RegisterPush { platform:"apns".into(), token:String::new() } }.encode()),
         "unsupported_reply_base64":encode(ServerFrame::Res { id:large_id, result:Err("directory operation is outside the private adapter scope".into()) }),
         "unsupported_space_base64":STANDARD.encode(ClientFrame::Sync { cursors:Vec::new(), all:true }.encode()),
         "unsupported_space_error_base64":encode(ServerFrame::error(roda_proto::ErrorCode::Other,"private directory socket does not support Space operations")),

@@ -83,6 +83,15 @@ grandes, concorrência, degradação, limites de serviço e recuperação. Regis
 gargalos, capacidade efetivamente validada, consumo e custos. Um teste de carga
 isolado não demonstra a escala global de outro produto.
 
+O primeiro perfil numérico está em
+[zoen-operating-envelope-v1.json](zoen-operating-envelope-v1.json): 200 conexões
+ativas sustentadas, reconexão de 1.000 dispositivos, 20 gravações por segundo e
+pico de 100, além de mídia, chamadas, latência, recuperação e orçamento. São metas
+de engenharia declaradas antes da medição. Ainda não são capacidade aprovada.
+Cada execução deve fixar o hash desse perfil e dos artefatos, registrar os limites
+e repetir o cenário completo duas vezes. A disponibilidade mensal exige 30 dias
+de observação; testes de falhas não substituem essa evidência.
+
 Operação de produção exige observabilidade que preserve privacidade, alertas,
 limites, proteção contra abuso, tratamento de pressão, diagnóstico e procedimentos
 de incidente. Exercitar restauração, recuperação de desastre, atualização,

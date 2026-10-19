@@ -36,6 +36,7 @@ fn context(author: &Author, projection: Option<ClosedProjection>) -> ClosedConte
         target: None,
         invite: None,
         now_ms: "1000".into(),
+        prune_ceiling_secs: None,
     }
 }
 fn signed(
@@ -280,17 +281,23 @@ fn lowercase_invite_expiry_and_usage_are_applied_only_after_successful_admission
 }
 
 #[test]
-fn unsupported_encryption_and_e2e_genesis_cannot_change_the_projection() {
+fn encrypted_genesis_and_encryption_transition_install_native_epoch_and_member_holds() {
     let owner = author(7);
     let wire = signed(&owner, "e2e", None, create(Privacy::EndToEnd), None);
-    assert_eq!(
-        closed_publish(&wire, &context(&owner, None))
-            .unwrap_err()
-            .code,
-        "unsupported_projection"
-    );
+    let state = closed_publish(&wire, &context(&owner, None))
+        .unwrap()
+        .projection;
+    assert_eq!(state.privacy, Some(Privacy::EndToEnd));
+    assert_eq!(state.mls.as_ref().unwrap().next_epoch, "0");
+    assert_eq!(state.holds.len(), 1);
+    assert_eq!(state.holds[0].identity, owner.identity);
+    assert_eq!(state.holds[0].device, "*");
+    assert_eq!(state.holds[0].seq, "0");
     let state = initial(&owner);
     let before = serde_json::to_value(&state).unwrap();
+    assert!(before.get("mls").is_none());
+    assert!(before.get("holds").is_none());
+    assert!(before.get("pruned").is_none());
     let wire = signed(
         &owner,
         "encrypt",
@@ -299,14 +306,51 @@ fn unsupported_encryption_and_e2e_genesis_cannot_change_the_projection() {
         None,
     );
     let ctx = context(&owner, Some(state));
-    assert_eq!(
-        closed_publish(&wire, &ctx).unwrap_err().code,
-        "unsupported_projection"
-    );
+    let accepted = closed_publish(&wire, &ctx).unwrap();
+    assert_eq!(accepted.projection.privacy, Some(Privacy::EndToEnd));
+    assert_eq!(accepted.projection.holds[0].seq, "1");
     assert_eq!(
         serde_json::to_value(ctx.projection.unwrap()).unwrap(),
         before
     );
+}
+
+#[test]
+fn direct_chats_keep_two_person_limit_and_cannot_mint_invites() {
+    let owner = author(7);
+    let peer = author(17);
+    let third = author(27);
+    let create = EventBody::SpaceCreated {
+        title: "Direct".into(),
+        kind: SpaceKind::Direct,
+        privacy: Privacy::Closed,
+    };
+    let wire = signed(&owner, "direct", None, create, None);
+    let state = closed_publish(&wire, &context(&owner, None))
+        .unwrap()
+        .projection;
+    let state = add(&owner, state, &peer, Role::Member);
+    let wire = signed(
+        &owner,
+        "third",
+        Some(&state),
+        EventBody::MemberAdded {
+            identity: third.identity.clone(),
+            role: Role::Member,
+        },
+        None,
+    );
+    let mut ctx = context(&owner, Some(state.clone()));
+    ctx.target = Some(DirectoryTarget {
+        identity: third.identity,
+        registered: true,
+    });
+    assert_eq!(
+        closed_publish(&wire, &ctx).unwrap_err().reason,
+        "a direct chat has two people"
+    );
+    let error=closed_invite_json(&serde_json::to_string(&state).unwrap(),&serde_json::json!({"who":owner.identity,"code":"ABCDEFGHJK","role":"Member","max_uses":1,"ttl_secs":"60","now_ms":"1000","existing":null}).to_string()).unwrap_err();
+    assert_eq!(error.reason, "direct chats don't take invites");
 }
 
 #[test]

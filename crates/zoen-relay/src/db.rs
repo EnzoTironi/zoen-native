@@ -403,6 +403,8 @@ pub async fn agreement_keys(
 /// Stores `p` if its version is newer than the stored one. `false` = stale.
 /// Stores a newer version; resending the exact stored bytes is a no-op success.
 pub async fn put_profile(pool: &PgPool, p: &SealedProfile) -> Result<bool, sqlx::Error> {
+    let version = i64::try_from(p.version)
+        .map_err(|_| sqlx::Error::Protocol("profile version out of range".into()))?;
     let r = sqlx::query(
         "INSERT INTO profiles (identity, version, ciphertext, device, sig, cert) VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (identity) DO UPDATE SET version = excluded.version, ciphertext = excluded.ciphertext,
@@ -411,7 +413,7 @@ pub async fn put_profile(pool: &PgPool, p: &SealedProfile) -> Result<bool, sqlx:
             OR (profiles.version = excluded.version AND profiles.ciphertext = excluded.ciphertext)",
     )
     .bind(&p.identity)
-    .bind(p.version as i64)
+    .bind(version)
     .bind(&p.ciphertext)
     .bind(&p.signed.device)
     .bind(&p.signed.sig)

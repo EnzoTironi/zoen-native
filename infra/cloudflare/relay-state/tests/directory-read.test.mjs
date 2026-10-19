@@ -49,7 +49,8 @@ async function apply(mf, step, inspect = true) {
       assert.deepEqual(normalize(result.body.result.reply_base64), normalize(step.expected.reply_base64), step.label);
     } else assert.deepEqual(result.body.result, step.expected, step.label);
   }
-  if (inspect && step.label.startsWith('read-') && !step.label.endsWith('-register') && !step.label.startsWith('read-link-') && step.label !== 'read-unlink')
+  if (inspect && step.label.startsWith('read-') && !step.label.endsWith('-register') && !step.label.startsWith('read-link-')
+    && !step.label.startsWith('read-quota-publish') && !['read-unlink', 'read-claim-legacy'].includes(step.label))
     assert.deepEqual((await call(mf, '/inspect')).body.result, before, 'Directory reads must not mutate accounts, devices, boxes or packages');
   return result;
 }
@@ -69,6 +70,42 @@ test('Directory reads match actual native PostgreSQL lookup limits, literal pref
       if (step.label === 'read-devices') assert.deepEqual(readReply(result.body.result.reply_base64).devices.map(row => row.revoked), [false, true, false]);
     }
   } finally { await mf.dispose(); await rm(path, { recursive: true, force: true }); }
+});
+
+test('invalid key-package claims spend the shared account budget before validation without consuming stock or receipts', async () => {
+  const mf = runtime();
+  const step = label => {
+    const value = native.reads.steps.find(step => step.label === label);
+    assert.ok(value, label);
+    return value;
+  };
+  const send = (label, actor = 'read-owner', now = '1700000000000') => call(mf, '/step', {
+    ...step(label), actor, now_ms: now, enforce_single_clock: true,
+  });
+  const state = async () => (await call(mf, '/inspect')).body.result;
+  try {
+    for (const label of ['read-owner-login', 'read-owner-register', 'read-quota-publish', 'read-quota-publish-second', 'read-link-0', 'read-linked-login'])
+      await apply(mf, step(label), false);
+    const before = await state();
+    assert.equal(before.packages.length, 2, 'Genuine native MLS publication stock required');
+    assert.equal((await send('read-link-0')).body.error.reason, 'a link box is already there');
+    assert.equal((await send('read-empty-handle')).status, 200);
+    for (let index = 0; index < 57; index++) {
+      const label = ['read-claim-invalid-operation', 'read-claim-too-many', 'read-claim-invalid-target'][index % 3];
+      const result = await send(label);
+      assert.equal(result.status, 400);
+      assert.equal(result.body.error.reason, step(label).expected.reason);
+    }
+    assert.deepEqual(await state(), before, 'Rejected claims cannot alter directory, inventory or receipts');
+    const refused = await send('read-claim-legacy');
+    assert.equal(refused.status, 400);
+    assert.equal(refused.body.error.reason, 'slow down, retry in 1.0 s');
+    assert.equal((await send('read-empty-handle', 'read-linked')).body.error.reason, 'slow down, retry in 1.0 s');
+    await apply(mf, step('read-unlink'), false);
+    assert.equal((await send('read-claim-invalid-operation', 'read-linked')).body.error.reason, 'this device was unlinked', 'Current device authorization must precede quota');
+    assert.equal((await send('read-claim-legacy', 'read-owner', '1700000001000')).status, 200);
+    assert.equal((await state()).packages.length, 1, 'An admitted legacy claim consumes exactly one package');
+  } finally { await mf.dispose(); }
 });
 
 test('account lookup quota survives restart, shares all devices and link failures, and refills against a nondecreasing clock', async () => {

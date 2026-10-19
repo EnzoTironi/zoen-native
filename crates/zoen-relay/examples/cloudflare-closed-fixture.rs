@@ -23,6 +23,9 @@ use serde_json::{json, Value};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use zoen_relay::log::{fdb::FdbLog, LogStore, Sequencing};
 
+#[path = "cloudflare-closed-fixture/mls.rs"]
+mod mls;
+
 // This is the native FDB invite tuple, read back instead of predicting storage.
 type StoredInvite = (String, String, String, i64, i64, i64);
 
@@ -203,13 +206,20 @@ impl Journey<'_> {
                 )
             }
         };
+        let tracking = mls::tracking(self).await?;
+        let clock = tracking
+            .hold_clock()
+            .unwrap_or(observed_now)
+            .max(observed_now);
         let mut roles = self.log.members(&self.space).await?;
         roles.sort_by(|a, b| a.0.cmp(&b.0));
         self.steps.push(json!({
             "op": "publish", "label": label, "frame_base64": STANDARD.encode(frame),
             "session": session, "target_registered": target_registered,
             "target_identity": target_identity,
-            "now_ms": observed_now.to_string(), "expected": expected, "roles_after": roles,
+            "now_ms": clock.to_string(), "expected": expected, "roles_after": roles,
+            "tracking_after": tracking.value(),
+            "history_after": if label.contains("checkpoint") || label.contains("pruning") { Some(mls::history(self).await?) } else { None },
         }));
         Ok(event)
     }
@@ -526,12 +536,22 @@ async fn fixture(log: &FdbLog, cell: &str, cluster: Option<&str>) -> Result<Valu
         1_700_000_000_100,
         None,
         EventBody::SpaceCreated {
-            title: "Unsupported EndToEnd fixture".into(),
+            title: "Unsupported Public fixture".into(),
             kind: SpaceKind::Group,
-            privacy: Privacy::EndToEnd,
+            privacy: Privacy::Public,
         },
     ));
-    let encrypt = journey.signed(&owner, 101, EventBody::SpaceEncrypted);
+    let encrypt = Envelope::plain(&owner.sign_event(
+        &roda_types::new_id("sp"),
+        "00000000000000000000000101",
+        1_700_000_000_101,
+        None,
+        EventBody::SpaceCreated {
+            title: "Unsupported Community".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+    ));
     let joining = journey.signed(
         &owner,
         102,
@@ -542,10 +562,10 @@ async fn fixture(log: &FdbLog, cell: &str, cluster: Option<&str>) -> Result<Valu
     // Reuse a real stored CID: signature verification must precede dedupe lookup.
     let mut invalid_signature = original;
     invalid_signature.sig = "00".repeat(64);
-    let unsupported_reason = "only closed Groups are supported by this private projection; MLS, holds and pruning are not implemented";
+    let unsupported_reason = "only Direct and Group chats with Closed or EndToEnd privacy are supported by this private projection";
     let unsupported = vec![
         negative_case(
-            "EndToEnd Group genesis stays unsupported",
+            "Public Group genesis stays unsupported",
             &owner,
             encrypted_genesis,
             "unsupported_projection",
@@ -553,7 +573,7 @@ async fn fixture(log: &FdbLog, cell: &str, cluster: Option<&str>) -> Result<Valu
             unsupported_reason,
         )?,
         negative_case(
-            "Closed Group encryption stays unsupported",
+            "Community genesis stays unsupported",
             &owner,
             encrypt,
             "unsupported_projection",
@@ -577,7 +597,10 @@ async fn fixture(log: &FdbLog, cell: &str, cluster: Option<&str>) -> Result<Valu
             "",
         )?,
     ];
-    Ok(json!({ "space_id": journey.space, "steps": journey.steps, "unsupported": unsupported }))
+    let encrypted = mls::cases(log, &db, cell, cluster).await?;
+    Ok(
+        json!({ "space_id": journey.space, "steps": journey.steps, "unsupported": unsupported,"encrypted":encrypted }),
+    )
 }
 
 fn main() -> Result<()> {
@@ -590,7 +613,8 @@ fn main() -> Result<()> {
     let result = runtime.block_on(async {
         // Neither command-line arguments nor environment variables can select the
         // namespace to clear. Only FDB_CLUSTER_FILE selects the existing cluster.
-        let cell = roda_types::new_id("t");
+        let cell = roda_types::new_id("qa_mls_v105");
+        ensure!(cell.starts_with("qa_mls_v105_"), "owned QA cell scope");
         let cluster = std::env::var("FDB_CLUSTER_FILE").ok();
         let log = FdbLog::open_as(
             cluster.as_deref(),
@@ -602,7 +626,11 @@ fn main() -> Result<()> {
         let result = fixture(&log, &cell, cluster.as_deref()).await;
         // Always attempt cleanup after ordinary errors, including failed setup or
         // unexpected oracle outcomes. A cleanup failure suppresses JSON success.
-        let cleanup = log.drop_cell().await;
+        let cleanup = async {
+            log.drop_cell().await?;
+            mls::ensure_empty(cluster.as_deref(), &cell).await
+        }
+        .await;
         match (result, cleanup) {
             (Ok(value), Ok(())) => {
                 eprintln!("native closed fixture cleaned cell: {cell}");

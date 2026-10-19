@@ -14,33 +14,40 @@ let skipBuild = false;
 let media = false;
 let transfer = false;
 let reads = false;
+let profiles = false;
 const args = process.argv.slice(2);
 for (let index = 0; index < args.length; index++) {
   if (args[index] === "--skip-build") skipBuild = true;
   else if (args[index] === "--media") media = true;
   else if (args[index] === "--transfer") transfer = true;
   else if (args[index] === "--reads") reads = true;
+  else if (args[index] === "--profiles") profiles = true;
   else if (args[index] === "--out-dir" && args[index + 1] && !args[index + 1].startsWith("--"))
     output = resolve(args[++index]);
   else
     throw new Error(
-      "Usage: verify-cloudflare-directory.mjs [--out-dir DIR] [--skip-build] [--media | --transfer | --reads]",
+      "Usage: verify-cloudflare-directory.mjs [--out-dir DIR] [--skip-build] [--media | --transfer | --reads | --profiles]",
     );
 }
-assert.ok(Number(media) + Number(transfer) + Number(reads) <= 1, "Choose a single adapter scope");
+assert.ok(
+  Number(media) + Number(transfer) + Number(reads) + Number(profiles) <= 1,
+  "Choose a single adapter scope",
+);
 const http = media || transfer;
 const label = transfer ? "transfer" : "media";
 output ??= await mkdtemp(join(tmpdir(), "zoen-cloudflare-directory-"));
 await mkdir(output, { recursive: true });
 assert.deepEqual(await readdir(output), [], "Use a fresh empty evidence directory");
 const environment = { ...process.env, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "2" };
-const scope = reads
-  ? "Private Person-directory read adapter: actual native PostgreSQL lookup/profile/device results versus shared Rust/WASM and SQLite; default account Lookup/DeliverLink quota, own-device revoked-inclusive enrollment order, first500 IDs and literal prefix LIMIT20. No signed GetProfiles, agent enrollment, public routing, MLS Space sync or socket close acceptance."
-  : transfer
-  ? "Private encrypted history-transfer HTTP/R2 adapter on the fixed Directory: actual native HTTP responses versus shared Rust/WASM, active devices, shared media quota, atomic create-only chunks, exact-prefix deletion and capability reads. No public endpoint, remote R2, recovery enrollment or full history UI acceptance."
-  : media
-    ? "Private media HTTP/R2 adapter on the same fixed Directory. Native actual HTTP oracle versus shared Rust/WASM, current device rows, weighted quota and immutable encrypted objects. No public HTTP, real R2 write or deployment. Private one-body/8-waiter/10s-idle/default-quota/25MiB-read bounds; no transfer or backup."
-    : "Private single-cell Person/device directory, Directory-owned native binary sockets and MLS key-package publication/claims (128 records/768 KiB response bound). Native PostgreSQL policy versus shared Rust/WASM and SQLite transactions; no public endpoint, Space audience authorization, provider auth, recovery or agent registration.";
+const scope = profiles
+  ? "Private signed encrypted profiles and agreement keys on the fixed authoritative Directory: actual native PostgreSQL versus shared Rust/WASM and SQLite, certified active devices, first500 IDs, exact BIGINT versions and monotonic ciphertext updates. No public endpoint, profile-key distribution, ProfileChanged fanout, account recovery or full client acceptance."
+  : reads
+    ? "Private Person-directory read adapter: actual native PostgreSQL lookup/profile/device results versus shared Rust/WASM and SQLite; default account Lookup/DeliverLink quota, own-device revoked-inclusive enrollment order, first500 IDs and literal prefix LIMIT20. No signed GetProfiles, agent enrollment, public routing, MLS Space sync or socket close acceptance."
+    : transfer
+      ? "Private encrypted history-transfer HTTP/R2 adapter on the fixed Directory: actual native HTTP responses versus shared Rust/WASM, active devices, shared media quota, atomic create-only chunks, exact-prefix deletion and capability reads. No public endpoint, remote R2, recovery enrollment or full history UI acceptance."
+      : media
+        ? "Private media HTTP/R2 adapter on the same fixed Directory. Native actual HTTP oracle versus shared Rust/WASM, current device rows, weighted quota and immutable encrypted objects. No public HTTP, real R2 write or deployment. Private one-body/8-waiter/10s-idle/default-quota/25MiB-read bounds; no transfer or backup."
+        : "Private single-cell Person/device directory, Directory-owned native binary sockets and MLS key-package publication/claims (128 records/768 KiB response bound). Native PostgreSQL policy versus shared Rust/WASM and SQLite transactions; no public endpoint, Space audience authorization, provider auth, recovery or agent registration.";
 const sourcePaths = [
   "Cargo.toml",
   "Cargo.lock",
@@ -52,6 +59,8 @@ const sourcePaths = [
   "crates/roda-relay-admission/src/directory/key_packages.rs",
   "crates/roda-relay-admission/src/directory/socket.rs",
   "crates/roda-relay-admission/src/directory/reads.rs",
+  "crates/roda-relay-admission/src/directory/sealed_profiles.rs",
+  "crates/roda-relay-admission/tests/directory_sealed_profiles.rs",
   "crates/roda-relay-admission/tests/directory_reads.rs",
   "crates/roda-relay-admission/tests/directory_socket.rs",
   "crates/roda-relay-admission/tests/directory_key_packages.rs",
@@ -62,12 +71,14 @@ const sourcePaths = [
   "crates/zoen-relay/src/key_package_claims.rs",
   "crates/zoen-relay/examples/cloudflare-directory-fixture.rs",
   "crates/zoen-relay/examples/cloudflare-directory-fixture/reads.rs",
+  "crates/zoen-relay/examples/cloudflare-directory-fixture/sealed_profiles.rs",
   "infra/cloudflare/relay-state/src/directory-state.mjs",
   "infra/cloudflare/relay-state/src/directory-index.mjs",
   "infra/cloudflare/relay-state/tests/directory-fixture.mjs",
   "infra/cloudflare/relay-state/tests/directory-state.test.mjs",
   "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
   "infra/cloudflare/relay-state/tests/directory-read.test.mjs",
+  "infra/cloudflare/relay-state/tests/directory-sealed-profiles.test.mjs",
   "infra/cloudflare/relay-state/wrangler.directory.jsonc",
   "infra/cloudflare/relay-state/package.json",
   "infra/cloudflare/relay-state/DIRECTORY.md",
@@ -295,20 +306,23 @@ try {
   }
   assert.equal(fixture.schema, 1);
   const workerdTapPath = join(output, http ? `${label}-workerd.tap` : "directory-workerd.tap");
-  const testFiles = reads
-    ? ["infra/cloudflare/relay-state/tests/directory-read.test.mjs"]
-    : transfer
-    ? ["infra/cloudflare/relay-state/tests/transfer-blobs.test.mjs"]
-    : media
-      ? [
-          "infra/cloudflare/relay-state/tests/blob-io.test.mjs",
-          "infra/cloudflare/relay-state/tests/media-blobs.test.mjs",
-        ]
-      : [
-          "infra/cloudflare/relay-state/tests/directory-state.test.mjs",
-          "infra/cloudflare/relay-state/tests/directory-read.test.mjs",
-          "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
-        ];
+  const testFiles = profiles
+    ? ["infra/cloudflare/relay-state/tests/directory-sealed-profiles.test.mjs"]
+    : reads
+      ? ["infra/cloudflare/relay-state/tests/directory-read.test.mjs"]
+      : transfer
+        ? ["infra/cloudflare/relay-state/tests/transfer-blobs.test.mjs"]
+        : media
+          ? [
+              "infra/cloudflare/relay-state/tests/blob-io.test.mjs",
+              "infra/cloudflare/relay-state/tests/media-blobs.test.mjs",
+            ]
+          : [
+              "infra/cloudflare/relay-state/tests/directory-state.test.mjs",
+              "infra/cloudflare/relay-state/tests/directory-read.test.mjs",
+              "infra/cloudflare/relay-state/tests/directory-sealed-profiles.test.mjs",
+              "infra/cloudflare/relay-state/tests/directory-socket.test.mjs",
+            ];
   const fixtureEnv = transfer
     ? { ZOEN_TRANSFER_FIXTURE: fixturePath }
     : media
@@ -361,9 +375,16 @@ try {
     media,
     transfer,
     reads,
+    profiles,
     nativeHttp,
     nativeSteps: fixture.steps.length,
     ...(reads ? { nativeReadSteps: fixture.reads.steps.length } : {}),
+    ...(profiles
+      ? {
+          nativeSealedProfileSteps: fixture.sealed_profiles.steps.length,
+          nativeCrypto: fixture.sealed_profiles.crypto_proof,
+        }
+      : {}),
     workerdCases: workerd.tests,
     workerd,
     source: {

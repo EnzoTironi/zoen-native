@@ -7,7 +7,7 @@ requests return 404; workers.dev, preview URLs and custom domains are disabled.
 Trusted Workers can call it through a service binding named `RELAY_STATE`.
 
 The separate [closed-group adapter](../closed-groups.md) adds verified Rust/WASM
-admission and atomic projection/invite effects in its own private namespace. It
+admission, MLS epochs/holds/checkpoints, bounded pruning and atomic projection/invite effects in its own private namespace. It
 shares the bounded SQL helpers, exposes no raw append RPC and has actual remote
 synthetic proof. It does not make this storage-only service a public relay.
 
@@ -76,7 +76,7 @@ storage contract; they do not accept a public relay or login journey.
 
 | Current dependency | Cloudflare target | Status |
 | --- | --- | --- |
-| FoundationDB per-Space transaction | SQLite Durable Object per Space | Storage and private closed-group Rust admission implemented; complete MLS projection and public `LogStore` integration remain |
+| FoundationDB per-Space transaction | SQLite Durable Object per Space | Storage, private Direct/Group admission and MLS retention projection pass actual native/core MLS differential proof; public `LogStore` integration remains |
 | PostgreSQL directory, provider proofs, key-package claims, device revocations | Directory Durable Objects with SQLite transactions | Private Directory/provider/key-package adapter implemented; cross-Space integration, public provider flows and recovery remain |
 | S3-compatible encrypted blobs and backups | Private R2 | [Private encrypted media](MEDIA.md) passes local differential and bounded real R2 QA; public integration, transfers and backup recovery remain |
 | NATS fanout and native socket sessions | Durable Object WebSockets | Protocol/authentication and ordered fanout adapter remain |

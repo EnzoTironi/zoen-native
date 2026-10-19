@@ -23,7 +23,9 @@ Both paths apply the native ownership filter: a stored profile must match its
 authoritative identity, kind and owner, and an agent requires its valid ownership
 proof. This private Directory still admits Person registrations only; it supplies
 that authoritative kind rather than trusting the profile payload to select it.
-Agent enrollment and signed/encrypted `GetProfiles` remain unsupported.
+Agent enrollment remains unsupported. Signed/encrypted profile operations now
+have separate [native SQL/AEAD and private host candidate coverage](DIRECTORY-PROFILES.md); these read
+checks do not accept their public integration or profile-key recovery.
 
 Selected rows are streamed from SQLite with a private aggregate facts budget of
 768 KiB, including query, row fields and JSON punctuation. Oversized profile or
@@ -41,12 +43,19 @@ historical clock corrections.
 
 Requests require current device authorization and registration. A preflight
 transaction spends the native default account lookup budget, shared with
-`DeliverLink`: sixty requests of burst capacity, refilling one request per second.
+`DeliverLink` and `ClaimKeyPackages`: sixty requests of burst capacity, refilling one request per second.
 Empty lookups and failed link delivery still spend admitted capacity. Reconnecting
 or using another device does not reset the account's durable quota. Its wall-clock
 basis is clamped to the last observed value; backward clock movement cannot refill
 it. Native custom `ZOEN_LIMITS` settings and the complete global abuse-control
 matrix remain separate integration work.
+
+Shared Rust classifies cost before operation-specific validation. Active-device
+authorization and registration precede the charge; invalid claim operation IDs,
+noncanonical targets and oversized receipt-mode target sets still spend admitted
+capacity. Only afterward does Rust construct the bounded target lookup. Invalid
+claims never reach target SQL or consume stock/receipts. The earlier `e2a002cd`
+checkpoint did not include claim charges; its evidence remains historical.
 
 The actual directory mutation still runs in its own atomic transaction and
 rechecks authorization. Failed durable work cannot refund already admitted lookup
@@ -64,14 +73,14 @@ node scripts/verify-cloudflare-directory.mjs --reads --out-dir .dev/cloudflare-d
 
 `--skip-build` reuses the generated shared WASM; the native oracle still runs against
 real PostgreSQL in its own validated disposable schema. The original 71 enrollment,
-linking and key-package scenarios remain unchanged. Seventy additional steps use
+linking and key-package scenarios remain unchanged. The additional timeline uses
 25 normally registered synthetic accounts and check native lookup/profile/device
 results, first-500 truncation, 500 distinct missing IDs, own-device revocation and
 unregistered/revoked callers. Workerd also verifies restart, shared-device quota,
-failed-link charging and clock rollback. A separate trusted-storage fault test
+failed-link charging, rejected-claim charging and clock rollback. A separate trusted-storage fault test
 checks aggregate large-glyph and device-inventory refusals; it does not claim real
 native enrollment of fabricated inventory. Evidence retains exact fixture and WASM
 bytes, source hashes and TAP output.
 
 These checks do not accept a public relay, provider login, encrypted Space sync,
-signed profile storage or the two separately tracked local socket-close gates.
+public signed-profile integration or the two separately tracked local socket-close gates.
