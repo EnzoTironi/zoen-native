@@ -263,6 +263,7 @@ export function SignInButtons({
             style={{
               minHeight: 44,
               font: 'inherit',
+              fontFamily: 'system-ui',
               color: colors.accent,
               background: 'transparent',
               border: 0,
