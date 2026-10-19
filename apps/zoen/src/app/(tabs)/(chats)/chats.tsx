@@ -20,7 +20,7 @@ const filters = [
   { id: 'archived', label: t('chat.archived') },
 ] as const;
 export default function Chats() {
-  const { snapshot, mode, store } = useClient();
+  const { snapshot, store } = useClient();
   const { colors } = useTheme();
   const { items } = useHome();
   const [filter, setFilter] = useState<string>('all');
@@ -78,19 +78,6 @@ export default function Chats() {
               </Text>
               <ChatsActions />
             </View>
-            {mode === 'demo' ? (
-              <View
-                style={{
-                  paddingHorizontal: 22,
-                  paddingVertical: 10,
-                  backgroundColor: colors.muted,
-                }}
-              >
-                <Text style={{ color: colors.secondary, fontSize: 13 }}>
-                  {t('chat.demoSimulatedChatsOnThisDevice')}
-                </Text>
-              </View>
-            ) : null}
             <MiniappRail items={items} />
             <ScrollView
               horizontal
