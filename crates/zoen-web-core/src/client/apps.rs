@@ -106,7 +106,7 @@ impl<S: Signer> Client<S> {
                 json!({"uri":uri,"mime_type":apps::MIME,"text":html,"prefers_border":false,"manifest_json":spec.manifest.unwrap_or("")})
             }
             Command::InstallApp{space_id,app_id,args_json}=>{
-                if app_id=="excalidraw" { return Err(roda_i18n::t("Este desenho precisa do host nativo de documentos.","This drawing requires the native document host.")); }
+                if app_id=="excalidraw" { return self.install_browser_drawing(&space_id,&args_json,now); }
                 let spec=apps::spec(&app_id).ok_or("Mini-app desconhecido.")?;
                 let args:Value=serde_json::from_str(&args_json).map_err(error)?;
                 if !args.is_object(){return Err("Argumentos inválidos.".into())}

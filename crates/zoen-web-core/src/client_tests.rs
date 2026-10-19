@@ -3,6 +3,9 @@ use openmls_traits::{signatures::SignerError, types::SignatureScheme};
 use roda_log::{Author, Signer as NativeSigner};
 use roda_mls::Device;
 
+#[path = "client_tests_drawings.rs"]
+mod drawings;
+
 #[derive(Clone)]
 pub(super) struct HostSigner(pub(super) NativeSigner);
 impl Signer for HostSigner {
@@ -1979,8 +1982,9 @@ fn received_app_owned_documents_keep_manifest_history_without_becoming_file_card
         15,
     );
     assert_eq!(history.result["doc"], response.result["doc"]);
+    let installed=restored.app_request(&serde_json::json!({"op":"install_app","space_id":log.space(),"app_id":"excalidraw","args_json":"{}"}).to_string(),16,"en").unwrap();
+    assert_eq!(installed.result["kind_id"], "app");
     let before = restored.saved.outbox.len();
-    assert!(restored.app_request(&serde_json::json!({"op":"install_app","space_id":log.space(),"app_id":"excalidraw","args_json":"{}"}).to_string(),16,"en").is_err());
     assert!(restored.app_request(&serde_json::json!({"op":"app_call_tool","item_id":"it_drawing","tool":"app_document_read","args_json":"{}","confirmed":false}).to_string(),17,"en").is_err());
     assert_eq!(restored.saved.outbox.len(), before);
 }

@@ -744,6 +744,9 @@ class BrowserDriver implements CoreDriver {
         case 'restore_plan_version':
         case 'restore_version':
         case 'undo':
+        case 'app_document_read':
+        case 'app_document_save':
+        case 'app_document_copy':
           result = await messages.documentRequest(command);
           break;
         case 'agents':

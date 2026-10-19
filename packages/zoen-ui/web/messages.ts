@@ -661,7 +661,7 @@ export class Messages {
         try { await this.resumeDocumentUploads(generation); }
         catch (error) {
           if (!(error as {documentUploadRetry?: boolean}).documentUploadRetry) throw error;
-          this.notice = 'A página foi salva neste navegador e aguarda conexão para terminar de enviar.';
+          this.notice = 'O documento foi salvo neste navegador e aguarda conexão para terminar de enviar.';
           this.scheduleMaintenance(5000,generation,true);this.publish();
         }
       }
@@ -671,7 +671,7 @@ export class Messages {
         for (const reference of downloads) {
           let bytes: Uint8Array;
           try {
-            if (reference.bytes > 32 << 20) throw new Error('Página grande demais.');
+            if (reference.bytes > 32 << 20) throw new Error('Conteúdo grande demais.');
             const blob = await this.openFile({ name: 'page', path: '', mime: 'application/vnd.zoen.page',
               bytes: reference.bytes, sha256: reference.sha256, chunks: [reference], thumb: null, voice: null }, false, true);
             bytes = new Uint8Array(await blob.arrayBuffer());
@@ -686,7 +686,7 @@ export class Messages {
           catch (error) { throw Object.assign(new Error(message(error)), { soft: true }); }
           if (response.update !== null) await this.apply(JSON.stringify(response.update), generation);
         } else if (response.result === null) {
-          throw Object.assign(new Error('A página ainda está chegando. Tente de novo quando estiver conectado.'), { soft: true });
+          throw Object.assign(new Error('O documento ainda está chegando. Tente de novo quando estiver conectado.'), { soft: true });
         }
       }
       result = response.result;
@@ -699,9 +699,9 @@ export class Messages {
     for (const blob of blobs) {
       if (this.closed || this.connection.kind !== 'ready' || generation !== this.generation) return;
       const sealed = await this.core.bytes({ kind: 'local_chunk', blob });
-      if (!sealed.length) throw new Error('O conteúdo local da página está indisponível.');
+      if (!sealed.length) throw new Error('O conteúdo local do documento está indisponível.');
       try { await this.upload(blob, sealed); }
-      catch (error) { throw Object.assign(error instanceof Error ? error : new Error('Sem conexão para enviar a página.'), {documentUploadRetry: true}); }
+      catch (error) { throw Object.assign(error instanceof Error ? error : new Error('Sem conexão para enviar o documento.'), {documentUploadRetry: true}); }
       const update = await this.core.text({ kind: 'document_uploaded', blobs: JSON.stringify([blob]) });
       await this.apply(update, generation);
     }

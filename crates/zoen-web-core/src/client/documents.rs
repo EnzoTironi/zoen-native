@@ -10,6 +10,8 @@ use roda_types::{ChunkRef, ItemContent, ItemKind, PageContent, PlanDoc};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+mod apps;
+
 const INLINE_MAX: usize = 48 << 10;
 const MAX_PAGE_BYTES: usize = 32 << 20;
 const MAX_REQUEST_BYTES: usize = 1 << 20;
@@ -19,6 +21,8 @@ pub(super) struct Journal {
     drafts: BTreeMap<String, Draft>,
     /// Hash-addressed verified page downloads; never an independent editable document.
     blobs: BTreeMap<String, Vec<u8>>,
+    #[serde(default)]
+    drawings: apps::Journal,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -834,6 +838,20 @@ impl<S: Signer> Client<S> {
         now: i64,
     ) -> Result<DocumentResponse, String> {
         self.view_now_ms = now;
+        if request.len() > apps::MAX_REQUEST_BYTES {
+            return Err("Edição grande demais.".into());
+        }
+        #[derive(Deserialize)]
+        struct Operation<'a> {
+            op: &'a str,
+        }
+        let operation: Operation<'_> = serde_json::from_str(request).map_err(error)?;
+        if matches!(
+            operation.op,
+            "app_document_read" | "app_document_save" | "app_document_copy"
+        ) {
+            return self.drawing_request(request, now);
+        }
         if request.len() > MAX_REQUEST_BYTES {
             return Err("Edição grande demais.".into());
         }
@@ -874,6 +892,9 @@ impl<S: Signer> Client<S> {
             )?,
             Command::FileManifest { item_id, version } => {
                 let item = self.document_item(&item_id)?;
+                if item.kind == ItemKind::App {
+                    self.app_document_access(&item.space)?;
+                }
                 let number = version.unwrap_or(item.versions.len() as u32);
                 let current = number
                     .checked_sub(1)
