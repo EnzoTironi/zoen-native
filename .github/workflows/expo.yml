@@ -179,7 +179,14 @@ jobs:
       - name: Compile Expo release and native lifecycle regressions
         working-directory: apps/zoen/android
         # The Expo library exposes its JVM host tests on the debug variant.
-        run: ./gradlew :app:assembleRelease :zoen-core:testDebugUnitTest --max-workers=2 -PreactNativeArchitectures=arm64-v8a
+        # R8 exhausted Expo's default 2 GiB heap. The public Ubuntu runner has
+        # 16 GiB; keep room for native/Kotlin workers and serialize projects.
+        run: |
+          free -h
+          ./gradlew :app:assembleRelease :zoen-core:testDebugUnitTest \
+            --max-workers=2 --no-parallel \
+            '-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' \
+            -PreactNativeArchitectures=arm64-v8a
       - name: Retain Expo Android build and native test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
