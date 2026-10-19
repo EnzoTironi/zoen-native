@@ -20,7 +20,7 @@ export function DeviceDataActions() {
     };
   }, []);
   const account = snapshot?.account;
-  if (mode === 'demo' || !account || process.env.EXPO_OS === 'android') return null;
+  if (mode === 'demo' || !account) return null;
 
   async function signOut() {
     if (busy.current || !account) return;

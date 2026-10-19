@@ -16,6 +16,7 @@
     "android/**",
     "modules/zoen-core/generated/**",
     "modules/zoen-core/ios/generated/**",
+    "modules/zoen-core/android/build/**",
     ".expo/**",
     "dist/**",
     "public/core/**",

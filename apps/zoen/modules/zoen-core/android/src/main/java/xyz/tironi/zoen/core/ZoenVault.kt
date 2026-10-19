@@ -86,4 +86,13 @@ class ZoenVault(context: Context, namespace: String = "keys") : SecretVault {
 
     @Synchronized
     override fun delete(key: String) { file(key).delete() }
+
+    /** SecretVault.delete has no result; verify the entire account namespace explicitly. */
+    @Synchronized
+    fun eraseAllVerified() {
+        ZoenDeviceErasure.eraseDirectory(directory)
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        store.deleteEntry(alias)
+        check(!store.containsAlias(alias)) { "Device sign-out needs a retry." }
+    }
 }

@@ -9,8 +9,12 @@ import xyz.tironi.zoen.core.*
 class PlanPagePresentationTest {
     private fun block(id: String, content: PlanPageContentDto, text: String = id, spans: List<TextSpanDto> = emptyList()) =
         PlanPageBlockDto(id, content, text, spans)
-    private fun page(blocks: List<PlanPageBlockDto> = emptyList()) = PlanPageDto("plan", "space", PlanPageReadSourceDto.DOCUMENT_SESSION,
-        2u, true, true, false, false, null, "observed-hash", -7, blocks)
+    private fun page(blocks: List<PlanPageBlockDto> = emptyList()) = PlanPageDto(
+        itemId = "plan", spaceId = "space", source = PlanPageReadSourceDto.DOCUMENT_SESSION,
+        version = 2u, ready = true, legacyEditAdmitted = true, unsaved = false,
+        inputPending = false, inputRevision = "0", pendingSync = false, saveError = null,
+        contentHash = "observed-hash", totalCents = -7, blocks = blocks,
+    )
 
     @Test fun orderedBlocksRetainProseAndUseBlockIdsWhenLegacyLineIdsRepeat() {
         val blocks = listOf(

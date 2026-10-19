@@ -54,7 +54,8 @@ class PageSaveCoordinatorTest {
 
     private fun page(text: String, pending: Boolean = false, error: String? = null) = PageDto(
         itemId = "page", spaceId = "space", title = "Notes", path = "notes.md", version = 2u,
-        ready = true, unsaved = pending, pendingSync = pending, saveError = error, canEdit = true,
+        ready = true, unsaved = pending, inputPending = false, inputRevision = "0",
+        pendingSync = pending, saveError = error, canEdit = true,
         contentHash = "hash-$text", editContext = "context-$text",
         blocks = listOf(PageBlockDto("block", "paragraph", 0u, 0u, 0u, false, "", "", "", text, emptyList())),
     )

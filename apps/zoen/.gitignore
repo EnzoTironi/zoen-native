@@ -42,6 +42,10 @@ example
 /ios
 /android
 
+# Local Gradle outputs from the tracked Expo module.
+/modules/zoen-core/android/build/
+/modules/zoen-core/android/.cxx/
+
 # Rebuilt from the authenticated Rust browser core.
 /public/core/
 /public/worker.js

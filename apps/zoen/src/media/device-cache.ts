@@ -4,7 +4,7 @@ import { sensitiveCacheWork } from './cache-work';
 
 /** The retained device-cleanup hook drains SDK writers before the native namespace sweep. */
 export function attachDeviceCacheCleanup(store: ClientStore): () => void {
-  if (process.env.EXPO_OS !== 'ios') return () => {};
+  if (process.env.EXPO_OS !== 'ios' && process.env.EXPO_OS !== 'android') return () => {};
   const synchronize = () => {
     const state = store.getSnapshot();
     if (!state.erasePending && (state.phase === 'ready' || state.phase === 'onboarding'))

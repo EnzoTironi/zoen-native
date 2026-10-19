@@ -62,67 +62,69 @@ function fixture() {
   return { image, state, cleanup: () => cleanup!(), changed: () => changed?.(), detach };
 }
 
-test('iOS cache cleanup drains SDK file jobs before clearing both image caches', async () => {
-  const previous = process.env.EXPO_OS;
-  process.env.EXPO_OS = 'ios';
-  const f = fixture();
-  try {
-    let finish!: () => void;
-    const writer = cache.sensitiveCacheWork.run(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        }),
-    );
-    f.state.phase = 'erasing';
-    f.state.erasePending = true;
-    f.changed();
-    const cleanup = f.cleanup();
-    assert.deepEqual(f.image.calls, []);
-    await assert.rejects(
-      cache.sensitiveCacheWork.run(async () => {}),
-      /saindo/,
-    );
-    finish();
-    await Promise.all([writer, cleanup]);
-    assert.deepEqual(f.image.calls.sort(), ['disk', 'memory']);
-    f.state.phase = 'onboarding';
-    f.state.erasePending = false;
-    f.changed();
-    await cache.sensitiveCacheWork.run(async () => {});
-  } finally {
-    f.detach();
-    if (previous === undefined) delete process.env.EXPO_OS;
-    else process.env.EXPO_OS = previous;
-  }
-});
+for (const platform of ['ios', 'android']) {
+  test(`${platform} cache cleanup drains SDK file jobs before clearing both image caches`, async () => {
+    const previous = process.env.EXPO_OS;
+    process.env.EXPO_OS = platform;
+    const f = fixture();
+    try {
+      let finish!: () => void;
+      const writer = cache.sensitiveCacheWork.run(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      f.state.phase = 'erasing';
+      f.state.erasePending = true;
+      f.changed();
+      const cleanup = f.cleanup();
+      assert.deepEqual(f.image.calls, []);
+      await assert.rejects(
+        cache.sensitiveCacheWork.run(async () => {}),
+        /saindo/,
+      );
+      finish();
+      await Promise.all([writer, cleanup]);
+      assert.deepEqual(f.image.calls.sort(), ['disk', 'memory']);
+      f.state.phase = 'onboarding';
+      f.state.erasePending = false;
+      f.changed();
+      await cache.sensitiveCacheWork.run(async () => {});
+    } finally {
+      f.detach();
+      if (previous === undefined) delete process.env.EXPO_OS;
+      else process.env.EXPO_OS = previous;
+    }
+  });
 
-test('a false SDK cache-reset result fails closed and remains retryable', async () => {
-  const previous = process.env.EXPO_OS;
-  process.env.EXPO_OS = 'ios';
-  const f = fixture();
-  try {
-    f.image.disk = false;
-    f.state.phase = 'erasing';
-    f.state.erasePending = true;
-    await assert.rejects(f.cleanup(), /imagens/);
-    assert.deepEqual(f.image.calls.sort(), ['disk', 'memory']);
-    await assert.rejects(
-      cache.sensitiveCacheWork.run(async () => {}),
-      /saindo/,
-    );
-    f.image.disk = true;
-    await f.cleanup();
-    f.state.phase = 'onboarding';
-    f.state.erasePending = false;
-    f.changed();
-    await cache.sensitiveCacheWork.run(async () => {});
-  } finally {
-    f.detach();
-    if (previous === undefined) delete process.env.EXPO_OS;
-    else process.env.EXPO_OS = previous;
-  }
-});
+  test(`${platform} false SDK cache-reset result fails closed and remains retryable`, async () => {
+    const previous = process.env.EXPO_OS;
+    process.env.EXPO_OS = platform;
+    const f = fixture();
+    try {
+      f.image.disk = false;
+      f.state.phase = 'erasing';
+      f.state.erasePending = true;
+      await assert.rejects(f.cleanup(), /imagens/);
+      assert.deepEqual(f.image.calls.sort(), ['disk', 'memory']);
+      await assert.rejects(
+        cache.sensitiveCacheWork.run(async () => {}),
+        /saindo/,
+      );
+      f.image.disk = true;
+      await f.cleanup();
+      f.state.phase = 'onboarding';
+      f.state.erasePending = false;
+      f.changed();
+      await cache.sensitiveCacheWork.run(async () => {});
+    } finally {
+      f.detach();
+      if (previous === undefined) delete process.env.EXPO_OS;
+      else process.env.EXPO_OS = previous;
+    }
+  });
+}
 
 test('browser device cleanup does not call unsupported native image cache APIs', () => {
   const previous = process.env.EXPO_OS;
