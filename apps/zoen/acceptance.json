@@ -32,7 +32,7 @@
   ],
   "deferredPlatforms": ["macos", "windows", "linux"],
   "fullAppParityAccepted": false,
-  "currentAcceptanceSummary": "Whole-application iPhone baseline remains v85; preserving-installed v92 has bounded MCP/gesture/Home evidence. v94/v95 Page input/session work remains source/host proof without new signed editor recovery. Web passes22 checkpoints per locale locally and in CI, including actual Excalidraw edits, exact native-peer bytes and cold reload. Android API35 Debug passed linking/history/Page/headers/erasure; independent CI produced a minified Release APK and14 passing JVM tests, with bounded Release runtime pending. Cloudflare hosts the frontend, private closed-group storage and a private Person/device directory including MLS key packages. Public encrypted relay/provider paths and full comparative parity remain incomplete.",
+  "currentAcceptanceSummary": "Whole-application iPhone baseline remains v85; preserving-installed v92 has bounded MCP/gesture/Home evidence. v94/v95 Page input/session work remains source/host proof without new signed editor recovery. Web passes22 checkpoints per locale locally and in CI, including actual Excalidraw edits, exact native-peer bytes and cold reload. Android API 35 Debug passed linking/history/Page/headers/erasure; the minified CI Release APK and 14 JVM tests passed, and the unchanged non-debuggable APK passed normal onboarding and connection-code generation only. Cloudflare hosts the frontend, private closed-group storage and a private Person/device directory including MLS key packages. Public encrypted relay/provider paths and full comparative parity remain incomplete.",
   "historicalEvidence": {
     "commit": "e76c74be4af4bfe483f4de4b63b6f932a83f0d8b",
     "path": "apps/zoen/acceptance.json",
@@ -844,7 +844,7 @@
       }
     },
     "androidV96": {
-      "status": "PASS_BOUNDED_API35_DEBUG_LINK_HISTORY_PAGE_HEADERS_AND_ERASURE",
+      "status": "PASS_BOUNDED_API35_DEBUG_JOURNEYS_AND_RELEASE_ONBOARDING_CODE_GENERATION",
       "receipt": "/private/tmp/zoen-android-v96/native-final-acceptance.json",
       "apkSha256": "19e6270d0306470854ba39a8582750182b14e26dc35bac248a664ab3103bedaf",
       "apkBytes": 243541703,
@@ -867,8 +867,8 @@
         }
       ],
       "resourceBinding": "/private/tmp/zoen-android-v96/final-core-resource-binding.json",
-      "scope": "Debug APK/JNI/native-source proof and14 pure JVM regressions; separate actual API35 arm64 Expo development runtime with fresh Metro JavaScript. No forced interruption fault injection or Release runtime acceptance.",
-      "pending": "Release/runtime performance, API28 and physical devices, public provider login, media/voice/profile photo and assistant parity. Actual SDK logo cache cleanup does not establish account-photo upload.",
+      "scope": "Original Debug APK/JNI/native-source proof and 14 JVM regressions, with separately attributed API 35 development linking/history/Page/headers/erasure on fresh Metro JavaScript. The unchanged minified CI Release APK separately passed normal onboarding and local connection-code generation only; no forced interruption fault injection or full Release account journey.",
+      "pending": "Release post-link connected status, completed linking, history/messages/Page/account erasure; performance, API 28 runtime and physical devices, public provider login/Cloudflare sync, media/voice/profile photo and assistant parity. Actual SDK logo cache cleanup does not establish account-photo upload; CI Debug signing is not store signing.",
       "runtimeReceipt": "/private/tmp/zoen-android-v96/runtime-final-acceptance.json",
       "documentation": "docs/dev/expo-android-acceptance.md",
       "apkPath": "/private/tmp/zoen-android-v96/zoen-v96-arm64-debug.apk",
@@ -921,7 +921,7 @@
         "freshRunUrl": "https://github.com/EnzoTironi/zoen-native/actions/runs/39204333306",
         "freshRunHead": "52da9729e76e74fbfb3156c4ce39885717ccb653",
         "freshRunStatus": "PASS_MINIFIED_RELEASE_APK_AND_14_JVM_TESTS",
-        "scope": "Previous failures/probe retained separately. Actual CI Release build and JVM tests passed on52da merge59998; runtime acceptance pending. No store signing, public sync, API28 or physical-device claim.",
+        "scope": "Previous failures/probe retained separately. Actual CI Release build and 14 JVM tests passed on head 52da merge 59998; bounded normal Release onboarding/code generation is recorded separately below. No store signing, public sync, API 28 runtime or physical-device claim.",
         "freshTestedMergeCommit": "59998b677ce581bd49a045538ee62f3d17b55347",
         "freshArtifactId": 12165977835,
         "freshReceipt": "/private/tmp/zoen-android-v96/ci-39204333306-watch/release-build-acceptance.json",
@@ -945,6 +945,62 @@
         },
         "freshPackagedJniSha256": "6816a6b8d3561284037e0f32e1a7fa4bc5e766cc5e1c7941c4d11e2de92b4830",
         "freshHermesSha256": "47f12cac1c25f98f79e8da4f3227271d6c86e2a76d67d342eace41cc1d7f5ad3"
+      },
+      "releaseRuntime": {
+        "status": "PASS_BOUNDED_API35_RELEASE_ONBOARDING_AND_CODE_GENERATION_ONLY",
+        "receipt": "/private/tmp/zoen-android-v96/release-runtime/release-runtime-acceptance.json",
+        "receiptSha256": "9c9c31bbba76575a8e5496741e3bc7c0040aff9e658db2e0904c01c8aec85d7f",
+        "ciRun": 39204333306,
+        "ciHead": "52da9729e76e74fbfb3156c4ce39885717ccb653",
+        "testedMergeCommit": "59998b677ce581bd49a045538ee62f3d17b55347",
+        "installedApkSha256": "55bb795d3083f20179bc128cbf63a662ba915984de2438ca4d6467d9cf82d46a",
+        "installedApkMatchesCI": true,
+        "installedAppDebuggable": false,
+        "deviceApi": 35,
+        "abi": "arm64-v8a",
+        "flow": [
+          "Launch unchanged CI Release APK",
+          "Recover access",
+          "Another device",
+          "Generate connection code"
+        ],
+        "nativeCryptoCallback": "The normal native link_request returned a typed result only after SecretVault.save acknowledged success. No private vault inspection claimed.",
+        "connectedStatusMounted": false,
+        "appLogLines": 239,
+        "matchedFatalOrNativeLoadingSignatures": 0,
+        "noPatchOrInjection": {
+          "apk_unchanged": true,
+          "no_debugger_or_runtime_evaluation": true,
+          "no_Metro": true,
+          "no_native_bridge_fixture": true,
+          "no_relay_override": true,
+          "no_session_or_account_injection": true
+        },
+        "privacy": {
+          "fullCodeOrQrExported": false,
+          "fingerprintLabelAndValueRedacted": true,
+          "rawPairingScreenshotRemoved": true,
+          "exportedScreenshotsBeforeCodeGeneration": [
+            "/private/tmp/zoen-android-v96/release-runtime/onboarding-release.png",
+            "/private/tmp/zoen-android-v96/release-runtime/recover-release.png"
+          ],
+          "keysOrPrivateDatabasesCopied": false
+        },
+        "earlierFailedInstall": {
+          "acceptedAsRuntime": false,
+          "reason": "The 5 GiB guard stopped only the owned emulator during transient installation; retained separately from the successful retry after scoped generated-output cleanup.",
+          "receipt": "/private/tmp/zoen-android-v96/release-runtime/disk-guard-triggered.json"
+        },
+        "minimumAcceptedRuntimeFreeBytes": 6455939072,
+        "ownedAvdPreservedStopped": true,
+        "ownedRuntimeAndGuardProcessesStopped": true,
+        "limits": [
+          "No public provider/account authentication or completed device-link acceptance",
+          "No linked connected-status role, history, message, Page or account-erasure Release runtime acceptance",
+          "No media, API28 runtime, performance or store-distribution signing acceptance",
+          "Debug full-account journeys remain separately attributed to their earlier immutable Debug APK and loaded JS evidence",
+          "Later source commits are not attributed to this CI APK"
+        ]
       }
     },
     "cloudflareAdmissionFoundationV96": {

@@ -137,9 +137,42 @@ JNI/Hermes, XML and log checks are bound by
 `/private/tmp/zoen-android-v96/ci-39204333306-watch/release-build-acceptance.json`
 (SHA256 `1c0796bc675dc276c366eb1521ec6e84bf9339f58c517188eb010612a4b76360`).
 
-Release runtime, API 28 minimum-runtime behavior, physical devices, public OAuth
-and Cloudflare sync, Android media/voice/profile-photo parity, and forced
-process-death erasure fault injection remain unaccepted. Performance also remains
-unaccepted: initial cold development startup took about six minutes and a later
-project selection-to-observed-onboarding bound was about 125 seconds, including
-development tooling and observation overhead.
+### Bounded Release runtime
+
+The same immutable CI APK was installed on a fresh owned API 35 arm64 emulator.
+The installed APK hash matched the preserved artifact above, and the installed
+package was **not debuggable**. Normal **Launch → Recover access → Another device
+→ Generate connection code** opened the native engine and returned the real
+pairing controls without an error alert or native crash. This exercises the
+minified Hermes/Expo/JNA/UniFFI path: native `link_request` returns its typed result
+only after the vault's `save` callback acknowledges success. Private vault contents
+were not inspected. There was no Metro, debugger evaluation, relay override, APK
+patch, bridge fixture or account/session injection.
+
+The machine-local receipt is
+`/private/tmp/zoen-android-v96/release-runtime/release-runtime-acceptance.json`
+(SHA256 `9c9c31bbba76575a8e5496741e3bc7c0040aff9e658db2e0904c01c8aec85d7f`).
+It binds the installed APK to the original CI build, packaged JNI/Hermes and
+14 JVM results. Its 239 app-log lines contained none of the seven checked fatal,
+R8/JNA loading or layout-error signatures. Only onboarding/recovery screenshots
+from **before** code generation were exported. The full code and QR image were
+excluded; the generated pairing screenshot was removed, and the final
+accessibility fingerprint label/value and app log were redacted. Keys and private
+databases were not copied.
+
+An earlier installation was stopped by the 5 GiB disk guard; its failure and
+scoped cleanup receipts remain separate from the accepted retry. The accepted
+runtime kept at least 6,455,939,072 bytes free. Only the owned emulator and its
+Argent server were stopped afterwards; its AVD was preserved, stopped, for later
+coordinated QA. To repeat this bounded check, install the pinned CI APK on a fresh
+owned API 35 emulator and follow the normal recovery/code-generation controls.
+
+Release post-link **Account connected** status, completed linking, history,
+messages, Page operations and account erasure remain unaccepted. API 28
+minimum-runtime behavior, physical devices, public OAuth and Cloudflare sync,
+Android media/voice/profile-photo parity, store signing and forced process-death
+erasure fault injection also remain unaccepted. Performance remains unaccepted:
+initial cold development startup took about six minutes and a later project
+selection-to-observed-onboarding bound was about 125 seconds, including development
+tooling and observation overhead. The bounded Release check is not a performance
+measurement.
