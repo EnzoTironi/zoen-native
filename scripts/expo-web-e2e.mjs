@@ -188,9 +188,9 @@ async function expectMessage(author, text, timeout = 90_000, messageId) {
     .filter({ hasText: new RegExp(`^${escape(text)}$`) });
   await body.waitFor({ timeout });
   assert.equal(await body.innerText(), text, "the visible message body must match in full");
-  const testId = await bubble.getAttribute("data-testid");
-  assert.match(testId, /^message-bubble-.+$/, "the original message must have its real ID");
-  return testId.slice("message-bubble-".length);
+  const testId = await body.getAttribute("data-testid");
+  assert.match(testId, /^message-body-.+$/, "the original message must have its real ID");
+  return testId.slice("message-body-".length);
 }
 async function screenshot(name) {
   await page.screenshot({

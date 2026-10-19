@@ -98,6 +98,18 @@ restarting only the owned Chrome recovered. Web attachments still use a sheet,
 and actual Apple/Google confirmation remains unverified. The owned browser/server
 were stopped; the native backend and user's iPhone development session remain.
 
+The existing release Web journey also passes all 22 checkpoints in each of
+English and Brazilian Portuguese against that exact retained export and CLI.
+It covers linking, encrypted messages/files, Markdown, canonical MCP apps,
+Excalidraw and local erasure while preserving the native peer. The retention
+check now reveals older virtualized messages through the real conversation
+search and requires all three original IDs, authors and complete bodies.
+Neither its timeout nor assertions were relaxed. Both runs completed without
+uncaught browser errors, rebuilds or service restarts; their processes closed.
+Receipt: `/private/tmp/zoen-ci-2908-release-web/final-existing-entrypoint.json`,
+SHA-256 `a288d78947174599901e1b21f609153c0e4205e0e8e5020077c7f0f259d83c66`.
+This is local release-journey evidence, separate from the broader CI checks.
+
 ## Backend and local production environment
 
 The active backend direction is the native Rust server. The custom Cloudflare

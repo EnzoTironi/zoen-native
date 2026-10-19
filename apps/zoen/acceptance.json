@@ -2208,6 +2208,20 @@
       "selectedCanonicalFieldsExact": true,
       "rawSceneByteDigestCompared": false,
       "osKeychainRecoveryVerified": false
+    },
+    "releaseJourneyProof": {
+      "path": "/private/tmp/zoen-ci-2908-release-web/final-existing-entrypoint.json",
+      "sha256": "a288d78947174599901e1b21f609153c0e4205e0e8e5020077c7f0f259d83c66",
+      "entrypoint": "node scripts/expo-web-e2e.mjs",
+      "scriptSha256": "cac1e982aac9ee6ffeada2b5465e46b83dbb628d554b107ddfb88c83e3f2a03d",
+      "locales": ["en-US", "pt-BR"],
+      "checkpointsPerLocale": 22,
+      "actualPass": true,
+      "uncaughtBrowserErrors": 0,
+      "originalMessageIdsAuthorsAndFullBodiesRequired": true,
+      "sameRetainedExportAndCli": true,
+      "backendRestartDuringThisJourney": false,
+      "otherCiJobsQualified": false
     }
   },
   "currentNativeBackendCheckpoint": {

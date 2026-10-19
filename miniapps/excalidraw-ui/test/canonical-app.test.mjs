@@ -53,7 +53,7 @@ export function Excalidraw(props){
  const change=()=>window.qaProps.onChange(current().elements,{...current().appState,viewModeEnabled:window.qaProps.viewModeEnabled},current().files);
  window.qaAcknowledge=change;
  window.qaEdit=(text)=>{if(window.qaProps.viewModeEnabled)return false;window.qaScene={...current(),elements:[{id:'text',type:'text',text}]};change();return true;};
- useEffect(()=>{props.excalidrawAPI({getSceneElements:()=>current().elements,getAppState:()=>({...current().appState,viewModeEnabled:window.qaProps.viewModeEnabled}),getFiles:()=>current().files});change();},[]);
+ useEffect(()=>{props.excalidrawAPI({getSceneElements:()=>current().elements,getAppState:()=>({...current().appState,viewModeEnabled:window.qaProps.viewModeEnabled}),getFiles:()=>current().files});change();window.qaCanvasReady=true;},[]);
  useEffect(()=>{if(!window.qaHoldFreeze)change();},[props.viewModeEnabled]);
  return React.createElement('div',{'data-qa-canvas':props.viewModeEnabled?'readonly':'editable'});
 }`;
@@ -189,7 +189,12 @@ async function fixture(initial = scene("initial")) {
     }
     throw Error("Canvas did not settle: " + JSON.stringify(failures));
   };
-  await wait(() => dom.window.document.querySelector("[data-qa-canvas]"));
+  await wait(
+    () =>
+      dom.window.document.querySelector("[data-qa-canvas]") &&
+      dom.window.qaCanvasReady &&
+      typeof app.onteardown === "function",
+  );
   await tick();
   return {
     app,
