@@ -22,7 +22,7 @@ PURPOSE = 'native-local-environment'
 PRIVATE_FILES = ('postgres.env', 'storage.env', 'relay.env')
 IMAGE_REFS = {
     'relay': 'zoen-local-relay:current',
-    'fdb': 'zoen-local-fdb:7.3.71',
+    'fdb': 'zoen-local-fdb:current',
     'postgres': 'postgres:17-bookworm',
     'storage': 'chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d',
     'archive': 'debian:bookworm-slim',
