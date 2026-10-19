@@ -108,7 +108,7 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Expo Android SDK, NDK and Rust toolchain
         run: |
-          sdkmanager 'platforms;android-37' 'build-tools;37.0.0' 'ndk;27.1.12297006'
+          sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;27.1.12297006'
           rustup toolchain install 1.99.1 --profile minimal --target aarch64-linux-android
           rustup default 1.99.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
