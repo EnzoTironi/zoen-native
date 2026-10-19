@@ -52,16 +52,16 @@ relays. An authored runner or passing unit tests alone do not establish acceptan
 
 ## Recorded source and artifacts
 
-[CI run 39194529436](https://github.com/EnzoTironi/zoen-native/actions/runs/39194529436)
+[CI run 39198364287](https://github.com/EnzoTironi/zoen-native/actions/runs/39198364287)
 passed all 19 checkpoints in both locales on Chromium `155.0.8059.39`. It tested
-merge `10276df12927fd6c562ca9e64920089224639770` for head
-`e2b0ea0736a51ff23737a5de3ddc48f3c86c982c`. Artifact
-`expo-release-web-evidence` (ID `12161960284`) contains both successful receipts,
+merge `bfd35da7d52271a332e8b439b69d23850e87a973` for head
+`7c71cecbf3e71fb502c9213b97bd909854dfa2d2`. Artifact
+`expo-release-web-evidence` (ID `12162482735`) contains both successful receipts,
 with the same 90-file manifest:
 
 ```text
 manifest SHA256:
-44abaf303e2e6890431895ba275ce99e4965cbd65b5d6c03de00bf3e848270c7
+184a76ed4667d5d37a4acdce7f3a90fe55fa5d75e1595972f7643cf2bee74570
 worker integrity:
 sha384-L+9+jxotxheYp9vbLHFT/KfMrU8ylmtaxzcR1mU6cbJiA47p+Ozdyg03C3VnJx2S
 core/zoen_web_core_bg.wasm: 25,721,313 bytes; SHA256:
@@ -69,19 +69,23 @@ core/zoen_web_core_bg.wasm: 25,721,313 bytes; SHA256:
 ```
 
 The downloaded proof is
-`/private/tmp/zoen-cloudflare-web-v96/ci-e2b-evidence/{en-US,pt-BR}/acceptance.json`,
-indexed by `ci-e2b-receipts.json` in the same parent directory. Manifest hashes
+`/private/tmp/zoen-cloudflare-web-v96/ci-7c71-evidence/{en-US,pt-BR}/acceptance.json`,
+indexed by `ci-7c71-receipts.json` in the same parent directory. Manifest hashes
 mean SHA256 of `JSON.stringify(artifact.manifest)`. Temporary local paths identify
 retained evidence; they are not portable downloads. The CI artifact is the hosted
 receipt. Its source already includes the decorative-sky accessibility correction.
 
-The following ten-file source change, committed as
+The ten-file source change, committed as
 `762ceb51f36196f638074e59fc1ab8bf429004c5`, passed a separate local full app check:
-TypeScript, Oxlint, Oxfmt and **795/795 tests**, zero failures or skips. This adds
-Android access/layout corrections and the localized sign-in connection failure;
-it is not part of the 19-checkpoint CI source above. The exact file hashes and
+TypeScript, Oxlint, Oxfmt and **795/795 tests**, zero failures or skips. It adds
+Android access/layout corrections and the localized sign-in connection failure,
+and is included in the 19-checkpoint CI source above. The exact file hashes and
 source-diff hash are in `/private/tmp/zoen-web-v96/final-app-check.json`; its log
 SHA256 is `6921996d0baa20f3460063aa5a2ebffb30ffce60e18f1a2291db0c1fec901eec`.
+
+The later font-only correction `75fffd98` has scoped TypeScript/Oxlint/Oxfmt and
+actual canonical guest-render proof, with computed `system-ui` typography. The
+795-test suite was not repeated for that style-only change.
 
 Earlier evidence retains its original attribution. The first local v96 19-step
 EN/PT proof used head `e76c74be4af4bfe483f4de4b63b6f932a83f0d8b` plus source patch
@@ -171,13 +175,13 @@ configuration text. Artifact/hosting checks do not establish encrypted messaging
 ## Public hosting and remaining scope
 
 On 19 October 2026, production frontend deployment
-`4546641a-e125-48a7-a2ba-6be2b99939af` at
+`13975cc7-93e5-47f6-9f89-c769f1bd0756` at
 [app.tryzoen.com](https://app.tryzoen.com) and
 [zoen-web.agenttironi.workers.dev](https://zoen-web.agenttironi.workers.dev)
 passed all ten public HTTP paths and exact signing-worker integrity on each origin.
 This fresh production build includes the decorative accessibility and localized connection
 failure corrections. Receipt:
-`/private/tmp/zoen-app-domain-v96/live-hosting.json`. Its worker integrity is
+`/private/tmp/zoen-app-domain-v96/live-hosting-final.json`. Its worker integrity is
 `sha384-5lhNMH1yUGXCJcds6hQwwqxce9rFjyYH5ABCkzRUpP70btnwC/2vOLvpz4P6rhtw`;
 this is distinct from the CI build's bytes. Neither 19-step journey ran against
 the public domain. The exact fail-closed `app.tryzoen.com/*` route uses the two
@@ -190,7 +194,7 @@ An empty-profile Chrome `155.0.8059.85` on the current canonical domain rendered
 Portuguese onboarding, the localized connection error and popup-safe sign-in,
 with no unhandled page errors or injected analytics script. Both providers remain
 unavailable against the dead relay. No provider/device-link action was taken.
-Receipt and screenshot: `/private/tmp/zoen-app-domain-v96/guest-boot.json` and
+Receipt and screenshot: `/private/tmp/zoen-app-domain-v96/final-web/guest-boot.json` and
 `canonical-onboarding.png`. This is guest rendering evidence, without WASM
 initialization, authentication or encrypted-sync acceptance. The preceding
 workers.dev guest observation retains its separate attribution in

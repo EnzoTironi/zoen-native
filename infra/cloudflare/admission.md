@@ -68,7 +68,8 @@ receipts, and `complete-run/summary.json` records the final runtime result.
 These temporary paths are not portable downloads. The `cloudflare-admission`
 Expo CI job preserves equivalent repeatable evidence without deployment credentials.
 
-This foundation is not connected to the deployed storage Worker. The complete
-projection, directory/revocation protocol, MLS holds/checkpoints/pruning,
-WebSockets, provider login and public encrypted synchronization remain separate
-integration work. See [deployment](README.md) and [storage](relay-state/README.md).
+The later [private closed-group adapter](closed-groups.md) reuses this policy in a
+separate deployed namespace, with its own 29-test/differential/remote evidence.
+The original storage-only Worker retains its own contract. Complete MLS projection,
+directory/revocation, WebSockets, provider login and public encrypted synchronization
+remain integration work. See [deployment](README.md).

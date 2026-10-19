@@ -6,6 +6,11 @@ handshake, identity enrollment, provider login or encrypted sync. Production HTT
 requests return 404; workers.dev, preview URLs and custom domains are disabled.
 Trusted Workers can call it through a service binding named `RELAY_STATE`.
 
+The separate [closed-group adapter](../closed-groups.md) adds verified Rust/WASM
+admission and atomic projection/invite effects in its own private namespace. It
+shares the bounded SQL helpers, exposes no raw append RPC and has actual remote
+synthetic proof. It does not make this storage-only service a public relay.
+
 ## Implemented contract
 
 One SQLite Durable Object belongs to each Space. `appendAdmitted` accepts an event

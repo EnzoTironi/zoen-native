@@ -115,8 +115,8 @@ Onboarding accessibility and public HTTP hosting have separate bounded evidence.
 The [Android Debug journey](../../docs/dev/expo-android-acceptance.md) passed
 normal linking, history recovery, Page creation/read, corrected headers/status and
 local erasure with retained peer history on an API35 emulator. The APK/JNI and
-14 JVM tests have separate build evidence. Current shared source passes 795 tests,
-TypeScript, Oxlint and Oxfmt. Release/runtime performance and missing Android
+14 JVM tests have separate build evidence. The last full shared client check passed
+795 tests, TypeScript, Oxlint and Oxfmt. Release/runtime performance and missing Android
 media features remain open.
 
 Current validation covers iOS, Web and Android; desktop is deferred. Full product
