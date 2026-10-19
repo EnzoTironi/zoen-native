@@ -1,17 +1,16 @@
 import { t } from '../i18n/index.ts';
-import { sha256 } from '@noble/hashes/sha2.js';
 import type { AppResourceDto } from '../core/generated/AppResourceDto';
 
-export type MiniappManifest = {
+export type MiniappManifest = Readonly<{
   id: string;
   name: string;
-  capabilities: { id: string; purpose: string }[];
-  allowedDomains: string[];
+  capabilities: readonly Readonly<{ id: string; purpose: string }>[];
+  allowedDomains: readonly string[];
   networkPurpose: string;
-  linkDomains: string[];
+  linkDomains: readonly string[];
   sha256: string;
   bytes: number;
-};
+}>;
 export function hostname(value: unknown): value is string {
   return (
     typeof value === 'string' &&
@@ -19,14 +18,57 @@ export function hostname(value: unknown): value is string {
     /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(value)
   );
 }
-export function verifyMiniappResource(resource: AppResourceDto, appId: string): MiniappManifest {
+/** One immutable, fully checked resource. It grants no device or network permission. */
+export type VerifiedMiniappResource = Readonly<{
+  resource: Readonly<AppResourceDto>;
+  manifest: MiniappManifest;
+}>;
+const MAX_RESOURCE_BYTES = 8 * 1024 * 1024;
+
+/** Match TextEncoder's USVString semantics; valid Unicode and newlines are unchanged. */
+function resourceText(text: string): string {
+  return text.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g, (value) =>
+    value.length === 2 ? value : '\uFFFD',
+  );
+}
+
+async function resourceDigest(text: string, bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  if (process.env.EXPO_OS === 'android' || process.env.EXPO_OS === 'ios') {
+    // SDK58 digest() can synchronously hash despite returning a Promise. This
+    // string API actually dispatches Android hashing to Dispatchers.Default.
+    const { digestStringAsync, CryptoDigestAlgorithm, CryptoEncoding } =
+      await import('expo-crypto');
+    return digestStringAsync(CryptoDigestAlgorithm.SHA256, text, { encoding: CryptoEncoding.HEX });
+  }
+  if (!globalThis.crypto?.subtle)
+    throw new Error(t('miniapps.theMiniappPackageCouldNotBeVerified'));
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function verifyMiniappResource(
+  resource: AppResourceDto,
+  appId: string,
+): Promise<VerifiedMiniappResource> {
+  const { uri, mime_type, text, manifest_json, prefers_border } = resource;
   if (
-    resource.mime_type !== 'text/html;profile=mcp-app' ||
-    new TextEncoder().encode(resource.text).length > 8 * 1024 * 1024
+    mime_type !== 'text/html;profile=mcp-app' ||
+    typeof text !== 'string' ||
+    text.length > MAX_RESOURCE_BYTES
   )
     throw new Error(t('miniapps.thisMiniappSResourceCannotBeOpened'));
-  if (!resource.manifest_json) throw new Error(t('miniapps.theMiniappManifestIsInvalid'));
-  const value: unknown = JSON.parse(resource.manifest_json);
+  const pinned = Object.freeze({
+    uri,
+    mime_type,
+    text: resourceText(text),
+    manifest_json,
+    prefers_border,
+  });
+  const bytes = new TextEncoder().encode(pinned.text);
+  if (bytes.length > MAX_RESOURCE_BYTES)
+    throw new Error(t('miniapps.thisMiniappSResourceCannotBeOpened'));
+  if (!manifest_json) throw new Error(t('miniapps.theMiniappManifestIsInvalid'));
+  const value: unknown = JSON.parse(manifest_json);
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error(t('miniapps.theMiniappManifestIsInvalid'));
   const input = value as Record<string, unknown>;
@@ -56,24 +98,27 @@ export function verifyMiniappResource(resource: AppResourceDto, appId: string): 
       capability.purpose.length > 1000
     )
       throw new Error(t('miniapps.aPermissionInThisMiniappDoesNotDeclare'));
-    return { id: capability.id, purpose: capability.purpose };
+    return Object.freeze({ id: capability.id, purpose: capability.purpose });
   });
   if (new Set(capabilities.map((capability) => capability.id)).size !== capabilities.length)
     throw new Error(t('miniapps.theManifestHasDuplicatePermissions'));
-  const bytes = new TextEncoder().encode(resource.text);
-  const digest = Array.from(sha256(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('');
-  if (bytes.length !== input.bytes || digest !== input.sha256)
+  if (bytes.length !== input.bytes)
     throw new Error(t('miniapps.theMiniappDoesNotMatchTheVerifiedPackage'));
-  return {
+  // Capture policy strings and arrays before the native/WebCrypto suspension.
+  const manifest: MiniappManifest = Object.freeze({
     id: appId,
     name: input.name,
-    capabilities,
-    allowedDomains: input.allowedDomains as string[],
-    linkDomains: (input.linkDomains as string[] | undefined) ?? [],
+    capabilities: Object.freeze(capabilities),
+    allowedDomains: Object.freeze([...(input.allowedDomains as string[])]),
+    linkDomains: Object.freeze([...((input.linkDomains as string[] | undefined) ?? [])]),
     networkPurpose: typeof input.networkPurpose === 'string' ? input.networkPurpose : '',
     bytes: bytes.length,
-    sha256: digest,
-  };
+    sha256: input.sha256,
+  });
+  const digest = await resourceDigest(pinned.text, bytes);
+  if (digest !== manifest.sha256)
+    throw new Error(t('miniapps.theMiniappDoesNotMatchTheVerifiedPackage'));
+  return Object.freeze({ resource: pinned, manifest });
 }
 export function miniappCsp(allowed: readonly string[]): string {
   if (!allowed.every(hostname)) throw new Error(t('miniapps.invalidMiniappDomain'));
