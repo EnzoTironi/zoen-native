@@ -18,9 +18,11 @@ Foram inspecionados os repositórios oficiais em versões imutáveis:
 | RingRTC | `84c5b2aff246392b365d73d6628529a149d6aed2` |
 
 A leitura inicial do Zoen usa a base `dca975960619dacc658d9e748b7ece790a6b6028`.
-O lote integrado até `2785d88e7092e78ec4caa08256e2b1f929c8eb12` acrescenta
+O lote integrado até `fc81d9a1` acrescenta
 recuperação de texto, revisão nativa de anexos, reprodução com escopo de sessão
-e transações de recebimento e retenção do texto cifrado.
+e transações de recebimento e retenção do texto cifrado. A atualização seguinte
+limita releituras e invalidações às conversas conhecidas e permite salvar cópias
+editadas de fotos e vídeos compatíveis no rascunho cifrado antes do envio.
 Não foram executados o Signal, seu backend ou benchmarks comparativos. Os números
 de concorrência encontrados no código são escolhas dessa versão, não metas para
 copiar. Ausência em um caminho inspecionado não prova ausência em todo o produto.
@@ -61,9 +63,9 @@ copiar. Ausência em um caminho inspecionado não prova ausência em todo o prod
 | --- | --- | --- |
 | Envio e recebimento | `sync.rs` confirma evento, estado de sincronização e remoção do outbox na mesma transação. `mls.rs` também retém texto cifrado e avanço do ratchet juntos e confirma o escopo dentro da transação de recebimento. | Seis regressões de falha SQLite com reabertura cobrem essas fronteiras. Ainda qualificar perda de resposta e entrega ponta a ponta; testes de transação não comprovam tolerância à perda de energia. |
 | Backend | `crates/zoen-relay/src/log/`: log/head/deduplicação/membros em FDB; PostgreSQL para diretório e autoridade; NATS acelera entrega com retomada por cursor. | Manter os papéis atuais. Exercitar commit sem resposta, reinício antes do fanout e perda de wake. Uma mailbox por aparelho não substitui diretamente o log ordenado de um Space. |
-| Atualização da conversa | `apps/zoen/src/core/store.ts`: refresh do snapshot e releitura da janela carregada; `provider.tsx`: assinatura do estado inteiro. | Introduzir invalidação e assinaturas por conversa/mensagem, com revisão coerente e âncora de leitura. A amplitude foi constatada em código; seu custo ainda precisa de medição. |
+| Atualização da conversa | `apps/zoen/src/core/store.ts` anuncia mudanças por conversa antes da leitura; eventos conhecidos de outra conversa preservam a janela ativa. Escopos enfileirados são unidos, e uma invalidação global prevalece. O snapshot de diretório e a assinatura ampla de `provider.tsx` permanecem. | Seis novas regressões cobrem escopo, coalescimento e troca de sessão. Falta medir custo, âncora de leitura e assinaturas por mensagem. Eventos relevantes ou sem escopo ainda pausam e reverificam o áudio; não há prova de continuidade audível sem interrupções. |
 | Reprodução | No iOS autenticado, `message-audio-session.ts` possui player e arquivo, com identidade de conta/aparelho/sessão/mensagem/anexo; as bolhas assinam controles. Posição e velocidade ficam em cache volátil de até 128 mensagens. | Dezenove testes cobrem posse e descarte; o simulador confirma pausa ao sair, posição preservada sem retomada automática e fim sem reinício por atualização do chat. Reciclagem real da lista, interrupções do sistema e troca de saída em aparelho físico continuam pendentes. Android/Web e rascunhos mantêm seus responsáveis anteriores. |
-| Revisão de anexos | O lote atual adiciona QuickLook somente leitura de um anexo durável escolhido. | Completar seleção/caption/qualidade/edição e preparação de uma saída revisada antes de enviar. QuickLook não comprova corte de imagem, blur ou trim de vídeo. |
+| Revisão de anexos | QuickLook oferece edição de cópia em formatos de foto/vídeo compatíveis. A cópia é capturada e validada antes da substituição por revisão no diário Rust; legenda, ordem e destino são preservados. Outros arquivos continuam somente leitura. | No simulador, uma marcação na foto voltou ao rascunho com imagem e tamanho alterados e a legenda intacta. O usuário confirmou um envio manual posterior; não foi um envio automático da revisão. Falta qualificar rascunho editado ainda não enviado após reinício, Cancel, trim de vídeo e recepção independente. Não equivale a um editor completo de mídia. |
 | Voz | `voice-session.ts` e os serviços de rascunho já separam gravação de envio. | Qualificar interrupção → sair da conversa → reabrir → editar → enviar, mantendo a experiência compacta e o mesmo destino. |
 | Push iOS | `crates/zoen-relay/src/push.rs`: APNs background, prioridade 5; wake limitado e best effort. | Caminho urgente de alerta com extensão, progresso pendente por dispositivo e reconciliação de novas tentativas. A configuração e entrega reais ainda exigem prova. |
 | Banco local | `crates/store/src/lib.rs`: SQLite, WAL, synchronous NORMAL e locking EXCLUSIVE; estados/segredos específicos são selados. | Avaliar cifragem integral e seu custo, chaves, WAL/temp/cache e recuperação. Extensão não pode abrir esse banco concorrentemente sem resolver o contrato de um processo. |
@@ -153,6 +155,29 @@ usou uma conta e um áudio sintéticos: envio real pelo relay local, reproduçã
 fim sem reinício após nova mensagem e posição pausada mantida ao sair e voltar.
 Ela não qualifica recepção por outro aparelho, continuidade audível durante
 invalidações amplas ou interrupções de áudio do sistema.
+
+O lote seguinte até `fc81d9a1` passou no `npm run check`: TypeScript, Oxlint,
+Oxfmt e 948 testes, sem falhas ou testes ignorados. Três auxiliares Swift tinham
+atingido o limite de compilação de 45 segundos. Um deles passou isoladamente;
+limitar a execução a um arquivo de testes por vez permitiu passar a suíte completa
+em 101,33 segundos, preservando os limites e as verificações. Isso sustenta uma
+correção do agendamento; não identifica o gargalo interno exato do compilador.
+O Excalidraw passou em 68 testes, incluindo navegador real, com prazos separados
+de inicialização e execução. Não substitui a aprovação do CI em outro sistema.
+
+Dois builds Release do simulador passaram com a edição nativa. O artefato final
+de aplicativo corresponde a `4214e0d1`; `fc81d9a1` altera apenas o agendamento de
+testes. Os hashes SHA-256 do executável e do bundle instalados foram conferidos:
+`b360784f0afc55044b52e73863e74c651ad89a0bde839213c7af8c220628b22a` e
+`c6013795e46abf907a7d8e17ec88863e21ec077fb6d0098c093c67a7bc059c63`.
+O auxiliar nativo de ciclo de vida do preview passou em 11 cenários; esses testes
+não demonstram trim de vídeo. No iPhone 18 Pro com iOS 27, a foto sintética passou
+de 146,3 KB para 282,9 KB após uma linha de marcação, preservando a legenda no
+rascunho. Após o envio manual confirmado pelo usuário e o reinício, a conversa
+exibiu a imagem marcada e a mesma legenda. A página Você também foi conferida
+com suas cinco linhas nativas e navegação Geral → voltar. Os registros de passos
+contêm diferenças entre as árvores de acessibilidade do gravador e do executor;
+nenhuma aprovação de replay automatizado é alegada.
 
 1. **Concluir o lote iOS atual.** Recuperação de texto sem perda e revisão nativa
    de anexos. Não ampliar sua aprovação para edição completa de mídia.
