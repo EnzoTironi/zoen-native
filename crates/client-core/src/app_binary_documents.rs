@@ -43,22 +43,31 @@ struct Receipt {
 }
 fn invalid() -> CoreError {
     CoreError::Invalid {
-        reason: "Invalid or unsupported DeckCraft document.".into(),
+        reason: crate::i18n::t(
+            "Documento de apresentação inválido ou incompatível.",
+            "Invalid or unsupported DeckCraft document.",
+        ),
     }
 }
 fn unavailable() -> CoreError {
     CoreError::Forbidden {
-        reason: "Access to this App changed.".into(),
+        reason: crate::i18n::t("O acesso a este App mudou.", "Access to this App changed."),
     }
 }
 fn stale() -> CoreError {
     CoreError::Stale {
-        reason: "The App changed; review its current version.".into(),
+        reason: crate::i18n::t(
+            "O App mudou; confira a versão atual.",
+            "The App changed; review its current version.",
+        ),
     }
 }
 fn storage() -> CoreError {
     CoreError::Storage {
-        message: "The App receipt could not be verified.".into(),
+        message: crate::i18n::t(
+            "Não foi possível confirmar o salvamento deste App.",
+            "The App receipt could not be verified.",
+        ),
     }
 }
 fn hash(bytes: &[u8]) -> String {
@@ -191,7 +200,10 @@ impl Engine {
         let bytes = self
             .owned_file_bytes(file, deckcraft::MAX_BYTES as u64)?
             .ok_or_else(|| CoreError::Invalid {
-                reason: "The App document is still arriving.".into(),
+                reason: crate::i18n::t(
+                    "O documento deste App ainda está chegando.",
+                    "The App document is still arriving.",
+                ),
             })?;
         Document::parse(&bytes).map_err(|_| invalid())?;
         Ok(AppBinaryDocumentDto {
@@ -282,7 +294,7 @@ impl Engine {
                         state_json: doc.metadata(title),
                         document: Some(file),
                     }),
-                    origin: "Created presentation".into(),
+                    origin: crate::i18n::t("Apresentação criada", "Created presentation"),
                 },
             )?;
             e.append(
@@ -302,7 +314,10 @@ impl Engine {
             e.post_as(
                 space,
                 &me,
-                "Presentation added to this conversation.",
+                &crate::i18n::t(
+                    "Apresentação adicionada a esta conversa.",
+                    "Presentation added to this conversation.",
+                ),
                 Some(item.clone()),
             )?;
             e.binary_receipt(
@@ -457,7 +472,7 @@ impl Engine {
                 EventBody::ItemVersioned {
                     item: item.into(),
                     content: ItemContent::App(next),
-                    note: "Updated presentation".into(),
+                    note: crate::i18n::t("Apresentação atualizada", "Updated presentation"),
                 },
             )?;
             let version = e.item_state(item)?.current().number;
