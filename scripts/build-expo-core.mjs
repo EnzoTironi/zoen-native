@@ -41,7 +41,7 @@ async function inputs(directory) {
   for (const entry of entries) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) result.push(...(await inputs(path)));
-    else if (/\.(rs|toml|json|html)$/.test(path)) result.push(path);
+    else if (/\.(rs|toml|json|html|deckcraft)$/.test(path)) result.push(path);
   }
   return result;
 }
