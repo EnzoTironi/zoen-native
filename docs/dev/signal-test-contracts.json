@@ -2045,7 +2045,10 @@
           "project": "signalapp/ringrtc",
           "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
           "path": "src/rust/tests/outgoing.rs",
-          "lines": [3618, 3637],
+          "lines": [
+            3618,
+            3637
+          ],
           "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/rust/tests/outgoing.rs#L3618-L3637"
         }
       ],
@@ -2058,7 +2061,20 @@
       "zoenEvidence": "apps/zoen/src/components/chat-header.ios.tsx:34-35,45-48 disables voice/video actions; apps/zoen/acceptance.json retains ios-background-and-calls and encrypted-voice-video-calls journeys as pending. No dedicated call signaling operation/state was found in inspected crates/protocol/src/lib.rs or native ZoenCoreModule call-name search. Generic chat/ephemeral transport and audio-message playback do not establish calling behavior.",
       "adoptionBoundary": "Resource release must not depend on UI/listener success. Keep control teardown independent of best-effort notification.",
       "upstreamExecution": "NOT_RUN",
-      "zoenCallExecution": "NOT_RUN"
+      "zoenCallExecution": "NOT_RUN",
+      "adaptedZoenSubset": {
+        "domain": "received-message audio playback; no call signaling implementation",
+        "comparedBase": "c5ac76527ec03490ae4fcb00bf3849783deb1559",
+        "productionPath": "apps/zoen/src/media/message-audio-session.ts::MessageAudioChannel.publish",
+        "tests": [
+          "apps/zoen/src/core/message-audio-session.test.ts::a throwing playback observer cannot abandon audio/file teardown on background",
+          "apps/zoen/src/core/message-audio-session.test.ts::a throwing playback observer cannot abandon audio/file teardown on revocation",
+          "apps/zoen/src/core/message-audio-session.test.ts::a throwing playback observer cannot abandon audio/file teardown on retirement"
+        ],
+        "status": "partial",
+        "verification": "Private pure-JS focused audio-session suite:22 passed (19 existing,3 new); TypeScript and scoped Oxlint/Oxfmt passed. Restoring unchanged production makes all3 new observer-failure cases fail before cleanup; exact fixed source restored. No Cargo, native build, device, provider or service run.",
+        "boundary": "Three original tests use the real MessageAudioSession, AudioClipController and PlaybackCoordinator with existing synthetic native-player/file ports. A deliberately throwing UI subscriber must not prevent later controls from receiving stopped state, synchronous native pause, runtime disposal before exact local-file lease release, or idempotent repeated retirement. The small production change isolates presentation observers individually; real runtime/file cleanup errors remain authoritative and retryable. This does not establish RingRTC/call-state behavior, native microphone/camera/RTP teardown, real Expo SharedObject release, hardware/background scheduling, process death or whole calling parity. Upstream Signal assertions were read; its suite was not executed and no source was copied."
+      }
     },
     {
       "id": "R07",
