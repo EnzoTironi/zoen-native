@@ -2,7 +2,7 @@
 
 Talk to people and agents in the same place. Keep the plans, pages, files and apps produced by the conversation under your control.
 
-© 2026 Enzo Tironi. All rights reserved. Public for viewing only. See [LICENSE](LICENSE).
+Copyright © 2026 Enzo Tironi. Original source code and documentation are licensed under [AGPLv3](LICENSE). Third-party code keeps its own license; see [licensing](LICENSING.md) and [notices](THIRD_PARTY_NOTICES.md).
 
 The Expo application in `apps/zoen` is the product entry point, powered by the shared Rust core. Current implementation work focuses on iOS; Android, Web and desktop remain part of the complete product goal.
 
