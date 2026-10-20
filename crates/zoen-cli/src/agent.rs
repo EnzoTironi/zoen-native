@@ -159,6 +159,7 @@ struct Ctx {
     device: String,
     owner: String,
     runtime: Runtime,
+    deckcraft: Option<Arc<zoen_agentd::deckcraft::DeckcraftWorker>>,
     /// Tool steps already run, per source message (`agent-tool-steps.json`).
     journal: std::path::PathBuf,
 }
@@ -178,6 +179,7 @@ pub async fn host(e: &Arc<Client>, home: &Path, for_secs: Option<u64>) {
         device: acct.device_id.clone(),
         owner,
         runtime,
+        deckcraft: crate::deckcraft::configured().unwrap_or_else(|error| crate::die(error)),
         journal: home.join("agent-tool-steps.json"),
     };
     let waker = Arc::new(Waker::default());
@@ -546,6 +548,8 @@ struct SpaceTools<'a> {
     serving: &'a str,
     /// Model-facing name → (item, tool).
     names: Vec<(ToolDef, String, String)>,
+    deckcraft: Option<&'a Arc<zoen_agentd::deckcraft::DeckcraftWorker>>,
+    deckcraft_items: Vec<String>,
 }
 
 impl<'a> SpaceTools<'a> {
@@ -572,12 +576,49 @@ impl<'a> SpaceTools<'a> {
             };
             names.push((def, t.item_id, t.name));
         }
+        let mut deckcraft_items = Vec::new();
+        if cx.deckcraft.is_some() {
+            for item in e.items().into_iter().filter(|item| {
+                item.space_id == space
+                    && item
+                        .app
+                        .as_ref()
+                        .is_some_and(|app| app.app_id == "deckcraft")
+            }) {
+                let mut offered = Vec::new();
+                for mut definition in crate::deckcraft::tools() {
+                    let tool = definition.name.clone();
+                    let Some(name) = crate::deckcraft::model_name(&tool, &item.id) else {
+                        offered.clear();
+                        break;
+                    };
+                    if names.iter().any(|(existing, _, _)| existing.name == name) {
+                        offered.clear();
+                        break;
+                    }
+                    definition.name = name;
+                    definition.parameters["properties"]["artifactId"]["enum"] = json!([item.id]);
+                    definition.description =
+                        format!("{} (presentation {:?})", definition.description, item.title);
+                    offered.push((definition, item.id.clone(), tool));
+                }
+                // Keep the gateway's existing 64-tool limit. Offer an entire
+                // artifact's set or none; never advertise an unusable partial set.
+                if offered.is_empty() || names.len() + offered.len() > 64 {
+                    continue;
+                }
+                deckcraft_items.push(item.id.clone());
+                names.extend(offered);
+            }
+        }
         Self {
             e,
             journal: &cx.journal,
             source,
             serving,
             names,
+            deckcraft: cx.deckcraft.as_ref(),
+            deckcraft_items,
         }
     }
 
@@ -621,7 +662,70 @@ impl ToolHost for SpaceTools<'_> {
         self.names.iter().map(|(d, _, _)| d.clone()).collect()
     }
 
+    fn gate_public_references(
+        &self,
+        call: &ToolCall,
+    ) -> Option<zoen_agentd::PublicArtifactReferences> {
+        let (_, item, tool) = self
+            .names
+            .iter()
+            .find(|(definition, _, _)| definition.name == call.name)?;
+        if !self.deckcraft_items.contains(item) || !crate::deckcraft::recognizes(tool) {
+            return None;
+        }
+        crate::deckcraft::gate_public_references(
+            self.e,
+            item,
+            self.source,
+            self.serving,
+            tool,
+            &call.arguments,
+        )
+    }
     fn call(&self, call: &ToolCall) -> Result<String, String> {
+        // Binary intents reconcile through the signed native store, never a journal
+        // cache that could bypass current access or an ambiguous accepted result.
+        if let Some((_, item, tool)) = self
+            .names
+            .iter()
+            .find(|(definition, _, _)| definition.name == call.name)
+        {
+            if self.deckcraft_items.contains(item) && crate::deckcraft::recognizes(tool) {
+                let worker = self
+                    .deckcraft
+                    .ok_or("The isolated presentation worker is unavailable")?;
+                let result = tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(crate::deckcraft::call(
+                        self.e,
+                        worker,
+                        item,
+                        self.source,
+                        self.serving,
+                        tool,
+                        &call.arguments,
+                    ))
+                });
+                if let Ok(text) = &result {
+                    if !self.done().iter().any(|step| {
+                        step.call.name == call.name && step.call.arguments == call.arguments
+                    }) {
+                        fault("before-journal");
+                        self.record(ToolStep {
+                            call: call.clone(),
+                            result: text.clone(),
+                            is_error: false,
+                        });
+                        fault("after-tool");
+                    }
+                }
+                return result;
+            }
+        }
+        // Missing/disabled binary bindings must not fall through to the generic
+        // journal cache and report success without fresh native authority.
+        if crate::deckcraft::is_model_name(&call.name) {
+            return Err("This presentation tool is no longer offered".into());
+        }
         // The same call already ran for this message (before a restart): its result, again.
         if let Some(s) = self
             .done()
@@ -680,5 +784,386 @@ impl ToolHost for SpaceTools<'_> {
             if res.is_ok() { "ok" } else { "refused" }
         ));
         res
+    }
+}
+
+#[cfg(test)]
+pub(crate) async fn exercise_deckcraft_dispatch(
+    e: &Arc<Client>,
+    worker: Arc<zoen_agentd::deckcraft::DeckcraftWorker>,
+    journal: &Path,
+    binding: (&str, &str, &str),
+    arguments: serde_json::Value,
+) {
+    use zoen_agentd::citizen::testing::scripted::ScriptedBrain;
+    let (item, source, serving) = binding;
+    let space = e.item(item.into()).unwrap().space_id;
+    let account = e.account().unwrap();
+    let call_name = crate::deckcraft::model_name("deckcraft_slide_notes", item).unwrap();
+    let replay_arguments = arguments.clone();
+    let response = format!(
+        "```tools\n{}\n```\nApplied the reviewed notes.",
+        json!([{"name":call_name,"arguments":arguments}])
+    );
+    let cx = Ctx {
+        me: account.identity_id,
+        device: account.device_id,
+        owner: e.agent_owner().unwrap(),
+        runtime: Runtime::new(
+            Gate::default(),
+            Box::new(ScriptedBrain {
+                replies: [("reviewed edit".into(), response)].into(),
+            }),
+        ),
+        deckcraft: Some(worker),
+        journal: journal.into(),
+    };
+    assert_eq!(item.len(), 72); // actual deterministic app_binary_create format
+    let first_host = SpaceTools::new(e, &cx, &space, serving, source);
+    assert_eq!(
+        first_host
+            .names
+            .iter()
+            .find(|(tool, _, _)| tool.name == call_name)
+            .unwrap()
+            .1,
+        item
+    );
+    let before_order: Vec<String> = e
+        .items()
+        .into_iter()
+        .filter(|entry| {
+            entry.space_id == space
+                && entry
+                    .app
+                    .as_ref()
+                    .is_some_and(|app| app.app_id == "deckcraft")
+        })
+        .map(|entry| entry.id)
+        .collect();
+    assert_eq!(before_order, vec![item.to_owned()]);
+    let source_document = e.app_binary_read(item.into(), None, None).unwrap();
+    let other = e
+        .app_binary_create(
+            space.clone(),
+            "Other deck inserted during this turn".into(),
+            source_document.data_base64,
+            "other_deck".into(),
+        )
+        .unwrap();
+    let after_order: Vec<String> = e
+        .items()
+        .into_iter()
+        .filter(|entry| {
+            entry.space_id == space
+                && entry
+                    .app
+                    .as_ref()
+                    .is_some_and(|app| app.app_id == "deckcraft")
+        })
+        .map(|entry| entry.id)
+        .collect();
+    assert_eq!(after_order.len(), 2);
+    assert_eq!(after_order, vec![other.item_id.clone(), item.to_owned()]);
+    let host = SpaceTools::new(e, &cx, &space, serving, source);
+    assert_eq!(host.deckcraft_items.len(), 2);
+    assert!(host
+        .tools()
+        .iter()
+        .filter(|tool| tool.name == call_name)
+        .all(|tool| tool.parameters["properties"]["artifactId"]["enum"] == json!([item])));
+    assert_eq!(
+        host.names
+            .iter()
+            .find(|(tool, _, _)| tool.name == call_name)
+            .unwrap()
+            .1,
+        item
+    );
+    assert_ne!(
+        crate::deckcraft::model_name("deckcraft_slide_notes", &other.item_id).unwrap(),
+        call_name
+    );
+    assert!(host.tools().len() <= 64);
+    let mut mismatched = replay_arguments.clone();
+    mismatched["artifactId"] = other.item_id.clone().into();
+    assert!(host
+        .call(&ToolCall {
+            id: "wrong_full_artifact".into(),
+            name: call_name.clone(),
+            arguments: mismatched
+        })
+        .is_err());
+    assert!(host.done().is_empty());
+    assert_eq!(
+        e.app_binary_read(item.into(), None, None).unwrap().version,
+        source_document.version
+    );
+    assert_eq!(
+        e.app_binary_read(other.item_id.clone(), None, None)
+            .unwrap(),
+        other
+    );
+    let definition: Definition = serde_json::from_value(json!({"version":1,"kind":"user","persona":"Update only the reviewed presentation.","rules":[],"state":{}})).unwrap();
+    let context = zoen_agentd::TurnContext {
+        agent: &cx.me,
+        device: &cx.device,
+        owner: &cx.owner,
+        definition: &definition,
+    };
+    let source_entry = e
+        .timeline(space.clone())
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.id == source)
+        .unwrap();
+    let EntryKind::Message { text, .. } = source_entry.kind else {
+        panic!("signed message source")
+    };
+    let inbound = Turn {
+        space,
+        from: source_entry.author.id,
+        text,
+    };
+    let outcome = cx
+        .runtime
+        .turn_with_tools(context, &[], &inbound, &host, vec![])
+        .await
+        .unwrap();
+    assert!(
+        matches!(&outcome, zoen_agentd::TurnOutcome::Say { text } if text == "Applied the reviewed notes."),
+        "actual Runtime outcome: {outcome:?}; durable steps: {:?}",
+        host.done()
+    );
+    let steps = host.done();
+    assert_eq!(steps.len(), 1);
+    assert!(!steps[0].is_error);
+    assert_eq!(steps[0].call.name, call_name);
+    let repeated = host
+        .call(&ToolCall {
+            id: "retained_call".into(),
+            name: call_name,
+            arguments: replay_arguments,
+        })
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&repeated).unwrap()["replayed"],
+        true
+    );
+    assert_eq!(host.done().len(), 1);
+    assert_eq!(
+        e.app_binary_read(other.item_id.clone(), None, None)
+            .unwrap(),
+        other
+    );
+    let accepted: serde_json::Value = serde_json::from_str(&steps[0].result).unwrap();
+    assert_eq!(accepted["authorId"], cx.me);
+    assert_eq!(accepted["replayed"], false);
+}
+
+#[cfg(test)]
+mod deckcraft_binding_tests {
+    use super::*;
+    #[test]
+    fn unoffered_binary_binding_cannot_replay_a_cached_success_without_authority() {
+        let e = Client::open(":memory:".into(), "en".into()).unwrap();
+        let dir = std::env::temp_dir().join(types::new_id("worker-unoffered"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let journal = dir.join("steps.json");
+        let item = format!("it_deck_{}", "ab".repeat(32));
+        let call = ToolCall {
+            id: "retained".into(),
+            name: crate::deckcraft::model_name("deckcraft_text_set", &item).unwrap(),
+            arguments: json!({"artifactId":item,"version":1,"sha256":"00".repeat(32),"slideId":257,"id":258,"text":"retained"}),
+        };
+        let host = SpaceTools {
+            e: &e,
+            journal: &journal,
+            source: "prior-source",
+            serving: "prior-member",
+            names: vec![],
+            deckcraft: None,
+            deckcraft_items: vec![],
+        };
+        host.record(ToolStep {
+            call: call.clone(),
+            result: json!({"itemId":item,"version":2,"replayed":false}).to_string(),
+            is_error: false,
+        });
+        let before = std::fs::read(&journal).unwrap();
+        assert_eq!(host.done().len(), 1);
+        assert!(host.call(&call).is_err());
+        assert_eq!(std::fs::read(&journal).unwrap(), before);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[tokio::test]
+    async fn runtime_public_references_preserve_gate_on_semantics_and_exact_mismatch() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use zoen_agentd::citizen::testing::scripted::ScriptedBrain;
+        struct CheckedHost {
+            definition: ToolDef,
+            references: Option<zoen_agentd::PublicArtifactReferences>,
+            calls: AtomicUsize,
+        }
+        impl ToolHost for CheckedHost {
+            fn tools(&self) -> Vec<ToolDef> {
+                vec![self.definition.clone()]
+            }
+            fn gate_public_references(
+                &self,
+                _: &ToolCall,
+            ) -> Option<zoen_agentd::PublicArtifactReferences> {
+                self.references.clone()
+            }
+            fn call(&self, _: &ToolCall) -> Result<String, String> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                Ok("accepted".into())
+            }
+        }
+        let item = format!("it_deck_{}", "a1".repeat(32));
+        let sha = "c2".repeat(32);
+        let name = crate::deckcraft::model_name("deckcraft_slide_notes", &item).unwrap();
+        let base = json!({"artifactId":item,"version":1,"sha256":sha,"slideId":257,"text":"Reviewed presentation notes"});
+        let definition: Definition = serde_json::from_value(json!({"version":1,"kind":"user","persona":"Edit reviewed notes","rules":[],"state":{}})).unwrap();
+        let cases = [
+            (
+                "exact public references",
+                base.clone(),
+                "Presentation notes".to_string(),
+                true,
+                1,
+            ),
+            (
+                "default raw call still blocks",
+                base.clone(),
+                "Presentation notes".to_string(),
+                false,
+                0,
+            ),
+            (
+                "payload secret retained",
+                {
+                    let mut a = base.clone();
+                    a["text"] = format!("sk-test-{}", "a1".repeat(24)).into();
+                    a
+                },
+                "Presentation notes".to_string(),
+                true,
+                0,
+            ),
+            (
+                "destructive payload retained",
+                {
+                    let mut a = base.clone();
+                    a["text"] = "rm -rf ~/Documents".into();
+                    a
+                },
+                "Presentation notes".to_string(),
+                true,
+                0,
+            ),
+            (
+                "title retained",
+                base.clone(),
+                format!("Presentation sk-test-{}", "a1".repeat(24)),
+                true,
+                0,
+            ),
+            (
+                "wrong artifact not stripped",
+                {
+                    let mut a = base.clone();
+                    a["artifactId"] = format!("it_deck_{}", "e3".repeat(32)).into();
+                    a
+                },
+                "Presentation notes".to_string(),
+                true,
+                0,
+            ),
+            (
+                "wrong hash not stripped",
+                {
+                    let mut a = base.clone();
+                    a["sha256"] = "e3".repeat(32).into();
+                    a
+                },
+                "Presentation notes".to_string(),
+                true,
+                0,
+            ),
+            (
+                "nested public-looking payload retained",
+                {
+                    let mut a = base.clone();
+                    a["text"] = format!("Reference {}", item).into();
+                    a
+                },
+                "Presentation notes".to_string(),
+                true,
+                0,
+            ),
+        ];
+        for (label, arguments, description, use_refs, expected_calls) in cases {
+            let host = CheckedHost {
+                definition: ToolDef {
+                    name: name.clone(),
+                    description,
+                    parameters: json!({}),
+                },
+                references: use_refs.then(|| {
+                    zoen_agentd::PublicArtifactReferences::new(
+                        "deckcraft_slide_notes".into(),
+                        item.clone(),
+                        Some(sha.clone()),
+                    )
+                    .unwrap()
+                }),
+                calls: AtomicUsize::new(0),
+            };
+            let response = format!(
+                "```tools\n{}\n```\nApplied notes.",
+                json!([{"name":name,"arguments":arguments}])
+            );
+            let runtime = Runtime::new(
+                Gate::default(),
+                Box::new(ScriptedBrain {
+                    replies: [("reviewed edit".into(), response)].into(),
+                }),
+            );
+            let inbound = Turn {
+                space: "space".into(),
+                from: "owner".into(),
+                text: "Update presentation notes with the reviewed edits".into(),
+            };
+            let outcome = runtime
+                .turn_with_tools(
+                    TurnContext {
+                        agent: "agent",
+                        device: "device",
+                        owner: "owner",
+                        definition: &definition,
+                    },
+                    &[],
+                    &inbound,
+                    &host,
+                    vec![],
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                host.calls.load(Ordering::SeqCst),
+                expected_calls,
+                "{label}: {outcome:?}"
+            );
+            if expected_calls == 1 {
+                assert_eq!(
+                    outcome,
+                    TurnOutcome::Say {
+                        text: "Applied notes.".into()
+                    },
+                    "{label}"
+                );
+            }
+        }
     }
 }

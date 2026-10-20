@@ -111,6 +111,67 @@ pub struct ToolCall {
     pub arguments: Value,
 }
 
+/// Public canonical references minted by a trusted host after exact artifact/head
+/// validation. This type cannot designate semantic payload fields as public and is
+/// deliberately not deserializable from model or browser input.
+#[derive(Clone, Debug)]
+pub struct PublicArtifactReferences {
+    canonical_tool: String,
+    artifact_id: String,
+    sha256: Option<String>,
+}
+impl PublicArtifactReferences {
+    pub fn new(
+        canonical_tool: String,
+        artifact_id: String,
+        sha256: Option<String>,
+    ) -> Option<Self> {
+        let token = |s: &str, max: usize| {
+            !s.is_empty()
+                && s.len() <= max
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+        };
+        if !token(&canonical_tool, 64)
+            || !token(&artifact_id, 128)
+            || sha256.as_ref().is_some_and(|sha| {
+                sha.len() != 64
+                    || !sha
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            })
+        {
+            return None;
+        }
+        Some(Self {
+            canonical_tool,
+            artifact_id,
+            sha256,
+        })
+    }
+    fn gate_text(&self, call: &ToolCall, definition: &ToolDef) -> Option<String> {
+        let mut semantic = call.arguments.as_object()?.clone();
+        let exact_sha = match (&self.sha256, semantic.get("sha256")) {
+            (None, None) => true,
+            (Some(expected), Some(Value::String(actual))) => expected == actual,
+            _ => false,
+        };
+        if semantic.get("artifactId").and_then(Value::as_str) != Some(self.artifact_id.as_str())
+            || !exact_sha
+        {
+            return None;
+        }
+        semantic.remove("artifactId");
+        semantic.remove("sha256");
+        Some(format!(
+            "mini-app tool {} ({}) {}",
+            self.canonical_tool,
+            definition.description,
+            Value::Object(semantic)
+        ))
+    }
+}
+
 /// A call and what came back, in the order they ran.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ToolStep {
@@ -123,6 +184,12 @@ pub struct ToolStep {
 /// is for, the mini-app's own rules); the model only picks the tool and the arguments.
 pub trait ToolHost: Send + Sync {
     fn tools(&self) -> Vec<ToolDef>;
+    /// Default: inspect the complete raw call. A trusted host may classify only
+    /// exact validated artifactId/sha256 references; Runtime still owns the Gate
+    /// and retains every other argument and the full user-facing description.
+    fn gate_public_references(&self, _call: &ToolCall) -> Option<PublicArtifactReferences> {
+        None
+    }
     /// Runs one call that already passed the gate. `Err` is a result for the model to
     /// read (refused, invalid), not a failed turn.
     fn call(&self, call: &ToolCall) -> Result<String, String>;
@@ -291,13 +358,16 @@ impl Runtime {
                 let (result, is_error) = match tools.iter().find(|t| t.name == call.name) {
                     None => (format!("unknown tool: {}", call.name), true),
                     Some(def) => {
-                        let mut check = Check::new(
-                            Point::ToolCall,
-                            format!(
-                                "mini-app tool {} ({}) {}",
-                                call.name, def.description, call.arguments
-                            ),
-                        );
+                        let gate_text = host
+                            .gate_public_references(&call)
+                            .and_then(|references| references.gate_text(&call, def))
+                            .unwrap_or_else(|| {
+                                format!(
+                                    "mini-app tool {} ({}) {}",
+                                    call.name, def.description, call.arguments
+                                )
+                            });
+                        let mut check = Check::new(Point::ToolCall, gate_text);
                         check.user_intent = Some(inbound.text.clone());
                         let d = self.gate.check(&check);
                         match d.outcome {

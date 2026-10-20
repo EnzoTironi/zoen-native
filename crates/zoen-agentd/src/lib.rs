@@ -11,6 +11,7 @@
 pub mod browser;
 pub mod budget;
 pub mod citizen;
+pub mod deckcraft;
 pub mod manifest;
 pub mod router;
 pub mod sandbox;
@@ -20,9 +21,9 @@ pub mod wasm;
 pub use browser::{BrowserCall, BrowserTools};
 pub use citizen::{
     approve_agent, claim_citizen, creator_definition, AgentKind, AgentSpec, Avatar, Brain, Citizen,
-    CitizenRecord, Definition, Host, HostError, ModelTier, Runtime, ToolCall, ToolDef, ToolHost,
-    ToolStep, Turn, TurnContext, TurnOutcome, AVATAR_STYLE, CHEAP_CHAT_PROFILE, CREATOR_HANDLE,
-    CREATOR_NAME,
+    CitizenRecord, Definition, Host, HostError, ModelTier, PublicArtifactReferences, Runtime,
+    ToolCall, ToolDef, ToolHost, ToolStep, Turn, TurnContext, TurnOutcome, AVATAR_STYLE,
+    CHEAP_CHAT_PROFILE, CREATOR_HANDLE, CREATOR_NAME,
 };
 pub use manifest::{EgressRule, Needs, SecretBinding, SignedManifest, ToolManifest};
 pub use router::{Route, Router, Tier};

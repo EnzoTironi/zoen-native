@@ -14,6 +14,10 @@ path = "src/main.rs"
 client-core = { path = "../client-core" }
 zoen-agentd = { path = "../zoen-agentd" }
 gate.workspace = true
+base64 = "0.22"
+ed25519-dalek.workspace = true
+hex.workspace = true
+sha2.workspace = true
 serde_json = "1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal", "sync"] }
@@ -24,7 +28,6 @@ zoen-agentd = { path = "../zoen-agentd", features = ["scripted"] }
 store.workspace = true
 hkdf.workspace = true
 async-nats = "0.50"
-sha2.workspace = true
 protocol = { path = "../protocol" }
 event-log = { path = "../event-log" }
 types = { path = "../types" }
@@ -34,6 +37,5 @@ sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio",
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 getrandom = "0.2"
-hex = "0.4"
 opentelemetry-proto = { version = "0.33", default-features = false, features = ["gen-tonic-messages", "trace", "logs"] }
 prost = "0.14"

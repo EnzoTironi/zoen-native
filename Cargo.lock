@@ -7862,7 +7862,9 @@ name = "zoen-cli"
 version = "0.1.0"
 dependencies = [
  "async-nats",
+ "base64 0.22.1",
  "client-core",
+ "ed25519-dalek",
  "event-log",
  "futures-util",
  "gate",

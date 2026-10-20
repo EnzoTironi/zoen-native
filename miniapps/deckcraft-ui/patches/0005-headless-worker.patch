@@ -1,0 +1,156 @@
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1259,6 +1259,16 @@
+  "proc-macro2",
+  "quote",
+  "syn 3.0.6",
++]
++
++[[package]]
++name = "deckcraft-zoen-worker"
++version = "0.9.0"
++dependencies = [
++ "deckcraft-engine",
++ "deckcraft-host-bridge",
++ "serde",
++ "serde_json",
+ ]
+ 
+ [[package]]
+--- a/crates/engine/Cargo.toml
++++ b/crates/engine/Cargo.toml
+@@ -31,6 +31,6 @@
+ zip = { workspace = true }
+ 
+ # The browser clock for comment timestamps (wasm has no std::time::SystemTime).
+-[target.'cfg(target_arch = "wasm32")'.dependencies]
++[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+ js-sys = "0.3"
+ 
+--- a/crates/engine/src/cmd/review.rs
++++ b/crates/engine/src/cmd/review.rs
+@@ -88,11 +88,11 @@
+ 
+ /// Seconds since the Unix epoch: the system clock, or the browser's on wasm (which has no `SystemTime`).
+ fn now_secs() -> u64 {
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+     {
+         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+     }
+-    #[cfg(target_arch = "wasm32")]
++    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+     {
+         (js_sys::Date::now() / 1000.0).max(0.0) as u64
+     }
+@@ -644,7 +644,7 @@
+         let bytes = base64_decode(data).ok_or_else(|| bad("review.compare", "invalid base64 `data`"))?;
+         return Ok((str_param(p, "name").unwrap_or("Revised").to_string(), bytes));
+     }
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+     if let Some(path) = str_param(p, "path") {
+         let bytes = crate::io::read_file(path).map_err(crate::EngineError::Other)?;
+         return Ok((path.to_string(), bytes));
+--- /dev/null
++++ b/apps/deckcraft-zoen-worker/Cargo.toml
+@@ -0,0 +1,15 @@
++[package]
++name = "deckcraft-zoen-worker"
++version.workspace = true
++edition.workspace = true
++license.workspace = true
++publish = false
++
++[lints]
++workspace = true
++
++[dependencies]
++deckcraft-engine.workspace = true
++deckcraft-host-bridge.workspace = true
++serde.workspace = true
++serde_json.workspace = true
+--- /dev/null
++++ b/apps/deckcraft-zoen-worker/src/main.rs
+@@ -0,0 +1,81 @@
++//! One bounded request, no browser or filesystem command surface. Authentication
++//! stays in Zoen; these identities bind only the isolated engine proposal.
++#![forbid(unsafe_code)]
++use std::io::{Read, Write};
++
++use deckcraft_engine::Session;
++use deckcraft_host_bridge::{Command, HostBridge, Open};
++use serde::Deserialize;
++use serde_json::{Value, json};
++
++const DOCUMENT_LIMIT: usize = 512 * 1024;
++const METADATA_LIMIT: usize = 64 * 1024;
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++struct Request {
++    schema: u8,
++    open: Open,
++    command: Option<Command>,
++}
++fn failure(code: &str) -> String {
++    code.to_owned()
++}
++fn execute(input: &[u8]) -> Result<(Value, Vec<u8>), String> {
++    let size = input.get(..4).ok_or_else(|| failure("invalid_frame"))?;
++    let metadata_len = u32::from_le_bytes(size.try_into().map_err(|_| failure("invalid_frame"))?) as usize;
++    if metadata_len == 0 || metadata_len > METADATA_LIMIT {
++        return Err(failure("metadata_too_large"));
++    }
++    let split = 4 + metadata_len;
++    let metadata = input.get(4..split).ok_or_else(|| failure("invalid_frame"))?;
++    let bytes = input.get(split..).ok_or_else(|| failure("invalid_frame"))?;
++    if bytes.is_empty() || bytes.len() > DOCUMENT_LIMIT {
++        return Err(failure("worker_document_limit_512_kib"));
++    }
++    let request: Request = serde_json::from_slice(metadata).map_err(|_| failure("invalid_request"))?;
++    if request.schema != 1 {
++        return Err(failure("unsupported_schema"));
++    }
++    let mut session = Session::new();
++    let mut bridge = HostBridge::default();
++    bridge.open(&mut session, request.open, bytes).map_err(|e| failure(e.code))?;
++    if let Some(command) = request.command {
++        let proposal = bridge.execute(&mut session, command).map_err(|e| failure(e.code))?;
++        if proposal.bytes.len() > DOCUMENT_LIMIT {
++            return Err(failure("worker_document_limit_512_kib"));
++        }
++        return Ok((proposal.metadata, proposal.bytes));
++    }
++    let mut status = bridge.status(&session);
++    let document = session.active().ok_or_else(|| failure("not_open"))?;
++    // Inspection is read-only. The same model provides IDs for the four commands.
++    status["slides"] = serde_json::to_value(&document.doc.slides).map_err(|_| failure("invalid_model"))?;
++    Ok((status, Vec::new()))
++}
++fn main() {
++    let mut input = Vec::new();
++    let result = std::io::stdin()
++        .take((4 + METADATA_LIMIT + DOCUMENT_LIMIT + 1) as u64)
++        .read_to_end(&mut input)
++        .map_err(|_| failure("input_failed"))
++        .and_then(|_| {
++            if input.len() > 4 + METADATA_LIMIT + DOCUMENT_LIMIT {
++                return Err(failure("worker_document_limit_512_kib"));
++            }
++            execute(&input)
++        });
++    let (metadata, mut bytes) = match result {
++        Ok((metadata, bytes)) => (json!({"ok":true,"metadata":metadata}), bytes),
++        Err(code) => (json!({"ok":false,"error":code}), Vec::new()),
++    };
++    let mut encoded = serde_json::to_vec(&metadata).unwrap_or_default();
++    if encoded.len() > METADATA_LIMIT {
++        encoded = br#"{"ok":false,"error":"inspection_too_large"}"#.to_vec();
++        bytes.clear();
++    }
++    let mut out = std::io::stdout().lock();
++    if out.write_all(&(encoded.len() as u32).to_le_bytes()).is_err() || out.write_all(&encoded).is_err() {
++        return;
++    }
++    let _ = out.write_all(&bytes);
++}
