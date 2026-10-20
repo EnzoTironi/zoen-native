@@ -75,6 +75,7 @@ export function MiniappRail({
           scrollEventThrottle={16}
           onContentSizeChange={(width) => scrollPort.extent.set(width)}
           horizontal
+          scrollEnabled={!editing}
           showsHorizontalScrollIndicator={false}
           contentInsetAdjustmentBehavior="never"
           contentContainerStyle={{

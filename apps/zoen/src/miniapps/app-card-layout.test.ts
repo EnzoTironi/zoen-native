@@ -597,6 +597,8 @@ test('entering rail editing keeps the held card before Done without inserting a 
     const normalRail = normal.findIndex((node) => node.type === 'ScrollView');
     const editingRail = editing.findIndex((node) => node.type === 'ScrollView');
     assert.equal(editingRail, normalRail);
+    assert.equal(normal[normalRail]!.props.scrollEnabled, true);
+    assert.equal(editing[editingRail]!.props.scrollEnabled, false);
     assert.equal(
       JSON.stringify(editing.slice(0, editingRail)),
       JSON.stringify(normal.slice(0, normalRail)),

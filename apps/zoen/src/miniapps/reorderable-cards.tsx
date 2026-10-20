@@ -534,7 +534,9 @@ function DraggableCard({
     hitSlop: controlsVisible
       ? { top: -(APP_CARD_METRICS.padding + APP_CARD_METRICS.menuSize) }
       : undefined,
-    activateAfterLongPress: editing ? 0 : 450,
+    // On iOS, zero still schedules a long press that fails after10pt of movement.
+    // Omit it while editing so the pan does not require a second stationary hold.
+    activateAfterLongPress: editing ? undefined : 450,
     minDistance: 0,
     maxPointers: 1,
     cancelsTouchesInView: true,
