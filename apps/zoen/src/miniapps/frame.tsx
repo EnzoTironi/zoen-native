@@ -3,6 +3,7 @@ import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef } fro
 import { Platform, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { randomUUID } from 'expo-crypto';
+import { DECKCRAFT_ENGINE_REVISION } from './canonical-binary';
 import type { MiniappFrameHandle, MiniappFrameProps } from './frame-types';
 import {
   nativeMiniappCommand,
@@ -76,6 +77,14 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         geolocationEnabled={false}
         mediaCapturePermissionGrantType="deny"
         mediaPlaybackRequiresUserAction
+        keyboardDisplayRequiresUserAction={
+          Platform.OS === 'ios' &&
+          runtimePackage?.engine === 'deckcraft' &&
+          runtimePackage.abi === 'zoen-host-v1' &&
+          runtimePackage.revision === DECKCRAFT_ENGINE_REVISION
+            ? false
+            : undefined
+        }
         allowsInlineMediaPlayback={false}
         allowsAirPlayForMediaPlayback={false}
         allowsBackForwardNavigationGestures={false}
