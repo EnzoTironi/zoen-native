@@ -331,9 +331,22 @@ for (const scenario of [
     insets: { top: 48, right: 32, bottom: 20, left: 32 },
   },
   { id: "schedule", width: 420, height: 760, state: scheduleState, selector: ".head" },
+  ...[340, 420].map((width) => ({
+    id: "schedule",
+    width,
+    height: 760,
+    selector: ".head",
+    font: "monospace",
+    clippedTitle: true,
+    state: {
+      ...scheduleState,
+      business:
+        "WWWW long appointment schedule — one title must stay readable without covering the native close button",
+    },
+  })),
   { id: "hike", width: 420, height: 760, state: hikeState, selector: ".head" },
 ])
-  test(`produced ${scenario.id} ${scenario.width}px controls clear host safe edges in real Chrome`, async (t) => {
+  test(`produced ${scenario.id} ${scenario.width}px${scenario.font ? " wide-font long title" : ""} controls clear host safe edges in real Chrome`, async (t) => {
     const chrome = await findBrowserExecutable();
     if (!chrome) {
       t.skip("Chrome unavailable locally; CI requires the normal sandboxed browser");
@@ -345,11 +358,42 @@ for (const scenario of [
       let html = scenario.id === "list" ? await listResource() : await produced(scenario.id);
       const probe = `(()=>{
       const errors=[];addEventListener('error',event=>errors.push(event.message));
-      const box=e=>{const r=e.getBoundingClientRect();return{x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
+      const rect=r=>({x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height});
+      const box=e=>rect(e.getBoundingClientRect());
+      const rawText=e=>{const range=document.createRange();range.selectNodeContents(e);return rect(range.getBoundingClientRect())};
+      // DOM Range includes glyphs hidden by overflow/text-overflow. Apply only the
+      // actual ancestor scrollport clips; a flex parent with overflow:visible does not clip.
+      const visibleText=e=>{
+        const output=[],walker=document.createTreeWalker(e,NodeFilter.SHOW_TEXT);
+        for(let node=walker.nextNode();node;node=walker.nextNode()){
+          if(!node.textContent.trim())continue;
+          const range=document.createRange();range.selectNodeContents(node);
+          for(const raw of range.getClientRects()){
+            let part=rect(raw);
+            for(let parent=node.parentElement;parent;parent=parent.parentElement){
+              const css=getComputedStyle(parent);
+              if(css.display==='none'||css.visibility!=='visible'||Number(css.opacity)===0){part=null;break;}
+              const area=parent.getBoundingClientRect();
+              if(/^(hidden|clip|scroll|auto)$/.test(css.overflowX)){
+                part.x=Math.max(part.x,area.left+parseFloat(css.borderLeftWidth));
+                part.right=Math.min(part.right,area.right-parseFloat(css.borderRightWidth));
+              }
+              if(/^(hidden|clip|scroll|auto)$/.test(css.overflowY)){
+                part.y=Math.max(part.y,area.top+parseFloat(css.borderTopWidth));
+                part.bottom=Math.min(part.bottom,area.bottom-parseFloat(css.borderBottomWidth));
+              }
+              if(part.right<=part.x||part.bottom<=part.y){part=null;break;}
+            }
+            if(part){part.width=part.right-part.x;part.height=part.bottom-part.y;output.push(part);}
+          }
+        }
+        return output;
+      };
+      ${scenario.font ? `document.documentElement.style.setProperty('--z-font',${JSON.stringify(scenario.font)});` : ""}
       const measure=()=>{
         const element=document.querySelector(${JSON.stringify(scenario.selector)});
         if(!element||!element.textContent.includes(${JSON.stringify(scenario.state.business ?? scenario.state.title)})||document.documentElement.style.getPropertyValue('--zoen-host-safe-top')!==${JSON.stringify(insets.top + "px")}){requestAnimationFrame(measure);return;}
-        requestAnimationFrame(()=>requestAnimationFrame(()=>parent.postMessage({qaSafe:true,title:element.textContent,header:box(element),text:box((()=>{const r=document.createRange();r.selectNodeContents(element);return{getBoundingClientRect:()=>r.getBoundingClientRect()}})()),frame:{width:innerWidth,height:innerHeight},body:box(document.body),bottom:document.querySelector('.bottom button')?box(document.querySelector('.bottom button')):null,edges:['top','right','bottom','left'].map(e=>document.documentElement.style.getPropertyValue('--zoen-host-safe-'+e)),errors},'*')));
+        requestAnimationFrame(()=>requestAnimationFrame(()=>parent.postMessage({qaSafe:true,title:element.textContent,header:box(element),text:rawText(element),visibleText:visibleText(element),label:box(element.querySelector('b')??element),labelText:rawText(element.querySelector('b')??element),frame:{width:innerWidth,height:innerHeight},body:box(document.body),bottom:document.querySelector('.bottom button')?box(document.querySelector('.bottom button')):null,edges:['top','right','bottom','left'].map(e=>document.documentElement.style.getPropertyValue('--zoen-host-safe-'+e)),errors},'*')));
       };requestAnimationFrame(measure);
     })();`;
       html = html.replace("</body>", `<script>${probe}</script></body>`);
@@ -399,11 +443,35 @@ for (const scenario of [
       const overlap = (a, b) =>
         Math.max(0, Math.min(a.right, b.right) - Math.max(a.x, b.x)) *
         Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.y, b.y));
-      assert.equal(
-        overlap(result.text, close),
-        0,
-        "actual header content does not hide behind native X: " + JSON.stringify(result),
-      );
+      if (scenario.clippedTitle)
+        t.diagnostic(
+          JSON.stringify({
+            width: scenario.width,
+            font: scenario.font,
+            rawText: result.text,
+            label: result.label,
+            labelText: result.labelText,
+            visibleText: result.visibleText,
+          }),
+        );
+      assert.ok(result.visibleText.length > 0, "production header has visible text");
+      for (const fragment of result.visibleText) {
+        assert.equal(
+          overlap(fragment, close),
+          0,
+          "actual visible header text does not hide behind native X: " + JSON.stringify(result),
+        );
+      }
+      if (scenario.clippedTitle) {
+        assert.ok(
+          result.labelText.right > result.label.right + 20,
+          "long wide-font title actually exercises clipped glyphs",
+        );
+        assert.ok(
+          result.label.right < close.x,
+          "the actual title clipping box stays outside native close chrome",
+        );
+      }
       assert.equal(result.frame.width, scenario.width);
       assert.equal(result.frame.height, scenario.height);
       if (result.bottom) assert.ok(result.bottom.bottom <= scenario.height - insets.bottom);
