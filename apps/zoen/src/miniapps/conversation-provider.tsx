@@ -122,7 +122,8 @@ export function useConversationCards(spaceId: string) {
     retryable: !!canonicalError || error?.kind === 'load',
     isPinned: (id: string) => cards.visible.some((item) => item.id === id),
     setPinned: (id: string, pinned: boolean) => controller.setPinned(spaceId, id, pinned, owner),
-    reorder: (ids: readonly string[]) => controller.reorder(spaceId, ids, owner),
+    reorder: (ids: readonly string[], expectedIds?: readonly string[]) =>
+      controller.reorder(spaceId, ids, owner, expectedIds),
     retry: () => {
       if (canonicalError) void home.refresh();
       void controller.refresh();

@@ -22,13 +22,17 @@ export class HomeFailure extends Error {
     this.kind = kind;
   }
 }
-export type HomeState = Readonly<{
-  owner: HomeOwner | null;
-  items: ItemDetail[];
+export type HomePreference = Readonly<{
   pinnedIds: readonly string[];
-  loading: boolean;
-  error: HomeFailure | null;
+  orderedIds: readonly string[];
 }>;
+export type HomeState = HomePreference &
+  Readonly<{
+    owner: HomeOwner | null;
+    items: ItemDetail[];
+    loading: boolean;
+    error: HomeFailure | null;
+  }>;
 
 const itemId = (value: unknown): value is string =>
   typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -36,6 +40,7 @@ const emptyState = (): HomeState => ({
   owner: null,
   items: [],
   pinnedIds: [],
+  orderedIds: [],
   loading: false,
   error: null,
 });
@@ -44,16 +49,57 @@ export function homeOwnerKey(owner: HomeOwner | null): string | null {
     ? `home-pins:1:${JSON.stringify([owner.mode, owner.identityId, owner.deviceId])}`
     : null;
 }
-export function parseHomePins(value: string | null): readonly string[] {
-  if (!value || value.length > 16_384) return [];
+const validIds = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.length <= 100 && value.every(itemId);
+const emptyPreference = (): HomePreference => ({ pinnedIds: [], orderedIds: [] });
+
+/** Same per-device key as legacy favorites; no account content or cross-device order. */
+export function parseHomePreference(value: string | null): HomePreference {
+  if (!value || value.length > 32_768) return emptyPreference();
   try {
-    const ids: unknown = JSON.parse(value);
-    if (!Array.isArray(ids) || ids.length > 100 || !ids.every(itemId)) return [];
-    return [...new Set(ids)];
+    const decoded: unknown = JSON.parse(value);
+    // Old favorite arrays migrate in memory; reads never rewrite preferences.
+    if (validIds(decoded)) return { pinnedIds: [...new Set(decoded)], orderedIds: [] };
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) return emptyPreference();
+    const fields = Object.keys(decoded);
+    const { version, pinnedIds, orderedIds } = decoded as Record<string, unknown>;
+    if (
+      fields.length !== 3 ||
+      !fields.includes('version') ||
+      !fields.includes('pinnedIds') ||
+      !fields.includes('orderedIds') ||
+      version !== 2 ||
+      !validIds(pinnedIds) ||
+      !validIds(orderedIds)
+    )
+      return emptyPreference();
+    return { pinnedIds: [...new Set(pinnedIds)], orderedIds: [...new Set(orderedIds)] };
   } catch {
-    return [];
+    return emptyPreference();
   }
 }
+export function parseHomePins(value: string | null): readonly string[] {
+  return parseHomePreference(value).pinnedIds;
+}
+
+/** Orders an already authorized projection; unseen saved IDs never supply App content. */
+export function orderHomeItems(
+  items: readonly ItemDetail[],
+  orderedIds: readonly string[],
+): ItemDetail[] {
+  const remaining = new Map(items.map((item) => [item.id, item]));
+  const result: ItemDetail[] = [];
+  for (const id of orderedIds) {
+    const item = remaining.get(id);
+    if (item) {
+      result.push(item);
+      remaining.delete(id);
+    }
+  }
+  return [...result, ...remaining.values()];
+}
+const sameOrder = (first: readonly string[], second: readonly string[]) =>
+  first.length === second.length && first.every((id, index) => id === second[index]);
 
 /** Only local IDs persist. Every displayed miniapp is reread from the canonical core. */
 export class HomeController {
@@ -129,7 +175,7 @@ export class HomeController {
           const value = owner.mode === 'account' ? await this.port.get(homeOwnerKey(owner)!) : null;
           if (!this.current(owner, generation)) return;
           this.restored = true;
-          this.publish({ pinnedIds: parseHomePins(value) });
+          this.publish(parseHomePreference(value));
         } catch (cause) {
           if (this.current(owner, generation))
             this.publish({ error: new HomeFailure('load', cause) });
@@ -179,8 +225,8 @@ export class HomeController {
     }
     return Promise.all([this.restoreTask, this.itemsTask]).then(() => {});
   };
-  private writePins(
-    update: () => readonly string[] | null,
+  private writePreference(
+    update: () => HomePreference | null,
     owner: HomeOwner | null,
   ): Promise<void> {
     const generation = this.generation;
@@ -188,13 +234,14 @@ export class HomeController {
       if (!owner || !this.current(owner, generation)) throw new HomeFailure('accountChanged');
       try {
         if (!this.restored) throw new HomeFailure('save');
-        const ids = update();
-        if (!ids) return;
-        if (ids.length > 100) throw new HomeFailure('save');
+        const preference = update();
+        if (!preference) return;
+        if (!validIds(preference.pinnedIds) || !validIds(preference.orderedIds))
+          throw new HomeFailure('save');
         if (owner.mode === 'account')
-          await this.port.set(homeOwnerKey(owner)!, JSON.stringify(ids));
+          await this.port.set(homeOwnerKey(owner)!, JSON.stringify({ version: 2, ...preference }));
         if (!this.current(owner, generation)) throw new HomeFailure('accountChanged');
-        this.publish({ pinnedIds: ids, error: null });
+        this.publish({ ...preference, error: null });
       } catch (cause) {
         if (!this.current(owner, generation)) throw new HomeFailure('accountChanged');
         const error = cause instanceof HomeFailure ? cause : new HomeFailure('save', cause);
@@ -213,6 +260,12 @@ export class HomeController {
     }
     return work;
   }
+  private writePins(update: () => readonly string[] | null, owner: HomeOwner | null) {
+    return this.writePreference(() => {
+      const pinnedIds = update();
+      return pinnedIds ? { pinnedIds, orderedIds: this.state.orderedIds } : null;
+    }, owner);
+  }
   private change(id: string, pinned: boolean, owner: HomeOwner | null): Promise<void> {
     return this.writePins(() => {
       if (!itemId(id)) throw new HomeFailure('save');
@@ -230,8 +283,13 @@ export class HomeController {
   pin = (id: string, owner: HomeOwner | null = this.state.owner) => this.change(id, true, owner);
   unpin = (id: string, owner: HomeOwner | null = this.state.owner) => this.change(id, false, owner);
   /** Reorder the complete visible selection; unavailable saved IDs keep their slots. */
-  reorder = (ids: readonly string[], owner: HomeOwner | null = this.state.owner): Promise<void> => {
+  reorder = (
+    ids: readonly string[],
+    owner: HomeOwner | null = this.state.owner,
+    expectedIds?: readonly string[],
+  ): Promise<void> => {
     const requested = [...ids];
+    const expected = expectedIds && [...expectedIds];
     return this.writePins(() => {
       if (
         requested.length > 100 ||
@@ -245,11 +303,41 @@ export class HomeController {
       );
       const visible = this.state.pinnedIds.filter((id) => accessible.has(id));
       const visibleIds = new Set(visible);
+      if (expected && !sameOrder(expected, visible)) throw new HomeFailure('save');
       if (requested.length !== visible.length || requested.some((id) => !visibleIds.has(id)))
         throw new HomeFailure('save');
       if (requested.every((id, index) => id === visible[index])) return null;
       let index = 0;
       return this.state.pinnedIds.map((id) => (visibleIds.has(id) ? requested[index++]! : id));
+    }, owner);
+  };
+  /** Complete Home/inbox App order, independent of favorites and each conversation rail. */
+  reorderItems = (
+    ids: readonly string[],
+    owner: HomeOwner | null = this.state.owner,
+    expectedIds?: readonly string[],
+  ): Promise<void> => {
+    const requested = [...ids];
+    const expected = expectedIds && [...expectedIds];
+    return this.writePreference(() => {
+      if (!validIds(requested) || new Set(requested).size !== requested.length)
+        throw new HomeFailure('save');
+      const spaces = this.source.spaces();
+      const items = this.state.items.filter((item) => spaces.has(item.space_id));
+      const visible = orderHomeItems(items, this.state.orderedIds).map((item) => item.id);
+      const visibleIds = new Set(visible);
+      if (expected && !sameOrder(expected, visible)) throw new HomeFailure('save');
+      if (requested.length !== visible.length || requested.some((id) => !visibleIds.has(id)))
+        throw new HomeFailure('save');
+      if (sameOrder(requested, visible)) return null;
+      const ordered = [...this.state.orderedIds];
+      const saved = new Set(ordered);
+      for (const id of visible) if (!saved.has(id)) ordered.push(id);
+      let index = 0;
+      return {
+        pinnedIds: this.state.pinnedIds,
+        orderedIds: ordered.map((id) => (visibleIds.has(id) ? requested[index++]! : id)),
+      };
     }, owner);
   };
   activate() {
