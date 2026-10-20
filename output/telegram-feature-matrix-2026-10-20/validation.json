@@ -1,0 +1,29 @@
+{
+  "validated_at": "2026-10-20T21:38:34.716617+00:00",
+  "result": "pass",
+  "scope": "Research source integrity and exports; not product behavior or live entitlements",
+  "checks": {
+    "catalog": 511,
+    "source_integrity": 166,
+    "finite_register_coverage": 4,
+    "official_feature_references": 506,
+    "frontend_reference_integrity": 4684,
+    "historical_coverage": 677,
+    "export_consistency": 5,
+    "viewer_integrity": 13
+  },
+  "counts": {
+    "curated_capability_rows": 506,
+    "areas": 23,
+    "official_premium_identifiers": 29,
+    "official_premium_limit_identifiers": 21,
+    "official_premium_story_identifiers": 7,
+    "official_business_identifiers": 11,
+    "ios_premium_perk_cases": 35,
+    "ios_premium_entrypoints": 50,
+    "ios_limit_parser_fields": 30,
+    "historical_announcement_candidates": 676,
+    "captured_official_pages": 164,
+    "capture_errors": 0
+  }
+}

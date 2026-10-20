@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-10-20T21:47:28.353141+00:00",
+  "source_checkout": "/Users/enzotironi/.codex/worktrees/9e73/zoen-native",
+  "source_date": "2026-10-20",
+  "source_baselines": {
+    "ios": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+    "android": "0aae959806c57be8ad457980f2a5c6277ff18635",
+    "api_layer": 225
+  },
+  "catalog_schema_version": 1,
+  "ui_reference": {
+    "primary": "Telegram iOS",
+    "primary_source_commit": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+    "secondary": "Telegram Android",
+    "implementation_decision": "Study behavior and existing components first; direct source adaptation evaluated per feature later"
+  },
+  "counts": {
+    "curated_capability_rows": 506,
+    "areas": 23,
+    "official_premium_identifiers": 29,
+    "official_premium_limit_identifiers": 21,
+    "official_premium_story_identifiers": 7,
+    "official_business_identifiers": 11,
+    "ios_premium_perk_cases": 35,
+    "ios_premium_entrypoints": 50,
+    "ios_limit_parser_fields": 30,
+    "historical_announcement_candidates": 676,
+    "captured_official_pages": 164,
+    "capture_errors": 0
+  },
+  "areas": {
+    "Messaging and composition": 36,
+    "Formatting and rich text": 9,
+    "Reactions, stickers and emoji": 26,
+    "Photos, video and attachments": 38,
+    "Voice, audio and video messages": 15,
+    "Calls, video chats and live streams": 18,
+    "Inbox, folders and Saved Messages": 19,
+    "Search, discovery and reading": 17,
+    "Groups, topics and communities": 32,
+    "Channels and publishing": 15,
+    "Polls and checklists": 18,
+    "Stories": 28,
+    "Profiles and contacts": 26,
+    "Privacy, security and account lifecycle": 32,
+    "Business and chat automation": 11,
+    "Bots and agent experiences": 25,
+    "Apps and embedded experiences": 29,
+    "AI, translation and text assistance": 9,
+    "Premium subscriptions and benefits": 10,
+    "Boosts and community entitlements": 14,
+    "Stars, commerce, gifts and creator economy": 32,
+    "Notifications, appearance and accessibility": 21,
+    "Storage, connectivity and platform integration": 26
+  },
+  "imported_original_files": [
+    {
+      "source": "docs/product/telegram-ios-reference.md",
+      "destination": "docs/product/telegram-ios-reference.md",
+      "bytes": 1881,
+      "sha256": "0eb8234aba1e92e767f6692727c3fdf3eb080d02f4edcf68ae42ac4e68dbeb13"
+    },
+    {
+      "source": "output/telegram-feature-matrix-2026-10-20/index.html",
+      "destination": "output/telegram-feature-matrix-2026-10-20/index.html",
+      "bytes": 1295389,
+      "sha256": "5b7e8be5248becc21bab7da05f139c007bd4d88849f09766f850792dc9e726ff"
+    },
+    {
+      "source": "output/telegram-feature-matrix-2026-10-20/matrix.md",
+      "destination": "output/telegram-feature-matrix-2026-10-20/matrix.md",
+      "bytes": 95736,
+      "sha256": "9c57178301d0b34d94311506b02846eb2d6bb4d3960daa52fb2e9c4d9b4ce013"
+    },
+    {
+      "source": "output/telegram-feature-matrix-2026-10-20/matrix.csv",
+      "destination": "output/telegram-feature-matrix-2026-10-20/matrix.csv",
+      "bytes": 482112,
+      "sha256": "7ff147a662a94b3e6ae3156b07ee97ed57b5f07761df261f58a6f13b2fd8834c"
+    },
+    {
+      "source": "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "destination": "output/telegram-feature-matrix-2026-10-20/matrix.json",
+      "bytes": 1582047,
+      "sha256": "a4ec7bb9f7945f42ccfd56102e40d3279189c1d64a0cbd09ef1a9671d36f5aaa"
+    },
+    {
+      "source": "output/telegram-feature-matrix-2026-10-20/announcement-register.csv",
+      "destination": "output/telegram-feature-matrix-2026-10-20/announcement-register.csv",
+      "bytes": 168655,
+      "sha256": "6e84f1e8a20bb605765bf9ee836a1b255f88841f9df2f3a244b9e6e60469eb21"
+    },
+    {
+      "source": "output/telegram-feature-matrix-2026-10-20/limits-and-entrypoints.csv",
+      "destination": "output/telegram-feature-matrix-2026-10-20/limits-and-entrypoints.csv",
+      "bytes": 32292,
+      "sha256": "8b81e5fe91e18bc6e44182123bb6c2fe20937af0a4430b87485d616f6f7c3dca"
+    },
+    {
+      "source": "output/telegram-feature-matrix-2026-10-20/premium-business-register.csv",
+      "destination": "output/telegram-feature-matrix-2026-10-20/premium-business-register.csv",
+      "bytes": 10645,
+      "sha256": "c5038150821a7d04252ada656f846f1763436159279b1c1bb775098b1936214b"
+    },
+    {
+      "source": "output/telegram-feature-matrix-2026-10-20/source-receipts.json",
+      "destination": "output/telegram-feature-matrix-2026-10-20/source-receipts.json",
+      "bytes": 75174,
+      "sha256": "09b1f17a379f111de992eb7f7cdf430ae2733f766f726a7a67f050171882867f"
+    },
+    {
+      "source": "output/telegram-feature-matrix-2026-10-20/link-adjustments.json",
+      "destination": "output/telegram-feature-matrix-2026-10-20/link-adjustments.json",
+      "bytes": 1635,
+      "sha256": "62e6b211e898b218e543a0d63e5c0d0fda5b1c9283eb9ba567d1cba2c3d1911d"
+    },
+    {
+      "source": "output/telegram-feature-matrix-2026-10-20/validation.json",
+      "destination": "output/telegram-feature-matrix-2026-10-20/validation.json",
+      "bytes": 899,
+      "sha256": "c0f7195376dd02ffd4c2a9a47c6f41647be4ff96237fa81b8eeec624d2ee2ccb"
+    },
+    {
+      "source": "output/telegram-feature-matrix-2026-10-20/viewer-check.json",
+      "destination": "output/telegram-feature-matrix-2026-10-20/viewer-check.json",
+      "bytes": 822,
+      "sha256": "6cf11ccbd60d9b5920d149001a8a3fa914efdbc443d4e3af17283b1d687ab4f6"
+    },
+    {
+      "source": "output/telegram-feature-matrix-2026-10-20/README.md",
+      "destination": "output/telegram-feature-matrix-2026-10-20/provenance/original-README.txt",
+      "bytes": 7322,
+      "sha256": "2f020f19e7a7021d8655560dce913541df0b3f3d62d7d3178042c7192eb1a201"
+    }
+  ],
+  "checks": {
+    "exact_original_bytes": true,
+    "unique_features_csv_json_order": 506,
+    "areas": 23,
+    "all_rows_area_level_not_feature_traced": true,
+    "all_rows_runtime_untested": true,
+    "frontend_lead_metadata_only": {
+      "count": 1836,
+      "path_exists_recorded": true,
+      "feature_behavior_traced": false
+    },
+    "embedded_html_equals_json": true,
+    "html_has_no_external_resource_dependencies": true,
+    "html_static_local_links_present": [
+      "README.md",
+      "announcement-register.csv",
+      "matrix.csv",
+      "matrix.json",
+      "matrix.md",
+      "premium-business-register.csv"
+    ],
+    "main_views_no_localhost_or_absolute_local_dependency": true,
+    "original_capture_hashes_read_only_verified_not_vendored": 164,
+    "product_implementation_changed": false,
+    "acceptance_journeys_changed": false,
+    "imported_scripts_executed": false,
+    "browser_or_product_runtime_executed": false,
+    "network_refreshed": false
+  },
+  "exclusions": [
+    "164 source capture files",
+    "older sibling research and Android fork proposals",
+    "build.py/validate.py/catalog.txt/viewer template",
+    "captured client repository trees"
+  ],
+  "limits": [
+    "Recorded validation.json and viewer-check.json are historical source artifacts.",
+    "Frontend lead existence is inherited metadata, not a fresh repository-tree verification.",
+    "Complete reproduction requires the original external research package.",
+    "No feature selection, upstream source adaptation, license change, product parity or runtime acceptance."
+  ]
+}

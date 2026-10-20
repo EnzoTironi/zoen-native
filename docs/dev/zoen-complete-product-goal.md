@@ -159,6 +159,41 @@ de operação de produção. A matriz de produto deve cobrir:
 A comparação com WhatsApp, Slack e Wabi deve identificar a versão, plataforma,
 data, jornada relevante e evidência. Não basta usar suas interfaces como referência.
 
+## Referência principal de interface e interações
+
+Telegram iOS é a referência principal de interface e interações, por direção do
+usuário em 20 de outubro de 2026. O [guia de referência](../product/telegram-ios-reference.md)
+e o [catálogo consultável](../../output/telegram-feature-matrix-2026-10-20/index.html)
+orientam conversas, composição e teclado, anexos, mídia, ações, gestos,
+transições, navegação, perfis e ajustes. O [estudo de cinco superfícies](../product/telegram-ios-next-ui-study.md)
+registra os pontos de entrada nos componentes atuais.
+
+Na instrução posterior do mesmo dia, o usuário **selecionou a reprodução da UI e
+das interações completas da conversa do Telegram iOS, com fidelidade visual**,
+adicionando os recursos próprios do Zoen sobre essa base. Isso inclui o fluxo de
+anexos, e supera a interpretação anterior de que toda a UI aguardaria seleção.
+Executar o [contrato de reprodução da conversa](../product/telegram-ios-conversation-parity.md),
+usando o código iOS fixado para medidas e comportamento, sem substituir essa
+direção por uma releitura visual genérica. Preservar o guia e o catálogo originais
+como pesquisa datada; a seleção posterior está explícita neste adendo.
+
+As 506 entradas em 23 áreas são pesquisa de referência, não 506 capacidades
+selecionadas para o Zoen. Os caminhos fixados são pontos de entrada por área,
+sem rastreamento do comportamento de cada feature. A seleção da UI da conversa
+não seleciona automaticamente todos os produtos comerciais e serviços desse
+catálogo. Essa direção não aprova um
+fork, TDLib, infraestrutura do Telegram, mudança de framework ou licença.
+Reprodução com nossos componentes e eventual adaptação de código precisam de
+avaliação específica de comportamento, dependências, licença e manutenção.
+
+Preservar a identidade de céu do Zoen, os cards consistentes e Apps em tela cheia,
+os agentes, as permissões e os contratos do núcleo/backend. Signal continua como
+referência de confiabilidade e testes comportamentais; Notion e ChatGPT Spaces
+continuam como referências para documentos vivos e criação. As trinta jornadas
+existentes permanecem inalteradas; nenhuma paridade ou validação nativa decorre
+da importação do catálogo ou da seleção da referência visual. Registrar as
+diferenças visuais e comportamentais até suas provas no iPhone.
+
 ## Referência principal de confiabilidade
 
 Signal é a principal referência de confiabilidade no app, núcleo e backend.
