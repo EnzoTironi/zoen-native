@@ -32,6 +32,12 @@ The frozen real managed JS/WASM package has been compiled and verified, but this
 
 The managed geometry supplement below consumes the host's safe-area/close-button bounds without shrinking the canvas. The engine does not yet consume the host theme, and every editor subpanel has not been qualified at phone sizes. Actual notch/control placement, rotation and export discoverability remain native-run acceptance items.
 
+## Current native evidence and accessibility boundary
+
+The sealed a974701b iPhone-simulator Release opens the real managed engine and the existing canonical presentation, reports saved status, closes and cold reopens it in one recorded/replayed synthetic fixture. This is bounded opening/recovery evidence; manual edit, orientation continuity, certified-agent edit, native exports, memory and startup performance remain unaccepted. Desktop layout and light canvas were observed on the phone; the hosted compact/theme/safe-content adaptation is being qualified separately.
+
+The pinned eframe0.36.2 web runner explicitly discards its AccessKit update (`src/web/app_runner.rs:394`, source SHA256 `4af77733d252e8125171753e9d9d70cc3713c140b614586be051623859df54d7`). The native host Close/status semantics work separately; enabling eframe's existing AccessKit feature does not expose editor controls to iOS VoiceOver. Editor semantic accessibility needs an actual implementation and native qualification. The compact layout alone cannot close that gap.
+
 ## Managed geometry/export supplement
 
 The fourth upstream patch consumes finite official host geometry through the same Session owner queue. It uses egui's real safe-area input while retaining the full viewport/canvas; the hosted title controls and dialog/palette bounds also avoid the exact native close corner. It leaves standalone layout/services unchanged. Hosted Export offers the genuinely supported PDF/PowerPoint intent before generating any browser download, and the official App server tool binds it to this artifact's native accepted-head share path. A single live intent prevents repeated menu taps from presenting duplicate share sheets.

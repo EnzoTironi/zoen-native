@@ -4247,7 +4247,15 @@
         "Other selected Storytold editors after first complete DeckCraft journey"
       ],
       "wholeProductAcceptance": false,
-      "historicalPolicy": "All fields of the preceding checkpoint retain their original source/artifact scope. This additive batch does not overwrite their failed or partial observations."
+      "historicalPolicy": "All fields of the preceding checkpoint retain their original source/artifact scope. This additive batch does not overwrite their failed or partial observations.",
+      "editorAccessibility": {
+        "status": "UNACCEPTED",
+        "source": "Pinned eframe0.36.2 src/web/app_runner.rs:394 explicitly discards accesskit_update",
+        "sourceFileSha256": "4af77733d252e8125171753e9d9d70cc3713c140b614586be051623859df54d7",
+        "nativeObservation": "WK editor exposes native host Close/status but no semantic egui controls in AX; enabling accesskit Cargo feature alone is insufficient",
+        "review": "/private/tmp/zoen-deckcraft-compact-review-v169/report.md",
+        "scope": "Source-confirmed limitation, not a completed VoiceOver assessment or repair"
+      }
     }
   }
 }
