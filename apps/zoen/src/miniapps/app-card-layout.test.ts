@@ -566,7 +566,7 @@ test('removing the final card cannot strand Done in Saving and restore stays rea
   const home = fixture(1, 393, {
     items: [],
     hiddenItems: [item('stat')],
-    stateValues: [null, 'owner', { pinned: true, available: true }],
+    stateValues: ['owner', { pinned: true, available: true }],
   });
   const done = nodes(home.Home({})).find((node) => node.props.testID === 'home-rearrange-done')!;
   assert.ok(done);
