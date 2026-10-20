@@ -1,7 +1,6 @@
 import { t } from '../i18n/index.ts';
 import { useCallback, useRef, useState } from 'react';
 import { Stack, router, useLocalSearchParams, usePreventRemove } from 'expo-router';
-import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollView, Text, View } from 'react-native';
 import { useClient } from '../core/provider';
@@ -19,7 +18,6 @@ import { useConversationCards } from './conversation-provider';
 import type { MiniappDocumentController } from './document-controller';
 
 export function MiniappScreen({ manage = false }: { manage?: boolean }) {
-  const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { store } = useClient();
@@ -137,13 +135,13 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       )
       .finally(() => setBusy(false));
   }
-  const fullscreen = process.env.EXPO_OS !== 'web' && !!spec?.has_view && !manage;
+  const fullscreen = !!spec?.has_view && !manage;
   const navigation = (
     <Stack.Screen
       options={{
         title: manage ? t('common.details') : item.title,
         // Interactive app views own their drags, including the back-swipe edge.
-        // The native Back button still runs the acknowledged document-close guard.
+        // Close, system Back and native sheet dismissal share the document-close guard.
         gestureEnabled: !fullscreen,
         headerRight: () =>
           fullscreen ? (
@@ -204,14 +202,13 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
         testID="miniapp-fullscreen"
         style={{
           flex: 1,
-          paddingTop: headerHeight,
           paddingBottom: insets.bottom,
           paddingLeft: insets.left,
           paddingRight: insets.right,
         }}
       >
         {navigation}
-        {(error && spec.id !== 'excalidraw') || read.error || specs.error ? (
+        {error || read.error || specs.error ? (
           <Text accessibilityRole="alert" selectable style={{ color: colors.danger, padding: 16 }}>
             {error ?? read.error ?? specs.error}
           </Text>
@@ -232,7 +229,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{
         padding: 24,
-        paddingTop: process.env.EXPO_OS === 'web' ? headerHeight + 24 : 24,
+        paddingTop: 24,
         paddingBottom: 48,
         gap: 22,
         maxWidth: 850,

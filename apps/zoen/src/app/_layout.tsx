@@ -72,6 +72,24 @@ function Navigation() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="chat/[id]" options={{ title: '' }} />
             <Stack.Screen
+              name="miniapp"
+              options={{
+                // Android's Material form sheet does not support a nested native stack.
+                // Its full-screen modal keeps the App's own native toolbar and history.
+                presentation:
+                  process.env.EXPO_OS === 'ios'
+                    ? 'formSheet'
+                    : process.env.EXPO_OS === 'android'
+                      ? 'fullScreenModal'
+                      : 'card',
+                animation: process.env.EXPO_OS === 'android' ? 'slide_from_bottom' : undefined,
+                sheetAllowedDetents: [1],
+                sheetGrabberVisible: true,
+                sheetExpandsWhenScrolledToEdge: false,
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
               name="new-chat"
               options={{
                 title: t('common.newChat'),
