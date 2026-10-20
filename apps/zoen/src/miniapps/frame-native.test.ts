@@ -3,7 +3,6 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
-import type { RuntimePackage } from './runtime-package';
 import { build } from 'esbuild';
 
 const source = new URL('./frame.tsx', import.meta.url);
@@ -32,7 +31,7 @@ const compiled = await build({
 const require = createRequire(import.meta.url);
 type Element = { type: unknown; props: Record<string, unknown> };
 type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
-function fixture(platform: string, qa = false) {
+function fixture(platform: string) {
   const slots: Slot[] = [];
   let cursor = 0;
   let sequence = 0;
@@ -50,18 +49,6 @@ function fixture(platform: string, qa = false) {
         const s = slot();
         if (!Object.hasOwn(s, 'value')) s.value = { current: initial };
         return s.value;
-      },
-      useState: (initial: unknown) => {
-        const s = slot();
-        if (!Object.hasOwn(s, 'value'))
-          s.value = typeof initial === 'function' ? (initial as () => unknown)() : initial;
-        return [
-          s.value,
-          (next: unknown) => {
-            s.value =
-              typeof next === 'function' ? (next as (prior: unknown) => unknown)(s.value) : next;
-          },
-        ];
       },
       useMemo: (read: () => unknown, deps: readonly unknown[]) => {
         const s = slot();
@@ -89,7 +76,7 @@ function fixture(platform: string, qa = false) {
       jsx: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
       jsxs: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
     },
-    'react-native': { Text: 'Text', View: 'View', Platform: { OS: platform } },
+    'react-native': { View: 'View', Platform: { OS: platform } },
     'react-native-webview': { WebView: 'WebView' },
     'expo-crypto': {
       randomUUID: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`,
@@ -103,17 +90,12 @@ function fixture(platform: string, qa = false) {
   };
   runInNewContext(compiled.outputFiles[0]!.text, {
     module,
-    TextEncoder,
-    TextDecoder,
-    URL,
-    process: { env: { EXPO_PUBLIC_ZOEN_DECKCRAFT_FOCUS_QA: qa ? '1' : undefined } },
     exports: module.exports,
     require: (name: string) => ports[name] ?? require(name),
   });
   function render(
     html = '<!doctype html><p>Real child document</p>',
     geometry = { height: 640, fill: false },
-    runtimePackage?: RuntimePackage,
   ) {
     cursor = 0;
     effects = [];
@@ -123,14 +105,12 @@ function fixture(platform: string, qa = false) {
         title: 'Drawing',
         ...geometry,
         blocked: false,
-        runtimePackage,
         onMessage: (message: string) => deliveries.push(message),
         onError: (reason: string) => assert.fail(reason),
       },
       handle,
     );
-    const children = element.props.children as Element[];
-    const web = children[0]!;
+    const web = element.props.children as Element;
     assert.equal(web.type, 'WebView');
     (web.props.ref as { current: unknown }).current = {
       injectJavaScript: (code: string) => injected.push(code),
@@ -146,9 +126,6 @@ function fixture(platform: string, qa = false) {
       nonce,
       source: web.props.source,
       key: web.props.key,
-      qaText: children[1] as Element | null,
-      qaScript: web.props.injectedJavaScriptBeforeContentLoaded as string | undefined,
-      qaMainFrameOnly: web.props.injectedJavaScriptBeforeContentLoadedForMainFrameOnly,
     };
   }
   return { render, deliveries, handle, injected };
@@ -251,103 +228,4 @@ test('portrait-landscape-portrait layout keeps one native source, nonce and call
   assert.notEqual(replaced.nonce, portrait.nonce);
   returned.receive(event('about:blank', returned.nonce));
   assert.equal(f.deliveries.length, 3);
-});
-
-const qaRevision = 'a31b990d32f2c8562f1588562f922960c3fde48b';
-const qaRuntime: RuntimePackage = {
-  schema: 1,
-  engine: 'deckcraft',
-  revision: qaRevision,
-  abi: 'zoen-host-v1',
-  module: {
-    url: `https://127.0.0.1:9443/deckcraft/${qaRevision}/runtime.js`,
-    bytes: 1,
-    sha256: '0'.repeat(64),
-    mime: 'text/javascript',
-  },
-  wasm: {
-    url: `https://127.0.0.1:9443/deckcraft/${qaRevision}/runtime.wasm`,
-    bytes: 8,
-    sha256: '1'.repeat(64),
-    mime: 'application/wasm',
-  },
-};
-function qaEvent(session: string, slot: 'top' | 'childCanvas' = 'childCanvas') {
-  return {
-    nativeEvent: {
-      url: slot === 'top' ? 'about:blank' : 'about:srcdoc',
-      data: JSON.stringify({
-        marker: 'zoen.deckcraft.focus.qa.v1',
-        session,
-        slot,
-        event: 'focus',
-        activeTag: 'INPUT',
-        inputCount: 1,
-        hasFocus: true,
-        canvasFocused: false,
-        inputFocused: true,
-        isTop: slot === 'top',
-        inert: false,
-        disabled: false,
-      }),
-    },
-  };
-}
-function qaSession(script: string | undefined): string {
-  const token = script?.match(/const session="([a-f0-9-]+)"/)?.[1];
-  assert.ok(token);
-  return token;
-}
-
-test('temporary focus QA is absent by default and never enabled on other platform/resource scopes', () => {
-  const disabled = fixture('ios').render(undefined, undefined, qaRuntime);
-  assert.equal(disabled.qaScript, undefined);
-  assert.equal(disabled.qaMainFrameOnly, undefined);
-  assert.equal(disabled.qaText, null);
-  const generic = fixture('ios', true).render();
-  assert.equal(generic.qaScript, undefined);
-  const android = fixture('android', true).render(undefined, undefined, qaRuntime);
-  assert.equal(android.qaScript, undefined);
-});
-
-test('actual native QA callback updates two scalar AX slots without forwarding telemetry to SDK', () => {
-  const f = fixture('ios', true);
-  const first = f.render(undefined, undefined, qaRuntime);
-  const token = qaSession(first.qaScript);
-  assert.notEqual(token, first.nonce, 'the child must never receive the canonical RPC nonce');
-  assert.equal(first.qaMainFrameOnly, false);
-  first.receive(qaEvent(token));
-  first.receive(qaEvent(token, 'top'));
-  const next = f.render(undefined, undefined, qaRuntime);
-  assert.equal(next.source, first.source, 'diagnostic state cannot reload the App');
-  assert.equal(next.qaText?.props.testID, 'deckcraft-focus-qa');
-  const label = String(next.qaText?.props.accessibilityLabel);
-  assert.match(label, /top: focus/);
-  assert.match(label, /childCanvas: focus tag=INPUT/);
-  assert.equal(label.includes(token), false);
-  assert.equal(label.includes(first.nonce), false);
-  assert.deepEqual(f.deliveries, []);
-  next.receive(event('about:blank', next.nonce));
-  assert.deepEqual(f.deliveries, [JSON.stringify(rpc)]);
-});
-
-test('QA rejects stale generation, extra fields and post-dispose callbacks without affecting RPC', () => {
-  const f = fixture('ios', true);
-  const old = f.render(undefined, undefined, qaRuntime);
-  const token = qaSession(old.qaScript);
-  const next = f.render('<!doctype html><p>Replacement</p>', undefined, qaRuntime);
-  old.receive(qaEvent(token));
-  next.receive(qaEvent(token));
-  const invalid = qaEvent(qaSession(next.qaScript));
-  invalid.nativeEvent.data = JSON.stringify({
-    ...JSON.parse(invalid.nativeEvent.data),
-    value: 'rejected',
-  });
-  next.receive(invalid);
-  const settled = f.render('<!doctype html><p>Replacement</p>', undefined, qaRuntime);
-  assert.equal(settled.qaText?.props.accessibilityLabel, 'top: pending | childCanvas: pending');
-  assert.deepEqual(f.deliveries, []);
-  f.handle.current!.dispose();
-  settled.receive(qaEvent(qaSession(settled.qaScript)));
-  assert.deepEqual(f.deliveries, []);
 });

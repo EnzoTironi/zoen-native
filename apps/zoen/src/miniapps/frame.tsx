@@ -1,16 +1,8 @@
 import { t } from '../i18n/index.ts';
-import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Text, View } from 'react-native';
+import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react';
+import { Platform, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { randomUUID } from 'expo-crypto';
-import {
-  deckcraftFocusQaEnabled,
-  deckcraftFocusQaLabel,
-  deckcraftFocusQaScript,
-  decodeDeckcraftFocusQa,
-  emptyDeckcraftFocusQa,
-  type DeckcraftFocusQaSlots,
-} from './deckcraft-focus-qa';
 import type { MiniappFrameHandle, MiniappFrameProps } from './frame-types';
 import {
   nativeMiniappCommand,
@@ -25,25 +17,10 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
   ref,
 ) {
   const view = useRef<WebView<object>>(null);
-  const focusQa = deckcraftFocusQaEnabled(
-    Platform.OS,
-    process.env.EXPO_PUBLIC_ZOEN_DECKCRAFT_FOCUS_QA,
-    runtimePackage,
-  );
   const document = useMemo(() => {
     const nonce = randomUUID();
-    const qaSession = focusQa ? randomUUID() : null;
-    return {
-      nonce,
-      qaSession,
-      qaScript: qaSession ? deckcraftFocusQaScript(qaSession) : undefined,
-      html: nativeMiniappHtml(html, 'Zoen', nonce, runtimePackage),
-    };
-  }, [html, runtimePackage, focusQa]);
-  const [qaState, setQaState] = useState<{
-    owner: typeof document;
-    slots: DeckcraftFocusQaSlots;
-  }>(() => ({ owner: document, slots: emptyDeckcraftFocusQa() }));
+    return { nonce, html: nativeMiniappHtml(html, 'Zoen', nonce, runtimePackage) };
+  }, [html, runtimePackage]);
   // Layout/theme updates must not submit a fresh native source and reload the App.
   const source = useMemo(() => ({ html: document.html }), [document]);
   const active = useRef<typeof document | null>(document);
@@ -86,10 +63,6 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
       <WebView<object>
         ref={view}
         source={source}
-        injectedJavaScriptBeforeContentLoaded={document.qaScript}
-        injectedJavaScriptBeforeContentLoadedForMainFrameOnly={
-          document.qaScript ? false : undefined
-        }
         originWhitelist={['*']}
         incognito
         sharedCookiesEnabled={false}
@@ -120,19 +93,6 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         }}
         onMessage={(event) => {
           if (active.current !== document) return;
-          if (focusQa && document.qaSession) {
-            const snapshot = decodeDeckcraftFocusQa(event.nativeEvent.data, document.qaSession);
-            if (snapshot) {
-              setQaState((prior) => ({
-                owner: document,
-                slots: {
-                  ...(prior.owner === document ? prior.slots : emptyDeckcraftFocusQa()),
-                  [snapshot.slot]: snapshot,
-                },
-              }));
-              return;
-            }
-          }
           if (!nativeMiniappMessageSource(event.nativeEvent.url, Platform.OS)) return;
           const message = nativeMiniappMessage(event.nativeEvent.data, document.nonce);
           if (message !== null) onMessage(message);
@@ -143,30 +103,6 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         }
         style={{ backgroundColor: 'transparent' }}
       />
-      {focusQa ? (
-        <Text
-          testID="deckcraft-focus-qa"
-          accessible
-          accessibilityLabel={deckcraftFocusQaLabel(
-            qaState.owner === document ? qaState.slots : emptyDeckcraftFocusQa(),
-          )}
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: 1,
-            height: 1,
-            fontSize: 1,
-            color: 'transparent',
-            overflow: 'hidden',
-          }}
-        >
-          {deckcraftFocusQaLabel(
-            qaState.owner === document ? qaState.slots : emptyDeckcraftFocusQa(),
-          )}
-        </Text>
-      ) : null}
     </View>
   );
 });
