@@ -114,7 +114,13 @@ export class VoiceSession {
   };
   private publish(patch: Partial<VoiceSessionState>) {
     this.state = Object.freeze({ ...this.state, ...patch });
-    this.listeners.forEach((listener) => listener());
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        // Control notifications cannot interrupt native cancellation or lease cleanup.
+      }
+    }
   }
   private track<T>(task: Promise<T>): Promise<T> {
     this.pending.add(task);

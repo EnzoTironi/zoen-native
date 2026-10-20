@@ -74,6 +74,86 @@ function fixture() {
   return { port, calls, session };
 }
 
+for (const rejectedPhase of ['closing', 'closed'] as const) {
+  test(`a throwing ${rejectedPhase} observer cannot abandon voice cancellation, drain or cleanup retry`, async (t) => {
+    const f = fixture();
+    await f.session.prepare('capture');
+    const exportResult = deferred<VoiceRenderResult>();
+    const recognition = deferred<VoiceTranscription>();
+    const rendering = deferred<void>();
+    const cancellation = deferred<void>();
+    f.port.render = async () => {
+      rendering.resolve();
+      return exportResult.promise;
+    };
+    f.port.transcribe = () => recognition.promise;
+    f.port.cancel = async (id) => {
+      f.calls.push(`cancel:${id}`);
+      cancellation.resolve();
+    };
+    let failRelease = true;
+    f.port.release = async (id) => {
+      f.calls.push(`release:${id}`);
+      if (failRelease) throw Error('Owned recording file busy');
+    };
+    let refusedNotifications = 0;
+    const healthyPhases: string[] = [];
+    const offBad = f.session.subscribe(() => {
+      if (f.session.getSnapshot().phase !== rejectedPhase) return;
+      refusedNotifications++;
+      throw Error('Synthetic voice control notification failure');
+    });
+    const offHealthy = f.session.subscribe(() => {
+      healthyPhases.push(f.session.getSnapshot().phase);
+    });
+    t.after(async () => {
+      offBad();
+      offHealthy();
+      failRelease = false;
+      exportResult.resolve(rendered('file:///late-observer.m4a', 3000));
+      recognition.resolve(transcript);
+      await f.session.close();
+    });
+    const speech = f.session.transcribe('en-US');
+    f.session.edit(cut(1000, 2000));
+    await rendering.promise;
+    let closing!: Promise<void>;
+    assert.doesNotThrow(() => {
+      closing = f.session.close();
+    });
+    await cancellation.promise;
+    assert.equal(f.session.getSnapshot().phase, 'closing');
+    assert.equal(f.session.getSendable(), null);
+    assert.equal(f.calls.includes('release:source_a'), false, 'Native tasks still own the source');
+    exportResult.resolve(rendered('file:///late-observer.m4a', 3000));
+    recognition.resolve(transcript);
+    await assert.rejects(closing, (error: unknown) => {
+      assert.ok(error instanceof VoiceSessionFailure);
+      assert.equal(error.kind, 'cleanup');
+      assert.ok(error.cause instanceof AggregateError);
+      assert.equal(error.cause.errors[0]?.message, 'Owned recording file busy');
+      return true;
+    });
+    await speech;
+    assert.equal(f.session.getSnapshot().error?.kind, 'cleanup');
+    assert.ok(
+      f.calls.indexOf('render-release:source_a:file:///late-observer.m4a') <
+        f.calls.indexOf('release:source_a'),
+    );
+    failRelease = false;
+    await f.session.close();
+    assert.ok(refusedNotifications > 0);
+    assert.ok(healthyPhases.includes('closing'));
+    assert.equal(healthyPhases.at(-1), 'closed');
+    assert.equal(f.session.getSnapshot().phase, 'closed');
+    assert.equal(f.session.getSnapshot().source, null);
+    assert.equal(f.session.getSnapshot().draft, null);
+    assert.equal(f.calls.filter((call) => call === 'release:source_a').length, 2);
+    await f.session.close();
+    assert.equal(f.calls.filter((call) => call === 'release:source_a').length, 2);
+  });
+}
+
 test('a finalized source remains preparing and unsendable until its private ingestion is durable', async () => {
   const f = fixture();
   const entered = deferred<void>();

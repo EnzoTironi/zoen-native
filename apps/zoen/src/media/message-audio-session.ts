@@ -130,7 +130,14 @@ export class MessageAudioChannel implements AudioClipPlayback {
     )
       return;
     this.state = Object.freeze({ ...state });
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        // Observer failures cannot interrupt player/file cleanup or updates to
+        // other controls.
+      }
+    }
   }
   playFrom = (seconds?: number) => this.session.play(this, seconds);
   pause = () => this.session.pause(this);
