@@ -81,7 +81,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "A fresh current-783edae1 arm64 iOS Simulator Debug build reproduces the public-link SIGBUS at a stack guard, independently of historical v110. The integrated lifecycle fix passes 24 focused Rust tests, strict Clippy and the Swift 6 lifetime-helper tests. Fresh native generation produces ABI 6e5332fc with 218 matching checksum calls, retaining all old 216 values; the full app check passes 883/883 plus TypeScript/Oxlint/Oxfmt. The fixed signed Debug build cff17697, UUID 19821CD3, passes genuine secure link, encrypted history and a cold app-process reopen on the retained owned simulator, sealed at 870a979e. Five semantic timeline entries and the 680-byte version-3 drawing match exactly before/after and against the public primary device. The separate pinned-host C-ABI pair reproduces four baseline low-stack overflows, passes two larger controls, and passes all six candidate cases under unchanged stack caps. That outside-production host proof does not qualify iOS runtime. Prior bounded Android scene, historical-native Demo UI, Web and local-backend evidence retains its original limits. CI 783 records ten successes and Rust still in progress. All 30 journeys, six platforms and three false readiness flags remain unchanged; full parity, optimized Release and provider journeys, current Day/Deepnight photo continuity, deployment and scale remain open.",
+  "currentAcceptanceSummary": "An optimized arm64 iOS Simulator Release built from 21a2b778 passes genuine secure device linking with both check codes verified before approval, receives nine history events, preserves the same Home/history UI witnesses after a real app-process cold restart, and opens/dismisses the existing fullbleed App through its native grabber. Release runtime receipt 3fa0a3f9 is separate from the prior Debug exact-680-byte/five-DTO proof; no direct Release plaintext export or new scene mutation was performed. Fresh Android native generation passes with 331 metadata records/218 checksum calls and all old 216 values retained; the current module Release build and 28 ordinary Gradle tests pass. The original two test failures remain recorded with the pinned coroutine-recovery diagnosis and a test-only causal-error assertion correction. The first Android Release APK 1245a56a UI attempt exposes status-bar/toolbar overlap and an observed Back action returning to the launcher with the app process still alive; the Back cause remains unclassified and presentation/navigation acceptance fails. Cold reopen retains Home/canvas and one element semantically, with owned shutdown and data retained; no exact Android plaintext or native-drain race runtime proof is claimed. Android attachments remain an outside next-slice candidate; calls and durable frontend Page input are incomplete. All 30 journeys, six platforms, historical evidence and three false readiness flags remain unchanged. Physical-device/store/provider/public-deployment/load/whole-platform acceptance remains open.",
   "retiredBackend": {
     "id": "custom-cloudflare-runtime",
     "status": "RETIRED",
@@ -2030,7 +2030,7 @@
     "Web canonical drawing operations and actual canvas/reload/peer bytes are accepted locally. Image import, broader collaborative/fault paths, rich file captions/replies/threads/retry metadata and full PWA offline cold-load still need acceptance. The bounded relay-unavailable cold-route/history/outbox journey now passes separately.",
     "Web onboarding axe found no violations but contrast review remains incomplete; whole-app keyboard/screen-reader, Safari/WebKit, camera/microphone and performance are unaccepted.",
     "Public hosting proves HTTP routing/isolation/assets only; unavailable production relay blocks public encrypted sync/provider acceptance.",
-    "Android acceptance is bounded to API35 arm64 Debug synthetic linking/history/Page/erasure and unchanged minified Release onboarding/key-generation only. Release linked-account runtime/performance, API28/physical devices and remaining media/voice/profile/assistant features remain unaccepted.",
+    "Android has bounded API35 arm64 QA-keystore-signed minified Release Home/App/cold-reopen evidence with a retained genuine account and one visible scene element. The current APK exposes two observed presentation/navigation failures: transparent status time/icons overlap the Excalidraw toolbar, and an observed Back action returns to the launcher while the app process remains. The cause of the Back outcome is unclassified. Day/Deepnight was not run after those failures; no exact document bytes, held native-drain runtime, whole visual parity or performance acceptance is claimed. Media/voice/profile/assistant features, API28/physical devices and broader lifecycle journeys remain open.",
     "Native extensions, Push delivery, agent/community/permissions workflows and remaining media/document/history failure boundaries need their own current-artifact journeys."
   ],
   "currentSourceCheckpoint": {
@@ -2262,7 +2262,116 @@
     "webAccountRecoveredAfterExternalRestart": true
   },
   "postMergeCheckpoint": {
-    "id": "native-link-lifecycle-and-current-ios-runtime-v130",
+    "id": "optimized-ios-release-and-android-retirement-v131",
+    "nativeReleaseLifecycleV131": {
+      "status": "IOS_RELEASE_BOUNDED_PASS_ANDROID_SOURCE_PASS_PRESENTATION_NEGATIVES",
+      "sourceBaseHead": "21a2b7780c1dc521d90ce8223635493a1a544992",
+      "iosOptimizedRelease": {
+        "build": {
+          "path": "/private/tmp/zoen-ios-release-v131/release-01/build-acceptance.json",
+          "sha256": "dfe5ab063802616abf5785ff183ecb2ccbfcbb998435fb0a9b9307d69d4a7363"
+        },
+        "runtimeFinal": {
+          "path": "/private/tmp/zoen-ios-release-v131/release-01/runtime/final.json",
+          "sha256": "3fa0a3f97f2e534340a46a3db42245589904d884a31a6e37f627e22295accd72"
+        },
+        "runtimeAcceptance": {
+          "path": "/private/tmp/zoen-ios-release-v131/release-01/runtime/acceptance.json",
+          "sha256": "424acd87a8c3b1508b4a58043fb8d6a337df03fe4c5e6db9d2f78ea1f934b4b9"
+        },
+        "profile": "Optimized arm64 iOS Simulator Release; embedded Hermes JS; ad-hoc simulator signing",
+        "mainUuid": "F3FD6D16-1DFC-3526-964B-A8C0A44CC03D",
+        "nativeMetadata": 331,
+        "checksumCalls": 218,
+        "old216ChecksumValuesRetained": true,
+        "genuinePublicLinkAndTwoSidedCheckBeforeTap": true,
+        "historyEventsSent": 9,
+        "actualColdAppProcessRestart": true,
+        "sameTwoHomeItemIdsAndHistoryWitnessIds": true,
+        "existingFullbleedAppAndNativeGrabberDismiss": true,
+        "directPlaintextExportOrAllTimelineDtoComparison": false,
+        "newEditorMutation": false,
+        "metroOrCdpUsed": false,
+        "sourceBoundary": "All 910 effective iOS and 176 native Rust inputs exact through runtime; four root-approved Android-only source/test changes occurred after immutable iOS artifact seal.",
+        "limits": "Local simulator functional proof only. A NativeDevtools cleanup resource is recorded; loaded-image attestation was not collected. One AX proof-helper envelope assertion was corrected without product retry. No physical/store/provider/deployment/load or full-platform acceptance.",
+        "ownedSimulatorShutdownDataRetained": true
+      },
+      "androidLifecycle": {
+        "reviewedV3SourceMap": {
+          "path": "/private/tmp/zoen-android-lifecycle-v131/sealed-v3/source-map.json",
+          "sha256": "26fdbde5e01cc6b519c6e678f02298e834c395d626dafcec826bd19adfc5f630"
+        },
+        "productionThreePathsExactReviewedV2": true,
+        "nativeGeneration": {
+          "path": "/private/tmp/zoen-android-lifecycle-v131/execution-v1/native-01/acceptance.json",
+          "sha256": "e06d1e025d85f7ff540e47d4982839685331492b21751ab92da38ddfbf45a2c8"
+        },
+        "generationQaElapsedSeconds": 161.933,
+        "nativeGenerationInputsExact": 422,
+        "coreContractSha256": "8cd97a74b1a20bbac93b4f7092fc3a959d238ff50c39195f2681fef81f900fc1",
+        "metadata": 331,
+        "checksums": 218,
+        "old216ChecksumValuesRetained": true,
+        "moduleReleaseAndStandardGradle": {
+          "path": "/private/tmp/zoen-android-lifecycle-v131/execution-v3/gradle-01/acceptance.json",
+          "sha256": "bc34eae9d704ce4df3735b7a9393785c7949ea402774f0f2c63bfa9fecb2ae80"
+        },
+        "freshJvmPassed": 28,
+        "freshJvmFailed": 0,
+        "freshJvmSkipped": 0,
+        "gradleInputsExact": 666,
+        "apkSha256": "1245a56a4031c8e2e2a38076903670c277794d0007edd4a76ece4b5a413dda98",
+        "producerPackagedJniEquivalence": {
+          "receipt": {
+            "path": "/private/tmp/zoen-android-lifecycle-v131/runtime-v3/strip-proof/acceptance.json",
+            "sha256": "b6018126270a9bbdc9879cb716490f7c1185cc973ccda86f6598fa950f9ccbb2"
+          },
+          "scope": "Producer and packaged hashes remain different. Pinned NDK27.1 llvm-strip --strip-unneeded applied to an outside copy reproduces the packaged library exactly, preserving the producer. The historical AGP invocation itself was not directly observed."
+        },
+        "signing": "QA debug keystore; not store signing; loopback-only QA overlay unchanged",
+        "originalFailureAndCorrection": {
+          "sourceCorrectionReceipt": {
+            "path": "/private/tmp/zoen-android-lifecycle-v131/sealed-v3/acceptance.json",
+            "sha256": "6e4203a3b655bb22cab0ab7e8041c69858db7691924f2e552cb74761c5b6494a"
+          },
+          "originalGradleFailedCases": 2,
+          "totalCases": 28,
+          "correction": "Pinned coroutine debug recovery copies top-level Throwable identity. Four comparisons in two tests now require the same type/message and original identity in the cause chain. Production, owner acknowledgement and blocked-open assertions unchanged; ordinary recovery retained, no skipped test or disabled-recovery flag.",
+          "diagnosisReceiptSha256": "81464ff2de61ca27964d11df9aba6d8d3c6d8b849c50c2808bf9c8d275b7bfb3"
+        },
+        "actualCurrentReleaseRuntime": {
+          "status": "PARTIAL_FUNCTIONAL_PROOF_WITH_TWO_OBSERVED_PRESENTATION_NAVIGATION_FAILURES",
+          "receipt": {
+            "path": "/private/tmp/zoen-android-lifecycle-v131/runtime-v3/acceptance.json",
+            "sha256": "b412f65ac780bb81d817b7568a6ad8019d08a9e2ef89a64a0a93c7c959a98767"
+          },
+          "sourceEquivalence": {
+            "path": "/private/tmp/zoen-android-lifecycle-v131/runtime-v3/final-source-equivalence.json",
+            "sha256": "8230a7fb8d7feaace87143616ca9bf3b65d679e6343935515ed8194cbbe25837"
+          },
+          "cleanup": {
+            "path": "/private/tmp/zoen-android-lifecycle-v131/runtime-v3/cleanup.json",
+            "sha256": "5146aaeac0460b5c0b56f104bdfb29fb158ab79bd1a5c2d8b872e358463b6102"
+          },
+          "statusBarOverlapsExcalidrawToolbar": true,
+          "hardwareBackReturnsToLauncherWithAppPidRetained": true,
+          "hardwareBackCauseEstablished": false,
+          "appCrashEstablished": false,
+          "optionalDayDeepnightTour": "NOT_RUN after baseline discrepancies",
+          "coldReopenHomeCanvasOneElementSemanticallyRetained": true,
+          "differentAppPids": [3194, 3534],
+          "exactPlaintextOrDocumentHashEqualityProven": false,
+          "nativeDrainRaceRuntimeProven": false,
+          "ownedSimulatorShutdownDataRetained": true,
+          "correctedUiAccepted": false
+        },
+        "performanceAcceptance": false
+      },
+      "nextSliceBoundary": "Android media rebase remains outside and uncompiled; final 16 media JVM/module/provider/FD/Activity/public-peer runtime debt is separate from these 28 lifecycle tests. Calls remain absent; frontend Page input still does not use the durable Rust input journal.",
+      "postProofMetadataBoundary": "This later documentation/acceptance metadata update changes neither runtime production code nor native artifacts. The recorded 910-input iOS runtime point is immutable, not an assertion that later acceptance metadata bytes are identical.",
+      "uiV133": "Outside parallel candidate; not qualified or included in this checkpoint",
+      "readinessPromoted": false
+    },
     "nativeLinkExecutionV130": {
       "status": "BOUNDED_FIXED_NATIVE_FLOW_PASSED_NO_READINESS_PROMOTION",
       "sourceBaseHead": "783edae15d8ed89849d189dc70ba699bfd2b672b",

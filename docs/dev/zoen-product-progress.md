@@ -2,13 +2,66 @@
 
 The full goal remains active: 30 journeys, six platforms and the public backend.
 `fullAppParityAccepted`, `productionReadinessAccepted` and
-`scaleReadinessAccepted` remain false. This checkpoint records bounded evidence;
-it does not replace the [complete goal](zoen-complete-product-goal.md) or its
-[acceptance matrix](../../apps/zoen/acceptance.json).
+`scaleReadinessAccepted` remain false. [PR140](https://github.com/EnzoTironi/zoen-native/pull/140)
+is open as a draft. These bounded results do not replace the complete goal or
+its acceptance matrix.
 
-PR136 is merged; [PR140](https://github.com/EnzoTironi/zoen-native/pull/140)
-remains draft. The recorded CI snapshot for `783edae1` has ten successes and Rust
-still in progress, receipt `0e9cce7c`. It does not qualify the later lifecycle cut.
+## Optimized iOS Release and Android retirement (v131)
+
+An optimized, ad-hoc-signed arm64 iOS Simulator Release from `21a2b778` passes secure linking
+through the real public protocol, with both check codes matched before approval.
+The immutable build is `dfe5ab06`, UUID `F3FD6D16-1DFC-3526-964B-A8C0A44CC03D`;
+runtime `3fa0a3f9` and acceptance `424acd87` bind the actual fresh-device run.
+The primary transfers nine history events. A real native-process cold restart
+preserves the two Home item IDs and the same history/activity UI witness IDs.
+The existing Excalidraw opens as a titleless fullbleed native sheet and its
+grabber dismisses to Home. No Metro/CDP or application-state injection was used.
+
+This Release proof does not compare direct plaintext, every timeline DTO or a
+newly edited scene. The prior Debug five-DTO/exact-680-byte peer proof below
+retains its separate boundary. All 910 effective iOS and 176 native Rust inputs
+remain exact through runtime; four Android-only source/test changes follow the
+immutable iOS seal. The owned simulator is shut down with its data retained.
+A recorded NativeDevtools cleanup resource does not establish loaded-image
+attestation; one AX envelope helper assertion was corrected without retrying
+the product. Physical devices, store signing, providers, deployment, load and
+whole-platform acceptance remain open.
+
+Android generation passes in a 161.933-second QA budget with 422 exact inputs,
+contract `8cd97a74`, 331 metadata records and 218 checksum calls; all old 216
+values remain unchanged. The actual module Release build and standard Gradle
+suite then pass all 28 tests with no failures/skips (`bc34eae9`), with 666 exact
+inputs. The minified QA APK `1245a56a` uses a debug keystore and retains the loopback-only
+overlay and does not claim store signing or performance acceptance. Producer
+and packaged JNI hashes differ. A pinned NDK 27.1 strip reproduction (`b6018126`)
+recreates the packaged bytes exactly from the unchanged producer. This does not
+claim direct observation of the historical AGP strip invocation.
+
+The original two Gradle failures remain preserved. The pinned coroutine debug
+recovery copies the top-level Throwable; the diagnosed v3 correction changes
+only four assertions in two tests to require matching type/message and the
+original identity in the cause chain. Production remains byte-exact to reviewed
+v2; owner acknowledgements, blocked reopening and ordinary recovery are retained.
+The first actual Android Release APK `1245a56a` UI attempt exposes two distinct
+negative boundaries: status time/icons overlap the Excalidraw toolbar, and
+an observed Back action backgrounds the app to the launcher while its PID remains.
+These are observed presentation/navigation failures. The cause of the Back
+outcome remains unclassified; this is not evidence of an app crash.
+Runtime receipt `b412f65a` records a real process cold restart (3194→3534)
+retaining Home/canvas and one element semantically, then owned shutdown with
+data retained. It does not prove exact plaintext/document bytes or an actual
+held native-drain race. Optional Day/Deepnight checks were not run after the
+baseline discrepancies. Corrected UI and full visual parity remain unaccepted;
+these negatives do not change the bounded native build/28-test acceptance.
+
+Android attachment delivery is the next outside-only source candidate, with its
+16 final media JVM and module/provider/FD/Activity/public-peer runtime debt still
+separate from these 28 lifecycle tests. Calls remain an absent subsystem; the
+frontend Page editor still does not consume the durable Rust input journal.
+This documentation update is a later metadata-only delta to the immutable
+runtime proof point, not a change to runtime code or native artifacts.
+
+The bounded v130 and earlier evidence below remains unchanged.
 
 ## Current native link lifecycle (v130)
 
