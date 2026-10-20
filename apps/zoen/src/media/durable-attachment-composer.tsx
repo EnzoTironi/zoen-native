@@ -422,19 +422,22 @@ export function useDurableAttachmentComposer(
       failure(reason);
     }
   }
-  async function send() {
-    if (!channel || !current() || runtime.picking) return;
-    if (review.getSnapshot().mutationId) {
-      try {
-        await review.close();
-      } catch (reason) {
-        failure(reason);
-        return;
-      }
-    }
-    if (!current()) return;
+  async function send(observed: MediaDraftAttachments) {
+    // A stale Send action must not dismiss review and queue delivery behind it.
+    if (!channel || !current() || runtime.picking || review.getSnapshot().mutationId) return;
     const latest = channel.getSnapshot();
-    if (latest.content?.kind !== 'attachments' || latest.sending) return;
+    if (latest.content?.kind !== 'attachments' || latest.sending || latest.reviewing) return;
+    // Caption saves can drain, but this action belongs only to its rendered selection.
+    if (
+      latest.content.reply_to !== observed.reply_to ||
+      latest.content.items.length !== observed.items.length ||
+      latest.content.items.some(
+        (item, index) =>
+          item.asset_id !== observed.items[index]?.asset_id ||
+          item.mutation_id !== observed.items[index]?.mutation_id,
+      )
+    )
+      return;
     const sent = admission.current.onSent;
     publish({ error: null });
     try {
@@ -519,7 +522,7 @@ export function useDurableAttachmentComposer(
               .catch(failure);
           },
           onSend: () => {
-            void send();
+            void send(content);
           },
         }
       : undefined;

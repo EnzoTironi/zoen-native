@@ -27,7 +27,8 @@ type Result = {
 const compiled = await build({
   stdin: {
     contents: readFileSync(
-      new URL('../media/durable-attachment-composer.tsx', import.meta.url),
+      process.env.ZOEN_ATTACHMENT_COMPOSER_SOURCE ??
+        new URL('../media/durable-attachment-composer.tsx', import.meta.url),
       'utf8',
     ),
     loader: 'tsx',
@@ -78,7 +79,12 @@ function fixture(initial = empty()) {
   let effects: (() => void)[] = [];
   let durable = initial;
   let failRead = false,
-    failMaterialize = false;
+    failMaterialize = false,
+    loseSendAck = false,
+    holdCancellation = false;
+  let saveGate: Promise<void> | null = null;
+  let sendCalls = 0;
+  const sendReceipts = new Map<string, { entries: never; draft: MediaDraftDto }>();
   const released: string[] = [],
     discarded: string[] = [],
     writes: string[] = [],
@@ -99,6 +105,7 @@ function fixture(initial = empty()) {
       return durable;
     },
     save: async (_scope, expected, json, assets) => {
+      if (saveGate) await saveGate;
       assert.equal(expected, durable.revision);
       writes.push(json);
       const content = JSON.parse(json);
@@ -137,13 +144,22 @@ function fixture(initial = empty()) {
     },
     cancelPreview: async (token) => {
       canceled.push(token);
-      previewWaiters.get(token)?.resolve();
+      if (!holdCancellation) previewWaiters.get(token)?.resolve();
     },
     send: async (_scope, expected) => {
+      sendCalls++;
+      const receipt = sendReceipts.get(expected);
+      if (receipt) return { ...receipt, draft: durable };
       assert.equal(expected, durable.revision);
       sent.push(durable.content_json);
       durable = { ...empty(), revision: String(revision++) };
-      return { entries: [{ id: 'accepted' }] as never, draft: durable };
+      const result = { entries: [{ id: 'accepted' }] as never, draft: durable };
+      sendReceipts.set(expected, result);
+      if (loseSendAck) {
+        loseSendAck = false;
+        throw new Error('Synthetic lost send acknowledgement');
+      }
+      return result;
     },
     release: async (uri) => {
       released.push(uri);
@@ -300,6 +316,44 @@ function fixture(initial = empty()) {
     canceled,
     previewStarted: previewStarted.promise,
     closePreview: () => previewWaiters.get(previews.at(-1)!.token)?.resolve(),
+    enableNativeEditing: () => {
+      holdCancellation = true;
+      port.edit = async (_scope, expected, assetId, token) => {
+        assert.equal(expected, durable.revision);
+        assert.ok(durable.assets.some((asset) => asset.id === assetId));
+        previews.push({ revision: expected, assetId, token });
+        const waiter = deferred<void>();
+        previewWaiters.set(token, waiter);
+        previewStarted.resolve();
+        await waiter.promise;
+        return durable;
+      };
+    },
+    saveEditedCopy: () => {
+      const selected = previews.at(-1)!;
+      const content = JSON.parse(durable.content_json);
+      const old = durable.assets.find((asset) => asset.id === selected.assetId)!;
+      const id = `edited-${old.id}`;
+      content.items = content.items.map((item: { asset_id: string; mutation_id: string }) =>
+        item.asset_id === old.id ? { ...item, asset_id: id, mutation_id: `post-${id}` } : item,
+      );
+      durable = {
+        ...durable,
+        revision: String(revision++),
+        content_json: JSON.stringify(content),
+        assets: durable.assets.map((asset) =>
+          asset === old ? { ...asset, id, size: 24, sha256: 'b'.repeat(64) } : asset,
+        ),
+      };
+      previewWaiters.get(selected.token)?.resolve();
+    },
+    holdSaves: (gate: Promise<void>) => {
+      saveGate = gate;
+    },
+    loseNextSendAck: () => {
+      loseSendAck = true;
+    },
+    sendCalls: () => sendCalls,
     background: () => background?.('background'),
     erase: () => Promise.all([...deviceCleanups].map((cleanup) => cleanup())),
     durable: () => durable,
@@ -559,3 +613,128 @@ test('unmount and device cleanup coalesce cancellation and preserve the encrypte
   assert.equal(JSON.parse(f.durable().content_json).items[0].asset_id, 'asset-1');
   assert.deepEqual(f.discarded, [photo().uri]);
 });
+
+test(
+  'a stale Send callback during native edited-copy review cannot dismiss it or send the later edited draft',
+  { timeout: 2000 },
+  async () => {
+    const f = fixture();
+    f.enableNativeEditing();
+    f.render();
+    await tick();
+    f.select([photo()]);
+    await f.render({ replyTo: 'reviewed-reply' }).pick('photo');
+    let ui = f.render();
+    ui.field!.onChange('  Reviewed caption 🪁\nexact bytes  ');
+    await f.channel.flush();
+    ui = f.render();
+    const staleSend = ui.field!.onSend;
+    const strip = (ui.review!.props.children as Element[])[0]!;
+    (strip.props.onPreview as (id: string) => void)('asset-1');
+    await f.previewStarted;
+    assert.equal(f.channel.getSnapshot().reviewing, true);
+    staleSend();
+    await tick();
+    assert.deepEqual(f.canceled, [], 'Send must not request native dismissal');
+    assert.equal(f.sendCalls(), 0, 'Send must not be queued behind the pending editor');
+    assert.equal(f.channel.getSnapshot().reviewing, true);
+    f.saveEditedCopy();
+    await tick();
+    f.render();
+    await tick();
+    ui = f.render();
+    assert.equal(ui.busy, false);
+    assert.equal(f.sendCalls(), 0, 'Native Save must not awaken the stale Send callback');
+    const edited = JSON.parse(f.durable().content_json);
+    assert.equal(edited.items[0].asset_id, 'edited-asset-1');
+    assert.equal(edited.items[0].mutation_id, 'post-edited-asset-1');
+    assert.equal(edited.items[0].caption, '  Reviewed caption 🪁\nexact bytes  ');
+    assert.equal(edited.reply_to, 'reviewed-reply');
+    assert.equal(f.channel.getSnapshot().value!.assets[0]!.sha256, 'b'.repeat(64));
+    staleSend();
+    await tick();
+    assert.equal(
+      f.sendCalls(),
+      0,
+      'The old callback cannot target the replacement after dismissal',
+    );
+    ui.field!.onSend();
+    await tick();
+    assert.equal(f.sendCalls(), 1);
+    assert.deepEqual(JSON.parse(f.sent[0]!), edited);
+    assert.equal(f.render().active, false);
+  },
+);
+
+test(
+  'a stale Send callback during read-only native review leaves the viewer and draft untouched',
+  { timeout: 2000 },
+  async () => {
+    const f = fixture();
+    f.render();
+    await tick();
+    f.select([{ ...photo('report.pdf'), mime: 'application/pdf' }]);
+    await f.render().pick('document');
+    const ui = f.render(),
+      staleSend = ui.field!.onSend;
+    const strip = (ui.review!.props.children as Element[])[0]!;
+    (strip.props.onPreview as (id: string) => void)('asset-1');
+    await f.previewStarted;
+    staleSend();
+    await tick();
+    assert.deepEqual(f.canceled, []);
+    assert.equal(f.sendCalls(), 0);
+    f.closePreview();
+    await tick();
+    assert.equal(f.sendCalls(), 0);
+    f.render().field!.onSend();
+    await tick();
+    assert.equal(f.sendCalls(), 1);
+  },
+);
+
+test(
+  'an explicit Send still drains a legitimately queued caption save before sealing the draft',
+  { timeout: 2000 },
+  async () => {
+    const f = fixture();
+    f.render();
+    await tick();
+    f.select([photo()]);
+    await f.render().pick('photo');
+    const gate = deferred<void>();
+    f.holdSaves(gate.promise);
+    const ui = f.render();
+    ui.field!.onChange('Queued caption 🪁');
+    ui.field!.onSend();
+    await tick();
+    assert.equal(f.sendCalls(), 0);
+    gate.resolve();
+    await f.channel.flush();
+    assert.equal(f.sendCalls(), 1);
+    assert.equal(JSON.parse(f.sent[0]!).items[0].caption, 'Queued caption 🪁');
+  },
+);
+
+test(
+  'explicit retry after an ambiguous native Send uses the same receipt without duplicating its message',
+  { timeout: 2000 },
+  async () => {
+    const f = fixture();
+    f.render();
+    await tick();
+    f.select([photo()]);
+    await f.render().pick('photo');
+    f.loseNextSendAck();
+    f.render().field!.onSend();
+    await tick();
+    assert.equal(f.sendCalls(), 1);
+    assert.equal(f.sent.length, 1);
+    assert.equal(f.channel.getSnapshot().frozen, true);
+    f.render().field!.onSend();
+    await tick();
+    assert.equal(f.sendCalls(), 2);
+    assert.equal(f.sent.length, 1);
+    assert.equal(f.render().active, false);
+  },
+);
