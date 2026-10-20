@@ -9,7 +9,7 @@ import {
 import { useClient } from '../core/provider';
 import { t } from '../i18n';
 import { preferences } from '../preferences';
-import { HomeController, homeOwnerKey, orderHomeItems } from './preferences';
+import { HomeController, homeOwnerKey, projectHomeItems } from './preferences';
 import { homeOwnerFor, homeSpacesFor } from './access';
 
 const Context = createContext<HomeController | null>(null);
@@ -68,12 +68,12 @@ export function useHome() {
   );
   const current = homeOwnerKey(homeOwnerFor(client)) === homeOwnerKey(state.owner);
   const spaces = homeSpacesFor(client);
-  const items = current
-    ? orderHomeItems(
+  const { items, allItems, hiddenItems } = current
+    ? projectHomeItems(
         state.items.filter((item) => spaces.has(item.space_id)),
-        state.orderedIds,
+        state,
       )
-    : [];
+    : { items: [], allItems: [], hiddenItems: [] };
   const pinnedIds = current ? state.pinnedIds : [];
   const byId = new Map(items.map((item) => [item.id, item]));
   const pinnedItems = pinnedIds.flatMap((id) => {
@@ -85,6 +85,8 @@ export function useHome() {
   return {
     ownerKey: homeOwnerKey(owner),
     items,
+    allItems,
+    hiddenItems,
     pinnedItems,
     pinnedIds,
     loading: !current || state.loading,
@@ -109,6 +111,9 @@ export function useHome() {
     // A menu presented by a previous account cannot act on the next account's shared item.
     pin: (id: string) => controller.pin(id, owner),
     unpin: (id: string) => controller.unpin(id, owner),
+    hide: (id: string) => controller.hide(id, owner),
+    restore: (id: string) => controller.restore(id, owner),
+    restoreAll: () => controller.restoreAll(owner),
     reorder: (ids: readonly string[], expectedIds?: readonly string[]) =>
       controller.reorder(ids, owner, expectedIds),
     reorderItems: (ids: readonly string[], expectedIds?: readonly string[]) =>

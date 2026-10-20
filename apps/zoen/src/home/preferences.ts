@@ -25,6 +25,7 @@ export class HomeFailure extends Error {
 export type HomePreference = Readonly<{
   pinnedIds: readonly string[];
   orderedIds: readonly string[];
+  hiddenIds: readonly string[];
 }>;
 export type HomeState = HomePreference &
   Readonly<{
@@ -41,6 +42,7 @@ const emptyState = (): HomeState => ({
   items: [],
   pinnedIds: [],
   orderedIds: [],
+  hiddenIds: [],
   loading: false,
   error: null,
 });
@@ -51,29 +53,40 @@ export function homeOwnerKey(owner: HomeOwner | null): string | null {
 }
 const validIds = (value: unknown): value is string[] =>
   Array.isArray(value) && value.length <= 100 && value.every(itemId);
-const emptyPreference = (): HomePreference => ({ pinnedIds: [], orderedIds: [] });
+const maxPreferenceLength = 49_152;
+const emptyPreference = (): HomePreference => ({ pinnedIds: [], orderedIds: [], hiddenIds: [] });
 
 /** Same per-device key as legacy favorites; no account content or cross-device order. */
 export function parseHomePreference(value: string | null): HomePreference {
-  if (!value || value.length > 32_768) return emptyPreference();
+  if (!value || value.length > maxPreferenceLength) return emptyPreference();
   try {
     const decoded: unknown = JSON.parse(value);
-    // Old favorite arrays migrate in memory; reads never rewrite preferences.
-    if (validIds(decoded)) return { pinnedIds: [...new Set(decoded)], orderedIds: [] };
+    // Old favorite arrays and v2 orders migrate in memory; reads never rewrite them.
+    if (validIds(decoded))
+      return { pinnedIds: [...new Set(decoded)], orderedIds: [], hiddenIds: [] };
     if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) return emptyPreference();
     const fields = Object.keys(decoded);
-    const { version, pinnedIds, orderedIds } = decoded as Record<string, unknown>;
+    const { version, pinnedIds, orderedIds, hiddenIds } = decoded as Record<string, unknown>;
+    const allowed =
+      version === 2
+        ? ['version', 'pinnedIds', 'orderedIds']
+        : version === 3
+          ? ['version', 'pinnedIds', 'orderedIds', 'hiddenIds']
+          : [];
     if (
-      fields.length !== 3 ||
-      !fields.includes('version') ||
-      !fields.includes('pinnedIds') ||
-      !fields.includes('orderedIds') ||
-      version !== 2 ||
+      fields.length !== allowed.length ||
+      !fields.every((field) => allowed.includes(field)) ||
       !validIds(pinnedIds) ||
-      !validIds(orderedIds)
+      !validIds(orderedIds) ||
+      (version === 3 && !validIds(hiddenIds))
     )
       return emptyPreference();
-    return { pinnedIds: [...new Set(pinnedIds)], orderedIds: [...new Set(orderedIds)] };
+    const hidden = version === 3 ? [...new Set(hiddenIds as string[])] : [];
+    return {
+      pinnedIds: [...new Set(pinnedIds)].filter((id) => !hidden.includes(id)),
+      orderedIds: [...new Set(orderedIds)],
+      hiddenIds: hidden,
+    };
   } catch {
     return emptyPreference();
   }
@@ -98,6 +111,16 @@ export function orderHomeItems(
   }
   return [...result, ...remaining.values()];
 }
+/** Local shortcuts only: hiding never removes the canonical App or conversation content. */
+export function projectHomeItems(items: readonly ItemDetail[], preference: HomePreference) {
+  const allItems = orderHomeItems(items, preference.orderedIds);
+  const hidden = new Set(preference.hiddenIds);
+  return {
+    allItems,
+    items: allItems.filter((item) => !hidden.has(item.id)),
+    hiddenItems: allItems.filter((item) => hidden.has(item.id)),
+  };
+}
 const sameOrder = (first: readonly string[], second: readonly string[]) =>
   first.length === second.length && first.every((id, index) => id === second[index]);
 
@@ -106,6 +129,7 @@ export class HomeController {
   private state = emptyState();
   private readonly listeners = new Set<() => void>();
   private generation = 0;
+  private layoutRevision = 0;
   private disposed = false;
   private erasing = false;
   private cleanupOwner: HomeOwner | null = null;
@@ -130,6 +154,11 @@ export class HomeController {
     };
   };
   private publish(patch: Partial<HomeState>) {
+    if (
+      (patch.orderedIds && !sameOrder(patch.orderedIds, this.state.orderedIds)) ||
+      (patch.hiddenIds && !sameOrder(patch.hiddenIds, this.state.hiddenIds))
+    )
+      ++this.layoutRevision;
     this.state = { ...this.state, ...patch };
     this.listeners.forEach((listener) => listener());
   }
@@ -236,10 +265,20 @@ export class HomeController {
         if (!this.restored) throw new HomeFailure('save');
         const preference = update();
         if (!preference) return;
-        if (!validIds(preference.pinnedIds) || !validIds(preference.orderedIds))
+        if (
+          !validIds(preference.pinnedIds) ||
+          !validIds(preference.orderedIds) ||
+          !validIds(preference.hiddenIds)
+        )
           throw new HomeFailure('save');
-        if (owner.mode === 'account')
-          await this.port.set(homeOwnerKey(owner)!, JSON.stringify({ version: 2, ...preference }));
+        const serialized = JSON.stringify({
+          version: 3,
+          pinnedIds: preference.pinnedIds,
+          orderedIds: preference.orderedIds,
+          hiddenIds: preference.hiddenIds,
+        });
+        if (serialized.length > maxPreferenceLength) throw new HomeFailure('save');
+        if (owner.mode === 'account') await this.port.set(homeOwnerKey(owner)!, serialized);
         if (!this.current(owner, generation)) throw new HomeFailure('accountChanged');
         this.publish({ ...preference, error: null });
       } catch (cause) {
@@ -263,25 +302,67 @@ export class HomeController {
   private writePins(update: () => readonly string[] | null, owner: HomeOwner | null) {
     return this.writePreference(() => {
       const pinnedIds = update();
-      return pinnedIds ? { pinnedIds, orderedIds: this.state.orderedIds } : null;
+      return pinnedIds
+        ? { pinnedIds, orderedIds: this.state.orderedIds, hiddenIds: this.state.hiddenIds }
+        : null;
     }, owner);
   }
-  private change(id: string, pinned: boolean, owner: HomeOwner | null): Promise<void> {
-    return this.writePins(() => {
+  private requireAccessible(id: string) {
+    if (
+      !itemId(id) ||
+      !this.state.items.some((item) => item.id === id && this.source.spaces().has(item.space_id))
+    )
+      throw new HomeFailure('save');
+  }
+  pin = (id: string, owner: HomeOwner | null = this.state.owner): Promise<void> =>
+    this.writePreference(() => {
+      this.requireAccessible(id);
+      const pinned = this.state.pinnedIds.includes(id);
+      const hidden = this.state.hiddenIds.includes(id);
+      if (pinned && !hidden) return null;
+      return {
+        pinnedIds: pinned ? this.state.pinnedIds : [...this.state.pinnedIds, id],
+        orderedIds: this.state.orderedIds,
+        hiddenIds: this.state.hiddenIds.filter((value) => value !== id),
+      };
+    }, owner);
+  unpin = (id: string, owner: HomeOwner | null = this.state.owner): Promise<void> =>
+    this.writePins(() => {
       if (!itemId(id)) throw new HomeFailure('save');
-      if (
-        pinned &&
-        !this.state.items.some((item) => item.id === id && this.source.spaces().has(item.space_id))
-      )
-        throw new HomeFailure('save');
-      const ids = this.state.pinnedIds.filter((value) => value !== id);
-      if (pinned && !this.state.pinnedIds.includes(id)) ids.push(id);
-      else if (pinned) return null;
-      return ids;
+      return this.state.pinnedIds.includes(id)
+        ? this.state.pinnedIds.filter((value) => value !== id)
+        : null;
     }, owner);
-  }
-  pin = (id: string, owner: HomeOwner | null = this.state.owner) => this.change(id, true, owner);
-  unpin = (id: string, owner: HomeOwner | null = this.state.owner) => this.change(id, false, owner);
+  hide = (id: string, owner: HomeOwner | null = this.state.owner): Promise<void> =>
+    this.writePreference(() => {
+      this.requireAccessible(id);
+      if (this.state.hiddenIds.includes(id)) return null;
+      return {
+        pinnedIds: this.state.pinnedIds.filter((value) => value !== id),
+        orderedIds: this.state.orderedIds,
+        hiddenIds: [...this.state.hiddenIds, id],
+      };
+    }, owner);
+  restore = (id: string, owner: HomeOwner | null = this.state.owner): Promise<void> =>
+    this.writePreference(() => {
+      this.requireAccessible(id);
+      if (!this.state.hiddenIds.includes(id)) return null;
+      return {
+        pinnedIds: this.state.pinnedIds,
+        orderedIds: this.state.orderedIds,
+        hiddenIds: this.state.hiddenIds.filter((value) => value !== id),
+      };
+    }, owner);
+  restoreAll = (owner: HomeOwner | null = this.state.owner): Promise<void> =>
+    this.writePreference(() => {
+      const spaces = this.source.spaces();
+      const accessible = new Set(
+        this.state.items.filter((item) => spaces.has(item.space_id)).map((item) => item.id),
+      );
+      const hiddenIds = this.state.hiddenIds.filter((id) => !accessible.has(id));
+      if (hiddenIds.length === this.state.hiddenIds.length) return null;
+      return { pinnedIds: this.state.pinnedIds, orderedIds: this.state.orderedIds, hiddenIds };
+    }, owner);
   /** Reorder the complete visible selection; unavailable saved IDs keep their slots. */
   reorder = (
     ids: readonly string[],
@@ -311,7 +392,7 @@ export class HomeController {
       return this.state.pinnedIds.map((id) => (visibleIds.has(id) ? requested[index++]! : id));
     }, owner);
   };
-  /** Complete Home/inbox App order, independent of favorites and each conversation rail. */
+  /** Reorder visible Home/inbox shortcuts; hidden and unavailable saved slots stay in place. */
   reorderItems = (
     ids: readonly string[],
     owner: HomeOwner | null = this.state.owner,
@@ -319,12 +400,14 @@ export class HomeController {
   ): Promise<void> => {
     const requested = [...ids];
     const expected = expectedIds && [...expectedIds];
+    const layoutRevision = this.layoutRevision;
     return this.writePreference(() => {
+      if (layoutRevision !== this.layoutRevision) throw new HomeFailure('save');
       if (!validIds(requested) || new Set(requested).size !== requested.length)
         throw new HomeFailure('save');
       const spaces = this.source.spaces();
       const items = this.state.items.filter((item) => spaces.has(item.space_id));
-      const visible = orderHomeItems(items, this.state.orderedIds).map((item) => item.id);
+      const visible = projectHomeItems(items, this.state).items.map((item) => item.id);
       const visibleIds = new Set(visible);
       if (expected && !sameOrder(expected, visible)) throw new HomeFailure('save');
       if (requested.length !== visible.length || requested.some((id) => !visibleIds.has(id)))
@@ -332,10 +415,14 @@ export class HomeController {
       if (sameOrder(requested, visible)) return null;
       const ordered = [...this.state.orderedIds];
       const saved = new Set(ordered);
-      for (const id of visible) if (!saved.has(id)) ordered.push(id);
+      // Seed every authorized App before replacing visible positions, including hidden
+      // Apps whose default positions have not previously been written to orderedIds.
+      for (const item of orderHomeItems(items, this.state.orderedIds))
+        if (!saved.has(item.id)) ordered.push(item.id);
       let index = 0;
       return {
         pinnedIds: this.state.pinnedIds,
+        hiddenIds: this.state.hiddenIds,
         orderedIds: ordered.map((id) => (visibleIds.has(id) ? requested[index++]! : id)),
       };
     }, owner);
