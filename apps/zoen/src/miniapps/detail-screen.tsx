@@ -30,6 +30,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
   const [document, setDocument] = useState<MiniappDocumentController | null>(null);
   const [leaving, setLeaving] = useState(false);
   const navigating = useRef(false);
+  const documentNamespace = read.data?.app?.app_id === 'deckcraft' ? 'decks' : 'drawing';
   const registerDocument = useCallback((controller: MiniappDocumentController | null) => {
     setDocument(controller);
     if (controller) setLeaving(false);
@@ -43,7 +44,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
         setLeaving(true);
         repeat();
       })
-      .catch(() => setError(t('drawing.closeFailed')))
+      .catch(() => setError(t(`${documentNamespace}.closeFailed`)))
       .finally(() => {
         navigating.current = false;
       });
@@ -61,8 +62,8 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
     navigating.current = true;
     void dialogs
       .confirm({
-        title: t('drawing.discard'),
-        message: t('drawing.discardDetails'),
+        title: t(`${documentNamespace}.discard`),
+        message: t(`${documentNamespace}.discardDetails`),
         confirmLabel: t('miniapps.discard'),
         destructive: true,
       })
@@ -75,7 +76,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       .finally(() => {
         navigating.current = false;
       });
-  }, [dialogs, disablePrevention]);
+  }, [dialogs, disablePrevention, documentNamespace]);
   const item = read.data;
   const cards = useConversationCards(item?.space_id ?? '');
   const app = item?.app;
@@ -99,7 +100,8 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
     spec?.tools.filter(
       (tool) =>
         tool.visibility.includes('app') &&
-        !(spec.id === 'excalidraw' && tool.name.startsWith('app_document_')),
+        !(spec.id === 'excalidraw' && tool.name.startsWith('app_document_')) &&
+        !(spec.id === 'deckcraft' && tool.name.startsWith('app_binary_')),
     ) ?? [];
   function call(tool: string, args: Record<string, unknown>) {
     if (busy) return;

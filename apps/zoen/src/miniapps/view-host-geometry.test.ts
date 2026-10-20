@@ -179,6 +179,7 @@ async function fixture() {
     './device-consent': { DeviceConsent: 'DeviceConsent' },
     './use-device-consent': { useDeviceConsent: () => consent },
     './canonical-view': {},
+    './deckcraft-view': {},
   };
   const module = { exports: {} as { ReadyView: (props: unknown) => Element } };
   runInNewContext(compiled.outputFiles[0]!.text, {

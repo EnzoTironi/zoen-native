@@ -26,6 +26,7 @@ import { frameAuthority, frameClosures } from './lifetime';
 import { DeviceConsent } from './device-consent';
 import { useDeviceConsent } from './use-device-consent';
 import { CanonicalDrawingView } from './canonical-view';
+import { DeckcraftView } from './deckcraft-view';
 import type { MiniappDocumentController } from './document-controller';
 
 export function MiniappView({
@@ -41,7 +42,13 @@ export function MiniappView({
   onDocumentCopied?: (itemId: string) => void;
   onDocumentDiscard?: () => void;
 }) {
-  return props.spec.id === 'excalidraw' ? (
+  return props.spec.id === 'deckcraft' ? (
+    <DeckcraftView
+      {...props}
+      onDocumentController={onDocumentController}
+      onDocumentDiscard={onDocumentDiscard}
+    />
+  ) : props.spec.id === 'excalidraw' ? (
     <CanonicalDrawingView
       {...props}
       onDocumentController={onDocumentController}
