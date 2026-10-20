@@ -60,31 +60,13 @@ export function MiniappRail({
           />
         </View>
       ) : null}
-      {label || editing ? (
-        <View
-          style={{
-            paddingHorizontal: 20,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            minHeight: 44,
-          }}
+      {label ? (
+        <Text
+          accessibilityRole="header"
+          style={{ color: colors.text, fontSize: 18, fontWeight: '600', paddingHorizontal: 20 }}
         >
-          <Text
-            accessibilityRole="header"
-            style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
-          >
-            {label ?? t('home.rearrange')}
-          </Text>
-          {editing ? (
-            <NativeButton
-              testID="app-rail-rearrange-done"
-              label={saving ? t('home.saving') : t('home.doneRearranging')}
-              disabled={saving}
-              onPress={() => setEditing(false)}
-            />
-          ) : null}
-        </View>
+          {label}
+        </Text>
       ) : null}
       {miniapps.length ? (
         <Animated.ScrollView
@@ -127,6 +109,16 @@ export function MiniappRail({
             ))
           )}
         </Animated.ScrollView>
+      ) : null}
+      {editing ? (
+        <View style={{ paddingHorizontal: 20, alignItems: 'flex-end', minHeight: 44 }}>
+          <NativeButton
+            testID="app-rail-rearrange-done"
+            label={saving ? t('home.saving') : t('home.doneRearranging')}
+            disabled={saving}
+            onPress={() => setEditing(false)}
+          />
+        </View>
       ) : null}
     </View>
   );

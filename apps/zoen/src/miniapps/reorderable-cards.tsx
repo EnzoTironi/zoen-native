@@ -534,7 +534,7 @@ function DraggableCard({
     hitSlop: controlsVisible
       ? { top: -(APP_CARD_METRICS.padding + APP_CARD_METRICS.menuSize) }
       : undefined,
-    activateAfterLongPress: editing ? 120 : 450,
+    activateAfterLongPress: editing ? 0 : 450,
     minDistance: 0,
     maxPointers: 1,
     cancelsTouchesInView: true,

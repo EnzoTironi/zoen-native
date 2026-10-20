@@ -577,3 +577,37 @@ test('removing the final card cannot strand Done in Saving and restore stays rea
   assert.equal(menu.props.hiddenCount, 1);
   assert.equal(typeof menu.props.onRestoreHidden, 'function');
 });
+
+test('entering rail editing keeps the held card before Done without inserting a header above it', () => {
+  for (const label of [undefined, 'Apps']) {
+    const before = fixture().MiniappRail({
+      items: [item('stat')],
+      label,
+      onReorder: async () => {},
+    });
+    const after = fixture(1, 393, { stateValues: [true, false] }).MiniappRail({
+      items: [item('stat')],
+      label,
+      onReorder: async () => {},
+    });
+    const children = (tree: Element) =>
+      (tree.props.children as (Element | null)[]).filter(Boolean) as Element[];
+    const normal = children(before),
+      editing = children(after);
+    const normalRail = normal.findIndex((node) => node.type === 'ScrollView');
+    const editingRail = editing.findIndex((node) => node.type === 'ScrollView');
+    assert.equal(editingRail, normalRail);
+    assert.equal(
+      JSON.stringify(editing.slice(0, editingRail)),
+      JSON.stringify(normal.slice(0, normalRail)),
+    );
+    const doneRow = editing.findIndex((node) =>
+      nodes(node).some((child) => child.props.testID === 'app-rail-rearrange-done'),
+    );
+    assert.ok(doneRow > editingRail);
+    assert.equal(
+      nodes(after).filter((node) => node.props.children === t('home.rearrange')).length,
+      0,
+    );
+  }
+});
