@@ -1,0 +1,192 @@
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -2120,6 +2120,8 @@
+ #[cfg(test)]
+ mod host_compact_tests;
+ #[cfg(test)]
++mod host_phone_landscape_tests;
++#[cfg(test)]
+ mod huge_deck_tests;
+ #[cfg(test)]
+ mod ime_tests;
+--- a/crates/ui-egui/src/host_layout.rs
++++ b/crates/ui-egui/src/host_layout.rs
+@@ -76,10 +76,11 @@
+ pub fn current(ctx: &egui::Context) -> Option<HostLayout> {
+     ctx.data(|data| data.get_temp(egui::Id::new(ID)))
+ }
+-/// A hosted portrait-sized frame keeps the editor canvas full width.
++/// A narrow or phone-height hosted frame keeps the editor canvas full width.
+ /// This ephemeral breakpoint never rewrites standalone preferences or document state.
+ pub fn compact(ctx: &egui::Context) -> bool {
+-    current(ctx).is_some() && ctx.content_rect().width() < 640.0
++    let safe = ctx.content_rect();
++    current(ctx).is_some() && (safe.width() < 640.0 || safe.height() <= 500.0)
+ }
+ /// Only popup controls avoid the floating native corner, never a global right gutter.
+ pub fn popup_rect(ctx: &egui::Context) -> Rect {
+--- /dev/null
++++ b/crates/ui-egui/src/host_phone_landscape_tests.rs
+@@ -0,0 +1,162 @@
++//! Real hosted layout tests; native keyboard/touch behavior needs its own proof.
++#![allow(clippy::unwrap_used, clippy::expect_used)]
++use crate::{
++    Services, SlideApp,
++    host_layout::{self, CloseRect, HostLayout, Insets},
++    theme::Brightness,
++};
++use deckcraft_engine::Session;
++use egui::{Event, Rect, accesskit::Role, pos2, vec2};
++use egui_kittest::{
++    Harness,
++    kittest::{NodeT, Queryable},
++};
++use serde_json::json;
++use std::sync::Arc;
++
++struct State {
++    app: SlideApp,
++    layout: Option<HostLayout>,
++}
++fn layout(width: f32, height: f32, left: f32, right: f32) -> HostLayout {
++    let top = if width < height { 62.0 } else { 0.0 };
++    HostLayout {
++        width,
++        height,
++        insets: Insets { top, left, right, bottom: 21.0 },
++        close_button: Some(CloseRect { x: width - right - 56.0, y: top + 8.0, width: 44.0, height: 44.0 }),
++        theme: Some(Brightness::Dark),
++    }
++}
++fn fixture(layout: Option<HostLayout>, size: egui::Vec2) -> Harness<'static, State> {
++    let mut h = Harness::builder().with_size(size).build_ui_state(
++        |ui, s: &mut State| {
++            if let Some(layout) = s.layout {
++                host_layout::install(ui.ctx(), layout);
++            }
++            s.app.logic(ui.ctx());
++            s.app.ui(ui);
++        },
++        State { app: SlideApp::new(Session::with_new(), Services::default()), layout },
++    );
++    if let Some(layout) = layout {
++        h.input_mut().safe_area_insets = Some(layout.safe_insets(Rect::from_min_size(pos2(0.0, 0.0), size)));
++    }
++    h.run_steps(3);
++    h
++}
++fn resize(h: &mut Harness<'_, State>, layout: HostLayout) {
++    h.state_mut().layout = Some(layout);
++    h.set_size(vec2(layout.width, layout.height));
++    h.input_mut().safe_area_insets = Some(layout.safe_insets(Rect::from_min_size(pos2(0.0, 0.0), vec2(layout.width, layout.height))));
++    h.run_steps(3);
++}
++
++#[test]
++fn hosted_phone_landscape_renders_compact_status_full_canvas_and_safe_touch_controls() {
++    for (width, height) in [(874.0, 402.0), (852.0, 393.0), (932.0, 430.0)] {
++        for (left, right) in [(62.0, 0.0), (0.0, 62.0)] {
++            let layout = layout(width, height, left, right);
++            let h = fixture(Some(layout), vec2(width, height));
++            let safe = h.ctx.content_rect();
++            assert!(host_layout::compact(&h.ctx));
++            let canvas = h.state().app.canvas_rect.unwrap();
++            assert!(canvas.width() >= safe.width() - 16.0, "no persistent thumbnails on a short phone canvas: {canvas:?}");
++            assert!(canvas.height() >= 180.0, "collapsed ribbon keeps actual editing space: {canvas:?}");
++            assert!(safe.contains_rect(canvas));
++            let close = layout.close_rect(h.ctx.viewport_rect()).unwrap();
++            let mut hits = vec![];
++            for label in [
++                "Export PDF or PowerPoint",
++                "Slides",
++                "Format inspector",
++                "Search commands",
++                "Present",
++                "Speaker notes",
++                "Fit slide to current window",
++            ] {
++                let hit = h.get_by_label(label).rect();
++                assert!(hit.width() >= 43.9 && hit.height() >= 43.9, "{label}: {hit:?}");
++                assert!(safe.contains_rect(hit), "{label}: {hit:?} outside {safe:?}");
++                assert!(!hit.intersects(close), "{label} must leave native Close free");
++                assert!(hits.iter().all(|other: &Rect| !other.intersects(hit)), "{label} overlaps another primary action");
++                hits.push(hit);
++            }
++            assert!(h.query_by_label("Slide 1 of 1").is_some(), "actual compact status replaces the desktop language/zoom strip");
++            assert!(h.ctx.global_style().visuals.dark_mode);
++        }
++    }
++}
++
++#[test]
++fn compact_uses_safe_height_boundary_and_does_not_change_standalone_short_windows() {
++    for (height, compact) in [(521.0, true), (522.0, false)] {
++        let layout = layout(874.0, height, 0.0, 0.0);
++        let h = fixture(Some(layout), vec2(874.0, height));
++        assert_eq!(host_layout::compact(&h.ctx), compact, "safe height {}", h.ctx.content_rect().height());
++        assert_eq!(h.query_by_label("Speaker notes").is_some(), compact, "actual compact status branch");
++    }
++    let standalone = fixture(None, vec2(874.0, 402.0));
++    assert!(!host_layout::compact(&standalone.ctx));
++    assert!(standalone.query_by_label("Speaker notes").is_none());
++    assert!(standalone.state().app.ui.notes, "original standalone preferences remain intact");
++}
++
++#[test]
++fn actual_ribbon_choice_and_visible_notes_draft_survive_both_phone_landscape_edges() {
++    let portrait = layout(430.0, 932.0, 0.0, 0.0);
++    let mut h = fixture(Some(portrait), vec2(430.0, 932.0));
++    h.get_by_label("Home").click();
++    h.run_steps(2);
++    assert!(!h.state().app.ui.ribbon_collapsed, "a real tab tap expands the chosen ribbon");
++    h.get_by_label("Speaker notes").click();
++    h.run_steps(2);
++    h.query_all_by_role(Role::MultilineTextInput).next().expect("actual Notes input").click();
++    h.run_steps(1);
++    h.event(Event::Text("Visible Notes stay live while rotating".into()));
++    h.run_steps(1);
++    let focus = h.ctx.memory(|m| m.focused()).unwrap();
++    let doc = h.state().app.session.active().unwrap().doc.clone();
++    for next in [layout(874.0, 402.0, 62.0, 0.0), layout(874.0, 402.0, 0.0, 62.0), portrait] {
++        resize(&mut h, next);
++        assert!(!h.state().app.ui.ribbon_collapsed);
++        assert_eq!(h.state().app.ui.tab, "Home");
++        assert!(h.state().app.ui.notes);
++        assert_eq!(h.ctx.memory(|m| m.focused()), Some(focus));
++        let input = h.query_all_by_role(Role::MultilineTextInput).next().expect("same visible Notes input");
++        assert_eq!(input.accesskit_node().value().as_deref(), Some("Visible Notes stay live while rotating"));
++        assert!(Arc::ptr_eq(&doc, &h.state().app.session.active().unwrap().doc), "rotation cannot commit a still-mounted draft");
++    }
++}
++
++#[test]
++fn inspector_actual_focus_and_buffer_survive_phone_landscape_and_genuine_wide_panel_transition() {
++    let portrait = layout(430.0, 932.0, 0.0, 0.0);
++    let mut h = fixture(Some(portrait), vec2(430.0, 932.0));
++    let shape = h.state().app.session.active().unwrap().doc.slides[0].shapes[0].id.0;
++    h.state_mut().app.run("edit.select", json!({"ids":[shape]})).unwrap();
++    h.state_mut().app.run("view.pane", json!({"pane":"format","tab":"size"})).unwrap();
++    h.run_steps(4);
++    h.query_all_by_role(Role::MultilineTextInput).next().expect("actual Alt Text field").click();
++    h.run_steps(1);
++    let focus = h.ctx.memory(|m| m.focused()).unwrap();
++    h.event(Event::Text("Retain the same inspector draft".into()));
++    h.run_steps(1);
++    let before = h.state().app.session.active().unwrap();
++    let doc = before.doc.clone();
++    let revision = before.revision;
++    let undo = before.history.undo.len();
++    for (next, compact) in [(layout(874.0, 402.0, 62.0, 0.0), true), (layout(1000.0, 700.0, 0.0, 0.0), false), (portrait, true)] {
++        resize(&mut h, next);
++        assert_eq!(host_layout::compact(&h.ctx), compact);
++        assert_eq!(h.ctx.memory(|m| m.focused()), Some(focus));
++        let input = h.query_all_by_role(Role::MultilineTextInput).next().expect("same actual Alt Text field");
++        assert_eq!(input.accesskit_node().value().as_deref(), Some("Retain the same inspector draft"));
++        let state = h.state().app.session.active().unwrap();
++        assert!(Arc::ptr_eq(&doc, &state.doc), "layout must not commit the unblurred draft");
++        assert_eq!((state.revision, state.history.undo.len()), (revision, undo));
++    }
++    h.ctx.memory_mut(|m| m.surrender_focus(focus));
++    h.run_steps(2);
++    assert_eq!(h.state().app.session.active().unwrap().doc.slides[0].shapes[0].descr, "Retain the same inspector draft");
++}

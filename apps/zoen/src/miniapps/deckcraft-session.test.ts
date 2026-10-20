@@ -17,7 +17,12 @@ async function fixture() {
   let active = true;
   let disposals = 0;
   let transport: Transport;
-  const states: { opened: boolean; blocked: boolean; error: string | null }[] = [];
+  const states: {
+    opened: boolean;
+    blocked: boolean;
+    error: string | null;
+    reason?: string | null;
+  }[] = [];
   const calls: string[] = [];
   const shares: unknown[] = [];
   let holdShare: Promise<void> = Promise.resolve();
@@ -151,6 +156,52 @@ test('failed ACK preserves the mounted session and allows explicit successful re
   await f.session.controller.flush();
   assert.equal(f.states.at(-1)?.error, null);
   assert.ok(f.calls.includes('resume_document'));
+});
+
+test('real SDK feedback carries only fixed categories; ordinary error does not impersonate recovery or clear a failed Close', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  await f.open();
+  const update = (reason: string) =>
+    f.app.updateModelContext({
+      structuredContent: {
+        zoen: {
+          binarySave: {
+            itemId: 'deck-one',
+            phase: 'error',
+            ready: true,
+            reason,
+          },
+        },
+      },
+    });
+  for (const reason of ['autosave_busy', 'autosave_failed', 'layout_failed', 'export_failed']) {
+    await update(reason);
+    assert.equal(f.states.at(-1)?.blocked, false);
+    assert.equal(f.states.at(-1)?.reason, reason);
+    assert.ok(f.states.at(-1)?.error);
+  }
+  const payload = 'private document text https://private.invalid/presentation';
+  await update(payload);
+  assert.equal(f.states.at(-1)?.reason, null);
+  assert.equal(JSON.stringify(f.states).includes(payload), false);
+  assert.equal(f.states.at(-1)?.blocked, false);
+  f.app.onteardown = async () => {
+    throw Error('Actual final-save denial');
+  };
+  await assert.rejects(f.session.controller.flush({ retire: true }), /Actual final-save denial/);
+  const failure = f.states.at(-1)?.error;
+  assert.equal(f.states.at(-1)?.blocked, true);
+  await update('layout_failed');
+  await f.open();
+  assert.equal(f.states.at(-1)?.blocked, true);
+  assert.equal(f.states.at(-1)?.error, failure);
+  assert.equal(f.disposals(), 0);
+  f.app.onteardown = async () => ({});
+  await f.session.controller.flush();
+  assert.equal(f.states.at(-1)?.blocked, false);
+  assert.equal(f.states.at(-1)?.error, null);
+  assert.equal(f.states.at(-1)?.reason, null);
 });
 test('background ACK followed by admitted Close stays serialized and never reopens input', async (t) => {
   const f = await fixture();

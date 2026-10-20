@@ -205,3 +205,192 @@ test("host appearance uses the existing bounded UI-only layout and a theme-only 
     assert.equal(hostLayout({ ...context, theme }), null);
   ui.dispose();
 });
+
+test("shared SDK adapter snapshots trusted formats while keeping unsupported guest intents refused", async () => {
+  const { installManagedHostUI: installShared } =
+    await import("../../../packages/zoen-miniapp-sdk/src/managed-host-ui.ts");
+  const formats = ["pdf"];
+  let callback;
+  const calls = [];
+  const ui = installShared({
+    engine: {
+      applyHostLayout: async () => ({
+        metadata: '{"layoutAccepted":true}',
+        bytes: new Uint8Array(),
+      }),
+      setExportIntentHandler: (next) => {
+        callback = next;
+      },
+    },
+    exportFormats: formats,
+    share: async (format) => {
+      calls.push(format);
+      return {};
+    },
+    exportRefusedMessage: "Trusted adapter share refusal",
+    ready: () => true,
+    onError: (error) => {
+      throw error;
+    },
+  });
+  formats.push("pptx");
+  formats.splice(0, 1);
+  assert.equal(
+    callback("pptx"),
+    false,
+    "later config mutation cannot broaden the installed policy",
+  );
+  assert.equal(callback("pdf"), true, "the installed trusted snapshot remains exact");
+  await tick();
+  assert.deepEqual(
+    calls,
+    ["pdf"],
+    "only the format crosses this adapter, never guest artifact/actor fields",
+  );
+  assert.equal(callback('{"format":"pdf","actor":"guest"}'), false);
+  ui.dispose();
+});
+
+test("shared pending-layout retirement ignores late ACK/errors and cannot admit export into a retired owner", async () => {
+  const { installManagedHostUI: installShared } =
+    await import("../../../packages/zoen-miniapp-sdk/src/managed-host-ui.ts");
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  let callback;
+  let requests = 0;
+  const errors = [];
+  const ui = installShared({
+    engine: {
+      applyHostLayout: async () => {
+        requests++;
+        await held;
+        return undefined;
+      },
+      setExportIntentHandler: (next) => {
+        callback = next;
+      },
+    },
+    exportFormats: ["pdf"],
+    share: async () => {
+      assert.fail("retired UI must not request sharing");
+    },
+    exportRefusedMessage: "Trusted adapter share refusal",
+    ready: () => true,
+    onError: (error) => errors.push(error),
+  });
+  const old = callback;
+  const first = ui.layout(context);
+  const queued = ui.layout({ ...context, containerDimensions: { width: 440, height: 932 } });
+  ui.dispose();
+  assert.equal(old("pdf"), false);
+  assert.equal(callback, undefined);
+  release();
+  await Promise.all([first, queued]);
+  assert.equal(requests, 1);
+  assert.deepEqual(errors, [], "a late malformed ACK cannot publish into a retired UI");
+  await assert.rejects(ui.layout(context), /retired/);
+});
+
+test("shared layout adapter preserves the original bounded exact ACK contract", async () => {
+  const { installManagedHostUI: installShared } =
+    await import("../../../packages/zoen-miniapp-sdk/src/managed-host-ui.ts");
+  for (const reply of [
+    undefined,
+    { metadata: {}, bytes: new Uint8Array() },
+    { metadata: "x".repeat(1025), bytes: new Uint8Array() },
+    { metadata: '{"layoutAccepted":false}', bytes: new Uint8Array() },
+    { metadata: '{"layoutAccepted":true}', bytes: new Uint8Array([1]) },
+  ]) {
+    const errors = [];
+    const ui = installShared({
+      engine: {
+        applyHostLayout: async () => reply,
+        setExportIntentHandler: () => {},
+      },
+      exportFormats: ["pdf"],
+      share: async () => ({}),
+      exportRefusedMessage: "Trusted adapter share refusal",
+      ready: () => true,
+      onError: (error) => errors.push(error),
+    });
+    await assert.rejects(ui.layout(context), /acknowledge host geometry/);
+    assert.equal(errors.length, 1);
+    ui.dispose();
+  }
+});
+
+test("Deck facade keeps its trusted item/tool/formats when layout metadata advertises another editor", async () => {
+  let callback;
+  const calls = [];
+  const ui = installManagedHostUI({
+    itemId: "trusted-deck-item",
+    ready: () => true,
+    onError: (error) => {
+      throw error;
+    },
+    app: {
+      callServerTool: async (call) => {
+        calls.push(call);
+        return {};
+      },
+    },
+    engine: {
+      zoenHostOnExport: (next) => {
+        callback = next;
+      },
+      zoenHostRequest: async () => ({
+        metadata: '{"layoutAccepted":true}',
+        bytes: new Uint8Array(),
+      }),
+    },
+  });
+  await ui.layout({
+    ...context,
+    kind: "different-editor",
+    revision: "guest-revision",
+    capabilities: ["share:anything"],
+    exportFormats: ["png"],
+    itemId: "guest-item",
+  });
+  assert.equal(callback("png"), false);
+  assert.equal(callback("pdf"), true);
+  await tick();
+  assert.deepEqual(calls, [
+    { name: "app_binary_share", arguments: { id: "trusted-deck-item", format: "pdf" } },
+  ]);
+  ui.dispose();
+});
+
+test("shared owner labels only its fixed layout/export catch branches, not guest or exception metadata", async () => {
+  let callback;
+  const errors = [];
+  const ui = installManagedHostUI({
+    itemId: "owned-artifact",
+    ready: () => true,
+    onError: (error, source) => errors.push({ error, source }),
+    app: { callServerTool: async () => ({ isError: true }) },
+    engine: {
+      zoenHostOnExport: (next) => {
+        callback = next;
+      },
+      zoenHostRequest: async () => ({
+        metadata: '{"layoutAccepted":false}',
+        bytes: new Uint8Array(),
+      }),
+    },
+  });
+  await assert.rejects(
+    ui.layout({ ...context, errorSource: "export" }),
+    /acknowledge host geometry/,
+  );
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].source, "layout");
+  assert.equal(callback("pdf"), true);
+  await tick();
+  assert.equal(errors.length, 2);
+  assert.equal(errors[1].source, "export");
+  assert.match(errors[1].error.message, /native presentation share was refused/);
+  ui.dispose();
+});

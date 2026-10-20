@@ -1,0 +1,123 @@
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -493,7 +493,7 @@
+     pub last_recovery: f64,
+     /// Quit was confirmed (changes saved or discarded): let the window close.
+     pub quit_confirmed: bool,
+-    pub(crate) notes_buf: (u64, usize, notes::Draft),
++    pub(crate) notes_buf: (u64, deckcraft_model::SlideId, notes::Draft),
+     /// Faces borrowed from the font database for text the interface fonts can't draw (#101).
+     pub ui_fonts: uifonts::UiFonts,
+     /// Thumbnail pane drag (slide index, current drop index).
+@@ -576,7 +576,7 @@
+             last_time: 0.0,
+             last_recovery: 0.0,
+             quit_confirmed: false,
+-            notes_buf: (0, usize::MAX, notes::Draft::default()),
++            notes_buf: (0, deckcraft_model::SlideId(0), notes::Draft::default()),
+             ui_fonts: uifonts::UiFonts::default(),
+             thumb_drag: None,
+             selpane: selpane::State::default(),
+--- a/crates/ui-egui/src/status.rs
++++ b/crates/ui-egui/src/status.rs
+@@ -139,8 +139,13 @@
+     if !app.notes_buf.2.edited {
+         return Ok(());
+     }
+-    let (uid, index) = (app.notes_buf.0, app.notes_buf.1);
+-    let Some(notes) = app.session.active().filter(|d| d.uid == uid).and_then(|d| d.doc.slides.get(index)).map(|s| &s.notes) else {
++    let (uid, slide) = (app.notes_buf.0, app.notes_buf.1);
++    let Some((index, notes)) = app
++        .session
++        .active()
++        .filter(|d| d.uid == uid)
++        .and_then(|d| d.doc.slides.iter().enumerate().find(|(_, s)| s.id == slide).map(|(index, s)| (index, &s.notes)))
++    else {
+         // Never attribute a retained draft to another document or missing slide.
+         return Err("The original speaker-notes slide is unavailable.".into());
+     };
+@@ -159,13 +164,14 @@
+     if st.selection.target != deckcraft_engine::Target::Slides {
+         return;
+     }
++    let Some(slide) = st.current_slide().map(|s| s.id) else { return };
+     let (idx, uid) = (st.selection.slide, st.uid);
+     // Save an edited draft once the field has lost focus or another slide is shown (before
+     // anything reloads it), to the slide it was written on.
+     let id = egui::Id::new("notes_edit");
+     let focused = ui.ctx().memory(|m| m.has_focus(id));
+     if app.notes_buf.2.edited
+-        && (!focused || app.notes_buf.0 != uid || app.notes_buf.1 != idx)
++        && (!focused || app.notes_buf.0 != uid || app.notes_buf.1 != slide)
+         && let Err(error) = flush_notes_draft(app)
+     {
+         app.notify(error);
+@@ -183,8 +189,8 @@
+             ui.painter()
+                 .line_segment([pos2(rect.min.x - 8.0, rect.min.y - 6.0), pos2(rect.max.x + 8.0, rect.min.y - 6.0)], Stroke::new(1.0, t.separator));
+             // Keep a local draft per slide, following the notes while the field isn't focused.
+-            if app.notes_buf.0 != uid || app.notes_buf.1 != idx || (!focused && app.notes_buf.2.body != notes) {
+-                app.notes_buf = (uid, idx, crate::notes::Draft::new(&notes));
++            if app.notes_buf.0 != uid || app.notes_buf.1 != slide || (!focused && app.notes_buf.2.body != notes) {
++                app.notes_buf = (uid, slide, crate::notes::Draft::new(&notes));
+             }
+             let mut draft = app.notes_buf.2.clone();
+             let look = crate::notes::Look { size: 13.0, color: None };
+--- a/crates/ui-egui/src/host_compact_tests.rs
++++ b/crates/ui-egui/src/host_compact_tests.rs
+@@ -322,3 +322,55 @@
+     h.run_steps(2);
+     assert_eq!(h.state().app.session.active().unwrap().doc.slides[0].shapes[0].descr, "Uncommitted inspector draft");
+ }
++
++#[test]
++fn hosted_denied_notes_retry_resolves_original_slide_after_reorder() {
++    let mut h = fixture(Some(portrait(430.0, Brightness::Dark)));
++    h.state_mut().app.run("slide.new", json!({"at":1,"layout":"blank"})).unwrap();
++    h.state_mut().app.run("slide.go", json!({"index":0})).unwrap();
++    h.run_steps(2);
++    let origin = h.state().app.session.active().unwrap().doc.slides[0].id;
++    type_hosted_notes(&mut h, "Only the original slide may receive this");
++    h.state_mut().app.session.command_policy =
++        Some(|id, _| if id == "slide.notes" { Err(deckcraft_engine::EngineError::Other("notes rejected".into())) } else { Ok(()) });
++    h.get_by_label("Speaker notes").click();
++    h.run_steps(2);
++    assert!(h.state().app.notes_buf.2.edited);
++    h.state_mut().app.run("slide.move", json!({"from":0,"to":1})).unwrap();
++    h.run_steps(2);
++    assert_eq!(h.state().app.session.active().unwrap().doc.slides[1].id, origin);
++    let undo = h.state().app.session.active().unwrap().history.undo.len();
++    h.state_mut().app.session.command_policy = None;
++    h.run_steps(2);
++    let document = h.state().app.session.active().unwrap();
++    assert_eq!(document.doc.slides[0].notes.text(), "");
++    assert_eq!(document.doc.slides[1].notes.text(), "Only the original slide may receive this");
++    assert_eq!(document.history.undo.len(), undo + 1);
++    assert!(!h.state().app.notes_buf.2.edited);
++    h.run_steps(2);
++    assert_eq!(h.state().app.session.active().unwrap().history.undo.len(), undo + 1);
++}
++
++#[test]
++fn hosted_denied_notes_never_move_to_replacement_slide_after_deletion() {
++    let mut h = fixture(Some(portrait(430.0, Brightness::Dark)));
++    h.state_mut().app.run("slide.new", json!({"at":1,"layout":"blank"})).unwrap();
++    h.state_mut().app.run("slide.go", json!({"index":0})).unwrap();
++    h.run_steps(2);
++    let origin = h.state().app.session.active().unwrap().doc.slides[0].id;
++    type_hosted_notes(&mut h, "Retain this instead of writing into a different slide");
++    h.state_mut().app.session.command_policy =
++        Some(|id, _| if id == "slide.notes" { Err(deckcraft_engine::EngineError::Other("notes rejected".into())) } else { Ok(()) });
++    h.get_by_label("Speaker notes").click();
++    h.run_steps(2);
++    h.state_mut().app.run("slide.delete", json!({"index":0})).unwrap();
++    let document = h.state().app.session.active().unwrap().doc.clone();
++    let undo = h.state().app.session.active().unwrap().history.undo.len();
++    h.state_mut().app.session.command_policy = None;
++    h.run_steps(2);
++    assert!(h.state().app.session.active().unwrap().doc.slides.iter().all(|s| s.id != origin && s.notes.text().is_empty()));
++    assert!(Arc::ptr_eq(&document, &h.state().app.session.active().unwrap().doc));
++    assert_eq!(h.state().app.session.active().unwrap().history.undo.len(), undo);
++    assert!(h.state().app.notes_buf.2.edited);
++    assert_eq!(h.state().app.notes_buf.2.text, "Retain this instead of writing into a different slide");
++}

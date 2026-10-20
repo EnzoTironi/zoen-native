@@ -1,0 +1,164 @@
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -1848,6 +1848,11 @@
+         } else {
+             self.ui_contents(ui);
+         }
++        if host_layout::current(ui.ctx()).is_some() {
++            // A view toggle can remove Notes before its TextEdit gets a blur frame.
++            // Finish that real document edit before the host observes/snapshots us.
++            status::flush_unmounted_notes(self);
++        }
+     }
+ 
+     fn ui_contents(&mut self, ui: &mut egui::Ui) {
+--- a/crates/ui-egui/src/status.rs
++++ b/crates/ui-egui/src/status.rs
+@@ -119,6 +119,39 @@
+     s.notes.paragraphs.iter().flat_map(|p| &p.runs).find_map(|r| r.props.lang.clone())
+ }
+ 
++/// Preserve a hosted Notes draft when controls remove its editor this frame.
++/// A still-mounted editor retains its normal focus/IME/rotation behavior.
++pub(crate) fn flush_unmounted_notes(app: &mut SlideApp) {
++    let mounted = app.ui.notes
++        && app.show.is_none()
++        && app.backstage.is_none()
++        && matches!(app.ui.view, ViewMode::Normal | ViewMode::Outline | ViewMode::Reading)
++        && app.session.active().is_some_and(|d| d.selection.target == deckcraft_engine::Target::Slides);
++    if mounted || !app.notes_buf.2.edited {
++        return;
++    }
++    if flush_notes_draft(app).is_err() {
++        app.notify("Speaker notes could not be saved. The draft is retained for retry.");
++    }
++}
++
++fn flush_notes_draft(app: &mut SlideApp) -> Result<(), String> {
++    if !app.notes_buf.2.edited {
++        return Ok(());
++    }
++    let (uid, index) = (app.notes_buf.0, app.notes_buf.1);
++    let Some(notes) = app.session.active().filter(|d| d.uid == uid).and_then(|d| d.doc.slides.get(index)).map(|s| &s.notes) else {
++        // Never attribute a retained draft to another document or missing slide.
++        return Err("The original speaker-notes slide is unavailable.".into());
++    };
++    if *notes != app.notes_buf.2.body {
++        // Keep the exact draft retryable; an error is not a successful commit.
++        app.run("slide.notes", json!({"body": app.notes_buf.2.body, "index": index}))?;
++    }
++    app.notes_buf.2.edited = false;
++    Ok(())
++}
++
+ /// The speaker notes editor under the slide.
+ pub fn notes_pane(app: &mut SlideApp, ui: &mut Ui) {
+     let t = Tokens::get(ui.ctx());
+@@ -131,11 +164,12 @@
+     // anything reloads it), to the slide it was written on.
+     let id = egui::Id::new("notes_edit");
+     let focused = ui.ctx().memory(|m| m.has_focus(id));
+-    if app.notes_buf.2.edited && (!focused || app.notes_buf.0 != uid || app.notes_buf.1 != idx) {
+-        app.notes_buf.2.edited = false;
+-        if app.notes_buf.0 == uid {
+-            let _ = app.run("slide.notes", json!({"body": app.notes_buf.2.body, "index": app.notes_buf.1}));
+-        }
++    if app.notes_buf.2.edited
++        && (!focused || app.notes_buf.0 != uid || app.notes_buf.1 != idx)
++        && let Err(error) = flush_notes_draft(app)
++    {
++        app.notify(error);
++        return;
+     }
+     let notes = app.session.active().and_then(|st| st.current_slide()).map(|s| s.notes.clone()).unwrap_or_default();
+     egui::Panel::bottom("notes")
+@@ -245,11 +279,13 @@
+                 draft.edited = false;
+                 let _ = app.run("slide.notes", json!({"body": draft.body, "index": idx}));
+             }
+-            if r.lost_focus() && draft.edited {
+-                draft.edited = false;
+-                let _ = app.run("slide.notes", json!({"body": draft.body, "index": idx}));
+-            }
+             app.notes_buf.2 = draft;
++            if r.lost_focus()
++                && app.notes_buf.2.edited
++                && let Err(error) = flush_notes_draft(app)
++            {
++                app.notify(error);
++            }
+         });
+ }
+ 
+--- a/crates/ui-egui/src/host_compact_tests.rs
++++ b/crates/ui-egui/src/host_compact_tests.rs
+@@ -184,6 +184,69 @@
+     assert!(!h.state().app.ui.ribbon_collapsed, "rotation must not collapse a chosen ribbon");
+     assert!(h.state().app.notes_buf.2.text.contains("A live note"));
+     assert!(Arc::ptr_eq(&doc, &h.state().app.session.active().unwrap().doc), "layout cannot commit or replace the live document");
++}
++
++fn type_hosted_notes(h: &mut Harness<'_, State>, text: &str) {
++    use egui::accesskit::Role;
++    h.get_by_label("Speaker notes").click();
++    h.run_steps(2);
++    h.query_all_by_role(Role::MultilineTextInput).next().expect("actual Notes TextEdit").click();
++    h.run_steps(1);
++    h.event(Event::Text(text.into()));
++    h.run_steps(1);
++    assert!(h.state().app.notes_buf.2.edited, "typing is still a live local draft before blur");
++    assert_eq!(h.state().app.session.active().unwrap().doc.slides[0].notes.text(), "");
++}
++
++#[test]
++fn hosted_removing_notes_editor_commits_real_draft_before_snapshot_or_retirement() {
++    for action in ["Speaker notes", "Slides", "File", "Present"] {
++        let mut h = fixture(Some(portrait(430.0, Brightness::Dark)));
++        let text = format!("Notes retained after {action}");
++        let before = h.state().app.session.active().unwrap().history.undo.len();
++        type_hosted_notes(&mut h, &text);
++        h.get_by_label(action).click();
++        h.run_steps(3);
++        let state = h.state().app.session.active().unwrap();
++        assert_eq!(state.doc.slides[0].notes.text(), text, "{action} removed the editor without discarding its draft");
++        assert_eq!(state.history.undo.len(), before + 1, "one real slide.notes document edit");
++        assert!(!h.state().app.notes_buf.2.edited);
++        // A genuine PPTX roundtrip consumes Session document bytes, not the UI buffer.
++        let bytes = deckcraft_engine::cmd::file::save_bytes(&state.doc, "pptx").unwrap();
++        let mut reopened = Session::with_new();
++        reopened.execute("file.openBytes", &json!({"name":"retained-notes.pptx", "data":deckcraft_engine::cmd::base64_encode(&bytes)})).unwrap();
++        assert_eq!(reopened.active().unwrap().doc.slides[0].notes.text(), text);
++        h.run_steps(3);
++        assert_eq!(h.state().app.session.active().unwrap().history.undo.len(), before + 1, "later frames must not duplicate the edit");
++    }
++}
++
++#[test]
++fn hosted_hidden_notes_preserve_a_rejected_command_and_retry_exact_draft() {
++    let mut h = fixture(Some(portrait(430.0, Brightness::Dark)));
++    type_hosted_notes(&mut h, "Keep this exact draft");
++    let before = h.state().app.session.active().unwrap().doc.clone();
++    let undo = h.state().app.session.active().unwrap().history.undo.len();
++    h.state_mut().app.session.command_policy =
++        Some(|id, _| if id == "slide.notes" { Err(deckcraft_engine::EngineError::Other("notes command rejected".into())) } else { Ok(()) });
++    h.get_by_label("Speaker notes").click();
++    h.run_steps(3);
++    assert!(!h.state().app.ui.notes);
++    assert!(h.state().app.notes_buf.2.edited, "rejection must not clear the pending edit");
++    assert_eq!(h.state().app.notes_buf.2.text, "Keep this exact draft");
++    assert!(Arc::ptr_eq(&before, &h.state().app.session.active().unwrap().doc));
++    assert_eq!(h.state().app.session.active().unwrap().history.undo.len(), undo);
++    h.get_by_label("Speaker notes").click();
++    h.run_steps(2);
++    assert!(h.state().app.ui.notes);
++    assert!(h.state().app.notes_buf.2.edited, "reopening a still-denied editor must not discard its draft");
++    assert_eq!(h.state().app.notes_buf.2.text, "Keep this exact draft");
++    assert!(Arc::ptr_eq(&before, &h.state().app.session.active().unwrap().doc));
++    h.state_mut().app.session.command_policy = None;
++    h.run_steps(2);
++    assert_eq!(h.state().app.session.active().unwrap().doc.slides[0].notes.text(), "Keep this exact draft");
++    assert!(!h.state().app.notes_buf.2.edited);
++    assert_eq!(h.state().app.session.active().unwrap().history.undo.len(), undo + 1);
+ }
+ 
+ #[test]

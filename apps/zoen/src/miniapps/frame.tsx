@@ -105,10 +105,13 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
           const message = nativeMiniappMessage(event.nativeEvent.data, document.nonce);
           if (message !== null) onMessage(message);
         }}
-        onError={(event) => onError(event.nativeEvent.description)}
-        onContentProcessDidTerminate={() =>
-          onError(t('miniapps.theSystemClosedThisInterfaceRefreshToOpen'))
-        }
+        onError={(event) => {
+          if (active.current === document) onError(event.nativeEvent.description);
+        }}
+        onContentProcessDidTerminate={() => {
+          if (active.current === document)
+            onError(t('miniapps.theSystemClosedThisInterfaceRefreshToOpen'));
+        }}
         style={{ backgroundColor: 'transparent' }}
       />
     </View>

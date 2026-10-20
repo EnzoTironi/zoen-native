@@ -32,6 +32,11 @@ function find(tree: any, id: string): Element | undefined {
   if (!tree?.props) return;
   return tree.props.testID === id ? tree : find(tree.props.children, id);
 }
+function findType(tree: any, type: string): Element | undefined {
+  if (Array.isArray(tree)) return tree.flatMap((v) => findType(v, type) ?? [])[0];
+  if (!tree?.props) return;
+  return tree.type === type ? tree : findType(tree.props.children, type);
+}
 function fixture() {
   const slots: any[] = [];
   let cursor = 0;
@@ -39,6 +44,7 @@ function fixture() {
   let retries = 0;
   let owner: any;
   let controller: any;
+  let flushes = 0;
   const same = (a: any[], b: any[]) =>
     a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   const slot = () => slots[cursor++] ?? (slots[cursor - 1] = {});
@@ -123,7 +129,11 @@ function fixture() {
         const current = {
           opened: false,
           retired: false,
-          controller: { flush: async () => {} },
+          controller: {
+            flush: async () => {
+              flushes++;
+            },
+          },
           receive: () => {},
           syncContext: () => {},
           drain: async () => {},
@@ -171,6 +181,8 @@ function fixture() {
   return {
     render,
     owner: () => owner,
+    feedback: (state: unknown) => owner.state(state),
+    flushes: () => flushes,
     error: () =>
       owner.state({
         phase: 'error',
@@ -205,4 +217,87 @@ test('compiled initial failure offers fresh-open retry, while stale retry cannot
   assert.equal(f.owner().retired, true);
   button.props.onPress();
   assert.equal(f.retries(), 1);
+});
+
+test('compiled opened save warning leaves input available; retry and actual recovery remain gated by the same mounted owner', () => {
+  const f = fixture();
+  try {
+    f.opened();
+    const owner = f.owner();
+    f.feedback({
+      phase: 'error',
+      opened: true,
+      blocked: false,
+      error: 'Finish this edit before saving.',
+      reason: 'autosave_busy',
+    });
+    let tree = f.render();
+    assert.equal(find(tree, 'deckcraft-interaction-cover'), undefined);
+    assert.ok(find(tree, 'deckcraft-save-warning'));
+    assert.equal(find(tree, 'deckcraft-retry-open'), undefined);
+    assert.equal(find(tree, 'deckcraft-save-status')?.props.children, 'decks.pending');
+    find(tree, 'deckcraft-warning-retry-save')!.props.onPress();
+    assert.equal(f.flushes(), 1);
+    assert.equal(f.owner(), owner);
+    assert.equal(owner.retired, false);
+    // A retry request is not a save/resume ACK and cannot dismiss the warning.
+    assert.ok(find(f.render(), 'deckcraft-save-warning'));
+    f.feedback({
+      phase: 'error',
+      opened: true,
+      blocked: false,
+      error: 'The presentation view could not update.',
+      reason: 'layout_failed',
+    });
+    assert.ok(find(f.render(), 'deckcraft-save-warning'));
+    assert.equal(find(f.render(), 'deckcraft-interaction-cover'), undefined);
+    // A failed view layout is not a save intent or a reason to remount a draft.
+    assert.equal(find(f.render(), 'deckcraft-warning-retry-save'), undefined);
+    assert.equal(f.flushes(), 1);
+    f.feedback({
+      phase: 'error',
+      opened: true,
+      blocked: true,
+      error: 'A real final save has failed.',
+      reason: 'flush_failed',
+    });
+    tree = f.render();
+    assert.ok(find(tree, 'deckcraft-interaction-cover'));
+    assert.equal(find(tree, 'deckcraft-save-warning'), undefined);
+    assert.equal(f.owner(), owner);
+    assert.equal(owner.retired, false);
+    f.opened();
+    assert.equal(find(f.render(), 'deckcraft-interaction-cover'), undefined);
+    assert.equal(find(f.render(), 'deckcraft-save-warning'), undefined);
+    assert.equal(f.retries(), 0);
+  } finally {
+    f.close();
+  }
+});
+
+test('actual compiled native-frame failure remains covered after late guest saved status and cannot pretend a resume repairs the frame', () => {
+  const f = fixture();
+  try {
+    f.opened();
+    const owner = f.owner();
+    findType(f.render(), 'MiniappFrame')!.props.onError('private native URL and path');
+    let tree = f.render();
+    assert.equal(findType(tree, 'MiniappFrame')!.props.blocked, true);
+    assert.ok(find(tree, 'deckcraft-interaction-cover'));
+    assert.equal(find(tree, 'deckcraft-save-warning'), undefined);
+    assert.equal(find(tree, 'deckcraft-recovery-retry-save'), undefined);
+    assert.equal(find(tree, 'deckcraft-retry-open'), undefined);
+    assert.equal(JSON.stringify(tree).includes('private native URL'), false);
+    f.opened();
+    tree = f.render();
+    assert.ok(find(tree, 'deckcraft-interaction-cover'));
+    assert.equal(findType(tree, 'MiniappFrame')!.props.blocked, true);
+    assert.equal(find(tree, 'deckcraft-save-status')?.props.children, 'decks.pending');
+    assert.equal(f.owner(), owner);
+    assert.equal(owner.retired, false);
+    assert.equal(f.flushes(), 0);
+    assert.equal(f.retries(), 0);
+  } finally {
+    f.close();
+  }
 });

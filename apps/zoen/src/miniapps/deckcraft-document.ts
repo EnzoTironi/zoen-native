@@ -6,6 +6,7 @@ import {
   CANONICAL_SCENE_CHUNK_BYTES as CHUNK,
 } from './canonical-scene.ts';
 import { DECKCRAFT_ENGINE_REVISION, MAX_BINARY_DOCUMENT_BYTES } from './canonical-binary.ts';
+import { deckcraftInteractionRefusal, type DeckcraftFeedbackReason } from './deckcraft-feedback.ts';
 
 type Scope = { artifactId: string; actorId: string; actorKind: 'human' | 'agent' };
 type Head = { version: string; sha256: string };
@@ -20,7 +21,11 @@ type Options = {
   engine: DeckcraftBindings;
   itemId: string;
   id: () => string;
-  onState?: (phase: 'saved' | 'saving' | 'pending' | 'error', error?: unknown) => void;
+  onState?: (
+    phase: 'saved' | 'saving' | 'pending' | 'error',
+    error?: unknown,
+    reason?: DeckcraftFeedbackReason,
+  ) => void;
 };
 const token = (v: unknown): v is string =>
   typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
@@ -90,10 +95,14 @@ export class DeckcraftDocument {
     this.tail = task;
     return task;
   }
-  private state(phase: 'saved' | 'saving' | 'pending' | 'error', error?: unknown) {
+  private state(
+    phase: 'saved' | 'saving' | 'pending' | 'error',
+    error?: unknown,
+    reason?: DeckcraftFeedbackReason,
+  ) {
     if (!this.live) return;
     try {
-      this.options.onState?.(phase, error);
+      this.options.onState?.(phase, error, reason);
     } catch {
       /* Presentation cannot change a durable receipt. */
     }
@@ -174,7 +183,7 @@ export class DeckcraftDocument {
           try {
             if (record(JSON.parse(encoded)).dirty) this.schedule();
           } catch (error) {
-            this.state('error', error);
+            this.state('error', error, 'document_status_failed');
           }
         });
         this.state('saved');
@@ -188,7 +197,13 @@ export class DeckcraftDocument {
     this.state('pending');
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.save().catch((error: unknown) => this.state('error', error));
+      void this.save().catch((error: unknown) =>
+        this.state(
+          'error',
+          error,
+          deckcraftInteractionRefusal(error) ? 'autosave_busy' : 'autosave_failed',
+        ),
+      );
     }, 220);
   }
   private async persist() {
@@ -294,7 +309,11 @@ export class DeckcraftDocument {
           await this.engine('freeze', { frozen: false }).catch(() => {});
           this.paused = false;
         }
-        this.state('error', error);
+        this.state(
+          'error',
+          error,
+          deckcraftInteractionRefusal(error) ? 'flush_busy' : 'flush_failed',
+        );
         throw error;
       }
     });

@@ -132,6 +132,8 @@ function fixture(platform: string) {
       source: web.props.source,
       key: web.props.key,
       touch: web.props.onTouchStart as () => void,
+      fail: web.props.onError as (event: unknown) => void,
+      terminate: web.props.onContentProcessDidTerminate as () => void,
     };
   }
   return { render, deliveries, handle, injected, focused };
@@ -271,4 +273,20 @@ test('native input focus refuses blocked, retired and non-iOS touches, including
     other.render().touch();
     assert.equal(other.focused.length, 0, platform);
   }
+});
+
+test('retired native callbacks cannot poison a replacement App with fatal frame feedback', () => {
+  const f = fixture('ios');
+  const old = f.render();
+  const current = f.render('<!doctype html><p>Replacement</p>');
+  assert.doesNotThrow(() => old.fail({ nativeEvent: { description: 'retired failure' } }));
+  assert.doesNotThrow(() => old.terminate());
+  assert.throws(
+    () => current.fail({ nativeEvent: { description: 'current failure' } }),
+    /current failure/,
+  );
+  assert.throws(() => current.terminate(), /theSystemClosedThisInterfaceRefreshToOpen/);
+  f.handle.current!.dispose();
+  assert.doesNotThrow(() => current.fail({ nativeEvent: { description: 'disposed failure' } }));
+  assert.doesNotThrow(() => current.terminate());
 });

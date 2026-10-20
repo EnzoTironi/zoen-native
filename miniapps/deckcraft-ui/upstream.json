@@ -37,6 +37,26 @@
     {
       "path": "patches/0009-compact-qualification.patch",
       "sha256": "7114efd470e52313177615574ce95105a95b9060ce07f6ade47cb743fb6b4715"
+    },
+    {
+      "path": "patches/0010-notes-retirement.patch",
+      "sha256": "ad7c324af2d1dc3004c5eee8a7e3e41e06198d56bfdb74a2209b871b05366917"
+    },
+    {
+      "path": "patches/0011-notes-slide-identity.patch",
+      "sha256": "7c87724ca613b39185b58d64f419e46ef83ce74b512112c2dab0b280ba6e1c4c"
+    },
+    {
+      "path": "patches/0012-notes-freeze-preflight.patch",
+      "sha256": "653a3e94bf7715c9c39b0588ca5a5adda8256c7e8c007bdb0af16b0b3325f801"
+    },
+    {
+      "path": "patches/0013-phone-landscape-compact.patch",
+      "sha256": "b7eb59461ee7201938a2de9fa010648f946ac544058e67d6ade83565fd292393"
+    },
+    {
+      "path": "patches/0014-input-ime-boundary-tests.patch",
+      "sha256": "efcffad999bd0a22a28be9db6d6388257f447353a0789cf8e51f0a3bf938e60c"
     }
   ],
   "abi": "zoen-host-v1",
@@ -65,7 +85,12 @@
     "Managed UI receives finite host safe areas/exact close corner through the owner queue; existing Export delegates PDF/PPTX intent to native accepted-head sharing before generating browser bytes.",
     "Hosted narrow layouts reuse the slide sorter, inspector controls and ribbon groups with full-width canvas/touch actions; authenticated host theme changes egui tokens only.",
     "Hosted panels use a real safe-content child Ui over a full-viewport backdrop; raw safe-area metadata alone does not position egui panels.",
-    "Real upstream egui Harness validates compact safe bounds, theme, inspector/Notes draft rotation and command reuse; compact status excludes its separator from44pt hit space."
+    "Real upstream egui Harness validates compact safe bounds, theme, inspector/Notes draft rotation and command reuse; compact status excludes its separator from44pt hit space.",
+    "Hosted editor drains a removed speaker-notes draft through the original slide.notes command before document observation; failed writes retain the exact draft for retry.",
+    "Retained speaker-notes drafts bind to document UID and immutable SlideId, resolving current order only at commit; missing slides remain retryable without writing to replacements.",
+    "Host Freeze drains the UI-local Notes body through the existing command before frozen ACK; policy or origin failures keep the draft and refuse teardown instead of reporting clean.",
+    "Phone-height hosted landscape windows reuse compact toolbar/status/ribbon/inspector, keeping the safe canvas full width and retaining live choices/drafts across actual wide-panel transitions.",
+    "Actual title/Notes taps assert final egui PlatformOutput.ime before typed input and real document commit; these engine assertions do not claim native DOM/WK keyboard acceptance."
   ],
   "distributionStatus": "Not advertised: final managed release, MCP adapter and iOS runtime proof required."
 }

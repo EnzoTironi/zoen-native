@@ -4,6 +4,7 @@ import {
   attachDeckcraftDocument,
   type DeckcraftBindings,
 } from "../../../apps/zoen/src/miniapps/deckcraft-document";
+import { deckcraftFeedbackReason } from "../../../apps/zoen/src/miniapps/deckcraft-feedback";
 
 const app = new App(
   { name: "DeckCraft", version: "0.9.0-zoen" },
@@ -31,10 +32,20 @@ function id() {
 }
 function state(phase: "saved" | "saving" | "pending" | "error", ready: boolean, reason?: string) {
   if (!active || !checkpoint) return;
+  const fixedReason =
+    deckcraftFeedbackReason(reason) ??
+    startupFailureCode(typeof reason === "string" ? JSON.stringify({ code: reason }) : undefined);
   void app
     .updateModelContext({
       structuredContent: {
-        zoen: { binarySave: { itemId: checkpoint, phase, ready, ...(reason ? { reason } : {}) } },
+        zoen: {
+          binarySave: {
+            itemId: checkpoint,
+            phase,
+            ready,
+            ...(fixedReason ? { reason: fixedReason } : {}),
+          },
+        },
       },
     })
     .catch(() => {});
@@ -63,7 +74,16 @@ function start() {
       },
       itemId,
       ready: () => active && !!owner && !paused,
-      onError: () => state("error", !!owner),
+      onError: (_error, source) =>
+        state(
+          "error",
+          !!owner,
+          source === "layout"
+            ? "layout_failed"
+            : source === "export"
+              ? "export_failed"
+              : "host_ui_failed",
+        ),
     });
     await hostUI.layout(app.getHostContext());
     if (!active) return;
@@ -73,7 +93,7 @@ function start() {
       engine,
       itemId,
       id,
-      onState: (phase) => state(phase, true),
+      onState: (phase, _error, reason) => state(phase, true, reason),
     });
     if (!active) {
       document.retireAuthority();

@@ -12,6 +12,7 @@ import { useTheme } from '../theme';
 import { useAppSheetCloseButton } from './app-sheet-context';
 import { DECKCRAFT_ENGINE_REVISION } from './canonical-binary';
 import { createDeckcraftSession } from './deckcraft-session';
+import type { DeckcraftFeedbackReason } from './deckcraft-feedback.ts';
 import { shareDeckcraftExport } from './deckcraft-export-files';
 import type { MiniappDocumentController } from './document-controller';
 import { MiniappFrame } from './frame';
@@ -184,7 +185,11 @@ function DeckcraftDocument({
     opened: false,
     blocked: true,
     error: null as string | null,
+    reason: null as DeckcraftFeedbackReason | null,
   });
+  // A terminated/load-failed native frame cannot be revived by a late guest label.
+  // Keep this latch with the frame's mounted owner; never remount an opened draft.
+  const [frameFailure, setFrameFailure] = useState<string | null>(null);
   const frame = useRef<MiniappFrameHandle>(null);
   const session = useRef<ReturnType<typeof createDeckcraftSession> | null>(null);
   const callbacks = useRef({ onDocumentController });
@@ -294,13 +299,17 @@ function DeckcraftDocument({
     void session.current?.receive(message);
   }, []);
   const retryOwner = session.current;
+  const blocked = state.blocked || frameFailure !== null;
+  const error = frameFailure ?? state.error;
   const label = !state.opened
     ? t('decks.opening')
-    : state.phase === 'saving'
-      ? t('decks.saving')
-      : state.phase === 'pending'
-        ? t('decks.pending')
-        : t('decks.saved');
+    : error
+      ? t('decks.pending')
+      : state.phase === 'saving'
+        ? t('decks.saving')
+        : state.phase === 'pending'
+          ? t('decks.pending')
+          : t('decks.saved');
   return (
     <View testID="deckcraft-document" style={fill ? { flex: 1, minHeight: 0 } : { height: 640 }}>
       <Text
@@ -332,12 +341,43 @@ function DeckcraftDocument({
           title={item.title}
           height={dimensions.height}
           fill
-          blocked={state.blocked}
+          blocked={blocked}
           runtimePackage={verified.manifest.runtimePackage}
           onMessage={receive}
-          onError={(error) => setState((prior) => ({ ...prior, error }))}
+          onError={() => setFrameFailure(t('decks.editorStopped'))}
         />
-        {!state.opened || state.error ? (
+        {state.opened && error && !blocked ? (
+          <View
+            testID="deckcraft-save-warning"
+            style={{
+              position: 'absolute',
+              left: 12,
+              right: 12,
+              bottom: 12,
+              padding: 12,
+              gap: 8,
+              borderRadius: 16,
+              backgroundColor: colors.background,
+            }}
+          >
+            <Text accessibilityRole="alert" style={{ color: colors.danger }}>
+              {error}
+            </Text>
+            {state.reason !== 'layout_failed' &&
+            state.reason !== 'host_ui_failed' &&
+            state.reason !== 'export_failed' ? (
+              <NativeButton
+                secondary
+                testID="deckcraft-warning-retry-save"
+                label={t('decks.retrySave')}
+                onPress={() => {
+                  void session.current?.controller.flush().catch(() => {});
+                }}
+              />
+            ) : null}
+          </View>
+        ) : null}
+        {!state.opened || (error && blocked) ? (
           <View
             testID="deckcraft-interaction-cover"
             style={{
@@ -349,19 +389,22 @@ function DeckcraftDocument({
               backgroundColor: colors.background,
             }}
           >
-            {state.error ? (
+            {error ? (
               <>
                 <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
-                  {state.error}
+                  {error}
                 </Text>
                 {state.opened ? (
-                  <NativeButton
-                    secondary
-                    label={t('decks.retrySave')}
-                    onPress={() => {
-                      void session.current?.controller.flush().catch(() => {});
-                    }}
-                  />
+                  !frameFailure ? (
+                    <NativeButton
+                      secondary
+                      testID="deckcraft-recovery-retry-save"
+                      label={t('decks.retrySave')}
+                      onPress={() => {
+                        void session.current?.controller.flush().catch(() => {});
+                      }}
+                    />
+                  ) : null
                 ) : (
                   <NativeButton
                     secondary

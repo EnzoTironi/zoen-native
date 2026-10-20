@@ -16,6 +16,10 @@ export const decks = defineFeature(
     pending: 'Unsaved changes',
     unavailable: 'This presentation could not be opened.',
     saveFailed: 'Your changes could not be saved. Keep the presentation open and try again.',
+    editInProgress: 'Finish this edit before saving.',
+    viewFailed: 'The presentation view could not update. Your presentation is still open.',
+    editorStopped:
+      'The presentation editor could not continue. Saved versions are still in this chat.',
     closeFailed:
       'The presentation is still open so you can keep your changes. Try saving again before leaving.',
     closeFirst: 'Save and close your presentation before leaving this screen.',
@@ -44,6 +48,10 @@ export const decks = defineFeature(
     unavailable: 'Não foi possível abrir esta apresentação.',
     saveFailed:
       'Não foi possível salvar suas alterações. Mantenha a apresentação aberta e tente novamente.',
+    editInProgress: 'Conclua esta edição para salvar.',
+    viewFailed: 'Não foi possível atualizar a visualização. Sua apresentação continua aberta.',
+    editorStopped:
+      'O editor da apresentação não pôde continuar. As versões salvas permanecem nesta conversa.',
     closeFailed:
       'A apresentação continua aberta para você manter suas alterações. Tente salvar novamente antes de sair.',
     closeFirst: 'Salve e feche sua apresentação antes de sair desta tela.',

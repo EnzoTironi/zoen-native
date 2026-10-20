@@ -7,6 +7,7 @@ import { MiniappSession } from './protocol.ts';
 import { frameAuthority } from './lifetime.ts';
 import type { MiniappDocumentController } from './document-controller';
 import type { DeckcraftExportFormat, DeckcraftExportHead } from './deckcraft-export';
+import { deckcraftFeedbackReason, type DeckcraftFeedbackReason } from './deckcraft-feedback.ts';
 
 type Phase = 'saved' | 'saving' | 'pending' | 'error';
 type Options = {
@@ -31,6 +32,7 @@ type Options = {
     opened: boolean;
     blocked: boolean;
     error: string | null;
+    reason: DeckcraftFeedbackReason | null;
   }) => void;
 };
 
@@ -52,6 +54,7 @@ export function createDeckcraftSession(options: Options) {
   let queued = 0;
   let phase: Phase = 'saved';
   let error: string | null = null;
+  let reason: DeckcraftFeedbackReason | null = null;
   let tail = Promise.resolve();
   let closing: Promise<void> | null = null;
   const publish = () => {
@@ -61,6 +64,7 @@ export function createDeckcraftSession(options: Options) {
         opened,
         blocked: !opened || retiring || queued > 0 || recoveryRequired,
         error,
+        reason,
       });
   };
   const current = new MiniappSession({
@@ -132,6 +136,7 @@ export function createDeckcraftSession(options: Options) {
       )
         return {};
       phase = status.phase as Phase;
+      reason = phase === 'error' ? deckcraftFeedbackReason(status.reason) : null;
       // Once an editable accepted Session was exposed, no later display label
       // can remove its obligation to flush before ordinary dismissal.
       opened ||= status.ready && phase === 'saved';
@@ -141,7 +146,13 @@ export function createDeckcraftSession(options: Options) {
         error =
           phase === 'error'
             ? opened
-              ? t('decks.saveFailed')
+              ? reason === 'autosave_busy'
+                ? t('decks.editInProgress')
+                : reason === 'layout_failed' || reason === 'host_ui_failed'
+                  ? t('decks.viewFailed')
+                  : reason === 'export_failed'
+                    ? t('decks.exportFailed')
+                    : t('decks.saveFailed')
               : status.reason === 'graphics_unavailable'
                 ? t('decks.graphicsUnavailable')
                 : status.reason === 'canvas_missing'
@@ -205,6 +216,7 @@ export function createDeckcraftSession(options: Options) {
           if (retire || !retiring) {
             recoveryRequired = false;
             error = null;
+            reason = null;
           }
         })
         .catch((reason: unknown) => {
@@ -282,7 +294,10 @@ export function createDeckcraftSession(options: Options) {
         }
         await resume();
         phase = 'saved';
-        if (resumed) error = null;
+        if (resumed) {
+          error = null;
+          reason = null;
+        }
       })
       .catch((reason: unknown) => {
         if (!resumed) recoveryRequired = true;
