@@ -2387,11 +2387,7 @@
         "baselineLowStackOverflows": 4,
         "baseline2MiBControlPasses": 2,
         "candidatePasses": 6,
-        "actualMeasuredStacksKiB": [
-          508,
-          540,
-          2044
-        ],
+        "actualMeasuredStacksKiB": [508, 540, 2044],
         "pairedReceipt": {
           "path": "/private/tmp/zoen-native-link-cabi-v130-v3/paired-final-seal/acceptance.json",
           "sha256": "86b6e3855953a6bae93670a3227fefd62e0057dbf1a57c62b63adff051969dc2"
@@ -2402,9 +2398,7 @@
       "ciSnapshot": {
         "head": "783edae15d8ed89849d189dc70ba699bfd2b672b",
         "success": 10,
-        "inProgress": [
-          "rust"
-        ],
+        "inProgress": ["rust"],
         "receipt": {
           "path": "/private/tmp/zoen-native-link-execution-v130/pr140-ci-head783-final.json",
           "sha256": "0e9cce7c465143c805bc05e7fc932eab5cfb78970be6bbb4f864a4115f1189d3"
