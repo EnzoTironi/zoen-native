@@ -471,6 +471,7 @@ impl Client {
     /// chats stay on the relay for the other members; this device just signs out.
     pub fn erase_device(&self, vault: Arc<dyn SecretVault>) -> Result<(), CoreError> {
         let _language = crate::i18n::enter(self.lang);
+        self.link_pickup.retire();
         self.stop_sync();
         {
             let mut e = self.lock();
@@ -481,11 +482,13 @@ impl Client {
         vault.delete(VAULT_DEVICE.into());
         vault.delete(VAULT_AGREEMENT.into());
         vault.delete(crate::provider_auth::VAULT_SETUP.into());
+        vault.delete(crate::link::VAULT_PENDING.into());
         Ok(())
     }
 
     pub fn stop_sync(&self) {
         let _language = crate::i18n::enter(self.lang);
+        self.link_pickup.cancel();
         self.cancel_history_receive();
         let net = self.net.lock().unwrap_or_else(|p| p.into_inner()).take();
         {

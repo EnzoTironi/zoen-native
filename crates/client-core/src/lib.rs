@@ -49,6 +49,7 @@ pub use pages::{
 mod https;
 mod link;
 mod link_api;
+mod link_pickup;
 mod linking;
 mod mls;
 mod mls_opening;
@@ -104,6 +105,13 @@ pub struct Client {
     /// The relay connection, while sync runs.
     net: Mutex<Option<net::Net>>,
     history_receive: link_api::HistoryControl,
+    link_pickup: link_pickup::PickupControl,
+}
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        self.link_pickup.retire();
+    }
 }
 
 impl Client {
@@ -150,6 +158,7 @@ impl Client {
             lang,
             net: Mutex::new(None),
             history_receive: link_api::HistoryControl::default(),
+            link_pickup: link_pickup::PickupControl::default(),
         }))
     }
 
