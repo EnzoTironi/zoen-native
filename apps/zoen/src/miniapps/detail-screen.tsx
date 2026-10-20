@@ -137,7 +137,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
                   name={item.title}
                   pinned={home.isPinned(item.id)}
                   onToggle={
-                    !home.loading && home.items.some((candidate) => candidate.id === item.id)
+                    !home.loading && home.allItems.some((candidate) => candidate.id === item.id)
                       ? () => {
                           void (
                             home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)

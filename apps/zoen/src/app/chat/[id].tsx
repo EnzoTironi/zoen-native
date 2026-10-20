@@ -59,7 +59,7 @@ export default function Chat() {
   const { store, snapshot, timelines, notice, activity } = useClient();
   const { colors } = useTheme();
   const home = useHome();
-  const { items } = home;
+  const { allItems: items } = home;
   const cards = useConversationCards(id);
   const headerHeight = useHeaderHeight();
   const { top: statusBarHeight } = useSafeAreaInsets();
