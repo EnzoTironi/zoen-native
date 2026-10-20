@@ -347,6 +347,18 @@ with an open-app fallback. External tool results must not become encrypted share
 state or native snapshots merely because the HTML can render them; canonical
 publication needs an explicit product action and validated projection.
 
+## Host transport regression
+
+`npm run check` in `apps/zoen` includes an owned headless Chrome test of the
+official App's parent/source semantics and native-shell disposal. Its shared
+browser deadline gives process startup 30 seconds, followed by a separate
+20-second transport budget. Repeated DevTools announcements cannot extend the
+deadline. Startup, spawn and early-exit failures retain the executable, process
+state and bounded stderr; cleanup waits for the owned child to close before
+removing its temporary profile. Clock-driven regressions exercise slow startup,
+expiration and cleanup without delaying the suite. This browser proof does not
+establish iOS WebKit or physical-device acceptance.
+
 ## Implementation map
 
 - [Remote connection and bounds](../../apps/zoen/src/miniapps/remote-session.ts)

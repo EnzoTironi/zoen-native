@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
 import { build } from 'esbuild';
+import { createBrowserDeadline } from '../../../../miniapps/excalidraw-ui/test/browser-driver.mjs';
 import {
   nativeMiniappCommand,
   nativeMiniappHtml,
@@ -18,8 +20,13 @@ const nonce = 'a24582bd-0377-4fee-bb76-73d465c927c3';
 const other = 'c34128af-3476-4ce2-ba34-37d459c934d6';
 const message = { jsonrpc: '2.0', id: 1, method: 'ui/initialize', params: {} };
 
-async function realBrowserResult(chrome: string, folder: string, path: string): Promise<string> {
-  const child = spawn(
+async function realBrowserResult(
+  chrome: string,
+  folder: string,
+  path: string,
+  spawnBrowser: typeof spawn = spawn,
+): Promise<string> {
+  const child = spawnBrowser(
     chrome,
     [
       '--headless',
@@ -54,25 +61,22 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
       })}`,
     );
   let socket: WebSocket | undefined;
-  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const deadline = createBrowserDeadline({ executionMilliseconds: 20_000 });
   try {
     return await Promise.race([
       (async () => {
         const endpoint = await new Promise<string>((resolve, reject) => {
-          const timer = setTimeout(() => reject(failure('Owned Chrome did not start')), 10_000);
           child.once('error', (error) => {
-            clearTimeout(timer);
             reject(failure('Owned Chrome could not spawn', error));
           });
           child.once('exit', () => {
-            clearTimeout(timer);
             reject(failure('Owned Chrome exited before connection'));
           });
           child.stderr.on('data', (data: Buffer) => {
             stderr = (stderr + data.toString()).slice(-16_384);
             const match = stderr.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/);
             if (match) {
-              clearTimeout(timer);
+              deadline.startExecution();
               resolve(match[1]!);
             }
           });
@@ -142,15 +146,12 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
         assert.equal(typeof result?.value, 'string', JSON.stringify(evaluated));
         return result!.value as string;
       })(),
-      new Promise<never>((_, reject) => {
-        deadline = setTimeout(
-          () => reject(failure('Owned Chrome transport check timed out')),
-          20_000,
-        );
+      deadline.expired.catch((error: Error) => {
+        throw failure(error.message);
       }),
     ]);
   } finally {
-    clearTimeout(deadline);
+    deadline.clear();
     socket?.close();
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -166,6 +167,33 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
     }
   }
 }
+
+test('host transport allows a still-starting owned browser beyond ten seconds and drains it on failure', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let killed = false;
+  const child = Object.assign(new EventEmitter(), {
+    pid: 123,
+    exitCode: null as number | null,
+    signalCode: null as NodeJS.Signals | null,
+    stderr: new EventEmitter(),
+    kill(signal: NodeJS.Signals) {
+      killed = true;
+      child.signalCode = signal;
+      child.emit('exit', null, signal);
+      child.emit('close', null, signal);
+      return true;
+    },
+  });
+  const spawnBrowser = (() => child) as unknown as typeof spawn;
+  const result = realBrowserResult('/synthetic/chrome', '/synthetic/profile', '', spawnBrowser);
+  const failed = assert.rejects(result, /Owned Chrome startup timeout/);
+  t.mock.timers.tick(10_001);
+  for (let tick = 0; tick < 6; tick++) await Promise.resolve();
+  assert.equal(killed, false, 'a live browser still has its independent startup budget');
+  t.mock.timers.tick(19_999);
+  await failed;
+  assert.equal(killed, true, 'timeout still retires the owned child before returning');
+});
 
 test('owned browser startup failures retain executable, process and bounded stderr diagnostics', async () => {
   const folder = await mkdtemp(join(tmpdir(), 'zoen-browser-startup-'));
@@ -256,7 +284,8 @@ test('native navigation allows only the outer blank document and its sandboxed s
 
 test(
   'official App uses a real parent/source through the native shell and retires after disposal',
-  { timeout: 30_000 },
+  // Startup (30 s), transport (20 s), owned shutdown and fixture preparation.
+  { timeout: 60_000 },
   async (t) => {
     const candidates =
       process.platform === 'darwin'

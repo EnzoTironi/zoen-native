@@ -76,6 +76,23 @@ test("repeated DevTools announcements cannot extend the execution deadline", asy
   assert.equal(attempt.cleanups(), 1);
 });
 
+test("the host transport keeps its own 20-second execution budget after slow startup", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const deadline = createBrowserDeadline({ executionMilliseconds: 20000 });
+  const attempt = ownedAttempt(deadline);
+  const failed = assert.rejects(attempt.result, /Owned Chrome test deadline/);
+  t.mock.timers.tick(29999);
+  deadline.startExecution();
+  t.mock.timers.tick(19999);
+  // Drain cleanup continuations so an accidentally retained 18-second default
+  // fails here instead of passing after the final tick.
+  for (let tick = 0; tick < 6; tick++) await Promise.resolve();
+  assert.equal(attempt.cleanups(), 0);
+  t.mock.timers.tick(1);
+  await failed;
+  assert.equal(attempt.cleanups(), 1);
+});
+
 test("success clears both phase budgets before owned cleanup completes", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const deadline = createBrowserDeadline();

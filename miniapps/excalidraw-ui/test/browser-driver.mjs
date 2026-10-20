@@ -72,7 +72,7 @@ export async function findBrowserExecutable({
 }
 
 /** Fixed, independent phase budgets: slow process startup cannot consume renderer time. */
-export function createBrowserDeadline() {
+export function createBrowserDeadline({ executionMilliseconds = 18000 } = {}) {
   let phase = "startup";
   let reject;
   const expired = new Promise((_, fail) => {
@@ -91,7 +91,7 @@ export function createBrowserDeadline() {
       if (phase !== "startup") return;
       clearTimeout(timer);
       phase = "execution";
-      timer = arm(18000, "Owned Chrome test deadline");
+      timer = arm(executionMilliseconds, "Owned Chrome test deadline");
     },
     clear() {
       phase = "cleared";
