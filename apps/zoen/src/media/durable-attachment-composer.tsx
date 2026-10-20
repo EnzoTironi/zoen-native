@@ -533,6 +533,8 @@ export function useDurableAttachmentComposer(
     }
   }
   const presentation = runtime.approval;
+  // A native-review writer freeze is not a pending Send.
+  const retry = Boolean(state?.frozen && !state.reviewing);
   const restoring = !!content?.items.some((item) => !own?.previews.has(item.asset_id));
   const busy = Boolean(
     reviewing.mutationId ||
@@ -565,7 +567,7 @@ export function useDurableAttachmentComposer(
         size: asset?.size ?? 0,
         mutationId: item.mutation_id,
         caption: item.caption,
-        attempted: Boolean(state?.frozen),
+        attempted: retry,
         accepted: null,
       };
     }) ?? [];
@@ -591,7 +593,7 @@ export function useDurableAttachmentComposer(
             !restoring,
           sending: busy,
           remaining: items.length,
-          retry: Boolean(state?.frozen),
+          retry,
           onChange: (caption) => {
             if (
               !channel ||
