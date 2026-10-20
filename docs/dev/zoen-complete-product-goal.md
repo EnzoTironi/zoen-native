@@ -78,14 +78,27 @@ estão integrados: equivalência completa do snapshot restaurado com mídia e
 continuidade após entrada inválida sem confirmação falsa. Os 543 testes da biblioteca
 client-core e o Clippy estrito de todos os alvos passaram em `4f175f40`. Os status parciais e as evidências anteriores permanecem.
 
-DeckCraft tem uma ponte real para a mesma Session do editor, com 11 testes do
-motor aprovados em candidato privado. A persistência canônica/MCP passa em 10
-testes reais do núcleo e 36 pelo SDK instalado; o build WASM otimizado e gerenciado
-concluiu com hashes e fontes fixadas. UI/bootstrap nativos, registro de recursos e
-execução por agente certificado seguem em implementação paralela. A jornada
-completa no iPhone, recuperação, exportação e compartilhamento continua pendente.
-Só depois desse aceite o padrão será repetido nos demais editores ArtCraft. O
-detalhe atual está em `iosContinuityCheckpoint` no
+O caso original C17 também está integrado: downloads históricos mistos usam o
+worker real, rejeitam ciphertext corrompido pelo hash assinado e recuperam o item
+correto em nova tentativa, preservando cache, IDs e timeline. O teste focado e o
+Clippy estrito passaram. Isso não qualifica toda a política de mídia do Signal;
+suas suítes upstream continuam sem execução.
+
+DeckCraft já tem persistência canônica/MCP, registro, carregador verificado e
+UI/bootstrap nativos integrados. A fonte `0f30f530` passou pelos 1.073 casos do
+app, tipos, Oxlint/Oxfmt e build Release; os 431 arquivos instalados e a assinatura
+conferem com o artefato lacrado. No simulador, criar pelo catálogo gerou um cartão
+real de um slide, preservado após reinício do processo. Porém o editor permaneceu
+na abertura por mais de cinco minutos: edição e exportação ainda não passaram.
+Uma correção posterior de recuperação passou em 12 casos pelo SDK real, sem
+reprodução dessa falha no aparelho. O executor privado por agente compila para
+WASI e passa em três casos de autoridade, mas a primeira jornada real atingiu o
+prazo durante a tradução do componente, antes de executar a Session.
+
+A jornada completa no iPhone, alteração por agente, recuperação, exportação e
+compartilhamento continua pendente. Só depois desse aceite o padrão será repetido
+nos demais editores ArtCraft. O detalhe atual está em `deckcraftIntegrationCheckpoint`,
+preservando `iosContinuityCheckpoint` e seus artefatos anteriores no
 [registro de aceite](../../apps/zoen/acceptance.json). Nenhuma dessas provas
 parciais aprova o lançamento iOS ou as flags globais.
 

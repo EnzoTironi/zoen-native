@@ -5,6 +5,35 @@ de repetir o padrão nos outros editores. Reutilizar seu motor, comandos e
 exportadores; o Zoen continua responsável pelo documento criptografado, identidade,
 permissões, versões, sincronização e histórico de pessoas e agentes.
 
+## Checkpoint de integração — 20 de outubro de 2026
+
+O carregador gerenciado, registro e UI nativa agora usam o documento binário
+canônico do Zoen. O pacote fixa JS/WASM, fontes e licenças por hash; o host verifica
+os recursos antes de entregá-los ao sandbox. A WebView continua sem autoridade de
+armazenamento durável. O build e a suíte do app na fonte `0f30f530` passaram,
+incluindo 1.073 casos e conferência dos 431 arquivos instalados no simulador.
+
+A criação pelo catálogo nativo produziu o cartão “QA160 Shared deck”, com um
+slide, e o mesmo cartão reapareceu após reiniciar o processo. O editor ficou
+preso na abertura por mais de cinco minutos após buscar JS/WASM: **edição,
+rotação, exportação e compartilhamento nativos permanecem sem aceite**. O teste
+foi diagnóstico, sem fluxo automatizado qualificado. Uma falha de startup que
+deixava requisições esperando indefinidamente foi identificada no código; não
+foi estabelecido que ela causou essa observação. A correção está em preparação.
+
+A correção integrada `c5ac7652` mantém a tela bloqueada após um timeout de save,
+até receber a confirmação de recuperação. Doze testes com o SDK oficial cobrem
+confirmações tardias, Close e exportação, sem reproduzir falha no WASM/aparelho.
+O executor isolado de agente, ainda privado, compila o motor real para WASI e
+passa em três testes de autoridade. Sua primeira jornada atingiu o prazo durante
+a tradução do componente, antes da execução. Ainda não há prova de alteração por
+agente real nesse documento do iPhone, nem chamada de modelo nessa prova.
+
+As medições de pesquisa abaixo preservam seus pacotes originais. Não descrevem
+o pacote gerenciado posterior nem encerram a integração. Revisões, limites,
+resultados e recibos atuais estão em `deckcraftIntegrationCheckpoint` no
+[registro de aceite](../../apps/zoen/acceptance.json).
+
 ## Viabilidade do DeckCraft
 
 A revisão fixada é `a31b990d32f2c8562f1588562f922960c3fde48b`, versão 0.9.0.
