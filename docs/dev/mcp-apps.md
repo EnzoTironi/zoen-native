@@ -365,6 +365,12 @@ the independent state notification, so the initial placeholder cannot be
 mistaken for the loaded application. Geometry and content assertions still run
 against the produced application inside the normal opaque sandbox.
 
+Shared browser cleanup retains its two-second bound after an OS-denied fallback
+signal. Success still requires the child close event and an absent owned process
+group; a live group fails with the refused-signal diagnostics. This permits an
+already requested graceful shutdown to finish without treating signal denial as
+evidence that the browser stopped.
+
 ## Implementation map
 
 - [Remote connection and bounds](../../apps/zoen/src/miniapps/remote-session.ts)

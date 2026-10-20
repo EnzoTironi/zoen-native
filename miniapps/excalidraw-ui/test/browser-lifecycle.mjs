@@ -72,6 +72,7 @@ export function observeOwnedChild(child, { processGroup = false } = {}) {
     }
     return true;
   };
+  const signalErrors = [];
   const signal = (name) => {
     if (!child.pid) return;
     if (processGroup) {
@@ -79,7 +80,10 @@ export function observeOwnedChild(child, { processGroup = false } = {}) {
         // Only the fresh detached child's own POSIX group, never discovered Chrome processes.
         process.kill(-child.pid, name);
       } catch (error) {
-        if (error.code !== "ESRCH") throw error;
+        // Browser.close may still finish after macOS refuses a fallback signal.
+        // Keep observing within the same bound; EPERM never proves retirement.
+        if (error.code === "EPERM") signalErrors.push({ signal: name, code: error.code });
+        else if (error.code !== "ESRCH") throw error;
       }
     } else if (child.exitCode === null && child.signalCode === null) child.kill(name);
   };
@@ -108,6 +112,7 @@ export function observeOwnedChild(child, { processGroup = false } = {}) {
             ...state,
             exitCode: child.exitCode,
             signalCode: child.signalCode,
+            signalErrors,
           }),
       );
     },

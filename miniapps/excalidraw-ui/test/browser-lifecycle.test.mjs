@@ -117,6 +117,67 @@ test(
 );
 
 test(
+  "a denied group signal still observes a graceful close within the shutdown deadline",
+  { skip: process.platform === "win32", timeout: 5000 },
+  async (t) => {
+    const { child, owned } = ownedNode(
+      "process.stdin.resume(); process.stdin.once('data', () => setTimeout(() => process.exit(0), 500)); process.send('ready')",
+      ["pipe", "ignore", "pipe", "ipc"],
+    );
+    child.stderr.resume();
+    const kill = process.kill;
+    let denied = 0;
+    try {
+      await once(child, "message");
+      t.mock.method(process, "kill", (pid, signal) => {
+        if (pid === -child.pid && signal !== 0) {
+          denied++;
+          throw Object.assign(Error("Synthetic denied group signal"), { code: "EPERM" });
+        }
+        return kill(pid, signal);
+      });
+      await owned.stop(() => child.stdin.end("close"));
+      assert.ok(denied > 0, "the graceful close outlasted the initial fallback interval");
+      assert.equal(owned.state.closeObserved, true);
+      assert.equal(owned.state.exitCode, 0);
+      assert.throws(() => kill(-child.pid, 0), { code: "ESRCH" });
+    } finally {
+      t.mock.restoreAll();
+      await owned.stop();
+    }
+  },
+);
+
+test(
+  "denied group signals never count as successful cleanup while the owned process remains alive",
+  { skip: process.platform === "win32", timeout: 5000 },
+  async (t) => {
+    const { child, owned } = ownedNode("setInterval(() => {}, 1000); process.send('ready')", [
+      "ignore", "ignore", "pipe", "ipc",
+    ]);
+    child.stderr.resume();
+    const kill = process.kill;
+    try {
+      await once(child, "message");
+      t.mock.method(process, "kill", (pid, signal) => {
+        if (pid === -child.pid && signal !== 0)
+          throw Object.assign(Error("Synthetic denied group signal"), { code: "EPERM" });
+        return kill(pid, signal);
+      });
+      await assert.rejects(owned.stop(), (error) => {
+        assert.match(error.message, /within 2 s/);
+        assert.match(error.message, /EPERM/);
+        return true;
+      });
+      assert.equal(owned.state.closeObserved, false);
+    } finally {
+      t.mock.restoreAll();
+      await owned.stop();
+    }
+  },
+);
+
+test(
   "owned group cleanup also retires a descendant with no inherited pipes",
   { skip: process.platform === "win32", timeout: 5000 },
   async () => {
