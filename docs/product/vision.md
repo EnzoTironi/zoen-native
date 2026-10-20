@@ -19,9 +19,12 @@ Zoen é o "WhatsApp 2": um mensageiro privado onde, além de conversar, as pesso
 
 ## Plataformas
 
-- iOS e macOS nativos hoje (SwiftUI).
-- Android em Kotlin/Jetpack Compose: o núcleo em Rust gera bindings Kotlin pelo mesmo UniFFI, então a lógica (criptografia, sync, arquivos, regras) vem pronta; o trabalho é a interface e as partes de plataforma (push, Keystore, passkeys, câmera).
-- Web com framework web de verdade, núcleo Rust via WebAssembly. Não é landing page: é a porta de entrada instantânea pelos links de convite. Onde precisar de algo nativo, convite para instalar o app.
+Direção atualizada em 20 de outubro de 2026: interface React Native/Expo e núcleo
+Rust compartilhado. Concluir primeiro o iOS com componentes e integrações nativos;
+Web e Android seguem depois, e desktop fica na fase posterior. Evitar aplicações
+nativas completas independentes e regras/estado durável duplicados. O [plano de
+execução e critérios](../dev/zoen-complete-product-goal.md) é a referência atual;
+as anotações datadas abaixo preservam ideias de produto e contexto histórico.
 
 ## Crescimento
 

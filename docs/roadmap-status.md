@@ -1,5 +1,14 @@
 # Roadmap status: the complete Zoen product
 
+Current execution, 20 October 2026: **finish iOS first**, using React Native/Expo,
+the shared Rust core and the real backend. The active sequence and release gates
+are maintained in the [complete-product goal](dev/zoen-complete-product-goal.md#execução-atual--20-de-outubro-de-2026)
+and [acceptance manifest](../apps/zoen/acceptance.json). Web/Android follow the iOS
+release gate; desktop follows later. Signal guides reliability and messaging UX;
+Notion/ChatGPT Space guide collaborative creation. The older checkpoint sections
+below retain their original dates, artifacts and limits; their native-client,
+PR and billion-user descriptions do not define the current execution plan.
+
 Reviewed on 12 October 2026 after PRs 67, 68, 69 and 71 merged. The target is one billion monthly users. Completion requires working client flows, release/accessibility journeys and production evidence. New implementation uses one branch per unit. The coordinator merges that branch into `main` after the unit's proof, following the pstack playbooks.
 
 ## Shared-main handoff checkpoint

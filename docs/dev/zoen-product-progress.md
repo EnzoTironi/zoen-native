@@ -1,5 +1,18 @@
 # Current product checkpoint
 
+## Active execution — 20 October 2026
+
+Finish iOS first against the real backend; Web/Android and desktop follow later.
+See the [goal and milestone exit criteria](zoen-complete-product-goal.md#execução-atual--20-de-outubro-de-2026).
+The current draft is [PR142](https://github.com/EnzoTironi/zoen-native/pull/142).
+Source `c899de92` passes 957 app tests, types, Oxlint/Oxfmt and an iOS Release
+build. Final full-screen media UI qualification is pending after the isolated
+simulator shut down before the media conversation opened. No whole-product,
+production or scale acceptance is granted. The earlier checkpoints below remain
+historical evidence, including their original PR and platform boundaries.
+
+## Earlier checkpoint record
+
 The full goal remains active: 30 journeys, six platforms and the public backend.
 `fullAppParityAccepted`, `productionReadinessAccepted` and
 `scaleReadinessAccepted` remain false. [PR140](https://github.com/EnzoTironi/zoen-native/pull/140)
