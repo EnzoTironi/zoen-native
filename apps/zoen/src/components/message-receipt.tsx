@@ -4,6 +4,7 @@ import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import { contrastRatio } from '../theme/sky.ts';
 import { Icon } from './primitives';
+import { MessageReceiptGraphic } from './message-graphics';
 
 export function messageDeliveryLabel(delivery: Delivery): string {
   switch (delivery) {
@@ -25,10 +26,12 @@ export function messageDeliveryLabel(delivery: Delivery): string {
 /** Receipts reflect the core's acknowledgements, never a presentation timer. */
 export function MessageReceipt({
   delivery,
+  ownerKey,
   ink,
   background,
 }: {
   delivery: Delivery;
+  ownerKey?: string;
   ink?: string;
   background?: string;
 }) {
@@ -59,14 +62,17 @@ export function MessageReceipt({
       accessibilityRole="text"
       accessibilityLabel={messageDeliveryLabel(delivery)}
       testID={`message-receipt-${delivery.toLowerCase()}`}
-      style={{ width: doubled ? 17 : 13, height: 14, justifyContent: 'center' }}
+      style={{ width: 13, height: 14, justifyContent: 'center' }}
     >
-      <Icon name={name} size={11} color={color} />
-      {doubled ? (
-        <View style={{ position: 'absolute', left: 6, top: 1.5 }}>
-          <Icon name={name} size={11} color={color} />
-        </View>
-      ) : null}
+      {delivery === 'Local' || delivery === 'Failed' ? (
+        <Icon name={name} size={11} color={color} />
+      ) : (
+        <MessageReceiptGraphic
+          ownerKey={ownerKey}
+          shape={delivery === 'Sending' ? 'clock' : doubled ? 'double' : 'single'}
+          color={color}
+        />
+      )}
     </View>
   );
 }

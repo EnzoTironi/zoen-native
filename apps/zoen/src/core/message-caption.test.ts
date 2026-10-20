@@ -39,6 +39,7 @@ const nativePorts = new Set([
   'react-native-reanimated',
   'react-native-worklets',
   'expo-haptics',
+  'expo-router',
   '../i18n/index.ts',
   '../media/MediaAttachment',
   '../miniapps/message-card',
@@ -179,6 +180,7 @@ function render(
     'react-native-reanimated': { default: {} },
     'react-native-worklets': {},
     'expo-haptics': {},
+    'expo-router': {},
     '../i18n/index.ts': { t: (key: string) => key, locale: 'en', formatLocale: 'en-US' },
     '../media/MediaAttachment': { MessageMedia: 'MessageMedia' },
     '../miniapps/message-card': { MiniappMessageCard: 'MiniappMessageCard' },
@@ -537,9 +539,9 @@ test('actual native trailing-line measurements place time inline without estimat
   assert.equal(styleOf(nodeById(f.tree, `message-metadata-${msg.id}`)).position, undefined);
   measureText(f.tree, msg.id);
   const tree = f.rerender();
-  assert.equal(styleOf(nodeById(tree, `message-bubble-${msg.id}`)).minWidth, 107);
+  assert.equal(styleOf(nodeById(tree, `message-bubble-${msg.id}`)).minWidth, 113);
   assert.equal(styleOf(nodeById(tree, `message-metadata-${msg.id}`)).position, 'absolute');
-  assert.equal(styleOf(nodeById(tree, `message-metadata-${msg.id}`)).right, 11);
+  assert.equal(styleOf(nodeById(tree, `message-metadata-${msg.id}`)).right, 17);
   assert.equal(textValues(tree).filter((text) => text === 'OK').length, 1);
   const receipt = elements(tree).find((node) => node.type === 'MessageReceipt');
   assert.equal(receipt?.props.delivery, msg.delivery);
@@ -593,7 +595,11 @@ test('plain bubble ink and paper retain every actual Zoen sky theme and message 
     for (const mine of [false, true]) {
       const msg = plainMessage('Read me', { author: { ...entry().author, is_me: mine } });
       const f = render(msg, { phase });
-      const paper = styleOf(nodeById(f.tree, `message-bubble-${msg.id}`)).backgroundColor as string;
+      const graphic = elements(f.tree).find(
+        (node) => typeof node.type === 'function' && node.type.name === 'MessageBubbleGraphic',
+      );
+      assert.ok(graphic);
+      const paper = graphic.props.fill as string;
       const ink = styleOf(nodeById(f.tree, `message-body-${msg.id}`)).color as string;
       assert.ok(contrastRatio(ink, paper) >= 4.5, `${phase}, mine=${mine}`);
       assert.equal(paper, mine ? f.theme.colors.mine : f.theme.colors.theirs);
@@ -623,4 +629,44 @@ test('plain bubble fill uses viewport coordinates before edge and author insets 
         'Never overflow the actual available row slot',
       );
     }
+});
+
+test('only plain bubbles own the native background and reserve the6pt tail-side content inset', () => {
+  for (const mine of [true, false]) {
+    const msg = plainMessage('Editable text', { author: { ...entry().author, is_me: mine } });
+    const f = render(msg);
+    const bubble = nodeById(f.tree, `message-bubble-${msg.id}`);
+    const graphics = elements(f.tree).filter(
+      (node) => typeof node.type === 'function' && node.type.name === 'MessageBubbleGraphic',
+    );
+    assert.equal(graphics.length, 1);
+    assert.equal(graphics[0]!.props.ownerKey, msg.id);
+    assert.equal(graphics[0]!.props.incoming, !mine);
+    assert.equal(
+      styleOf(bubble).backgroundColor,
+      'transparent',
+      'Sky remains visible through the actual curved tail cutout',
+    );
+    assert.equal(styleOf(bubble).paddingLeft, mine ? 11 : 17);
+    assert.equal(styleOf(bubble).paddingRight, mine ? 17 : 11);
+  }
+  for (const msg of [
+    entry('caption'),
+    entry('', { voice: { item_id: 'voice' } as TimelineEntry['voice'] }),
+    entry('App', {
+      kind: {
+        Message: {
+          text: 'App',
+          card: { item_id: 'app', kind_id: 'app', app: { app_id: 'deckcraft' } },
+        },
+      } as TimelineEntry['kind'],
+    }),
+  ]) {
+    assert.equal(
+      elements(render(msg).tree).filter(
+        (node) => typeof node.type === 'function' && node.type.name === 'MessageBubbleGraphic',
+      ).length,
+      0,
+    );
+  }
 });

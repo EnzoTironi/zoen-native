@@ -211,6 +211,7 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     });
   };
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
+  const photoPicker = { pick: () => selection(), cancel: () => {}, view: null };
   const ports: Record<string, unknown> = {
     react: {
       useMemo: memo,
@@ -281,6 +282,9 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     },
     './playback-owner': { mediaPlayback: coordinator },
     './attachment-picker': { pickAttachmentAssets: () => selection() },
+    './attachment-photo-picker': {
+      useAttachmentPhotoPicker: () => photoPicker,
+    },
     './cache-files': { discardCacheCopy: (uri: string) => discarded.push(uri) },
     './cache-work': { sensitiveCacheWork: { run: (work: () => unknown) => work() } },
   };
@@ -336,7 +340,7 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
         | AttachmentApprovalProps
         | undefined,
     openNativePreview: (id: string) => {
-      const strip = (render().review!.props.children as Element[])[0]!;
+      const strip = findStrip(render().review);
       (strip.props.onPreview as (id: string) => void)(id);
       const approval = maybeFind(render().review, 'attachment-approval');
       if (approval) (approval.props.onEdit as () => void)();
@@ -445,7 +449,7 @@ test('compiled attachment hook retains batch order, each caption, and the origin
   await f.channel.flush();
   ui = f.render();
   assert.equal(ui.field?.value, 'First caption');
-  const strip = (ui.review!.props.children as Element[])[0]!;
+  const strip = findStrip(ui.review);
   (strip.props.onSelect as (id: string) => void)('asset-2');
   ui = f.render();
   ui.field!.onChange('Second caption');
@@ -541,7 +545,7 @@ test('a previously rendered Remove action preserves the latest caption before Re
   f.select([photo('one.jpg'), photo('two.jpg')]);
   await f.render().pick('photo');
   const ui = f.render();
-  const strip = (ui.review!.props.children as Element[])[0]!;
+  const strip = findStrip(ui.review);
   ui.field!.onChange('Latest caption before commit');
   (strip.props.onRemove as (id: string) => void)('asset-2');
   await tick();
@@ -564,11 +568,11 @@ test(
     ui.field!.onChange('  Caption 🗂️\nkept exactly  ');
     await f.channel.flush();
     ui = f.render();
-    const strip = (ui.review!.props.children as Element[])[0]!;
+    const strip = findStrip(ui.review);
     (strip.props.onSelect as (id: string) => void)('asset-2');
     ui = f.render();
     ui.field!.onChange('PDF caption');
-    const second = (ui.review!.props.children as Element[])[0]!;
+    const second = findStrip(ui.review);
     (second.props.onPreview as (id: string) => void)('asset-2');
     await f.previewStarted;
     assert.equal(f.previews.length, 1);
@@ -616,7 +620,7 @@ test('a stale Remove action dismisses review before dropping the selected draft 
   await tick();
   f.select([photo('one.jpg'), photo('two.jpg')]);
   await f.render().pick('photo');
-  const strip = (f.render().review!.props.children as Element[])[0]!;
+  const strip = findStrip(f.render().review);
   f.openNativePreview('asset-1');
   await tick();
   (strip.props.onRemove as (id: string) => void)('asset-1');
@@ -837,7 +841,7 @@ test('recovered attachments remain compact until explicitly expanded and expandi
   f.render();
   await tick();
   assert.equal(f.approval(), undefined);
-  const strip = (f.render().review!.props.children as Element[])[0]!;
+  const strip = findStrip(f.render().review);
   (strip.props.onPreview as (id: string) => void)('old-post');
   const approval = f.approval()!;
   assert.equal(approval.field.value, 'Recovered');
@@ -1037,3 +1041,19 @@ test(
     }
   },
 );
+
+function findStrip(root: unknown): Element {
+  if (Array.isArray(root)) {
+    for (const child of root) {
+      try {
+        return findStrip(child);
+      } catch {}
+    }
+  }
+  if (root && typeof root === 'object' && 'props' in root) {
+    const element = root as Element;
+    if (element.type === 'AttachmentDraftStrip') return element;
+    return findStrip(element.props.children);
+  }
+  throw new Error('AttachmentDraftStrip missing');
+}

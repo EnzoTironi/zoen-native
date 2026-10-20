@@ -25,6 +25,7 @@ import { useTheme } from '../theme';
 import { Icon } from './primitives';
 import { MessageInteraction, MessagePressable as Pressable } from './message-interaction';
 import { MessageReceipt, messageDeliveryLabel } from './message-receipt';
+import { MessageBubbleGraphic } from './message-graphics';
 import type { MessageActionMode, MessageAnchor } from './use-message-actions';
 
 export type ConversationMessageProps = {
@@ -228,10 +229,10 @@ export const ConversationMessage = memo(function ConversationMessage({
     !attachment && !!text.trim() && !/[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/u.test(text);
   const singleLineWidth =
     canMeasureInline && measuredText?.count === 1 && measuredStatus
-      ? measuredText.right + measuredStatus.width + 5 + 22
+      ? measuredText.right + measuredStatus.width + 5 + 28
       : 40;
   const textMinWidth = Math.min(textMaxWidth, Math.max(40, singleLineWidth));
-  const trailingWidth = Math.max(measuredFrame?.width ?? 0, textMinWidth - 22);
+  const trailingWidth = Math.max(measuredFrame?.width ?? 0, textMinWidth - 28);
   const inlineStatus =
     canMeasureInline &&
     !!measuredText &&
@@ -320,7 +321,7 @@ export const ConversationMessage = memo(function ConversationMessage({
         paddingHorizontal: outside ? 8 : 0,
         alignSelf: 'flex-end',
         position: !outside && inlineStatus ? 'absolute' : undefined,
-        right: !outside && inlineStatus ? 11 : undefined,
+        right: !outside && inlineStatus ? (mine ? 17 : 11) : undefined,
         bottom: !outside && inlineStatus ? 6 - pixel : undefined,
         paddingTop: outside ? 4 : inlineStatus ? 0 : 2,
         paddingBottom: outside ? 3 : 0,
@@ -340,6 +341,7 @@ export const ConversationMessage = memo(function ConversationMessage({
       {mine ? (
         <MessageReceipt
           delivery={entry.delivery}
+          ownerKey={entry.id}
           ink={outside ? colors.secondary : ink}
           background={outside ? colors.background : paper}
         />
@@ -488,12 +490,23 @@ export const ConversationMessage = memo(function ConversationMessage({
                   minHeight: attachment ? undefined : 35,
                   ...(attachment ? { borderRadius: 22 } : textCorners),
                   borderCurve: 'continuous',
-                  backgroundColor: attachment && !voice ? 'transparent' : paper,
+                  backgroundColor: attachment && voice ? paper : 'transparent',
                   paddingHorizontal: attachment ? 0 : 11,
+                  paddingLeft: attachment ? 0 : mine ? 11 : 17,
+                  paddingRight: attachment ? 0 : mine ? 17 : 11,
                   paddingTop: attachment ? 0 : 6 + pixel,
                   paddingBottom: attachment ? 0 : 6 - pixel,
                 }}
               >
+                {!attachment ? (
+                  <MessageBubbleGraphic
+                    ownerKey={entry.id}
+                    incoming={!mine}
+                    above={grouped}
+                    below={!lastInGroup}
+                    fill={paper}
+                  />
+                ) : null}
                 {!entry.deleted && entry.reply_to ? (
                   <Pressable
                     accessibilityRole="button"

@@ -1,6 +1,6 @@
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { router } from 'expo-router';
-import { Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions, type ViewProps } from 'react-native';
 import type { Persona } from '../core/generated/Persona';
 import { t } from '../i18n/index.ts';
 import { ProfileAvatar } from '../profile/profile-avatar';
@@ -15,11 +15,20 @@ export type ChatHeaderProps = {
   search?: { active: boolean; onToggle: () => void };
 };
 
-export function ChatTitle({ id, title, counterpart, activityLabel, search }: ChatHeaderProps) {
+export function ChatTitle({
+  id,
+  title,
+  counterpart,
+  activityLabel,
+  search,
+  availableWidth,
+  onLayout,
+}: ChatHeaderProps & { availableWidth?: number; onLayout?: ViewProps['onLayout'] }) {
   const { colors, scheme } = useTheme();
   const { width, fontScale } = useWindowDimensions();
   const glass = process.env.EXPO_OS === 'ios' && isLiquidGlassAvailable();
   const native = process.env.EXPO_OS === 'ios';
+  const nativeWidth = availableWidth ?? Math.max(88, width - 176);
   // f1dd7a2 ChatTitleComponent:365,626,1047,1084. The avatar is
   // a separate navigation item, not part of the centered title capsule.
   const content = native ? (
@@ -27,8 +36,8 @@ export function ChatTitle({ id, title, counterpart, activityLabel, search }: Cha
       testID="chat-title-content"
       style={{
         minHeight: 44,
-        minWidth: Math.min(178, Math.max(88, width - 176)),
-        maxWidth: Math.max(88, width - 176),
+        minWidth: Math.min(178, nativeWidth),
+        maxWidth: nativeWidth,
         paddingHorizontal: 14,
         alignItems: 'center',
         justifyContent: 'center',
@@ -82,6 +91,7 @@ export function ChatTitle({ id, title, counterpart, activityLabel, search }: Cha
   return (
     <Pressable
       testID="chat-details-header"
+      onLayout={onLayout}
       accessibilityRole="button"
       accessibilityLabel={[title, activityLabel].filter(Boolean).join(', ')}
       accessibilityHint={t('chat.chatDetails')}

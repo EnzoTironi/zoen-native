@@ -56,6 +56,7 @@ declare class ZoenCoreModule extends NativeModule<{
   materializeFile(itemId: string, version: number | null): Promise<string>;
   previewLocalFile(uri: string): Promise<void>;
   releaseLocalFile(uri: string): Promise<void>;
+  releaseMediaLibraryExport?(uri: string): Promise<void>;
   saveProfile(request: string): Promise<void>;
   materializeProfilePhoto(
     ownerId: string,

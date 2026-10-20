@@ -39,6 +39,7 @@ const nativePorts = new Set([
   'react-native-reanimated',
   'react-native-worklets',
   'expo-haptics',
+  'expo-router',
   '../i18n/index.ts',
   '../media/MediaAttachment',
   '../miniapps/message-card',
@@ -252,7 +253,9 @@ function fixture(initial = message(), disabled = false) {
         )),
     },
     'react/jsx-runtime': { jsx: element, jsxs: element },
+    'expo-router': { useFocusEffect: (callback: Effect) => effect(callback, [callback], true) },
     'react-native': {
+      AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       Text: 'Text',
       View: 'View',
       Pressable: 'NativePressable',
@@ -296,13 +299,16 @@ function fixture(initial = message(), disabled = false) {
         );
       },
       useAnimatedStyle: (calculate: () => unknown) => calculate(),
-      withSpring: (value: unknown) => value,
+      useDerivedValue: (read: () => unknown) => ({ get: read }),
+      Easing: { bezier: (...values: unknown[]) => values, linear: 'linear' },
+      withSequence: (...values: unknown[]) => values.at(-1),
+      withTiming: (value: unknown) => value,
     },
     'react-native-worklets': {
       scheduleOnRN: (callback: (...args: unknown[]) => void, ...args: unknown[]) =>
         callback(...args),
     },
-    'expo-haptics': { selectionAsync: async () => {} },
+    'expo-haptics': { impactAsync: async () => {}, ImpactFeedbackStyle: { Heavy: 'heavy' } },
     '../i18n/index.ts': { t: translated, locale: 'en', formatLocale: 'en-US' },
     '../theme': { useTheme: () => ({ ...theme, reducedMotion: false }) },
     '../media/MediaAttachment': { MessageMedia: 'MessageMedia' },

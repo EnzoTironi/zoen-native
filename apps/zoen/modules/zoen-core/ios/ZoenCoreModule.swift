@@ -68,6 +68,27 @@ public class ZoenCoreModule: Module {
       Prop("token") { (view: ZoenPageTextInput, token: String) in view.token = token }
       OnViewDidUpdateProps { (view: ZoenPageTextInput) in view.bind() }
     }
+    // Named presentation-only views; the existing first/default page-input view stays unchanged.
+    View(ZoenMessageBubbleView.self) {
+      ViewName("MessageBubble")
+      Prop("ownerKey") { (view: ZoenMessageBubbleView, value: String) in view.ownerKey = value }
+      Prop("incoming") { (view: ZoenMessageBubbleView, value: Bool) in view.incoming = value }
+      Prop("tail") { (view: ZoenMessageBubbleView, value: Bool) in view.tail = value }
+      Prop("topLeft") { (view: ZoenMessageBubbleView, value: Double) in view.topLeft = value }
+      Prop("topRight") { (view: ZoenMessageBubbleView, value: Double) in view.topRight = value }
+      Prop("bottomLeft") { (view: ZoenMessageBubbleView, value: Double) in view.bottomLeft = value }
+      Prop("bottomRight") { (view: ZoenMessageBubbleView, value: Double) in view.bottomRight = value }
+      Prop("fill") { (view: ZoenMessageBubbleView, value: String) in view.fill = value }
+      Prop("animateChanges") { (view: ZoenMessageBubbleView, value: Bool) in view.animateChanges = value }
+      OnViewDidUpdateProps { (view: ZoenMessageBubbleView) in view.apply() }
+    }
+    View(ZoenMessageReceiptView.self) {
+      ViewName("MessageReceipt")
+      Prop("ownerKey") { (view: ZoenMessageReceiptView, value: String?) in view.ownerKey = value ?? "" }
+      Prop("shape") { (view: ZoenMessageReceiptView, value: String) in view.shape = value }
+      Prop("color") { (view: ZoenMessageReceiptView, value: String) in view.color = value }
+      OnViewDidUpdateProps { (view: ZoenMessageReceiptView) in view.apply(propsDelivered: true) }
+    }
     AsyncFunction("openAssistant") { (spaceId: String, locale: String) async throws -> String in
       try await self.session.openAssistant(spaceId: spaceId, locale: locale)
     }
@@ -127,6 +148,9 @@ public class ZoenCoreModule: Module {
       try await self.session.previewLocalFile(uri, presenter: presenter)
     }
     AsyncFunction("releaseLocalFile") { (uri: String) async in await self.session.releaseLocalFile(uri) }
+    AsyncFunction("releaseMediaLibraryExport") { (uri: String) async throws in
+      try ZoenDeviceErasure.releaseMediaLibraryExport(uri)
+    }
     AsyncFunction("saveProfile") { (request: String) async throws in try await self.session.saveProfile(request) }
     AsyncFunction("materializeProfilePhoto") { (ownerId: String, deviceId: String, identityId: String, expectedSha256: String) async throws -> String in
       try await self.session.materializeProfilePhoto(ownerId: ownerId, deviceId: deviceId, identityId: identityId, expectedSha256: expectedSha256)

@@ -28,6 +28,7 @@ import {
 import { AttachmentDraftStrip } from './attachment-draft-strip';
 import { AttachmentApproval, supportsMediaApproval } from './attachment-approval';
 import { pickAttachmentAssets, type AttachmentPickKind } from './attachment-picker';
+import { useAttachmentPhotoPicker } from './attachment-photo-picker';
 import { discardCacheCopy } from './cache-files';
 import { sensitiveCacheWork } from './cache-work';
 import { mediaPlayback } from './playback-owner';
@@ -43,6 +44,8 @@ export function useDurableAttachmentComposer(
   channel: MediaDraftChannel | null,
 ) {
   const { store, snapshot } = useClient();
+  const photos = useAttachmentPhotoPicker();
+  const cancelPhotos = photos.cancel;
   const { colors } = useTheme();
   const state = useSyncExternalStore(
     channel?.subscribe ?? emptySubscribe,
@@ -208,10 +211,14 @@ export function useDurableAttachmentComposer(
   }, [current, retireApproval, review, options]);
   useEffect(() => {
     const refresh = () => {
-      if (!current()) retireApproval();
+      if (!current()) {
+        retireApproval();
+        cancelPhotos();
+      }
       review.refresh();
     };
     const close = async () => {
+      cancelPhotos();
       retireApproval();
       await review.close();
     };
@@ -221,7 +228,11 @@ export function useDurableAttachmentComposer(
     const stopSession = store.registerSessionCleanup(close);
     const background = AppState.addEventListener('change', (value) => {
       runtime.foreground = value === 'active';
-      if (value !== 'active') void close().catch(() => {});
+      if (value !== 'active') {
+        retireApproval();
+        if (value === 'background') cancelPhotos();
+        void review.close().catch(() => {});
+      }
     });
     return () => {
       stopStore();
@@ -235,16 +246,17 @@ export function useDurableAttachmentComposer(
         })
         .catch(() => {});
     };
-  }, [review, channel, store, current, retireApproval, runtime]);
+  }, [review, channel, store, current, retireApproval, runtime, cancelPhotos]);
   useFocusEffect(
     useCallback(() => {
       runtime.focused = true;
       return () => {
         runtime.focused = false;
+        cancelPhotos();
         retireApproval();
         void review.close().catch(() => {});
       };
-    }, [runtime, review, retireApproval]),
+    }, [runtime, review, retireApproval, cancelPhotos]),
   );
   useEffect(() => {
     runtime.closed = false;
@@ -388,7 +400,9 @@ export function useDurableAttachmentComposer(
         const before = channel.getSnapshot().content;
         const count = before?.kind === 'attachments' ? before.items.length : 0;
         if (count >= MAX_ATTACHMENT_ITEMS) throw new AttachmentDraftFailure('limit');
-        selected = await pickAttachmentAssets(kind, MAX_ATTACHMENT_ITEMS - count, current);
+        selected = await (kind === 'photo'
+          ? photos.pick(MAX_ATTACHMENT_ITEMS - count, current)
+          : pickAttachmentAssets(kind, MAX_ATTACHMENT_ITEMS - count, current));
         if (!selected.length) return;
         if (!current()) return;
         const latest = channel.getSnapshot();
@@ -646,139 +660,151 @@ export function useDurableAttachmentComposer(
       (!state.content || state.content.kind === 'attachments') &&
       items.length < MAX_ATTACHMENT_ITEMS,
     ),
-    review:
-      strip || (!state?.content && error) ? (
-        <View style={{ gap: 8 }}>
-          {strip ? (
-            <AttachmentDraftStrip
-              state={strip}
-              selectedId={selected?.mutationId ?? null}
-              busy={Boolean(
-                reviewing.mutationId ||
-                own?.picking ||
-                own?.clearing ||
-                state?.sending ||
-                (restoring && !error),
-              )}
-              error={error}
-              onPreview={
-                canReview
-                  ? (id) => {
-                      const item = items.find((item) => item.mutationId === id);
-                      if (supportsMediaApproval && item && /^(image|video)\//.test(item.mime))
-                        openApproval(id);
-                      else void review.open(id);
-                    }
-                  : undefined
-              }
-              onSelect={(id) =>
-                publish({
-                  selected:
-                    content?.items.find((item) => item.mutation_id === id)?.asset_id ?? null,
-                })
-              }
-              onRemove={(id) => {
-                const item = content?.items.find((item) => item.mutation_id === id);
-                if (item) void remove(item.asset_id);
-              }}
-              onCancel={() => {
-                void cancel();
-              }}
-            />
-          ) : (
-            <Text accessibilityRole="alert" style={{ color: colors.danger }}>
-              {error}
-            </Text>
-          )}
-          {strip && field && presentation && own?.approval === presentation ? (
-            <AttachmentApproval
-              testID="attachment-approval"
-              state={strip}
-              field={field}
-              selectedId={selected?.mutationId ?? null}
-              recipient={
-                snapshot?.conversations.find((chat) => chat.id === channel?.scope.space_id)
-                  ?.title ?? t('media.attachmentConversation')
-              }
-              busy={busy}
-              editing={Boolean(reviewing.mutationId)}
-              canAdd={!state?.frozen && !busy && items.length < MAX_ATTACHMENT_ITEMS}
-              canEdit={Boolean(
-                canReview &&
-                store.driver.media?.drafts?.edit &&
-                !state?.frozen &&
-                selected &&
-                /^(image\/(jpeg|png|heic|heif)|video\/(mp4|quicktime|x-m4v))$/.test(selected.mime),
-              )}
-              error={error}
-              isCurrent={() =>
-                Boolean(
-                  current() &&
-                  runtime.foreground &&
-                  runtime.approval === presentation &&
-                  !presentation.closing &&
-                  !runtime.picking &&
-                  !review.getSnapshot().mutationId &&
-                  !channel?.getSnapshot().sending,
-                )
-              }
-              onClose={() => {
-                void closeApproval();
-              }}
-              onSelect={(id) => {
-                if (!current() || runtime.approval !== presentation || presentation.closing || busy)
-                  return;
-                mediaPlayback.pauseAll();
-                publish({
-                  selected:
-                    content?.items.find((item) => item.mutation_id === id)?.asset_id ?? null,
-                });
-              }}
-              onEdit={() => {
-                if (runtime.approval === presentation && !presentation.closing && selected)
-                  void review.open(selected.mutationId);
-              }}
-              onAdd={(kind) => {
-                if (runtime.approval === presentation && !presentation.closing) void pick(kind);
-              }}
-              onRemove={(id) => {
-                if (runtime.approval !== presentation || presentation.closing) return;
-                const item = content?.items.find((item) => item.mutation_id === id);
-                if (item) void remove(item.asset_id);
-              }}
-              onRetry={() => {
-                if (runtime.approval !== presentation || presentation.closing) return;
-                publish({ error: null });
-                void channel
-                  ?.retry()
-                  .then(() => {
-                    if (!runtime.closed) setRestoreEpoch((value) => value + 1);
-                  })
-                  .catch(failure);
-              }}
-            />
-          ) : null}
-          {error && channel ? (
-            <NativeButton
-              testID="retry-media-draft"
-              secondary
-              label={t('chat.tryAgain2')}
-              onPress={() => {
-                if (reviewFailed && selected) {
-                  void review.open(selected.mutationId);
-                  return;
+    review: (
+      <>
+        {!(strip && field && presentation && own?.approval === presentation) ? photos.view : null}
+        {strip || (!state?.content && error) ? (
+          <View style={{ gap: 8 }}>
+            {strip ? (
+              <AttachmentDraftStrip
+                state={strip}
+                selectedId={selected?.mutationId ?? null}
+                busy={Boolean(
+                  reviewing.mutationId ||
+                  own?.picking ||
+                  own?.clearing ||
+                  state?.sending ||
+                  (restoring && !error),
+                )}
+                error={error}
+                onPreview={
+                  canReview
+                    ? (id) => {
+                        const item = items.find((item) => item.mutationId === id);
+                        if (supportsMediaApproval && item && /^(image|video)\//.test(item.mime))
+                          openApproval(id);
+                        else void review.open(id);
+                      }
+                    : undefined
                 }
-                publish({ error: null });
-                void channel
-                  .retry()
-                  .then(() => {
-                    if (!runtime.closed) setRestoreEpoch((value) => value + 1);
+                onSelect={(id) =>
+                  publish({
+                    selected:
+                      content?.items.find((item) => item.mutation_id === id)?.asset_id ?? null,
                   })
-                  .catch(failure);
-              }}
-            />
-          ) : null}
-        </View>
-      ) : null,
+                }
+                onRemove={(id) => {
+                  const item = content?.items.find((item) => item.mutation_id === id);
+                  if (item) void remove(item.asset_id);
+                }}
+                onCancel={() => {
+                  void cancel();
+                }}
+              />
+            ) : (
+              <Text accessibilityRole="alert" style={{ color: colors.danger }}>
+                {error}
+              </Text>
+            )}
+            {strip && field && presentation && own?.approval === presentation ? (
+              <AttachmentApproval
+                libraryPicker={photos.view}
+                testID="attachment-approval"
+                state={strip}
+                field={field}
+                selectedId={selected?.mutationId ?? null}
+                recipient={
+                  snapshot?.conversations.find((chat) => chat.id === channel?.scope.space_id)
+                    ?.title ?? t('media.attachmentConversation')
+                }
+                busy={busy}
+                editing={Boolean(reviewing.mutationId)}
+                canAdd={!state?.frozen && !busy && items.length < MAX_ATTACHMENT_ITEMS}
+                canEdit={Boolean(
+                  canReview &&
+                  store.driver.media?.drafts?.edit &&
+                  !state?.frozen &&
+                  selected &&
+                  /^(image\/(jpeg|png|heic|heif)|video\/(mp4|quicktime|x-m4v))$/.test(
+                    selected.mime,
+                  ),
+                )}
+                error={error}
+                isCurrent={() =>
+                  Boolean(
+                    current() &&
+                    runtime.foreground &&
+                    runtime.approval === presentation &&
+                    !presentation.closing &&
+                    !runtime.picking &&
+                    !review.getSnapshot().mutationId &&
+                    !channel?.getSnapshot().sending,
+                  )
+                }
+                onClose={() => {
+                  void closeApproval();
+                }}
+                onSelect={(id) => {
+                  if (
+                    !current() ||
+                    runtime.approval !== presentation ||
+                    presentation.closing ||
+                    busy
+                  )
+                    return;
+                  mediaPlayback.pauseAll();
+                  publish({
+                    selected:
+                      content?.items.find((item) => item.mutation_id === id)?.asset_id ?? null,
+                  });
+                }}
+                onEdit={() => {
+                  if (runtime.approval === presentation && !presentation.closing && selected)
+                    void review.open(selected.mutationId);
+                }}
+                onAdd={(kind) => {
+                  if (runtime.approval === presentation && !presentation.closing) void pick(kind);
+                }}
+                onRemove={(id) => {
+                  if (runtime.approval !== presentation || presentation.closing) return;
+                  const item = content?.items.find((item) => item.mutation_id === id);
+                  if (item) void remove(item.asset_id);
+                }}
+                onRetry={() => {
+                  if (runtime.approval !== presentation || presentation.closing) return;
+                  publish({ error: null });
+                  void channel
+                    ?.retry()
+                    .then(() => {
+                      if (!runtime.closed) setRestoreEpoch((value) => value + 1);
+                    })
+                    .catch(failure);
+                }}
+              />
+            ) : null}
+            {error && channel ? (
+              <NativeButton
+                testID="retry-media-draft"
+                secondary
+                label={t('chat.tryAgain2')}
+                onPress={() => {
+                  if (reviewFailed && selected) {
+                    void review.open(selected.mutationId);
+                    return;
+                  }
+                  publish({ error: null });
+                  void channel
+                    .retry()
+                    .then(() => {
+                      if (!runtime.closed) setRestoreEpoch((value) => value + 1);
+                    })
+                    .catch(failure);
+                }}
+              />
+            ) : null}
+          </View>
+        ) : null}
+      </>
+    ),
   };
 }

@@ -1,0 +1,60 @@
+{
+  "status": "PASS",
+  "platform": "macOS Darwin actual Swift fixtures; not iOS UIKit or bridge execution",
+  "results": [
+    {
+      "model": "cache",
+      "phase": "positive",
+      "expected": "PASS",
+      "exitCode": 0,
+      "elapsedSeconds": 4.33,
+      "binarySha256": "ff6c06c5cb07a326554f1cab2acaf22a205bc8bd3e36a57e1fbdecb82bd374d1",
+      "log": "/private/tmp/zoen-telegram-conversation-native-v189/native-model-qualification-02/cache-positive.log"
+    },
+    {
+      "model": "cache",
+      "phase": "negative",
+      "expected": "FAIL",
+      "exitCode": -5,
+      "elapsedSeconds": 3.75,
+      "binarySha256": "446c03b1bb9c1650c733786ef3bc8f5766579dc3bdc51c7d6b04b73be93e6995",
+      "log": "/private/tmp/zoen-telegram-conversation-native-v189/native-model-qualification-02/cache-negative.log"
+    },
+    {
+      "model": "cache",
+      "phase": "restored",
+      "expected": "PASS",
+      "exitCode": 0,
+      "elapsedSeconds": 6.25,
+      "binarySha256": "9f3aaaaaf7972675d831e71637f13fc68384ac05f5ae09a32a8c5fff16073646",
+      "log": "/private/tmp/zoen-telegram-conversation-native-v189/native-model-qualification-02/cache-restored.log"
+    },
+    {
+      "model": "receipt",
+      "phase": "positive",
+      "expected": "PASS",
+      "exitCode": 0,
+      "elapsedSeconds": 0.71,
+      "binarySha256": "36d4e8ec6bcd777123b816cd9cd956ebcea0b83a0ee70debbbd5e462653f556b",
+      "log": "/private/tmp/zoen-telegram-conversation-native-v189/native-model-qualification-02/receipt-positive.log"
+    },
+    {
+      "model": "receipt",
+      "phase": "negative",
+      "expected": "FAIL",
+      "exitCode": -5,
+      "elapsedSeconds": 0.95,
+      "binarySha256": "2f89443d7f9a7547868c23c99c74d22ef5454924bf9582ec02c10c495e482874",
+      "log": "/private/tmp/zoen-telegram-conversation-native-v189/native-model-qualification-02/receipt-negative.log"
+    },
+    {
+      "model": "receipt",
+      "phase": "restored",
+      "expected": "PASS",
+      "exitCode": 0,
+      "elapsedSeconds": 1.89,
+      "binarySha256": "bcdc5802614a4335d3b7f3282261aac82997680098ca02261c5b9560b658ca93",
+      "log": "/private/tmp/zoen-telegram-conversation-native-v189/native-model-qualification-02/receipt-restored.log"
+    }
+  ]
+}

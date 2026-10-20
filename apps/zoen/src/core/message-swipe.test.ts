@@ -5,75 +5,95 @@ import {
   messageSwipeOffset,
   messageSwipeAdmission,
   messageSwipeFeedback,
-  type MessageSwipeIntent,
+  messageSwipeThreshold,
 } from './message-swipe.ts';
 
-test('threshold feedback rearms after retreat and tracks a reversal without repeated held ticks', () => {
-  let armed: MessageSwipeIntent | null = null;
-  const ticks: MessageSwipeIntent[] = [];
-  for (const distance of [-63, -64, -80, -40, -64, 64, 80]) {
-    const feedback = messageSwipeFeedback(armed, distance, false);
-    armed = feedback.armed;
-    if (feedback.tick && armed) ticks.push(armed);
+test('incoming 45pt and own 60pt releases use a strict raw boundary in either supported direction', () => {
+  for (const mine of [false, true]) {
+    const threshold = mine ? 60 : 45;
+    assert.equal(messageSwipeThreshold(mine), threshold);
+    for (const sign of [-1, 1]) {
+      assert.equal(messageSwipeIntent(sign * (threshold - 0.01), mine), null);
+      assert.equal(messageSwipeIntent(sign * threshold, mine), null);
+      assert.equal(
+        messageSwipeIntent(sign * (threshold + 0.01), mine),
+        sign < 0 ? 'reply' : 'thread',
+      );
+    }
+    for (const value of [NaN, Infinity, -Infinity])
+      assert.equal(messageSwipeIntent(value, mine), null);
   }
-  assert.deepEqual(ticks, ['reply', 'reply', 'thread']);
-  assert.equal(armed, 'thread');
 });
 
-test('cancellation and invalid movement disarm threshold feedback without a tick', () => {
-  for (const distance of [null, NaN, Infinity, -Infinity]) {
-    const cancelled = messageSwipeFeedback('reply', distance, false);
-    assert.deepEqual(cancelled, { armed: null, tick: false });
-    assert.deepEqual(messageSwipeFeedback(cancelled.armed, -64, false), {
-      armed: 'reply',
+test('threshold feedback occurs once per gesture, including retreat and reversal', () => {
+  for (const mine of [false, true]) {
+    const threshold = messageSwipeThreshold(mine);
+    let played = false;
+    const ticks: number[] = [];
+    for (const value of [-threshold, -threshold - 10, 0, -threshold, threshold, threshold + 20]) {
+      const feedback = messageSwipeFeedback(played, value, false, mine);
+      played = feedback.played;
+      if (feedback.tick) ticks.push(value);
+    }
+    assert.deepEqual(ticks, [-threshold]);
+    assert.equal(played, true);
+    assert.deepEqual(messageSwipeFeedback(false, -threshold, false, mine), {
+      played: true,
       tick: true,
     });
   }
 });
 
-test('live reduced motion keeps directional state while quieting new threshold feedback', () => {
-  const quiet = messageSwipeFeedback(null, -64, true);
-  assert.deepEqual(quiet, { armed: 'reply', tick: false });
-  assert.deepEqual(messageSwipeFeedback(quiet.armed, -80, false), {
-    armed: 'reply',
+test('invalid and reduced motion updates do not emit feedback or rearm a held gesture', () => {
+  for (const value of [null, NaN, Infinity, -Infinity]) {
+    assert.deepEqual(messageSwipeFeedback(false, value, false, false), {
+      played: false,
+      tick: false,
+    });
+    assert.deepEqual(messageSwipeFeedback(true, value, false, false), {
+      played: true,
+      tick: false,
+    });
+  }
+  const quiet = messageSwipeFeedback(false, -45, true, false);
+  assert.deepEqual(quiet, { played: true, tick: false });
+  assert.deepEqual(messageSwipeFeedback(quiet.played, 60, false, false), {
+    played: true,
     tick: false,
   });
-  const retreated = messageSwipeFeedback(quiet.armed, -30, false);
-  assert.deepEqual(messageSwipeFeedback(retreated.armed, 64, false), {
-    armed: 'thread',
-    tick: true,
-  });
 });
 
-test('message gestures map signed threshold to reply/thread and refuse incidental movement', () => {
-  assert.equal(messageSwipeIntent(-64, 0), 'reply');
-  assert.equal(messageSwipeIntent(64, 0), 'thread');
-  assert.equal(messageSwipeIntent(63, 0), null);
-  assert.equal(messageSwipeIntent(-63, 0), null);
-  assert.equal(messageSwipeIntent(20, 1200), null);
-  assert.equal(messageSwipeIntent(-36, -900), 'reply');
-  assert.equal(messageSwipeIntent(36, 900), 'thread');
-  assert.equal(messageSwipeIntent(36, -900), null);
-  assert.equal(messageSwipeIntent(Number.NaN, 0), null);
-  assert.equal(messageSwipeIntent(64, Infinity), null);
-});
-test('message rubber band is continuous, symmetric and bounded for long drags', () => {
-  assert.equal(messageSwipeOffset(0), 0);
-  assert.equal(messageSwipeOffset(64), 57.6);
-  assert.equal(messageSwipeOffset(-64), -57.6);
-  assert.ok(messageSwipeOffset(65) > messageSwipeOffset(64));
-  assert.ok(messageSwipeOffset(65) - messageSwipeOffset(64) < 1);
-  assert.equal(messageSwipeOffset(10000), 104);
-  assert.equal(messageSwipeOffset(-10000), -104);
+test('rational rubber band is continuous, symmetric and approaches the source range', () => {
+  for (const mine of [false, true]) {
+    const threshold = messageSwipeThreshold(mine);
+    assert.equal(messageSwipeOffset(0, mine), 0);
+    assert.equal(messageSwipeOffset(threshold, mine), threshold);
+    assert.equal(messageSwipeOffset(threshold - 1, mine), threshold - 1);
+    assert.ok(messageSwipeOffset(threshold + 1, mine) > threshold);
+    assert.ok(messageSwipeOffset(threshold + 1, mine) < threshold + 1);
+    assert.equal(messageSwipeOffset(threshold + 250, mine), threshold + 50);
+    for (const distance of [1, threshold, threshold + 250, 1e6]) {
+      assert.equal(messageSwipeOffset(-distance, mine), -messageSwipeOffset(distance, mine));
+      assert.ok(messageSwipeOffset(distance, mine) < threshold + 100);
+    }
+    for (const value of [NaN, Infinity, -Infinity])
+      assert.equal(messageSwipeOffset(value, mine), 0);
+  }
 });
 
-test('system back edge, vertical movement and multitouch win before message pan activation', () => {
-  assert.equal(messageSwipeAdmission(23, 80, 0), 'fail');
-  assert.equal(messageSwipeAdmission(24, 13, 0), 'activate');
-  assert.equal(messageSwipeAdmission(90, 80, 13), 'fail');
-  assert.equal(messageSwipeAdmission(90, 12, 4), 'wait');
-  assert.equal(messageSwipeAdmission(90, 14, 10), 'wait');
+test('2pt horizontal/2-to-1 direction admission preserves vertical scrolling, multitouch and 24pt back edge', () => {
+  assert.equal(messageSwipeAdmission(23.99, 80, 0), 'fail');
+  assert.equal(messageSwipeAdmission(24, 2, 0), 'wait');
+  assert.equal(messageSwipeAdmission(24, 2.01, 0), 'activate');
+  assert.equal(messageSwipeAdmission(90, 12, 6), 'wait');
+  assert.equal(messageSwipeAdmission(90, 12.01, 6), 'activate');
+  assert.equal(messageSwipeAdmission(90, 6, 12.01), 'fail');
   assert.equal(messageSwipeAdmission(90, -24, 10), 'activate');
   assert.equal(messageSwipeAdmission(90, 24, 0, 2), 'fail');
-  assert.equal(messageSwipeAdmission(NaN, 80, 0), 'fail');
+  for (const values of [
+    [NaN, 80, 0],
+    [90, Infinity, 0],
+    [90, 80, NaN],
+  ])
+    assert.equal(messageSwipeAdmission(values[0]!, values[1]!, values[2]!), 'fail');
 });

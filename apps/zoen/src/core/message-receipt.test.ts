@@ -55,7 +55,10 @@ function elements(value: unknown): Element[] {
   if (Array.isArray(value)) return value.flatMap(elements);
   if (!value || typeof value !== 'object' || !('props' in value)) return [];
   const node = value as Element;
-  return [node, ...elements(node.props.children)];
+  return [
+    node,
+    ...elements(typeof node.type === 'function' ? node.type(node.props) : node.props.children),
+  ];
 }
 function render(delivery: Delivery, phase: (typeof SKY_PHASES)[number], mine: boolean) {
   const theme = resolveSkyTheme(phase, new Date('2026-10-18T12:00:00'));
@@ -106,14 +109,14 @@ test('compiled receipt keeps all six core acknowledgement states and actual acce
     assert.equal((icons[0]!.props.name as { ios: string }).ios, ios);
     assert.equal(icons[0]!.props.size, 11);
     const style = tree.props.style as Record<string, unknown>;
-    assert.equal(style.width, count === 2 ? 17 : 13);
+    assert.equal(style.width, 13);
     if (count === 2) {
       const overlap = elements(tree).find(
         (node) =>
           (node.props.style as Record<string, unknown> | undefined)?.position === 'absolute',
       );
       assert.ok(overlap);
-      assert.equal((overlap.props.style as Record<string, unknown>).left, 6);
+      assert.equal((overlap.props.style as Record<string, unknown>).left, -4);
     }
   }
 });

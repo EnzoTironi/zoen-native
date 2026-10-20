@@ -58,3 +58,54 @@ O módulo Expo MediaLibrary58.0.11 e sua configuração de permissão estão
 preparados neste lote; a nova galeria Photos permanece em pacote separado,
 ainda sem integração nem validação no iPhone. Os identificadores estáveis dos
 títulos Início/Chats apoiam a verificação do artefato sem alterar o layout.
+
+## Segundo lote: gestos, gráficos nativos e Photos
+
+O segundo lote substitui a aproximação do swipe por limites45/60pt para
+recebidas/próprias, rubber-band de alcance100/coeficiente0,4 e retorno300ms
+com a curva cúbica(0,38;0,70;0,125;1). Essa curva corresponde à implementação
+efetiva da transição de300ms no `CAAnimationUtils.swift` fixado, e não a uma
+mola genérica escolhida pelo nome da API. O indicador acompanha o dedo e o
+haptic dispara uma vez ao cruzar o limite. O gesto oposto mantém threads como
+extensão do Zoen. Reciclagem, perda de foco e troca de sessão invalidam ações
+enfileiradas; o teste compilado cobre esses cancelamentos.
+
+Balões e recibos passam a ter renderização UIKit/CoreGraphics. A cauda e as
+margens de imagem expansível seguem as medidas estudadas; os checks usam os
+dados procedurais upstream identificados em `THIRD_PARTY_NOTICES.md`. A
+transição de reconhecimento usa100ms e escala1,3→1; o relógio tem ciclos
+lineares de6s/1s. Uma célula reanexada exige novas propriedades de referência
+antes de admitir efeitos, evitando animar um reconhecimento histórico como
+novo. Reduce Motion remove os efeitos. A animação de substituição do fundo
+só é admitida explicitamente; a transformação completa do envio não está
+implementada por esse componente.
+
+A barra pública de substituição mantém a mesma navegação nativa. O caminho
+normal do Telegram usa60pt após a região superior e controles44pt em top+10,
+bordas16pt e folga10pt para o título. O título medido centraliza e depois
+respeita os controles efetivamente presentes, incluindo a busca adicional do
+Zoen. A primeira versão instalada mostrou o título deslocado pela barra UIKit;
+essa evidência motivou a substituição. Menu de histórico do botão Voltar,
+transformação nativa do título e comportamento de primeiro layout permanecem
+pendentes de qualificação.
+
+A galeria Photos agora integra álbuns, seleção ordenada, acesso limitado e
+transição para a revisão existente após o encerramento real da sheet. Usa a
+API58 atual. Copia somente o arquivo autorizado para o cache próprio e libera
+uma exportação temporária do SDK antes de admitir o rascunho. O módulo nativo
+aceita apenas o namespace e nome canônico exatos do SDK, sem apagar originais
+da biblioteca. Câmera, iCloud, rotação e a jornada do primeiro pedido de permissão
+ainda exigem execução no iPhone.
+
+Validação integrada de fonte: `npm run check` passou com1179 testes, tipos,
+Oxlint e Oxfmt. Os dois modelos Swift reais de limpeza e recibos passaram em
+macOS, falharam ao remover suas proteções e passaram após restauração. Isso
+não substitui execução UIKit/iOS. O núcleo configurado Release e a atualização
+dos Pods passaram; a compilação e a validação nativa deste segundo lote
+permanecem pendentes nesta revisão.
+
+O menu extraído do Telegram está num protótipo privado separado, sem registro
+de produção. Retirar uma view React da raiz pode romper o recebimento de
+toques; os testes de orquestração não provam esse contrato nativo. A interface
+segura existente continua ativa até essa barreira ser resolvida. Não há aceite
+global de pixel matching ou animações completas.

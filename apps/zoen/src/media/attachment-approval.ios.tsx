@@ -524,6 +524,7 @@ export function AttachmentApproval(props: AttachmentApprovalProps) {
       onRequestClose={props.onClose}
     >
       <SafeAreaProvider>
+        {props.libraryPicker}
         <StatusBar hidden />
         <ApprovalContent {...props} />
       </SafeAreaProvider>

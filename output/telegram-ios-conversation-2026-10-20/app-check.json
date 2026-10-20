@@ -1,0 +1,16 @@
+{
+  "label": "telegram-native-batch-194-check-01",
+  "command": [
+    "npm",
+    "run",
+    "check"
+  ],
+  "cwd": "/Users/enzotironi/.codex/worktrees/app-sheet-polish/zoen-native/apps/zoen",
+  "startedAt": "2026-10-20T23:10:56.046863+00:00",
+  "log": "/private/tmp/zoen-telegram-conversation-native-v189/telegram-native-batch-194-check-01.log",
+  "status": "PASS",
+  "pid": 88309,
+  "exitCode": 0,
+  "elapsedSeconds": 139.99,
+  "finishedAt": "2026-10-20T23:13:16.033496+00:00"
+}
