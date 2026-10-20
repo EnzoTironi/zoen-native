@@ -10,11 +10,13 @@ import type { TimelineEntry } from '../core/types';
 import { useClient } from '../core/provider';
 import { useTheme } from '../theme';
 import { Icon } from '../components/primitives';
-import { AudioClip, clipTime } from './AudioClip';
+import { AudioClip, AudioClipControls, clipTime } from './AudioClip';
+import { useReceivedMessageAudio } from './message-audio-provider';
 import { AudioWaveform } from './audio-progress';
 import { VideoClip } from './VideoClip';
 import { previewMediaFile } from './preview-file';
 import { formatFileSize } from './file-size';
+import { inlineImageFrame, type DecodedMessageImage } from './inline-image-frame';
 
 type Presentation = 'message' | 'document';
 type FileAttachmentProps = {
@@ -26,9 +28,11 @@ type FileAttachmentProps = {
   presentation?: Presentation;
   mine?: boolean;
   onActions?: () => void;
+  onImageDecoded?: (image: DecodedMessageImage) => void;
+  messageSource?: { spaceId: string; entry: TimelineEntry };
 };
 
-/** Version/hash identity owns the player and releases its prior decrypted copy. */
+/** Generic media owns row copies; received voice controls use the account transport. */
 export function FileAttachment(props: FileAttachmentProps) {
   return (
     <FileAttachmentContent
@@ -47,17 +51,32 @@ function FileAttachmentContent({
   presentation = 'document',
   mine = false,
   onActions,
+  onImageDecoded,
+  messageSource,
 }: FileAttachmentProps) {
-  const { store, snapshot } = useClient();
+  const { store, snapshot, mode } = useClient();
   const driver = store.driver.media;
   const { colors, scheme } = useTheme();
   const message = presentation === 'message';
+  const account = snapshot?.account;
+  const received = useReceivedMessageAudio(
+    messageSource?.spaceId ?? '',
+    message && voice ? (messageSource?.entry ?? null) : null,
+    mode === 'account' && account
+      ? {
+          identityId: account.identity_id,
+          deviceId: account.device_id,
+          epoch: store.sessionEpoch,
+        }
+      : null,
+  );
   const ink = message && mine ? colors.onMine : colors.text;
   const [info, setInfo] = useState<FileDto | null>(null);
   const [local, setLocal] = useState<LocalMediaFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ratio, setRatio] = useState(1);
+  const [availableWidth, setAvailableWidth] = useState(0);
   const [autoplay, setAutoplay] = useState(false);
   const [transcriptExpanded, setTranscriptExpanded] = useState(false);
   const mounted = useRef(false);
@@ -78,7 +97,7 @@ function FileAttachmentContent({
   // Readiness is canonical. Looking at a thumbnail never restores an old version.
   useEffect(() => {
     let active = true;
-    if (driver)
+    if (driver && !received)
       void driver
         .fileInfo(itemId, version)
         .then((value) => {
@@ -93,7 +112,7 @@ function FileAttachmentContent({
     return () => {
       active = false;
     };
-  }, [driver, itemId, version, expectedHash, snapshot]);
+  }, [driver, itemId, version, expectedHash, snapshot, received]);
   const materialize = useCallback(
     async (media: MediaDriver) => {
       const file = await media.materializeFile(itemId, version);
@@ -220,9 +239,14 @@ function FileAttachmentContent({
     : t('media.loading');
   const image = local?.info.mime.startsWith('image/');
   const video = local?.info.mime.startsWith('video/');
+  const imageFrame = inlineImageFrame(availableWidth, ratio);
   const outline = scheme === 'dark' ? '#FFFFFF1A' : '#0000001A';
   return (
     <View
+      onLayout={(event) => {
+        const width = event.nativeEvent.layout.width;
+        if (Number.isFinite(width) && width > 0) setAvailableWidth(width);
+      }}
       style={{
         width: '100%',
         minWidth: 0,
@@ -233,7 +257,17 @@ function FileAttachmentContent({
         backgroundColor: message ? 'transparent' : colors.surface,
       }}
     >
-      {local && image && message ? (
+      {voice && received ? (
+        <View style={{ paddingHorizontal: 10, paddingVertical: 5 }}>
+          <AudioClipControls
+            playback={received}
+            levels={voice.levels}
+            compact
+            appearance={mine ? 'mine' : 'received'}
+            onLongPress={onActions}
+          />
+        </View>
+      ) : local && image && message ? (
         <Pressable
           onLongPress={onActions}
           delayLongPress={350}
@@ -243,6 +277,10 @@ function FileAttachmentContent({
             void previewImage();
           }}
           style={({ pressed }) => ({
+            alignSelf: mine ? 'flex-end' : 'flex-start',
+            width: imageFrame.width || '100%',
+            height: imageFrame.height || undefined,
+            aspectRatio: imageFrame.width ? undefined : 1,
             borderRadius: 24,
             borderCurve: 'continuous',
             overflow: 'hidden',
@@ -254,13 +292,24 @@ function FileAttachmentContent({
             recyclingKey={`${itemId}:${local.info.sha256}`}
             source={{ uri: local.uri }}
             accessible={false}
-            contentFit="cover"
+            contentFit="contain"
             onLoad={(event) => {
+              if (!mounted.current || owned.current !== local || event.source.url !== local.uri)
+                return;
               const { width, height } = event.source;
-              if (width > 0 && height > 0) setRatio(Math.max(0.7, Math.min(1.8, width / height)));
+              if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+                setRatio(width / height);
+                onImageDecoded?.({
+                  itemId: local.itemId,
+                  version: local.version,
+                  sha256: local.info.sha256,
+                  width,
+                  height,
+                });
+              }
             }}
             onError={() => setError(t('media.thisFileCouldNotBeOpened'))}
-            style={{ width: '100%', aspectRatio: ratio, maxHeight: 360 }}
+            style={{ position: 'absolute', inset: 0 }}
           />
           <View
             pointerEvents="none"
@@ -452,13 +501,17 @@ function FileAttachmentContent({
 }
 
 export function MessageMedia({
+  spaceId,
   entry,
   presentation = 'message',
   onActions,
+  onImageDecoded,
 }: {
+  spaceId: string;
   entry: TimelineEntry;
   presentation?: Presentation;
   onActions?: () => void;
+  onImageDecoded?: (image: DecodedMessageImage) => void;
 }) {
   if (entry.deleted) return null;
   if (entry.voice)
@@ -468,6 +521,7 @@ export function MessageMedia({
         itemId={entry.voice.item_id}
         voice={entry.voice}
         expectedHash={entry.voice.sha256}
+        messageSource={{ spaceId, entry }}
         presentation={presentation}
         mine={entry.author.is_me}
         onActions={onActions}
@@ -479,6 +533,7 @@ export function MessageMedia({
       itemId={card.item_id}
       version={card.version}
       title={card.title}
+      onImageDecoded={onImageDecoded}
       presentation={presentation}
       mine={entry.author.is_me}
       onActions={onActions}

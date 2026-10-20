@@ -495,21 +495,31 @@ impl Engine {
         if let Some(err) = accept_err {
             return self.refuse_unaccepted(&space, &err, &e);
         }
-        if let Err(err) = self.store.append_event(&e) {
-            // Disk and memory must agree: drop the in-memory copy, it'll come back on sync.
+        let own = self.net.pending.get(&e.client_id) == Some(&space);
+        // The confirmed event, its catch-up scope and an own pending copy describe
+        // one receipt. Never publish a confirmation whose bookkeeping failed.
+        let stored = (|| -> store::Result<()> {
+            let tx = self.store.conn().unchecked_transaction()?;
+            self.store.append_event(&e)?;
+            self.store.set_synced(&space)?;
+            if own {
+                self.store.outbox_remove(&e.client_id)?;
+            }
+            tx.commit()?;
+            Ok(())
+        })();
+        if let Err(err) = stored {
+            // Rollback precedes reload, so memory sees the same pending/history state.
             let _ = self.reload();
             return Ingest::Invalid(err.to_string());
         }
-        let _ = self.store.set_synced(&space);
         self.net.synced.insert(space.clone());
         if !self.space_order.contains(&space) {
             self.space_order.push(space.clone());
         }
         let replay_approval = self.approval_projection_needs_replay(&e);
-        let own = self.net.pending.get(&e.client_id) == Some(&space);
         if own {
             self.net.pending.remove(&e.client_id);
-            let _ = self.store.outbox_remove(&e.client_id);
         }
         if replay_approval {
             if own && self.confirmed_item_already_projected(&e) {

@@ -51,6 +51,7 @@
       "Try Again": "Try Again",
       "Discard Changes": "Discard Changes",
       "The edited PDF could not be read. Try saving your changes again.": "The edited PDF could not be read. Try saving your changes again.",
+      "The edited photo or video could not be read. Try saving your changes again.": "The edited photo or video could not be read. Try saving your changes again.",
       "Continue Editing": "Continue Editing",
       "Marked up": "Marked up",
       "Your changes were saved.": "Your changes were saved.",
@@ -58,7 +59,14 @@
       "Recovered changes": "Recovered changes",
       "These changes are only on this device. Save them to update the shared file.": "These changes are only on this device. Save them to update the shared file.",
       "Save Changes": "Save Changes",
-      "Keep for Later": "Keep for Later"
+      "Keep for Later": "Keep for Later",
+      "This editor has closed. Open the Page again.": "This editor has closed. Open the Page again.",
+      "This Page or its editing account has changed. Open it again.": "This Page or its editing account has changed. Open it again.",
+      "This input could not be saved. Retry or discard it before leaving.": "This input could not be saved. Retry or discard it before leaving.",
+      "The editor has no retained input to apply.": "The editor has no retained input to apply.",
+      "Retry the pending editor operation before choosing another action.": "Retry the pending editor operation before choosing another action.",
+      "The native editor is unavailable. Keep this screen open and retry.": "The native editor is unavailable. Keep this screen open and retry.",
+      "This content requires the Markdown or text editor.": "This content requires the Markdown or text editor."
     },
     "NSFaceIDUsageDescription": "Allow $(PRODUCT_NAME) to use Face ID to confirm your identity.",
     "NSLocalNetworkUsageDescription": "Expo Dev Launcher uses the local network to discover and connect to development servers running on your computer."

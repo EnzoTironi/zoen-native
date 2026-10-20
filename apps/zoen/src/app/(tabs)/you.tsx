@@ -1,15 +1,14 @@
 import { SkyScene } from '../../components/sky-background';
 import { t } from '../../i18n/index.ts';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useDialogs } from '../../components/dialogs';
 import { router } from 'expo-router';
 import { useProfilePhoto } from '../../profile/use-profile-photo';
 import { useClient } from '../../core/provider';
 import { useTheme } from '../../theme';
-import { Avatar, NativeButton, Surface } from '../../components/primitives';
-import { DeviceDataActions } from '../../components/device-data-actions';
+import { Avatar, NativeButton } from '../../components/primitives';
 import { IntegrityWarnings } from '../../integrity/integrity-warning';
-import { AppearancePicker } from '../../components/appearance-picker';
+import { SettingsRows } from '../../components/settings-rows';
 
 function YouContent() {
   const { snapshot, store, mode } = useClient();
@@ -19,8 +18,17 @@ function YouContent() {
   const photo = useProfilePhoto(me?.id, me?.photo_sha256, me?.photo_ready ?? false);
   return (
     <ScrollView
+      testID="you-settings-screen"
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{ padding: 24, gap: 24, backgroundColor: 'transparent' }}
+      contentContainerStyle={{
+        padding: 24,
+        paddingBottom: 48,
+        gap: 28,
+        maxWidth: 640,
+        width: '100%',
+        alignSelf: 'center',
+        backgroundColor: 'transparent',
+      }}
     >
       <Text
         accessibilityRole="header"
@@ -28,96 +36,94 @@ function YouContent() {
       >
         {t('settings.you')}
       </Text>
-      <Surface>
+      <View style={{ gap: 16 }}>
         <View style={{ flexDirection: 'row', gap: 18, alignItems: 'center' }}>
           <Avatar uri={photo} name={me?.name ?? t('settings.you')} color={me?.tint_hex} size={66} />
-          <View style={{ flex: 1, gap: 5 }}>
-            <Text style={{ fontSize: 23, fontWeight: '600', color: colors.text }}>
+          <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
+            <Text selectable style={{ fontSize: 23, fontWeight: '600', color: colors.text }}>
               {me?.name ?? t('settings.yourAccount')}
             </Text>
-            <Text style={{ fontSize: 15, color: colors.secondary }}>@{me?.handle}</Text>
+            {me?.handle ? (
+              <Text selectable style={{ fontSize: 15, color: colors.secondary }}>
+                @{me.handle}
+              </Text>
+            ) : null}
           </View>
         </View>
-        {me?.bio ? <Text style={{ color: colors.secondary, lineHeight: 23 }}>{me.bio}</Text> : null}
-        <NativeButton
-          secondary
-          label={t('settings.editMyProfile')}
-          onPress={() => router.push('/edit-profile')}
+        {me?.bio ? (
+          <Text selectable style={{ color: colors.secondary, lineHeight: 23 }}>
+            {me.bio}
+          </Text>
+        ) : null}
+        <SettingsRows
+          testID="profile-settings-rows"
+          rows={[
+            {
+              id: 'settings-edit-profile',
+              title: t('settings.editMyProfile'),
+              icon: { ios: 'pencil', android: 'edit', web: 'edit' },
+              onPress: () => router.push('/edit-profile'),
+            },
+          ]}
         />
-      </Surface>
+      </View>
       <IntegrityWarnings />
-      <Surface>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
-          {t('settings.appearance')}
+      <View style={{ gap: 8 }}>
+        <Text
+          accessibilityRole="header"
+          style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
+        >
+          {t('settings.settings')}
         </Text>
-        <AppearancePicker />
-      </Surface>
+        <SettingsRows
+          testID="you-settings-rows"
+          rows={[
+            {
+              id: 'settings-general',
+              title: t('settings.general'),
+              hint: t('settings.generalHint'),
+              icon: { ios: 'gearshape', android: 'settings', web: 'settings' },
+              onPress: () => router.push('/settings/general'),
+            },
+            {
+              id: 'settings-permissions',
+              title: t('settings.permissions'),
+              hint: t('settings.permissionsHint'),
+              icon: { ios: 'hand.raised', android: 'back_hand', web: 'back_hand' },
+              onPress: () => router.push('/settings/permissions'),
+            },
+            {
+              id: 'settings-notifications',
+              title: t('settings.notifications'),
+              hint: t('settings.notificationsHint'),
+              icon: { ios: 'bell', android: 'notifications', web: 'notifications' },
+              onPress: () => router.push('/notifications'),
+            },
+            {
+              id: 'settings-devices',
+              title: t('settings.devices'),
+              hint: t('settings.devicesHint'),
+              icon: { ios: 'laptopcomputer.and.iphone', android: 'devices', web: 'devices' },
+              onPress: () => router.push('/devices'),
+            },
+            {
+              id: 'settings-data-controls',
+              title: t('settings.dataControls'),
+              hint: t('settings.dataControlsHint'),
+              icon: { ios: 'lock', android: 'lock', web: 'lock' },
+              onPress: () => router.push('/settings/data'),
+            },
+          ]}
+        />
+      </View>
       {preferenceError ? (
-        <Text accessibilityRole="alert" style={{ color: colors.danger }}>
+        <Text selectable accessibilityRole="alert" style={{ color: colors.danger }}>
           {preferenceError}
         </Text>
       ) : null}
-      {snapshot?.agents.length ? (
-        <Surface>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
-            {t('settings.yourAgents')}
-          </Text>
-          {snapshot?.agents.map((agent) => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('settings.agentPermissions', { name: agent.persona.name })}
-              onPress={() =>
-                router.push({ pathname: '/agent/[id]', params: { id: agent.persona.id } })
-              }
-              key={agent.persona.id}
-              style={{ flexDirection: 'row', gap: 12, alignItems: 'center', paddingVertical: 8 }}
-            >
-              <Avatar name={agent.persona.name} color={agent.persona.tint_hex} agent size={40} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>
-                  {agent.persona.name}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
-        </Surface>
-      ) : null}
-      <Surface>
-        <Text style={{ color: colors.text, fontWeight: '600', fontSize: 18 }}>
-          {t('settings.connection')}
-        </Text>
-        <NativeButton
-          secondary
-          label={t('settings.linkedDevices')}
-          onPress={() => router.push('/devices')}
-        />
-        <NativeButton
-          secondary
-          label={t('settings.encryptedBackup')}
-          onPress={() => router.push('/backup')}
-        />
-        <NativeButton
-          secondary
-          label={t('settings.notifications')}
-          onPress={() => router.push('/notifications')}
-        />
-        <Text style={{ color: colors.secondary }}>
-          {t('settings.connectionStatus', {
-            status:
-              snapshot?.connection.state === 'online'
-                ? t('settings.connected')
-                : snapshot?.connection.state === 'connecting'
-                  ? t('settings.connecting')
-                  : t('settings.offline'),
-          })}
-        </Text>
-        <Text style={{ color: colors.secondary }}>
-          {t('settings.pendingSync', { total: snapshot?.connection.pending ?? '0' })}
-        </Text>
-      </Surface>
-      <DeviceDataActions />
       {mode === 'demo' ? (
         <NativeButton
+          testID="settings-use-account"
           label={t('settings.useYourOwnAccount')}
           onPress={() => {
             void confirm({

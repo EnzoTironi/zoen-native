@@ -38,9 +38,11 @@ export default function Page() {
       <Loading />
     );
   const observed = page;
+  const durableInput = !!store.driver.pageInput && store.getSnapshot().mode === 'account';
+  const pendingInput = durableInput && page.input_pending;
 
   async function apply(order: string[], changed: PageBlockDto[], label: string) {
-    if (busy || pending.current || !observed.can_edit) return;
+    if (busy || pending.current || pendingInput || !observed.can_edit) return;
     setBusy(true);
     setFailure(null);
     try {
@@ -156,11 +158,13 @@ export default function Page() {
           style={{ color: page.save_error ? colors.danger : colors.secondary, fontSize: 13 }}
         >
           {page.save_error ??
-            (page.unsaved
-              ? t('documents.draftSavedOnThisDevice')
-              : page.pending_sync
-                ? t('documents.waitingToSync')
-                : t('documents.sharedInChat'))}
+            (pendingInput
+              ? t('documents.editorInputRetained')
+              : page.unsaved
+                ? t('documents.draftSavedOnThisDevice')
+                : page.pending_sync
+                  ? t('documents.waitingToSync')
+                  : t('documents.sharedInChat'))}
         </Text>
       </View>
       {failure || error ? (
@@ -179,6 +183,21 @@ export default function Page() {
           ) : null}
         </Surface>
       ) : null}
+      {pendingInput ? (
+        <Surface>
+          <Text style={{ color: colors.secondary }}>{t('documents.editorInputRetained')}</Text>
+          <NativeButton
+            label={t('documents.recoverEditorInput')}
+            disabled={busy}
+            onPress={() =>
+              router.push({
+                pathname: '/page-block/[id]',
+                params: { id, block: 'new', recover: '1' },
+              })
+            }
+          />
+        </Surface>
+      ) : null}
       {undo ? (
         <Surface>
           <Text style={{ color: colors.secondary }}>
@@ -187,7 +206,7 @@ export default function Page() {
           <NativeButton
             secondary
             label={t('documents.undoLastChange')}
-            disabled={busy || !!pending.current}
+            disabled={busy || !!pending.current || pendingInput}
             onPress={() => {
               void undoEdit();
             }}
@@ -202,7 +221,7 @@ export default function Page() {
       ) : (
         <PageBlocks
           blocks={page.blocks}
-          editable={page.can_edit && !pending.current}
+          editable={page.can_edit && !pending.current && !pendingInput}
           busy={busy}
           organizing={organizing}
           onEdit={(block) =>
@@ -251,21 +270,34 @@ export default function Page() {
             <NativeButton
               secondary
               label={t('documents.addABlock')}
-              disabled={busy || !!pending.current}
+              disabled={busy || !!pending.current || pendingInput}
               onPress={() =>
                 router.push({ pathname: '/page-block/[id]', params: { id, block: 'new' } })
               }
             />
+            {durableInput ? (
+              <NativeButton
+                secondary
+                label={t('documents.editMarkdown')}
+                disabled={busy || !!pending.current || pendingInput}
+                onPress={() =>
+                  router.push({
+                    pathname: '/page-block/[id]',
+                    params: { id, block: 'new', mode: 'markdown' },
+                  })
+                }
+              />
+            ) : null}
             <NativeButton
               secondary
               label={organizing ? t('documents.finishOrganizing') : t('documents.organizeBlocks')}
-              disabled={busy || !!pending.current}
+              disabled={busy || !!pending.current || pendingInput}
               onPress={() => setOrganizing((value) => !value)}
             />
           </View>
           <NativeButton
             label={busy ? t('documents.saving') : t('documents.shareChanges')}
-            disabled={busy || !page.unsaved || !!pending.current}
+            disabled={busy || !page.unsaved || !!pending.current || pendingInput}
             onPress={() => {
               void run(async () => {
                 await store.request({
@@ -283,7 +315,7 @@ export default function Page() {
         <NativeButton
           secondary
           label={t('documents.exportMarkdown')}
-          disabled={busy}
+          disabled={busy || pendingInput}
           onPress={() => {
             void run(async () => {
               const markdown = await store.driver.request({ op: 'page_markdown', item_id: id });

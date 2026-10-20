@@ -1,5 +1,28 @@
 # Current product checkpoint
 
+## Active execution — 20 October 2026
+
+Finish iOS first against the real backend; Web/Android and desktop follow later.
+See the [goal and milestone exit criteria](zoen-complete-product-goal.md#execução-atual--20-de-outubro-de-2026).
+The current draft is [PR142](https://github.com/EnzoTironi/zoen-native/pull/142).
+Source `f3ab6fae` passes 961 app tests, types, Oxlint/Oxfmt and an iOS Release
+build. The isolated native photo journey now covers full-screen approval,
+QuickLook Markup, caption, Close/cold-unsent recovery and one explicit Send; the
+whole photo and rounded mask align without a right strip. Native video,
+independent delivery and physical-device/rotation remain pending; editor return
+to compact and transient pending text remain UX findings. The first bounded
+[Signal test-contract matrix](signal-test-contracts.json) records 42 assertion
+mappings, not an exhaustive review or upstream test execution. Its first original
+MLS rejection/cold-reopen regression is integrated, with all 19 MLS tests and
+strict Clippy passing. Three original backup-envelope tests cover nonce reuse,
+exact byte roundtrips, authentication and malformed authenticated headers; the
+full 539-test client-core library and strict Clippy also pass. No production
+cryptography changed. No global product, production or scale acceptance is
+granted. Earlier checkpoints preserve their original dates, PRs, artifacts and
+platform limits.
+
+## Earlier checkpoint record
+
 The full goal remains active: 30 journeys, six platforms and the public backend.
 `fullAppParityAccepted`, `productionReadinessAccepted` and
 `scaleReadinessAccepted` remain false. [PR140](https://github.com/EnzoTironi/zoen-native/pull/140)

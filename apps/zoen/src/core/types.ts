@@ -1,3 +1,4 @@
+import type { PageInputPort } from '../documents/page-input';
 import type { LogEventsPage } from './generated/LogEventsPage';
 import type { Command } from './generated/Command';
 import type { Snapshot } from './generated/Snapshot';
@@ -157,6 +158,7 @@ export interface CoreDriver {
   durableMessageDrafts?: boolean;
   canAuthorizeDevice?(): boolean;
   assistant?: AssistantPort;
+  pageInput?: PageInputPort;
   media?: MediaDriver;
   photos?: ProfilePhotoDriver;
   open(mode: Mode): Promise<Snapshot>;

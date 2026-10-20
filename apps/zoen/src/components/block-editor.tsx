@@ -13,9 +13,11 @@ export function BlockEditor({
   onChange,
   disabled,
   sourceOnly = false,
+  checkpointToken,
 }: {
   initial: string;
-  onChange: (markdown: string) => void;
+  onChange?: (markdown: string) => void;
+  checkpointToken?: string;
   disabled: boolean;
   sourceOnly?: boolean;
 }) {
@@ -88,8 +90,9 @@ export function BlockEditor({
       <EnrichedMarkdownTextInput
         ref={input}
         defaultValue={initial}
-        onChangeMarkdown={onChange}
-        editable={!disabled}
+        draftCheckpointToken={checkpointToken}
+        onChangeMarkdown={checkpointToken ? undefined : onChange}
+        editable={checkpointToken ? true : !disabled}
         multiline
         autoFocus
         markdownShortcuts

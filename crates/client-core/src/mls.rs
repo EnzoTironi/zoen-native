@@ -649,8 +649,11 @@ impl Engine {
             content: e.content.clone(),
             sig: e.sig.clone(),
         };
+        // Advancing the sender ratchet and retaining its exact ciphertext are
+        // one durable operation. A failed cache write must not consume a generation.
+        let tx = self.store.conn().unchecked_transaction().map_err(storage)?;
         let data = self
-            .device()?
+            .device_on(&tx)?
             .seal(&e.space, &inner.encode())
             .map_err(mls_err)?;
         let outer = Envelope::sealed(
@@ -665,6 +668,7 @@ impl Engine {
             &sealed_meta(&e.client_id),
             &format!("{epoch}:{}:{}", hex::encode(outer.content()), outer.sig),
         )?;
+        tx.commit().map_err(storage)?;
         Ok(())
     }
 
@@ -933,6 +937,7 @@ impl Engine {
                     .map_err(storage)
             });
         }
+        stored = stored.and_then(|_| self.store.set_synced(&space).map_err(storage));
         if let Err(err) = stored.and_then(|_| tx.commit().map_err(storage)) {
             let _ = self.reload();
             return Ingest::Invalid(err.to_string());
@@ -941,7 +946,6 @@ impl Engine {
             return Ingest::Invalid(err.to_string());
         }
 
-        let _ = self.store.set_synced(&space);
         self.net.synced.insert(space.clone());
         let m = &mut self.net.mls;
         if landed.is_some() {
@@ -1042,6 +1046,7 @@ impl Engine {
             };
             self.store.append_event(&e).map_err(storage)?;
             self.remember_recovery_context(&ev.env)?;
+            self.store.set_synced(&space).map_err(storage)?;
             tx.commit().map_err(storage)?;
             Ok(forgot)
         })();
@@ -1056,7 +1061,6 @@ impl Engine {
             // History this device never fetched is gone; a fresh Welcome is needed.
             self.net.mls.rejoin.insert(space.clone());
         }
-        let _ = self.store.set_synced(&space);
         self.net.mls.wake_recovery(&space);
         self.net.synced.insert(space);
         if let Err(err) = self.compare_checkpoint(&e) {
@@ -2196,6 +2200,8 @@ pub(crate) fn must_seal(body: &EventBody) -> bool {
 
 #[cfg(test)]
 mod tests {
+    mod durability_tests;
+
     use super::*;
     use std::collections::BTreeMap;
 

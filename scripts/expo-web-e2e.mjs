@@ -489,6 +489,9 @@ try {
   });
   await page.goto(`${origin}/you`, { waitUntil: "domcontentloaded" });
   await page.getByText(`@${ana.handle}`, { exact: true }).waitFor();
+  await page.getByTestId("settings-data-controls").click();
+  await page.waitForURL("**/settings/data");
+  await page.getByTestId("settings-data-screen").waitFor();
   await page.getByTestId("erase-device").click();
   const confirmation = page.getByRole("dialog", { name: ui.eraseDialog, exact: true });
   await confirmation.getByRole("button", { name: ui.cancel, exact: true }).click();
@@ -511,6 +514,9 @@ try {
 
   await page.goto(`${origin}/you`, { waitUntil: "domcontentloaded" });
   await page.getByText(`@${ana.handle}`, { exact: true }).waitFor();
+  await page.getByTestId("settings-data-controls").click();
+  await page.waitForURL("**/settings/data");
+  await page.getByTestId("settings-data-screen").waitFor();
   await page.getByTestId("erase-device").click();
   await confirmation.getByRole("button", { name: ui.confirmErase, exact: true }).click();
   await page.waitForURL("**/sign-in", { timeout: 90_000 });

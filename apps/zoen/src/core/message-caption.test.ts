@@ -131,11 +131,28 @@ function render(
   let didPan = false;
   let compilerCursor = 0;
   const caches: unknown[][] = [];
+  let hookCursor = 0;
+  const hooks: unknown[] = [];
+  let viewportWidth = 390;
   const makeElement = (type: unknown, props: Record<string, unknown>) => ({ type, props });
   const modules: Record<string, unknown> = {
     react: {
       memo: (component: unknown) => component,
-      useRef: (value: unknown) => ({ current: value }),
+      useRef: (value: unknown) => {
+        const slot = hookCursor++;
+        return (hooks[slot] ??= { current: value });
+      },
+      useState: (value: unknown) => {
+        const slot = hookCursor++;
+        if (!(slot in hooks)) hooks[slot] = value;
+        return [
+          hooks[slot],
+          (next: unknown) => {
+            hooks[slot] = typeof next === 'function' ? next(hooks[slot]) : next;
+          },
+        ];
+      },
+      useCallback: (value: unknown) => value,
       useLayoutEffect: (effect: () => unknown) => effect(),
       createContext: (value: unknown) => ({ value }),
       use: () => ({ get: () => didPan }),
@@ -149,7 +166,7 @@ function render(
       Text: 'Text',
       View: 'View',
       Pressable: 'NativePressable',
-      useWindowDimensions: () => ({ width: 390, height: 844 }),
+      useWindowDimensions: () => ({ width: viewportWidth, height: 844 }),
     },
     'react-native-gesture-handler': {},
     'react-native-reanimated': { default: {} },
@@ -181,26 +198,33 @@ function render(
       return modules[name];
     },
   });
-  const tree = module.exports.ConversationMessage({
-    spaceId: 'synthetic_chat',
-    entry: message,
-    next,
-    groupChat: true,
-    disabled,
-    onReply() {},
-    onThread() {},
-    onAuthor() {},
-    onReact() {},
-    onQuote() {},
-    onMenu: (value: TimelineEntry, mode: string) => {
-      calls.push({ mode, entry: value });
-    },
-  });
+  const draw = (value = message, width = viewportWidth) => {
+    compilerCursor = 0;
+    hookCursor = 0;
+    viewportWidth = width;
+    return module.exports.ConversationMessage({
+      spaceId: 'synthetic_chat',
+      entry: value,
+      next,
+      groupChat: true,
+      disabled,
+      onReply() {},
+      onThread() {},
+      onAuthor() {},
+      onReact() {},
+      onQuote() {},
+      onMenu: (value: TimelineEntry, mode: string) => {
+        calls.push({ mode, entry: value });
+      },
+    });
+  };
+  const tree = draw();
   const caption = elements(tree).find(
     (node) => node.props.testID === `message-caption-${message.id}`,
   );
   return {
     tree,
+    rerender: draw,
     caption,
     theme,
     calls,
@@ -334,4 +358,84 @@ test('caption tails follow the existing incoming and outgoing run grouping', () 
     assert.equal(styleOf(ended.caption)[corner], 6);
     assert.equal(styleOf(continued.caption)[corner], 22);
   }
+});
+
+test('decoded image dimensions fit the actual bubble, caption and metadata and recompute on narrow and rotated viewports', () => {
+  for (const mine of [false, true]) {
+    const message = entry();
+    message.author = { ...message.author, is_me: mine };
+    const f = render(message);
+    const media = elements(f.tree).find((node) => node.type === 'MessageMedia')!;
+    const decode = media.props.onImageDecoded as (image: Record<string, unknown>) => void;
+    decode({ itemId: 'signed_file', version: 1, sha256: 'a'.repeat(64), width: 700, height: 1000 });
+    let tree = f.rerender();
+    const bubble = (value: Element) =>
+      elements(value).find((node) => node.props.testID === 'message-bubble-caption_message')!;
+    assert.ok(Math.abs(Number(styleOf(bubble(tree)).width) - 252) < 1e-6);
+    const caption = elements(bubble(tree)).find(
+      (node) => node.props.testID === 'message-caption-caption_message',
+    )!;
+    assert.ok(caption, 'Caption stays within the fitted image bubble');
+    assert.equal(
+      styleOf(caption).width,
+      undefined,
+      'Caption stretches to its bubble rather than a separate fixed width',
+    );
+    if (!mine)
+      assert.ok(
+        elements(tree).some(
+          (node) =>
+            Math.abs(Number(styleOf(node)?.width) - 252) < 1e-6 &&
+            styleOf(node)?.maxWidth === '100%',
+        ),
+        'Incoming metadata shares the same fitted width',
+      );
+    tree = f.rerender(message, 240);
+    assert.ok(Number(styleOf(bubble(tree)).width) <= 240 - 32 - (mine ? 0 : 48));
+    decode({
+      itemId: 'signed_file',
+      version: 1,
+      sha256: 'a'.repeat(64),
+      width: 2000,
+      height: 1000,
+    });
+    const narrowWidth = Number(styleOf(bubble(f.rerender())).width);
+    const wideWidth = Number(styleOf(bubble(f.rerender(message, 900))).width);
+    assert.ok(
+      wideWidth > narrowWidth,
+      'Fit uses current space rather than retaining the prior fitted width',
+    );
+    assert.equal(wideWidth, 294);
+  }
+});
+
+test('late decoded dimensions from a replaced file version cannot overwrite the new image geometry', () => {
+  const original = entry();
+  const f = render(original);
+  const oldDecode = elements(f.tree).find((node) => node.type === 'MessageMedia')!.props
+    .onImageDecoded as (image: Record<string, unknown>) => void;
+  const replacement = entry();
+  assert.ok('Message' in replacement.kind && replacement.kind.Message.card);
+  replacement.kind.Message.card.version = 2;
+  let tree = f.rerender(replacement);
+  const decode = elements(tree).find((node) => node.type === 'MessageMedia')!.props
+    .onImageDecoded as (image: Record<string, unknown>) => void;
+  decode({ itemId: 'signed_file', version: 2, sha256: 'b'.repeat(64), width: 700, height: 1000 });
+  tree = f.rerender(replacement);
+  const width = () =>
+    styleOf(elements(tree).find((node) => node.props.testID === 'message-bubble-caption_message')!)
+      .width;
+  assert.ok(Math.abs(Number(width()) - 252) < 1e-6);
+  oldDecode({
+    itemId: 'signed_file',
+    version: 1,
+    sha256: 'a'.repeat(64),
+    width: 2000,
+    height: 1000,
+  });
+  tree = f.rerender(replacement);
+  assert.ok(Math.abs(Number(width()) - 252) < 1e-6);
+  decode({ itemId: 'another-file', version: 2, sha256: 'c'.repeat(64), width: 2000, height: 1000 });
+  tree = f.rerender(replacement);
+  assert.ok(Math.abs(Number(width()) - 252) < 1e-6);
 });

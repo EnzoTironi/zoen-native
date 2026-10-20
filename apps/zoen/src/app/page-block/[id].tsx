@@ -1,3 +1,5 @@
+import { DurablePageEditor } from '../../documents/page-input-editor';
+import type { PageInputMode } from '../../documents/page-input';
 import { t } from '../../i18n/index.ts';
 import { useRef, useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
@@ -193,7 +195,13 @@ function Editor({ initialPage, blockId }: { initialPage: PageDto; blockId: strin
   );
 }
 export default function PageBlock() {
-  const { id, block } = useLocalSearchParams<{ id: string; block: string }>();
+  const { id, block, recover, mode } = useLocalSearchParams<{
+    id: string;
+    block: string;
+    recover?: string;
+    mode?: string;
+  }>();
+  const { store } = useClient();
   const { data: page, error, retry } = useCoreQuery({ op: 'page', item_id: id });
   if (!page)
     return error ? (
@@ -202,6 +210,21 @@ export default function PageBlock() {
       </EmptyState>
     ) : (
       <Loading />
+    );
+  if (store.driver.pageInput && store.getSnapshot().mode === 'account' && page.can_edit)
+    return (
+      <DurablePageEditor
+        key={`${id}:${block}:${recover ?? ''}:${mode ?? ''}`}
+        page={page}
+        blockId={block}
+        port={store.driver.pageInput}
+        resume={recover === '1'}
+        mode={
+          ['rich', 'markdown', 'lossless-text'].includes(mode ?? '')
+            ? (mode as PageInputMode)
+            : undefined
+        }
+      />
     );
   return <Editor key={`${id}:${block}`} initialPage={page} blockId={block} />;
 }

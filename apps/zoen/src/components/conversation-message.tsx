@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef, type ComponentRef } from 'react';
+import { memo, useCallback, useLayoutEffect, useRef, useState, type ComponentRef } from 'react';
 import { Text, View, useWindowDimensions } from 'react-native';
 import type { TimelineEntry } from '../core/types';
 import type { ItemDetail } from '../core/generated/ItemDetail';
@@ -11,6 +11,7 @@ import {
 import { messageText } from '../core/presentation';
 import { t, formatLocale } from '../i18n/index.ts';
 import { MessageMedia } from '../media/MediaAttachment';
+import { inlineImageFrame, type DecodedMessageImage } from '../media/inline-image-frame';
 import { MiniappMessageCard } from '../miniapps/message-card';
 import { ProfileAvatar } from '../profile/profile-avatar';
 import { useTheme } from '../theme';
@@ -76,6 +77,41 @@ export const ConversationMessage = memo(function ConversationMessage({
   }, [entry.id]);
   const mine = entry.author.is_me;
   const card = messageCard(entry);
+  const imageKey = card?.kind_id === 'file' ? `${card.item_id}:${card.version}` : null;
+  const renderedImage = useRef(imageKey);
+  const [decodedImage, setDecodedImage] = useState<(DecodedMessageImage & { key: string }) | null>(
+    null,
+  );
+  useLayoutEffect(() => {
+    renderedImage.current = imageKey;
+    return () => {
+      renderedImage.current = null;
+    };
+  }, [imageKey]);
+  const onImageDecoded = useCallback(
+    (image: DecodedMessageImage) => {
+      if (
+        !imageKey ||
+        renderedImage.current !== imageKey ||
+        image.itemId !== card?.item_id ||
+        image.version !== card.version ||
+        !Number.isFinite(image.width) ||
+        !Number.isFinite(image.height) ||
+        image.width <= 0 ||
+        image.height <= 0
+      )
+        return;
+      setDecodedImage((previous) =>
+        previous?.key === imageKey &&
+        previous.sha256 === image.sha256 &&
+        previous.width === image.width &&
+        previous.height === image.height
+          ? previous
+          : { ...image, key: imageKey },
+      );
+    },
+    [imageKey, card],
+  );
   const voice = !entry.deleted && entry.voice;
   const attachment = Boolean(voice || card);
   const grouped = messagesAreGrouped(previous, entry);
@@ -88,7 +124,11 @@ export const ConversationMessage = memo(function ConversationMessage({
   const ink = mine ? colors.onMine : colors.text;
   const paper = mine ? colors.mine : colors.theirs;
   const availableWidth = Math.max(0, width - 32 - authorGutter);
-  const mediaWidth = Math.min(availableWidth, Math.max(160, Math.min(294, availableWidth * 0.87)));
+  const mediaLimit = Math.min(availableWidth, Math.max(160, Math.min(294, availableWidth * 0.87)));
+  const mediaWidth =
+    decodedImage?.key === imageKey
+      ? inlineImageFrame(mediaLimit, decodedImage.width / decodedImage.height).width
+      : mediaLimit;
   const time = new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
     hour: '2-digit',
     minute: '2-digit',
@@ -402,7 +442,12 @@ export const ConversationMessage = memo(function ConversationMessage({
                     {text}
                   </Text>
                 ) : null}
-                <MessageMedia entry={entry} onActions={() => open('actions')} />
+                <MessageMedia
+                  spaceId={spaceId}
+                  entry={entry}
+                  onActions={() => open('actions')}
+                  onImageDecoded={onImageDecoded}
+                />
                 {fileCaption ? (
                   <Pressable
                     testID={`message-caption-${entry.id}`}

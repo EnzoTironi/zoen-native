@@ -60,13 +60,14 @@ extension ZoenFilePreviewPresentation {
 /// Promise. Its continuation ends only after actual dismissal and copy deletion.
 @MainActor final class ZoenFilePreview {
   enum Failure: Error, LocalizedError {
-    case changed, busy, unavailable, cleanup, editedPDF, recovered
+    case changed, busy, unavailable, cleanup, editedPDF, editedMedia, recovered
     var errorDescription: String? {
       switch self {
       case .changed: NSLocalizedString("This preview is no longer available.", comment: "Native preview session changed")
       case .busy: NSLocalizedString("Close the current preview and try again.", comment: "Native preview is already open")
       case .unavailable: NSLocalizedString("This file could not be previewed. Try again.", comment: "Native file preview unavailable")
       case .cleanup: NSLocalizedString("The temporary preview could not be removed. Try again.", comment: "Native preview cleanup failed")
+      case .editedMedia: NSLocalizedString("The edited photo or video could not be read. Try saving your changes again.", comment: "Native edited media capture failed")
       case .editedPDF: NSLocalizedString("The edited PDF could not be read. Try saving your changes again.", comment: "Native PDF edit could not be retained")
       case .recovered: NSLocalizedString("These changes are only on this device. Save them to update the shared file.", comment: "Recovered private PDF edit has not been published")
       }
@@ -96,16 +97,24 @@ extension ZoenFilePreviewPresentation {
     }
   }
 
+  struct MediaEditContext: Sendable {
+    let kind: ZoenMediaEditCapture.Kind
+    let maximumBytes: UInt64
+    let save: @Sendable (ZoenPreviewFile) async throws -> Void
+  }
+
   @MainActor final class Editing {
     private let maximumBytes: UInt64
+    private let mediaKind: ZoenMediaEditCapture.Kind?
     let allowsEditing: Bool
     fileprivate var captured: ((Result<ZoenPreviewFile, ZoenPDFEditCapture.Failure>) -> Void)?
-    fileprivate init(maximumBytes: UInt64, allowsEditing: Bool) {
-      self.maximumBytes = maximumBytes; self.allowsEditing = allowsEditing
+    fileprivate init(maximumBytes: UInt64, allowsEditing: Bool, mediaKind: ZoenMediaEditCapture.Kind? = nil) {
+      self.maximumBytes = maximumBytes; self.allowsEditing = allowsEditing; self.mediaKind = mediaKind
     }
     func receive(_ url: URL) {
       guard allowsEditing else { return }
-      captured?(ZoenPDFEditCapture.stage(url, maximumBytes: maximumBytes))
+      if let mediaKind { captured?(ZoenMediaEditCapture.stage(url, kind: mediaKind, maximumBytes: maximumBytes)) }
+      else { captured?(ZoenPDFEditCapture.stage(url, maximumBytes: maximumBytes)) }
     }
   }
 
@@ -161,6 +170,8 @@ extension ZoenFilePreviewPresentation {
     var waiters: [CheckedContinuation<Void, Error>] = []
     var lifecycle: [CheckedContinuation<Void, Error>] = []
     let edit: EditContext?
+    let mediaEdit: MediaEditContext?
+    var editable: Bool { edit != nil || mediaEdit != nil }
     let editing: Editing?
     var base: EditBase?
     var pending: [Edit] = []
@@ -175,10 +186,10 @@ extension ZoenFilePreviewPresentation {
     var viewerGone = false
     var forced: Error?
     init(id: UUID, generation: UInt64, file: ZoenPreviewFile, presentation: any ZoenFilePreviewPresentation,
-         continuation: CheckedContinuation<Void, Error>, edit: EditContext?, editing: Editing?, recovered: [ZoenPreviewFile]) {
+         continuation: CheckedContinuation<Void, Error>, edit: EditContext?, mediaEdit: MediaEditContext?, editing: Editing?, recovered: [ZoenPreviewFile]) {
       self.id = id; self.generation = generation; self.file = file; self.presentation = presentation
       self.continuation = continuation
-      self.edit = edit; self.editing = editing; self.base = edit?.base
+      self.edit = edit; self.mediaEdit = mediaEdit; self.editing = editing; self.base = edit?.base
       pending = recovered.map { Edit(file: $0) }
       if !recovered.isEmpty { failure = Failure.recovered }
     }
@@ -216,13 +227,15 @@ extension ZoenFilePreviewPresentation {
     try await open(id: id, title: title, edit: nil) { _ in try makePresentation() }
   }
 
-  func open(id: UUID, title: String, edit: EditContext?,
+  func open(id: UUID, title: String, edit: EditContext?, mediaEdit: MediaEditContext? = nil,
             makePresentation: @MainActor (Editing?) throws -> any ZoenFilePreviewPresentation) async throws {
     guard let transfer = scope.take(id) else { throw Failure.changed }
     let file = transfer.file
     let generation = transfer.generation
     let presentation: any ZoenFilePreviewPresentation
+    guard edit == nil || mediaEdit == nil else { throw Failure.unavailable }
     let editing = edit.map { Editing(maximumBytes: $0.maximumBytes, allowsEditing: $0.canCapture) }
+      ?? mediaEdit.map { Editing(maximumBytes: $0.maximumBytes, allowsEditing: true, mediaKind: $0.kind) }
     do {
       guard !Task.isCancelled else { throw Failure.changed }
       guard active == nil, retained.isEmpty else { throw Failure.busy }
@@ -241,7 +254,7 @@ extension ZoenFilePreviewPresentation {
     try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
         let session = Session(id: id, generation: generation, file: file, presentation: presentation,
-                              continuation: continuation, edit: edit, editing: editing, recovered: transfer.recovered)
+                              continuation: continuation, edit: edit, mediaEdit: mediaEdit, editing: editing, recovered: transfer.recovered)
         active = session
         editing?.captured = { [weak self, weak session] result in
           guard let self, let session else { return }
@@ -277,7 +290,15 @@ extension ZoenFilePreviewPresentation {
     // Retire queued presentations in the same main-actor turn as the active
     // editor check. A registered open cannot slip in after this check returns.
     invalidate(before: generation)
-    guard let active, active.edit != nil else { return }
+    guard let active else { return }
+    if active.mediaEdit != nil {
+      try await withCheckedThrowingContinuation { continuation in
+        active.lifecycle.append(continuation)
+        stop(active, error: Failure.changed)
+      }
+      return
+    }
+    guard active.edit != nil else { return }
     try await withCheckedThrowingContinuation { active.lifecycle.append($0) }
   }
 
@@ -307,8 +328,9 @@ extension ZoenFilePreviewPresentation {
         return
       }
       if let file = failure.retained { session.failedCaptureCopies.append(file) }
-      session.captureFailure = Failure.editedPDF
-      session.presentation.captureFailed(error: Failure.editedPDF)
+      let error = session.mediaEdit == nil ? Failure.editedPDF : Failure.editedMedia
+      session.captureFailure = error
+      session.presentation.captureFailed(error: error)
       completeEditing(session)
     }
   }
@@ -316,15 +338,17 @@ extension ZoenFilePreviewPresentation {
   private func startWorker(_ session: Session) {
     guard active === session, session.worker == nil, session.failure == nil,
           session.forced == nil, !session.discardRequested, !session.keepRequested,
-          !session.pending.isEmpty, let context = session.edit else { return }
+          !session.pending.isEmpty, session.editable else { return }
     session.worker = Task { @MainActor [self, session] in
       while !session.pending.isEmpty, session.forced == nil, session.failure == nil,
             !session.discardRequested, !session.keepRequested {
         do {
           if !session.pending[0].accepted {
-            guard let base = session.base else { throw Failure.changed }
-            let accepted = try await context.save(session.pending[0].file, base)
-            session.base = accepted
+            if let media = session.mediaEdit {
+              try await media.save(session.pending[0].file)
+            } else if let context = session.edit, let base = session.base {
+              session.base = try await context.save(session.pending[0].file, base)
+            } else { throw Failure.changed }
             session.pending[0].accepted = true
           }
           try session.pending[0].file.remove()
@@ -341,12 +365,12 @@ extension ZoenFilePreviewPresentation {
 
   private func startDiscard(_ session: Session) {
     guard active === session, session.discardRequested, session.worker == nil,
-          session.forced == nil, let context = session.edit else { return }
+          session.forced == nil, session.editable else { return }
     session.worker = Task { @MainActor [self, session] in
       do {
         // Keep every plaintext lease until the canonical private discard ACK.
         // A failed/ambiguous discard can only retry this operation, never save.
-        try await context.discard?()
+        try await session.edit?.discard?()
         if session.forced == nil {
           for edit in session.pending {
             do { try edit.file.remove() } catch { retained.append(edit.file); session.cleanupFailure = error }
@@ -381,14 +405,14 @@ extension ZoenFilePreviewPresentation {
 
   private func viewerEnded(_ session: Session, error: Error?) {
     guard active === session else { return }
-    if session.edit == nil { finish(session, error: error); return }
+    if !session.editable { finish(session, error: error); return }
     session.viewerGone = true
     if let error, session.failure == nil { session.failure = error }
     completeEditing(session)
   }
 
   private func completeEditing(_ session: Session) {
-    guard active === session, session.edit != nil, session.viewerGone, session.worker == nil else { return }
+    guard active === session, session.editable, session.viewerGone, session.worker == nil else { return }
     if let forced = session.forced {
       for edit in session.pending {
         do { try edit.file.remove() } catch { retained.append(edit.file); session.cleanupFailure = error }
@@ -462,7 +486,7 @@ extension ZoenFilePreviewPresentation {
     session.forced = error
     session.presentation.dismiss { [weak self, weak session] in
       guard let self, let session else { return }
-      if session.edit == nil { self.finish(session, error: error) }
+      if !session.editable { self.finish(session, error: error) }
       else { session.viewerGone = true; self.completeEditing(session) }
     }
   }

@@ -1,18 +1,166 @@
 {
   "objective": "Deliver the complete Zoen product across iOS, Android, Web, macOS, Windows and Linux, including the production backend, refined native interactions, end-to-end privacy, data integrity and verified operation at declared production scale. Compete with WhatsApp, Slack and Wabi through demonstrable product quality, reliability and scalability. Completion requires reproducible end-to-end, security, integrity, load, recovery and release evidence across the supported platform matrix.",
   "goalDocument": "docs/dev/zoen-complete-product-goal.md",
-  "comparisonReferences": ["WhatsApp", "Slack", "Wabi"],
+  "comparisonReferences": ["Signal", "WhatsApp", "Slack", "Wabi", "Ando", "Hark", "Muse (Meta)"],
+  "reliabilityReference": {
+    "requestedAt": "2026-10-20",
+    "primary": "Signal",
+    "scope": ["ios-client", "shared-core", "backend", "operations"],
+    "specification": "docs/dev/signal-reliability-reference.md",
+    "sourceCommits": {
+      "Signal-iOS": "d13b9da9e4622e16297b111243755c4c2972091a",
+      "Signal-Server": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+      "libsignal": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+      "RingRTC": "84c5b2aff246392b365d73d6628529a149d6aed2"
+    },
+    "requiredInvariants": [
+      "durable-operation-and-defined-local-relay-delivered-read-evidence",
+      "conversation-anchor-and-interaction-continuity-under-updates",
+      "media-lifecycle-independent-of-recycled-message-rows",
+      "provider-login-device-authorization-and-history-recovery-separated",
+      "content-local-disk-metadata-backup-and-agent-privacy-declared-separately",
+      "background-notification-and-call-lifecycle-integrated-with-durable-work"
+    ],
+    "reusePolicy": "Prefer maintained OSS and native platform capabilities after verifying license, supported targets, lifecycle and ownership. Preserve existing Rust storage, outbox, ordered log and authorization; no duplicate durable authority or unmeasured backend rewrite.",
+    "evidenceScope": "Pinned source study and current Zoen code comparisons. Signal runtime, comparative benchmarks, public production and complete parity remain unqualified.",
+    "accepted": false
+  },
+  "behavioralTestLearning": {
+    "requestedOn": "2026-10-20",
+    "specification": "docs/dev/signal-test-contracts.json",
+    "scope": "Bounded first assertion-based batch; continue remaining suites, parameter cases, invalid fixtures and fuzz consumers.",
+    "sourceRepositories": [
+      "Signal-iOS",
+      "Signal-Android",
+      "Signal-Desktop",
+      "Signal-Server",
+      "libsignal"
+    ],
+    "mappingRecords": 42,
+    "upstreamSuitesExecuted": false,
+    "policy": "Extract initial state, sequence, injected fault and actual assertions; classify equivalent/partial/gap/incompatible at a pinned Zoen source. Implement original priority tests against Zoen boundaries, not copied retry counts/time windows or conflicting protocol policies.",
+    "priority": ["data-loss", "duplication", "authorization", "recovery", "media"],
+    "execution": "Core/backend batches; actual devices for input, audio/camera/calls, lifecycle and visible UI.",
+    "globalAcceptanceGranted": false,
+    "implementedOriginalRegressions": {
+      "mlsAuthenticationRejection": {
+        "sourceCommit": "80f00f89",
+        "testsAdded": 1,
+        "libraryTestsPassed": 19,
+        "strictAllTargetClippy": "PASS"
+      },
+      "backupEnvelopeBoundaries": {
+        "sourceCommit": "2e984d99",
+        "testsAdded": 3,
+        "libraryTestsPassed": 539,
+        "strictAllTargetClippy": "PASS"
+      },
+      "boundary": "Original native Rust regressions at Zoen cryptographic/envelope boundaries. No upstream test code or fixtures copied, upstream suites not executed, no whole-product or full recovery acceptance."
+    }
+  },
+  "creationWorkspace": {
+    "requestedAt": "2026-10-20",
+    "references": [
+      {
+        "product": "Notion",
+        "url": "https://www.notion.com/help/collaborate-with-people"
+      },
+      {
+        "product": "ChatGPT Space",
+        "url": "https://learn.chatgpt.com/docs/space/pages"
+      }
+    ],
+    "direction": "A shared creation workspace inside Zoen, using Zoen's native components and sky design. People and authorized agents work on the same persistent artifacts. The original thirty journeys and six-platform completion scope remain required.",
+    "requiredCapabilities": [
+      "spaces-and-parent-child-organization-with-all-items-and-recent-items",
+      "live-block-pages-direct-editing-agent-edits-comments-presence-and-history",
+      "slides-create-edit-reorder-present-export-and-recover",
+      "sites-create-preview-explicit-publish-version-and-rollback",
+      "images-generate-upload-edit-reference-variants-and-save-to-library",
+      "files-upload-preview-download-share-and-encrypted-private-storage",
+      "scoped-cross-artifact-search-sharing-roles-and-revocation",
+      "trash-restore-and-explicit-permanent-deletion",
+      "artifact-scoped-agent-context-reviewable-changes-and-attributed-results",
+      "offline-reopen-conflict-recovery-and-idempotent-operations"
+    ],
+    "currentImplementationScope": "iOS first, with the real shared Rust core and backend. Current Page input and attachment review work is a foundation; it does not establish the complete creation workspace.",
+    "accepted": false
+  },
   "platforms": ["ios", "web", "android", "macos", "windows", "linux"],
   "deliveryPhases": [
     {
-      "id": "mobile-web",
-      "platforms": ["ios", "web", "android"]
+      "id": "ios-release",
+      "platforms": ["ios"],
+      "accepted": false
+    },
+    {
+      "id": "mobile-web-expansion",
+      "platforms": ["web", "android"],
+      "startsAfter": "ios-release",
+      "accepted": false
     },
     {
       "id": "desktop",
-      "platforms": ["macos", "windows", "linux"]
+      "platforms": ["macos", "windows", "linux"],
+      "startsAfter": "mobile-web-expansion",
+      "accepted": false
     }
   ],
+  "executionPlan": {
+    "updatedOn": "2026-10-20",
+    "status": "ACTIVE",
+    "currentMilestone": "ios-conversation-and-media",
+    "currentManualValidationPlatforms": ["ios"],
+    "currentEnvironment": "Local production-like composition with the real Rust services; final release still requires the compatible public backend and real providers.",
+    "currentPullRequest": "https://github.com/EnzoTironi/zoen-native/pull/142",
+    "milestones": [
+      {
+        "id": "ios-conversation-and-media",
+        "status": "IN_PROGRESS",
+        "exit": "Complete chat interactions, timeline/keyboard continuity, full-aspect media, explicit review/cancel/restart/recovery/send and independent-recipient content/context."
+      },
+      {
+        "id": "identity-recovery-and-delivery",
+        "status": "PENDING",
+        "exit": "Real Apple/Google provisioning, distinct trusted devices, revoke/recovery and durable offline/retry delivery without silent loss or unauthorized history."
+      },
+      {
+        "id": "ios-background-and-calls",
+        "status": "PENDING",
+        "exit": "Physical-iPhone push, terminated/background/locked navigation and encrypted voice/video call lifecycle under interruption."
+      },
+      {
+        "id": "apps-and-durable-agents",
+        "status": "PENDING",
+        "exit": "Persistent isolated MCP Apps, Excalidraw and real external authorization; agents resume without clients and reconcile grants, approvals, effects and costs."
+      },
+      {
+        "id": "shared-creation-workspace",
+        "status": "PENDING",
+        "exit": "All declared creationWorkspace capabilities across Pages, Slides, Sites, Images and Files, with collaboration, permissions, recovery and explicit publication."
+      },
+      {
+        "id": "ios-release",
+        "status": "PENDING",
+        "exit": "Complete all applicable iOS journeys and creation capabilities on a signed physical-iPhone artifact with real providers and compatible public backend; accessibility, lifecycle, integrity and release blockers resolved, unused legacy retired. Qualify an explicitly frozen iOS/backend operating profile including security, abuse, recovery/rollback and cost."
+      },
+      {
+        "id": "mobile-web-expansion",
+        "status": "PENDING",
+        "exit": "Qualify the same product journeys on Web/Android and interoperate with iOS, including media, offline/recovery, creation, Apps and agents."
+      },
+      {
+        "id": "desktop-and-final-qualification",
+        "status": "PENDING",
+        "exit": "Complete the retained desktop/platform matrix and measured operating-envelope, security, recovery, rollback, availability and cost gates."
+      }
+    ],
+    "iosLaunchAccepted": false,
+    "iosLaunchAcceptancePolicy": "Accept only the applicable iOS journeys and declared creation capabilities on final public-backend/physical-device artifacts, plus an iOS/backend workload profile declared and frozen before measurement with security, abuse, restore/rollback and cost gates. This separate milestone does not approve the retained mixed-platform profile or six-platform global flags; monthly availability still requires 30 observed days.",
+    "validationPolicy": "Implement coherent front/core/backend batches, review then validate once together. Repeat broad checks/builds only when code changes, failures or unresolved concerns justify it; preserve integrity/auth/durability assertions and record environment failures separately.",
+    "referencePolicy": "Signal is the principal reliability and messaging-interaction reference; evaluate maintained OSS/library reuse independently. Expo remains the product interface, Rust the shared authority; no complete Signal fork or duplicate durable store is introduced.",
+    "completionScope": "Thirty requiredJourneys plus all declared creationWorkspace capabilities and the numerical operating envelope. Competitor quality is a design reference, not an unbounded all-features/global-scale acceptance target."
+  },
   "backendIncluded": true,
   "sdk": 58,
   "policy": "Prelaunch: one coherent product model, no compatibility shims or duplicate durable state.",
@@ -81,7 +229,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "Current Web attachment Runtime06 passes27 real pt-BR browser checkpoints on the actual-checkout91-file Release, browserErrors=[], exact three peer files/captions once and retained rendered message/item IDs after reload. Main UI excludes the thread and its chosen root shows one reply. Current English browser acceptance is not qualified: public peer setup hit admission rate limiting before browser creation, with one bounded repeat also refused and recorded separately. Historical Runtime04 bilingual54 checkpoints are a different artifact. Rust79, focused Node34/36, strict Clippy, repository edition2021 format and real export19.68s pass; the final integrated App check890/0skip plus TypeScript/Oxlint/Oxfmt passes in20.91s, followed only by receipt metadata updates. Runtime05 dual-localization startup failure and other negatives remain preserved; one initialized owner is verified in Runtime06. No canonical peer reply/thread/message-ID or caption-to-item linkage, actual browser attachment quota/offline/held-upload fault, native, production or scale acceptance is claimed. Pre-Send Web selections remain volatile; prior checkpoints,30journeys/sixplatforms/10gaps/threefalseflags are unchanged.",
+  "currentAcceptanceSummary": "Current execution is iOS first; PR142 remains draft. The f3ab6fae app source passes 961/961 tests with zero skips, TypeScript/Oxlint/Oxfmt and an iOS Simulator Release build. Installed executable/bundle hashes match the sealed artifact. The owned native photo journey covers full-screen approval, real Markup, exact caption, Close/cold-unsent recovery and one explicit Send; photo/mask/caption geometry has no right strip. QuickLook returns compact and a transient confirmation label still needs polish; independent peer, video, multi-attachment, rotation and physical-device proof remain pending. Signal test-contract learning has a first bounded 42-record assertion mapping across five pinned upstream repositories; inventories are not exhaustive semantic coverage and upstream suites were not run. One original MLS rejection/cold-reopen test is integrated, with the full 19-test mls library and strict Clippy passing; three original backup-envelope tests are integrated, with the complete 539-test client-core library and strict Clippy passing. These tests do not establish full backup restoration or whole-Signal parity. Historical evidence retains its own source/platform boundary. All global readiness flags remain false.",
   "retiredBackend": {
     "id": "custom-cloudflare-runtime",
     "status": "RETIRED",
@@ -2024,8 +2172,8 @@
   "knownParityGaps": [
     "Full comparative parity with the existing clients and all required journeys remains incomplete; no whole-app superiority claim.",
     "Google/Apple credential login, provider-account creation/recovery, physical-device distribution and production relay compatibility require their own acceptance.",
-    "v94/v95 native Page input foundations are not integrated into a signed editor recovery journey; Plan Apply remains closed and external producer/bridge candidates are not installed.",
-    "iPhone evidence is bounded: undelivered Quick Look edits, conflict/MIME recovery UI, multi-capture faults, backup/restore, broader accessibility/performance and native failure paths remain open.",
+    "Native Page capture/recovery is integrated and has bounded iOS input/checkpoint/cold-reopen evidence. Full block editor, canonical typed Plan editing, two-independent-member collaboration, comments, live updates, guarded agent edits and broad IME/selection/lifecycle qualification remain open.",
+    "The f3ab6fae native photo case covers Markup, exact caption, edited unsent cold recovery and one explicit Send, with full photo/mask/caption geometry. QuickLook return-to-compact and transient pending text remain UX issues. Independent-peer receive, Cancel/video trim, multi-attachment faults, rotation/physical lifecycle and broader accessibility/performance remain unqualified.",
     "MCP observations across v89/v90/v91/v92 do not certify all features/providers. Management back-drag, broader accessibility/reduced motion and physical-device journeys remain open; native Back buttons are accepted.",
     "Web canonical drawing operations and actual canvas/reload/peer bytes are accepted locally. Image import, broader collaborative/fault paths, rich file captions/replies/threads/retry metadata and full PWA offline cold-load still need acceptance. The bounded relay-unavailable cold-route/history/outbox journey now passes separately.",
     "Web onboarding axe found no violations but contrast review remains incomplete; whole-app keyboard/screen-reader, Safari/WebKit, camera/microphone and performance are unaccepted.",

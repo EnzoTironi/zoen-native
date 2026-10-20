@@ -456,3 +456,125 @@ impl Engine {
         Ok(device_secret)
     }
 }
+
+#[cfg(test)]
+mod payload_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    fn fixture() -> ([u8; 32], Header, Vec<u8>) {
+        let identity = event_log::Signer::from_secret(&[31; 32]);
+        let header = Header {
+            version: PAYLOAD_VERSION,
+            identity: identity.id(),
+            relay_url: "https://relay.invalid".into(),
+            identity_secret: hex::encode(identity.secret()),
+            agreement_secret: hex::encode([32; 32]),
+            created_ms: 123_456,
+        };
+        ([33; 32], header, (0..=u8::MAX).collect())
+    }
+
+    fn assert_invalid(key: &[u8; 32], identity: &str, bytes: &[u8], case: &str) {
+        assert!(
+            matches!(
+                open_payload(key, identity, bytes),
+                Err(CoreError::Invalid { .. })
+            ),
+            "{case} must not produce a readable backup"
+        );
+    }
+
+    #[test]
+    fn repeated_backup_payloads_use_fresh_nonces_and_preserve_every_byte() {
+        let (key, header, database) = fixture();
+        let mut nonces = HashSet::new();
+        for _ in 0..8 {
+            let sealed = seal_payload(&key, &header, &database).unwrap();
+            assert!(
+                nonces.insert(sealed[..24].to_vec()),
+                "identical backup content reused its encryption nonce"
+            );
+            let (opened_header, opened_database) =
+                open_payload(&key, &header.identity, &sealed).unwrap();
+            assert_eq!(
+                serde_json::to_value(opened_header).unwrap(),
+                serde_json::to_value(&header).unwrap()
+            );
+            assert_eq!(opened_database, database);
+        }
+    }
+
+    #[test]
+    fn backup_payload_authentication_rejects_mutation_truncation_and_other_owners() {
+        let (key, header, database) = fixture();
+        let sealed = seal_payload(&key, &header, &database).unwrap();
+        let other_owner = event_log::Signer::from_secret(&[34; 32]).id();
+        assert_invalid(&[35; 32], &header.identity, &sealed, "wrong key");
+        assert_invalid(&key, &other_owner, &sealed, "wrong owner");
+        for (case, index) in [
+            ("first nonce byte", 0),
+            ("last nonce byte", 23),
+            ("ciphertext byte", 24),
+            ("last ciphertext byte", sealed.len() - 17),
+            ("authentication tag", sealed.len() - 1),
+        ] {
+            let mut changed = sealed.clone();
+            changed[index] ^= 1;
+            assert_invalid(&key, &header.identity, &changed, case);
+        }
+        for length in [0, 1, 23, 24, 25, sealed.len() - 17, sealed.len() - 1] {
+            assert_invalid(
+                &key,
+                &header.identity,
+                &sealed[..length],
+                "truncated envelope",
+            );
+        }
+        let mut appended = sealed;
+        appended.push(0);
+        assert_invalid(&key, &header.identity, &appended, "appended bytes");
+    }
+
+    #[test]
+    fn authenticated_backup_payloads_reject_invalid_framing_version_and_inner_owner() {
+        let (key, mut header, database) = fixture();
+        let owner = header.identity.clone();
+        let sealed = seal_payload(&key, &header, &database).unwrap();
+        let plain = open(&key, &payload_aad(&owner), &sealed).unwrap();
+        let mut bad_magic = plain.clone();
+        bad_magic[0] ^= 1;
+        let mut header_overrun = plain.clone();
+        header_overrun[8..12].copy_from_slice(&u32::MAX.to_be_bytes());
+        let mut invalid_json = Vec::from(MAGIC.as_slice());
+        invalid_json.extend_from_slice(&2u32.to_be_bytes());
+        invalid_json.extend_from_slice(b"{!");
+        for (case, malformed) in [
+            ("empty authenticated payload", Vec::new()),
+            ("truncated framing", plain[..11].to_vec()),
+            ("wrong magic", bad_magic),
+            ("declared header exceeds payload", header_overrun),
+            ("invalid header JSON", invalid_json),
+        ] {
+            // Re-seal deliberately bad framing so rejection must inspect the authenticated body.
+            let sealed = seal(&key, &payload_aad(&owner), &malformed);
+            assert_invalid(&key, &owner, &sealed, case);
+        }
+        header.version = PAYLOAD_VERSION + 1;
+        let wrong_version = seal_payload(&key, &header, &database).unwrap();
+        assert_invalid(&key, &owner, &wrong_version, "unsupported payload version");
+
+        header.version = PAYLOAD_VERSION;
+        header.identity = event_log::Signer::from_secret(&[36; 32]).id();
+        let inner_owner_payload = seal_payload(&key, &header, &database).unwrap();
+        let inner_owner_plain =
+            open(&key, &payload_aad(&header.identity), &inner_owner_payload).unwrap();
+        let wrong_inner_owner = seal(&key, &payload_aad(&owner), &inner_owner_plain);
+        assert_invalid(
+            &key,
+            &owner,
+            &wrong_inner_owner,
+            "authenticated inner owner mismatch",
+        );
+    }
+}

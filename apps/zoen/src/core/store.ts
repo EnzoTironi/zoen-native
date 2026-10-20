@@ -52,6 +52,7 @@ export class ClientStore {
     activity: emptyActivity(),
   };
   private readonly listeners = new Set<() => void>();
+  private readonly canonicalListeners = new Set<(spaceIds?: readonly string[]) => void>();
   private generation = 0;
   private ownerEpoch = 0;
   private retiring = false;
@@ -67,6 +68,8 @@ export class ClientStore {
   private stopEvents: (() => void) | undefined;
   private refreshTask: Promise<void> | undefined;
   private refreshAgain = false;
+  // undefined = no queued read; null = an unknown/global change, which dominates scoped reads.
+  private refreshSpaces: Set<string> | null | undefined;
   private activeSpace: string | null = null;
   private readonly timelineVersions = new Map<string, number>();
   private readonly olderTasks = new Map<string, Promise<void>>();
@@ -127,6 +130,18 @@ export class ClientStore {
       this.listeners.delete(listener);
     };
   };
+  /** Invalidate before a canonical read; scope must not be inferred from new object identities. */
+  subscribeCanonicalChanges = (listener: (spaceIds?: readonly string[]) => void) => {
+    this.canonicalListeners.add(listener);
+    return () => {
+      this.canonicalListeners.delete(listener);
+    };
+  };
+  private canonicalChanging(spaceIds?: readonly string[]) {
+    const spaces = spaceIds?.length ? Object.freeze([...new Set(spaceIds)]) : undefined;
+    for (const listener of this.canonicalListeners) listener(spaces);
+    return spaces;
+  }
   private publish(patch: Partial<ClientState>) {
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
@@ -190,6 +205,7 @@ export class ClientStore {
     this.typing.reset();
     this.refreshTask = undefined;
     this.refreshAgain = false;
+    this.refreshSpaces = undefined;
     this.olderTasks.clear();
     this.timelineVersions.clear();
     return generation;
@@ -306,18 +322,29 @@ export class ClientStore {
       this.refreshAgain = true;
       return;
     }
-    void this.refresh();
+    void this.refresh(event.kind === 'change' ? event.spaceIds : undefined);
   }
 
-  refresh(): Promise<void> {
+  refresh(spaceIds?: readonly string[]): Promise<void> {
     if (this.state.erasePending || this.retiring) return Promise.resolve();
+    const generation = this.generation;
+    // Notify even while a read is in flight: a matching deletion must fence media immediately.
+    const spaces = this.canonicalChanging(spaceIds);
+    if (generation !== this.generation || this.state.erasePending || this.retiring)
+      return Promise.resolve();
+    if (!spaces || this.refreshSpaces === null) this.refreshSpaces = null;
+    else {
+      this.refreshSpaces ??= new Set();
+      for (const space of spaces) this.refreshSpaces.add(space);
+    }
     if (this.refreshTask) {
       this.refreshAgain = true;
       return this.refreshTask;
     }
-    const generation = this.generation;
     const task = (async () => {
       do {
+        const affected = this.refreshSpaces;
+        this.refreshSpaces = undefined;
         this.refreshAgain = false;
         const activityGeneration = this.activityGeneration;
         const snapshot = await this.driver.request({ op: 'snapshot' });
@@ -334,7 +361,8 @@ export class ClientStore {
               ? 'ready'
               : 'onboarding',
         });
-        if (this.activeSpace) await this.loadTimeline(this.activeSpace);
+        if (this.activeSpace && (!affected || affected.has(this.activeSpace)))
+          await this.readTimeline(this.activeSpace, false, false);
       } while (this.refreshAgain && generation === this.generation);
     })().catch((error: unknown) => {
       if (generation === this.generation) this.publish({ notice: failure(error) });
@@ -380,10 +408,12 @@ export class ClientStore {
     return task;
   }
 
-  private async readTimeline(space: string, older: boolean): Promise<void> {
+  private async readTimeline(space: string, older: boolean, announce = true): Promise<void> {
     const current = this.state.timelines[space];
     if (older && !current?.has_more) return;
     const generation = this.generation;
+    if (announce) this.canonicalChanging([space]);
+    if (generation !== this.generation || this.state.erasePending || this.retiring) return;
     const version = (this.timelineVersions.get(space) ?? 0) + 1;
     this.timelineVersions.set(space, version);
     let next = await this.driver.request({
@@ -444,7 +474,7 @@ export class ClientStore {
     try {
       const result = await this.driver.request(command);
       if (generation !== this.generation) throw new Error('A sessão mudou.');
-      await this.refresh();
+      await this.refresh('space_id' in command ? [command.space_id] : undefined);
       if (generation !== this.generation) throw new Error('A sessão mudou.');
       return result;
     } catch (error) {

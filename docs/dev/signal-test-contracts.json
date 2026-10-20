@@ -1,0 +1,1585 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "purpose": "Learn and test behavior contracts using original Zoen tests, not transplant Signal retry counts, time windows, protocols or fixtures.",
+  "zoenSourceCompared": "f3ab6fae6c6b63e3df16849a1ee7249d56d77e95",
+  "studyScope": "FIRST_BOUNDED_BATCH; inventory is not exhaustive semantic extraction or runtime qualification. Forty-two records include scenario families and may overlap in invariant; they are not 42 runnable tests or 42 unique contracts.",
+  "executionPolicy": {
+    "upstreamTestsExecuted": false,
+    "upstreamTestCodeCopied": false,
+    "wholeProductAcceptance": false,
+    "priority": [
+      "data-loss",
+      "duplication",
+      "authorization",
+      "recovery",
+      "media",
+      "other-behavior"
+    ],
+    "majorityExecution": "core/backend with deterministic failure injection and cold reopen",
+    "deviceExecution": "platform-specific input, media hardware, calls, background lifecycle and visible UI",
+    "constants": "Use Zoen limits and test their boundaries; do not adopt Signal constants simply because a test used them."
+  },
+  "statusDefinitions": {
+    "equivalent": "Equivalent bounded invariant located in inspected Zoen source/tests; not product/security equivalence.",
+    "partial": "Related evidence exists at different layers or with missing scenario/fault/lifecycle proof.",
+    "gap": "A targeted assertion/test-evidence gap within the inspected scope, not proof of a production defect.",
+    "incompatible": "Signal policy, schema or protocol differs; preserve the transferable invariant and state Zoen own expected result before implementing."
+  },
+  "clientInventory": {
+    "method": {
+      "path_selection": "Tracked HEAD paths with a test/tests/androidTest/testFixtures/test-*/*Tests path component OR Test/Tests/_test/.test/.spec source filename; source extension whitelist. This is deliberately inclusive and contains helpers and infrastructure.",
+      "marker_counts": "Lexical regex counters only. Comments, disabled code, helper names and calls may be counted; @Test arguments, parameterized runners, loops, fixture iteration, conditional registration and skip behavior are not expanded. These are NOT exact runnable scenario counts and NOT runtime results.",
+      "read_boundary": "Only the assertion-reviewed files/ranges in the report were read semantically. All remaining paths were inventoried by path and optional lexical markers only. Binary fixtures were not decoded or run.",
+      "execution": "No Signal or Zoen tests/builds/devices/services were run for this research.",
+      "repository_state": "Official public repositories pinned to immutable commits, local shallow/full clones read-only for study; no test code copied into Zoen."
+    },
+    "repositories": [
+      {
+        "client": "ios",
+        "official_repo": "signalapp/Signal-iOS",
+        "commit": "d13b9da9e4622e16297b111243755c4c2972091a",
+        "tracked_paths": 4538,
+        "candidate_test_source_files": 355,
+        "marker_scanned_source_files": 355,
+        "lexical_registration_markers": {
+          "swift_xctest_test_function": 1669,
+          "swift_testing_annotation": 512,
+          "junit_test_annotation": 0,
+          "js_it_or_test_call": 0
+        },
+        "candidate_fixture_paths": 8
+      },
+      {
+        "client": "android",
+        "official_repo": "signalapp/Signal-Android",
+        "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb",
+        "tracked_paths": 10872,
+        "candidate_test_source_files": 854,
+        "marker_scanned_source_files": 854,
+        "lexical_registration_markers": {
+          "swift_xctest_test_function": 0,
+          "swift_testing_annotation": 0,
+          "junit_test_annotation": 7263,
+          "js_it_or_test_call": 0
+        },
+        "candidate_fixture_paths": 1075
+      },
+      {
+        "client": "desktop",
+        "official_repo": "signalapp/Signal-Desktop",
+        "commit": "f3040f3e13b6dca5021c3db149320e0f7a771f0a",
+        "tracked_paths": 4536,
+        "candidate_test_source_files": 493,
+        "marker_scanned_source_files": 489,
+        "lexical_registration_markers": {
+          "swift_xctest_test_function": 0,
+          "swift_testing_annotation": 0,
+          "junit_test_annotation": 0,
+          "js_it_or_test_call": 3636
+        },
+        "candidate_fixture_paths": 9
+      }
+    ],
+    "assertionReadScope": [
+      {
+        "client": "ios",
+        "path": "SignalServiceKit/tests/Network/MessageSendJobQueueTest.swift",
+        "ranges": [[1, 183]],
+        "semantic_scope": "test bodies and assertions"
+      },
+      {
+        "client": "ios",
+        "path": "SignalServiceKit/tests/Messages/MessageDecryptionTest.swift",
+        "ranges": [[183, 255]],
+        "semantic_scope": "selected helper and destination cases"
+      },
+      {
+        "client": "ios",
+        "path": "SignalServiceKit/tests/Messages/ValidatedIncomingEnvelopeTest.swift",
+        "ranges": [[1, 31]],
+        "semantic_scope": "entire test"
+      },
+      {
+        "client": "ios",
+        "path": "SignalServiceKit/tests/Messages/MessageProcessingIntegrationTest.swift",
+        "ranges": [[176, 251]],
+        "semantic_scope": "early server receipt case only"
+      },
+      {
+        "client": "ios",
+        "path": "SignalServiceKit/tests/Attachments/AttachmentLimitsTest.swift",
+        "ranges": [[1, 126]],
+        "semantic_scope": "boundary and parameterized assertions"
+      },
+      {
+        "client": "ios",
+        "path": "SignalServiceKit/tests/MessageBackup/BackupArchiveIntegrationTests.swift",
+        "ranges": [[15, 330]],
+        "semantic_scope": "fixture registration/exclusions, fixed time, import/export comparator; initialization below330 unread"
+      },
+      {
+        "client": "android",
+        "path": "app/src/test/java/org/thoughtcrime/securesms/backup/v2/stream/EncryptedBackupReaderWriterTest.kt",
+        "ranges": [[1, 331]],
+        "semantic_scope": "backup reader/writer test bodies"
+      },
+      {
+        "client": "android",
+        "path": "app/src/androidTest/java/org/thoughtcrime/securesms/database/AttachmentTableTest_deleteAttachmentsForMessage.kt",
+        "ranges": [[1, 130]],
+        "semantic_scope": "test bodies including shared-reference and null metadata"
+      },
+      {
+        "client": "android",
+        "path": "app/src/androidTest/java/org/thoughtcrime/securesms/database/AttachmentTableTest_deduping.kt",
+        "ranges": [
+          [65, 100],
+          [149, 177]
+        ],
+        "semantic_scope": "selected transform dedup bodies; other upload/quality cases unread"
+      },
+      {
+        "client": "android",
+        "path": "app/src/androidTest/java/org/thoughtcrime/securesms/testing/MessageContentFuzzer.kt",
+        "ranges": [[20, 220]],
+        "semantic_scope": "input generator helper, NOT assertion-bearing tests"
+      },
+      {
+        "client": "android",
+        "path": "app/src/androidTest/java/org/thoughtcrime/securesms/messages/EditMessageSyncProcessorTest.kt",
+        "ranges": [[1, 240]],
+        "semantic_scope": "ten-iteration differential test and zipped assertion helper; dump tail unread"
+      },
+      {
+        "client": "android",
+        "path": "app/src/androidTest/java/org/thoughtcrime/securesms/messages/incomingmessageobserver/IncomingTextMessageTest.kt",
+        "ranges": [[1, 22]],
+        "semantic_scope": "entire simple incoming text test"
+      },
+      {
+        "client": "android",
+        "path": "app/src/androidTest/java/org/thoughtcrime/securesms/messages/incomingmessageobserver/DecryptionErrorTest.kt",
+        "ranges": [[1, 27]],
+        "semantic_scope": "entire invalid then valid ingest test"
+      },
+      {
+        "client": "android",
+        "path": "app/src/androidTest/java/org/thoughtcrime/securesms/testing/incomingmessageobserver/IncomingMessageObserverRule.kt",
+        "ranges": [[1, 140]],
+        "semantic_scope": "runner skip/session/envelope/job-drain helper"
+      },
+      {
+        "client": "android",
+        "path": "app/src/androidTest/java/org/thoughtcrime/securesms/testing/incomingmessageobserver/IncomingMessageObserverAssertions.kt",
+        "ranges": [[1, 71]],
+        "semantic_scope": "actual DB assertions helper"
+      },
+      {
+        "client": "android",
+        "path": "app/src/androidTest/java/org/thoughtcrime/securesms/messages/SyncMessageProcessorTest_attachmentBackfill.kt",
+        "ranges": [[1, 230]],
+        "semantic_scope": "first seven complete assertions and partial eighth; eighth assertion only indexed, not claimed"
+      },
+      {
+        "client": "desktop",
+        "path": "ts/test-node/jobs/JobQueue_test.node.ts",
+        "ranges": [
+          [32, 83],
+          [291, 366],
+          [506, 685]
+        ],
+        "semantic_scope": "selected store/admission/retry/invalid/completion assertions"
+      },
+      {
+        "client": "desktop",
+        "path": "ts/test-electron/Crypto_test.preload.ts",
+        "ranges": [
+          [589, 719],
+          [760, 860]
+        ],
+        "semantic_scope": "selected migration/hash/roundtrip helper; large-file branch after860 unread"
+      },
+      {
+        "client": "desktop",
+        "path": "ts/test-electron/backup/integration_test.preload.ts",
+        "ranges": [[1, 96]],
+        "semantic_scope": "entire fixture integration registration/comparison"
+      }
+    ],
+    "semanticScenarioFamilies": 18,
+    "selectedSemanticSourceFiles": 19,
+    "candidateSourceFiles": 1702,
+    "notReviewedSemantically": "Remaining candidate files and unread spans; desktop has 4 sparse-checkout sources not lexically scanned. Binary fixtures were not decoded/run. Lexical fuzz/property hits are discovery leads, not proof of coverage-guided fuzzing."
+  },
+  "serverAndLibraryInventory": {
+    "schema": 1,
+    "pins": {
+      "server": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+      "libsignal": "1738ead8a12ffe539f6309958123dadb16dc3b95"
+    },
+    "zoenBase": "f3ab6fae6c6b63e3df16849a1ee7249d56d77e95",
+    "treesInventoried": {
+      "server": {
+        "trackedPaths": 1416,
+        "serviceTestJavaPathsEndingTest": 302
+      },
+      "libsignal": {
+        "trackedPaths": 1788,
+        "protocolTestsRustPathsIncludingSupportModule": 5,
+        "protocolFuzzTargetRustPaths": 3,
+        "messageBackupInvalidJsonFixtures": 9,
+        "messageBackupValidJsonFixtures": 15,
+        "messageBackupEncryptedFixtures": 2
+      }
+    },
+    "countMethod": "git ls-tree HEAD path inventory; ^ line-anchored source annotation counts in only fetched files, not parameter-expanded runs or runtime passes. Inventory filename counts are not behavioral coverage. Exact inspected assertion spans listed per file.",
+    "files": [
+      {
+        "project": "server",
+        "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+        "path": "service/src/test/java/org/whispersystems/textsecuregcm/backup/BackupManagerTest.java",
+        "sha256": "8487453c66366d38499ec4de6278e884121565a1864441ddca19b2f19ec435c4",
+        "lines": 1119,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "Test": 27,
+          "ParameterizedTest": 10,
+          "CartesianTest": 1
+        },
+        "assertionBodyReadRanges": ["161-207", "349-631", "802-858"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "server",
+        "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+        "path": "service/src/test/java/org/whispersystems/textsecuregcm/controllers/AttachmentControllerV4Test.java",
+        "sha256": "89522be73b80129b57236be53f34daccb1362bba42803aecf42b3310dc3d2ef4",
+        "lines": 249,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "Test": 6,
+          "ParameterizedTest": 1,
+          "CartesianTest": 0
+        },
+        "assertionBodyReadRanges": ["110-249"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "server",
+        "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+        "path": "service/src/test/java/org/whispersystems/textsecuregcm/grpc/DevicesGrpcServiceTest.java",
+        "sha256": "ecf853d63679b7c74b7d3b97a34eedeb3d3d23dbd22593fc4435a1aa4ce6d386",
+        "lines": 507,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "Test": 8,
+          "ParameterizedTest": 6,
+          "CartesianTest": 1
+        },
+        "assertionBodyReadRanges": ["132-176", "326-364"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "server",
+        "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+        "path": "service/src/test/java/org/whispersystems/textsecuregcm/grpc/MessageDispatcherTest.java",
+        "sha256": "2a3b7e6e036aa012f28a38b5cdf8905c8f74dd3821aaa30172d772727957de71",
+        "lines": 370,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "Test": 6,
+          "ParameterizedTest": 1,
+          "CartesianTest": 0
+        },
+        "assertionBodyReadRanges": ["99-365"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "server",
+        "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+        "path": "service/src/test/java/org/whispersystems/textsecuregcm/storage/MessagesManagerTest.java",
+        "sha256": "fd3e8669c18dd6186efdac97dc8c5af497ae38275f20987cfb27d798b52c88ca",
+        "lines": 372,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "Test": 1,
+          "ParameterizedTest": 2,
+          "CartesianTest": 2
+        },
+        "assertionBodyReadRanges": [],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "server",
+        "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+        "path": "service/src/test/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessagePublisherTest.java",
+        "sha256": "8a864784836871149a3cb8e7794218ebdcff636ddf6521e6bd7c6fa768f4e81c",
+        "lines": 636,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "Test": 8,
+          "ParameterizedTest": 0,
+          "CartesianTest": 0
+        },
+        "assertionBodyReadRanges": ["99-155", "313-636"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "server",
+        "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+        "path": "service/src/test/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessageStoreTest.java",
+        "sha256": "67c711806d5bf8102956bf1237123400001d61c3c59a38fc36e1d0a19e56474a",
+        "lines": 1455,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "Test": 19,
+          "ParameterizedTest": 10,
+          "CartesianTest": 1
+        },
+        "assertionBodyReadRanges": ["937-1068"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "libsignal",
+        "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+        "path": "rust/message-backup/src/frame.rs",
+        "sha256": "8de933e0cec30b826843b68db654b6590f34faa4d074abae831394764576c5e4",
+        "lines": 490,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "plain_test": 2,
+          "dir_test_families": 0,
+          "test_matrix_families": 1,
+          "test_case_rows": 10
+        },
+        "assertionBodyReadRanges": ["301-490"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "libsignal",
+        "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+        "path": "rust/message-backup/tests/res/test-cases/invalid/missing-account-data.jsonproto",
+        "sha256": "7c73b9f9a1995356cdef8c35abf7eacc33d41788ee72d6488a749e5ceb883df6",
+        "lines": 13,
+        "syntacticAnnotationsNotExpandedExecutions": {},
+        "assertionBodyReadRanges": ["fixture-body-read"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "libsignal",
+        "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+        "path": "rust/message-backup/tests/res/test-cases/invalid/missing-account-data.jsonproto.expected",
+        "sha256": "386d5b4c14983a0a598d31520cf37386852089738f813faedfb9775fa38b80a3",
+        "lines": 1,
+        "syntacticAnnotationsNotExpandedExecutions": {},
+        "assertionBodyReadRanges": ["fixture-body-read"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "libsignal",
+        "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+        "path": "rust/message-backup/tests/res/test-cases/invalid/missing-recipient.jsonproto",
+        "sha256": "93d772d5a18ee735826da76617f3c428f82fc9bdef2398678c07ffe8e345a633",
+        "lines": 19,
+        "syntacticAnnotationsNotExpandedExecutions": {},
+        "assertionBodyReadRanges": ["fixture-body-read"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "libsignal",
+        "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+        "path": "rust/message-backup/tests/res/test-cases/invalid/missing-recipient.jsonproto.expected",
+        "sha256": "fe839e959de12a8a9656a2fcb80c1a6929b8e6d8e184eb8494a7cc40169ce0ce",
+        "lines": 1,
+        "syntacticAnnotationsNotExpandedExecutions": {},
+        "assertionBodyReadRanges": ["fixture-body-read"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "libsignal",
+        "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+        "path": "rust/message-backup/tests/res/test-cases/invalid/multiple-account-data.jsonproto",
+        "sha256": "65626436093c0f7867a6b4ee752b7494dc3c0023b76a30a7bff4ed56278d6ce1",
+        "lines": 31,
+        "syntacticAnnotationsNotExpandedExecutions": {},
+        "assertionBodyReadRanges": ["fixture-body-read"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "libsignal",
+        "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+        "path": "rust/message-backup/tests/res/test-cases/invalid/multiple-account-data.jsonproto.expected",
+        "sha256": "ad058a991547efde0a230dd2bc668857ef9c20cf6bb7f6d8eeefe9e3fc44ea24",
+        "lines": 1,
+        "syntacticAnnotationsNotExpandedExecutions": {},
+        "assertionBodyReadRanges": ["fixture-body-read"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "libsignal",
+        "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+        "path": "rust/message-backup/tests/test_cases.rs",
+        "sha256": "2f07fc9c53407fe25d8c48a680858ca1d29de0046e0bb51b393f46dbcd163871",
+        "lines": 415,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "plain_test": 2,
+          "dir_test_families": 6,
+          "test_matrix_families": 0,
+          "test_case_rows": 0
+        },
+        "assertionBodyReadRanges": ["1-415"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "libsignal",
+        "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+        "path": "rust/protocol/fuzz/fuzz_targets/interaction.rs",
+        "sha256": "fdbbd828221ed3aabb7dcd93cc293b686be0762a15c2a587fb5d0306343fec4d",
+        "lines": 325,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "plain_test": 0,
+          "dir_test_families": 0,
+          "test_matrix_families": 0,
+          "test_case_rows": 0
+        },
+        "assertionBodyReadRanges": ["1-325"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "libsignal",
+        "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+        "path": "rust/protocol/fuzz/fuzz_targets/session_management.rs",
+        "sha256": "3b836ff8a4fb658c268ec8186130a46730fef5379915829331ef6d225e5abcb5",
+        "lines": 102,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "plain_test": 0,
+          "dir_test_families": 0,
+          "test_matrix_families": 0,
+          "test_case_rows": 0
+        },
+        "assertionBodyReadRanges": ["1-102"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "libsignal",
+        "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+        "path": "rust/protocol/tests/groups.rs",
+        "sha256": "1ede64e13cbb00563c8e6eb76e46c63d80a58067593436d785ccc9a5bf858b2e",
+        "lines": 1301,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "plain_test": 12,
+          "dir_test_families": 0,
+          "test_matrix_families": 0,
+          "test_case_rows": 0
+        },
+        "assertionBodyReadRanges": [],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      },
+      {
+        "project": "libsignal",
+        "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+        "path": "rust/protocol/tests/session.rs",
+        "sha256": "c8076e66bb34075190a558395b0ea39796dc89b1d4c90bf4df77d6e03ebb1fdb",
+        "lines": 3868,
+        "syntacticAnnotationsNotExpandedExecutions": {
+          "plain_test": 29,
+          "dir_test_families": 0,
+          "test_matrix_families": 0,
+          "test_case_rows": 0
+        },
+        "assertionBodyReadRanges": ["145-190", "2230-2488", "3347-3401"],
+        "remainder": "unread or method-name-only; no exhaustive semantic extraction"
+      }
+    ],
+    "notRead": [
+      "Other Signal-Server tests (outside listed spans), production implementations except previously documented research",
+      "libsignal groups.rs fetched but unread",
+      "libsignal sealed_sender.rs, ratchet.rs, protocol test-support Event implementation and sealed_sender_v2 fuzz target",
+      "Most protocol/session.rs tests; actual bodies of 15 valid and 6 other invalid backup fixtures",
+      "RingRTC tests not inspected; no calling-library behavior claimed",
+      "Zoen live network/push/media/restore exhaustive proof not run or claimed"
+    ],
+    "executedTests": 0,
+    "productSourceEdits": 0
+  },
+  "packetProvenance": {
+    "clientResearchManifestSha256": "eda71fd12d52118aed017ab02d418c359b613828b2c704e39ee12e5140a8e3ce",
+    "serverResearchManifestSha256": "8e9e12c11ce61e89baa5fb236c7968f83bbf6c442f3935f87eac425b43faa53c",
+    "policy": "Hashes bind the original private research packets; public source commits, file hashes and read ranges above permit independent source review. No source test execution is implied."
+  },
+  "scenarios": [
+    {
+      "id": "S01",
+      "scope": "server-and-libraries",
+      "title": "acknowledgeMessages (4 named MethodSource rows)",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessageStoreTest.java",
+          "lines": "937-1011",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessageStoreTest.java#L937"
+        }
+      ],
+      "initialState": "Persisted per-device messages; selected ACK holes.",
+      "sequence": "Read messages, ACK only selected GUIDs, end subscription, subscribe again.",
+      "introducedFault": "Some messages deliberately left unacknowledged.",
+      "expectedAssertedResult": "Only ACKed versionstamps removed; next subscription returns exactly unacknowledged IDs in order.",
+      "zoenEvidence": "crates/zoen-relay/tests/log_store.rs:125 catch_up_returns_every_event_past_partial_batches; crates/client-core/src/mls/tests/durability_tests.rs:318 cold retry and Duplicate assertions.",
+      "adoptionBoundary": "Zoen keeps an ordered shared Space log with prefix cursors; do not import per-device deletion or sparse-GUID ACK semantics. No same-cut end-to-end disconnect test was located in this bounded inspection.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "S02",
+      "scope": "server-and-libraries",
+      "title": "ackMessages; maxOutstandingAllowsGaps; duplicateAckIgnored",
+      "priority": "P2",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/grpc/MessageDispatcherTest.java",
+          "lines": "136-266",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/grpc/MessageDispatcherTest.java#L136"
+        }
+      ],
+      "initialState": "Stream has more messages than the unacknowledged capacity.",
+      "sequence": "Fill delivery window, ACK once, repeat same ACK, then ACK a different message.",
+      "introducedFault": "Duplicate ACK and one hole in the outstanding set.",
+      "expectedAssertedResult": "First unique ACK allows one further message; duplicate ACK allows no extra message or error; outstanding hole does not prevent other unique ACKs releasing credit.",
+      "zoenEvidence": "crates/client-core/src/tests/peer_receipts.rs:244 rejects stale/duplicate watermarks across reopen; crates/zoen-relay/tests/receipt_watermarks.rs:50 monotonic durable folding.",
+      "adoptionBoundary": "No corresponding ACK-credit window in Zoen: delivered/read watermarks are not sparse transport credits. Reuse idempotence reasoning, not Signal limits or machinery.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "incompatible"
+    },
+    {
+      "id": "S03",
+      "scope": "server-and-libraries",
+      "title": "disconnectionRequest; conflictingConsumerWhileWaitingForAcks",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/grpc/MessageDispatcherTest.java",
+          "lines": "268-332",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/grpc/MessageDispatcherTest.java#L268"
+        }
+      ],
+      "initialState": "Authenticated consumer, with or without full unacknowledged window.",
+      "sequence": "Request disconnect or raise competing-consumer error after filling window.",
+      "introducedFault": "A captured disconnection callback is invoked, or a conflicting-consumer source error is injected; the latter also runs with a full unacknowledged window. No real credential revocation is performed.",
+      "expectedAssertedResult": "Correct typed UNAUTHENTICATED or CONFLICTING_STREAM error reaches consumer; fullness does not hide control termination.",
+      "zoenEvidence": "crates/zoen-relay/tests/session_revocation.rs:568,744 stalled sync/revocation; crates/zoen-relay/src/hub.rs:113 revocation kick independent of data queue.",
+      "adoptionBoundary": "Zoen tests cover stalled work plus revocation; this review did not execute a full outbound-mailbox plus revoke combination.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "S04",
+      "scope": "server-and-libraries",
+      "title": "messageAvailableWatchSignalBuffered",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessagePublisherTest.java",
+          "lines": "313-392",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessagePublisherTest.java#L313"
+        }
+      ],
+      "initialState": "Publisher has fetched first batch and is transitioning through queue-empty.",
+      "sequence": "Complete availability watch synchronously at first queue-empty before earlier batch publication completes.",
+      "introducedFault": "Wake hits the empty-to-wait transition.",
+      "expectedAssertedResult": "Second batch is still emitted, explicit buffered transition occurs, remaining watch canceled on termination.",
+      "zoenEvidence": "crates/zoen-relay/src/session.rs:1521 sync paging; crates/zoen-relay/src/fanout.rs:1 at-most-once live notifications and cursor catch-up; crates/zoen-relay/tests/log_store.rs:125 pagination only.",
+      "adoptionBoundary": "A deterministic Zoen live/catch-up handoff interleaving test was not located in inspected paths. This is a coverage gap, not proof of data loss; do not add FDB watch state machine without establishing need.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "gap"
+    },
+    {
+      "id": "S05",
+      "scope": "server-and-libraries",
+      "title": "watchCanceledOnSubscriptionCancel",
+      "priority": "P2",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessagePublisherTest.java",
+          "lines": "395-432",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessagePublisherTest.java#L395"
+        }
+      ],
+      "initialState": "Active infinite stream owns availability watch.",
+      "sequence": "Publish item, cancel subscription.",
+      "introducedFault": "Consumer disappears.",
+      "expectedAssertedResult": "Watch cancel called; no retained watcher ownership.",
+      "zoenEvidence": "crates/zoen-relay/src/fanout.rs:attach/detach subscription ownership and session teardown; crate tests not read for this exact disposal assertion.",
+      "adoptionBoundary": "Source ownership mapped only; no equivalent test assertion qualified.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "S06",
+      "scope": "server-and-libraries",
+      "title": "watchSetAfterTerminationIsCancelled",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessagePublisherTest.java",
+          "lines": "560-614",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessagePublisherTest.java#L560"
+        }
+      ],
+      "initialState": "Initial database fetch unresolved.",
+      "sequence": "Subscribe, dispose, then complete fetch empty.",
+      "introducedFault": "Late successful async result after cancellation.",
+      "expectedAssertedResult": "No watch is ever registered; only FETCHING_MESSAGES then TERMINATED states.",
+      "zoenEvidence": "crates/zoen-relay/src/session.rs request/session ownership; no exact late-result resource-registration test located.",
+      "adoptionBoundary": "Important generic ownership invariant, but Signal watch objects do not directly exist in Zoen.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "gap"
+    },
+    {
+      "id": "S07",
+      "scope": "server-and-libraries",
+      "title": "onRequestFlowControl",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessagePublisherTest.java",
+          "lines": "488-556",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessagePublisherTest.java#L488"
+        }
+      ],
+      "initialState": "Three queued messages and bounded downstream demand.",
+      "sequence": "Request two, then one, then completion.",
+      "introducedFault": "No failure injected. Downstream demand is deliberately smaller than the queued input, exercising bounded demand handling.",
+      "expectedAssertedResult": "Exactly requested messages emitted; bounded range fetches and final completion, not full queue materialization.",
+      "zoenEvidence": "crates/zoen-relay/src/session.rs:1638 bounded SYNC_PAGE reads; crates/zoen-relay/src/hub.rs:129 full_mailbox_kicks_without_blocking_other_sessions.",
+      "adoptionBoundary": "Zoen disconnect/catch-up policy differs from Reactive Streams request accounting; preserve bounded memory/fairness, not exact fetch count.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "S08",
+      "scope": "server-and-libraries",
+      "title": "testInvalidUploadLength; testUploadTooLarge",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/controllers/AttachmentControllerV4Test.java",
+          "lines": "110-149",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/controllers/AttachmentControllerV4Test.java#L110"
+        }
+      ],
+      "initialState": "Authorized upload-form caller.",
+      "sequence": "Request negative/zero/over-limit lengths.",
+      "introducedFault": "Invalid declared lengths.",
+      "expectedAssertedResult": "Negative/zero rejected400, over limit413.",
+      "zoenEvidence": "crates/relay-admission/tests/blobs.rs:142 body_bounds_and_weight_rounding_match_native tests 0,max+1,u64::MAX refused413 and inclusive max accepted.",
+      "adoptionBoundary": "Equivalent validation property only; Zoen direct ciphertext PUT differs from signed TUS/GCS form. Do not copy status codes or size constants.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "equivalent"
+    },
+    {
+      "id": "S09",
+      "scope": "server-and-libraries",
+      "title": "rollbackRateLimit",
+      "priority": "P2",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/controllers/AttachmentControllerV4Test.java",
+          "lines": "162-181",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/controllers/AttachmentControllerV4Test.java#L162"
+        }
+      ],
+      "initialState": "Count limit admits; byte limit rejects upload reservation.",
+      "sequence": "Attempt upload form with max length.",
+      "introducedFault": "Second admission dimension fails after first acquired permit.",
+      "expectedAssertedResult": "429 returned and one count permit restored.",
+      "zoenEvidence": "crates/zoen-relay/src/blobs.rs:94 byte GCRA then digest/storage; crates/relay-admission/tests/blobs.rs:196 refusal-does-not-spend arithmetic.",
+      "adoptionBoundary": "Signal refundable upload-form reservation is not Zoen abuse-attempt charging. No production refund recommendation without defining what is reserved versus charged.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "incompatible"
+    },
+    {
+      "id": "S10",
+      "scope": "server-and-libraries",
+      "title": "removeDevice* (4 methods)",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/grpc/DevicesGrpcServiceTest.java",
+          "lines": "132-174",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/grpc/DevicesGrpcServiceTest.java#L132"
+        }
+      ],
+      "initialState": "Primary or linked authenticated device.",
+      "sequence": "Remove linked self, linked other, or primary.",
+      "introducedFault": "Authorization input matrix includes permitted primary/linked-self removals and prohibited primary-target/linked-other-target requests. No storage failure is injected.",
+      "expectedAssertedResult": "Primary can remove linked device; linked can remove itself; linked removing other and removal of primary refused with no manager mutation.",
+      "zoenEvidence": "crates/zoen-relay/tests/http_device_revocation.rs:297; crates/zoen-relay/tests/session_revocation.rs:884 authorized-device embedded payload checks.",
+      "adoptionBoundary": "Zoen identity/root-certified device policy is distinct; root-vs-linked capabilities must be specified before inheriting Signal primary-device rule.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "incompatible"
+    },
+    {
+      "id": "S11",
+      "scope": "server-and-libraries",
+      "title": "unknownPublicKey; mismatchedPublicKey; signatureValidation",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/backup/BackupManagerTest.java",
+          "lines": "349-409",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/backup/BackupManagerTest.java#L349"
+        }
+      ],
+      "initialState": "Backup credential presentation and registered or absent key.",
+      "sequence": "Authenticate unknown key; register key, replace with another; corrupt signature; retry valid signature.",
+      "introducedFault": "Wrong or altered authorization material.",
+      "expectedAssertedResult": "Unknown/replacement/invalid signature rejected; repeated same key allowed; valid signature returns correct backup identity/level.",
+      "zoenEvidence": "crates/zoen-cli/tests/journey_backup.rs:411 equal403 bodies for existing/no-backup/missing users; :132 recovery authority cannot revive revoked devices; backup.rs:368 root secret must match identity.",
+      "adoptionBoundary": "ZK backup credentials and Zoen recovery auth are different protocols. Existing Zoen assertions cover authorization/non-disclosure, not this same key-registration API.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "S12",
+      "scope": "server-and-libraries",
+      "title": "checkBackupCredentialType (4 CsvSource rows)",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/backup/BackupManagerTest.java",
+          "lines": "185-207",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/backup/BackupManagerTest.java#L185"
+        }
+      ],
+      "initialState": "Credential scoped to messages or media.",
+      "sequence": "Try same-type and cross-type operation.",
+      "introducedFault": "Valid credential of wrong resource class.",
+      "expectedAssertedResult": "Same type accepted; cross-type rejected with dedicated exception.",
+      "zoenEvidence": "crates/zoen-relay/src/backup.rs signed-device writes versus recovery-authorized reads; crates/zoen-cli/tests/journey_backup.rs:865 revoked write endpoints.",
+      "adoptionBoundary": "Transfer the wrong-capability/no-side-effect test pattern, not paid tiers or anonymous credential implementation.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "S13",
+      "scope": "server-and-libraries",
+      "title": "copyFailure; copyPartialSuccess",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/backup/BackupManagerTest.java",
+          "lines": "499-542",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/backup/BackupManagerTest.java#L499"
+        }
+      ],
+      "initialState": "Backup media usage reservation, one successful object and missing/wrong-length objects.",
+      "sequence": "Run mixed copy request and inspect per-item results and durable usage.",
+      "introducedFault": "Object store returns missing or invalid source length.",
+      "expectedAssertedResult": "Outcomes identify each source failure; durable bytes/count retain only known successes and roll back known failures.",
+      "zoenEvidence": "crates/client-core/src/backup.rs:301 snapshot; crates/client-core/src/net/file_demand_tests.rs:515 corrupt media refusal.",
+      "adoptionBoundary": "Zoen portable backup/media lifecycle is not Signal server-side media copying. Remaining backup media completeness needs a product contract before importing accounting machinery; do not infer current data loss.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "gap"
+    },
+    {
+      "id": "S14",
+      "scope": "server-and-libraries",
+      "title": "deletePartialFailure; alreadyDeleted",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "Signal-Server",
+          "commit": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+          "path": "service/src/test/java/org/whispersystems/textsecuregcm/backup/BackupManagerTest.java",
+          "lines": "802-857",
+          "url": "https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/test/java/org/whispersystems/textsecuregcm/backup/BackupManagerTest.java#L802"
+        }
+      ],
+      "initialState": "Five accounted remote objects or an already-absent object.",
+      "sequence": "Delete sequence, fail middle remote operation; also delete already absent object.",
+      "introducedFault": "Object-store failure partway through cleanup or idempotent repeated deletion.",
+      "expectedAssertedResult": "Only completed prefix reduces usage; failed/later objects not falsely removed; absent deletion changes no usage.",
+      "zoenEvidence": "crates/zoen-cli/tests/journey_backup.rs:276 replayed_uploads_use_distinct_objects_and_survive_delayed_cleanup; no same quota-accounting API.",
+      "adoptionBoundary": "Do not equate deleting local cached media with deleting a backup object. Source cleanup assertions should be read before claiming full equivalence.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "L01",
+      "scope": "server-and-libraries",
+      "title": "prekey_message_failed_decryption_does_not_update_stores",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "project": "libsignal",
+          "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+          "path": "rust/protocol/tests/session.rs",
+          "lines": "2230-2338",
+          "url": "https://github.com/signalapp/libsignal/blob/1738ead8a12ffe539f6309958123dadb16dc3b95/rust/protocol/tests/session.rs#L2230"
+        }
+      ],
+      "initialState": "Fresh recipient identity/session stores and real sender-generated prekey ciphertext.",
+      "sequence": "Perturb ciphertext, preserve remaining message metadata, decrypt.",
+      "introducedFault": "One ciphertext byte is altered while the remaining prekey-message metadata is retained.",
+      "expectedAssertedResult": "Typed invalid-message result; no remote identity saved; no session installed.",
+      "zoenEvidence": "crates/client-core/src/mls/tests/durability_tests.rs:318 asserts real SQL ratchet rollback for storage faults; crates/mls/src/device.rs:499 open/process_message; crates/client-core/src/mls.rs:793 opaque policy.",
+      "adoptionBoundary": "Direct bad-authentication + exact durable crypto-state + cold-reopen regression not located in inspected Zoen tests. Do NOT require Engine event/cursor rollback: outer-authenticated undecryptable MLS events intentionally remain opaque history.",
+      "upstreamExecution": "NOT_RUN",
+      "implementedZoenSubset": {
+        "test": "crates/mls/src/tests.rs::failed_application_authentication_preserves_state_across_cold_reopen",
+        "commit": "80f00f89",
+        "verification": "Integrated mls library 19/19 tests and strict all-target Clippy passed. Original test, no production change.",
+        "boundary": "Byte-identical openmls_group_data rows and checkpoint after rejection; cold reopen accepts original ciphertext, replay refused, subsequent traffic accepted. This is not whole-event/cursor rollback or complete equivalence with Signal pairwise identity/session installation."
+      },
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "L02",
+      "scope": "server-and-libraries",
+      "title": "prekey_message_failed_decryption_does_not_update_stores_even_when_previously_archived",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "libsignal",
+          "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+          "path": "rust/protocol/tests/session.rs",
+          "lines": "2340-2486",
+          "url": "https://github.com/signalapp/libsignal/blob/1738ead8a12ffe539f6309958123dadb16dc3b95/rust/protocol/tests/session.rs#L2340"
+        }
+      ],
+      "initialState": "Working session explicitly archived after successful prior traffic.",
+      "sequence": "Corrupt next prekey ciphertext and decrypt.",
+      "introducedFault": "One ciphertext byte is altered in a new prekey message after the recipient's existing session was explicitly archived.",
+      "expectedAssertedResult": "Session remains archived and serialized session bytes exactly equal prior bytes.",
+      "zoenEvidence": "crates/mls/src/tests.rs:130 storage-failure retry; proposed exact provider-row comparison at MLS boundary.",
+      "adoptionBoundary": "MLS group epoch/state is not a Signal archived one-to-one session. Exact state preservation is reusable; archived-session API and retention constants are not.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "incompatible"
+    },
+    {
+      "id": "L03",
+      "scope": "server-and-libraries",
+      "title": "test_duplicate_message_error_returned",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "project": "libsignal",
+          "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+          "path": "rust/protocol/tests/session.rs",
+          "lines": "3347-3399",
+          "url": "https://github.com/signalapp/libsignal/blob/1738ead8a12ffe539f6309958123dadb16dc3b95/rust/protocol/tests/session.rs#L3347"
+        }
+      ],
+      "initialState": "Real session and encrypted message.",
+      "sequence": "Decrypt valid ciphertext twice.",
+      "introducedFault": "Duplicate ciphertext replay.",
+      "expectedAssertedResult": "Second decrypt returns DuplicatedMessage.",
+      "zoenEvidence": "crates/client-core/src/mls/tests/durability_tests.rs:354-376 applied once, duplicate before/after cold reopen, exactly one readable message/event.",
+      "adoptionBoundary": "Equivalent logical once-only result at Zoen engine boundary; API-level duplicate outcome differs.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "equivalent"
+    },
+    {
+      "id": "L04",
+      "scope": "server-and-libraries",
+      "title": "interaction fuzz target and receive_messages",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "libsignal",
+          "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+          "path": "rust/protocol/fuzz/fuzz_targets/interaction.rs",
+          "lines": "151-325",
+          "url": "https://github.com/signalapp/libsignal/blob/1738ead8a12ffe539f6309958123dadb16dc3b95/rust/protocol/fuzz/fuzz_targets/interaction.rs#L151"
+        }
+      ],
+      "initialState": "Two deterministic seeded protocol participants, generated plaintext and in-memory stores.",
+      "sequence": "Arbitrary sends, receives, archive, drops and reordering; deserialize wire messages before receiving.",
+      "introducedFault": "Lost/reordered traffic and session turnover within explicit bounds.",
+      "expectedAssertedResult": "Every message actually decrypted equals its queued expected plaintext; no panic in admitted actions.",
+      "zoenEvidence": "crates/zoen-relay/tests/log_store.rs:99 deterministic concurrent chain; client-core durability/recovery suites; no analogous stateful action-generator target located in inspected scopes.",
+      "adoptionBoundary": "Dropped messages are not asserted delivered; fuzzer deliberately avoids archive expiry and excessive chain length. In-memory Signal fuzz is not disk-crash or Zoen MLS proof.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "gap"
+    },
+    {
+      "id": "L05",
+      "scope": "server-and-libraries",
+      "title": "session_management fuzz target",
+      "priority": "P2",
+      "sourceEvidence": [
+        {
+          "project": "libsignal",
+          "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+          "path": "rust/protocol/fuzz/fuzz_targets/session_management.rs",
+          "lines": "21-102",
+          "url": "https://github.com/signalapp/libsignal/blob/1738ead8a12ffe539f6309958123dadb16dc3b95/rust/protocol/fuzz/fuzz_targets/session_management.rs#L21"
+        }
+      ],
+      "initialState": "Two seeded Participant models.",
+      "sequence": "Run arbitrary Event sequence, drain pending messages, then synchronized exchanges.",
+      "introducedFault": "Fuzz-generated Event sequences. Exact per-event fault injection remains unverified because Event::run was not reviewed; session disagreement is detected by the final assertion, not explicitly injected by the inspected harness.",
+      "expectedAssertedResult": "Participants eventually agree on same session base key or test panics.",
+      "zoenEvidence": "crates/client-core/src/mls_recovery/tests.rs recovery/convergence fixtures; MLS epoch authenticator is the relevant candidate invariant.",
+      "adoptionBoundary": "Event implementation in rust/protocol/test-support/src/lib.rs was inventoried but not read, so event catalog is unverified. Do not copy the ten-attempt convergence allowance or claim this proves arbitrary network liveness.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "incompatible",
+      "guardedRisk": "Session recovery/action interleavings."
+    },
+    {
+      "id": "L06",
+      "scope": "server-and-libraries",
+      "title": "frame_from_raw_too_short; frame_from_raw_invalid_hmac; frame_failed_decrypt",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "project": "libsignal",
+          "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+          "path": "rust/message-backup/src/frame.rs",
+          "lines": "301-353",
+          "url": "https://github.com/signalapp/libsignal/blob/1738ead8a12ffe539f6309958123dadb16dc3b95/rust/message-backup/src/frame.rs#L301"
+        }
+      ],
+      "initialState": "Backup frame reader and synthetic malformed payload.",
+      "sequence": "Feed empty/truncated bytes, invalid MAC, or garbage with valid MAC.",
+      "introducedFault": "Framing/authentication/content corruption.",
+      "expectedAssertedResult": "Expected typed EOF, invalid-MAC or read failure rather than success.",
+      "zoenEvidence": "crates/client-core/src/backup.rs:270 authenticates AEAD, checks magic/header bounds/version/identity before exposing payload; direct corpus tests not located by bounded search.",
+      "adoptionBoundary": "Zoen uses sealed AEAD payload, not Signal CBC+HMAC+compression; use original AEAD/malformed-header cases and verify no partial restore.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "L07",
+      "scope": "server-and-libraries",
+      "title": "frame_round_trip (2x2 matrix); mismatched_hmac (2 cases)",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "libsignal",
+          "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+          "path": "rust/message-backup/src/frame.rs",
+          "lines": "403-469",
+          "url": "https://github.com/signalapp/libsignal/blob/1738ead8a12ffe539f6309958123dadb16dc3b95/rust/message-backup/src/frame.rs#L403"
+        }
+      ],
+      "initialState": "Padded/unpadded encrypted frame in legacy/modern formats; reader factory can return different streams.",
+      "sequence": "Read/decrypt after initial verification, then explicitly verify final HMAC.",
+      "introducedFault": "No failure injected in the roundtrip matrix. In mismatched_hmac, the reader factory deliberately supplies different encrypted streams for initial authentication and subsequent consumption.",
+      "expectedAssertedResult": "Round-trip plaintext exact in all four formats; changed second stream detected by final HMAC comparison.",
+      "zoenEvidence": "crates/client-core/src/backup.rs:270 open_payload receives one immutable byte slice and verifies AEAD before parse.",
+      "adoptionBoundary": "Two-open TOCTOU mechanism does not directly apply; preserve single owned snapshot if future streaming restore introduces multi-read source.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "incompatible"
+    },
+    {
+      "id": "L08",
+      "scope": "server-and-libraries",
+      "title": "invalid_start_of_file (8 explicit cases)",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "libsignal",
+          "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+          "path": "rust/message-backup/src/frame.rs",
+          "lines": "475-490",
+          "url": "https://github.com/signalapp/libsignal/blob/1738ead8a12ffe539f6309958123dadb16dc3b95/rust/message-backup/src/frame.rs#L475"
+        }
+      ],
+      "initialState": "Frame reader at start-of-file.",
+      "sequence": "Feed truncated magic/metadata, missing or enormous/invalid encoded metadata length.",
+      "introducedFault": "Malformed framing and size fields.",
+      "expectedAssertedResult": "Typed UnexpectedEof or InvalidData for the corresponding malformed inputs; no allocation-bound measurement is asserted.",
+      "zoenEvidence": "crates/client-core/src/backup.rs:270 header length get bound; crates/relay-admission/tests/blobs.rs:142 extreme body sizes.",
+      "adoptionBoundary": "Use Zoen wire bounds and integer forms, not Signal magic bytes or protobuf schema. No identical invalid-backup corpus qualified here.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "L09",
+      "scope": "server-and-libraries",
+      "title": "invalid_jsonproto plus missing-recipient fixture",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "libsignal",
+          "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+          "path": "rust/message-backup/tests/test_cases.rs",
+          "lines": "326-371",
+          "url": "https://github.com/signalapp/libsignal/blob/1738ead8a12ffe539f6309958123dadb16dc3b95/rust/message-backup/tests/test_cases.rs#L326"
+        }
+      ],
+      "initialState": "Decoded backup has self recipient1 but chat points to absent recipient2.",
+      "sequence": "Convert fixture to wire representation and validate complete backup.",
+      "introducedFault": "Dangling cross-record reference.",
+      "expectedAssertedResult": "Validation fails with checked expected diagnostic naming missing RecipientId(2).",
+      "zoenEvidence": "crates/client-core/src/backup.rs:353 SQL restore/import; current signed-history validation and cross-record restore corpus not deeply inspected.",
+      "adoptionBoundary": "This source proves missing-reference rejection. No claim all Zoen restored relationships are currently validated; independent restore fixture design required.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "L10",
+      "scope": "server-and-libraries",
+      "title": "is_valid_json_proto; can_serialize_json_proto; validate_proto",
+      "priority": "P2",
+      "sourceEvidence": [
+        {
+          "project": "libsignal",
+          "commit": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+          "path": "rust/message-backup/tests/test_cases.rs",
+          "lines": "23-79",
+          "url": "https://github.com/signalapp/libsignal/blob/1738ead8a12ffe539f6309958123dadb16dc3b95/rust/message-backup/tests/test_cases.rs#L23"
+        }
+      ],
+      "initialState": "Each valid backup fixture in directory.",
+      "sequence": "Validate via library and CLI; serialize successfully; compare canonical output for dedicated golden fixture.",
+      "introducedFault": "No fault injected. Valid fixtures exercise library/CLI validation, serialization and canonical-output agreement. Disagreement is a regression these assertions would detect.",
+      "expectedAssertedResult": "Both interfaces agree on valid fixtures; serialization does not crash; canonical fixture exactly matches retained JSON.",
+      "zoenEvidence": "crates/zoen-cli/tests/journey_backup.rs:894,942 format-upgrade restores; client-core backup snapshot and CLI paths.",
+      "adoptionBoundary": "15 valid fixture names inventoried, their full bodies not read; these are harness assertions, not 15 semantically extracted product scenarios.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial",
+      "guardedRisk": "Independent entry points or transformations disagree."
+    },
+    {
+      "id": "C01",
+      "scope": "clients",
+      "title": "Persisted send retries retain one message identity",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "ios",
+          "path": "SignalServiceKit/tests/Network/MessageSendJobQueueTest.swift",
+          "lines": [89, 175],
+          "permalink": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Network/MessageSendJobQueueTest.swift#L89-L175",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a"
+        }
+      ],
+      "initialState": "Outgoing message and durable job exist in the same DB transaction.",
+      "sequence": "Set up queue; provide retryable timeout errors; force reachability retries until completion rejects.",
+      "introducedFault": "111 timeout attempts in this specific test.",
+      "expectedAssertedResult": "All error stubs consumed; sent-ID list equals the same ID repeated111; exhausted queue job absent. Permanent-error companion attempts one ID once and removes the job.",
+      "sourceAssertionLimit": "These are sender stub invocations, not 111 real network sends or proof of remote deduplication. Job removal does not assert deletion of the failed message. The retry count is Signal policy, not a portable requirement.",
+      "zoenEvidence": "crates/client-core/src/mls/tests/durability_tests.rs:154-219,221-297: failed confirmation cleanup retains exact outbox through reopen; cached ciphertext reused after lost response; confirmation then replay leaves exactly one message.",
+      "adoptionBoundary": "Retain Zoen stable client intent/ciphertext and cold retry. Do not adopt the Signal retry count or delete user content when a worker job fails.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "equivalent"
+    },
+    {
+      "id": "C02",
+      "scope": "clients",
+      "title": "Same-conversation send order and dependency admission",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "ios",
+          "path": "SignalServiceKit/tests/Network/MessageSendJobQueueTest.swift",
+          "lines": [35, 65],
+          "permalink": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Network/MessageSendJobQueueTest.swift#L35-L65",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a"
+        }
+      ],
+      "initialState": "Three pending outgoing messages for the same thread persisted together.",
+      "sequence": "Restore queue; stub three successes; await all completions.",
+      "introducedFault": "No explicit fault injected; restore a persisted same-thread queue and stub successful sends.",
+      "expectedAssertedResult": "Sent unique IDs exactly equal original ordered IDs.",
+      "sourceAssertionLimit": "Only one contact thread and successful stubs; does not establish all-room global ordering or crashes between each send.",
+      "zoenEvidence": "crates/client-core/src/tests.rs:1907-1995 asserts unconfirmed genesis holds descendants over rejection/relaunch and releases one descendant after confirmation. This is dependency ordering; the exact three-peer-message FIFO case was not found in that test.",
+      "adoptionBoundary": "Add a same-space three-intent retry/reopen assertion only if transport ordering policy requires it; preserve per-space log semantics rather than serializing all spaces.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial",
+      "guardedRisk": "Scheduling/restoration can reorder work."
+    },
+    {
+      "id": "C03",
+      "scope": "clients",
+      "title": "Queue admission and completion expose persistence boundaries",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "desktop",
+          "path": "ts/test-node/jobs/JobQueue_test.node.ts",
+          "lines": [578, 685],
+          "permalink": "https://github.com/signalapp/Signal-Desktop/blob/f3040f3e13b6dca5021c3db149320e0f7a771f0a/ts/test-node/jobs/JobQueue_test.node.ts#L578-L685",
+          "commit": "f3040f3e13b6dca5021c3db149320e0f7a771f0a"
+        }
+      ],
+      "initialState": "Paused job stream and insertion/deletion store spies.",
+      "sequence": "Add then await add; resume stream; await job completion.",
+      "introducedFault": "No explicit storage failure injected; pause/resume the job stream and spy on persistence/completion order.",
+      "expectedAssertedResult": "Add promise implies insert occurred; exact log insert→parse→run; completion exact log delete→resolved.",
+      "sourceAssertionLimit": "Store spies test sequencing, not SQLite crash atomicity or fsync.",
+      "zoenEvidence": "crates/client-core/src/mls/tests/durability_tests.rs:154-219,309-375 exercises actual SQLite failure and reopen around event/outbox and receive scope/ratchet changes, a stronger local-storage failure boundary for these invariants.",
+      "adoptionBoundary": "Use disk-trigger failures and cold reopen as Zoen acceptance; keep socket write distinct from remote acceptance.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "equivalent",
+      "guardedRisk": "Caller might see completion before durable insertion/deletion."
+    },
+    {
+      "id": "C04",
+      "scope": "clients",
+      "title": "Malformed durable jobs never execute actions",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "desktop",
+          "path": "ts/test-node/jobs/JobQueue_test.node.ts",
+          "lines": [506, 576],
+          "permalink": "https://github.com/signalapp/Signal-Desktop/blob/f3040f3e13b6dca5021c3db149320e0f7a771f0a/ts/test-node/jobs/JobQueue_test.node.ts#L506-L576",
+          "commit": "f3040f3e13b6dca5021c3db149320e0f7a771f0a"
+        }
+      ],
+      "initialState": "Paused stored queue with invalid, invalid, valid, invalid, invalid serialized values.",
+      "sequence": "Start queue and consume jobs through parser.",
+      "introducedFault": "Parser throws for invalid serialized data.",
+      "expectedAssertedResult": "run called once with valid data only; malformed jobs deleted in the companion test.",
+      "sourceAssertionLimit": "Discarding a malformed worker record is not permission to discard unrecoverable user content. No authorization proof follows from the parser-only test.",
+      "zoenEvidence": "crates/client-core/src/mls/tests/durability_tests.rs includes corrupt retained ciphertext rejection and no fallback send; media_drafts/tests.rs:582+ rejects malformed content without writes. These cover specific payloads, not a generic durable worker schema.",
+      "adoptionBoundary": "Invalid jobs must not execute. For Zoen user intent preserve failed/quarantined evidence where recovery is possible; do not blindly copy Signal job deletion.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "C05",
+      "scope": "clients",
+      "title": "Receipt before sent-message sync is reconciled later",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "ios",
+          "path": "SignalServiceKit/tests/Messages/MessageProcessingIntegrationTest.swift",
+          "lines": [176, 251],
+          "permalink": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Messages/MessageProcessingIntegrationTest.swift#L176-L251",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a"
+        }
+      ],
+      "initialState": "Linked-device local state has no matching outgoing message yet.",
+      "sequence": "Process server delivery receipt at timestamp101; then process encrypted linked-device sent-sync with same timestamp.",
+      "introducedFault": "Receipt arrives before its message.",
+      "expectedAssertedResult": "Fetched outgoing message exists; matching recipient state exists and is delivered; receipt timestamp exists and is greater than1650000000000.",
+      "sourceAssertionLimit": "This scenario does not cold-restart between receipt and sync; timestamp identity is Signal-specific.",
+      "zoenEvidence": "crates/client-core/src/tests/peer_receipts.rs:536-623 retains deferred early marks through repeated SyncDone, delayed membership and INSERT failure; 222-282 checks durable delivered/read maxima through cold reopen and stale receipt replay. Exact early-own-echo interleaving is not identical to Signal timestamp matching.",
+      "adoptionBoundary": "Preserve deferred watermark/auth scope and compare canonical projected ticks after own confirmation; do not introduce timestamp-keyed receipts into Zoen.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "C06",
+      "scope": "clients",
+      "title": "Wrong local destination is rejected before accepted content",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "ios",
+          "path": "SignalServiceKit/tests/Messages/ValidatedIncomingEnvelopeTest.swift",
+          "lines": [1, 31],
+          "permalink": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Messages/ValidatedIncomingEnvelopeTest.swift#L1-L31",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a"
+        },
+        {
+          "client": "ios",
+          "path": "SignalServiceKit/tests/Messages/MessageDecryptionTest.swift",
+          "lines": [183, 255],
+          "permalink": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Messages/MessageDecryptionTest.swift#L183-L255",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a"
+        }
+      ],
+      "initialState": "Otherwise plausible incoming ciphertext with a destination identity different from the local identity.",
+      "sequence": "Validate envelope, and separately decrypt ACI/PNI destination combinations.",
+      "introducedFault": "Wrong destination UUID / keys belonging to a different destination.",
+      "expectedAssertedResult": "Envelope validation throws wrongDestinationUuid; decryption helper requires failure for mismatched destination and asserts the relevant error class.",
+      "sourceAssertionLimit": "ACI/PNI, prekeys and these error types are Signal-specific; rejection tests alone do not prove metadata privacy or all invalid input behavior.",
+      "zoenEvidence": "crates/client-core/src/backup_api.rs:688-731 rejects backup identity mismatch after exactly one start request with no account/vault mutation; recovery_ui_tests.rs:171-195 rejects invalid identity. MLS/device/auth scope has separate Zoen contracts; this sample did not re-audit every MLS envelope admission path.",
+      "adoptionBoundary": "Port wrong-owner/device/space rejection matrices, with zero content/receipt publication; keep Zoen identity and MLS semantics.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "C07",
+      "scope": "clients",
+      "title": "Invalid incoming frame does not poison subsequent valid ingest",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "android",
+          "path": "app/src/androidTest/java/org/thoughtcrime/securesms/messages/incomingmessageobserver/DecryptionErrorTest.kt",
+          "lines": [1, 27],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/androidTest/java/org/thoughtcrime/securesms/messages/incomingmessageobserver/DecryptionErrorTest.kt#L1-L27",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        },
+        {
+          "client": "android",
+          "path": "app/src/androidTest/java/org/thoughtcrime/securesms/testing/incomingmessageobserver/IncomingMessageObserverRule.kt",
+          "lines": [28, 138],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/androidTest/java/org/thoughtcrime/securesms/testing/incomingmessageobserver/IncomingMessageObserverRule.kt#L28-L138",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        },
+        {
+          "client": "android",
+          "path": "app/src/androidTest/java/org/thoughtcrime/securesms/testing/incomingmessageobserver/IncomingMessageObserverAssertions.kt",
+          "lines": [24, 54],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/androidTest/java/org/thoughtcrime/securesms/testing/incomingmessageobserver/IncomingMessageObserverAssertions.kt#L24-L54",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        }
+      ],
+      "initialState": "Real incoming-message-observer test rule creates peers and ratchet sessions.",
+      "sequence": "Deliver malformed envelope; then deliver valid text from same peer and drain jobs.",
+      "introducedFault": "Malformed encrypted input precedes a good envelope.",
+      "expectedAssertedResult": "Before the good envelope there is no message with body subsequent; afterward that body exists and sender matches.",
+      "sourceAssertionLimit": "The first assertion looks for the later body, not all unexpected message rows. Rule is skipped without the specialized -PimoTests runner; websocket consumption alone is followed by job-drain markers.",
+      "zoenEvidence": "crates/client-core/src/mls/tests/durability_tests.rs:309-375 and mls_recovery/tests.rs:454+ cover failure/rollback/retry of the same valid frame. They do not directly establish this malformed-then-next-valid real socket pipeline scenario.",
+      "adoptionBoundary": "Useful next integrated core/relay contract: malformed authenticated input cannot advance readable receipt or block the next admissible frame. Assert exact row count as well as expected body.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial"
+    },
+    {
+      "id": "C08",
+      "scope": "clients",
+      "title": "Media verification rejects altered encrypted bytes and wrong plaintext identity",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "desktop",
+          "path": "ts/test-electron/Crypto_test.preload.ts",
+          "lines": [589, 719],
+          "permalink": "https://github.com/signalapp/Signal-Desktop/blob/f3040f3e13b6dca5021c3db149320e0f7a771f0a/ts/test-electron/Crypto_test.preload.ts#L589-L719",
+          "commit": "f3040f3e13b6dca5021c3db149320e0f7a771f0a"
+        }
+      ],
+      "initialState": "Known attachment plaintext, encrypted envelope and declared hashes.",
+      "sequence": "Encrypt; decrypt with valid hash, wrong encrypted digest, or wrong plaintext hash.",
+      "introducedFault": "Digest or plaintext identity mismatch.",
+      "expectedAssertedResult": "Roundtrip bytes exactly equal original; migration v1→v2 retains expected plaintext hash; wrong digest rejects Bad digest and wrong plaintext hash rejects Bad plaintextHash.",
+      "sourceAssertionLimit": "The rejection cases use a draining streaming sink and assert rejection only. They do NOT prove that no unauthenticated bytes reached that sink before rejection.",
+      "zoenEvidence": "crates/client-core/src/files.rs:843-897 verifies cached chunk length/hash, bounded aggregate allocation and complete file hash before returning Vec; net/file_demand_tests.rs:515-537 asserts corrupt ciphertext demand fails, no file bytes become readable, active demand clears.",
+      "adoptionBoundary": "Keep authenticated materialization plus immutable version identity; add new corruption fixtures at public read boundaries rather than duplicating codec internals.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "equivalent"
+    },
+    {
+      "id": "C09",
+      "scope": "clients",
+      "title": "Deleting one reference must not delete shared attachment data",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "android",
+          "path": "app/src/androidTest/java/org/thoughtcrime/securesms/database/AttachmentTableTest_deleteAttachmentsForMessage.kt",
+          "lines": [1, 130],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/androidTest/java/org/thoughtcrime/securesms/database/AttachmentTableTest_deleteAttachmentsForMessage.kt#L1-L130",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        }
+      ],
+      "initialState": "One metadata record referenced by either one or two messages.",
+      "sequence": "Delete attachment references of first message, then second.",
+      "introducedFault": "Cleanup sees shared ownership.",
+      "expectedAssertedResult": "Unique metadata disappears after its only message is deleted; shared metadata survives first deletion and disappears after both; null metadata companion is only a no-crash test.",
+      "sourceAssertionLimit": "Checks metadata-row existence, not all disk-file removal, secure erase or crash behavior.",
+      "zoenEvidence": "Zoen immutable file versions and history intentionally retain data beyond current message appearance; media_drafts/tests.rs:200+ prunes removed private asset references. Signal message-deletion policy must not erase Zoen version history.",
+      "adoptionBoundary": "Reuse the no-premature-delete/shared-reference invariant for leases and GC, with Zoen retention policy. Do not copy row deletion semantics.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "incompatible"
+    },
+    {
+      "id": "C10",
+      "scope": "clients",
+      "title": "Deduplication must include transformation intent",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "android",
+          "path": "app/src/androidTest/java/org/thoughtcrime/securesms/database/AttachmentTableTest_deduping.kt",
+          "lines": [65, 100],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/androidTest/java/org/thoughtcrime/securesms/database/AttachmentTableTest_deduping.kt#L65-L100",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        },
+        {
+          "client": "android",
+          "path": "app/src/androidTest/java/org/thoughtcrime/securesms/database/AttachmentTableTest_deduping.kt",
+          "lines": [149, 177],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/androidTest/java/org/thoughtcrime/securesms/database/AttachmentTableTest_deduping.kt#L149-L177",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        }
+      ],
+      "initialState": "Same input bytes but standard/high quality or video-trim transformation metadata.",
+      "sequence": "Store attachments with compatible or incompatible transformation requests.",
+      "introducedFault": "No intentionally broken deduplication injected; vary standard/high quality and trim metadata for identical source bytes.",
+      "expectedAssertedResult": "Incompatible Standard/High or trimmed/untrimmed use different data files while source hashes equal; compatible transformations share file and hash.",
+      "sourceAssertionLimit": "The test concerns Signal transformation storage, not Zoen immutable edit/mutation semantics or guarantee every renderer produces different bytes.",
+      "zoenEvidence": "crates/client-core/src/media_drafts/tests.rs:200+ rejects asset-ID reuse with different bytes and stale revision; new asset/mutation needed for edits. Existing immutable versions use canonical output bytes; Signal transform metadata is not a compatible schema.",
+      "adoptionBoundary": "Keep distinct edit intent and output identity; share encrypted chunks only after validating immutable actual output, never use original-source hash as edited draft identity.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial",
+      "guardedRisk": "Naive same-input-hash dedup can erase requested output differences."
+    },
+    {
+      "id": "C11",
+      "scope": "clients",
+      "title": "Attachment limits are tested by MIME classes and both mixed orders",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "client": "ios",
+          "path": "SignalServiceKit/tests/Attachments/AttachmentLimitsTest.swift",
+          "lines": [1, 126],
+          "permalink": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Attachments/AttachmentLimitsTest.swift#L1-L126",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a"
+        }
+      ],
+      "initialState": "Empty set, max visual count, one nonvisual, optional oversize text.",
+      "sequence": "Evaluate boundary inputs; parameterize PDF/AAC/octet-stream; reverse visual/nonvisual ordering.",
+      "introducedFault": "Limit+1, duplicate oversize text, two nonvisual, forbidden mixed batch.",
+      "expectedAssertedResult": "Empty accepted; objects/order preserved for valid inputs; each nonvisual MIME accepted alone; boundary counts accepted and excess/forbidden mixtures throw; missing MIME image filenames infer visual.",
+      "sourceAssertionLimit": "Signal limits and no-mixed-media policy differ from Zoen. One @Test(arguments: three MIME values) is multiple cases, not one runnable case; inventories do not expand it.",
+      "zoenEvidence": "Zoen supports mixed attachment batches with its own limits; media_drafts/tests.rs:582+ invalid-content/duplicate-ID/voice-metadata admission before writes.",
+      "adoptionBoundary": "Reuse boundary/unchanged-order/permutation methodology with Zoen allowed schemas. Do not adopt Signal policy constraints.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "incompatible"
+    },
+    {
+      "id": "C12",
+      "scope": "clients",
+      "title": "Cross-client backup roundtrip compares canonical semantics",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "ios",
+          "path": "SignalServiceKit/tests/MessageBackup/BackupArchiveIntegrationTests.swift",
+          "lines": [67, 125],
+          "permalink": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/MessageBackup/BackupArchiveIntegrationTests.swift#L67-L125",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a"
+        },
+        {
+          "client": "ios",
+          "path": "SignalServiceKit/tests/MessageBackup/BackupArchiveIntegrationTests.swift",
+          "lines": [204, 330],
+          "permalink": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/MessageBackup/BackupArchiveIntegrationTests.swift#L204-L330",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a"
+        },
+        {
+          "client": "desktop",
+          "path": "ts/test-electron/backup/integration_test.preload.ts",
+          "lines": [1, 96],
+          "permalink": "https://github.com/signalapp/Signal-Desktop/blob/f3040f3e13b6dca5021c3db149320e0f7a771f0a/ts/test-electron/backup/integration_test.preload.ts#L1-L96",
+          "commit": "f3040f3e13b6dca5021c3db149320e0f7a771f0a"
+        }
+      ],
+      "initialState": "Valid public .binproto fixtures representing complete message/history state.",
+      "sequence": "Import into an empty app; export; compare canonical libsignal representation.",
+      "introducedFault": "No explicit fault injected; roundtrip valid fixtures with fixture-anchored expiry time and canonical comparison.",
+      "expectedAssertedResult": "iOS rejects unknown fields and unequal comparable strings; anchors current time to fixture backupTimeMs. Desktop compares parsed canonical JSON with deep equality on mismatch.",
+      "sourceAssertionLimit": "iOS explicitly skips unsupported prefixes and comparator skips non-simulator; Desktop registers no fixture tests if BACKUP_INTEGRATION_DIR absent, and skips ReleaseChannelDonationRequest fixtures. Fixture schemas and comparator are Signal-specific. No fixtures were run here.",
+      "zoenEvidence": "crates/zoen-cli/tests/journey_backup.rs:1001-1113 asserts selected restored profile/chat contents, continued conversation and deletion; media_drafts/tests.rs:734-823 asserts private drafts excluded even if injected into retained snapshot. No shared canonical fixture corpus was established by this bounded search.",
+      "adoptionBoundary": "Adopt a Zoen-owned canonical backup corpus with fixed time, exact rows/counts/order and explicit format/version exclusions. Treat missing fixture corpus as missing evidence, never a green pass.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial",
+      "guardedRisk": "Importer silently drops/changes fields or interprets relative expiry against wall clock."
+    },
+    {
+      "id": "C13",
+      "scope": "clients",
+      "title": "Large encrypted backup stream preserves every frame and order",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "android",
+          "path": "app/src/test/java/org/thoughtcrime/securesms/backup/v2/stream/EncryptedBackupReaderWriterTest.kt",
+          "lines": [52, 122],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/test/java/org/thoughtcrime/securesms/backup/v2/stream/EncryptedBackupReaderWriterTest.kt#L52-L122",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        },
+        {
+          "client": "android",
+          "path": "app/src/test/java/org/thoughtcrime/securesms/backup/v2/stream/EncryptedBackupReaderWriterTest.kt",
+          "lines": [194, 331],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/test/java/org/thoughtcrime/securesms/backup/v2/stream/EncryptedBackupReaderWriterTest.kt#L194-L331",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        }
+      ],
+      "initialState": "Backup header plus 10,000 generated account frames, or a realistic mixture of account, 500 recipients, chat and 20,000 chat items.",
+      "sequence": "Write encrypted stream and read all frames in local/forward-secrecy variants.",
+      "introducedFault": "No explicit fault injected; bulk roundtrip checks frame preservation and order.",
+      "expectedAssertedResult": "Header version/time exact; 10,000 usernames exact at every index; realistic count 20,502 and every chatItem structurally equal.",
+      "sourceAssertionLimit": "Tests use generated in-memory frames, not production upload interruption/crash; Signal BackupId/FS format is not portable.",
+      "zoenEvidence": "Zoen snapshot backup uses SQLite bytes inside authenticated payload, not Signal frame streams. Existing recovery journey checks selected content but is not a large full-table equivalence corpus.",
+      "adoptionBoundary": "Use a bounded representative SQLite snapshot with exact canonical state before/after restore, scaling data only enough to cross meaningful IO/page boundaries.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial",
+      "guardedRisk": "Truncation, skipped frames or reorder during stream framing."
+    },
+    {
+      "id": "C14",
+      "scope": "clients",
+      "title": "Repeated backup encryption uses fresh randomness",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "android",
+          "path": "app/src/test/java/org/thoughtcrime/securesms/backup/v2/stream/EncryptedBackupReaderWriterTest.kt",
+          "lines": [171, 190],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/test/java/org/thoughtcrime/securesms/backup/v2/stream/EncryptedBackupReaderWriterTest.kt#L171-L190",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        }
+      ],
+      "initialState": "Same backup plaintext and encryption key.",
+      "sequence": "Serialize/encrypt same static content ten times.",
+      "introducedFault": "No explicit fault injected; repeated valid encryption checks ciphertext uniqueness.",
+      "expectedAssertedResult": "Set of base64 encrypted outputs has cardinality ten.",
+      "sourceAssertionLimit": "Probabilistic uniqueness check, not cryptographic proof of RNG quality; no key/algorithm format needs to transfer.",
+      "zoenEvidence": "crates/client-core/src/backup.rs:202-223 uses fresh 24-byte nonce;260-283 authenticates owner-bound payload. At requested base, only backup_api.rs calls seal_payload/open_payload; no direct test caller found by complete tracked crates Rust text search. Existing recovery tests cover wrong wrapped key but not repeated sealed payload uniqueness and malformed authenticated payload format.",
+      "adoptionBoundary": "Small immediate evidence slice: pure backup-envelope tests with repeated seal/open exact DB bytes plus wrong owner/key, truncated/tampered nonce/ciphertext/tag and authenticated unsupported header rejection. No protocol or implementation change inferred.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "gap",
+      "implementedZoenSubset": {
+        "tests": [
+          "crates/client-core/src/backup.rs::payload_tests::repeated_backup_payloads_use_fresh_nonces_and_preserve_every_byte",
+          "crates/client-core/src/backup.rs::payload_tests::backup_payload_authentication_rejects_mutation_truncation_and_other_owners",
+          "crates/client-core/src/backup.rs::payload_tests::authenticated_backup_payloads_reject_invalid_framing_version_and_inner_owner"
+        ],
+        "commit": "2e984d99",
+        "verification": "Integrated client-core library: 539 passed, zero failed/ignored/filtered. Strict all-target Clippy and scoped rustfmt passed. Three original test cases; no production change. Candidate negative controls for constant nonce, skipped format-version validation and skipped inner-owner validation each failed the intended assertion before restoration.",
+        "boundary": "Eight repeated envelope roundtrips preserve the exact header and opaque database bytes. Wrong key/owner, nonce/ciphertext/tag mutation, truncation/append and authenticated invalid framing/version/inner owner are rejected. Finite nonce uniqueness is not proof of RNG quality. Native aarch64 tests do not establish actual SQLite restoration, browser/Wasm, relay delivery or complete recovery parity."
+      },
+      "guardedRisk": "Accidental IV reuse or deterministic encryption."
+    },
+    {
+      "id": "C15",
+      "scope": "clients",
+      "title": "Backup sizes obscure small-record counts",
+      "priority": "P2",
+      "sourceEvidence": [
+        {
+          "client": "android",
+          "path": "app/src/test/java/org/thoughtcrime/securesms/backup/v2/stream/EncryptedBackupReaderWriterTest.kt",
+          "lines": [125, 167],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/test/java/org/thoughtcrime/securesms/backup/v2/stream/EncryptedBackupReaderWriterTest.kt#L125-L167",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        }
+      ],
+      "initialState": "Several tiny backups, and repeated larger identical content.",
+      "sequence": "Write 1..10 small frames; repeat the same 1500-body content ten times.",
+      "introducedFault": "No explicit fault injected; compare lengths of valid small backups and repeated larger content.",
+      "expectedAssertedResult": "All tiny encrypted sizes equal the exact padding floor plus envelope; repeated larger content draws more than eight unique lengths and all exceed twice the minimum.",
+      "sourceAssertionLimit": "The larger-content RNG seed is deterministic fixture generation, output padding remains randomized. These assertions are Signal privacy policy, not a security-equivalence claim.",
+      "zoenEvidence": "Zoen backup.rs currently wraps raw SQLite snapshot with owner-bound AEAD; no Signal-style64KiB floor/distribution promise.",
+      "adoptionBoundary": "Document backup-size leakage separately if product requires mitigation; do not silently add Signal padding or claim feature parity.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "incompatible",
+      "guardedRisk": "Ciphertext length reveals record count or exact compressed size."
+    },
+    {
+      "id": "C16",
+      "scope": "clients",
+      "title": "Seeded edit-sync differential testing compares storage representations",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "client": "android",
+          "path": "app/src/androidTest/java/org/thoughtcrime/securesms/messages/EditMessageSyncProcessorTest.kt",
+          "lines": [60, 235],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/androidTest/java/org/thoughtcrime/securesms/messages/EditMessageSyncProcessorTest.kt#L60-L235",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        },
+        {
+          "client": "android",
+          "path": "app/src/androidTest/java/org/thoughtcrime/securesms/testing/MessageContentFuzzer.kt",
+          "lines": [20, 120],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/androidTest/java/org/thoughtcrime/securesms/testing/MessageContentFuzzer.kt#L20-L120",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        }
+      ],
+      "initialState": "Generated original/edited text including optional expiry and body ranges.",
+      "sequence": "Ten iterations: process linked-device sent+edit sync; independently apply equivalent local outgoing/edit operations; dump DB rows excluding volatile columns.",
+      "introducedFault": "No explicit divergent implementation injected; compare independent local and synced edit paths over generated input.",
+      "expectedAssertedResult": "Each zipped pair of message rows equals; each zipped pair of attachment rows equals.",
+      "sourceAssertionLimit": "It does NOT assert equal list lengths before zip, so extra unmatched rows could escape. MessageContentFuzzer seed1 controls content generation, but test uses currentTimeMillis and envelope random UUIDs; not a fully frozen reproducible corpus and not a coverage-guided fuzzer.",
+      "zoenEvidence": "crates/client-core/src/tests.rs:2632-2704 checks author-only edits, final deletion, reaction replacement, forward flag. File/voice tests separately cover replay; a generated whole-projection local-vs-remote edit differential fixture was not found in this bounded review.",
+      "adoptionBoundary": "Useful later small fixture family: fixed seed+clock+IDs, local command→confirmed log→remote replay→reopen. Assert exact counts/order/full canonical projection before value equality, and preserve failing seed as a regression.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial",
+      "guardedRisk": "Local vs synced edit paths diverge in content, expiry, formatting or attachment rows."
+    },
+    {
+      "id": "C17",
+      "scope": "clients",
+      "title": "Attachment refresh preserves per-item routing and failure class",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "client": "android",
+          "path": "app/src/androidTest/java/org/thoughtcrime/securesms/messages/SyncMessageProcessorTest_attachmentBackfill.kt",
+          "lines": [68, 212],
+          "permalink": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/androidTest/java/org/thoughtcrime/securesms/messages/SyncMessageProcessorTest_attachmentBackfill.kt#L68-L212",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb"
+        }
+      ],
+      "initialState": "Linked-device message with failed attachments and original row order.",
+      "sequence": "Receive backfill with fresh pointer, terminal failure, pending, or message-not-found; combine mixed statuses and separate long-text slot.",
+      "introducedFault": "Inject terminal, pending and message-not-found backfill outcomes, including mixed per-item status responses.",
+      "expectedAssertedResult": "Fresh pointer fields updated exactly; terminal→permanent failure; pending/message-not-found keep retryable failed; mixed index0 gets first pointer and index1 permanent; long-text/body keys remain distinct.",
+      "sourceAssertionLimit": "Fresh pointer test intentionally does not assert transfer state because background download changes it; title resets transfer state is not itself proof. Signal uses positional response and primary-device policy.",
+      "zoenEvidence": "Zoen uses immutable item/version/chunk IDs and scoped ensure_file_version; net/file_demand_tests.rs covers corrupt/history, cancellation and membership loss. Signal positional pointer protocol is incompatible, while independent item failure/lifetime is portable.",
+      "adoptionBoundary": "Keep explicit immutable IDs and test two-item mixed success/failure without cross-contamination; assert stable observable outcomes rather than raced intermediate transfer state.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "partial",
+      "guardedRisk": "One item status leaks to another or transient response destroys original identity."
+    },
+    {
+      "id": "C18",
+      "scope": "clients",
+      "title": "Invalid recovery input must not mutate account or spend unrelated authority",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "client": "ios",
+          "path": "SignalServiceKit/tests/Messages/ValidatedIncomingEnvelopeTest.swift",
+          "lines": [1, 31],
+          "permalink": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Messages/ValidatedIncomingEnvelopeTest.swift#L1-L31",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a"
+        },
+        {
+          "client": "desktop",
+          "path": "ts/test-electron/Crypto_test.preload.ts",
+          "lines": [649, 719],
+          "permalink": "https://github.com/signalapp/Signal-Desktop/blob/f3040f3e13b6dca5021c3db149320e0f7a771f0a/ts/test-electron/Crypto_test.preload.ts#L649-L719",
+          "commit": "f3040f3e13b6dca5021c3db149320e0f7a771f0a"
+        }
+      ],
+      "initialState": "No account installed; supplied backup identity/key/mode may be invalid.",
+      "sequence": "Reject input before enrollment/key-vault writes; resume existing valid backup using exact confirmed key after upload error.",
+      "introducedFault": "Malformed key, another account backup, wrong mode, upload503.",
+      "expectedAssertedResult": "Zoen existing assertions: malformed keys rejected; mode refusal makes exactly one request with no OPRF point; invalid identity leaves account absent/vault empty; retry unwraps same confirmed key while wrong key fails.",
+      "sourceAssertionLimit": "This is a Zoen equivalent contract checked against its actual assertions; Signal decryption wrong-destination and backup reader cases motivate negative fixtures but do not implement Zoen OAuth or recovery authority.",
+      "zoenEvidence": "crates/client-core/src/recovery_ui_tests.rs:77-195; backup_api.rs:688-731.",
+      "adoptionBoundary": "Preserve distinct OAuth admission, device linking, recovery authority and history restore. Add payload-negative fixture C14 without reopening existing identity semantics.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenStatusAtComparedSource": "equivalent"
+    }
+  ],
+  "nextBatches": [
+    "Deterministic replay-to-live handoff: inject a durable event/wake at the transition and prove reconciliation without a later unrelated message.",
+    "Canonical edit convergence with exact count/order plus content, rather than relying on pairwise zip assertions that omit cardinality.",
+    "Continue unread assertions, parameter expansions, conditional fixtures and fuzz drivers across the pinned repositories; inventory and inspect RingRTC separately.",
+    "Complete independent-recipient media, multi-attachment/video, physical lifecycle and recovery journeys under Zoen own policies."
+  ]
+}

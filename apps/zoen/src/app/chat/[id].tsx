@@ -22,6 +22,7 @@ import {
 import { useDialogs } from '../../components/dialogs';
 import { useKeyboardMotion } from '../../components/keyboard-motion';
 import { useClient } from '../../core/provider';
+import { useMessageAudioFocus } from '../../media/message-audio-provider';
 import type { TimelineEntry } from '../../core/types';
 import type { UniversalHit } from '../../core/generated/UniversalHit';
 import { chatActivityLabel } from '../../core/live-activity';
@@ -85,6 +86,7 @@ export default function Chat() {
     snapshot?.account?.identity_id ?? snapshot?.me?.id,
     snapshot?.account?.device_id,
   ].join(':');
+  useMessageAudioFocus(id, `${owner}:${store.sessionEpoch}`);
   const search = useMemo(
     () =>
       new ConversationSearch({

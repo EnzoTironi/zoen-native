@@ -9,7 +9,10 @@ export type ComposerMeasurement = {
   fontSize: number;
 };
 
-declare class ZoenCoreModule extends NativeModule<{ onChange: (event: CoreEvent) => void }> {
+declare class ZoenCoreModule extends NativeModule<{
+  onChange: (event: CoreEvent) => void;
+  onPageInputStatus: (event: { json: string }) => void;
+}> {
   measureComposer?(
     tag: number,
     expectedText: string,
@@ -21,6 +24,15 @@ declare class ZoenCoreModule extends NativeModule<{ onChange: (event: CoreEvent)
   ): Promise<ComposerMeasurement | null>;
   open(mode: 'account' | 'demo', locale: 'en' | 'pt-BR'): Promise<string>;
   request(command: string): Promise<string>;
+  pageInputSession(): Promise<string>;
+  loadPageInput(session: string, itemId: string): Promise<string>;
+  reservePageInput(session: string, itemId: string): Promise<string>;
+  openPageInput(request: string): Promise<string>;
+  pageInputStatus(session: string, id: string): Promise<string>;
+  sealPageInput(session: string, id: string): Promise<string>;
+  applyPageInput(session: string, id: string): Promise<string>;
+  discardPageInput(session: string, id: string): Promise<string>;
+  closePageInput(session: string, id: string): Promise<void>;
   openAssistant(spaceId: string, locale: 'en' | 'pt-BR'): Promise<string>;
   askAssistant(id: string, question: string): Promise<string>;
   closeAssistant(id: string): Promise<void>;
@@ -30,6 +42,9 @@ declare class ZoenCoreModule extends NativeModule<{ onChange: (event: CoreEvent)
   loadMediaDraft(request: string): Promise<string>;
   saveMediaDraft(request: string): Promise<string>;
   materializeMediaDraftAsset(request: string): Promise<string>;
+  previewMediaDraftAsset(request: string, presentationId: string): Promise<void>;
+  cancelMediaDraftPreview(presentationId: string): Promise<void>;
+  editMediaDraftAsset(request: string, presentationId: string): Promise<string>;
   sendMediaDraft(request: string): Promise<string>;
   prepareVoice(uri: string): Promise<string>;
   renderVoice(sourceId: string, ranges: string): Promise<string>;

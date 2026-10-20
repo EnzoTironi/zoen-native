@@ -15,22 +15,30 @@ import { formatFileSize } from './file-size';
 const draftVideoThumbnail = createDraftVideoThumbnails((uri) =>
   createVideoPlayer({ uri, useCaching: false }),
 );
-function DraftThumbnail({ item }: { item: AttachmentDraftItem }) {
+export function DraftThumbnail({ item }: { item: AttachmentDraftItem }) {
   const { colors, scheme } = useTheme();
-  const [thumbnail, setThumbnail] = useState<VideoThumbnail | null>(null);
+  const [preview, setPreview] = useState<{ uri: string; image: VideoThumbnail } | null>(null);
+  const thumbnail = preview?.uri === item.uri ? preview.image : null;
   const video = item.mime.startsWith('video/');
   const photo = item.mime.startsWith('image/');
   useEffect(() => {
     if (!video || !item.uri || item.accepted) return;
     const controller = new AbortController();
+    let owned: VideoThumbnail | null = null;
     const task = sensitiveCacheWork.run(() => draftVideoThumbnail(item.uri, controller.signal));
     void task
       .then((image) => {
         if (controller.signal.aborted) image?.release();
-        else setThumbnail(image);
+        else if (image) {
+          owned = image;
+          setPreview({ uri: item.uri, image });
+        }
       })
       .catch(() => {});
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      owned?.release();
+    };
   }, [item.uri, item.accepted, video]);
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
@@ -86,6 +94,7 @@ export function AttachmentDraftStrip({
   busy,
   error,
   onSelect,
+  onPreview,
   onRemove,
   onCancel,
 }: {
@@ -94,6 +103,7 @@ export function AttachmentDraftStrip({
   busy: boolean;
   error: string | null;
   onSelect: (id: string) => void;
+  onPreview?: (id: string) => void;
   onRemove: (id: string) => void;
   onCancel: () => void;
 }) {
@@ -131,13 +141,19 @@ export function AttachmentDraftStrip({
             testID={`attachment-draft-${index}`}
             accessibilityRole="button"
             accessibilityLabel={`${t('media.attachmentPosition', { position: index + 1, total: state.items.length, name: item.name })}${item.accepted ? `, ${t('media.attachmentSent')}` : ''}`}
-            accessibilityHint={t('media.attachmentSelect', { name: item.name })}
+            accessibilityHint={
+              selectedId === item.mutationId && onPreview && !item.accepted
+                ? t('media.previewAttachment', { name: item.name })
+                : t('media.attachmentSelect', { name: item.name })
+            }
             accessibilityState={{ selected: selectedId === item.mutationId, disabled: busy }}
             disabled={busy}
             onPress={() => {
               if (selectedId !== item.mutationId && process.env.EXPO_OS === 'ios')
                 void Haptics.selectionAsync().catch(() => {});
-              onSelect(item.mutationId);
+              if (selectedId === item.mutationId && onPreview && !item.accepted)
+                onPreview(item.mutationId);
+              else onSelect(item.mutationId);
             }}
             style={({ pressed }) => ({
               width: 88,
@@ -202,6 +218,16 @@ export function AttachmentDraftStrip({
               : ''}
           </Text>
         </View>
+        {selected && !selected.accepted && onPreview ? (
+          <ComposerAction
+            name="chevron.up"
+            size={44}
+            label={t('media.previewAttachment', { name: selected.name })}
+            disabled={busy}
+            onPress={() => onPreview(selected.mutationId)}
+            testID="preview-selected-attachment"
+          />
+        ) : null}
         {selected && (!selected.attempted || selected.accepted) ? (
           <ComposerAction
             name="xmark"

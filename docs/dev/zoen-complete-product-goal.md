@@ -12,11 +12,63 @@ de critérios é [acceptance.json](../../apps/zoen/acceptance.json).
 As evidências anteriores continuam com seu escopo e seus artefatos originais.
 Ampliar a meta não transforma provas parciais em aprovação do produto completo.
 
+## Execução atual — 20 de outubro de 2026
+
+A meta foi ativada novamente nesta conversa. O próximo marco é **Zoen iOS pronto
+para lançamento**, com jornadas completas contra os serviços reais. As outras
+plataformas permanecem no escopo final, em fases posteriores; não dividem agora
+o trabalho de refinamento e validação manual.
+
+| Lote | Entrega observável | Critério de saída |
+| --- | --- | --- |
+| 1. Conversa e mídia no iPhone | Timeline contínua; teclado e carrossel sincronizados; respostas/threads/reação/menu; busca no compositor; fotos e vídeo sem recorte involuntário; voz compacta e edição; anexos com aprovação explícita. | Selecionar, revisar, cancelar, reiniciar, recuperar e enviar no app real; destinatário independente recebe conteúdo e contexto corretos. Rolagem, gestos e acessibilidade preservam a conversa. |
+| 2. Confiança e continuidade | Apple/Google; conta, perfil e chaves automáticos; vínculo/revogação; offline/outbox; backup e recuperação; confirmações com significado preciso. | Dois dispositivos independentes, perdas de resposta, reinícios e revogação não perdem operações confirmadas nem liberam histórico sem chaves/autorização. |
+| 3. Segundo plano e chamadas | Push real, navegação por notificação, extensão/lifecycle; chamadas de voz e vídeo com integração de sistema. | Provas em iPhone físico com app fechado, bloqueio, permissão negada, rede interrompida e retomada; falha de push não perde trabalho durável. |
+| 4. Apps e agentes | Apps MCP como cartões em chat/Home e sheets de tela cheia; Excalidraw real; conectores; agentes duráveis, aprovação, cancelamento e orçamento. | Estado do App persiste e sincroniza; permissões/revogação são efetivas; tarefa de agente continua sem cliente aberto e reconcilia efeitos/custo após reinício. |
+| 5. Criação compartilhada | Páginas em blocos e planos, comentários/presença/histórico; Slides, Sites, Imagens e Arquivos; edição por pessoas e agentes. | Edição colaborativa e offline, conflitos/recovery, papéis e revogação, lixeira/restauração; publicação explícita e rollback de Sites; artefatos reabrem completos. |
+| 6. Lançamento iOS | Comunidades/convites e permissões; Você/configurações; design de céu uniforme; PT/EN; distribuição assinada; backend público compatível. | Instalar/atualizar no iPhone físico, executar as jornadas iOS aplicáveis com provedores reais, passar acessibilidade e falhas críticas, documentar limites e qualificar o perfil iOS/backend fixado antes da medição, incluindo segurança, abuso, recuperação/rollback e custo. |
+| 7. Web e Android | Reutilizar contratos, componentes adequados à plataforma e backend; completar a matriz de jornadas. | Execução real em navegador e Android, incluindo offline, recuperação, mídia, Apps/criação e interoperabilidade com o iPhone. |
+| 8. Desktop e aceite final | macOS/Windows/Linux; distribuição/atualização; operação e recuperação do produto completo. | Matriz final de plataformas, perfil de carga/custo medido, restauração/rollback e critérios globais aprovados com evidência reproduzível. |
+
+O lançamento iOS exige um perfil próprio de carga iOS/backend, declarado e
+fixado antes da medição, com segurança, proteção contra abuso, recuperação,
+rollback e custo. O perfil multiplataforma existente mantém seus critérios e
+hash originais; disponibilidade mensal exige seus 30 dias de observação. Nenhuma
+qualificação de lançamento iOS aprova essas alegações globais por aproximação.
+
+A ordem é de entrega; trabalho independente do núcleo/backend pode avançar em
+paralelo. Cada lote fecha front, núcleo e backend da mesma jornada. Subagentes
+trabalham com escopos isolados e um responsável por fonte, dispositivos e serviços.
+
+Implementar um lote coerente, revisar e validar em conjunto. Repetir build ou a
+suíte ampla quando uma mudança/falha justificar; não repetir tudo após ajustes de
+documentação. Preservar testes de contratos, durabilidade e permissões. Uma falha
+de ferramenta ou de ambiente é registrada separadamente, enquanto o trabalho
+independente continua. Uma prova não executada permanece pendente.
+
+**Marco iOS aceito** exige as jornadas iOS aplicáveis e as capacidades de criação
+previstas, front e backend completos, provedores/configuração reais, build
+assinado e validação em aparelho físico. O registro de plataforma não autoriza
+marcar as três flags globais como aprovadas antes do produto completo. Não há
+meta indefinida de copiar todas as features ou a escala global de concorrentes;
+o escopo verificável é a matriz de 30 jornadas, criação e perfil numérico declarado.
+
+O lote atual está no [PR 142](https://github.com/EnzoTironi/zoen-native/pull/142),
+em rascunho. A fonte de app `f3ab6fae` passou em 961 testes, tipos, Oxlint/Oxfmt
+e build Release iOS. O cenário nativo de foto já comprova marcação, legenda,
+recuperação do rascunho ainda não enviado após reinício e envio explícito, com
+imagem/moldura alinhadas. Vídeo, recepção independente e outros casos continuam
+pendentes, assim como dois detalhes de UX do editor. As fontes e limites estão
+na [referência Signal](signal-reliability-reference.md). Essa prova não é aceite
+de lançamento.
+
 ## Plataformas e arquitetura
 
-A primeira fase entrega iOS, Android e Web. A fase seguinte entrega macOS,
-Windows e Linux; desktop faz parte da meta final. Segurança, integridade e
-validação acompanham todas as fases.
+A execução atual conclui o iOS antes de ampliar a validação manual para Web e
+Android. Em seguida, as mesmas jornadas são qualificadas nessas duas plataformas;
+macOS, Windows e Linux ficam para a fase posterior do produto completo. O marco
+de lançamento iOS tem seus próprios critérios e não depende da entrega desktop.
+Segurança, integridade e backend acompanham cada lote.
 
 Compartilhar o modelo de produto e o núcleo Rust, usando React Native/Expo e
 adaptações nativas adequadas a cada plataforma. Evitar bases nativas completas
@@ -37,7 +89,7 @@ na entrega final.
 
 ## Produto completo
 
-Preservar as 24 jornadas originais e acrescentar chamadas, desktop e critérios
+Preservar as 30 jornadas obrigatórias, incluindo chamadas, desktop e critérios
 de operação de produção. A matriz de produto deve cobrir:
 
 - Apple/Google com criação automática de conta, chaves e perfil; edição posterior
@@ -56,6 +108,69 @@ de operação de produção. A matriz de produto deve cobrir:
 
 A comparação com WhatsApp, Slack e Wabi deve identificar a versão, plataforma,
 data, jornada relevante e evidência. Não basta usar suas interfaces como referência.
+
+## Referência principal de confiabilidade
+
+Signal é a principal referência de confiabilidade no app, núcleo e backend.
+O [estudo com fontes fixadas](signal-reliability-reference.md) define seis
+contratos: operações duráveis e confirmações reais; continuidade da conversa;
+ciclo próprio da mídia; separação entre login, vínculo e recuperação; privacidade
+por camada; notificações e chamadas integradas ao ciclo de vida do sistema.
+
+A execução deve preservar as autoridades existentes e priorizar OSS mantido e
+recursos nativos adequados. Comparações de código não aprovam segurança equivalente
+ou desempenho. Adoção de bibliotecas exige compatibilidade, licença e manutenção;
+nenhuma referência justifica outra base de estado durável ou uma reescrita do
+backend sem necessidade comprovada. As diferenças de banco local, metadados,
+recuperação e segundo plano permanecem explícitas até serem resolvidas e validadas.
+
+## Contratos aprendidos nas suítes do Signal
+
+Manter o [registro de cenários](signal-test-contracts.json) com fontes e versões,
+estado inicial, sequência, falha introduzida, asserções e comparação com o Zoen.
+Ler os corpos dos testes, parâmetros, fixtures e consumidores dos fuzzers;
+inventário por nome não comprova cobertura. Classificar equivalente, parcial,
+lacuna ou incompatibilidade com a arquitetura. Priorizar perda de dados,
+duplicação, autorização, recuperação e mídia, com testes originais dos nossos
+limites. A maior parte roda no núcleo/backend; reservar aparelho físico para
+entrada, áudio/câmera/chamadas, segundo plano e comportamentos de plataforma.
+As evidências de testes, fonte, compilação, simulador e aparelho físico permanecem
+distintas. O levantamento inicial é parcial e deve continuar por lotes.
+
+## Área de criação compartilhada
+
+Em 20 de outubro de 2026, o usuário definiu Notion e as Páginas do ChatGPT Space
+como referências para as Páginas vivas e ampliou essa direção para toda a área de
+criação: Páginas, Slides, Sites, Imagens e Arquivos. A experiência deve usar os
+componentes nativos e o design de céu do Zoen, integrada às conversas e aos Apps.
+As trinta jornadas originais e a entrega final nas seis plataformas continuam
+obrigatórias; esta ampliação acrescenta capacidades, sem converter provas antigas
+em aprovação dos novos fluxos.
+
+Pessoas e agentes autorizados devem trabalhar sobre os mesmos artefatos
+persistentes. Páginas precisam de edição direta em blocos, colaboração, comentários,
+presença, histórico e recuperação. Slides devem permitir criar, editar, ordenar,
+apresentar e exportar; Sites precisam de edição, prévia, publicação explícita,
+versões e rollback; Imagens precisam de geração, upload, edição com referências,
+variantes e biblioteca. Arquivos reutilizam o armazenamento e as permissões do
+produto. A área compartilhada inclui organização em espaços e páginas filhas,
+itens recentes, busca com escopo, compartilhamento, funções, revogação, lixeira e
+restauração.
+
+A conversa junto ao artefato fornece contexto explícito ao agente, com autoria e
+alterações revisáveis. O agente continua sujeito às mesmas permissões do artefato;
+uma resposta em chat, uma interface estática ou um adaptador privado não comprovam
+edição colaborativa ou execução durável. Conteúdo privado permanece no modelo de
+criptografia do Zoen; publicar um Site é uma ação explícita sobre a versão escolhida.
+
+O primeiro lote continua no iOS, com o núcleo Rust e os serviços reais. Captura de
+texto e revisão de anexos são fundamentos, não a conclusão da área de criação.
+As capacidades adicionais ficam registradas em `creationWorkspace` no manifesto
+de aceitação e só podem ser aceitas com evidências das jornadas completas.
+
+Referências públicas: [colaboração no Notion](https://www.notion.com/help/collaborate-with-people),
+[Páginas do ChatGPT Space](https://learn.chatgpt.com/docs/space/pages) e
+[agentes no Space](https://learn.chatgpt.com/docs/space/agents).
 
 ## Backend, privacidade e integridade
 
@@ -117,7 +232,7 @@ permanecem `false` até haver evidência suficiente. Os limites conhecidos e as
 falhas abertas continuam registrados. Build aprovado, frontend hospedado, interface
 polida ou adaptador privado funcional são progresso, sem encerrar a meta completa.
 
-## Checkpoint atual — Web v136
+## Checkpoint histórico — Web v136
 
 O Release Runtime06 foi exportado do checkout real, com cache de transformação
 isolado: 91 arquivos e 2.358 fontes intactas durante o export. Passa 27 checkpoints
@@ -142,7 +257,7 @@ Não há nova aceitação nativa, de produção ou escala, nem testes reais de f
 anexos no navegador. Seleções pré-envio seguem voláteis. As30jornadas, seis
 plataformas, dez lacunas, três flags `false` e registros abaixo mantêm seu escopo.
 
-## Checkpoint atual
+## Checkpoint histórico — iOS v135
 
 O iOS v135 agora preenche o topo e a borda inferior físicos do canvas, sem
 faixa de céu, título do host ou faixa de salvamento. O Release corrigido tem

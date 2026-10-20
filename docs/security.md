@@ -11,6 +11,12 @@ This document records the security design. The [roadmap](roadmap-status.md) iden
 | Cross-device permissions | Explicit enrollment and revocation are implemented. Approval reconciliation fixes are under review in PR 46; agent membership and runtime controls remain unfinished. |
 | Production operations | TLS workload capacity, service identity controls, restore/failover, moderation and release signing need deployed proof. |
 
+A comparação atual por camada e os próximos critérios de confiabilidade estão no
+[estudo do Signal](dev/signal-reliability-reference.md). O banco local completo
+continua sem SQLCipher; a suíte MLS atual é X25519/ChaCha20-Poly1305 e o relay
+conhece membros e autores. Pós-quântico, sealed sender e transparência de chaves
+abaixo são direção de projeto e não capacidades comprovadas por este documento.
+
 ## Assets
 
 Message and media content; who talks to whom and when (metadata); identity and device keys;
