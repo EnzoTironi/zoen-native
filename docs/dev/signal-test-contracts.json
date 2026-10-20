@@ -2074,7 +2074,26 @@
         "status": "partial",
         "verification": "Private pure-JS focused audio-session suite:22 passed (19 existing,3 new); TypeScript and scoped Oxlint/Oxfmt passed. Restoring unchanged production makes all3 new observer-failure cases fail before cleanup; exact fixed source restored. No Cargo, native build, device, provider or service run.",
         "boundary": "Three original tests use the real MessageAudioSession, AudioClipController and PlaybackCoordinator with existing synthetic native-player/file ports. A deliberately throwing UI subscriber must not prevent later controls from receiving stopped state, synchronous native pause, runtime disposal before exact local-file lease release, or idempotent repeated retirement. The small production change isolates presentation observers individually; real runtime/file cleanup errors remain authoritative and retryable. This does not establish RingRTC/call-state behavior, native microphone/camera/RTP teardown, real Expo SharedObject release, hardware/background scheduling, process death or whole calling parity. Upstream Signal assertions were read; its suite was not executed and no source was copied."
-      }
+      },
+      "additionalAdaptedZoenSubsets": [
+        {
+          "domain": "recording draft close and attachment journal/review retirement; no calls implementation",
+          "comparedBase": "bbcfe12e0ec49b0317fb653c047c641f1be1361d",
+          "productionPaths": [
+            "apps/zoen/src/media/voice-session.ts::VoiceSession.publish",
+            "apps/zoen/src/media/media-draft-channel.ts::MediaDraftChannel.notify",
+            "apps/zoen/src/media/attachment-review.ts::AttachmentReview.publish"
+          ],
+          "tests": [
+            "apps/zoen/src/core/voice-session.test.ts::a throwing closing/closed observer cannot abandon voice cancellation, drain or cleanup retry (2 cases)",
+            "apps/zoen/src/core/media-draft-channel.test.ts::throwing observers cannot abandon preserve/discard retirement edit cancellation or file-release retry (2 cases)",
+            "apps/zoen/src/core/attachment-review.test.ts::throwing review observers at admission/completion/native-error cannot retain a playback owner or mask native cancellation (3 cases)"
+          ],
+          "status": "partial",
+          "verification": "Private original Zoen Node tests:49 passed (42 existing,7 new); TypeScript and scoped Oxlint/Oxfmt passed. Restoring all3 unchanged production sources makes7/7 new cases fail at actual throwing-observer notification paths; exact fixed sources restored before the passing run. No Cargo/native/device/provider/service execution.",
+          "boundary": "Individual control-notification failures are isolated within these3 existing owners. Voice tests hold render/transcription work, require native cancellation before drain, observe original cleanup failure, release a late render before the source, retry and then close idempotently. Attachment channel tests hold native review, require exact-token cancellation before release, retain failed deferred/file cleanup for retry, preserve the canonical journal and never send/replay/delete it during retirement. Review tests observe actual PlaybackCoordinator removal through a delegating subclass and keep native dismissal/decoder errors authoritative. Existing synthetic native/file ports are used: this is not actual microphone/camera/SharedObject/file-system lifecycle, call/RTP teardown, process-death qualification or complete Signal equivalence. Prior R06 audio adaptation and historical calling/upstream NOT_RUN fields remain unchanged."
+        }
+      ]
     },
     {
       "id": "R07",

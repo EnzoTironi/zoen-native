@@ -167,6 +167,117 @@ function fixture() {
   };
 }
 
+for (const discard of [false, true]) {
+  test(`throwing observers cannot abandon ${discard ? 'discard' : 'preserve'} retirement edit cancellation or file-release retry`, async (t) => {
+    const f = fixture();
+    await f.channel.load();
+    await f.channel.save(content(), [ingest()]);
+    const canonical = JSON.stringify(f.current());
+    const file = await f.channel.materialize('a');
+    const editEntered = deferred();
+    const editFinished = deferred();
+    const cancelled = deferred();
+    const releaseEntered = deferred();
+    const releaseFinished = deferred();
+    const events: string[] = [];
+    f.port.edit = async () => {
+      editEntered.resolve();
+      await editFinished.promise;
+      events.push('edit-finished');
+      return f.current();
+    };
+    f.port.cancelPreview = async (token) => {
+      assert.equal(token, 'owned-review');
+      events.push('cancel-edit');
+      cancelled.resolve();
+    };
+    let failRelease = true;
+    f.hooks.release = async () => {
+      events.push('release-attempt');
+      releaseEntered.resolve();
+      await releaseFinished.promise;
+      if (failRelease) throw Error('Owned attachment file busy');
+      events.push('released');
+    };
+    let refuse = false;
+    let refusedNotifications = 0;
+    const healthyStates: { phase: string; value: unknown }[] = [];
+    const offBad = f.channel.subscribe(() => {
+      if (!refuse) return;
+      refusedNotifications++;
+      throw Error('Synthetic attachment control notification failure');
+    });
+    const offHealthy = f.channel.subscribe(() => {
+      const state = f.channel.getSnapshot();
+      healthyStates.push({ phase: state.phase, value: state.value });
+    });
+    t.after(async () => {
+      offBad();
+      offHealthy();
+      failRelease = false;
+      editFinished.resolve();
+      releaseFinished.resolve();
+      await f.channel.retire(discard);
+    });
+    const edit = f.channel.edit('a', 'owned-review');
+    void edit.catch(() => {});
+    await editEntered.promise;
+    refuse = true;
+    let retirement!: Promise<void>;
+    assert.doesNotThrow(() => {
+      retirement = f.channel.retire(discard);
+    });
+    let deferredCleanups = 0;
+    f.channel.deferRelease(async () => {
+      deferredCleanups++;
+      await f.channel.release(file.uri);
+    });
+    await cancelled.promise;
+    assert.equal(f.channel.getSnapshot().phase, 'closed');
+    assert.equal(f.channel.getSnapshot().frozen, true);
+    assert.deepEqual(f.released, [], 'The native review still owns the file');
+    await assert.rejects(f.channel.save(content('late'), []), kind('closed'));
+    editFinished.resolve();
+    await edit.catch(() => {});
+    await releaseEntered.promise;
+    releaseFinished.resolve();
+    await assert.rejects(retirement, /Owned attachment file busy/);
+    assert.equal(deferredCleanups, 1);
+    assert.deepEqual(f.released, [file.uri]);
+    failRelease = false;
+    await f.channel.retire(discard);
+    assert.equal(deferredCleanups, 2, 'Failed cleanup remains owned and retries');
+    assert.deepEqual(events, [
+      'cancel-edit',
+      'edit-finished',
+      'release-attempt',
+      'release-attempt',
+      'released',
+    ]);
+    assert.ok(refusedNotifications > 0);
+    assert.ok(healthyStates.length > 0);
+    assert.deepEqual(healthyStates.at(-1), { phase: 'closed', value: null });
+    assert.equal(f.channel.getSnapshot().content, null);
+    assert.equal(
+      JSON.stringify(f.current()),
+      canonical,
+      'Retirement does not replay or delete the journal',
+    );
+    assert.equal(f.calls.filter((call) => call.op === 'save').length, 1);
+    assert.equal(
+      f.calls.some((call) => call.op === 'send'),
+      false,
+    );
+    await f.channel.retire(discard);
+    assert.equal(deferredCleanups, 2);
+    assert.deepEqual(
+      f.released,
+      [file.uri, file.uri],
+      'Exactly one failed and one successful release',
+    );
+  });
+}
+
 test('read is explicit/coalesced and malformed or unread drafts never admit overwrite', async () => {
   const f = fixture();
   const gate = deferred();

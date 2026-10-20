@@ -1,4 +1,4 @@
-import { PlaybackCoordinator } from '../media/playback-owner.ts';
+import { PlaybackCoordinator, type PlaybackOwner } from '../media/playback-owner.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AttachmentReview, type AttachmentReviewRequest } from '../media/attachment-review.ts';
@@ -15,6 +15,91 @@ function deferred<T>() {
 const tick = async () => {
   for (let index = 0; index < 8; index++) await Promise.resolve();
 };
+
+for (const failureAt of ['admission', 'completion', 'native-error'] as const) {
+  test(`throwing review observers at ${failureAt} cannot retain a playback owner or mask native cancellation`, async (t) => {
+    const removed: PlaybackOwner[] = [];
+    const coordinator = new (class extends PlaybackCoordinator {
+      override remove(owner: PlaybackOwner) {
+        removed.push(owner);
+        super.remove(owner);
+      }
+    })();
+    const request = fixture().request;
+    const presented = deferred<void>();
+    const viewer = deferred<void>();
+    const nativeFailure = Error('Native review decoder failed');
+    const cancelFailure = Error('Native dismissal temporarily unavailable');
+    let failCancel = failureAt === 'admission';
+    let cancellations = 0;
+    const review = new AttachmentReview(
+      {
+        prepare: async () => request,
+        current: (selected) => selected === request,
+        token: () => 'owned-review',
+        preview: async () => {
+          presented.resolve();
+          await viewer.promise;
+        },
+        cancel: async (token) => {
+          assert.equal(token, 'owned-review');
+          cancellations++;
+          if (failCancel) throw cancelFailure;
+          viewer.resolve();
+        },
+      },
+      coordinator,
+    );
+    let refusedNotifications = 0;
+    const healthyStates: { mutationId: string | null; error: Error | null }[] = [];
+    const offBad = review.subscribe(() => {
+      const state = review.getSnapshot();
+      if (
+        (failureAt === 'admission' && state.mutationId !== null) ||
+        (failureAt === 'completion' && state.mutationId === null) ||
+        (failureAt === 'native-error' && state.error)
+      ) {
+        refusedNotifications++;
+        throw Error('Synthetic review control notification failure');
+      }
+    });
+    const offHealthy = review.subscribe(() => {
+      healthyStates.push(review.getSnapshot());
+    });
+    t.after(async () => {
+      offBad();
+      offHealthy();
+      failCancel = false;
+      viewer.resolve();
+      await review.close();
+    });
+    let opening!: Promise<void>;
+    assert.doesNotThrow(() => {
+      opening = review.open('intent');
+    });
+    void opening.catch(() => {});
+    await presented.promise;
+    assert.equal(removed.length, 0, 'Native presentation still owns playback exclusion');
+    if (failureAt === 'admission') {
+      await assert.rejects(review.close(), (error: unknown) => error === cancelFailure);
+      assert.equal(removed.length, 0, 'Failed dismissal retains ownership until the viewer drains');
+      failCancel = false;
+      await review.close();
+      assert.equal(cancellations, 2);
+    } else if (failureAt === 'native-error') viewer.reject(nativeFailure);
+    else viewer.resolve();
+    await opening;
+    assert.ok(refusedNotifications > 0);
+    assert.equal(removed.length, 1, 'Exact real coordinator ownership must be removed');
+    assert.deepEqual(healthyStates.at(-1), {
+      mutationId: null,
+      error: failureAt === 'native-error' ? nativeFailure : null,
+    });
+    assert.equal(review.getSnapshot().mutationId, null);
+    await review.close();
+    assert.equal(removed.length, 1, 'Repeated Close cannot release another playback owner');
+  });
+}
 function fixture() {
   let sequence = 0;
   let available = true;

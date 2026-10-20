@@ -320,7 +320,16 @@ export class MediaDraftChannel {
         !!this.intent ||
         !!next.value?.attempted,
     });
-    for (const listener of this.listeners) listener();
+    this.notify();
+  }
+  private notify() {
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        // A control observer cannot interrupt native edit cancellation or file cleanup.
+      }
+    }
   }
   private open() {
     if (this.retirement || !this.admitted()) throw new MediaDraftFailure('closed');
@@ -892,7 +901,7 @@ export class MediaDraftChannel {
         ? { value: null, content: null, saving: false, sending: false, error: null }
         : {}),
     });
-    for (const listener of this.listeners) listener();
+    this.notify();
     if (discard) {
       this.writes.length = 0;
       this.writeError = null;
@@ -933,7 +942,7 @@ export class MediaDraftChannel {
         frozen: true,
         error: null,
       });
-      for (const listener of this.listeners) listener();
+      this.notify();
     })();
     this.retirementTask = task;
     const settled = () => {

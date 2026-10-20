@@ -55,7 +55,13 @@ export class AttachmentReview {
   };
   private publish(mutationId: string | null, error: Error | null = null) {
     this.state = Object.freeze({ mutationId, error });
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        // Presentation observers cannot interrupt native work or playback-owner release.
+      }
+    }
   }
   open = (mutationId: string): Promise<void> => {
     if (this.active) return this.active.work;
