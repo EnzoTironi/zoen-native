@@ -54,10 +54,13 @@ meta indefinida de copiar todas as features ou a escala global de concorrentes;
 o escopo verificável é a matriz de 30 jornadas, criação e perfil numérico declarado.
 
 O lote atual está no [PR 142](https://github.com/EnzoTironi/zoen-native/pull/142),
-em rascunho. `c899de92` passou em 957 testes, tipos, Oxlint/Oxfmt e build Release
-iOS. A aprovação visual de mídia continua pendente: o simulador isolado desligou
-antes de abrir a conversa. Os testes anteriores mantêm seu escopo; essa evidência
-não é aprovação de lançamento. Detalhes: [referência Signal](signal-reliability-reference.md).
+em rascunho. A fonte de app `f3ab6fae` passou em 961 testes, tipos, Oxlint/Oxfmt
+e build Release iOS. O cenário nativo de foto já comprova marcação, legenda,
+recuperação do rascunho ainda não enviado após reinício e envio explícito, com
+imagem/moldura alinhadas. Vídeo, recepção independente e outros casos continuam
+pendentes, assim como dois detalhes de UX do editor. As fontes e limites estão
+na [referência Signal](signal-reliability-reference.md). Essa prova não é aceite
+de lançamento.
 
 ## Plataformas e arquitetura
 
@@ -120,6 +123,19 @@ ou desempenho. Adoção de bibliotecas exige compatibilidade, licença e manuten
 nenhuma referência justifica outra base de estado durável ou uma reescrita do
 backend sem necessidade comprovada. As diferenças de banco local, metadados,
 recuperação e segundo plano permanecem explícitas até serem resolvidas e validadas.
+
+## Contratos aprendidos nas suítes do Signal
+
+Manter o [registro de cenários](signal-test-contracts.json) com fontes e versões,
+estado inicial, sequência, falha introduzida, asserções e comparação com o Zoen.
+Ler os corpos dos testes, parâmetros, fixtures e consumidores dos fuzzers;
+inventário por nome não comprova cobertura. Classificar equivalente, parcial,
+lacuna ou incompatibilidade com a arquitetura. Priorizar perda de dados,
+duplicação, autorização, recuperação e mídia, com testes originais dos nossos
+limites. A maior parte roda no núcleo/backend; reservar aparelho físico para
+entrada, áudio/câmera/chamadas, segundo plano e comportamentos de plataforma.
+As evidências de testes, fonte, compilação, simulador e aparelho físico permanecem
+distintas. O levantamento inicial é parcial e deve continuar por lotes.
 
 ## Área de criação compartilhada
 
@@ -216,7 +232,7 @@ permanecem `false` até haver evidência suficiente. Os limites conhecidos e as
 falhas abertas continuam registrados. Build aprovado, frontend hospedado, interface
 polida ou adaptador privado funcional são progresso, sem encerrar a meta completa.
 
-## Checkpoint atual — Web v136
+## Checkpoint histórico — Web v136
 
 O Release Runtime06 foi exportado do checkout real, com cache de transformação
 isolado: 91 arquivos e 2.358 fontes intactas durante o export. Passa 27 checkpoints
@@ -241,7 +257,7 @@ Não há nova aceitação nativa, de produção ou escala, nem testes reais de f
 anexos no navegador. Seleções pré-envio seguem voláteis. As30jornadas, seis
 plataformas, dez lacunas, três flags `false` e registros abaixo mantêm seu escopo.
 
-## Checkpoint atual
+## Checkpoint histórico — iOS v135
 
 O iOS v135 agora preenche o topo e a borda inferior físicos do canvas, sem
 faixa de céu, título do host ou faixa de salvamento. O Release corrigido tem

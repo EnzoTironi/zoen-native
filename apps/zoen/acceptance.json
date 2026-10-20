@@ -25,6 +25,39 @@
     "evidenceScope": "Pinned source study and current Zoen code comparisons. Signal runtime, comparative benchmarks, public production and complete parity remain unqualified.",
     "accepted": false
   },
+  "behavioralTestLearning": {
+    "requestedOn": "2026-10-20",
+    "specification": "docs/dev/signal-test-contracts.json",
+    "scope": "Bounded first assertion-based batch; continue remaining suites, parameter cases, invalid fixtures and fuzz consumers.",
+    "sourceRepositories": [
+      "Signal-iOS",
+      "Signal-Android",
+      "Signal-Desktop",
+      "Signal-Server",
+      "libsignal"
+    ],
+    "mappingRecords": 42,
+    "upstreamSuitesExecuted": false,
+    "policy": "Extract initial state, sequence, injected fault and actual assertions; classify equivalent/partial/gap/incompatible at a pinned Zoen source. Implement original priority tests against Zoen boundaries, not copied retry counts/time windows or conflicting protocol policies.",
+    "priority": ["data-loss", "duplication", "authorization", "recovery", "media"],
+    "execution": "Core/backend batches; actual devices for input, audio/camera/calls, lifecycle and visible UI.",
+    "globalAcceptanceGranted": false,
+    "implementedOriginalRegressions": {
+      "mlsAuthenticationRejection": {
+        "sourceCommit": "80f00f89",
+        "testsAdded": 1,
+        "libraryTestsPassed": 19,
+        "strictAllTargetClippy": "PASS"
+      },
+      "backupEnvelopeBoundaries": {
+        "sourceCommit": "2e984d99",
+        "testsAdded": 3,
+        "libraryTestsPassed": 539,
+        "strictAllTargetClippy": "PASS"
+      },
+      "boundary": "Original native Rust regressions at Zoen cryptographic/envelope boundaries. No upstream test code or fixtures copied, upstream suites not executed, no whole-product or full recovery acceptance."
+    }
+  },
   "creationWorkspace": {
     "requestedAt": "2026-10-20",
     "references": [
@@ -123,7 +156,7 @@
       }
     ],
     "iosLaunchAccepted": false,
-    "iosLaunchAcceptancePolicy": "Accept only the applicable iOS journeys and declared creation capabilities on final public-backend/physical-device artifacts, plus an iOS/backend workload profile declared and frozen before measurement with security, abuse, restore/rollback and cost gates. This separate milestone does not approve the retained mixed-platform profile or six-platform global flags; monthly availability still requires30 observed days.",
+    "iosLaunchAcceptancePolicy": "Accept only the applicable iOS journeys and declared creation capabilities on final public-backend/physical-device artifacts, plus an iOS/backend workload profile declared and frozen before measurement with security, abuse, restore/rollback and cost gates. This separate milestone does not approve the retained mixed-platform profile or six-platform global flags; monthly availability still requires 30 observed days.",
     "validationPolicy": "Implement coherent front/core/backend batches, review then validate once together. Repeat broad checks/builds only when code changes, failures or unresolved concerns justify it; preserve integrity/auth/durability assertions and record environment failures separately.",
     "referencePolicy": "Signal is the principal reliability and messaging-interaction reference; evaluate maintained OSS/library reuse independently. Expo remains the product interface, Rust the shared authority; no complete Signal fork or duplicate durable store is introduced.",
     "completionScope": "Thirty requiredJourneys plus all declared creationWorkspace capabilities and the numerical operating envelope. Competitor quality is a design reference, not an unbounded all-features/global-scale acceptance target."
@@ -196,7 +229,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "Current execution is iOS first; PR142 remains draft. The integrated c899de92 source passes957/957 app tests with zero skips plus TypeScript/Oxlint/Oxfmt and an iOS Simulator Release build. Installed executable/bundle hashes match the sealed artifact. Final full-screen media UI qualification is pending after the isolated simulator shut down before the conversation opened and one bounded CoreSimulator recovery failed. A rendered-image frame sizing defect is being addressed in the current media batch. The new Web settings adapter requires Release Web CI on the new head. Historical evidence retains its original artifact/platform boundary. Thirty journeys, all creationWorkspace capabilities, six eventual platforms and all three global acceptance flags remain unaccepted; an iOS release has its own explicit gate.",
+  "currentAcceptanceSummary": "Current execution is iOS first; PR142 remains draft. The f3ab6fae app source passes 961/961 tests with zero skips, TypeScript/Oxlint/Oxfmt and an iOS Simulator Release build. Installed executable/bundle hashes match the sealed artifact. The owned native photo journey covers full-screen approval, real Markup, exact caption, Close/cold-unsent recovery and one explicit Send; photo/mask/caption geometry has no right strip. QuickLook returns compact and a transient confirmation label still needs polish; independent peer, video, multi-attachment, rotation and physical-device proof remain pending. Signal test-contract learning has a first bounded 42-record assertion mapping across five pinned upstream repositories; inventories are not exhaustive semantic coverage and upstream suites were not run. One original MLS rejection/cold-reopen test is integrated, with the full 19-test mls library and strict Clippy passing; three original backup-envelope tests are integrated, with the complete 539-test client-core library and strict Clippy passing. These tests do not establish full backup restoration or whole-Signal parity. Historical evidence retains its own source/platform boundary. All global readiness flags remain false.",
   "retiredBackend": {
     "id": "custom-cloudflare-runtime",
     "status": "RETIRED",
@@ -2140,7 +2173,7 @@
     "Full comparative parity with the existing clients and all required journeys remains incomplete; no whole-app superiority claim.",
     "Google/Apple credential login, provider-account creation/recovery, physical-device distribution and production relay compatibility require their own acceptance.",
     "Native Page capture/recovery is integrated and has bounded iOS input/checkpoint/cold-reopen evidence. Full block editor, canonical typed Plan editing, two-independent-member collaboration, comments, live updates, guarded agent edits and broad IME/selection/lifecycle qualification remain open.",
-    "Native photo Markup returned an edited copy and intact caption on the prior4214e0d1 artifact. Full-screen approval and corrected message-media sizing require current-artifact UI proof; edited unsent cold recovery, Cancel/video trim, independent-peer delivery, multi-capture faults and broader accessibility/performance remain open.",
+    "The f3ab6fae native photo case covers Markup, exact caption, edited unsent cold recovery and one explicit Send, with full photo/mask/caption geometry. QuickLook return-to-compact and transient pending text remain UX issues. Independent-peer receive, Cancel/video trim, multi-attachment faults, rotation/physical lifecycle and broader accessibility/performance remain unqualified.",
     "MCP observations across v89/v90/v91/v92 do not certify all features/providers. Management back-drag, broader accessibility/reduced motion and physical-device journeys remain open; native Back buttons are accepted.",
     "Web canonical drawing operations and actual canvas/reload/peer bytes are accepted locally. Image import, broader collaborative/fault paths, rich file captions/replies/threads/retry metadata and full PWA offline cold-load still need acceptance. The bounded relay-unavailable cold-route/history/outbox journey now passes separately.",
     "Web onboarding axe found no violations but contrast review remains incomplete; whole-app keyboard/screen-reader, Safari/WebKit, camera/microphone and performance are unaccepted.",

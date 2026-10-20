@@ -145,6 +145,58 @@ O Zoen mantém Rust/Loro para artefatos, a autorização dos agentes e o isolame
 de MCP Apps. Um agente que lê conteúdo é um destinatário autorizado, e publicar um
 Site continua sendo uma exportação explícita de uma versão escolhida.
 
+## Aprender com as suítes públicas
+
+O primeiro levantamento de 20 de outubro de 2026 está no
+[registro de contratos](signal-test-contracts.json). Há 42 mapeamentos baseados
+em asserções efetivamente lidas: 24 de servidor/libsignal e 18 famílias dos três
+clientes. Uma família pode conter vários casos; os mapeamentos também podem
+compartilhar um invariante. Esses números não são quantidade de testes executados
+nem uma extração completa das suítes.
+
+O inventário identifica versões, caminhos, fixtures inválidas, parametrização e
+alvos de fuzzing onde encontrados. Os 1.702 arquivos candidatos dos clientes
+foram enumerados por padrões; apenas os trechos registrados de 19 arquivos
+selecionados tiveram leitura semântica. Os contadores lexicais não expandem
+parâmetros e podem incluir comentários/infraestrutura. No servidor e libsignal,
+as áreas efetivamente inventariadas e trechos lidos também são explícitos.
+RingRTC e o restante das asserções continuam como trabalho posterior. Nenhuma
+suíte do Signal foi executada neste estudo.
+
+Cada entrada registra estado inicial, sequência, falha, resultado realmente
+assertado, fonte imutável e equivalente/lacuna no Zoen. A classificação vale para
+a fonte comparada, não aprova equivalência de produto. Priorizar perda de dados,
+duplicação, autorização, recuperação e mídia. Testar os limites definidos pelo
+Zoen, sem copiar números de retries, janelas ou políticas de outro protocolo.
+
+O primeiro teste original integrado, em `crates/mls/src/tests.rs`, verifica que
+um ciphertext adulterado não modifica as linhas de grupo OpenMLS nem seu
+checkpoint. Após fechar/reabrir a conexão SQLite, a mensagem original continua
+legível; outro reabrir recusa replay e aceita tráfego posterior. A biblioteca MLS
+passou nos 19 testes e no Clippy estrito. O contrato é da camada criptográfica:
+o Zoen preserva eventos externos autenticados como histórico opaco quando o
+conteúdo interno ainda não pode ser decifrado. Não copiar uma asserção de rejeição
+do evento/cursor inteiro que contrariaria essa política. O teste não representa
+perda de energia, processo encerrado ou recepção por outro aparelho.
+
+Três testes originais em `crates/client-core/src/backup.rs` verificam oito
+roundtrips com nonces distintos e bytes exatos, rejeição por chave/dono incorretos,
+adulteração de nonce/ciphertext/tag, truncamento e bytes extras. Corpos inválidos
+selados pelo próprio teste cobrem framing, versão e dono interno autenticados. A
+biblioteca client-core completa passou em 539 testes, com Clippy estrito e
+formatação aprovados. Controles negativos detectaram nonce fixo e validações
+removidas de versão/dono. Isso cobre o envelope, não a restauração real de SQLite,
+Wasm/navegador ou a jornada inteira de recuperação. O código de produção não
+precisou mudar; nenhum defeito de produção foi demonstrado por esses quatro novos
+testes.
+
+A matriz também registra limites encontrados nas próprias suítes: comparações
+por `zip` sem checagem prévia de cardinalidade; fixtures cujo erro esperado vem
+de uma validação anterior ao problema sugerido pelo nome; testes de backup
+condicionados a diretórios externos; e fuzzing com exclusões explícitas. Aplicar
+as propriedades úteis e fortalecer as checagens do Zoen quando adequado, usando
+fixtures próprias. Nenhum código de teste do Signal foi copiado.
+
 ## Avaliação de um fork completo
 
 Recomendação em avaliação, sem migração autorizada por esta análise: manter o
@@ -229,3 +281,27 @@ Cada lote tem uma validação integrada e evidências do artefato correspondente
 As trinta jornadas, seis plataformas e três flags de aceitação do produto completo
 continuam vigentes. Referência estudada, teste de fonte e build não são aprovação
 de uma jornada em produção.
+
+## Checkpoint iOS de mídia — fonte `f3ab6fae`
+
+O defeito da foto foi reproduzido com o Yoga instalado do React Native 0.88:
+a imagem chegava a 252×360 pontos, enquanto a moldura mantinha 294×360, expondo
+42 pontos à direita. A correção calcula uma única geometria a partir da proporção
+original; imagem, máscara, legenda e metadados acompanham essa geometria. A sonda
+passou em 32 casos e a verificação integrada do app em 961 testes, tipos,
+Oxlint/Oxfmt. O build Release passou em 42,58 segundos; assinatura e hashes do
+executável/bundle instalados correspondem ao artefato selado.
+
+No simulador isolado, uma foto sintética abriu a aprovação em tela cheia, recebeu
+uma marcação nativa e a legenda exata, foi fechada e recuperada ainda não enviada
+após reiniciar o processo. Um envio explícito produziu a foto marcada e a legenda,
+com a moldura preenchida e alinhada. A prova inclui 27 capturas preservadas e
+atribuição separada para a foto já existente, cuja autoria não foi inferida.
+Recepção independente, vídeo, múltiplos anexos e rotação nativa ficam pendentes.
+O percurso gravado tem avisos de projeção e não recebeu aprovação de replay.
+
+Dois detalhes de UX permanecem: texto de confirmação pendente aparece durante a
+abertura da edição normal; salvar no QuickLook volta ao rascunho compacto, não
+diretamente à aprovação expandida. Não há perda de rascunho observada nesse caso.
+A aprovação desse cenário não encerra as jornadas completas nem altera as três
+flags de prontidão.
