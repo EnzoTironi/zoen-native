@@ -21,6 +21,8 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
     const nonce = randomUUID();
     return { nonce, html: nativeMiniappHtml(html, 'Zoen', nonce) };
   }, [html]);
+  // Layout/theme updates must not submit a fresh native source and reload the App.
+  const source = useMemo(() => ({ html: document.html }), [document]);
   const active = useRef<typeof document | null>(document);
   useLayoutEffect(() => {
     active.current = document;
@@ -60,7 +62,7 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
     >
       <WebView<object>
         ref={view}
-        source={{ html: document.html }}
+        source={source}
         originWhitelist={['*']}
         incognito
         sharedCookiesEnabled={false}

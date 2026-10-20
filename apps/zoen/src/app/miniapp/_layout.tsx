@@ -10,6 +10,7 @@ export default function AppsLayout() {
     <SkyScene>
       <Stack
         screenOptions={{
+          orientation: 'default',
           title: '',
           headerTitle: '',
           headerBackButtonDisplayMode: 'minimal',

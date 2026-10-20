@@ -75,6 +75,7 @@ function Navigation() {
               name="miniapp"
               options={{
                 presentation: process.env.EXPO_OS === 'web' ? 'card' : 'fullScreenModal',
+                orientation: 'default',
                 animation: process.env.EXPO_OS === 'web' ? undefined : 'slide_from_bottom',
                 gestureEnabled: true,
                 headerShown: false,

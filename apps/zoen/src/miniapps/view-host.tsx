@@ -292,7 +292,7 @@ function ReadyView({
   const cancelConsent = consent.cancelAll;
   const hosts = useMemo(() => networkHosts.split(',').filter(Boolean), [networkHosts]);
   const [height, setHeight] = useState(680);
-  const [width, setWidth] = useState(360);
+  const [dimensions, setDimensions] = useState({ width: 360, height: 680 });
   const [error, setError] = useState<string | null>(null);
   const frame = useRef<MiniappFrameHandle>(null);
   const session = useRef<MiniappSession | null>(null);
@@ -302,10 +302,10 @@ function ReadyView({
     spec.tools.filter((tool) => tool.visibility.includes('app')).map((tool) => tool.name),
   );
   const tools = useMemo(() => new Set<string>(JSON.parse(encodedTools)), [encodedTools]);
-  const latest = useRef({ item, snapshot, scheme, colors, width, safeAreaInsets });
+  const latest = useRef({ item, snapshot, scheme, colors, dimensions, safeAreaInsets });
   useLayoutEffect(() => {
-    latest.current = { item, snapshot, scheme, colors, width, safeAreaInsets };
-  }, [item, snapshot, scheme, colors, width, safeAreaInsets]);
+    latest.current = { item, snapshot, scheme, colors, dimensions, safeAreaInsets };
+  }, [item, snapshot, scheme, colors, dimensions, safeAreaInsets]);
   const permission = useCallback(
     async (capability: string, purpose: string, assertActive?: () => void) => {
       const check = assertActive ?? authority.current?.check;
@@ -359,7 +359,7 @@ function ReadyView({
       },
       displayMode: 'fullscreen',
       availableDisplayModes: ['fullscreen', 'inline'],
-      containerDimensions: { width: current.width },
+      containerDimensions: current.dimensions,
       locale,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       platform: process.env.EXPO_OS === 'web' ? 'web' : 'mobile',
@@ -574,16 +574,16 @@ function ReadyView({
   ]);
   useEffect(() => {
     session.current?.sync();
-  }, [item.version, scheme, snapshot, width, safeAreaInsets]);
+  }, [item.version, snapshot]);
+  useEffect(() => {
+    session.current?.syncContext();
+  }, [scheme, dimensions, safeAreaInsets]);
   const html = useMemo(() => sandboxHtml(resource.text, hosts), [resource.text, hosts]);
   const receive = useCallback((message: string) => {
     void session.current?.receive(message);
   }, []);
   return (
-    <View
-      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-      style={fill ? { flex: 1, minHeight: 0, gap: 12 } : { gap: 12 }}
-    >
+    <View style={fill ? { flex: 1, minHeight: 0, gap: 12 } : { gap: 12 }}>
       {error || networkError ? (
         <View style={{ gap: 8 }}>
           <Text selectable accessibilityRole="alert" style={{ color: colors.danger }}>
@@ -619,16 +619,27 @@ function ReadyView({
           }}
         />
       ) : null}
-      <MiniappFrame
-        ref={frame}
-        html={html}
-        title={item.title}
-        height={height}
-        fill={fill}
-        blocked={!!consent.current}
-        onMessage={receive}
-        onError={setError}
-      />
+      <View
+        style={fill ? { flex: 1, minHeight: 0 } : undefined}
+        onLayout={(event) => {
+          const { width, height } = event.nativeEvent.layout;
+          if (width > 0 && height > 0)
+            setDimensions((previous) =>
+              previous.width === width && previous.height === height ? previous : { width, height },
+            );
+        }}
+      >
+        <MiniappFrame
+          ref={frame}
+          html={html}
+          title={item.title}
+          height={height}
+          fill={fill}
+          blocked={!!consent.current}
+          onMessage={receive}
+          onError={setError}
+        />
+      </View>
       <DeviceConsent
         request={consent.current}
         phase={consent.phase}
