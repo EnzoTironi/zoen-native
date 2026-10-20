@@ -855,7 +855,45 @@
       "zoenEvidence": "crates/zoen-relay/src/session.rs request/session ownership; no exact late-result resource-registration test located.",
       "adoptionBoundary": "Important generic ownership invariant, but Signal watch objects do not directly exist in Zoen.",
       "upstreamExecution": "NOT_RUN",
-      "zoenStatusAtComparedSource": "gap"
+      "zoenStatusAtComparedSource": "gap",
+      "implementedZoenSubset": {
+        "test": "crates/zoen-relay/tests/session_revocation.rs::closed_session_cancels_presence_lookup_before_late_result_and_reconnect",
+        "comparedBase": "3b3c960f1fd0ea198e95931044e7ce4487297483",
+        "testSourceSha256": "ebfb7491dfbc04cb8f64de389b965286955bb36e22b831f6fdea9465979f067c",
+        "status": "partial",
+        "verification": "Root-operated isolated PostgreSQL16 and actual authenticated loopback WebSocket: original focused positive and restored positive each passed 1/1, zero failed/ignored, 13 filtered (test bodies 0.20s and 0.25s; wrappers 1.130s and 0.916s). The separate private spawn-detachment control failed with exit 101 at the intended closing-socket cancellation assertion before reconnect (test body 1.14s; wrapper 2.040s), with the normal production two-second lookup timeout unchanged. Strict Clippy for zoen-relay --test session_revocation with -D warnings passed 6.901446s; this is not all-target or full-suite qualification. Original and restored positives share exact production Session SHA 9f40fc5c and test executable SHA 96a0fa76, distinct from negative executable SHA 92151206. This source-only documentation update ran no compiler, service or test.",
+        "boundary": "Original test-owned LogStore oneshot holds one actually polled co_members lookup. Close must retire it once after logical Hub offline, with the entire first-poll-to-Drop lifetime strictly below the own one-second fixture bound, separate from the unchanged production two-second lookup deadline. A late empty producer finds no receiver; the post-await continuation remains zero. Fresh signed reconnect requires Ready{registered:true}, Ping/Pong and local online state, while old Drop/continuation counts stay 1/0. This is Session-owned pending presence cancellation and authenticated replacement-session liveness; Ready/Pong do not establish catch-up or delivery. Hub::is_online proves logical offline in this non-revocation fixture, not generic structural removal of every revoked mailbox. No actual FDB availability watch, FDB network/server, NATS/multi-node presence, durable message delivery/order, MLS, whole-process restart, device behavior or full Signal parity is qualified. Heavy scheduling may fail the strict fixture; do not widen its bound toward the production timeout.",
+        "sourceEvidence": [
+          {
+            "path": "crates/zoen-relay/tests/session_revocation.rs",
+            "lines": [
+              802,
+              886
+            ],
+            "sha256": "ebfb7491dfbc04cb8f64de389b965286955bb36e22b831f6fdea9465979f067c",
+            "qualification": "Private consolidated v165+v169 candidate; no integrated commit yet"
+          }
+        ],
+        "executionReceipts": {
+          "positive": "/private/tmp/zoen-signal-s06-runtime-v172/positive-7f0f5738bcc4474ba7eaf3e2d878e7b0/focused-test.json",
+          "negative": "/private/tmp/zoen-signal-s06-runtime-v172/negative-1f0f491011f54c298c980e5348dc788a/focused-test.json",
+          "restoredPositive": "/private/tmp/zoen-signal-s06-runtime-v172/positive-2bad5d9c7e5a4cec8ebfb927cae0926e/focused-test.json",
+          "strictClippy": "/private/tmp/zoen-signal-s06-runtime-v172/positive-2bad5d9c7e5a4cec8ebfb927cae0926e/strict-clippy-01.json"
+        },
+        "fixtureCleanup": "All five owned fixture attempts, including the two retained setup/cache failures, report postgres terminal and entire fresh cluster/test databases discarded. Successful runs verified the exact fresh data_directory on port 15565; relay listener was 127.0.0.1:0. Protected/shared services were not used. Root runner v181 TCP-only and source-fresh03 changes are fixture-only; original positive/test production bytes unchanged.",
+        "upstreamExecution": "NOT_RUN",
+        "integrationStatusAtQualification": "ROOT_OPERATED_PRIVATE_TEST_CANDIDATE; live integration is not asserted by this dated record",
+        "restorationEvidence": {
+          "productionSessionSha256": "9f40fc5c97a2d472a7c0a0b062697923d39ef73be6547a81ffa0ad03d97dbeca",
+          "positiveAndRestoredTestExecutableSha256": "96a0fa76166922582838cb93d92da15ed7a8dc46e7d057a22f82cac875513d89",
+          "negativeTestExecutableSha256": "92151206d0f0cbcf4fab2a0262ed2c44190e67e2234e58ee8fb4ae631eee803e",
+          "runnerTimestampRefreshWasBytesUnchanged": true,
+          "retainedNonqualificationFailures": [
+            "Original PG setup Unix socket path exceeded the OS limit before assertions; root runner switched this owned fixture to TCP-only.",
+            "First restoration reused the negative binary from shared cache despite restored source because source mtimes were preserved. It is not counted as a valid restoration or product regression. Root refreshed only the owned Session source timestamp, recorded the source hash and rebuilt; the final restored executable equals the original positive executable."
+          ]
+        }
+      }
     },
     {
       "id": "S07",

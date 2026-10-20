@@ -16,7 +16,7 @@ use protocol::{
 use sqlx::{postgres::PgPoolOptions, Connection, PgConnection};
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
     time::Duration,
@@ -35,12 +35,42 @@ struct BlockedLog {
     sync_members: std::sync::Mutex<std::collections::BTreeSet<(String, String)>>,
     block_presence: AtomicBool,
     presence_entered: Notify,
+    presence_lookup: std::sync::Mutex<Option<PendingPresenceLookup>>,
     entered: Notify,
     cancelled: Notify,
     reading: AtomicBool,
     release: Arc<Semaphore>,
     saved: Arc<std::sync::Mutex<Vec<Sequenced>>>,
     finished: Arc<Notify>,
+}
+
+/// Test-owned fetch result; its producer survives a canceled Session future.
+struct PendingPresenceLookup {
+    identity: String,
+    result: oneshot::Receiver<Vec<String>>,
+    entered: oneshot::Sender<()>,
+    retired: oneshot::Sender<(bool, Duration)>,
+    drops: Arc<AtomicUsize>,
+    continuations: Arc<AtomicUsize>,
+    hub: Arc<zoen_relay::hub::Hub>,
+}
+
+struct PresenceLookupDrop {
+    identity: String,
+    retired: Option<oneshot::Sender<(bool, Duration)>>,
+    started: tokio::time::Instant,
+    drops: Arc<AtomicUsize>,
+    hub: Arc<zoen_relay::hub::Hub>,
+}
+impl Drop for PresenceLookupDrop {
+    fn drop(&mut self) {
+        self.drops.fetch_add(1, Ordering::SeqCst);
+        if let Some(retired) = self.retired.take() {
+            // Include the complete lookup lifetime: a detached lookup may time out
+            // after Hub removal, so offline-at-Drop alone cannot prove cancellation.
+            let _ = retired.send((!self.hub.is_online(&self.identity), self.started.elapsed()));
+        }
+    }
 }
 
 struct Reading<'a>(&'a AtomicBool, &'a Notify);
@@ -114,7 +144,32 @@ impl LogStore for BlockedLog {
         self.entered.notify_one();
         std::future::pending().await
     }
-    async fn co_members(&self, _: &str) -> Result<Vec<String>, StoreError> {
+    async fn co_members(&self, identity: &str) -> Result<Vec<String>, StoreError> {
+        let started = tokio::time::Instant::now();
+        let lookup = {
+            let mut pending = self.presence_lookup.lock().unwrap();
+            if pending
+                .as_ref()
+                .is_some_and(|lookup| lookup.identity == identity)
+            {
+                pending.take()
+            } else {
+                None
+            }
+        };
+        if let Some(lookup) = lookup {
+            let _drop = PresenceLookupDrop {
+                identity: lookup.identity,
+                retired: Some(lookup.retired),
+                started,
+                drops: lookup.drops,
+                hub: lookup.hub,
+            };
+            let _ = lookup.entered.send(());
+            let result = lookup.result.await.unwrap_or_default();
+            lookup.continuations.fetch_add(1, Ordering::SeqCst);
+            return Ok(result);
+        }
         if self.block_presence.load(Ordering::Acquire) {
             self.presence_entered.notify_one();
             std::future::pending::<()>().await;
@@ -257,6 +312,7 @@ impl TestRelay {
             sync_members: Default::default(),
             block_presence: AtomicBool::new(false),
             presence_entered: Notify::new(),
+            presence_lookup: Default::default(),
             entered: Notify::new(),
             cancelled: Notify::new(),
             reading: AtomicBool::new(false),
@@ -737,6 +793,95 @@ async fn login_handles_ping_while_presence_is_stalled() {
     .await
     .expect("presence must not block login frame handling");
     socket.close(None).await.unwrap();
+    test.close().await;
+}
+
+/// Learn Signal's cancellation/late-result contract without importing its watch
+/// objects: Zoen's pending presence lookup belongs to the real socket Session.
+#[tokio::test]
+async fn closed_session_cancels_presence_lookup_before_late_result_and_reconnect() {
+    // This fixture budget starts at the probe's first poll, not at client Close.
+    // It is deliberately shorter than the production two-second lookup deadline.
+    const CANCEL_WITHIN: Duration = Duration::from_secs(1);
+    let test = TestRelay::new().await;
+    let primary = Author::device(&Signer::generate(), Signer::generate());
+    let mut socket = connect(&test.ws_url, &primary).await;
+    let (result, result_rx) = oneshot::channel();
+    let (entered_tx, entered) = oneshot::channel();
+    let (retired_tx, retired) = oneshot::channel();
+    let drops = Arc::new(AtomicUsize::new(0));
+    let continuations = Arc::new(AtomicUsize::new(0));
+    *test.log.presence_lookup.lock().unwrap() = Some(PendingPresenceLookup {
+        identity: primary.identity.clone(),
+        result: result_rx,
+        entered: entered_tx,
+        retired: retired_tx,
+        drops: drops.clone(),
+        continuations: continuations.clone(),
+        hub: test.state.fanout.hub.clone(),
+    });
+    request(
+        &mut socket,
+        1,
+        Op::Register {
+            profile: profile(&primary, "presence_owner"),
+        },
+    )
+    .await
+    .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), entered)
+        .await
+        .expect("registered session must poll its owned presence lookup")
+        .unwrap();
+    assert!(test.state.fanout.is_online_here(&primary.identity));
+    assert_eq!(drops.load(Ordering::SeqCst), 0);
+    assert_eq!(continuations.load(Ordering::SeqCst), 0);
+
+    socket.close(None).await.unwrap();
+    let (detached_before_drop, lookup_lifetime) = tokio::time::timeout(CANCEL_WITHIN, retired)
+        .await
+        .expect("closing the socket must cancel presence before its normal lookup timeout")
+        .unwrap();
+    assert!(
+        detached_before_drop,
+        "the lookup must drop after Hub detach, not merely hit its independent deadline"
+    );
+    assert!(
+        lookup_lifetime < CANCEL_WITHIN,
+        "lookup cancellation must finish within {CANCEL_WITHIN:?} of its first poll, before its normal timeout; observed {lookup_lifetime:?}"
+    );
+    assert!(!test.state.fanout.is_online_here(&primary.identity));
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+    assert_eq!(continuations.load(Ordering::SeqCst), 0);
+    assert!(
+        result.send(Vec::new()).is_err(),
+        "a late empty fetch result must find the retired Session receiver gone"
+    );
+    assert_eq!(continuations.load(Ordering::SeqCst), 0);
+    assert!(!test.state.fanout.is_online_here(&primary.identity));
+
+    let (mut replacement, ready) = authenticate(&test.ws_url, &primary).await;
+    assert!(matches!(
+        ready,
+        ServerFrame::Ready {
+            registered: true,
+            ..
+        }
+    ));
+    send(&mut replacement, ClientFrame::Ping).await;
+    loop {
+        match recv(&mut replacement).await.expect("replacement closed") {
+            ServerFrame::Pong { .. } => break,
+            ServerFrame::Error { code, message } => {
+                panic!("replacement refused: {code:?} {message}")
+            }
+            _ => {}
+        }
+    }
+    assert!(test.state.fanout.is_online_here(&primary.identity));
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+    assert_eq!(continuations.load(Ordering::SeqCst), 0);
+    replacement.close(None).await.unwrap();
     test.close().await;
 }
 
