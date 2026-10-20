@@ -7,19 +7,35 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import { skyGradient } from './sky-background';
 export default function AppNavigation() {
-  const { colors, sky } = useTheme();
+  const { colors, sky, scheme } = useTheme();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const contentStyle = {
     // NativeTabs handles Android's bottom inset; the headerless tab screens own the top.
     ...(process.env.EXPO_OS === 'android' ? { paddingTop: insets.top } : {}),
-    backgroundColor: sky.bottom,
-    experimental_backgroundImage: skyGradient(sky),
+    ...(process.env.EXPO_OS === 'android'
+      ? { backgroundColor: 'transparent' }
+      : {
+          backgroundColor: sky.bottom,
+          experimental_backgroundImage: skyGradient(sky),
+        }),
   };
   return (
     <NativeTabs
       // Removing accessory children leaves UIKit's plate installed; hide the host itself.
-      unstable_nativeProps={{ ios: { bottomAccessoryHidden: pathname !== '/' } }}
+      unstable_nativeProps={{
+        ios: { bottomAccessoryHidden: pathname !== '/' },
+        ...(process.env.EXPO_OS === 'android'
+          ? { colorScheme: scheme, nativeContainerStyle: { backgroundColor: 'transparent' } }
+          : {}),
+      }}
+      {...(process.env.EXPO_OS === 'android'
+        ? {
+            backgroundColor: 'transparent',
+            indicatorColor: colors.muted,
+            rippleColor: colors.accent,
+          }
+        : {})}
       tintColor={colors.accent}
       iconColor={{ default: colors.secondary, selected: colors.accent }}
       labelStyle={{

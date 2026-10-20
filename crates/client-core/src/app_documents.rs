@@ -414,10 +414,7 @@ impl Engine {
                 scene_json,
                 &scene,
                 false,
-                &t(
-                    "Mini-app adicionado a este Espaço.",
-                    "Mini-app added to this Space.",
-                ),
+                &t("App adicionado a este Espaço.", "App added to this Space."),
                 Some(copy_item),
             )?;
             receipts.push(CopyReceipt {

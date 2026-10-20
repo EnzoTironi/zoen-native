@@ -142,7 +142,7 @@ export const chat = defineFeature(
     leaveChat: 'Leave chat',
     youWillNeedANewInviteToReturn: 'You will need a new invite to return.',
     leave: 'Leave',
-    openThisMiniappInZoen: 'Open this miniapp in Zoen',
+    openThisMiniappInZoen: 'Open this app in Zoen',
     theShortcutHasChangedOrIsNotAvailable:
       'The shortcut has changed or is not available in this account.',
     backToZoen: 'Back to Zoen',
@@ -340,7 +340,7 @@ export const chat = defineFeature(
     leaveChat: 'Sair da conversa',
     youWillNeedANewInviteToReturn: 'Você precisará de um novo convite para voltar.',
     leave: 'Sair',
-    openThisMiniappInZoen: 'Abra este miniapp no Zoen',
+    openThisMiniappInZoen: 'Abra este app no Zoen',
     theShortcutHasChangedOrIsNotAvailable: 'O atalho mudou ou não está disponível nesta conta.',
     backToZoen: 'Voltar ao Zoen',
     theReplyCouldNotBeSent: 'Não foi possível responder.',

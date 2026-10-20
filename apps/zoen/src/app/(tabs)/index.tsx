@@ -47,6 +47,9 @@ export default function Home() {
                   testID={`home-card-menu-${item.id}`}
                   name={item.title}
                   pinned={home.isPinned(item.id)}
+                  onDetails={() =>
+                    router.push({ pathname: '/miniapp/[id]/manage', params: { id: item.id } })
+                  }
                   onToggle={() => {
                     void (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)).catch(
                       () => {},
@@ -67,7 +70,7 @@ export default function Home() {
     );
   }
   return (
-    <SkyScene>
+    <SkyScene tabScene>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{

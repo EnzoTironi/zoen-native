@@ -2,8 +2,8 @@
   "resourceUri": "ui://zoen/excalidraw.html",
   "mimeType": "text/html;profile=mcp-app",
   "presentation": "pinned-upstream-patched-build",
-  "sha256": "03ee7971cabefd9b6ae56ed43d25dbc8c005a10ff755be9f955568d4129a2f96",
-  "bytes": 6195280,
+  "sha256": "7860e6dd3f6d6e613823757e6455b39ff8552cde3e29391969a23099aedf38e5",
+  "bytes": 6195767,
   "csp": {
     "connectDomains": [],
     "resourceDomains": [],
@@ -19,13 +19,13 @@
     "patchCommit": "aafc247efb8ba0689e193557749784ea80ee4996",
     "patchSha256": "1449b6a7176c032ea36e3d6a1cf293ce05ea353063b009c568bef69999f93675",
     "sourceSha256": {
-      "src/mcp-app.tsx": "c70e54d3d6a3fdf20d83e40acf703bb06309d77d4a21cdee1fc9f6aabc9051a8",
+      "src/mcp-app.tsx": "b47c122a07119b7f076aa426bfd5bc48b4f65af8531b1dec3d8e35cfe0ac9e58",
       "src/mcp-entry.tsx": "41314dcc1fbbdccc32e38bcd3431f55c210b198aa55d4c3cae70dac36639dc8a",
       "src/mcp-app.html": "be7f7457a602100feaf13f37c5dc1f22f8e30ff2469d210708542aa7be2cf179",
       "src/edit-context.ts": "de7d1aa4032455ff3e012b3b16c3fdc086bc6324f8cd7697d0e2ded5b94474f2",
       "src/pencil-audio.ts": "13f6ff769d5d2140faeeffa4b49d5a9f7a85b357b20d0c2603e53bdd288b98bf",
       "src/sounds.ts": "c197a890a699a9ed3348cc5ff12d676b2e9923ab25fcb80045cdad10f4baff4f",
-      "src/global.css": "79ad7aa44ae3224a802909724e18d1ca62acbdda5bd61ad592b22619bcbd1707"
+      "src/global.css": "56511f47fde7f4b836ce394a89b2c4fcb037e383a2aee00c0c86c3c5ef3f24ea"
     },
     "licenseDeclaration": {
       "upstreamPackageJson": "MIT",
@@ -37,7 +37,9 @@
       "Initialize fullscreen from the negotiated host context and buffer early context changes until React handler registration.",
       "Self-contained dependency and font assets; native system font fallback replaces optional Xiaolai CJK font without changing text.",
       "Canonical full-scene image/appState persistence, acknowledged chunked save/retry/flush via standard MCP tools.",
-      "Public aiEnabled=false additionally gates manual Mermaid menu and Mermaid paste paths; optional converter branch excluded."
+      "Public aiEnabled=false additionally gates manual Mermaid menu and Mermaid paste paths; optional converter branch excluded.",
+      "One host-context subscription applies negotiated mobile safe-area insets to floating controls in both canonical and legacy editors, without padding or resizing the canvas.",
+      "Apply negotiated top/right safe-area insets to the pinned mobile Library/lock/hand panel in both editors so it cannot cover the toolbar; place the legacy compact Export beside that panel without overlapping either toolbar; canvas dimensions and Library visibility remain unchanged."
     ],
     "externalResources": [],
     "prSourceSha256": "e311cfa69aa3c67a0dbfecdbc3005857c12590de3c1d871afe7c853703acd928",
@@ -46,11 +48,13 @@
       "@excalidraw/excalidraw/dist/prod/index.js": "6ed19fd70ef6ecbdafc47b66a405910c9a6e5982c72f2f4d3d94f37da8b6ad77",
       "@excalidraw/excalidraw/dist/prod/chunk-FX7ZIABN.js": "5d42242a4c5c7d7b835d154c291b838e2f0fcdccd649c8b2fcbe05b3a7c2b346"
     },
+    "safeAreaPatchSha256": "9970f72d86a62739b93f63805b75c0cb72537128e5181ac7dcc033c3e15c7897",
+    "mobileSideToolsPatchSha256": "743ab03eddaaa091e040292bbe2885a8463d7a6f888de298e6897ab7e1c6de67",
     "sourceInputs": {
       "LICENSE": "1b2ee57f0f797d2475ed4e723e905725531e88d1bb9ea37d81dd213faf4bdbea",
       "NOTICE.md": "d549aeea7c029cd1a0a1697025bb5e043e01e75792d3c22c6086738b80485f3b",
       "README.md": "262bb3aee76e5534c6041f2d453811679b8fd8f18e85bd423d60c74d36239b4f",
-      "build.mjs": "afb122ddb4c1ea5114655b7e55f5621e8f9c167873b79a0fc3bf4101416c96dc",
+      "build.mjs": "4cf08015e108d71725cbb85106801091ee556607680c3dff7d4ae3ee5784da7c",
       "library-assets.mjs": "7671fbb009fad62088336dc1c0fbf303e0a432e642d1f8ae9df924d33b9eed9e",
       "licenses/excalidraw-v0.18.0-MIT.txt": "1352d204fdb90d5e482c13139d848bc2c9300a9a7de358a0a558a23e72d0d8be",
       "licenses/fuzzy-MIT.txt": "a4aca837172fb1f6188c426e38835202e96bc853e25b7029cc5c933964f8401e",
@@ -59,17 +63,20 @@
       "package.json": "792e69dcdea768bdeeb16e0918257376dfdb6bf88c72201d5c10e23df4083b41",
       "patches/89-buffer-initial-events.diff": "1449b6a7176c032ea36e3d6a1cf293ce05ea353063b009c568bef69999f93675",
       "patches/90-initial-host-context.diff": "c1e576a21d82e7a976a09b69c653d2d079b86cd1a08fecf9e814232b54a428ae",
+      "patches/91-host-safe-area.diff": "9970f72d86a62739b93f63805b75c0cb72537128e5181ac7dcc033c3e15c7897",
+      "patches/92-mobile-side-tools.diff": "743ab03eddaaa091e040292bbe2885a8463d7a6f888de298e6897ab7e1c6de67",
       "src/canonical-app.tsx": "d18a3b677094514cacb382257a3d52b3312c426b00a2b2bf183e308b02da0dbc",
       "src/canonical-saves.ts": "b0bdaf228813f3f350020edfc3864e7df076ab7b428c7e0953e77da7dc6f059f",
       "src/canonical-transfer.ts": "6f6285b6563e698b342a891643ac87bfa2ef0c6584eaac6a3fa28d3936835f6c",
       "src/edit-context.ts": "de7d1aa4032455ff3e012b3b16c3fdc086bc6324f8cd7697d0e2ded5b94474f2",
-      "src/global.css": "79ad7aa44ae3224a802909724e18d1ca62acbdda5bd61ad592b22619bcbd1707",
+      "src/global.css": "56511f47fde7f4b836ce394a89b2c4fcb037e383a2aee00c0c86c3c5ef3f24ea",
+      "src/host-safe-area.ts": "2e6457f09d49bb1b22fab115d19b6e0631b727889a3d3d2914e31aed6a206aac",
       "src/mcp-app.html": "be7f7457a602100feaf13f37c5dc1f22f8e30ff2469d210708542aa7be2cf179",
-      "src/mcp-app.tsx": "c70e54d3d6a3fdf20d83e40acf703bb06309d77d4a21cdee1fc9f6aabc9051a8",
+      "src/mcp-app.tsx": "b47c122a07119b7f076aa426bfd5bc48b4f65af8531b1dec3d8e35cfe0ac9e58",
       "src/mcp-entry.tsx": "41314dcc1fbbdccc32e38bcd3431f55c210b198aa55d4c3cae70dac36639dc8a",
       "src/pencil-audio.ts": "13f6ff769d5d2140faeeffa4b49d5a9f7a85b357b20d0c2603e53bdd288b98bf",
       "src/sounds.ts": "c197a890a699a9ed3348cc5ff12d676b2e9923ab25fcb80045cdad10f4baff4f",
-      "upstream.json": "83b96354cec6f24e73b5db738f1066c0d77c1ef5dce6432e53f08fe7580c4f32"
+      "upstream.json": "4a6f7cde8842594daac7ee5f2b837671c2c88ccbafa7833783e28bd8fa65231b"
     },
     "fontAssetSha256": {
       "./fonts/Assistant/Assistant-Bold.woff2": "e0cdd332ce039770e93ec44336b6db65f931940f42b0342aad35a06e7f991d29",

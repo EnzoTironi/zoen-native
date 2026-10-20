@@ -95,7 +95,7 @@ test('selection rereads canonical versions; lost access and account switches cle
   );
   coordinator.activate();
   await coordinator.refresh();
-  await assert.rejects(coordinator.selectWidget('it_a', 2, true), /miniapp has changed/);
+  await assert.rejects(coordinator.selectWidget('it_a', 2, true), /app has changed/);
   assert.deepEqual(coordinator.getSnapshot().preferences?.widgets, []);
   await coordinator.selectWidget('it_a', 3, false);
   await coordinator.selectShortcut('it_a', 3, true);
@@ -708,7 +708,7 @@ test('independent widget selections update one privacy choice and follow current
   assert.equal(updated.entries[0]?.content.redacted, true);
   assert.equal(updated.entries[1]?.content.redacted, false);
   assert.equal(updated.entries[1]?.content.deepLink, surfaceItemURL(owner, 'it_b', 4));
-  await assert.rejects(fixture.coordinator.selectWidget('it_b', 3, false), /miniapp has changed/);
+  await assert.rejects(fixture.coordinator.selectWidget('it_b', 3, false), /app has changed/);
   assert.equal(fixture.catalog().entries[1]?.content.redacted, false);
 });
 

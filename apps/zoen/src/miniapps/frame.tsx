@@ -1,6 +1,6 @@
 import { t } from '../i18n/index.ts';
 import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { randomUUID } from 'expo-crypto';
 import type { MiniappFrameHandle, MiniappFrameProps } from './frame-types';
@@ -8,6 +8,7 @@ import {
   nativeMiniappCommand,
   nativeMiniappHtml,
   nativeMiniappMessage,
+  nativeMiniappMessageSource,
   nativeMiniappNavigation,
 } from './host-transport';
 
@@ -90,7 +91,7 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         }}
         onMessage={(event) => {
           if (active.current !== document) return;
-          if (event.nativeEvent.url !== 'about:blank' && event.nativeEvent.url !== '') return;
+          if (!nativeMiniappMessageSource(event.nativeEvent.url, Platform.OS)) return;
           const message = nativeMiniappMessage(event.nativeEvent.data, document.nonce);
           if (message !== null) onMessage(message);
         }}

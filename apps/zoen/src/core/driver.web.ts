@@ -278,7 +278,9 @@ class BrowserDriver implements CoreDriver {
   }
   private entry(message: Message, conversation: Conversation): TimelineEntry {
     const quoted = conversation.messages.find((candidate) => candidate.entry === message.quote?.id);
-    const root = conversation.messages.find((candidate) => candidate.entry === message.thread);
+    const root = message.thread
+      ? conversation.messages.find((candidate) => candidate.entry === message.thread)
+      : undefined;
     return {
       id: message.id,
       seq: message.seq ?? '0',

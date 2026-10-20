@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { AppState, Linking, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import { locale, t } from '../i18n/index.ts';
 import type { ItemDetail } from '../core/types';
 import type { AppSpecDto } from '../core/generated/AppSpecDto';
-import type { AppResourceDto } from '../core/generated/AppResourceDto';
 import { useClient } from '../core/provider';
 import { Loading, NativeButton, Surface } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
@@ -18,10 +18,11 @@ import {
 import type { MiniappDocumentController } from './document-controller';
 import { MiniappFrame } from './frame';
 import type { MiniappFrameHandle } from './frame-types';
-import { frameAuthority } from './lifetime';
+import { frameAuthority, frameClosures } from './lifetime';
 import { MiniappSession } from './protocol';
 import { canonicalCopy } from './canonical-copy';
-import { safeMiniappLink, sandboxHtml, verifyMiniappResource } from './sandbox';
+import { safeMiniappLink, sandboxHtml, type VerifiedMiniappResource } from './sandbox';
+import { readVerifiedMiniappResource } from './resource-load';
 
 type Props = {
   item: ItemDetail;
@@ -42,22 +43,27 @@ const tools = new Set([
 
 /** A newly focused document receives a new authority, even if its route stays mounted. */
 export function CanonicalDrawingView(props: Props) {
-  const [focus, setFocus] = useState({ active: false, epoch: 0 });
-  const close = useRef<(() => void) | null>(null);
-  const registerClose = useCallback((end: (() => void) | null) => {
-    close.current = end;
-  }, []);
+  const [focus, setFocus] = useState<{
+    epoch: number;
+    lifetime: ReturnType<typeof frameClosures> | null;
+  }>({ epoch: 0, lifetime: null });
   useFocusEffect(
     useCallback(() => {
-      setFocus((current) => ({ active: true, epoch: current.epoch + 1 }));
+      const lifetime = frameClosures();
+      setFocus((current) => ({ lifetime, epoch: current.epoch + 1 }));
       return () => {
-        close.current?.();
-        setFocus((current) => ({ ...current, active: false }));
+        try {
+          lifetime.close();
+        } finally {
+          setFocus((current) =>
+            current.lifetime === lifetime ? { ...current, lifetime: null } : current,
+          );
+        }
       };
     }, []),
   );
-  return focus.active ? (
-    <FocusedDrawing key={focus.epoch} {...props} registerClose={registerClose} />
+  return focus.lifetime ? (
+    <FocusedDrawing key={focus.epoch} {...props} registerClose={focus.lifetime.register} />
   ) : null;
 }
 
@@ -69,7 +75,7 @@ function FocusedDrawing({
   onDocumentCopied,
   onDocumentDiscard,
   registerClose,
-}: Props & { registerClose: (end: (() => void) | null) => void }) {
+}: Props & { registerClose: (end: () => void) => () => void }) {
   const { store } = useClient();
   const { colors } = useTheme();
   const epoch = useRef(store.sessionEpoch).current;
@@ -83,8 +89,9 @@ function FocusedDrawing({
   const readKey = `${item.id}:${spec.resource_uri}:${attempt}`;
   const [read, setRead] = useState<{
     key?: string;
-    resource?: AppResourceDto;
+    verified?: VerifiedMiniappResource;
     doc?: CanonicalSceneDoc;
+    check?: () => void;
     error?: string;
   }>({});
   const checkOwner = useCallback(() => {
@@ -103,21 +110,30 @@ function FocusedDrawing({
   }, [store, epoch, owner, item.space_id]);
   useEffect(() => {
     let active = true;
+    const lifetime = frameAuthority(checkOwner);
+    const unregisterClose = registerClose(() => {
+      active = false;
+      lifetime.close();
+    });
     void (async () => {
-      checkOwner();
-      const [resource, doc] = await Promise.all([
-        store.driver.request({ op: 'app_resource', uri: spec.resource_uri }),
+      lifetime.check();
+      if (spec.resource_uri !== 'ui://zoen/excalidraw.html')
+        throw new Error(t('miniapps.thisResourceDoesNotBelongToTheOpen'));
+      const [verified, doc] = await Promise.all([
+        readVerifiedMiniappResource(
+          () => store.driver.request({ op: 'app_resource', uri: spec.resource_uri }),
+          'excalidraw',
+          spec.resource_uri,
+          lifetime.check,
+        ),
         store.driver.request({ op: 'app_document_read', item_id: item.id }),
       ]);
       if (!active) return;
-      checkOwner();
-      if (resource.uri !== 'ui://zoen/excalidraw.html' || resource.uri !== spec.resource_uri)
-        throw new Error(t('miniapps.thisResourceDoesNotBelongToTheOpen'));
-      const manifest = verifyMiniappResource(resource, 'excalidraw');
-      if (!manifest || manifest.allowedDomains.length || manifest.capabilities.length)
+      lifetime.check();
+      if (verified.manifest.allowedDomains.length || verified.manifest.capabilities.length)
         throw new Error(t('miniapps.theMiniappManifestDoesNotMatchThisResource'));
       if (doc.item_id !== item.id) throw new Error(t('drawing.unavailable'));
-      setRead({ key: readKey, resource, doc });
+      setRead({ key: readKey, verified, doc, check: lifetime.check });
     })().catch((error: unknown) => {
       if (active)
         setRead({
@@ -127,8 +143,10 @@ function FocusedDrawing({
     });
     return () => {
       active = false;
+      lifetime.close();
+      unregisterClose();
     };
-  }, [store, checkOwner, item.id, spec.resource_uri, readKey]);
+  }, [store, registerClose, checkOwner, item.id, spec.resource_uri, readKey]);
   if (read.key !== readKey) return <Loading />;
   if (read.error)
     return (
@@ -143,16 +161,16 @@ function FocusedDrawing({
         />
       </Surface>
     );
-  if (!read.doc || !read.resource) return <Loading />;
+  if (!read.doc || !read.verified || !read.check) return <Loading />;
   return (
     <DrawingDocument
       key={attempt}
       item={item}
       spec={spec}
       fill={fill}
-      resource={read.resource}
+      verified={read.verified}
       doc={read.doc}
-      checkOwner={checkOwner}
+      checkOwner={read.check}
       registerClose={registerClose}
       onDocumentController={onDocumentController}
       onDocumentCopied={onDocumentCopied}
@@ -164,7 +182,7 @@ function FocusedDrawing({
 function DrawingDocument({
   item,
   fill,
-  resource,
+  verified,
   doc,
   checkOwner,
   registerClose,
@@ -172,13 +190,19 @@ function DrawingDocument({
   onDocumentCopied,
   onDocumentDiscard,
 }: Props & {
-  resource: AppResourceDto;
+  verified: VerifiedMiniappResource;
   doc: CanonicalSceneDoc;
   checkOwner: () => void;
-  registerClose: (end: (() => void) | null) => void;
+  registerClose: (end: () => void) => () => void;
 }) {
+  const { resource, manifest } = verified;
   const { store } = useClient();
   const { colors, scheme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const safeAreaInsets = useMemo(
+    () => (fill ? insets : { top: 0, right: 0, bottom: 0, left: 0 }),
+    [fill, insets],
+  );
   const dialogs = useDialogs();
   const frame = useRef<MiniappFrameHandle>(null);
   const session = useRef<MiniappSession | null>(null);
@@ -191,11 +215,11 @@ function DrawingDocument({
   const copyAction = useRef<(() => Promise<void>) | null>(null);
   const flushAction = useRef<(() => Promise<void>) | null>(null);
   const callbacks = useRef({ onDocumentController, onDocumentCopied });
-  const latest = useRef({ colors, scheme, dimensions, item });
+  const latest = useRef({ colors, scheme, dimensions, item, safeAreaInsets });
   useLayoutEffect(() => {
-    latest.current = { colors, scheme, dimensions, item };
+    latest.current = { colors, scheme, dimensions, item, safeAreaInsets };
     callbacks.current = { onDocumentController, onDocumentCopied };
-  }, [colors, scheme, dimensions, item, onDocumentController, onDocumentCopied]);
+  }, [colors, scheme, dimensions, item, safeAreaInsets, onDocumentController, onDocumentCopied]);
   const context = useCallback(
     () => ({
       theme: latest.current.scheme,
@@ -206,7 +230,7 @@ function DrawingDocument({
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       platform: process.env.EXPO_OS === 'web' ? 'web' : 'mobile',
       deviceCapabilities: { touch: true, hover: process.env.EXPO_OS === 'web' },
-      safeAreaInsets: { top: 0, right: 0, bottom: 0, left: 0 },
+      safeAreaInsets: latest.current.safeAreaInsets,
       styles: {
         variables: {
           '--color-background-primary': latest.current.colors.background,
@@ -219,6 +243,13 @@ function DrawingDocument({
   );
   useLayoutEffect(() => {
     const lifetime = frameAuthority(checkOwner);
+    try {
+      lifetime.check();
+    } catch {
+      lifetime.close();
+      frame.current?.dispose();
+      return;
+    }
     let live = true;
     let retiring = false;
     const scene = new CanonicalSceneHost({
@@ -241,7 +272,6 @@ function DrawingDocument({
         if (next === 'error') setError(t('drawing.saveFailed'));
       },
     });
-    const manifest = verifyMiniappResource(resource, 'excalidraw');
     const current = new MiniappSession({
       send: (message) => frame.current?.send(message),
       resourceUri: resource.uri,
@@ -388,7 +418,7 @@ function DrawingDocument({
       if (session.current === current) session.current = null;
       callbacks.current.onDocumentController?.(null);
     };
-    registerClose(close);
+    const unregisterClose = registerClose(close);
     const stop = store.subscribe(() => {
       try {
         lifetime.check();
@@ -410,12 +440,12 @@ function DrawingDocument({
       unregister();
       background.remove();
       close();
-      registerClose(null);
+      unregisterClose();
     };
-  }, [store, checkOwner, context, doc, item.id, resource, dialogs, registerClose]);
+  }, [store, checkOwner, context, doc, item.id, resource, manifest, dialogs, registerClose]);
   useEffect(() => {
     session.current?.syncContext();
-  }, [scheme, dimensions]);
+  }, [scheme, dimensions, safeAreaInsets]);
   const html = useMemo(() => sandboxHtml(resource.text, []), [resource.text]);
   const receive = useCallback((message: string) => {
     void session.current?.receive(message);
@@ -464,34 +494,20 @@ function DrawingDocument({
           ) : null}
         </View>
       ) : null}
-      <View
+      {/* Save announcements do not reserve space above the canvas. */}
+      <Text
         accessibilityLiveRegion="polite"
+        testID="drawing-save-status"
         style={{
-          paddingHorizontal: 16,
-          paddingVertical: 4,
-          minHeight: 48,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          overflow: 'hidden',
+          color: 'transparent',
         }}
       >
-        <Text
-          testID="drawing-save-status"
-          style={{ flex: 1, color: colors.secondary, fontSize: 12 }}
-        >
-          {copyBusy ? t('drawing.copying') : label}
-        </Text>
-        {pending && !error ? (
-          <NativeButton
-            secondary
-            label={t('drawing.saveNow')}
-            disabled={copyBlocked}
-            onPress={() => {
-              void flushAction.current?.().catch(() => setError(t('drawing.saveFailed')));
-            }}
-          />
-        ) : null}
-      </View>
+        {copyBusy ? t('drawing.copying') : label}
+      </Text>
       <View
         style={{ flex: 1, minHeight: 0 }}
         onLayout={(event) => {

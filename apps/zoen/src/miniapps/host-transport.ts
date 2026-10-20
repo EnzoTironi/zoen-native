@@ -10,10 +10,10 @@ const scriptValue = (value: unknown) =>
 /** A trusted parent Window, not a replacement for the app's postMessage transport. */
 export function nativeMiniappHtml(html: string, title: string, nonce: string): string {
   if (!validNonce(nonce) || html.length > MAX_DOCUMENT_LENGTH || title.length > 1024)
-    throw new Error('Invalid miniapp document');
+    throw new Error('Invalid app document');
   // The app's own CSP stays inside srcdoc. An outer CSP would also be inherited
   // by that document and could silently override its declared resource policy.
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><meta name="referrer" content="no-referrer"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}iframe{display:block;width:100%;height:100%;border:0;background:transparent}</style></head><body><iframe id="miniapp" sandbox="allow-scripts" allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'" referrerpolicy="no-referrer"></iframe><script>(function(){
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}iframe{display:block;width:100%;height:100%;border:0;background:transparent}</style></head><body><iframe id="miniapp" sandbox="allow-scripts" allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'" referrerpolicy="no-referrer"></iframe><script>(function(){
 const frame=document.getElementById('miniapp');
 const nonce=${scriptValue(nonce)};
 let active=true;
@@ -84,12 +84,17 @@ export function nativeMiniappMessage(encoded: string, nonce: string): string | n
   }
 }
 
+/** Android's modern WebMessageListener reports the opaque shell origin, not its URL. */
+export function nativeMiniappMessageSource(url: string, platform: string): boolean {
+  return url === 'about:blank' || url === '' || (platform === 'android' && url === 'null');
+}
+
 export function nativeMiniappCommand(
   nonce: string,
   action: 'send' | 'title' | 'dispose',
   message?: unknown,
 ): string {
-  if (!validNonce(nonce)) throw new Error('Invalid miniapp document');
+  if (!validNonce(nonce)) throw new Error('Invalid app document');
   const encoded = JSON.stringify(message);
   const payload = encoded === undefined ? 'null' : `JSON.parse(${scriptValue(encoded)})`;
   const args = action !== 'dispose' ? `${scriptValue(nonce)},${payload}` : scriptValue(nonce);

@@ -304,6 +304,12 @@ impl Client {
         let _language = crate::i18n::enter(self.lang);
         self.history_receive.cancel();
     }
+
+    /// Permanently fences provisional linking on this Client before owner teardown.
+    /// It revokes key use and installation synchronously; it does not wait for task Drop.
+    pub fn retire_link_pickup(&self) {
+        self.link_pickup.retire();
+    }
 }
 
 impl Client {
@@ -336,39 +342,41 @@ impl Client {
         relay_url: String,
         vault: Arc<dyn SecretVault>,
     ) -> Result<LinkRequestDto, CoreError> {
-        if self.lock().account().is_some() {
-            return Err(invalid(t(
-                "Este aparelho já tem uma conta.",
-                "This device already has an account.",
-            )));
-        }
-        let device = Signer::generate();
-        let (hpke_secret, hpke_public) = link::key_pair();
-        let secret = link::random::<32>();
-        let code = LinkCode {
-            device: device.id(),
-            hpke: hpke_public.clone(),
-            secret,
-        };
-        let pending = Pending {
-            device_secret: hex::encode(device.secret()),
-            hpke_secret: hex::encode(hpke_secret),
-            hpke_public: hex::encode(hpke_public),
-            secret: hex::encode(secret),
-            relay: relay_url,
-        };
-        if !vault.save(
-            link::VAULT_PENDING.into(),
-            serde_json::to_vec(&pending).unwrap_or_default(),
-        ) {
-            return Err(invalid(t(
-                "Não deu para guardar a chave no Keychain.",
-                "Couldn't store the key in the Keychain.",
-            )));
-        }
-        Ok(LinkRequestDto {
-            code: code.encode(),
-            check: code.check_digits(),
+        self.link_pickup.with_request(|| {
+            if self.lock().account().is_some() {
+                return Err(invalid(t(
+                    "Este aparelho já tem uma conta.",
+                    "This device already has an account.",
+                )));
+            }
+            let device = Signer::generate();
+            let (hpke_secret, hpke_public) = link::key_pair();
+            let secret = link::random::<32>();
+            let code = LinkCode {
+                device: device.id(),
+                hpke: hpke_public.clone(),
+                secret,
+            };
+            let pending = Pending {
+                device_secret: hex::encode(device.secret()),
+                hpke_secret: hex::encode(hpke_secret),
+                hpke_public: hex::encode(hpke_public),
+                secret: hex::encode(secret),
+                relay: relay_url,
+            };
+            if !vault.save(
+                link::VAULT_PENDING.into(),
+                serde_json::to_vec(&pending).unwrap_or_default(),
+            ) {
+                return Err(invalid(t(
+                    "Não deu para guardar a chave no Keychain.",
+                    "Couldn't store the key in the Keychain.",
+                )));
+            }
+            Ok(LinkRequestDto {
+                code: code.encode(),
+                check: code.check_digits(),
+            })
         })
     }
 
@@ -382,6 +390,12 @@ impl Client {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl Client {
+    /// Waits for actual provisional worker and caller retirement after the owner
+    /// has called retire_link_pickup. No successful timeout or detached cleanup.
+    pub async fn drain_link_pickup(&self) {
+        self.link_pickup.drain().await;
+    }
+
     /// New device: waits for the existing device's box, checks it and becomes the account.
     /// Start sync afterwards.
     pub async fn link_wait(
@@ -938,36 +952,39 @@ impl Client {
         expected_identity_id: Option<String>,
     ) -> Result<AccountDto, CoreError> {
         let expected = ExpectedIdentity::parse(expected_identity_id)?;
-        let pending: Pending = vault
-            .load(link::VAULT_PENDING.into())
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .ok_or_else(|| invalid(t("Nenhum pedido de vínculo.", "No link request.")))?;
-        let device = Signer::from_secret(
-            &secret32(hex::decode(&pending.device_secret).ok())
-                .ok_or_else(|| invalid("link request"))?,
-        );
-        let secret =
-            secret32(hex::decode(&pending.secret).ok()).ok_or_else(|| invalid("link request"))?;
-        let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
-        let sealed = crate::net::fetch_link_box(
-            &pending.relay,
-            &device,
-            &link::box_id(&secret, "identity"),
-            deadline,
-        )
-        .await
-        .map_err(invalid)?;
-        let hpke_secret = hex::decode(&pending.hpke_secret).unwrap_or_default();
-        let plain = link::open(&hpke_secret, &secret, "identity", &sealed)
-            .ok_or_else(|| invalid(t("O vínculo não abriu.", "The link didn't open.")))?;
-        let b: IdentityBox = serde_json::from_slice(&plain).map_err(|e| invalid(e.to_string()))?;
-        self.finish_link(pending, device, b, vault, &expected)
+        let mut pickup = self.link_pickup.begin(
+            || {
+                let bytes = vault
+                    .load(link::VAULT_PENDING.into())
+                    .map(zeroize::Zeroizing::new)
+                    .ok_or_else(|| invalid(t("Nenhum pedido de vínculo.", "No link request.")))?;
+                serde_json::from_slice(&bytes).map_err(|_| invalid("Invalid link request."))
+            },
+            Duration::from_millis(timeout_ms),
+            self.lang,
+        )?;
+        let sealed = pickup.wait().await?;
+        pickup.with_install(|pending, device| {
+            let secret = zeroize::Zeroizing::new(
+                secret32(hex::decode(&pending.secret).ok())
+                    .ok_or_else(|| invalid("link request"))?,
+            );
+            let hpke_secret =
+                zeroize::Zeroizing::new(hex::decode(&pending.hpke_secret).unwrap_or_default());
+            let plain = zeroize::Zeroizing::new(
+                link::open(&hpke_secret, &secret, "identity", &sealed)
+                    .ok_or_else(|| invalid(t("O vínculo não abriu.", "The link didn't open.")))?,
+            );
+            let b: IdentityBox =
+                serde_json::from_slice(&plain).map_err(|e| invalid(e.to_string()))?;
+            self.finish_link(pending, device, b, vault, &expected)
+        })
     }
 
     fn finish_link(
         &self,
-        pending: Pending,
-        device: Signer,
+        pending: &Pending,
+        device: &Signer,
         b: IdentityBox,
         vault: Arc<dyn SecretVault>,
         expected: &ExpectedIdentity,
@@ -1070,7 +1087,7 @@ mod pin_tests {
             profile_fields: String::new(),
         };
         assert!(core
-            .finish_link(pending, device, boxed, vault.clone(), &expected)
+            .finish_link(&pending, &device, boxed, vault.clone(), &expected)
             .is_err());
         assert!(core.account().is_none());
         assert!(core.lock().store.meta("account").unwrap().is_none());
@@ -1151,8 +1168,8 @@ mod initial_history_tests {
             profile_fields: String::new(),
         };
         core.finish_link(
-            pending,
-            device,
+            &pending,
+            &device,
             boxed,
             vault.clone(),
             &ExpectedIdentity::parse(None).unwrap(),

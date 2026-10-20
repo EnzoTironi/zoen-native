@@ -262,7 +262,7 @@ test('the real native adapter publishes separate configuration options and expir
     {
       parameter: 'miniapp',
       values: [
-        { name: 'Choose a miniapp', value: 'none' },
+        { name: 'Choose an app', value: 'none' },
         { name: 'Private dinner', value: selectionA },
         { name: 'Private widget 2', value: selectionB },
       ],

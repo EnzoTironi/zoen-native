@@ -1,6 +1,10 @@
 /* Zoen design tokens. Same values as apple/Shared/DesignSystem/Theme.swift (Palette).
    The host also pushes MCP style variables (--color-*) which win when present. */
 :root {
+  --z-safe-top: max(env(safe-area-inset-top, 0px), var(--zoen-host-safe-top, 0px));
+  --z-safe-right: max(env(safe-area-inset-right, 0px), var(--zoen-host-safe-right, 0px));
+  --z-safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--zoen-host-safe-bottom, 0px));
+  --z-safe-left: max(env(safe-area-inset-left, 0px), var(--zoen-host-safe-left, 0px));
   --z-bg: #F4F6FB; --z-surface: #FFFFFF; --z-muted: #ECEFF6; --z-hairline: #E1E5EE;
   --z-ink: #0E1320; --z-ink-2: #5B6478; --z-ink-3: #8C95A8;
   --z-action: #3D7A28; --z-action-deep: #2C5E1C; --z-on-action: #FFFFFF;

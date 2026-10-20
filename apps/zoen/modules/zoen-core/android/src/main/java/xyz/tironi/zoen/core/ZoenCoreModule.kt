@@ -20,13 +20,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 class ZoenCoreModule : Module() {
   private companion object {
     private val process = ZoenProcessLifecycle<Session>()
-    private val erasureWork = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val retirementWork = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   }
   private val owner = Any()
   private val mutex get() = process.mutex
   private val cleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val destroyed = AtomicBoolean(false)
+  private val pickupLifetime = ZoenModulePickupLifetime()
   private class Session(
+    val owner: Any,
     val engine: Client,
     val vault: ZoenVault,
     val listener: CoreListener,
@@ -34,7 +36,10 @@ class ZoenCoreModule : Module() {
     val eventToken: Any = Any(),
     val lease: ZoenRequestLease = ZoenRequestLease(),
     var syncStarted: Boolean = false,
-  )
+    val releasePickupBinding: () -> Unit = {},
+  ) {
+    val pickup = ZoenSessionPickup(lease, engine::retireLinkPickup, engine::drainLinkPickup)
+  }
   private val session get() = process.current(owner)
   private val retired get() = process.retired
   private var sessionLocale = "en"
@@ -86,6 +91,7 @@ class ZoenCoreModule : Module() {
             override fun onError(message: String) { emit(eventToken, mapOf("kind" to "error", "message" to message)) }
             override fun onProfileChanged(identityId: String) { emit(eventToken, mapOf("kind" to "profile", "identityId" to identityId)) }
           }
+          var pickupBinding: Any? = null
           try {
             if (selectedMode == "demo") core.seedDemoIfEmpty()
             else if (core.account() != null) {
@@ -94,12 +100,19 @@ class ZoenCoreModule : Module() {
             } else check(!keys.hasAccountMaterial()) { "Há chaves de uma conta neste aparelho. Recupere a conta para preservá-las." }
             val snapshot = core.clientRequest("{\"op\":\"snapshot\"}")
             // Publish only after unlock, vault consistency and snapshot validation.
-            process.install(owner, opening.first, Session(core, keys, bridge, selectedMode, eventToken = eventToken,
-              syncStarted = core.account()?.let { it.unlocked && !it.setupPending } == true))
+            val binding = pickupLifetime.bind { core.retireLinkPickup() }
+            check(binding != null) { "The app session has closed" }
+            pickupBinding = binding
+            process.install(owner, opening.first, Session(owner, core, keys, bridge, selectedMode, eventToken = eventToken,
+              syncStarted = core.account()?.let { it.unlocked && !it.setupPending } == true,
+              releasePickupBinding = { pickupLifetime.clear(binding) }))
             // Cover changes received between the initial snapshot and listener admission.
             emit(eventToken, mapOf("kind" to "change", "spaceIds" to emptyList<String>()))
             snapshot
           } catch (error: Throwable) {
+            // This unpublished Client has admitted no vault/network request.
+            core.retireLinkPickup()
+            pickupBinding?.let { pickupLifetime.clear(it) }
             core.stopSync()
             core.destroy()
             throw error
@@ -129,9 +142,9 @@ class ZoenCoreModule : Module() {
         } finally {
           withContext(NonCancellable + Dispatchers.IO) {
             mutex.withLock {
-              if (active.lease.retire()) {
-                destroyRetired(active)
-              }
+              // A request finishing is not native worker completion. The one
+              // process-owned close task acknowledges both before destruction.
+              active.lease.retire()
             }
           }
         }
@@ -181,17 +194,34 @@ class ZoenCoreModule : Module() {
       }
     }
     AsyncFunction("close") Coroutine { ->
-      withContext(Dispatchers.IO) { mutex.withLock { process.cancelOpening(owner); closeCore() } }
+      withContext(Dispatchers.IO) {
+        val work = mutex.withLock {
+          process.cancelOpening(owner)
+          closeCore()
+          retired.filter { it.owner === owner }.map { it.lease.retired } to erasureTask
+        }
+        for (acknowledgement in work.first) acknowledgement.await()
+        work.second?.await()
+      }
     }
     OnDestroy {
       destroyed.set(true)
-      // Retire the session now; the final lease destroys its UniFFI handle.
-      cleanup.launch {
-        try {
-          val erasure = mutex.withLock { process.cancelOpening(owner); closeCore(); erasureTask }
-          erasure?.await()
+      // Revoke synchronously, even if another bridge coroutine holds the mutex.
+      // Binding rejects an open suspended before this module was destroyed.
+      try { pickupLifetime.retire() }
+      finally {
+        cleanup.launch {
+          try {
+            val work = mutex.withLock {
+              process.cancelOpening(owner)
+              closeCore()
+              retired.filter { it.owner === owner }.map { it.lease.retired } to erasureTask
+            }
+            for (acknowledgement in work.first) acknowledgement.await()
+            work.second?.await()
+          }
+          finally { cleanup.cancel() }
         }
-        finally { cleanup.cancel() }
       }
     }
   }
@@ -206,14 +236,28 @@ class ZoenCoreModule : Module() {
 
   private fun closeCore(allOwners: Boolean = false) {
     val active = process.retire(owner, allOwners) ?: return
-    val destroy = active.lease.close()
-    retired.add(active)
-    try { active.engine.stopSync() }
-    finally { if (destroy) destroyRetired(active) }
+    try {
+      active.pickup.retire()
+      active.engine.stopSync()
+    } catch (error: Throwable) {
+      active.lease.destructionFailed(error)
+      throw error
+    }
+    // One close job owns the exact retired Session. Module destruction must not
+    // cancel this scope, and the process mutex must remain available to requests.
+    retirementWork.launch {
+      try {
+        active.pickup.drain()
+        mutex.withLock { destroyRetired(active) }
+      } catch (error: Throwable) {
+        mutex.withLock { active.lease.destructionFailed(error) }
+      }
+    }
   }
 
   private fun destroyRetired(active: Session) {
     try {
+      active.releasePickupBinding()
       active.engine.destroy()
       active.lease.destroyed()
       retired.remove(active)
@@ -237,12 +281,17 @@ class ZoenCoreModule : Module() {
     if (active != null) {
       erasure.begin(expected)
       if (session === active) process.retire(owner)
-      active.lease.close(erase = true)
+      // Process retirement retains this owner even if native retirement fails.
+      try { active.pickup.retire(erase = true) }
+      catch (error: Throwable) {
+        active.lease.destructionFailed(error)
+        throw error
+      }
     }
-    val earlierRequests = retired.map { it.lease.retired }
+    val earlierRequests = retired.filter { it !== active }.map { it.lease.retired }
     // Independent of the bridge caller's cancellation. The durable intent is resumed on open after process death.
     lateinit var task: Deferred<Unit>
-    task = erasureWork.async(start = CoroutineStart.LAZY) {
+    task = retirementWork.async(start = CoroutineStart.LAZY) {
       var engineDestroyed = false
       var completed = false
       var working = active
@@ -251,10 +300,12 @@ class ZoenCoreModule : Module() {
         if (working == null) working = process.withErasureAfterRetirements(expected, task, earlierRequests) {
           val root = File(context.noBackupFilesDir, "account").apply { mkdirs() }
           val engine = Client.open(File(root, "client.sqlite").path, locale)
-          val candidate = Session(engine, ZoenVault(context), emptyListener(), "account").also { it.lease.close(erase = true) }
+          val candidate = Session(owner, engine, ZoenVault(context), emptyListener(), "account")
           try {
+            candidate.pickup.retire(erase = true)
             verifyErasureScope(engine, expected, allowEmpty = erasure.pending() == expected)
             erasure.begin(expected)
+            retired.add(candidate)
             candidate
           } catch (error: Throwable) {
             destroyRetired(candidate)
@@ -263,13 +314,14 @@ class ZoenCoreModule : Module() {
         }
         else for (drain in earlierRequests) drain.await()
         val current = requireNotNull(working)
-        current.lease.drained.await()
+        current.pickup.drain()
         verifyErasureScope(current.engine, expected, allowEmpty = erasure.pending() == expected)
         current.engine.eraseDevice(current.vault)
         current.vault.eraseAllVerified()
-        current.engine.destroy()
-        engineDestroyed = true
-        mutex.withLock { current.lease.destroyed() }
+        mutex.withLock {
+          destroyRetired(current)
+          engineDestroyed = true
+        }
         ZoenDeviceErasure.eraseDirectory(File(context.noBackupFilesDir, "account"))
         for (name in listOf("ZoenMedia", "ZoenVoiceEditor", "ImagePicker", "ImageManipulator", "DocumentPicker", "ExpoAudio", "zoen-exports")) {
           ZoenDeviceErasure.eraseDirectory(File(context.cacheDir, name))
@@ -280,9 +332,14 @@ class ZoenCoreModule : Module() {
         withContext(NonCancellable + Dispatchers.IO) {
           for (drain in earlierRequests) runCatching { drain.await() }
           val current = working
-          current?.lease?.drained?.await()
           try {
-            if (!engineDestroyed && current != null) mutex.withLock { destroyRetired(current) }
+            if (!engineDestroyed && current != null) {
+              current.pickup.drain()
+              mutex.withLock { destroyRetired(current) }
+            }
+          } catch (error: Throwable) {
+            mutex.withLock { current?.lease?.destructionFailed(error) }
+            throw error
           } finally {
             mutex.withLock { process.finishErasure(expected, task, completed) }
           }

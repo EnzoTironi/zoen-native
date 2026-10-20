@@ -16,6 +16,7 @@ import { acceptMarkdownJourney } from "./expo-web-markdown-journey.mjs";
 import { acceptBuiltinMiniappJourney } from "./expo-web-miniapp-journey.mjs";
 import { acceptMediaJourney } from "./expo-web-media-journey.mjs";
 import { acceptDrawingJourney } from "./expo-web-drawing-journey.mjs";
+import { acceptOfflineMessageJourney } from "./expo-web-offline-journey.mjs";
 import { expoWebExpectations, pairingScreenshotMasks } from "./expo-web-expectations.mjs";
 
 const locale = process.env.ZOEN_EXPO_TEST_LOCALE;
@@ -415,6 +416,26 @@ try {
   );
   await screenshot("04-cold-chat-reload.png");
   step("cold-dynamic-chat-reload-retains-keys-and-history");
+  const originalMessages = [
+    { author: ana.name, text: seed, id: seedMessageId },
+    { author: ana.name, text: outbound, id: outboundMessageId },
+    { author: bruno.name, text: reply, id: replyMessageId },
+  ];
+  const offlineMessage = await acceptOfflineMessageJourney({
+    page,
+    context,
+    relay,
+    space,
+    author: ana.name,
+    tag,
+    retainedMessages: originalMessages,
+    peerHome: bruno.home,
+    cli,
+    expectMessage,
+    until,
+    screenshot,
+    step,
+  });
   await acceptMarkdownJourney({
     page,
     ui,
@@ -453,6 +474,8 @@ try {
   await acceptDrawingJourney({
     page,
     ui,
+    browserAuthor: ana.name,
+    nativeAuthor: bruno.name,
     origin,
     space,
     tag,
@@ -473,11 +496,7 @@ try {
   // its newest rows. Reveal each original through the real search UI rather
   // than requiring an old message to already be inside the viewport.
   await page.getByRole("button", { name: ui.searchThisChat, exact: true }).click();
-  const retainedMessages = [
-    { author: ana.name, text: seed, id: seedMessageId },
-    { author: ana.name, text: outbound, id: outboundMessageId },
-    { author: bruno.name, text: reply, id: replyMessageId },
-  ];
+  const retainedMessages = [...originalMessages, offlineMessage];
   for (const message of retainedMessages) {
     await page.getByTestId("message-input").fill(message.text);
     await page.getByTestId("message-input").press("Enter");
@@ -504,7 +523,7 @@ try {
   step("confirmed-local-erasure-cold-reload-keeps-onboarding");
 
   const preserved = await cli(bruno.home, "read", space);
-  for (const text of [seed, outbound, reply])
+  for (const text of [seed, outbound, reply, offlineMessage.text])
     assert.ok(preserved.includes(text), "local browser erase must preserve canonical peer history");
   step("browser-erasure-preserves-canonical-peer-history");
   assert.deepEqual(errors, [], "uncaught browser errors");

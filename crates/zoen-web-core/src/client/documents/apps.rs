@@ -415,10 +415,7 @@ impl<S: Signer> Client<S> {
                 },
                 EventBody::MessagePosted {
                     message: types::new_secret_id("msg"),
-                    text: t(
-                        "Mini-app adicionado a este Espaço.",
-                        "Mini-app added to this Space.",
-                    ),
+                    text: t("App adicionado a este Espaço.", "App added to this Space."),
                     attaches: Some(item.into()),
                     reply: None,
                     forwarded: false,

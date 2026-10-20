@@ -1,8 +1,6 @@
 import { t } from '../i18n/index.ts';
 import { useCallback, useRef, useState } from 'react';
 import { Stack, router, useLocalSearchParams, usePreventRemove } from 'expo-router';
-import { useHeaderHeight } from 'expo-router/react-navigation';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollView, Text, View } from 'react-native';
 import { useClient } from '../core/provider';
 import { useCoreQuery } from '../core/query';
@@ -19,8 +17,6 @@ import { useConversationCards } from './conversation-provider';
 import type { MiniappDocumentController } from './document-controller';
 
 export function MiniappScreen({ manage = false }: { manage?: boolean }) {
-  const headerHeight = useHeaderHeight();
-  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { store } = useClient();
   const { colors } = useTheme();
@@ -105,19 +101,6 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
         tool.visibility.includes('app') &&
         !(spec.id === 'excalidraw' && tool.name.startsWith('app_document_')),
     ) ?? [];
-  function openDetails() {
-    if (navigating.current) return;
-    navigating.current = true;
-    void (async () => {
-      await document?.flush({ retire: true });
-      setError(null);
-      router.push({ pathname: '/miniapp/[id]/manage', params: { id } });
-    })()
-      .catch(() => setError(t('drawing.closeFailed')))
-      .finally(() => {
-        navigating.current = false;
-      });
-  }
   function call(tool: string, args: Record<string, unknown>) {
     if (busy) return;
     setBusy(true);
@@ -137,64 +120,61 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       )
       .finally(() => setBusy(false));
   }
-  const fullscreen = process.env.EXPO_OS !== 'web' && !!spec?.has_view && !manage;
+  const fullscreen = !!spec?.has_view && !manage;
   const navigation = (
     <Stack.Screen
       options={{
         title: manage ? t('common.details') : item.title,
-        // Interactive app views own their drags, including the back-swipe edge.
-        // The native Back button still runs the acknowledged document-close guard.
+        headerShown: manage,
+        // Interactive canvases close only through the guarded native grabber.
         gestureEnabled: !fullscreen,
-        headerRight: () =>
-          fullscreen ? (
-            <NativeButton
-              secondary
-              testID="miniapp-open-details"
-              label={t('common.details')}
-              onPress={openDetails}
-            />
-          ) : process.env.EXPO_OS === 'ios' ? (
-            <HomeCardMenu
-              testID="miniapp-detail-options"
-              name={item.title}
-              pinned={home.isPinned(item.id)}
-              onToggle={
-                !home.loading && home.items.some((candidate) => candidate.id === item.id)
-                  ? () => {
-                      void (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)).catch(
-                        () => {},
-                      );
-                    }
-                  : undefined
-              }
-              conversationPinned={cards.isPinned(item.id)}
-              onToggleConversation={
-                !cards.loading && cards.items.some((candidate) => candidate.id === item.id)
-                  ? () => {
-                      void cards.setPinned(item.id, !cards.isPinned(item.id)).catch(() => {});
-                    }
-                  : undefined
-              }
-              onOrganizeConversation={
-                cards.available
-                  ? () =>
-                      router.push({
-                        pathname: '/conversation-cards/[id]',
-                        params: { id: item.space_id },
-                      })
-                  : undefined
-              }
-              onHistory={() =>
-                router.push({ pathname: '/item/[id]', params: { id, history: '1' } })
-              }
-            />
-          ) : (
-            <NativeButton
-              secondary
-              label={t('miniapps.history')}
-              onPress={() => router.push({ pathname: '/item/[id]', params: { id, history: '1' } })}
-            />
-          ),
+        headerRight: !manage
+          ? undefined
+          : () =>
+              process.env.EXPO_OS === 'ios' ? (
+                <HomeCardMenu
+                  testID="miniapp-detail-options"
+                  name={item.title}
+                  pinned={home.isPinned(item.id)}
+                  onToggle={
+                    !home.loading && home.items.some((candidate) => candidate.id === item.id)
+                      ? () => {
+                          void (
+                            home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)
+                          ).catch(() => {});
+                        }
+                      : undefined
+                  }
+                  conversationPinned={cards.isPinned(item.id)}
+                  onToggleConversation={
+                    !cards.loading && cards.items.some((candidate) => candidate.id === item.id)
+                      ? () => {
+                          void cards.setPinned(item.id, !cards.isPinned(item.id)).catch(() => {});
+                        }
+                      : undefined
+                  }
+                  onOrganizeConversation={
+                    cards.available
+                      ? () =>
+                          router.push({
+                            pathname: '/conversation-cards/[id]',
+                            params: { id: item.space_id },
+                          })
+                      : undefined
+                  }
+                  onHistory={() =>
+                    router.push({ pathname: '/item/[id]', params: { id, history: '1' } })
+                  }
+                />
+              ) : (
+                <NativeButton
+                  secondary
+                  label={t('miniapps.history')}
+                  onPress={() =>
+                    router.push({ pathname: '/item/[id]', params: { id, history: '1' } })
+                  }
+                />
+              ),
       }}
     />
   );
@@ -202,16 +182,11 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
     return (
       <View
         testID="miniapp-fullscreen"
-        style={{
-          flex: 1,
-          paddingTop: headerHeight,
-          paddingBottom: insets.bottom,
-          paddingLeft: insets.left,
-          paddingRight: insets.right,
-        }}
+        onAccessibilityEscape={() => router.back()}
+        style={{ flex: 1 }}
       >
         {navigation}
-        {(error && spec.id !== 'excalidraw') || read.error || specs.error ? (
+        {error || read.error || specs.error ? (
           <Text accessibilityRole="alert" selectable style={{ color: colors.danger, padding: 16 }}>
             {error ?? read.error ?? specs.error}
           </Text>
@@ -232,7 +207,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{
         padding: 24,
-        paddingTop: process.env.EXPO_OS === 'web' ? headerHeight + 24 : 24,
+        paddingTop: 24,
         paddingBottom: 48,
         gap: 22,
         maxWidth: 850,

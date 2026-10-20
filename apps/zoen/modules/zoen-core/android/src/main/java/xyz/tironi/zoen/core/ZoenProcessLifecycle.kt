@@ -47,6 +47,9 @@ internal class ZoenProcessLifecycle<T : Any> {
   fun retire(owner: Any, allOwners: Boolean = false): T? {
     val previous = active ?: return null
     if (!allOwners && previous.owner !== owner) return null
+    // Ownership survives removal from admission, including failed close/erase.
+    // Reopening callers wait this exact value's destruction acknowledgement.
+    retired.add(previous.value)
     active = null
     return previous.value
   }

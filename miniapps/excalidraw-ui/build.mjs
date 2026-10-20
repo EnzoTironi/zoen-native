@@ -23,6 +23,7 @@ for (const file of [
   "NOTICE.md",
   "LICENSE",
   "src/canonical-app.tsx",
+  "src/host-safe-area.ts",
   "src/canonical-saves.ts",
   "src/canonical-transfer.ts",
   "licenses/excalidraw-v0.18.0-MIT.txt",
@@ -30,6 +31,8 @@ for (const file of [
   "licenses/fuzzy-MIT.txt",
   "patches/89-buffer-initial-events.diff",
   "patches/90-initial-host-context.diff",
+  "patches/91-host-safe-area.diff",
+  "patches/92-mobile-side-tools.diff",
 ].sort()) {
   const sha = hash(await readFile(join(root, file)));
   if (upstream.sourceSha256[file] && sha !== upstream.sourceSha256[file])

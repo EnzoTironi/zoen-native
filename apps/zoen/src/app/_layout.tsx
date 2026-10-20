@@ -72,6 +72,15 @@ function Navigation() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="chat/[id]" options={{ title: '' }} />
             <Stack.Screen
+              name="miniapp"
+              options={{
+                presentation: process.env.EXPO_OS === 'web' ? 'card' : 'fullScreenModal',
+                animation: process.env.EXPO_OS === 'web' ? undefined : 'slide_from_bottom',
+                gestureEnabled: true,
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
               name="new-chat"
               options={{
                 title: t('common.newChat'),

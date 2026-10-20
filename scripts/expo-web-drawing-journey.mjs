@@ -43,13 +43,73 @@ async function readRenderedScene(frame) {
 }
 
 export async function acceptDrawingJourney({
-  page, ui, origin, space, tag, privateRoot, peerHome, cli, screenshot, step,
+  page, ui, browserAuthor, nativeAuthor, origin, space, tag, privateRoot, peerHome, cli, screenshot, step,
 }) {
   const title = `Expo drawing ${tag}`;
   const label = `Shared canvas ${tag}`;
-  const id = (await cli(peerHome, "app", space, "install", "excalidraw", JSON.stringify({ title }))).trim();
-  assert.match(id, /^it_[a-z0-9]+$/);
+  // Discover the genuine earlier list/message; its copy may come from an old or
+  // current CLI. Never require legacy text or globally unique message bodies.
+  const historyBefore = await cli(peerHome, "read", space);
+  const lists = (await cli(peerHome, "app", space, "view")).split("\n").filter(Boolean)
+    .map((line) => line.split("\t"))
+    .filter((fields) => fields[1] === "list" && JSON.parse(fields.slice(2).join("\t")).title === `Expo list ${tag}`);
+  assert.equal(lists.length, 1, "discover the genuine preceding native-created list");
+  const historicalItem = lists[0][0];
+  assert.match(historicalItem, /^it_[a-z0-9]+$/);
+  const messageForItem = (item) => page.getByTestId(/^message-row-/)
+    .filter({ has: page.getByTestId(`miniapp-message-${item}`) });
+  const historicalRow = messageForItem(historicalItem);
+  await historicalRow.scrollIntoViewIfNeeded();
+  const historicalRowId = await historicalRow.getAttribute("data-testid");
+  assert.match(historicalRowId, /^message-row-.+$/);
+  const historicalMessageId = historicalRowId.slice("message-row-".length);
+  const historicalBody = await historicalRow.getByTestId(`message-body-${historicalMessageId}`).innerText();
+  assert.ok(historicalBody.length > 0);
+  await historicalRow.getByRole("button", { name: ui.messageActions(nativeAuthor), exact: true }).waitFor();
+  assert.ok(historyBefore.split("\n").includes(`${nativeAuthor}: ${historicalBody}`),
+    "the visible historical ID/body/author must match the genuine native peer");
+  const counts = (history) => {
+    const result = new Map();
+    for (const line of history.split("\n").filter(Boolean)) {
+      const bytes = Buffer.from(line).toString("base64");
+      result.set(bytes, (result.get(bytes) ?? 0) + 1);
+    }
+    return result;
+  };
+  const beforeCounts = counts(historyBefore);
   await observeCanonicalReads(page);
+  await page.goto(`${origin}/miniapps?space=${encodeURIComponent(space)}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: ui.installDrawing, exact: true }).click();
+  await page.getByRole("textbox", { name: ui.appTitle, exact: true }).fill(title);
+  await page.getByRole("button", { name: ui.addApp, exact: true }).click();
+  await page.waitForURL((url) => /^\/miniapp\/it_[a-z0-9]+$/.test(url.pathname));
+  const id = new URL(page.url()).pathname.split("/").at(-1);
+  assert.match(id, /^it_[a-z0-9]+$/);
+  await page.goto(`${origin}/chat/${space}`, { waitUntil: "domcontentloaded" });
+  const row = messageForItem(id);
+  await row.scrollIntoViewIfNeeded();
+  const rowId = await row.getAttribute("data-testid");
+  assert.match(rowId, /^message-row-.+$/);
+  const messageId = rowId.slice("message-row-".length);
+  assert.notEqual(messageId, historicalMessageId, "new installation has its own original message ID");
+  await row.getByRole("button", { name: ui.messageActions(browserAuthor), exact: true }).waitFor();
+  const body = row.getByTestId(`message-body-${messageId}`);
+  await body.waitFor();
+  assert.equal(await body.innerText(), ui.appAdded);
+  await cli(peerHome, "sync");
+  const historyAfter = await cli(peerHome, "read", space);
+  const afterCounts = counts(historyAfter);
+  const newMessageBytes = Buffer.from(`${browserAuthor}: ${ui.appAdded}`).toString("base64");
+  assert.equal((afterCounts.get(newMessageBytes) ?? 0) - (beforeCounts.get(newMessageBytes) ?? 0), 1,
+    "native peer receives exactly one additional original App message from the browser author");
+  for (const [bytes, count] of beforeCounts)
+    assert.ok((afterCounts.get(bytes) ?? 0) >= count, "retain every genuine earlier native history line byte-for-byte");
+  const preserved = page.getByTestId(`message-row-${historicalMessageId}`);
+  await preserved.scrollIntoViewIfNeeded();
+  assert.equal(await preserved.getByTestId(`message-body-${historicalMessageId}`).innerText(), historicalBody);
+  await preserved.getByRole("button", { name: ui.messageActions(nativeAuthor), exact: true }).waitFor();
+  await row.scrollIntoViewIfNeeded();
+  await screenshot("09a-current-app-install-localized-copy.png");
   await page.goto(`${origin}/miniapp/${id}`, { waitUntil: "domcontentloaded" });
   const selector = `iframe[title=${JSON.stringify(title)}]`;
   const frame = page.frameLocator(selector);
@@ -58,7 +118,16 @@ export async function acceptDrawingJourney({
   assert.equal(await page.locator(selector).getAttribute("sandbox"), "allow-scripts");
   const initial = await readRenderedScene(frame);
   assert.deepEqual(initial.scene.elements, []);
-  step("canonical-excalidraw-opens-in-strict-browser-sandbox");
+  step("canonical-excalidraw-opens-in-strict-browser-sandbox", {
+    installation: "actual-catalog-and-form-ui",
+    itemId: id,
+    newMessageId: messageId,
+    newMessageAuthor: browserAuthor,
+    visibleAppBody: ui.appAdded,
+    nativePeerNewAppOccurrenceDelta: 1,
+    historicalNativeAppMessage: { itemId: historicalItem, messageId: historicalMessageId, author: nativeAuthor, body: historicalBody },
+    allHistoricalNativeLineBytesPreserved: true,
+  });
 
   const canvas = frame.locator("canvas.excalidraw__canvas.interactive");
   await canvas.waitFor();

@@ -1,0 +1,68 @@
+--- a/src/mcp-app.tsx
++++ b/src/mcp-app.tsx
+@@ -1,3 +1,4 @@
++import { useHostSafeArea } from "./host-safe-area";
+ import { CanonicalExcalidrawApp, canonicalSceneMarker } from './canonical-app';
+ import { useApp } from "@modelcontextprotocol/ext-apps/react";
+ import type { App } from "@modelcontextprotocol/ext-apps";
+@@ -693,7 +694,6 @@
+   const [elements, setElements] = useState<any[]>([]);
+   const [userEdits, setUserEdits] = useState<any[] | null>(null);
+   const [containerHeight, setContainerHeight] = useState<number | null>(null);
+-  const [safeAreaInsets, setSafeAreaInsets] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null);
+   const [isNarrow, setIsNarrow] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches);
+   const [editorReady, setEditorReady] = useState(false);
+   const [excalidrawApi, setExcalidrawApi] = useState<any>(null);
+@@ -809,17 +809,13 @@
+     appRef.current = app;
+     _logFn = (msg) => { try { app.sendLog({ level: "info", logger: "FS", data: msg }); } catch {} };
+
+-    // Capture initial container dimensions + safe area insets
++    // Capture initial container dimensions
+     const initCtx = app.getHostContext() as any;
+     if (initCtx?.containerDimensions?.height) setContainerHeight(initCtx.containerDimensions.height);
+-    if (initCtx?.safeAreaInsets) setSafeAreaInsets(initCtx.safeAreaInsets);
+
+     const handleHostContextChanged = (ctx: any) => {
+       if (ctx.containerDimensions?.height) {
+         setContainerHeight(ctx.containerDimensions.height);
+-      }
+-      if (ctx.safeAreaInsets) {
+-        setSafeAreaInsets(ctx.safeAreaInsets);
+       }
+       if (ctx.displayMode) {
+         fsLog(`hostContextChanged: displayMode=${ctx.displayMode}`);
+@@ -890,24 +886,6 @@
+     return () => mq.removeEventListener("change", handler);
+   }, []);
+
+-  // Bridge hostContext.safeAreaInsets → Excalidraw's native --sat/--sar/--sab/--sal.
+-  // Excalidraw's .FixedSideContainer reads padding-top: var(--sat) — this offsets
+-  // only the floating toolbar/menus, keeping the canvas full-bleed. env(safe-area-*)
+-  // is 0 inside cross-origin iframes on iOS, so the host MUST supply pixel values.
+-  useEffect(() => {
+-    const root = document.documentElement;
+-    if (displayMode === "fullscreen" && isNarrow && safeAreaInsets) {
+-      root.style.setProperty("--sat", `${safeAreaInsets.top}px`);
+-      root.style.setProperty("--sar", `${safeAreaInsets.right}px`);
+-      root.style.setProperty("--sab", `${safeAreaInsets.bottom}px`);
+-      root.style.setProperty("--sal", `${safeAreaInsets.left}px`);
+-    } else {
+-      root.style.removeProperty("--sat");
+-      root.style.removeProperty("--sar");
+-      root.style.removeProperty("--sab");
+-      root.style.removeProperty("--sal");
+-    }
+-  }, [displayMode, isNarrow, safeAreaInsets]);
+
+   return (
+     <main className={`main${displayMode === "fullscreen" ? " fullscreen" : ""}`} style={displayMode === "fullscreen" && containerHeight ? { height: containerHeight } : undefined}>
+@@ -1050,6 +1028,8 @@
+     onAppCreated: bufferInitialToolEvents,
+   });
+
++  useHostSafeArea(app);
++
+   if (error) return <div className="error">ERROR: {error.message}</div>;
+   if (!app) return <div className="loading">Connecting...</div>;
+   const canonical = canonicalSceneMarker(app);

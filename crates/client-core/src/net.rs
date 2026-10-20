@@ -1428,9 +1428,9 @@ pub(crate) fn tracing_like(msg: &str) {
 
 /// Waits for a link box as a device with no account yet (ADR 0045): it signs in as itself
 /// (its device key as identity, self-certified), which lets it fetch and nothing else.
-pub async fn fetch_link_box(
+pub(crate) async fn fetch_link_box(
     relay_url: &str,
-    key: &event_log::Signer,
+    key: &impl crate::link_pickup::PickupSigning,
     id: &str,
     deadline: tokio::time::Instant,
 ) -> Result<Vec<u8>, String> {
@@ -1440,6 +1440,7 @@ pub async fn fetch_link_box(
     }
     let pickup = async {
         loop {
+            key.check()?;
             match fetch_link_attempt(relay_url, key, id).await {
                 Ok(bytes) => return Ok(bytes),
                 Err(PickupError::Fatal(message)) => return Err(message),
@@ -1473,9 +1474,10 @@ impl From<String> for PickupError {
 
 async fn fetch_link_attempt(
     relay_url: &str,
-    key: &event_log::Signer,
+    key: &impl crate::link_pickup::PickupSigning,
     id: &str,
 ) -> Result<Vec<u8>, PickupError> {
+    key.check().map_err(PickupError::Fatal)?;
     let url = ws_url(relay_url);
     let (ws, _) = tokio::time::timeout(
         Duration::from_secs(10),
@@ -1485,7 +1487,7 @@ async fn fetch_link_attempt(
     .map_err(|_| PickupError::Transport)?
     .map_err(|_| PickupError::Transport)?;
     let (mut sink, mut stream) = ws.split();
-    let me = key.id();
+    let me = key.id().map_err(PickupError::Fatal)?;
     send(
         &mut sink,
         &ClientFrame::Hello {
@@ -1493,7 +1495,9 @@ async fn fetch_link_attempt(
             capabilities: CAPABILITIES.iter().map(|c| c.to_string()).collect(),
             identity: me.clone(),
             device: me.clone(),
-            cert: key.sign(&event_log::device_cert_message(&me)),
+            cert: key
+                .sign(&event_log::device_cert_message(&me))
+                .map_err(PickupError::Fatal)?,
         },
     )
     .await?;
@@ -1519,7 +1523,9 @@ async fn fetch_link_attempt(
     send(
         &mut sink,
         &ClientFrame::Auth {
-            sig: key.sign(&auth_message(&nonce, &relay)),
+            sig: key
+                .sign(&auth_message(&nonce, &relay))
+                .map_err(PickupError::Fatal)?,
         },
     )
     .await?;
@@ -1533,6 +1539,7 @@ async fn fetch_link_attempt(
     let mut n = 0u64;
     loop {
         n += 1;
+        key.check().map_err(PickupError::Fatal)?;
         let op = Op::FetchLink { id: id.to_string() };
         send(&mut sink, &ClientFrame::Req { id: n, op }).await?;
         let result = loop {

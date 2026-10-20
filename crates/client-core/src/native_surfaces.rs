@@ -22,8 +22,8 @@ fn valid_id(value: &str, maximum: usize, owner: bool) -> bool {
 fn invalid() -> CoreError {
     CoreError::Invalid {
         reason: t(
-            "seleção de mini-apps inválida ou grande demais",
-            "invalid or oversized mini-app selection",
+            "seleção de apps inválida ou grande demais",
+            "invalid or oversized app selection",
         ),
     }
 }

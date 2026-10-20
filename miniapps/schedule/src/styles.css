@@ -17,7 +17,8 @@ body,
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: calc(env(safe-area-inset-top) + 12px) 14px 10px;
+  padding: calc(var(--z-safe-top) + 12px) calc(14px + var(--z-safe-right)) 10px
+    calc(14px + var(--z-safe-left));
 }
 .head {
   display: flex;
@@ -60,7 +61,8 @@ body,
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 4px 16px 120px;
+  padding: 4px calc(16px + var(--z-safe-right)) calc(120px + var(--z-safe-bottom))
+    calc(16px + var(--z-safe-left));
   display: grid;
   gap: 18px;
 }
@@ -295,9 +297,9 @@ body,
 }
 .sticky {
   position: fixed;
-  left: 12px;
-  right: 12px;
-  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  left: calc(12px + var(--z-safe-left));
+  right: calc(12px + var(--z-safe-right));
+  bottom: calc(var(--z-safe-bottom) + 12px);
   z-index: 20;
   display: flex;
   justify-content: space-between;
@@ -326,7 +328,8 @@ body,
 .sheet-card {
   background: var(--z-surface);
   border-radius: 28px 28px 0 0;
-  padding: 20px 18px calc(env(safe-area-inset-bottom) + 18px);
+  padding: 20px calc(18px + var(--z-safe-right)) calc(var(--z-safe-bottom) + 18px)
+    calc(18px + var(--z-safe-left));
   display: grid;
   gap: 14px;
   transform-origin: bottom center;
@@ -367,7 +370,7 @@ body,
 .toast {
   position: fixed;
   left: 50%;
-  top: calc(env(safe-area-inset-top) + 64px);
+  top: calc(var(--z-safe-top) + 64px);
   transform: translateX(-50%);
   z-index: 40;
   padding: 10px 16px;
@@ -382,7 +385,8 @@ body,
   z-index: 35;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: calc(24px + var(--z-safe-top)) calc(24px + var(--z-safe-right))
+    calc(24px + var(--z-safe-bottom)) calc(24px + var(--z-safe-left));
   background: color-mix(in srgb, var(--z-bg) 92%, transparent);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);

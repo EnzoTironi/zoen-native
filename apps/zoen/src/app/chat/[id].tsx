@@ -656,29 +656,28 @@ export default function Chat() {
               <MiniappRail
                 items={conversationMiniapps}
                 paddingVertical={6}
-                renderAccessory={
-                  process.env.EXPO_OS === 'ios'
-                    ? (item) => (
-                        <HomeCardMenu
-                          name={item.title}
-                          testID={`conversation-card-menu-${item.id}`}
-                          pinned={home.isPinned(item.id)}
-                          onToggle={() => {
-                            void (
-                              home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)
-                            ).catch(() => {});
-                          }}
-                          conversationPinned
-                          onToggleConversation={() => {
-                            void cards.setPinned(item.id, false).catch(() => {});
-                          }}
-                          onOrganizeConversation={() =>
-                            router.push({ pathname: '/conversation-cards/[id]', params: { id } })
-                          }
-                        />
-                      )
-                    : undefined
-                }
+                renderAccessory={(item) => (
+                  <HomeCardMenu
+                    name={item.title}
+                    testID={`conversation-card-menu-${item.id}`}
+                    pinned={home.isPinned(item.id)}
+                    onDetails={() =>
+                      router.push({ pathname: '/miniapp/[id]/manage', params: { id: item.id } })
+                    }
+                    onToggle={() => {
+                      void (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)).catch(
+                        () => {},
+                      );
+                    }}
+                    conversationPinned
+                    onToggleConversation={() => {
+                      void cards.setPinned(item.id, false).catch(() => {});
+                    }}
+                    onOrganizeConversation={() =>
+                      router.push({ pathname: '/conversation-cards/[id]', params: { id } })
+                    }
+                  />
+                )}
               />
             </ConversationRail>
             <View onLayout={({ nativeEvent }) => setNoticeHeight(nativeEvent.layout.height)}>

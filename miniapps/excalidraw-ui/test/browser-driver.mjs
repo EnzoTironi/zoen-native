@@ -1,5 +1,76 @@
 import { spawn } from "node:child_process";
-import { join } from "node:path";
+import { observeOwnedChild, withCleanup } from "./browser-lifecycle.mjs";
+import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
+import { join, posix, win32 } from "node:path";
+async function isExecutableFile(path) {
+  try {
+    if (!(await stat(path)).isFile()) return false;
+    await access(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function findBrowserExecutable({
+  env = process.env,
+  platform = process.platform,
+  canExecute = isExecutableFile,
+} = {}) {
+  const paths = platform === "win32" ? win32 : posix;
+  const directories = (env.PATH ?? "").split(platform === "win32" ? ";" : ":").filter(Boolean);
+  const fromPath = async (names) => {
+    for (const name of names) {
+      for (const directory of directories) {
+        const candidate = paths.resolve(directory, name);
+        if (await canExecute(candidate)) return candidate;
+      }
+    }
+    return null;
+  };
+  const explicit = env.CHROME_BIN?.trim();
+  if (explicit) {
+    const candidate = /[/\\]/.test(explicit) ? paths.resolve(explicit) : await fromPath([explicit]);
+    if (candidate && (await canExecute(candidate))) return candidate;
+    throw new Error(`CHROME_BIN is not an executable browser file: ${explicit}`);
+  }
+  const known =
+    platform === "darwin"
+      ? [
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+          "/Applications/Chromium.app/Contents/MacOS/Chromium",
+          ...(env.HOME
+            ? [paths.join(env.HOME, "Applications/Google Chrome.app/Contents/MacOS/Google Chrome")]
+            : []),
+        ]
+      : platform === "win32"
+        ? [env.PROGRAMFILES, env["PROGRAMFILES(X86)"], env.LOCALAPPDATA]
+            .filter(Boolean)
+            .map((directory) => paths.join(directory, "Google/Chrome/Application/chrome.exe"))
+        : [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            "/opt/google/chrome/chrome",
+          ];
+  for (const candidate of known) if (await canExecute(candidate)) return candidate;
+  const candidate = await fromPath(
+    platform === "win32"
+      ? ["chrome.exe", "chromium.exe"]
+      : ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"],
+  );
+  if (candidate) return candidate;
+  const required = env.GITHUB_ACTIONS === "true" || Boolean(env.CI && !/^(false|0)$/i.test(env.CI));
+  if (required) {
+    throw new Error(
+      "Chrome/Chromium is required for CI renderer tests. Install its normal sandbox runtime or set CHROME_BIN to an executable browser.",
+    );
+  }
+  return null;
+}
+
 export async function ownedBrowserResult(chrome, folder, path) {
   const child = spawn(
     chrome,
@@ -17,32 +88,28 @@ export async function ownedBrowserResult(chrome, folder, path) {
       `--user-data-dir=${join(folder, "profile")}`,
       "about:blank",
     ],
-    { stdio: ["ignore", "ignore", "pipe"] },
+    { stdio: ["ignore", "ignore", "pipe"], detached: process.platform !== "win32" },
   );
-  let socket, deadline;
+  const owned = observeOwnedChild(child, { processGroup: process.platform !== "win32" });
+  const lifecycle = Object.assign(owned.state, { profile: join(folder, "profile") });
+  let socket, deadline, startupDeadline, closeBrowser;
+  let stderr = "";
   const errors = [];
-  const lifecycle = {
-    pid: child.pid,
-    profile: join(folder, "profile"),
-    exitCode: null,
-    stopped: false,
-  };
-  try {
+  return withCleanup(async () => {
     return await Promise.race([
       (async () => {
         const endpoint = await new Promise((resolve, reject) => {
-          let output = "";
-          const timer = setTimeout(() => reject(Error("Owned Chrome startup timeout")), 10000);
+          startupDeadline = setTimeout(() => reject(Error("Owned Chrome startup timeout")), 10000);
           child.once("error", reject);
           child.once("exit", () => {
-            clearTimeout(timer);
+            clearTimeout(startupDeadline);
             reject(Error("Owned Chrome exited"));
           });
           child.stderr.on("data", (v) => {
-            output = (output + v).slice(-16384);
-            const match = output.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/);
+            stderr = (stderr + v).slice(-16384);
+            const match = stderr.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/);
             if (match) {
-              clearTimeout(timer);
+              clearTimeout(startupDeadline);
               resolve(match[1]);
             }
           });
@@ -77,6 +144,10 @@ export async function ownedBrowserResult(chrome, folder, path) {
               JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }),
             );
           });
+        closeBrowser = () => {
+          if (socket.readyState === WebSocket.OPEN)
+            socket.send(JSON.stringify({ id: ++next, method: "Browser.close" }));
+        };
         const target = await send("Target.createTarget", { url: "about:blank" });
         const attached = await send("Target.attachToTarget", {
           targetId: target.targetId,
@@ -124,17 +195,16 @@ export async function ownedBrowserResult(chrome, folder, path) {
         deadline = setTimeout(() => reject(Error("Owned Chrome test deadline")), 18000);
       }),
     ]);
-  } finally {
+  }, async () => {
     clearTimeout(deadline);
-    socket?.close();
-    if (child.exitCode === null) {
-      const ended = new Promise((resolve) => child.once("exit", resolve));
-      child.kill("SIGTERM");
-      const timer = setTimeout(() => child.kill("SIGKILL"), 2000);
-      await ended;
-      clearTimeout(timer);
+    clearTimeout(startupDeadline);
+    try {
+      await owned.stop(closeBrowser);
+    } finally {
+      socket?.close();
     }
-    lifecycle.exitCode = child.exitCode;
-    lifecycle.stopped = child.exitCode !== null;
-  }
+  }).catch((error) => {
+    error.ownedBrowser = { ...lifecycle, stderr };
+    throw error;
+  });
 }

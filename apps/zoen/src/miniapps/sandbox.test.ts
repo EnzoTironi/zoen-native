@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { miniappCsp, safeMiniappLink, sandboxHtml, verifyMiniappResource } from './sandbox.ts';
 import { photoArguments } from './photo-tokens.ts';
 
-test('resource identity, exact bytes and manifest hash are checked before script injection', () => {
+test('resource identity, exact bytes and manifest hash are checked before script injection', async () => {
   const text = '<html><head><title>Árvore 🪴</title></head><body></body></html>';
   const bytes = new TextEncoder().encode(text);
   const manifest = {
@@ -24,12 +24,12 @@ test('resource identity, exact bytes and manifest hash are checked before script
     manifest_json: JSON.stringify(manifest),
     prefers_border: false,
   };
-  const verified = verifyMiniappResource(resource, 'hike');
+  const { manifest: verified } = await verifyMiniappResource(resource, 'hike');
   assert.equal(verified.bytes, bytes.length);
-  assert.throws(() => verifyMiniappResource({ ...resource, text: `${text} ` }, 'hike'));
-  assert.throws(() => verifyMiniappResource(resource, 'another'));
-  assert.throws(() => verifyMiniappResource({ ...resource, manifest_json: '{' }, 'hike'));
-  assert.throws(() => verifyMiniappResource({ ...resource, manifest_json: '' }, 'hike'));
+  await assert.rejects(() => verifyMiniappResource({ ...resource, text: `${text} ` }, 'hike'));
+  await assert.rejects(() => verifyMiniappResource(resource, 'another'));
+  await assert.rejects(() => verifyMiniappResource({ ...resource, manifest_json: '{' }, 'hike'));
+  await assert.rejects(() => verifyMiniappResource({ ...resource, manifest_json: '' }, 'hike'));
   assert.equal(safeMiniappLink('https://www.nps.gov/path', verified), 'https://www.nps.gov/path');
   assert.throws(() => safeMiniappLink('https://evil.example/path', verified));
   assert.throws(() => safeMiniappLink('https://www.nps.gov.evil.example/path', verified));
@@ -37,7 +37,7 @@ test('resource identity, exact bytes and manifest hash are checked before script
   const secured = sandboxHtml(text, []);
   assert.ok(secured.indexOf('Content-Security-Policy') < secured.indexOf('<title>'));
 });
-test('all eight built-in view resources carry verified manifests and exact link authority', () => {
+test('all eight built-in view resources carry verified manifests and exact link authority', async () => {
   for (const id of ['pet', 'poll', 'list', 'maptap', 'recipe', 'countdown', 'hike', 'schedule']) {
     const resource = {
       uri: `ui://fixture/${id}`,
@@ -52,12 +52,12 @@ test('all eight built-in view resources carry verified manifests and exact link 
       ),
       prefers_border: false,
     };
-    const manifest = verifyMiniappResource(resource, id);
+    const { manifest } = await verifyMiniappResource(resource, id);
     assert.equal(manifest.id, id);
     if (id === 'list')
       assert.equal(safeMiniappLink('https://wa.me/?text=QA', manifest), 'https://wa.me/?text=QA');
     else assert.throws(() => safeMiniappLink('https://wa.me/?text=QA', manifest));
-    assert.throws(() => verifyMiniappResource({ ...resource, manifest_json: '' }, id));
+    await assert.rejects(() => verifyMiniappResource({ ...resource, manifest_json: '' }, id));
   }
 });
 test('CSP opens only exact declared hosts and rejects directive injection', () => {

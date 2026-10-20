@@ -20,7 +20,8 @@ body {
 .builtin {
   max-width: 720px;
   margin: auto;
-  padding: 24px 18px calc(28px + env(safe-area-inset-bottom));
+  padding: calc(24px + var(--z-safe-top)) calc(18px + var(--z-safe-right))
+    calc(28px + var(--z-safe-bottom)) calc(18px + var(--z-safe-left));
   display: grid;
   gap: 20px;
 }
@@ -257,8 +258,8 @@ body {
 }
 @media (max-width: 360px) {
   .builtin {
-    padding-left: 12px;
-    padding-right: 12px;
+    padding-left: calc(12px + var(--z-safe-left));
+    padding-right: calc(12px + var(--z-safe-right));
   }
   .section {
     padding: 14px;

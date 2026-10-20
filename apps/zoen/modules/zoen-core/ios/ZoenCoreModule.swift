@@ -96,11 +96,16 @@ public class ZoenCoreModule: Module {
       try await self.session.close(discardEdits: true)
     }
     OnAppBecomesActive { [session] in Task { await session.resumePendingHistory() } }
-    OnDestroy { Task { try? await self.session.close(discardEdits: true) } }
+    OnDestroy { [session] in
+      session.retireForModuleDestruction()
+      Task { try? await session.close(discardEdits: true) }
+    }
   }
 }
 
 private actor ZoenSession {
+  nonisolated private let pickupLifetime = ZoenModulePickupLifetime()
+  private var pickupBinding: UUID?
   private var core: Client?
   private var mode = "account"
   private var sessionLocale = "en"
@@ -130,6 +135,15 @@ private actor ZoenSession {
   private var voiceRenderAttempts: [String: UUID] = [:]
   private var assistants: [String: ZoenAssistantLease] = [:]
   private var assistantDrains: [String: Task<Void, Never>] = [:]
+
+  nonisolated func retireForModuleDestruction() {
+    pickupLifetime.retire()
+  }
+
+  private func releasePickupBinding() {
+    if let pickupBinding { pickupLifetime.clear(pickupBinding) }
+    pickupBinding = nil
+  }
 
   private struct FileScope: Equatable, Sendable {
     let identity: String
@@ -299,6 +313,10 @@ private actor ZoenSession {
       guard generation == openingGeneration, openingAttempt == attempt else { throw SessionError.closed }
       // Publish only the fully validated session. A rejected unlock must leave
       // no callable engine behind; an older async open cannot replace a newer one.
+      guard let binding = pickupLifetime.bind(retire: { engine.retireLinkPickup() }) else {
+        throw SessionError.closed
+      }
+      self.pickupBinding = binding
       self.core = engine
       self.listener = bridge
       self.mode = mode
@@ -825,6 +843,7 @@ private actor ZoenSession {
     } else { openingAttempt = nil }
     try erasure.begin(expected)
     erasing = true
+    engine.retireLinkPickup()
     voiceSources.removeAll()
     voiceRenders.removeAll()
     voiceRenderAttempts.removeAll()
@@ -842,6 +861,7 @@ private actor ZoenSession {
     let task = Task {
       try await filePreview.clear(before: clearingGeneration)
       await closeAssistants()
+      await engine.drainLinkPickup()
       if requests > 0 { await withCheckedContinuation { requestDrain.append($0) } }
       await history?.value
       // An older suspended provider command may have changed the canonical scope.
@@ -857,6 +877,7 @@ private actor ZoenSession {
       try ZoenDeviceErasure.erasePreviewCache()
       try erasure.complete()
       completedErasure = expected
+      releasePickupBinding()
       core = nil
       listener = nil
       erasing = false
@@ -882,6 +903,8 @@ private actor ZoenSession {
     // Fence new work and publish the coalesced task BEFORE its first await,
     // including forced teardown; a new preview cannot enter while clear drains.
     closing = true
+    let retiringCore = core
+    retiringCore?.retireLinkPickup()
     let task = Task {
       defer { self.closing = false; self.closeTask = nil }
       if discardEdits {
@@ -896,6 +919,7 @@ private actor ZoenSession {
       // New bridge operations are fenced by `closing`; a save failure stays
       // recoverable in native UI instead of turning account change into data loss.
       try await self.filePreview.prepareForClose(before: self.generation &+ 1)
+      if let retiringCore { await retiringCore.drainLinkPickup() }
       if self.requests > 0 {
         await withCheckedContinuation { self.requestDrain.append($0) }
       }
@@ -918,6 +942,7 @@ private actor ZoenSession {
     historyRearmRequested = false
     core?.cancelHistoryReceive()
     core?.stopSync()
+    releasePickupBinding()
     core = nil
     listener = nil
     syncStarted = false
