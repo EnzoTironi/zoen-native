@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { observeOwnedChild, withCleanup } from "./browser-lifecycle.mjs";
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { join, posix, win32 } from "node:path";
@@ -87,32 +88,28 @@ export async function ownedBrowserResult(chrome, folder, path) {
       `--user-data-dir=${join(folder, "profile")}`,
       "about:blank",
     ],
-    { stdio: ["ignore", "ignore", "pipe"] },
+    { stdio: ["ignore", "ignore", "pipe"], detached: process.platform !== "win32" },
   );
-  let socket, deadline;
+  const owned = observeOwnedChild(child, { processGroup: process.platform !== "win32" });
+  const lifecycle = Object.assign(owned.state, { profile: join(folder, "profile") });
+  let socket, deadline, startupDeadline, closeBrowser;
+  let stderr = "";
   const errors = [];
-  const lifecycle = {
-    pid: child.pid,
-    profile: join(folder, "profile"),
-    exitCode: null,
-    stopped: false,
-  };
-  try {
+  return withCleanup(async () => {
     return await Promise.race([
       (async () => {
         const endpoint = await new Promise((resolve, reject) => {
-          let output = "";
-          const timer = setTimeout(() => reject(Error("Owned Chrome startup timeout")), 10000);
+          startupDeadline = setTimeout(() => reject(Error("Owned Chrome startup timeout")), 10000);
           child.once("error", reject);
           child.once("exit", () => {
-            clearTimeout(timer);
+            clearTimeout(startupDeadline);
             reject(Error("Owned Chrome exited"));
           });
           child.stderr.on("data", (v) => {
-            output = (output + v).slice(-16384);
-            const match = output.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/);
+            stderr = (stderr + v).slice(-16384);
+            const match = stderr.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/);
             if (match) {
-              clearTimeout(timer);
+              clearTimeout(startupDeadline);
               resolve(match[1]);
             }
           });
@@ -147,6 +144,10 @@ export async function ownedBrowserResult(chrome, folder, path) {
               JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }),
             );
           });
+        closeBrowser = () => {
+          if (socket.readyState === WebSocket.OPEN)
+            socket.send(JSON.stringify({ id: ++next, method: "Browser.close" }));
+        };
         const target = await send("Target.createTarget", { url: "about:blank" });
         const attached = await send("Target.attachToTarget", {
           targetId: target.targetId,
@@ -194,17 +195,16 @@ export async function ownedBrowserResult(chrome, folder, path) {
         deadline = setTimeout(() => reject(Error("Owned Chrome test deadline")), 18000);
       }),
     ]);
-  } finally {
+  }, async () => {
     clearTimeout(deadline);
-    socket?.close();
-    if (child.exitCode === null) {
-      const ended = new Promise((resolve) => child.once("exit", resolve));
-      child.kill("SIGTERM");
-      const timer = setTimeout(() => child.kill("SIGKILL"), 2000);
-      await ended;
-      clearTimeout(timer);
+    clearTimeout(startupDeadline);
+    try {
+      await owned.stop(closeBrowser);
+    } finally {
+      socket?.close();
     }
-    lifecycle.exitCode = child.exitCode;
-    lifecycle.stopped = child.exitCode !== null;
-  }
+  }).catch((error) => {
+    error.ownedBrowser = { ...lifecycle, stderr };
+    throw error;
+  });
 }

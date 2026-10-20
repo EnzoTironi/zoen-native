@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { findBrowserExecutable, ownedBrowserResult } from "./browser-driver.mjs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { withBrowserProfile } from "./browser-lifecycle.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +18,7 @@ test("real production canvas boots with no network authority; hidden Mermaid men
     return;
   }
   const folder = await mkdtemp(join(tmpdir(), "zoen-canonical-browser-"));
-  try {
+  await withBrowserProfile(folder, async () => {
     let html = await readFile(
       join(root, "../../crates/miniapps/resources/excalidraw.html"),
       "utf8",
@@ -145,9 +146,7 @@ test("real production canvas boots with no network authority; hidden Mermaid men
     assert.ok(
       JSON.parse(result.saved).elements.some((e) => e.type === "image" && e.fileId === "pixel"),
     );
-  } finally {
-    await rm(folder, { recursive: true, force: true });
-  }
+  });
 });
 
 for (const scenario of [
@@ -162,7 +161,7 @@ for (const scenario of [
       return;
     }
     const folder = await mkdtemp(join(tmpdir(), "zoen-legacy-controls-"));
-    try {
+    await withBrowserProfile(folder, async () => {
       const html = await readFile(join(root, "../../crates/miniapps/resources/excalidraw.html"), "utf8");
       const probe = `(() => {
         let started = false;
@@ -242,8 +241,6 @@ for (const scenario of [
       assert.equal(result.exportHit, true, "Export's center remains an unobstructed real hit target");
       assert.equal(geometry.compact, scenario.width <= 640);
       assert.deepEqual(geometry.canvas, {x:0,y:0,width:scenario.width,height:scenario.height,right:scenario.width,bottom:scenario.height});
-    } finally {
-      await rm(folder, {recursive: true, force: true});
-    }
+    });
   });
 }

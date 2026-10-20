@@ -75,6 +75,7 @@ async function fixture({ mode = "fullscreen", mutate, earlyContext, canonical = 
   const failures = [];
   const keys = [];
   const early = [];
+  const sizes = [];
   let session, parent;
   const console = new VirtualConsole();
   console.on("jsdomError", (error) => failures.push(error.message));
@@ -168,7 +169,7 @@ async function fixture({ mode = "fullscreen", mutate, earlyContext, canonical = 
         share: async () => ({}),
         native: async () => ({}),
         haptic() {},
-        resize() {},
+        resize(height) { sizes.push(height); },
         close() {},
       });
     },
@@ -191,6 +192,7 @@ async function fixture({ mode = "fullscreen", mutate, earlyContext, canonical = 
     failures,
     keys,
     elements,
+    sizes,
     wait,
     context(delta) {
       // Exercise a genuinely partial wire notification, not a fixture-side merged snapshot.
@@ -339,6 +341,8 @@ for (const canonical of [false, true]) {
       await f.wait(() => values().every((value) => value === ""));
       await f.context({ displayMode: "fullscreen" });
       await f.wait(() => values()[1] === "42px");
+      // Let the real SDK's initial auto-resize frame finish while its transport is open.
+      await f.wait(() => f.sizes.length > 0);
       f.unmount();
       assert.deepEqual(values(), ["3px", "", "", ""], "cleanup restores pre-existing declarations");
       await f.context({ safeAreaInsets: { top: 99, right: 99, bottom: 99, left: 99 } });
