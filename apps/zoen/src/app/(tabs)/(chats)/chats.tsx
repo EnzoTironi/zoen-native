@@ -22,7 +22,8 @@ const filters = [
 export default function Chats() {
   const { snapshot, store } = useClient();
   const { colors } = useTheme();
-  const { items } = useHome();
+  const home = useHome();
+  const { items } = home;
   const [filter, setFilter] = useState<string>('all');
   const conversations = useMemo(
     () =>
@@ -78,7 +79,7 @@ export default function Chats() {
               </Text>
               <ChatsActions />
             </View>
-            <MiniappRail items={items} />
+            <MiniappRail key={home.ownerKey} items={items} onReorder={home.reorderItems} />
             <ScrollView
               horizontal
               style={{ backgroundColor: 'transparent' }}

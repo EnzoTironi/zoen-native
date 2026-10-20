@@ -656,6 +656,8 @@ export default function Chat() {
           >
             <ConversationRail onHeight={setRailHeight}>
               <MiniappRail
+                key={`${cards.ownerKey}:${id}`}
+                onReorder={cards.reorder}
                 items={conversationMiniapps}
                 paddingVertical={6}
                 renderAccessory={(item) => (

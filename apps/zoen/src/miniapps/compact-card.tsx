@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { PHOTO_CARD_TEXT, PHOTO_CARD_SECONDARY, PHOTO_CARD_TEXT_GRADIENT } from './photo-card';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Text, View, useWindowDimensions } from 'react-native';
+import { Text, View, useWindowDimensions, type AccessibilityActionEvent } from 'react-native';
 import { MessagePressable as Pressable } from '../components/message-interaction';
 import { t, formatLocale } from '../i18n/index.ts';
 import type { ItemDetail } from '../core/generated/ItemDetail';
@@ -48,7 +48,12 @@ export type CompactMiniappCardProps = {
   /** Home/rail tiles remain square; message attachments follow their content. */
   layout?: 'tile' | 'message';
   onPress?: () => void;
+  onAccessibilityTap?: () => void;
   onLongPress?: () => void;
+  editing?: boolean;
+  accessibilityHint?: string;
+  accessibilityActions?: { name: string; label: string }[];
+  onAccessibilityAction?: (event: AccessibilityActionEvent) => void;
   /** A sibling control, so menus never become an interactive child of the card. */
   accessory?: ReactNode;
   /** Passive content inside the same accessible card action. */
@@ -61,7 +66,12 @@ export function CompactMiniappCard({
   size = 152,
   layout = 'tile',
   onPress,
+  onAccessibilityTap,
   onLongPress,
+  editing = false,
+  accessibilityHint,
+  accessibilityActions,
+  onAccessibilityAction,
   accessory,
   footer,
 }: CompactMiniappCardProps) {
@@ -108,11 +118,14 @@ export function CompactMiniappCard({
         testID={`miniapp-card-${item.id}`}
         accessibilityRole="button"
         accessibilityLabel={summary}
-        accessibilityHint={t('miniapps.openMiniapp')}
+        accessibilityHint={accessibilityHint ?? t('miniapps.openMiniapp')}
+        accessibilityActions={accessibilityActions}
+        onAccessibilityAction={onAccessibilityAction}
         onPress={
           onPress ?? (() => router.push({ pathname: '/miniapp/[id]', params: { id: item.id } }))
         }
         onLongPress={onLongPress}
+        onAccessibilityTap={onAccessibilityTap}
         style={({ pressed }) => ({
           minHeight: minimumHeight,
           borderRadius: 24,
@@ -121,8 +134,8 @@ export function CompactMiniappCard({
           padding: photoSource ? 0 : 12,
           gap: photoSource ? 0 : 6,
           backgroundColor: art ? (papers[art] ?? '#F5F4EF') : '#F5F4EF',
-          opacity: pressed && !photoSource ? 0.75 : 1,
-          transform: [{ scale: pressed && photoSource && !reducedMotion ? 0.985 : 1 }],
+          opacity: pressed && !photoSource && !editing ? 0.75 : 1,
+          transform: [{ scale: pressed && photoSource && !reducedMotion && !editing ? 0.985 : 1 }],
         })}
       >
         {photoSource ? (
