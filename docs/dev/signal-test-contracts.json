@@ -1839,7 +1839,32 @@
       "adoptionBoundary": "Keep explicit immutable IDs and test two-item mixed success/failure without cross-contamination; assert stable observable outcomes rather than raced intermediate transfer state.",
       "upstreamExecution": "NOT_RUN",
       "zoenStatusAtComparedSource": "partial",
-      "guardedRisk": "One item status leaks to another or transient response destroys original identity."
+      "guardedRisk": "One item status leaks to another or transient response destroys original identity.",
+      "implementedZoenSubset": {
+        "test": "crates/client-core/src/net/file_demand_tests.rs::mixed_historical_downloads_preserve_item_routing_and_retry_after_corruption",
+        "comparedBase": "e902143f03332a42f677b64ec020aae3ca9477ae",
+        "privateSourceOverlays": [
+          "canonical-v155 manifest 4d7ac3a22d98e428c4944ce93ab0c70a2cf3f631503aa306121511cffc9b8bf4",
+          "registry-v158 manifest 98f0b16a31c603ef0b93510ff104152ee21596a95fe94dc3dece8f43aaa21441",
+          "exact root-proposed test file captured at 66b2634d00d0021ecdbb44b716e34b2758fa7647"
+        ],
+        "testSourceSha256": "23dd7c9eb37cdb3235cc9238eec377002a999ab2a316b2be968c643524ac25e9",
+        "status": "partial",
+        "verification": "Private original Zoen regression: one exact focused test passed (554 filtered, zero failed or ignored). Execution took 10.20 seconds after 21.83 seconds of cached compilation. Strict client-core lib/tests Clippy with --no-deps and -D warnings passed; scoped rustfmt passed. Root production media/files/files_api/file_demand sources matched exactly; private net.rs differs only by the unrelated cfg(test) incoming_pipeline module registration. No upstream Signal suite, full core/app check, native/device or deployed service qualification was run.",
+        "boundary": "Two independent native accounts ingest signed histories for two immutable file Items, each with two versions; current versions preload while both historical versions are absent. Real media_worker and synthetic loopback HTTP serve one unchanged ciphertext and one byte-flipped ciphertext, alternating which Item fails. The successful historical SHA/bytes remain exact; failed bytes stay unreadable and demand leases release. Replacing the worker and repairing only transport bytes lets the same account/IDs retry the failed historical version with exactly one requested bad blob while retaining the successful cache. Complete ItemDetail/version projections, timeline, outbox intent and verified log are unchanged. Corruption fails the signed ciphertext SHA256 precheck, not a demonstrated AEAD-tag branch. Invalid is the own five-second demand-timeout result; neither retry constants nor Signal terminal/permanent policy is imported. The test does not force network completion order, prove same-running-worker backoff recovery, exercise pending/message-not-found/terminal statuses, positional pointer or long-text slot policy, or qualify disk reopen, MLS/WebSocket transport, large/multichunk media or iPhone lifecycle.",
+        "sourceEvidence": [
+          {
+            "path": "crates/client-core/src/net/file_demand_tests.rs",
+            "lines": [478, 581],
+            "sha256": "23dd7c9eb37cdb3235cc9238eec377002a999ab2a316b2be968c643524ac25e9",
+            "commit": "07f0ea68e134f80dcd54ca494cb5e2ad20f35040",
+            "url": "https://github.com/EnzoTironi/zoen-native/blob/07f0ea68e134f80dcd54ca494cb5e2ad20f35040/crates/client-core/src/net/file_demand_tests.rs#L478-L581"
+          }
+        ],
+        "executionReceipt": "/private/tmp/zoen-signal-c17-v161/focused-test.json",
+        "clippyReceipt": "/private/tmp/zoen-signal-c17-v161/scoped-clippy.json",
+        "commit": "07f0ea68e134f80dcd54ca494cb5e2ad20f35040"
+      }
     },
     {
       "id": "C18",
