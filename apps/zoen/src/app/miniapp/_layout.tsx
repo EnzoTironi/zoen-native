@@ -1,6 +1,4 @@
-import { Stack, router } from 'expo-router';
-import { t } from '../../i18n/index.ts';
-import { IconButton } from '../../components/primitives';
+import { Stack } from 'expo-router';
 import { SkyScene } from '../../components/sky-background';
 import { useTheme } from '../../theme';
 
@@ -22,22 +20,7 @@ export default function AppsLayout() {
           scrollEdgeEffects: { top: 'hidden', bottom: 'hidden' },
         }}
       >
-        <Stack.Screen
-          name="[id]"
-          options={{
-            headerBackVisible: false,
-            headerLeft: () => (
-              <IconButton
-                name={{ ios: 'xmark', android: 'close', web: 'close' }}
-                label={t('common.close')}
-                onPress={() => {
-                  if (router.canGoBack()) router.back();
-                  else router.replace('/');
-                }}
-              />
-            ),
-          }}
-        />
+        <Stack.Screen name="[id]" options={{ headerShown: false }} />
       </Stack>
     </SkyScene>
   );

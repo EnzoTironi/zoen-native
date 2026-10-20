@@ -57,6 +57,7 @@ const icons = {
   'move-earlier': 'arrow_upward',
   'move-later': 'arrow_downward',
   history: 'history',
+  details: 'info',
 } as const satisfies Record<HomeCardActionId, string>;
 
 // Preserve the current generic HomeActions behavior; wider action parity is separate.

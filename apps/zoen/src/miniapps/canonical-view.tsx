@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { AppState, Linking, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import { locale, t } from '../i18n/index.ts';
 import type { ItemDetail } from '../core/types';
@@ -197,6 +198,11 @@ function DrawingDocument({
   const { resource, manifest } = verified;
   const { store } = useClient();
   const { colors, scheme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const safeAreaInsets = useMemo(
+    () => (fill ? insets : { top: 0, right: 0, bottom: 0, left: 0 }),
+    [fill, insets],
+  );
   const dialogs = useDialogs();
   const frame = useRef<MiniappFrameHandle>(null);
   const session = useRef<MiniappSession | null>(null);
@@ -209,11 +215,11 @@ function DrawingDocument({
   const copyAction = useRef<(() => Promise<void>) | null>(null);
   const flushAction = useRef<(() => Promise<void>) | null>(null);
   const callbacks = useRef({ onDocumentController, onDocumentCopied });
-  const latest = useRef({ colors, scheme, dimensions, item });
+  const latest = useRef({ colors, scheme, dimensions, item, safeAreaInsets });
   useLayoutEffect(() => {
-    latest.current = { colors, scheme, dimensions, item };
+    latest.current = { colors, scheme, dimensions, item, safeAreaInsets };
     callbacks.current = { onDocumentController, onDocumentCopied };
-  }, [colors, scheme, dimensions, item, onDocumentController, onDocumentCopied]);
+  }, [colors, scheme, dimensions, item, safeAreaInsets, onDocumentController, onDocumentCopied]);
   const context = useCallback(
     () => ({
       theme: latest.current.scheme,
@@ -224,7 +230,7 @@ function DrawingDocument({
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       platform: process.env.EXPO_OS === 'web' ? 'web' : 'mobile',
       deviceCapabilities: { touch: true, hover: process.env.EXPO_OS === 'web' },
-      safeAreaInsets: { top: 0, right: 0, bottom: 0, left: 0 },
+      safeAreaInsets: latest.current.safeAreaInsets,
       styles: {
         variables: {
           '--color-background-primary': latest.current.colors.background,
@@ -439,7 +445,7 @@ function DrawingDocument({
   }, [store, checkOwner, context, doc, item.id, resource, manifest, dialogs, registerClose]);
   useEffect(() => {
     session.current?.syncContext();
-  }, [scheme, dimensions]);
+  }, [scheme, dimensions, safeAreaInsets]);
   const html = useMemo(() => sandboxHtml(resource.text, []), [resource.text]);
   const receive = useCallback((message: string) => {
     void session.current?.receive(message);
@@ -488,34 +494,20 @@ function DrawingDocument({
           ) : null}
         </View>
       ) : null}
-      <View
+      {/* Save announcements do not reserve space above the canvas. */}
+      <Text
         accessibilityLiveRegion="polite"
+        testID="drawing-save-status"
         style={{
-          paddingHorizontal: 16,
-          paddingVertical: 4,
-          minHeight: 48,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          overflow: 'hidden',
+          color: 'transparent',
         }}
       >
-        <Text
-          testID="drawing-save-status"
-          style={{ flex: 1, color: colors.secondary, fontSize: 12 }}
-        >
-          {copyBusy ? t('drawing.copying') : label}
-        </Text>
-        {pending && !error ? (
-          <NativeButton
-            secondary
-            label={t('drawing.saveNow')}
-            disabled={copyBlocked}
-            onPress={() => {
-              void flushAction.current?.().catch(() => setError(t('drawing.saveFailed')));
-            }}
-          />
-        ) : null}
-      </View>
+        {copyBusy ? t('drawing.copying') : label}
+      </Text>
       <View
         style={{ flex: 1, minHeight: 0 }}
         onLayout={(event) => {

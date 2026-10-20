@@ -2,6 +2,7 @@ import { t, locale } from '../i18n/index.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { Linking, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import type { ItemDetail } from '../core/types';
 import type { AppSpecDto } from '../core/generated/AppSpecDto';
@@ -280,6 +281,11 @@ function ReadyView({
   const { resource, manifest } = verified;
   const { store, snapshot } = useClient();
   const { colors, scheme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const safeAreaInsets = useMemo(
+    () => (fill ? insets : { top: 0, right: 0, bottom: 0, left: 0 }),
+    [fill, insets],
+  );
   const dialogs = useDialogs();
   const consent = useDeviceConsent();
   const ask = consent.ask;
@@ -296,10 +302,10 @@ function ReadyView({
     spec.tools.filter((tool) => tool.visibility.includes('app')).map((tool) => tool.name),
   );
   const tools = useMemo(() => new Set<string>(JSON.parse(encodedTools)), [encodedTools]);
-  const latest = useRef({ item, snapshot, scheme, colors, width });
+  const latest = useRef({ item, snapshot, scheme, colors, width, safeAreaInsets });
   useLayoutEffect(() => {
-    latest.current = { item, snapshot, scheme, colors, width };
-  }, [item, snapshot, scheme, colors, width]);
+    latest.current = { item, snapshot, scheme, colors, width, safeAreaInsets };
+  }, [item, snapshot, scheme, colors, width, safeAreaInsets]);
   const permission = useCallback(
     async (capability: string, purpose: string, assertActive?: () => void) => {
       const check = assertActive ?? authority.current?.check;
@@ -358,7 +364,7 @@ function ReadyView({
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       platform: process.env.EXPO_OS === 'web' ? 'web' : 'mobile',
       deviceCapabilities: { touch: true, hover: process.env.EXPO_OS === 'web' },
-      safeAreaInsets: { top: 0, right: 0, bottom: 0, left: 0 },
+      safeAreaInsets: current.safeAreaInsets,
       zoen: { members },
     };
   }, [item.space_id]);
@@ -568,7 +574,7 @@ function ReadyView({
   ]);
   useEffect(() => {
     session.current?.sync();
-  }, [item.version, scheme, snapshot, width]);
+  }, [item.version, scheme, snapshot, width, safeAreaInsets]);
   const html = useMemo(() => sandboxHtml(resource.text, hosts), [resource.text, hosts]);
   const receive = useCallback((message: string) => {
     void session.current?.receive(message);
@@ -586,7 +592,7 @@ function ReadyView({
           <NativeButton secondary label={t('miniapps.reopenInterface')} onPress={onReload} />
         </View>
       ) : null}
-      {manifest.allowedDomains.some((host) => !hosts.includes(host)) ? (
+      {!fill && manifest.allowedDomains.some((host) => !hosts.includes(host)) ? (
         <NativeButton
           secondary
           label={t('miniapps.enableOnlineMaps')}

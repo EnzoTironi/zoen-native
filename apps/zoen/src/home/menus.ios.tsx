@@ -58,6 +58,7 @@ export function HomeCardMenu({
   onMoveEarlier,
   onMoveLater,
   onHistory,
+  onDetails,
   testID,
   conversationPinned,
   onToggleConversation,
@@ -108,6 +109,9 @@ export function HomeCardMenu({
             systemImage="clock.arrow.circlepath"
             onPress={onHistory}
           />
+        ) : null}
+        {onDetails ? (
+          <Button label={t('common.details')} systemImage="info.circle" onPress={onDetails} />
         ) : null}
       </Menu>
     </Host>

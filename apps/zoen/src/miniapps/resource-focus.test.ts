@@ -16,6 +16,7 @@ const exportsByPort: Record<string, string[]> = {
   'react/jsx-runtime': ['jsx', 'jsxs'],
   'expo-router': ['router', 'useFocusEffect'],
   'react-native': ['AppState', 'Linking', 'Text', 'View'],
+  'react-native-safe-area-context': ['useSafeAreaInsets'],
   'expo-crypto': ['randomUUID', 'CryptoDigestAlgorithm', 'CryptoEncoding', 'digestStringAsync'],
   '../core/provider': ['useClient'],
   '../components/primitives': ['Loading', 'NativeButton', 'Surface'],
@@ -179,6 +180,9 @@ function fixture() {
       Text: 'Text',
       Linking: {},
       AppState: { addEventListener: () => ({ remove() {} }) },
+    },
+    'react-native-safe-area-context': {
+      useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
     },
     'expo-crypto': {
       randomUUID: () => '00000000-0000-4000-8000-000000000001',

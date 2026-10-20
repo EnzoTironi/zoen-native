@@ -7,6 +7,7 @@ export type HomeCardMenuProps = {
   onMoveEarlier?: () => void;
   onMoveLater?: () => void;
   onHistory?: () => void;
+  onDetails?: () => void;
   conversationPinned?: boolean;
   onToggleConversation?: () => void;
   onOrganizeConversation?: () => void;

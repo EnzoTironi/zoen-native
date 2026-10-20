@@ -75,7 +75,7 @@ function Navigation() {
               name="miniapp"
               options={{
                 // Android's Material form sheet does not support a nested native stack.
-                // Its full-screen modal keeps the App's own native toolbar and history.
+                // Its full-screen modal supports the App's management routes and history.
                 presentation:
                   process.env.EXPO_OS === 'ios'
                     ? 'formSheet'
@@ -86,6 +86,7 @@ function Navigation() {
                 sheetAllowedDetents: [1],
                 sheetGrabberVisible: true,
                 sheetExpandsWhenScrolledToEdge: false,
+                gestureEnabled: true,
                 headerShown: false,
               }}
             />

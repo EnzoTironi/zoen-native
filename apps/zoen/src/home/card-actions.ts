@@ -7,7 +7,8 @@ export type HomeCardActionId =
   | 'conversation-organize'
   | 'move-earlier'
   | 'move-later'
-  | 'history';
+  | 'history'
+  | 'details';
 export type HomeCardAction = {
   id: HomeCardActionId;
   label: string;
@@ -24,6 +25,7 @@ export function homeCardActions({
   onMoveEarlier,
   onMoveLater,
   onHistory,
+  onDetails,
 }: HomeCardMenuProps): HomeCardAction[] {
   const actions: HomeCardAction[] = [];
   if (onToggle)
@@ -49,5 +51,6 @@ export function homeCardActions({
   if (onMoveLater)
     actions.push({ id: 'move-later', label: t('home.moveLater'), onPress: onMoveLater });
   if (onHistory) actions.push({ id: 'history', label: t('miniapps.history'), onPress: onHistory });
+  if (onDetails) actions.push({ id: 'details', label: t('common.details'), onPress: onDetails });
   return actions;
 }
