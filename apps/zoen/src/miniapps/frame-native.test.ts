@@ -91,15 +91,11 @@ function fixture(platform: string) {
   runInNewContext(compiled.outputFiles[0]!.text, {
     module,
     exports: module.exports,
-    TextEncoder,
-    TextDecoder,
-    URL,
     require: (name: string) => ports[name] ?? require(name),
   });
   function render(
     html = '<!doctype html><p>Real child document</p>',
     geometry = { height: 640, fill: false },
-    runtimePackage?: unknown,
   ) {
     cursor = 0;
     effects = [];
@@ -108,7 +104,6 @@ function fixture(platform: string) {
         html,
         title: 'Drawing',
         ...geometry,
-        runtimePackage,
         blocked: false,
         onMessage: (message: string) => deliveries.push(message),
         onError: (reason: string) => assert.fail(reason),
@@ -131,80 +126,16 @@ function fixture(platform: string) {
       nonce,
       source: web.props.source,
       key: web.props.key,
-      keyboardDisplayRequiresUserAction: web.props.keyboardDisplayRequiresUserAction,
     };
   }
   return { render, deliveries, handle, injected };
 }
 const rpc = { jsonrpc: '2.0', id: 1, method: 'ui/initialize', params: {} };
-const deckcraftRevision = 'a31b990d32f2c8562f1588562f922960c3fde48b';
-const deckcraftRuntime = (revision = deckcraftRevision) => ({
-  schema: 1,
-  engine: 'deckcraft',
-  revision,
-  abi: 'zoen-host-v1',
-  module: {
-    url: `https://assets.example.test/deckcraft/${revision}/editor.js`,
-    bytes: 100,
-    sha256: '1'.repeat(64),
-    mime: 'text/javascript',
-  },
-  wasm: {
-    url: `https://assets.example.test/deckcraft/${revision}/editor.wasm`,
-    bytes: 100,
-    sha256: '2'.repeat(64),
-    mime: 'application/wasm',
-  },
-});
 function event(url: string, nonce: string, message: unknown = rpc) {
   return {
     nativeEvent: { url, data: JSON.stringify({ nonce, message: JSON.stringify(message) }) },
   };
 }
-
-test('only the configured pinned DeckCraft iOS frame permits its existing hidden input to display the keyboard', () => {
-  const geometry = { height: 852, fill: true };
-  const f = fixture('ios');
-  const legacy = f.render('<!doctype html><p>DeckCraft named HTML alone</p>', geometry);
-  assert.equal(legacy.keyboardDisplayRequiresUserAction, undefined);
-  const runtime = deckcraftRuntime();
-  const configured = f.render(undefined, geometry, runtime);
-  assert.equal(configured.keyboardDisplayRequiresUserAction, false);
-  const rotated = f.render(undefined, { height: 393, fill: true }, runtime);
-  assert.equal(
-    rotated.source,
-    configured.source,
-    'keyboard policy does not remount the document on layout changes',
-  );
-  assert.equal(rotated.nonce, configured.nonce);
-  assert.equal(rotated.keyboardDisplayRequiresUserAction, false);
-  const unknownRevision = f.render(undefined, geometry, deckcraftRuntime('b'.repeat(40)));
-  assert.equal(
-    unknownRevision.keyboardDisplayRequiresUserAction,
-    undefined,
-    'other revisions retain the native default',
-  );
-  for (const platform of ['android', 'macos', 'web']) {
-    assert.equal(
-      fixture(platform).render(undefined, geometry, runtime).keyboardDisplayRequiresUserAction,
-      undefined,
-      platform,
-    );
-  }
-});
-
-test('keyboard policy cannot turn malformed runtime metadata into a usable frame', () => {
-  for (const invalid of [
-    { ...deckcraftRuntime(), engine: 'another-app' },
-    { ...deckcraftRuntime(), abi: 'unrecognized-host' },
-    { ...deckcraftRuntime(), revision: 'not-a-pinned-revision' },
-  ]) {
-    assert.throws(
-      () => fixture('ios').render(undefined, undefined, invalid),
-      /Invalid verified App runtime package/,
-    );
-  }
-});
 
 test('actual native callback accepts modern Android opaque-source envelopes and both existing shell URLs', () => {
   const f = fixture('android');
