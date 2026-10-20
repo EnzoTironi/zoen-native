@@ -1,17 +1,17 @@
-import { t } from '../i18n/index.ts';
+import { t } from '../../i18n/index.ts';
 import { Host, Picker } from '@expo/ui';
 import { useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text } from 'react-native';
-import { useClient } from '../core/provider';
-import { useCoreQuery } from '../core/query';
-import type { AppSpecDto } from '../core/generated/AppSpecDto';
-import { EmptyState, Loading, NativeButton, Surface } from '../components/primitives';
-import { useTheme } from '../theme';
-import { SchemaForm } from '../miniapps/schema-form';
-import { exactJson, formValue, parseSchema } from '../miniapps/schema';
-import { useDirtyEditor } from '../documents/use-dirty-editor';
-import { useDialogs } from '../components/dialogs';
+import { useClient } from '../../core/provider';
+import { useCoreQuery } from '../../core/query';
+import type { AppSpecDto } from '../../core/generated/AppSpecDto';
+import { EmptyState, Loading, NativeButton, Surface } from '../../components/primitives';
+import { useTheme } from '../../theme';
+import { SchemaForm } from '../../miniapps/schema-form';
+import { exactJson, formValue, parseSchema } from '../../miniapps/schema';
+import { useDirtyEditor } from '../../documents/use-dirty-editor';
+import { useDialogs } from '../../components/dialogs';
 
 function Install({
   spec,

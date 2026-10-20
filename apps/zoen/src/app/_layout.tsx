@@ -74,6 +74,13 @@ function Navigation() {
             <Stack.Screen name="(tabs)" options={{ title: '' }} />
             <Stack.Screen name="chat/[id]" options={{ title: '' }} />
             <Stack.Screen
+              name="miniapps"
+              options={{
+                presentation: process.env.EXPO_OS === 'ios' ? 'fullScreenModal' : 'card',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
               name="miniapp"
               options={{
                 presentation: process.env.EXPO_OS === 'web' ? 'card' : 'fullScreenModal',
