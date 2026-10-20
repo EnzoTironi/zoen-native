@@ -2228,6 +2228,9 @@ mod tests {
         .await
         .expect("replay/live handoff did not finish");
         assert!(matches!(exit, Exit::Stop));
+        // Aborting the spawned media task does not synchronously drop its lease.
+        ctx.engine.revoke();
+        assert_eq!(Arc::strong_count(&engine), 1);
         drop(ctx);
         drop(engine);
         let mut reopened = Engine::open(reader_path.to_str().unwrap()).unwrap();
