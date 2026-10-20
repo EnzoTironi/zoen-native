@@ -255,7 +255,8 @@ const hikeState = {
   album: [],
 };
 for (const scenario of [
-  { id: 'list', width: 420, height: 760, state: listState, selector: '.builtin h1' },
+  // Host context can render before the independent canonical-state notification.
+  { id: 'list', width: 420, height: 760, state: listState, selector: '.builtin h1', resultDelay: 500 },
   { id: 'list', width: 340, height: 680, state: listState, selector: '.builtin h1' },
   {
     id: 'list',
@@ -283,7 +284,7 @@ for (const scenario of [
       const box=e=>{const r=e.getBoundingClientRect();return{x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
       const measure=()=>{
         const element=document.querySelector(${JSON.stringify(scenario.selector)});
-        if(!element||document.documentElement.style.getPropertyValue('--zoen-host-safe-top')!==${JSON.stringify(insets.top + 'px')}){requestAnimationFrame(measure);return;}
+        if(!element?.textContent?.includes(${JSON.stringify(scenario.state.business ?? scenario.state.title)})||document.documentElement.style.getPropertyValue('--zoen-host-safe-top')!==${JSON.stringify(insets.top + 'px')}){requestAnimationFrame(measure);return;}
         requestAnimationFrame(()=>requestAnimationFrame(()=>parent.postMessage({qaSafe:true,title:element.textContent,header:box(element),frame:{width:innerWidth,height:innerHeight},body:box(document.body),bottom:document.querySelector('.bottom button')?box(document.querySelector('.bottom button')):null,edges:['top','right','bottom','left'].map(e=>document.documentElement.style.getPropertyValue('--zoen-host-safe-'+e)),errors},'*')));
       };requestAnimationFrame(measure);
     })();`;
@@ -291,7 +292,7 @@ for (const scenario of [
       const host = `import{MiniappSession}from'./apps/zoen/src/miniapps/protocol.ts';
       const frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.style='border:0;width:${scenario.width}px;height:${scenario.height}px';
       const context={locale:'en',theme:'light',displayMode:'fullscreen',safeAreaInsets:${JSON.stringify(insets)}};
-      const session=new MiniappSession({send:m=>frame.contentWindow.postMessage(m,'*'),initialize:()=>({hostInfo:{name:'Zoen owned host',version:'test'},hostCapabilities:{serverTools:{},experimental:{zoen:{native:[],services:['state','theme']}}},hostContext:context}),context:()=>context,state:()=>({content:[],structuredContent:${JSON.stringify(scenario.state)}}),tools:new Set(),resourceUri:'ui://builtin/${scenario.id}',resource:async()=>({contents:[]}),call:async()=>{throw Error('No tools during geometry')},native:async()=>({}),share:async()=>({}),openLink:async()=>({}),haptic(){},resize(){},close(){}});
+      const session=new MiniappSession({send:m=>{const deliver=()=>frame.contentWindow.postMessage(m,'*');if(m.method==='ui/notifications/tool-result'&&${scenario.resultDelay ?? 0})setTimeout(deliver,${scenario.resultDelay ?? 0});else deliver();},initialize:()=>({hostInfo:{name:'Zoen owned host',version:'test'},hostCapabilities:{serverTools:{},experimental:{zoen:{native:[],services:['state','theme']}}},hostContext:context}),context:()=>context,state:()=>({content:[],structuredContent:${JSON.stringify(scenario.state)}}),tools:new Set(),resourceUri:'ui://builtin/${scenario.id}',resource:async()=>({contents:[]}),call:async()=>{throw Error('No tools during geometry')},native:async()=>({}),share:async()=>({}),openLink:async()=>({}),haptic(){},resize(){},close(){}});
       addEventListener('message',event=>{if(event.source!==frame.contentWindow)return;if(event.data?.qaSafe){const result=document.createElement('pre');result.id='result';result.textContent=JSON.stringify(event.data);document.body.append(result);}else void session.receive(JSON.stringify(event.data));});
       frame.srcdoc=${JSON.stringify(html)};document.body.append(frame);`;
       const bundle = await build({

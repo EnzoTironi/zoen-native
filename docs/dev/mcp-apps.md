@@ -359,6 +359,12 @@ removing its temporary profile. Clock-driven regressions exercise slow startup,
 expiration and cleanup without delaying the suite. This browser proof does not
 establish iOS WebKit or physical-device acceptance.
 
+The built-in safe-area browser probe waits for both the host insets and the
+canonical title before measuring. Its first List scenario deliberately delays
+the independent state notification, so the initial placeholder cannot be
+mistaken for the loaded application. Geometry and content assertions still run
+against the produced application inside the normal opaque sandbox.
+
 ## Implementation map
 
 - [Remote connection and bounds](../../apps/zoen/src/miniapps/remote-session.ts)
