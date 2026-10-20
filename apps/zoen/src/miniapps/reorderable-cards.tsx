@@ -625,40 +625,42 @@ function DraggableCard({
     };
   });
   return (
-    <GestureDetector gesture={pan}>
-      <Animated.View
-        collapsable={false}
-        style={[
-          {
-            position: 'absolute',
-            width: size,
-            height: size,
-            top: 0,
-            left: 0,
-            shadowColor: '#000000',
-            shadowRadius: 16,
-            shadowOffset: { width: 0, height: 8 },
-          },
-          style,
-        ]}
-      >
-        {editing ? (
-          <View
-            pointerEvents="none"
-            accessible={false}
-            style={{
-              position: 'absolute',
-              inset: -2,
-              borderRadius: APP_CARD_METRICS.radius + 2,
-              borderCurve: 'continuous',
-              borderWidth: 1,
-              borderColor: outlineColor,
-              opacity: 0.22,
-            }}
-          />
-        ) : null}
-        {children}
-      </Animated.View>
-    </GestureDetector>
+    <Animated.View
+      collapsable={false}
+      style={[
+        {
+          position: 'absolute',
+          width: size,
+          height: size,
+          top: 0,
+          left: 0,
+          shadowColor: '#000000',
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 8 },
+        },
+        style,
+      ]}
+    >
+      <GestureDetector gesture={pan}>
+        <View collapsable={false} style={{ width: size, height: size }}>
+          {editing ? (
+            <View
+              pointerEvents="none"
+              accessible={false}
+              style={{
+                position: 'absolute',
+                inset: -2,
+                borderRadius: APP_CARD_METRICS.radius + 2,
+                borderCurve: 'continuous',
+                borderWidth: 1,
+                borderColor: outlineColor,
+                opacity: 0.22,
+              }}
+            />
+          ) : null}
+          {children}
+        </View>
+      </GestureDetector>
+    </Animated.View>
   );
 }

@@ -320,8 +320,10 @@ function fixture(reducedMotion = false, queuedScheduler = false) {
     childTree = child.render(children()[0]!.props);
   };
   const card = () => children()[0]!.props.children as Element;
+  const animatedTree = () =>
+    childTree.type === 'AnimatedView' ? childTree : (childTree.props.children as Element);
   const style = () => {
-    const animated = childTree.props.children as Element;
+    const animated = animatedTree();
     return (animated.props.style as { read?: () => unknown }[]).find((v) => v.read)!.read!() as {
       transform: Record<string, unknown>[];
     };
@@ -333,7 +335,7 @@ function fixture(reducedMotion = false, queuedScheduler = false) {
     geometry: () => ({
       container: tree.props.style as Record<string, unknown>,
       cards: children().map((element) => element.props),
-      nativeFrame: (childTree.props.children as Element).props.style as Record<string, unknown>[],
+      nativeFrame: animatedTree().props.style as Record<string, unknown>[],
     }),
     scrollPort,
     render,
@@ -813,7 +815,7 @@ test('nonediting first frames and rehydrated positions never spring, while inten
   const f = fixture();
   const read = (card: ReturnType<typeof f.nativeCard>) => {
     const tree = card.render();
-    const animated = tree.props.children as Element;
+    const animated = tree.type === 'AnimatedView' ? tree : (tree.props.children as Element);
     return (animated.props.style as { read?: () => unknown }[]).find((value) => value.read)!
       .read!() as { transform: Record<string, unknown>[] };
   };
@@ -847,4 +849,72 @@ test('nonediting first frames and rehydrated positions never spring, while inten
   reduced.activate();
   reduced.style();
   assert.deepEqual(reduced.springs, [], 'Reduce Motion remains direct even during editing');
+});
+
+// RNGH3's display:contents detector measures its child's untransformed layout.
+// iOS shouldReceiveTouch applies negative hitSlop in the detector's coordinate
+// space, so translations must be inherited from ancestors, not only its child.
+function nativeDetectorFrame(tree: Element) {
+  let x = 0,
+    y = 0,
+    current = tree;
+  while (current.type !== 'GestureDetector') {
+    const styles = Array.isArray(current.props.style) ? current.props.style : [current.props.style];
+    for (const value of styles) {
+      if (!value) continue;
+      const style = typeof value.read === 'function' ? value.read() : value;
+      for (const transform of style.transform ?? []) {
+        x += transform.translateX ?? 0;
+        y += transform.translateY ?? 0;
+      }
+    }
+    current = current.props.children as Element;
+    assert.ok(current && !Array.isArray(current), 'one detector child in card wrapper');
+  }
+  const target = current.props.children as Element;
+  const targetStyles = Array.isArray(target.props.style)
+    ? target.props.style
+    : [target.props.style];
+  const targetLayout = Object.assign({}, ...targetStyles.filter(Boolean).filter((v) => !v.read));
+  return { x, y, width: targetLayout.width, height: targetLayout.height };
+}
+test('native editing hit frames follow every translated rail and grid card while controls remain excluded', () => {
+  for (const horizontal of [true, false]) {
+    const f = fixture();
+    Object.assign(f.props, { horizontal, columns: horizontal ? 3 : 2 });
+    f.render();
+    f.activate();
+    f.release(true);
+    f.render();
+    for (const [index, id] of ['a', 'b', 'c'].entries()) {
+      const native = f.nativeCard(id);
+      const frame = nativeDetectorFrame(native.render());
+      const expected = {
+        x: horizontal ? index * 170 : (index % 2) * 170,
+        y: horizontal ? 0 : Math.floor(index / 2) * 170,
+        width: 160,
+        height: 160,
+      };
+      assert.deepEqual(
+        frame,
+        expected,
+        `${horizontal ? 'rail' : 'grid'} ${id}: detector inherits the visible card position`,
+      );
+      // UIKit's first native hitSlop gate must admit the painted cover center.
+      const paintedX = expected.x + 80,
+        paintedY = expected.y + 96;
+      const localX = paintedX - frame.x,
+        localY = paintedY - frame.y;
+      assert.equal(
+        native.holdAt(localX, localY),
+        true,
+        `${id}: visible cover reaches native activation`,
+      );
+      native.gesture('onDeactivate', { canceled: true });
+      native.gesture('onFinalize');
+      assert.equal(native.holdAt(34, 34), false, `${id}: 44pt control touch never starts pan`);
+    }
+    assert.deepEqual(f.writes, []);
+    assert.equal(f.opens, 0);
+  }
 });
