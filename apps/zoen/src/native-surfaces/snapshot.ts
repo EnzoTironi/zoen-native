@@ -146,6 +146,7 @@ export function miniappSnapshot(item: SnapshotItem): MiniappSnapshot | null {
     'trip',
     'hike',
     'drawing',
+    'slides',
   ].includes(String(value.art))
     ? String(value.art)
     : undefined;

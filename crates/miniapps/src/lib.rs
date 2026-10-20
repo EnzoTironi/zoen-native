@@ -758,6 +758,15 @@ fn pet_mood(v: &Value) -> &'static str {
 pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64)>) {
     let v = view(app, state, now);
     match app {
+        "deckcraft" => {
+            let slides = state["slides"].as_u64().unwrap_or(0);
+            let label = if slides == 1 {
+                t("1 slide", "1 slide")
+            } else {
+                tr!("{} slides", "{} slides", slides)
+            };
+            (label, vec![])
+        }
         "excalidraw" => {
             let count = state["elementCount"].as_u64().unwrap_or(0);
             let label = if count == 1 {
@@ -950,6 +959,9 @@ pub fn snapshot(app: &str, state: &Value, item_id: &str, now: i64) -> Option<Val
     let v = view(app, state, now);
     let link = format!("zoen://app/{item_id}");
     let snap = match app {
+        "deckcraft" => {
+            json!({"template":"caption","title":state["title"],"eyebrow":t("Apresentação", "Presentation"),"detail":headline(app,state,now).0,"accentHex":"#9B6E51","symbol":"rectangle.stack","art":"slides"})
+        }
         "excalidraw" => {
             json!({"template":"caption","title":state["title"],"eyebrow":"Excalidraw","detail":headline(app,state,now).0,"accentHex":"#6965DB","symbol":"pencil.and.outline","art":"drawing"})
         }

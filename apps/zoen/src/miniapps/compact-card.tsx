@@ -23,6 +23,7 @@ const artwork = {
   trip: require('../../assets/miniapps/trip.svg'),
   hike: require('../../assets/miniapps/hike.svg'),
   drawing: require('../../assets/miniapps/drawing.svg'),
+  slides: require('../../assets/miniapps/slides.svg'),
 };
 const photos = {
   'hike-tomales': require('../../assets/miniapps/hike-tomales.jpg'),
@@ -40,6 +41,7 @@ const papers: Record<string, string> = {
   trip: '#E1EBEE',
   hike: '#E2EBCF',
   drawing: '#EAF2FB',
+  slides: '#F7E9DA',
 };
 
 export type MiniappCardItem = Pick<ItemDetail, 'id' | 'version' | 'title' | 'app'> & {
