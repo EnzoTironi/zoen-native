@@ -1390,3 +1390,15 @@ diff --git a/node_modules/react-native-enriched-markdown/ios/generated/ReactCode
    bool autoFocus{false};
    bool scrollEnabled{false};
    EnrichedMarkdownTextInputMarkdownShortcutsStruct markdownShortcuts{};
+diff --git a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts
+--- a/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts
++++ b/node_modules/react-native-enriched-markdown/lib/module/EnrichedMarkdownTextInputNativeComponent.ts
+@@ -205,6 +205,8 @@
+    * @default true
+    */
+   editable?: boolean;
++  /** iOS-only opaque native checkpoint lease. Absent preserves ordinary volatile behavior. */
++  draftCheckpointToken?: string;
+   /**
+    * Whether the input should auto-focus on mount.
+    * @default false
