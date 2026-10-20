@@ -1,0 +1,13 @@
+{
+  "bytes": 11053,
+  "sha256": "1c9f57932fa00273b2524c5785f1f2f0863f9a04277acb889af458c1832e1f01",
+  "sources": {
+    "apps/zoen/node_modules/@noble/hashes/_md.js": "60cf3010fda89e3e4d3f0e7ff1ce249e9c467f34b4fd41b6fd6101d9f69be763",
+    "apps/zoen/node_modules/@noble/hashes/_u64.js": "b09da8c07fe8187c07649494cdb7cd0bcf13df90b506a9473d19e4d5f8c2e102",
+    "apps/zoen/node_modules/@noble/hashes/sha2.js": "471746bba6ec4c6238ca41358d1d3b40b6ff31cf3363f0b4d550c649c1a8e83b",
+    "apps/zoen/node_modules/@noble/hashes/utils.js": "037ad49adb78168b6b699598fd33f85f7877456b1d28b4d032e2a1a16807947c",
+    "apps/zoen/src/miniapps/runtime-browser.ts": "4b6cf0dc66ed4ec3ad79a0bf64cf8d0746f41743f4045e8a2918c19d6eda6851",
+    "apps/zoen/src/miniapps/runtime-package.ts": "8319762dc21338f041f7664a81243abfb45b8ea5350e3336789c382ac1efe2eb"
+  },
+  "notice": "@noble/hashes 2.4.0: MIT; vendored license in miniapps/deckcraft-ui/licenses/"
+}

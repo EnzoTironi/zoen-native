@@ -1,0 +1,2 @@
+Inter | Regular | fonts/inter/Inter-Regular.ttf | Latn | OFL-1.1 | fonts/inter/OFL.txt | 40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82 | https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip#extras/ttf/Inter-Regular.ttf
+Inter | Bold | fonts/inter/Inter-Bold.ttf | Latn | OFL-1.1 | fonts/inter/OFL.txt | 288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f | https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip#extras/ttf/Inter-Bold.ttf

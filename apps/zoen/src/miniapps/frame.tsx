@@ -13,14 +13,14 @@ import {
 } from './host-transport';
 
 export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(function MiniappFrame(
-  { html, onMessage, onError, height, title, blocked, fill = false },
+  { html, onMessage, onError, height, title, blocked, fill = false, runtimePackage },
   ref,
 ) {
   const view = useRef<WebView<object>>(null);
   const document = useMemo(() => {
     const nonce = randomUUID();
-    return { nonce, html: nativeMiniappHtml(html, 'Zoen', nonce) };
-  }, [html]);
+    return { nonce, html: nativeMiniappHtml(html, 'Zoen', nonce, runtimePackage) };
+  }, [html, runtimePackage]);
   // Layout/theme updates must not submit a fresh native source and reload the App.
   const source = useMemo(() => ({ html: document.html }), [document]);
   const active = useRef<typeof document | null>(document);

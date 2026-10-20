@@ -1,0 +1,47 @@
+{
+  "repository": "https://github.com/storytold/deckcraft",
+  "revision": "a31b990d32f2c8562f1588562f922960c3fde48b",
+  "version": "0.9.0",
+  "license": "MIT OR Apache-2.0",
+  "originalCargoLockSha256": "ae6a4aff5aba7e4718d76ba63f736e46b4579d925a82df59e4d2d12dd45ed4cd",
+  "managedCargoLockSha256": "4bc9179aa45efdf20b633a624e5b61b9144160770c03b6ac4193ea7f5348274f",
+  "patches": [
+    {
+      "path": "patches/0001-host-bridge.patch",
+      "sha256": "96b4927f01b8c3ddff984ee08752ab550155a7263903de60696b4597a1cf2cdc"
+    },
+    {
+      "path": "patches/0002-managed-start.patch",
+      "sha256": "a90a0cc1b47ff2cbc2d8f9c93c944e64b5e46da7718189ac6cfb01bda2a1883d"
+    },
+    {
+      "path": "patches/0003-owner-freeze.patch",
+      "sha256": "0080cb06a7189fd38c8fae363f22240bd666b320c8a05f8e4159e89509a3f678"
+    }
+  ],
+  "abi": "zoen-host-v1",
+  "cargoFeature": "zoen-host",
+  "resourceUri": "ui://zoen/deckcraft/index.html",
+  "nativeDocumentMime": "application/vnd.storyteller.deckcraft+zip",
+  "canvasId": "deckcraft_canvas",
+  "loadingId": "deckcraft_loading",
+  "toolVersions": {
+    "rustc": "1.99.1",
+    "cargo": "1.99.1",
+    "trunk": "0.22.0",
+    "wasmBindgen": "0.2.129",
+    "binaryen": "version_133"
+  },
+  "reproducibleEnvironment": {
+    "DECKCRAFT_BUILD_DATE": "2026-10-20",
+    "SOURCE_DATE_EPOCH": "1792510809"
+  },
+  "modifications": [
+    "Bounded managed host requests onto the real SlideApp/Session; no second document store.",
+    "Hosted policy disables standalone import, file, clipboard, URL and network paths.",
+    "Explicit managed start after verified WASM init; automatic standalone main disabled only for zoen-host.",
+    "Canonical persistence/export is owned by Zoen tools; loading code grants no device/network capability.",
+    "Managed owner-queue freeze fences manual editing across final snapshot/commit/retirement."
+  ],
+  "distributionStatus": "Not advertised: final managed release, MCP adapter and iOS runtime proof required."
+}

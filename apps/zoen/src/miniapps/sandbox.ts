@@ -1,5 +1,7 @@
 import { t } from '../i18n/index.ts';
 import type { AppResourceDto } from '../core/generated/AppResourceDto';
+import { parseRuntimePackage, type RuntimePackage } from './runtime-package.ts';
+import { runtimeSupportScript } from './vendor/runtime-support.ts';
 
 export type MiniappManifest = Readonly<{
   id: string;
@@ -10,6 +12,7 @@ export type MiniappManifest = Readonly<{
   linkDomains: readonly string[];
   sha256: string;
   bytes: number;
+  runtimePackage?: RuntimePackage;
 }>;
 export function hostname(value: unknown): value is string {
   return (
@@ -104,6 +107,17 @@ export async function verifyMiniappResource(
     throw new Error(t('miniapps.theManifestHasDuplicatePermissions'));
   if (bytes.length !== input.bytes)
     throw new Error(t('miniapps.theMiniappDoesNotMatchTheVerifiedPackage'));
+  const runtimePackage =
+    input.runtimePackage === undefined ? undefined : parseRuntimePackage(input.runtimePackage);
+  if (
+    runtimePackage &&
+    (appId !== 'deckcraft' ||
+      uri !== 'ui://zoen/deckcraft/index.html' ||
+      capabilities.length ||
+      input.allowedDomains.length ||
+      ((input.linkDomains as unknown[] | undefined) ?? []).length)
+  )
+    throw new Error(t('miniapps.theMiniappManifestDoesNotMatchThisResource'));
   // Capture policy strings and arrays before the native/WebCrypto suspension.
   const manifest: MiniappManifest = Object.freeze({
     id: appId,
@@ -114,19 +128,31 @@ export async function verifyMiniappResource(
     networkPurpose: typeof input.networkPurpose === 'string' ? input.networkPurpose : '',
     bytes: bytes.length,
     sha256: input.sha256,
+    ...(runtimePackage ? { runtimePackage } : {}),
   });
   const digest = await resourceDigest(pinned.text, bytes);
   if (digest !== manifest.sha256)
     throw new Error(t('miniapps.theMiniappDoesNotMatchTheVerifiedPackage'));
   return Object.freeze({ resource: pinned, manifest });
 }
-export function miniappCsp(allowed: readonly string[]): string {
+export function miniappCsp(allowed: readonly string[], runtime?: RuntimePackage): string {
   if (!allowed.every(hostname)) throw new Error(t('miniapps.invalidMiniappDomain'));
+  if (runtime) {
+    parseRuntimePackage(runtime);
+    if (allowed.length) throw new Error(t('miniapps.invalidMiniappDomain'));
+  }
   const network = allowed.map((host) => `https://${host}`).join(' ');
-  return `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob: ${network}; media-src data:; font-src data:; connect-src ${network || "'none'"}; worker-src blob:; child-src blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
+  return `default-src 'none'; script-src 'unsafe-inline'${runtime ? " blob: 'wasm-unsafe-eval'" : ''}; style-src 'unsafe-inline'; img-src data: blob: ${network}; media-src data:; font-src data:; connect-src ${network || "'none'"}; worker-src blob:; child-src blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
 }
-export function sandboxHtml(html: string, allowed: readonly string[]): string {
-  const security = `<meta http-equiv="Content-Security-Policy" content="${miniappCsp(allowed)}"><meta name="referrer" content="no-referrer"><script>${NETWORK_HARDENING}</script>`;
+export function sandboxHtml(
+  html: string,
+  allowed: readonly string[],
+  runtime?: RuntimePackage,
+): string {
+  const encoded = runtime
+    ? JSON.stringify(parseRuntimePackage(runtime)).replace(/</g, '\\u003c')
+    : '';
+  const security = `<meta http-equiv="Content-Security-Policy" content="${miniappCsp(allowed, runtime)}"><meta name="referrer" content="no-referrer"><script>${NETWORK_HARDENING}${runtime ? `${runtimeSupportScript};__zoenRuntimeSupport.installRuntimeClient(${encoded});` : ''}</script>`;
   return /<head(?:\s[^>]*)?>/i.test(html)
     ? html.replace(/<head(?:\s[^>]*)?>/i, (match) => `${match}${security}`)
     : `${security}${html}`;

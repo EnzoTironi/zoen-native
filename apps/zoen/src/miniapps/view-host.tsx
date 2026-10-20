@@ -588,7 +588,10 @@ function ReadyView({
   useEffect(() => {
     session.current?.syncContext();
   }, [scheme, dimensions, safeAreaInsets, closeButton]);
-  const html = useMemo(() => sandboxHtml(resource.text, hosts), [resource.text, hosts]);
+  const html = useMemo(
+    () => sandboxHtml(resource.text, hosts, manifest.runtimePackage),
+    [resource.text, hosts, manifest.runtimePackage],
+  );
   const receive = useCallback((message: string) => {
     void session.current?.receive(message);
   }, []);
@@ -642,6 +645,7 @@ function ReadyView({
         <MiniappFrame
           ref={frame}
           html={html}
+          runtimePackage={manifest.runtimePackage}
           title={item.title}
           height={height}
           fill={fill}
