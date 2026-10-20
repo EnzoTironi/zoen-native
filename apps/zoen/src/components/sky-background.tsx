@@ -83,6 +83,37 @@ export function SkyScene({
   );
 }
 
+/** An automatic clock sample owns its native value until this one fade unmounts. */
+function SkyFade({
+  previous,
+  current,
+  duration,
+}: {
+  previous: Sky;
+  current: Sky;
+  duration: number;
+}) {
+  const [opacity] = useState(() => new Animated.Value(0));
+  useLayoutEffect(() => {
+    const animation = Animated.timing(opacity, {
+      toValue: 1,
+      duration,
+      useNativeDriver: true,
+      isInteraction: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [duration, opacity]);
+  return (
+    <>
+      <SkyLayer sky={previous} />
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>
+        <SkyLayer sky={current} />
+      </Animated.View>
+    </>
+  );
+}
+
 /** A decorative sky shared by navigation, account access, and every transparent scene. */
 export function SkyBackground() {
   const { sky, scheme, preference, reducedMotion } = useTheme();
@@ -105,7 +136,6 @@ export function SkyBackground() {
     scheme,
     previousScheme: scheme,
   });
-  const [opacity] = useState(() => new Animated.Value(1));
   if (layers.signature !== signature)
     setLayers({
       signature,
@@ -114,39 +144,13 @@ export function SkyBackground() {
       scheme,
       previousScheme: layers.scheme,
     });
-  useLayoutEffect(() => {
-    // Manual/resume selections change their semantic inks synchronously. Only
-    // tiny clock-driven samples approved by the theme's contrast guard fade.
-    // No old bright sky beneath new light ink, including rapid manual changes.
-    const snap =
-      reducedMotion ||
-      preference !== 'auto' ||
-      transitionMs <= 1000 ||
-      layers.previousScheme !== scheme;
-    opacity.setValue(snap ? 1 : 0);
-    if (snap) return;
-    const animation = Animated.timing(opacity, {
-      toValue: 1,
-      duration: transitionMs,
-      useNativeDriver: true,
-      isInteraction: false,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [
-    top,
-    middle,
-    bottom,
-    starOpacity,
-    haze,
-    transitionMs,
-    scheme,
-    preference,
-    layers.previousScheme,
-    signature,
-    reducedMotion,
-    opacity,
-  ]);
+  // A snap has no outgoing layer or native animated property to retain. An
+  // interrupted clock fade cannot lower the opacity of a later selection.
+  const snap =
+    reducedMotion ||
+    preference !== 'auto' ||
+    transitionMs <= 1000 ||
+    layers.previousScheme !== scheme;
   return (
     <View
       pointerEvents="none"
@@ -154,10 +158,11 @@ export function SkyBackground() {
       importantForAccessibility="no-hide-descendants"
       style={StyleSheet.absoluteFill}
     >
-      <SkyLayer sky={layers.previous} />
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>
-        <SkyLayer sky={layers.current} />
-      </Animated.View>
+      {snap ? (
+        <SkyLayer sky={sky} />
+      ) : (
+        <SkyFade key={signature} previous={layers.previous} current={sky} duration={transitionMs} />
+      )}
     </View>
   );
 }
