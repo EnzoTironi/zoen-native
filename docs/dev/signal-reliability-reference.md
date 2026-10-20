@@ -145,6 +145,23 @@ O Zoen mantém Rust/Loro para artefatos, a autorização dos agentes e o isolame
 de MCP Apps. Um agente que lê conteúdo é um destinatário autorizado, e publicar um
 Site continua sendo uma exportação explícita de uma versão escolhida.
 
+## Avaliação de um fork completo
+
+Recomendação em avaliação, sem migração autorizada por esta análise: manter o
+Expo como interface do produto e avaliar as fundações de mensagens separadamente.
+Um fork próximo do Signal pode reduzir o trabalho para um mensageiro iOS privado.
+Para o Zoen, assume também aplicações distintas para as outras plataformas, seu
+backend e a integração de Apps, Páginas, permissões e agentes. Estar pre-launch
+permite mudar essa escolha; investimento já feito não é critério para preservá-la.
+
+O núcleo Rust de libsignal pode ser avaliado pela ponte nativa que já existe no
+Zoen. A ausência de um pacote pronto para Expo não impede essa integração. Os
+critérios relevantes são compatibilidade de identidades, grupos e histórico,
+transações de sessão, manutenção das atualizações e o custo de distribuição em
+cada plataforma. A avaliação não autoriza misturar protocolos nem estabelece
+que o MLS atual tenha as propriedades de privacidade do Signal. Nenhum código do
+Signal foi integrado e a licença do Zoen permanece inalterada neste lote.
+
 ## Execução em lotes
 
 O lote iOS até `2785d88e` passou em 931 testes do app e no build Release do
@@ -178,6 +195,22 @@ exibiu a imagem marcada e a mesma legenda. A página Você também foi conferida
 com suas cinco linhas nativas e navegação Geral → voltar. Os registros de passos
 contêm diferenças entre as árvores de acessibilidade do gravador e do executor;
 nenhuma aprovação de replay automatizado é alegada.
+
+O lote de aprovação de mídia em `c899de92` passou no `npm run check` com
+TypeScript, Oxlint, Oxfmt e 957 testes, sem falhas ou ignorados, em 99,89 segundos.
+Um build Release iOS passou em 70,54 segundos. O artefato foi assinado, copiado e
+instalado preservando os dados em um simulador novo; executável e bundle foram
+conferidos com o artefato selado. A aprovação usa componentes Expo/nativos, mantém
+o diário Rust como autoridade e vincula o envio à seleção efetivamente revisada.
+Na rodada de interface, Home e Chats abriram; em seguida, o simulador isolado
+foi encontrado desligado. Uma recuperação limitada falhou na inicialização dos
+serviços CoreSimulator, antes de abrir a conversa. Aprovação em tela cheia,
+apresentação de QuickLook a partir dela, teclado da legenda, Cancel, trim e
+recuperação do rascunho editado ainda não enviado continuam sem prova nativa
+nesse artefato. Nenhum replay automatizado é alegado. Build e testes não
+substituem essas provas.
+A correção Web separa as linhas de configurações de SwiftUI; sua qualificação
+Release Web precisa passar novamente no CI.
 
 1. **Concluir o lote iOS atual.** Recuperação de texto sem perda e revisão nativa
    de anexos. Não ampliar sua aprovação para edição completa de mídia.
