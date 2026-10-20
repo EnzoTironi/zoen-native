@@ -90,19 +90,11 @@ export function MessageAudioProvider({
   const [session] = useState(() => (process.env.EXPO_OS === 'ios' ? createSession(store) : null));
   useEffect(() => {
     if (!session) return;
-    let previous = store.getSnapshot();
     const unsubscribe = store.subscribe(() => {
-      const next = store.getSnapshot();
-      const canonicalChanged =
-        next.snapshot !== previous.snapshot || next.timelines !== previous.timelines;
-      previous = next;
       session.reconcile();
-      // Local offline edits/deletes also publish canonical projections without a native change event.
-      if (canonicalChanged) session.changed();
     });
-    const stopEvents = store.driver.subscribe((event) => {
-      if (event.kind === 'change') session.changed(event.spaceIds);
-    });
+    // Native changes and local offline reads/mutations share the same scoped invalidation owner.
+    const stopEvents = store.subscribeCanonicalChanges((spaceIds) => session.changed(spaceIds));
     const unregisterSession = store.registerSessionCleanup(() => session.retireSession());
     const unregisterDevice = store.registerDeviceCleanup(() => session.retireSession());
     const appState = AppState.addEventListener('change', (state) =>
