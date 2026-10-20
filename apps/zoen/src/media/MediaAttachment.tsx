@@ -16,6 +16,7 @@ import { AudioWaveform } from './audio-progress';
 import { VideoClip } from './VideoClip';
 import { previewMediaFile } from './preview-file';
 import { formatFileSize } from './file-size';
+import { inlineImageFrame, type DecodedMessageImage } from './inline-image-frame';
 
 type Presentation = 'message' | 'document';
 type FileAttachmentProps = {
@@ -27,6 +28,7 @@ type FileAttachmentProps = {
   presentation?: Presentation;
   mine?: boolean;
   onActions?: () => void;
+  onImageDecoded?: (image: DecodedMessageImage) => void;
   messageSource?: { spaceId: string; entry: TimelineEntry };
 };
 
@@ -49,6 +51,7 @@ function FileAttachmentContent({
   presentation = 'document',
   mine = false,
   onActions,
+  onImageDecoded,
   messageSource,
 }: FileAttachmentProps) {
   const { store, snapshot, mode } = useClient();
@@ -73,6 +76,7 @@ function FileAttachmentContent({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ratio, setRatio] = useState(1);
+  const [availableWidth, setAvailableWidth] = useState(0);
   const [autoplay, setAutoplay] = useState(false);
   const [transcriptExpanded, setTranscriptExpanded] = useState(false);
   const mounted = useRef(false);
@@ -235,9 +239,14 @@ function FileAttachmentContent({
     : t('media.loading');
   const image = local?.info.mime.startsWith('image/');
   const video = local?.info.mime.startsWith('video/');
+  const imageFrame = inlineImageFrame(availableWidth, ratio);
   const outline = scheme === 'dark' ? '#FFFFFF1A' : '#0000001A';
   return (
     <View
+      onLayout={(event) => {
+        const width = event.nativeEvent.layout.width;
+        if (Number.isFinite(width) && width > 0) setAvailableWidth(width);
+      }}
       style={{
         width: '100%',
         minWidth: 0,
@@ -268,6 +277,10 @@ function FileAttachmentContent({
             void previewImage();
           }}
           style={({ pressed }) => ({
+            alignSelf: mine ? 'flex-end' : 'flex-start',
+            width: imageFrame.width || '100%',
+            height: imageFrame.height || undefined,
+            aspectRatio: imageFrame.width ? undefined : 1,
             borderRadius: 24,
             borderCurve: 'continuous',
             overflow: 'hidden',
@@ -279,13 +292,24 @@ function FileAttachmentContent({
             recyclingKey={`${itemId}:${local.info.sha256}`}
             source={{ uri: local.uri }}
             accessible={false}
-            contentFit="cover"
+            contentFit="contain"
             onLoad={(event) => {
+              if (!mounted.current || owned.current !== local || event.source.url !== local.uri)
+                return;
               const { width, height } = event.source;
-              if (width > 0 && height > 0) setRatio(Math.max(0.7, Math.min(1.8, width / height)));
+              if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+                setRatio(width / height);
+                onImageDecoded?.({
+                  itemId: local.itemId,
+                  version: local.version,
+                  sha256: local.info.sha256,
+                  width,
+                  height,
+                });
+              }
             }}
             onError={() => setError(t('media.thisFileCouldNotBeOpened'))}
-            style={{ width: '100%', aspectRatio: ratio, maxHeight: 360 }}
+            style={{ position: 'absolute', inset: 0 }}
           />
           <View
             pointerEvents="none"
@@ -481,11 +505,13 @@ export function MessageMedia({
   entry,
   presentation = 'message',
   onActions,
+  onImageDecoded,
 }: {
   spaceId: string;
   entry: TimelineEntry;
   presentation?: Presentation;
   onActions?: () => void;
+  onImageDecoded?: (image: DecodedMessageImage) => void;
 }) {
   if (entry.deleted) return null;
   if (entry.voice)
@@ -507,6 +533,7 @@ export function MessageMedia({
       itemId={card.item_id}
       version={card.version}
       title={card.title}
+      onImageDecoded={onImageDecoded}
       presentation={presentation}
       mine={entry.author.is_me}
       onActions={onActions}
