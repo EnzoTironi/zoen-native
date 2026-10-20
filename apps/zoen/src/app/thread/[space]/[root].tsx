@@ -7,6 +7,7 @@ import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Text, View, type TextInputInstance } from 'react-native';
 import { useCoreQuery } from '../../../core/query';
 import { useClient } from '../../../core/provider';
+import { useMessageAudioFocus } from '../../../media/message-audio-provider';
 import { messageText } from '../../../core/presentation';
 import { messageCard } from '../../../core/message-presentation';
 import {
@@ -27,7 +28,16 @@ import { useMessageActions } from '../../../components/use-message-actions';
 
 export default function Thread() {
   const { space, root } = useLocalSearchParams<{ space: string; root: string }>();
-  const { store, snapshot, notice } = useClient();
+  const { store, snapshot, notice, mode } = useClient();
+  useMessageAudioFocus(
+    space,
+    JSON.stringify([
+      mode,
+      snapshot?.account?.identity_id,
+      snapshot?.account?.device_id,
+      store.sessionEpoch,
+    ]),
+  );
   const groupChat =
     snapshot?.conversations.some((chat) => chat.id === space && chat.kind !== 'Direct') ?? false;
   const headerHeight = useHeaderHeight();

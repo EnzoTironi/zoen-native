@@ -156,7 +156,12 @@ export function Avatar({
           style={{ width: size, height: size, borderRadius: agent ? size * 0.32 : size / 2 }}
         />
       ) : (
-        <Text style={{ fontSize: size * 0.32, fontWeight: '600', color: '#FFFFFF' }}>
+        // The hidden monogram is artwork inside a fixed-size avatar. The
+        // adjacent accessible name scales independently with Dynamic Type.
+        <Text
+          allowFontScaling={false}
+          style={{ fontSize: size * 0.32, fontWeight: '600', color: '#FFFFFF' }}
+        >
           {name
             .split(/\s+/)
             .slice(0, 2)

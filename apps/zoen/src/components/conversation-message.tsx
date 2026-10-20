@@ -402,7 +402,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                     {text}
                   </Text>
                 ) : null}
-                <MessageMedia entry={entry} onActions={() => open('actions')} />
+                <MessageMedia spaceId={spaceId} entry={entry} onActions={() => open('actions')} />
                 {fileCaption ? (
                   <Pressable
                     testID={`message-caption-${entry.id}`}

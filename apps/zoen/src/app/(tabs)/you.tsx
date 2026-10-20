@@ -55,11 +55,16 @@ function YouContent() {
             {me.bio}
           </Text>
         ) : null}
-        <NativeButton
-          testID="settings-edit-profile"
-          secondary
-          label={t('settings.editMyProfile')}
-          onPress={() => router.push('/edit-profile')}
+        <SettingsRows
+          testID="profile-settings-rows"
+          rows={[
+            {
+              id: 'settings-edit-profile',
+              title: t('settings.editMyProfile'),
+              icon: { ios: 'pencil', android: 'edit', web: 'edit' },
+              onPress: () => router.push('/edit-profile'),
+            },
+          ]}
         />
       </View>
       <IntegrityWarnings />

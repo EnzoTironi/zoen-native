@@ -9,6 +9,7 @@ import {
 import { createDriver } from './driver';
 import { ClientStore } from './store';
 import { attachDeviceCacheCleanup } from '../media/device-cache';
+import { MessageAudioProvider } from '../media/message-audio-provider';
 
 const Context = createContext<ClientStore | null>(null);
 export function ClientProvider({ children }: { children: ReactNode }) {
@@ -21,7 +22,11 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       void store.close({ force: true }).catch(() => {});
     };
   }, [store]);
-  return <Context value={store}>{children}</Context>;
+  return (
+    <Context value={store}>
+      <MessageAudioProvider store={store}>{children}</MessageAudioProvider>
+    </Context>
+  );
 }
 export function useClient() {
   const store = use(Context);

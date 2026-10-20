@@ -10,7 +10,8 @@ import type { TimelineEntry } from '../core/types';
 import { useClient } from '../core/provider';
 import { useTheme } from '../theme';
 import { Icon } from '../components/primitives';
-import { AudioClip, clipTime } from './AudioClip';
+import { AudioClip, AudioClipControls, clipTime } from './AudioClip';
+import { useReceivedMessageAudio } from './message-audio-provider';
 import { AudioWaveform } from './audio-progress';
 import { VideoClip } from './VideoClip';
 import { previewMediaFile } from './preview-file';
@@ -26,9 +27,10 @@ type FileAttachmentProps = {
   presentation?: Presentation;
   mine?: boolean;
   onActions?: () => void;
+  messageSource?: { spaceId: string; entry: TimelineEntry };
 };
 
-/** Version/hash identity owns the player and releases its prior decrypted copy. */
+/** Generic media owns row copies; received voice controls use the account transport. */
 export function FileAttachment(props: FileAttachmentProps) {
   return (
     <FileAttachmentContent
@@ -47,11 +49,24 @@ function FileAttachmentContent({
   presentation = 'document',
   mine = false,
   onActions,
+  messageSource,
 }: FileAttachmentProps) {
-  const { store, snapshot } = useClient();
+  const { store, snapshot, mode } = useClient();
   const driver = store.driver.media;
   const { colors, scheme } = useTheme();
   const message = presentation === 'message';
+  const account = snapshot?.account;
+  const received = useReceivedMessageAudio(
+    messageSource?.spaceId ?? '',
+    message && voice ? (messageSource?.entry ?? null) : null,
+    mode === 'account' && account
+      ? {
+          identityId: account.identity_id,
+          deviceId: account.device_id,
+          epoch: store.sessionEpoch,
+        }
+      : null,
+  );
   const ink = message && mine ? colors.onMine : colors.text;
   const [info, setInfo] = useState<FileDto | null>(null);
   const [local, setLocal] = useState<LocalMediaFile | null>(null);
@@ -78,7 +93,7 @@ function FileAttachmentContent({
   // Readiness is canonical. Looking at a thumbnail never restores an old version.
   useEffect(() => {
     let active = true;
-    if (driver)
+    if (driver && !received)
       void driver
         .fileInfo(itemId, version)
         .then((value) => {
@@ -93,7 +108,7 @@ function FileAttachmentContent({
     return () => {
       active = false;
     };
-  }, [driver, itemId, version, expectedHash, snapshot]);
+  }, [driver, itemId, version, expectedHash, snapshot, received]);
   const materialize = useCallback(
     async (media: MediaDriver) => {
       const file = await media.materializeFile(itemId, version);
@@ -233,7 +248,17 @@ function FileAttachmentContent({
         backgroundColor: message ? 'transparent' : colors.surface,
       }}
     >
-      {local && image && message ? (
+      {voice && received ? (
+        <View style={{ paddingHorizontal: 10, paddingVertical: 5 }}>
+          <AudioClipControls
+            playback={received}
+            levels={voice.levels}
+            compact
+            appearance={mine ? 'mine' : 'received'}
+            onLongPress={onActions}
+          />
+        </View>
+      ) : local && image && message ? (
         <Pressable
           onLongPress={onActions}
           delayLongPress={350}
@@ -452,10 +477,12 @@ function FileAttachmentContent({
 }
 
 export function MessageMedia({
+  spaceId,
   entry,
   presentation = 'message',
   onActions,
 }: {
+  spaceId: string;
   entry: TimelineEntry;
   presentation?: Presentation;
   onActions?: () => void;
@@ -468,6 +495,7 @@ export function MessageMedia({
         itemId={entry.voice.item_id}
         voice={entry.voice}
         expectedHash={entry.voice.sha256}
+        messageSource={{ spaceId, entry }}
         presentation={presentation}
         mine={entry.author.is_me}
         onActions={onActions}
