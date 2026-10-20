@@ -522,6 +522,89 @@ fn state_survives_reopen() {
 }
 
 #[test]
+fn failed_application_authentication_preserves_state_across_cold_reopen() {
+    fn group_rows(conn: &Connection) -> Vec<(Vec<u8>, String, Vec<u8>, i64)> {
+        conn.prepare(
+            "SELECT group_id, data_type, group_data, provider_version
+             FROM openmls_group_data ORDER BY group_id, data_type",
+        )
+        .unwrap()
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap()
+    }
+
+    struct Database(std::path::PathBuf);
+    impl Drop for Database {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    let (e, m) = (Person::new(), Person::new());
+    let database = Database(
+        std::env::temp_dir().join(format!("zoen-mls-auth-rejection-{}.sqlite", m.device.id())),
+    );
+    let ce = db();
+    let mut cm = Connection::open(&database.0).unwrap();
+    migrate(&mut cm).unwrap();
+    let enzo = e.open(&ce);
+    let both = roster(&[&e, &m]);
+    pair(&enzo, &m.open(&cm), &both);
+    let plaintext = b"The original ciphertext remains readable after rejection";
+    let valid = enzo.seal(SPACE, plaintext).unwrap();
+    let mut tampered = valid.clone();
+    *tampered.last_mut().unwrap() ^= 1;
+    assert_eq!(application_epoch(&tampered), application_epoch(&valid));
+    assert!(application_epoch(&tampered).is_some());
+    let before = group_rows(&cm);
+    let checkpoint = {
+        let marina = m.open(&cm);
+        let checkpoint = marina.checkpoint(SPACE).unwrap();
+        assert!(matches!(
+            marina.open(SPACE, &tampered, &both, enzo.leaf()),
+            Err(MlsError::Mls(_))
+        ));
+        assert_eq!(group_rows(&cm), before);
+        assert_eq!(marina.checkpoint(SPACE).unwrap(), checkpoint);
+        assert_eq!(marina.group_state(SPACE).unwrap(), GroupState::Ready);
+        checkpoint
+    };
+    drop(cm);
+
+    let cm = Connection::open(&database.0).unwrap();
+    assert_eq!(group_rows(&cm), before);
+    {
+        let marina = m.open(&cm);
+        assert_eq!(marina.checkpoint(SPACE).unwrap(), checkpoint);
+        assert!(matches!(
+            marina.open(SPACE, &valid, &both, enzo.leaf()).unwrap(),
+            Opened::Application { plaintext: opened, from }
+                if opened == plaintext && &from == enzo.leaf()
+        ));
+    }
+    drop(cm);
+
+    let cm = Connection::open(&database.0).unwrap();
+    let marina = m.open(&cm);
+    assert!(matches!(
+        marina.open(SPACE, &valid, &both, enzo.leaf()),
+        Err(MlsError::Mls(_))
+    ));
+    let next = enzo
+        .seal(SPACE, b"Traffic continues after the cold retry")
+        .unwrap();
+    assert!(matches!(
+        marina.open(SPACE, &next, &both, enzo.leaf()).unwrap(),
+        Opened::Application { plaintext: opened, from }
+            if opened == b"Traffic continues after the cold retry" && &from == enzo.leaf()
+    ));
+}
+
+#[test]
 fn a_commit_adding_someone_the_log_doesnt_list_is_refused() {
     let (e, m, b) = (Person::new(), Person::new(), Person::new());
     let (ce, cm, cb) = (db(), db(), db());
