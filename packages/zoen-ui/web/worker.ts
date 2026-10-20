@@ -36,6 +36,8 @@ function parseOperation(input: unknown): CoreOperation {
     case 'queue_post': return { kind: 'queue_post', space: string(value.space), text: string(value.text), replyTo: string(value.replyTo), thread: value.thread === true, forwarded: value.forwarded === true, now: integer(value.now) };
     case 'queue_annotation': return { kind: 'queue_annotation', space: string(value.space), target: string(value.target), note: string(value.note), now: integer(value.now) };
     case 'mark_read': return { kind: 'mark_read', space: string(value.space) };
+    case 'attachment_producer': return {kind: 'attachment_producer', request: string(value.request)};
+    case 'queue_attachment': return { kind: 'queue_attachment', request: string(value.request), framed: bytes(value.framed), now: integer(value.now) };
     case 'queue_file_record': return { kind: 'queue_file_record', space: string(value.space), doc: string(value.doc), now: integer(value.now) };
     case 'queue_file': return { kind: 'queue_file', space: string(value.space), doc: string(value.doc), now: integer(value.now) };
     case 'queue_failed_file': return { kind: 'queue_failed_file', space: string(value.space), doc: string(value.doc), now: integer(value.now), reason: string(value.reason), chunks: string(value.chunks) };
@@ -135,6 +137,8 @@ async function run(operation: CoreOperation): Promise<string | Uint8Array> {
     case 'queue_failed_file': return restored().queue_failed_file(operation.space, operation.doc, operation.now, operation.reason, operation.chunks);
     case 'local_chunk': return restored().local_chunk(operation.blob);
     case 'fail_outbox': return restored().fail_outbox(operation.client_id, operation.reason);
+    case 'attachment_producer': return restored().attachment_producer(operation.request);
+    case 'queue_attachment': return restored().queue_attachment(operation.request, operation.framed, operation.now);
     case 'queue_file_record': return restored().queue_file_record(operation.space, operation.doc, operation.now);
     case 'queue_file': return restored().queue_file(operation.space, operation.doc, operation.now);
     case 'seal_file': return core.seal_file(operation.name, operation.mime, operation.bytes, operation.thumb);

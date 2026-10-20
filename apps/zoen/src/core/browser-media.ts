@@ -1,4 +1,9 @@
-import type { Messages, FileDoc, VoiceMeta } from '../../../../packages/zoen-ui/web/messages';
+import type {
+  Messages,
+  FileDoc,
+  VoiceMeta,
+  AttachmentIntent,
+} from '../../../../packages/zoen-ui/web/messages';
 import type { FileDto } from './generated/FileDto';
 
 export interface BrowserMediaHost {
@@ -13,6 +18,8 @@ export interface BrowserMediaHost {
     identityId: string,
     expectedSha: string,
   ): Promise<{ bytes: Uint8Array; mime: string; sha256: string }>;
+  newAttachmentMutationId(): Promise<string>;
+  releaseAttachmentMutation(mutationId: string, accepted: boolean): Promise<void>;
   sendFile(
     space: string,
     file: {
@@ -21,6 +28,7 @@ export interface BrowserMediaHost {
       bytes: Uint8Array;
       thumb?: Uint8Array | null;
       voice?: VoiceMeta;
+      attachment?: AttachmentIntent;
     },
   ): Promise<{ itemId: string; messageId: string }>;
   file(
@@ -58,6 +66,9 @@ export function activateBrowserMediaHost(
     deviceId,
     saveProfile: (request, bytes) => messages.saveProfile(request, bytes),
     profilePhoto: (identity, sha) => messages.profilePhoto(identity, sha),
+    newAttachmentMutationId: () => messages.newAttachmentMutationId(),
+    releaseAttachmentMutation: (mutationId, accepted) =>
+      messages.releaseAttachmentMutation(mutationId, accepted),
     sendFile: (space, file) => messages.sendFile(space, file),
     file: async (itemId, version) => {
       const result = await messages.fileManifest(itemId, version);

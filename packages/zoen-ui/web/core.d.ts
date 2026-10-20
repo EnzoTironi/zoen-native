@@ -33,6 +33,8 @@ declare module '*/core/zoen_web_core.js' {
     mark_read(space: string): string;
     fail_outbox(client_id: string, reason: string): string;
     queue_file(space: string, doc: string, now: number): string;
+    attachment_producer(request: string): string;
+    queue_attachment(request: string, framed: Uint8Array, now: number): string;
     queue_file_record(space: string, doc: string, now: number): string;
     claim_clock(value:string):string;
     maintenance(now:number):string;

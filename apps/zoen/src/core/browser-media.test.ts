@@ -27,6 +27,10 @@ function fixture() {
     async profilePhoto() {
       throw new Error('not used');
     },
+    async newAttachmentMutationId() {
+      return 'attachment_fixture_1';
+    },
+    async releaseAttachmentMutation() {},
     async sendFile(...args) {
       calls.push(args);
       return { itemId: 'it_signed', messageId: 'msg_signed' };
@@ -107,59 +111,53 @@ test('media ingress refuses remote URLs and oversized local payloads before Rust
   assert.equal(calls.length, 0);
 });
 
-test('file replies cannot silently fall back to the main conversation on web', async (t) => {
+test('web attachments retain exact caption, mutation and reply/thread target instead of falling back', async (t) => {
   browser(t);
   const { host, calls } = fixture();
-  let resolutions = 0;
-  const media = createBrowserMediaDriver(() => {
-    resolutions++;
-    return host;
-  });
-  const fetch = t.mock.method(globalThis, 'fetch', async () => new Response('abc'));
+  const media = createBrowserMediaDriver(() => host);
+  t.mock.method(globalThis, 'fetch', async () => new Response('abc'));
   for (const thread of [false, true]) {
-    await assert.rejects(
-      media.sendFile({
-        spaceId: 'sp',
-        replyTo: 'msg-root',
-        thread,
-        mutationId: 'qa-file-reply',
-        name: 'file.txt',
-        mime: 'text/plain',
-        uri: 'blob:https://zoen.test/id',
-      }),
-      /iPhone/,
-    );
-  }
-  assert.equal(resolutions, 0);
-  assert.equal(fetch.mock.callCount(), 0);
-  assert.equal(calls.length, 0);
-});
-
-test('deferred browser captions cannot silently send a blank attachment instead', async (t) => {
-  browser(t);
-  const { host, calls } = fixture();
-  let resolutions = 0;
-  const media = createBrowserMediaDriver(() => {
-    resolutions++;
-    return host;
-  });
-  const fetch = t.mock.method(globalThis, 'fetch', async () => new Response('abc'));
-  await assert.rejects(
-    media.sendFile({
+    const selection = {
       spaceId: 'sp',
-      replyTo: null,
-      thread: false,
-      mutationId: 'qa-caption',
-      caption: 'Keep this caption',
+      replyTo: 'msg-root',
+      thread,
+      mutationId: 'attachment_fixture_1',
+      caption: '  Página 2 🗂️\nKeep exact bytes.  ',
       name: 'file.txt',
       mime: 'text/plain',
       uri: 'blob:https://zoen.test/id',
-    }),
-    /iPhone/,
-  );
-  assert.equal(resolutions, 0);
-  assert.equal(fetch.mock.callCount(), 0);
-  assert.equal(calls.length, 0);
+    };
+    await media.sendFile(selection);
+    await media.sendFile(selection);
+    const sent = calls.at(-1)!;
+    assert.equal(sent[0], 'sp');
+    assert.deepEqual(sent[1].attachment, {
+      mutationId: selection.mutationId,
+      caption: selection.caption,
+      replyTo: selection.replyTo,
+      thread,
+    });
+    assert.deepEqual(calls.at(-2), sent);
+  }
+});
+
+test('browser producer ACK/drop stays bound to the issuing host across owner replacement', async () => {
+  const first = fixture();
+  const second = fixture();
+  let host = first.host;
+  const released: string[] = [];
+  first.host.releaseAttachmentMutation = async (mutationId, accepted) => {
+    released.push(`${mutationId}:${accepted}`);
+  };
+  second.host.releaseAttachmentMutation = async () => {
+    assert.fail('old producer must not enter a new host');
+  };
+  const intents = createBrowserMediaDriver(() => host).attachmentIntents!;
+  const mutation = await intents.newId();
+  host = second.host;
+  await intents.release(mutation, true);
+  await intents.release(mutation, true);
+  assert.deepEqual(released, [`${mutation}:true`]);
 });
 
 test('voice sends actual recorder codec and keeps its thread target in the same signed file', async (t) => {
@@ -230,4 +228,40 @@ test('a completed file read cannot expose decrypted bytes after its account was 
   finish(new Blob(['abc']));
   await assert.rejects(read, /sessão mudou/);
   assert.equal(created.mock.callCount(), 0);
+});
+
+test('file ingress freezes caption and target before a delayed selected Blob read', async (t) => {
+  browser(t);
+  const { host, calls } = fixture();
+  let finish!: (response: Response) => void;
+  t.mock.method(
+    globalThis,
+    'fetch',
+    () =>
+      new Promise<Response>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const selection = {
+    spaceId: 'sp',
+    replyTo: 'root',
+    thread: true,
+    mutationId: 'attachment_fixture_1',
+    caption: '  Original.  ',
+    name: 'file.txt',
+    mime: 'text/plain',
+    uri: 'blob:https://zoen.test/id',
+  };
+  const sending = createBrowserMediaDriver(() => host).sendFile(selection);
+  selection.caption = 'changed';
+  selection.replyTo = 'another';
+  selection.thread = false;
+  finish(new Response('abc'));
+  await sending;
+  assert.deepEqual(calls[0]![1].attachment, {
+    mutationId: 'attachment_fixture_1',
+    caption: '  Original.  ',
+    replyTo: 'root',
+    thread: true,
+  });
 });

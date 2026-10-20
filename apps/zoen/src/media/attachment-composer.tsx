@@ -205,7 +205,9 @@ function useVolatileAttachmentComposer({
     if (!media) throw new AttachmentDraftFailure('unavailable');
     const draft = new AttachmentDraft(scope, {
       current,
-      mutationId: randomUUID,
+      mutationId: () => media.attachmentIntents?.newId() ?? randomUUID(),
+      releaseIntent: (mutationId, accepted) =>
+        media.attachmentIntents?.release(mutationId, accepted),
       discard,
       send: (scope, item) =>
         media.sendFile({
@@ -314,7 +316,7 @@ function useVolatileAttachmentComposer({
           position: state.items.indexOf(selected) + 1,
           total: state.items.length,
           editable:
-            Platform.OS === 'ios' &&
+            (Platform.OS === 'ios' || Boolean(store.driver.media?.attachmentIntents)) &&
             !disabled &&
             !suspended &&
             state.phase === 'ready' &&
