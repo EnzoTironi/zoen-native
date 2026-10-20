@@ -1565,6 +1565,8 @@ async fn fetch_link_attempt(
 
 #[cfg(test)]
 mod tests {
+    mod incoming_pipeline;
+
     #[tokio::test]
     async fn pickup_expired_deadline_opens_no_connection() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
