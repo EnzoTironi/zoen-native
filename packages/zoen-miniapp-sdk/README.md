@@ -24,6 +24,10 @@ tokens e convenções de experiência.
 - Tocar abre o App em tela cheia com transição nativa e um X flutuante para sair,
   sem título ou faixa de cabeçalho. O fechamento usa a mesma guarda de salvamento
   da navegação; uma falha preserva o trabalho e oferece recuperação.
+  O host publica a área do X em `hostContext.zoen.chrome.closeButton`; o SDK a
+  valida e os tokens `--z-close-right` e `--z-close-bottom` permitem afastar apenas
+  os controles que a cruzam. O canvas mantém a tela inteira e as áreas seguras
+  reais. A projeção é removida quando o App volta ao modo inline ou é encerrado.
 - Retrato e as duas posições horizontais atualizam dimensões e áreas seguras da
   mesma sessão. Rotação ou tema não significam reabrir o documento, reenviar o
   resultado inicial ou salvar uma mutação.

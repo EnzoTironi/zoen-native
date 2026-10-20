@@ -404,7 +404,7 @@ export function ReorderableAppCards({
           <CompactMiniappCard
             item={item}
             editActions={
-              state.editing && selectedId === item.id ? (
+              state.editing && (selection ? selection.id : selectedId) === item.id ? (
                 <AppCardEditActions
                   id={item.id}
                   name={item.title}

@@ -67,7 +67,7 @@ export function mount({ controller, management = false, origin = 'home', loading
   const backHandlers = new Set();
   Object.assign(qa, {
     controller, loading, backHandlers, nativeFallbacks: 0, disposedDocuments: 0,
-    dispatched: [], focused: true, path: '/miniapp/synthetic-drawing', routeIdentity: {key:'app-modal',name:'miniapp'},
+    dispatched: [], focused: true, path: management ? '/miniapp/synthetic-drawing/manage' : '/miniapp/synthetic-drawing', routeIdentity: {key:'app-modal',name:'miniapp'},
     navigation: {
       getId() {return '';},
       isFocused() {return qa.focused;},
@@ -593,12 +593,22 @@ test("floating close refuses missing state, root mismatch, unfocused route and a
     await f.close();
   }
 });
-test("floating close from management targets the root App after its existing descendant flush", async () => {
+test("nested native headers keep their own actions and regain floating close only on the App canvas", async () => {
   const doc = documentPort();
   const f = await fixture("ios", { controller: doc.controller, management: true });
   try {
+    assert.equal(f.node.querySelector("[data-qa-close]"), null);
+    assert.equal(f.qa.editorChrome, null);
+    await f.act(() => f.path('/miniapp/synthetic-drawing/tool'));
+    assert.equal(f.node.querySelector("[data-qa-close]"), null);
+    assert.equal(f.qa.editorChrome, null);
+    await f.act(() => f.back());
+    assert.equal(current(f).state.index, 0);
+    assert.equal(doc.calls.length, 0);
+    await f.act(() => f.path('/miniapp/synthetic-drawing'));
+    assert.ok(f.node.querySelector("[data-qa-close]"));
+    assert.ok(f.qa.editorChrome);
     await f.act(() => pressClose(f));
-    assert.equal(current(f).state.index, 1);
     assert.deepEqual(doc.calls, [{ retire: true }]);
     await f.act(() => doc.pending[0].resolve());
     assert.equal(current(f).name, "home");

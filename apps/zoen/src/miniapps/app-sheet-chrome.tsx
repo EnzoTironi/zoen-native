@@ -14,6 +14,8 @@ export function AppSheetChrome({ children }: { children: ReactNode }) {
   const navigation = useNavigation('/');
   const route = useRoute();
   const path = usePathname();
+  // Nested Details and tool screens own their native Back and header actions.
+  const showClose = /^\/miniapp\/[^/]+\/?$/.test(path);
   const insets = useSafeAreaInsets();
   const active = useRef<Scope | null>(null);
   const [scope, setScope] = useState<Scope | null>(null);
@@ -32,7 +34,7 @@ export function AppSheetChrome({ children }: { children: ReactNode }) {
     }, [path, route.key]),
   );
   function close(observed: Scope | null) {
-    if (!observed || active.current !== observed || observed.path !== path) return;
+    if (!showClose || !observed || active.current !== observed || observed.path !== path) return;
     const state = navigation.getState();
     if (!state) return;
     const current = state.routes[state.index ?? 0];
@@ -49,22 +51,24 @@ export function AppSheetChrome({ children }: { children: ReactNode }) {
   }
   const dismiss = () => close(scope);
   return (
-    <View style={{ flex: 1 }} onAccessibilityEscape={dismiss}>
-      <AppSheetCloseButtonContext.Provider value={closeButton}>
+    <View style={{ flex: 1 }} onAccessibilityEscape={showClose ? dismiss : undefined}>
+      <AppSheetCloseButtonContext.Provider value={showClose ? closeButton : null}>
         {children}
       </AppSheetCloseButtonContext.Provider>
-      <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-        <View style={{ position: 'absolute', top: closeButton.top, right: closeButton.right }}>
-          <ComposerAction
-            testID="app-sheet-close"
-            name="xmark"
-            label={t('common.close')}
-            size={44}
-            disabled={!scope}
-            onPress={dismiss}
-          />
+      {showClose ? (
+        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+          <View style={{ position: 'absolute', top: closeButton.top, right: closeButton.right }}>
+            <ComposerAction
+              testID="app-sheet-close"
+              name="xmark"
+              label={t('common.close')}
+              size={44}
+              disabled={!scope}
+              onPress={dismiss}
+            />
+          </View>
         </View>
-      </View>
+      ) : null}
     </View>
   );
 }

@@ -781,6 +781,9 @@ test('a shared Home selection retires controls in the other grid synchronously b
   (actions.props.onRemove as () => void)();
   await tick();
   assert.deepEqual(f.actions, []);
+  selectedScope.id = chosen;
+  f.render();
+  assert.ok(f.cards().every((card) => card.props.editActions === undefined));
 });
 
 test('the compiled native pan excludes selected44pt X/Pin hits before long-press recognition but retains cover lifting', () => {
