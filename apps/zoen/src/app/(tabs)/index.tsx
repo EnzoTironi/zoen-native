@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import Animated, { useAnimatedRef } from 'react-native-reanimated';
 import { ActivityIndicator, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { EmptyState, Icon, NativeButton } from '../../components/primitives';
@@ -15,16 +15,6 @@ import { useTheme } from '../../theme';
 
 export default function Home() {
   const home = useHome();
-  const [selectedCard, setSelectedCard] = useState<string | null>(null);
-  const selected = useRef<string | null>(null);
-  const selection = {
-    id: selectedCard,
-    select: (id: string | null) => {
-      selected.current = id;
-      setSelectedCard(id);
-    },
-    isSelected: (id: string) => selected.current === id,
-  };
   const [editOwner, setEditOwner] = useState<string | null>(null);
   const editing = editOwner !== null && editOwner === home.ownerKey;
   const setEditing = (value: boolean) => setEditOwner(value ? home.ownerKey : null);
@@ -48,7 +38,6 @@ export default function Home() {
         columns={columns}
         scrollPort={scrollPort}
         scrollRef={scrollRef}
-        selection={selection}
         editing={editing}
         onEditingChange={setEditing}
         onPendingChange={(value) => {
