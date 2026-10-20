@@ -234,7 +234,7 @@ function renderScreen(
       return {
         useConversationCards: () => ({
           items: [canonical],
-          visible: [canonical],
+          visible: [],
           loading: false,
           isPinned: () => true,
         }),
@@ -267,7 +267,7 @@ function nodes(value: unknown): Element[] {
     node.type === 'ConversationViewport' && typeof node.props.children === 'function'
       ? node.props.children('ComposerSpacer', 'NativeScroll')
       : node.props.children;
-  return [node, ...nodes(children)];
+  return [node, ...nodes(children), ...nodes(node.props.overlay)];
 }
 
 test('hidden Home shortcuts retain current canonical cards in actual Chat/Thread screens and management can pin them again', async (context) => {
@@ -276,7 +276,18 @@ test('hidden Home shortcuts retain current canonical cards in actual Chat/Thread
       const f = await fixture();
       assert.equal(f.home().items.length, 0);
       assert.equal(f.home().allItems[0], canonical);
-      const list = nodes(renderScreen(screen, f.home())).find((node) => node.type === 'FlashList');
+      const rendered = nodes(renderScreen(screen, f.home()));
+      if (screen === 'Chat') {
+        const rail = rendered.find((node) => node.type === 'MiniappRail');
+        assert.ok(rail);
+        assert.equal(
+          rail.props.onRestore,
+          undefined,
+          'Hidden conversation Apps add no rail banner',
+        );
+        assert.deepEqual(rail.props.items, []);
+      }
+      const list = rendered.find((node) => node.type === 'FlashList');
       assert.ok(list, 'Actual conversation screen must render its timeline');
       const rows = list.props.data as ConversationTimelineRow[];
       const shared = rows.find((row) => row.entry.id === 'shared')!;

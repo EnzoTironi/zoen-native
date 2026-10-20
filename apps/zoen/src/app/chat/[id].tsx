@@ -665,12 +665,6 @@ export default function Chat() {
                   home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)
                 }
                 isPinned={home.isPinned}
-                restoreLabel={t('home.organizeConversationApps')}
-                onRestore={
-                  cards.items.length > cards.visible.length
-                    ? () => router.push({ pathname: '/conversation-cards/[id]', params: { id } })
-                    : undefined
-                }
               />
             </ConversationRail>
             <View onLayout={({ nativeEvent }) => setNoticeHeight(nativeEvent.layout.height)}>
