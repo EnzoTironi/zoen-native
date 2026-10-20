@@ -167,3 +167,41 @@ test("startup diagnostics whitelist fixed nonpayload classes and refuse arbitrar
   ])
     assert.equal(startupFailureCode(error), undefined);
 });
+
+test("host appearance uses the existing bounded UI-only layout and a theme-only update is acknowledged", async () => {
+  const calls = [];
+  const ui = installManagedHostUI({
+    itemId: "owned",
+    ready: () => true,
+    onError: (error) => {
+      throw error;
+    },
+    app: {
+      callServerTool: async () => {
+        throw Error("Appearance cannot mutate documents");
+      },
+    },
+    engine: {
+      zoenHostOnExport: () => {},
+      zoenHostRequest: async (json, bytes) => {
+        calls.push(JSON.parse(json));
+        assert.equal(bytes.byteLength, 0);
+        return { metadata: '{"layoutAccepted":true}', bytes: new Uint8Array() };
+      },
+    },
+  });
+  await ui.layout({ ...context, theme: "dark" });
+  await ui.layout({ ...context, theme: "dark" });
+  await ui.layout({ ...context, theme: "light" });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(
+    calls.map((call) => [call.op, call.input.theme]),
+    [
+      ["layout", "dark"],
+      ["layout", "light"],
+    ],
+  );
+  for (const theme of ["system", true, {}, null])
+    assert.equal(hostLayout({ ...context, theme }), null);
+  ui.dispose();
+});

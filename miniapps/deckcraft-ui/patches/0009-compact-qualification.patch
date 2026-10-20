@@ -1,0 +1,95 @@
+diff --git a/crates/ui-egui/src/status.rs b/crates/ui-egui/src/status.rs
+--- a/crates/ui-egui/src/status.rs
++++ b/crates/ui-egui/src/status.rs
+@@ -255,7 +255,7 @@
+ 
+ fn compact_status_bar(app: &mut SlideApp, ui: &mut Ui) {
+     let t = Tokens::get(ui.ctx());
+-    egui::Panel::bottom("status").exact_size(44.0).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
++    egui::Panel::bottom("status").exact_size(44.0).show_separator_line(false).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
+         ui.horizontal_centered(|ui| {
+             let Some(st) = app.session.active() else { return };
+             let total = st.doc.slides.len();
+diff --git a/crates/ui-egui/src/panes.rs b/crates/ui-egui/src/panes.rs
+--- a/crates/ui-egui/src/panes.rs
++++ b/crates/ui-egui/src/panes.rs
+@@ -29,7 +29,7 @@
+             .movable(false)
+             .fixed_rect(rect)
+             .constrain_to(safe)
+-            .frame(egui::Frame::window(&ui.style()).fill(t.card))
++            .frame(egui::Frame::window(ui.style()).fill(t.card))
+             .show(ui.ctx(), |ui| pane_contents(app, ui, &pane));
+         return;
+     }
+diff --git a/crates/ui-egui/src/host_compact_tests.rs b/crates/ui-egui/src/host_compact_tests.rs
+--- a/crates/ui-egui/src/host_compact_tests.rs
++++ b/crates/ui-egui/src/host_compact_tests.rs
+@@ -8,7 +8,10 @@
+ };
+ use deckcraft_engine::Session;
+ use egui::{Event, Modifiers, MouseWheelUnit, Rect, pos2, vec2};
+-use egui_kittest::{Harness, kittest::Queryable};
++use egui_kittest::{
++    Harness,
++    kittest::{NodeT, Queryable},
++};
+ use serde_json::json;
+ use std::sync::Arc;
+ 
+@@ -143,7 +146,7 @@
+     let mut h = fixture(Some(portrait(430.0, Brightness::Light)));
+     let home = h.get_by_label("Home").rect();
+     h.event(Event::PointerMoved(home.center()));
+-    h.event(Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(-1400.0, 0.0), modifiers: Modifiers::NONE });
++    h.event(Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(-1400.0, 0.0), phase: egui::TouchPhase::Move, modifiers: Modifiers::NONE });
+     h.run_steps(12);
+     let view = h.get_by_label("View").rect();
+     assert!(h.ctx.content_rect().contains_rect(view), "last tab is reachable: {view:?}");
+@@ -213,3 +216,46 @@
+         assert!(!export.intersects(layout.close_rect(h.ctx.viewport_rect()).unwrap()));
+     }
+ }
++
++#[test]
++fn inspector_alt_text_keeps_actual_focus_and_uncommitted_buffer_across_container_rotation() {
++    use egui::accesskit::Role;
++    let mut h = fixture(Some(portrait(430.0, Brightness::Dark)));
++    let shape = h.state().app.session.active().unwrap().doc.slides[0].shapes[0].id.0;
++    h.state_mut().app.run("edit.select", json!({"ids":[shape]})).unwrap();
++    h.state_mut().app.run("view.pane", json!({"pane":"format","tab":"size"})).unwrap();
++    h.run_steps(4);
++    // The real upstream multiline Alt Text editor commits only on lost_focus.
++    // Notes are initially closed; the inspector's other fields are single-line spinners.
++    h.query_all_by_role(Role::MultilineTextInput).next().expect("actual Alt Text input").click();
++    h.run_steps(1);
++    let focus = h.ctx.memory(|m| m.focused()).expect("inspector TextEdit owns focus");
++    h.event(Event::Text("Uncommitted inspector draft".into()));
++    h.run_steps(1);
++    let before = h.state().app.session.active().unwrap();
++    assert!(before.doc.slides[0].shapes[0].descr.is_empty(), "draft has not been committed by a blur");
++    let doc = before.doc.clone();
++    let revision = before.revision;
++    let undo = before.history.undo.len();
++    let landscape = HostLayout {
++        width: 932.0,
++        height: 430.0,
++        insets: Insets { top: 0.0, right: 0.0, bottom: 21.0, left: 62.0 },
++        close_button: Some(CloseRect { x: 876.0, y: 8.0, width: 44.0, height: 44.0 }),
++        theme: Some(Brightness::Dark),
++    };
++    for layout in [landscape, portrait(430.0, Brightness::Dark)] {
++        resize(&mut h, layout);
++        assert_eq!(h.ctx.memory(|m| m.focused()), Some(focus), "Window and Panel share the real editor identity");
++        assert_eq!(h.state().app.ui.pane.as_deref(), Some("format"));
++        let text = h.query_all_by_role(Role::MultilineTextInput).next().expect("same actual Alt Text input");
++        assert_eq!(text.accesskit_node().value().as_deref(), Some("Uncommitted inspector draft"));
++        let now = h.state().app.session.active().unwrap();
++        assert!(Arc::ptr_eq(&doc, &now.doc), "rotation cannot implicitly commit or discard the draft");
++        assert_eq!((now.revision, now.history.undo.len()), (revision, undo));
++    }
++    // A genuine later blur still commits through the original upstream command.
++    h.ctx.memory_mut(|m| m.surrender_focus(focus));
++    h.run_steps(2);
++    assert_eq!(h.state().app.session.active().unwrap().doc.slides[0].shapes[0].descr, "Uncommitted inspector draft");
++}

@@ -19,8 +19,8 @@ pub const MANIFEST: &str = match option_env!("ZOEN_DECKCRAFT_RESOURCE_MANIFEST_J
 };
 const MODULE_FILE: &str = "deckcraft-web-126eb4c8aba52d94.js";
 const MODULE_SHA: &str = "9b0f9f19bee5f37fdc34f38ec5be9764db74f711151110c24acaf9ac14b87a06";
-const WASM_FILE: &str = "deckcraft-web-5249f28be4db0259_bg.wasm";
-const WASM_SHA: &str = "fb5e423ab97d8c133a67939b05fb2534f4cf452308ee9e38149e03cefc722747";
+const WASM_FILE: &str = "deckcraft-web-bf471bb72a08039e_bg.wasm";
+const WASM_SHA: &str = "87c346fc560c3fc4e536b51500440d3a2ae2b18e90fa2ec03b39e75aac2f352d";
 fn exact_keys(value: &Value, expected: &[&str]) -> bool {
     value.as_object().is_some_and(|object| {
         object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
@@ -122,7 +122,7 @@ pub fn valid_resource(html: &str, manifest: &str) -> bool {
     let Some(wasm) = asset(
         &runtime["wasm"],
         WASM_FILE,
-        36_463_351,
+        36_314_771,
         WASM_SHA,
         "application/wasm",
     ) else {
@@ -220,7 +220,7 @@ mod tests {
     use super::*;
     fn fixture(html: &str) -> Value {
         let directory = format!("https://runtime.invalid/deckcraft/{ENGINE_REVISION}/");
-        json!({"id":APP,"resourceUri":RESOURCE,"mimeType":crate::MIME,"bytes":html.len(),"sha256":format!("{:x}",Sha256::digest(html.as_bytes())),"capabilities":[],"allowedDomains":[],"linkDomains":[],"permissions":{},"csp":{"connectDomains":[],"resourceDomains":[],"frameDomains":[],"baseUriDomains":[]},"runtimePackage":{"schema":1,"engine":APP,"revision":ENGINE_REVISION,"abi":"zoen-host-v1","module":{"url":format!("{directory}{MODULE_FILE}"),"bytes":157185,"sha256":MODULE_SHA,"mime":"text/javascript"},"wasm":{"url":format!("{directory}{WASM_FILE}"),"bytes":36463351,"sha256":WASM_SHA,"mime":"application/wasm"}}})
+        json!({"id":APP,"resourceUri":RESOURCE,"mimeType":crate::MIME,"bytes":html.len(),"sha256":format!("{:x}",Sha256::digest(html.as_bytes())),"capabilities":[],"allowedDomains":[],"linkDomains":[],"permissions":{},"csp":{"connectDomains":[],"resourceDomains":[],"frameDomains":[],"baseUriDomains":[]},"runtimePackage":{"schema":1,"engine":APP,"revision":ENGINE_REVISION,"abi":"zoen-host-v1","module":{"url":format!("{directory}{MODULE_FILE}"),"bytes":157185,"sha256":MODULE_SHA,"mime":"text/javascript"},"wasm":{"url":format!("{directory}{WASM_FILE}"),"bytes":36314771,"sha256":WASM_SHA,"mime":"application/wasm"}}})
     }
     #[test]
     fn runtime_config_requires_exact_html_code_identity_and_zero_guest_network_authority() {

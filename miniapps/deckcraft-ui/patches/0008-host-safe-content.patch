@@ -1,0 +1,55 @@
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -1834,6 +1834,23 @@
+ 
+     /// Lay out the whole window.
+     pub fn ui(&mut self, ui: &mut egui::Ui) {
++        if host_layout::current(ui.ctx()).is_some() {
++            let ctx = ui.ctx().clone();
++            // egui's root Ui still spans viewport_rect even with safe_area_insets.
++            // Keep its full background, then lay out hosted controls in safe content.
++            ui.painter().rect_filled(ctx.viewport_rect(), egui::CornerRadius::ZERO, theme::Tokens::get(&ctx).chrome);
++            let safe = ui.available_rect_before_wrap().intersect(ctx.content_rect());
++            if safe.width() > 0.0 && safe.height() > 0.0 {
++                let mut content = ui.new_child(egui::UiBuilder::new().id(egui::Id::new("zoen_host_safe_content")).max_rect(safe));
++                content.set_clip_rect(safe);
++                self.ui_contents(&mut content);
++            }
++        } else {
++            self.ui_contents(ui);
++        }
++    }
++
++    fn ui_contents(&mut self, ui: &mut egui::Ui) {
+         let ctx = ui.ctx().clone();
+         if !self.fonts_ready {
+             ctx.request_repaint();
+diff --git a/crates/ui-egui/src/host_compact_tests.rs b/crates/ui-egui/src/host_compact_tests.rs
+--- a/crates/ui-egui/src/host_compact_tests.rs
++++ b/crates/ui-egui/src/host_compact_tests.rs
+@@ -192,3 +192,24 @@
+     assert!(h.state().app.canvas_rect.unwrap().left() >= 150.0);
+     assert!(h.query_by_label("File").is_some());
+ }
++
++#[test]
++fn real_root_ui_positions_wide_hosted_controls_with_either_landscape_safe_edge() {
++    for (left, right) in [(62.0, 0.0), (0.0, 62.0)] {
++        let layout = HostLayout {
++            width: 932.0,
++            height: 430.0,
++            insets: Insets { top: 0.0, right, bottom: 21.0, left },
++            close_button: Some(CloseRect { x: 932.0 - right - 56.0, y: 8.0, width: 44.0, height: 44.0 }),
++            theme: Some(Brightness::Dark),
++        };
++        let h = fixture(Some(layout));
++        let safe = h.ctx.content_rect();
++        let canvas = h.state().app.canvas_rect.unwrap();
++        assert!(safe.contains_rect(canvas), "the actual root Ui constrains canvas controls: {safe:?} / {canvas:?}");
++        let export = h.get_by_label("Export PDF or PowerPoint").rect();
++        assert!(export.left() >= safe.left() + 8.0, "actual panel honors the safe left edge: {export:?}");
++        assert!(safe.contains_rect(export));
++        assert!(!export.intersects(layout.close_rect(h.ctx.viewport_rect()).unwrap()));
++    }
++}

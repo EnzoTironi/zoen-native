@@ -3,6 +3,7 @@ export type HostLayout = {
   height: number;
   insets: { top: number; right: number; bottom: number; left: number };
   closeButton: { x: number; y: number; width: number; height: number } | null;
+  theme?: "dark" | "light";
 };
 type ManagedUIBindings = {
   zoenHostRequest: (json: string, bytes: Uint8Array) => Promise<unknown>;
@@ -54,7 +55,14 @@ export function hostLayout(context: unknown): HostLayout | null {
     if (x < 0 || y + Number(button.height) > d.height) return null;
     closeButton = { x, y, width: Number(button.width), height: Number(button.height) };
   }
-  return { width: d.width, height: d.height, insets, closeButton };
+  if (c?.theme !== undefined && c.theme !== "dark" && c.theme !== "light") return null;
+  return {
+    width: d.width,
+    height: d.height,
+    insets,
+    closeButton,
+    ...(c?.theme === "dark" || c?.theme === "light" ? { theme: c.theme } : {}),
+  };
 }
 export function installManagedHostUI(options: {
   app: {

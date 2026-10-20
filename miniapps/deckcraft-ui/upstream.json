@@ -25,6 +25,18 @@
     {
       "path": "patches/0006-portable-recovery.patch",
       "sha256": "1c812a2cc66a6e97719b793568aa8726deff8a33ec605ecb580fe01c839fd909"
+    },
+    {
+      "path": "patches/0007-host-compact-theme.patch",
+      "sha256": "9c1dd9f6b86d5b84ed1b79bb06f5fa43df46e8446474ebffe391cd4f1b979148"
+    },
+    {
+      "path": "patches/0008-host-safe-content.patch",
+      "sha256": "4a0229160a4d5ec44b0fe15fd97a3f5505f8da12d012a84a120969ee78b5c8cf"
+    },
+    {
+      "path": "patches/0009-compact-qualification.patch",
+      "sha256": "7114efd470e52313177615574ce95105a95b9060ce07f6ade47cb743fb6b4715"
     }
   ],
   "abi": "zoen-host-v1",
@@ -50,7 +62,10 @@
     "Explicit managed start after verified WASM init; automatic standalone main disabled only for zoen-host.",
     "Canonical persistence/export is owned by Zoen tools; loading code grants no device/network capability.",
     "Managed owner-queue freeze fences manual editing across final snapshot/commit/retirement.",
-    "Managed UI receives finite host safe areas/exact close corner through the owner queue; existing Export delegates PDF/PPTX intent to native accepted-head sharing before generating browser bytes."
+    "Managed UI receives finite host safe areas/exact close corner through the owner queue; existing Export delegates PDF/PPTX intent to native accepted-head sharing before generating browser bytes.",
+    "Hosted narrow layouts reuse the slide sorter, inspector controls and ribbon groups with full-width canvas/touch actions; authenticated host theme changes egui tokens only.",
+    "Hosted panels use a real safe-content child Ui over a full-viewport backdrop; raw safe-area metadata alone does not position egui panels.",
+    "Real upstream egui Harness validates compact safe bounds, theme, inspector/Notes draft rotation and command reuse; compact status excludes its separator from44pt hit space."
   ],
   "distributionStatus": "Not advertised: final managed release, MCP adapter and iOS runtime proof required."
 }
