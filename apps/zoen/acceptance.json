@@ -28,15 +28,16 @@
   "behavioralTestLearning": {
     "requestedOn": "2026-10-20",
     "specification": "docs/dev/signal-test-contracts.json",
-    "scope": "Bounded first assertion-based batch; continue remaining suites, parameter cases, invalid fixtures and fuzz consumers.",
+    "scope": "Bounded assertion mappings across six pinned repositories:51 overlapping scenario families, not51 runnable tests or exhaustive suite/fuzz coverage.",
     "sourceRepositories": [
       "Signal-iOS",
       "Signal-Android",
       "Signal-Desktop",
       "Signal-Server",
-      "libsignal"
+      "libsignal",
+      "RingRTC"
     ],
-    "mappingRecords": 42,
+    "mappingRecords": 51,
     "upstreamSuitesExecuted": false,
     "policy": "Extract initial state, sequence, injected fault and actual assertions; classify equivalent/partial/gap/incompatible at a pinned Zoen source. Implement original priority tests against Zoen boundaries, not copied retry counts/time windows or conflicting protocol policies.",
     "priority": ["data-loss", "duplication", "authorization", "recovery", "media"],
@@ -55,7 +56,21 @@
         "libraryTestsPassed": 539,
         "strictAllTargetClippy": "PASS"
       },
-      "boundary": "Original native Rust regressions at Zoen cryptographic/envelope boundaries. No upstream test code or fixtures copied, upstream suites not executed, no whole-product or full recovery acceptance."
+      "boundary": "Original native Rust regressions at Zoen cryptographic/envelope boundaries. No upstream test code or fixtures copied, upstream suites not executed, no whole-product or full recovery acceptance.",
+      "canonicalBackupAndIncomingPipeline": {
+        "sourceCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+        "testsAdded": 2,
+        "mappedFamilies": ["C07", "C12", "C13"],
+        "status": "PASS",
+        "verificationReceipt": "/private/tmp/zoen-continuity-batch-v146/client-core-library-tests-12.json",
+        "boundary": "One canonical backup corpus maps to both C12/C13; one real-WebSocket malformed/signature-rejection continuity case maps to C07. Existing historical partial classifications remain partial. No Signal source/tests copied or executed; no production cryptography/protocol policy change.",
+        "libraryTestsPassed": 543,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0,
+        "strictAllTargetClippy": "PASS",
+        "clippyReceipt": "/private/tmp/zoen-continuity-batch-v146/client-core-clippy-13.json"
+      }
     }
   },
   "creationWorkspace": {
@@ -112,7 +127,7 @@
     "currentMilestone": "ios-conversation-and-media",
     "currentManualValidationPlatforms": ["ios"],
     "currentEnvironment": "Local production-like composition with the real Rust services; final release still requires the compatible public backend and real providers.",
-    "currentPullRequest": "https://github.com/EnzoTironi/zoen-native/pull/142",
+    "currentPullRequest": "https://github.com/EnzoTironi/zoen-native/pull/144",
     "milestones": [
       {
         "id": "ios-conversation-and-media",
@@ -159,7 +174,8 @@
     "iosLaunchAcceptancePolicy": "Accept only the applicable iOS journeys and declared creation capabilities on final public-backend/physical-device artifacts, plus an iOS/backend workload profile declared and frozen before measurement with security, abuse, restore/rollback and cost gates. This separate milestone does not approve the retained mixed-platform profile or six-platform global flags; monthly availability still requires 30 observed days.",
     "validationPolicy": "Implement coherent front/core/backend batches, review then validate once together. Repeat broad checks/builds only when code changes, failures or unresolved concerns justify it; preserve integrity/auth/durability assertions and record environment failures separately.",
     "referencePolicy": "Signal is the principal reliability and messaging-interaction reference; evaluate maintained OSS/library reuse independently. Expo remains the product interface, Rust the shared authority; no complete Signal fork or duplicate durable store is introduced.",
-    "completionScope": "Thirty requiredJourneys plus all declared creationWorkspace capabilities and the numerical operating envelope. Competitor quality is a design reference, not an unbounded all-features/global-scale acceptance target."
+    "completionScope": "Thirty requiredJourneys plus all declared creationWorkspace capabilities and the numerical operating envelope. Competitor quality is a design reference, not an unbounded all-features/global-scale acceptance target.",
+    "currentSimulatorCheckpoint": "iosContinuityCheckpoint"
   },
   "backendIncluded": true,
   "sdk": 58,
@@ -229,7 +245,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "Current execution is iOS first; PR142 remains draft. The f3ab6fae app source passes 961/961 tests with zero skips, TypeScript/Oxlint/Oxfmt and an iOS Simulator Release build. Installed executable/bundle hashes match the sealed artifact. The owned native photo journey covers full-screen approval, real Markup, exact caption, Close/cold-unsent recovery and one explicit Send; photo/mask/caption geometry has no right strip. QuickLook returns compact and a transient confirmation label still needs polish; independent peer, video, multi-attachment, rotation and physical-device proof remain pending. Signal test-contract learning has a first bounded 42-record assertion mapping across five pinned upstream repositories; inventories are not exhaustive semantic coverage and upstream suites were not run. One original MLS rejection/cold-reopen test is integrated, with the full 19-test mls library and strict Clippy passing; three original backup-envelope tests are integrated, with the complete 539-test client-core library and strict Clippy passing. These tests do not establish full backup restoration or whole-Signal parity. Historical evidence retains its own source/platform boundary. All global readiness flags remain false.",
+  "currentAcceptanceSummary": "iOS-first execution remains active in draftPR144. App source143eb63f passes1038 tests (zero failures/skips), TypeScript/Oxlint/Oxfmt and Release build. All430 installed files/signature match the sealed source-specific artifact. Native04 qualifies all-card X/Pin, Home reorder/shortcut persistence, canonical chat cards and catalog return spacing/dirty close. Native06 keeps chat cardY stable on entering editing; quick chat drag/order remains an explicit native negative under diagnosis, so it is not a completed feature. Earlier photo/rotation proofs retain their separate source/artifact bounds. The Signal registry contains51 overlapping assertion-mapping families across six pinned repositories, not an exhaustive audit or executed Signal suites. Two new original client-core regressions are integrated at4f175f40 for exact canonical backup/new-device/cold reopen/media and malformed-wire/signature-rejection continuity without false readable receipts or duplication; all543 client-core library tests and strict all-target Clippy pass at4f175f40. DeckCraft bridge has11 privately passed real-engine tests and an actual WASM target check; canonical MCP/binary storage, verified multiasset loader and complete iPhone/real-agent/export/share journey are still being implemented. The other ArtCraft editors follow the first complete DeckCraft journey. The retained30 journeys,6 platforms,10 creation capabilities and operating-envelope hash are unchanged; all global readiness flags remain false.",
   "retiredBackend": {
     "id": "custom-cloudflare-runtime",
     "status": "RETIRED",
@@ -3943,5 +3959,63 @@
       },
       "behaviorPatchSha256": "430b7f3b83f2f81c04b0af75ab523e29b7eae5fa829405498062d619542be3f9"
     }
+  },
+  "iosContinuityCheckpoint": {
+    "date": "2026-10-20",
+    "pullRequest": "https://github.com/EnzoTironi/zoen-native/pull/144",
+    "appSource": "143eb63f386085f2e42a47c80b5eb007e01a39c4",
+    "appChecks": {
+      "status": "PASS",
+      "tests": 1038,
+      "failed": 0,
+      "skipped": 0,
+      "typescript": true,
+      "oxlint": true,
+      "oxfmt": true,
+      "receipt": "/private/tmp/zoen-continuity-batch-v146/final-app-check-11.json"
+    },
+    "currentSimulatorArtifact": {
+      "sourceCommit": "143eb63f386085f2e42a47c80b5eb007e01a39c4",
+      "configuration": "ad-hoc-signed arm64 iOS Simulator Release, no Metro",
+      "archivePath": "/private/tmp/zoen-continuity-batch-v146/release-06/Zoen.app",
+      "executableSha256": "a5fb77ded4a6f708f73f4b6f41857b8827a38059b4adb5988033700bb85a644e",
+      "bundleManifestSha256": "772a2b07a08731b7b26191bab4eae61077929b5f7ba0daf495a5fb40ca52ecaf",
+      "verifiedInstalledFiles": 430,
+      "strictSignature": "PASS",
+      "preservingInstall": true,
+      "deviceUdid": "591F1216-9B73-4BE1-807A-309DB937D6FA",
+      "seal": "/private/tmp/zoen-continuity-batch-v146/release-06/seal.json",
+      "checkStatusAtSealPreserved": "RUNNING; later checks-completed.json recordsPASS",
+      "runtimeScope": "Bounded source-specific simulator checks, not physical-iPhone, store-distribution or whole-iOS acceptance."
+    },
+    "nativeObserved": {
+      "release04Source": "30d49548f3442a3c969dc3499e6874c33cb587d5",
+      "release04Receipt": "/private/tmp/zoen-continuity-batch-v146/native-qa-04/README.md",
+      "release04VerifiedEvidenceFiles": 48,
+      "release04Passes": [
+        "all-card X/Pin with44pt targets",
+        "Home drag/Pin/shortcut-hide and cold preservation",
+        "canonical chat/inline App survives Home hiding",
+        "catalog/permissions own close +dirty guard +exact baseline top spacing after install/close",
+        "startup grid appears at assigned positions; illustrations load afterward"
+      ],
+      "release06Source": "143eb63f386085f2e42a47c80b5eb007e01a39c4",
+      "release06Receipt": "/private/tmp/zoen-continuity-batch-v146/native-qa-06/observations.json",
+      "release06Passes": [
+        "chat edit controls without moving cardY",
+        "normal cold launch and conversation retained"
+      ],
+      "unqualified": [
+        "chat edit-mode quick drag and persisted order: current native negative under diagnosis",
+        "full replay-qualified native flow",
+        "all-hidden-last-card runtime",
+        "native denied SQLite/CAS write",
+        "physical VoiceOver/haptics/ReduceMotion",
+        "physical-device calls/push/keyboard/media lifecycle",
+        "independent-recipient media journey"
+      ]
+    },
+    "signalMappingFamilies": 51,
+    "wholeProductAcceptance": false
   }
 }

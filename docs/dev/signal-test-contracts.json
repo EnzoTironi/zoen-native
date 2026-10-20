@@ -1468,7 +1468,28 @@
       "zoenEvidence": "crates/client-core/src/mls/tests/durability_tests.rs:309-375 and mls_recovery/tests.rs:454+ cover failure/rollback/retry of the same valid frame. They do not directly establish this malformed-then-next-valid real socket pipeline scenario.",
       "adoptionBoundary": "Useful next integrated core/relay contract: malformed authenticated input cannot advance readable receipt or block the next admissible frame. Assert exact row count as well as expected body.",
       "upstreamExecution": "NOT_RUN",
-      "zoenStatusAtComparedSource": "partial"
+      "zoenStatusAtComparedSource": "partial",
+      "implementedZoenSubset": {
+        "test": "crates/client-core/src/net/tests/incoming_pipeline.rs::malformed_wire_and_rejected_signature_do_not_poison_following_messages_or_readable_receipts",
+        "comparedBase": "e902143f03332a42f677b64ec020aae3ca9477ae",
+        "testSourceSha256": "908979cc1d351c7fb22a0a6b9431d12f550daaa002e58aab4f5cf0227c7101a3",
+        "status": "partial",
+        "verification": "Private original test-only candidate: focused actual WebSocket/client-core/SQLite regression passed, one executed and 541 filtered, zero failed/ignored. Strict lib+tests Clippy, scoped rustfmt and patch apply-check passed. A control stopping the real decoder error branch fails ordered continuation; a control sending Delivered for rejected authentication fails the explicit false-readable-receipt assertion. Final source restored and focused case passed again. No upstream, native, Web UI, full relay or full library suite was executed.",
+        "boundary": "Fixed synthetic signing keys, IDs, timestamps and content; one malformed protobuf frame and a bad signature for the exact later valid content ID/sequence are rejected without readable row, cursor advance, read mark or wire Delivered after a real maintenance pass. The same socket then accepts two contiguous valid peer messages with duplicate replay, exact complete cardinality/order/content/author/timestamp assertions, monotonic delivered progress and cold reopen. This narrows wire decoding and clear-event signature admission; it does not qualify corrupted MLS/pairwise ciphertext recovery, group epoch/ratchet interleavings, backend mailbox ACK persistence, crash/fsync, or all malformed input classes.",
+        "integrationCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+        "integratedVerification": {
+          "status": "PASS",
+          "command": "cargo test -p client-core --locked --lib -- --test-threads=2",
+          "receipt": "/private/tmp/zoen-continuity-batch-v146/client-core-library-tests-12.json",
+          "sourceCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+          "libraryTestsPassed": 543,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0,
+          "strictAllTargetClippy": "PASS",
+          "clippyReceipt": "/private/tmp/zoen-continuity-batch-v146/client-core-clippy-13.json"
+        }
+      }
     },
     {
       "id": "C08",
@@ -1611,7 +1632,28 @@
       "adoptionBoundary": "Adopt a Zoen-owned canonical backup corpus with fixed time, exact rows/counts/order and explicit format/version exclusions. Treat missing fixture corpus as missing evidence, never a green pass.",
       "upstreamExecution": "NOT_RUN",
       "zoenStatusAtComparedSource": "partial",
-      "guardedRisk": "Importer silently drops/changes fields or interprets relative expiry against wall clock."
+      "guardedRisk": "Importer silently drops/changes fields or interprets relative expiry against wall clock.",
+      "implementedZoenSubset": {
+        "test": "crates/client-core/src/backup/snapshot_tests.rs::canonical_backup_restores_every_row_and_projection_across_new_device_and_cold_reopen",
+        "comparedBase": "2480a9b96dd00ba9012f54230ef4cfb9f074e475",
+        "testSourceSha256": "71ca47558e24b7ec33e30096e348be78da1af0511903bd813b1ce2562e81d461",
+        "status": "partial",
+        "verification": "Private original test-only candidate: focused client-core test passed (1 executed; 541 filtered; no ignored). Positive corpus is 77 signed events, 65 posted messages, 233 SQLite pages / 954368 snapshot bytes. Destructive negative controls and restored final run are recorded in the sibling evidence packet. No upstream Signal tests, native or Web restore flow were executed.",
+        "boundary": "Current-schema Zoen SQLite snapshot → actual owner-bound AEAD envelope → new-device restore → cold reopen preserves exact full rows/count/order in eight populated portable tables and complete ordered timelines, profiles, space summaries and immutable file history. Device account metadata is intentionally replaced; local outbox/cache/uploads/peer receipt tables are excluded. Rehydration reads restored manifests and verifies both old/current encrypted file versions. This is one bounded Zoen fixture, not a shared cross-client canonical corpus or schema-upgrade matrix.",
+        "integrationCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+        "integratedVerification": {
+          "status": "PASS",
+          "command": "cargo test -p client-core --locked --lib -- --test-threads=2",
+          "receipt": "/private/tmp/zoen-continuity-batch-v146/client-core-library-tests-12.json",
+          "sourceCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+          "libraryTestsPassed": 543,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0,
+          "strictAllTargetClippy": "PASS",
+          "clippyReceipt": "/private/tmp/zoen-continuity-batch-v146/client-core-clippy-13.json"
+        }
+      }
     },
     {
       "id": "C13",
@@ -1643,7 +1685,28 @@
       "adoptionBoundary": "Use a bounded representative SQLite snapshot with exact canonical state before/after restore, scaling data only enough to cross meaningful IO/page boundaries.",
       "upstreamExecution": "NOT_RUN",
       "zoenStatusAtComparedSource": "partial",
-      "guardedRisk": "Truncation, skipped frames or reorder during stream framing."
+      "guardedRisk": "Truncation, skipped frames or reorder during stream framing.",
+      "implementedZoenSubset": {
+        "test": "crates/client-core/src/backup/snapshot_tests.rs::canonical_backup_restores_every_row_and_projection_across_new_device_and_cold_reopen",
+        "comparedBase": "2480a9b96dd00ba9012f54230ef4cfb9f074e475",
+        "testSourceSha256": "71ca47558e24b7ec33e30096e348be78da1af0511903bd813b1ce2562e81d461",
+        "status": "partial",
+        "verification": "Private original test-only candidate: focused client-core test passed (1 executed; 541 filtered; no ignored). Positive corpus is 77 signed events, 65 posted messages, 233 SQLite pages / 954368 snapshot bytes. Destructive negative controls and restored final run are recorded in the sibling evidence packet. No upstream Signal tests, native or Web restore flow were executed.",
+        "boundary": "One representative 233-page SQLite snapshot compares every canonical event and portable table row before/after restore; exact vector lengths precede ordered field equality. This is the same single test as C12, not a second test or Signal stream-format implementation. It does not inject upload interruption, out-of-space, process kill or arbitrary stream framing faults.",
+        "integrationCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+        "integratedVerification": {
+          "status": "PASS",
+          "command": "cargo test -p client-core --locked --lib -- --test-threads=2",
+          "receipt": "/private/tmp/zoen-continuity-batch-v146/client-core-library-tests-12.json",
+          "sourceCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+          "libraryTestsPassed": 543,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0,
+          "strictAllTargetClippy": "PASS",
+          "clippyReceipt": "/private/tmp/zoen-continuity-batch-v146/client-core-clippy-13.json"
+        }
+      }
     },
     {
       "id": "C14",

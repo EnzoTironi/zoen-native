@@ -19,16 +19,16 @@ para lançamento**, com jornadas completas contra os serviços reais. As outras
 plataformas permanecem no escopo final, em fases posteriores; não dividem agora
 o trabalho de refinamento e validação manual.
 
-| Lote | Entrega observável | Critério de saída |
-| --- | --- | --- |
-| 1. Conversa e mídia no iPhone | Timeline contínua; teclado e carrossel sincronizados; respostas/threads/reação/menu; busca no compositor; fotos e vídeo sem recorte involuntário; voz compacta e edição; anexos com aprovação explícita. | Selecionar, revisar, cancelar, reiniciar, recuperar e enviar no app real; destinatário independente recebe conteúdo e contexto corretos. Rolagem, gestos e acessibilidade preservam a conversa. |
-| 2. Confiança e continuidade | Apple/Google; conta, perfil e chaves automáticos; vínculo/revogação; offline/outbox; backup e recuperação; confirmações com significado preciso. | Dois dispositivos independentes, perdas de resposta, reinícios e revogação não perdem operações confirmadas nem liberam histórico sem chaves/autorização. |
-| 3. Segundo plano e chamadas | Push real, navegação por notificação, extensão/lifecycle; chamadas de voz e vídeo com integração de sistema. | Provas em iPhone físico com app fechado, bloqueio, permissão negada, rede interrompida e retomada; falha de push não perde trabalho durável. |
-| 4. Apps e agentes | Apps MCP com capas uniformes em chat/Home, seleção/reorganização e atalhos removíveis/restauráveis; tela cheia com X flutuante, animação nativa e retrato/paisagem; Excalidraw real; conectores e agentes duráveis. | Estado do App persiste e sincroniza sem reiniciar ao girar; remover um atalho não apaga o documento; permissões/revogação são efetivas; tarefa de agente continua sem cliente aberto e reconcilia aprovações, efeitos e custo após reinício. |
-| 5. Criação compartilhada | Páginas em blocos e planos, comentários/presença/histórico; Slides, Sites, Imagens e Arquivos; edição por pessoas e agentes. | Edição colaborativa e offline, conflitos/recovery, papéis e revogação, lixeira/restauração; publicação explícita e rollback de Sites; artefatos reabrem completos. |
-| 6. Lançamento iOS | Comunidades/convites e permissões; Você/configurações; design de céu uniforme; PT/EN; distribuição assinada; backend público compatível. | Instalar/atualizar no iPhone físico, executar as jornadas iOS aplicáveis com provedores reais, passar acessibilidade e falhas críticas, documentar limites e qualificar o perfil iOS/backend fixado antes da medição, incluindo segurança, abuso, recuperação/rollback e custo. |
-| 7. Web e Android | Reutilizar contratos, componentes adequados à plataforma e backend; completar a matriz de jornadas. | Execução real em navegador e Android, incluindo offline, recuperação, mídia, Apps/criação e interoperabilidade com o iPhone. |
-| 8. Desktop e aceite final | macOS/Windows/Linux; distribuição/atualização; operação e recuperação do produto completo. | Matriz final de plataformas, perfil de carga/custo medido, restauração/rollback e critérios globais aprovados com evidência reproduzível. |
+| Lote                          | Entrega observável                                                                                                                                                                                                  | Critério de saída                                                                                                                                                                                                                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Conversa e mídia no iPhone | Timeline contínua; teclado e carrossel sincronizados; respostas/threads/reação/menu; busca no compositor; fotos e vídeo sem recorte involuntário; voz compacta e edição; anexos com aprovação explícita.            | Selecionar, revisar, cancelar, reiniciar, recuperar e enviar no app real; destinatário independente recebe conteúdo e contexto corretos. Rolagem, gestos e acessibilidade preservam a conversa.                                                                                 |
+| 2. Confiança e continuidade   | Apple/Google; conta, perfil e chaves automáticos; vínculo/revogação; offline/outbox; backup e recuperação; confirmações com significado preciso.                                                                    | Dois dispositivos independentes, perdas de resposta, reinícios e revogação não perdem operações confirmadas nem liberam histórico sem chaves/autorização.                                                                                                                       |
+| 3. Segundo plano e chamadas   | Push real, navegação por notificação, extensão/lifecycle; chamadas de voz e vídeo com integração de sistema.                                                                                                        | Provas em iPhone físico com app fechado, bloqueio, permissão negada, rede interrompida e retomada; falha de push não perde trabalho durável.                                                                                                                                    |
+| 4. Apps e agentes             | Apps MCP com capas uniformes em chat/Home, seleção/reorganização e atalhos removíveis/restauráveis; tela cheia com X flutuante, animação nativa e retrato/paisagem; Excalidraw real; conectores e agentes duráveis. | Estado do App persiste e sincroniza sem reiniciar ao girar; remover um atalho não apaga o documento; permissões/revogação são efetivas; tarefa de agente continua sem cliente aberto e reconcilia aprovações, efeitos e custo após reinício.                                    |
+| 5. Criação compartilhada      | Páginas em blocos e planos, comentários/presença/histórico; Slides, Sites, Imagens e Arquivos; edição por pessoas e agentes.                                                                                        | Edição colaborativa e offline, conflitos/recovery, papéis e revogação, lixeira/restauração; publicação explícita e rollback de Sites; artefatos reabrem completos.                                                                                                              |
+| 6. Lançamento iOS             | Comunidades/convites e permissões; Você/configurações; design de céu uniforme; PT/EN; distribuição assinada; backend público compatível.                                                                            | Instalar/atualizar no iPhone físico, executar as jornadas iOS aplicáveis com provedores reais, passar acessibilidade e falhas críticas, documentar limites e qualificar o perfil iOS/backend fixado antes da medição, incluindo segurança, abuso, recuperação/rollback e custo. |
+| 7. Web e Android              | Reutilizar contratos, componentes adequados à plataforma e backend; completar a matriz de jornadas.                                                                                                                 | Execução real em navegador e Android, incluindo offline, recuperação, mídia, Apps/criação e interoperabilidade com o iPhone.                                                                                                                                                    |
+| 8. Desktop e aceite final     | macOS/Windows/Linux; distribuição/atualização; operação e recuperação do produto completo.                                                                                                                          | Matriz final de plataformas, perfil de carga/custo medido, restauração/rollback e critérios globais aprovados com evidência reproduzível.                                                                                                                                       |
 
 O lançamento iOS exige um perfil próprio de carga iOS/backend, declarado e
 fixado antes da medição, com segurança, proteção contra abuso, recuperação,
@@ -60,14 +60,29 @@ marcar as três flags globais como aprovadas antes do produto completo. Não há
 meta indefinida de copiar todas as features ou a escala global de concorrentes;
 o escopo verificável é a matriz de 30 jornadas, criação e perfil numérico declarado.
 
-O lote atual está no [PR 142](https://github.com/EnzoTironi/zoen-native/pull/142),
-em rascunho. A fonte de app `f3ab6fae` passou em 961 testes, tipos, Oxlint/Oxfmt
-e build Release iOS. O cenário nativo de foto já comprova marcação, legenda,
-recuperação do rascunho ainda não enviado após reinício e envio explícito, com
-imagem/moldura alinhadas. Vídeo, recepção independente e outros casos continuam
-pendentes, assim como dois detalhes de UX do editor. As fontes e limites estão
-na [referência Signal](signal-reliability-reference.md). Essa prova não é aceite
-de lançamento.
+O lote atual está no [PR 144](https://github.com/EnzoTironi/zoen-native/pull/144),
+em rascunho. A fonte iOS `143eb63f` passou em 1.038 testes, tipos, Oxlint/Oxfmt
+e build Release. A instalação preservou os dados e conferiu os 430 arquivos e a
+assinatura do artefato. No simulador, o lote anterior comprovou X/Pin em todos
+os cards, organização e persistência no Início, cartões canônicos no chat e a
+correção do espaço extra ao voltar do catálogo. O lote atual mantém o card na
+mesma altura ao entrar em edição; o arraste rápido no chat ainda tem uma falha
+nativa em investigação e não recebe aceite por testes de fonte.
+
+O registro do Signal contém 51 famílias de cenários, com escopos sobrepostos,
+extraídas de seis repositórios fixados. Dois novos testes originais do Zoen já
+estão integrados: equivalência completa do snapshot restaurado com mídia e
+continuidade após entrada inválida sem confirmação falsa. Os 543 testes da biblioteca
+client-core e o Clippy estrito de todos os alvos passaram em `4f175f40`. Os status parciais e as evidências anteriores permanecem.
+
+DeckCraft tem uma ponte real para a mesma Session do editor, com 11 testes do
+motor e check WASM aprovados em candidato privado. A integração MCP com a
+persistência canônica e o carregador verificado estão em implementação paralela;
+a jornada completa de criação, edição humana/agente, recuperação e exportação no
+iPhone continua pendente. Só depois desse aceite o padrão será repetido nos
+demais editores ArtCraft. O detalhe atual está em `iosContinuityCheckpoint` no
+[registro de aceite](../../apps/zoen/acceptance.json). Nenhuma dessas provas
+parciais aprova o lançamento iOS ou as flags globais.
 
 ## Plataformas e arquitetura
 

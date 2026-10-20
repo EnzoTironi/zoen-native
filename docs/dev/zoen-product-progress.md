@@ -4,22 +4,31 @@
 
 Finish iOS first against the real backend; Web/Android and desktop follow later.
 See the [goal and milestone exit criteria](zoen-complete-product-goal.md#execução-atual--20-de-outubro-de-2026).
-The current draft is [PR142](https://github.com/EnzoTironi/zoen-native/pull/142).
-Source `f3ab6fae` passes 961 app tests, types, Oxlint/Oxfmt and an iOS Release
-build. The isolated native photo journey now covers full-screen approval,
-QuickLook Markup, caption, Close/cold-unsent recovery and one explicit Send; the
-whole photo and rounded mask align without a right strip. Native video,
-independent delivery and physical-device/rotation remain pending; editor return
-to compact and transient pending text remain UX findings. The first bounded
-[Signal test-contract matrix](signal-test-contracts.json) records 42 assertion
-mappings, not an exhaustive review or upstream test execution. Its first original
-MLS rejection/cold-reopen regression is integrated, with all 19 MLS tests and
-strict Clippy passing. Three original backup-envelope tests cover nonce reuse,
-exact byte roundtrips, authentication and malformed authenticated headers; the
-full 539-test client-core library and strict Clippy also pass. No production
-cryptography changed. No global product, production or scale acceptance is
-granted. Earlier checkpoints preserve their original dates, PRs, artifacts and
-platform limits.
+The current draft is [PR144](https://github.com/EnzoTironi/zoen-native/pull/144).
+App source `143eb63f` passes 1,038 tests with no skips, types, Oxlint/Oxfmt and
+an iOS Release build. Preserving install matches all430 sealed files and strict
+signature. Release04 native checks qualify all-card44pt X/Pin, Home drag/pin/hide
+and cold persistence, canonical chat cards and catalog/permissions/dirty-close
+return without the old54pt gap. Release06 keeps the held chat card at its original
+vertical position; quick edit-mode chat reorder remains an observed negative
+under investigation. The recorded walkthroughs are not replay-qualified.
+
+The [Signal matrix](signal-test-contracts.json) contains51 overlapping scenario
+families across six pinned repositories. Source study is bounded; upstream suites
+were not executed or copied. At `4f175f40`, two original test-only regressions add
+complete canonical backup/new-device/cold reopen/media verification and actual
+malformed-wire/signature-rejection receive continuity without false Delivered
+or duplicate rows. All543 client-core library tests and strict all-target
+Clippy pass at `4f175f40`; inherited partial classifications remain partial. Earlier541-test core and strict Clippy evidence
+retain their own source, and the new cfg(test) modules do not alter runtime policy.
+
+DeckCraft's private pinned engine bridge passes11 real-engine regressions and a
+WASM-target check, including human-to-agent returned-byte adoption, retry IDs,
+draft preservation and actual PPTX/PDF export. Canonical encrypted binary/MCP
+storage and verified multiasset loading are being implemented in parallel. The
+complete iPhone/authorized-agent/cold-recovery/export/share journey and the other
+ArtCraft editors remain pending. Earlier photo and landscape proofs retain their
+separate immutable artifacts. All global readiness flags remain false.
 
 ## Earlier checkpoint record
 
