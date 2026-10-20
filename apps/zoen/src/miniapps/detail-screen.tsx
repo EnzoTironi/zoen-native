@@ -126,9 +126,9 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       options={{
         title: manage ? t('common.details') : item.title,
         headerShown: manage,
-        // Interactive app views own their drags, including the back-swipe edge.
-        // System Back and native sheet dismissal share the document-close guard.
-        gestureEnabled: !fullscreen,
+        // iOS sheet dismissal remains subject to the document-close guard.
+        // Other platforms keep the interactive App route's gesture policy.
+        gestureEnabled: process.env.EXPO_OS === 'ios' || !fullscreen,
         headerRight: !manage
           ? undefined
           : () =>

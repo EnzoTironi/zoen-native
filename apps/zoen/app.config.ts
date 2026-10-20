@@ -30,6 +30,7 @@ export default ({ config, projectRoot }: ConfigContext): ExpoConfig => {
     ...(config.plugins ?? []),
     './plugins/with-native-surfaces.cjs',
     './plugins/with-shortcut-localizations.cjs',
+    './plugins/with-android-back-dispatch.cjs',
   ];
   if (googleIosClientId) {
     const suffix = '.apps.googleusercontent.com';

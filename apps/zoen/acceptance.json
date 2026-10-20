@@ -81,7 +81,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "An optimized arm64 iOS Simulator Release built from 21a2b778 passes genuine secure device linking with both check codes verified before approval, receives nine history events, preserves the same Home/history UI witnesses after a real app-process cold restart, and opens/dismisses the existing fullbleed App through its native grabber. Release runtime receipt 3fa0a3f9 is separate from the prior Debug exact-680-byte/five-DTO proof; no direct Release plaintext export or new scene mutation was performed. Fresh Android native generation passes with 331 metadata records/218 checksum calls and all old 216 values retained; the current module Release build and 28 ordinary Gradle tests pass. The original two test failures remain recorded with the pinned coroutine-recovery diagnosis and a test-only causal-error assertion correction. The first Android Release APK 1245a56a UI attempt exposes status-bar/toolbar overlap and an observed Back action returning to the launcher with the app process still alive; the Back cause remains unclassified and presentation/navigation acceptance fails. Cold reopen retains Home/canvas and one element semantically, with owned shutdown and data retained; no exact Android plaintext or native-drain race runtime proof is claimed. Android attachments remain an outside next-slice candidate; calls and durable frontend Page input are incomplete. All 30 journeys, six platforms, historical evidence and three false readiness flags remain unchanged. Physical-device/store/provider/public-deployment/load/whole-platform acceptance remains open.",
+  "currentAcceptanceSummary": "Bounded optimized iOS 22-source and QA-signed Android 18-source Releases now pass titleless App canvas, separated controls, a real rectangle edit and app-process cold reopen on retained genuine accounts. Current iOS additionally passes the square lower edge and native grabber before/after a mostly vertical draw; a genuine peer reads 1692 bytes/hash 4a27a643 unchanged after cold 95269→96237, with three visible rectangles. Android retains its 1184-byte/hash 2708d8dd after-cold proof 5325→5664. Original IDs/geometry/style persist, but boundElements null→[] normalization prevents whole-original-element equality claims. Earlier 20-source iOS corner/grabber/locale failures, Android Back failures, Debug AX/harness failures and monitor 01/03 negatives remain recorded. Fresh 22-source checks pass 886 app tests and 47 resource tests with zero skips; current resource 7860e6dd/6195767 bytes and native archive are unchanged. The older published 70753102 CI 11 green does not qualify the new source; new CI and Android native pull-down remain pending. All 30 journeys, six platforms, all 10 known gaps and three false readiness flags remain unchanged.",
   "retiredBackend": {
     "id": "custom-cloudflare-runtime",
     "status": "RETIRED",
@@ -2262,7 +2262,249 @@
     "webAccountRecoveredAfterExternalRestart": true
   },
   "postMergeCheckpoint": {
-    "id": "optimized-ios-release-and-android-retirement-v131",
+    "id": "bounded-app-sheets-ios22-android18-v133",
+    "appsPresentationV133": {
+      "status": "BOUNDED_IOS22_AND_ANDROID18_RELEASE_PASS_NEW_CI_AND_BROADER_PARITY_PENDING",
+      "priorPublishedCi": {
+        "head": "707531028207eae06c006b717174e1f5ce1cedd5",
+        "completedSuccess": 11,
+        "receipt": {
+          "path": "/private/tmp/zoen-app-presentation-v133-docs/ci-707-terminal.json",
+          "sha256": "9ab6e68c212f56a2db7e084639ab18d06f337171f6a13574f46aca6bfce65136"
+        },
+        "scope": "Published70753102 only; later sources are not CI-qualified."
+      },
+      "androidReleaseFinal": {
+        "runtime": {
+          "path": "/private/tmp/zoen-app-presentation-v133/release-runtime-final-01/acceptance.json",
+          "sha256": "b9b7e6f07456f417790d60b08ab5a74c93f306cb8ff142e34291903df425d776"
+        },
+        "build": {
+          "path": "/private/tmp/zoen-app-presentation-v133/android-release-final-01/acceptance.json",
+          "sha256": "f4c45bd0c77122397b2bcb2fcf7d101adc80e89b10a3665bdc24b8a64899e0f0"
+        },
+        "scope": "API 35 arm64, non-debuggable minified Release, QA signing; genuine retained linked synthetic account. No Metro/CDP/JS injection.",
+        "apkSha256": "0b481cf061c9331e44c3866fcc613288e63f19033ae8f69f2d8ffb19bd0158ea",
+        "embeddedHbcSha256": "31be943bee776c4c37ac3153e51ad2f582b145e6c61bab165ac3045f7c3b58a5",
+        "producerJniSha256": "28ecd1b5e518808b3841ce750d424cbaa300e0f0120fafcebf87ec97662c2205",
+        "packagedJniSha256": "31061ae5f3bedf03bdd43037da3209a6537abc09241d056bb2ec1b59c8906a85",
+        "standardStripReproducesDifferentPackagedHash": true,
+        "metadata": 331,
+        "checksums": 218,
+        "old216Retained": true,
+        "jvmPassed": 28,
+        "savedCanvasBackAndSingleNewRectangleBackAccepted": true,
+        "peerAfterEditAndAfterCold": {
+          "bytes": 1184,
+          "sha256": "2708d8dd35be07cfe1ef086b67c37bb6ae4e46c1602d784b37ff0505ee94c869",
+          "liveElements": 2
+        },
+        "peerAfterColdByteExactToAfterEdit": true,
+        "coldProcess": {
+          "beforePid": 5325,
+          "afterPid": 5664,
+          "sameItemAndTwoVisibleRectangles": true
+        },
+        "originalElementBoundary": "Original IDs, geometry and style are retained; boundElements normalizes null to []. The original whole element is not byte-exact.",
+        "limits": "Bounded API 35 functional proof only. No held pending-network flush, offline/save-failure injection, emulator reboot, other APIs, predictive-gesture continuity, startup/performance/accessibility or whole-platform acceptance."
+      },
+      "supersededAndroidReleaseV133": {
+        "apkSha256": "0d3b000f394079173784ee239a0fe87bcbe921aff6e8a737da4d57a87e03d6b2",
+        "geometry": "PASS_BOUNDED_TITLELESS_FULLBLEED_SAFE_TOP_CONTROLS",
+        "hardwareBack": "FAIL_LAUNCHER_SAME_PROCESS",
+        "receipt": {
+          "path": "/private/tmp/zoen-app-presentation-v133/runtime-01/acceptance.json",
+          "sha256": "675830089a1f8f9c6add733b61df1fcf9e0914377c5ea2c22b93525a6e0258b2"
+        }
+      },
+      "diagnosticDebugBeforeNativeFix": {
+        "nativeHardwareBackPressObserved": false,
+        "appFocusedNavigationReadyAndHandlerRegistered": true,
+        "realKey4OnlyNoInjectedJsEvent": true,
+        "receipt": {
+          "path": "/private/tmp/zoen-app-presentation-v133/debug-runtime-01/acceptance.json",
+          "sha256": "e87e678346832fe7212b3db765dccc3bd1d56806caaa103688a2eb04f3fe902e"
+        }
+      },
+      "nativeDispatcherFix": {
+        "source": "apps/zoen/plugins/with-android-back-dispatch.cjs",
+        "scope": "CNG MainActivity bridge for API33–35, without JavaScript Back workaround; actual runtime proof is API 35 only.",
+        "debugRuntime": {
+          "path": "/private/tmp/zoen-app-presentation-v133/debug-fixed-runtime-01/acceptance.json",
+          "sha256": "54db7400e0f42eb9dac5c84999956acc2f95d1cd1c3ffe60ea03004671661a5d"
+        },
+        "observedHardwareBackPressEvents": 3,
+        "rootFallbackAndOrdinaryResumeSamePid": 4607,
+        "orchestrationLimit": "The second Debug AX wait failed at 90 seconds and the batched harness erroneously continued. Preserve that failure; no startup/accessibility acceptance.",
+        "sheetBoundary": "Android fullScreenModal fallback differs from iOS native formSheet; Android native pull-down sheets and all-platform sheet parity remain unaccepted."
+      },
+      "checksAndResource": {
+        "app": {
+          "path": "/private/tmp/zoen-app-presentation-v133/full-app-check-01/acceptance.json",
+          "sha256": "328f6add067c193699a612e794a7a59d38d663f5eef6d8a107033b71d08a1bb2"
+        },
+        "appPassed": 886,
+        "resourceBeforePortableDiscoveryPassed": 39,
+        "resourceAfterPortableDiscoveryPassed": 47,
+        "resourceAfterPortableDiscoveryFailed": 0,
+        "resourceAfterPortableDiscoverySkipped": 0,
+        "resourceLog": {
+          "path": "/private/tmp/zoen-app-presentation-v133/portable-resource-tests.log",
+          "sha256": "94ce869505235a8c5d27f57b3c0b2ed20e9dd78f5a54adea5dffa75f85bea6bc"
+        },
+        "standardProducerCheck": {
+          "path": "/private/tmp/zoen-app-presentation-v133/portable-producer-unchanged-check.log",
+          "sha256": "c125317c69320b3782f375aaef7a565d57d52f23afb29b9560e8311685fd51e3"
+        },
+        "resourceSha256": "7860e6dd3f6d6e613823757e6455b39ff8552cde3e29391969a23099aedf38e5",
+        "resourceBytes": 6195767,
+        "postAndroidDelta": "Three portable-discovery test-only paths followed by two iOS-only navigation option expressions. Android 18-source artifact/runtime remains bounded accepted; no Android 22-source artifact claim. Runtime resources/native archive remain unchanged.",
+        "currentSourceCut": {
+          "path": "/private/tmp/zoen-app-presentation-v133/final-ios-source-cut-22.json",
+          "sha256": "95a97ac24718e64a1646d3eee763657581568e45d2ef39a513d6b394bebb1b27"
+        },
+        "currentChecks22": {
+          "path": "/private/tmp/zoen-app-presentation-v133/ios-sheet-edge-gesture-v134/root-checks-22.json",
+          "sha256": "b741d9240bd2125e8ea0ce5e8399ac3647107ce88571e0ffb8c1fde5eb3593d1"
+        }
+      },
+      "priorGapsPreserved": "All 10 existing knownParityGaps remain verbatim. Their older artifact wording keeps its original scope; these bounded iOS 22-source/Android 18-source receipts do not certify complete platform or product parity.",
+      "fullAppParityAccepted": false,
+      "productionReadinessAccepted": false,
+      "scaleReadinessAccepted": false,
+      "iosPreparation": {
+        "status": "NATIVE_RELEASE_PODS_PREPARATION_AND_LATER_APP_ARTIFACT_QUALIFIED",
+        "native": {
+          "path": "/private/tmp/zoen-app-presentation-v133/ios-native-final-01/native-acceptance.json",
+          "sha256": "66a58285da3e004d084e82e3a68e88db4d5e6f6776d137e55a5c03efd77b7ba6"
+        },
+        "handoff": {
+          "path": "/private/tmp/zoen-app-presentation-v133/ios-native-final-01/handoff.json",
+          "sha256": "d187153a20b2fb8a53a111a84195749d3b8b5d8537e7bf47209e40e552e96db0"
+        },
+        "pods": {
+          "path": "/private/tmp/zoen-app-presentation-v133/ios-native-final-01/pods-acceptance.json",
+          "sha256": "9fcc1c8073ad106df6e2e35311cb5d9a52499f186c1e3d0e5ab2a46e7bad5d05"
+        },
+        "nativeBoundary": "Genuine isolated simulator Release producer validates 331 metadata/218 actual checksums with old 216 retained, frozen 20-path source/native 176-input closure, and exact full current HTML/manifest bodies in the native archive. This is not an iOS app/runtime acceptance.",
+        "podsBoundary": "CocoaPods changes exactly two reviewed relocation spec checksums; dependency versions/graph and all other lock bytes stay unchanged. Original deployment-mode refusal is retained; primary 40 files unchanged and no unapproved symlink/primary-prefix inputs found.",
+        "frameworkBoundary": "Pods handoff began with DEBUG React/RNDependencies/Hermes. Actual app artifacts 20 and 22 subsequently qualify all three official Release framework/archive/intermediate/embedded chains and actual app/widget entitlements.",
+        "attempt01": {
+          "receipt": {
+            "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/xcode-release-01.json",
+            "sha256": "e627b5f461fcca7eeddf572a0e3d406d56dc941480c41c448cb1b4eeb4f7b936"
+          },
+          "classification": "MONITOR_ONLY_ABORT_NOT_PRODUCT_COMPILER_FAILURE",
+          "globalPsTimeoutSeconds": 10,
+          "ownedGroupTerminatedAndAbsent": true
+        },
+        "attempt02": {
+          "running": {
+            "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/xcode-release-02.running.json",
+            "sha256": "334817b7893d0ff33d601e19f5a0dedcd3f35147748f2f8d463d428e685db017"
+          },
+          "status": "TERMINAL_SUCCESS_QUALIFIED_BY_20_SOURCE_ARTIFACT_RECEIPT",
+          "guardValidation": {
+            "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/guard-validation-03/acceptance.json",
+            "sha256": "8dca4e85b6c6c07f84d2c1c7e432d921a3e2e3981f12405d2585966d4fe0428a"
+          },
+          "guardSyntheticCasesPassed": 4,
+          "scope": "Same 2jobs/12GiB/5GiB/1800s bounds; lineage discovery then owned-only RSS, one bounded sampling retry, no missing sample treated as zero.",
+          "terminal": {
+            "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/xcode-release-02.json",
+            "sha256": "b87cd9cf5b7f5ffd994b7853445f528345c61fd07b5f3366d49361d252db22ef"
+          }
+        },
+        "appArtifactAccepted": true,
+        "runtimeAccepted": false,
+        "runtimeBoundary": "Preparation is not itself a runtime proof; the separate 22-source-source runtime below is the current bounded acceptance."
+      },
+      "pending": [
+        "new-ci-for-final-source-after-push",
+        "android-native-pull-down-and-all-platform-sheet-parity",
+        "remaining-known-platform-product-provider-backend-scale-gates"
+      ],
+      "supersededIos20Runtime": {
+        "build": {
+          "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/build-acceptance.json",
+          "sha256": "27de472d0c82f3c98f8f3c572942e78fcab141e1dc3d62ef7ec99e99ecd1c9dd"
+        },
+        "runtime": {
+          "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/runtime/acceptance-partial.json",
+          "sha256": "ebbfa6c9de69c7373abbc1674e021b3ed52ab0be5b1daa18602a8ddfa388de02"
+        },
+        "status": "PARTIAL_WITH_NATIVE_DISMISSAL_FAILURE_AND_CORNER_RESIDUAL",
+        "englishCanvasSelectorFailedMs": 90004,
+        "freshPortugueseCanvasGatePassed": true,
+        "infiniteBottomEdgeAccepted": false,
+        "nativeGrabberDismissAccepted": false,
+        "coldProcess": "NOT_RUN",
+        "causeBoundary": "Native pan delivery versus application/flush prevention was not established. Locale-selector failure is not startup or latency acceptance."
+      },
+      "iosReleaseFinal22": {
+        "build": {
+          "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/build-acceptance-edge-gesture-01.json",
+          "sha256": "2ca87a32a98793c3cbc50672c14add07a1a6081e7f0cb396ccf407ac707b6275"
+        },
+        "runtime": {
+          "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/runtime-22/acceptance.json",
+          "sha256": "723699a6fe4df119a1ef5b3b0ae6d633e4b467e190e12ba789b0ffef2941ac62"
+        },
+        "manifest": {
+          "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/runtime-22/manifest.json",
+          "sha256": "88487a00935d5b1fd7dc69ac6447baf66de0122337fcb1a862ab2d5bcd6cf75e"
+        },
+        "rootArtifactGate": {
+          "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/root-preinstall-edge-gesture-gate.json",
+          "sha256": "1c904063a28a286c13ca3ccfb6e2137222aba6384bc76a6a4d4485d49b74b3ca"
+        },
+        "userHandoff": {
+          "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/user-handoff-22.json",
+          "sha256": "5544f4301df3d3070c463b7c270f023875612c92e65bc7cb1cb6c85d71492618"
+        },
+        "scope": "Optimized arm64 iOS Simulator Release, ad-hoc simulator signing, genuine retained public synthetic QA126 account. No Metro/CDP/identity injection; functional proof only.",
+        "sourceCut": {
+          "path": "/private/tmp/zoen-app-presentation-v133/final-ios-source-cut-22.json",
+          "sha256": "95a97ac24718e64a1646d3eee763657581568e45d2ef39a513d6b394bebb1b27"
+        },
+        "sourcePaths": 22,
+        "nativeInputsExact": 176,
+        "effectiveInputsExact": 913,
+        "mainSha256": "ca045d19e663918e0c81873987f1395e11bac931e4673651464a622c4f29bd16",
+        "mainArm64Uuid": "76412AA7-EC7D-3556-B66F-4D3A88481F6C",
+        "embeddedHbcSha256": "c67681dbb35bc0832cd9fd10c688772adb4c8f9e26c9643b8f6b437e3c6d2721",
+        "nativeArchiveSha256": "08b5e86b283dd65ef7c5b1f4b1e79e722b6cd6db3a96f9bfff1bed06f18d752e",
+        "officialThreeReleaseFrameworksAndActualAppWidgetEntitlementsAccepted": true,
+        "geometry": "No host title/status band, controls separated, square full lower edge with no sky at sampled corners.",
+        "nativeGrabber": "Same 700ms coordinates as preserved 20-source failure return Home both before and after the one authorized edit. Individual prop causality is not isolated.",
+        "canvasInteraction": "One mostly vertical rectangle drag stays in the App; the next input is the native grabber, which returns Home.",
+        "peerAfterEditAndAfterCold": {
+          "bytes": 1692,
+          "sha256": "4a27a643b59e7a878510ce7e35db8c51810b4110fda025c564f1a17e970acfd4",
+          "liveElements": 3,
+          "wholeSceneBytesExactAfterCold": true
+        },
+        "coldProcess": {
+          "beforePid": 95269,
+          "afterPid": 96237,
+          "sameItemHomeThreeElementsAndEditorThreeRectangles": true,
+          "deviceRebootAccepted": false
+        },
+        "originalElementBoundary": "All original IDs/geometry/style remain. One original boundElements field normalizes null to []; whole original elements/JSON are not byte-exact.",
+        "guardBoundary": {
+          "attempt03FailedReceipt": {
+            "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/xcode-release-03.json",
+            "sha256": "061c2595f97015294f5c5f46146a973d219afe54286a170a1fb74eda89354b01"
+          },
+          "supplement": {
+            "path": "/private/tmp/zoen-app-presentation-v133/ios-release-final-01/xcode-release-03-terminal-classification.json",
+            "sha256": "7c697b0b5607e27abdc3127f0026087ff5e354f774f20f4f0e13ef1a64fb2a06"
+          },
+          "status": "Post-child-exit monitor race retained as a failed guard receipt; supplement proves actual child exit 0 and terminal build. No extra compile or relabeling of the negative."
+        },
+        "limits": "No held pending-network flush/save-failure injection, device reboot, physical/store delivery, performance/accessibility or complete replay acceptance. Prior locale/AX/orchestration/monitor failures remain. Simulator F404 is retained for the user and is protected from further agent UI."
+      }
+    },
     "nativeReleaseLifecycleV131": {
       "status": "IOS_RELEASE_BOUNDED_PASS_ANDROID_SOURCE_PASS_PRESENTATION_NEGATIVES",
       "sourceBaseHead": "21a2b7780c1dc521d90ce8223635493a1a544992",

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -14,7 +15,7 @@ export const FONT_FAMILY={Excalifont:5};
 export const CaptureUpdateAction={NEVER:'never'};
 export const convertToExcalidrawElements=(items)=>items;
 export const restore=(value)=>value;
-export const serializeAsJSON=JSON.stringify;
+export const serializeAsJSON=(elements,appState)=>JSON.stringify({type:"excalidraw",version:2,elements,appState});
 export async function exportToSvg({elements}){
  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
  svg.setAttribute('viewBox','0 0 300 200');
@@ -23,7 +24,7 @@ export async function exportToSvg({elements}){
 }
 export function Excalidraw(props){
  window.qaEditorElements=props.initialData.elements;
- useEffect(()=>{props.excalidrawAPI?.({getSceneElements:()=>props.initialData.elements,updateScene:()=>{}})},[]);
+ useEffect(()=>{props.excalidrawAPI?.({getSceneElements:()=>props.initialData.elements,getAppState:()=>props.initialData.appState??{},getFiles:()=>props.initialData.files??{},updateScene:()=>{}});props.onChange?.(props.initialData.elements,props.initialData.appState??{},props.initialData.files??{});},[]);
  return React.createElement('div',{'data-qa-editor':'ready'});
 }
 export function MainMenu(){return null;}
@@ -34,7 +35,7 @@ async function compile(mutate = (text) => text) {
     absWorkingDir: root,
     stdin: {
       contents:
-        "import {createRoot} from 'react-dom/client';import {ExcalidrawApp} from './src/mcp-app';createRoot(document.body).render(<ExcalidrawApp/>);",
+        "import {createRoot} from 'react-dom/client';import {ExcalidrawApp} from './src/mcp-app';window.qaRoot=createRoot(document.body);window.qaRoot.render(<ExcalidrawApp/>);",
       resolveDir: root,
       loader: "tsx",
     },
@@ -69,12 +70,12 @@ async function compile(mutate = (text) => text) {
   return result.outputFiles[0].text;
 }
 
-async function fixture({ mode = "fullscreen", mutate, earlyContext } = {}) {
+async function fixture({ mode = "fullscreen", mutate, earlyContext, canonical = false, initialContext = {}, previousTop } = {}) {
   const runtime = await compile(mutate);
   const failures = [];
   const keys = [];
   const early = [];
-  let session;
+  let session, parent;
   const console = new VirtualConsole();
   console.on("jsdomError", (error) => failures.push(error.message));
   const elements = [
@@ -88,6 +89,10 @@ async function fixture({ mode = "fullscreen", mutate, earlyContext } = {}) {
       label: { text: "Exact initial idea" },
     },
   ];
+  let context = { displayMode: mode, containerDimensions: { width: 400, height: 700 }, ...initialContext };
+  const initialScene = JSON.stringify({ type: "excalidraw", version: 2, elements, appState: {}, files: {} });
+  const sceneBytes = new TextEncoder().encode(initialScene);
+  const sceneHash = createHash("sha256").update(sceneBytes).digest("hex");
   const dom = new JSDOM("<!doctype html><body></body>", {
     runScripts: "outside-only",
     pretendToBeVisual: true,
@@ -116,7 +121,7 @@ async function fixture({ mode = "fullscreen", mutate, earlyContext } = {}) {
           setItem() {},
         },
       });
-      const parent = {
+      parent = {
         postMessage(message) {
           void session.receive(JSON.stringify(message));
         },
@@ -149,16 +154,16 @@ async function fixture({ mode = "fullscreen", mutate, earlyContext } = {}) {
         },
         initialize: () => ({
           hostInfo: { name: "Zoen", version: "qa" },
-          hostCapabilities: { serverTools: {} },
-          hostContext: { displayMode: mode, containerDimensions: { width: 400, height: 700 } },
+          hostCapabilities: { serverTools: {}, ...(canonical ? { experimental: { zoen: { canonicalScene: { version: 1, itemId: "item" } } } } : {}) },
+          hostContext: context,
         }),
         arguments: () => ({ elements: JSON.stringify(elements) }),
         state: () => ({ content: [], structuredContent: { checkpointId: "qa-checkpoint" } }),
-        context: () => ({ displayMode: mode, containerDimensions: { width: 400, height: 700 } }),
-        tools: new Set(["read_checkpoint", "save_checkpoint"]),
+        context: () => context,
+        tools: new Set(["read_checkpoint", "save_checkpoint", "app_scene_read", "app_scene_read_chunk"]),
         resourceUri: "ui://zoen/excalidraw.html",
         resource: async () => ({ contents: [] }),
-        call: async () => ({ content: [] }),
+        call: async (name) => ({ content: [], ...(name === "app_scene_read" ? { structuredContent: { transferId: "read", bytes: sceneBytes.length, sha256: sceneHash, chunkBytes: 196608 } } : name === "app_scene_read_chunk" ? { structuredContent: { index: 0, data: Buffer.from(sceneBytes).toString("base64") } } : {}) }),
         openLink: async () => ({}),
         share: async () => ({}),
         native: async () => ({}),
@@ -168,6 +173,7 @@ async function fixture({ mode = "fullscreen", mutate, earlyContext } = {}) {
       });
     },
   });
+  if (previousTop) dom.window.document.documentElement.style.setProperty("--sat", previousTop);
   dom.window.eval(runtime);
   const wait = async (predicate) => {
     const end = Date.now() + 3000;
@@ -186,7 +192,17 @@ async function fixture({ mode = "fullscreen", mutate, earlyContext } = {}) {
     keys,
     elements,
     wait,
+    context(delta) {
+      // Exercise a genuinely partial wire notification, not a fixture-side merged snapshot.
+      dom.window.dispatchEvent(new dom.window.MessageEvent("message", {
+        data: { jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: delta },
+        source: parent,
+      }));
+      return new Promise((resolve) => setImmediate(resolve));
+    },
+    unmount() { dom.window.qaRoot.unmount(); },
     close() {
+      dom.window.qaRoot.unmount();
       session.dispose();
       dom.window.close();
     },
@@ -294,4 +310,68 @@ test("negative: inline-only initial state does not enter the already-negotiated 
   } finally {
     f.close();
   }
+});
+
+
+for (const canonical of [false, true]) {
+  test(`${canonical ? "canonical" : "legacy"} editor uses negotiated host safe area and retains partial updates without resizing canvas`, async () => {
+    const f = await fixture({
+      canonical,
+      previousTop: "3px",
+      initialContext: { safeAreaInsets: { top: 31, right: 9, bottom: 22, left: 7 } },
+    });
+    const root = f.dom.window.document.documentElement;
+    const values = () => ["--sat", "--sar", "--sab", "--sal"].map((key) => root.style.getPropertyValue(key));
+    try {
+      await f.wait(() => f.dom.window.document.querySelector("[data-qa-editor]"));
+      assert.deepEqual(values(), ["31px", "9px", "22px", "7px"]);
+      // A theme-only notification must not discard the SDK's previously merged insets.
+      await f.context({ theme: "dark" });
+      await f.wait(() => values()[0] === "31px");
+      await f.context({ safeAreaInsets: { top: 0, right: 42, bottom: 18, left: 40 }, containerDimensions: { width: 900, height: 400 } });
+      await f.wait(() => values()[1] === "42px");
+      assert.deepEqual(values(), ["0px", "42px", "18px", "40px"], "rotated/wide controls still respect physical edges");
+      const canvas = f.dom.window.document.querySelector(canonical ? ".canonical-canvas" : ".main");
+      if (!canonical) await f.wait(() => canvas.style.height === "400px");
+      assert.equal(canvas.style.padding, "");
+      assert.equal(canvas.style.margin, "");
+      await f.context({ displayMode: "inline" });
+      await f.wait(() => values().every((value) => value === ""));
+      await f.context({ displayMode: "fullscreen" });
+      await f.wait(() => values()[1] === "42px");
+      f.unmount();
+      assert.deepEqual(values(), ["3px", "", "", ""], "cleanup restores pre-existing declarations");
+      await f.context({ safeAreaInsets: { top: 99, right: 99, bottom: 99, left: 99 } });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      assert.deepEqual(values(), ["3px", "", "", ""], "closed root removed only its own listener");
+      assert.deepEqual(f.failures, []);
+    } finally { f.close(); }
+  });
+}
+
+test("host safe area arriving before either editor mounts is retained by the real MCP App", async () => {
+  const f = await fixture({ canonical: true, earlyContext: { safeAreaInsets: { top: 35, right: 1, bottom: 24, left: 2 } } });
+  try {
+    await f.wait(() => f.dom.window.document.querySelector("[data-qa-editor]"));
+    assert.equal(f.dom.window.document.documentElement.style.getPropertyValue("--sat"), "35px");
+    assert.equal(f.dom.window.document.documentElement.style.getPropertyValue("--sab"), "24px");
+    assert.equal(f.early.length, 2, "no fabricated second launch is needed");
+  } finally { f.close(); }
+});
+
+
+test("negative: removing the shared subscription reproduces missing canonical safe-area controls", async () => {
+  const f = await fixture({
+    canonical: true,
+    initialContext: { safeAreaInsets: { top: 31, right: 9, bottom: 22, left: 7 } },
+    mutate: (text) => {
+      assert.equal(text.split("useHostSafeArea(app);").length, 2);
+      return text.replace("useHostSafeArea(app);", "");
+    },
+  });
+  try {
+    await f.wait(() => f.dom.window.document.querySelector("[data-canonical-editor] [data-qa-editor]"));
+    assert.equal(f.dom.window.document.documentElement.style.getPropertyValue("--sat"), "");
+    assert.equal(f.dom.window.document.documentElement.style.getPropertyValue("--sab"), "");
+  } finally { f.close(); }
 });

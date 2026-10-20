@@ -1,0 +1,29 @@
+--- a/src/global.css
++++ b/src/global.css
+@@ -83,8 +83,15 @@
+ .main.fullscreen .excalidraw-container {
+   height: 100%;
+ }
+
++/* The pinned mobile side tools sit outside FixedSideContainer, so they need
++   the same host insets as the toolbar without moving the canvas. */
++.excalidraw .mobile-misc-tools-container {
++  top: calc(var(--sat, 0px) + 5rem - var(--editor-container-padding));
++  right: calc(var(--sar, 0px) - var(--editor-container-padding));
++}
++
+ /* Hide library button in fullscreen editor */
+ .main.fullscreen .default-sidebar-trigger {
+   display: none !important;
+ }
+@@ -93,9 +100,9 @@
+    fit it in top-right alongside lock/hand icons). */
+ .mobile-share-slot {
+   position: absolute;
+   top: calc(var(--sat, 0px) + 64px);
+-  right: calc(var(--sar, 0px) + 12px);
++  right: calc(var(--sar, 0px) + 48px);
+   z-index: 5;
+ }
+
+ /* Contain SVG inside fullscreen viewport (not cover) */

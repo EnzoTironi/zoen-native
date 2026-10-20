@@ -85,6 +85,8 @@ function Navigation() {
                 animation: process.env.EXPO_OS === 'android' ? 'slide_from_bottom' : undefined,
                 sheetAllowedDetents: [1],
                 sheetGrabberVisible: true,
+                // Match the canvas edges to the native sheet bounds.
+                sheetCornerRadius: process.env.EXPO_OS === 'ios' ? 0 : undefined,
                 sheetExpandsWhenScrolledToEdge: false,
                 gestureEnabled: true,
                 headerShown: false,

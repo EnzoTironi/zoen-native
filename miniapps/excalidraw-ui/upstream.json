@@ -6,13 +6,13 @@
   "patchCommit": "aafc247efb8ba0689e193557749784ea80ee4996",
   "patchSha256": "1449b6a7176c032ea36e3d6a1cf293ce05ea353063b009c568bef69999f93675",
   "sourceSha256": {
-    "src/mcp-app.tsx": "c70e54d3d6a3fdf20d83e40acf703bb06309d77d4a21cdee1fc9f6aabc9051a8",
+    "src/mcp-app.tsx": "b47c122a07119b7f076aa426bfd5bc48b4f65af8531b1dec3d8e35cfe0ac9e58",
     "src/mcp-entry.tsx": "41314dcc1fbbdccc32e38bcd3431f55c210b198aa55d4c3cae70dac36639dc8a",
     "src/mcp-app.html": "be7f7457a602100feaf13f37c5dc1f22f8e30ff2469d210708542aa7be2cf179",
     "src/edit-context.ts": "de7d1aa4032455ff3e012b3b16c3fdc086bc6324f8cd7697d0e2ded5b94474f2",
     "src/pencil-audio.ts": "13f6ff769d5d2140faeeffa4b49d5a9f7a85b357b20d0c2603e53bdd288b98bf",
     "src/sounds.ts": "c197a890a699a9ed3348cc5ff12d676b2e9923ab25fcb80045cdad10f4baff4f",
-    "src/global.css": "79ad7aa44ae3224a802909724e18d1ca62acbdda5bd61ad592b22619bcbd1707"
+    "src/global.css": "56511f47fde7f4b836ce394a89b2c4fcb037e383a2aee00c0c86c3c5ef3f24ea"
   },
   "licenseDeclaration": {
     "upstreamPackageJson": "MIT",
@@ -24,7 +24,9 @@
     "Initialize fullscreen from the negotiated host context and buffer early context changes until React handler registration.",
     "Self-contained dependency and font assets; native system font fallback replaces optional Xiaolai CJK font without changing text.",
     "Canonical full-scene image/appState persistence, acknowledged chunked save/retry/flush via standard MCP tools.",
-    "Public aiEnabled=false additionally gates manual Mermaid menu and Mermaid paste paths; optional converter branch excluded."
+    "Public aiEnabled=false additionally gates manual Mermaid menu and Mermaid paste paths; optional converter branch excluded.",
+    "One host-context subscription applies negotiated mobile safe-area insets to floating controls in both canonical and legacy editors, without padding or resizing the canvas.",
+    "Apply negotiated top/right safe-area insets to the pinned mobile Library/lock/hand panel in both editors so it cannot cover the toolbar; place the legacy compact Export beside that panel without overlapping either toolbar; canvas dimensions and Library visibility remain unchanged."
   ],
   "externalResources": [],
   "prSourceSha256": "e311cfa69aa3c67a0dbfecdbc3005857c12590de3c1d871afe7c853703acd928",
@@ -32,5 +34,7 @@
   "librarySourceSha256": {
     "@excalidraw/excalidraw/dist/prod/index.js": "6ed19fd70ef6ecbdafc47b66a405910c9a6e5982c72f2f4d3d94f37da8b6ad77",
     "@excalidraw/excalidraw/dist/prod/chunk-FX7ZIABN.js": "5d42242a4c5c7d7b835d154c291b838e2f0fcdccd649c8b2fcbe05b3a7c2b346"
-  }
+  },
+  "safeAreaPatchSha256": "9970f72d86a62739b93f63805b75c0cb72537128e5181ac7dcc033c3e15c7897",
+  "mobileSideToolsPatchSha256": "743ab03eddaaa091e040292bbe2885a8463d7a6f888de298e6897ab7e1c6de67"
 }

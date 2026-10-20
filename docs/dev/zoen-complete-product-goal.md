@@ -116,3 +116,27 @@ acessibilidade, segurança e operação sob o perfil de carga declarado.
 permanecem `false` até haver evidência suficiente. Os limites conhecidos e as
 falhas abertas continuam registrados. Build aprovado, frontend hospedado, interface
 polida ou adaptador privado funcional são progresso, sem encerrar a meta completa.
+
+## Checkpoint atual
+
+O Release iOS de 22 fontes passa canvas sem título, controles separados, borda
+inferior sem céu nos cantos e pull-down nativo antes/depois de um novo retângulo
+vertical, sem fechar durante o desenho. O peer confirma os mesmos 1.692 bytes/hash
+`4a27a643` após reinício do processo `95269 → 96237`, com três retângulos visíveis.
+O Android API 35 mantém seu Release de 18 fontes: Voltar, edição e reinício
+`5325 → 5664`, com os mesmos 1.184 bytes/hash `2708d8dd` no peer. Não há novo
+artefato Android de 22 fontes. IDs/geometria/estilo originais persistem;
+`boundElements: null → []` impede afirmar igualdade integral dos elementos.
+
+Os recibos separam as falhas anteriores de cantos, grabber, seletor de idioma,
+AX/harness e monitor das provas atuais. A preparação iOS, os três frameworks
+Release e os entitlements reais do app/widget estão qualificados; a corrida do
+monitor após o filho terminar permanece negativa, com suplemento do build real.
+Isso não aprova reboot do aparelho, falhas de save induzidas, performance,
+acessibilidade, distribuição em loja ou paridade completa.
+
+Passam 886 testes do app e 47 de recursos, sem skips, no corte de 22 fontes.
+O recurso `7860e6dd` mantém 6.195.767 bytes e o arquivo nativo não muda.
+As 11 aprovações CI de `70753102` pertencem ao commit anterior; o novo CI e o
+pull-down nativo Android continuam pendentes. As 30 jornadas, seis plataformas,
+lacunas conhecidas e três flags de prontidão `false` permanecem preservadas.
