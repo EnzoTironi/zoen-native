@@ -147,11 +147,17 @@ let host: {
 let readyPromise: Promise<void> | null = null;
 let locale = (typeof navigator !== 'undefined' && navigator.language) || 'en';
 
-function applyTheme(ctx: any) {
+function applyHostContext(ctx: any) {
   const vars = ctx?.styles?.variables ?? {};
-  const scheme = ctx?.theme === 'dark' ? 'dark' : 'light';
+  const scheme = ctx?.theme === 'dark' ? 'dark' : ctx?.theme === 'light' ? 'light' : themeStore.value.scheme;
   const root = document.documentElement;
   root.dataset.theme = scheme;
+  const insets = ctx?.displayMode === 'fullscreen' ? ctx.safeAreaInsets : undefined;
+  for (const edge of ['top', 'right', 'bottom', 'left'] as const) {
+    const value = insets?.[edge];
+    const pixels = typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+    root.style.setProperty(`--zoen-host-safe-${edge}`, `${pixels}px`);
+  }
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, String(v));
   themeStore.set({ scheme, vars: { ...themeStore.value.vars, ...vars } });
 }
@@ -160,7 +166,8 @@ bridge.app.ontoolresult = (p) => {
   if (p.structuredContent !== undefined) stateStore.set(p.structuredContent);
 };
 bridge.app.onhostcontextchanged = (p: any) => {
-  applyTheme({ ...p, theme: p.theme ?? themeStore.value.scheme });
+  // The official App merges partial notifications before invoking this callback.
+  applyHostContext(bridge.app.getHostContext());
   if (p.zoen?.members) membersStore.set(p.zoen.members);
 };
 bridge.app.onteardown = async () => ({});
@@ -177,7 +184,7 @@ function ready(): Promise<void> {
         hostContext: bridge.app.getHostContext() as any,
       };
       host = { name: r.hostInfo?.name ?? 'unknown', zoen: r.hostCapabilities?.experimental?.zoen };
-      applyTheme(r?.hostContext);
+      applyHostContext(r?.hostContext);
       if (typeof r?.hostContext?.locale === 'string') locale = r.hostContext.locale;
       const zc = r?.hostContext?.zoen;
       if (zc?.members) membersStore.set(zc.members);

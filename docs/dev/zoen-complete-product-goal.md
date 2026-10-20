@@ -119,6 +119,47 @@ polida ou adaptador privado funcional são progresso, sem encerrar a meta comple
 
 ## Checkpoint atual
 
+O Android v134 tem prova limitada de layout, gesto e reabertura no Release QA
+`ced05640`, corte de 25 fontes `e8bf8dfc`. Lista e Excalidraw separam os controles
+da alça de 48 dp. Puxar para baixo fecha; movimentos para cima/laterais mantêm
+aberto. Um retângulo vertical permanece no editor até o gesto seguinte na alça;
+o peer confirma um retângulo, 678 bytes/hash `74c2b72c`.
+
+A espera original AX de 60 segundos continua não atendida. Sua classificação
+como editor travado foi excessiva: o PNG original do mesmo resultado e o PNG
+tardio já mostram o canvas. O primeiro PNG preservado é de cerca de 73,2 s após
+o toque; não demonstra abertura antes de 60 s. Recibos e negativos originais
+permanecem imutáveis, com suplementos de correção explícitos.
+
+Uma comparação separada usa o mesmo APK normal, sem instrumentação temporária,
+e reinicia o processo `5118 → 5236`. A captura terminada em +11,025 s já mostra
+canvas e retângulo; a árvore pública UIAutomator também contém os controles,
+enquanto o Argent ainda descreve “Connecting”. O mecanismo dessa divergência
+não foi isolado. O peer mantém os mesmos 678 bytes. Isso prova uma reabertura
+limitada; não é medição precisa de TTI, teste TalkBack ou correção causal do app.
+O APK anterior `ba780784` continua reprovado na área segura da Lista. gRPC/setup
+e o primeiro seletor AX incorreto permanecem registrados.
+
+SDK/estilos e oito pares HTML/manifesto foram regenerados e recompilados no
+núcleo Android. Excalidraw `7860e6dd`/6.195.767 bytes não mudou. Passam 886 testes
+do app, 17 causais de navegação, 52 do SDK e 28 JVM, sem skips nessas suítes.
+Os 62 testes Excalidraw anteriores mantêm seu corte e recurso. O HBC igual é
+esperado: os novos recursos estão no JNI. As duas fontes de diagnóstico foram
+restauradas byte a byte; o artefato de diagnóstico não qualifica produção.
+
+O iOS de 22 fontes abaixo preenche os limites da sheet UIKit, mas ainda deixa
+a faixa de status com o céu subjacente. O pedido mais recente para preencher
+também o topo físico exige outra apresentação e outro artefato, ainda pendentes.
+O arquivo nativo iOS antigo também não qualifica os recursos SDK novos.
+
+O CI anterior `eff1f0dd` termina com nove sucessos e duas falhas: Rust passa;
+API 28 mantém timeout PageDraft sem causa isolada e dois skips de capacidade do
+provider; API 35 passa 106 testes, mas o job falha no teardown offline. Nenhum
+job foi pulado; isso não elimina os skips JUnit nem aprova o novo corte.
+As 30 jornadas, seis plataformas, dez lacunas e três flags `false` permanecem.
+
+### Checkpoint preservado v133
+
 O Release iOS de 22 fontes passa canvas sem título, controles separados, borda
 inferior sem céu nos cantos e pull-down nativo antes/depois de um novo retângulo
 vertical, sem fechar durante o desenho. O peer confirma os mesmos 1.692 bytes/hash

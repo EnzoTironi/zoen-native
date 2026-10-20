@@ -8,8 +8,8 @@
   "linkDomains": [
     "wa.me"
   ],
-  "sha256": "b68327bfc4c50378d96192ee0a8537147fb3cf391ef2125ab49d62cb1f1de22b",
-  "bytes": 671878,
+  "sha256": "306724ce606e09782f8425575117f14bb1e6a89f71c5a20e637dae53a0b72336",
+  "bytes": 672613,
   "deps": {
     "react": "19.1.1",
     "@modelcontextprotocol/ext-apps": "2.0.3",

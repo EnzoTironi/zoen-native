@@ -6,8 +6,8 @@
   "allowedDomains": [],
   "networkPurpose": "",
   "linkDomains": [],
-  "sha256": "0fdd874b7e6f464556f64680ceb75eb2925aeeec3534c78f254d22348e9c4a38",
-  "bytes": 735353,
+  "sha256": "8f374926f6a1d34ae8e0298ce50677042dc40a3014b1feb3a893d9316d709501",
+  "bytes": 736088,
   "deps": {
     "react": "19.1.1",
     "@modelcontextprotocol/ext-apps": "2.0.3",
