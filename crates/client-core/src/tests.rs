@@ -534,7 +534,10 @@ fn zoen(e: &Client) -> Persona {
 fn mcp_specs_follow_the_apps_extension() {
     let e = seeded();
     let specs = e.app_specs();
-    assert_eq!(specs.len(), 9);
+    assert_eq!(
+        specs.len(),
+        9 + usize::from(miniapps::deckcraft::registration::available())
+    );
     for s in &specs {
         assert!(s.resource_uri.starts_with("ui://"));
         assert!(
@@ -561,6 +564,15 @@ fn mcp_specs_follow_the_apps_extension() {
             .collect::<Vec<_>>();
         let mut expected_tools = match s.id.as_str() {
             "excalidraw" => vec!["app_document_read", "app_document_save"],
+            "deckcraft" => vec![
+                "app_binary_read",
+                "app_binary_read_chunk",
+                "app_binary_begin",
+                "app_binary_append",
+                "app_binary_commit",
+                "app_binary_abort",
+                "app_binary_export_source",
+            ],
             "pet" => vec![
                 "pet_feed",
                 "pet_nap",
@@ -2816,3 +2828,5 @@ fn chat_prefs_live_in_my_personal_space_and_last_one_wins() {
         "a mute in the past is no mute"
     );
 }
+
+mod deckcraft_registration;

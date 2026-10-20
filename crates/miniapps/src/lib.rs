@@ -108,7 +108,7 @@ fn empty() -> Value {
 
 pub fn specs() -> Vec<AppSpec> {
     use ActionClass::*;
-    vec![
+    let mut specs = vec![
         AppSpec {
             id: "excalidraw",
             name: "Excalidraw",
@@ -404,7 +404,11 @@ pub fn specs() -> Vec<AppSpec> {
                 ),
             ],
         },
-    ]
+    ];
+    if let Some(deckcraft) = deckcraft::registration::spec() {
+        specs.push(deckcraft);
+    }
+    specs
 }
 
 pub fn spec(app: &str) -> Option<AppSpec> {
@@ -450,6 +454,7 @@ fn push_log(state: &mut Value, who: &str, what: &str, now: i64) {
 
 pub fn create(app: &str, args: &Value, actor: &str, now: i64) -> Result<(String, Value), String> {
     match app {
+        "deckcraft" => deckcraft::registration::create(args),
         "excalidraw" => {
             let title = args
                 .get("title")

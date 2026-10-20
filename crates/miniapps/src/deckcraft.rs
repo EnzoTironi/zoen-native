@@ -7,6 +7,8 @@ use std::{
     io::{Cursor, Read},
 };
 
+pub mod registration;
+
 pub const APP: &str = "deckcraft";
 pub const RESOURCE: &str = "ui://zoen/deckcraft/index.html";
 pub const MIME: &str = "application/vnd.storyteller.deckcraft+zip";

@@ -3774,6 +3774,7 @@ impl Engine {
             state_json: state.to_string(),
         };
         let message = match spec.id {
+            "deckcraft" => t("Criei a apresentação. Podemos editar o mesmo documento aqui.", "Created the presentation. We can edit the same document here."),
             "pet" => t(
                 "Ele mora aqui agora. Dá para dar comida, jogar a Corrida do Jumento e revezar quem cuida dele.",
                 "He lives here now. You can feed him, play Donkey Dash and take turns looking after him.",
@@ -3826,7 +3827,37 @@ impl Engine {
 
     /// Installs a catalog mini-app as the current user, with an Item-scoped grant.
     pub fn install_app(&mut self, space: &str, app_id: &str, args_json: &str) -> R<ItemDetail> {
+        if app_id == apps::deckcraft::APP {
+            return self.install_deckcraft(space, args_json);
+        }
         self.atomic_agent_action(|e| e.install_app_inner(space, app_id, args_json))
+    }
+
+    fn install_deckcraft(&mut self, space: &str, args_json: &str) -> R<ItemDetail> {
+        fn default_title() -> String {
+            t("Apresentação", "Presentation")
+        }
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Args {
+            #[serde(default = "default_title")]
+            title: String,
+            #[serde(rename = "mutationId")]
+            mutation_id: String,
+        }
+        let args: Args = serde_json::from_str(args_json).map_err(|_| CoreError::Invalid {
+            reason: t(
+                "Argumentos de apresentação inválidos.",
+                "Invalid presentation arguments.",
+            ),
+        })?;
+        let (title, _) = apps::deckcraft::registration::create(&json!({"title":args.title}))
+            .map_err(|reason| CoreError::Invalid { reason })?;
+        use base64::Engine as _;
+        let initial =
+            base64::engine::general_purpose::STANDARD.encode(apps::deckcraft::registration::EMPTY);
+        let accepted = self.app_binary_create(space, &title, &initial, &args.mutation_id)?;
+        self.item(&accepted.item_id)
     }
 
     fn install_app_inner(&mut self, space: &str, app_id: &str, args_json: &str) -> R<ItemDetail> {
