@@ -48,13 +48,20 @@ export function createDeckcraftSession(options: Options) {
   let live = true;
   let opened = false;
   let retiring = false;
+  let recoveryRequired = false;
   let queued = 0;
   let phase: Phase = 'saved';
   let error: string | null = null;
   let tail = Promise.resolve();
   let closing: Promise<void> | null = null;
   const publish = () => {
-    if (live) options.onState({ phase, opened, blocked: !opened || retiring || queued > 0, error });
+    if (live)
+      options.onState({
+        phase,
+        opened,
+        blocked: !opened || retiring || queued > 0 || recoveryRequired,
+        error,
+      });
   };
   const current = new MiniappSession({
     send: options.send,
@@ -108,7 +115,10 @@ export function createDeckcraftSession(options: Options) {
       // Once an editable accepted Session was exposed, no later display label
       // can remove its obligation to flush before ordinary dismissal.
       opened ||= status.ready && phase === 'saved';
-      error = phase === 'error' ? t(opened ? 'decks.saveFailed' : 'decks.unavailable') : null;
+      // A timed-out teardown can still complete inside the guest. Its status
+      // notification proves neither that input resumed nor that Close is safe.
+      if (!recoveryRequired)
+        error = phase === 'error' ? t(opened ? 'decks.saveFailed' : 'decks.unavailable') : null;
       publish();
       return {};
     },
@@ -155,9 +165,13 @@ export function createDeckcraftSession(options: Options) {
             if (resumed.isError) throw new Error(t('decks.saveFailed'));
           }
           phase = 'saved';
-          error = null;
+          if (retire || !retiring) {
+            recoveryRequired = false;
+            error = null;
+          }
         })
         .catch((reason: unknown) => {
+          recoveryRequired = true;
           if (retire) {
             retiring = false;
             closing = null;
@@ -183,6 +197,7 @@ export function createDeckcraftSession(options: Options) {
     if (!opened || retiring) return Promise.reject(new Error(t('decks.exportFailed')));
     queued++;
     publish();
+    let resumed = false;
     const operation = tail
       .catch(() => {})
       .then(async () => {
@@ -191,9 +206,11 @@ export function createDeckcraftSession(options: Options) {
         lifetime.check();
         const resume = async () => {
           if (live && !retiring) {
-            const resumed = await current.callAppTool('resume_document');
+            const response = await current.callAppTool('resume_document');
             lifetime.check();
-            if (resumed.isError) throw new Error(t('decks.saveFailed'));
+            if (response.isError) throw new Error(t('decks.saveFailed'));
+            resumed = true;
+            recoveryRequired = false;
           }
         };
         try {
@@ -228,9 +245,10 @@ export function createDeckcraftSession(options: Options) {
         }
         await resume();
         phase = 'saved';
-        error = null;
+        if (resumed) error = null;
       })
       .catch((reason: unknown) => {
+        if (!resumed) recoveryRequired = true;
         if (live) error = t('decks.exportFailed');
         throw reason;
       })

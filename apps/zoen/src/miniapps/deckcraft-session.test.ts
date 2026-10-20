@@ -145,7 +145,7 @@ test('failed ACK preserves the mounted session and allows explicit successful re
   };
   await assert.rejects(f.session.controller.flush({ retire: true }), /Synthetic denied save/);
   assert.equal(f.disposals(), 0);
-  assert.equal(f.states.at(-1)?.blocked, false);
+  assert.equal(f.states.at(-1)?.blocked, true);
   assert.ok(f.states.at(-1)?.error);
   f.app.onteardown = async () => ({});
   await f.session.controller.flush();
@@ -220,4 +220,165 @@ test('resource scope never grants generic calls or a different document', async 
     f.app.callServerTool({ name: 'app_binary_read', arguments: { id: 'other' } }),
   );
   assert.deepEqual(f.calls, []);
+});
+
+for (const retire of [false, true]) {
+  test(`late teardown success remains covered until retry resume ACK (retire=${retire})`, async (t) => {
+    const f = await fixture();
+    t.after(f.close);
+    await f.open();
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const write = gate();
+    const late = gate();
+    let frozen = false;
+    f.app.onteardown = async () => {
+      frozen = true;
+      await write.promise;
+      // The real SDK cancellation signal cannot stop this already-admitted
+      // document save. A late notification must not acknowledge native resume.
+      await f.open();
+      late.resolve();
+      return {};
+    };
+    const saving = f.session.controller.flush({ retire });
+    await tick();
+    t.mock.timers.tick(20_000);
+    await assert.rejects(saving, /Request timed out/);
+    const failure = f.states.at(-1)?.error;
+    assert.ok(failure);
+    assert.equal(f.states.at(-1)?.blocked, true);
+    write.resolve();
+    await late.promise;
+    await tick();
+    assert.equal(frozen, true);
+    assert.equal(f.states.at(-1)?.error, failure);
+    assert.equal(f.states.at(-1)?.blocked, true);
+
+    const resume = gate();
+    f.app.onteardown = async () => ({});
+    f.app.oncalltool = async ({ name }) => {
+      assert.equal(name, 'resume_document');
+      f.calls.push(name);
+      await resume.promise;
+      frozen = false;
+      return { content: [] };
+    };
+    const retry = f.session.controller.flush();
+    await tick();
+    assert.ok(f.calls.includes('resume_document'));
+    await f.open();
+    assert.equal(f.states.at(-1)?.error, failure);
+    assert.equal(f.states.at(-1)?.blocked, true);
+    resume.resolve();
+    await retry;
+    assert.equal(frozen, false);
+    assert.equal(f.states.at(-1)?.error, null);
+    assert.equal(f.states.at(-1)?.blocked, false);
+  });
+}
+
+test('timed-out export preflush preserves recovery and an admitted Close never resumes input', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  await f.open();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const write = gate();
+  const late = gate();
+  let flushes = 0;
+  f.app.onteardown = async () => {
+    if (++flushes === 1) {
+      await write.promise;
+      await f.open();
+      late.resolve();
+    }
+    return {};
+  };
+  const sharing = f.session.share('pptx');
+  await tick();
+  t.mock.timers.tick(20_000);
+  await assert.rejects(sharing, /Request timed out/);
+  const failure = f.states.at(-1)?.error;
+  assert.ok(failure);
+  assert.equal(f.states.at(-1)?.blocked, true);
+  assert.deepEqual(f.shares, []);
+  assert.equal(f.calls.includes('app_binary_read'), false);
+  write.resolve();
+  await late.promise;
+  await tick();
+  assert.equal(f.states.at(-1)?.error, failure);
+  assert.equal(f.states.at(-1)?.blocked, true);
+  await f.session.controller.flush({ retire: true });
+  assert.equal(flushes, 2);
+  assert.equal(f.calls.includes('resume_document'), false);
+  assert.equal(f.states.at(-1)?.blocked, true);
+});
+
+test('resume timeout cannot be acknowledged by a late saved notification', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  await f.open();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const resume = gate();
+  const late = gate();
+  f.app.oncalltool = async ({ name }) => {
+    assert.equal(name, 'resume_document');
+    await resume.promise;
+    await f.open();
+    late.resolve();
+    return { content: [] };
+  };
+  const saving = f.session.controller.flush();
+  await tick();
+  t.mock.timers.tick(20_000);
+  await assert.rejects(saving, /Request timed out/);
+  const failure = f.states.at(-1)?.error;
+  assert.ok(failure);
+  resume.resolve();
+  await late.promise;
+  await tick();
+  assert.equal(f.states.at(-1)?.error, failure);
+  assert.equal(f.states.at(-1)?.blocked, true);
+  f.app.oncalltool = async () => ({ content: [] });
+  await f.session.controller.flush();
+  assert.equal(f.states.at(-1)?.blocked, false);
+  assert.equal(f.states.at(-1)?.error, null);
+});
+
+test('Close admitted before background timeout stays covered through the late save and its own ACK', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  await f.open();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const write = gate();
+  const late = gate();
+  const final = gate();
+  let flushes = 0;
+  f.app.onteardown = async () => {
+    if (++flushes === 1) {
+      await write.promise;
+      await f.open();
+      late.resolve();
+    } else {
+      await late.promise;
+      await final.promise;
+    }
+    return {};
+  };
+  const background = f.session.controller.flush();
+  await tick();
+  const closing = f.session.controller.flush({ retire: true });
+  t.mock.timers.tick(20_000);
+  await assert.rejects(background, /Request timed out/);
+  await tick();
+  write.resolve();
+  await late.promise;
+  await tick();
+  assert.equal(flushes, 2);
+  assert.equal(f.states.at(-1)?.blocked, true);
+  assert.ok(f.states.at(-1)?.error);
+  assert.equal(f.calls.includes('resume_document'), false);
+  final.resolve();
+  await closing;
+  assert.equal(f.calls.includes('resume_document'), false);
+  assert.equal(f.states.at(-1)?.blocked, true);
 });
