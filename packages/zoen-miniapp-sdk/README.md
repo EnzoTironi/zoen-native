@@ -21,6 +21,11 @@ tokens e convenções de experiência.
   descrição acessível mantém o conteúdo completo. Imagens e estados não mudam o
   tamanho do cartão. Fonte de geometria:
   [`app-card-layout.ts`](../../apps/zoen/src/miniapps/app-card-layout.ts).
+- Os cards aparecem diretamente em suas posições, sem animação de entrada. Ao
+  segurar para organizar, todos os cards dessa área mostram X e Pin, com alvos
+  nativos de 44 pontos. O X remove o atalho; o artefato e seu histórico continuam
+  disponíveis. Pin controla o favorito da Home. A organização pertence ao host;
+  o App não desenha menus ou controles de gerenciamento dentro da própria capa.
 - Tocar abre o App em tela cheia com transição nativa e um X flutuante para sair,
   sem título ou faixa de cabeçalho. O fechamento usa a mesma guarda de salvamento
   da navegação; uma falha preserva o trabalho e oferece recuperação.
