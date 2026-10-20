@@ -130,7 +130,7 @@ function FilesContent() {
 
 export default function Files() {
   return (
-    <SkyScene>
+    <SkyScene tabScene>
       <FilesContent />
     </SkyScene>
   );

@@ -13,19 +13,25 @@ export default function AppNavigation() {
   const contentStyle = {
     // NativeTabs handles Android's bottom inset; the headerless tab screens own the top.
     ...(process.env.EXPO_OS === 'android' ? { paddingTop: insets.top } : {}),
-    backgroundColor: sky.bottom,
-    experimental_backgroundImage: skyGradient(sky),
+    ...(process.env.EXPO_OS === 'android'
+      ? { backgroundColor: 'transparent' }
+      : {
+          backgroundColor: sky.bottom,
+          experimental_backgroundImage: skyGradient(sky),
+        }),
   };
   return (
     <NativeTabs
       // Removing accessory children leaves UIKit's plate installed; hide the host itself.
       unstable_nativeProps={{
         ios: { bottomAccessoryHidden: pathname !== '/' },
-        ...(process.env.EXPO_OS === 'android' ? { colorScheme: scheme } : {}),
+        ...(process.env.EXPO_OS === 'android'
+          ? { colorScheme: scheme, nativeContainerStyle: { backgroundColor: 'transparent' } }
+          : {}),
       }}
       {...(process.env.EXPO_OS === 'android'
         ? {
-            backgroundColor: sky.bottom,
+            backgroundColor: 'transparent',
             indicatorColor: colors.muted,
             rippleColor: colors.accent,
           }

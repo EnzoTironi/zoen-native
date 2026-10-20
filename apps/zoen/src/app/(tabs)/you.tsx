@@ -135,7 +135,7 @@ function YouContent() {
 
 export default function You() {
   return (
-    <SkyScene>
+    <SkyScene tabScene>
       <YouContent />
     </SkyScene>
   );

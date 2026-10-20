@@ -67,7 +67,7 @@ export default function Home() {
     );
   }
   return (
-    <SkyScene>
+    <SkyScene tabScene>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{

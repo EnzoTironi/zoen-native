@@ -67,11 +67,17 @@ export function SkyLayer({ sky }: { sky: Sky }) {
   );
 }
 
-/** Native tab controllers own an opaque scene; paint the photo inside it. */
-export function SkyScene({ children }: { children: ReactNode }) {
+/** Android tabs share the root photo through their transparent native bar and scenes. */
+export function SkyScene({
+  children,
+  tabScene = false,
+}: {
+  children: ReactNode;
+  tabScene?: boolean;
+}) {
   return (
     <View style={{ flex: 1 }}>
-      <SkyBackground />
+      {(!tabScene || process.env.EXPO_OS !== 'android') && <SkyBackground />}
       {children}
     </View>
   );

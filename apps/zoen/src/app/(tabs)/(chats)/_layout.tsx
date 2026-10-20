@@ -5,7 +5,7 @@ export default function ChatsLayout() {
   const { colors } = useTheme();
   return (
     <Stack
-      screenLayout={({ children }) => <SkyScene>{children}</SkyScene>}
+      screenLayout={({ children }) => <SkyScene tabScene>{children}</SkyScene>}
       screenOptions={{
         headerShadowVisible: false,
         headerTransparent: process.env.EXPO_OS !== 'android',
