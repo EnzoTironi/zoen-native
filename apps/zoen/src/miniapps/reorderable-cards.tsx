@@ -70,11 +70,6 @@ type Props = {
   onRemove?: (item: ItemDetail) => Promise<unknown>;
   onTogglePin?: (item: ItemDetail) => Promise<unknown>;
   isPinned?: (id: string) => boolean;
-  selection?: {
-    id: string | null;
-    select: (id: string | null) => void;
-    isSelected: (id: string) => boolean;
-  };
 };
 function feedback(lift = false) {
   if (process.env.EXPO_OS !== 'ios') return;
@@ -98,7 +93,6 @@ export function ReorderableAppCards({
   onRemove,
   onTogglePin,
   isPinned,
-  selection,
 }: Props) {
   const { reducedMotion, colors } = useTheme();
   const { size, gap } = APP_CARD_METRICS;
@@ -111,9 +105,6 @@ export function ReorderableAppCards({
     focused: false,
     foreground: AppState.currentState === 'active',
   });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = useRef<string | null>(null);
-  const selectionEpoch = useRef(0);
   const [actionPending, setActionPending] = useState(false);
   const actionBusy = useRef(false);
   const latest = useRef({
@@ -122,7 +113,6 @@ export function ReorderableAppCards({
     onOpen,
     onRemove,
     onTogglePin,
-    selection,
     items,
   });
   useLayoutEffect(() => {
@@ -132,7 +122,6 @@ export function ReorderableAppCards({
       onOpen,
       onRemove,
       onTogglePin,
-      selection,
       items,
     };
   });
@@ -161,14 +150,6 @@ export function ReorderableAppCards({
     // The JS fence changes before any queued native-to-RN callback can be admitted.
     // UI publication may lag; an activation capturing an older epoch is safely rejected.
     lifetime.current.generation++;
-    if (
-      lifetime.current.mounted &&
-      selected.current &&
-      latest.current.selection?.isSelected(selected.current)
-    )
-      latest.current.selection.select(null);
-    selected.current = null;
-    if (lifetime.current.mounted) setSelectedId(null);
     nativeGeneration.set(lifetime.current.generation);
     admission.set(null);
     nativeEditing.set(false);
@@ -241,10 +222,6 @@ export function ReorderableAppCards({
     )
       return;
     if (!latest.current.items.some((item) => item.id === id)) return;
-    selectionEpoch.current++;
-    selected.current = id;
-    setSelectedId(id);
-    latest.current.selection?.select(id);
     const entered = !session.getSnapshot().editing;
     session.edit();
     latest.current.onEditingChange(true);
@@ -271,12 +248,10 @@ export function ReorderableAppCards({
         );
     }
   }
-  async function editAction(id: string, kind: 'remove' | 'pin', generation: number, epoch: number) {
+  async function editAction(id: string, kind: 'remove' | 'pin', generation: number) {
     if (
       !canInteract() ||
       generation !== lifetime.current.generation ||
-      epoch !== selectionEpoch.current ||
-      !(latest.current.selection?.isSelected(id) ?? selected.current === id) ||
       !session.getSnapshot().editing ||
       session.getSnapshot().pending ||
       actionBusy.current ||
@@ -309,12 +284,10 @@ export function ReorderableAppCards({
       !latest.current.items.some((value) => value.id === item.id)
     )
       return;
-    if (session.getSnapshot().editing) {
-      selectionEpoch.current++;
-      selected.current = item.id;
-      setSelectedId(item.id);
-      latest.current.selection?.select(item.id);
-    } else if (!nativeReorder || (!nativeEditing.get() && (accessibility || !consumed.get()))) {
+    if (
+      !session.getSnapshot().editing &&
+      (!nativeReorder || (!nativeEditing.get() && (accessibility || !consumed.get())))
+    ) {
       latest.current.onOpen(item);
     }
   }
@@ -353,7 +326,6 @@ export function ReorderableAppCards({
   const nativeReorder = process.env.EXPO_OS === 'ios';
   const enabled = nativeReorder && !state.pending && !actionPending;
   const actionGeneration = lifetime.current.generation;
-  const actionEpoch = selectionEpoch.current;
   return (
     <View
       testID="reorderable-app-cards"
@@ -375,11 +347,7 @@ export function ReorderableAppCards({
           strideY={strideY}
           horizontal={horizontal}
           enabled={enabled}
-          controlsVisible={
-            state.editing &&
-            (selection ? selection.id : selectedId) === item.id &&
-            !!(onRemove || onTogglePin)
-          }
+          controlsVisible={state.editing && !!(onRemove || onTogglePin)}
           editing={state.editing}
           reducedMotion={reducedMotion}
           outlineColor={colors.text}
@@ -404,7 +372,7 @@ export function ReorderableAppCards({
           <CompactMiniappCard
             item={item}
             editActions={
-              state.editing && (selection ? selection.id : selectedId) === item.id ? (
+              state.editing && (onRemove || onTogglePin) ? (
                 <AppCardEditActions
                   id={item.id}
                   name={item.title}
@@ -412,12 +380,12 @@ export function ReorderableAppCards({
                   disabled={state.pending || actionPending}
                   onRemove={
                     onRemove
-                      ? () => void editAction(item.id, 'remove', actionGeneration, actionEpoch)
+                      ? () => void editAction(item.id, 'remove', actionGeneration)
                       : undefined
                   }
                   onTogglePin={
                     onTogglePin
-                      ? () => void editAction(item.id, 'pin', actionGeneration, actionEpoch)
+                      ? () => void editAction(item.id, 'pin', actionGeneration)
                       : undefined
                   }
                 />
@@ -647,9 +615,9 @@ function DraggableCard({
       zIndex: dragging ? 10 : 0,
       shadowOpacity: dragging ? 0.18 : 0,
       transform: [
-        { translateX: dragging || reducedMotion ? x : withSpring(x, spring) },
-        { translateY: dragging || reducedMotion ? y : withSpring(y, spring) },
-        { scale: reducedMotion ? 1 : withSpring(dragging ? 1.035 : 1, spring) },
+        { translateX: !editing || dragging || reducedMotion ? x : withSpring(x, spring) },
+        { translateY: !editing || dragging || reducedMotion ? y : withSpring(y, spring) },
+        { scale: !editing || reducedMotion ? 1 : withSpring(dragging ? 1.035 : 1, spring) },
         { rotateZ: `${dragging || reducedMotion ? 0 : wobble.get()}deg` },
       ],
     };

@@ -100,6 +100,7 @@ function fixture(reducedMotion = false, queuedScheduler = false) {
   const announcements: string[] = [];
   const actions: string[] = [];
   const scrolls: number[] = [];
+  const springs: unknown[] = [];
   let hold: Promise<unknown> | undefined;
   const shared = <T>(value: T) => ({
     get: () => value,
@@ -199,7 +200,10 @@ function fixture(reducedMotion = false, queuedScheduler = false) {
       useSharedValue: (initial: unknown) => memo(() => shared(initial), []),
       withRepeat: (value: unknown) => value,
       withSequence: (...values: unknown[]) => values.at(-1),
-      withSpring: (value: unknown) => value,
+      withSpring: (value: unknown) => {
+        springs.push(value);
+        return value;
+      },
       withTiming: (value: unknown) => value,
     },
     'react-native-worklets': {
@@ -335,11 +339,18 @@ function fixture(reducedMotion = false, queuedScheduler = false) {
     render,
     card,
     cards: () => children().map((child) => child.props.children as Element),
+    nativeCard(id: string) {
+      const node = children().find((child) => child.props.id === id)!;
+      const native = mount(node.type as never, node.props);
+      native.render();
+      return native;
+    },
     actions,
     style,
     writes,
     announcements,
     scrolls,
+    springs,
     get editing() {
       return editing;
     },
@@ -664,49 +675,46 @@ test('retirement never reopens editing when an already-admitted preference write
   assert.equal(f.writes.length, 1); // An admitted durable write is not canceled or rolled back here.
 });
 
-test('editing exposes X and Pin only for the selected App and selection never launches it', () => {
+test('one lift starts all cards editing with X and Pin on every card, and cover taps never launch', () => {
   const f = fixture();
   assert.ok(f.cards().every((card) => card.props.editActions === undefined));
   f.activate();
   f.release(true);
   f.render();
-  assert.ok(f.cards()[0]!.props.editActions);
+  assert.equal(f.editing, true);
+  assert.ok(f.cards().every((card) => !!card.props.editActions));
   assert.ok(
-    f
-      .cards()
-      .slice(1)
-      .every((card) => card.props.editActions === undefined),
+    f.geometry().cards.every((card) => card.controlsVisible === true && card.editing === true),
   );
   (f.cards()[1]!.props.onPress as () => void)();
   f.render();
-  assert.equal(f.cards()[0]!.props.editActions, undefined);
-  assert.ok(f.cards()[1]!.props.editActions);
+  assert.ok(f.cards().every((card) => !!card.props.editActions));
   assert.equal(f.opens, 0);
 });
 
-test('stale selected actions cannot execute after selecting another App or retiring the scope', async () => {
+test('stale editing actions cannot execute after owner/layout, membership or lifecycle retirement', async () => {
   for (const boundary of [
-    'selection',
-    'reselection',
     'context',
     'geometry',
+    'membership',
     'blur',
     'background',
+    'Done',
     'unmount',
   ]) {
     const f = fixture();
     f.activate();
     f.release(true);
     f.render();
-    const actions = f.card().props.editActions as Element;
-    if (boundary === 'selection' || boundary === 'reselection') {
-      (f.cards()[1]!.props.onPress as () => void)();
-      if (boundary === 'reselection') (f.card().props.onPress as () => void)();
-    } else if (boundary === 'context') {
+    const actions = f.cards()[1]!.props.editActions as Element;
+    if (boundary === 'context') {
       Object.assign(f.props, { contextKey: 'new-owner-layout' });
       f.render();
     } else if (boundary === 'geometry') {
       Object.assign(f.props, { horizontal: false, columns: 2 });
+      f.render();
+    } else if (boundary === 'membership') {
+      f.props.items = f.props.items.filter((item) => item.id !== 'b');
       f.render();
     } else if (boundary === 'blur') {
       f.root.blur();
@@ -714,7 +722,8 @@ test('stale selected actions cannot execute after selecting another App or retir
     } else if (boundary === 'background') {
       f.state('background');
       f.state('active');
-    } else f.root.unmount();
+    } else if (boundary === 'Done') f.done();
+    else f.root.unmount();
     (actions.props.onRemove as () => void)();
     (actions.props.onTogglePin as () => void)();
     await tick();
@@ -723,7 +732,7 @@ test('stale selected actions cannot execute after selecting another App or retir
   }
 });
 
-test('one selected action retires native callbacks, serializes taps and preserves a fresh tap after Done', async () => {
+test('an action on another card retires native callbacks, serializes all card taps and preserves a fresh tap after Done', async () => {
   const f = fixture();
   let finish!: () => void;
   f.hold(
@@ -734,13 +743,14 @@ test('one selected action retires native callbacks, serializes taps and preserve
   f.activate();
   f.release(true);
   f.render();
-  const actions = f.card().props.editActions as Element;
+  const actions = f.cards()[1]!.props.editActions as Element;
+  const other = f.cards()[2]!.props.editActions as Element;
   (actions.props.onTogglePin as () => void)();
-  (actions.props.onRemove as () => void)();
+  (other.props.onRemove as () => void)();
   (actions.props.onTogglePin as () => void)();
   f.render();
-  assert.deepEqual(f.actions, ['pin:a']);
-  assert.ok(f.cards().every((card) => card.props.editActions === undefined));
+  assert.deepEqual(f.actions, ['pin:b']);
+  assert.ok(f.cards().every((card) => (card.props.editActions as Element).props.disabled === true));
   f.activate();
   f.move(325);
   f.release();
@@ -756,55 +766,85 @@ test('one selected action retires native callbacks, serializes taps and preserve
   assert.equal(f.opens, 1);
 });
 
-test('a shared Home selection retires controls in the other grid synchronously before rerender', async () => {
+test('cover taps while editing do not invalidate controls on other current cards or open an App', async () => {
   const f = fixture();
-  let chosen: string | null = null;
-  Object.assign(f.props, {
-    selection: {
-      id: null,
-      select: (id: string | null) => {
-        chosen = id;
-      },
-      isSelected: (id: string) => chosen === id,
-    },
-  });
-  f.render();
   f.activate();
   f.release(true);
-  const selectedScope = (f.props as unknown as { selection: { id: string | null } }).selection;
-  selectedScope.id = chosen;
   f.render();
-  const actions = f.card().props.editActions as Element;
-  assert.ok(actions);
-  // The other Home grid selects a different card before this grid rerenders.
-  chosen = 'another-grid-app';
+  const actions = f.cards()[2]!.props.editActions as Element;
+  (f.cards()[1]!.props.onPress as () => void)();
+  (f.card().props.onAccessibilityTap as () => void)();
+  f.render();
+  assert.ok(f.cards().every((card) => !!card.props.editActions));
+  assert.ok(f.geometry().cards.every((card) => card.controlsVisible === true));
   (actions.props.onRemove as () => void)();
   await tick();
-  assert.deepEqual(f.actions, []);
-  selectedScope.id = chosen;
-  f.render();
-  assert.ok(f.cards().every((card) => card.props.editActions === undefined));
+  assert.deepEqual(f.actions, ['remove:c']);
+  assert.equal(f.opens, 0);
 });
 
-test('the compiled native pan excludes selected44pt X/Pin hits before long-press recognition but retains cover lifting', () => {
+test('every editing cards44pt X/Pin hits are excluded before native long-press recognition, while every cover still lifts', () => {
   const f = fixture();
-  assert.equal(f.child.holdAt(34, 34), true, 'ordinary cover can lift at the same position');
+  assert.equal(f.child.holdAt(34, 34), true, 'ordinary cover lifts before editing');
   f.render();
   f.release(true);
   f.render();
-  const actions = f.card().props.editActions as Element;
-  assert.ok(actions);
-  const before = f.haptics;
-  for (const x of [12, 34, 55, 104, 126, 147])
-    for (const y of [12, 34, 55])
-      assert.equal(
-        f.child.holdAt(x, y),
-        false,
-        'holding a control never enters native pan recognition',
-      );
-  assert.equal(f.haptics, before);
-  assert.deepEqual(f.writes, []);
-  assert.equal(f.child.holdAt(80, 80), true, 'selected cover below controls still lifts');
-  assert.ok(f.haptics > before);
+  for (const id of ['a', 'b', 'c']) {
+    const card = f.nativeCard(id);
+    const before = f.haptics;
+    for (const x of [12, 34, 55, 104, 126, 147])
+      for (const y of [12, 34, 55])
+        assert.equal(
+          card.holdAt(x, y),
+          false,
+          `${id}: holding either control cannot enter native pan`,
+        );
+    assert.equal(f.haptics, before);
+    assert.deepEqual(f.writes, []);
+    assert.equal(card.holdAt(80, 80), true, `${id}: cover below controls still lifts`);
+    assert.ok(f.haptics > before);
+    card.gesture('onDeactivate', { canceled: true });
+    card.gesture('onFinalize');
+    card.unmount();
+  }
+});
+
+test('nonediting first frames and rehydrated positions never spring, while intentional editing neighbors still animate', () => {
+  const f = fixture();
+  const read = (card: ReturnType<typeof f.nativeCard>) => {
+    const tree = card.render();
+    const animated = tree.props.children as Element;
+    return (animated.props.style as { read?: () => unknown }[]).find((value) => value.read)!
+      .read!() as { transform: Record<string, unknown>[] };
+  };
+  assert.equal(f.style().transform[0]!.translateX, 0);
+  const initialB = f.nativeCard('b');
+  assert.equal(read(initialB).transform[0]!.translateX, 170);
+  assert.deepEqual(f.springs, [], 'first render is already at the final positions and scale');
+  initialB.unmount();
+  f.props.items = [...f.props.items].reverse();
+  f.render();
+  const restoredA = f.nativeCard('a');
+  assert.equal(read(restoredA).transform[0]!.translateX, 340);
+  assert.deepEqual(f.springs, [], 'hydrated preference order never flies in from zero');
+  restoredA.unmount();
+  f.activate();
+  f.move(171);
+  const neighbor = f.nativeCard('b');
+  f.springs.length = 0;
+  assert.equal(read(neighbor).transform[0]!.translateX, 0);
+  assert.deepEqual(f.springs, [0, 0, 1], 'an intentional edit animates the displaced neighbor');
   f.release(true);
+  f.springs.length = 0;
+  assert.equal(read(neighbor).transform[0]!.translateX, 170);
+  assert.deepEqual(
+    f.springs,
+    [170, 0, 1],
+    'a canceled edit returns the neighbor with the existing spring',
+  );
+  neighbor.unmount();
+  const reduced = fixture(true);
+  reduced.activate();
+  reduced.style();
+  assert.deepEqual(reduced.springs, [], 'Reduce Motion remains direct even during editing');
 });
