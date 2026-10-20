@@ -17,8 +17,10 @@ Foram inspecionados os repositórios oficiais em versões imutáveis:
 | libsignal | `1738ead8a12ffe539f6309958123dadb16dc3b95` |
 | RingRTC | `84c5b2aff246392b365d73d6628529a149d6aed2` |
 
-A leitura do Zoen usa a base `dca975960619dacc658d9e748b7ece790a6b6028` com o
-lote iOS de recuperação de texto e revisão nativa de anexos em desenvolvimento.
+A leitura inicial do Zoen usa a base `dca975960619dacc658d9e748b7ece790a6b6028`.
+O lote integrado até `2785d88e7092e78ec4caa08256e2b1f929c8eb12` acrescenta
+recuperação de texto, revisão nativa de anexos, reprodução com escopo de sessão
+e transações de recebimento e retenção do texto cifrado.
 Não foram executados o Signal, seu backend ou benchmarks comparativos. Os números
 de concorrência encontrados no código são escolhas dessa versão, não metas para
 copiar. Ausência em um caminho inspecionado não prova ausência em todo o produto.
@@ -57,10 +59,10 @@ copiar. Ausência em um caminho inspecionado não prova ausência em todo o prod
 
 | Área | Evidência no Zoen | Aprendizado e próximo trabalho |
 | --- | --- | --- |
-| Envio e recebimento | `crates/client-core/src/sync.rs`, `mls.rs`, `net.rs`: outbox, repetição por ID e recebimento MLS transacional. | Preservar essas autoridades; fechar o contrato de confirmação e as fronteiras de falha do recebimento comum. Não inventar outra fila na interface. |
+| Envio e recebimento | `sync.rs` confirma evento, estado de sincronização e remoção do outbox na mesma transação. `mls.rs` também retém texto cifrado e avanço do ratchet juntos e confirma o escopo dentro da transação de recebimento. | Seis regressões de falha SQLite com reabertura cobrem essas fronteiras. Ainda qualificar perda de resposta e entrega ponta a ponta; testes de transação não comprovam tolerância à perda de energia. |
 | Backend | `crates/zoen-relay/src/log/`: log/head/deduplicação/membros em FDB; PostgreSQL para diretório e autoridade; NATS acelera entrega com retomada por cursor. | Manter os papéis atuais. Exercitar commit sem resposta, reinício antes do fanout e perda de wake. Uma mailbox por aparelho não substitui diretamente o log ordenado de um Space. |
 | Atualização da conversa | `apps/zoen/src/core/store.ts`: refresh do snapshot e releitura da janela carregada; `provider.tsx`: assinatura do estado inteiro. | Introduzir invalidação e assinaturas por conversa/mensagem, com revisão coerente e âncora de leitura. A amplitude foi constatada em código; seu custo ainda precisa de medição. |
-| Reprodução | `audio-clip-playback.ts` cria player por montagem; `audio-clip-controller.ts` reinicializa progresso ao desconectar. | Mover a sessão para um responsável com escopo de conta, mensagem e anexo; controles são assinantes. Limitar cache de posição, preservar velocidade por conversa e impedir reuso entre contas. |
+| Reprodução | No iOS autenticado, `message-audio-session.ts` possui player e arquivo, com identidade de conta/aparelho/sessão/mensagem/anexo; as bolhas assinam controles. Posição e velocidade ficam em cache volátil de até 128 mensagens. | Dezenove testes cobrem posse e descarte; o simulador confirma pausa ao sair, posição preservada sem retomada automática e fim sem reinício por atualização do chat. Reciclagem real da lista, interrupções do sistema e troca de saída em aparelho físico continuam pendentes. Android/Web e rascunhos mantêm seus responsáveis anteriores. |
 | Revisão de anexos | O lote atual adiciona QuickLook somente leitura de um anexo durável escolhido. | Completar seleção/caption/qualidade/edição e preparação de uma saída revisada antes de enviar. QuickLook não comprova corte de imagem, blur ou trim de vídeo. |
 | Voz | `voice-session.ts` e os serviços de rascunho já separam gravação de envio. | Qualificar interrupção → sair da conversa → reabrir → editar → enviar, mantendo a experiência compacta e o mesmo destino. |
 | Push iOS | `crates/zoen-relay/src/push.rs`: APNs background, prioridade 5; wake limitado e best effort. | Caminho urgente de alerta com extensão, progresso pendente por dispositivo e reconciliação de novas tentativas. A configuração e entrega reais ainda exigem prova. |
@@ -142,6 +144,15 @@ de MCP Apps. Um agente que lê conteúdo é um destinatário autorizado, e publi
 Site continua sendo uma exportação explícita de uma versão escolhida.
 
 ## Execução em lotes
+
+O lote iOS até `2785d88e` passou em 931 testes do app e no build Release do
+simulador. O núcleo passou em 534 testes antes do ajuste final do escopo MLS;
+os 36 testes do módulo MLS passaram novamente após esse ajuste, incluindo seis
+regressões de durabilidade. Esses conjuntos se sobrepõem. A verificação nativa
+usou uma conta e um áudio sintéticos: envio real pelo relay local, reprodução,
+fim sem reinício após nova mensagem e posição pausada mantida ao sair e voltar.
+Ela não qualifica recepção por outro aparelho, continuidade audível durante
+invalidações amplas ou interrupções de áudio do sistema.
 
 1. **Concluir o lote iOS atual.** Recuperação de texto sem perda e revisão nativa
    de anexos. Não ampliar sua aprovação para edição completa de mídia.
