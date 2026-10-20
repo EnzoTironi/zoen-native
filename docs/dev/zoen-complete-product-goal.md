@@ -61,13 +61,16 @@ meta indefinida de copiar todas as features ou a escala global de concorrentes;
 o escopo verificável é a matriz de 30 jornadas, criação e perfil numérico declarado.
 
 O lote atual está no [PR 144](https://github.com/EnzoTironi/zoen-native/pull/144),
-em rascunho. A fonte iOS `143eb63f` passou em 1.038 testes, tipos, Oxlint/Oxfmt
-e build Release. A instalação preservou os dados e conferiu os 430 arquivos e a
-assinatura do artefato. No simulador, o lote anterior comprovou X/Pin em todos
-os cards, organização e persistência no Início, cartões canônicos no chat e a
-correção do espaço extra ao voltar do catálogo. O lote atual mantém o card na
-mesma altura ao entrar em edição; o arraste rápido no chat ainda tem uma falha
-nativa em investigação e não recebe aceite por testes de fonte.
+em rascunho. A fonte iOS `bd10bf35` cobre 1.039 casos no lote e repetição isolada:
+1.038 passaram no lote; um helper Swift excedeu o prazo de compilação e passou
+na repetição isolada da mesma fonte. A execução ampla conserva o resultado de
+falha; tipos, Oxlint/Oxfmt e build Release passaram. A instalação preservou os
+dados e conferiu os 430 arquivos e a assinatura. O simulador comprovou X/Pin em
+todos os cards, organização no Início, cartões canônicos no chat e retorno do
+catálogo sem espaço extra. O Release07 corrigiu as coordenadas nativas dos cards,
+permitiu arrastar o card secundário durante edição e preservou a ordem C,B,E após
+reiniciar. Entrar em edição pressionando um card secundário ainda apresenta falha
+intermitente e permanece sem aceite.
 
 O registro do Signal contém 51 famílias de cenários, com escopos sobrepostos,
 extraídas de seis repositórios fixados. Dois novos testes originais do Zoen já
@@ -76,11 +79,13 @@ continuidade após entrada inválida sem confirmação falsa. Os 543 testes da b
 client-core e o Clippy estrito de todos os alvos passaram em `4f175f40`. Os status parciais e as evidências anteriores permanecem.
 
 DeckCraft tem uma ponte real para a mesma Session do editor, com 11 testes do
-motor e check WASM aprovados em candidato privado. A integração MCP com a
-persistência canônica e o carregador verificado estão em implementação paralela;
-a jornada completa de criação, edição humana/agente, recuperação e exportação no
-iPhone continua pendente. Só depois desse aceite o padrão será repetido nos
-demais editores ArtCraft. O detalhe atual está em `iosContinuityCheckpoint` no
+motor aprovados em candidato privado. A persistência canônica/MCP passa em 10
+testes reais do núcleo e 36 pelo SDK instalado; o build WASM otimizado e gerenciado
+concluiu com hashes e fontes fixadas. UI/bootstrap nativos, registro de recursos e
+execução por agente certificado seguem em implementação paralela. A jornada
+completa no iPhone, recuperação, exportação e compartilhamento continua pendente.
+Só depois desse aceite o padrão será repetido nos demais editores ArtCraft. O
+detalhe atual está em `iosContinuityCheckpoint` no
 [registro de aceite](../../apps/zoen/acceptance.json). Nenhuma dessas provas
 parciais aprova o lançamento iOS ou as flags globais.
 

@@ -245,7 +245,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "iOS-first execution remains active in draftPR144. App source143eb63f passes1038 tests (zero failures/skips), TypeScript/Oxlint/Oxfmt and Release build. All430 installed files/signature match the sealed source-specific artifact. Native04 qualifies all-card X/Pin, Home reorder/shortcut persistence, canonical chat cards and catalog return spacing/dirty close. Native06 keeps chat cardY stable on entering editing; quick chat drag/order remains an explicit native negative under diagnosis, so it is not a completed feature. Earlier photo/rotation proofs retain their separate source/artifact bounds. The Signal registry contains51 overlapping assertion-mapping families across six pinned repositories, not an exhaustive audit or executed Signal suites. Two new original client-core regressions are integrated at4f175f40 for exact canonical backup/new-device/cold reopen/media and malformed-wire/signature-rejection continuity without false readable receipts or duplication; all543 client-core library tests and strict all-target Clippy pass at4f175f40. DeckCraft bridge has11 privately passed real-engine tests and an actual WASM target check; canonical MCP/binary storage, verified multiasset loader and complete iPhone/real-agent/export/share journey are still being implemented. The other ArtCraft editors follow the first complete DeckCraft journey. The retained30 journeys,6 platforms,10 creation capabilities and operating-envelope hash are unchanged; all global readiness flags remain false.",
+  "currentAcceptanceSummary": "iOS-first execution remains active in draftPR144. App sourcebd10bf35 covers1039 cases across1038 passes in the broad batch plus one isolated same-source Swift compiler-deadline retryPASS; the original broad run remainsFAIL. TypeScript/Oxlint/Oxfmt and Release build pass. All430 installed files/signature match the sealed artifact. Native04 qualifies all-card X/Pin, Home reorder/shortcut persistence, canonical chat cards and catalog return spacing/dirty close. Native07 corrects card gesture-host frames and proves secondary-card editing drag plus cold order C,B,E persistence. Normal-mode secondary-card long-press still fails inconsistently and remains explicitly unaccepted. The Signal registry contains51 overlapping assertion-mapping families across six pinned repositories; two original regressions at4f175f40 pass within all543 client-core tests and strict all-target Clippy. Upstream suites were not copied or executed. Private DeckCraft candidates have10 canonical core tests,36 installed-SDK tests and an optimized managed WASM build; native UI/bootstrap, core registration, real certified-agent execution and full iPhone export/share journey remain in implementation. Other ArtCraft editors follow that first complete journey. All30 journeys,6 platforms,10 creation capabilities, operating-envelope hash and false global readiness flags are preserved.",
   "retiredBackend": {
     "id": "custom-cloudflare-runtime",
     "status": "RETIRED",
@@ -3963,29 +3963,42 @@
   "iosContinuityCheckpoint": {
     "date": "2026-10-20",
     "pullRequest": "https://github.com/EnzoTironi/zoen-native/pull/144",
-    "appSource": "143eb63f386085f2e42a47c80b5eb007e01a39c4",
+    "appSource": "bd10bf3515b258a82683245b501ff65b22f43179",
     "appChecks": {
-      "status": "PASS",
-      "tests": 1038,
-      "failed": 0,
-      "skipped": 0,
+      "status": "PASS_AFTER_ENVIRONMENT_RETRY",
+      "testsCovered": 1039,
+      "broadRun": {
+        "passed": 1038,
+        "failed": 1,
+        "skipped": 0,
+        "status": "FAIL",
+        "failure": "Swift helper compilation exceeded45-second harness limit during overlapping private compiler work; no product assertion failure",
+        "receipt": "/private/tmp/zoen-continuity-batch-v146/final-app-check-15.json"
+      },
+      "isolatedRetry": {
+        "passed": 1,
+        "failed": 0,
+        "status": "PASS",
+        "sameSource": true,
+        "receipt": "/private/tmp/zoen-continuity-batch-v146/native-lifetime-env-retry-16.json"
+      },
       "typescript": true,
       "oxlint": true,
       "oxfmt": true,
-      "receipt": "/private/tmp/zoen-continuity-batch-v146/final-app-check-11.json"
+      "boundary": "All1039 cases covered across the batch and isolated retry; the broad npm run check process itself exited nonzero and is retained."
     },
     "currentSimulatorArtifact": {
-      "sourceCommit": "143eb63f386085f2e42a47c80b5eb007e01a39c4",
+      "sourceCommit": "bd10bf3515b258a82683245b501ff65b22f43179",
       "configuration": "ad-hoc-signed arm64 iOS Simulator Release, no Metro",
-      "archivePath": "/private/tmp/zoen-continuity-batch-v146/release-06/Zoen.app",
-      "executableSha256": "a5fb77ded4a6f708f73f4b6f41857b8827a38059b4adb5988033700bb85a644e",
-      "bundleManifestSha256": "772a2b07a08731b7b26191bab4eae61077929b5f7ba0daf495a5fb40ca52ecaf",
+      "archivePath": "/private/tmp/zoen-continuity-batch-v146/release-07/Zoen.app",
+      "executableSha256": "92eb6bec91d8bf6e534a9baaf077ee12bdbf64261cf53fa3e6db20dd9ee66c5f",
+      "bundleManifestSha256": "842e3a7a5c3a610f8c2d5feae63e8f2c41c776bb1a4245c9ad787869cc8458cb",
       "verifiedInstalledFiles": 430,
       "strictSignature": "PASS",
       "preservingInstall": true,
       "deviceUdid": "591F1216-9B73-4BE1-807A-309DB937D6FA",
-      "seal": "/private/tmp/zoen-continuity-batch-v146/release-06/seal.json",
-      "checkStatusAtSealPreserved": "RUNNING; later checks-completed.json recordsPASS",
+      "seal": "/private/tmp/zoen-continuity-batch-v146/release-07/seal.json",
+      "checkStatusAtSealPreserved": "RUNNING; later broad check FAIL (Swift compiler deadline), isolated same-source Swift retryPASS; original seal unchanged",
       "runtimeScope": "Bounded source-specific simulator checks, not physical-iPhone, store-distribution or whole-iOS acceptance."
     },
     "nativeObserved": {
@@ -4006,14 +4019,22 @@
         "normal cold launch and conversation retained"
       ],
       "unqualified": [
-        "chat edit-mode quick drag and persisted order: current native negative under diagnosis",
+        "normal-mode secondary-card long-press admission: current native negative; quick-drag and full rail behavior remain partially qualified",
         "full replay-qualified native flow",
         "all-hidden-last-card runtime",
         "native denied SQLite/CAS write",
         "physical VoiceOver/haptics/ReduceMotion",
         "physical-device calls/push/keyboard/media lifecycle",
         "independent-recipient media journey"
-      ]
+      ],
+      "release07Source": "bd10bf3515b258a82683245b501ff65b22f43179",
+      "release07Receipt": "/private/tmp/zoen-continuity-batch-v146/native-qa-07-cold/observations.json",
+      "release07Passes": [
+        "all card gesture hosts now have distinct matching native160x160 frames",
+        "enter editing on first card; drag secondary card into new order; Done exits editing",
+        "real process cold restart preserves chat order C,B,E"
+      ],
+      "release07Negative": "Normal-mode800ms hold on secondary card remains inconsistent: C opened in one probe; B stayed normal after explicit idle. Initial secondary-card edit admission remains unaccepted."
     },
     "signalMappingFamilies": 51,
     "wholeProductAcceptance": false
