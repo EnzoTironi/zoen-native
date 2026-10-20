@@ -12,7 +12,11 @@ import {
   DECKCRAFT_ENGINE_REVISION,
   type BinarySave,
 } from './canonical-binary.ts';
-import { DeckcraftDocument, type DeckcraftBindings } from './deckcraft-document.ts';
+import {
+  attachDeckcraftDocument,
+  DeckcraftDocument,
+  type DeckcraftBindings,
+} from './deckcraft-document.ts';
 import { hash, encode64, CANONICAL_SCENE_CHUNK_BYTES as CHUNK } from './canonical-scene.ts';
 const original = new Uint8Array(
   readFileSync(
@@ -525,4 +529,34 @@ test('a rejected save before any durable receipt is conservatively unknown and r
   refuse = false;
   await f.tool('app_binary_commit', { uploadId: begin.uploadId });
   assert.deepEqual(f.saves[0], f.saves[1]);
+});
+
+test('failed initial open retires its Session and leaves real SDK loading-screen close and tool handlers intact', async (t) => {
+  const f = await fixture({
+    read: async () => {
+      throw new Error('initial canonical read unavailable');
+    },
+  });
+  t.after(f.dispose);
+  const engine = enginePort();
+  let closes = 0;
+  const initialClose = async () => {
+    closes++;
+    return {};
+  };
+  const initialTool = async () => ({ content: [] });
+  f.app.onteardown = initialClose;
+  f.app.oncalltool = initialTool;
+  await assert.rejects(
+    attachDeckcraftDocument({ app: f.app, engine, itemId: 'it_deck', id: () => 'seed' }),
+    /initial canonical read unavailable/,
+  );
+  assert.equal(f.app.onteardown, initialClose);
+  assert.equal(f.app.oncalltool, initialTool);
+  await assert.rejects(
+    engine.zoenHostRequest('{"op":"status"}', new Uint8Array()),
+    /engine retired/,
+  );
+  await f.session.flushResource();
+  assert.equal(closes, 1);
 });

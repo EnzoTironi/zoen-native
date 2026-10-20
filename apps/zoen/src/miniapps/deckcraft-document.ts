@@ -356,6 +356,16 @@ export async function attachDeckcraftDocument(options: Options & { app: App }) {
     exported?.bytes.fill(0);
     exported = null;
   };
+  // Keep the bootstrap's cancellation-safe pre-open handlers until a document exists.
+  // A failed initial load has no accepted manual draft and must not retain a flush
+  // callback targeting an unopened Session or prevent the loading screen from closing.
+  try {
+    await document.open();
+  } catch (error) {
+    clearExport();
+    document.retireAuthority();
+    throw error;
+  }
   options.app.onteardown = async () => {
     await document.flush();
     clearExport();
@@ -415,7 +425,6 @@ export async function attachDeckcraftDocument(options: Options & { app: App }) {
     }
     throw new Error('This document tool is unavailable.');
   };
-  await document.open();
   return {
     document,
     retireAuthority: () => {

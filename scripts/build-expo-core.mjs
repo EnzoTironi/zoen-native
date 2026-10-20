@@ -88,7 +88,12 @@ async function validateGeneratedInventory() {
 }
 async function sourceHash() {
   const hash = createHash('sha256');
-  hash.update(JSON.stringify({ platform, profile, iosArchitectures, androidAbis }));
+  hash.update(JSON.stringify({
+    platform, profile, iosArchitectures, androidAbis,
+    // The registry is compiled into Rust. A config-only change must not reuse
+    // native artifacts from another verified code package or deployment URL.
+    deckcraftResourceManifest: process.env.ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON ?? null,
+  }));
   // The browser core evolves independently. Hash the actual native dependency
   // closure, including the binding generator, rather than every workspace crate.
   const { stdout } = await promisify(execFile)(
