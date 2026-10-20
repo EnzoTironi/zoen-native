@@ -38,6 +38,7 @@ function fixture(platform: string) {
   let effects: (() => void)[] = [];
   const deliveries: string[] = [];
   const injected: string[] = [];
+  const focused: number[] = [];
   const handle: { current: { dispose(): void } | null } = { current: null };
   const slot = () => (slots[cursor++] ??= {});
   const same = (a?: readonly unknown[], b?: readonly unknown[]) =>
@@ -95,7 +96,10 @@ function fixture(platform: string) {
   });
   function render(
     html = '<!doctype html><p>Real child document</p>',
-    geometry = { height: 640, fill: false },
+    geometry: { height: number; fill: boolean; blocked?: boolean } = {
+      height: 640,
+      fill: false,
+    },
   ) {
     cursor = 0;
     effects = [];
@@ -104,7 +108,7 @@ function fixture(platform: string) {
         html,
         title: 'Drawing',
         ...geometry,
-        blocked: false,
+        blocked: geometry.blocked ?? false,
         onMessage: (message: string) => deliveries.push(message),
         onError: (reason: string) => assert.fail(reason),
       },
@@ -115,6 +119,7 @@ function fixture(platform: string) {
     (web.props.ref as { current: unknown }).current = {
       injectJavaScript: (code: string) => injected.push(code),
       stopLoading() {},
+      requestFocus: () => focused.push(1),
     };
     for (const commit of effects) commit();
     const nonce = (web.props.source as { html: string }).html.match(
@@ -126,9 +131,10 @@ function fixture(platform: string) {
       nonce,
       source: web.props.source,
       key: web.props.key,
+      touch: web.props.onTouchStart as () => void,
     };
   }
-  return { render, deliveries, handle, injected };
+  return { render, deliveries, handle, injected, focused };
 }
 const rpc = { jsonrpc: '2.0', id: 1, method: 'ui/initialize', params: {} };
 function event(url: string, nonce: string, message: unknown = rpc) {
@@ -228,4 +234,41 @@ test('portrait-landscape-portrait layout keeps one native source, nonce and call
   assert.notEqual(replaced.nonce, portrait.nonce);
   returned.receive(event('about:blank', returned.nonce));
   assert.equal(f.deliveries.length, 3);
+});
+
+test('iOS native focus follows a real touch only, with no document reload on geometry changes', () => {
+  const f = fixture('ios');
+  const portrait = f.render();
+  assert.equal(f.focused.length, 0);
+  portrait.touch();
+  assert.equal(f.focused.length, 1);
+  const rotated = f.render(undefined, { height: 360, fill: true });
+  assert.equal(rotated.source, portrait.source);
+  assert.equal(rotated.nonce, portrait.nonce);
+  assert.equal(f.focused.length, 1);
+  rotated.touch();
+  assert.equal(f.focused.length, 2);
+});
+
+test('native input focus refuses blocked, retired and non-iOS touches, including stale callbacks', () => {
+  const f = fixture('ios');
+  const original = f.render();
+  const blocked = f.render(undefined, { height: 640, fill: false, blocked: true });
+  original.touch();
+  blocked.touch();
+  assert.equal(f.focused.length, 0);
+  const resumed = f.render();
+  resumed.touch();
+  assert.equal(f.focused.length, 1);
+  const next = f.render('<!doctype html><p>New owner</p>');
+  resumed.touch();
+  assert.equal(f.focused.length, 1);
+  f.handle.current!.dispose();
+  next.touch();
+  assert.equal(f.focused.length, 1);
+  for (const platform of ['android', 'web', 'macos']) {
+    const other = fixture(platform);
+    other.render().touch();
+    assert.equal(other.focused.length, 0, platform);
+  }
 });

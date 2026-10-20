@@ -24,6 +24,10 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
   // Layout/theme updates must not submit a fresh native source and reload the App.
   const source = useMemo(() => ({ html: document.html }), [document]);
   const active = useRef<typeof document | null>(document);
+  const inputAllowed = useRef(!blocked);
+  useLayoutEffect(() => {
+    inputAllowed.current = !blocked;
+  }, [blocked]);
   useLayoutEffect(() => {
     active.current = document;
     const target = view.current;
@@ -85,6 +89,10 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         contentInsetAdjustmentBehavior="never"
         bounces={false}
         accessibilityLabel={title}
+        onTouchStart={() => {
+          if (Platform.OS === 'ios' && active.current === document && inputAllowed.current)
+            view.current?.requestFocus();
+        }}
         onShouldStartLoadWithRequest={nativeMiniappNavigation}
         onOpenWindow={() => {}}
         onLoadEnd={() => {
