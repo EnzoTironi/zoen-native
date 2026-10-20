@@ -145,7 +145,13 @@ function FocusedDeckcraft(props: Props & { registerClose: RegisterClose }) {
     );
   if (!read.verified || !read.check) return <Loading />;
   return (
-    <DeckcraftDocument key={attempt} {...props} verified={read.verified} checkOwner={read.check} />
+    <DeckcraftDocument
+      key={attempt}
+      {...props}
+      verified={read.verified}
+      checkOwner={read.check}
+      onInitialRetry={() => retry((value) => value + 1)}
+    />
   );
 }
 
@@ -157,10 +163,12 @@ function DeckcraftDocument({
   registerClose,
   onDocumentController,
   onDocumentDiscard,
+  onInitialRetry,
 }: Props & {
   verified: VerifiedMiniappResource;
   checkOwner: () => void;
   registerClose: RegisterClose;
+  onInitialRetry: () => void;
 }) {
   const { store } = useClient();
   const { colors, scheme } = useTheme();
@@ -285,6 +293,7 @@ function DeckcraftDocument({
   const receive = useCallback((message: string) => {
     void session.current?.receive(message);
   }, []);
+  const retryOwner = session.current;
   const label = !state.opened
     ? t('decks.opening')
     : state.phase === 'saving'
@@ -353,7 +362,17 @@ function DeckcraftDocument({
                       void session.current?.controller.flush().catch(() => {});
                     }}
                   />
-                ) : null}
+                ) : (
+                  <NativeButton
+                    secondary
+                    testID="deckcraft-retry-open"
+                    label={t('miniapps.tryAgain')}
+                    onPress={() => {
+                      if (retryOwner && session.current === retryOwner && !retryOwner.opened)
+                        onInitialRetry();
+                    }}
+                  />
+                )}
                 {state.opened && onDocumentDiscard ? (
                   <NativeButton secondary label={t('decks.discard')} onPress={onDocumentDiscard} />
                 ) : null}

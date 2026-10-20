@@ -472,3 +472,47 @@ test('actual client module initializes exact WASM once and managed start cannot 
     delete shared.runtimeTest;
   }
 });
+
+test('a frozen foreign init Error still rejects load with a fixed startup code', async () => {
+  const originalCreate = URL.createObjectURL,
+    originalRevoke = URL.revokeObjectURL;
+  const shared = globalThis as typeof globalThis & { runtimeFrozenFailure?: Error };
+  const failure = Object.freeze(new Error('foreign private detail'));
+  shared.runtimeFrozenFailure = failure;
+  const module =
+    'export default async()=>{throw globalThis.runtimeFrozenFailure};export function zoenHostStart(){};export function zoenHostRetire(){}';
+  const { runtime } = fixture(module);
+  URL.createObjectURL = () =>
+    `data:text/javascript;base64,${Buffer.from(module).toString('base64')}`;
+  URL.revokeObjectURL = () => {};
+  const events = new Map<string, EventListener>();
+  const parent = { postMessage() {} };
+  const target = {
+    parent,
+    addEventListener: (name: string, fn: EventListener) => events.set(name, fn),
+    removeEventListener: (name: string) => events.delete(name),
+  } as unknown as Window;
+  const client = installRuntimeClient(runtime, target);
+  try {
+    const rejected = assert.rejects(
+      client.load(),
+      (error: Error & { zoenStartupCode?: string }) => {
+        assert.equal(error.zoenStartupCode, 'module_init_failed');
+        assert.equal(error.cause, failure);
+        assert.equal(error.message, 'App runtime failed');
+        return true;
+      },
+    );
+    await events.get('message')?.({
+      source: parent,
+      data: { zoenRuntime: 1, kind: 'ready', revision, module, wasm: wasm.slice() },
+    } as unknown as MessageEvent);
+    await rejected;
+    assert.equal(Object.hasOwn(failure, 'zoenStartupCode'), false);
+  } finally {
+    client.dispose();
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+    delete shared.runtimeFrozenFailure;
+  }
+});

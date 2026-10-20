@@ -17,6 +17,14 @@
     {
       "path": "patches/0003-owner-freeze.patch",
       "sha256": "0080cb06a7189fd38c8fae363f22240bd666b320c8a05f8e4159e89509a3f678"
+    },
+    {
+      "path": "patches/0004-host-layout-export.patch",
+      "sha256": "ad2c44dd26d76cd9611eb71da180c274dc756c88e73bf3f2b49848e6d3875ac3"
+    },
+    {
+      "path": "patches/0006-portable-recovery.patch",
+      "sha256": "1c812a2cc66a6e97719b793568aa8726deff8a33ec605ecb580fe01c839fd909"
     }
   ],
   "abi": "zoen-host-v1",
@@ -41,7 +49,8 @@
     "Hosted policy disables standalone import, file, clipboard, URL and network paths.",
     "Explicit managed start after verified WASM init; automatic standalone main disabled only for zoen-host.",
     "Canonical persistence/export is owned by Zoen tools; loading code grants no device/network capability.",
-    "Managed owner-queue freeze fences manual editing across final snapshot/commit/retirement."
+    "Managed owner-queue freeze fences manual editing across final snapshot/commit/retirement.",
+    "Managed UI receives finite host safe areas/exact close corner through the owner queue; existing Export delegates PDF/PPTX intent to native accepted-head sharing before generating browser bytes."
   ],
   "distributionStatus": "Not advertised: final managed release, MCP adapter and iOS runtime proof required."
 }

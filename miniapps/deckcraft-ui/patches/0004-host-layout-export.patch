@@ -1,0 +1,595 @@
+diff --git a/apps/deckcraft-web/src/host_api.rs b/apps/deckcraft-web/src/host_api.rs
+--- a/apps/deckcraft-web/src/host_api.rs
++++ b/apps/deckcraft-web/src/host_api.rs
+@@ -20,6 +20,7 @@
+     Export(Export),
+     Status,
+     Freeze(FreezeInput),
++    Layout(deckcraft_ui_egui::host_layout::HostLayout),
+ }
+ #[derive(Deserialize)]
+ #[serde(deny_unknown_fields)]
+@@ -42,6 +43,9 @@
+     bytes: usize,
+     frozen: bool,
+     on_change: Option<js_sys::Function>,
++    on_export: Option<js_sys::Function>,
++    layout: Option<deckcraft_ui_egui::host_layout::HostLayout>,
++    startup_failure: Option<&'static str>,
+ }
+ thread_local! { static QUEUE: RefCell<Queue> = RefCell::new(Queue::default()); }
+ fn error(code: &str) -> JsValue {
+@@ -94,7 +98,7 @@
+         QUEUE.with(|queue| {
+             let mut queue = queue.borrow_mut();
+             if !queue.lifecycle.active() || queue.pending.len() >= 8 || queue.bytes.saturating_add(bytes.len()) > MAX_DOCUMENT_BYTES * 2 {
+-                let _ = reject.call1(&JsValue::NULL, &error("host_unavailable_or_busy"));
++                let _ = reject.call1(&JsValue::NULL, &error(queue.startup_failure.unwrap_or("host_unavailable_or_busy")));
+                 return;
+             }
+             queue.bytes += bytes.len();
+@@ -118,6 +122,19 @@
+ }
+ #[wasm_bindgen(js_name = zoenHostRetire)]
+ pub fn retire() {
++    retire_with_code("host_retired");
++}
++/// Only fixed startup classes cross the native error channel, never error text,
++/// document content, paths, shader source or device adapter strings.
++pub fn fail_start(code: &'static str) {
++    let code = match code {
++        "graphics_unavailable" | "canvas_missing" => code,
++        _ => "runtime_start_failed",
++    };
++    QUEUE.with(|q| q.borrow_mut().startup_failure = Some(code));
++    retire_with_code(code);
++}
++fn retire_with_code(code: &str) {
+     let pending = QUEUE.with(|q| {
+         let mut q = q.borrow_mut();
+         q.lifecycle.retire();
+@@ -125,10 +142,13 @@
+         q.ctx = None;
+         q.bytes = 0;
+         q.on_change = None;
++        q.on_export = None;
++        q.layout = None;
+         std::mem::take(&mut q.pending)
+     });
+-    for work in pending {
+-        let _ = work.reject.call1(&JsValue::NULL, &error("host_retired"));
++    for mut work in pending {
++        work.bytes.fill(0);
++        let _ = work.reject.call1(&JsValue::NULL, &error(code));
+     }
+ }
+ pub fn frozen() -> bool {
+@@ -161,6 +181,16 @@
+     };
+     let result = match work.request {
+         Request::Open(_) | Request::Command(_) if frozen() => Err(BridgeError { code: "host_frozen" }),
++        Request::Layout(layout) => {
++            if !layout.valid() {
++                Err(BridgeError { code: "invalid_host_layout" })
++            } else {
++                QUEUE.with(|q| q.borrow_mut().layout = Some(layout));
++                deckcraft_ui_egui::host_layout::install(ctx, layout);
++                ctx.request_repaint();
++                Ok(Proposal { bytes: vec![], metadata: json!({"layoutAccepted":true}) })
++            }
++        }
+         Request::Freeze(input) => {
+             if input.frozen && session.active().is_some_and(|d| d.composition.is_some() || d.interaction.is_some()) {
+                 Err(BridgeError { code: "human_interaction" })
+@@ -207,3 +237,39 @@
+         ctx.request_repaint();
+     }
+ }
++
++/// A UI intent callback, not document or filesystem authority. The official App
++/// adapter must save/verify the accepted head before native sharing.
++#[wasm_bindgen(js_name = zoenHostOnExport)]
++pub fn on_export(callback: Option<js_sys::Function>) -> std::result::Result<(), JsValue> {
++    QUEUE.with(|q| {
++        let mut q = q.borrow_mut();
++        if !q.lifecycle.active() {
++            return Err(error(q.startup_failure.unwrap_or("host_retired")));
++        }
++        q.on_export = callback;
++        Ok(())
++    })
++}
++pub fn export_intent(format: &str) -> bool {
++    if !matches!(format, "pdf" | "pptx") {
++        return false;
++    }
++    let callback = QUEUE.with(|q| {
++        let q = q.borrow();
++        if q.lifecycle.active() && !q.frozen { q.on_export.clone() } else { None }
++    });
++    callback.and_then(|f| f.call1(&JsValue::NULL, &JsValue::from_str(format)).ok()).and_then(|value| value.as_bool()).unwrap_or(false)
++}
++pub fn apply_layout(raw: &mut egui::RawInput, ctx: &egui::Context) {
++    let layout = QUEUE.with(|q| {
++        let q = q.borrow();
++        if q.lifecycle.active() { q.layout } else { None }
++    });
++    if let Some(layout) = layout {
++        let viewport = raw.screen_rect.unwrap_or_else(|| ctx.viewport_rect());
++        if viewport.is_finite() && viewport.width() > 0.0 && viewport.height() > 0.0 {
++            raw.safe_area_insets = Some(layout.safe_insets(viewport));
++        }
++    }
++}
+diff --git a/apps/deckcraft-web/src/web.rs b/apps/deckcraft-web/src/web.rs
+--- a/apps/deckcraft-web/src/web.rs
++++ b/apps/deckcraft-web/src/web.rs
+@@ -21,10 +21,16 @@
+     wasm_bindgen_futures::spawn_local(async move {
+         let Some(document) = web_sys::window().and_then(|w| w.document()) else {
+             log::error!("no document");
++            if hosted {
++                host_api::fail_start("runtime_start_failed");
++            }
+             return;
+         };
+         let Some(canvas) = document.get_element_by_id(CANVAS_ID).and_then(|e| e.dyn_into::<web_sys::HtmlCanvasElement>().ok()) else {
+             log::error!("missing <canvas id=\"{CANVAS_ID}\">");
++            if hosted {
++                host_api::fail_start("canvas_missing");
++            }
+             return;
+         };
+         let mut options = eframe::WebOptions::default();
+@@ -47,7 +53,14 @@
+                         session.command_policy = Some(managed_command_policy);
+                     }
+                     host_api::install(hosted, Some(cc.egui_ctx.clone()));
+-                    let mut app = SlideApp::new(session, if hosted { Services::default() } else { services(inbox.clone(), cc.egui_ctx.clone()) });
++                    let mut app = SlideApp::new(
++                        session,
++                        if hosted {
++                            Services { host_export: Some(Box::new(host_api::export_intent)), ..Default::default() }
++                        } else {
++                            services(inbox.clone(), cc.egui_ctx.clone())
++                        },
++                    );
+                     let q = query();
+                     if hosted {
+                         // The authenticated host opens exact accepted bytes. No sample, browser
+@@ -66,6 +79,16 @@
+                 }),
+             )
+             .await;
++        // A failed runner has no editable Session. Reject queued host requests so
++        // the native unopened cover can offer a fresh retry instead of hanging.
++        if hosted && let Err(error) = &result {
++            let kind = format!("{error:?}").to_ascii_lowercase();
++            host_api::fail_start(if ["gpu", "adapter", "webgl"].iter().any(|key| kind.contains(key)) {
++                "graphics_unavailable"
++            } else {
++                "runtime_start_failed"
++            });
++        }
+         if let Some(el) = document.get_element_by_id(LOADING_ID) {
+             match result {
+                 Ok(()) => el.remove(),
+@@ -125,8 +148,9 @@
+         self.app.logic(ctx);
+     }
+ 
+-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
++    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+         if self.bridge.is_some() {
++            host_api::apply_layout(raw, ctx);
+             raw.dropped_files.clear();
+             if host_api::frozen() {
+                 raw.events.clear();
+diff --git a/crates/ui-egui/src/backstage.rs b/crates/ui-egui/src/backstage.rs
+--- a/crates/ui-egui/src/backstage.rs
++++ b/crates/ui-egui/src/backstage.rs
+@@ -1243,6 +1243,17 @@
+ /// one's description and button on the right. PowerPoint's video, animated GIF and CD package
+ /// exports aren't offered.
+ fn export(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
++    if app.services.host_export.is_some() {
++        ui.heading("Share presentation");
++        ui.label("Save and share the current accepted version. Your editable presentation stays in this chat.");
++        if square_button(ui, Icon::File, "Share PDF", true).clicked() {
++            app.export_as("pdf", json!({}));
++        }
++        if square_button(ui, Icon::Export, "Share PowerPoint", true).clicked() {
++            app.export_as("pptx", json!({}));
++        }
++        return;
++    }
+     let t = Tokens::get(ui.ctx());
+     ui.horizontal_top(|ui| {
+         ui.vertical(|ui| {
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -82,6 +82,7 @@
+     let mut window = egui::Window::new(title(&d.id))
+         .id(egui::Id::new(("dialog", d.id.clone())))
+         .collapsible(false)
++        .constrain_to(crate::host_layout::popup_rect(ctx))
+         .resizable(false)
+         .anchor(Align2::CENTER_CENTER, vec2(0.0, -40.0))
+         .open(&mut open);
+@@ -93,10 +94,15 @@
+         window = window.default_size(vec2(460.0, 320.0)).min_width(420.0).min_height(300.0);
+     }
+     window.show(ctx, |ui| {
+-        ui.set_min_width(match d.id.as_str() {
++        let minimum: f32 = match d.id.as_str() {
+             "themeColors" => 700.0,
+             "themeFonts" => 400.0,
+             _ => 340.0,
++        };
++        ui.set_min_width(if crate::host_layout::current(ctx).is_some() {
++            minimum.min((crate::host_layout::popup_rect(ctx).width() - 24.0).max(1.0))
++        } else {
++            minimum
+         });
+         if d.id == "themeColors" {
+             ui.set_min_height(360.0);
+@@ -1540,6 +1546,7 @@
+         "paragraph" => paragraph_dialog(app, ui, d),
+         "tabs" => tabs_dialog(app, ui, d),
+         "export" => {
++            let hosted = app.services.host_export.is_some();
+             ui.label("Export the presentation as:");
+             let fmt = d.get("fmt", "pdf");
+             for (l, f) in [
+@@ -1551,12 +1558,15 @@
+                 ("Outline (.txt)", "outline"),
+                 ("Animated GIF (.gif)", "gif"),
+             ] {
++                if hosted && !matches!(f, "pdf" | "pptx") {
++                    continue;
++                }
+                 if ui.radio(fmt == f, l).clicked() {
+                     d.fields.insert("fmt".into(), f.into());
+                 }
+             }
+             let pdf_layout = d.get("pdfLayout", "slides");
+-            if fmt == "pdf" {
++            if fmt == "pdf" && !hosted {
+                 ui.add_space(4.0);
+                 ui.horizontal(|ui| {
+                     ui.label("Print layout:");
+diff --git a/crates/ui-egui/src/host_layout.rs b/crates/ui-egui/src/host_layout.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/ui-egui/src/host_layout.rs
+@@ -0,0 +1,206 @@
++//! Optional embedding geometry. It is ephemeral UI input, never document state.
++use egui::{Rect, pos2};
++use serde::Deserialize;
++
++#[derive(Clone, Copy, Debug, Default, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Insets {
++    pub top: f32,
++    pub right: f32,
++    pub bottom: f32,
++    pub left: f32,
++}
++#[derive(Clone, Copy, Debug, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct CloseRect {
++    pub x: f32,
++    pub y: f32,
++    pub width: f32,
++    pub height: f32,
++}
++#[derive(Clone, Copy, Debug, Deserialize)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct HostLayout {
++    pub width: f32,
++    pub height: f32,
++    pub insets: Insets,
++    pub close_button: Option<CloseRect>,
++}
++impl HostLayout {
++    pub fn valid(&self) -> bool {
++        let i = self.insets;
++        let finite = [self.width, self.height, i.top, i.right, i.bottom, i.left].iter().all(|n| n.is_finite() && *n >= 0.0);
++        finite
++            && (1.0..=16_384.0).contains(&self.width)
++            && (1.0..=16_384.0).contains(&self.height)
++            && i.left + i.right < self.width
++            && i.top + i.bottom < self.height
++            && self.close_button.is_none_or(|r| {
++                [r.x, r.y, r.width, r.height].iter().all(|n| n.is_finite() && *n >= 0.0)
++                    && r.width > 0.0
++                    && r.height > 0.0
++                    && r.x + r.width <= self.width
++                    && r.y + r.height <= self.height
++            })
++    }
++    pub fn safe_insets(self, viewport: Rect) -> egui::SafeAreaInsets {
++        let sx = viewport.width() / self.width;
++        let sy = viewport.height() / self.height;
++        egui::SafeAreaInsets(egui::epaint::MarginF32 {
++            left: self.insets.left * sx,
++            right: self.insets.right * sx,
++            top: self.insets.top * sy,
++            bottom: self.insets.bottom * sy,
++        })
++    }
++    pub fn close_rect(self, viewport: Rect) -> Option<Rect> {
++        self.close_button.map(|r| {
++            Rect::from_min_max(
++                pos2(viewport.left() + r.x * viewport.width() / self.width, viewport.top() + r.y * viewport.height() / self.height),
++                pos2(
++                    viewport.left() + (r.x + r.width) * viewport.width() / self.width,
++                    viewport.top() + (r.y + r.height) * viewport.height() / self.height,
++                ),
++            )
++        })
++    }
++}
++const ID: &str = "zoen_host_layout";
++pub fn install(ctx: &egui::Context, layout: HostLayout) {
++    if layout.valid() {
++        ctx.data_mut(|data| data.insert_temp(egui::Id::new(ID), layout));
++    }
++}
++pub fn current(ctx: &egui::Context) -> Option<HostLayout> {
++    ctx.data(|data| data.get_temp(egui::Id::new(ID)))
++}
++/// Only popup controls avoid the floating native corner, never a global right gutter.
++pub fn popup_rect(ctx: &egui::Context) -> Rect {
++    let mut rect = ctx.content_rect();
++    if let Some(close) = current(ctx).and_then(|layout| layout.close_rect(ctx.viewport_rect())) {
++        rect.min.y = rect.min.y.max(close.bottom() + 8.0).min(rect.max.y - 1.0);
++    }
++    rect
++}
++/// Keep the existing title actions left of a native close control in that row.
++pub fn title_bounds(ctx: &egui::Context, rect: Rect) -> (f32, f32) {
++    let Some(close) = current(ctx).and_then(|layout| layout.close_rect(ctx.viewport_rect())) else { return (38.0, rect.right() - 10.0) };
++    let height = 38.0f32.max(close.bottom() - rect.top() + 8.0);
++    (height, (close.left() - 8.0).max(rect.left() + 1.0))
++}
++
++#[cfg(test)]
++#[allow(clippy::unwrap_used, clippy::panic)]
++mod tests {
++    use super::*;
++    fn portrait() -> HostLayout {
++        HostLayout {
++            width: 430.0,
++            height: 932.0,
++            insets: Insets { top: 62.0, right: 0.0, bottom: 34.0, left: 0.0 },
++            close_button: Some(CloseRect { x: 374.0, y: 70.0, width: 44.0, height: 44.0 }),
++        }
++    }
++    #[test]
++    fn rejects_nonfinite_negative_overflow_and_unknown_fields() {
++        let good = portrait();
++        assert!(good.valid());
++        for value in [f32::NAN, f32::INFINITY, -1.0, 20_000.0] {
++            let mut bad = good;
++            bad.width = value;
++            assert!(!bad.valid());
++        }
++        let mut bad = good;
++        bad.insets.top = 932.0;
++        assert!(!bad.valid());
++        bad = good;
++        bad.close_button.as_mut().unwrap().x = 420.0;
++        assert!(!bad.valid());
++        assert!(
++            serde_json::from_str::<HostLayout>(
++                r#"{"width":430,"height":932,"insets":{"top":0,"right":0,"bottom":0,"left":0},"closeButton":null,"url":"https://example.invalid"}"#
++            )
++            .is_err()
++        );
++    }
++    #[test]
++    fn actual_egui_safe_content_preserves_full_viewport_and_rotates_both_sides() {
++        let ctx = egui::Context::default();
++        for layout in [
++            portrait(),
++            HostLayout {
++                width: 932.0,
++                height: 430.0,
++                insets: Insets { top: 0.0, right: 0.0, bottom: 21.0, left: 62.0 },
++                close_button: Some(CloseRect { x: 876.0, y: 8.0, width: 44.0, height: 44.0 }),
++            },
++            HostLayout {
++                width: 932.0,
++                height: 430.0,
++                insets: Insets { top: 0.0, right: 62.0, bottom: 21.0, left: 0.0 },
++                close_button: Some(CloseRect { x: 814.0, y: 8.0, width: 44.0, height: 44.0 }),
++            },
++        ] {
++            let full = Rect::from_min_size(pos2(0.0, 0.0), egui::vec2(layout.width, layout.height));
++            let raw = egui::RawInput { screen_rect: Some(full), safe_area_insets: Some(layout.safe_insets(full)), ..Default::default() };
++            let mut output = ctx.run_ui(raw, |ui| {
++                let ctx = ui.ctx();
++                install(ctx, layout);
++                assert_eq!(ctx.viewport_rect(), full);
++                let safe = ctx.content_rect();
++                assert_eq!(safe.left(), layout.insets.left);
++                assert_eq!(safe.top(), layout.insets.top);
++                assert_eq!(safe.right(), layout.width - layout.insets.right);
++                assert_eq!(safe.bottom(), layout.height - layout.insets.bottom);
++                let close = layout.close_rect(full).unwrap();
++                let popup = popup_rect(ctx);
++                assert!(popup.top() > close.bottom());
++                assert_eq!(popup.right(), safe.right());
++                let (height, right) = title_bounds(ctx, safe);
++                assert!(right < close.left());
++                assert!(safe.top() + height > close.bottom());
++            });
++            // This is a geometry test with no renderer; consume egui's texture ownership.
++            output.textures_delta.clear();
++        }
++    }
++}
++
++#[cfg(test)]
++#[allow(clippy::unwrap_used, clippy::panic)]
++mod export_tests {
++    use crate::{Services, SlideApp};
++    use std::sync::{Arc, Mutex};
++    #[test]
++    fn hosted_exports_are_only_intents_and_never_generate_browser_downloads() {
++        let formats = Arc::new(Mutex::new(Vec::<String>::new()));
++        let out = formats.clone();
++        let mut session = deckcraft_engine::Session::new();
++        session.execute("file.new", &serde_json::json!({})).unwrap();
++        let mut app = SlideApp::new(
++            session,
++            Services {
++                host_export: Some(Box::new(move |format| {
++                    out.lock().unwrap().push(format.to_string());
++                    true
++                })),
++                download: Some(Box::new(|_, _| panic!("hosted export cannot download"))),
++                ..Default::default()
++            },
++        );
++        assert!(app.export_as("pdf", serde_json::json!({})));
++        assert!(app.export_as("pptx", serde_json::json!({})));
++        assert!(!app.export_as("png", serde_json::json!({})));
++        assert_eq!(*formats.lock().unwrap(), vec!["pdf", "pptx"]);
++        assert!(app.session.active().is_some());
++    }
++    #[test]
++    fn unavailable_export_intent_preserves_document_and_reports_retry() {
++        let mut session = deckcraft_engine::Session::new();
++        session.execute("file.new", &serde_json::json!({})).unwrap();
++        let mut app = SlideApp::new(session, Services { host_export: Some(Box::new(|_| false)), ..Default::default() });
++        assert!(!app.export_as("pdf", serde_json::json!({})));
++        assert!(app.session.active().is_some());
++        assert!(app.status.is_some());
++    }
++}
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -15,6 +15,7 @@
+ pub mod doc_window;
+ pub mod eyedropper;
+ pub mod fillui;
++pub mod host_layout;
+ pub mod icons;
+ pub mod media;
+ pub mod menus;
+@@ -55,6 +56,7 @@
+ /// not applied to whichever document happens to be active.
+ pub type OpenAsyncFn = Box<dyn FnMut(&str, u64)>;
+ pub type DownloadFn = Box<dyn FnMut(&str, &[u8])>;
++pub type HostExportFn = Box<dyn FnMut(&str) -> bool>;
+ 
+ /// A file the host finished reading for the request `id` from [`SlideApp::begin_external_file`].
+ #[derive(Clone, Debug)]
+@@ -211,6 +213,8 @@
+     pub open_async: Option<OpenAsyncFn>,
+     /// Hand bytes to the user as a named file (browser download).
+     pub download: Option<DownloadFn>,
++    /// Hosted UI intent only: the authenticated host exports an accepted version.
++    pub host_export: Option<HostExportFn>,
+     pub inbox: Option<Inbox>,
+     /// Image on the system clipboard (PNG bytes), when the host can read one.
+     pub clipboard_image: Option<Box<dyn FnMut() -> Option<Vec<u8>>>>,
+@@ -739,6 +743,17 @@
+     /// on the web. `extra` adds `file.export` params (the PDF's layout, slides…). The
+     /// presentation keeps its own file. Returns whether a file was written or handed over.
+     pub fn export_as(&mut self, fmt: &str, extra: Value) -> bool {
++        if let Some(export) = self.services.host_export.as_mut() {
++            if !matches!(fmt, "pdf" | "pptx") || self.session.active().is_none() {
++                self.set_status("This host shares accepted PDF and PowerPoint versions.");
++                return false;
++            }
++            let accepted = export(fmt);
++            if !accepted {
++                self.set_status("The presentation is not ready to share. Try again.");
++            }
++            return accepted;
++        }
+         let Some(slide) = self.session.active().map(|d| d.selection.slide) else { return false };
+         let (ext, format, all) = match fmt {
+             "pdf" => ("pdf", "pdf", false),
+diff --git a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
+--- a/crates/ui-egui/src/menus.rs
++++ b/crates/ui-egui/src/menus.rs
+@@ -102,9 +102,14 @@
+     let mut close = false;
+     let mut run: Option<String> = None;
+     egui::Window::new("command_palette")
++        .constrain_to(crate::host_layout::popup_rect(ctx))
+         .title_bar(false)
+         .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 90.0))
+-        .fixed_size(egui::vec2(520.0, 380.0))
++        .fixed_size(if crate::host_layout::current(ctx).is_some() {
++            crate::host_layout::popup_rect(ctx).size().min(egui::vec2(520.0, 380.0))
++        } else {
++            egui::vec2(520.0, 380.0)
++        })
+         .show(ctx, |ui| {
+             let r = ui.add(egui::TextEdit::singleline(&mut query).hint_text("Search commands…").desired_width(f32::INFINITY).font(theme::font(15.0)));
+             r.request_focus();
+diff --git a/crates/ui-egui/src/ribbon.rs b/crates/ui-egui/src/ribbon.rs
+--- a/crates/ui-egui/src/ribbon.rs
++++ b/crates/ui-egui/src/ribbon.rs
+@@ -53,6 +53,10 @@
+ 
+ /// The window's title row: traffic-light space, quick access, centred title, actions.
+ pub fn title_bar(app: &mut SlideApp, ui: &mut Ui) {
++    if crate::host_layout::current(ui.ctx()).is_some() {
++        hosted_title_bar(app, ui);
++        return;
++    }
+     let t = Tokens::get(ui.ctx());
+     let (height, left, control_h) = title_geometry(app.integrated_titlebar);
+     egui::Panel::top("title_bar").exact_size(height).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
+@@ -3641,3 +3645,43 @@
+         ui.close();
+     }
+ }
++
++/// The managed editor keeps its existing commands in a compact touch toolbar.
++/// Its background/canvas remain full viewport; only controls avoid the native X.
++fn hosted_title_bar(app: &mut SlideApp, ui: &mut Ui) {
++    let t = Tokens::get(ui.ctx());
++    let (height, right_edge) = crate::host_layout::title_bounds(ui.ctx(), ui.ctx().content_rect());
++    egui::Panel::top("title_bar").exact_size(height).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
++        let rect = ui.max_rect();
++        let has_doc = app.session.active().is_some();
++        let mut left = ui.new_child(
++            egui::UiBuilder::new()
++                .max_rect(Rect::from_min_max(pos2(rect.left() + 10.0, rect.top()), pos2((right_edge - 146.0).max(rect.left() + 65.0), rect.bottom())))
++                .layout(egui::Layout::left_to_right(egui::Align::Center)),
++        );
++        left.spacing_mut().item_spacing.x = 8.0;
++        if icon_toggle(&mut left, Icon::Home, "File", true, app.backstage_open()).clicked() {
++            let _ = app.run("app.home", json!({}));
++        }
++        if icon_toggle(&mut left, Icon::Export, "Export PDF or PowerPoint", has_doc, false).clicked() {
++            let _ = app.run("app.exportDialog", json!({}));
++        }
++        let mut right = ui.new_child(
++            egui::UiBuilder::new()
++                .max_rect(Rect::from_min_max(pos2((right_edge - 138.0).max(rect.left() + 80.0), rect.top()), pos2(right_edge, rect.bottom())))
++                .layout(egui::Layout::right_to_left(egui::Align::Center)),
++        );
++        right.spacing_mut().item_spacing.x = 8.0;
++        if icon_toggle(&mut right, Icon::Search, "Search commands", true, false).clicked() {
++            app.palette = Some((String::new(), 0));
++        }
++        let present = right.add_enabled(
++            has_doc,
++            egui::Button::new(egui::RichText::new("Present").color(t.accent_text)).fill(t.accent).corner_radius(18.0).min_size(vec2(76.0, 36.0)),
++        );
++        if present.clicked() {
++            let from = app.session.active().map(|d| d.selection.slide).unwrap_or(0);
++            app.start_show(from, false);
++        }
++    });
++}

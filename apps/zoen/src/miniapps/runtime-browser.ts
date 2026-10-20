@@ -108,7 +108,11 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
       return;
     if (event.data.kind === 'error') {
       admitted = true;
-      rejectPending?.(new Error('App runtime could not be loaded'));
+      rejectPending?.(
+        Object.assign(new Error('App runtime could not be loaded'), {
+          zoenStartupCode: 'resource_fetch_failed',
+        }),
+      );
       return;
     }
     const data = event.data;
@@ -123,6 +127,7 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
     )
       return;
     admitted = true;
+    let stage = 'module_init_failed';
     try {
       current();
       moduleUrl = URL.createObjectURL(new Blob([data.module], { type: 'text/javascript' }));
@@ -137,6 +142,7 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
       bindings = module;
       await bindings.default({ module_or_path: data.wasm });
       current();
+      stage = 'runtime_start_failed';
       await bindings.zoenHostStart();
       current();
       accept?.(bindings);
@@ -145,7 +151,11 @@ export function installRuntimeClient(input: RuntimePackage, target: Window = win
       try {
         bindings?.zoenHostRetire();
       } finally {
-        rejectPending?.(error instanceof Error ? error : new Error('App runtime failed'));
+        rejectPending?.(
+          Object.assign(new Error('App runtime failed', { cause: error }), {
+            zoenStartupCode: stage,
+          }),
+        );
         rejectPending = undefined;
       }
     } finally {

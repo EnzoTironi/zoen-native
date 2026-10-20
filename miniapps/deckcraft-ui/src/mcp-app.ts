@@ -1,3 +1,4 @@
+import { installManagedHostUI, startupFailureCode } from "./host-ui";
 import { App } from "@modelcontextprotocol/ext-apps";
 import {
   attachDeckcraftDocument,
@@ -18,6 +19,7 @@ let connected = false;
 let checkpoint: string | undefined;
 let opening: Promise<void> | undefined;
 let owner: Owner | undefined;
+let hostUI: ReturnType<typeof installManagedHostUI> | undefined;
 let failedInitialOpen = false;
 let paused = false;
 function id() {
@@ -27,17 +29,20 @@ function id() {
   const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
-function state(phase: "saved" | "saving" | "pending" | "error", ready: boolean) {
+function state(phase: "saved" | "saving" | "pending" | "error", ready: boolean, reason?: string) {
   if (!active || !checkpoint) return;
   void app
     .updateModelContext({
-      structuredContent: { zoen: { binarySave: { itemId: checkpoint, phase, ready } } },
+      structuredContent: {
+        zoen: { binarySave: { itemId: checkpoint, phase, ready, ...(reason ? { reason } : {}) } },
+      },
     })
     .catch(() => {});
 }
 function retire() {
   if (!active) return;
   active = false;
+  hostUI?.dispose();
   owner?.retireAuthority();
   runtime?.dispose();
 }
@@ -45,10 +50,24 @@ function start() {
   if (!active || !connected || paused || !checkpoint || opening || owner || failedInitialOpen)
     return;
   const itemId = checkpoint;
+  let stage = "resource_fetch_failed";
   opening = (async () => {
     if (!runtime) throw Error("The verified runtime loader is unavailable.");
     const engine = await runtime.load();
     if (!active) return;
+    stage = "runtime_start_failed";
+    hostUI = installManagedHostUI({
+      app,
+      engine: engine as typeof engine & {
+        zoenHostOnExport: (callback: ((format: string) => boolean) | undefined) => unknown;
+      },
+      itemId,
+      ready: () => active && !!owner && !paused,
+      onError: () => state("error", !!owner),
+    });
+    await hostUI.layout(app.getHostContext());
+    if (!active) return;
+    stage = "document_open_failed";
     const document = await attachDeckcraftDocument({
       app,
       engine,
@@ -61,18 +80,23 @@ function start() {
       return;
     }
     owner = document;
-  })().catch(() => {
+  })().catch((error: unknown) => {
     if (!active) return;
     failedInitialOpen = true;
     // No accepted manual Session was exposed: never leave a failed empty engine interactive.
+    hostUI?.dispose();
     runtime?.dispose();
     app.onteardown = initialTeardown;
     app.oncalltool = initialCallTool;
-    state("error", false);
+    state("error", false, startupFailureCode(error) ?? stage);
   });
 }
 app.ontoolresult = (result) => {
-  const value = result.structuredContent?.checkpointId;
+  const content = result.structuredContent;
+  const value =
+    content && typeof content === "object" && !Array.isArray(content)
+      ? (content as Record<string, unknown>).checkpointId
+      : undefined;
   if (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value)) return;
   if (checkpoint && checkpoint !== value) {
     retire();
@@ -84,6 +108,7 @@ app.ontoolresult = (result) => {
 app.onhostcontextchanged = (context) => {
   const theme = context.theme;
   if (theme === "dark" || theme === "light") document.documentElement.style.colorScheme = theme;
+  void hostUI?.layout(app.getHostContext() ?? context).catch(() => {});
 };
 // These readiness handlers exist before connect. The document client replaces
 // them once it owns the Session; its serialized open precedes freeze/flush.
@@ -111,8 +136,8 @@ void app
     connected = true;
     start();
   })
-  .catch(() => {
+  .catch((error: unknown) => {
     if (!active) return;
     runtime?.dispose();
-    state("error", false);
+    state("error", false, startupFailureCode(error));
   });

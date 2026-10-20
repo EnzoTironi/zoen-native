@@ -66,7 +66,7 @@ export function createDeckcraftSession(options: Options) {
   const current = new MiniappSession({
     send: options.send,
     resourceUri: options.verified.resource.uri,
-    tools: canonicalBinaryTools,
+    tools: new Set([...canonicalBinaryTools, 'app_binary_share']),
     initialize: () => ({
       protocolVersion: '2026-01-26',
       hostInfo: { name: 'zoen', version: '0.1.0' },
@@ -93,6 +93,17 @@ export function createDeckcraftSession(options: Options) {
     },
     call: async (name, args) => {
       lifetime.check();
+      if (name === 'app_binary_share') {
+        if (
+          args.id !== options.itemId ||
+          !['pdf', 'pptx'].includes(String(args.format)) ||
+          Object.keys(args).some((key) => !['id', 'format'].includes(key))
+        )
+          throw Error(t('decks.exportFailed'));
+        await share(args.format as DeckcraftExportFormat);
+        lifetime.check();
+        return { content: [], structuredContent: { presented: true } };
+      }
       const result = await binary.call(name, args);
       lifetime.check();
       return result;
@@ -101,7 +112,16 @@ export function createDeckcraftSession(options: Options) {
       lifetime.check();
       const status = (
         params.structuredContent as
-          | { zoen?: { binarySave?: { itemId?: unknown; phase?: unknown; ready?: unknown } } }
+          | {
+              zoen?: {
+                binarySave?: {
+                  itemId?: unknown;
+                  phase?: unknown;
+                  ready?: unknown;
+                  reason?: unknown;
+                };
+              };
+            }
           | undefined
       )?.zoen?.binarySave;
       if (
@@ -118,7 +138,24 @@ export function createDeckcraftSession(options: Options) {
       // A timed-out teardown can still complete inside the guest. Its status
       // notification proves neither that input resumed nor that Close is safe.
       if (!recoveryRequired)
-        error = phase === 'error' ? t(opened ? 'decks.saveFailed' : 'decks.unavailable') : null;
+        error =
+          phase === 'error'
+            ? opened
+              ? t('decks.saveFailed')
+              : status.reason === 'graphics_unavailable'
+                ? t('decks.graphicsUnavailable')
+                : status.reason === 'canvas_missing'
+                  ? t('decks.canvasUnavailable')
+                  : status.reason === 'resource_fetch_failed'
+                    ? t('decks.resourceUnavailable')
+                    : status.reason === 'module_init_failed'
+                      ? t('decks.moduleUnavailable')
+                      : status.reason === 'document_open_failed'
+                        ? t('decks.documentUnavailable')
+                        : status.reason === 'runtime_start_failed'
+                          ? t('decks.runtimeUnavailable')
+                          : t('decks.unavailable')
+            : null;
       publish();
       return {};
     },
@@ -262,6 +299,9 @@ export function createDeckcraftSession(options: Options) {
   publish();
   return {
     controller,
+    get opened() {
+      return opened;
+    },
     share,
     drain: () => tail.catch(() => {}),
     receive: (message: string) => current.receive(message),

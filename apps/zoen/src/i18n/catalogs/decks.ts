@@ -3,6 +3,13 @@ export const decks = defineFeature(
   {
     shareVersion: 'Share presentation · version %{version}',
     exportFailed: 'The selected presentation version could not be shared. Try again.',
+    graphicsUnavailable:
+      'This device could not start the presentation graphics. Try opening it again.',
+    canvasUnavailable: 'The presentation canvas could not be started. Try opening it again.',
+    runtimeUnavailable: 'The presentation editor could not start. Try opening it again.',
+    resourceUnavailable: 'The presentation editor could not be downloaded. Try opening it again.',
+    moduleUnavailable: 'The presentation editor could not be initialized. Try opening it again.',
+    documentUnavailable: 'Your saved presentation could not be opened. Try opening it again.',
     opening: 'Opening your presentation…',
     saved: 'Saved in this chat',
     saving: 'Saving presentation…',
@@ -22,6 +29,14 @@ export const decks = defineFeature(
     shareVersion: 'Compartilhar apresentação · versão %{version}',
     exportFailed:
       'Não foi possível compartilhar a versão selecionada da apresentação. Tente novamente.',
+    graphicsUnavailable:
+      'Este aparelho não conseguiu iniciar os gráficos da apresentação. Tente abrir novamente.',
+    canvasUnavailable: 'Não foi possível iniciar a tela da apresentação. Tente abrir novamente.',
+    runtimeUnavailable: 'O editor da apresentação não conseguiu iniciar. Tente abrir novamente.',
+    resourceUnavailable: 'Não foi possível baixar o editor da apresentação. Tente abrir novamente.',
+    moduleUnavailable:
+      'Não foi possível inicializar o editor da apresentação. Tente abrir novamente.',
+    documentUnavailable: 'Não foi possível abrir sua apresentação salva. Tente abrir novamente.',
     opening: 'Abrindo sua apresentação…',
     saved: 'Salvo nesta conversa',
     saving: 'Salvando apresentação…',

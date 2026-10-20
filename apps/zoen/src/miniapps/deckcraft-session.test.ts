@@ -382,3 +382,96 @@ test('Close admitted before background timeout stays covered through the late sa
   assert.equal(f.calls.includes('resume_document'), false);
   assert.equal(f.states.at(-1)?.blocked, true);
 });
+
+test('upstream export intent crosses actual official App tool transport and waits for native presentation', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  await f.open();
+  const { installManagedHostUI } = await import('../../../../miniapps/deckcraft-ui/src/host-ui.ts');
+  let callback: ((format: string) => boolean) | undefined;
+  const errors: unknown[] = [];
+  const held = gate();
+  f.holdShare(held.promise);
+  const ui = installManagedHostUI({
+    app: f.app,
+    itemId: 'deck-one',
+    ready: () => true,
+    onError: (error) => errors.push(error),
+    engine: {
+      zoenHostOnExport: (next) => {
+        callback = next;
+      },
+      zoenHostRequest: async () => ({}),
+    },
+  });
+  t.after(() => ui.dispose());
+  assert.equal(callback?.('pdf'), true);
+  await tick();
+  assert.deepEqual(f.shares, [{ format: 'pdf', head: { version: '7', sha256: 'a'.repeat(64) } }]);
+  assert.equal(callback?.('pptx'), false);
+  held.resolve();
+  await tick();
+  await tick();
+  assert.deepEqual(errors, []);
+  assert.ok(f.calls.includes('flush'));
+  assert.ok(f.calls.includes('resume_document'));
+});
+test('native export tool rejects wrong artifacts, unsupported formats and hidden payload fields', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  await f.open();
+  for (const args of [
+    { id: 'other', format: 'pdf' },
+    { id: 'deck-one', format: 'png' },
+    { id: 'deck-one', format: 'pdf', url: 'https://example.invalid' },
+  ])
+    await assert.rejects(f.app.callServerTool({ name: 'app_binary_share', arguments: args }));
+  assert.deepEqual(f.shares, []);
+  assert.deepEqual(f.calls, []);
+});
+test('opened getter is sticky across guest error labels for stale initial retry fencing', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  assert.equal(f.session.opened, false);
+  await f.open();
+  assert.equal(f.session.opened, true);
+  await f.app.updateModelContext({
+    structuredContent: {
+      zoen: { binarySave: { itemId: 'deck-one', phase: 'error', ready: false } },
+    },
+  });
+  assert.equal(f.session.opened, true);
+});
+
+test('unopened startup failure uses a fixed localized reason and never echoes guest exception data', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  await f.app.updateModelContext({
+    structuredContent: {
+      zoen: {
+        binarySave: {
+          itemId: 'deck-one',
+          phase: 'error',
+          ready: false,
+          reason: 'graphics_unavailable',
+        },
+      },
+    },
+  });
+  assert.match(f.states.at(-1)!.error!, /graphics/);
+  assert.equal(f.session.opened, false);
+  await f.app.updateModelContext({
+    structuredContent: {
+      zoen: {
+        binarySave: {
+          itemId: 'deck-one',
+          phase: 'error',
+          ready: false,
+          reason: 'Private document text must not appear',
+        },
+      },
+    },
+  });
+  assert.doesNotMatch(f.states.at(-1)!.error!, /Private document/);
+  assert.equal(f.session.opened, false);
+});
