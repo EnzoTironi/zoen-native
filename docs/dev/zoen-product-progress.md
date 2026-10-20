@@ -6,10 +6,67 @@ The full goal remains active: 30 journeys, six platforms and the public backend.
 it does not replace the [complete goal](zoen-complete-product-goal.md) or its
 [acceptance matrix](../../apps/zoen/acceptance.json).
 
-PR136 merged at `edc0e684` after all 12 checks passed on `c05b0bdd`.
-[PR140](https://github.com/EnzoTironi/zoen-native/pull/140) remains draft. Its
-remote head at preparation is `1b292c42`; local commits `36b1d480`, `acdedb52` and `cd578f8c`
-are not yet pushed. Source and artifact boundaries below remain distinct.
+PR136 is merged; [PR140](https://github.com/EnzoTironi/zoen-native/pull/140)
+remains draft. The recorded CI snapshot for `783edae1` has ten successes and Rust
+still in progress, receipt `0e9cce7c`. It does not qualify the later lifecycle cut.
+
+## Current native link lifecycle (v130)
+
+A genuinely fresh current-783edae1 arm64 iOS Simulator Debug artifact now reproduces
+the public-link stack-guard SIGBUS. Build receipt `84f40b98`, runtime `9b14b83f`
+and IPS `14e93d39` identify the current artifact and matching UUID
+`E272D661-8983-328F-ADA1-596799E50E81`; this is separate from historical v110.
+One real secure-link attempt failed after approval. The owned simulator data
+was left in place, with no Demo fallback or claim of encrypted history/cold reopen.
+
+The integrated six-path Rust cut passes 24 focused tests: 14 actual pickup
+lifecycle cases, 3 original network deadline/cancel cases and 7 existing identity,
+history and refusal cases. Strict Clippy and formatting pass; all 446 inputs are
+exact through those final checks (receipt `61579643`). The four-path Swift cut
+synchronously retires the exact native owner before queued teardown and drains
+actual pickup before releasing it. Its Foundation-only strict Swift 6 helper
+passes (`3d492fa7`); this is not full Expo close/erase or native runtime proof.
+The exact combined live integration is recorded in `live-integration.json`.
+
+Fresh native generation passes in 27.99 seconds. New contract `6e5332fc` has 218
+matching Swift checksum calls, with the old 216 unchanged. The full application
+check passes TypeScript/Oxlint/Oxfmt and 883/883 tests without failures or skips in
+18.45 seconds. The fixed signed Debug artifact is sealed at `cff17697` with new
+UUID `19821CD3-3A87-30E9-BF7D-1811DE6FBCB8`, distinct from the failed baseline.
+Its 176 native inputs are exact; 909 of 910 broad inputs are stable and the sole SDK
+provider transition is reproduced by the canonical generator. Two sealer
+assumption failures remain preserved.
+
+The current fixed native app now passes a genuine public secure link on the
+retained owned simulator, without Demo fallback. The public primary command
+exits 0 after 16.236 seconds and sends 9 history events. A real app-process cold
+restart preserves the same account/device and all 5 semantic timeline entries;
+the version-3 drawing remains exactly 680 bytes with SHA256 `be5ce5ec…`, matching
+the public primary. The real-account fullbleed App sheet renders without a
+visible title/status band, dismisses through its native grabber, and returns
+the same two Home items with unchanged document bytes. Final runtime receipt
+`870a979e` and acceptance `057876a4` bind this bounded pass. The owned simulator
+is shut down with data retained and its Metro is stopped. This does not claim a
+new edit, pending-network save, latency,
+whole lifecycle, optimized Release, provider journey or readiness acceptance.
+
+The QA script's early empty-log assertion failed, but the UI confirmation tap
+still ran; matching check 775952 was verified afterward. The evidence does not
+claim that visual verification preceded that tap. This documentation update is
+a later metadata-only delta to the recorded 910-input proof point; it changes
+no runtime code or any of its 176 native inputs.
+
+The separate pinned-host C-ABI v3 pair now records four baseline low-stack
+stack overflows and two 2 MiB control passes; candidate02 passes 6/6 at measured
+508/540/2044 KiB under the unchanged 512/544/2048 KiB caps. The first candidate
+used a stale identical baseline binary and is invalid/preserved. Sealed receipt
+`86b6e385` binds distinct binaries and the same generated-ABI/signed-WebSocket
+harness. Actual worker/drain lease destruction remains a separate lifecycle
+test scope. The harness stays outside production, is not a blocker for user
+delivery, and does not qualify iOS, Windows or general runtime limits.
+Original pre-ABI calibration failures remain preserved separately.
+
+## Retained bounded App UI evidence
 
 A fresh, exclusively owned Android AVD used genuine public enrollment and secure
 linking, then actual Excalidraw UI editing, saving and process-cold-reopen in APK
@@ -43,14 +100,10 @@ assertions, deadlines, method and dependency pins remain intact. The earlier
 API28 Compose crash did not recur; its cause remains unknown. These standalone
 native jobs do not qualify the newer Expo UI/runtime cut.
 
-A separate fresh iOS simulator reused the exact historical signed Debugv110
-native artifact with current v128 JavaScript. Genuine public secure-link pickup
-faulted with SIGBUS at a compiler stack-guard probe in TLS polling. The exact
-Mach-O UUID/IPS and source audit establish that historical mechanism; relevant
-pickup/link source and dependencies remain unchanged, but a current native
-binary has not reproduced it yet. Explicit Demo-only Hike sheet/Details/Back/
-Close and Excalidraw edit/save/close/reopen passed afterward. Those local Demo
-checks do not qualify public linking, current native bodies or providers.
+Before the current v130 native baseline, historical signed Debug v110 also
+faulted during public link. Its original UUID/IPS/source attribution remains
+separate. Later explicit Demo-only Hike/Excalidraw UI checks retain their local
+UI scope; they do not qualify public linking or a current native body.
 
 The v129 titleless/fullbleed iOS App UI now has a separate bounded pass in
 explicit Demo mode on the historical signed Debugv110 native artifact. All 12
