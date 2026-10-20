@@ -126,9 +126,8 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       options={{
         title: manage ? t('common.details') : item.title,
         headerShown: manage,
-        // iOS sheet dismissal remains subject to the document-close guard.
-        // Other platforms keep the interactive App route's gesture policy.
-        gestureEnabled: process.env.EXPO_OS === 'ios' || !fullscreen,
+        // Interactive canvases close only through the guarded native grabber.
+        gestureEnabled: !fullscreen,
         headerRight: !manage
           ? undefined
           : () =>

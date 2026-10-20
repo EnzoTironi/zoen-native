@@ -15,7 +15,7 @@ import { useTheme } from '../theme';
 const GRABBER_HEIGHT = 48;
 type Scope = { path: string };
 
-/** Android-only host chrome; the canvas remains full-size underneath its safe area. */
+/** Native close intent; the canvas remains full-size underneath its safe area. */
 export function AppSheetGrabber({ children }: { children: ReactNode }) {
   const navigation = useNavigation('/');
   const route = useRoute();

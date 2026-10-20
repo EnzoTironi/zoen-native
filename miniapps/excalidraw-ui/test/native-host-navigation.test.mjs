@@ -213,7 +213,7 @@ async function fixture(platform = "android", options = {}) {
                 : path === "fixture:bridge"
                   ? bridgeSource
                   : path === "fixture:native"
-                    ? nativeSource
+                    ? nativeSource.replace("OS:'android'", `OS:${JSON.stringify(platform)}`)
                     : path === "fixture:view"
                       ? viewSource
                       : path === "fixture:gestures"
@@ -689,3 +689,62 @@ for (const action of ["activate", "tap", "escape"]) {
     }
   });
 }
+
+test("iOS App layout wires the native grabber to the real root guard until document flush acknowledges", async () => {
+  const doc = documentPort();
+  const f = await fixture("ios", { controller: doc.controller, origin: "chat" });
+  try {
+    assert.ok(f.qa.grabberProps, "actual iOS App layout must mount its guarded grabber");
+    assert.ok(f.node.querySelector("[data-qa-local-safe-provider] [data-qa-editor]"));
+    assert.equal(f.qa.grabberProps.style.width, 72);
+    assert.equal(f.qa.grabberProps.style.height, 48);
+    await f.act(() => gesture(f, "pan"));
+    assert.deepEqual(f.qa.dispatched[0], {
+      type: "GO_BACK",
+      source: "app-modal",
+      target: "root-stack",
+    });
+    assert.deepEqual(doc.calls, [{ retire: true }]);
+    assert.equal(current(f).name, "miniapp");
+    assert.equal(f.qa.disposedDocuments, 0);
+    await f.act(() => {
+      gesture(f, "tap");
+      f.qa.grabberProps.onAccessibilityEscape();
+    });
+    assert.equal(doc.calls.length, 1, "the actual screen lock owns repeated iOS close intents");
+    await f.act(() => doc.pending[0].resolve());
+    assert.equal(current(f).name, "chat");
+    assert.equal(f.qa.disposedDocuments, 1);
+  } finally {
+    await f.close();
+  }
+});
+
+test("iOS grabber cancellation and failed save retain the App until an explicit accessible retry succeeds", async () => {
+  const doc = documentPort();
+  const f = await fixture("ios", { controller: doc.controller });
+  try {
+    assert.ok(f.qa.grabberProps, "actual iOS layout must provide its close intent");
+    await f.act(() => gesture(f, "pan", { canceled: true }));
+    await f.act(() => gesture(f, "pan", { translationY: -72 }));
+    assert.deepEqual(f.qa.dispatched, []);
+    assert.equal(doc.calls.length, 0);
+    await f.act(() => gesture(f, "pan"));
+    await f.act(() => doc.pending[0].reject(Error("Synthetic iOS save failure")));
+    assert.equal(current(f).name, "miniapp");
+    assert.equal(f.qa.disposedDocuments, 0);
+    assert.ok(f.qa.prevented.has("drawing"));
+    assert.match(f.node.textContent, /drawing.closeFailed/);
+    await f.act(() =>
+      f.qa.grabberProps.onAccessibilityAction({ nativeEvent: { actionName: "activate" } }),
+    );
+    assert.equal(doc.calls.length, 2);
+    assert.equal(current(f).name, "miniapp");
+    assert.equal(f.qa.disposedDocuments, 0);
+    await f.act(() => doc.pending[1].resolve());
+    assert.equal(current(f).name, "home");
+    assert.equal(f.qa.disposedDocuments, 1);
+  } finally {
+    await f.close();
+  }
+});

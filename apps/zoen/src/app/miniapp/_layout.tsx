@@ -11,6 +11,7 @@ export default function AppsLayout() {
       <Stack
         screenOptions={{
           title: '',
+          headerTitle: '',
           headerBackButtonDisplayMode: 'minimal',
           headerShadowVisible: false,
           headerTransparent: false,
@@ -28,7 +29,7 @@ export default function AppsLayout() {
   );
   return (
     <SafeAreaProvider>
-      {process.env.EXPO_OS === 'android' ? <AppSheetGrabber>{content}</AppSheetGrabber> : content}
+      {process.env.EXPO_OS === 'web' ? content : <AppSheetGrabber>{content}</AppSheetGrabber>}
     </SafeAreaProvider>
   );
 }

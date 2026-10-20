@@ -74,20 +74,8 @@ function Navigation() {
             <Stack.Screen
               name="miniapp"
               options={{
-                // Android's Material form sheet does not support a nested native stack.
-                // Its full-screen modal supports the App's management routes and history.
-                presentation:
-                  process.env.EXPO_OS === 'ios'
-                    ? 'formSheet'
-                    : process.env.EXPO_OS === 'android'
-                      ? 'fullScreenModal'
-                      : 'card',
-                animation: process.env.EXPO_OS === 'android' ? 'slide_from_bottom' : undefined,
-                sheetAllowedDetents: [1],
-                sheetGrabberVisible: true,
-                // Match the canvas edges to the native sheet bounds.
-                sheetCornerRadius: process.env.EXPO_OS === 'ios' ? 0 : undefined,
-                sheetExpandsWhenScrolledToEdge: false,
+                presentation: process.env.EXPO_OS === 'web' ? 'card' : 'fullScreenModal',
+                animation: process.env.EXPO_OS === 'web' ? undefined : 'slide_from_bottom',
                 gestureEnabled: true,
                 headerShown: false,
               }}

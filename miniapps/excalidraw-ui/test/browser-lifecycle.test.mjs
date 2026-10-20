@@ -76,12 +76,13 @@ test(
   { timeout: 5000 },
   async () => {
     const { child, owned } = ownedNode(
-      "process.stdin.resume(); process.stdin.once('data', () => process.exit(0))",
-      ["pipe", "ignore", "pipe"],
+      "process.stdin.resume(); process.stdin.once('data', () => process.exit(0)); process.send('stdin-ready')",
+      ["pipe", "ignore", "pipe", "ipc"],
     );
     child.stderr.resume();
     try {
-      await once(child, "spawn");
+      const [ready] = await once(child, "message");
+      assert.equal(ready, "stdin-ready", "child installed its stdin shutdown handler");
       await owned.stop(() => child.stdin.end("close"));
       assert.equal(owned.state.exitCode, 0);
       assert.equal(owned.state.signalCode, null);
