@@ -14,6 +14,7 @@ pub const RESOURCE: &str = "ui://zoen/deckcraft/index.html";
 pub const MIME: &str = "application/vnd.storyteller.deckcraft+zip";
 pub const ENGINE_REVISION: &str = "a31b990d32f2c8562f1588562f922960c3fde48b";
 pub const MAX_BYTES: usize = 8 << 20;
+const MAX_INFLATED_BYTES: u64 = 16 << 20;
 pub struct Document {
     pub slides: u32,
 }
@@ -47,10 +48,11 @@ impl Document {
             {
                 return Err("Invalid DeckCraft entry");
             }
-            total = total
-                .checked_add(entry.size())
+            let declared_size = entry.size();
+            let declared_total = total
+                .checked_add(declared_size)
                 .ok_or("Invalid DeckCraft size")?;
-            if total > 16 << 20 {
+            if declared_total > MAX_INFLATED_BYTES {
                 return Err("Oversized DeckCraft container");
             }
             let cap = if name == "presentation.json" {
@@ -64,11 +66,20 @@ impl Document {
             let mut data = Vec::new();
             entry
                 .by_ref()
-                .take(cap as u64 + 1)
+                .take((cap as u64).min(MAX_INFLATED_BYTES - total) + 1)
                 .read_to_end(&mut data)
                 .map_err(|_| "Invalid DeckCraft checksum")?;
             if data.len() > cap {
                 return Err("Oversized DeckCraft entry");
+            }
+            total = total
+                .checked_add(data.len() as u64)
+                .ok_or("Invalid DeckCraft size")?;
+            if total > MAX_INFLATED_BYTES {
+                return Err("Oversized DeckCraft container");
+            }
+            if data.len() as u64 != declared_size {
+                return Err("Invalid DeckCraft entry size");
             }
             if name == "mimetype" {
                 mime = data == MIME.as_bytes();
@@ -111,3 +122,6 @@ impl Document {
         json!({"title":title,"slides":self.slides,"engineRevision":ENGINE_REVISION}).to_string()
     }
 }
+
+#[cfg(test)]
+mod tests;
