@@ -17,10 +17,10 @@ pub const MANIFEST: &str = match option_env!("ZOEN_DECKCRAFT_RESOURCE_MANIFEST_J
     Some(manifest) => manifest,
     None => include_str!("../../resources/deckcraft.manifest.json"),
 };
-const MODULE_FILE: &str = "deckcraft-web-6a08dce1dbefff5.js";
-const MODULE_SHA: &str = "264cd0769310a50d742898d091f74a2baff040229c050e41954f567b822933a9";
-const WASM_FILE: &str = "deckcraft-web-f772b3c22968d4a9_bg.wasm";
-const WASM_SHA: &str = "1da9ac78ecde3d298a6cdc1786fb02a2167208238edda775db6e51c62b385dce";
+const MODULE_FILE: &str = "deckcraft-web-126eb4c8aba52d94.js";
+const MODULE_SHA: &str = "9b0f9f19bee5f37fdc34f38ec5be9764db74f711151110c24acaf9ac14b87a06";
+const WASM_FILE: &str = "deckcraft-web-5249f28be4db0259_bg.wasm";
+const WASM_SHA: &str = "fb5e423ab97d8c133a67939b05fb2534f4cf452308ee9e38149e03cefc722747";
 fn exact_keys(value: &Value, expected: &[&str]) -> bool {
     value.as_object().is_some_and(|object| {
         object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
@@ -113,7 +113,7 @@ pub fn valid_resource(html: &str, manifest: &str) -> bool {
     let Some(module) = asset(
         &runtime["module"],
         MODULE_FILE,
-        156_643,
+        157_185,
         MODULE_SHA,
         "text/javascript",
     ) else {
@@ -122,7 +122,7 @@ pub fn valid_resource(html: &str, manifest: &str) -> bool {
     let Some(wasm) = asset(
         &runtime["wasm"],
         WASM_FILE,
-        36_314_090,
+        36_463_351,
         WASM_SHA,
         "application/wasm",
     ) else {
@@ -220,7 +220,7 @@ mod tests {
     use super::*;
     fn fixture(html: &str) -> Value {
         let directory = format!("https://runtime.invalid/deckcraft/{ENGINE_REVISION}/");
-        json!({"id":APP,"resourceUri":RESOURCE,"mimeType":crate::MIME,"bytes":html.len(),"sha256":format!("{:x}",Sha256::digest(html.as_bytes())),"capabilities":[],"allowedDomains":[],"linkDomains":[],"permissions":{},"csp":{"connectDomains":[],"resourceDomains":[],"frameDomains":[],"baseUriDomains":[]},"runtimePackage":{"schema":1,"engine":APP,"revision":ENGINE_REVISION,"abi":"zoen-host-v1","module":{"url":format!("{directory}{MODULE_FILE}"),"bytes":156643,"sha256":MODULE_SHA,"mime":"text/javascript"},"wasm":{"url":format!("{directory}{WASM_FILE}"),"bytes":36314090,"sha256":WASM_SHA,"mime":"application/wasm"}}})
+        json!({"id":APP,"resourceUri":RESOURCE,"mimeType":crate::MIME,"bytes":html.len(),"sha256":format!("{:x}",Sha256::digest(html.as_bytes())),"capabilities":[],"allowedDomains":[],"linkDomains":[],"permissions":{},"csp":{"connectDomains":[],"resourceDomains":[],"frameDomains":[],"baseUriDomains":[]},"runtimePackage":{"schema":1,"engine":APP,"revision":ENGINE_REVISION,"abi":"zoen-host-v1","module":{"url":format!("{directory}{MODULE_FILE}"),"bytes":157185,"sha256":MODULE_SHA,"mime":"text/javascript"},"wasm":{"url":format!("{directory}{WASM_FILE}"),"bytes":36463351,"sha256":WASM_SHA,"mime":"application/wasm"}}})
     }
     #[test]
     fn runtime_config_requires_exact_html_code_identity_and_zero_guest_network_authority() {
@@ -230,7 +230,7 @@ mod tests {
         let mut absent = good.clone();
         absent.as_object_mut().unwrap().remove("runtimePackage");
         assert!(!valid_resource(html, &absent.to_string()));
-        let cases=[("/runtimePackage/revision",json!("0".repeat(40))),("/runtimePackage/wasm/sha256",json!("0".repeat(64))),("/runtimePackage/module/bytes",json!(156644)),("/runtimePackage/module/url",json!(format!("https://runtime.invalid/deckcraft/{ENGINE_REVISION}/{MODULE_FILE}?data=private"))),("/runtimePackage/wasm/url",json!(format!("https://other.invalid/deckcraft/{ENGINE_REVISION}/{WASM_FILE}"))),("/runtimePackage/abi",json!("unmanaged")),("/allowedDomains",json!(["https://runtime.invalid"])),("/permissions",json!({"camera":true})),("/csp/connectDomains",json!(["https://runtime.invalid"])),("/resourceUri",json!("ui://another/artifact")),("/sha256",json!("0".repeat(64)))];
+        let cases=[("/runtimePackage/revision",json!("0".repeat(40))),("/runtimePackage/wasm/sha256",json!("0".repeat(64))),("/runtimePackage/module/bytes",json!(157186)),("/runtimePackage/module/url",json!(format!("https://runtime.invalid/deckcraft/{ENGINE_REVISION}/{MODULE_FILE}?data=private"))),("/runtimePackage/wasm/url",json!(format!("https://other.invalid/deckcraft/{ENGINE_REVISION}/{WASM_FILE}"))),("/runtimePackage/abi",json!("unmanaged")),("/allowedDomains",json!(["https://runtime.invalid"])),("/permissions",json!({"camera":true})),("/csp/connectDomains",json!(["https://runtime.invalid"])),("/resourceUri",json!("ui://another/artifact")),("/sha256",json!("0".repeat(64)))];
         for (pointer, value) in cases {
             let mut malformed = good.clone();
             *malformed.pointer_mut(pointer).unwrap() = value;
