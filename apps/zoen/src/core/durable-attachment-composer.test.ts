@@ -5,6 +5,9 @@ import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { MediaDraftChannel } from '../media/media-draft-channel.ts';
 import { AttachmentReview } from '../media/attachment-review.ts';
+import { PlaybackCoordinator } from '../media/playback-owner.ts';
+import type { AttachmentApprovalProps } from '../media/attachment-approval.types.ts';
+import type { MediaDraftScope } from '../media/media-draft-types.ts';
 import type { AttachmentComposerOptions } from '../media/attachment-composer.tsx';
 import type { AttachmentAsset } from '../media/attachment-draft.ts';
 import type { MediaDraftDto, MediaDraftPort } from '../media/media-draft-types.ts';
@@ -69,7 +72,7 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-function fixture(initial = empty()) {
+function fixture(initial = empty(), owner: MediaDraftScope = scope) {
   type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
   const slots: Slot[] = [];
   let cursor = 0,
@@ -165,7 +168,8 @@ function fixture(initial = empty()) {
       released.push(uri);
     },
   };
-  const channel = new MediaDraftChannel(scope, port, () => active);
+  const coordinator = new PlaybackCoordinator();
+  const channel = new MediaDraftChannel(owner, port, () => active);
   const store = {
     driver: { media: { drafts: port } },
     subscribe: (listener: () => void) => {
@@ -235,6 +239,7 @@ function fixture(initial = empty()) {
     'react-native': {
       View: 'View',
       Text: 'Text',
+      Keyboard: { dismiss: () => {} },
       AppState: {
         addEventListener: (_event: string, listener: (state: string) => void) => {
           background = listener;
@@ -249,7 +254,12 @@ function fixture(initial = empty()) {
     'expo-router': { useFocusEffect: (read: () => () => void) => effect(read, [read]) },
     'expo-crypto': { randomUUID: () => `asset-${++sequence}` },
     '../components/primitives': { NativeButton: 'NativeButton' },
-    '../core/provider': { useClient: () => ({ store }) },
+    '../core/provider': {
+      useClient: () => ({
+        store,
+        snapshot: { conversations: [{ id: owner.space_id, title: 'Synthetic conversation' }] },
+      }),
+    },
     '../i18n': { t: (key: string) => key },
     '../theme': { useTheme: () => ({ colors: {} }) },
     './attachment-draft': {
@@ -260,11 +270,16 @@ function fixture(initial = empty()) {
     './attachment-review': {
       AttachmentReview: class extends AttachmentReview {
         constructor(port: ConstructorParameters<typeof AttachmentReview>[0]) {
-          super({ ...port, token: () => `presentation-${++presentation}` });
+          super({ ...port, token: () => `presentation-${++presentation}` }, coordinator);
         }
       },
     },
     './attachment-draft-strip': { AttachmentDraftStrip: 'AttachmentDraftStrip' },
+    './attachment-approval': {
+      AttachmentApproval: 'AttachmentApproval',
+      supportsMediaApproval: true,
+    },
+    './playback-owner': { mediaPlayback: coordinator },
     './attachment-picker': { pickAttachmentAssets: () => selection() },
     './cache-files': { discardCacheCopy: (uri: string) => discarded.push(uri) },
     './cache-work': { sensitiveCacheWork: { run: (work: () => unknown) => work() } },
@@ -286,10 +301,10 @@ function fixture(initial = empty()) {
     },
   });
   let options: AttachmentComposerOptions = {
-    spaceId: 'chat',
+    spaceId: owner.space_id,
     replyTo: null,
-    threadRootId: null,
-    thread: false,
+    threadRootId: owner.thread_root_id,
+    thread: Boolean(owner.thread_root_id),
     disabled: false,
     suspended: false,
   };
@@ -316,6 +331,16 @@ function fixture(initial = empty()) {
     canceled,
     previewStarted: previewStarted.promise,
     closePreview: () => previewWaiters.get(previews.at(-1)!.token)?.resolve(),
+    approval: () =>
+      maybeFind(render().review, 'attachment-approval')?.props as
+        | AttachmentApprovalProps
+        | undefined,
+    openNativePreview: (id: string) => {
+      const strip = (render().review!.props.children as Element[])[0]!;
+      (strip.props.onPreview as (id: string) => void)(id);
+      const approval = maybeFind(render().review, 'attachment-approval');
+      if (approval) (approval.props.onEdit as () => void)();
+    },
     enableNativeEditing: () => {
       holdCancellation = true;
       port.edit = async (_scope, expected, assetId, token) => {
@@ -354,8 +379,20 @@ function fixture(initial = empty()) {
       loseSendAck = true;
     },
     sendCalls: () => sendCalls,
+    playPreview: () => {
+      let playing = true;
+      const playback = coordinator.register(
+        () => {
+          playing = false;
+        },
+        () => playing,
+      );
+      playback.begin();
+      return { isPlaying: () => playing, dispose: () => playback.dispose() };
+    },
     background: () => background?.('background'),
     erase: () => Promise.all([...deviceCleanups].map((cleanup) => cleanup())),
+    endSession: () => Promise.all([...sessionCleanups].map((cleanup) => cleanup())),
     durable: () => durable,
     select: (assets: AttachmentAsset[] | (() => Promise<AttachmentAsset[]>)) => {
       selection = typeof assets === 'function' ? assets : async () => assets;
@@ -561,9 +598,8 @@ test('backgrounding, destination replacement and session revocation cancel revie
     await tick();
     f.select([photo()]);
     await f.render().pick('photo');
-    const ui = f.render();
-    const strip = (ui.review!.props.children as Element[])[0]!;
-    (strip.props.onPreview as (id: string) => void)('asset-1');
+    f.render();
+    f.openNativePreview('asset-1');
     await tick();
     if (revoke === 'destination') f.render({ spaceId: 'another-chat' });
     else f[revoke]();
@@ -581,7 +617,7 @@ test('a stale Remove action dismisses review before dropping the selected draft 
   f.select([photo('one.jpg'), photo('two.jpg')]);
   await f.render().pick('photo');
   const strip = (f.render().review!.props.children as Element[])[0]!;
-  (strip.props.onPreview as (id: string) => void)('asset-1');
+  f.openNativePreview('asset-1');
   await tick();
   (strip.props.onRemove as (id: string) => void)('asset-1');
   await tick();
@@ -603,8 +639,7 @@ test('unmount and device cleanup coalesce cancellation and preserve the encrypte
   await tick();
   f.select([photo()]);
   await f.render().pick('photo');
-  const strip = (f.render().review!.props.children as Element[])[0]!;
-  (strip.props.onPreview as (id: string) => void)('asset-1');
+  f.openNativePreview('asset-1');
   await tick();
   f.unmount();
   await f.erase();
@@ -629,8 +664,7 @@ test(
     await f.channel.flush();
     ui = f.render();
     const staleSend = ui.field!.onSend;
-    const strip = (ui.review!.props.children as Element[])[0]!;
-    (strip.props.onPreview as (id: string) => void)('asset-1');
+    f.openNativePreview('asset-1');
     await f.previewStarted;
     assert.equal(f.channel.getSnapshot().reviewing, true);
     staleSend();
@@ -677,8 +711,7 @@ test(
     await f.render().pick('document');
     const ui = f.render(),
       staleSend = ui.field!.onSend;
-    const strip = (ui.review!.props.children as Element[])[0]!;
-    (strip.props.onPreview as (id: string) => void)('asset-1');
+    f.openNativePreview('asset-1');
     await f.previewStarted;
     staleSend();
     await tick();
@@ -738,3 +771,168 @@ test(
     assert.equal(f.render().active, false);
   },
 );
+
+test('full-screen approval opens after media selection, preserves each caption and captured thread target, and Close keeps the draft', async () => {
+  const f = fixture(empty(), { ...scope, thread_root_id: 'thread-root' });
+  f.render();
+  await tick();
+  f.select([photo('one.jpg'), { ...photo('two.mov'), mime: 'video/quicktime' }]);
+  await f.render({ replyTo: 'captured-reply' }).pick('photo');
+  let approval = f.approval()!;
+  assert.ok(approval);
+  assert.equal(approval.recipient, 'Synthetic conversation');
+  assert.equal(approval.field.scope.replyTo, 'captured-reply');
+  assert.equal(approval.field.scope.thread, true);
+  assert.equal(f.previews.length, 0, 'Approval does not automatically open the native editor');
+  approval.field.onChange('Photo caption');
+  await f.channel.flush();
+  f.render({ replyTo: 'later-reply' });
+  approval = f.approval()!;
+  approval.onSelect('asset-2');
+  approval = f.approval()!;
+  approval.field.onChange('Video caption');
+  await f.channel.flush();
+  assert.equal(approval.field.scope.replyTo, 'captured-reply');
+  const staleSend = approval.field.onSend;
+  approval.onClose();
+  await tick();
+  assert.equal(f.approval(), undefined);
+  assert.deepEqual(
+    JSON.parse(f.durable().content_json).items.map((item: { caption: string }) => item.caption),
+    ['Photo caption', 'Video caption'],
+  );
+  staleSend();
+  await tick();
+  assert.equal(
+    f.sendCalls(),
+    0,
+    'A dismissed presentation cannot send through its retained callback',
+  );
+  f.openNativePreview('asset-2');
+  await f.previewStarted;
+  f.closePreview();
+  await tick();
+  f.approval()!.field.onSend();
+  await tick();
+  assert.equal(f.sendCalls(), 1);
+  assert.equal(JSON.parse(f.sent[0]!).reply_to, 'captured-reply');
+});
+
+test('recovered attachments remain compact until explicitly expanded and expanding never stages new content', async () => {
+  const f = fixture({
+    revision: 'saved',
+    content_json: JSON.stringify({
+      kind: 'attachments',
+      reply_to: null,
+      items: [{ asset_id: 'old', caption: 'Recovered', mutation_id: 'old-post' }],
+    }),
+    assets: [{ id: 'old', name: 'old.jpg', mime: 'image/jpeg', size: 12, sha256: 'a'.repeat(64) }],
+    attempted: false,
+  });
+  f.render();
+  await tick();
+  f.render();
+  await tick();
+  assert.equal(f.approval(), undefined);
+  const strip = (f.render().review!.props.children as Element[])[0]!;
+  (strip.props.onPreview as (id: string) => void)('old-post');
+  const approval = f.approval()!;
+  assert.equal(approval.field.value, 'Recovered');
+  assert.equal(approval.state.items[0]!.uri, 'file:///cache/fresh-old');
+  assert.equal(f.writes.length, 0);
+  assert.equal(f.sendCalls(), 0);
+  approval.onClose();
+  await tick();
+  assert.equal(f.approval(), undefined);
+  f.unmount();
+  await f.channel.flush();
+  assert.deepEqual(f.released, ['file:///cache/fresh-old']);
+});
+
+test('closing approval drains the pending native child, preserves an already accepted edit, and fences its old Send', async () => {
+  const f = fixture();
+  f.enableNativeEditing();
+  f.render();
+  await tick();
+  f.select([photo()]);
+  await f.render().pick('photo');
+  let approval = f.approval()!;
+  const staleSend = approval.field.onSend;
+  approval.onEdit();
+  await f.previewStarted;
+  approval.onClose();
+  await tick();
+  approval = f.approval()!;
+  assert.ok(approval, 'Parent presentation stays mounted until its native child drains');
+  assert.equal(approval.busy, true);
+  assert.deepEqual(f.canceled, ['presentation-1']);
+  staleSend();
+  f.saveEditedCopy();
+  await tick();
+  f.render();
+  await tick();
+  assert.equal(f.approval(), undefined);
+  assert.equal(JSON.parse(f.durable().content_json).items[0].asset_id, 'edited-asset-1');
+  staleSend();
+  await tick();
+  assert.equal(f.sendCalls(), 0);
+});
+
+test('background, revocation and destination replacement revoke approval callbacks while retaining durable content', async () => {
+  for (const retire of ['background', 'retire', 'destination'] as const) {
+    const f = fixture();
+    f.render();
+    await tick();
+    f.select([photo()]);
+    await f.render().pick('photo');
+    const old = f.approval()!;
+    assert.ok(old);
+    if (retire === 'destination') f.render({ spaceId: 'another-chat' });
+    else f[retire]();
+    await tick();
+    assert.equal(f.approval(), undefined);
+    old.field.onSend();
+    old.onEdit();
+    old.onAdd('photo');
+    await tick();
+    assert.equal(f.sendCalls(), 0);
+    assert.equal(f.previews.length, 0);
+    assert.equal(f.writes.length, 1);
+    assert.equal(JSON.parse(f.durable().content_json).items.length, 1);
+    f.unmount();
+    await f.channel.retire(false);
+  }
+});
+
+test('approval Close and session retirement pause native preview playback before React can unmount it', async () => {
+  for (const close of ['collapse', 'session', 'background'] as const) {
+    const f = fixture();
+    f.render();
+    await tick();
+    f.select([photo()]);
+    await f.render().pick('photo');
+    const approval = f.approval()!;
+    const playback = f.playPreview();
+    assert.equal(playback.isPlaying(), true);
+    assert.equal(approval.isCurrent(), true);
+    if (close === 'collapse') approval.onClose();
+    else if (close === 'background') f.background();
+    else await f.endSession();
+    assert.equal(
+      playback.isPlaying(),
+      false,
+      'Native playback must be fenced before any new React commit',
+    );
+    assert.equal(
+      approval.isCurrent(),
+      false,
+      'Late native playback events cannot reclaim the retired approval',
+    );
+    await tick();
+    assert.equal(f.approval(), undefined);
+    assert.equal(f.sendCalls(), 0);
+    playback.dispose();
+    f.unmount();
+    await f.channel.retire(false);
+  }
+});

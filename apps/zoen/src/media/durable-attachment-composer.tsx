@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { AppState, View, Text } from 'react-native';
+import { AppState, Keyboard, View, Text } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { NativeButton } from '../components/primitives';
@@ -26,20 +26,23 @@ import {
   type AttachmentDraftState,
 } from './attachment-draft';
 import { AttachmentDraftStrip } from './attachment-draft-strip';
+import { AttachmentApproval, supportsMediaApproval } from './attachment-approval';
 import { pickAttachmentAssets, type AttachmentPickKind } from './attachment-picker';
 import { discardCacheCopy } from './cache-files';
 import { sensitiveCacheWork } from './cache-work';
+import { mediaPlayback } from './playback-owner';
 
 const emptySubscribe = () => () => {};
 const emptySnapshot = () => null;
 type Preview = AttachmentAsset & { release: () => Promise<void> };
+type ApprovalPresentation = { closing: boolean };
 
 /** Rust owns durable content; this route owns only replaceable preview leases. */
 export function useDurableAttachmentComposer(
   options: AttachmentComposerOptions,
   channel: MediaDraftChannel | null,
 ) {
-  const { store } = useClient();
+  const { store, snapshot } = useClient();
   const { colors } = useTheme();
   const state = useSyncExternalStore(
     channel?.subscribe ?? emptySubscribe,
@@ -51,7 +54,9 @@ export function useDurableAttachmentComposer(
       channel,
       closed: false,
       focused: false,
+      foreground: AppState.currentState !== 'background' && AppState.currentState !== 'inactive',
       picking: false,
+      approval: null as ApprovalPresentation | null,
       previews: new Map<string, Preview>(),
     }),
     [channel],
@@ -146,39 +151,17 @@ export function useDurableAttachmentComposer(
       }),
     [channel, current, store, runtime],
   );
-  useLayoutEffect(() => review.refresh(), [review, options]);
   const reviewing = useSyncExternalStore(review.subscribe, review.getSnapshot, review.getSnapshot);
   const canReview = Boolean(
     store.driver.media?.drafts?.preview && store.driver.media?.drafts?.cancelPreview,
   );
-  useEffect(() => {
-    const stopStore = store.subscribe(review.refresh);
-    const stopDraft = channel?.subscribe(review.refresh);
-    const stopDevice = store.registerDeviceCleanup(review.close);
-    const stopSession = store.registerSessionCleanup(review.close);
-    const background = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') void review.close().catch(() => {});
-    });
-    return () => {
-      stopStore();
-      stopDraft?.();
-      background.remove();
-      // A failed native cleanup remains registered for erasure/session retry.
-      void review
-        .close()
-        .then(() => {
-          stopDevice();
-          stopSession();
-        })
-        .catch(() => {});
-    };
-  }, [review, channel, store]);
   const [restoreEpoch, setRestoreEpoch] = useState(0);
   const [local, setLocal] = useState<{
     channel: MediaDraftChannel | null;
     picking: boolean;
     clearing: boolean;
     selected: string | null;
+    approval: ApprovalPresentation | null;
     previews: ReadonlyMap<string, Preview>;
     error: string | null;
   }>({
@@ -186,6 +169,7 @@ export function useDurableAttachmentComposer(
     picking: false,
     clearing: false,
     selected: null,
+    approval: null,
     previews: new Map(),
     error: null,
   });
@@ -202,6 +186,7 @@ export function useDurableAttachmentComposer(
               picking: false,
               clearing: false,
               selected: null,
+              approval: null,
               previews: new Map(),
               error: null,
             }),
@@ -211,20 +196,62 @@ export function useDurableAttachmentComposer(
     },
     [runtime, channel],
   );
+  const retireApproval = useCallback(() => {
+    if (!runtime.approval) return;
+    mediaPlayback.pauseAll();
+    runtime.approval = null;
+    publish({ approval: null });
+  }, [runtime, publish]);
+  useLayoutEffect(() => {
+    if (!current()) retireApproval();
+    review.refresh();
+  }, [current, retireApproval, review, options]);
+  useEffect(() => {
+    const refresh = () => {
+      if (!current()) retireApproval();
+      review.refresh();
+    };
+    const close = async () => {
+      retireApproval();
+      await review.close();
+    };
+    const stopStore = store.subscribe(refresh);
+    const stopDraft = channel?.subscribe(refresh);
+    const stopDevice = store.registerDeviceCleanup(close);
+    const stopSession = store.registerSessionCleanup(close);
+    const background = AppState.addEventListener('change', (value) => {
+      runtime.foreground = value === 'active';
+      if (value !== 'active') void close().catch(() => {});
+    });
+    return () => {
+      stopStore();
+      stopDraft?.();
+      background.remove();
+      // A failed child cleanup remains registered for erasure/session retry.
+      void close()
+        .then(() => {
+          stopDevice();
+          stopSession();
+        })
+        .catch(() => {});
+    };
+  }, [review, channel, store, current, retireApproval, runtime]);
   useFocusEffect(
     useCallback(() => {
       runtime.focused = true;
       return () => {
         runtime.focused = false;
+        retireApproval();
         void review.close().catch(() => {});
       };
-    }, [runtime, review]),
+    }, [runtime, review, retireApproval]),
   );
   useEffect(() => {
     runtime.closed = false;
     if (channel) void channel.load().catch(() => {});
     return () => {
       runtime.closed = true;
+      runtime.approval = null;
       const release = async () => {
         await review.close();
         const results = await Promise.allSettled(
@@ -291,6 +318,45 @@ export function useDurableAttachmentComposer(
             : t('media.attachmentFailed'),
     });
   }
+  function openApproval(id?: string) {
+    if (
+      !supportsMediaApproval ||
+      !channel ||
+      !current() ||
+      !runtime.foreground ||
+      runtime.picking ||
+      runtime.approval?.closing
+    )
+      return;
+    const latest = channel.getSnapshot();
+    if (latest.content?.kind !== 'attachments' || !latest.content.items.length || latest.sending)
+      return;
+    Keyboard.dismiss();
+    if (!runtime.approval) {
+      mediaPlayback.pauseAll();
+      runtime.approval = { closing: false };
+    }
+    const item = latest.content.items.find((item) => item.mutation_id === id);
+    publish({ approval: runtime.approval, ...(item ? { selected: item.asset_id } : {}) });
+  }
+  async function closeApproval() {
+    const presentation = runtime.approval;
+    if (!presentation || presentation.closing) return;
+    presentation.closing = true;
+    mediaPlayback.pauseAll();
+    publish({ approval: presentation });
+    Keyboard.dismiss();
+    try {
+      await review.close();
+      if (runtime.approval === presentation) retireApproval();
+    } catch (reason) {
+      if (runtime.approval === presentation) {
+        presentation.closing = false;
+        publish({ approval: presentation });
+        failure(reason);
+      }
+    }
+  }
   async function pick(kind: AttachmentPickKind) {
     if (
       !channel ||
@@ -311,9 +377,12 @@ export function useDurableAttachmentComposer(
     }
     if (!current() || runtime.picking) return;
     runtime.picking = true;
+    if (runtime.approval) mediaPlayback.pauseAll();
     publish({ picking: true, error: null });
     let selected: AttachmentAsset[] = [];
     let delegated = false;
+    let approve = false;
+    const pickedFor = runtime.approval;
     try {
       await sensitiveCacheWork.run(async () => {
         const before = channel.getSnapshot().content;
@@ -365,6 +434,7 @@ export function useDurableAttachmentComposer(
           ],
         };
         await channel.save(next, inputs);
+        approve = selected.some((asset) => /^(image|video)\//.test(asset.mime));
       });
     } catch (reason) {
       failure(reason);
@@ -379,6 +449,7 @@ export function useDurableAttachmentComposer(
         }
       runtime.picking = false;
       publish({ picking: false });
+      if (approve && runtime.approval === pickedFor) openApproval();
     }
   }
   async function cancel() {
@@ -395,6 +466,7 @@ export function useDurableAttachmentComposer(
     publish({ clearing: true, error: null });
     try {
       await channel.clear();
+      retireApproval();
     } catch (reason) {
       failure(reason);
     } finally {
@@ -418,13 +490,22 @@ export function useDurableAttachmentComposer(
     const items = currentContent.items.filter((item) => item.asset_id !== id);
     try {
       await channel.save(items.length ? { ...currentContent, items } : null);
+      if (!items.length) retireApproval();
     } catch (reason) {
       failure(reason);
     }
   }
-  async function send(observed: MediaDraftAttachments) {
+  async function send(observed: MediaDraftAttachments, presentation: ApprovalPresentation | null) {
     // A stale Send action must not dismiss review and queue delivery behind it.
-    if (!channel || !current() || runtime.picking || review.getSnapshot().mutationId) return;
+    if (
+      !channel ||
+      !current() ||
+      runtime.picking ||
+      review.getSnapshot().mutationId ||
+      runtime.approval !== presentation ||
+      presentation?.closing
+    )
+      return;
     const latest = channel.getSnapshot();
     if (latest.content?.kind !== 'attachments' || latest.sending || latest.reviewing) return;
     // Caption saves can drain, but this action belongs only to its rendered selection.
@@ -443,6 +524,7 @@ export function useDurableAttachmentComposer(
     try {
       const result = await sensitiveCacheWork.run(() => channel.send());
       if (result.entries.length) {
+        retireApproval();
         if (!runtime.closed && store.mediaDrafts.isCurrent(channel)) sent?.();
         void store.refresh().catch(() => {});
       }
@@ -450,9 +532,11 @@ export function useDurableAttachmentComposer(
       failure(reason);
     }
   }
+  const presentation = runtime.approval;
   const restoring = !!content?.items.some((item) => !own?.previews.has(item.asset_id));
   const busy = Boolean(
     reviewing.mutationId ||
+    presentation?.closing ||
     own?.picking ||
     own?.clearing ||
     state?.sending ||
@@ -509,7 +593,14 @@ export function useDurableAttachmentComposer(
           remaining: items.length,
           retry: Boolean(state?.frozen),
           onChange: (caption) => {
-            if (!channel || !current() || state?.frozen) return;
+            if (
+              !channel ||
+              !current() ||
+              state?.frozen ||
+              runtime.approval !== presentation ||
+              presentation?.closing
+            )
+              return;
             const next = channel.getSnapshot().content;
             if (next?.kind !== 'attachments') return;
             void channel
@@ -522,7 +613,7 @@ export function useDurableAttachmentComposer(
               .catch(failure);
           },
           onSend: () => {
-            void send(content);
+            void send(content, presentation);
           },
         }
       : undefined;
@@ -571,7 +662,10 @@ export function useDurableAttachmentComposer(
               onPreview={
                 canReview
                   ? (id) => {
-                      void review.open(id);
+                      const item = items.find((item) => item.mutationId === id);
+                      if (supportsMediaApproval && item && /^(image|video)\//.test(item.mime))
+                        openApproval(id);
+                      else void review.open(id);
                     }
                   : undefined
               }
@@ -594,6 +688,74 @@ export function useDurableAttachmentComposer(
               {error}
             </Text>
           )}
+          {strip && field && presentation && own?.approval === presentation ? (
+            <AttachmentApproval
+              testID="attachment-approval"
+              state={strip}
+              field={field}
+              selectedId={selected?.mutationId ?? null}
+              recipient={
+                snapshot?.conversations.find((chat) => chat.id === channel?.scope.space_id)
+                  ?.title ?? t('media.attachmentConversation')
+              }
+              busy={busy}
+              editing={Boolean(reviewing.mutationId)}
+              canAdd={!state?.frozen && !busy && items.length < MAX_ATTACHMENT_ITEMS}
+              canEdit={Boolean(
+                canReview &&
+                store.driver.media?.drafts?.edit &&
+                !state?.frozen &&
+                selected &&
+                /^(image\/(jpeg|png|heic|heif)|video\/(mp4|quicktime|x-m4v))$/.test(selected.mime),
+              )}
+              error={error}
+              isCurrent={() =>
+                Boolean(
+                  current() &&
+                  runtime.foreground &&
+                  runtime.approval === presentation &&
+                  !presentation.closing &&
+                  !runtime.picking &&
+                  !review.getSnapshot().mutationId &&
+                  !channel?.getSnapshot().sending,
+                )
+              }
+              onClose={() => {
+                void closeApproval();
+              }}
+              onSelect={(id) => {
+                if (!current() || runtime.approval !== presentation || presentation.closing || busy)
+                  return;
+                mediaPlayback.pauseAll();
+                publish({
+                  selected:
+                    content?.items.find((item) => item.mutation_id === id)?.asset_id ?? null,
+                });
+              }}
+              onEdit={() => {
+                if (runtime.approval === presentation && !presentation.closing && selected)
+                  void review.open(selected.mutationId);
+              }}
+              onAdd={(kind) => {
+                if (runtime.approval === presentation && !presentation.closing) void pick(kind);
+              }}
+              onRemove={(id) => {
+                if (runtime.approval !== presentation || presentation.closing) return;
+                const item = content?.items.find((item) => item.mutation_id === id);
+                if (item) void remove(item.asset_id);
+              }}
+              onRetry={() => {
+                if (runtime.approval !== presentation || presentation.closing) return;
+                publish({ error: null });
+                void channel
+                  ?.retry()
+                  .then(() => {
+                    if (!runtime.closed) setRestoreEpoch((value) => value + 1);
+                  })
+                  .catch(failure);
+              }}
+            />
+          ) : null}
           {error && channel ? (
             <NativeButton
               testID="retry-media-draft"
