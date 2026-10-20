@@ -76,6 +76,186 @@ fn rich_payload(sequence: u64, text: &str) -> Vec<u8> {
     .unwrap()
 }
 
+fn lossless_fixture() -> (Database, Fixture, PageInputDto, crate::pages::PageBlockDto) {
+    let (db, f) = cold_input_fixture(ItemKind::Page);
+    let page = f.engine.page(&f.item).unwrap();
+    let mut block = page.blocks.last().unwrap().clone();
+    block.kind = "quote".into();
+    block.text = "😀 e\u{301} link".into();
+    block.spans = vec![
+        crate::pages::TextSpanDto {
+            start: 0,
+            end: 2,
+            key: "b".into(),
+            value: String::new(),
+        },
+        crate::pages::TextSpanDto {
+            start: 6,
+            end: 10,
+            key: "a".into(),
+            value: "https://example.test/雨?q=retained".into(),
+        },
+    ];
+    let seeded = f
+        .engine
+        .page_apply_from(
+            &f.item,
+            "seed-lossless-block",
+            &page.edit_context,
+            &page.blocks.iter().map(|b| b.id.clone()).collect::<Vec<_>>(),
+            std::slice::from_ref(&block),
+        )
+        .unwrap();
+    let current = f.engine.page_input_load(&input_scope(&f)).unwrap();
+    let opened = f
+        .engine
+        .page_input_open(
+            &input_scope(&f),
+            current.revision,
+            WRITER_A,
+            PageInputTarget::Block {
+                block_id: block.id.clone(),
+            },
+            PageInputMode::LosslessText,
+            &seeded.page.edit_context,
+        )
+        .unwrap();
+    (db, f, opened, block)
+}
+
+fn lossless_payload(sequence: u64, block: &crate::pages::PageBlockDto) -> Vec<u8> {
+    let end = block.text.encode_utf16().count();
+    serde_json::to_vec_pretty(&serde_json::json!({
+        "schema":"page-text/1", "sequence":sequence.to_string(), "mode":"lossless-text",
+        "text":block.text, "selection":{"start":end,"end":end},
+        "composition":null, "spans":block.spans
+    }))
+    .unwrap()
+}
+
+#[test]
+fn lossless_input_cold_recovery_preserves_kind_marks_and_exact_retry() {
+    let (_db, mut f, opened, mut block) = lossless_fixture();
+    let scope = input_scope(&f);
+    let before_page = f.engine.page(&f.item).unwrap();
+    let before_events = f.engine.store.event_count().unwrap();
+    let before_outbox = f.engine.store.outbox_len().unwrap();
+    block.text = format!("Before {}!", block.text);
+    for span in &mut block.spans {
+        span.start += 7;
+        span.end += 7;
+    }
+    let payload = lossless_payload(7, &block);
+    let ack = f
+        .engine
+        .page_input_checkpoint(&scope, WRITER_A, opened.revision, 7, &payload)
+        .unwrap();
+    assert_eq!(
+        ack.current.capture.as_ref().unwrap().payload,
+        payload,
+        "recovery retains the original native bytes"
+    );
+    assert_eq!(f.engine.page(&f.item).unwrap().blocks, before_page.blocks);
+    assert!(
+        f.engine
+            .page_input_checkpoint(&scope, WRITER_A, opened.revision, 7, &payload)
+            .unwrap()
+            .replayed
+    );
+    f = reopen_input_fixture(f);
+    let recovered = f.engine.page_input_load(&scope).unwrap();
+    assert_eq!(recovered, ack.current);
+    let capture = recovered.capture.as_ref().unwrap().clone();
+    let resumed = f
+        .engine
+        .page_input_open(
+            &scope,
+            recovered.revision,
+            WRITER_B,
+            PageInputTarget::Block {
+                block_id: block.id.clone(),
+            },
+            PageInputMode::LosslessText,
+            &before_page.edit_context,
+        )
+        .unwrap();
+    let applied = f
+        .engine
+        .page_input_apply(
+            &scope,
+            WRITER_B,
+            resumed.revision,
+            capture.sequence,
+            &capture.sha256,
+            "apply-recovered-lossless",
+        )
+        .unwrap();
+    assert_eq!(
+        applied.edit.page.blocks.iter().find(|b| b.id == block.id),
+        Some(&block)
+    );
+    assert!(applied.ack.current.capture.is_none());
+    assert!(applied.ack.current.binding.is_none());
+    f = reopen_input_fixture(f);
+    let accepted_page = f.engine.page(&f.item).unwrap();
+    let retry = f
+        .engine
+        .page_input_apply(
+            &scope,
+            WRITER_B,
+            resumed.revision,
+            capture.sequence,
+            &capture.sha256,
+            "apply-recovered-lossless",
+        )
+        .unwrap();
+    assert!(retry.ack.replayed && retry.edit.replayed);
+    assert_eq!(retry.edit.page.blocks, accepted_page.blocks);
+    assert_eq!(f.engine.store.event_count().unwrap(), before_events);
+    assert_eq!(f.engine.store.outbox_len().unwrap(), before_outbox);
+}
+
+#[test]
+fn lossless_input_rejects_malformed_ranges_without_replacing_recovery() {
+    let (_db, mut f, opened, block) = lossless_fixture();
+    let scope = input_scope(&f);
+    let initial = lossless_payload(7, &block);
+    let accepted = f
+        .engine
+        .page_input_checkpoint(&scope, WRITER_A, opened.revision, 7, &initial)
+        .unwrap();
+    let cipher = f.cipher();
+    let mut cases = Vec::new();
+    let mut reversed_range = block.clone();
+    reversed_range.spans[0].start = 3;
+    cases.push(reversed_range);
+    let mut out_of_bounds = block.clone();
+    out_of_bounds.spans[0].end = 100;
+    cases.push(out_of_bounds);
+    let mut split_surrogate = block.clone();
+    split_surrogate.spans[0].start = 1;
+    cases.push(split_surrogate);
+    let mut unknown_mark = block.clone();
+    unknown_mark.spans[0].key = "future-mark".into();
+    cases.push(unknown_mark);
+    for changed in cases {
+        assert!(f
+            .engine
+            .page_input_checkpoint(
+                &scope,
+                WRITER_A,
+                accepted.current.revision,
+                8,
+                &lossless_payload(8, &changed),
+            )
+            .is_err());
+        assert_eq!(f.cipher(), cipher);
+        assert_eq!(f.engine.page_input_load(&scope).unwrap(), accepted.current);
+    }
+    f = reopen_input_fixture(f);
+    assert_eq!(f.engine.page_input_load(&scope).unwrap(), accepted.current);
+}
+
 fn input_open(f: &Fixture, writer: &str) -> PageInputDto {
     let mut session = f.session();
     let read = session.read(&f.engine).unwrap();

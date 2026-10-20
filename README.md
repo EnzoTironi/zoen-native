@@ -1,10 +1,12 @@
 # Zoen
 
-Talk to people and agents in the same place. Keep the plans, pages, files and mini-apps produced by the conversation under your control.
+Talk to people and agents in the same place. Keep the plans, pages, files and apps produced by the conversation under your control.
 
 © 2026 Enzo Tironi. All rights reserved. Public for viewing only. See [LICENSE](LICENSE).
 
-The shared Rust core powers the existing native clients and the Expo application for iOS, Android and Web. Current validation covers those three Expo platforms; desktop replacement is deferred.
+The Expo application in `apps/zoen` is the product entry point, powered by the shared Rust core. Current implementation work focuses on iOS; Android, Web and desktop remain part of the complete product goal.
+
+The earlier standalone SwiftUI clients in `apple/` and Compose client in `android/` are still retained during replacement. They also contain assets, fixtures and build inputs used by current scripts. Their retirement is incomplete. Swift and Kotlin under `apps/zoen/modules/zoen-core` are active Expo platform modules and remain part of the shared application.
 
 ## Current progress
 
@@ -36,6 +38,21 @@ The earlier merged-client results retain their dated attribution in the
 Chats contains direct conversations, groups and communities. Optional filters narrow it; community permissions and resources stay inside the conversation. Notifications open as cards, with explicit switches to a list and back. Plans use the same card and Live Page presentation as other items. Desktop and web follow the iOS themes and conversation hierarchy.
 
 ## Development
+
+For the current iOS application:
+
+```sh
+cd apps/zoen
+npm ci
+npm run ios
+```
+
+This builds the local Rust module and the native Expo development client. See
+[the application instructions](apps/zoen/README.md) for native dependencies,
+backend configuration and the required `npm run check` validation.
+
+The following commands and Apple project scripts support the retained native
+clients while their replacement is being completed:
 
 ```sh
 rustup toolchain install 1.99.0 --profile minimal --component rustfmt,clippy

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { MediaDraftChannel } from '../media/media-draft-channel.ts';
+import { AttachmentReview } from '../media/attachment-review.ts';
 import type { AttachmentComposerOptions } from '../media/attachment-composer.tsx';
 import type { AttachmentAsset } from '../media/attachment-draft.ts';
 import type { MediaDraftDto, MediaDraftPort } from '../media/media-draft-types.ts';
@@ -72,6 +73,7 @@ function fixture(initial = empty()) {
   const slots: Slot[] = [];
   let cursor = 0,
     sequence = 0,
+    presentation = 0,
     revision = 1;
   let effects: (() => void)[] = [];
   let durable = initial;
@@ -81,6 +83,14 @@ function fixture(initial = empty()) {
     discarded: string[] = [],
     writes: string[] = [],
     sent: string[] = [];
+  const previews: { revision: string; assetId: string; token: string }[] = [];
+  const canceled: string[] = [];
+  const previewWaiters = new Map<string, ReturnType<typeof deferred<void>>>();
+  const previewStarted = deferred<void>();
+  const deviceCleanups = new Set<() => Promise<void>>();
+  const sessionCleanups = new Set<() => Promise<void>>();
+  const storeListeners = new Set<() => void>();
+  let background: ((state: string) => void) | undefined;
   let selection: () => Promise<AttachmentAsset[]> = async () => [];
   let active = true;
   const port: MediaDraftPort = {
@@ -116,6 +126,19 @@ function fixture(initial = empty()) {
       assert.ok(asset);
       return { ...asset, uri: `file:///cache/fresh-${id}` };
     },
+    preview: async (_scope, expected, assetId, token) => {
+      assert.equal(expected, durable.revision);
+      assert.ok(durable.assets.some((asset) => asset.id === assetId));
+      previews.push({ revision: expected, assetId, token });
+      const waiter = deferred<void>();
+      previewWaiters.set(token, waiter);
+      previewStarted.resolve();
+      await waiter.promise;
+    },
+    cancelPreview: async (token) => {
+      canceled.push(token);
+      previewWaiters.get(token)?.resolve();
+    },
     send: async (_scope, expected) => {
       assert.equal(expected, durable.revision);
       sent.push(durable.content_json);
@@ -128,6 +151,19 @@ function fixture(initial = empty()) {
   };
   const channel = new MediaDraftChannel(scope, port, () => active);
   const store = {
+    driver: { media: { drafts: port } },
+    subscribe: (listener: () => void) => {
+      storeListeners.add(listener);
+      return () => storeListeners.delete(listener);
+    },
+    registerDeviceCleanup: (cleanup: () => Promise<void>) => {
+      deviceCleanups.add(cleanup);
+      return () => deviceCleanups.delete(cleanup);
+    },
+    registerSessionCleanup: (cleanup: () => Promise<void>) => {
+      sessionCleanups.add(cleanup);
+      return () => sessionCleanups.delete(cleanup);
+    },
     mediaDrafts: { isCurrent: (candidate: unknown) => active && candidate === channel },
     refresh: async () => {},
   };
@@ -180,7 +216,20 @@ function fixture(initial = empty()) {
       useSyncExternalStore: (_subscribe: unknown, read: () => unknown) => read(),
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    'react-native': { View: 'View', Text: 'Text' },
+    'react-native': {
+      View: 'View',
+      Text: 'Text',
+      AppState: {
+        addEventListener: (_event: string, listener: (state: string) => void) => {
+          background = listener;
+          return {
+            remove() {
+              if (background === listener) background = undefined;
+            },
+          };
+        },
+      },
+    },
     'expo-router': { useFocusEffect: (read: () => () => void) => effect(read, [read]) },
     'expo-crypto': { randomUUID: () => `asset-${++sequence}` },
     '../components/primitives': { NativeButton: 'NativeButton' },
@@ -191,6 +240,13 @@ function fixture(initial = empty()) {
       MAX_ATTACHMENT_ITEMS: 10,
       MAX_ATTACHMENT_TOTAL_BYTES: 64 * 1024 * 1024,
       AttachmentDraftFailure: class extends Error {},
+    },
+    './attachment-review': {
+      AttachmentReview: class extends AttachmentReview {
+        constructor(port: ConstructorParameters<typeof AttachmentReview>[0]) {
+          super({ ...port, token: () => `presentation-${++presentation}` });
+        }
+      },
     },
     './attachment-draft-strip': { AttachmentDraftStrip: 'AttachmentDraftStrip' },
     './attachment-picker': { pickAttachmentAssets: () => selection() },
@@ -240,6 +296,12 @@ function fixture(initial = empty()) {
     discarded,
     writes,
     sent,
+    previews,
+    canceled,
+    previewStarted: previewStarted.promise,
+    closePreview: () => previewWaiters.get(previews.at(-1)!.token)?.resolve(),
+    background: () => background?.('background'),
+    erase: () => Promise.all([...deviceCleanups].map((cleanup) => cleanup())),
     durable: () => durable,
     select: (assets: AttachmentAsset[] | (() => Promise<AttachmentAsset[]>)) => {
       selection = typeof assets === 'function' ? assets : async () => assets;
@@ -252,6 +314,7 @@ function fixture(initial = empty()) {
     },
     retire: () => {
       active = false;
+      for (const listener of storeListeners) listener();
     },
   };
 }
@@ -395,4 +458,104 @@ test('a previously rendered Remove action preserves the latest caption before Re
   const content = JSON.parse(f.durable().content_json);
   assert.equal(content.items.length, 1);
   assert.equal(content.items[0].caption, 'Latest caption before commit');
+});
+
+test(
+  'pre-send review opens the selected saved asset and preserves captions and inline destination',
+  { timeout: 2000 },
+  async () => {
+    const f = fixture();
+    f.render();
+    await tick();
+    f.select([photo('one.jpg'), { ...photo('report.pdf'), mime: 'application/pdf' }]);
+    await f.render({ replyTo: 'inline-root' }).pick('document');
+    let ui = f.render({ replyTo: 'later-root' });
+    ui.field!.onChange('  Caption 🗂️\nkept exactly  ');
+    await f.channel.flush();
+    ui = f.render();
+    const strip = (ui.review!.props.children as Element[])[0]!;
+    (strip.props.onSelect as (id: string) => void)('asset-2');
+    ui = f.render();
+    ui.field!.onChange('PDF caption');
+    const second = (ui.review!.props.children as Element[])[0]!;
+    (second.props.onPreview as (id: string) => void)('asset-2');
+    await f.previewStarted;
+    assert.equal(f.previews.length, 1);
+    assert.equal(f.previews[0]!.assetId, 'asset-2');
+    assert.equal(f.previews[0]!.revision, f.durable().revision);
+    assert.equal(f.render().busy, true);
+    const content = JSON.parse(f.durable().content_json);
+    assert.equal(content.reply_to, 'inline-root');
+    assert.deepEqual(
+      content.items.map((item: { caption: string }) => item.caption),
+      ['  Caption 🗂️\nkept exactly  ', 'PDF caption'],
+    );
+    assert.deepEqual(f.sent, [], 'review must never send');
+    f.closePreview();
+    await tick();
+    ui = f.render();
+    assert.equal(ui.busy, false);
+    assert.equal(ui.field?.value, 'PDF caption');
+    assert.equal(ui.field?.scope.replyTo, 'inline-root');
+  },
+);
+
+test('backgrounding, destination replacement and session revocation cancel review and preserve the durable draft', async () => {
+  for (const revoke of ['background', 'retire', 'destination'] as const) {
+    const f = fixture();
+    f.render();
+    await tick();
+    f.select([photo()]);
+    await f.render().pick('photo');
+    const ui = f.render();
+    const strip = (ui.review!.props.children as Element[])[0]!;
+    (strip.props.onPreview as (id: string) => void)('asset-1');
+    await tick();
+    if (revoke === 'destination') f.render({ spaceId: 'another-chat' });
+    else f[revoke]();
+    await tick();
+    assert.deepEqual(f.canceled, ['presentation-1']);
+    assert.equal(JSON.parse(f.durable().content_json).items[0].asset_id, 'asset-1');
+    assert.deepEqual(f.sent, []);
+  }
+});
+
+test('a stale Remove action dismisses review before dropping the selected draft asset', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([photo('one.jpg'), photo('two.jpg')]);
+  await f.render().pick('photo');
+  const strip = (f.render().review!.props.children as Element[])[0]!;
+  (strip.props.onPreview as (id: string) => void)('asset-1');
+  await tick();
+  (strip.props.onRemove as (id: string) => void)('asset-1');
+  await tick();
+  await f.channel.flush();
+  f.render();
+  await f.channel.flush();
+  assert.deepEqual(f.canceled, ['presentation-1']);
+  assert.deepEqual(
+    JSON.parse(f.durable().content_json).items.map((item: { asset_id: string }) => item.asset_id),
+    ['asset-2'],
+  );
+  assert.deepEqual(f.discarded, [photo('one.jpg').uri]);
+  assert.deepEqual(f.sent, []);
+});
+
+test('unmount and device cleanup coalesce cancellation and preserve the encrypted selection', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([photo()]);
+  await f.render().pick('photo');
+  const strip = (f.render().review!.props.children as Element[])[0]!;
+  (strip.props.onPreview as (id: string) => void)('asset-1');
+  await tick();
+  f.unmount();
+  await f.erase();
+  await f.channel.flush();
+  assert.deepEqual(f.canceled, ['presentation-1']);
+  assert.equal(JSON.parse(f.durable().content_json).items[0].asset_id, 'asset-1');
+  assert.deepEqual(f.discarded, [photo().uri]);
 });

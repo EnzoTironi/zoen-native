@@ -57,6 +57,56 @@ de operação de produção. A matriz de produto deve cobrir:
 A comparação com WhatsApp, Slack e Wabi deve identificar a versão, plataforma,
 data, jornada relevante e evidência. Não basta usar suas interfaces como referência.
 
+## Referência principal de confiabilidade
+
+Signal é a principal referência de confiabilidade no app, núcleo e backend.
+O [estudo com fontes fixadas](signal-reliability-reference.md) define seis
+contratos: operações duráveis e confirmações reais; continuidade da conversa;
+ciclo próprio da mídia; separação entre login, vínculo e recuperação; privacidade
+por camada; notificações e chamadas integradas ao ciclo de vida do sistema.
+
+A execução deve preservar as autoridades existentes e priorizar OSS mantido e
+recursos nativos adequados. Comparações de código não aprovam segurança equivalente
+ou desempenho. Adoção de bibliotecas exige compatibilidade, licença e manutenção;
+nenhuma referência justifica outra base de estado durável ou uma reescrita do
+backend sem necessidade comprovada. As diferenças de banco local, metadados,
+recuperação e segundo plano permanecem explícitas até serem resolvidas e validadas.
+
+## Área de criação compartilhada
+
+Em 20 de outubro de 2026, o usuário definiu Notion e as Páginas do ChatGPT Space
+como referências para as Páginas vivas e ampliou essa direção para toda a área de
+criação: Páginas, Slides, Sites, Imagens e Arquivos. A experiência deve usar os
+componentes nativos e o design de céu do Zoen, integrada às conversas e aos Apps.
+As trinta jornadas originais e a entrega final nas seis plataformas continuam
+obrigatórias; esta ampliação acrescenta capacidades, sem converter provas antigas
+em aprovação dos novos fluxos.
+
+Pessoas e agentes autorizados devem trabalhar sobre os mesmos artefatos
+persistentes. Páginas precisam de edição direta em blocos, colaboração, comentários,
+presença, histórico e recuperação. Slides devem permitir criar, editar, ordenar,
+apresentar e exportar; Sites precisam de edição, prévia, publicação explícita,
+versões e rollback; Imagens precisam de geração, upload, edição com referências,
+variantes e biblioteca. Arquivos reutilizam o armazenamento e as permissões do
+produto. A área compartilhada inclui organização em espaços e páginas filhas,
+itens recentes, busca com escopo, compartilhamento, funções, revogação, lixeira e
+restauração.
+
+A conversa junto ao artefato fornece contexto explícito ao agente, com autoria e
+alterações revisáveis. O agente continua sujeito às mesmas permissões do artefato;
+uma resposta em chat, uma interface estática ou um adaptador privado não comprovam
+edição colaborativa ou execução durável. Conteúdo privado permanece no modelo de
+criptografia do Zoen; publicar um Site é uma ação explícita sobre a versão escolhida.
+
+O primeiro lote continua no iOS, com o núcleo Rust e os serviços reais. Captura de
+texto e revisão de anexos são fundamentos, não a conclusão da área de criação.
+As capacidades adicionais ficam registradas em `creationWorkspace` no manifesto
+de aceitação e só podem ser aceitas com evidências das jornadas completas.
+
+Referências públicas: [colaboração no Notion](https://www.notion.com/help/collaborate-with-people),
+[Páginas do ChatGPT Space](https://learn.chatgpt.com/docs/space/pages) e
+[agentes no Space](https://learn.chatgpt.com/docs/space/agents).
+
 ## Backend, privacidade e integridade
 
 Completar autenticação real, diretório de contas/dispositivos, criptografia,

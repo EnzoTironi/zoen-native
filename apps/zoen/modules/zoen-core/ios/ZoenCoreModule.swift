@@ -11,7 +11,7 @@ public class ZoenCoreModule: Module {
 
   public func definition() -> ModuleDefinition {
     Name("ZoenCore")
-    Events("onChange")
+    Events("onChange", "onPageInputStatus")
 
     AsyncFunction("measureComposer") { (tag: Int, expectedText: String, expectedLabel: String, expectedPlaceholder: String, width: Double, expectedFontSize: Double, nonce: Int) async -> [String: Double]? in
       await MainActor.run {
@@ -34,6 +34,39 @@ public class ZoenCoreModule: Module {
       } catch let error as CoreError {
         throw Exception(name: "CoreRequestFailed", description: ZoenCoreErrorMessage.message(error), code: "ERR_ZOEN_REQUEST_FAILED")
       }
+    }
+    AsyncFunction("pageInputSession") { [session, weak self] () async throws -> String in
+      try await session.pageInputSession { [weak self] json in
+        self?.sendEvent("onPageInputStatus", ["json": json])
+      }
+    }
+    AsyncFunction("loadPageInput") { (ticket: String, itemId: String) async throws -> String in
+      try await self.session.loadPageInput(session: ticket, itemId: itemId)
+    }
+    AsyncFunction("reservePageInput") { (ticket: String, itemId: String) async throws -> String in
+      try await self.session.reservePageInput(session: ticket, itemId: itemId)
+    }
+    AsyncFunction("openPageInput") { (request: String) async throws -> String in
+      try await self.session.openPageInput(request)
+    }
+    AsyncFunction("pageInputStatus") { (ticket: String, id: String) async throws -> String in
+      try await self.session.pageInputStatus(session: ticket, id: id)
+    }
+    AsyncFunction("sealPageInput") { (ticket: String, id: String) async throws -> String in
+      try await self.session.sealPageInput(session: ticket, id: id)
+    }
+    AsyncFunction("applyPageInput") { (ticket: String, id: String) async throws -> String in
+      try await self.session.pageInputOperation(session: ticket, id: id, operation: .apply)
+    }
+    AsyncFunction("discardPageInput") { (ticket: String, id: String) async throws -> String in
+      try await self.session.pageInputOperation(session: ticket, id: id, operation: .discard)
+    }
+    AsyncFunction("closePageInput") { (ticket: String, id: String) async throws in
+      try await self.session.closePageInput(session: ticket, id: id)
+    }
+    View(ZoenPageTextInput.self) {
+      Prop("token") { (view: ZoenPageTextInput, token: String) in view.token = token }
+      OnViewDidUpdateProps { (view: ZoenPageTextInput) in view.bind() }
     }
     AsyncFunction("openAssistant") { (spaceId: String, locale: String) async throws -> String in
       try await self.session.openAssistant(spaceId: spaceId, locale: locale)
@@ -59,6 +92,13 @@ public class ZoenCoreModule: Module {
     }
     AsyncFunction("materializeMediaDraftAsset") { (request: String) async throws -> String in
       try await self.session.materializeMediaDraftAsset(request)
+    }
+    AsyncFunction("previewMediaDraftAsset") { (request: String, presentationId: String) async throws in
+      let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
+      try await self.session.previewMediaDraftAsset(request, presentationId: presentationId, presenter: presenter)
+    }
+    AsyncFunction("cancelMediaDraftPreview") { (presentationId: String) async throws in
+      try await self.session.cancelMediaDraftPreview(presentationId)
     }
     AsyncFunction("sendMediaDraft") { (request: String) async throws -> String in
       do { return try await self.session.sendMediaDraft(request) }
@@ -117,6 +157,7 @@ private actor ZoenSession {
   private var generation: UInt64 = 0
   private var openingAttempt: UUID?
   private var closing = false
+  private var forceClosing = false
   private var closeTask: Task<Void, Error>?
   private let erasure = ZoenDeviceErasure()
   private var erasing = false
@@ -128,6 +169,10 @@ private actor ZoenSession {
   private let mediaFiles = ZoenMediaFiles()
   private let filePreview = ZoenFilePreview()
   private var previewBindings: [String: PreviewBinding] = [:]
+  private var draftPreviewTasks: [UUID: Task<Void, Error>] = [:]
+  // A cancellation may cross the bridge before its presentation is admitted.
+  // These bounded, content-free tokens are not a second draft store.
+  private var cancelledDraftPreviews: [UUID] = []
   private let profilePhotos = ZoenProfilePhotos()
   private let voiceEditor = ZoenVoiceEditor()
   private var voiceSources: [String: UInt64] = [:]
@@ -136,8 +181,310 @@ private actor ZoenSession {
   private var assistants: [String: ZoenAssistantLease] = [:]
   private var assistantDrains: [String: Task<Void, Never>] = [:]
 
+  private var pageInputTicket = UUID().uuidString
+  private var pageInputReservations: [String: String] = [:]
+  private var pageInputs: [String: ZoenPageInputRecord] = [:]
+  private var pageInputForcedDrain: Task<Void, Never>?
+  private var pageInputChanged: (@Sendable (String) -> Void)?
+  nonisolated private let pageInputLifetime = ZoenPageInputLifetime()
+
+  func pageInputSession(changed: @escaping @Sendable (String) -> Void) throws -> String {
+    guard !closing else { throw ZoenPageInputLease.Failure.closed }
+    _ = try requirePageInputSession(pageInputTicket)
+    pageInputChanged = changed
+    return pageInputTicket
+  }
+
+  private func requirePageInputSession(_ ticket: String) throws -> Client {
+    guard ticket == pageInputTicket, !erasing, mode == "account", let core,
+          let account = core.account(), account.unlocked, !account.setupPending else {
+      throw ZoenPageInputLease.Failure.closed
+    }
+    return core
+  }
+
+  private func pageInputScope(_ ticket: String, itemId: String) throws -> FileEditDraftScope {
+    let engine = try requirePageInputSession(ticket)
+    // This accessor admits BinaryPage, not a Plan projection or historical document.
+    let page = try engine.page(itemId: itemId)
+    guard page.ready else { throw ZoenPageInputLease.Failure.unavailable }
+    let owner = try fileScope(spaceId: page.spaceId, engine: engine)
+    return FileEditDraftScope(expectedIdentityId: owner.identity, expectedDeviceId: owner.device,
+      spaceId: page.spaceId, itemId: itemId)
+  }
+
+  private func currentPageInput(_ ticket: String, id: String) throws -> ZoenPageInputRecord {
+    let engine = try requirePageInputSession(ticket)
+    guard let record = pageInputs[id], record.request.session == ticket,
+          record.engine === engine, record.generation == generation, record.lease.status().valid,
+          let owner = try? fileScope(spaceId: record.scope.spaceId, engine: engine),
+          owner.identity == record.scope.expectedIdentityId,
+          owner.device == record.scope.expectedDeviceId else { throw ZoenPageInputLease.Failure.closed }
+    return record
+  }
+
+  func loadPageInput(session: String, itemId: String) throws -> String {
+    guard !closing else { throw ZoenPageInputLease.Failure.closed }
+    let engine = try requirePageInputSession(session)
+    let loaded = try engine.pageInputLoad(scope: pageInputScope(session, itemId: itemId))
+    let mode = loaded.binding.map { pageInputModeName($0.mode) }
+    return try ZoenMediaFiles.json(["revision": String(loaded.revision),
+      "hasRetainedCapture": loaded.capture != nil,
+      "blockId": loaded.binding.flatMap { pageInputBlockId($0.target) } as Any? ?? NSNull(),
+      "mode": mode as Any? ?? NSNull()])
+  }
+
+  func reservePageInput(session: String, itemId: String) throws -> String {
+    guard !closing else { throw ZoenPageInputLease.Failure.closed }
+    _ = try pageInputScope(session, itemId: itemId)
+    if let existing = pageInputReservations.first(where: { $0.value == itemId }) { return existing.key }
+    let id = UUID().uuidString.lowercased()
+    pageInputReservations[id] = itemId
+    return id
+  }
+
+  func openPageInput(_ json: String) async throws -> String {
+    let request = try ZoenPageInputOpenRequest.decode(json)
+    let engine = try requirePageInputSession(request.session)
+    guard !closing, pageInputReservations[request.id] == request.itemId else { throw ZoenPageInputLease.Failure.closed }
+    let record: ZoenPageInputRecord
+    if let existing = pageInputs[request.id] {
+      guard existing.request == request, existing.closeTask == nil else { throw ZoenPageInputLease.Failure.changed }
+      record = try currentPageInput(request.session, id: request.id)
+    } else {
+      guard !pageInputs.values.contains(where: { $0.scope.itemId == request.itemId }) else { throw ZoenPageInputLease.Failure.changed }
+      let page = try engine.page(itemId: request.itemId)
+      guard page.ready, page.canEdit else { throw ZoenPageInputLease.Failure.unsupported }
+      let scope = try pageInputScope(request.session, itemId: request.itemId)
+      let loaded = try engine.pageInputLoad(scope: scope)
+      guard let revision = UInt64(request.revision), loaded.revision == revision else { throw ZoenPageInputLease.Failure.changed }
+      let target: PageInputTarget
+      let context: String
+      let inputMode: PageInputMode
+      if request.resume {
+        guard loaded.capture != nil, let binding = loaded.binding,
+              pageInputModeName(binding.mode) == request.mode,
+              pageInputBlockId(binding.target) == request.blockId else { throw ZoenPageInputLease.Failure.changed }
+        target = binding.target; context = binding.baseEditContext; inputMode = binding.mode
+      } else {
+        guard loaded.capture == nil else { throw ZoenPageInputLease.Failure.changed }
+        target = request.blockId.map { .block(blockId: $0) } ?? .appendNew
+        context = request.editContext
+        switch request.mode {
+        case "rich": inputMode = .rawRich
+        case "markdown": inputMode = .markdown
+        case "lossless-text": inputMode = .losslessText
+        default: throw ZoenPageInputLease.Failure.unsupported
+        }
+      }
+      let opened = try engine.pageInputOpen(scope: scope, expectedRevision: revision,
+        writerId: UUID().uuidString, target: target, mode: inputMode, observedEditContext: context)
+      guard let binding = opened.binding else { throw ZoenPageInputLease.Failure.changed }
+      let block = try ZoenPageInputOpenRequest.seedBlock(binding.baseBlockJson)
+      if request.mode == "rich", let block {
+        guard let kind = block["kind"] as? String, ["paragraph", "heading", "bullet", "numbered"].contains(kind),
+              let spans = block["spans"] as? [[String: Any]],
+              spans.allSatisfy({ ["b", "i", "s", "a"].contains($0["key"] as? String ?? "") }) else {
+          throw ZoenPageInputLease.Failure.unsupported
+        }
+      }
+      if request.mode == "lossless-text", let block {
+        guard let spans = block["spans"] as? [[String: Any]],
+              spans.allSatisfy({ ["b", "i", "s", "c", "a", "hb"].contains($0["key"] as? String ?? "") }) else {
+          throw ZoenPageInputLease.Failure.unsupported
+        }
+      }
+      let lease = try ZoenPageInputLease(id: request.id, engine: engine, generation: generation,
+        scope: scope, opened: opened) { [weak self] id in
+          Task { await self?.pageInputDidChange(session: request.session, id: id) }
+        }
+      try pageInputLifetime.bind(lease)
+      record = ZoenPageInputRecord(request: request, engine: engine, generation: generation,
+        scope: scope, lease: lease, binding: binding)
+      pageInputs[request.id] = record
+    }
+    if record.token != nil { return try pageInputJSON(record, includeSeed: true) }
+    if let task = record.openTask { return try await task.value }
+    let task = Task { try await self.completePageInputOpen(record) }
+    record.openTask = task
+    defer { record.openTask = nil }
+    return try await task.value
+  }
+
+  private func completePageInputOpen(_ record: ZoenPageInputRecord) async throws -> String {
+    _ = try currentPageInput(record.request.session, id: record.request.id)
+    let block = try ZoenPageInputOpenRequest.seedBlock(record.binding.baseBlockJson)
+    if record.request.mode != "lossless-text", let block {
+      let request = try ZoenMediaFiles.json(["op": "page_block_markdown", "block": block])
+      let encoded = try await record.engine.clientRequest(request: request)
+      _ = try currentPageInput(record.request.session, id: record.request.id)
+      guard let markdown = try JSONSerialization.jsonObject(with: Data(encoded.utf8), options: [.fragmentsAllowed]) as? String else {
+        throw ZoenPageInputLease.Failure.unsupported
+      }
+      record.initialMarkdown = markdown
+    }
+    let mode = record.request.mode
+    let seed = mode == "lossless-text" ? block?["text"] as? String ?? "" : record.initialMarkdown
+    let spans = block?["spans"] as? [[String: Any]] ?? []
+    let label = mode == "markdown" ? "Page Markdown" : "Page text"
+    let producer = await ZoenPageInputProducer(lease: record.lease, mode: mode, initialText: seed, initialSpans: spans, label: label)
+    record.producer = producer
+    let token = try await producer.register()
+    do {
+      // Close may already be awaiting this open. Complete registration so close
+      // owns its token; never make open and close wait on each other's rejection.
+      _ = try currentPageInput(record.request.session, id: record.request.id)
+      record.token = token
+      return try pageInputJSON(record, includeSeed: true)
+    } catch {
+      record.lease.invalidate()
+      await producer.revoke()
+      throw error
+    }
+  }
+
+  func pageInputStatus(session: String, id: String) throws -> String {
+    try pageInputJSON(currentPageInput(session, id: id))
+  }
+
+  private func pageInputJSON(_ record: ZoenPageInputRecord, includeSeed: Bool = false) throws -> String {
+    let status = record.lease.status()
+    var value: [String: Any] = [
+      "session": record.request.session, "id": record.request.id, "token": record.token as Any? ?? NSNull(),
+      "itemId": record.scope.itemId, "blockId": pageInputBlockId(record.binding.target) as Any? ?? NSNull(),
+      "resuming": record.request.resume, "mode": record.request.mode,
+      "revision": status.revision, "statusVersion": status.statusVersion, "sequence": status.sequence as Any? ?? NSNull(),
+      "hasRetainedCapture": status.retained, "retentionPending": status.unretained,
+      "failed": status.failed, "sealed": status.sealed, "completed": status.completed,
+      "operation": status.operation?.rawValue as Any? ?? NSNull()
+    ]
+    // Only canonical initial content crosses JS, once. Captures/selection/IME never do.
+    if includeSeed { value["initialMarkdown"] = record.initialMarkdown }
+    return try ZoenMediaFiles.json(value)
+  }
+
+  private func pageInputDidChange(session: String, id: String) {
+    guard let record = try? currentPageInput(session, id: id), let json = try? pageInputJSON(record) else { return }
+    pageInputChanged?(json)
+  }
+
+  func sealPageInput(session: String, id: String) async throws -> String {
+    let record = try currentPageInput(session, id: id)
+    guard !closing, record.closeTask == nil, record.operationTask == nil,
+          let producer = record.producer else { throw ZoenPageInputLease.Failure.closed }
+    try await producer.seal()
+    _ = try currentPageInput(session, id: id)
+    return try pageInputJSON(record)
+  }
+
+  func pageInputOperation(session: String, id: String, operation: ZoenPageInputLease.Operation) async throws -> String {
+    let record = try currentPageInput(session, id: id)
+    guard !closing, record.closeTask == nil else { throw ZoenPageInputLease.Failure.closed }
+    return try await runPageInputOperation(record, operation: operation)
+  }
+
+  private func runPageInputOperation(_ record: ZoenPageInputRecord, operation: ZoenPageInputLease.Operation) async throws -> String {
+    if let completed = record.completedResult {
+      guard record.completedOperation == operation else { throw ZoenPageInputLease.Failure.wrongOperation }
+      return completed
+    }
+    if let task = record.operationTask {
+      guard record.runningOperation == operation else { throw ZoenPageInputLease.Failure.wrongOperation }
+      return try await task.value
+    }
+    if let pending = record.lease.status().operation, pending != operation { throw ZoenPageInputLease.Failure.wrongOperation }
+    let task = Task { try await self.performPageInputOperation(record, operation: operation) }
+    record.runningOperation = operation
+    record.operationTask = task
+    defer { record.operationTask = nil; record.runningOperation = nil }
+    return try await task.value
+  }
+
+  private func performPageInputOperation(_ record: ZoenPageInputRecord, operation: ZoenPageInputLease.Operation) async throws -> String {
+    _ = try currentPageInput(record.request.session, id: record.request.id)
+    guard let producer = record.producer else { throw ZoenPageInputLease.Failure.unavailable }
+    if record.lease.status().operation == nil {
+      if operation == .apply { try await producer.seal() }
+      else { try await producer.freezeForDiscard() }
+      _ = try currentPageInput(record.request.session, id: record.request.id)
+      try record.lease.prepare(operation)
+    }
+    if operation == .apply { _ = try record.lease.apply() }
+    else { _ = try record.lease.discard() }
+    let result = try pageInputJSON(record)
+    record.completedOperation = operation
+    record.completedResult = result
+    listener?.onChange(spaceIds: [record.scope.spaceId])
+    pageInputChanged?(result)
+    return result
+  }
+
+  func closePageInput(session: String, id: String) async throws {
+    _ = try requirePageInputSession(session)
+    guard let record = pageInputs[id] else {
+      pageInputReservations.removeValue(forKey: id)
+      return
+    }
+    _ = try currentPageInput(session, id: id)
+    if let task = record.closeTask { try await task.value; return }
+    let task = Task { try await self.performPageInputClose(record) }
+    record.closeTask = task
+    defer { record.closeTask = nil }
+    try await task.value
+  }
+
+  private func performPageInputClose(_ record: ZoenPageInputRecord) async throws {
+    if let opening = record.openTask { _ = await opening.result }
+    _ = try currentPageInput(record.request.session, id: record.request.id)
+    if let operation = record.operationTask { _ = try await operation.value }
+    _ = try currentPageInput(record.request.session, id: record.request.id)
+    if let pending = record.lease.status().operation, !record.lease.status().completed {
+      if record.producer == nil { try record.lease.releaseEmpty() }
+      else { _ = try await runPageInputOperation(record, operation: pending) }
+    }
+    if let producer = record.producer { try await producer.sealForClose() }
+    else if !record.lease.status().retained { try record.lease.releaseEmpty() }
+    _ = try currentPageInput(record.request.session, id: record.request.id)
+    record.lease.invalidate()
+    if let producer = record.producer { await producer.revoke() }
+    pageInputLifetime.remove(record.request.id)
+    pageInputs.removeValue(forKey: record.request.id)
+    pageInputReservations.removeValue(forKey: record.request.id)
+    listener?.onChange(spaceIds: [record.scope.spaceId])
+  }
+
+  private func preparePageInputsForClose() async throws {
+    for record in Array(pageInputs.values) { try await closePageInput(session: record.request.session, id: record.request.id) }
+    pageInputReservations.removeAll()
+    pageInputTicket = UUID().uuidString
+  }
+
+  private func invalidatePageInputs() -> Task<Void, Never> {
+    for record in pageInputs.values { record.lease.invalidate() }
+    pageInputTicket = UUID().uuidString
+    pageInputReservations.removeAll()
+    if let drain = pageInputForcedDrain { return drain }
+    let records = Array(pageInputs.values)
+    let task = Task {
+      defer { self.pageInputForcedDrain = nil }
+      for record in records { if let producer = record.producer { await producer.revoke() } }
+      for record in records {
+        _ = await record.openTask?.result
+        _ = await record.operationTask?.result
+        _ = await record.closeTask?.result
+        // An opening task may have installed a producer after the first revoke.
+        if let producer = record.producer { await producer.revoke() }
+        self.pageInputLifetime.remove(record.request.id)
+        self.pageInputs.removeValue(forKey: record.request.id)
+      }
+    }
+    pageInputForcedDrain = task
+    return task
+  }
+
   nonisolated func retireForModuleDestruction() {
     pickupLifetime.retire()
+    pageInputLifetime.retire()
   }
 
   private func releasePickupBinding() {
@@ -455,6 +802,62 @@ private actor ZoenSession {
     var result = ZoenMediaDraftBridge.object(asset)
     result["uri"] = uri
     return try ZoenMediaFiles.json(result)
+  }
+
+  func previewMediaDraftAsset(_ request: String, presentationId: String, presenter: UIViewController?) async throws {
+    guard let token = UUID(uuidString: presentationId), draftPreviewTasks[token] == nil else {
+      throw ZoenMediaFiles.Failure.invalidFile
+    }
+    if let canceled = cancelledDraftPreviews.firstIndex(of: token) {
+      cancelledDraftPreviews.remove(at: canceled)
+      throw CancellationError()
+    }
+    let value = try ZoenMediaDraftBridge.decode(request)
+    let core = try mediaDraftCore(value.scope)
+    guard let revision = value.expectedRevision, let assetId = value.assetId else {
+      throw ZoenMediaFiles.Failure.invalidFile
+    }
+    let draft = try core.mediaDraft(scope: value.scope.core)
+    let content = try ZoenMediaDraftBridge.content(draft.contentJson)
+    guard draft.revision == revision, content?["kind"] as? String == "attachments",
+          let entries = content?["items"] as? [[String: Any]],
+          entries.contains(where: { $0["asset_id"] as? String == assetId }),
+          let asset = draft.assets.first(where: { $0.id == assetId }) else {
+      throw ZoenMediaFiles.Failure.invalidFile
+    }
+    let bytes = try core.mediaDraftAsset(scope: value.scope.core, expectedRevision: revision, assetId: assetId)
+    let uri = try mediaFiles.stage(bytes, name: asset.name)
+    let file: ZoenPreviewFile
+    do { file = try mediaFiles.takeForPreview(uri) }
+    catch { mediaFiles.release(uri); throw error }
+    // Transfer ownership BEFORE hopping to MainActor. Session erasure owns this
+    // copy even if cancellation wins before UIKit can present it.
+    let id = filePreview.register(file: file, generation: generation)
+    let preview = filePreview
+    let title = asset.name
+    let task = Task { @MainActor in
+      try await preview.open(id: id, title: title, edit: nil) { editing in
+        ZoenQuickLookPreview(presenter: presenter, editing: editing)
+      }
+    }
+    draftPreviewTasks[token] = task
+    // No core work follows this await. The existing preview owner, rather than
+    // requestDrain, lets close/erasure dismiss a read-only presentation.
+    defer { draftPreviewTasks.removeValue(forKey: token) }
+    try await task.value
+  }
+
+  func cancelMediaDraftPreview(_ presentationId: String) async throws {
+    guard let token = UUID(uuidString: presentationId) else { throw ZoenMediaFiles.Failure.invalidFile }
+    guard let task = draftPreviewTasks[token] else {
+      if !cancelledDraftPreviews.contains(token) { cancelledDraftPreviews.append(token) }
+      if cancelledDraftPreviews.count > 64 { cancelledDraftPreviews.removeFirst() }
+      return
+    }
+    task.cancel()
+    do { try await task.value }
+    catch is CancellationError {}
+    catch ZoenFilePreview.Failure.changed {}
   }
 
   func sendMediaDraft(_ request: String) throws -> String {
@@ -843,6 +1246,7 @@ private actor ZoenSession {
     } else { openingAttempt = nil }
     try erasure.begin(expected)
     erasing = true
+    let pageDrain = invalidatePageInputs()
     engine.retireLinkPickup()
     voiceSources.removeAll()
     voiceRenders.removeAll()
@@ -859,6 +1263,7 @@ private actor ZoenSession {
     engine.stopSync()
     syncStarted = false
     let task = Task {
+      await pageDrain.value
       try await filePreview.clear(before: clearingGeneration)
       await closeAssistants()
       await engine.drainLinkPickup()
@@ -891,11 +1296,14 @@ private actor ZoenSession {
     if cancelOpening { openingAttempt = nil }
     if let closeTask {
       if discardEdits {
+        forceClosing = true
+        let pageDrain = invalidatePageInputs()
         // Escalate a graceful close that is already waiting on the editor.
         // Its admission fence is in place before this suspension.
         generation &+= 1
         filePreview.invalidate(before: generation)
         try await filePreview.clear(before: generation)
+        await pageDrain.value
       }
       try await closeTask.value
       return
@@ -903,10 +1311,13 @@ private actor ZoenSession {
     // Fence new work and publish the coalesced task BEFORE its first await,
     // including forced teardown; a new preview cannot enter while clear drains.
     closing = true
+    forceClosing = discardEdits
+    let forcedPageDrain = discardEdits ? invalidatePageInputs() : nil
     let retiringCore = core
     retiringCore?.retireLinkPickup()
     let task = Task {
-      defer { self.closing = false; self.closeTask = nil }
+      defer { self.closing = false; self.forceClosing = false; self.closeTask = nil }
+      if let forcedPageDrain { await forcedPageDrain.value }
       if discardEdits {
         // Module destruction drains accepted workers and discards temporary edits.
         self.generation &+= 1
@@ -918,6 +1329,9 @@ private actor ZoenSession {
       // Keep the exact engine/account live for already admitted edited copies.
       // New bridge operations are fenced by `closing`; a save failure stays
       // recoverable in native UI instead of turning account change into data loss.
+      do { try await self.preparePageInputsForClose() }
+      catch { if !self.forceClosing { throw error } }
+      if let pageDrain = self.pageInputForcedDrain { await pageDrain.value }
       try await self.filePreview.prepareForClose(before: self.generation &+ 1)
       if let retiringCore { await retiringCore.drainLinkPickup() }
       if self.requests > 0 {
@@ -931,6 +1345,9 @@ private actor ZoenSession {
   }
 
   private func finishClose() async throws {
+    pageInputTicket = UUID().uuidString
+    pageInputReservations.removeAll()
+    pageInputChanged = nil
     voiceSources.removeAll()
     voiceRenders.removeAll()
     voiceRenderAttempts.removeAll()
@@ -952,6 +1369,44 @@ private actor ZoenSession {
     await closeAssistants()
     try? await voiceEditor.releaseAll()
     try await filePreview.clear(before: closingGeneration)
+  }
+}
+
+private final class ZoenPageInputRecord {
+  let request: ZoenPageInputOpenRequest
+  let engine: Client
+  let generation: UInt64
+  let scope: FileEditDraftScope
+  let lease: ZoenPageInputLease
+  let binding: PageInputBindingDto
+  var producer: ZoenPageInputProducer?
+  var initialMarkdown = ""
+  var token: String?
+  var openTask: Task<String, Error>?
+  var operationTask: Task<String, Error>?
+  var runningOperation: ZoenPageInputLease.Operation?
+  var completedOperation: ZoenPageInputLease.Operation?
+  var completedResult: String?
+  var closeTask: Task<Void, Error>?
+  init(request: ZoenPageInputOpenRequest, engine: Client, generation: UInt64,
+       scope: FileEditDraftScope, lease: ZoenPageInputLease, binding: PageInputBindingDto) {
+    self.request = request; self.engine = engine; self.generation = generation
+    self.scope = scope; self.lease = lease; self.binding = binding
+  }
+}
+
+private func pageInputModeName(_ mode: PageInputMode) -> String {
+  switch mode {
+  case .rawRich: "rich"
+  case .markdown: "markdown"
+  case .losslessText: "lossless-text"
+  }
+}
+
+private func pageInputBlockId(_ target: PageInputTarget) -> String? {
+  switch target {
+  case .block(let blockId): blockId
+  case .appendNew: nil
   }
 }
 

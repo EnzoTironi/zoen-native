@@ -1,7 +1,58 @@
 {
   "objective": "Deliver the complete Zoen product across iOS, Android, Web, macOS, Windows and Linux, including the production backend, refined native interactions, end-to-end privacy, data integrity and verified operation at declared production scale. Compete with WhatsApp, Slack and Wabi through demonstrable product quality, reliability and scalability. Completion requires reproducible end-to-end, security, integrity, load, recovery and release evidence across the supported platform matrix.",
   "goalDocument": "docs/dev/zoen-complete-product-goal.md",
-  "comparisonReferences": ["WhatsApp", "Slack", "Wabi"],
+  "comparisonReferences": ["Signal", "WhatsApp", "Slack", "Wabi", "Ando", "Hark", "Muse (Meta)"],
+  "reliabilityReference": {
+    "requestedAt": "2026-10-20",
+    "primary": "Signal",
+    "scope": ["ios-client", "shared-core", "backend", "operations"],
+    "specification": "docs/dev/signal-reliability-reference.md",
+    "sourceCommits": {
+      "Signal-iOS": "d13b9da9e4622e16297b111243755c4c2972091a",
+      "Signal-Server": "48a5fa529d641827f1cca3998e2cbea1de48c953",
+      "libsignal": "1738ead8a12ffe539f6309958123dadb16dc3b95",
+      "RingRTC": "84c5b2aff246392b365d73d6628529a149d6aed2"
+    },
+    "requiredInvariants": [
+      "durable-operation-and-defined-local-relay-delivered-read-evidence",
+      "conversation-anchor-and-interaction-continuity-under-updates",
+      "media-lifecycle-independent-of-recycled-message-rows",
+      "provider-login-device-authorization-and-history-recovery-separated",
+      "content-local-disk-metadata-backup-and-agent-privacy-declared-separately",
+      "background-notification-and-call-lifecycle-integrated-with-durable-work"
+    ],
+    "reusePolicy": "Prefer maintained OSS and native platform capabilities after verifying license, supported targets, lifecycle and ownership. Preserve existing Rust storage, outbox, ordered log and authorization; no duplicate durable authority or unmeasured backend rewrite.",
+    "evidenceScope": "Pinned source study and current Zoen code comparisons. Signal runtime, comparative benchmarks, public production and complete parity remain unqualified.",
+    "accepted": false
+  },
+  "creationWorkspace": {
+    "requestedAt": "2026-10-20",
+    "references": [
+      {
+        "product": "Notion",
+        "url": "https://www.notion.com/help/collaborate-with-people"
+      },
+      {
+        "product": "ChatGPT Space",
+        "url": "https://learn.chatgpt.com/docs/space/pages"
+      }
+    ],
+    "direction": "A shared creation workspace inside Zoen, using Zoen's native components and sky design. People and authorized agents work on the same persistent artifacts. The original thirty journeys and six-platform completion scope remain required.",
+    "requiredCapabilities": [
+      "spaces-and-parent-child-organization-with-all-items-and-recent-items",
+      "live-block-pages-direct-editing-agent-edits-comments-presence-and-history",
+      "slides-create-edit-reorder-present-export-and-recover",
+      "sites-create-preview-explicit-publish-version-and-rollback",
+      "images-generate-upload-edit-reference-variants-and-save-to-library",
+      "files-upload-preview-download-share-and-encrypted-private-storage",
+      "scoped-cross-artifact-search-sharing-roles-and-revocation",
+      "trash-restore-and-explicit-permanent-deletion",
+      "artifact-scoped-agent-context-reviewable-changes-and-attributed-results",
+      "offline-reopen-conflict-recovery-and-idempotent-operations"
+    ],
+    "currentImplementationScope": "iOS first, with the real shared Rust core and backend. Current Page input and attachment review work is a foundation; it does not establish the complete creation workspace.",
+    "accepted": false
+  },
   "platforms": ["ios", "web", "android", "macos", "windows", "linux"],
   "deliveryPhases": [
     {

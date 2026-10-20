@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { View, Text } from 'react-native';
+import { AppState, View, Text } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { NativeButton } from '../components/primitives';
@@ -16,6 +16,7 @@ import { t } from '../i18n';
 import { useTheme } from '../theme';
 import type { MediaDraftChannel } from './media-draft-channel';
 import type { MediaDraftAttachments, MediaDraftIngest } from './media-draft-types';
+import { AttachmentReview } from './attachment-review';
 import type { AttachmentComposerField, AttachmentComposerOptions } from './attachment-composer';
 import {
   AttachmentDraftFailure,
@@ -59,6 +60,96 @@ export function useDurableAttachmentComposer(
   useLayoutEffect(() => {
     admission.current = options;
   }, [options]);
+  const current = useCallback(
+    () =>
+      !!channel &&
+      !runtime.closed &&
+      runtime.focused &&
+      admission.current.spaceId === channel.scope.space_id &&
+      (admission.current.threadRootId ?? null) === channel.scope.thread_root_id &&
+      !admission.current.disabled &&
+      !admission.current.suspended &&
+      store.mediaDrafts.isCurrent(channel),
+    [channel, runtime, store],
+  );
+  const review = useMemo(
+    () =>
+      new AttachmentReview({
+        token: randomUUID,
+        prepare: async (mutationId) => {
+          if (!channel || !current()) return null;
+          await channel.flush();
+          if (!current()) return null;
+          const latest = channel.getSnapshot();
+          if (latest.phase !== 'ready' || latest.sending || latest.content?.kind !== 'attachments')
+            return null;
+          const item = latest.content.items.find((value) => value.mutation_id === mutationId);
+          const asset = latest.value?.assets.find((value) => value.id === item?.asset_id);
+          if (!item || !asset || !latest.value) return null;
+          return Object.freeze({
+            scope: channel.scope,
+            revision: latest.value.revision,
+            assetId: item.asset_id,
+            mutationId,
+            sha256: asset.sha256,
+            replyTo: latest.content.reply_to,
+          });
+        },
+        current: (request) => {
+          if (!channel || !current() || request.scope !== channel.scope) return false;
+          const latest = channel.getSnapshot();
+          const content = latest.content;
+          return Boolean(
+            latest.phase === 'ready' &&
+            !latest.sending &&
+            content?.kind === 'attachments' &&
+            content.reply_to === request.replyTo &&
+            content.items.some(
+              (item) =>
+                item.mutation_id === request.mutationId && item.asset_id === request.assetId,
+            ) &&
+            latest.value?.assets.some(
+              (asset) => asset.id === request.assetId && asset.sha256 === request.sha256,
+            ),
+          );
+        },
+        preview: (request, token) => {
+          const port = store.driver.media?.drafts;
+          if (!port?.preview || !port.cancelPreview)
+            throw new AttachmentDraftFailure('unavailable');
+          return port.preview(request.scope, request.revision, request.assetId, token);
+        },
+        cancel: (token) => store.driver.media?.drafts?.cancelPreview?.(token) ?? Promise.resolve(),
+      }),
+    [channel, current, store],
+  );
+  useLayoutEffect(() => review.refresh(), [review, options]);
+  const reviewing = useSyncExternalStore(review.subscribe, review.getSnapshot, review.getSnapshot);
+  const canReview = Boolean(
+    store.driver.media?.drafts?.preview && store.driver.media?.drafts?.cancelPreview,
+  );
+  useEffect(() => {
+    const stopStore = store.subscribe(review.refresh);
+    const stopDraft = channel?.subscribe(review.refresh);
+    const stopDevice = store.registerDeviceCleanup(review.close);
+    const stopSession = store.registerSessionCleanup(review.close);
+    const background = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') void review.close().catch(() => {});
+    });
+    return () => {
+      stopStore();
+      stopDraft?.();
+      background.remove();
+      // A failed native cleanup remains registered for erasure/session retry.
+      void review
+        .close()
+        .then(() => {
+          stopDevice();
+          stopSession();
+        })
+        .catch(() => {});
+    };
+  }, [review, channel, store]);
   const [restoreEpoch, setRestoreEpoch] = useState(0);
   const [local, setLocal] = useState<{
     channel: MediaDraftChannel | null;
@@ -102,8 +193,9 @@ export function useDurableAttachmentComposer(
       runtime.focused = true;
       return () => {
         runtime.focused = false;
+        void review.close().catch(() => {});
       };
-    }, [runtime]),
+    }, [runtime, review]),
   );
   useEffect(() => {
     runtime.closed = false;
@@ -111,6 +203,7 @@ export function useDurableAttachmentComposer(
     return () => {
       runtime.closed = true;
       const release = async () => {
+        await review.close();
         const results = await Promise.allSettled(
           [...runtime.previews.values()].map((preview) => preview.release()),
         );
@@ -120,7 +213,7 @@ export function useDurableAttachmentComposer(
       };
       channel?.deferRelease(release);
     };
-  }, [channel, runtime]);
+  }, [channel, runtime, review]);
   const assetKey = JSON.stringify(content?.items.map((item) => item.asset_id) ?? []);
   useEffect(() => {
     if (!channel) return;
@@ -129,7 +222,10 @@ export function useDurableAttachmentComposer(
     for (const [id, preview] of runtime.previews) {
       if (ids.includes(id)) continue;
       runtime.previews.delete(id);
-      channel.deferRelease(preview.release);
+      channel.deferRelease(async () => {
+        await review.close();
+        await preview.release();
+      });
     }
     publish({ previews: new Map(runtime.previews) });
     const restore = async () => {
@@ -155,17 +251,7 @@ export function useDurableAttachmentComposer(
     };
     // Caption edits keep the same native previews; only ordered asset identity changes them.
     // oxlint-disable-next-line react/exhaustive-deps
-  }, [channel, assetKey, runtime, store, publish, restoreEpoch]);
-  function current() {
-    return (
-      !!channel &&
-      !runtime.closed &&
-      runtime.focused &&
-      !admission.current.disabled &&
-      !admission.current.suspended &&
-      store.mediaDrafts.isCurrent(channel)
-    );
-  }
+  }, [channel, assetKey, runtime, store, publish, restoreEpoch, review]);
   function failure(reason: unknown) {
     publish({
       error:
@@ -192,6 +278,15 @@ export function useDurableAttachmentComposer(
       (state.content && state.content.kind !== 'attachments')
     )
       return;
+    if (review.getSnapshot().mutationId) {
+      try {
+        await review.close();
+      } catch (reason) {
+        failure(reason);
+        return;
+      }
+    }
+    if (!current() || runtime.picking) return;
     runtime.picking = true;
     publish({ picking: true, error: null });
     let selected: AttachmentAsset[] = [];
@@ -265,6 +360,15 @@ export function useDurableAttachmentComposer(
   }
   async function cancel() {
     if (!channel || !current() || state?.sending || runtime.picking || own?.clearing) return;
+    if (review.getSnapshot().mutationId) {
+      try {
+        await review.close();
+      } catch (reason) {
+        failure(reason);
+        return;
+      }
+    }
+    if (!current()) return;
     publish({ clearing: true, error: null });
     try {
       await channel.clear();
@@ -276,6 +380,15 @@ export function useDurableAttachmentComposer(
   }
   async function remove(id: string) {
     if (!channel || !current()) return;
+    if (review.getSnapshot().mutationId) {
+      try {
+        await review.close();
+      } catch (reason) {
+        failure(reason);
+        return;
+      }
+    }
+    if (!current()) return;
     const latest = channel.getSnapshot();
     const currentContent = latest.content;
     if (latest.frozen || currentContent?.kind !== 'attachments') return;
@@ -288,6 +401,15 @@ export function useDurableAttachmentComposer(
   }
   async function send() {
     if (!channel || !current() || runtime.picking) return;
+    if (review.getSnapshot().mutationId) {
+      try {
+        await review.close();
+      } catch (reason) {
+        failure(reason);
+        return;
+      }
+    }
+    if (!current()) return;
     const latest = channel.getSnapshot();
     if (latest.content?.kind !== 'attachments' || latest.sending) return;
     const sent = admission.current.onSent;
@@ -304,6 +426,7 @@ export function useDurableAttachmentComposer(
   }
   const restoring = !!content?.items.some((item) => !own?.previews.has(item.asset_id));
   const busy = Boolean(
+    reviewing.mutationId ||
     own?.picking ||
     own?.clearing ||
     state?.sending ||
@@ -352,6 +475,7 @@ export function useDurableAttachmentComposer(
           editable:
             !options.disabled &&
             !options.suspended &&
+            !reviewing.mutationId &&
             !state?.frozen &&
             !own?.picking &&
             !restoring,
@@ -376,7 +500,11 @@ export function useDurableAttachmentComposer(
           },
         }
       : undefined;
-  const error = own?.error ?? state?.error?.message ?? null;
+  const reviewFailed = !own?.error && !state?.error && Boolean(reviewing.error);
+  const error =
+    own?.error ??
+    state?.error?.message ??
+    (reviewFailed ? t('media.attachmentPreviewFailed') : null);
   const strip: AttachmentDraftState | null =
     scope && content
       ? {
@@ -393,6 +521,7 @@ export function useDurableAttachmentComposer(
     field,
     pick,
     canAdd: Boolean(
+      !reviewing.mutationId &&
       state?.phase === 'ready' &&
       !state.frozen &&
       (!state.content || state.content.kind === 'attachments') &&
@@ -406,9 +535,20 @@ export function useDurableAttachmentComposer(
               state={strip}
               selectedId={selected?.mutationId ?? null}
               busy={Boolean(
-                own?.picking || own?.clearing || state?.sending || (restoring && !error),
+                reviewing.mutationId ||
+                own?.picking ||
+                own?.clearing ||
+                state?.sending ||
+                (restoring && !error),
               )}
               error={error}
+              onPreview={
+                canReview
+                  ? (id) => {
+                      void review.open(id);
+                    }
+                  : undefined
+              }
               onSelect={(id) =>
                 publish({
                   selected:
@@ -434,6 +574,10 @@ export function useDurableAttachmentComposer(
               secondary
               label={t('chat.tryAgain2')}
               onPress={() => {
+                if (reviewFailed && selected) {
+                  void review.open(selected.mutationId);
+                  return;
+                }
                 publish({ error: null });
                 void channel
                   .retry()

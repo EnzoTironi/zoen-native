@@ -58,7 +58,14 @@
       "Recovered changes": "Alterações recuperadas",
       "These changes are only on this device. Save them to update the shared file.": "Estas alterações estão apenas neste dispositivo. Salve para atualizar o arquivo compartilhado.",
       "Save Changes": "Salvar alterações",
-      "Keep for Later": "Guardar para depois"
+      "Keep for Later": "Guardar para depois",
+      "This editor has closed. Open the Page again.": "Este editor foi fechado. Abra a página novamente.",
+      "This Page or its editing account has changed. Open it again.": "Esta página ou a conta de edição mudou. Abra a página novamente.",
+      "This input could not be saved. Retry or discard it before leaving.": "Não foi possível salvar o texto. Tente novamente ou descarte antes de sair.",
+      "The editor has no retained input to apply.": "O editor não tem texto salvo para aplicar.",
+      "Retry the pending editor operation before choosing another action.": "Tente novamente a operação pendente do editor antes de escolher outra ação.",
+      "The native editor is unavailable. Keep this screen open and retry.": "O editor nativo está indisponível. Mantenha esta tela aberta e tente novamente.",
+      "This content requires the Markdown or text editor.": "Este conteúdo precisa do editor Markdown ou de texto."
     },
     "NSFaceIDUsageDescription": "Permita que $(PRODUCT_NAME) use o Face ID para confirmar sua identidade.",
     "NSLocalNetworkUsageDescription": "O Expo Dev Launcher usa a rede local para encontrar e conectar aos servidores de desenvolvimento do seu computador."

@@ -1,0 +1,162 @@
+# Signal como referência de confiabilidade
+
+Decisão do produto em 20 de outubro de 2026: Signal é a principal referência de
+confiabilidade do Zoen, tanto no aplicativo quanto no backend. Notion e ChatGPT
+Space continuam como referências da criação colaborativa. Esta análise de código
+define trabalho e critérios; não aprova equivalência de segurança, desempenho ou
+operação em produção.
+
+## Fontes e limites
+
+Foram inspecionados os repositórios oficiais em versões imutáveis:
+
+| Projeto | Commit |
+| --- | --- |
+| Signal-iOS | `d13b9da9e4622e16297b111243755c4c2972091a` |
+| Signal-Server | `48a5fa529d641827f1cca3998e2cbea1de48c953` |
+| libsignal | `1738ead8a12ffe539f6309958123dadb16dc3b95` |
+| RingRTC | `84c5b2aff246392b365d73d6628529a149d6aed2` |
+
+A leitura do Zoen usa a base `dca975960619dacc658d9e748b7ece790a6b6028` com o
+lote iOS de recuperação de texto e revisão nativa de anexos em desenvolvimento.
+Não foram executados o Signal, seu backend ou benchmarks comparativos. Os números
+de concorrência encontrados no código são escolhas dessa versão, não metas para
+copiar. Ausência em um caminho inspecionado não prova ausência em todo o produto.
+
+## Seis contratos obrigatórios
+
+1. **Operação durável antes do efeito visual confirmado.** O outbox SQLite e os
+   identificadores existentes continuam sendo a autoridade. Distinguir gravação
+   local, aceitação durável pelo relay, processamento no destinatário e leitura;
+   conexão aberta ou escrita no socket não comprovam entrega. Definir o modelo de
+   falhas de cada confirmação, incluindo a diferença entre encerramento do
+   processo e perda de energia.
+2. **Continuidade da conversa.** Preservar a mensagem visível e seu deslocamento
+   durante paginação, edição, exclusão, busca, teclado e menus. Alterações devem
+   invalidar apenas seus consumidores e entrar em momentos seguros para a
+   interação. Medir antes de substituir a lista ou prometer melhora de fluidez.
+3. **Mídia independente da bolha.** Gravação, edição, preparação, upload, download
+   e reprodução têm responsáveis com identidade estável. Reciclar uma célula não
+   perde trabalho, progresso ou destino. Revogação e apagamento encerram esses
+   responsáveis e liberam os arquivos decifrados.
+4. **Três autorizações distintas.** Login Apple/Google autentica o provedor;
+   vínculo autoriza um dispositivo; recuperação dá acesso ao histórico conforme
+   suas chaves. Nenhum sucesso de OAuth, isoladamente, substitui as outras duas
+   autorizações. Progresso, cancelamento e retomada devem corresponder a fases
+   persistidas.
+5. **Privacidade por camada.** Declarar separadamente proteção do conteúdo,
+   banco local, cache, backups, diretório, grupos, metadados, notificações e
+   agentes. Proteger alguns segredos não equivale a cifrar todo o banco; MLS não
+   esconde automaticamente membros do relay.
+6. **Segundo plano faz parte do produto.** Push acorda trabalho durável; sua
+   perda não perde mensagens. Recebimento em segundo plano, extensão nativa,
+   permissão negada, sistema encerrando trabalho e chamadas precisam de uma
+   arquitetura de ciclo de vida e provas no dispositivo físico.
+
+## O que preservar e o que mudar
+
+| Área | Evidência no Zoen | Aprendizado e próximo trabalho |
+| --- | --- | --- |
+| Envio e recebimento | `crates/client-core/src/sync.rs`, `mls.rs`, `net.rs`: outbox, repetição por ID e recebimento MLS transacional. | Preservar essas autoridades; fechar o contrato de confirmação e as fronteiras de falha do recebimento comum. Não inventar outra fila na interface. |
+| Backend | `crates/zoen-relay/src/log/`: log/head/deduplicação/membros em FDB; PostgreSQL para diretório e autoridade; NATS acelera entrega com retomada por cursor. | Manter os papéis atuais. Exercitar commit sem resposta, reinício antes do fanout e perda de wake. Uma mailbox por aparelho não substitui diretamente o log ordenado de um Space. |
+| Atualização da conversa | `apps/zoen/src/core/store.ts`: refresh do snapshot e releitura da janela carregada; `provider.tsx`: assinatura do estado inteiro. | Introduzir invalidação e assinaturas por conversa/mensagem, com revisão coerente e âncora de leitura. A amplitude foi constatada em código; seu custo ainda precisa de medição. |
+| Reprodução | `audio-clip-playback.ts` cria player por montagem; `audio-clip-controller.ts` reinicializa progresso ao desconectar. | Mover a sessão para um responsável com escopo de conta, mensagem e anexo; controles são assinantes. Limitar cache de posição, preservar velocidade por conversa e impedir reuso entre contas. |
+| Revisão de anexos | O lote atual adiciona QuickLook somente leitura de um anexo durável escolhido. | Completar seleção/caption/qualidade/edição e preparação de uma saída revisada antes de enviar. QuickLook não comprova corte de imagem, blur ou trim de vídeo. |
+| Voz | `voice-session.ts` e os serviços de rascunho já separam gravação de envio. | Qualificar interrupção → sair da conversa → reabrir → editar → enviar, mantendo a experiência compacta e o mesmo destino. |
+| Push iOS | `crates/zoen-relay/src/push.rs`: APNs background, prioridade 5; wake limitado e best effort. | Caminho urgente de alerta com extensão, progresso pendente por dispositivo e reconciliação de novas tentativas. A configuração e entrega reais ainda exigem prova. |
+| Banco local | `crates/store/src/lib.rs`: SQLite, WAL, synchronous NORMAL e locking EXCLUSIVE; estados/segredos específicos são selados. | Avaliar cifragem integral e seu custo, chaves, WAL/temp/cache e recuperação. Extensão não pode abrir esse banco concorrentemente sem resolver o contrato de um processo. |
+| Confiança e recuperação | `device-link`, `provider-auth.md` e `client-core/src/backup.rs` já separam vínculo, provedor e recuperação. | Fechar a jornada completa, formato portátil de histórico/artefatos, mídia ausente e restauração sem aparelhos sobreviventes; preservar as cercas de revogação. |
+| Metadados e criptografia | MLS atual usa X25519/ChaCha20-Poly1305; relay conhece autores, aparelhos e membros. | Documentar diferenças em relação a PQXDH/Triple Ratchet, sealed sender e grupos privados. Pós-quântico, transparência e autorização anônima são decisões próprias de protocolo. |
+
+Fontes da comparação: [fila FDB e transição backlog/live](https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/main/java/org/whispersystems/textsecuregcm/storage/foundationdb/FoundationDbMessageStream.java#L115-L242),
+[limites e confirmação de mensagens](https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/main/java/org/whispersystems/textsecuregcm/grpc/MessageDispatcher.java#L42-L113),
+[atualizações seguras da conversa](https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/Signal/ConversationView/Loading/CVLoadCoordinator.swift#L594-L670),
+[responsável pela reprodução](https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/Signal/ConversationView/CVAudioPlayback.swift#L10-L145),
+[preparação da mídia aprovada](https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalUI/AttachmentApproval/AttachmentApprovalViewController.swift#L889-L944),
+[APNs por urgência](https://github.com/signalapp/Signal-Server/blob/48a5fa529d641827f1cca3998e2cbea1de48c953/service/src/main/java/org/whispersystems/textsecuregcm/push/APNSender.java#L82-L142) e
+[ciclo da extensão](https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalNSE/NotificationService.swift#L209-L242).
+
+## Outros aprendizados a incorporar
+
+- **Transferências com limites.** Persistir a intenção/sessão antes de transferir;
+  distinguir erro transitório, espera por conexão, prazo do servidor e falha
+  terminal. Serializar o mesmo anexo, limitar concorrência global e reservar
+  espaço antes da preparação. Reusar a fila de mídia existente do Zoen; selecionar
+  upload resumível apenas onde os caminhos atuais não resolvem o problema.
+- **Backups e mídia têm ciclos diferentes.** O formato portátil precisa incluir
+  Páginas e Apps, sem restaurar credenciais de um aparelho antigo. Permitir estado
+  explícito de anexo ausente e recuperação posterior. O Signal distingue as
+  propriedades de backups hospedados e locais; não prometer as mesmas garantias
+  para ambos. [Atualização de setembro de 2026](https://signal.org/blog/backup-improvements/).
+- **Verificação de chaves verificável.** Fingerprint/QR e mudança de chave precisam
+  de UX clara. Transparência exige monitoramento e auditor independente;
+  assinatura do próprio diretório não basta e não prova identidade civil.
+  [Verificação automática](https://signal.org/blog/automatic-key-verification/).
+- **Uma ação, várias formas de acesso.** Menu, gesto, teclado e VoiceOver devem
+  usar as mesmas ações elegíveis. Incluir RTL na arbitragem e conservar os
+  controles acessíveis e o relógio de teclado compartilhado já existentes.
+- **Orçamento de recursos e descarte.** Caches limitados, liberação em segundo
+  plano, proteção de arquivos temporários e diagnóstico sem conteúdo são parte
+  do mesmo ciclo de privacidade, inclusive após falhas.
+- **Arquivos e banco têm um protocolo de posse.** Reservar um arquivo antes de
+  criá-lo, vincular sua referência na transação e só liberar a reserva após o
+  resultado durável. A limpeza deve poder repetir após falha sem apagar um anexo
+  referenciado ou ainda aberto. [Reservas e limpeza do Signal](https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/Messages/Attachments/V2/OrphanedAttachments/OrphanedAttachmentCleaner.swift#L24-L63).
+- **Diagnósticos com prévia.** Campos seguros e redução de dados em cada saída de
+  log, retenção limitada e exportação que a pessoa pode revisar antes de enviar.
+  A filtragem de texto para agentes não prova a proteção de todos os logs.
+  [Prévia e envio explícito](https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/Signal/Debugging/DebugLogs.swift#L86-L137).
+- **Migração não é recuperação de corrupção.** Manter uma única autoridade Rust,
+  preservar o original danificado, registrar restauração parcial e recusar um
+  esquema futuro desconhecido. Prelaunch não exige carregar compatibilidade
+  artificial; dados reais já retidos exigem um caminho explícito e verificável.
+  [Separação no migrador](https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/Storage/Database/GRDBSchemaMigrator.swift#L15-L77).
+- **Identidade não é descoberta.** Provedor de login, identidade criptográfica,
+  perfil público e convite revogável têm funções distintas. Definir busca exata,
+  enumeração, visibilidade e descoberta de pessoas separadamente dos diretórios
+  de comunidades e agentes. [Racional dos usernames](https://signal.org/blog/phone-number-privacy-usernames/).
+- **Testar estados e interrupções.** Modelar transições e testar cancelamento,
+  repetição, perda de resposta e restauração; usar simulações e testes de
+  propriedades onde há muitas combinações. [Raciocínio e simulações do SPQR](https://signal.org/blog/spqr/).
+  O [fuzzer de sessões](https://github.com/signalapp/libsignal/blob/1738ead8a12ffe539f6309958123dadb16dc3b95/rust/protocol/fuzz/fuzz_targets/session_management.rs#L21-L104)
+  também é referência para sequências de ações, além de bytes malformados.
+
+## Reusar sem criar outra base de código
+
+Avaliar primeiro bibliotecas mantidas e os recursos nativos do Expo. Reutilização
+direta exige licença compatível com a distribuição pretendida, suporte à versão
+atual, manutenção, custo de integração e uma autoridade única para cada estado.
+
+O [libsignal](https://github.com/signalapp/libsignal/blob/1738ead8a12ffe539f6309958123dadb16dc3b95/README.md)
+tem núcleo Rust e interfaces Swift/Java/TypeScript; seu uso externo é declarado
+sem suporte e as APIs podem mudar. Seu pacote Node não estabelece suporte a Expo
+ou navegador. Ele e [RingRTC](https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/README.md)
+usam AGPLv3. RingRTC é middleware de chamadas, não sinalização, TURN, integração
+de sistema e operação completas. Não foram adotados como dependências neste estudo.
+
+SQLCipher é um candidato a avaliar pelo armazenamento Rust existente; acrescentar
+GRDB como outro armazenamento Swift duplicaria a autoridade. Uma solução já
+existente no Signal não deve ser copiada com seus limites sem avaliar o contexto.
+O Zoen mantém Rust/Loro para artefatos, a autorização dos agentes e o isolamento
+de MCP Apps. Um agente que lê conteúdo é um destinatário autorizado, e publicar um
+Site continua sendo uma exportação explícita de uma versão escolhida.
+
+## Execução em lotes
+
+1. **Concluir o lote iOS atual.** Recuperação de texto sem perda e revisão nativa
+   de anexos. Não ampliar sua aprovação para edição completa de mídia.
+2. **Durabilidade e continuidade.** Fixar os quatro estados de mensagem e o
+   modelo de falhas; qualificar envio/recebimento com perdas; playback fora das
+   células e atualizações por escopo com âncoras medidas.
+3. **Segundo plano real.** Resolver acesso ao banco entre processos, extensão de
+   notificações e reconciliação por aparelho. Validar em iPhone físico, inclusive
+   app encerrado, permissão negada, aparelho bloqueado e token inválido.
+4. **Recuperação e privacidade.** Vínculo/backup/restauração, cobertura do banco e
+   arquivos locais, verificação de chaves e limites explícitos para metadados e IA.
+5. **Chamadas e operação.** Selecionar componentes mantidos, integrar ciclo de
+   vida e testar rede/retomada/carga dentro do perfil já declarado.
+
+Cada lote tem uma validação integrada e evidências do artefato correspondente.
+As trinta jornadas, seis plataformas e três flags de aceitação do produto completo
+continuam vigentes. Referência estudada, teste de fonte e build não são aprovação
+de uma jornada em produção.

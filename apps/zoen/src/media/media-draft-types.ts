@@ -76,6 +76,14 @@ export interface MediaDraftPort {
     expectedRevision: string,
     assetId: string,
   ): Promise<MaterializedMediaDraftAsset>;
+  /** Native read-only copy; resolves only after actual viewer dismissal and cleanup. */
+  preview?(
+    scope: MediaDraftScope,
+    expectedRevision: string,
+    assetId: string,
+    presentationId: string,
+  ): Promise<void>;
+  cancelPreview?(presentationId: string): Promise<void>;
   send(scope: MediaDraftScope, expectedRevision: string): Promise<MediaDraftSendResult>;
   release(uri: string): Promise<void>;
 }

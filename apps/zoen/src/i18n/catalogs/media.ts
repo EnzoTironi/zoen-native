@@ -4,6 +4,9 @@ export const media = defineFeature(
   {
     fileCaptionUnavailable: 'Send attachments with captions from your iPhone for now.',
     attachmentDraftCount: { one: '%{count} attachment', other: '%{count} attachments' },
+    previewAttachment: 'Preview %{name}',
+    attachmentPreviewFailed: 'This attachment could not be previewed. Try again.',
+    retryVideo: 'Retry video',
     attachmentPosition: 'Attachment %{position} of %{total}: %{name}',
     attachmentCaption: 'Caption for attachment %{position} of %{total}',
     attachmentCaptionPlaceholder: 'Add a caption…',
@@ -155,6 +158,9 @@ export const media = defineFeature(
   {
     fileCaptionUnavailable: 'Por enquanto, envie anexos com legenda pelo iPhone.',
     attachmentDraftCount: { one: '%{count} anexo', other: '%{count} anexos' },
+    previewAttachment: 'Visualizar %{name}',
+    attachmentPreviewFailed: 'Não foi possível visualizar este anexo. Tente novamente.',
+    retryVideo: 'Tentar o vídeo novamente',
     attachmentPosition: 'Anexo %{position} de %{total}: %{name}',
     attachmentCaption: 'Legenda do anexo %{position} de %{total}',
     attachmentCaptionPlaceholder: 'Adicionar legenda…',

@@ -1,3 +1,4 @@
+import { createNativePageInputPort } from '../documents/native-page-input';
 import NativeCore from '../../modules/zoen-core/src/ZoenCoreModule';
 import type { Command, CommandResult, CoreDriver, Snapshot } from './types';
 import { createNativeProfilePhotoDriver } from '../profile/native-driver';
@@ -44,6 +45,23 @@ export function createDriver(): CoreDriver {
                 ),
               );
             },
+            preview:
+              typeof NativeCore?.previewMediaDraftAsset === 'function' &&
+              typeof NativeCore?.cancelMediaDraftPreview === 'function'
+                ? (scope, expectedRevision, assetId, presentationId) =>
+                    core().previewMediaDraftAsset(
+                      JSON.stringify({
+                        scope,
+                        expected_revision: expectedRevision,
+                        asset_id: assetId,
+                      }),
+                      presentationId,
+                    )
+                : undefined,
+            cancelPreview:
+              typeof NativeCore?.cancelMediaDraftPreview === 'function'
+                ? (presentationId) => core().cancelMediaDraftPreview(presentationId)
+                : undefined,
             async send(scope, expectedRevision) {
               return JSON.parse(
                 await core().sendMediaDraft(
@@ -128,6 +146,7 @@ export function createDriver(): CoreDriver {
   };
   return {
     durableMessageDrafts: true,
+    pageInput: Platform.OS === 'ios' ? createNativePageInputPort(NativeCore) : undefined,
     assistant:
       Platform.OS === 'ios' && typeof NativeCore?.openAssistant === 'function'
         ? {

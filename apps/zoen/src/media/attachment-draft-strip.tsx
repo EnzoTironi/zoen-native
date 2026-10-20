@@ -86,6 +86,7 @@ export function AttachmentDraftStrip({
   busy,
   error,
   onSelect,
+  onPreview,
   onRemove,
   onCancel,
 }: {
@@ -94,6 +95,7 @@ export function AttachmentDraftStrip({
   busy: boolean;
   error: string | null;
   onSelect: (id: string) => void;
+  onPreview?: (id: string) => void;
   onRemove: (id: string) => void;
   onCancel: () => void;
 }) {
@@ -131,13 +133,19 @@ export function AttachmentDraftStrip({
             testID={`attachment-draft-${index}`}
             accessibilityRole="button"
             accessibilityLabel={`${t('media.attachmentPosition', { position: index + 1, total: state.items.length, name: item.name })}${item.accepted ? `, ${t('media.attachmentSent')}` : ''}`}
-            accessibilityHint={t('media.attachmentSelect', { name: item.name })}
+            accessibilityHint={
+              selectedId === item.mutationId && onPreview && !item.accepted
+                ? t('media.previewAttachment', { name: item.name })
+                : t('media.attachmentSelect', { name: item.name })
+            }
             accessibilityState={{ selected: selectedId === item.mutationId, disabled: busy }}
             disabled={busy}
             onPress={() => {
               if (selectedId !== item.mutationId && process.env.EXPO_OS === 'ios')
                 void Haptics.selectionAsync().catch(() => {});
-              onSelect(item.mutationId);
+              if (selectedId === item.mutationId && onPreview && !item.accepted)
+                onPreview(item.mutationId);
+              else onSelect(item.mutationId);
             }}
             style={({ pressed }) => ({
               width: 88,
@@ -202,6 +210,16 @@ export function AttachmentDraftStrip({
               : ''}
           </Text>
         </View>
+        {selected && !selected.accepted && onPreview ? (
+          <ComposerAction
+            name="chevron.up"
+            size={44}
+            label={t('media.previewAttachment', { name: selected.name })}
+            disabled={busy}
+            onPress={() => onPreview(selected.mutationId)}
+            testID="preview-selected-attachment"
+          />
+        ) : null}
         {selected && (!selected.attempted || selected.accepted) ? (
           <ComposerAction
             name="xmark"

@@ -37,7 +37,7 @@ export async function pickAttachmentAssets(
     const result =
       kind === 'camera'
         ? await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
+            mediaTypes: Platform.OS === 'ios' ? ['images', 'videos'] : ['images'],
             quality: 1,
             exif: false,
           })

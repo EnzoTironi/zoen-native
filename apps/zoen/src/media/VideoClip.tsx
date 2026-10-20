@@ -1,18 +1,35 @@
 import { useEvent, useEventListener } from 'expo';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { GestureDetector, useNativeGesture } from 'react-native-gesture-handler';
 import { useMessagePan, useMessagePressConsumption } from '../components/message-interaction';
 import { useTheme } from '../theme';
 import { t } from '../i18n/index.ts';
+import { NativeButton } from '../components/primitives';
 import { mediaPlayback, type PlaybackOwner } from './playback-owner.ts';
 
 export function VideoClip({ uri, compact = false }: { uri: string; compact?: boolean }) {
-  return <VideoClipContent key={uri} uri={uri} compact={compact} />;
+  const [attempt, setAttempt] = useState(0);
+  return (
+    <VideoClipContent
+      key={`${uri}:${attempt}`}
+      uri={uri}
+      compact={compact}
+      onRetry={() => setAttempt((value) => value + 1)}
+    />
+  );
 }
 
-function VideoClipContent({ uri, compact }: { uri: string; compact: boolean }) {
+function VideoClipContent({
+  uri,
+  compact,
+  onRetry,
+}: {
+  uri: string;
+  compact: boolean;
+  onRetry: () => void;
+}) {
   const { colors } = useTheme();
   const messagePan = useMessagePan();
   const consumePress = useMessagePressConsumption();
@@ -101,10 +118,13 @@ function VideoClipContent({ uri, compact }: { uri: string; compact: boolean }) {
           ) : null}
         </View>
       </GestureDetector>
-      {status.error ? (
-        <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 14 }}>
-          {t('media.thisVideoCouldNotBePlayed')}
-        </Text>
+      {status.error || status.status === 'error' ? (
+        <View style={{ gap: 8 }}>
+          <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 14 }}>
+            {t('media.thisVideoCouldNotBePlayed')}
+          </Text>
+          <NativeButton secondary label={t('media.retryVideo')} onPress={onRetry} />
+        </View>
       ) : null}
     </View>
   );

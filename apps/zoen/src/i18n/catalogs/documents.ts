@@ -3,6 +3,14 @@ import { defineFeature } from '../catalog.ts';
 export const documents = defineFeature(
   {
     defaultMarkdownBasename: 'page',
+    recoverEditorInput: 'Recover editor input',
+    editorInputRetained: 'Input saved on this device. Apply to update your draft.',
+    editorInputNotRetained: 'The latest input has not been saved. Keep this editor open and retry.',
+    keepEditorInput: 'Keep input and leave',
+    applyEditorInput: 'Apply to draft',
+    discardEditorInput: 'Discard editor input',
+    editorInputConflict: 'Recover the existing input before editing another block.',
+    editorInputRestored: 'Recovered input is private until you share the Page.',
     yourFilesCouldNotBeOpened: 'Your files could not be opened.',
     madeToStay: 'Made to stay.',
     plansPagesAndFilesFromYourChats: 'Plans, pages and files from your chats.',
@@ -170,6 +178,15 @@ export const documents = defineFeature(
   },
   {
     defaultMarkdownBasename: 'pagina',
+    recoverEditorInput: 'Recuperar texto do editor',
+    editorInputRetained: 'Texto salvo neste aparelho. Aplique para atualizar seu rascunho.',
+    editorInputNotRetained:
+      'O texto mais recente ainda não foi salvo. Mantenha este editor aberto e tente novamente.',
+    keepEditorInput: 'Guardar texto e sair',
+    applyEditorInput: 'Aplicar ao rascunho',
+    discardEditorInput: 'Descartar texto do editor',
+    editorInputConflict: 'Recupere o texto existente antes de editar outro bloco.',
+    editorInputRestored: 'O texto recuperado fica privado até você compartilhar a Página.',
     yourFilesCouldNotBeOpened: 'Não foi possível abrir seus arquivos.',
     madeToStay: 'Feito para ficar.',
     plansPagesAndFilesFromYourChats: 'Planos, páginas e arquivos das suas conversas.',

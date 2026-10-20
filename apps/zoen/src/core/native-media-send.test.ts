@@ -8,9 +8,14 @@ import type { SendFile } from '../media/types.ts';
 const ports: Record<string, string> = {
   '../../modules/zoen-core/src/ZoenCoreModule': `
     export const requests = [];
+    export const previews = [];
+    export const canceled = [];
     let failure = false;
     export function failNextSend() { failure = true; }
     export default {
+      async loadMediaDraft() {},
+      async previewMediaDraftAsset(request, token) { previews.push({request, token}); },
+      async cancelMediaDraftPreview(token) { canceled.push(token); },
       async sendFile(request) {
         requests.push(request);
         if (failure) { failure = false; throw Error('Synthetic interrupted reply'); }
@@ -25,7 +30,7 @@ const ports: Record<string, string> = {
 const output = await build({
   stdin: {
     contents: `export {createDriver} from './driver.ts';
-      export {requests, failNextSend} from '../../modules/zoen-core/src/ZoenCoreModule';`,
+      export {requests, previews, canceled, failNextSend} from '../../modules/zoen-core/src/ZoenCoreModule';`,
     resolveDir: new URL('.', import.meta.url).pathname,
     loader: 'ts',
   },
@@ -52,6 +57,8 @@ const native = (await import(
 )) as {
   createDriver(): CoreDriver;
   requests: string[];
+  previews: { request: string; token: string }[];
+  canceled: string[];
   failNextSend(): void;
 };
 const selection: SendFile = {
@@ -83,4 +90,30 @@ test('native file sends without a caption retain blank text and their original f
   native.requests.length = 0;
   await native.createDriver().media!.sendFile(selection);
   assert.deepEqual(JSON.parse(native.requests[0]!), { ...selection, caption: '' });
+});
+
+test('native draft review forwards canonical scope/revision/asset and cancellation token without a URI', async () => {
+  native.previews.length = 0;
+  native.canceled.length = 0;
+  const drafts = native.createDriver().media!.drafts!;
+  const scope = {
+    expected_identity_id: 'owner',
+    expected_device_id: 'device',
+    space_id: 'chat',
+    thread_root_id: 'root',
+  };
+  await drafts.preview!(scope, 'revision-7', 'selected-asset', 'presentation-token');
+  assert.deepEqual(native.previews, [
+    {
+      request: JSON.stringify({
+        scope,
+        expected_revision: 'revision-7',
+        asset_id: 'selected-asset',
+      }),
+      token: 'presentation-token',
+    },
+  ]);
+  assert.equal(native.previews[0]!.request.includes('uri'), false);
+  await drafts.cancelPreview!('presentation-token');
+  assert.deepEqual(native.canceled, ['presentation-token']);
 });
