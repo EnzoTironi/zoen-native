@@ -1,3 +1,4 @@
+import { View } from 'react-native';
 import { router } from 'expo-router';
 import type { CSSProperties } from 'react';
 import { Icon, NativeButton } from '../components/primitives';
@@ -61,8 +62,20 @@ const icons = {
 } as const satisfies Record<HomeCardActionId, string>;
 
 // Preserve the current generic HomeActions behavior; wider action parity is separate.
-export function HomeActions(_props: HomeActionsProps) {
-  return <NativeButton label={t('home.addMiniapp')} onPress={() => router.push('/miniapps')} />;
+export function HomeActions({ hiddenCount = 0, onRestoreHidden }: HomeActionsProps) {
+  return (
+    <View style={{ gap: 8, alignItems: 'flex-end' }}>
+      <NativeButton label={t('home.addMiniapp')} onPress={() => router.push('/miniapps')} />
+      {hiddenCount > 0 && onRestoreHidden ? (
+        <NativeButton
+          testID="home-restore-hidden-apps"
+          label={t('home.restoreHiddenCount', { count: hiddenCount })}
+          secondary
+          onPress={onRestoreHidden}
+        />
+      ) : null}
+    </View>
+  );
 }
 
 export function HomeCardMenu(props: HomeCardMenuProps) {

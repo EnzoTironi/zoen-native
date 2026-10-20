@@ -30,6 +30,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 import { useTheme } from '../theme';
 import { CompactMiniappCard } from './compact-card';
+import { AppCardEditActions } from './card-edit-actions';
 import { APP_CARD_METRICS } from './app-card-layout';
 import { t } from '../i18n';
 import type { ItemDetail } from '../core/generated/ItemDetail';
@@ -66,7 +67,14 @@ type Props = {
   onPendingChange?: (pending: boolean) => void;
   onReorder: (ids: readonly string[], expected: readonly string[]) => Promise<unknown>;
   onOpen: (item: ItemDetail) => void;
-  renderAccessory?: (item: ItemDetail) => ReactNode;
+  onRemove?: (item: ItemDetail) => Promise<unknown>;
+  onTogglePin?: (item: ItemDetail) => Promise<unknown>;
+  isPinned?: (id: string) => boolean;
+  selection?: {
+    id: string | null;
+    select: (id: string | null) => void;
+    isSelected: (id: string) => boolean;
+  };
 };
 function feedback(lift = false) {
   if (process.env.EXPO_OS !== 'ios') return;
@@ -87,7 +95,10 @@ export function ReorderableAppCards({
   onPendingChange,
   onReorder,
   onOpen,
-  renderAccessory,
+  onRemove,
+  onTogglePin,
+  isPinned,
+  selection,
 }: Props) {
   const { reducedMotion, colors } = useTheme();
   const { size, gap } = APP_CARD_METRICS;
@@ -100,9 +111,30 @@ export function ReorderableAppCards({
     focused: false,
     foreground: AppState.currentState === 'active',
   });
-  const latest = useRef({ onReorder, onEditingChange, onOpen, items });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = useRef<string | null>(null);
+  const selectionEpoch = useRef(0);
+  const [actionPending, setActionPending] = useState(false);
+  const actionBusy = useRef(false);
+  const latest = useRef({
+    onReorder,
+    onEditingChange,
+    onOpen,
+    onRemove,
+    onTogglePin,
+    selection,
+    items,
+  });
   useLayoutEffect(() => {
-    latest.current = { onReorder, onEditingChange, onOpen, items };
+    latest.current = {
+      onReorder,
+      onEditingChange,
+      onOpen,
+      onRemove,
+      onTogglePin,
+      selection,
+      items,
+    };
   });
   const [session] = useState(() => new CardReorderSession(ids, onReorder));
   useLayoutEffect(() => session.setPersist(onReorder), [session, onReorder]);
@@ -129,6 +161,14 @@ export function ReorderableAppCards({
     // The JS fence changes before any queued native-to-RN callback can be admitted.
     // UI publication may lag; an activation capturing an older epoch is safely rejected.
     lifetime.current.generation++;
+    if (
+      lifetime.current.mounted &&
+      selected.current &&
+      latest.current.selection?.isSelected(selected.current)
+    )
+      latest.current.selection.select(null);
+    selected.current = null;
+    if (lifetime.current.mounted) setSelectedId(null);
     nativeGeneration.set(lifetime.current.generation);
     admission.set(null);
     nativeEditing.set(false);
@@ -149,8 +189,8 @@ export function ReorderableAppCards({
   }, [editing, session, cancel]);
   useEffect(() => {
     if (!active.get()) order.set([...state.order]);
-    onPendingChange?.(state.pending);
-  }, [state.order, state.pending, onPendingChange, active, order]);
+    onPendingChange?.(state.pending || actionPending);
+  }, [state.order, state.pending, actionPending, onPendingChange, active, order]);
   const retire = useCallback(() => {
     cancel();
     session.retire();
@@ -192,8 +232,19 @@ export function ReorderableAppCards({
   function moveFeedback(token: GestureAdmission) {
     if (canInteract() && admitted(token)) feedback();
   }
-  function begin(token?: GestureAdmission) {
-    if (!canInteract() || (token && !admitted(token)) || session.getSnapshot().pending) return;
+  function begin(id: string, token?: GestureAdmission) {
+    if (
+      !canInteract() ||
+      (token && !admitted(token)) ||
+      session.getSnapshot().pending ||
+      actionBusy.current
+    )
+      return;
+    if (!latest.current.items.some((item) => item.id === id)) return;
+    selectionEpoch.current++;
+    selected.current = id;
+    setSelectedId(id);
+    latest.current.selection?.select(id);
     const entered = !session.getSnapshot().editing;
     session.edit();
     latest.current.onEditingChange(true);
@@ -206,7 +257,7 @@ export function ReorderableAppCards({
     id: string,
     token?: GestureAdmission,
   ) {
-    if (!canInteract() || (token && !admitted(token))) return;
+    if (!canInteract() || actionBusy.current || (token && !admitted(token))) return;
     const accepted = await session.drop(next, expected);
     if (canInteract() && (!token || admitted(token)) && !active.get())
       order.set([...session.getSnapshot().order]);
@@ -218,6 +269,53 @@ export function ReorderableAppCards({
         AccessibilityInfo.announceForAccessibility(
           t('home.movedPosition', { name: item.title, position: index + 1, count: next.length }),
         );
+    }
+  }
+  async function editAction(id: string, kind: 'remove' | 'pin', generation: number, epoch: number) {
+    if (
+      !canInteract() ||
+      generation !== lifetime.current.generation ||
+      epoch !== selectionEpoch.current ||
+      !(latest.current.selection?.isSelected(id) ?? selected.current === id) ||
+      !session.getSnapshot().editing ||
+      session.getSnapshot().pending ||
+      actionBusy.current ||
+      active.get()
+    )
+      return;
+    const item = latest.current.items.find((value) => value.id === id);
+    const operation = kind === 'remove' ? latest.current.onRemove : latest.current.onTogglePin;
+    if (!item || !operation) return;
+    actionBusy.current = true;
+    // Retire any native activation already queued before this presentation write.
+    cancel();
+    const operationGeneration = lifetime.current.generation;
+    setActionPending(true);
+    try {
+      await operation(item);
+      if (canInteract() && operationGeneration === lifetime.current.generation) feedback();
+    } catch {
+      // The scoped preference controller exposes the save error and retains committed layout.
+    } finally {
+      actionBusy.current = false;
+      if (lifetime.current.mounted) setActionPending(false);
+    }
+  }
+  function press(item: ItemDetail, accessibility = false) {
+    if (
+      !canInteract() ||
+      actionBusy.current ||
+      session.getSnapshot().pending ||
+      !latest.current.items.some((value) => value.id === item.id)
+    )
+      return;
+    if (session.getSnapshot().editing) {
+      selectionEpoch.current++;
+      selected.current = item.id;
+      setSelectedId(item.id);
+      latest.current.selection?.select(item.id);
+    } else if (!nativeReorder || (!nativeEditing.get() && (accessibility || !consumed.get()))) {
+      latest.current.onOpen(item);
     }
   }
   useFrameCallback((frame) => {
@@ -253,7 +351,9 @@ export function ReorderableAppCards({
     }
   });
   const nativeReorder = process.env.EXPO_OS === 'ios';
-  const enabled = nativeReorder && !state.pending;
+  const enabled = nativeReorder && !state.pending && !actionPending;
+  const actionGeneration = lifetime.current.generation;
+  const actionEpoch = selectionEpoch.current;
   return (
     <View
       testID="reorderable-app-cards"
@@ -275,6 +375,11 @@ export function ReorderableAppCards({
           strideY={strideY}
           horizontal={horizontal}
           enabled={enabled}
+          controlsVisible={
+            state.editing &&
+            (selection ? selection.id : selectedId) === item.id &&
+            !!(onRemove || onTogglePin)
+          }
           editing={state.editing}
           reducedMotion={reducedMotion}
           outlineColor={colors.text}
@@ -292,32 +397,36 @@ export function ReorderableAppCards({
           startOffset={startOffset}
           baseline={baseline}
           scrollPort={scrollPort}
-          onBegin={begin}
+          onBegin={(token) => begin(item.id, token)}
           onMoveFeedback={moveFeedback}
           onDrop={drop}
         >
           <CompactMiniappCard
             item={item}
-            accessory={renderAccessory?.(item)}
+            editActions={
+              state.editing && selectedId === item.id ? (
+                <AppCardEditActions
+                  id={item.id}
+                  name={item.title}
+                  pinned={isPinned?.(item.id) ?? false}
+                  disabled={state.pending || actionPending}
+                  onRemove={
+                    onRemove
+                      ? () => void editAction(item.id, 'remove', actionGeneration, actionEpoch)
+                      : undefined
+                  }
+                  onTogglePin={
+                    onTogglePin
+                      ? () => void editAction(item.id, 'pin', actionGeneration, actionEpoch)
+                      : undefined
+                  }
+                />
+              ) : undefined
+            }
             editing={state.editing}
-            onPress={() => {
-              if (
-                canInteract() &&
-                !session.getSnapshot().editing &&
-                !session.getSnapshot().pending &&
-                (!nativeReorder || (!consumed.get() && !nativeEditing.get()))
-              )
-                latest.current.onOpen(item);
-            }}
-            onAccessibilityTap={() => {
-              if (
-                canInteract() &&
-                !session.getSnapshot().editing &&
-                !session.getSnapshot().pending &&
-                (!nativeReorder || !nativeEditing.get())
-              )
-                latest.current.onOpen(item);
-            }}
+            onPress={() => press(item)}
+            onAccessibilityTap={() => press(item, true)}
+            onLongPress={!nativeReorder ? () => begin(item.id) : undefined}
             accessibilityHint={
               nativeReorder
                 ? state.editing
@@ -326,22 +435,20 @@ export function ReorderableAppCards({
                 : t('miniapps.openMiniapp')
             }
             accessibilityActions={
-              !nativeReorder
-                ? undefined
-                : state.editing
-                  ? [
-                      ...(state.order.indexOf(item.id) > 0
-                        ? [{ name: 'moveEarlier', label: t('home.moveEarlier') }]
-                        : []),
-                      ...(state.order.indexOf(item.id) < count - 1
-                        ? [{ name: 'moveLater', label: t('home.moveLater') }]
-                        : []),
-                    ]
-                  : [{ name: 'rearrange', label: t('home.rearrange') }]
+              state.editing
+                ? [
+                    ...(state.order.indexOf(item.id) > 0
+                      ? [{ name: 'moveEarlier', label: t('home.moveEarlier') }]
+                      : []),
+                    ...(state.order.indexOf(item.id) < count - 1
+                      ? [{ name: 'moveLater', label: t('home.moveLater') }]
+                      : []),
+                  ]
+                : [{ name: 'rearrange', label: t('home.rearrange') }]
             }
             onAccessibilityAction={(event) => {
               const action = event.nativeEvent.actionName;
-              if (action === 'rearrange') begin();
+              if (action === 'rearrange') begin(item.id);
               else if (action === 'moveEarlier' || action === 'moveLater') {
                 const current = session.getSnapshot();
                 const position = current.order.indexOf(item.id);
@@ -384,6 +491,7 @@ function DraggableCard({
   strideY,
   horizontal,
   enabled,
+  controlsVisible,
   editing,
   reducedMotion,
   outlineColor,
@@ -415,6 +523,7 @@ function DraggableCard({
   strideY: number;
   horizontal: boolean;
   enabled: boolean;
+  controlsVisible: boolean;
   editing: boolean;
   reducedMotion: boolean;
   outlineColor: string;
@@ -452,6 +561,11 @@ function DraggableCard({
   }, [editing, reducedMotion, index, wobble]);
   const pan = usePanGesture({
     enabled,
+    // Negative native hitSlop removes the entire controls row before recognition,
+    // so holding X/Pin cannot activate a pan that cancels the button touch.
+    hitSlop: controlsVisible
+      ? { top: -(APP_CARD_METRICS.padding + APP_CARD_METRICS.menuSize) }
+      : undefined,
     activateAfterLongPress: editing ? 120 : 450,
     minDistance: 0,
     maxPointers: 1,

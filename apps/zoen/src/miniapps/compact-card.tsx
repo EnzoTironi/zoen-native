@@ -55,8 +55,8 @@ export type CompactMiniappCardProps = {
   accessibilityHint?: string;
   accessibilityActions?: { name: string; label: string }[];
   onAccessibilityAction?: (event: AccessibilityActionEvent) => void;
-  /** A sibling 44pt control; never an interactive descendant of the App action. */
-  accessory?: ReactNode;
+  /** Sibling 44pt controls; never an interactive descendant of the App action. */
+  editActions?: ReactNode;
 };
 
 /** Native cover only. No widget consent, publication, commands or embedded runtime. */
@@ -69,7 +69,7 @@ export function CompactMiniappCard({
   accessibilityHint,
   accessibilityActions,
   onAccessibilityAction,
-  accessory,
+  editActions,
 }: CompactMiniappCardProps) {
   const { fontScale } = useWindowDimensions();
   const { reducedMotion } = useTheme();
@@ -78,7 +78,7 @@ export function CompactMiniappCard({
     typeof item.space_id === 'string'
       ? miniappSnapshot({ ...item, space_id: item.space_id })
       : null;
-  const layout = appCardContentLayout(fontScale, !!accessory);
+  const layout = appCardContentLayout(fontScale, !!editActions);
   const art = snapshot?.art as keyof typeof artwork | undefined;
   const photo = snapshot?.photo as keyof typeof photos | undefined;
   const photoSource = photo ? photos[photo] : undefined;
@@ -235,7 +235,7 @@ export function CompactMiniappCard({
                       {value}
                     </Text>
                   ) : null}
-                  {!photoSource && (!value || !accessory) ? (
+                  {!photoSource && (!value || !editActions) ? (
                     art && artwork[art] ? (
                       <Image
                         source={artwork[art]}
@@ -365,11 +365,18 @@ export function CompactMiniappCard({
           ) : null}
         </View>
       </Pressable>
-      {accessory ? (
+      {editActions ? (
         <View
-          style={{ position: 'absolute', right: 8, top: 8, width: M.menuSize, height: M.menuSize }}
+          testID={`app-card-edit-actions-${item.id}`}
+          style={{
+            position: 'absolute',
+            left: M.padding,
+            right: M.padding,
+            top: M.padding,
+            height: M.menuSize,
+          }}
         >
-          {accessory}
+          {editActions}
         </View>
       ) : null}
     </View>

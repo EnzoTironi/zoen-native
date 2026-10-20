@@ -45,7 +45,6 @@ import {
 import { useMessageDraft } from '../../core/use-message-draft';
 import { ChatHeader } from '../../components/chat-header';
 import { useHome } from '../../home/provider';
-import { HomeCardMenu } from '../../home/menus';
 import { useConversationCards } from '../../miniapps/conversation-provider';
 import { MiniappRail } from '../../miniapps/rail';
 import { ConversationSearch, conversationQueryFits } from '../../core/conversation-search';
@@ -660,28 +659,18 @@ export default function Chat() {
                 onReorder={cards.reorder}
                 items={conversationMiniapps}
                 paddingVertical={6}
-                renderAccessory={(item) => (
-                  <HomeCardMenu
-                    name={item.title}
-                    testID={`conversation-card-menu-${item.id}`}
-                    pinned={home.isPinned(item.id)}
-                    onDetails={() =>
-                      router.push({ pathname: '/miniapp/[id]/manage', params: { id: item.id } })
-                    }
-                    onToggle={() => {
-                      void (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)).catch(
-                        () => {},
-                      );
-                    }}
-                    conversationPinned
-                    onToggleConversation={() => {
-                      void cards.setPinned(item.id, false).catch(() => {});
-                    }}
-                    onOrganizeConversation={() =>
-                      router.push({ pathname: '/conversation-cards/[id]', params: { id } })
-                    }
-                  />
-                )}
+                error={home.error}
+                onRemove={(item) => cards.setPinned(item.id, false)}
+                onTogglePin={(item) =>
+                  home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)
+                }
+                isPinned={home.isPinned}
+                restoreLabel={t('home.organizeConversationApps')}
+                onRestore={
+                  cards.items.length > cards.visible.length
+                    ? () => router.push({ pathname: '/conversation-cards/[id]', params: { id } })
+                    : undefined
+                }
               />
             </ConversationRail>
             <View onLayout={({ nativeEvent }) => setNoticeHeight(nativeEvent.layout.height)}>

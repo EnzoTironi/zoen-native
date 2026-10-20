@@ -6,7 +6,7 @@ import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { build } from 'esbuild';
-import type { HomeCardMenuProps } from '../home/menus.types';
+import type { HomeActionsProps, HomeCardMenuProps } from '../home/menus.types';
 import { resolveSkyTheme } from '../theme/sky.ts';
 const require = createRequire(import.meta.url);
 const compiled = await build({
@@ -23,7 +23,7 @@ const compiled = await build({
         builder.onResolve(
           {
             filter:
-              /^(react(?:\/jsx-runtime)?|expo-router|\.\.\/theme|\.\.\/components\/primitives|\.\.\/i18n\/index\.ts)$/,
+              /^(react(?:\/jsx-runtime)?|react-native|expo-router|\.\.\/theme|\.\.\/components\/primitives|\.\.\/i18n\/index\.ts)$/,
           },
           ({ path }) => ({ path, external: true }),
         );
@@ -36,7 +36,7 @@ const navigation: string[] = [];
 const module = {
   exports: {} as {
     HomeCardMenu: (props: HomeCardMenuProps) => ReturnType<typeof createElement>;
-    HomeActions: (props: { canOrganize?: boolean }) => ReturnType<typeof createElement>;
+    HomeActions: (props: HomeActionsProps) => ReturnType<typeof createElement>;
   },
 };
 runInNewContext(compiled.outputFiles[0]!.text, {
@@ -44,6 +44,7 @@ runInNewContext(compiled.outputFiles[0]!.text, {
   exports: module.exports,
   require: (name: string) => {
     if (name === '../theme') return { useTheme: () => theme };
+    if (name === 'react-native') return { View: 'div' };
     if (name === 'expo-router')
       return { router: { push: (path: string) => navigation.push(path) } };
     if (name === '../components/primitives')
@@ -123,6 +124,12 @@ test('HomeActions keeps its existing single Add an app control without executing
   const html = renderToStaticMarkup(
     createElement(module.exports.HomeActions, { canOrganize: true }),
   );
-  assert.equal(html, '<button>Add an app</button>');
+  assert.equal((html.match(/<button/g) ?? []).length, 1);
+  assert.ok(html.includes('<button>Add an app</button>'));
+  const withRestore = renderToStaticMarkup(
+    createElement(module.exports.HomeActions, { hiddenCount: 2, onRestoreHidden() {} }),
+  );
+  assert.equal((withRestore.match(/<button/g) ?? []).length, 2);
+  assert.ok(withRestore.includes('Restore hidden apps (2)'));
   assert.deepEqual(navigation, []);
 });

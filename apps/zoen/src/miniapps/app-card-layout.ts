@@ -28,7 +28,7 @@ export function appCardGrid(availableWidth: number) {
 
 /** Keep scaled title first. Remove metadata, then the visual; never shrink fonts.
  * A cover summarizes content; its accessible action retains the complete summary. */
-export function appCardContentLayout(fontScale: number, hasAccessory = false) {
+export function appCardContentLayout(fontScale: number, hasEditActions = false) {
   const m = APP_CARD_METRICS;
   const scale = Number.isFinite(fontScale) && fontScale > 0 ? fontScale : 1;
   const inner = m.size - 2 * m.padding;
@@ -36,12 +36,12 @@ export function appCardContentLayout(fontScale: number, hasAccessory = false) {
   const visualHeight = Math.max(54, Math.ceil(m.valueLineHeight * scale));
   const metadataHeight = Math.ceil(m.detailLineHeight * scale) + 7;
   const twoLineTitle = 2 * line;
-  const showVisual = visualHeight + m.contentGap + twoLineTitle <= inner;
+  const showVisual = !hasEditActions && visualHeight + m.contentGap + twoLineTitle <= inner;
   const showMetadata =
     scale <= 1.2 &&
     showVisual &&
     visualHeight + twoLineTitle + metadataHeight + 2 * m.contentGap <= inner;
-  const clearance = !showVisual && hasAccessory ? m.menuSize : 0;
+  const clearance = !showVisual && hasEditActions ? m.menuSize : 0;
   const titleBudget = showVisual ? twoLineTitle : inner - clearance;
   const titleLines = Math.max(0, Math.min(2, Math.floor(titleBudget / line)));
   const titleHeight = titleLines * line;
@@ -50,7 +50,7 @@ export function appCardContentLayout(fontScale: number, hasAccessory = false) {
     showVisual,
     showMetadata,
     visualHeight,
-    visualWidth: inner - (hasAccessory ? m.menuSize : 0),
+    visualWidth: inner,
     titleLines,
     titleHeight,
     titleTop: showVisual

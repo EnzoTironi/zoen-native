@@ -6,7 +6,11 @@ import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import type { HomeActionsProps, HomeCardMenuProps } from './menus.types';
 
-export function HomeActions({ canOrganize = false }: HomeActionsProps) {
+export function HomeActions({
+  canOrganize = false,
+  hiddenCount = 0,
+  onRestoreHidden,
+}: HomeActionsProps) {
   const { scheme, colors } = useTheme();
   return (
     <Host testID="home-actions-host" matchContents colorScheme={scheme} seedColor={colors.accent}>
@@ -24,6 +28,14 @@ export function HomeActions({ canOrganize = false }: HomeActionsProps) {
             label={t('home.organize')}
             systemImage="arrow.up.arrow.down"
             onPress={() => router.push('/home-order')}
+          />
+        ) : null}
+        {hiddenCount > 0 && onRestoreHidden ? (
+          <Button
+            testID="home-restore-hidden-apps"
+            label={t('home.restoreHiddenCount', { count: hiddenCount })}
+            systemImage="arrow.uturn.backward"
+            onPress={onRestoreHidden}
           />
         ) : null}
         <Button

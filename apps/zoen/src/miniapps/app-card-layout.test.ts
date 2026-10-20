@@ -13,14 +13,19 @@ type AppComponents = Record<
   | 'MiniappMessageCard'
   | 'MiniappRail'
   | 'MiniappTimelineActivityView'
-  | 'Home',
+  | 'Home'
+  | 'AppCardEditActions'
+  | 'NativeHomeActions',
   (props: any) => Element
 >;
 type Element = { type: string | ((props: any) => unknown); props: Record<string, any> };
 const sources = {
-  react: ['useState'],
+  react: ['useState', 'useRef'],
   'react-native': ['View', 'Text', 'Pressable', 'ActivityIndicator', 'useWindowDimensions'],
   'expo-router': ['router'],
+  '@expo/ui': ['Host'],
+  '@expo/ui/swift-ui': ['Button', 'Menu'],
+  '@expo/ui/swift-ui/modifiers': ['buttonStyle', 'frame', 'labelStyle'],
   'expo-image': ['Image'],
   'react-native-reanimated': ['useAnimatedRef'],
   primitives: ['Icon', 'EmptyState', 'NativeButton'],
@@ -57,7 +62,9 @@ const compiled = await build({
       export { MiniappMessageCard } from './message-card';
       export { MiniappRail } from './rail';
       export { MiniappTimelineActivityView } from './timeline-activity';
-      export { default as Home } from '../app/(tabs)/index';`,
+      export { default as Home } from '../app/(tabs)/index';
+      export { AppCardEditActions } from './card-edit-actions';
+      export { HomeActions as NativeHomeActions } from '../home/menus.ios';`,
     resolveDir: fileURLToPath(new URL('.', import.meta.url)),
     loader: 'tsx',
   },
@@ -121,12 +128,32 @@ function item(template: string, extra: Record<string, unknown> = {}): ItemDetail
     },
   } as ItemDetail;
 }
-function fixture(fontScale = 1, width = 393) {
+function fixture(
+  fontScale = 1,
+  width = 393,
+  options: {
+    stateValues?: readonly unknown[];
+    items?: ItemDetail[];
+    hiddenItems?: ItemDetail[];
+  } = {},
+) {
+  let stateIndex = 0;
   const routes: unknown[] = [];
-  const homeItems = [item('stat'), item('countdown', { targetMs: 1_800_000_000_000 })];
+  const homeItems = options.items ?? [
+    item('stat'),
+    item('countdown', { targetMs: 1_800_000_000_000 }),
+  ];
   const ports = {
     react: {
-      useState: (value: unknown) => [typeof value === 'function' ? value() : value, () => {}],
+      useRef: (value: unknown) => ({ current: value }),
+      useState: (value: unknown) => [
+        options.stateValues && stateIndex < options.stateValues.length
+          ? options.stateValues[stateIndex++]
+          : typeof value === 'function'
+            ? value()
+            : value,
+        () => {},
+      ],
     },
     'react-native': {
       View: 'View',
@@ -137,6 +164,13 @@ function fixture(fontScale = 1, width = 393) {
     },
     'expo-router': { router: { push: (route: unknown) => routes.push(route) } },
     'expo-image': { Image: 'Image' },
+    '@expo/ui': { Host: 'NativeHost' },
+    '@expo/ui/swift-ui': { Button: 'NativeButton', Menu: 'NativeMenu' },
+    '@expo/ui/swift-ui/modifiers': {
+      buttonStyle: () => ({}),
+      frame: (value: unknown) => value,
+      labelStyle: () => ({}),
+    },
     'react-native-reanimated': {
       default: { ScrollView: 'ScrollView' },
       useAnimatedRef: () => ({}),
@@ -160,6 +194,7 @@ function fixture(fontScale = 1, width = 393) {
       useHome: () => ({
         items: homeItems,
         pinnedItems: [],
+        hiddenItems: options.hiddenItems ?? [],
         ownerKey: 'owner',
         isPinned: () => false,
         pendingRequestCount: 0,
@@ -226,10 +261,10 @@ test('actual mixed native templates keep 160 pt frames, full labels and bounded 
     } as ItemDetail,
   ];
   for (const fontScale of [1, 1.2, 1.5, 1.8, 2.2, 3.2])
-    for (const accessory of [undefined, { type: 'Menu', props: {} }]) {
+    for (const editActions of [undefined, { type: 'EditActions', props: {} }]) {
       const f = fixture(fontScale);
       for (const value of mixed) {
-        const tree = f.CompactMiniappCard!({ item: value, accessory });
+        const tree = f.CompactMiniappCard!({ item: value, editActions });
         assert.equal(style(tree).width, 160);
         assert.equal(style(tree).height, 160);
         const card = cardFor(tree, value.id);
@@ -268,12 +303,13 @@ test('actual mixed native templates keep 160 pt frames, full labels and bounded 
         if (metadata) assert.ok(style(title).top + style(title).height < style(metadata).top);
         if (fontScale > 1.2) assert.equal(metadata, undefined);
         if (fontScale >= 2.2) assert.equal(visual, undefined);
-        if (accessory) {
-          const menu = all.find((n) => n.props.children === accessory)!;
-          assert.equal(style(menu).width, 44);
+        if (editActions) {
+          const menu = all.find((n) => n.props.children === editActions)!;
+          assert.equal(style(menu).left, 12);
+          assert.equal(style(menu).right, 12);
           assert.equal(style(menu).height, 44);
-          if (visual) assert.ok(style(visual).left + style(visual).width <= 108);
-          else assert.ok(style(title).top >= 52);
+          assert.equal(visual, undefined);
+          assert.ok(style(title).top >= 56);
         }
       }
     }
@@ -389,4 +425,155 @@ test('actual Home grid changes column count without changing tile dimensions at 
       assert.equal(grid.props.gap, undefined);
       assert.ok(columns * M.size + (columns - 1) * M.gap <= Math.min(width, 720) - 40);
     }
+});
+
+test('zero visible Apps retain the real restore action without a negative-width reorder surface', () => {
+  const f = fixture();
+  let restored = 0;
+  const tree = f.MiniappRail({
+    items: [],
+    onReorder: async () => {},
+    onRestore: () => {
+      restored++;
+    },
+    restoreLabel: 'Restore hidden apps (2)',
+  });
+  const all = nodes(tree);
+  const restore = all.find((node) => node.props.testID === 'app-rail-restore')!;
+  assert.ok(restore);
+  assert.equal(restore.props.label, 'Restore hidden apps (2)');
+  restore.props.onPress();
+  assert.equal(restored, 1);
+  assert.ok(all.every((node) => node.type !== 'ReorderableAppCards' && node.type !== 'ScrollView'));
+});
+
+test('selected native controls keep two distinct44pt hit targets, complete labels and real callbacks', () => {
+  const f = fixture(3.2);
+  const called: string[] = [];
+  const tree = f.AppCardEditActions({
+    id: 'app',
+    name: 'Full app name',
+    pinned: true,
+    disabled: false,
+    onRemove: () => called.push('remove'),
+    onTogglePin: () => called.push('pin'),
+  });
+  const buttons = nodes(tree).filter((node) => node.type === 'Pressable');
+  assert.equal(buttons.length, 2);
+  for (const button of buttons) {
+    assert.equal(style(button).width, 44);
+    assert.equal(style(button).height, 44);
+    assert.equal(button.props.accessibilityRole, 'button');
+    assert.ok(button.props.accessibilityLabel.includes('Full app name'));
+    button.props.onPress();
+  }
+  assert.deepEqual(called, ['remove', 'pin']);
+  assert.ok(buttons[0]!.props.accessibilityLabel.startsWith('Remove shortcut'));
+  assert.equal(buttons[1]!.props.accessibilityState.selected, true);
+  const disabled = nodes(
+    f.AppCardEditActions({
+      id: 'app',
+      name: 'App',
+      pinned: false,
+      disabled: true,
+      onRemove() {},
+      onTogglePin() {},
+    }),
+  ).filter((node) => node.type === 'Pressable');
+  assert.ok(
+    disabled.every((button) => button.props.disabled && button.props.accessibilityState.disabled),
+  );
+});
+
+test('native Home Add menu exposes restore only for real hidden Apps and does not navigate during render', () => {
+  const f = fixture();
+  let restores = 0;
+  const plain = nodes(f.NativeHomeActions({ hiddenCount: 0, onRestoreHidden: () => restores++ }));
+  assert.ok(plain.every((node) => node.props.testID !== 'home-restore-hidden-apps'));
+  const hidden = nodes(f.NativeHomeActions({ hiddenCount: 2, onRestoreHidden: () => restores++ }));
+  const restore = hidden.find((node) => node.props.testID === 'home-restore-hidden-apps')!;
+  assert.equal(restore.props.label, 'Restore hidden apps (2)');
+  assert.equal(restores, 0);
+  restore.props.onPress();
+  assert.equal(restores, 1);
+});
+
+test('the same canonical App has identical cover content and geometry in the top rail, inline message and activity', () => {
+  const signature = (tree: Element, id: string) =>
+    nodes(cardFor(tree, id)).map((node) => ({
+      type: node.type,
+      testID: node.props.testID,
+      style: style(node),
+      text: node.type === 'Text' ? node.props.children : undefined,
+      source: node.type === 'Image' ? node.props.source : undefined,
+      contentFit: node.props.contentFit,
+      label: node.props.accessibilityLabel,
+    }));
+  for (const scale of [1, 3.2]) {
+    const f = fixture(scale);
+    for (const value of [
+      item('stat'),
+      item('progress', { art: 'pet', bars: [{ label: 'Food', value: 0.8 }] }),
+      item('ticket', { codes: ['GRU', 'SFO'], times: ['08:30', '11:45'] }),
+      item('photo', { photo: 'hike-tomales' }),
+    ]) {
+      const card = {
+        item_id: value.id,
+        kind_id: 'app',
+        title: 'Older embedded title',
+        version: 0,
+        app: value.app,
+      } as ItemCard;
+      const rail = f.MiniappRail({ items: [value] });
+      const inline = f.MiniappMessageCard({
+        card,
+        item: value,
+        spaceId: value.space_id,
+        width: 350,
+      });
+      const activity = f.MiniappTimelineActivityView({
+        activity: {
+          showCard: true,
+          item: value,
+          entries: [
+            {
+              id: 'change',
+              at_ms: '1000',
+              author: { name: 'Ana' },
+              kind: {
+                ItemEdited: { item_id: value.id, title: value.title, version: value.version },
+              },
+            },
+          ],
+        },
+        mine: false,
+        width: 350,
+      });
+      assert.deepEqual(signature(inline, value.id), signature(rail, value.id));
+      assert.deepEqual(signature(activity, value.id), signature(rail, value.id));
+      assert.ok(nodes(inline).every((node) => node.props.children !== t('miniapps.openMiniapp')));
+    }
+  }
+});
+
+test('removing the final card cannot strand Done in Saving and restore stays reachable on empty Home', () => {
+  const empty = fixture(1, 393, { stateValues: [true, true] });
+  const rail = nodes(empty.MiniappRail({ items: [], onReorder: async () => {}, onRestore() {} }));
+  const railDone = rail.find((node) => node.props.testID === 'app-rail-rearrange-done')!;
+  assert.ok(railDone);
+  assert.equal(railDone.props.disabled, false);
+  assert.equal(railDone.props.label, t('home.doneRearranging'));
+  const home = fixture(1, 393, {
+    items: [],
+    hiddenItems: [item('stat')],
+    stateValues: [null, 'owner', { pinned: true, available: true }],
+  });
+  const done = nodes(home.Home({})).find((node) => node.props.testID === 'home-rearrange-done')!;
+  assert.ok(done);
+  assert.equal(done.props.disabled, false);
+  assert.equal(done.props.label, t('home.doneRearranging'));
+  const settled = fixture(1, 393, { items: [], hiddenItems: [item('stat')] });
+  const menu = nodes(settled.Home({})).find((node) => node.type === 'HomeActions')!;
+  assert.equal(menu.props.hiddenCount, 1);
+  assert.equal(typeof menu.props.onRestoreHidden, 'function');
 });

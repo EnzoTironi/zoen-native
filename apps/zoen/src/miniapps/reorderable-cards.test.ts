@@ -41,6 +41,7 @@ const exportsByPort: Record<string, string[]> = {
   ],
   'react-native-worklets': ['scheduleOnRN'],
   './compact-card': ['CompactMiniappCard'],
+  './card-edit-actions': ['AppCardEditActions'],
   '../theme': ['useTheme'],
   '../i18n': ['t'],
 };
@@ -97,6 +98,7 @@ function fixture(reducedMotion = false, queuedScheduler = false) {
     haptics = 0;
   const writes: { next: string[]; expected: string[] }[] = [];
   const announcements: string[] = [];
+  const actions: string[] = [];
   const scrolls: number[] = [];
   let hold: Promise<unknown> | undefined;
   const shared = <T>(value: T) => ({
@@ -207,6 +209,7 @@ function fixture(reducedMotion = false, queuedScheduler = false) {
       },
     },
     './compact-card': { CompactMiniappCard: 'Card' },
+    './card-edit-actions': { AppCardEditActions: 'EditActions' },
     '../theme': { useTheme: () => ({ reducedMotion, colors: { text: '#ffffff' } }) },
     '../i18n': { t: (key: string) => key },
   };
@@ -252,6 +255,16 @@ function fixture(reducedMotion = false, queuedScheduler = false) {
       gesture(name: string, event = {}) {
         hooks.pan?.[name]?.(event as never);
       },
+      holdAt(x: number, y: number) {
+        const config = hooks.pan as unknown as { enabled: boolean; hitSlop?: { top?: number } };
+        // Native RNGHHitSlopInsetRect: origin.y -= top; height += top.
+        // This port models admission, rather than merely calling onPress.
+        const top = -(config.hitSlop?.top ?? 0);
+        if (!config.enabled || x < 0 || x >= 160 || y < top || y >= 160) return false;
+        hooks.pan?.onTouchesDown?.({} as never);
+        hooks.pan?.onActivate?.({ absoluteX: x, absoluteY: y } as never);
+        return true;
+      },
       frame() {
         hooks.frame?.({ timeSincePreviousFrame: 16 });
       },
@@ -279,6 +292,15 @@ function fixture(reducedMotion = false, queuedScheduler = false) {
       writes.push({ next: [...next], expected: [...expected] });
       if (hold) await hold;
     },
+    onRemove: async (item: ItemDetail) => {
+      actions.push(`remove:${item.id}`);
+      if (hold) await hold;
+    },
+    onTogglePin: async (item: ItemDetail) => {
+      actions.push(`pin:${item.id}`);
+      if (hold) await hold;
+    },
+    isPinned: () => false,
     onOpen: () => {
       opens++;
     },
@@ -312,6 +334,8 @@ function fixture(reducedMotion = false, queuedScheduler = false) {
     scrollPort,
     render,
     card,
+    cards: () => children().map((child) => child.props.children as Element),
+    actions,
     style,
     writes,
     announcements,
@@ -638,4 +662,146 @@ test('retirement never reopens editing when an already-admitted preference write
   f.render();
   assert.equal(f.editing, false);
   assert.equal(f.writes.length, 1); // An admitted durable write is not canceled or rolled back here.
+});
+
+test('editing exposes X and Pin only for the selected App and selection never launches it', () => {
+  const f = fixture();
+  assert.ok(f.cards().every((card) => card.props.editActions === undefined));
+  f.activate();
+  f.release(true);
+  f.render();
+  assert.ok(f.cards()[0]!.props.editActions);
+  assert.ok(
+    f
+      .cards()
+      .slice(1)
+      .every((card) => card.props.editActions === undefined),
+  );
+  (f.cards()[1]!.props.onPress as () => void)();
+  f.render();
+  assert.equal(f.cards()[0]!.props.editActions, undefined);
+  assert.ok(f.cards()[1]!.props.editActions);
+  assert.equal(f.opens, 0);
+});
+
+test('stale selected actions cannot execute after selecting another App or retiring the scope', async () => {
+  for (const boundary of [
+    'selection',
+    'reselection',
+    'context',
+    'geometry',
+    'blur',
+    'background',
+    'unmount',
+  ]) {
+    const f = fixture();
+    f.activate();
+    f.release(true);
+    f.render();
+    const actions = f.card().props.editActions as Element;
+    if (boundary === 'selection' || boundary === 'reselection') {
+      (f.cards()[1]!.props.onPress as () => void)();
+      if (boundary === 'reselection') (f.card().props.onPress as () => void)();
+    } else if (boundary === 'context') {
+      Object.assign(f.props, { contextKey: 'new-owner-layout' });
+      f.render();
+    } else if (boundary === 'geometry') {
+      Object.assign(f.props, { horizontal: false, columns: 2 });
+      f.render();
+    } else if (boundary === 'blur') {
+      f.root.blur();
+      f.root.focus();
+    } else if (boundary === 'background') {
+      f.state('background');
+      f.state('active');
+    } else f.root.unmount();
+    (actions.props.onRemove as () => void)();
+    (actions.props.onTogglePin as () => void)();
+    await tick();
+    assert.deepEqual(f.actions, [], boundary);
+    assert.deepEqual(f.writes, [], boundary);
+  }
+});
+
+test('one selected action retires native callbacks, serializes taps and preserves a fresh tap after Done', async () => {
+  const f = fixture();
+  let finish!: () => void;
+  f.hold(
+    new Promise<void>((resolve) => {
+      finish = resolve;
+    }),
+  );
+  f.activate();
+  f.release(true);
+  f.render();
+  const actions = f.card().props.editActions as Element;
+  (actions.props.onTogglePin as () => void)();
+  (actions.props.onRemove as () => void)();
+  (actions.props.onTogglePin as () => void)();
+  f.render();
+  assert.deepEqual(f.actions, ['pin:a']);
+  assert.ok(f.cards().every((card) => card.props.editActions === undefined));
+  f.activate();
+  f.move(325);
+  f.release();
+  assert.deepEqual(f.writes, []);
+  finish();
+  await tick();
+  f.render();
+  f.done();
+  (f.card().props.onPress as () => void)();
+  assert.equal(f.opens, 0);
+  f.child.gesture('onTouchesDown');
+  (f.card().props.onPress as () => void)();
+  assert.equal(f.opens, 1);
+});
+
+test('a shared Home selection retires controls in the other grid synchronously before rerender', async () => {
+  const f = fixture();
+  let chosen: string | null = null;
+  Object.assign(f.props, {
+    selection: {
+      id: null,
+      select: (id: string | null) => {
+        chosen = id;
+      },
+      isSelected: (id: string) => chosen === id,
+    },
+  });
+  f.render();
+  f.activate();
+  f.release(true);
+  const selectedScope = (f.props as unknown as { selection: { id: string | null } }).selection;
+  selectedScope.id = chosen;
+  f.render();
+  const actions = f.card().props.editActions as Element;
+  assert.ok(actions);
+  // The other Home grid selects a different card before this grid rerenders.
+  chosen = 'another-grid-app';
+  (actions.props.onRemove as () => void)();
+  await tick();
+  assert.deepEqual(f.actions, []);
+});
+
+test('the compiled native pan excludes selected44pt X/Pin hits before long-press recognition but retains cover lifting', () => {
+  const f = fixture();
+  assert.equal(f.child.holdAt(34, 34), true, 'ordinary cover can lift at the same position');
+  f.render();
+  f.release(true);
+  f.render();
+  const actions = f.card().props.editActions as Element;
+  assert.ok(actions);
+  const before = f.haptics;
+  for (const x of [12, 34, 55, 104, 126, 147])
+    for (const y of [12, 34, 55])
+      assert.equal(
+        f.child.holdAt(x, y),
+        false,
+        'holding a control never enters native pan recognition',
+      );
+  assert.equal(f.haptics, before);
+  assert.deepEqual(f.writes, []);
+  assert.equal(f.child.holdAt(80, 80), true, 'selected cover below controls still lifts');
+  assert.ok(f.haptics > before);
+  f.release(true);
 });

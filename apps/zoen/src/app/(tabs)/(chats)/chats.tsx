@@ -79,7 +79,25 @@ export default function Chats() {
               </Text>
               <ChatsActions />
             </View>
-            <MiniappRail key={home.ownerKey} items={items} onReorder={home.reorderItems} />
+            <MiniappRail
+              key={home.ownerKey}
+              items={items}
+              onReorder={home.reorderItems}
+              error={home.error}
+              onRemove={(item) => home.hide(item.id)}
+              onTogglePin={(item) =>
+                home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)
+              }
+              isPinned={home.isPinned}
+              restoreLabel={t('home.restoreHiddenCount', { count: home.hiddenItems.length })}
+              onRestore={
+                home.hiddenItems.length
+                  ? () => {
+                      void home.restoreAll().catch(() => {});
+                    }
+                  : undefined
+              }
+            />
             <ScrollView
               horizontal
               style={{ backgroundColor: 'transparent' }}

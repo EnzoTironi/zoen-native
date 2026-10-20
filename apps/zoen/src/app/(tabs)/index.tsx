@@ -1,10 +1,10 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Animated, { useAnimatedRef } from 'react-native-reanimated';
 import { ActivityIndicator, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { EmptyState, Icon, NativeButton } from '../../components/primitives';
 import { SkyScene } from '../../components/sky-background';
-import { HomeActions, HomeCardMenu } from '../../home/menus';
+import { HomeActions } from '../../home/menus';
 import { useHome } from '../../home/provider';
 import { t } from '../../i18n/index.ts';
 import { ReorderableAppCards, useCardScrollPort } from '../../miniapps/reorderable-cards';
@@ -15,6 +15,16 @@ import { useTheme } from '../../theme';
 
 export default function Home() {
   const home = useHome();
+  const [selectedCard, setSelectedCard] = useState<string | null>(null);
+  const selected = useRef<string | null>(null);
+  const selection = {
+    id: selectedCard,
+    select: (id: string | null) => {
+      selected.current = id;
+      setSelectedCard(id);
+    },
+    isSelected: (id: string) => selected.current === id,
+  };
   const [editOwner, setEditOwner] = useState<string | null>(null);
   const editing = editOwner !== null && editOwner === home.ownerKey;
   const setEditing = (value: boolean) => setEditOwner(value ? home.ownerKey : null);
@@ -24,16 +34,10 @@ export default function Home() {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const available = home.items.filter((item) => !home.isPinned(item.id));
+  const saving =
+    (pending.pinned && home.pinnedItems.length > 0) || (pending.available && available.length > 0);
   const contentWidth = Math.min(width, 720) - 40;
   const { columns } = appCardGrid(contentWidth);
-  function movePinned(id: string, direction: -1 | 1) {
-    const ids = home.pinnedItems.map((item) => item.id);
-    const index = ids.indexOf(id);
-    const next = index + direction;
-    if (index < 0 || next < 0 || next >= ids.length) return;
-    [ids[index], ids[next]] = [ids[next]!, ids[index]!];
-    void home.reorder(ids).catch(() => {});
-  }
   function grid(items: ItemDetail[], favorites: boolean) {
     const complete = home.items.map((item) => item.id);
     return (
@@ -44,6 +48,7 @@ export default function Home() {
         columns={columns}
         scrollPort={scrollPort}
         scrollRef={scrollRef}
+        selection={selection}
         editing={editing}
         onEditingChange={setEditing}
         onPendingChange={(value) => {
@@ -58,30 +63,9 @@ export default function Home() {
             : home.reorderItems(mergeCardSubset(complete, next), complete)
         }
         onOpen={(item) => router.push({ pathname: '/miniapp/[id]', params: { id: item.id } })}
-        renderAccessory={(item) => {
-          const pinnedIndex = home.pinnedItems.findIndex((pin) => pin.id === item.id);
-          return (
-            <HomeCardMenu
-              testID={`home-card-menu-${item.id}`}
-              name={item.title}
-              pinned={home.isPinned(item.id)}
-              onDetails={() =>
-                router.push({ pathname: '/miniapp/[id]/manage', params: { id: item.id } })
-              }
-              onToggle={() => {
-                void (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)).catch(
-                  () => {},
-                );
-              }}
-              onMoveEarlier={pinnedIndex > 0 ? () => movePinned(item.id, -1) : undefined}
-              onMoveLater={
-                pinnedIndex >= 0 && pinnedIndex < home.pinnedItems.length - 1
-                  ? () => movePinned(item.id, 1)
-                  : undefined
-              }
-            />
-          );
-        }}
+        onRemove={(item) => home.hide(item.id)}
+        onTogglePin={(item) => (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id))}
+        isPinned={home.isPinned}
       />
     );
   }
@@ -121,14 +105,18 @@ export default function Home() {
           {editing ? (
             <NativeButton
               testID="home-rearrange-done"
-              label={
-                pending.pinned || pending.available ? t('home.saving') : t('home.doneRearranging')
-              }
-              disabled={pending.pinned || pending.available}
+              label={saving ? t('home.saving') : t('home.doneRearranging')}
+              disabled={saving}
               onPress={() => setEditing(false)}
             />
           ) : (
-            <HomeActions canOrganize={home.pinnedItems.length > 1} />
+            <HomeActions
+              canOrganize={home.pinnedItems.length > 1}
+              hiddenCount={home.hiddenItems.length}
+              onRestoreHidden={() => {
+                void home.restoreAll().catch(() => {});
+              }}
+            />
           )}
         </View>
         {home.pendingRequestCount > 0 ? (
