@@ -7,27 +7,35 @@ permissões, versões, sincronização e histórico de pessoas e agentes.
 
 ## Checkpoint de integração — 20 de outubro de 2026
 
-O carregador gerenciado, registro e UI nativa agora usam o documento binário
+O carregador gerenciado, registro e UI nativa usam o documento binário
 canônico do Zoen. O pacote fixa JS/WASM, fontes e licenças por hash; o host verifica
-os recursos antes de entregá-los ao sandbox. A WebView continua sem autoridade de
-armazenamento durável. O build e a suíte do app na fonte `0f30f530` passaram,
-incluindo 1.073 casos e conferência dos 431 arquivos instalados no simulador.
+os recursos antes de entregá-los ao sandbox. A WebView não tem autoridade de
+armazenamento durável. A fonte `a974701b` passou por 1.094 casos, tipos,
+Oxlint/Oxfmt, núcleo nativo configurado e build Release. Os 431 arquivos
+instalados e a assinatura conferem com o artefato lacrado.
 
-A criação pelo catálogo nativo produziu o cartão “QA160 Shared deck”, com um
-slide, e o mesmo cartão reapareceu após reiniciar o processo. O editor ficou
-preso na abertura por mais de cinco minutos após buscar JS/WASM: **edição,
-rotação, exportação e compartilhamento nativos permanecem sem aceite**. O teste
-foi diagnóstico, sem fluxo automatizado qualificado. Uma falha de startup que
-deixava requisições esperando indefinidamente foi identificada no código; não
-foi estabelecido que ela causou essa observação. A correção está em preparação.
+A criação anterior produziu o cartão real “QA160 Shared deck”, com um slide.
+O primeiro artefato ficou preso na abertura por mais de cinco minutos; a falha
+permanece como evidência histórica. O novo pacote abriu o mesmo documento no
+motor real da WKWebView, confirmou o estado salvo, fechou e reabriu após reiniciar
+o processo. Um fluxo específico dessa conta foi gravado e reproduzido. A primeira
+reprodução excedeu cinco segundos; uma repetição com orçamento explícito de
+abertura mediu 7,8 segundos. Isso não aprova o desempenho. O layout de desktop e
+o tema claro foram observados no iPhone e permanecem sem aceite.
 
-A correção integrada `c5ac7652` mantém a tela bloqueada após um timeout de save,
-até receber a confirmação de recuperação. Doze testes com o SDK oficial cobrem
-confirmações tardias, Close e exportação, sem reproduzir falha no WASM/aparelho.
-O executor isolado de agente, ainda privado, compila o motor real para WASI e
-passa em três testes de autoridade. Sua primeira jornada atingiu o prazo durante
-a tradução do componente, antes da execução. Ainda não há prova de alteração por
-agente real nesse documento do iPhone, nem chamada de modelo nessa prova.
+A correção integrada `c5ac7652` mantém a tela bloqueada após timeout de save,
+até receber confirmação de recuperação. O pacote posterior também trata falhas
+conhecidas de startup e remove o uso de PID indisponível em WebAssembly. Um
+controle real no navegador abriu o seed canônico e outro, sem canvas, recusou
+requisições pendentes e futuras. Isso não estabelece a causa exata da primeira
+falha nativa nem cobre todos os traps possíveis.
+
+**Edição manual, rotação, teclado, alteração por agente e exportação/compartilhamento
+PPTX/PDF nativos continuam sem aceite.** A adaptação compacta para toque está em
+preparação, preservando Session, comandos, renderizadores e exportadores upstream.
+O executor privado tem provas parciais de autoridade, aliases e bloqueio padrão;
+a jornada completa e a interoperabilidade com esse documento do iPhone seguem
+pendentes. Nenhuma chamada de modelo foi comprovada nessa prova.
 
 As medições de pesquisa abaixo preservam seus pacotes originais. Não descrevem
 o pacote gerenciado posterior nem encerram a integração. Revisões, limites,

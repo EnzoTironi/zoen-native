@@ -60,8 +60,9 @@ marcar as três flags globais como aprovadas antes do produto completo. Não há
 meta indefinida de copiar todas as features ou a escala global de concorrentes;
 o escopo verificável é a matriz de 30 jornadas, criação e perfil numérico declarado.
 
-O lote atual está no [PR 144](https://github.com/EnzoTironi/zoen-native/pull/144),
-em rascunho. A fonte iOS `bd10bf35` cobre 1.039 casos no lote e repetição isolada:
+O [PR 144](https://github.com/EnzoTironi/zoen-native/pull/144) foi integrado
+em `ec28d8bc`. Suas evidências abaixo mantêm o escopo original. A fonte iOS
+`bd10bf35` cobre 1.039 casos no lote e repetição isolada:
 1.038 passaram no lote; um helper Swift excedeu o prazo de compilação e passou
 na repetição isolada da mesma fonte. A execução ampla conserva o resultado de
 falha; tipos, Oxlint/Oxfmt e build Release passaram. A instalação preservou os
@@ -85,15 +86,24 @@ Clippy estrito passaram. Isso não qualifica toda a política de mídia do Signa
 suas suítes upstream continuam sem execução.
 
 DeckCraft já tem persistência canônica/MCP, registro, carregador verificado e
-UI/bootstrap nativos integrados. A fonte `0f30f530` passou pelos 1.073 casos do
-app, tipos, Oxlint/Oxfmt e build Release; os 431 arquivos instalados e a assinatura
-conferem com o artefato lacrado. No simulador, criar pelo catálogo gerou um cartão
-real de um slide, preservado após reinício do processo. Porém o editor permaneceu
-na abertura por mais de cinco minutos: edição e exportação ainda não passaram.
-Uma correção posterior de recuperação passou em 12 casos pelo SDK real, sem
-reprodução dessa falha no aparelho. O executor privado por agente compila para
-WASI e passa em três casos de autoridade, mas a primeira jornada real atingiu o
-prazo durante a tradução do componente, antes de executar a Session.
+UI/bootstrap nativos integrados. O primeiro artefato `0f30f530`, com 1.073 casos,
+criou um cartão real e o preservou após reinício, mas ficou preso na abertura;
+essa observação permanece no registro. O novo artefato `a974701b` passou por
+1.094 casos, tipos, Oxlint/Oxfmt, núcleo nativo configurado e build Release.
+Os 431 arquivos instalados e a assinatura conferem. O motor real abriu o mesmo
+documento na WKWebView, confirmou seu estado salvo e voltou a abri-lo após
+reiniciar o processo. O fluxo específico dessa conta foi gravado e reproduzido;
+a primeira tentativa excedeu cinco segundos, e a repetição confirmou abertura
+em 7,8 segundos. Desempenho, layout de desktop e tema claro no iPhone permanecem
+sem aceite. A adaptação de toque/área segura está em preparação.
+
+As correções originais de observadores de áudio, gravação e revisão têm prova
+focada de 71 casos e revisão independente no
+[PR 146](https://github.com/EnzoTironi/zoen-native/pull/146), ainda em rascunho.
+A falha de CI na inicialização do Chrome, anterior às asserções do App, continua
+registrada e não foi dispensada. O executor privado do DeckCraft passou pelos
+casos de autoridade, aliases e bloqueio padrão; a jornada real completa por agente
+continua pendente. Nenhuma chamada de modelo foi comprovada nessa jornada.
 
 A jornada completa no iPhone, alteração por agente, recuperação, exportação e
 compartilhamento continua pendente. Só depois desse aceite o padrão será repetido
