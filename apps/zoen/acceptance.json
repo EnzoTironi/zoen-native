@@ -81,7 +81,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "iOS v135 now has bounded physical-top/bottom canvas, titleless host, clear management/tool headers, process-cold one-rectangle and byte-exact peer proof on the corrected Release HBC e18e756a, source27 c59951ed. The initial management-title overlap remains a failed first-artifact checkpoint. Final gesture robustness is PENDING: the first450ms momentum=false canvas pull after cold leaves actual canvas pixels and unmet10s Home wait; tap closes, and separate warm650ms momentum=true and450ms momentum=false pulls reach Home. Cause is unclassified; no loading-stall or causal gesture-fix claim. List geometry passes, but its final pull lacks an independently observed Home result before cold. First-artifact Hand-tool pan remains separately attributed. The peer stays byte-exact678B/74c2b72c after cold and all close inputs. App886 and final Excalidraw64 pass with0skips; initial63/64 fixture failure and its test-only stdin-readiness correction remain recorded. Warm Xcode reuses exact native176 and all native Mach-O sections; no Pods/Rust/CNG rerun. Published73c CI has11SUCCESS/0failed jobs, resources62+52/0skips/9realChrome, API28 console108/0failed/2skips and API35 console106/0skips with successful teardown; JUnit XML was not reinspected. It does not qualify the later iOS5 or test-only changes. Previous eff9SUCCESS/2FAIL and all Android v134 receipts remain unchanged, including the original60s AX unmet result, explicit pixel-classification corrections and ordinary cold proof. No full product/production/scale acceptance; all30journeys/sixplatforms/10gaps/threefalseflags and old checkpoints stay intact.",
+  "currentAcceptanceSummary": "Current Web attachment Runtime06 passes27 real pt-BR browser checkpoints on the actual-checkout91-file Release, browserErrors=[], exact three peer files/captions once and retained rendered message/item IDs after reload. Main UI excludes the thread and its chosen root shows one reply. Current English browser acceptance is not qualified: public peer setup hit admission rate limiting before browser creation, with one bounded repeat also refused and recorded separately. Historical Runtime04 bilingual54 checkpoints are a different artifact. Rust79, focused Node34/36, strict Clippy, repository edition2021 format and real export19.68s pass; the final integrated App check890/0skip plus TypeScript/Oxlint/Oxfmt passes in20.91s, followed only by receipt metadata updates. Runtime05 dual-localization startup failure and other negatives remain preserved; one initialized owner is verified in Runtime06. No canonical peer reply/thread/message-ID or caption-to-item linkage, actual browser attachment quota/offline/held-upload fault, native, production or scale acceptance is claimed. Pre-Send Web selections remain volatile; prior checkpoints,30journeys/sixplatforms/10gaps/threefalseflags are unchanged.",
   "retiredBackend": {
     "id": "custom-cloudflare-runtime",
     "status": "RETIRED",
@@ -3753,6 +3753,47 @@
         "noMetroCdpPrivateStateOrHumanDevices": true,
         "performanceAcceptance": false
       }
+    },
+    "webAttachmentV136": {
+      "id": "web-attachment-integrity-v136-bounded-release",
+      "baseCommit": "0ec83ea10ee9886317b4c7a1436d2efa8fe5b878",
+      "source": "17 v3 code/test paths plus edition2021 formatting of two Rust files, three browser acceptance paths and generated worker integrity. Final Release exported from actual checkout with dedicated Metro TMPDIR; live2358 inputs unchanged through export.",
+      "checks": {
+        "rustPassed": 79,
+        "focusedNodePassed": "34 App subset + 36 separate transport tests",
+        "typesLintFormat": "PASS",
+        "releaseExportSeconds": 19.68,
+        "fullAppCurrentWebCut": "PASS: final integrated check890 tests, zero failures/skips, TypeScript/Oxlint/Oxfmt; 20.91s after source, generated output and acceptance edits. Subsequent receipt metadata only.",
+        "repositoryRustFormat": "PASS: workspace cargo fmt --all --check, edition2021",
+        "strictClippy": "PASS: zoen-web-core all targets, warnings denied; 5.15s"
+      },
+      "browser": {
+        "locales": "Current Runtime06: pt-BR27 PASS with browserErrors=[]. Two English attempts failed peer admission rate limits before browser creation; current English browser execution is NOT_QUALIFIED. Historical Runtime04 pt-BR27/en-US27 PASS belong to an earlier artifact and are not combined with current proof.",
+        "boundedMedia": "Three exact peer files/caption bodies once; public editable caption/inline/thread actions; original rendered message IDs and peer item IDs retained after reload; main UI excludes thread and chosen root shows one reply.",
+        "currentReleaseFiles": 91
+      },
+      "limits": "CLI read returns all raw entries including threads, without canonical reply/thread/message metadata. Peer targets, placement, caption-to-item linkage and canonical message-ID uniqueness remain NOT_PROVEN. No actual browser attachment quota/offline/held-upload/revocation fault or new native/production/scale qualification. Pre-Send Web selections remain volatile across reload.",
+      "retainedNegatives": "v1 strict input-equality negative and generated-output qualification; two real malformed-length v1 failures; generation control; removed v2 mini React runtime; Runtime01/02 hidden-trigger diagnostics and Runtime03 invalid CLI exclusion. Runtime04 is a harness-only correction with product17/dist91 unchanged. Runtime05 failed startup with duplicate localization owners143/1056; actual-checkout Runtime06 has one initialized owner143. Generation/cache/realpath mechanism is not established. English06 peer admission rate limit remains separate from browser execution; no rate-limit override. English06 repeat also failed public peer admission before browser creation (62.21s); no further local retry or limit override.",
+      "receipts": {
+        "source": "/private/tmp/zoen-web-attachment-intent-v136/revision-03/source-map.json",
+        "ptBR": "/private/tmp/zoen-web-attachment-intent-v136/runtime-06/evidence/pt-BR/acceptance.json",
+        "enUS": "/private/tmp/zoen-web-attachment-intent-v136/runtime-06/evidence/en-US/acceptance.json",
+        "contract": "/private/tmp/zoen-web-attachment-intent-v136/runtime-06/live-source-before.json",
+        "negativeEvidenceRoot": "/private/tmp/zoen-web-attachment-intent-v136",
+        "fullApp": "/private/tmp/zoen-web-attachment-intent-v136/app-check-live-final-02.json",
+        "fullAppLogSha256": "bdb81b4a3d071ca20b8310937972a29df7539c57d6b6eeac742085e67c86726b",
+        "enUSRetry": "/private/tmp/zoen-web-attachment-intent-v136/runtime-06/retry-after-admission-cooldown/en-US/acceptance.json",
+        "artifactManifest": "/private/tmp/zoen-web-attachment-intent-v136/runtime-06/artifact-manifest.json",
+        "historicalRuntime04Qualification": "/private/tmp/zoen-web-attachment-intent-v136/qualification-final/qualification.json",
+        "localizationGraph": "/private/tmp/zoen-web-attachment-intent-v136/review-runtime-05/dual-localization-review.json",
+        "rustClippy": "/private/tmp/zoen-web-attachment-intent-v136/rust-clippy-final-01.json",
+        "repositoryRustFormat": "/private/tmp/zoen-web-attachment-intent-v136/rust-fmt-live-final-02.json",
+        "fullAppPrior": "/private/tmp/zoen-web-attachment-intent-v136/app-check-live-final-01.json",
+        "fullAppPriorLogSha256": "7ec3d5486efe74279a347f8ea770564ca2c5320f6e55394da673eb8a018f14b4",
+        "qualification": "/private/tmp/zoen-web-attachment-intent-v136/qualification-final-06/qualification.json",
+        "qualificationSha256": "387399d37718b79c549fba33eb8fa076b47f009137bc6d6d901e606735c04c2f"
+      },
+      "behaviorPatchSha256": "430b7f3b83f2f81c04b0af75ab523e29b7eae5fa829405498062d619542be3f9"
     }
   }
 }

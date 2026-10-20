@@ -1,6 +1,5 @@
 import { getBrowserMediaHost, type BrowserMediaHost } from '../core/browser-media.ts';
 import type { FileDto } from '../core/generated/FileDto';
-import { t } from '../i18n/index.ts';
 import { MAX_SELECTED_BYTES, type MediaDriver } from './types.ts';
 
 function current(host: BrowserMediaHost, resolveHost: () => BrowserMediaHost) {
@@ -73,6 +72,7 @@ export function createBrowserMediaDriver(
 ): MediaDriver {
   const owned = new Map<string, BrowserMediaHost>();
   const observed = new WeakSet<BrowserMediaHost>();
+  const intentOwners = new Map<string, BrowserMediaHost>();
   function observe(host: BrowserMediaHost) {
     if (observed.has(host)) return;
     observed.add(host);
@@ -89,16 +89,41 @@ export function createBrowserMediaDriver(
     );
   }
   return {
+    attachmentIntents: {
+      async newId() {
+        const host = resolveHost();
+        const mutation = await host.newAttachmentMutationId();
+        try {
+          current(host, resolveHost);
+        } catch (error) {
+          await host.releaseAttachmentMutation(mutation, false).catch(() => {});
+          throw error;
+        }
+        intentOwners.set(mutation, host);
+        return mutation;
+      },
+      async release(mutationId, accepted) {
+        const host = intentOwners.get(mutationId);
+        if (!host) return;
+        if (!host.closed.aborted) await host.releaseAttachmentMutation(mutationId, accepted);
+        intentOwners.delete(mutationId);
+      },
+    },
     async sendFile(selection) {
-      if (selection.replyTo || selection.thread) throw new Error(t('media.fileReplyUnavailable'));
-      if (selection.caption?.trim()) throw new Error(t('media.fileCaptionUnavailable'));
+      const intent = Object.freeze({ ...selection });
       const host = resolveHost();
-      selectionMetadata(selection.name, selection.mime);
-      const local = await selectedBytes(selection.uri, host, resolveHost);
-      const result = await host.sendFile(selection.spaceId, {
-        name: selection.name,
-        mime: selection.mime,
+      selectionMetadata(intent.name, intent.mime);
+      const local = await selectedBytes(intent.uri, host, resolveHost);
+      const result = await host.sendFile(intent.spaceId, {
+        name: intent.name,
+        mime: intent.mime,
         bytes: local.bytes,
+        attachment: {
+          mutationId: intent.mutationId,
+          caption: intent.caption ?? '',
+          replyTo: intent.replyTo,
+          thread: intent.thread,
+        },
       });
       current(host, resolveHost);
       return result;

@@ -528,6 +528,18 @@ impl<S: Signer> Client<S> {
         bodies: Vec<EventBody>,
         now: i64,
     ) -> Result<(), String> {
+        self.queue_domain_batch_uploads(space, bodies, now, &[])
+            .map(|_| ())
+    }
+
+    /// The same atomic domain batch, held behind the existing durable blob barrier.
+    pub(super) fn queue_domain_batch_uploads(
+        &mut self,
+        space: &str,
+        bodies: Vec<EventBody>,
+        now: i64,
+        uploads: &[String],
+    ) -> Result<Vec<String>, String> {
         self.document_writer(space)?;
         let end = self
             .saved
@@ -549,12 +561,14 @@ impl<S: Signer> Client<S> {
             } else {
                 pending.inner = Some(event.clone());
             }
+            pending.blob_uploads = uploads.to_vec();
             pending.order = Some(self.saved.outbox_sequence + index as u64 + 1);
             prepared.push((event.client_id.clone(), pending));
         }
         self.saved.outbox_sequence = end;
+        let identities = prepared.iter().map(|(id, _)| id.clone()).collect();
         self.saved.outbox.extend(prepared);
-        Ok(())
+        Ok(identities)
     }
 
     fn read_page(&self, item: &Item, include_draft: bool) -> Result<PageRead, String> {

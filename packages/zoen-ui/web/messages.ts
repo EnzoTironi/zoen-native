@@ -196,6 +196,14 @@ function plain(reason: string): string {
   return 'Não deu para fazer isso agora. Tente de novo.';
 }
 
+/** Exact user selection intent; keep this object unchanged for a failed Send retry. */
+export type AttachmentIntent = Readonly<{
+  mutationId: string;
+  caption: string;
+  replyTo: string | null;
+  thread: boolean;
+}>;
+
 export type MessagesState =
   | { kind: 'loading' }
   | { kind: 'active'; connection: ConnectionState; conversations: Conversation[]; notice: string | null }
@@ -213,6 +221,7 @@ export class Messages {
   private serial: Promise<void> = Promise.resolve();
   private handleChanges:Promise<void>=Promise.resolve();
   private closed = false;
+  private attachmentProducer: string | null = null;
   private connection: ConnectionState = { kind: 'connecting' };
   private generation = 0;
   private conversations: Conversation[] = [];
@@ -338,11 +347,14 @@ export class Messages {
   }
 
   /** Seal like native, upload every encrypted chunk, then post the file into the chat. */
-  async sendFile(space: string, file: { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null; voice?: VoiceMeta }, progress?: (done: number, total: number) => void): Promise<{itemId: string; messageId: string}> {
+  async sendFile(space: string, file: { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null; voice?: VoiceMeta; attachment?: AttachmentIntent }, progress?: (done: number, total: number) => void): Promise<{itemId: string; messageId: string}> {
+    const attachment = file.attachment ? Object.freeze({...file.attachment}) : undefined;
+    if (attachment && file.voice) throw new Error('Este arquivo tem dois tipos de envio. Selecione-o novamente.');
     if (file.bytes.length > MAX_FILE_BYTES) throw new Error('Este arquivo é grande demais para o navegador.');
     let framed: Uint8Array;
     try { framed = await this.core.bytes({ kind: 'seal_file', name: file.name.replace(/[\\/\0]/g, '_').slice(0, 255) || 'arquivo', mime: file.mime || 'application/octet-stream', bytes: file.bytes, thumb: file.thumb ?? new Uint8Array() }); }
     catch { throw new Error('Não deu para preparar este arquivo.'); }
+    if (attachment) return this.sendAttachment(space, attachment, framed);
     const length = new DataView(framed.buffer, framed.byteOffset).getUint32(0, true);
     const head = object(JSON.parse(new TextDecoder().decode(framed.subarray(4, 4 + length))));
     const doc = parseFile(head.doc);
@@ -377,6 +389,51 @@ export class Messages {
       } catch { /* keep the original upload error */ }
       throw error;
     }
+  }
+
+  async newAttachmentMutationId(): Promise<string> {
+    let mutation = '';
+    await this.enqueue(async () => {
+      if (!this.attachmentProducer) this.attachmentProducer = await this.core.text({kind: 'attachment_producer', request: JSON.stringify({op: 'begin'})});
+      mutation = await this.core.text({kind: 'attachment_producer', request: JSON.stringify({op: 'issue', producer_id: this.attachmentProducer})});
+    }, undefined, false);
+    return mutation;
+  }
+
+  async releaseAttachmentMutation(mutationId: string, accepted: boolean): Promise<void> {
+    await this.enqueue(async () => {
+      try { await this.core.text({kind: 'attachment_producer', request: JSON.stringify({op: accepted ? 'accepted' : 'drop', mutation_id: mutationId})}); }
+      catch (error) { throw Object.assign(new Error(message(error)), {soft: true}); }
+    }, undefined, false);
+  }
+
+  private async sendAttachment(space: string, intent: AttachmentIntent, framed: Uint8Array): Promise<{itemId: string; messageId: string}> {
+    let result: {itemId: string; messageId: string} | undefined;
+    // Freeze exact metadata before entering the serial queue or crossing a reload.
+    const request = JSON.stringify({space_id: space, mutation_id: intent.mutationId,
+      caption: intent.caption, reply_to: intent.replyTo, thread: intent.thread});
+    await this.enqueue(async () => {
+      const generation = this.generation;
+      let response: Record<string, unknown>;
+      try { response = object(JSON.parse(await this.core.text({kind: 'queue_attachment', request, framed, now: Date.now()}))); }
+      catch (error) { throw Object.assign(new Error(plain(message(error))), {soft: true}); }
+      const posted = object(response.result);
+      result = {itemId: string(posted.itemId), messageId: string(posted.messageId)};
+      // The existing encrypted snapshot owns the signed events, ciphertext and receipt.
+      // No PUT or publish may precede this durable save.
+      await this.apply(JSON.stringify(response.update), generation);
+      if (!this.closed && generation === this.generation && this.connection.kind === 'ready') {
+        try { await this.resumeDocumentUploads(generation); }
+        catch (error) {
+          if (!(error as {documentUploadRetry?: boolean}).documentUploadRetry) throw error;
+          if (this.closed || generation !== this.generation) return;
+          this.notice = 'Seu arquivo foi salvo e aguarda conexão para terminar de enviar.';
+          this.scheduleMaintenance(5000, generation, true); this.publish();
+        }
+      }
+    }, () => this.closed ? 'Esta sessão está fechada.' : null, false);
+    if (!result) throw new Error('Não foi possível guardar o arquivo para enviar.');
+    return result;
   }
 
   private async queueFileRecord(space: string, doc: FileDoc): Promise<{itemId: string; messageId: string}> {

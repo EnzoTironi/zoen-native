@@ -117,6 +117,31 @@ permanecem `false` até haver evidência suficiente. Os limites conhecidos e as
 falhas abertas continuam registrados. Build aprovado, frontend hospedado, interface
 polida ou adaptador privado funcional são progresso, sem encerrar a meta completa.
 
+## Checkpoint atual — Web v136
+
+O Release Runtime06 foi exportado do checkout real, com cache de transformação
+isolado: 91 arquivos e 2.358 fontes intactas durante o export. Passa 27 checkpoints
+reais em pt-BR, sem erros de navegador. O inglês atual não está qualificado: o
+backend limitou a preparação do peer antes de abrir o navegador nas duas
+tentativas, incluindo a repetição após o cooldown, registradas à parte. Os 54 checkpoints bilíngues do
+Runtime04 pertencem a outro artefato, preservado como evidência histórica.
+
+As três legendas preservam espaços, Unicode e quebras de linha; o peer recupera
+os três arquivos exatos e seus textos uma vez. Reload mantém IDs renderizados e
+IDs dos arquivos; a interface principal exclui a thread e a raiz mostra uma
+resposta. A CLI não expõe metadados canônicos de reply/thread, vínculo
+legenda-arquivo ou IDs das mensagens: continuam `NOT_PROVEN` no peer.
+
+Passam Rust79, Node focado34/36, Clippy estrito e formato Rust2021. O export leva
+19,68 s, sem alegação de desempenho. A revisão integrada passa nos890 testes sem
+skips, tipos/Oxlint/Oxfmt em20,91 s; depois só foram atualizados metadados dos recibos.
+O Runtime05 falha com dois donos de idioma; o Runtime06 usa um dono inicializado.
+A causa de geração/cache/realpath permanece sem prova. Negativos anteriores e os
+recibos em `/private/tmp/zoen-web-attachment-intent-v136/` ficam preservados.
+Não há nova aceitação nativa, de produção ou escala, nem testes reais de falhas de
+anexos no navegador. Seleções pré-envio seguem voláteis. As30jornadas, seis
+plataformas, dez lacunas, três flags `false` e registros abaixo mantêm seu escopo.
+
 ## Checkpoint atual
 
 O iOS v135 agora preenche o topo e a borda inferior físicos do canvas, sem

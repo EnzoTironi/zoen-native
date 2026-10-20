@@ -16,6 +16,7 @@ use crate::LinkedAccount;
 
 mod agents;
 mod apps;
+mod attachments;
 mod documents;
 mod history;
 mod integrity;
@@ -263,6 +264,7 @@ pub struct Client<S> {
     membership_net: membership::Network,
     linking_net: linking::Network,
     history_ready: bool,
+    attachment_producer: attachments::Producer,
 }
 
 impl<S: Signer> Client<S> {
@@ -321,6 +323,7 @@ impl<S: Signer> Client<S> {
             membership_net: membership::Network::default(),
             linking_net: linking::Network::default(),
             history_ready: false,
+            attachment_producer: attachments::Producer::new(),
         };
         client.device()?;
         client.load_linked_profile();

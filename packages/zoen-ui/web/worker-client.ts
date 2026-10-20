@@ -27,6 +27,8 @@ export type CoreOperation =
   | { kind: 'queue_annotation'; space: string; target: string; note: string; now: number }
   | { kind: 'mark_read'; space: string }
   | { kind: 'queue_file'; space: string; doc: string; now: number }
+  | { kind: 'attachment_producer'; request: string }
+  | { kind: 'queue_attachment'; request: string; framed: Uint8Array; now: number }
   | { kind: 'queue_file_record'; space: string; doc: string; now: number }
   | { kind: 'queue_failed_file'; space: string; doc: string; now: number; reason: string; chunks: string }
   | { kind: 'local_chunk'; blob: string }

@@ -60,7 +60,9 @@ export type AttachmentBatchResult = Readonly<{
 export type AttachmentDraftPort = {
   /** Live route/account/device/access admission; reply selection is owned by this draft. */
   current(scope: AttachmentDraftScope): boolean;
-  mutationId(): string;
+  mutationId(): string | Promise<string>;
+  /** accepted=true only after this draft has stored the returned receipt. */
+  releaseIntent?(mutationId: string, accepted: boolean): void | Promise<void>;
   send(scope: AttachmentDraftScope, item: AttachmentDraftItem): Promise<AttachmentReceipt>;
   /** Accepts only owned staged URIs; the platform retains its path allowlist. */
   discard(uri: string): void | Promise<void>;
@@ -114,6 +116,7 @@ export class AttachmentDraft {
   private readonly listeners = new Set<() => void>();
   private readonly pending = new Set<Promise<unknown>>();
   private readonly owned = new Set<string>();
+  private readonly intents = new Map<string, boolean>();
   private readonly cleaning = new Map<string, Promise<void>>();
   private accepting = true;
   private closing: Promise<void> | null = null;
@@ -175,6 +178,20 @@ export class AttachmentDraft {
     const rejected = results.find((result) => result.status === 'rejected');
     if (rejected?.status === 'rejected') throw failure('cleanup', rejected.reason);
   }
+  private async releaseIntent(id: string) {
+    const accepted = this.intents.get(id);
+    if (accepted === undefined) return;
+    await this.port.releaseIntent?.(id, accepted);
+    this.intents.delete(id);
+  }
+  private async dispose(uris: readonly string[], ids: readonly string[]) {
+    const results = await Promise.allSettled([
+      this.cleanupAll(uris),
+      ...ids.map((id) => this.releaseIntent(id)),
+    ]);
+    const rejected = results.find((result) => result.status === 'rejected');
+    if (rejected?.status === 'rejected') throw failure('cleanup', rejected.reason);
+  }
   retarget(replyTo: string | null, thread: boolean): boolean {
     if (
       !this.current() ||
@@ -194,7 +211,9 @@ export class AttachmentDraft {
       return Promise.reject(new AttachmentDraftFailure('busy'));
     const visible = new Set(this.state.items.map((item) => item.uri));
     const debt = [...this.owned].filter((uri) => !visible.has(uri));
-    if (debt.length)
+    const visibleIds = new Set(this.state.items.map((item) => item.mutationId));
+    const intentDebt = [...this.intents.keys()].some((id) => !visibleIds.has(id));
+    if (debt.length || intentDebt)
       return Promise.reject(
         new AttachmentDraftFailure(debt.some((uri) => this.cleaning.has(uri)) ? 'busy' : 'cleanup'),
       );
@@ -203,6 +222,7 @@ export class AttachmentDraft {
     return this.track(
       Promise.resolve().then(async () => {
         const added = new Set<string>();
+        const addedIds = new Set<string>();
         try {
           if (!this.current(epoch)) return;
           const assets = (await work()).map((asset) => ({ ...asset }));
@@ -228,24 +248,33 @@ export class AttachmentDraft {
             if (total > MAX_ATTACHMENT_TOTAL_BYTES) throw new AttachmentDraftFailure('size');
           }
           const ids = new Set(this.state.items.map((item) => item.mutationId));
-          const items = assets.map((asset) => {
-            const mutationId = this.port.mutationId();
+          const items: AttachmentDraftItem[] = [];
+          for (const asset of assets) {
+            const mutationId = await this.port.mutationId();
             if (!/^[A-Za-z0-9_-]{1,128}$/.test(mutationId) || ids.has(mutationId))
               throw new AttachmentDraftFailure('invalid');
             ids.add(mutationId);
-            return Object.freeze({
-              ...asset,
-              mutationId,
-              caption: '',
-              attempted: false,
-              accepted: null,
-            });
-          });
+            addedIds.add(mutationId);
+            this.intents.set(mutationId, false);
+            items.push(
+              Object.freeze({
+                ...asset,
+                mutationId,
+                caption: '',
+                attempted: false,
+                accepted: null,
+              }),
+            );
+          }
+          if (!this.current(epoch)) {
+            await this.dispose([...added], [...addedIds]);
+            return;
+          }
           this.publish({ items: Object.freeze([...this.state.items, ...items]) });
         } catch (cause) {
           let error = failure('pick', cause);
           try {
-            await this.cleanupAll([...added]);
+            await this.dispose([...added], [...addedIds]);
           } catch (cause) {
             error = failure('cleanup', cause);
           }
@@ -289,7 +318,7 @@ export class AttachmentDraft {
     const items = Object.freeze(this.state.items.filter((value) => value !== item));
     this.publish({ items, phase: items.length ? 'ready' : 'idle', error: null });
     return this.track(
-      this.cleanup(item.uri).catch((cause: unknown) => {
+      this.dispose([item.uri], [item.mutationId]).catch((cause: unknown) => {
         const error = failure('cleanup', cause);
         this.publish({ error });
         throw error;
@@ -330,6 +359,7 @@ export class AttachmentDraft {
               const result = await this.port.send(scope, item);
               const receipt = Object.freeze({ ...result });
               accepted.push(receipt);
+              this.intents.set(item.mutationId, true);
               this.publish({
                 items: Object.freeze(
                   this.state.items.map((value) =>
@@ -341,6 +371,9 @@ export class AttachmentDraft {
               });
             }
             try {
+              // Receipt enters the owning draft before the producer may forget it.
+              // A failed/lost ACK leaves this accepted item retryable without resending.
+              await this.releaseIntent(item.mutationId);
               await this.cleanup(item.uri);
             } catch (cause) {
               cleanupError ??= failure('cleanup', cause);
@@ -370,7 +403,7 @@ export class AttachmentDraft {
     const task = Promise.resolve().then(async () => {
       while (this.pending.size) await Promise.allSettled(this.pending);
       try {
-        await this.cleanupAll([...this.owned]);
+        await this.dispose([...this.owned], [...this.intents.keys()]);
       } catch (cause) {
         const error = failure('cleanup', cause);
         this.publish({ error });

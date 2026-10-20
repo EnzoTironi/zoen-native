@@ -606,3 +606,62 @@ test('attempt publication rechecks ownership before calling the native send port
   assert.equal(result.current, false);
   assert.deepEqual(f.discarded, [asset(1).uri]);
 });
+
+test('async producer issuance drains and drops a canceled selection before close completes', async () => {
+  const f = fixture();
+  const issuing = deferred<string>();
+  const released: string[] = [];
+  f.port.mutationId = () => issuing.promise;
+  f.port.releaseIntent = async (id, accepted) => {
+    released.push(`${id}:${accepted}`);
+  };
+  const picking = f.pick(asset(1));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  let closed = false;
+  const closing = f.draft.close().then(() => {
+    closed = true;
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(closed, false);
+  issuing.resolve('producer_1');
+  await Promise.all([picking, closing]);
+  assert.deepEqual(released, ['producer_1:false']);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.draft.getSnapshot().phase, 'closed');
+});
+
+test('UI receipt precedes producer ACK; lost ACK retries ACK without a second send', async () => {
+  const f = fixture();
+  await f.pick(asset(1));
+  let acks = 0;
+  f.port.releaseIntent = async (id, accepted) => {
+    assert.equal(accepted, true);
+    assert.equal(
+      f.draft.getSnapshot().items.find((item) => item.mutationId === id)?.accepted?.itemId,
+      `item-${id}`,
+    );
+    if (++acks === 1) throw new Error('lost ACK response');
+  };
+  assert.equal((await f.draft.send()).complete, true);
+  assert.equal(f.draft.getSnapshot().error?.kind, 'cleanup');
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.discarded.length, 0);
+  assert.equal((await f.draft.send()).complete, true);
+  assert.equal(f.calls.length, 1);
+  assert.equal(acks, 2);
+  assert.equal(f.discarded.length, 1);
+  await f.draft.close();
+});
+
+test('explicit removal drops its issued sequence and cannot acknowledge an unsent file', async () => {
+  const f = fixture();
+  const released: string[] = [];
+  f.port.releaseIntent = async (id, accepted) => {
+    released.push(`${id}:${accepted}`);
+  };
+  await f.pick(asset(1), asset(2));
+  await f.draft.remove(f.draft.getSnapshot().items[0]!.mutationId);
+  await f.draft.close();
+  assert.deepEqual(released.sort(), ['intent-1:false', 'intent-2:false']);
+  assert.equal(f.calls.length, 0);
+});

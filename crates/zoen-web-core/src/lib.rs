@@ -221,6 +221,30 @@ mod browser {
             )
             .map_err(error)
         }
+        /// One activation's explicit producer/sequence/acknowledgement lifecycle.
+        pub fn attachment_producer(&mut self, request: &str) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            self.client.attachment_producer(request).map_err(error)
+        }
+
+        /// Persist exact attachment intent and ciphertext before the first relay PUT.
+        pub fn queue_attachment(
+            &mut self,
+            request: &str,
+            framed: &[u8],
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            let (update, item, message) = self
+                .client
+                .queue_attachment(request, framed, time(now_ms)?)
+                .map_err(error)?;
+            serde_json::to_string(
+                &serde_json::json!({"update":update,"result":{"itemId":item,"messageId":message}}),
+            )
+            .map_err(error)
+        }
+
         pub fn queue_file_record(
             &mut self,
             space: &str,

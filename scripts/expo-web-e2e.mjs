@@ -462,12 +462,14 @@ try {
   await acceptMediaJourney({
     page,
     ui,
+    browserAuthor: ana.name,
     origin,
     space,
     tag,
     privateRoot,
     peerHome: bruno.home,
     cli,
+    until,
     screenshot,
     step,
   });

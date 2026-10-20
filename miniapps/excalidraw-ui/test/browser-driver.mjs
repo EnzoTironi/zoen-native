@@ -71,6 +71,35 @@ export async function findBrowserExecutable({
   return null;
 }
 
+/** Fixed, independent phase budgets: slow process startup cannot consume renderer time. */
+export function createBrowserDeadline() {
+  let phase = "startup";
+  let reject;
+  const expired = new Promise((_, fail) => {
+    reject = fail;
+  });
+  const arm = (milliseconds, message) =>
+    setTimeout(() => {
+      phase = "expired";
+      reject(Error(message));
+    }, milliseconds);
+  let timer = arm(30000, "Owned Chrome startup timeout");
+  return {
+    expired,
+    startExecution() {
+      // stderr may repeat the DevTools endpoint; it must not extend either budget.
+      if (phase !== "startup") return;
+      clearTimeout(timer);
+      phase = "execution";
+      timer = arm(18000, "Owned Chrome test deadline");
+    },
+    clear() {
+      phase = "cleared";
+      clearTimeout(timer);
+    },
+  };
+}
+
 export async function ownedBrowserResult(chrome, folder, path) {
   const child = spawn(
     chrome,
@@ -92,24 +121,23 @@ export async function ownedBrowserResult(chrome, folder, path) {
   );
   const owned = observeOwnedChild(child, { processGroup: process.platform !== "win32" });
   const lifecycle = Object.assign(owned.state, { profile: join(folder, "profile") });
-  let socket, deadline, startupDeadline, closeBrowser;
+  let socket, closeBrowser;
+  const deadline = createBrowserDeadline();
   let stderr = "";
   const errors = [];
   return withCleanup(async () => {
     return await Promise.race([
       (async () => {
         const endpoint = await new Promise((resolve, reject) => {
-          startupDeadline = setTimeout(() => reject(Error("Owned Chrome startup timeout")), 10000);
           child.once("error", reject);
           child.once("exit", () => {
-            clearTimeout(startupDeadline);
             reject(Error("Owned Chrome exited"));
           });
           child.stderr.on("data", (v) => {
             stderr = (stderr + v).slice(-16384);
             const match = stderr.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/);
             if (match) {
-              clearTimeout(startupDeadline);
+              deadline.startExecution();
               resolve(match[1]);
             }
           });
@@ -191,13 +219,10 @@ export async function ownedBrowserResult(chrome, folder, path) {
         );
         throw Error("Real canvas timeout " + JSON.stringify({ errors, info: info.result?.value }));
       })(),
-      new Promise((_, reject) => {
-        deadline = setTimeout(() => reject(Error("Owned Chrome test deadline")), 18000);
-      }),
+      deadline.expired,
     ]);
   }, async () => {
-    clearTimeout(deadline);
-    clearTimeout(startupDeadline);
+    deadline.clear();
     try {
       await owned.stop(closeBrowser);
     } finally {

@@ -47,6 +47,11 @@ export type LocalMediaFile = {
 export interface MediaDriver {
   /** Private encrypted pre-send journal, owned by the native Rust account session. */
   drafts?: MediaDraftPort;
+  /** Browser producer lease; IDs are issued by Rust and retired after UI acceptance. */
+  attachmentIntents?: {
+    newId(): Promise<string>;
+    release(mutationId: string, accepted: boolean): Promise<void>;
+  };
   voiceEditor?: VoiceNativePort;
   sendFile(selection: SendFile): Promise<{ itemId: string; messageId: string }>;
   sendVoice(recording: SendVoice): Promise<{ messageId: string; itemId: string }>;
