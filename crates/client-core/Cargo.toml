@@ -52,6 +52,7 @@ fastcdc = "5"
 ts-rs = { version = "12.0.1", optional = true }
 
 [dev-dependencies]
+zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
 sha2.workspace = true
 prost.workspace = true
 rcgen = { version = "0.14", default-features = false, features = ["ring"] }

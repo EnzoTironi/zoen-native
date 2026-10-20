@@ -1,0 +1,10 @@
+{
+  "source": "/private/tmp/zoen-artcraft-research-v147/probe-output/document.deckcraft",
+  "upstream": "a31b990d32f2c8562f1588562f922960c3fde48b",
+  "license": "MIT OR Apache-2.0 synthetic engine probe output",
+  "changed": "Only presentation.props.title changed using native ZIP entries; no editor code copied.",
+  "sha256": {
+    "original.deckcraft": "05d3dbb070bd08064aa9a453eae52f006b4fc1d059da88df7a8ade7dcc6d1b00",
+    "changed.deckcraft": "d1facd416e3f363838d88976102832444bced2839f1a64803972bdc46736455c"
+  }
+}

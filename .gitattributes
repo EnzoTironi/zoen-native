@@ -1,3 +1,5 @@
 # Pinned third-party notices and upstream patches retain their exact audited bytes.
 miniapps/deckcraft-ui/licenses/** -text -whitespace
 miniapps/deckcraft-ui/patches/*.patch -text -whitespace
+# ts-rs emits a trailing space before the signed-author field documentation.
+apps/zoen/src/core/generated/AppBinaryDocumentDto.ts -whitespace

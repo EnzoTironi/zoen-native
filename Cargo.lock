@@ -861,6 +861,7 @@ dependencies = [
  "uniffi",
  "webpki-roots 1.0.9",
  "zeroize",
+ "zip",
  "zoen-liveview",
 ]
 
@@ -3551,6 +3552,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "types",
+ "zip",
 ]
 
 [[package]]

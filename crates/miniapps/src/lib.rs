@@ -24,6 +24,7 @@ use localization as i18n;
 use localization::{is_en, t, thousands, tr, ts};
 use serde_json::{json, Value};
 
+pub mod deckcraft;
 pub mod excalidraw;
 mod schedule;
 pub use schedule::Actor;

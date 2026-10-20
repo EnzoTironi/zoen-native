@@ -12,6 +12,7 @@ import type { AgentProfile } from './generated/AgentProfile';
 import type { AgentRequestDto } from './generated/AgentRequestDto';
 import type { AppSpecDto } from './generated/AppSpecDto';
 import type { AppCallOutcome } from './generated/AppCallOutcome';
+import type { AppBinaryDocumentDto } from './generated/AppBinaryDocumentDto';
 import type { AppDocumentDto } from './generated/AppDocumentDto';
 import type { DeviceDto } from './generated/DeviceDto';
 import type { InviteDto } from './generated/InviteDto';
@@ -94,6 +95,10 @@ type Results = {
   find_people: Snapshot['conversations'][number]['members'];
   app_specs: AppSpecDto[];
   app_call_tool: AppCallOutcome;
+  app_binary_result: AppBinaryDocumentDto | null;
+  app_binary_read: AppBinaryDocumentDto;
+  app_binary_save: AppBinaryDocumentDto;
+  app_binary_create: AppBinaryDocumentDto;
   app_document_read: AppDocumentDto;
   app_document_save: AppDocumentDto;
   app_document_copy: AppDocumentDto;

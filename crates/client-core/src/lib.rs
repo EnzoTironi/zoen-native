@@ -7,6 +7,8 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 mod agent_notes;
+mod app_binary_documents;
+pub use app_binary_documents::AppBinaryDocumentDto;
 mod app_documents;
 pub use app_documents::AppDocumentDto;
 mod api;
