@@ -72,6 +72,7 @@ export default function Chats() {
               }}
             >
               <Text
+                testID="chats-title"
                 accessibilityRole="header"
                 style={{ color: colors.text, fontSize: 34, fontWeight: '700', letterSpacing: -1 }}
               >

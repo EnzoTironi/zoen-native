@@ -25,7 +25,7 @@ export function MediaActions({
   return (
     <Host
       testID="add-attachment-host"
-      style={{ width: 52, height: 52 }}
+      style={{ width: 40, height: 40 }}
       colorScheme={scheme}
       ignoreSafeArea="keyboard"
     >
@@ -36,12 +36,12 @@ export function MediaActions({
         modifiers={[
           buttonStyle(glass ? 'glass' : 'bordered'),
           buttonBorderShape('circle'),
-          controlSize('large'),
+          controlSize('regular'),
           labelStyle('iconOnly'),
           tint(colors.text),
           foregroundStyle(colors.text),
           disabled(isDisabled),
-          frame({ width: 52, height: 52 }),
+          frame({ width: 40, height: 40 }),
         ]}
       >
         <Button

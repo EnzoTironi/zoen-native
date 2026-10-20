@@ -64,7 +64,10 @@ export function createComposerFitting(
       Math.abs(result.width - request.width) <= 1 &&
       Math.abs(result.fontSize - request.fontSize) <= 0.5
     ) {
-      apply(Math.max(52, Math.min(160, result.height)), snapshot);
+      // Native iOS composer: 31pt regular field + 5pt/4pt internal insets.
+      // Telegram f1dd7a2 ChatTextInputFontMetrics.swift:28 and
+      // ChatTextInputPanelNode.swift:662,2342. Measurement still owns wrapping.
+      apply(Math.max(40, Math.min(160, result.height)), snapshot);
       return;
     }
     if (retries === 2) return;

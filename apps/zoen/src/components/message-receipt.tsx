@@ -59,12 +59,12 @@ export function MessageReceipt({
       accessibilityRole="text"
       accessibilityLabel={messageDeliveryLabel(delivery)}
       testID={`message-receipt-${delivery.toLowerCase()}`}
-      style={{ width: doubled ? 19 : 14, height: 14 }}
+      style={{ width: doubled ? 17 : 13, height: 14, justifyContent: 'center' }}
     >
-      <Icon name={name} size={14} color={color} />
+      <Icon name={name} size={11} color={color} />
       {doubled ? (
-        <View style={{ position: 'absolute', left: 5, top: 0 }}>
-          <Icon name={name} size={14} color={color} />
+        <View style={{ position: 'absolute', left: 6, top: 1.5 }}>
+          <Icon name={name} size={11} color={color} />
         </View>
       ) : null}
     </View>

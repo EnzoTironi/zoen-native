@@ -124,7 +124,8 @@ function render(
     phase = 'day',
     disabled = false,
     next,
-  }: { phase?: SkyPhase; disabled?: boolean; next?: TimelineEntry } = {},
+    previous,
+  }: { phase?: SkyPhase; disabled?: boolean; next?: TimelineEntry; previous?: TimelineEntry } = {},
 ) {
   const theme = resolveSkyTheme(phase, new Date('2026-10-18T12:00:00'));
   const calls: { mode: string; entry: TimelineEntry }[] = [];
@@ -134,6 +135,7 @@ function render(
   let hookCursor = 0;
   const hooks: unknown[] = [];
   let viewportWidth = 390;
+  let viewportFontScale = 1;
   const makeElement = (type: unknown, props: Record<string, unknown>) => ({ type, props });
   const modules: Record<string, unknown> = {
     react: {
@@ -166,7 +168,12 @@ function render(
       Text: 'Text',
       View: 'View',
       Pressable: 'NativePressable',
-      useWindowDimensions: () => ({ width: viewportWidth, height: 844 }),
+      useWindowDimensions: () => ({
+        width: viewportWidth,
+        height: 844,
+        scale: 3,
+        fontScale: viewportFontScale,
+      }),
     },
     'react-native-gesture-handler': {},
     'react-native-reanimated': { default: {} },
@@ -198,13 +205,15 @@ function render(
       return modules[name];
     },
   });
-  const draw = (value = message, width = viewportWidth) => {
+  const draw = (value = message, width = viewportWidth, fontScale = viewportFontScale) => {
     compilerCursor = 0;
     hookCursor = 0;
     viewportWidth = width;
+    viewportFontScale = fontScale;
     return module.exports.ConversationMessage({
       spaceId: 'synthetic_chat',
       entry: value,
+      previous,
       next,
       groupChat: true,
       disabled,
@@ -438,4 +447,180 @@ test('late decoded dimensions from a replaced file version cannot overwrite the 
   decode({ itemId: 'another-file', version: 2, sha256: 'c'.repeat(64), width: 2000, height: 1000 });
   tree = f.rerender(replacement);
   assert.ok(Math.abs(Number(width()) - 252) < 1e-6);
+});
+
+function plainMessage(text = 'OK', patch: Partial<TimelineEntry> = {}): TimelineEntry {
+  const base = entry(text);
+  return {
+    ...base,
+    kind: { Message: { text, card: null } } as TimelineEntry['kind'],
+    author: { ...base.author, is_me: true },
+    ...patch,
+  };
+}
+function nodeById(tree: unknown, id: string): Element {
+  const node = elements(tree).find((node) => node.props.testID === id);
+  assert.ok(node, id);
+  return node;
+}
+function measureText(
+  tree: unknown,
+  id: string,
+  {
+    right = 20,
+    count = 1,
+    width = 20,
+    statusWidth = 60,
+    height = 21,
+  }: { right?: number; count?: number; width?: number; statusWidth?: number; height?: number } = {},
+) {
+  const body = nodeById(tree, `message-body-${id}`);
+  const status = nodeById(tree, `message-metadata-${id}`);
+  (body.props.onTextLayout as Function)({
+    nativeEvent: { lines: Array.from({ length: count }, () => ({ x: 0, width: right, height })) },
+  });
+  (body.props.onLayout as Function)({ nativeEvent: { layout: { width } } });
+  (status.props.onLayout as Function)({
+    nativeEvent: { layout: { width: statusWidth, height: 14 } },
+  });
+}
+
+test('plain text uses compact Telegram metrics while canonical App/media presentation keeps its policy', () => {
+  const msg = plainMessage();
+  const f = render(msg);
+  const bubble = nodeById(f.tree, `message-bubble-${msg.id}`);
+  const style = styleOf(bubble);
+  assert.equal(style.maxWidth, 345);
+  assert.equal(style.minWidth, 40);
+  assert.equal(style.minHeight, 35);
+  assert.equal(style.borderRadius, 16);
+  assert.equal(style.paddingHorizontal, 11);
+  assert.equal(style.paddingTop, 6 + 1 / 3);
+  assert.equal(style.paddingBottom, 6 - 1 / 3);
+  assert.equal(styleOf(nodeById(f.tree, `message-row-${msg.id}`)).marginTop, 2 + 1 / 3);
+  assert.equal(styleOf(nodeById(f.tree, `message-body-${msg.id}`)).fontSize, 17);
+  assert.equal(styleOf(nodeById(f.tree, `message-body-${msg.id}`)).lineHeight, undefined);
+  const app = entry('App activity', {
+    kind: {
+      Message: {
+        text: 'App activity',
+        card: { item_id: 'app', kind_id: 'app', app: { app_id: 'deckcraft' } },
+      },
+    } as TimelineEntry['kind'],
+  });
+  const appTree = render(app).tree;
+  assert.equal(styleOf(nodeById(appTree, `message-bubble-${app.id}`)).width, 160);
+  assert.equal(
+    elements(appTree).find((node) => node.type === 'MiniappMessageCard')?.props.width,
+    160,
+  );
+  assert.equal(nodeById(appTree, `message-body-${app.id}`).props.onTextLayout, undefined);
+});
+
+test('core grouping drives zero merged spacing and the correct 8pt same-side corners', () => {
+  for (const mine of [false, true]) {
+    const msg = plainMessage('One', { author: { ...entry().author, is_me: mine } });
+    const previous = { ...msg, id: 'previous' };
+    const next = { ...msg, id: 'next' };
+    const f = render(msg, { previous, next });
+    const style = styleOf(nodeById(f.tree, `message-bubble-${msg.id}`));
+    assert.equal(styleOf(nodeById(f.tree, `message-row-${msg.id}`)).marginTop, 0);
+    assert.equal(style[mine ? 'borderTopRightRadius' : 'borderTopLeftRadius'], 8);
+    assert.equal(style[mine ? 'borderBottomRightRadius' : 'borderBottomLeftRadius'], 8);
+    assert.equal(style[mine ? 'borderTopLeftRadius' : 'borderTopRightRadius'], 16);
+  }
+});
+
+test('actual native trailing-line measurements place time inline without estimating characters', () => {
+  const msg = plainMessage('OK');
+  const f = render(msg);
+  assert.equal(styleOf(nodeById(f.tree, `message-metadata-${msg.id}`)).position, undefined);
+  measureText(f.tree, msg.id);
+  const tree = f.rerender();
+  assert.equal(styleOf(nodeById(tree, `message-bubble-${msg.id}`)).minWidth, 107);
+  assert.equal(styleOf(nodeById(tree, `message-metadata-${msg.id}`)).position, 'absolute');
+  assert.equal(styleOf(nodeById(tree, `message-metadata-${msg.id}`)).right, 11);
+  assert.equal(textValues(tree).filter((text) => text === 'OK').length, 1);
+  const receipt = elements(tree).find((node) => node.type === 'MessageReceipt');
+  assert.equal(receipt?.props.delivery, msg.delivery);
+});
+
+test('wrapped text only shares a trailing line that has measured space; RTL and tall metadata keep a row', () => {
+  for (const [text, right, height, inline] of [
+    ['A wrapped message', 160, 21, true],
+    ['A wrapped message', 280, 21, false],
+    ['مرحبا hello', 20, 21, false],
+    ['A wrapped message', 160, 10, false],
+  ] as const) {
+    const msg = plainMessage(text);
+    const f = render(msg);
+    measureText(f.tree, msg.id, { right, count: 2, width: 300, height });
+    assert.equal(
+      styleOf(nodeById(f.rerender(), `message-metadata-${msg.id}`)).position,
+      inline ? 'absolute' : undefined,
+    );
+  }
+});
+
+test('recycled message, viewport, delivery and font changes reject stale native layout callbacks', () => {
+  const original = plainMessage('Original');
+  const f = render(original);
+  const oldBody = nodeById(f.tree, `message-body-${original.id}`);
+  const oldStatus = nodeById(f.tree, `message-metadata-${original.id}`);
+  const next = plainMessage('New owner', { id: 'next_owner', delivery: 'Read', edited: true });
+  let tree = f.rerender(next);
+  (oldBody.props.onTextLayout as Function)({
+    nativeEvent: { lines: [{ x: 0, width: 20, height: 21 }] },
+  });
+  (oldBody.props.onLayout as Function)({ nativeEvent: { layout: { width: 300 } } });
+  (oldStatus.props.onLayout as Function)({ nativeEvent: { layout: { width: 60, height: 14 } } });
+  tree = f.rerender(next);
+  assert.equal(styleOf(nodeById(tree, `message-metadata-${next.id}`)).position, undefined);
+  measureText(tree, next.id);
+  tree = f.rerender(next);
+  assert.equal(styleOf(nodeById(tree, `message-metadata-${next.id}`)).position, 'absolute');
+  tree = f.rerender(next, 240, 2);
+  assert.equal(styleOf(nodeById(tree, `message-metadata-${next.id}`)).position, undefined);
+  assert.equal(styleOf(nodeById(tree, `message-bubble-${next.id}`)).maxWidth, 195);
+  assert.equal(
+    elements(tree).find((node) => node.type === 'MessageReceipt')?.props.delivery,
+    'Read',
+  );
+});
+
+test('plain bubble ink and paper retain every actual Zoen sky theme and message side', () => {
+  for (const phase of SKY_PHASES)
+    for (const mine of [false, true]) {
+      const msg = plainMessage('Read me', { author: { ...entry().author, is_me: mine } });
+      const f = render(msg, { phase });
+      const paper = styleOf(nodeById(f.tree, `message-bubble-${msg.id}`)).backgroundColor as string;
+      const ink = styleOf(nodeById(f.tree, `message-body-${msg.id}`)).color as string;
+      assert.ok(contrastRatio(ink, paper) >= 4.5, `${phase}, mine=${mine}`);
+      assert.equal(paper, mine ? f.theme.colors.mine : f.theme.colors.theirs);
+    }
+});
+
+test('plain bubble fill uses viewport coordinates before edge and author insets at the exact 500pt boundary', () => {
+  const cases = [
+    [240, 195, 147],
+    [402, 357, 309],
+    [500, 455, 407],
+    [501, 416, 368],
+    [520, 433, 385],
+    [120, 75, 40],
+  ] as const;
+  for (const [width, ownBound, incomingBound] of cases)
+    for (const mine of [true, false]) {
+      const msg = plainMessage('A long enough actual text body', {
+        author: { ...entry().author, is_me: mine },
+      });
+      const f = render(msg);
+      const tree = f.rerender(msg, width);
+      const bound = styleOf(nodeById(tree, `message-bubble-${msg.id}`)).maxWidth;
+      assert.equal(bound, mine ? ownBound : incomingBound, `${width}pt mine=${mine}`);
+      assert.ok(
+        Number(bound) <= width - 32 - (mine ? 0 : 48),
+        'Never overflow the actual available row slot',
+      );
+    }
 });

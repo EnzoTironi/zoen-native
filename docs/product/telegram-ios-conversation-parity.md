@@ -13,6 +13,9 @@ O [guia original](telegram-ios-reference.md), o
 [mapa inicial de superfícies](telegram-ios-next-ui-study.md) e a
 [matriz de 506 capacidades](../../output/telegram-feature-matrix-2026-10-20/index.html)
 continuam como pesquisa datada. A matriz não comprova paridade de implementação.
+O [mapa de implementação da conversa](telegram-ios-conversation-implementation.md)
+registra os arquivos e as linhas upstream, o primeiro lote de código e as
+diferenças ainda pendentes. Seus resultados de fonte não são aceite visual nativo.
 
 ## Escopo de implementação
 

@@ -28,6 +28,7 @@ import {
   ScrollView,
   Text,
   View,
+  useWindowDimensions,
   type ScrollViewInstance,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -35,13 +36,14 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-
 import { Icon } from '../components/primitives';
 import type { AttachmentComposerField } from './attachment-composer';
 import { DraftThumbnail } from './attachment-draft-strip';
+import { AttachmentGalleryPager } from './attachment-gallery-pager';
 import type { AttachmentApprovalProps } from './attachment-approval.types';
 import { mediaPlayback, type PlaybackOwner } from './playback-owner';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
 
 export const supportsMediaApproval = true;
-const background = '#090A0C';
+const background = '#000000';
 const surface = '#1C1E22';
 const secondary = '#A9ADB6';
 
@@ -53,7 +55,7 @@ function ApprovalAction({
   prominent = false,
   testID,
 }: {
-  name: 'xmark' | 'arrow.up' | 'pencil.tip.crop.circle' | 'trash';
+  name: 'chevron.left' | 'arrow.up' | 'pencil.tip.crop.circle' | 'trash';
   label: string;
   onPress(): void;
   disabled?: boolean;
@@ -62,7 +64,11 @@ function ApprovalAction({
 }) {
   const { colors } = useTheme();
   return (
-    <Host style={{ width: 48, height: 48 }} colorScheme="dark" ignoreSafeArea="keyboard">
+    <Host
+      style={{ width: prominent ? 46 : 44, height: 44 }}
+      colorScheme="dark"
+      ignoreSafeArea="keyboard"
+    >
       <Button
         testID={testID}
         label={label}
@@ -73,12 +79,12 @@ function ApprovalAction({
             prominent ? 'borderedProminent' : isLiquidGlassAvailable() ? 'glass' : 'bordered',
           ),
           buttonBorderShape('circle'),
-          controlSize('large'),
+          controlSize('regular'),
           labelStyle('iconOnly'),
           tint(prominent ? colors.accent : '#FFFFFF'),
           foregroundStyle(prominent ? colors.onAccent : '#FFFFFF'),
           disabled(unavailable),
-          frame({ width: 48, height: 48 }),
+          frame({ width: prominent ? 46 : 44, height: 44 }),
         ]}
       />
     </Host>
@@ -193,291 +199,311 @@ function ApprovalVideo({
   );
 }
 
+/** Telegram's selected-media rail uses screen-specific square thumbnails, with a four-point gap. */
+function reviewThumbnailSide(width: number, height: number, scale: number) {
+  if (scale < 2) return 106;
+  const longest = Math.max(width, height);
+  const metric = [
+    [956, 145, 1],
+    [926, 141, 1],
+    [896, 137, -1],
+    [874, 133, -1],
+    [844, 129, -1],
+    [812, 124, -1],
+    [736, 137, -1],
+    [667, 124, -1],
+    [0, 106, -1],
+  ].find(([minimum]) => longest >= minimum!)!;
+  return metric[1]! + metric[2]! / scale;
+}
+
 function ApprovalContent(props: AttachmentApprovalProps) {
   const { state, field, selectedId, recipient, busy, editing, canAdd, canEdit, error } = props;
   const selected = state.items.find((item) => item.mutationId === selectedId) ?? state.items[0];
   const { bottom } = useSafeAreaInsets();
+  const { width, height, scale } = useWindowDimensions();
+  const { reducedMotion } = useTheme();
   const [typing, setTyping] = useState(false);
+  const [showSelection, setShowSelection] = useState(false);
   const rail = useRef<ScrollViewInstance | null>(null);
   const position = Math.max(
     0,
     state.items.findIndex((item) => item === selected),
   );
+  const thumbnailSide = reviewThumbnailSide(width, height, scale);
   useEffect(() => {
-    rail.current?.scrollTo({ x: Math.max(0, position * 64 - 64), animated: true });
-  }, [position]);
+    if (showSelection)
+      rail.current?.scrollTo({
+        x: Math.max(0, position * (thumbnailSide + 4) - 4),
+        animated: !reducedMotion,
+      });
+  }, [position, showSelection, thumbnailSide, reducedMotion]);
   if (!selected) return null;
+  const select = (id: string) => {
+    if (busy || !props.isCurrent() || id === selected.mutationId) return;
+    void Haptics.selectionAsync().catch(() => {});
+    props.onSelect(id);
+  };
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: background }}>
+    <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: background }}>
       <KeyboardAvoidingView behavior="padding" automaticOffset style={{ flex: 1 }}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            paddingHorizontal: 16,
-            paddingTop: 8,
-            paddingBottom: 14,
-          }}
-        >
-          <ApprovalAction
-            testID="attachment-approval-close"
-            name="xmark"
-            label={t('common.close')}
-            onPress={props.onClose}
-          />
-          <View
-            style={{
-              minWidth: 0,
-              flexShrink: 1,
-              maxWidth: '70%',
-              alignItems: 'center',
-              paddingHorizontal: 18,
-              paddingVertical: 10,
-              borderRadius: 26,
-              backgroundColor: surface,
-              gap: 2,
+        <View testID="attachment-approval-stage" style={{ position: 'absolute', inset: 0 }}>
+          <AttachmentGalleryPager
+            items={state.items}
+            selectedId={selected.mutationId}
+            disabled={busy || editing || typing}
+            reducedMotion={reducedMotion}
+            isCurrent={props.isCurrent}
+            onSelect={select}
+            onDragStart={() => {
+              Keyboard.dismiss();
+              mediaPlayback.pauseAll();
             }}
-          >
-            <Text numberOfLines={1} style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '600' }}>
-              {t('media.attachmentRecipient', { name: recipient })}
-            </Text>
-            <Text accessibilityLiveRegion="polite" style={{ color: secondary, fontSize: 11 }}>
-              {t('media.attachmentCounter', { position: position + 1, total: state.items.length })}
-              {field.scope.thread
-                ? ` · ${t('media.attachmentInThread')}`
-                : field.scope.replyTo
-                  ? ` · ${t('media.attachmentInReply')}`
-                  : ''}
-            </Text>
-          </View>
-          <View style={{ width: 48 }} />
+            renderItem={(item, active) =>
+              !item.uri ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                  <ActivityIndicator color="#FFFFFF" />
+                  <Text style={{ color: secondary }}>{t('media.attachmentPreparing')}</Text>
+                </View>
+              ) : item.mime.startsWith('image/') ? (
+                <Image
+                  testID={`attachment-approval-image-${item.mutationId}`}
+                  source={{ uri: item.uri }}
+                  recyclingKey={item.mutationId}
+                  cachePolicy="none"
+                  contentFit="contain"
+                  accessibilityLabel={item.name}
+                  style={{ flex: 1 }}
+                />
+              ) : item.mime.startsWith('video/') && active ? (
+                <ApprovalVideo
+                  key={item.mutationId}
+                  uri={item.uri}
+                  active={!editing && !busy}
+                  isCurrent={props.isCurrent}
+                />
+              ) : (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                  <Icon
+                    name={
+                      item.mime.startsWith('video/')
+                        ? { ios: 'video', android: 'videocam', web: 'videocam' }
+                        : { ios: 'doc', android: 'description', web: 'description' }
+                    }
+                    color="#FFFFFF"
+                    size={42}
+                  />
+                  <Text style={{ color: '#FFFFFF', paddingHorizontal: 24 }} numberOfLines={2}>
+                    {item.name}
+                  </Text>
+                </View>
+              )
+            }
+          />
         </View>
-        <View
-          testID="attachment-approval-stage"
-          onTouchStart={() => Keyboard.dismiss()}
-          style={{
-            flex: 1,
-            minHeight: 48,
-            marginHorizontal: 12,
-            borderRadius: 28,
-            borderCurve: 'continuous',
-            overflow: 'hidden',
-            backgroundColor: '#000000',
-          }}
-        >
-          {!selected.uri ? (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-              <ActivityIndicator color="#FFFFFF" />
-              <Text style={{ color: secondary }}>{t('media.attachmentPreparing')}</Text>
+        <View pointerEvents="box-none" style={{ flex: 1, justifyContent: 'flex-end' }}>
+          <View style={{ paddingBottom: typing ? 8 : bottom, gap: 10 }}>
+            {!typing ? (
+              <>
+                {showSelection ? (
+                  <ScrollView
+                    ref={rail}
+                    testID="attachment-approval-selection-rail"
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={{ gap: 4, paddingHorizontal: 4, paddingVertical: 4 }}
+                  >
+                    {state.items.map((item, index) => (
+                      <Pressable
+                        key={item.mutationId}
+                        testID={`attachment-approval-thumbnail-${index}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: item === selected, disabled: busy }}
+                        accessibilityLabel={t('media.attachmentPosition', {
+                          position: index + 1,
+                          total: state.items.length,
+                          name: item.name,
+                        })}
+                        disabled={busy}
+                        onPress={() => select(item.mutationId)}
+                        style={{
+                          width: thumbnailSide,
+                          height: thumbnailSide,
+                          borderWidth: 2,
+                          borderColor: item === selected ? '#FFFFFF' : 'transparent',
+                        }}
+                      >
+                        <DraftThumbnail item={item} borderRadius={0} />
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                ) : null}
+                <View style={{ alignItems: 'flex-end', paddingHorizontal: 8 }}>
+                  <Host
+                    style={{ width: 64, height: 38 }}
+                    colorScheme="dark"
+                    ignoreSafeArea="keyboard"
+                  >
+                    <Button
+                      testID="attachment-approval-selection-count"
+                      label={String(state.items.length)}
+                      systemImage="photo.on.rectangle"
+                      onPress={() => {
+                        if (!busy && props.isCurrent()) setShowSelection((value) => !value);
+                      }}
+                      modifiers={[
+                        buttonStyle(isLiquidGlassAvailable() ? 'glass' : 'bordered'),
+                        font({ size: 15, weight: 'semibold' }),
+                        foregroundStyle('#FFFFFF'),
+                        disabled(busy),
+                        frame({ width: 64, height: 38 }),
+                        accessibilityLabel(
+                          t('media.attachmentDraftCount', { count: state.items.length }),
+                        ),
+                      ]}
+                    />
+                  </Host>
+                </View>
+              </>
+            ) : null}
+            <View style={{ paddingHorizontal: 8, gap: 8 }}>
+              {error ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Text
+                    accessibilityRole="alert"
+                    style={{ flex: 1, color: secondary, fontSize: 12 }}
+                  >
+                    {error}
+                  </Text>
+                  <Host matchContents colorScheme="dark">
+                    <Button
+                      label={t('chat.tryAgain2')}
+                      onPress={props.onRetry}
+                      modifiers={[disabled(editing)]}
+                    />
+                  </Host>
+                </View>
+              ) : null}
+              {field.retry ? (
+                <Text style={{ color: secondary, fontSize: 12 }}>
+                  {t('media.attachmentRetryLocked')}
+                </Text>
+              ) : null}
+              <View
+                style={{
+                  minHeight: 40,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  borderRadius: 20,
+                  backgroundColor: surface,
+                }}
+              >
+                <Caption key={selected.mutationId} field={field} onFocus={setTyping} />
+              </View>
             </View>
-          ) : selected.mime.startsWith('image/') ? (
-            <Image
-              testID="attachment-approval-image"
-              source={{ uri: selected.uri }}
-              recyclingKey={selected.mutationId}
-              cachePolicy="none"
-              contentFit="contain"
-              accessibilityLabel={selected.name}
-              style={{ flex: 1 }}
-            />
-          ) : selected.mime.startsWith('video/') ? (
-            <ApprovalVideo
-              key={selected.mutationId}
-              uri={selected.uri}
-              active={!editing && !busy}
-              isCurrent={props.isCurrent}
-            />
-          ) : (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-              <Icon
-                name={{ ios: 'doc', android: 'description', web: 'description' }}
-                color="#FFFFFF"
-                size={42}
-              />
-              <Text style={{ color: '#FFFFFF', paddingHorizontal: 24 }} numberOfLines={2}>
-                {selected.name}
-              </Text>
-            </View>
-          )}
-        </View>
-        {!typing ? (
-          <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 10 }}>
             <View
               style={{
                 flexDirection: 'row',
-                gap: 8,
+                minHeight: 44,
                 alignItems: 'center',
-                padding: 4,
-                borderRadius: 28,
-                backgroundColor: surface,
+                justifyContent: 'space-between',
+                gap: 4,
+                paddingHorizontal: 8,
               }}
             >
-              {canEdit ? (
-                <ApprovalAction
-                  testID="attachment-approval-edit"
-                  name="pencil.tip.crop.circle"
-                  label={t('media.attachmentEdit')}
-                  disabled={busy}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    props.onEdit();
-                  }}
-                />
-              ) : null}
-              <Host style={{ width: 48, height: 48 }} colorScheme="dark" ignoreSafeArea="keyboard">
-                <Menu
-                  testID="attachment-approval-add"
-                  label={t('media.addAttachment')}
-                  systemImage="plus"
-                  modifiers={[
-                    buttonStyle('plain'),
-                    labelStyle('iconOnly'),
-                    foregroundStyle('#FFFFFF'),
-                    disabled(!canAdd),
-                    frame({ width: 48, height: 48 }),
-                  ]}
-                >
-                  <Button
-                    label={t('media.photosAndVideos')}
-                    systemImage="photo.on.rectangle"
-                    onPress={() => props.onAdd('photo')}
-                  />
-                  <Button
-                    label={t('media.camera')}
-                    systemImage="camera"
-                    onPress={() => props.onAdd('camera')}
-                  />
-                  <Button
-                    label={t('media.file2')}
-                    systemImage="doc"
-                    onPress={() => props.onAdd('document')}
-                  />
-                </Menu>
-              </Host>
               <ApprovalAction
-                testID="attachment-approval-remove"
-                name="trash"
-                label={t('media.attachmentRemove', { name: selected.name })}
-                disabled={busy || selected.attempted}
-                onPress={() => props.onRemove(selected.mutationId)}
+                testID="attachment-approval-close"
+                name="chevron.left"
+                label={t('common.close')}
+                onPress={props.onClose}
               />
-            </View>
-          </View>
-        ) : null}
-        {!typing ? (
-          <View style={{ maxHeight: 66 }}>
-            <ScrollView
-              ref={rail}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingBottom: 6 }}
-            >
-              {state.items.map((item, index) => (
-                <Pressable
-                  key={item.mutationId}
-                  testID={`attachment-approval-thumbnail-${index}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: item === selected, disabled: busy }}
-                  accessibilityLabel={t('media.attachmentPosition', {
-                    position: index + 1,
-                    total: state.items.length,
-                    name: item.name,
-                  })}
-                  disabled={busy}
-                  onPress={() => {
-                    if (item !== selected) void Haptics.selectionAsync().catch(() => {});
-                    props.onSelect(item.mutationId);
-                  }}
-                  style={{
-                    width: 56,
-                    height: 56,
-                    padding: 2,
-                    borderRadius: 14,
-                    borderWidth: 2,
-                    borderColor: item === selected ? '#FFFFFF' : 'transparent',
-                  }}
-                >
-                  <View
-                    style={{
-                      flex: 1,
-                      borderRadius: 9,
-                      overflow: 'hidden',
-                      backgroundColor: surface,
-                    }}
+              {!typing ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  {canEdit ? (
+                    <ApprovalAction
+                      testID="attachment-approval-edit"
+                      name="pencil.tip.crop.circle"
+                      label={t('media.attachmentEdit')}
+                      disabled={busy}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        props.onEdit();
+                      }}
+                    />
+                  ) : null}
+                  <Host
+                    style={{ width: 44, height: 44 }}
+                    colorScheme="dark"
+                    ignoreSafeArea="keyboard"
                   >
-                    <DraftThumbnail item={item} />
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
-        <View
-          style={{
-            paddingHorizontal: 16,
-            paddingTop: 8,
-            paddingBottom: typing ? 8 : Math.max(bottom, 12),
-            gap: 8,
-          }}
-        >
-          {error ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text accessibilityRole="alert" style={{ flex: 1, color: secondary, fontSize: 12 }}>
-                {error}
-              </Text>
-              <Host matchContents colorScheme="dark">
-                <Button
-                  label={t('chat.tryAgain2')}
-                  onPress={props.onRetry}
-                  modifiers={[disabled(editing)]}
+                    <Menu
+                      testID="attachment-approval-add"
+                      label={t('media.addAttachment')}
+                      systemImage="plus"
+                      modifiers={[
+                        buttonStyle('plain'),
+                        labelStyle('iconOnly'),
+                        foregroundStyle('#FFFFFF'),
+                        disabled(!canAdd),
+                        frame({ width: 44, height: 44 }),
+                      ]}
+                    >
+                      <Button
+                        label={t('media.photosAndVideos')}
+                        systemImage="photo.on.rectangle"
+                        onPress={() => props.onAdd('photo')}
+                      />
+                      <Button
+                        label={t('media.camera')}
+                        systemImage="camera"
+                        onPress={() => props.onAdd('camera')}
+                      />
+                      <Button
+                        label={t('media.file2')}
+                        systemImage="doc"
+                        onPress={() => props.onAdd('document')}
+                      />
+                    </Menu>
+                  </Host>
+                  <ApprovalAction
+                    testID="attachment-approval-remove"
+                    name="trash"
+                    label={t('media.attachmentRemove', { name: selected.name })}
+                    disabled={busy || selected.attempted}
+                    onPress={() => props.onRemove(selected.mutationId)}
+                  />
+                </View>
+              ) : (
+                <Text numberOfLines={1} style={{ flex: 1, color: secondary, fontSize: 12 }}>
+                  {t('media.attachmentRecipient', { name: recipient })}
+                </Text>
+              )}
+              {state.phase === 'sending' ? (
+                <View style={{ width: 46, height: 44, justifyContent: 'center' }}>
+                  <ActivityIndicator
+                    color="#FFFFFF"
+                    accessibilityLabel={t('media.attachmentSending', {
+                      position: 1,
+                      total: state.items.length,
+                    })}
+                  />
+                </View>
+              ) : (
+                <ApprovalAction
+                  testID="attachment-approval-send"
+                  name="arrow.up"
+                  label={
+                    field.retry
+                      ? t('media.attachmentsRetry')
+                      : t('media.attachmentSendCount', { count: field.remaining })
+                  }
+                  prominent
+                  disabled={field.sending || !field.remaining}
+                  onPress={field.onSend}
                 />
-              </Host>
+              )}
             </View>
-          ) : null}
-          {field.retry ? (
-            <Text style={{ color: secondary, fontSize: 12 }}>
-              {t('media.attachmentRetryLocked')}
-            </Text>
-          ) : null}
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
-            <View
-              style={{
-                flex: 1,
-                paddingHorizontal: 16,
-                paddingVertical: 14,
-                borderRadius: 26,
-                backgroundColor: surface,
-              }}
-            >
-              <Caption key={selected.mutationId} field={field} onFocus={setTyping} />
-            </View>
-            {state.phase === 'sending' ? (
-              <View style={{ width: 48, height: 48, justifyContent: 'center' }}>
-                <ActivityIndicator
-                  color="#FFFFFF"
-                  accessibilityLabel={t('media.attachmentSending', {
-                    position: 1,
-                    total: state.items.length,
-                  })}
-                />
-              </View>
-            ) : (
-              <ApprovalAction
-                testID="attachment-approval-send"
-                name="arrow.up"
-                label={
-                  field.retry
-                    ? t('media.attachmentsRetry')
-                    : t('media.attachmentSendCount', { count: field.remaining })
-                }
-                prominent
-                disabled={field.sending || !field.remaining}
-                onPress={field.onSend}
-              />
-            )}
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -498,7 +524,7 @@ export function AttachmentApproval(props: AttachmentApprovalProps) {
       onRequestClose={props.onClose}
     >
       <SafeAreaProvider>
-        <StatusBar style="light" />
+        <StatusBar hidden />
         <ApprovalContent {...props} />
       </SafeAreaProvider>
     </Modal>

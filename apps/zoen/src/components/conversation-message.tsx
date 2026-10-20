@@ -1,5 +1,11 @@
 import { memo, useCallback, useLayoutEffect, useRef, useState, type ComponentRef } from 'react';
-import { Text, View, useWindowDimensions } from 'react-native';
+import {
+  Text,
+  View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+  type TextLayoutEvent,
+} from 'react-native';
 import type { TimelineEntry } from '../core/types';
 import type { ItemDetail } from '../core/generated/ItemDetail';
 import {
@@ -63,7 +69,8 @@ export const ConversationMessage = memo(function ConversationMessage({
   onQuote,
 }: ConversationMessageProps) {
   const { colors } = useTheme();
-  const { width } = useWindowDimensions();
+  const { width, scale, fontScale } = useWindowDimensions();
+  const pixel = 1 / (Number.isFinite(scale) && scale > 0 ? scale : 1);
   const bubble = useRef<ComponentRef<typeof View>>(null);
   const renderedMessage = useRef<string | null>(entry.id);
   const pendingMeasures = useRef(new Set<(anchor: MessageAnchor | null) => void>());
@@ -136,6 +143,109 @@ export const ConversationMessage = memo(function ConversationMessage({
     hour: '2-digit',
     minute: '2-digit',
   });
+  // Telegram's compact text metrics; media keeps its own aspect and card policy.
+  // Apply fill to the viewport before Telegram's outer edge residual (3×3)
+  // and the retained Zoen author gutter. Row padding only caps the result.
+  const textWidthFill =
+    width <= 500 ? Math.max(1, width - 36) : Math.max(1, Math.floor(width * 0.85));
+  const textMaxWidth = Math.min(availableWidth, Math.max(40, textWidthFill - 9 - authorGutter));
+  const layoutKey = `${entry.id.length}:${entry.id}${text.length}:${text}${time}:${entry.edited}:${entry.delivery}:${width}:${fontScale}:${attachment}`;
+  const renderedText = useRef<string | null>(layoutKey);
+  const [textLayout, setTextLayout] = useState<{
+    key: string;
+    count: number;
+    right: number;
+    height: number;
+  } | null>(null);
+  const [textFrame, setTextFrame] = useState<{ key: string; width: number } | null>(null);
+  const [statusLayout, setStatusLayout] = useState<{
+    key: string;
+    width: number;
+    height: number;
+  } | null>(null);
+  useLayoutEffect(() => {
+    renderedText.current = layoutKey;
+    return () => {
+      renderedText.current = null;
+    };
+  }, [layoutKey]);
+  const onTextLayout = useCallback(
+    (event: TextLayoutEvent) => {
+      if (renderedText.current !== layoutKey) return;
+      const lines = event.nativeEvent.lines;
+      const last = lines.at(-1);
+      if (
+        !last ||
+        ![last.x, last.width, last.height].every(Number.isFinite) ||
+        last.x < 0 ||
+        last.width < 0 ||
+        last.height <= 0
+      )
+        return;
+      const right = last.x + last.width;
+      setTextLayout((prior) =>
+        prior?.key === layoutKey &&
+        prior.count === lines.length &&
+        prior.right === right &&
+        prior.height === last.height
+          ? prior
+          : { key: layoutKey, count: lines.length, right, height: last.height },
+      );
+    },
+    [layoutKey],
+  );
+  const onTextFrame = useCallback(
+    (event: LayoutChangeEvent) => {
+      if (renderedText.current !== layoutKey) return;
+      const measured = event.nativeEvent.layout.width;
+      if (!Number.isFinite(measured) || measured <= 0) return;
+      setTextFrame((prior) =>
+        prior?.key === layoutKey && prior.width === measured
+          ? prior
+          : { key: layoutKey, width: measured },
+      );
+    },
+    [layoutKey],
+  );
+  const onStatusLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      if (renderedText.current !== layoutKey) return;
+      const { width: measured, height } = event.nativeEvent.layout;
+      if (![measured, height].every(Number.isFinite) || measured <= 0 || height <= 0) return;
+      setStatusLayout((prior) =>
+        prior?.key === layoutKey && prior.width === measured && prior.height === height
+          ? prior
+          : { key: layoutKey, width: measured, height },
+      );
+    },
+    [layoutKey],
+  );
+  const measuredText = textLayout?.key === layoutKey ? textLayout : null;
+  const measuredFrame = textFrame?.key === layoutKey ? textFrame : null;
+  const measuredStatus = statusLayout?.key === layoutKey ? statusLayout : null;
+  // RTL text gets a separate status row, as in Telegram's trailing-line layout.
+  const canMeasureInline =
+    !attachment && !!text.trim() && !/[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/u.test(text);
+  const singleLineWidth =
+    canMeasureInline && measuredText?.count === 1 && measuredStatus
+      ? measuredText.right + measuredStatus.width + 5 + 22
+      : 40;
+  const textMinWidth = Math.min(textMaxWidth, Math.max(40, singleLineWidth));
+  const trailingWidth = Math.max(measuredFrame?.width ?? 0, textMinWidth - 22);
+  const inlineStatus =
+    canMeasureInline &&
+    !!measuredText &&
+    !!measuredStatus &&
+    !!measuredFrame &&
+    measuredText.height >= measuredStatus.height &&
+    trailingWidth - measuredText.right >= measuredStatus.width + 5;
+  const textCorners = {
+    borderRadius: 16,
+    borderTopRightRadius: mine && grouped ? 8 : 16,
+    borderTopLeftRadius: !mine && grouped ? 8 : 16,
+    borderBottomRightRadius: mine && !lastInGroup ? 8 : 16,
+    borderBottomLeftRadius: !mine && !lastInGroup ? 8 : 16,
+  };
   // VoiceOver groups text bubbles, so their nested quote and metadata must also
   // be represented on the group. Native media keeps its independent controls.
   const accessibilityMessageLabel = [
@@ -199,6 +309,8 @@ export const ConversationMessage = memo(function ConversationMessage({
       };
   const metadata = (outside = false) => (
     <View
+      testID={`message-metadata-${entry.id}`}
+      onLayout={outside ? undefined : onStatusLayout}
       pointerEvents={outside ? 'auto' : 'none'}
       style={{
         flexDirection: 'row',
@@ -206,7 +318,11 @@ export const ConversationMessage = memo(function ConversationMessage({
         alignItems: 'center',
         gap: 5,
         paddingHorizontal: outside ? 8 : 0,
-        paddingTop: 4,
+        alignSelf: 'flex-end',
+        position: !outside && inlineStatus ? 'absolute' : undefined,
+        right: !outside && inlineStatus ? 11 : undefined,
+        bottom: !outside && inlineStatus ? 6 - pixel : undefined,
+        paddingTop: outside ? 4 : inlineStatus ? 0 : 2,
         paddingBottom: outside ? 3 : 0,
       }}
     >
@@ -278,8 +394,8 @@ export const ConversationMessage = memo(function ConversationMessage({
       testID={`message-row-${entry.id}`}
       style={{
         alignItems: mine ? 'flex-end' : 'flex-start',
-        marginTop: grouped ? 3 : 14,
-        marginBottom: lastInGroup ? 5 : 0,
+        marginTop: grouped ? 0 : 2 + pixel,
+        marginBottom: 0,
       }}
     >
       {!mine && !grouped && groupChat ? (
@@ -367,15 +483,15 @@ export const ConversationMessage = memo(function ConversationMessage({
                 testID={`message-bubble-${entry.id}`}
                 style={{
                   width: attachment ? mediaWidth : undefined,
-                  maxWidth: attachment ? '100%' : '87%',
-                  borderRadius: 22,
+                  maxWidth: attachment ? '100%' : textMaxWidth,
+                  minWidth: attachment ? undefined : textMinWidth,
+                  minHeight: attachment ? undefined : 35,
+                  ...(attachment ? { borderRadius: 22 } : textCorners),
                   borderCurve: 'continuous',
-                  borderBottomRightRadius: mine && lastInGroup && !attachment ? 6 : 22,
-                  borderBottomLeftRadius: !mine && lastInGroup && !attachment ? 6 : 22,
                   backgroundColor: attachment && !voice ? 'transparent' : paper,
-                  paddingHorizontal: attachment ? 0 : 14,
-                  paddingTop: attachment ? 0 : 9,
-                  paddingBottom: attachment ? 0 : 7,
+                  paddingHorizontal: attachment ? 0 : 11,
+                  paddingTop: attachment ? 0 : 6 + pixel,
+                  paddingBottom: attachment ? 0 : 6 - pixel,
                 }}
               >
                 {!entry.deleted && entry.reply_to ? (
@@ -433,10 +549,12 @@ export const ConversationMessage = memo(function ConversationMessage({
                 {!voice && card?.kind_id !== 'file' && text.trim() ? (
                   <Text
                     testID={`message-body-${entry.id}`}
+                    onTextLayout={attachment ? undefined : onTextLayout}
+                    onLayout={attachment ? undefined : onTextFrame}
                     style={{
                       color: attachment ? colors.text : ink,
                       fontSize: 17,
-                      lineHeight: 23,
+                      lineHeight: attachment ? 23 : undefined,
                       fontStyle: entry.deleted ? 'italic' : 'normal',
                       paddingHorizontal: attachment ? 12 : 0,
                       paddingVertical: attachment ? 8 : 0,
@@ -500,9 +618,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                       inset: 0,
                       borderWidth: 2,
                       borderColor: colors.accent,
-                      borderRadius: attachment ? 24 : 22,
-                      borderBottomRightRadius: mine && lastInGroup && !attachment ? 6 : undefined,
-                      borderBottomLeftRadius: !mine && lastInGroup && !attachment ? 6 : undefined,
+                      ...(attachment ? { borderRadius: 24 } : textCorners),
                     }}
                   />
                 ) : null}

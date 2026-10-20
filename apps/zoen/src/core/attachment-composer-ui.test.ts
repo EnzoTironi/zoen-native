@@ -9,7 +9,9 @@ import { build } from 'esbuild';
 
 type Element = { type: unknown; props: Record<string, unknown> };
 type Handler = (...args: unknown[]) => unknown;
-const source = new URL('../components/message-composer.tsx', import.meta.url);
+const source =
+  process.env.ZOEN_COMPOSER_UI_SOURCE ??
+  new URL('../components/message-composer.tsx', import.meta.url);
 const output = await build({
   stdin: { contents: readFileSync(source, 'utf8'), loader: 'tsx' },
   bundle: true,
@@ -81,7 +83,7 @@ const fieldOutputs = new Map(
     ),
   ),
 );
-function fixture(platform: Platform = 'ios') {
+function fixture(platform: Platform = 'ios', fontScale = 1) {
   type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
   type Effect = () => void | (() => void);
   const slots: Slot[] = [];
@@ -223,7 +225,7 @@ function fixture(platform: Platform = 'ios') {
         assert.equal(platform, 'ios', 'native tag lookup is unavailable outside iOS fitting');
         return 101;
       },
-      useWindowDimensions: () => ({ fontScale: 1 }),
+      useWindowDimensions: () => ({ fontScale }),
     },
     '../../modules/zoen-core/src/ZoenCoreModule': {
       __esModule: true,
@@ -441,7 +443,7 @@ test('a sent file caption can be cleared without allowing empty ordinary text ed
   assert.equal(find(emptyCaption, byId('send-message')).props.disabled, false);
   assert.equal(
     (find(emptyCaption, byId('message-input')).props.style as { height?: number }[]).at(-1)!.height,
-    52,
+    40,
   );
   const emptyText = f.render(undefined, { value: '', editing: true });
   assert.equal(find(emptyText, byId('send-message')).props.disabled, true);
@@ -458,4 +460,116 @@ test('an unread native draft cannot be overwritten by an initially empty field; 
   const loaded = f.render(undefined, { draft: { ...draft, ready: true } });
   assert.equal(find(loaded, byId('message-input')).props.editable, true);
   assert.equal(find(loaded, byId('message-input')).props.value, 'My unsent normal text');
+});
+
+test('iOS keeps the exact send intent inside the field while empty audio and search navigation stay outside', () => {
+  const f = fixture();
+  const surface = (tree: Element) => find(tree, byId('message-composer-field-surface'));
+  let tree = f.render();
+  assert.equal(
+    scan(surface(tree)).some(byId('send-message')),
+    true,
+    'The real Send callback must be rendered inside the native field surface',
+  );
+  const send = find(surface(tree), byId('send-message'));
+  (send.props.onPress as Handler)();
+  assert.deepEqual(f.calls, ['send-normal']);
+  assert.equal(scan(tree).filter(byId('send-message')).length, 1);
+
+  tree = f.render(undefined, { value: '' });
+  assert.equal(scan(surface(tree)).some(byId('send-message')), false);
+  assert.equal(scan(tree).some(byId('send-message')), false);
+  assert.ok(
+    (find(tree, byId('message-composer-row')).props.children as unknown[]).includes('Microphone'),
+  );
+  assert.equal((surface(tree).props.children as unknown[]).includes('Microphone'), false);
+
+  tree = f.render(f.file);
+  (find(surface(tree), byId('send-attachments')).props.onPress as Handler)();
+  assert.deepEqual(f.calls, ['send-normal', 'send-files']);
+  assert.equal(scan(tree).some(byId('send-message')), false);
+  const moves: unknown[] = [];
+  const search = {
+    state: {
+      active: true,
+      completed: true,
+      loading: false,
+      hits: [{}],
+      index: 0,
+      cursor: null,
+      query: 'term',
+    },
+    status: '1/1',
+    onClose: () => {},
+    onMove: (direction: unknown) => moves.push(direction),
+    onAsk: () => moves.push('ai'),
+    onSearch: () => {},
+  };
+  tree = f.render(f.file, { search, value: 'term' });
+  assert.equal(scan(surface(tree)).some(byId('older-search-result')), false);
+  assert.ok(find(tree, byId('older-search-result')).props.disabled);
+  assert.ok(find(tree, byId('newer-search-result')).props.disabled);
+  assert.equal(scan(tree).some(byId('send-attachments')), false);
+
+  tree = f.render(f.file, {
+    search: { ...search, state: { ...search.state, hits: [], index: -1 } },
+    value: 'term',
+  });
+  (find(surface(tree), byId('ask-conversation')).props.onPress as Handler)();
+  assert.deepEqual(moves, ['ai']);
+  assert.deepEqual(f.calls, ['send-normal', 'send-files']);
+});
+
+test('the mounted iOS field uses one font for display and scoped native fitting at larger system text sizes', async () => {
+  const f = fixture('ios', 1.8);
+  const inputRef = { current: null as unknown };
+  const root = f.render(undefined, {
+    inputRef,
+    context: { entry: { id: 'reply' }, onCancel: () => {} },
+  });
+  const field = find(root, byId('message-input'));
+  const textStyle = (field.props.style as Record<string, unknown>[])[0]!;
+  assert.equal(textStyle.fontSize, 17);
+  assert.equal(textStyle.minHeight, 40);
+  assert.equal(textStyle.maxHeight, 160);
+  assert.equal(textStyle.paddingTop, 9.5);
+  assert.equal(textStyle.paddingBottom, 9.5);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.ok(f.measurements.length);
+  assert.ok(f.measurements.every((request) => Math.abs(request.fontSize - 30.6) < 1e-9));
+  assert.equal(inputRef.current, f.nativeField);
+  assert.equal(
+    find(root, (node) => node.type === 'MessageContext').props.entry &&
+      scan(root).filter((node) => node.type === 'MessageContext').length,
+    1,
+  );
+  const outer = f.renderRoot({});
+  const outerStyle = Object.assign({}, ...(outer.props.style as object[]));
+  assert.equal(
+    outerStyle.paddingBottom,
+    34,
+    'the native viewport already applies the keyboard correction',
+  );
+  assert.equal(outerStyle.paddingTop, 0);
+  assert.equal(outerStyle.paddingHorizontal, 8);
+  f.render(f.file, { inputRef });
+  assert.equal(
+    inputRef.current,
+    f.nativeField,
+    'caption mode must keep the same real editor handle',
+  );
+});
+
+test('Android and Web keep the existing outside-send layout and composer sizing', () => {
+  for (const platform of ['android', 'web'] as const) {
+    const f = fixture(platform);
+    const tree = f.render();
+    const surface = find(tree, byId('message-composer-field-surface'));
+    assert.equal(scan(surface).some(byId('send-message')), false);
+    assert.equal(scan(tree).filter(byId('send-message')).length, 1);
+    const style = (find(tree, byId('message-input')).props.style as Record<string, unknown>[])[0]!;
+    assert.equal(style.minHeight, 52);
+    assert.equal(style.fontSize, 16);
+    assert.equal(f.measurements.length, 0);
+  }
 });

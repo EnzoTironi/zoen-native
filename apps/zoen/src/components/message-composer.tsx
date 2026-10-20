@@ -97,6 +97,11 @@ export function MessageComposer({
     files?: AttachmentComposerField;
   }) {
     const fieldText = files ? files.value : value;
+    const native = process.env.EXPO_OS === 'ios';
+    // The native send action belongs inside the field; the empty microphone
+    // remains a separate control. Telegram f1dd7a2 panel:3407,3453.
+    const inlineAction =
+      native && (search ? canAsk : Boolean(files || hasText || editing || !voice));
     const field = (
       <ComposerTextField
         inputRef={inputRef}
@@ -133,16 +138,80 @@ export function MessageComposer({
         onFocus={onFocus}
         onBlur={onBlur}
         style={{
-          minHeight: 52,
+          flex: native ? 1 : undefined,
+          minWidth: native ? 0 : undefined,
+          minHeight: native ? 40 : 52,
           maxHeight: 160,
-          paddingHorizontal: 18,
-          paddingTop: 15,
-          paddingBottom: 14,
+          paddingLeft: native ? 12 : 18,
+          // Send occupies40pt; upstream's extra clearance is40-10,
+          // plus11pt internal inset, so the text stops41pt before the edge.
+          paddingRight: native ? (inlineAction ? 1 : 11) : 18,
+          // f1dd7a2: internal5/4 + regular text-container4.5/5.5.
+          paddingTop: native ? 9.5 : 15,
+          paddingBottom: native ? 9.5 : 14,
           color: colors.text,
-          fontSize: 16,
-          lineHeight: 22,
+          fontSize: native ? 17 : 16,
+          lineHeight: native ? undefined : 22,
         }}
       />
+    );
+    const action = search ? (
+      canAsk ? (
+        <ComposerAction
+          testID="ask-conversation"
+          name="arrow.up"
+          label={t('chat.askAboutChat')}
+          prominent
+          onPress={search.onAsk}
+        />
+      ) : (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 52 }}>
+          <ComposerAction
+            testID="older-search-result"
+            name="chevron.up"
+            size={44}
+            label={t('chat.olderSearchResult')}
+            disabled={
+              search.state.loading ||
+              search.state.index < 0 ||
+              (!search.state.cursor && search.state.index >= search.state.hits.length - 1)
+            }
+            onPress={() => search.onMove('older')}
+          />
+          <ComposerAction
+            testID="newer-search-result"
+            name="chevron.down"
+            size={44}
+            label={t('chat.newerSearchResult')}
+            disabled={search.state.loading || search.state.index <= 0}
+            onPress={() => search.onMove('newer')}
+          />
+        </View>
+      )
+    ) : files ? (
+      <ComposerAction
+        testID="send-attachments"
+        name="arrow.up"
+        label={
+          files.retry
+            ? t('media.attachmentsRetry')
+            : t('media.attachmentSendCount', { count: files.remaining })
+        }
+        prominent
+        disabled={files.sending || files.remaining === 0 || sending}
+        onPress={files.onSend}
+      />
+    ) : hasText || editing || !voice ? (
+      <ComposerAction
+        testID="send-message"
+        name={editing ? 'checkmark' : 'arrow.up'}
+        label={editing ? t('chat.saveEdit') : t('chat.sendMessage')}
+        prominent
+        disabled={(!hasText && !allowEmptyEdit) || sending || draft?.ready === false}
+        onPress={onSend}
+      />
+    ) : (
+      voice
     );
     return (
       <>
@@ -174,7 +243,10 @@ export function MessageComposer({
         ) : (
           review
         )}
-        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-end' }}>
+        <View
+          testID="message-composer-row"
+          style={{ flexDirection: 'row', gap: native ? 6 : 10, alignItems: 'flex-end' }}
+        >
           {search ? (
             <ComposerAction
               testID="close-conversation-search"
@@ -189,73 +261,33 @@ export function MessageComposer({
             <GlassView
               colorScheme={scheme}
               glassEffectStyle="regular"
-              style={{ flex: 1, borderRadius: 27 }}
+              testID="message-composer-field-surface"
+              style={{
+                flex: 1,
+                borderRadius: native ? 20 : 27,
+                flexDirection: native ? 'row' : undefined,
+                alignItems: native ? 'flex-end' : undefined,
+              }}
             >
               {field}
+              {inlineAction ? action : null}
             </GlassView>
           ) : (
-            <View style={{ flex: 1, borderRadius: 27, backgroundColor: colors.surface }}>
+            <View
+              testID="message-composer-field-surface"
+              style={{
+                flex: 1,
+                borderRadius: native ? 20 : 27,
+                backgroundColor: colors.surface,
+                flexDirection: native ? 'row' : undefined,
+                alignItems: native ? 'flex-end' : undefined,
+              }}
+            >
               {field}
+              {inlineAction ? action : null}
             </View>
           )}
-          {search ? (
-            canAsk ? (
-              <ComposerAction
-                testID="ask-conversation"
-                name="arrow.up"
-                label={t('chat.askAboutChat')}
-                prominent
-                onPress={search.onAsk}
-              />
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 52 }}>
-                <ComposerAction
-                  testID="older-search-result"
-                  name="chevron.up"
-                  size={44}
-                  label={t('chat.olderSearchResult')}
-                  disabled={
-                    search.state.loading ||
-                    search.state.index < 0 ||
-                    (!search.state.cursor && search.state.index >= search.state.hits.length - 1)
-                  }
-                  onPress={() => search.onMove('older')}
-                />
-                <ComposerAction
-                  testID="newer-search-result"
-                  name="chevron.down"
-                  size={44}
-                  label={t('chat.newerSearchResult')}
-                  disabled={search.state.loading || search.state.index <= 0}
-                  onPress={() => search.onMove('newer')}
-                />
-              </View>
-            )
-          ) : files ? (
-            <ComposerAction
-              testID="send-attachments"
-              name="arrow.up"
-              label={
-                files.retry
-                  ? t('media.attachmentsRetry')
-                  : t('media.attachmentSendCount', { count: files.remaining })
-              }
-              prominent
-              disabled={files.sending || files.remaining === 0 || sending}
-              onPress={files.onSend}
-            />
-          ) : hasText || editing || !voice ? (
-            <ComposerAction
-              testID="send-message"
-              name={editing ? 'checkmark' : 'arrow.up'}
-              label={editing ? t('chat.saveEdit') : t('chat.sendMessage')}
-              prominent
-              disabled={(!hasText && !allowEmptyEdit) || sending || draft?.ready === false}
-              onPress={onSend}
-            />
-          ) : (
-            voice
-          )}
+          {!inlineAction ? action : null}
         </View>
       </>
     );
@@ -264,8 +296,9 @@ export function MessageComposer({
     <Animated.View
       style={[
         {
-          paddingHorizontal: 12,
-          paddingTop: 10,
+          // f1dd7a2 textFieldInsets:1432; separate action gap:3537.
+          paddingHorizontal: process.env.EXPO_OS === 'ios' ? 8 : 12,
+          paddingTop: process.env.EXPO_OS === 'ios' ? 0 : 10,
           gap: 8,
         },
         // Choose the native layout on JS, outside the UI-runtime worklet.

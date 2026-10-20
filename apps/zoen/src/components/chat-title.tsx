@@ -15,11 +15,41 @@ export type ChatHeaderProps = {
   search?: { active: boolean; onToggle: () => void };
 };
 
-export function ChatTitle({ id, title, counterpart, activityLabel }: ChatHeaderProps) {
+export function ChatTitle({ id, title, counterpart, activityLabel, search }: ChatHeaderProps) {
   const { colors, scheme } = useTheme();
   const { width, fontScale } = useWindowDimensions();
   const glass = process.env.EXPO_OS === 'ios' && isLiquidGlassAvailable();
-  const content = (
+  const native = process.env.EXPO_OS === 'ios';
+  // f1dd7a2 ChatTitleComponent:365,626,1047,1084. The avatar is
+  // a separate navigation item, not part of the centered title capsule.
+  const content = native ? (
+    <View
+      testID="chat-title-content"
+      style={{
+        minHeight: 44,
+        minWidth: Math.min(178, Math.max(88, width - 176)),
+        maxWidth: Math.max(88, width - 176),
+        paddingHorizontal: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text
+        numberOfLines={1}
+        style={{ color: colors.text, fontSize: 17, fontWeight: '600', textAlign: 'center' }}
+      >
+        {title}
+      </Text>
+      {activityLabel && fontScale <= 1.2 ? (
+        <Text
+          numberOfLines={1}
+          style={{ color: colors.secondary, fontSize: 12, textAlign: 'center' }}
+        >
+          {activityLabel}
+        </Text>
+      ) : null}
+    </View>
+  ) : (
     <View
       style={{
         flexDirection: 'row',
@@ -56,6 +86,7 @@ export function ChatTitle({ id, title, counterpart, activityLabel }: ChatHeaderP
       accessibilityLabel={[title, activityLabel].filter(Boolean).join(', ')}
       accessibilityHint={t('chat.chatDetails')}
       onPress={() => router.push({ pathname: '/space/[id]', params: { id } })}
+      onLongPress={native && !search?.active ? search?.onToggle : undefined}
       style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
     >
       {glass ? (
@@ -63,12 +94,14 @@ export function ChatTitle({ id, title, counterpart, activityLabel }: ChatHeaderP
           isInteractive
           colorScheme={scheme}
           glassEffectStyle="regular"
-          style={{ borderRadius: 24 }}
+          style={{ borderRadius: native ? 22 : 24 }}
         >
           {content}
         </GlassView>
       ) : (
-        <View style={{ borderRadius: 24, backgroundColor: colors.surface }}>{content}</View>
+        <View style={{ borderRadius: native ? 22 : 24, backgroundColor: colors.surface }}>
+          {content}
+        </View>
       )}
     </Pressable>
   );

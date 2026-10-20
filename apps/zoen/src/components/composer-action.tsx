@@ -18,7 +18,7 @@ export type ComposerActionProps = {
   disabled?: boolean;
   prominent?: boolean;
   testID?: string;
-  size?: 44 | 52;
+  size?: 40 | 44 | 52;
 };
 const material = {
   plus: 'add',

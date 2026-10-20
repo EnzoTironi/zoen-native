@@ -49,7 +49,7 @@ export function ComposerTextField({
       label: props.accessibilityLabel ?? '',
       placeholder: props.placeholder ?? '',
       width,
-      fontSize: 16 * fontScale,
+      fontSize: (process.env.EXPO_OS === 'ios' ? 17 : 16) * fontScale,
       context: `${context}:${props.placeholder ?? ''}`,
     }),
     [tag, props.value, props.accessibilityLabel, props.placeholder, width, fontScale, context],
@@ -90,7 +90,9 @@ export function ComposerTextField({
             fitted?.snapshot === snapshot
               ? fitted.height
               : snapshot.text.length === 0
-                ? 52
+                ? process.env.EXPO_OS === 'ios'
+                  ? 40
+                  : 52
                 : undefined,
         },
       ]}

@@ -1,23 +1,12 @@
-import { Stack } from 'expo-router';
-import { Host } from '@expo/ui';
-import { Button, HStack, Label } from '@expo/ui/swift-ui';
-import {
-  buttonStyle,
-  contentShape,
-  disabled,
-  font,
-  foregroundStyle,
-  frame,
-  labelStyle,
-  opacity,
-  shapes,
-} from '@expo/ui/swift-ui/modifiers';
+import { Stack, router } from 'expo-router';
+import { Pressable } from 'react-native';
 import { t } from '../i18n/index.ts';
+import { ProfileAvatar } from '../profile/profile-avatar';
 import { useTheme } from '../theme';
 import { ChatTitle, type ChatHeaderProps } from './chat-title';
 
 export function ChatHeader(props: ChatHeaderProps) {
-  const { colors, scheme } = useTheme();
+  const { colors } = useTheme();
   const search = props.search;
   return (
     <>
@@ -26,45 +15,38 @@ export function ChatHeader(props: ChatHeaderProps) {
         <ChatTitle {...props} />
       </Stack.Title>
       <Stack.Toolbar placement="right">
-        <Stack.Toolbar.View>
-          <Host style={{ width: 132, height: 44 }} colorScheme={scheme}>
-            <HStack spacing={0}>
-              {(
-                [
-                  { icon: 'phone', label: t('chat.voiceCallUnavailable'), unavailable: true },
-                  { icon: 'video', label: t('chat.videoCallUnavailable'), unavailable: true },
-                  {
-                    icon: 'magnifyingglass',
-                    label: t(search?.active ? 'chat.closeSearch' : 'chat.searchThisChat'),
-                    unavailable: false,
-                  },
-                ] as const
-              ).map(({ icon, label, unavailable }) => (
-                <Button
-                  key={icon}
-                  onPress={unavailable ? undefined : search?.onToggle}
-                  modifiers={[
-                    buttonStyle('plain'),
-                    disabled(unavailable),
-                    opacity(unavailable ? 0.35 : 1),
-                  ]}
-                >
-                  <Label
-                    title={label}
-                    systemImage={icon}
-                    modifiers={[
-                      labelStyle('iconOnly'),
-                      font({ size: 19 }),
-                      foregroundStyle(!unavailable && search?.active ? colors.accent : colors.text),
-                      // Size the action's label, not an outer Button wrapper.
-                      frame({ width: 44, height: 44 }),
-                      contentShape(shapes.rectangle(), ['interaction', 'accessibility']),
-                    ]}
-                  />
-                </Button>
-              ))}
-            </HStack>
-          </Host>
+        {search ? (
+          <Stack.Toolbar.Button
+            icon="magnifyingglass"
+            accessibilityLabel={t(search.active ? 'chat.closeSearch' : 'chat.searchThisChat')}
+            tintColor={search.active ? colors.accent : colors.text}
+            onPress={search.onToggle}
+          />
+        ) : null}
+        <Stack.Toolbar.View hidesSharedBackground>
+          <Pressable
+            testID="chat-details-avatar"
+            accessibilityRole="button"
+            accessibilityLabel={props.title}
+            accessibilityHint={t('chat.chatDetails')}
+            onPress={() => router.push({ pathname: '/space/[id]', params: { id: props.id } })}
+            // f1dd7a2 ChatAvatarNavigationNode:82–83,349:44pt item,
+            // with3pt inset on each side; use our existing avatar authority.
+            style={({ pressed }) => ({
+              width: 44,
+              height: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.65 : 1,
+            })}
+          >
+            <ProfileAvatar
+              person={props.counterpart}
+              name={props.title}
+              color={props.counterpart?.tint_hex}
+              size={38}
+            />
+          </Pressable>
         </Stack.Toolbar.View>
       </Stack.Toolbar>
     </>
