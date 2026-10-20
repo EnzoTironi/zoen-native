@@ -358,6 +358,7 @@ function routeFixture() {
     '../miniapps/use-device-consent': {},
     '../miniapps/device-consent': {},
     '../components/primitives': { Surface: 'Surface', NativeButton: 'NativeButton' },
+    '../components/composer-action': { ComposerAction: 'ComposerAction' },
     '../theme': { useTheme: () => ({ colors: {} }) },
     '../miniapps/network-consent': {
       createNetworkConsent: () => {
