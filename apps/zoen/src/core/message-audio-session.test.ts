@@ -625,3 +625,60 @@ test('failed native setup retains the runtime owner until disposal precedes leas
   assert.deepEqual(f.events.slice(-2), ['dispose:file:///owned-1', 'release:file:///owned-1']);
   await f.session.dispose();
 });
+
+// RingRTC's notification-failure contract applies to our existing message audio
+// owner too; this does not exercise or implement call signaling/native hardware.
+for (const termination of ['background', 'revocation', 'retirement'] as const) {
+  test(`a throwing playback observer cannot abandon audio/file teardown on ${termination}`, async (t) => {
+    const f = fixture();
+    const source = f.source();
+    const channel = f.session.channel(source);
+    const mirror = f.session.channel(source);
+    let failNotification = false;
+    let refusedNotifications = 0;
+    let healthyNotifications = 0;
+    const offBad = channel.subscribe(() => {
+      if (!failNotification) return;
+      refusedNotifications++;
+      throw Error('Synthetic control notification failure');
+    });
+    const offHealthy = channel.subscribe(() => {
+      healthyNotifications++;
+    });
+    const offMirror = mirror.subscribe(() => {});
+    t.after(async () => {
+      failNotification = false;
+      offBad();
+      offHealthy();
+      offMirror();
+      await f.session.dispose();
+    });
+    await channel.playFrom();
+    await tick();
+    const native = f.natives[0]!;
+    assert.equal(native.playing, true);
+    const healthyBefore = healthyNotifications;
+    failNotification = true;
+    if (termination === 'background') assert.doesNotThrow(() => f.session.setForeground(false));
+    else if (termination === 'revocation') assert.doesNotThrow(() => f.revoke());
+    else await f.session.retireSession();
+    assert.equal(native.playing, false, 'Stop playback synchronously before asynchronous disposal');
+    await f.session.retireSession();
+    assert.ok(refusedNotifications > 0, 'The failing observer must actually be invoked');
+    assert.ok(
+      healthyNotifications > healthyBefore,
+      'Other controls still receive the stopped state',
+    );
+    assert.equal(channel.getSnapshot().playing, false);
+    assert.equal(mirror.getSnapshot().playing, false);
+    assert.equal(native.disposed, true);
+    assert.deepEqual(f.events.slice(-2), ['dispose:file:///owned-1', 'release:file:///owned-1']);
+    assert.deepEqual(f.released, ['file:///owned-1']);
+    await f.session.retireSession();
+    assert.deepEqual(
+      f.released,
+      ['file:///owned-1'],
+      'Repeated teardown cannot release another lease',
+    );
+  });
+}
