@@ -36,7 +36,7 @@ type Attempt = {
   cancellation: Promise<void> | null;
 };
 
-/** A native read-only presentation, never an owner of draft bytes or a send intent. */
+/** Native review presentation; draft bytes and Send remain with the canonical owner. */
 export class AttachmentReview {
   private readonly port: AttachmentReviewPort;
   private readonly coordinator: PlaybackCoordinator;
