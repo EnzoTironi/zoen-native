@@ -22,12 +22,32 @@ MCP existente não declara uma interface MCP App pronta.
 | Formato nativo | Modelo idêntico após salvar e reabrir os 4.631 bytes. Isso não comprova recuperação no banco criptografado do Zoen. |
 | PPTX | Exportação de 25.129 bytes, reimportação e inspeção independente do ZIP/XML preservaram título e notas. |
 | PDF | Exportação de 45.142 bytes; página renderizada e texto do título conferidos separadamente. As notas não fazem parte desse PDF de slides. |
-| Interface WASM | `cargo check --locked --target wasm32-unknown-unknown -p deckcraft-web` passou em 91,587 s. Ainda falta o pacote Release e sua execução na WebView. |
+| Interface WASM | O check passou em 91,587 s. O pacote Release otimizado também passou: WASM de 35.840.639 bytes, JS de 155.070 bytes e HTML de 1.622 bytes. A execução na WebView ainda não foi realizada. |
+| Repetição do pacote | Duas execuções Trunk fixadas/offline produziram os quatro recursos idênticos e ZIPs idênticos de 14.355.956 bytes. A segunda usou cache Cargo na mesma máquina; não é uma reconstrução hermética em máquina limpa. |
 
 A prova usou fontes locais de fallback, sem baixar os binários craft-fonts. A
 fidelidade tipográfica, o teclado, VoiceOver, toque, GPU, memória e recuperação no
-iPhone pertencem ao próximo aceite. A apresentação serializada não guarda o
+iPhone pertencem ao próximo aceite. O pacote Release posterior incorporou somente
+as três fontes craft-fonts selecionadas pelo build, com hashes e OFL conferidos,
+e os quatro fallbacks egui com seus avisos próprios. Isso não aprova toda a cadeia
+de dependências ou sua fidelidade no telefone. A apresentação serializada não guarda o
 undo/journal local da Session; undo durável e atribuído exige histórico do Zoen.
+
+O WASM otimizado tem SHA-256
+`5b1df0ccc851cf44894055c41440d964146be62ae1c19d4c228d24c281d12880`.
+São 10.929.117 bytes em Brotli-9, uma medição de pacote, sem benchmark de rede ou
+memória no iPhone. A memória linear declara 11.862.016 bytes iniciais e nenhum
+máximo explícito; isso não mede o pico de processo. O módulo upstream exporta
+main/memória/suporte wasm-bindgen, sem API de abrir, editar, salvar ou exportar o
+documento pelo host. Ainda precisa da ponte na mesma Session e de um carregador
+verificado de múltiplos recursos, sem elevar globalmente o limite de HTML.
+
+A evidência reproduzível está em
+`/private/tmp/zoen-artcraft-research-v147/supplement-release-package/manifest.json`;
+ZIP `e131facc25b9ea5b6b75621c04546b0b50585985e79df0b389670adf04a4e6a0`.
+O [contrato interno de autoria](../../packages/zoen-miniapp-sdk/README.md) mantém
+a criação por agentes nos bastidores; a pessoa recebe o mesmo cartão e a mesma
+experiência, independentemente do motor escolhido.
 
 ## Contrato de integração
 
