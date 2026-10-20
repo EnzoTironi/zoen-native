@@ -1,3 +1,4 @@
+import { View } from 'react-native';
 import { Host } from '@expo/ui';
 import {
   DropdownMenu,
@@ -15,8 +16,20 @@ import { useTheme } from '../theme';
 import { homeCardActions, type HomeCardAction } from './card-actions';
 import type { HomeActionsProps, HomeCardMenuProps } from './menus.types';
 
-export function HomeActions(_props: HomeActionsProps) {
-  return <NativeButton label={t('home.addMiniapp')} onPress={() => router.push('/miniapps')} />;
+export function HomeActions({ hiddenCount = 0, onRestoreHidden }: HomeActionsProps) {
+  return (
+    <View style={{ gap: 8, alignItems: 'flex-end' }}>
+      <NativeButton label={t('home.addMiniapp')} onPress={() => router.push('/miniapps')} />
+      {hiddenCount > 0 && onRestoreHidden ? (
+        <NativeButton
+          testID="home-restore-hidden-apps"
+          label={t('home.restoreHiddenCount', { count: hiddenCount })}
+          secondary
+          onPress={onRestoreHidden}
+        />
+      ) : null}
+    </View>
+  );
 }
 
 export function HomeCardMenu(props: HomeCardMenuProps) {

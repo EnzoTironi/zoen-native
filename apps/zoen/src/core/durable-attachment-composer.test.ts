@@ -764,7 +764,10 @@ test(
     assert.equal(f.sendCalls(), 1);
     assert.equal(f.sent.length, 1);
     assert.equal(f.channel.getSnapshot().frozen, true);
-    f.render().field!.onSend();
+    const retry = f.approval()!;
+    assert.equal(retry.field.retry, true, 'Ambiguous Send still offers its exact receipt retry');
+    assert.equal(retry.state.items[0]!.attempted, true);
+    retry.field.onSend();
     await tick();
     assert.equal(f.sendCalls(), 2);
     assert.equal(f.sent.length, 1);
@@ -936,3 +939,101 @@ test('approval Close and session retirement pause native preview playback before
     await f.channel.retire(false);
   }
 });
+
+test(
+  'native edited-copy review freezes input without claiming an attempted Send or retry',
+  { timeout: 2000 },
+  async () => {
+    const f = fixture();
+    f.enableNativeEditing();
+    f.render();
+    await tick();
+    f.select([photo()]);
+    await f.render().pick('photo');
+    const approval = f.approval()!;
+    assert.equal(approval.field.retry, false);
+    approval.onEdit();
+    await f.previewStarted;
+    try {
+      const reviewing = f.approval()!;
+      assert.equal(f.channel.getSnapshot().reviewing, true);
+      assert.equal(
+        f.channel.getSnapshot().frozen,
+        true,
+        'Native review must retain the writer barrier',
+      );
+      assert.equal(reviewing.editing, true);
+      assert.equal(reviewing.field.retry, false, 'Editing is not an ambiguous Send');
+      assert.equal(
+        reviewing.state.items[0]!.attempted,
+        false,
+        'The strip must not claim an attempted Send',
+      );
+      assert.equal(reviewing.field.editable, false);
+      assert.equal(reviewing.field.sending, true);
+      assert.equal(f.sendCalls(), 0);
+    } finally {
+      f.saveEditedCopy();
+      await tick();
+      f.render();
+      await tick();
+      f.unmount();
+      await f.channel.retire(false);
+    }
+  },
+);
+
+test(
+  'normal accepted native edit keeps the existing approval while privacy retirement never reopens it',
+  { timeout: 4000 },
+  async () => {
+    for (const retirement of [null, 'close', 'background', 'retire', 'destination'] as const) {
+      const f = fixture();
+      f.enableNativeEditing();
+      f.render();
+      await tick();
+      f.select([photo()]);
+      await f.render({ replyTo: 'captured-reply' }).pick('photo');
+      let approval = f.approval()!;
+      approval.field.onChange('Keep this caption');
+      await f.channel.flush();
+      approval = f.approval()!;
+      const staleSend = approval.field.onSend;
+      approval.onEdit();
+      await f.previewStarted;
+      if (retirement === 'close') approval.onClose();
+      else if (retirement === 'destination') f.render({ spaceId: 'other-chat' });
+      else if (retirement) f[retirement]();
+      await tick();
+      f.saveEditedCopy();
+      await tick();
+      f.render();
+      await tick();
+      approval = f.approval()!;
+      if (retirement)
+        assert.equal(approval, undefined, 'An accepted edit cannot restore retired UI');
+      else {
+        assert.ok(approval, 'Ordinary editor completion retains the original approval');
+        assert.equal(approval.field.value, 'Keep this caption');
+        assert.equal(approval.field.scope.replyTo, 'captured-reply');
+        assert.equal(approval.selectedId, 'post-edited-asset-1');
+        assert.equal(approval.state.items[0]!.uri, 'file:///cache/fresh-edited-asset-1');
+        assert.equal(approval.field.editable, true);
+        assert.equal(approval.field.retry, false);
+        assert.equal(approval.busy, false);
+      }
+      const saved = JSON.parse(f.durable().content_json);
+      assert.equal(saved.items[0].caption, 'Keep this caption');
+      assert.equal(saved.reply_to, 'captured-reply');
+      staleSend();
+      await tick();
+      assert.equal(
+        f.sendCalls(),
+        0,
+        'Old Send cannot target replacement bytes or retired approval',
+      );
+      f.unmount();
+      await f.channel.retire(false);
+    }
+  },
+);

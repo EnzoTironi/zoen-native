@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SkyScene } from '../../components/sky-background';
-import { AppSheetGrabber } from '../../miniapps/app-sheet-grabber';
+import { AppSheetChrome } from '../../miniapps/app-sheet-chrome';
 import { useTheme } from '../../theme';
 
 export default function AppsLayout() {
@@ -10,6 +10,7 @@ export default function AppsLayout() {
     <SkyScene>
       <Stack
         screenOptions={{
+          orientation: 'default',
           title: '',
           headerTitle: '',
           headerBackButtonDisplayMode: 'minimal',
@@ -29,7 +30,7 @@ export default function AppsLayout() {
   );
   return (
     <SafeAreaProvider>
-      {process.env.EXPO_OS === 'web' ? content : <AppSheetGrabber>{content}</AppSheetGrabber>}
+      {process.env.EXPO_OS === 'web' ? content : <AppSheetChrome>{content}</AppSheetChrome>}
     </SafeAreaProvider>
   );
 }

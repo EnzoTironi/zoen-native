@@ -51,6 +51,8 @@ async function fixture() {
     owner: homeOwnerFor(client),
     items: [miniapp('first'), miniapp('second'), miniapp('third')],
     pinnedIds: [],
+    orderedIds: [],
+    hiddenIds: [],
     loading: false,
     error: null,
   };

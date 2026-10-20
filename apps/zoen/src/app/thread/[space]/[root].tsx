@@ -42,7 +42,7 @@ export default function Thread() {
     snapshot?.conversations.some((chat) => chat.id === space && chat.kind !== 'Direct') ?? false;
   const headerHeight = useHeaderHeight();
   const { top: statusBarHeight } = useSafeAreaInsets();
-  const { items } = useHome();
+  const { allItems: items } = useHome();
   const input = useRef<TextInputInstance>(null);
   const list = useRef<FlashListRef<ConversationTimelineRow>>(null);
   const sending = useRef(false);

@@ -108,6 +108,9 @@ export async function acceptDrawingJourney({
   await preserved.scrollIntoViewIfNeeded();
   assert.equal(await preserved.getByTestId(`message-body-${historicalMessageId}`).innerText(), historicalBody);
   await preserved.getByRole("button", { name: ui.messageActions(nativeAuthor), exact: true }).waitFor();
+  // Reading older history can recycle the newest row. Reveal its genuine public
+  // message link instead of assuming an offscreen FlashList row stays mounted.
+  await page.goto(`${origin}/chat/${space}?jump=${encodeURIComponent(messageId)}`, { waitUntil: "domcontentloaded" });
   await row.scrollIntoViewIfNeeded();
   await screenshot("09a-current-app-install-localized-copy.png");
   await page.goto(`${origin}/miniapp/${id}`, { waitUntil: "domcontentloaded" });

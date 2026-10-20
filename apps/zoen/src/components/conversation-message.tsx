@@ -13,6 +13,7 @@ import { t, formatLocale } from '../i18n/index.ts';
 import { MessageMedia } from '../media/MediaAttachment';
 import { inlineImageFrame, type DecodedMessageImage } from '../media/inline-image-frame';
 import { MiniappMessageCard } from '../miniapps/message-card';
+import { APP_CARD_METRICS } from '../miniapps/app-card-layout';
 import { ProfileAvatar } from '../profile/profile-avatar';
 import { useTheme } from '../theme';
 import { Icon } from './primitives';
@@ -126,9 +127,11 @@ export const ConversationMessage = memo(function ConversationMessage({
   const availableWidth = Math.max(0, width - 32 - authorGutter);
   const mediaLimit = Math.min(availableWidth, Math.max(160, Math.min(294, availableWidth * 0.87)));
   const mediaWidth =
-    decodedImage?.key === imageKey
-      ? inlineImageFrame(mediaLimit, decodedImage.width / decodedImage.height).width
-      : mediaLimit;
+    card?.kind_id === 'app' && card.app
+      ? APP_CARD_METRICS.size
+      : decodedImage?.key === imageKey
+        ? inlineImageFrame(mediaLimit, decodedImage.width / decodedImage.height).width
+        : mediaLimit;
   const time = new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
     hour: '2-digit',
     minute: '2-digit',

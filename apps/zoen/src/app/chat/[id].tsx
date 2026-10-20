@@ -8,7 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
@@ -45,7 +45,6 @@ import {
 import { useMessageDraft } from '../../core/use-message-draft';
 import { ChatHeader } from '../../components/chat-header';
 import { useHome } from '../../home/provider';
-import { HomeCardMenu } from '../../home/menus';
 import { useConversationCards } from '../../miniapps/conversation-provider';
 import { MiniappRail } from '../../miniapps/rail';
 import { ConversationSearch, conversationQueryFits } from '../../core/conversation-search';
@@ -60,7 +59,7 @@ export default function Chat() {
   const { store, snapshot, timelines, notice, activity } = useClient();
   const { colors } = useTheme();
   const home = useHome();
-  const { items } = home;
+  const { allItems: items } = home;
   const cards = useConversationCards(id);
   const headerHeight = useHeaderHeight();
   const { top: statusBarHeight } = useSafeAreaInsets();
@@ -656,30 +655,16 @@ export default function Chat() {
           >
             <ConversationRail onHeight={setRailHeight}>
               <MiniappRail
+                key={`${cards.ownerKey}:${id}`}
+                onReorder={cards.reorder}
                 items={conversationMiniapps}
                 paddingVertical={6}
-                renderAccessory={(item) => (
-                  <HomeCardMenu
-                    name={item.title}
-                    testID={`conversation-card-menu-${item.id}`}
-                    pinned={home.isPinned(item.id)}
-                    onDetails={() =>
-                      router.push({ pathname: '/miniapp/[id]/manage', params: { id: item.id } })
-                    }
-                    onToggle={() => {
-                      void (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)).catch(
-                        () => {},
-                      );
-                    }}
-                    conversationPinned
-                    onToggleConversation={() => {
-                      void cards.setPinned(item.id, false).catch(() => {});
-                    }}
-                    onOrganizeConversation={() =>
-                      router.push({ pathname: '/conversation-cards/[id]', params: { id } })
-                    }
-                  />
-                )}
+                error={home.error}
+                onRemove={(item) => cards.setPinned(item.id, false)}
+                onTogglePin={(item) =>
+                  home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)
+                }
+                isPinned={home.isPinned}
               />
             </ConversationRail>
             <View onLayout={({ nativeEvent }) => setNoticeHeight(nativeEvent.layout.height)}>

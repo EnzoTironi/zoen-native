@@ -1,77 +1,70 @@
 import { router } from 'expo-router';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { useState } from 'react';
+import Animated, { useAnimatedRef } from 'react-native-reanimated';
+import { ActivityIndicator, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { EmptyState, Icon, NativeButton } from '../../components/primitives';
 import { SkyScene } from '../../components/sky-background';
-import { HomeActions, HomeCardMenu } from '../../home/menus';
+import { HomeActions } from '../../home/menus';
 import { useHome } from '../../home/provider';
 import { t } from '../../i18n/index.ts';
-import { CompactMiniappCard } from '../../miniapps/compact-card';
+import { ReorderableAppCards, useCardScrollPort } from '../../miniapps/reorderable-cards';
+import { mergeCardSubset } from '../../miniapps/card-reorder';
+import { appCardGrid } from '../../miniapps/app-card-layout';
 import type { ItemDetail } from '../../core/generated/ItemDetail';
 import { useTheme } from '../../theme';
 
 export default function Home() {
   const home = useHome();
+  const [editOwner, setEditOwner] = useState<string | null>(null);
+  const editing = editOwner !== null && editOwner === home.ownerKey;
+  const setEditing = (value: boolean) => setEditOwner(value ? home.ownerKey : null);
+  const [pending, setPending] = useState({ pinned: false, available: false });
+  const scrollPort = useCardScrollPort(false);
+  const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const { colors } = useTheme();
-  const { width, fontScale } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const available = home.items.filter((item) => !home.isPinned(item.id));
+  const saving =
+    (pending.pinned && home.pinnedItems.length > 0) || (pending.available && available.length > 0);
   const contentWidth = Math.min(width, 720) - 40;
-  const columns = fontScale > 1.5 || contentWidth < 300 ? 1 : contentWidth >= 600 ? 3 : 2;
-  const cardSize = Math.max(136, (contentWidth - (columns - 1) * 14) / columns);
-  function movePinned(id: string, direction: -1 | 1) {
-    const ids = home.pinnedItems.map((item) => item.id);
-    const index = ids.indexOf(id);
-    const next = index + direction;
-    if (index < 0 || next < 0 || next >= ids.length) return;
-    [ids[index], ids[next]] = [ids[next]!, ids[index]!];
-    void home.reorder(ids).catch(() => {});
-  }
-  function grid(items: ItemDetail[]) {
+  const { columns } = appCardGrid(contentWidth);
+  function grid(items: ItemDetail[], favorites: boolean) {
+    const complete = home.items.map((item) => item.id);
     return (
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-        {items.map((item) => {
-          const pinnedIndex = home.pinnedItems.findIndex((pin) => pin.id === item.id);
-          return (
-            <CompactMiniappCard
-              key={item.id}
-              item={item}
-              size={cardSize}
-              accessory={
-                <HomeCardMenu
-                  testID={`home-card-menu-${item.id}`}
-                  name={item.title}
-                  pinned={home.isPinned(item.id)}
-                  onDetails={() =>
-                    router.push({ pathname: '/miniapp/[id]/manage', params: { id: item.id } })
-                  }
-                  onToggle={() => {
-                    void (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)).catch(
-                      () => {},
-                    );
-                  }}
-                  onMoveEarlier={pinnedIndex > 0 ? () => movePinned(item.id, -1) : undefined}
-                  onMoveLater={
-                    pinnedIndex >= 0 && pinnedIndex < home.pinnedItems.length - 1
-                      ? () => movePinned(item.id, 1)
-                      : undefined
-                  }
-                />
-              }
-            />
+      <ReorderableAppCards
+        key={`${home.ownerKey}:${favorites ? 'pinned' : 'available'}`}
+        items={items}
+        contextKey={JSON.stringify(complete)}
+        columns={columns}
+        scrollPort={scrollPort}
+        scrollRef={scrollRef}
+        editing={editing}
+        onEditingChange={setEditing}
+        onPendingChange={(value) => {
+          const group = favorites ? 'pinned' : 'available';
+          setPending((previous) =>
+            previous[group] === value ? previous : { ...previous, [group]: value },
           );
-        })}
-      </View>
+        }}
+        onReorder={(next, expected) =>
+          favorites
+            ? home.reorder(next, expected)
+            : home.reorderItems(mergeCardSubset(complete, next), complete)
+        }
+        onOpen={(item) => router.push({ pathname: '/miniapp/[id]', params: { id: item.id } })}
+        onRemove={(item) => home.hide(item.id)}
+        onTogglePin={(item) => (home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id))}
+        isPinned={home.isPinned}
+      />
     );
   }
   return (
     <SkyScene tabScene>
-      <ScrollView
+      <Animated.ScrollView
+        ref={scrollRef}
+        onScroll={scrollPort.onScroll}
+        scrollEventThrottle={16}
+        onContentSizeChange={(_width, height) => scrollPort.extent.set(height)}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{
           flexGrow: 1,
@@ -98,7 +91,22 @@ export default function Home() {
           >
             {t('home.title')}
           </Text>
-          <HomeActions canOrganize={home.pinnedItems.length > 1} />
+          {editing ? (
+            <NativeButton
+              testID="home-rearrange-done"
+              label={saving ? t('home.saving') : t('home.doneRearranging')}
+              disabled={saving}
+              onPress={() => setEditing(false)}
+            />
+          ) : (
+            <HomeActions
+              canOrganize={home.pinnedItems.length > 1}
+              hiddenCount={home.hiddenItems.length}
+              onRestoreHidden={() => {
+                void home.restoreAll().catch(() => {});
+              }}
+            />
+          )}
         </View>
         {home.pendingRequestCount > 0 ? (
           <Pressable
@@ -151,7 +159,7 @@ export default function Home() {
             >
               {t('home.pinned')}
             </Text>
-            {grid(home.pinnedItems)}
+            {grid(home.pinnedItems, true)}
           </View>
         ) : null}
         {available.length > 0 ? (
@@ -162,7 +170,7 @@ export default function Home() {
             >
               {t('home.miniapps')}
             </Text>
-            {grid(available)}
+            {grid(available, false)}
           </View>
         ) : null}
         {!home.loading && !home.error && home.items.length === 0 ? (
@@ -171,7 +179,7 @@ export default function Home() {
             <NativeButton label={t('home.explore')} onPress={() => router.push('/miniapps')} />
           </View>
         ) : null}
-      </ScrollView>
+      </Animated.ScrollView>
     </SkyScene>
   );
 }

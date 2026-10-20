@@ -64,6 +64,39 @@ const preference = (hiddenIds: string[] = [], orderedIds: string[] = []) => ({
   orderedIds,
 });
 
+test('a queued same-set drag cannot overwrite an accepted conversation reorder', async () => {
+  const f = fixture();
+  await f.cards.activate();
+  const pending = deferred<void>();
+  const originalSet = f.port.set;
+  let writes = 0;
+  f.port.set = async (key, value) => {
+    ++writes;
+    await pending.promise;
+    await originalSet(key, value);
+  };
+  const expected = ['it_one', 'it_two'];
+  const first = f.cards.reorder('shared', ['it_two', 'it_one'], ownerA, expected);
+  const stale = assert.rejects(
+    f.cards.reorder('shared', ['it_one', 'it_two'], ownerA, expected),
+    failure('save'),
+  );
+  expected.reverse();
+  await Promise.resolve();
+  assert.equal(writes, 1);
+  pending.resolve();
+  await Promise.all([first, stale]);
+  assert.equal(writes, 1);
+  assert.deepEqual(ids(f.cards.cards('shared').visible), ['it_two', 'it_one']);
+  assert.deepEqual(ids(f.cards.cards('second').visible), ['it_other']);
+  assert.deepEqual(JSON.parse(f.saved.get(conversationOwnerKey(ownerA)!)!), {
+    shared: preference([], ['it_two', 'it_one']),
+  });
+  await f.cards.reorder('shared', ['it_one', 'it_two'], ownerA, ['it_two', 'it_one']);
+  assert.equal(writes, 2);
+  assert.deepEqual(ids(f.cards.cards('shared').visible), ['it_one', 'it_two']);
+});
+
 test('rails default to all canonical apps, hide every card recoverably, and never modify Home favorites or Items', async () => {
   const f = fixture();
   const canonical = f.source.items();

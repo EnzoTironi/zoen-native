@@ -24,6 +24,7 @@ const exportsByPort: Record<string, string[]> = {
   '../theme': ['useTheme'],
   '../i18n/index.ts': ['locale', 't'],
   './frame': ['MiniappFrame'],
+  './app-sheet-context': ['useAppSheetCloseButton'],
 };
 const compiled = await build({
   stdin: {
@@ -146,6 +147,7 @@ function fixture() {
   const dialogs = {};
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
   const ports: Record<string, unknown> = {
+    './app-sheet-context': { useAppSheetCloseButton: () => null },
     react: {
       useState: (initial: unknown) => {
         const at = slot();

@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "purpose": "Immutable editor/library source revisions for DeckCraft-first integration study; no complete license audit or product acceptance",
+  "sourceCodeDeclaration": "Standalone editor manifests declare MIT OR Apache-2.0; GitHub API summaries are retained separately and do not cover all assets/dependencies",
+  "researchManifestSha256": "1d46fb3b17572daa911ed4fb67091e0cc7a7f9d4c8e27775f6fcc4b7cbc7779e",
+  "repositories": [
+    {
+      "name": "deckcraft",
+      "url": "https://github.com/storytold/deckcraft",
+      "commit": "a31b990d32f2c8562f1588562f922960c3fde48b",
+      "commitDate": "2026-10-20T15:40:09Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "gridcraft",
+      "url": "https://github.com/storytold/gridcraft",
+      "commit": "68e58a2eae462ba997a8ba5a1269e03a79b61136",
+      "commitDate": "2026-10-20T15:39:59Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "photocraft",
+      "url": "https://github.com/storytold/photocraft",
+      "commit": "9b9643764f3fb77d9f0e48d7510983ae50621e11",
+      "commitDate": "2026-10-20T15:38:22Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "pdfcraft",
+      "url": "https://github.com/storytold/pdfcraft",
+      "commit": "22bedbf2af25bd4cdc1c188b5eff6ec3d2d089fb",
+      "commitDate": "2026-10-20T15:38:59Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "wordcraft",
+      "url": "https://github.com/storytold/wordcraft",
+      "commit": "d1b0bfc3f9dd83126b162a42b667facecb003b7f",
+      "commitDate": "2026-10-20T15:39:49Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "filmcraft",
+      "url": "https://github.com/storytold/filmcraft",
+      "commit": "70f0fc7a75f2681bc18302e67eaf0c9d41c68873",
+      "commitDate": "2026-10-20T15:38:41Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "soundcraft",
+      "url": "https://github.com/storytold/soundcraft",
+      "commit": "7b339fe921dfc1231051cd1263d582f6da589e75",
+      "commitDate": "2026-10-20T15:40:20Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "figcraft",
+      "url": "https://github.com/storytold/figcraft",
+      "commit": "d9c924c3ba7114dff9141c667aec56d3764f3af9",
+      "commitDate": "2026-10-20T15:39:30Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "vectorcraft",
+      "url": "https://github.com/storytold/vectorcraft",
+      "commit": "bc1ae0825264c5ca4b27bd718d6e04f2121b8bb3",
+      "commitDate": "2026-10-20T16:17:30Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "effectcraft",
+      "url": "https://github.com/storytold/effectcraft",
+      "commit": "9db7f3b21700fd821f215782ed1c82afe077880f",
+      "commitDate": "2026-10-20T15:39:09Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "designcraft",
+      "url": "https://github.com/storytold/designcraft",
+      "commit": "8dff7ecdb04d3708a112bb42fc1cecc38664f3cb",
+      "commitDate": "2026-10-20T15:39:20Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "lightcraft",
+      "url": "https://github.com/storytold/lightcraft",
+      "commit": "5fe74557eca64638b1f9015c9769f7e52a889fa2",
+      "commitDate": "2026-10-20T15:38:50Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "artcraft",
+      "url": "https://github.com/storytold/artcraft",
+      "commit": "40e04793b504147de97ba1f0659d3975167524e5",
+      "commitDate": "2026-10-20T15:40:52Z",
+      "githubLicenseSummary": "Apache-2.0"
+    },
+    {
+      "name": "craft-libs",
+      "url": "https://github.com/storytold/craft-libs",
+      "commit": "e36f1890186558e0a2195750e798d641f5983b0f",
+      "commitDate": null,
+      "githubLicenseSummary": null
+    },
+    {
+      "name": "craft-ai-integrations",
+      "url": "https://github.com/storytold/craft-ai-integrations",
+      "commit": "1f61932817b2541ed4c20d265f155405a403ad0d",
+      "commitDate": null,
+      "githubLicenseSummary": null
+    },
+    {
+      "name": "craft-fonts",
+      "url": "https://github.com/storytold/craft-fonts",
+      "commit": "43913056ce82a3fdad0ef69f6b88d1dc922a8104",
+      "commitDate": null,
+      "githubLicenseSummary": null
+    }
+  ],
+  "deckcraftDependencyPins": {
+    "craft-libs": "c3487320b2d1de657b860b3c8abb44e1f2b32bd8",
+    "craft-fonts": "43913056ce82a3fdad0ef69f6b88d1dc922a8104"
+  },
+  "fullSpecAccepted": false,
+  "iphoneAccepted": false,
+  "binaryIntegrationAccepted": false
+}

@@ -3,7 +3,7 @@
   "date": "2026-10-20",
   "purpose": "Learn and test behavior contracts using original Zoen tests, not transplant Signal retry counts, time windows, protocols or fixtures.",
   "zoenSourceCompared": "f3ab6fae6c6b63e3df16849a1ee7249d56d77e95",
-  "studyScope": "FIRST_BOUNDED_BATCH; inventory is not exhaustive semantic extraction or runtime qualification. Forty-two records include scenario families and may overlap in invariant; they are not 42 runnable tests or 42 unique contracts.",
+  "studyScope": "BOUNDED_BATCHES_ACROSS_SIX_REPOSITORIES; inventory is not exhaustive semantic extraction or runtime qualification. Fifty-one records comprise 24 server/libsignal mappings, 18 client families and 9 RingRTC families; they may overlap in invariant and are not 51 runnable tests or 51 unique contracts.",
   "executionPolicy": {
     "upstreamTestsExecuted": false,
     "upstreamTestCodeCopied": false,
@@ -489,16 +489,217 @@
       "libsignal groups.rs fetched but unread",
       "libsignal sealed_sender.rs, ratchet.rs, protocol test-support Event implementation and sealed_sender_v2 fuzz target",
       "Most protocol/session.rs tests; actual bodies of 15 valid and 6 other invalid backup fixtures",
-      "RingRTC tests not inspected; no calling-library behavior claimed",
+      "RingRTC was outside this original server/libsignal batch; the later bounded ringrtcInventory and R01-R09 record their own read boundaries. Most calling assertions remain unread.",
       "Zoen live network/push/media/restore exhaustive proof not run or claimed"
     ],
     "executedTests": 0,
     "productSourceEdits": 0
   },
+  "ringrtcInventory": {
+    "schema": 1,
+    "repository": "https://github.com/signalapp/ringrtc.git",
+    "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+    "zoenSourceCompared": "01de169be2e390391cd02ddca05f7b47334fe806",
+    "trackedPathCount": 351,
+    "pathInventoryMethod": "git ls-tree -r --name-only at the exact pinned commit. Candidate path contains test, fixture or fuzz, case-insensitive; includes helpers/runners/support.",
+    "candidatePaths": [
+      ".github/workflows/slow_tests.yml",
+      "bin/test_run.sh",
+      "call_sim/src/test.rs",
+      "src/android/src/androidTest/java/CallIdTest.java",
+      "src/android/src/androidTest/java/CallLinksTest.java",
+      "src/android/src/androidTest/java/CallManagerTest.java",
+      "src/android/src/androidTest/java/CallTestBase.java",
+      "src/ios/SignalRingRTC/SignalRingRTCTests/AudioDeviceModuleForTests.swift",
+      "src/ios/SignalRingRTC/SignalRingRTCTests/CallLinkTests.swift",
+      "src/ios/SignalRingRTC/SignalRingRTCTests/Info.plist",
+      "src/ios/SignalRingRTC/SignalRingRTCTests/SignalRingRTCTests.swift",
+      "src/ios/SignalRingRTC/SignalRingRTCTests/TestGroupCallDelegate.swift",
+      "src/node/test/CallingClass.ts",
+      "src/node/test/RingRTC-test.ts",
+      "src/node/test/Utils.ts",
+      "src/rust/scripts/run-tests",
+      "src/rust/tests/common/mod.rs",
+      "src/rust/tests/incoming.rs",
+      "src/rust/tests/outgoing.rs",
+      "webrtc-sys/build/WebRTCForTesting.podspec.tpl"
+    ],
+    "candidatePathCount": 20,
+    "candidateSourceFilesByExtension": 15,
+    "runnerPaths": ["bin/test_run.sh", "src/rust/scripts/run-tests"],
+    "fuzzNamedPathsFound": 0,
+    "fixtureNamedPathsFound": 0,
+    "lexicalCountPolicy": "Line-anchored regex counters only for fetched files; inline unit tests elsewhere, parameter expansion, conditional execution, nested calls and helpers not exhaustively resolved. Zero fuzz/fixture-named paths does not prove absence of inline fuzz/property/fixture mechanisms.",
+    "files": [
+      {
+        "path": "LICENSE",
+        "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+        "lines": 661,
+        "lexicalMarkersNotExpandedTests": {
+          "rust_plain_test": 0,
+          "swift_test_functions": 0,
+          "js_it_test_calls": 0
+        },
+        "readRanges": [[1, 9]],
+        "remainingAssertionBodies": "UNREAD except the exact listed ranges; filename/function inventories are not semantic coverage"
+      },
+      {
+        "path": "README.md",
+        "sha256": "a278d01a7e8f97fb4a979730a6b8a35efe1afdf14ebbb39c05afbefa1113d891",
+        "lines": 27,
+        "lexicalMarkersNotExpandedTests": {
+          "rust_plain_test": 0,
+          "swift_test_functions": 0,
+          "js_it_test_calls": 0
+        },
+        "readRanges": [[1, 27]],
+        "remainingAssertionBodies": "UNREAD except the exact listed ranges; filename/function inventories are not semantic coverage"
+      },
+      {
+        "path": "call_sim/src/test.rs",
+        "sha256": "a1847700e9bb0ab0fd9867c54beeb13cf21476c3a498d3ba83d68bd4e7cabc4a",
+        "lines": 1253,
+        "lexicalMarkersNotExpandedTests": {
+          "rust_plain_test": 0,
+          "swift_test_functions": 0,
+          "js_it_test_calls": 0
+        },
+        "readRanges": [[1, 66]],
+        "remainingAssertionBodies": "UNREAD except the exact listed ranges; filename/function inventories are not semantic coverage"
+      },
+      {
+        "path": "src/ios/SignalRingRTC/SignalRingRTCTests/SignalRingRTCTests.swift",
+        "sha256": "d3c8fe7d454543c12f660c19a4cfc3ffc9ee56c5cafe23c5937fea42d5d9f804",
+        "lines": 3609,
+        "lexicalMarkersNotExpandedTests": {
+          "rust_plain_test": 0,
+          "swift_test_functions": 34,
+          "js_it_test_calls": 0
+        },
+        "readRanges": [
+          [1, 62],
+          [715, 809]
+        ],
+        "remainingAssertionBodies": "UNREAD except the exact listed ranges; filename/function inventories are not semantic coverage"
+      },
+      {
+        "path": "src/node/package.json",
+        "sha256": "9625f5b14686e964f16520affde69c938c0032811694afa6b7207a5bbbfd61c3",
+        "lines": 73,
+        "lexicalMarkersNotExpandedTests": {
+          "rust_plain_test": 0,
+          "swift_test_functions": 0,
+          "js_it_test_calls": 0
+        },
+        "readRanges": [[1, 42]],
+        "remainingAssertionBodies": "UNREAD except the exact listed ranges; filename/function inventories are not semantic coverage"
+      },
+      {
+        "path": "src/node/test/RingRTC-test.ts",
+        "sha256": "4b736bed7f66f712e349219b12118b24cd350cea03f6521f0d5e1dfbe787f120",
+        "lines": 1184,
+        "lexicalMarkersNotExpandedTests": {
+          "rust_plain_test": 0,
+          "swift_test_functions": 0,
+          "js_it_test_calls": 35
+        },
+        "readRanges": [
+          [1, 50],
+          [1050, 1110]
+        ],
+        "remainingAssertionBodies": "UNREAD except the exact listed ranges; filename/function inventories are not semantic coverage"
+      },
+      {
+        "path": "src/rust/Cargo.toml",
+        "sha256": "5ddbdf7ff61d6b3d815a7c135f08dffaef4b5b306dbbd4d25f5232071231c054",
+        "lines": 145,
+        "lexicalMarkersNotExpandedTests": {
+          "rust_plain_test": 0,
+          "swift_test_functions": 0,
+          "js_it_test_calls": 0
+        },
+        "readRanges": [[1, 145]],
+        "remainingAssertionBodies": "UNREAD except the exact listed ranges; filename/function inventories are not semantic coverage"
+      },
+      {
+        "path": "src/rust/tests/common/mod.rs",
+        "sha256": "bd8ccc86f856761bb73b32118c0aab56d64eb7e123f470918fb241266130ea47",
+        "lines": 475,
+        "lexicalMarkersNotExpandedTests": {
+          "rust_plain_test": 0,
+          "swift_test_functions": 0,
+          "js_it_test_calls": 0
+        },
+        "readRanges": [
+          [1, 165],
+          [183, 279],
+          [289, 385]
+        ],
+        "remainingAssertionBodies": "UNREAD except the exact listed ranges; filename/function inventories are not semantic coverage"
+      },
+      {
+        "path": "src/rust/tests/incoming.rs",
+        "sha256": "7324861e1de816f57b9b6b365fadd4f46bf3bab76994e218a4e7d44ff4742d37",
+        "lines": 2259,
+        "lexicalMarkersNotExpandedTests": {
+          "rust_plain_test": 50,
+          "swift_test_functions": 0,
+          "js_it_test_calls": 0
+        },
+        "readRanges": [
+          [1, 112],
+          [123, 205],
+          [293, 341],
+          [374, 421],
+          [1074, 1177],
+          [2209, 2259]
+        ],
+        "remainingAssertionBodies": "UNREAD except the exact listed ranges; filename/function inventories are not semantic coverage"
+      },
+      {
+        "path": "src/rust/tests/outgoing.rs",
+        "sha256": "cd109a9be22600aa7d29523ee41db016d3782a649c5ddcd22063b827381639ed",
+        "lines": 3768,
+        "lexicalMarkersNotExpandedTests": {
+          "rust_plain_test": 71,
+          "swift_test_functions": 0,
+          "js_it_test_calls": 0
+        },
+        "readRanges": [
+          [712, 760],
+          [3618, 3768]
+        ],
+        "remainingAssertionBodies": "UNREAD except the exact listed ranges; filename/function inventories are not semantic coverage"
+      }
+    ],
+    "notRead": [
+      "All Android test bodies",
+      "Most Rust incoming/outgoing assertions; in-module Rust test bodies outside these external suites",
+      "Swift CallLinkTests, AudioDeviceModuleForTests implementation and group-call delegate implementation",
+      "Most Swift/Node test bodies and Node CallingClass/Utils helpers",
+      "call_sim body beyond first66lines, plus Docker/network/MOS tooling and CI runners",
+      "Inline fuzz/property mechanisms outside the selected files; no exhaustive content scan"
+    ],
+    "execution": {
+      "testsExecuted": 0,
+      "builds": 0,
+      "servicesOrDevices": 0,
+      "productionEdits": 0
+    },
+    "manifestFactsOnly": {
+      "rustLicense": "AGPL-3.0-only from src/rust/Cargo.toml:12",
+      "nodeLicense": "AGPL-3.0-only from src/node/package.json",
+      "rustTestsRequireFeature": "sim, explicitly declared for incoming/outgoing targets",
+      "nodeTestRunner": "electron-mocha --renderer from package.json",
+      "adoptionConclusion": "No adoption, legal interpretation or Expo/platform compatibility certification. Manifest features and library purpose alone do not prove fit."
+    }
+  },
   "packetProvenance": {
     "clientResearchManifestSha256": "eda71fd12d52118aed017ab02d418c359b613828b2c704e39ee12e5140a8e3ce",
     "serverResearchManifestSha256": "8e9e12c11ce61e89baa5fb236c7968f83bbf6c442f3935f87eac425b43faa53c",
-    "policy": "Hashes bind the original private research packets; public source commits, file hashes and read ranges above permit independent source review. No source test execution is implied."
+    "policy": "Hashes bind the original private research packets; public source commits, file hashes and read ranges above permit independent source review. No source test execution is implied.",
+    "ringrtcResearchManifestSha256": "cd3fba93620a69d4cf11d46364a4aecd054a588745a60a909e3e48db66ce3874",
+    "ringrtcAssertionMappingsSha256": "5a70a5fc54938cc8c059b0f7deb8e339c8fefd2d2699c75fb6b5eec799e5bab9"
   },
   "scenarios": [
     {
@@ -591,7 +792,24 @@
       "zoenEvidence": "crates/zoen-relay/src/session.rs:1521 sync paging; crates/zoen-relay/src/fanout.rs:1 at-most-once live notifications and cursor catch-up; crates/zoen-relay/tests/log_store.rs:125 pagination only.",
       "adoptionBoundary": "A deterministic Zoen live/catch-up handoff interleaving test was not located in inspected paths. This is a coverage gap, not proof of data loss; do not add FDB watch state machine without establishing need.",
       "upstreamExecution": "NOT_RUN",
-      "zoenStatusAtComparedSource": "gap"
+      "zoenStatusAtComparedSource": "gap",
+      "implementedZoenSubset": {
+        "test": "crates/client-core/src/net.rs::tests::live_event_overtaking_final_replay_page_reconciles_once_without_later_message",
+        "introducedBy": "01de169be2e390391cd02ddca05f7b47334fe806",
+        "commit": "0db432697fdabd61315e9568509491bc304091ca",
+        "status": "partial",
+        "verification": "Integrated client-core library: 541 tests passed and strict all-target Clippy passed in the root-owned batch. Original regression uses the real client WebSocket session and test-owned loopback socket plus canonical/reader SQLite; the focused candidate passed, and suppressing client gap repair failed its exact missing-cursor assertion. No test suite was executed for this documentation update.",
+        "boundary": "An immutable final replay snapshot excludes a concurrent durable event; its live frame overtakes that page. The client requests exactly cursor 2 before initial SyncDone, receives overlapping retained-log replay, and reaches exactly four event IDs in order plus two message entries with exact IDs, sequences and text. A non-content request/response barrier introduces no later unrelated message; explicit EngineLease retirement permits actual cold reopen with the same history and next cursor. This is client overlap/gap reconciliation, not a real production relay/FDB/NATS subscription-attach or completely lost-wake race, MLS processing, process/power-loss qualification, or a proof of all server transition interleavings.",
+        "sourceEvidence": [
+          {
+            "commit": "0db432697fdabd61315e9568509491bc304091ca",
+            "path": "crates/client-core/src/net.rs",
+            "lines": [1951, 2239],
+            "sha256": "337320ecb8934f0837ada89cb83d310edd2ebd69cb891529e8da041ca8de8353",
+            "url": "https://github.com/EnzoTironi/zoen-native/blob/0db432697fdabd61315e9568509491bc304091ca/crates/client-core/src/net.rs#L1951-L2239"
+          }
+        ]
+      }
     },
     {
       "id": "S05",
@@ -1250,7 +1468,28 @@
       "zoenEvidence": "crates/client-core/src/mls/tests/durability_tests.rs:309-375 and mls_recovery/tests.rs:454+ cover failure/rollback/retry of the same valid frame. They do not directly establish this malformed-then-next-valid real socket pipeline scenario.",
       "adoptionBoundary": "Useful next integrated core/relay contract: malformed authenticated input cannot advance readable receipt or block the next admissible frame. Assert exact row count as well as expected body.",
       "upstreamExecution": "NOT_RUN",
-      "zoenStatusAtComparedSource": "partial"
+      "zoenStatusAtComparedSource": "partial",
+      "implementedZoenSubset": {
+        "test": "crates/client-core/src/net/tests/incoming_pipeline.rs::malformed_wire_and_rejected_signature_do_not_poison_following_messages_or_readable_receipts",
+        "comparedBase": "e902143f03332a42f677b64ec020aae3ca9477ae",
+        "testSourceSha256": "908979cc1d351c7fb22a0a6b9431d12f550daaa002e58aab4f5cf0227c7101a3",
+        "status": "partial",
+        "verification": "Private original test-only candidate: focused actual WebSocket/client-core/SQLite regression passed, one executed and 541 filtered, zero failed/ignored. Strict lib+tests Clippy, scoped rustfmt and patch apply-check passed. A control stopping the real decoder error branch fails ordered continuation; a control sending Delivered for rejected authentication fails the explicit false-readable-receipt assertion. Final source restored and focused case passed again. No upstream, native, Web UI, full relay or full library suite was executed.",
+        "boundary": "Fixed synthetic signing keys, IDs, timestamps and content; one malformed protobuf frame and a bad signature for the exact later valid content ID/sequence are rejected without readable row, cursor advance, read mark or wire Delivered after a real maintenance pass. The same socket then accepts two contiguous valid peer messages with duplicate replay, exact complete cardinality/order/content/author/timestamp assertions, monotonic delivered progress and cold reopen. This narrows wire decoding and clear-event signature admission; it does not qualify corrupted MLS/pairwise ciphertext recovery, group epoch/ratchet interleavings, backend mailbox ACK persistence, crash/fsync, or all malformed input classes.",
+        "integrationCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+        "integratedVerification": {
+          "status": "PASS",
+          "command": "cargo test -p client-core --locked --lib -- --test-threads=2",
+          "receipt": "/private/tmp/zoen-continuity-batch-v146/client-core-library-tests-12.json",
+          "sourceCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+          "libraryTestsPassed": 543,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0,
+          "strictAllTargetClippy": "PASS",
+          "clippyReceipt": "/private/tmp/zoen-continuity-batch-v146/client-core-clippy-13.json"
+        }
+      }
     },
     {
       "id": "C08",
@@ -1393,7 +1632,28 @@
       "adoptionBoundary": "Adopt a Zoen-owned canonical backup corpus with fixed time, exact rows/counts/order and explicit format/version exclusions. Treat missing fixture corpus as missing evidence, never a green pass.",
       "upstreamExecution": "NOT_RUN",
       "zoenStatusAtComparedSource": "partial",
-      "guardedRisk": "Importer silently drops/changes fields or interprets relative expiry against wall clock."
+      "guardedRisk": "Importer silently drops/changes fields or interprets relative expiry against wall clock.",
+      "implementedZoenSubset": {
+        "test": "crates/client-core/src/backup/snapshot_tests.rs::canonical_backup_restores_every_row_and_projection_across_new_device_and_cold_reopen",
+        "comparedBase": "2480a9b96dd00ba9012f54230ef4cfb9f074e475",
+        "testSourceSha256": "71ca47558e24b7ec33e30096e348be78da1af0511903bd813b1ce2562e81d461",
+        "status": "partial",
+        "verification": "Private original test-only candidate: focused client-core test passed (1 executed; 541 filtered; no ignored). Positive corpus is 77 signed events, 65 posted messages, 233 SQLite pages / 954368 snapshot bytes. Destructive negative controls and restored final run are recorded in the sibling evidence packet. No upstream Signal tests, native or Web restore flow were executed.",
+        "boundary": "Current-schema Zoen SQLite snapshot → actual owner-bound AEAD envelope → new-device restore → cold reopen preserves exact full rows/count/order in eight populated portable tables and complete ordered timelines, profiles, space summaries and immutable file history. Device account metadata is intentionally replaced; local outbox/cache/uploads/peer receipt tables are excluded. Rehydration reads restored manifests and verifies both old/current encrypted file versions. This is one bounded Zoen fixture, not a shared cross-client canonical corpus or schema-upgrade matrix.",
+        "integrationCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+        "integratedVerification": {
+          "status": "PASS",
+          "command": "cargo test -p client-core --locked --lib -- --test-threads=2",
+          "receipt": "/private/tmp/zoen-continuity-batch-v146/client-core-library-tests-12.json",
+          "sourceCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+          "libraryTestsPassed": 543,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0,
+          "strictAllTargetClippy": "PASS",
+          "clippyReceipt": "/private/tmp/zoen-continuity-batch-v146/client-core-clippy-13.json"
+        }
+      }
     },
     {
       "id": "C13",
@@ -1425,7 +1685,28 @@
       "adoptionBoundary": "Use a bounded representative SQLite snapshot with exact canonical state before/after restore, scaling data only enough to cross meaningful IO/page boundaries.",
       "upstreamExecution": "NOT_RUN",
       "zoenStatusAtComparedSource": "partial",
-      "guardedRisk": "Truncation, skipped frames or reorder during stream framing."
+      "guardedRisk": "Truncation, skipped frames or reorder during stream framing.",
+      "implementedZoenSubset": {
+        "test": "crates/client-core/src/backup/snapshot_tests.rs::canonical_backup_restores_every_row_and_projection_across_new_device_and_cold_reopen",
+        "comparedBase": "2480a9b96dd00ba9012f54230ef4cfb9f074e475",
+        "testSourceSha256": "71ca47558e24b7ec33e30096e348be78da1af0511903bd813b1ce2562e81d461",
+        "status": "partial",
+        "verification": "Private original test-only candidate: focused client-core test passed (1 executed; 541 filtered; no ignored). Positive corpus is 77 signed events, 65 posted messages, 233 SQLite pages / 954368 snapshot bytes. Destructive negative controls and restored final run are recorded in the sibling evidence packet. No upstream Signal tests, native or Web restore flow were executed.",
+        "boundary": "One representative 233-page SQLite snapshot compares every canonical event and portable table row before/after restore; exact vector lengths precede ordered field equality. This is the same single test as C12, not a second test or Signal stream-format implementation. It does not inject upload interruption, out-of-space, process kill or arbitrary stream framing faults.",
+        "integrationCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+        "integratedVerification": {
+          "status": "PASS",
+          "command": "cargo test -p client-core --locked --lib -- --test-threads=2",
+          "receipt": "/private/tmp/zoen-continuity-batch-v146/client-core-library-tests-12.json",
+          "sourceCommit": "4f175f4048119517306b2b3cdb9df641a967cf8e",
+          "libraryTestsPassed": 543,
+          "failed": 0,
+          "ignored": 0,
+          "filtered": 0,
+          "strictAllTargetClippy": "PASS",
+          "clippyReceipt": "/private/tmp/zoen-continuity-batch-v146/client-core-clippy-13.json"
+        }
+      }
     },
     {
       "id": "C14",
@@ -1517,7 +1798,23 @@
       "adoptionBoundary": "Useful later small fixture family: fixed seed+clock+IDs, local command→confirmed log→remote replay→reopen. Assert exact counts/order/full canonical projection before value equality, and preserve failing seed as a regression.",
       "upstreamExecution": "NOT_RUN",
       "zoenStatusAtComparedSource": "partial",
-      "guardedRisk": "Local vs synced edit paths diverge in content, expiry, formatting or attachment rows."
+      "guardedRisk": "Local vs synced edit paths diverge in content, expiry, formatting or attachment rows.",
+      "implementedZoenSubset": {
+        "test": "crates/client-core/src/tests/edit_convergence.rs::pending_signed_edits_converge_with_confirmed_remote_history_across_cold_reopen",
+        "commit": "0db432697fdabd61315e9568509491bc304091ca",
+        "status": "partial",
+        "verification": "Integrated client-core library: 541 tests passed and strict all-target Clippy passed in the root-owned batch. One original fixed-fixture regression; no production policy change and no test suite executed for this documentation update.",
+        "boundary": "Fixed signer secrets, timestamps, message/edit IDs and a nine-event signed plaintext log compare durable local outbox projection, own confirmations, independent remote replay, duplicate replay and cold reopen. Exact four-entry timeline IDs/order/sequences/original timestamps, full TimelineEntry DTO equality, normalized edited text, inline quote, two-entry thread, empty final outboxes, exact nine stored events and verified reopened logs are asserted. The fixture stages signed edits directly into the outbox: it does not exercise public edit-command admission, MLS, live relay/WebSocket delivery, attachments, expiry/body-range features, or an exhaustive generated corpus. Zoen field/authorization policy remains distinct from Signal.",
+        "sourceEvidence": [
+          {
+            "commit": "0db432697fdabd61315e9568509491bc304091ca",
+            "path": "crates/client-core/src/tests/edit_convergence.rs",
+            "lines": [1, 296],
+            "sha256": "e545572693e70dcd034a6d96289e58ecd5c4b4b6b192af8374ab1dc937e50c6d",
+            "url": "https://github.com/EnzoTironi/zoen-native/blob/0db432697fdabd61315e9568509491bc304091ca/crates/client-core/src/tests/edit_convergence.rs#L1-L296"
+          }
+        ]
+      }
     },
     {
       "id": "C17",
@@ -1574,12 +1871,268 @@
       "adoptionBoundary": "Preserve distinct OAuth admission, device linking, recovery authority and history restore. Add payload-negative fixture C14 without reopening existing identity semantics.",
       "upstreamExecution": "NOT_RUN",
       "zoenStatusAtComparedSource": "equivalent"
+    },
+    {
+      "id": "R01",
+      "scope": "calling-library",
+      "zoenSourceCompared": "01de169be2e390391cd02ddca05f7b47334fe806",
+      "title": "Incoming media is gated by explicit acceptance",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "project": "signalapp/ringrtc",
+          "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+          "path": "src/rust/tests/incoming.rs",
+          "lines": [51, 205],
+          "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/rust/tests/incoming.rs#L51-L205"
+        }
+      ],
+      "initialState": "Fresh simulated call manager.",
+      "sequence": "Receive offer; proceed; inject ICE-connected and incoming MediaStream; then accept locally.",
+      "introducedFault": "No failing condition injected. Valid state progression is driven with simulated ICE/media callbacks.",
+      "expectedAssertedResult": "Before accept: one incoming start/answer, connected-before-accepted and local ringing, outgoing audio disabled, zero error/ended. After accept: connected-and-accepted, one LocalAccepted and one stream, outgoing audio enabled.",
+      "sourceAssertionLimit": "Rust SimPlatform, including a null-backed test MediaStream; this proves state/callback gating, not actual microphone privacy, captured audio or hardware behavior.",
+      "zoenStatusAtComparedSource": "gap",
+      "zoenEvidence": "apps/zoen/src/components/chat-header.ios.tsx:34-35,45-48 disables voice/video actions; apps/zoen/acceptance.json retains ios-background-and-calls and encrypted-voice-video-calls journeys as pending. No dedicated call signaling operation/state was found in inspected crates/protocol/src/lib.rs or native ZoenCoreModule call-name search. Generic chat/ephemeral transport and audio-message playback do not establish calling behavior.",
+      "adoptionBoundary": "Define explicit accepted/connecting states and real native media ownership before enabling controls. Verify physical microphone/camera gating separately.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenCallExecution": "NOT_RUN"
+    },
+    {
+      "id": "R02",
+      "scope": "calling-library",
+      "zoenSourceCompared": "01de169be2e390391cd02ddca05f7b47334fe806",
+      "title": "Offer freshness has an inclusive boundary",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "signalapp/ringrtc",
+          "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+          "path": "src/rust/tests/incoming.rs",
+          "lines": [1074, 1164],
+          "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/rust/tests/incoming.rs#L1074-L1164"
+        }
+      ],
+      "initialState": "Fresh simulated manager for each case.",
+      "sequence": "Supply received offers with age below, at, above the configured age boundary, plus an old offer.",
+      "introducedFault": "Out-of-window age values are deliberately supplied; below/at-boundary cases are ordinary valid inputs, not failures.",
+      "expectedAssertedResult": "Below/at boundary: no expiry notification and manager busy. Above/old: exactly one offer-expired notification, zero internal errors, manager not busy.",
+      "sourceAssertionLimit": "Four explicit test methods, not a parameter-expanded runtime result. No real delayed network, clock-skew measurement or push delivery was exercised here.",
+      "zoenStatusAtComparedSource": "gap",
+      "zoenEvidence": "apps/zoen/src/components/chat-header.ios.tsx:34-35,45-48 disables voice/video actions; apps/zoen/acceptance.json retains ios-background-and-calls and encrypted-voice-video-calls journeys as pending. No dedicated call signaling operation/state was found in inspected crates/protocol/src/lib.rs or native ZoenCoreModule call-name search. Generic chat/ephemeral transport and audio-message playback do not establish calling behavior.",
+      "adoptionBoundary": "Declare Zoen expiry/clock/trust policy and test its own boundaries. Do not copy MAX_MESSAGE_AGE or example age values.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenCallExecution": "NOT_RUN"
+    },
+    {
+      "id": "R03",
+      "scope": "calling-library",
+      "zoenSourceCompared": "01de169be2e390391cd02ddca05f7b47334fe806",
+      "title": "Wrong peer cannot terminate the active call",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "project": "signalapp/ringrtc",
+          "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+          "path": "src/rust/tests/incoming.rs",
+          "lines": [2209, 2259],
+          "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/rust/tests/incoming.rs#L2209-L2259"
+        }
+      ],
+      "initialState": "Connected and accepted simulated incoming call.",
+      "sequence": "Deliver a hangup or busy signal using the active call ID but a different remote peer.",
+      "introducedFault": "Wrong-peer signaling is explicitly supplied.",
+      "expectedAssertedResult": "No ended/error event; call manager remains busy, so the active call was not terminated.",
+      "sourceAssertionLimit": "Peer is a simulated application identity string. This is matching/ownership validation, not a cryptographic authorization, membership or relay-spoofing test.",
+      "zoenStatusAtComparedSource": "gap",
+      "zoenEvidence": "apps/zoen/src/components/chat-header.ios.tsx:34-35,45-48 disables voice/video actions; apps/zoen/acceptance.json retains ios-background-and-calls and encrypted-voice-video-calls journeys as pending. No dedicated call signaling operation/state was found in inspected crates/protocol/src/lib.rs or native ZoenCoreModule call-name search. Generic chat/ephemeral transport and audio-message playback do not establish calling behavior.",
+      "adoptionBoundary": "Bind future call ID, conversation, authenticated identity and device consistently across Rust signaling and platform callbacks; preserve existing revocation boundaries.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenCallExecution": "NOT_RUN"
+    },
+    {
+      "id": "R04",
+      "scope": "calling-library",
+      "zoenSourceCompared": "01de169be2e390391cd02ddca05f7b47334fe806",
+      "title": "Reconnect is a state transition rather than a second call",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "signalapp/ringrtc",
+          "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+          "path": "src/rust/tests/outgoing.rs",
+          "lines": [712, 758],
+          "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/rust/tests/outgoing.rs#L712-L758"
+        }
+      ],
+      "initialState": "Connected and accepted simulated outgoing call.",
+      "sequence": "Inject ICE-disconnected, synchronize, inject ICE-connected, synchronize.",
+      "introducedFault": "Connection loss/recovery callbacks are injected; there is no actual network outage.",
+      "expectedAssertedResult": "Intermediate call and connection become ReconnectingAfterAccepted with no ended/error; final call returns ConnectedAndAccepted, exactly one Reconnected event, manager remains busy.",
+      "sourceAssertionLimit": "No acoustic continuity, real ICE/TURN path, roaming or reconnect deadline measurement is asserted.",
+      "zoenStatusAtComparedSource": "gap",
+      "zoenEvidence": "apps/zoen/src/components/chat-header.ios.tsx:34-35,45-48 disables voice/video actions; apps/zoen/acceptance.json retains ios-background-and-calls and encrypted-voice-video-calls journeys as pending. No dedicated call signaling operation/state was found in inspected crates/protocol/src/lib.rs or native ZoenCoreModule call-name search. Generic chat/ephemeral transport and audio-message playback do not establish calling behavior.",
+      "adoptionBoundary": "Retain stable call identity and media/session ownership through reconnect; qualify native network changes independently.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenCallExecution": "NOT_RUN"
+    },
+    {
+      "id": "R05",
+      "scope": "calling-library",
+      "zoenSourceCompared": "01de169be2e390391cd02ddca05f7b47334fe806",
+      "title": "Drop and ICE failure conclude once regardless of order",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "project": "signalapp/ringrtc",
+          "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+          "path": "src/rust/tests/incoming.rs",
+          "lines": [293, 341],
+          "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/rust/tests/incoming.rs#L293-L341"
+        },
+        {
+          "project": "signalapp/ringrtc",
+          "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+          "path": "src/rust/tests/incoming.rs",
+          "lines": [374, 419],
+          "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/rust/tests/incoming.rs#L374-L419"
+        }
+      ],
+      "initialState": "Connecting simulated incoming call.",
+      "sequence": "Drop directly; order hangup then drop; order ICE failure before/after app drop.",
+      "introducedFault": "Explicit local cancellation and selected remote/ICE failure callbacks are interleaved.",
+      "expectedAssertedResult": "Exactly one ended event, zero internal errors, manager no longer busy and all outgoing hangup counters zero. AppDroppedCall reason is specifically checked in direct drop and drop-before-ICE cases.",
+      "sourceAssertionLimit": "This is queue/state-machine conclusion behavior in simulation; it is not a proof that every native callback/device resource has been released.",
+      "zoenStatusAtComparedSource": "gap",
+      "zoenEvidence": "apps/zoen/src/components/chat-header.ios.tsx:34-35,45-48 disables voice/video actions; apps/zoen/acceptance.json retains ios-background-and-calls and encrypted-voice-video-calls journeys as pending. No dedicated call signaling operation/state was found in inspected crates/protocol/src/lib.rs or native ZoenCoreModule call-name search. Generic chat/ephemeral transport and audio-message playback do not establish calling behavior.",
+      "adoptionBoundary": "Make repeated local/remote termination idempotent. Stop all owned native resources and attribute one final outcome without echoing incompatible hangups.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenCallExecution": "NOT_RUN"
+    },
+    {
+      "id": "R06",
+      "scope": "calling-library",
+      "zoenSourceCompared": "01de169be2e390391cd02ddca05f7b47334fe806",
+      "title": "Notification failure cannot prevent media teardown",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "project": "signalapp/ringrtc",
+          "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+          "path": "src/rust/tests/outgoing.rs",
+          "lines": [3618, 3637],
+          "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/rust/tests/outgoing.rs#L3618-L3637"
+        }
+      ],
+      "initialState": "Connected and accepted simulated outgoing call with peer-connection handle.",
+      "sequence": "Force call-ended notification failure, hang up, flush teardown work, then clear the forced failure.",
+      "introducedFault": "SimPlatform explicitly forces call-ended notification failure.",
+      "expectedAssertedResult": "Peer connection closed; outgoing audio disabled; RTP sink unregistered.",
+      "sourceAssertionLimit": "These are simulated resource flags, not native microphone/camera or OS callback observations. This test does not assert successful end-notification delivery.",
+      "zoenStatusAtComparedSource": "gap",
+      "zoenEvidence": "apps/zoen/src/components/chat-header.ios.tsx:34-35,45-48 disables voice/video actions; apps/zoen/acceptance.json retains ios-background-and-calls and encrypted-voice-video-calls journeys as pending. No dedicated call signaling operation/state was found in inspected crates/protocol/src/lib.rs or native ZoenCoreModule call-name search. Generic chat/ephemeral transport and audio-message playback do not establish calling behavior.",
+      "adoptionBoundary": "Resource release must not depend on UI/listener success. Keep control teardown independent of best-effort notification.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenCallExecution": "NOT_RUN"
+    },
+    {
+      "id": "R07",
+      "scope": "calling-library",
+      "zoenSourceCompared": "01de169be2e390391cd02ddca05f7b47334fe806",
+      "title": "Termination works with saturated control queues",
+      "priority": "P0",
+      "sourceEvidence": [
+        {
+          "project": "signalapp/ringrtc",
+          "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+          "path": "src/rust/tests/outgoing.rs",
+          "lines": [3641, 3768],
+          "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/rust/tests/outgoing.rs#L3641-L3768"
+        },
+        {
+          "project": "signalapp/ringrtc",
+          "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+          "path": "src/rust/tests/common/mod.rs",
+          "lines": [183, 261],
+          "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/rust/tests/common/mod.rs#L183-L261"
+        }
+      ],
+      "initialState": "Connected and accepted call; selected call/connection FSM can be paused.",
+      "sequence": "Pause FSM and fill bounded queue; request local hangup, or place remote hangup before saturation; resume and observe teardown/conclusion/worker termination.",
+      "introducedFault": "Controlled queue saturation plus withheld processing. Helper fill functions assert that admission eventually refuses, and wait_for_teardown flushes the separate hangup and teardown FIFO tasks.",
+      "expectedAssertedResult": "Peer connection closes, outgoing audio stops and RTP sink unregisters despite full queues. Local/remote conclusion counters are checked in relevant cases; dedicated call/connection tests prove FSM termination after resume even when Terminate could not be queued.",
+      "sourceAssertionLimit": "Five separate test bodies within this family, plus helpers, not one universal assertion. Resource-release checks are SimPlatform flags. No queue capacities or timeout constants should transfer.",
+      "zoenStatusAtComparedSource": "gap",
+      "zoenEvidence": "apps/zoen/src/components/chat-header.ios.tsx:34-35,45-48 disables voice/video actions; apps/zoen/acceptance.json retains ios-background-and-calls and encrypted-voice-video-calls journeys as pending. No dedicated call signaling operation/state was found in inspected crates/protocol/src/lib.rs or native ZoenCoreModule call-name search. Generic chat/ephemeral transport and audio-message playback do not establish calling behavior.",
+      "adoptionBoundary": "Preserve an out-of-band idempotent cancellation/resource-stop path. A full data/event queue must not prevent hangup or require a successful final queued event.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenCallExecution": "NOT_RUN"
+    },
+    {
+      "id": "R08",
+      "scope": "calling-library",
+      "zoenSourceCompared": "01de169be2e390391cd02ddca05f7b47334fe806",
+      "title": "Manager initialization causes no unsolicited callbacks",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "signalapp/ringrtc",
+          "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+          "path": "src/ios/SignalRingRTC/SignalRingRTCTests/SignalRingRTCTests.swift",
+          "lines": [7, 21],
+          "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/ios/SignalRingRTC/SignalRingRTCTests/SignalRingRTCTests.swift#L7-L21"
+        },
+        {
+          "project": "signalapp/ringrtc",
+          "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+          "path": "src/ios/SignalRingRTC/SignalRingRTCTests/SignalRingRTCTests.swift",
+          "lines": [759, 806],
+          "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/ios/SignalRingRTC/SignalRingRTCTests/SignalRingRTCTests.swift#L759-L806"
+        }
+      ],
+      "initialState": "Fresh Swift TestDelegate and CallManager factory.",
+      "sequence": "Create manager and set to nil; companion repeats creation/release several times.",
+      "introducedFault": "None injected. Valid repeated lifecycle exercise checks initialization behavior.",
+      "expectedAssertedResult": "Created manager is nonnil in repeated case; delegate generalInvocationDetected stays false at the checked points.",
+      "sourceAssertionLimit": "Factory explicitly uses AudioDeviceModuleForTests because tests do not measure audio. Setting nil is not an asserted deallocation/leak or audio-release result. No iOS build/run performed in this study.",
+      "zoenStatusAtComparedSource": "gap",
+      "zoenEvidence": "apps/zoen/src/components/chat-header.ios.tsx:34-35,45-48 disables voice/video actions; apps/zoen/acceptance.json retains ios-background-and-calls and encrypted-voice-video-calls journeys as pending. No dedicated call signaling operation/state was found in inspected crates/protocol/src/lib.rs or native ZoenCoreModule call-name search. Generic chat/ephemeral transport and audio-message playback do not establish calling behavior.",
+      "adoptionBoundary": "Use native module lifecycle ownership and deterministic cancellation tests, with separate device/audio proof. Do not label this a native leak test.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenCallExecution": "NOT_RUN"
+    },
+    {
+      "id": "R09",
+      "scope": "calling-library",
+      "zoenSourceCompared": "01de169be2e390391cd02ddca05f7b47334fe806",
+      "title": "Expired call links retain a typed outcome",
+      "priority": "P1",
+      "sourceEvidence": [
+        {
+          "project": "signalapp/ringrtc",
+          "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
+          "path": "src/node/test/RingRTC-test.ts",
+          "lines": [1061, 1100],
+          "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/node/test/RingRTC-test.ts#L1061-L1100"
+        }
+      ],
+      "initialState": "Electron-facing RingRTC API test with intercepted HTTP callback.",
+      "sequence": "Peek a call link; verify requested GET target; supply HTTP404 with explicit expired reason.",
+      "introducedFault": "HTTP callback is deliberately answered with404 and an expired-reason body.",
+      "expectedAssertedResult": "Result is unsuccessful and errorStatusCode is EXPIRED_CALL_LINK rather than an empty successful call state.",
+      "sourceAssertionLimit": "Package test runner is electron-mocha renderer. HTTP is mocked through receivedHttpResponse; no live SFU, credentials, server deployment or native media was qualified.",
+      "zoenStatusAtComparedSource": "gap",
+      "zoenEvidence": "apps/zoen/src/components/chat-header.ios.tsx:34-35,45-48 disables voice/video actions; apps/zoen/acceptance.json retains ios-background-and-calls and encrypted-voice-video-calls journeys as pending. No dedicated call signaling operation/state was found in inspected crates/protocol/src/lib.rs or native ZoenCoreModule call-name search. Generic chat/ephemeral transport and audio-message playback do not establish calling behavior.",
+      "adoptionBoundary": "Future Zoen link/call UI should distinguish expired/revoked/empty/unavailable states according to its own server authorization contract.",
+      "upstreamExecution": "NOT_RUN",
+      "zoenCallExecution": "NOT_RUN"
     }
   ],
   "nextBatches": [
-    "Deterministic replay-to-live handoff: inject a durable event/wake at the transition and prove reconciliation without a later unrelated message.",
-    "Canonical edit convergence with exact count/order plus content, rather than relying on pairwise zip assertions that omit cardinality.",
-    "Continue unread assertions, parameter expansions, conditional fixtures and fuzz drivers across the pinned repositories; inventory and inspect RingRTC separately.",
+    "S04 follow-up: exercise the real relay snapshot-to-live subscription boundary and deliberately missing notifications under Zoen retained-log/live-fanout policy; the implemented client overtaking/gap-repair subset does not qualify every lost-wake interleaving.",
+    "C16 follow-up: extend exact-cardinality/full-projection convergence through public edit-command admission and MLS where applicable, plus supported attachment/edit/expiry cases; the fixed signed-outbox subset does not establish those paths.",
+    "Continue unread assertions, parameter expansions, conditional fixtures and fuzz drivers across all six pinned repositories, including remaining RingRTC Rust/Swift/Node bodies and its unread Android tests; its bounded inventory is now recorded, not exhaustive.",
     "Complete independent-recipient media, multi-attachment/video, physical lifecycle and recovery journeys under Zoen own policies."
-  ]
+  ],
+  "comparisonPolicy": "The top-level zoenSourceCompared is the inherited baseline for the original 42 records. Explicit per-record zoenSourceCompared overrides apply to the nine RingRTC records. Baseline statuses and evidence remain historical; implementedZoenSubset records use their own immutable Zoen commit and retain narrower assertion/execution boundaries rather than redefining the baseline or approving product equivalence."
 }

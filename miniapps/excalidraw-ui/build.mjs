@@ -33,6 +33,8 @@ for (const file of [
   "patches/90-initial-host-context.diff",
   "patches/91-host-safe-area.diff",
   "patches/92-mobile-side-tools.diff",
+  "patches/93-host-close-corner.diff",
+  "../../packages/zoen-miniapp-sdk/src/host-chrome.ts",
 ].sort()) {
   const sha = hash(await readFile(join(root, file)));
   if (upstream.sourceSha256[file] && sha !== upstream.sourceSha256[file])

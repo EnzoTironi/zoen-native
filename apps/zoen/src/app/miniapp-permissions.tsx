@@ -10,6 +10,7 @@ import { useCoreQuery } from '../core/query';
 import { EmptyState, Loading, NativeButton, Surface } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
 import { useTheme } from '../theme';
+import { ComposerAction } from '../components/composer-action';
 
 const labels: Record<string, string> = {
   'photos.pick': t('miniapps.choosePhotos'),
@@ -60,7 +61,25 @@ export default function MiniappPermissions() {
           alignSelf: 'center',
         }}
       >
-        <Stack.Screen options={{ title: t('miniapps.miniappPermissions') }} />
+        <Stack.Screen
+          options={{
+            title: t('miniapps.miniappPermissions'),
+            ...(process.env.EXPO_OS === 'ios'
+              ? {
+                  headerBackVisible: false,
+                  headerLeft: () => (
+                    <ComposerAction
+                      testID="apps-permissions-close"
+                      name="xmark"
+                      label={t('common.close')}
+                      size={44}
+                      onPress={() => router.back()}
+                    />
+                  ),
+                }
+              : {}),
+          }}
+        />
         <Text style={{ color: colors.secondary, fontSize: 16, lineHeight: 24 }}>
           {t('miniapps.eachPermissionBelongsToAMiniappInOne')}
         </Text>

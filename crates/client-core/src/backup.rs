@@ -578,3 +578,6 @@ mod payload_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod snapshot_tests;

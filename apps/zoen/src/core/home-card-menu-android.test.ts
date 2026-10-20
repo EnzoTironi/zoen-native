@@ -22,7 +22,7 @@ const compiled = await build({
         builder.onResolve(
           {
             filter:
-              /^(react(?:\/jsx-runtime)?|expo-router|@expo\/ui(?:\/jetpack-compose(?:\/modifiers)?)?|\.\.\/theme|\.\.\/components\/primitives|\.\.\/i18n\/index\.ts)$/,
+              /^(react(?:\/jsx-runtime)?|react-native|expo-router|@expo\/ui(?:\/jetpack-compose(?:\/modifiers)?)?|\.\.\/theme|\.\.\/components\/primitives|\.\.\/i18n\/index\.ts)$/,
           },
           ({ path }) => ({ path, external: true }),
         );
@@ -76,6 +76,7 @@ function fixture() {
   const ports: Record<string, unknown> = {
     react,
     'react/jsx-runtime': { jsx, jsxs: jsx },
+    'react-native': { View: 'View' },
     '@expo/ui': { Host: 'NativeHost' },
     '@expo/ui/jetpack-compose': {
       DropdownMenu: Menu,

@@ -321,8 +321,10 @@ export class ConversationCardsController {
     spaceId: string,
     ids: readonly string[],
     owner: HomeOwner | null = this.state.owner,
+    expectedIds?: readonly string[],
   ): Promise<void> => {
     const requested = [...ids];
+    const expected = expectedIds && [...expectedIds];
     return this.write(
       spaceId,
       (cards, preference) => {
@@ -330,6 +332,12 @@ export class ConversationCardsController {
           throw new ConversationCardsFailure('save');
         const visible = cards.visible.map((item) => item.id);
         const visibleIds = new Set(visible);
+        if (
+          expected &&
+          (expected.length !== visible.length ||
+            expected.some((id, index) => id !== visible[index]))
+        )
+          throw new ConversationCardsFailure('save');
         if (requested.length !== visible.length || requested.some((id) => !visibleIds.has(id)))
           throw new ConversationCardsFailure('save');
         if (requested.every((id, index) => id === visible[index])) return null;

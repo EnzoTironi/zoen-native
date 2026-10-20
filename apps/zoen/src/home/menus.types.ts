@@ -1,4 +1,8 @@
-export type HomeActionsProps = { canOrganize?: boolean };
+export type HomeActionsProps = {
+  canOrganize?: boolean;
+  hiddenCount?: number;
+  onRestoreHidden?: () => void;
+};
 export type HomeCardMenuProps = {
   name: string;
   pinned: boolean;

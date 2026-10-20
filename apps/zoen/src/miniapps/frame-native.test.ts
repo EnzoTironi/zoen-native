@@ -93,14 +93,17 @@ function fixture(platform: string) {
     exports: module.exports,
     require: (name: string) => ports[name] ?? require(name),
   });
-  function render(html = '<!doctype html><p>Real child document</p>') {
+  function render(
+    html = '<!doctype html><p>Real child document</p>',
+    geometry = { height: 640, fill: false },
+  ) {
     cursor = 0;
     effects = [];
     const element = module.exports.MiniappFrame(
       {
         html,
         title: 'Drawing',
-        height: 640,
+        ...geometry,
         blocked: false,
         onMessage: (message: string) => deliveries.push(message),
         onError: (reason: string) => assert.fail(reason),
@@ -118,7 +121,12 @@ function fixture(platform: string) {
       /const nonce="([a-f0-9-]+)"/,
     )?.[1];
     assert.ok(nonce);
-    return { receive: web.props.onMessage as (event: unknown) => void, nonce };
+    return {
+      receive: web.props.onMessage as (event: unknown) => void,
+      nonce,
+      source: web.props.source,
+      key: web.props.key,
+    };
   }
   return { render, deliveries, handle, injected };
 }
@@ -194,4 +202,30 @@ test('an old native callback and a disposed frame cannot deliver into the replac
   f.handle.current!.dispose();
   next.receive(event('null', next.nonce));
   assert.equal(f.deliveries.length, 1);
+});
+
+test('portrait-landscape-portrait layout keeps one native source, nonce and callback authority', () => {
+  const f = fixture('ios');
+  const html = '<!doctype html><p>Unsaved editor state belongs to this document</p>';
+  const portrait = f.render(html, { height: 852, fill: true });
+  const landscape = f.render(html, { height: 393, fill: true });
+  const returned = f.render(html, { height: 852, fill: true });
+  assert.equal(landscape.source, portrait.source);
+  assert.equal(returned.source, portrait.source);
+  assert.equal(landscape.nonce, portrait.nonce);
+  assert.equal(returned.nonce, portrait.nonce);
+  assert.equal(returned.key, undefined);
+  assert.equal(
+    f.injected.some((code) => code.includes('"dispose"')),
+    false,
+  );
+  portrait.receive(event('about:blank', portrait.nonce));
+  landscape.receive(event('about:blank', landscape.nonce));
+  returned.receive(event('about:blank', returned.nonce));
+  assert.equal(f.deliveries.length, 3);
+  const replaced = f.render('<!doctype html><p>New verified resource/policy scope</p>');
+  assert.notEqual(replaced.source, portrait.source);
+  assert.notEqual(replaced.nonce, portrait.nonce);
+  returned.receive(event('about:blank', returned.nonce));
+  assert.equal(f.deliveries.length, 3);
 });

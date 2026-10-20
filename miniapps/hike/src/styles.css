@@ -9,7 +9,7 @@ html, body, #root { height: 100%; overflow: hidden; background: var(--z-bg); }
 .offline-note { position: absolute; left: calc(16px + var(--z-safe-left)); top: 44%; font-size: 11px; color: #5B6478; pointer-events: none; }
 .maplibregl-ctrl-attrib { font-size: 9px !important; opacity: .7; }
 .maplibregl-ctrl-bottom-right { bottom: calc(250px + var(--z-safe-bottom)) !important; right: var(--z-safe-right) !important; }
-.top { position: absolute; left: calc(12px + var(--z-safe-left)); right: calc(12px + var(--z-safe-right)); top: calc(var(--z-safe-top) + 10px); display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; z-index: 5; pointer-events: none; }
+.top { position: absolute; left: calc(12px + var(--z-safe-left)); right: max(calc(12px + var(--z-safe-right)), calc(var(--z-close-right) + 8px)); top: calc(var(--z-safe-top) + 10px); display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; z-index: 5; pointer-events: none; }
 .top > * { pointer-events: auto; }
 .lead { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .head { display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; border-radius: 22px; max-width: 56vw; }
@@ -48,7 +48,7 @@ html, body, #root { height: 100%; overflow: hidden; background: var(--z-bg); }
 .album { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .album img, .album .ph { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 14px; display: block; }
 .mine { outline: 2px dashed var(--z-ink-3); outline-offset: 2px; }
-.cmp-head { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 12px; padding: calc(var(--z-safe-top) + 10px) calc(14px + var(--z-safe-right)) 10px calc(14px + var(--z-safe-left)); background: var(--z-header-background, color-mix(in srgb, var(--z-bg) 88%, transparent)); -webkit-backdrop-filter: var(--z-glass-filter, blur(16px)); backdrop-filter: var(--z-glass-filter, blur(16px)); }
+.cmp-head { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 12px; padding: calc(var(--z-safe-top) + 10px) max(calc(14px + var(--z-safe-right)), calc(var(--z-close-right) + 8px)) 10px calc(14px + var(--z-safe-left)); background: var(--z-header-background, color-mix(in srgb, var(--z-bg) 88%, transparent)); -webkit-backdrop-filter: var(--z-glass-filter, blur(16px)); backdrop-filter: var(--z-glass-filter, blur(16px)); }
 .cmp-head h1 { font: 800 22px var(--z-font-rounded); margin: 0; }
 .cmp { overflow-x: auto; scrollbar-width: none; padding-bottom: calc(40px + var(--z-safe-bottom)); }
 .cmp::-webkit-scrollbar { display: none; }

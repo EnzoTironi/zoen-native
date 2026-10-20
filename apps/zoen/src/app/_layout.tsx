@@ -54,7 +54,9 @@ function Navigation() {
         <SessionGate>
           <NativeIntentConsumer />
           <Stack
-            screenOptions={{
+            screenOptions={({ route }) => ({
+              // Tab surfaces own their headings; never restore a native group header.
+              headerShown: route.name !== '(tabs)',
               headerBackButtonDisplayMode: 'minimal',
               headerShadowVisible: false,
               headerTransparent: process.env.EXPO_OS !== 'android',
@@ -67,14 +69,22 @@ function Navigation() {
               scrollEdgeEffects: { top: 'hidden', bottom: 'hidden' },
               headerTintColor: colors.text,
               contentStyle: { backgroundColor: 'transparent' },
-            }}
+            })}
           >
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ title: '' }} />
             <Stack.Screen name="chat/[id]" options={{ title: '' }} />
+            <Stack.Screen
+              name="miniapps"
+              options={{
+                presentation: process.env.EXPO_OS === 'ios' ? 'fullScreenModal' : 'card',
+                headerShown: false,
+              }}
+            />
             <Stack.Screen
               name="miniapp"
               options={{
                 presentation: process.env.EXPO_OS === 'web' ? 'card' : 'fullScreenModal',
+                orientation: 'default',
                 animation: process.env.EXPO_OS === 'web' ? undefined : 'slide_from_bottom',
                 gestureEnabled: true,
                 headerShown: false,

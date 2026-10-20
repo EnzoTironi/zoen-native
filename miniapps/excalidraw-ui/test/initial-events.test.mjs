@@ -70,7 +70,14 @@ async function compile(mutate = (text) => text) {
   return result.outputFiles[0].text;
 }
 
-async function fixture({ mode = "fullscreen", mutate, earlyContext, canonical = false, initialContext = {}, previousTop } = {}) {
+async function fixture({
+  mode = "fullscreen",
+  mutate,
+  earlyContext,
+  canonical = false,
+  initialContext = {},
+  previousTop,
+} = {}) {
   const runtime = await compile(mutate);
   const failures = [];
   const keys = [];
@@ -90,8 +97,18 @@ async function fixture({ mode = "fullscreen", mutate, earlyContext, canonical = 
       label: { text: "Exact initial idea" },
     },
   ];
-  let context = { displayMode: mode, containerDimensions: { width: 400, height: 700 }, ...initialContext };
-  const initialScene = JSON.stringify({ type: "excalidraw", version: 2, elements, appState: {}, files: {} });
+  let context = {
+    displayMode: mode,
+    containerDimensions: { width: 400, height: 700 },
+    ...initialContext,
+  };
+  const initialScene = JSON.stringify({
+    type: "excalidraw",
+    version: 2,
+    elements,
+    appState: {},
+    files: {},
+  });
   const sceneBytes = new TextEncoder().encode(initialScene);
   const sceneHash = createHash("sha256").update(sceneBytes).digest("hex");
   const dom = new JSDOM("<!doctype html><body></body>", {
@@ -155,21 +172,49 @@ async function fixture({ mode = "fullscreen", mutate, earlyContext, canonical = 
         },
         initialize: () => ({
           hostInfo: { name: "Zoen", version: "qa" },
-          hostCapabilities: { serverTools: {}, ...(canonical ? { experimental: { zoen: { canonicalScene: { version: 1, itemId: "item" } } } } : {}) },
+          hostCapabilities: {
+            serverTools: {},
+            ...(canonical
+              ? { experimental: { zoen: { canonicalScene: { version: 1, itemId: "item" } } } }
+              : {}),
+          },
           hostContext: context,
         }),
         arguments: () => ({ elements: JSON.stringify(elements) }),
         state: () => ({ content: [], structuredContent: { checkpointId: "qa-checkpoint" } }),
         context: () => context,
-        tools: new Set(["read_checkpoint", "save_checkpoint", "app_scene_read", "app_scene_read_chunk"]),
+        tools: new Set([
+          "read_checkpoint",
+          "save_checkpoint",
+          "app_scene_read",
+          "app_scene_read_chunk",
+        ]),
         resourceUri: "ui://zoen/excalidraw.html",
         resource: async () => ({ contents: [] }),
-        call: async (name) => ({ content: [], ...(name === "app_scene_read" ? { structuredContent: { transferId: "read", bytes: sceneBytes.length, sha256: sceneHash, chunkBytes: 196608 } } : name === "app_scene_read_chunk" ? { structuredContent: { index: 0, data: Buffer.from(sceneBytes).toString("base64") } } : {}) }),
+        call: async (name) => ({
+          content: [],
+          ...(name === "app_scene_read"
+            ? {
+                structuredContent: {
+                  transferId: "read",
+                  bytes: sceneBytes.length,
+                  sha256: sceneHash,
+                  chunkBytes: 196608,
+                },
+              }
+            : name === "app_scene_read_chunk"
+              ? {
+                  structuredContent: { index: 0, data: Buffer.from(sceneBytes).toString("base64") },
+                }
+              : {}),
+        }),
         openLink: async () => ({}),
         share: async () => ({}),
         native: async () => ({}),
         haptic() {},
-        resize(height) { sizes.push(height); },
+        resize(height) {
+          sizes.push(height);
+        },
         close() {},
       });
     },
@@ -196,13 +241,17 @@ async function fixture({ mode = "fullscreen", mutate, earlyContext, canonical = 
     wait,
     context(delta) {
       // Exercise a genuinely partial wire notification, not a fixture-side merged snapshot.
-      dom.window.dispatchEvent(new dom.window.MessageEvent("message", {
-        data: { jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: delta },
-        source: parent,
-      }));
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent("message", {
+          data: { jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: delta },
+          source: parent,
+        }),
+      );
       return new Promise((resolve) => setImmediate(resolve));
     },
-    unmount() { dom.window.qaRoot.unmount(); },
+    unmount() {
+      dom.window.qaRoot.unmount();
+    },
     close() {
       dom.window.qaRoot.unmount();
       session.dispose();
@@ -314,7 +363,6 @@ test("negative: inline-only initial state does not enter the already-negotiated 
   }
 });
 
-
 for (const canonical of [false, true]) {
   test(`${canonical ? "canonical" : "legacy"} editor uses negotiated host safe area and retains partial updates without resizing canvas`, async () => {
     const f = await fixture({
@@ -323,16 +371,24 @@ for (const canonical of [false, true]) {
       initialContext: { safeAreaInsets: { top: 31, right: 9, bottom: 22, left: 7 } },
     });
     const root = f.dom.window.document.documentElement;
-    const values = () => ["--sat", "--sar", "--sab", "--sal"].map((key) => root.style.getPropertyValue(key));
+    const values = () =>
+      ["--sat", "--sar", "--sab", "--sal"].map((key) => root.style.getPropertyValue(key));
     try {
       await f.wait(() => f.dom.window.document.querySelector("[data-qa-editor]"));
       assert.deepEqual(values(), ["31px", "9px", "22px", "7px"]);
       // A theme-only notification must not discard the SDK's previously merged insets.
       await f.context({ theme: "dark" });
       await f.wait(() => values()[0] === "31px");
-      await f.context({ safeAreaInsets: { top: 0, right: 42, bottom: 18, left: 40 }, containerDimensions: { width: 900, height: 400 } });
+      await f.context({
+        safeAreaInsets: { top: 0, right: 42, bottom: 18, left: 40 },
+        containerDimensions: { width: 900, height: 400 },
+      });
       await f.wait(() => values()[1] === "42px");
-      assert.deepEqual(values(), ["0px", "42px", "18px", "40px"], "rotated/wide controls still respect physical edges");
+      assert.deepEqual(
+        values(),
+        ["0px", "42px", "18px", "40px"],
+        "rotated/wide controls still respect physical edges",
+      );
       const canvas = f.dom.window.document.querySelector(canonical ? ".canonical-canvas" : ".main");
       if (!canonical) await f.wait(() => canvas.style.height === "400px");
       assert.equal(canvas.style.padding, "");
@@ -349,20 +405,26 @@ for (const canonical of [false, true]) {
       await new Promise((resolve) => setTimeout(resolve, 20));
       assert.deepEqual(values(), ["3px", "", "", ""], "closed root removed only its own listener");
       assert.deepEqual(f.failures, []);
-    } finally { f.close(); }
+    } finally {
+      f.close();
+    }
   });
 }
 
 test("host safe area arriving before either editor mounts is retained by the real MCP App", async () => {
-  const f = await fixture({ canonical: true, earlyContext: { safeAreaInsets: { top: 35, right: 1, bottom: 24, left: 2 } } });
+  const f = await fixture({
+    canonical: true,
+    earlyContext: { safeAreaInsets: { top: 35, right: 1, bottom: 24, left: 2 } },
+  });
   try {
     await f.wait(() => f.dom.window.document.querySelector("[data-qa-editor]"));
     assert.equal(f.dom.window.document.documentElement.style.getPropertyValue("--sat"), "35px");
     assert.equal(f.dom.window.document.documentElement.style.getPropertyValue("--sab"), "24px");
     assert.equal(f.early.length, 2, "no fabricated second launch is needed");
-  } finally { f.close(); }
+  } finally {
+    f.close();
+  }
 });
-
 
 test("negative: removing the shared subscription reproduces missing canonical safe-area controls", async () => {
   const f = await fixture({
@@ -374,8 +436,70 @@ test("negative: removing the shared subscription reproduces missing canonical sa
     },
   });
   try {
-    await f.wait(() => f.dom.window.document.querySelector("[data-canonical-editor] [data-qa-editor]"));
+    await f.wait(() =>
+      f.dom.window.document.querySelector("[data-canonical-editor] [data-qa-editor]"),
+    );
     assert.equal(f.dom.window.document.documentElement.style.getPropertyValue("--sat"), "");
     assert.equal(f.dom.window.document.documentElement.style.getPropertyValue("--sab"), "");
-  } finally { f.close(); }
+  } finally {
+    f.close();
+  }
 });
+
+for (const canonical of [false, true])
+  test(`${canonical ? "canonical" : "legacy"} actual bridge binds, updates and clears one native close rectangle without replacing content`, async () => {
+    const f = await fixture({
+      canonical,
+      initialContext: {
+        safeAreaInsets: { top: 31, right: 9, bottom: 22, left: 7 },
+        zoen: { chrome: { closeButton: { top: 39, right: 21, width: 44, height: 44 } } },
+      },
+    });
+    const root = f.dom.window.document.documentElement;
+    const values = () =>
+      ["top", "right", "width", "height"].map((edge) =>
+        root.style.getPropertyValue("--zoen-host-close-" + edge),
+      );
+    try {
+      await f.wait(() => f.dom.window.document.querySelector("[data-qa-editor]"));
+      assert.deepEqual(values(), ["39px", "21px", "44px", "44px"]);
+      const editor = f.dom.window.document.querySelector("[data-qa-editor]");
+      const originalElements = JSON.stringify(f.dom.window.qaEditorElements);
+      await f.context({ theme: "dark" });
+      assert.deepEqual(values(), ["39px", "21px", "44px", "44px"]);
+      await f.context({
+        safeAreaInsets: { top: 0, right: 42, bottom: 18, left: 40 },
+        containerDimensions: { width: 900, height: 400 },
+        zoen: { chrome: { closeButton: { top: 8, right: 54, width: 44, height: 44 } } },
+      });
+      assert.deepEqual(values(), ["8px", "54px", "44px", "44px"]);
+      assert.equal(root.style.getPropertyValue("--sat"), "0px");
+      assert.strictEqual(
+        f.dom.window.document.querySelector("[data-qa-editor]"),
+        editor,
+        "chrome/geometry updates preserve the current editor",
+      );
+      await f.context({ displayMode: "inline" });
+      assert.deepEqual(values(), ["", "", "", ""]);
+      await f.context({ displayMode: "fullscreen", zoen: { chrome: { closeButton: null } } });
+      assert.deepEqual(values(), ["", "", "", ""]);
+      await f.context({
+        zoen: { chrome: { closeButton: { top: 8, right: 54, width: 44, height: 44 } } },
+      });
+      assert.equal(values()[0], "8px");
+      // Legacy inline mode intentionally replaces the editor with its SVG preview.
+      // Returning to fullscreen may mount a new editor; the document must remain exact.
+      await f.wait(() => f.dom.window.document.querySelector("[data-qa-editor]"));
+      assert.equal(JSON.stringify(f.dom.window.qaEditorElements), originalElements);
+      await f.wait(() => f.sizes.length > 0);
+      f.unmount();
+      assert.deepEqual(values(), ["", "", "", ""]);
+      await f.context({
+        zoen: { chrome: { closeButton: { top: 99, right: 12, width: 44, height: 44 } } },
+      });
+      assert.deepEqual(values(), ["", "", "", ""]);
+      assert.deepEqual(f.failures, []);
+    } finally {
+      f.close();
+    }
+  });

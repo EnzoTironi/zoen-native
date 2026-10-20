@@ -1,3 +1,4 @@
+import { applyHostCloseButton } from "../../../packages/zoen-miniapp-sdk/src/host-chrome";
 import { useLayoutEffect } from "react";
 import type { App } from "@modelcontextprotocol/ext-apps";
 
@@ -16,16 +17,26 @@ export function useHostSafeArea(app: App | null) {
   useLayoutEffect(() => {
     if (!app) return;
     const root = document.documentElement;
-    const previous = owners.get(root)?.previous ?? properties.map(([property]) => [
-      property,
-      root.style.getPropertyValue(property),
-      root.style.getPropertyPriority(property),
-    ] as const);
+    const managed = [
+      ...properties.map(([property]) => property),
+      ...["top", "right", "width", "height"].map((edge) => `--zoen-host-close-${edge}`),
+    ];
+    const previous =
+      owners.get(root)?.previous ??
+      managed.map(
+        (property) =>
+          [
+            property,
+            root.style.getPropertyValue(property),
+            root.style.getPropertyPriority(property),
+          ] as const,
+      );
     const owner = { previous };
     owners.set(root, owner);
     const apply = () => {
       if (owners.get(root) !== owner) return;
       const context = app.getHostContext();
+      applyHostCloseButton(root.style, context);
       const insets = context?.displayMode === "fullscreen" ? context.safeAreaInsets : undefined;
       for (const [property, edge] of properties) {
         const value = insets?.[edge];

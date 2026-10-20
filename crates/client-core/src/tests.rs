@@ -3,6 +3,7 @@
 use super::*;
 
 mod client_api;
+mod edit_convergence;
 mod file_bounds;
 mod file_edits;
 mod file_messages;
