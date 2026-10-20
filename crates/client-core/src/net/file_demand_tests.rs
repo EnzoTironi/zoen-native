@@ -475,6 +475,111 @@ async fn historical_file_demand_timeout_cancel_and_invalid_requests_leave_no_dem
     );
 }
 
+/// Original C17 adaptation: immutable item/version IDs replace Signal's positional
+/// backfill pointers. A bad historical item must not poison its successful neighbor.
+#[tokio::test]
+async fn mixed_historical_downloads_preserve_item_routing_and_retry_after_corruption() {
+    for corrupt_first in [true, false] {
+        let f = Fixture::new();
+        let other = f
+            .reader
+            .items()
+            .into_iter()
+            .find(|item| item.id != f.item)
+            .expect("second signed file");
+        let ids = [f.item.clone(), other.id];
+        let bodies = [f.old.clone(), b"unrelated old bytes".to_vec()];
+        let bad = usize::from(!corrupt_first);
+        let good = 1 - bad;
+        let bad_blob = if bad == 0 {
+            f.old_blob.clone()
+        } else {
+            f.unrelated_old_blob.clone()
+        };
+        let mut corrupt = f.uploads();
+        corrupt.get_mut(&bad_blob).unwrap()[0] ^= 1;
+        let mut server = BlobServer::start(corrupt, String::new(), false);
+        let kick = Arc::new(tokio::sync::Notify::new());
+        let task = worker(&f.reader, &server, kick.clone());
+        until(|| {
+            ids.iter()
+                .all(|id| f.reader.file_info_at(id.clone(), Some(2)).unwrap().ready)
+        })
+        .await;
+        for id in &ids {
+            assert!(!f.reader.file_info_at(id.clone(), Some(1)).unwrap().ready);
+        }
+        let before = (
+            ids.iter()
+                .map(|id| f.reader.item(id.clone()).unwrap())
+                .collect::<Vec<_>>(),
+            f.reader.timeline(f.space.clone()).unwrap(),
+            outbox(&f.reader),
+        );
+        let first = ensure(&f.reader, &ids[0], HTTP_JOURNEY_TIMEOUT_MS);
+        let second = ensure(&f.reader, &ids[1], HTTP_JOURNEY_TIMEOUT_MS);
+        until(|| f.reader.lock().net.file_demands.waiter_count() == 2).await;
+        kick.notify_one();
+        let results = [first.await.unwrap(), second.await.unwrap()];
+        let ready = results[good].as_ref().expect("unrelated version succeeds");
+        assert!(ready.ready);
+        assert_eq!(ready.sha256, hex::encode(Sha256::digest(&bodies[good])));
+        assert!(matches!(results[bad], Err(CoreError::Invalid { .. })));
+        assert_eq!(
+            f.reader
+                .file_bytes_bounded(ids[good].clone(), Some(1), 1024)
+                .unwrap(),
+            Some(bodies[good].clone())
+        );
+        assert_eq!(
+            f.reader
+                .file_bytes_bounded(ids[bad].clone(), Some(1), 1024)
+                .unwrap(),
+            None
+        );
+        assert!(f.reader.lock().net.file_demands.active().is_empty());
+        let requested = server.requests.lock().unwrap().clone();
+        assert!(requested.contains(&f.old_blob));
+        assert!(requested.contains(&f.unrelated_old_blob));
+        task.abort();
+        let _ = task.await;
+        server.stop().expect("corrupt HTTP worker finishes");
+
+        // Restore only the transport bytes, retaining the same account, signed
+        // history, Item IDs and successful cache. A failure must stay retryable.
+        let mut healthy = BlobServer::start(f.uploads(), String::new(), false);
+        let retry = ensure(&f.reader, &ids[bad], HTTP_JOURNEY_TIMEOUT_MS);
+        until(|| !f.reader.lock().net.file_demands.active().is_empty()).await;
+        let task = worker(&f.reader, &healthy, Arc::new(tokio::sync::Notify::new()));
+        assert!(retry.await.unwrap().unwrap().ready);
+        assert_eq!(healthy.requests.lock().unwrap().as_slice(), [bad_blob]);
+        for (id, body) in ids.iter().zip(&bodies) {
+            assert_eq!(
+                f.reader
+                    .file_bytes_bounded(id.clone(), Some(1), 1024)
+                    .unwrap(),
+                Some(body.clone())
+            );
+        }
+        assert_eq!(
+            (
+                ids.iter()
+                    .map(|id| f.reader.item(id.clone()).unwrap())
+                    .collect::<Vec<_>>(),
+                f.reader.timeline(f.space.clone()).unwrap(),
+                outbox(&f.reader),
+            ),
+            before,
+            "downloads cannot change canonical items, timeline or outgoing intent"
+        );
+        assert!(f.reader.verify_log(f.space).valid);
+        assert!(f.reader.lock().net.file_demands.active().is_empty());
+        task.abort();
+        let _ = task.await;
+        healthy.stop().expect("healthy HTTP worker finishes");
+    }
+}
+
 #[tokio::test]
 async fn historical_file_demand_rechecks_membership_before_accepting_inflight_bytes() {
     let mut f = Fixture::new();
