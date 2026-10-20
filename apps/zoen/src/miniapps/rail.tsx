@@ -7,12 +7,12 @@ import { NativeButton } from '../components/primitives';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
 import { CompactMiniappCard } from './compact-card';
+import { APP_CARD_METRICS } from './app-card-layout';
 import { ReorderableAppCards, useCardScrollPort } from './reorderable-cards';
 
 export function MiniappRail({
   items,
   label,
-  size = 152,
   paddingVertical = 12,
   onLongPress,
   renderAccessory,
@@ -20,7 +20,6 @@ export function MiniappRail({
 }: {
   items: readonly ItemDetail[];
   label?: string;
-  size?: number;
   paddingVertical?: number;
   onLongPress?: (item: ItemDetail) => void;
   renderAccessory?: (item: ItemDetail) => ReactNode;
@@ -69,15 +68,17 @@ export function MiniappRail({
         horizontal
         showsHorizontalScrollIndicator={false}
         contentInsetAdjustmentBehavior="never"
-        contentContainerStyle={{ gap: 10, paddingHorizontal: 20, paddingBottom: 4 }}
+        contentContainerStyle={{
+          gap: APP_CARD_METRICS.gap,
+          paddingHorizontal: 20,
+          paddingBottom: 4,
+        }}
       >
         {onReorder ? (
           <ReorderableAppCards
             items={miniapps}
-            size={size}
             columns={miniapps.length}
             horizontal
-            gap={10}
             scrollPort={scrollPort}
             scrollRef={scrollRef}
             editing={editing}
@@ -92,7 +93,6 @@ export function MiniappRail({
             <CompactMiniappCard
               key={item.id}
               item={item}
-              size={size}
               onLongPress={onLongPress ? () => onLongPress(item) : undefined}
               accessory={renderAccessory?.(item)}
             />

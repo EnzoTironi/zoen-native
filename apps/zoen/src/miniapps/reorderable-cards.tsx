@@ -30,6 +30,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 import { useTheme } from '../theme';
 import { CompactMiniappCard } from './compact-card';
+import { APP_CARD_METRICS } from './app-card-layout';
 import { t } from '../i18n';
 import type { ItemDetail } from '../core/generated/ItemDetail';
 import {
@@ -56,9 +57,7 @@ type Props = {
   items: readonly ItemDetail[];
   /** Cancels a gesture when a larger ordered scope changes (Home's available subset). */
   contextKey?: string;
-  size: number;
   columns: number;
-  gap: number;
   horizontal?: boolean;
   scrollPort: ScrollPort;
   scrollRef: AnimatedRef<Animated.ScrollView>;
@@ -79,9 +78,7 @@ function feedback(lift = false) {
 export function ReorderableAppCards({
   items,
   contextKey = '',
-  size,
   columns,
-  gap,
   horizontal = false,
   scrollPort,
   scrollRef,
@@ -93,6 +90,7 @@ export function ReorderableAppCards({
   renderAccessory,
 }: Props) {
   const { reducedMotion, colors } = useTheme();
+  const { size, gap } = APP_CARD_METRICS;
   const { offset: scrollOffset, extent: scrollExtent, minimum: minimumOffset } = scrollPort;
   const ids = items.map((item) => item.id);
   const signature = JSON.stringify(ids);
@@ -122,8 +120,7 @@ export function ReorderableAppCards({
   const dragScroll = useSharedValue(0);
   const startOffset = useSharedValue(0);
   const baseline = useSharedValue<string[]>(ids);
-  const [heights, setHeights] = useState<Record<string, number>>({});
-  const height = Math.max(size, ...items.map((item) => heights[item.id] ?? size));
+  const height = size;
   const strideX = size + gap;
   const strideY = height + gap;
   const count = items.length;
@@ -261,7 +258,8 @@ export function ReorderableAppCards({
     <View
       testID="reorderable-app-cards"
       style={{
-        width: horizontal ? count * strideX - gap : '100%',
+        width: horizontal ? count * strideX - gap : columns * size + (columns - 1) * gap,
+        alignSelf: 'center',
         height: horizontal ? height : Math.ceil(count / columns) * strideY - gap,
       }}
     >
@@ -297,14 +295,9 @@ export function ReorderableAppCards({
           onBegin={begin}
           onMoveFeedback={moveFeedback}
           onDrop={drop}
-          onMeasure={(value) => {
-            if (Math.abs((heights[item.id] ?? 0) - value) > 0.5)
-              setHeights((previous) => ({ ...previous, [item.id]: value }));
-          }}
         >
           <CompactMiniappCard
             item={item}
-            size={size}
             accessory={renderAccessory?.(item)}
             editing={state.editing}
             onPress={() => {
@@ -411,7 +404,6 @@ function DraggableCard({
   onBegin,
   onMoveFeedback,
   onDrop,
-  onMeasure,
   children,
 }: DragValues & {
   id: string;
@@ -435,7 +427,6 @@ function DraggableCard({
     id: string,
     token: GestureAdmission,
   ) => void;
-  onMeasure: (height: number) => void;
   children: ReactNode;
 }) {
   const scrollOffset = scrollPort.offset;
@@ -557,6 +548,7 @@ function DraggableCard({
           {
             position: 'absolute',
             width: size,
+            height: size,
             top: 0,
             left: 0,
             shadowColor: '#000000',
@@ -573,7 +565,7 @@ function DraggableCard({
             style={{
               position: 'absolute',
               inset: -2,
-              borderRadius: 26,
+              borderRadius: APP_CARD_METRICS.radius + 2,
               borderCurve: 'continuous',
               borderWidth: 1,
               borderColor: outlineColor,
@@ -581,7 +573,7 @@ function DraggableCard({
             }}
           />
         ) : null}
-        <View onLayout={(event) => onMeasure(event.nativeEvent.layout.height)}>{children}</View>
+        {children}
       </Animated.View>
     </GestureDetector>
   );

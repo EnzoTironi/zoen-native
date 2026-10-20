@@ -9,6 +9,7 @@ import { useHome } from '../../home/provider';
 import { t } from '../../i18n/index.ts';
 import { ReorderableAppCards, useCardScrollPort } from '../../miniapps/reorderable-cards';
 import { mergeCardSubset } from '../../miniapps/card-reorder';
+import { appCardGrid } from '../../miniapps/app-card-layout';
 import type { ItemDetail } from '../../core/generated/ItemDetail';
 import { useTheme } from '../../theme';
 
@@ -21,11 +22,10 @@ export default function Home() {
   const scrollPort = useCardScrollPort(false);
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const { colors } = useTheme();
-  const { width, fontScale } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const available = home.items.filter((item) => !home.isPinned(item.id));
   const contentWidth = Math.min(width, 720) - 40;
-  const columns = fontScale > 1.5 || contentWidth < 300 ? 1 : contentWidth >= 600 ? 3 : 2;
-  const cardSize = Math.max(136, (contentWidth - (columns - 1) * 14) / columns);
+  const { columns } = appCardGrid(contentWidth);
   function movePinned(id: string, direction: -1 | 1) {
     const ids = home.pinnedItems.map((item) => item.id);
     const index = ids.indexOf(id);
@@ -41,9 +41,7 @@ export default function Home() {
         key={`${home.ownerKey}:${favorites ? 'pinned' : 'available'}`}
         items={items}
         contextKey={JSON.stringify(complete)}
-        size={cardSize}
         columns={columns}
-        gap={14}
         scrollPort={scrollPort}
         scrollRef={scrollRef}
         editing={editing}

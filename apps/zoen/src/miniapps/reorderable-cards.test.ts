@@ -267,9 +267,7 @@ function fixture(reducedMotion = false, queuedScheduler = false) {
   };
   const props = {
     items,
-    size: 152,
     columns: 3,
-    gap: 10,
     horizontal: true,
     scrollPort,
     scrollRef: { viewport: { pageX: 0, pageY: 0, width: 300, height: 300 } },
@@ -306,6 +304,11 @@ function fixture(reducedMotion = false, queuedScheduler = false) {
     root,
     child,
     props,
+    geometry: () => ({
+      container: tree.props.style as Record<string, unknown>,
+      cards: children().map((element) => element.props),
+      nativeFrame: (childTree.props.children as Element).props.style as Record<string, unknown>[],
+    }),
     scrollPort,
     render,
     card,
@@ -371,6 +374,36 @@ test('real compiled card gesture enters editing, suppresses trailing launch, and
   assert.ok(f.haptics >= 2);
   assert.deepEqual(f.announcements, ['home.rearranging', 'home.movedPosition']);
 });
+test('compiled reorder bounds use the same fixed square and 170 pt stride in rails and grids', async () => {
+  const f = fixture();
+  assert.equal(f.geometry().container.width, 500);
+  assert.equal(f.geometry().container.height, 160);
+  for (const card of f.geometry().cards) {
+    assert.equal(card.size, 160);
+    assert.equal(card.strideX, 170);
+    assert.equal(card.strideY, 170);
+    assert.equal(card.onMeasure, undefined);
+  }
+  assert.equal(f.geometry().nativeFrame[0]!.width, 160);
+  assert.equal(f.geometry().nativeFrame[0]!.height, 160);
+  Object.assign(f.props, { horizontal: false, columns: 2 });
+  f.render();
+  assert.equal(f.geometry().container.width, 330);
+  assert.equal(f.geometry().container.height, 330);
+  assert.equal(f.geometry().container.alignSelf, 'center');
+  const beforeHalf = fixture();
+  beforeHalf.activate();
+  beforeHalf.move(84);
+  beforeHalf.release();
+  await tick();
+  assert.deepEqual(beforeHalf.writes, []);
+  const afterHalf = fixture();
+  afterHalf.activate();
+  afterHalf.move(86);
+  afterHalf.release();
+  await tick();
+  assert.deepEqual(afterHalf.writes, [{ next: ['b', 'a', 'c'], expected: ['a', 'b', 'c'] }]);
+});
 test('real compiled canceled drag restores geometry and never persists', async () => {
   const f = fixture();
   f.activate();
@@ -403,7 +436,7 @@ test('changed larger order scope or layout cancels a held card before drop', asy
     f.activate();
     f.move(325);
     if (change === 'context') Object.assign(f.props, { contextKey: 'new-full-Home-order' });
-    else if (change === 'geometry') f.props.size = 170;
+    else if (change === 'geometry') Object.assign(f.props, { horizontal: false, columns: 2 });
     else f.props.items = f.props.items.slice(0, 2);
     f.render();
     f.release();
@@ -527,7 +560,7 @@ test('queued native begin is invalidated by same-ID geometry or full-order conte
   for (const boundary of ['geometry', 'context']) {
     const f = fixture(false, true);
     f.activate();
-    if (boundary === 'geometry') f.props.size = 170;
+    if (boundary === 'geometry') Object.assign(f.props, { horizontal: false, columns: 2 });
     else Object.assign(f.props, { contextKey: 'changed-full-order' });
     f.render();
     f.flush();
@@ -546,7 +579,7 @@ test('queued native drop cannot persist after same-ID geometry or full-order con
     f.move(325);
     f.release();
     assert.equal(f.writes.length, 0);
-    if (boundary === 'geometry') f.props.size = 170;
+    if (boundary === 'geometry') Object.assign(f.props, { horizontal: false, columns: 2 });
     else Object.assign(f.props, { contextKey: 'changed-full-order' });
     f.render();
     f.flush();

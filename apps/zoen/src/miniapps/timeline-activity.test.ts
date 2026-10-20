@@ -10,6 +10,7 @@ import {
 } from '../core/conversation-timeline.ts';
 import type { ItemDetail, TimelineEntry } from '../core/types';
 import { t } from '../i18n/index.ts';
+import * as cardLayout from './app-card-layout.ts';
 
 const require = createRequire(import.meta.url);
 const sourcePath = new URL('./timeline-activity.tsx', import.meta.url);
@@ -90,6 +91,7 @@ function render(activity: MiniappTimelineActivity) {
     '../components/message-interaction': { MessagePressable: 'Pressable' },
     '../components/message-receipt': { MessageReceipt: 'MessageReceipt' },
     './compact-card': { CompactMiniappCard: 'CompactMiniappCard' },
+    './app-card-layout': cardLayout,
   };
   const module = { exports: {} as { MiniappTimelineActivityView(props: unknown): Element } };
   runInNewContext(compiled, {
@@ -110,7 +112,8 @@ test('compiled iOS activity renders one existing native card and opens real vers
   const cards = nodes.filter((node) => node.type === 'CompactMiniappCard');
   assert.equal(cards.length, 1);
   assert.strictEqual(cards[0]!.props.item, current);
-  assert.equal(cards[0]!.props.layout, 'message');
+  assert.equal(cards[0]!.props.layout, undefined);
+  assert.equal(cards[0]!.props.size, undefined);
   assert.equal(
     cards[0]!.props.onPress,
     undefined,

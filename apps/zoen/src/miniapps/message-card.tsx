@@ -8,6 +8,7 @@ import { formatMoney } from '../i18n/money.ts';
 import { useTheme } from '../theme';
 import { Icon } from '../components/primitives';
 import { CompactMiniappCard } from './compact-card';
+import { APP_CARD_METRICS } from './app-card-layout';
 import { miniappMessageProjection } from './message-card-model';
 
 export type MiniappMessageCardProps = {
@@ -41,6 +42,25 @@ export function MiniappMessageCard({
         pathname: card.app ? '/miniapp/[id]' : '/item/[id]',
         params: { id: card.item_id },
       }));
+  const appCover =
+    projection ??
+    (card.kind_id === 'app' && card.app
+      ? {
+          id: card.item_id,
+          version: card.version,
+          title: card.title,
+          app: card.app,
+        }
+      : null);
+  if (appCover)
+    return (
+      <View
+        testID={`miniapp-message-${card.item_id}`}
+        style={{ width: APP_CARD_METRICS.size, height: APP_CARD_METRICS.size }}
+      >
+        <CompactMiniappCard item={appCover} onPress={open} onLongPress={onLongPress} />
+      </View>
+    );
   const footer = (
     <View
       pointerEvents="none"
@@ -78,19 +98,6 @@ export function MiniappMessageCard({
       />
     </View>
   );
-  if (projection)
-    return (
-      <View testID={`miniapp-message-${card.item_id}`} style={{ width: side }}>
-        <CompactMiniappCard
-          item={projection}
-          size={side}
-          layout="message"
-          onPress={open}
-          onLongPress={onLongPress}
-          footer={footer}
-        />
-      </View>
-    );
   let total: string | null = null;
   if (card.kind_id === 'plan' && card.total_cents !== null) {
     try {

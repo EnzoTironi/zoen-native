@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Text, View, useWindowDimensions } from 'react-native';
+import { Text, View } from 'react-native';
 import type { MiniappTimelineActivity } from '../core/conversation-timeline';
 import { messageText } from '../core/presentation';
 import { t, formatLocale } from '../i18n/index.ts';
@@ -7,6 +7,7 @@ import { useTheme } from '../theme';
 import { MessagePressable as Pressable } from '../components/message-interaction';
 import { MessageReceipt } from '../components/message-receipt';
 import { CompactMiniappCard } from './compact-card';
+import { APP_CARD_METRICS } from './app-card-layout';
 
 /** Activity is not a human message: one current native card, with the original
  * version history one tap away. Opening a card grants no miniapp permissions. */
@@ -18,12 +19,11 @@ export function MiniappTimelineActivityView({
   highlighted?: boolean;
 }) {
   const { colors } = useTheme();
-  const { width } = useWindowDimensions();
   const entry = activity.entries.at(-1)!;
   if (!('ItemEdited' in entry.kind)) return null;
   const edit = entry.kind.ItemEdited;
   const item = !entry.deleted ? activity.item : undefined;
-  const side = Math.max(136, Math.min(294, width - 80));
+  const side = APP_CARD_METRICS.size;
   const time = new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
     hour: '2-digit',
     minute: '2-digit',
@@ -52,9 +52,7 @@ export function MiniappTimelineActivityView({
       >
         {summary}
       </Text>
-      {item && activity.showCard ? (
-        <CompactMiniappCard item={item} size={side} layout="message" />
-      ) : null}
+      {item && activity.showCard ? <CompactMiniappCard item={item} /> : null}
       {(!item || !activity.showCard) && !entry.deleted ? (
         <Text selectable style={{ color: colors.text, fontSize: 16, paddingHorizontal: 8 }}>
           {item?.title ?? edit.title}

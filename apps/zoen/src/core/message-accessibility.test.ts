@@ -526,7 +526,13 @@ test('native media and miniapp boundaries remain ungrouped and never hide indepe
     kind: {
       Message: {
         text: 'Shared miniapp',
-        card: { item_id: 'app', kind_id: 'app', title: 'Schedule', version: 1 },
+        card: {
+          item_id: 'app',
+          kind_id: 'app',
+          title: 'Schedule',
+          version: 1,
+          app: { app_id: 'list' },
+        },
       },
     } as TimelineEntry['kind'],
   });
@@ -543,8 +549,10 @@ test('native media and miniapp boundaries remain ungrouped and never hide indepe
     assert.equal(bubble.type, 'View');
     assert.equal(bubble.props.accessible, false);
     assert.ok(elements(wrapper).some((node) => node.type === 'MessageMedia'));
-    if (entry === miniapp)
+    if (entry === miniapp) {
       assert.ok(elements(wrapper).some((node) => node.type === 'MiniappMessageCard'));
+      assert.equal((bubble.props.style as Record<string, unknown>).width, 160);
+    }
     act(group, 'actions');
     assert.equal(f.calls.length, 0);
     f.unmount();
