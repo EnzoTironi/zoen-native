@@ -1,3 +1,4 @@
+import { useAppSheetCloseButton } from './app-sheet-context';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { AppState, Linking, Text, View } from 'react-native';
@@ -199,6 +200,7 @@ function DrawingDocument({
   const { store } = useClient();
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const closeButton = useAppSheetCloseButton();
   const safeAreaInsets = useMemo(
     () => (fill ? insets : { top: 0, right: 0, bottom: 0, left: 0 }),
     [fill, insets],
@@ -215,11 +217,20 @@ function DrawingDocument({
   const copyAction = useRef<(() => Promise<void>) | null>(null);
   const flushAction = useRef<(() => Promise<void>) | null>(null);
   const callbacks = useRef({ onDocumentController, onDocumentCopied });
-  const latest = useRef({ colors, scheme, dimensions, item, safeAreaInsets });
+  const latest = useRef({ colors, scheme, dimensions, item, safeAreaInsets, closeButton });
   useLayoutEffect(() => {
-    latest.current = { colors, scheme, dimensions, item, safeAreaInsets };
+    latest.current = { colors, scheme, dimensions, item, safeAreaInsets, closeButton };
     callbacks.current = { onDocumentController, onDocumentCopied };
-  }, [colors, scheme, dimensions, item, safeAreaInsets, onDocumentController, onDocumentCopied]);
+  }, [
+    colors,
+    scheme,
+    dimensions,
+    item,
+    safeAreaInsets,
+    closeButton,
+    onDocumentController,
+    onDocumentCopied,
+  ]);
   const context = useCallback(
     () => ({
       theme: latest.current.scheme,
@@ -231,6 +242,7 @@ function DrawingDocument({
       platform: process.env.EXPO_OS === 'web' ? 'web' : 'mobile',
       deviceCapabilities: { touch: true, hover: process.env.EXPO_OS === 'web' },
       safeAreaInsets: latest.current.safeAreaInsets,
+      zoen: { chrome: { closeButton: fill ? latest.current.closeButton : null } },
       styles: {
         variables: {
           '--color-background-primary': latest.current.colors.background,
@@ -239,7 +251,7 @@ function DrawingDocument({
         },
       },
     }),
-    [],
+    [fill],
   );
   useLayoutEffect(() => {
     const lifetime = frameAuthority(checkOwner);
@@ -445,7 +457,7 @@ function DrawingDocument({
   }, [store, checkOwner, context, doc, item.id, resource, manifest, dialogs, registerClose]);
   useEffect(() => {
     session.current?.syncContext();
-  }, [scheme, dimensions, safeAreaInsets]);
+  }, [scheme, dimensions, safeAreaInsets, closeButton]);
   const html = useMemo(() => sandboxHtml(resource.text, []), [resource.text]);
   const receive = useCallback((message: string) => {
     void session.current?.receive(message);

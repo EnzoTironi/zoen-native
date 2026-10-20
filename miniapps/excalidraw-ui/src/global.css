@@ -84,10 +84,19 @@ body {
   height: 100%;
 }
 
+/* A native close button may occupy the top-right corner. Only this renderer's
+   floating controls clear it; the full-size drawing canvas remains untouched. */
+:root {
+  --zoen-controls-top: max(var(--sat, 0px), calc(var(--zoen-host-close-top, -8px) + var(--zoen-host-close-height, 0px) + 8px));
+}
+.excalidraw .FixedSideContainer {
+  padding-top: var(--zoen-controls-top);
+}
+
 /* The pinned mobile side tools sit outside FixedSideContainer, so they need
    the same host insets as the toolbar without moving the canvas. */
 .excalidraw .mobile-misc-tools-container {
-  top: calc(var(--sat, 0px) + 5rem - var(--editor-container-padding));
+  top: calc(var(--zoen-controls-top, var(--sat, 0px)) + 5rem - var(--editor-container-padding));
   right: calc(var(--sar, 0px) - var(--editor-container-padding));
 }
 
@@ -100,7 +109,7 @@ body {
    fit it in top-right alongside lock/hand icons). */
 .mobile-share-slot {
   position: absolute;
-  top: calc(var(--sat, 0px) + 64px);
+  top: calc(var(--zoen-controls-top, var(--sat, 0px)) + 64px);
   right: calc(var(--sar, 0px) + 48px);
   z-index: 5;
 }

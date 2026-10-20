@@ -25,6 +25,9 @@ body {
   display: grid;
   gap: 20px;
 }
+.builtin > header {
+  padding-right: max(0px, calc(var(--z-close-right) + 8px - 18px - var(--z-safe-right)));
+}
 .builtin h1 {
   font: 750 clamp(26px, 6vw, 34px)/1.1 var(--z-font-rounded);
   margin: 0;

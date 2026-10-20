@@ -1,3 +1,4 @@
+import { useAppSheetCloseButton } from './app-sheet-context';
 import { t, locale } from '../i18n/index.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
@@ -282,6 +283,7 @@ function ReadyView({
   const { store, snapshot } = useClient();
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const closeButton = useAppSheetCloseButton();
   const safeAreaInsets = useMemo(
     () => (fill ? insets : { top: 0, right: 0, bottom: 0, left: 0 }),
     [fill, insets],
@@ -302,10 +304,18 @@ function ReadyView({
     spec.tools.filter((tool) => tool.visibility.includes('app')).map((tool) => tool.name),
   );
   const tools = useMemo(() => new Set<string>(JSON.parse(encodedTools)), [encodedTools]);
-  const latest = useRef({ item, snapshot, scheme, colors, dimensions, safeAreaInsets });
+  const latest = useRef({
+    item,
+    snapshot,
+    scheme,
+    colors,
+    dimensions,
+    safeAreaInsets,
+    closeButton,
+  });
   useLayoutEffect(() => {
-    latest.current = { item, snapshot, scheme, colors, dimensions, safeAreaInsets };
-  }, [item, snapshot, scheme, colors, dimensions, safeAreaInsets]);
+    latest.current = { item, snapshot, scheme, colors, dimensions, safeAreaInsets, closeButton };
+  }, [item, snapshot, scheme, colors, dimensions, safeAreaInsets, closeButton]);
   const permission = useCallback(
     async (capability: string, purpose: string, assertActive?: () => void) => {
       const check = assertActive ?? authority.current?.check;
@@ -365,9 +375,9 @@ function ReadyView({
       platform: process.env.EXPO_OS === 'web' ? 'web' : 'mobile',
       deviceCapabilities: { touch: true, hover: process.env.EXPO_OS === 'web' },
       safeAreaInsets: current.safeAreaInsets,
-      zoen: { members },
+      zoen: { members, chrome: { closeButton: fill ? current.closeButton : null } },
     };
-  }, [item.space_id]);
+  }, [item.space_id, fill]);
   useLayoutEffect(() => {
     const lifetime = frameAuthority(checkOwner);
     try {
@@ -577,7 +587,7 @@ function ReadyView({
   }, [item.version, snapshot]);
   useEffect(() => {
     session.current?.syncContext();
-  }, [scheme, dimensions, safeAreaInsets]);
+  }, [scheme, dimensions, safeAreaInsets, closeButton]);
   const html = useMemo(() => sandboxHtml(resource.text, hosts), [resource.text, hosts]);
   const receive = useCallback((message: string) => {
     void session.current?.receive(message);

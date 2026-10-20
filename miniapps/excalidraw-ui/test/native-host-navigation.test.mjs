@@ -103,7 +103,7 @@ const React = appRequire("react");
 const expo = join(dirname(appRequire.resolve("expo-router/package.json")), "build");
 const detail = join(app, "src/miniapps/detail-screen.tsx");
 const layout = join(app, "src/app/miniapp/_layout.tsx");
-const grabber = join(app, "src/miniapps/app-sheet-grabber.tsx");
+const chrome = join(app, "src/miniapps/app-sheet-chrome.tsx");
 
 const stateSource = "export const qa = {};";
 const bridgeSource = `
@@ -121,21 +121,13 @@ import React from 'react'; import {qa} from 'fixture:state';
 export const Platform={OS:'android'};
 export const BackHandler={addEventListener(type,callback){if(type!=='hardwareBackPress')throw Error(type);qa.backHandlers.add(callback);return{remove(){qa.backHandlers.delete(callback)}}}};
 export const StyleSheet={absoluteFill:{position:'absolute',top:0,right:0,bottom:0,left:0}};
-export function View({children,...props}){if(props.testID==='app-sheet-grabber')qa.grabberProps=props;return React.createElement('div',{'data-qa-native-view':props.testID},children)};
+export function View({children,...props}){return React.createElement('div',{'data-qa-native-view':props.testID},children)};
 export function Text({children}){return React.createElement('span',null,children)};
 export const ScrollView=View;
 `;
-const gesturesSource = `
-import React from 'react';import {qa} from 'fixture:state';
-// Native recognizer configuration/event delivery is the port. Production callbacks run unchanged.
-export const usePanGesture = config => (qa.pan=config);
-export const useTapGesture = config => (qa.tap=config);
-export const useCompetingGestures = (...gestures) => ({gestures});
-export const GestureDetector = ({children}) => React.createElement(React.Fragment,null,children);
-`;
 const viewSource = `
-import React,{useEffect}from'react';import{qa}from'fixture:state';
-export function MiniappView({onDocumentController}){useEffect(()=>{onDocumentController?.(qa.controller);return()=>{qa.disposedDocuments++;onDocumentController?.(null)}},[onDocumentController]);return React.createElement('div',{'data-qa-editor':'ready'});}
+import React,{useEffect}from'react';import{qa}from'fixture:state';import{useSafeAreaInsets}from'react-native-safe-area-context';import{useAppSheetCloseButton}from'production:sheet-context';
+export function MiniappView({onDocumentController}){qa.editorInsets=useSafeAreaInsets();qa.editorChrome=useAppSheetCloseButton();useEffect(()=>{onDocumentController?.(qa.controller);return()=>{qa.disposedDocuments++;onDocumentController?.(null)}},[onDocumentController]);return React.createElement('div',{'data-qa-editor':'ready'});}
 `;
 const portsSource = `
 import React from'react';import{qa}from'fixture:state';
@@ -200,7 +192,12 @@ async function fixture(platform = "android", options = {}) {
             ),
           }));
           builder.onResolve({ filter: /^production:/ }, ({ path }) => ({
-            path: path === "production:app-layout" ? layout : detail,
+            path:
+              path === "production:app-layout"
+                ? layout
+                : path === "production:sheet-context"
+                  ? join(app, "src/miniapps/app-sheet-context.ts")
+                  : detail,
           }));
           builder.onResolve({ filter: /^fixture:/ }, ({ path }) => ({
             path,
@@ -231,10 +228,10 @@ async function fixture(platform = "android", options = {}) {
           }));
           builder.onResolve({ filter: /.*/ }, ({ path, importer }) =>
             importer === layout && path.startsWith(".")
-              ? path.endsWith("/app-sheet-grabber")
-                ? { path: grabber }
+              ? path.endsWith("/app-sheet-chrome")
+                ? { path: chrome }
                 : { path: "fixture:ports", namespace: "fixture" }
-              : importer === grabber && (path === "../i18n/index.ts" || path === "../theme")
+              : importer === chrome && (path === "../i18n/index.ts" || path === "../theme")
                 ? { path: "fixture:ports", namespace: "fixture" }
                 : undefined,
           );
@@ -247,15 +244,20 @@ async function fixture(platform = "android", options = {}) {
             contents:
               "export * as CommonActions from 'expo-source:react-navigation/routers/CommonActions';",
           }));
-          builder.onResolve({ filter: /^react-native-gesture-handler$/ }, () => ({
-            path: "fixture:gestures",
-            namespace: "fixture",
+          builder.onResolve({ filter: /components\/composer-action$/ }, () => ({
+            path: "fixture:close-button",
+            namespace: "close-button",
+          }));
+          builder.onLoad({ filter: /.*/, namespace: "close-button" }, () => ({
+            contents:
+              "import React from 'react';import{qa}from'fixture:state';export function ComposerAction(props){qa.closeProps=props;return React.createElement('button',{disabled:props.disabled,'data-qa-close':true,'aria-label':props.label,onClick:props.onPress},props.name)}",
+            loader: "jsx",
           }));
           builder.onResolve({ filter: /^expo-router\/react-navigation$/ }, () => ({
-            path: "fixture:grabber-navigation",
-            namespace: "grabber-navigation",
+            path: "fixture:sheet-navigation",
+            namespace: "sheet-navigation",
           }));
-          builder.onLoad({ filter: /.*/, namespace: "grabber-navigation" }, () => ({
+          builder.onLoad({ filter: /.*/, namespace: "sheet-navigation" }, () => ({
             contents:
               "export * as CommonActions from 'expo-source:react-navigation/routers/CommonActions';export {useRoute} from 'expo-source:react-navigation/core/useRoute';",
           }));
@@ -484,266 +486,133 @@ test("default Back defers to native while the navigation ref is unavailable", as
   }
 });
 
-function gesture(f, kind, event = {}) {
-  const input = f.qa[kind];
-  assert.ok(input, `actual AppSheetGrabber registered its ${kind} recognizer`);
-  input.onBegin();
-  input.onDeactivate({ canceled: false, translationX: 0, translationY: 72, ...event });
-  input.onFinalize();
+function pressClose(f) {
+  const button = f.node.querySelector("[data-qa-close]");
+  assert.ok(button, "actual App layout mounts its native close component");
+  button.click();
 }
-
-test("successful grabber Pan reaches the real root removal guard without moving before held flush", async () => {
-  const doc = documentPort();
-  const f = await fixture("android", { controller: doc.controller, origin: "chat" });
-  try {
-    await f.act(() => gesture(f, "pan"));
-    assert.equal(current(f).name, "miniapp");
-    assert.equal(f.qa.disposedDocuments, 0);
-    assert.deepEqual(doc.calls, [{ retire: true }]);
-    assert.deepEqual(
-      f.qa.dispatched[0],
-      {
+for (const platform of ["ios", "android"]) {
+  test(`${platform} floating close uses actual root removal guard and preserves full App safe insets`, async () => {
+    const doc = documentPort();
+    const f = await fixture(platform, { controller: doc.controller, origin: "chat" });
+    try {
+      assert.deepEqual(
+        f.qa.editorInsets,
+        { top: 24, right: 0, bottom: 16, left: 0 },
+        "no global 48-point row",
+      );
+      assert.deepEqual(f.qa.editorChrome, { top: 32, right: 12, width: 44, height: 44 });
+      assert.equal(f.qa.closeProps.name, "xmark");
+      assert.equal(f.qa.closeProps.size, 44);
+      assert.equal(f.qa.closeProps.label, "common.close");
+      await f.act(() => pressClose(f));
+      assert.equal(current(f).name, "miniapp");
+      assert.equal(f.qa.disposedDocuments, 0);
+      assert.deepEqual(doc.calls, [{ retire: true }]);
+      assert.deepEqual(f.qa.dispatched[0], {
         type: "GO_BACK",
         source: "app-modal",
         target: "root-stack",
-      },
-      "real parent route identity targets the root stack, not the child editor",
-    );
-    await f.act(() => {
-      gesture(f, "pan");
-      gesture(f, "tap");
-    });
-    assert.equal(
-      doc.calls.length,
-      1,
-      "competing repeated close inputs share the existing screen lock",
-    );
-    assert.equal(current(f).name, "miniapp");
-    assert.equal(f.qa.disposedDocuments, 0);
-    await f.act(() => doc.pending[0].resolve());
-    assert.equal(current(f).name, "chat");
-    assert.equal(f.qa.disposedDocuments, 1);
-    assert.equal(f.qa.nativeFallbacks, 0);
-  } finally {
-    await f.close();
-  }
-});
-
-test("grabber failed flush keeps the document and accessible retry uses the same guard", async () => {
-  const doc = documentPort();
-  const f = await fixture("android", { controller: doc.controller });
-  try {
-    const button = f.qa.grabberProps;
-    assert.equal(button.accessibilityRole, "button");
-    assert.equal(button.accessibilityLabel, "common.close");
-    await f.act(() => gesture(f, "pan"));
-    await f.act(() => doc.pending[0].reject(Error("Synthetic grabber save failure")));
-    assert.equal(current(f).name, "miniapp");
-    assert.equal(f.qa.disposedDocuments, 0);
-    assert.ok(f.qa.prevented.has("drawing"));
-    assert.match(f.node.textContent, /drawing.closeFailed/);
-    await f.act(() =>
-      f.qa.grabberProps.onAccessibilityAction({ nativeEvent: { actionName: "increment" } }),
-    );
-    assert.equal(doc.calls.length, 1, "unrelated accessibility actions do not close");
-    await f.act(() =>
-      f.qa.grabberProps.onAccessibilityAction({ nativeEvent: { actionName: "activate" } }),
-    );
-    assert.equal(doc.calls.length, 2);
-    assert.equal(current(f).name, "miniapp");
-    await f.act(() => {
-      f.qa.grabberProps.onAccessibilityTap();
-      f.qa.grabberProps.onAccessibilityEscape();
-    });
-    assert.equal(doc.calls.length, 2, "all accessibility close inputs share the held flush");
-    await f.act(() => doc.pending[1].resolve());
-    assert.equal(current(f).name, "home");
-    assert.equal(f.qa.disposedDocuments, 1);
-  } finally {
-    await f.close();
-  }
-});
-
-test("upward, lateral, short and canceled recognizer input cannot dispatch or flush", async () => {
-  const doc = documentPort();
-  const f = await fixture("android", { controller: doc.controller });
-  try {
-    for (const event of [
-      { translationY: -72 },
-      { translationY: 47 },
-      { translationX: 25 },
-      { canceled: true },
-    ])
-      await f.act(() => gesture(f, "pan", event));
-    await f.act(() => gesture(f, "tap", { canceled: true }));
-    await f.act(() => {
-      f.qa.pan.onBegin();
-      f.qa.pan.onFinalize();
-    });
-    assert.equal(doc.calls.length, 0);
-    assert.deepEqual(f.qa.dispatched, []);
-    assert.equal(current(f).name, "miniapp");
-    assert.equal(f.qa.disposedDocuments, 0);
-  } finally {
-    await f.close();
-  }
-});
-
-test("held grabber input cannot survive blur/refocus or pathname replacement", async () => {
-  const doc = documentPort();
-  const f = await fixture("android", { controller: doc.controller });
-  try {
-    const beforeBlur = f.qa.pan;
-    await f.act(() => beforeBlur.onBegin());
-    await f.act(() => {
-      f.focus(false);
-      f.focus(true);
-    });
-    await f.act(() =>
-      beforeBlur.onDeactivate({ canceled: false, translationX: 0, translationY: 72 }),
-    );
-    beforeBlur.onFinalize();
-    assert.deepEqual(f.qa.dispatched, [], "refocus creates a fresh actual Expo focus-effect scope");
-    const beforePath = f.qa.pan;
-    await f.act(() => beforePath.onBegin());
-    await f.act(() => f.path("/miniapp/other-owned-document"));
-    await f.act(() =>
-      beforePath.onDeactivate({ canceled: false, translationX: 0, translationY: 72 }),
-    );
-    beforePath.onFinalize();
-    assert.deepEqual(f.qa.dispatched, [], "late input cannot close the replacement pathname");
-    assert.equal(doc.calls.length, 0);
-    await f.act(() => gesture(f, "pan"));
-    assert.equal(doc.calls.length, 1, "fresh focus/path input still reaches the real guard");
-    await f.act(() => doc.pending[0].resolve());
-    assert.equal(current(f).name, "home");
-  } finally {
-    await f.close();
-  }
-});
-
-test("grabber refuses absent root state or a different root route identity", async () => {
-  const doc = documentPort();
-  const f = await fixture("android", { controller: doc.controller });
-  try {
-    const getState = f.qa.navigation.getState;
-    f.qa.navigation.getState = () => undefined;
-    await f.act(() => gesture(f, "pan"));
-    f.qa.navigation.getState = getState;
-    const routeKey = f.qa.routeIdentity.key;
-    f.qa.routeIdentity.key = "different-modal-owner";
-    await f.act(() => gesture(f, "tap"));
-    f.qa.routeIdentity.key = routeKey;
-    assert.deepEqual(f.qa.dispatched, []);
-    assert.equal(doc.calls.length, 0);
-    assert.equal(current(f).name, "miniapp");
-  } finally {
-    await f.close();
-  }
-});
-
-test("grabber from nested management removes the root App only after its descendant flush", async () => {
-  const doc = documentPort();
-  const f = await fixture("android", { controller: doc.controller, management: true });
-  try {
-    await f.act(() => gesture(f, "pan"));
-    assert.equal(current(f).name, "miniapp");
-    assert.equal(
-      current(f).state.index,
-      1,
-      "closing the sheet must not first pop its management page",
-    );
-    assert.deepEqual(doc.calls, [{ retire: true }]);
-    assert.deepEqual(f.qa.dispatched[0], {
-      type: "GO_BACK",
-      source: "app-modal",
-      target: "root-stack",
-    });
-    await f.act(() => doc.pending[0].resolve());
-    assert.equal(current(f).name, "home");
-    assert.equal(f.qa.disposedDocuments, 1);
-  } finally {
-    await f.close();
-  }
-});
-
-for (const action of ["activate", "tap", "escape"]) {
-  test(`accessible grabber ${action} waits for the existing removal guard`, async () => {
-    const doc = documentPort();
-    const f = await fixture("android", { controller: doc.controller });
-    try {
-      await f.act(() => {
-        const button = f.qa.grabberProps;
-        if (action === "activate")
-          button.onAccessibilityAction({ nativeEvent: { actionName: "activate" } });
-        else if (action === "tap") button.onAccessibilityTap();
-        else button.onAccessibilityEscape();
       });
-      assert.equal(current(f).name, "miniapp");
-      assert.deepEqual(doc.calls, [{ retire: true }]);
-      assert.equal(f.qa.disposedDocuments, 0);
+      await f.act(() => pressClose(f));
+      assert.equal(doc.calls.length, 1, "repeated close shares descendant save lock");
       await f.act(() => doc.pending[0].resolve());
+      assert.equal(current(f).name, "chat");
+      assert.equal(f.qa.disposedDocuments, 1);
+    } finally {
+      await f.close();
+    }
+  });
+  test(`${platform} failed close retains document and a new explicit X retries the real flush`, async () => {
+    const doc = documentPort();
+    const f = await fixture(platform, { controller: doc.controller });
+    try {
+      await f.act(() => pressClose(f));
+      await f.act(() => doc.pending[0].reject(Error("Synthetic durable save failure")));
+      assert.equal(current(f).name, "miniapp");
+      assert.equal(f.qa.disposedDocuments, 0);
+      assert.ok(f.qa.prevented.has("drawing"));
+      assert.match(f.node.textContent, /drawing.closeFailed/);
+      await f.act(() => pressClose(f));
+      assert.equal(doc.calls.length, 2);
+      await f.act(() => doc.pending[1].resolve());
       assert.equal(current(f).name, "home");
+      assert.equal(f.qa.disposedDocuments, 1);
     } finally {
       await f.close();
     }
   });
 }
-
-test("iOS App layout wires the native grabber to the real root guard until document flush acknowledges", async () => {
+test("a retained close callback cannot close a refocused or replaced App scope", async () => {
   const doc = documentPort();
-  const f = await fixture("ios", { controller: doc.controller, origin: "chat" });
+  const f = await fixture("ios", { controller: doc.controller });
   try {
-    assert.ok(f.qa.grabberProps, "actual iOS App layout must mount its guarded grabber");
-    assert.ok(f.node.querySelector("[data-qa-local-safe-provider] [data-qa-editor]"));
-    assert.equal(f.qa.grabberProps.style.width, 72);
-    assert.equal(f.qa.grabberProps.style.height, 48);
-    await f.act(() => gesture(f, "pan"));
-    assert.deepEqual(f.qa.dispatched[0], {
-      type: "GO_BACK",
-      source: "app-modal",
-      target: "root-stack",
-    });
-    assert.deepEqual(doc.calls, [{ retire: true }]);
-    assert.equal(current(f).name, "miniapp");
-    assert.equal(f.qa.disposedDocuments, 0);
+    const beforeBlur = f.qa.closeProps.onPress;
     await f.act(() => {
-      gesture(f, "tap");
-      f.qa.grabberProps.onAccessibilityEscape();
+      f.focus(false);
+      f.focus(true);
     });
-    assert.equal(doc.calls.length, 1, "the actual screen lock owns repeated iOS close intents");
+    await f.act(() => beforeBlur());
+    assert.deepEqual(f.qa.dispatched, []);
+    const beforePath = f.qa.closeProps.onPress;
+    await f.act(() => f.path("/miniapp/different-document"));
+    await f.act(() => beforePath());
+    assert.deepEqual(f.qa.dispatched, []);
+    assert.equal(doc.calls.length, 0);
+    await f.act(() => pressClose(f));
+    assert.equal(doc.calls.length, 1);
     await f.act(() => doc.pending[0].resolve());
-    assert.equal(current(f).name, "chat");
+    assert.equal(current(f).name, "home");
+  } finally {
+    await f.close();
+  }
+});
+test("floating close refuses missing state, root mismatch, unfocused route and absent back destination", async () => {
+  const doc = documentPort();
+  const f = await fixture("ios", { controller: doc.controller });
+  try {
+    const read = f.qa.navigation.getState,
+      canBack = f.qa.navigation.canGoBack;
+    f.qa.navigation.getState = () => undefined;
+    await f.act(() => pressClose(f));
+    f.qa.navigation.getState = read;
+    const key = f.qa.routeIdentity.key;
+    f.qa.routeIdentity.key = "other-modal";
+    await f.act(() => pressClose(f));
+    f.qa.routeIdentity.key = key;
+    await f.act(() => f.focus(false));
+    await f.act(() => pressClose(f));
+    await f.act(() => f.focus(true));
+    f.qa.navigation.canGoBack = () => false;
+    await f.act(() => pressClose(f));
+    f.qa.navigation.canGoBack = canBack;
+    assert.deepEqual(f.qa.dispatched, []);
+    assert.equal(doc.calls.length, 0);
+    assert.equal(current(f).name, "miniapp");
+  } finally {
+    await f.close();
+  }
+});
+test("floating close from management targets the root App after its existing descendant flush", async () => {
+  const doc = documentPort();
+  const f = await fixture("ios", { controller: doc.controller, management: true });
+  try {
+    await f.act(() => pressClose(f));
+    assert.equal(current(f).state.index, 1);
+    assert.deepEqual(doc.calls, [{ retire: true }]);
+    await f.act(() => doc.pending[0].resolve());
+    assert.equal(current(f).name, "home");
     assert.equal(f.qa.disposedDocuments, 1);
   } finally {
     await f.close();
   }
 });
-
-test("iOS grabber cancellation and failed save retain the App until an explicit accessible retry succeeds", async () => {
-  const doc = documentPort();
-  const f = await fixture("ios", { controller: doc.controller });
+test("Web App layout has no native X or host corner exclusion", async () => {
+  const f = await fixture("web", { controller: documentPort().controller });
   try {
-    assert.ok(f.qa.grabberProps, "actual iOS layout must provide its close intent");
-    await f.act(() => gesture(f, "pan", { canceled: true }));
-    await f.act(() => gesture(f, "pan", { translationY: -72 }));
-    assert.deepEqual(f.qa.dispatched, []);
-    assert.equal(doc.calls.length, 0);
-    await f.act(() => gesture(f, "pan"));
-    await f.act(() => doc.pending[0].reject(Error("Synthetic iOS save failure")));
-    assert.equal(current(f).name, "miniapp");
-    assert.equal(f.qa.disposedDocuments, 0);
-    assert.ok(f.qa.prevented.has("drawing"));
-    assert.match(f.node.textContent, /drawing.closeFailed/);
-    await f.act(() =>
-      f.qa.grabberProps.onAccessibilityAction({ nativeEvent: { actionName: "activate" } }),
-    );
-    assert.equal(doc.calls.length, 2);
-    assert.equal(current(f).name, "miniapp");
-    assert.equal(f.qa.disposedDocuments, 0);
-    await f.act(() => doc.pending[1].resolve());
-    assert.equal(current(f).name, "home");
-    assert.equal(f.qa.disposedDocuments, 1);
+    assert.equal(f.node.querySelector("[data-qa-close]"), null);
+    assert.equal(f.qa.editorChrome, null);
+    assert.deepEqual(f.qa.editorInsets, { top: 24, right: 0, bottom: 16, left: 0 });
   } finally {
     await f.close();
   }

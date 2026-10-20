@@ -75,6 +75,7 @@ async function fixture() {
     line: '#cccccc',
   };
   let scheme = 'light';
+  let closeButton: { top: number; right: number; width: number; height: number } | null = null;
   let insets = { top: 107, right: 0, bottom: 34, left: 0 };
   const props = {
     item: {
@@ -158,6 +159,7 @@ async function fixture() {
     '../components/dialogs': { useDialogs: () => dialogs },
     '../theme': { useTheme: () => ({ colors, scheme }) },
     './frame': { MiniappFrame: 'MiniappFrame' },
+    './app-sheet-context': { useAppSheetCloseButton: () => closeButton },
     './protocol': {
       MiniappSession: class extends MiniappSession {
         constructor(host: ConstructorParameters<typeof MiniappSession>[0]) {
@@ -239,6 +241,11 @@ async function fixture() {
       renderFrame = render();
       await tick();
     },
+    async chrome(next: typeof closeButton) {
+      closeButton = next;
+      renderFrame = render();
+      await tick();
+    },
     async theme() {
       scheme = 'dark';
       renderFrame = render();
@@ -301,5 +308,30 @@ test('zero-size rotation frames keep last positive geometry and owner retirement
   assert.equal(f.draft(), 'unsaved local edit');
   f.revoke();
   assert.equal(f.disposals(), 1);
+  assert.deepEqual(f.writes, []);
+});
+
+test('floating close rectangle crosses the actual bridge without changing safe insets or replaying App content', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const html = f.frame().props.html;
+  const safe = f.app.getHostContext()?.safeAreaInsets;
+  const button = { top: 115, right: 12, width: 44, height: 44 };
+  await f.chrome(button);
+  assert.deepEqual((f.app.getHostContext()?.zoen as any)?.chrome?.closeButton, button);
+  assert.deepEqual(f.app.getHostContext()?.safeAreaInsets, safe);
+  await f.chrome({ top: 8, right: 71, width: 44, height: 44 });
+  assert.deepEqual((f.app.getHostContext()?.zoen as any)?.chrome?.closeButton, {
+    top: 8,
+    right: 71,
+    width: 44,
+    height: 44,
+  });
+  await f.chrome(null);
+  assert.equal((f.app.getHostContext()?.zoen as any)?.chrome?.closeButton, null);
+  assert.equal(f.frame().props.html, html);
+  assert.equal(f.sessionCount(), 1);
+  assert.deepEqual(f.notifications, ['input', 'result']);
+  assert.equal(f.draft(), 'unsaved local edit');
   assert.deepEqual(f.writes, []);
 });

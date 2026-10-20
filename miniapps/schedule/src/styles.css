@@ -17,7 +17,7 @@ body,
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: calc(var(--z-safe-top) + 12px) calc(14px + var(--z-safe-right)) 10px
+  padding: calc(var(--z-safe-top) + 12px) max(calc(14px + var(--z-safe-right)), calc(var(--z-close-right) + 8px)) 10px
     calc(14px + var(--z-safe-left));
 }
 .head {

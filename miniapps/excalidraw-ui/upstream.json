@@ -12,7 +12,7 @@
     "src/edit-context.ts": "de7d1aa4032455ff3e012b3b16c3fdc086bc6324f8cd7697d0e2ded5b94474f2",
     "src/pencil-audio.ts": "13f6ff769d5d2140faeeffa4b49d5a9f7a85b357b20d0c2603e53bdd288b98bf",
     "src/sounds.ts": "c197a890a699a9ed3348cc5ff12d676b2e9923ab25fcb80045cdad10f4baff4f",
-    "src/global.css": "56511f47fde7f4b836ce394a89b2c4fcb037e383a2aee00c0c86c3c5ef3f24ea"
+    "src/global.css": "01a1661286115e7513d5e7aca80b78d6e3f7309e2fc25b065cc0a488e4a20fb5"
   },
   "licenseDeclaration": {
     "upstreamPackageJson": "MIT",
@@ -26,7 +26,8 @@
     "Canonical full-scene image/appState persistence, acknowledged chunked save/retry/flush via standard MCP tools.",
     "Public aiEnabled=false additionally gates manual Mermaid menu and Mermaid paste paths; optional converter branch excluded.",
     "One host-context subscription applies negotiated mobile safe-area insets to floating controls in both canonical and legacy editors, without padding or resizing the canvas.",
-    "Apply negotiated top/right safe-area insets to the pinned mobile Library/lock/hand panel in both editors so it cannot cover the toolbar; place the legacy compact Export beside that panel without overlapping either toolbar; canvas dimensions and Library visibility remain unchanged."
+    "Apply negotiated top/right safe-area insets to the pinned mobile Library/lock/hand panel in both editors so it cannot cover the toolbar; place the legacy compact Export beside that panel without overlapping either toolbar; canvas dimensions and Library visibility remain unchanged.",
+    "Consume the validated Zoen floating close rectangle in both editors; only floating top controls clear its corner, while the canvas, actual safe-area insets, and document state keep their full frame."
   ],
   "externalResources": [],
   "prSourceSha256": "e311cfa69aa3c67a0dbfecdbc3005857c12590de3c1d871afe7c853703acd928",
@@ -36,5 +37,6 @@
     "@excalidraw/excalidraw/dist/prod/chunk-FX7ZIABN.js": "5d42242a4c5c7d7b835d154c291b838e2f0fcdccd649c8b2fcbe05b3a7c2b346"
   },
   "safeAreaPatchSha256": "9970f72d86a62739b93f63805b75c0cb72537128e5181ac7dcc033c3e15c7897",
-  "mobileSideToolsPatchSha256": "743ab03eddaaa091e040292bbe2885a8463d7a6f888de298e6897ab7e1c6de67"
+  "mobileSideToolsPatchSha256": "743ab03eddaaa091e040292bbe2885a8463d7a6f888de298e6897ab7e1c6de67",
+  "hostCloseCornerPatchSha256": "3ca79b25d17df7fbc245539197448290245bdb6a0b2a19a97964d7c7ac3aea8c"
 }

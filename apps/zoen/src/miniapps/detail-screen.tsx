@@ -126,7 +126,7 @@ export function MiniappScreen({ manage = false }: { manage?: boolean }) {
       options={{
         title: manage ? t('common.details') : item.title,
         headerShown: manage,
-        // Interactive canvases close only through the guarded native grabber.
+        // Interactive canvases close through the guarded native close control.
         gestureEnabled: !fullscreen,
         headerRight: !manage
           ? undefined
