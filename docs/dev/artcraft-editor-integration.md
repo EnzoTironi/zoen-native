@@ -10,7 +10,7 @@ permissões, versões, sincronização e histórico de pessoas e agentes.
 O carregador gerenciado, registro e UI nativa usam o documento binário
 canônico do Zoen. O pacote fixa JS/WASM, fontes e licenças por hash; o host verifica
 os recursos antes de entregá-los ao sandbox. A WebView não tem autoridade de
-armazenamento durável. A fonte `a974701b` passou por 1.094 casos, tipos,
+armazenamento durável. A fonte `e16c755d` passou por 1.094 casos, tipos,
 Oxlint/Oxfmt, núcleo nativo configurado e build Release. Os 431 arquivos
 instalados e a assinatura conferem com o artefato lacrado.
 
@@ -21,7 +21,10 @@ motor real da WKWebView, confirmou o estado salvo, fechou e reabriu após reinic
 o processo. Um fluxo específico dessa conta foi gravado e reproduzido. A primeira
 reprodução excedeu cinco segundos; uma repetição com orçamento explícito de
 abertura mediu 7,8 segundos. Isso não aprova o desempenho. O layout de desktop e
-o tema claro foram observados no iPhone e permanecem sem aceite.
+o tema claro pertencem à evidência histórica `a974701b`. A versão posterior
+`e16c755d` abriu o mesmo documento em 8,245 segundos com controles compactos,
+tema escuro do host e fechamento seguro no canto. Em paisagem, ainda há
+sobreposição no rodapé de status; a usabilidade completa não foi aprovada.
 
 A correção integrada `c5ac7652` mantém a tela bloqueada após timeout de save,
 até receber confirmação de recuperação. O pacote posterior também trata falhas
@@ -30,12 +33,30 @@ controle real no navegador abriu o seed canônico e outro, sem canvas, recusou
 requisições pendentes e futuras. Isso não estabelece a causa exata da primeira
 falha nativa nem cobre todos os traps possíveis.
 
-**Edição manual, rotação, teclado, alteração por agente e exportação/compartilhamento
-PPTX/PDF nativos continuam sem aceite.** A adaptação compacta para toque está em
-preparação, preservando Session, comandos, renderizadores e exportadores upstream.
-O executor privado tem provas parciais de autoridade, aliases e bloqueio padrão;
-a jornada completa e a interoperabilidade com esse documento do iPhone seguem
-pendentes. Nenhuma chamada de modelo foi comprovada nessa prova.
+Os menus do próprio editor abriram o compartilhamento nativo de PDF e PPTX da
+versão1 original, sem edição. Foram conferidos a assinatura do PDF e o ZIP/XML
+do PPTX, com um slide; os arquivos temporários foram removidos após cancelar.
+Isso não aprova exportação de conteúdo editado, renderização independente do PDF
+ou envio a um destinatário externo. Falhas nos oráculos de legenda ficaram
+preservadas separadamente das observações e dos arquivos reais.
+
+**A edição manual continua bloqueada pelo teclado da WKWebView.** Título e Notas
+não receberam texto, embora a busca nativa do mesmo artefato tenha aberto o
+teclado e aceitado o valor completo. Um controle com a política pública do
+RN-WebView também falhou e foi revertido. A causa de foco ainda não foi
+comprovada. Correções de aposentadoria do rascunho de Notas e layout em paisagem
+estão preparadas, sem qualificação de execução. Acessibilidade semântica do
+editor, memória e ciclo de vida também permanecem abertos.
+
+O executor privado passou uma jornada real por Runtime, Gate, SpaceTools e
+componente WASI, com comandos reversíveis, isolamento entre artefatos,
+persistência canônica e replay após reabrir o cliente SQLite. O cérebro do teste
+fornece chamadas fixas: **nenhum provedor/modelo real foi comprovado**, nem a
+interoperabilidade com o iPhone. A tradução inicial do componente levou
+444,553 segundos sob compilação concorrente; o orçamento do guest não limita
+esse custo. A reabertura usa o componente já compilado no mesmo processo.
+O executor ainda é privado e não integrado. A jornada completa do documento
+editado e os demais editores Storytold seguem pendentes.
 
 As medições de pesquisa abaixo preservam seus pacotes originais. Não descrevem
 o pacote gerenciado posterior nem encerram a integração. Revisões, limites,
@@ -53,14 +74,14 @@ MCP existente não declara uma interface MCP App pronta.
 [comandos de arquivo](https://github.com/storytold/deckcraft/blob/a31b990d32f2c8562f1588562f922960c3fde48b/crates/engine/src/cmd/file.rs),
 [interface Web](https://github.com/storytold/deckcraft/blob/a31b990d32f2c8562f1588562f922960c3fde48b/apps/deckcraft-web/src/web.rs).
 
-| Prova executada | Resultado e alcance |
-| --- | --- |
-| Motor nativo com revisão e lockfile fixados | PASS em 247,3 s. `text.set` e `slide.notes` alteraram a mesma Session; undo/redo preservou os estados esperados. A segunda alteração foi programática, sem agente real. |
-| Formato nativo | Modelo idêntico após salvar e reabrir os 4.631 bytes. Isso não comprova recuperação no banco criptografado do Zoen. |
-| PPTX | Exportação de 25.129 bytes, reimportação e inspeção independente do ZIP/XML preservaram título e notas. |
-| PDF | Exportação de 45.142 bytes; página renderizada e texto do título conferidos separadamente. As notas não fazem parte desse PDF de slides. |
-| Interface WASM | O check passou em 91,587 s. O pacote Release otimizado também passou: WASM de 35.840.639 bytes, JS de 155.070 bytes e HTML de 1.622 bytes. A execução na WebView ainda não foi realizada. |
-| Repetição do pacote | Duas execuções Trunk fixadas/offline produziram os quatro recursos idênticos e ZIPs idênticos de 14.355.956 bytes. A segunda usou cache Cargo na mesma máquina; não é uma reconstrução hermética em máquina limpa. |
+| Prova executada                             | Resultado e alcance                                                                                                                                                                                                |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Motor nativo com revisão e lockfile fixados | PASS em 247,3 s. `text.set` e `slide.notes` alteraram a mesma Session; undo/redo preservou os estados esperados. A segunda alteração foi programática, sem agente real.                                            |
+| Formato nativo                              | Modelo idêntico após salvar e reabrir os 4.631 bytes. Isso não comprova recuperação no banco criptografado do Zoen.                                                                                                |
+| PPTX                                        | Exportação de 25.129 bytes, reimportação e inspeção independente do ZIP/XML preservaram título e notas.                                                                                                            |
+| PDF                                         | Exportação de 45.142 bytes; página renderizada e texto do título conferidos separadamente. As notas não fazem parte desse PDF de slides.                                                                           |
+| Interface WASM                              | O check passou em 91,587 s. O pacote Release otimizado também passou: WASM de 35.840.639 bytes, JS de 155.070 bytes e HTML de 1.622 bytes. A execução na WebView ainda não foi realizada.                          |
+| Repetição do pacote                         | Duas execuções Trunk fixadas/offline produziram os quatro recursos idênticos e ZIPs idênticos de 14.355.956 bytes. A segunda usou cache Cargo na mesma máquina; não é uma reconstrução hermética em máquina limpa. |
 
 A prova usou fontes locais de fallback, sem baixar os binários craft-fonts. A
 fidelidade tipográfica, o teclado, VoiceOver, toque, GPU, memória e recuperação no
@@ -134,13 +155,13 @@ medição no iPhone; os limites de desktop não são os do Zoen.
 
 ## Lotes de implementação e aceite
 
-| Lote | Saída necessária |
-| --- | --- |
-| Pacote e iPhone | Pacote reproduzível, fonte/fontes verificadas, ponte na mesma Session e controles de telefone. Renderizar, editar texto, usar teclado/VoiceOver/pinch, alternar retrato/paisagem e medir memória/tempo na WebView real. |
+| Lote                      | Saída necessária                                                                                                                                                                                                                                                     |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pacote e iPhone           | Pacote reproduzível, fonte/fontes verificadas, ponte na mesma Session e controles de telefone. Renderizar, editar texto, usar teclado/VoiceOver/pinch, alternar retrato/paisagem e medir memória/tempo na WebView real.                                              |
 | Persistência e isolamento | Bytes exatos após reabertura; ACK perdido, mutação repetida ou adulterada, base antiga, perda de acesso, chunks ausentes/corrompidos, documento excessivo/futuro e falhas transacionais. Encaminhamento usa chaves novas e não mantém referências ao chat de origem. |
-| Pessoas e agentes | Edição humana aceita, comando de agente certificado no mesmo artefato, autoria verificável e nova versão. Conflitos não sobrescrevem trabalho; tarefa retomada não duplica efeitos. Undo local e restauração durável têm semânticas explícitas. |
-| Jornada completa | Conversa → criar apresentação → cartão → editar → alteração por agente → fechar → reiniciar processo → recuperar o mesmo documento → exportar PPTX e PDF da versão escolhida → compartilhar. Conferir os arquivos independentemente e repetir falhas/cancelamentos. |
-| Próximos editores | Somente após o aceite do DeckCraft, reutilizar o contrato de pacote/identidade/versão/permissão e criar adaptadores específicos. |
+| Pessoas e agentes         | Edição humana aceita, comando de agente certificado no mesmo artefato, autoria verificável e nova versão. Conflitos não sobrescrevem trabalho; tarefa retomada não duplica efeitos. Undo local e restauração durável têm semânticas explícitas.                      |
+| Jornada completa          | Conversa → criar apresentação → cartão → editar → alteração por agente → fechar → reiniciar processo → recuperar o mesmo documento → exportar PPTX e PDF da versão escolhida → compartilhar. Conferir os arquivos independentemente e repetir falhas/cancelamentos.  |
+| Próximos editores         | Somente após o aceite do DeckCraft, reutilizar o contrato de pacote/identidade/versão/permissão e criar adaptadores específicos.                                                                                                                                     |
 
 O núcleo/backend recebe testes em lotes. O aceite de teclado, gestos, áudio,
 memória e ciclo de vida precisa da plataforma real, separando simulador de iPhone

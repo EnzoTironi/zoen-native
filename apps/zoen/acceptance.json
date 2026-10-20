@@ -245,7 +245,7 @@
     "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
     "qualificationAccepted": false
   },
-  "currentAcceptanceSummary": "iOS-first execution continues after mergedPR144. Signal-derived original media reliability fixes have focused71-case proof and draftPR146; its existing Chrome CI startup failure is not waived. DeckCraft sourcea974701b passed1094 app cases, types/Oxlint/Oxfmt, actual configured native core and Release build. All431 installed files/signature matched. The real WK engine now opens the existing canonical deck, reports saved status, closes and cold re-opens it in a fixture-specific recorded/replayed path. Cold open took7.8s and desktop layout/light theme remain unaccepted on iPhone. Manual edits, certified-agent edits, rotation, native PPTX/PDF sharing and the other Storytold editors remain pending. Earlier failed/partial proofs are preserved. All30 journeys,6 platforms,10 creation capabilities, operating-envelope hash and false global readiness flags remain unchanged.",
+  "currentAcceptanceSummary": "iOS-first execution continues after merged PR144 and PR146. Signal-derived original media/observer reliability fixes have focused71-case proof, independent source review and11/11 CI before merge; upstream Signal suites are not claimed as executed. DeckCraft sourcee16c755d passed1094 app cases, types/Oxlint/Oxfmt, configured native core and Release build; all431 installed files/signature matched. The real WK engine opens the canonical presentation in compact dark mode; native PDF/PPTX shares and independent file checks passed for unchanged version1 only. Manual title/Notes input failed despite a healthy native search-keyboard control; landscape status labels overlap. A private production Runtime/Gate/SpaceTools/WASI journey passed with scripted test tool calls and SQLite reopen, but cold component translation took444.553s, no real model/provider or native agent interoperability is proven, and that worker is not integrated. Notes retirement, landscape repair, accessibility, other Storytold editors and the complete edited-document journey remain open. Earlier failed/partial proofs are preserved. All30 journeys,6 platforms,10 creation capabilities, operating-envelope hash and false global readiness flags remain unchanged.",
   "retiredBackend": {
     "id": "custom-cloudflare-runtime",
     "status": "RETIRED",
@@ -4143,7 +4143,24 @@
       "coreAuthorityCasesPassed": 3,
       "actualProductionDispatch": "TIMEOUT during cold component translation before Session execution",
       "modelCalls": "NONE",
-      "notIntegrated": true
+      "notIntegrated": true,
+      "subsequentActualRuntimeBatch": {
+        "status": "PRIVATE_PARTIAL; actual production runtime journey PASS, not integrated",
+        "componentSha256": "facb0ce69b11974cfee090f0ff1114a8058015e6d53b2b57c5b23b803d805f68",
+        "componentBytes": 31107894,
+        "actualJourney": "PASS actual Runtime/Gate/SpaceTools/WASI Session with four reversible commands, canonical versions2-8, second-artifact isolation, A-to-B-to-A and lost-reply replay assertions",
+        "receipt": "/private/tmp/zoen-deckcraft-agent-worker-v160/worker-release-journey-02.json",
+        "coldComponentLoadSeconds": 444.553,
+        "totalTestElapsedSeconds": 447.329,
+        "performanceBoundary": "Cold synchronous translation under concurrent Xcode work; not an isolated benchmark. The guest execution budget does not bound this compile/load.",
+        "recoveryBoundary": "SQLite client reopen in the same test process retains the compiled Worker Arc; whole agent-host process restart NOT_RUN",
+        "gateBoundary": "Typed authenticated public artifact references are projected before the unchanged Gate; all original descriptions, intent and remaining values remain inspected. Fresh write authorization and CAS precede compute.",
+        "negativeControls": "Removing the unoffered-binding fence and removing typed projection each failed their intended assertions; source restored",
+        "brain": "ScriptedBrain test-only tool calls",
+        "modelCalls": "NONE",
+        "nativeInteroperability": "NOT_RUN",
+        "notIntegrated": true
+      }
     },
     "remaining": [
       "Surface startup failures and qualify a real WK Session open",
@@ -4256,6 +4273,86 @@
         "review": "/private/tmp/zoen-deckcraft-compact-review-v169/report.md",
         "scope": "Source-confirmed limitation, not a completed VoiceOver assessment or repair"
       }
-    }
+    },
+    "subsequentNativeCompactBatch": {
+      "date": "2026-10-20",
+      "source": "e16c755dac85ee5222ba90767b3b8d2bb70a59a1",
+      "pullRequest": "https://github.com/EnzoTironi/zoen-native/pull/147",
+      "status": "PARTIAL; real compact dark WK and unchanged-version native exports passed; manual keyboard input failed",
+      "appCheck": {
+        "status": "PASS",
+        "passed": 1094,
+        "failed": 0,
+        "skipped": 0,
+        "typescript": true,
+        "oxlint": true,
+        "oxfmt": true,
+        "receipt": "/private/tmp/zoen-deckcraft-live-v171/app-check-01.json"
+      },
+      "nativeCoreBuild": "/private/tmp/zoen-deckcraft-live-v171/native-build-source-complete-01.json",
+      "resourceManifestSha256": "3b49ddba097a2171e6e6e1e6514539dc1529ece66ea0c45e46d30cbfecf6bf25",
+      "controlledArtifact": {
+        "sourceHead": "e16c755dac85ee5222ba90767b3b8d2bb70a59a1",
+        "seal": "/private/tmp/zoen-deckcraft-live-v171/release-01/seal.json",
+        "configuration": "Release",
+        "executableSha256": "0449df9ee8f46a06ffdd0295d14b16e1c0a19f1bc9dd1019164ff03601b8f86c",
+        "bundleManifestSha256": "25f1519420121f2144f0697f16d5ea6abfef28264c3d24fec31f3370a5e506ea",
+        "bundleFiles": 431,
+        "installedExactFilesAndSignature": "PASS",
+        "device": "591F1216-9B73-4BE1-807A-309DB937D6FA"
+      },
+      "nativeObserved": {
+        "realWKCompactDarkOpen": "PASS",
+        "firstColdOpenElapsedMs": 8245,
+        "nativeSearchSoftwareKeyboard": "PASS Portuguese keyboard and QA160 field value",
+        "manualTitleEdit": "FAIL; taps, genuine double-tap and native keyboard events did not produce visible text",
+        "notesInput": "UNACCEPTED; egui caret visible without software keyboard",
+        "rotation": "Both landscape orientations and portrait restoration observed; desktop status labels overlap in landscape; usability UNACCEPTED",
+        "PDF": {
+          "nativeShare": "PASS original unchanged version1",
+          "bytes": 13764,
+          "sha256": "1a1db51807f92d90cd4eb14f6c8960bd5535fd8ba97057db0ed72ffcef06e417",
+          "independentInspection": "PDF signature only"
+        },
+        "PPTX": {
+          "nativeShare": "PASS original unchanged version1",
+          "bytes": 21710,
+          "sha256": "4ef43db2a3b8975df01591702f47d616c0496efd97efd1dbed7c24c83a34a89a",
+          "independentInspection": "ZIP CRC, required XML parse and one slide"
+        },
+        "privateExportFilesAfterCancel": 0,
+        "externalRecipientSend": "NOT_RUN",
+        "manualEditedDocumentRecovery": "NOT_RUN"
+      },
+      "nativeReceipt": "/private/tmp/zoen-deckcraft-live-v171/native-qa-01/outcome.json",
+      "recordingBoundary": "Diagnostic takes only; retained native search label/value and PPTX caption oracle failures, plus unsafe unlabeled canvas targets. No qualified replay or portable screenshot bundle: temporary v171 screenshots were deleted at server cleanup before copying; JSON observations and exported bytes remain.",
+      "keyboardPolicyNegativeControl": {
+        "source": "0085b9cb6632b2630721e1ce0294e3183bf31a5b",
+        "result": "Supported RN-WebView keyboardDisplayRequiresUserAction=false did not open the keyboard for title or Notes; no manual text accepted",
+        "scope": "Diagnostic only; installed library class-method override is process-wide",
+        "revertedBy": "61efc97aef78c7771b3a2f740defb3eab2391cdd",
+        "baselineRestore": "PASS exact431files/signature, app terminated after install",
+        "receipt": "/private/tmp/zoen-deckcraft-keyboard-control-v176/native-qa-01/outcome.json",
+        "savedScreens": 8
+      },
+      "signalReliabilityMerge": {
+        "pullRequest": "https://github.com/EnzoTironi/zoen-native/pull/146",
+        "mergeCommit": "fc223f8eef4c71b8bc229d77962b646e554888b3",
+        "status": "MERGED after11/11 CI and independent review",
+        "receipt": "/private/tmp/zoen-signal-media-pr-v167/merge-receipt.json",
+        "upstreamSuites": "NOT_RUN"
+      },
+      "wholeProductAcceptance": false,
+      "historicalPolicy": "Earlier batch objects retain their source/artifact and failed/partial results."
+    },
+    "currentRemaining": [
+      "Diagnose actual WK focus and qualify manual title/Notes edit, blur/save, close and cold content recovery",
+      "Qualify notes draft retirement/identity/freeze-ACK fixes before building a new managed package",
+      "Repair landscape compact layout and qualify both orientations with keyboard and gestures",
+      "Integrate qualified isolated agent worker; prove a real provider/model and authorized native interoperability with a newly admitted artifact",
+      "Export and inspect the chosen edited canonical version, including failure/cancellation and sharing",
+      "Implement editor semantic accessibility; qualify physical-device memory, startup and lifecycle",
+      "Integrate the other selected Storytold editors after the first complete DeckCraft journey"
+    ]
   }
 }
