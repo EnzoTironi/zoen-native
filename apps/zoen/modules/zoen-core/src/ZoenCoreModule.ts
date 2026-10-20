@@ -44,6 +44,7 @@ declare class ZoenCoreModule extends NativeModule<{
   materializeMediaDraftAsset(request: string): Promise<string>;
   previewMediaDraftAsset(request: string, presentationId: string): Promise<void>;
   cancelMediaDraftPreview(presentationId: string): Promise<void>;
+  editMediaDraftAsset(request: string, presentationId: string): Promise<string>;
   sendMediaDraft(request: string): Promise<string>;
   prepareVoice(uri: string): Promise<string>;
   renderVoice(sourceId: string, ranges: string): Promise<string>;

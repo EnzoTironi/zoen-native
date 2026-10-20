@@ -10,11 +10,16 @@ const ports: Record<string, string> = {
     export const requests = [];
     export const previews = [];
     export const canceled = [];
+    export const edits = [];
     let failure = false;
     export function failNextSend() { failure = true; }
     export default {
       async loadMediaDraft() {},
       async previewMediaDraftAsset(request, token) { previews.push({request, token}); },
+      async editMediaDraftAsset(request, token) {
+        edits.push({request, token});
+        return JSON.stringify({revision:'edited', content_json:'null', assets:[], attempted:false});
+      },
       async cancelMediaDraftPreview(token) { canceled.push(token); },
       async sendFile(request) {
         requests.push(request);
@@ -30,7 +35,7 @@ const ports: Record<string, string> = {
 const output = await build({
   stdin: {
     contents: `export {createDriver} from './driver.ts';
-      export {requests, previews, canceled, failNextSend} from '../../modules/zoen-core/src/ZoenCoreModule';`,
+      export {requests, previews, edits, canceled, failNextSend} from '../../modules/zoen-core/src/ZoenCoreModule';`,
     resolveDir: new URL('.', import.meta.url).pathname,
     loader: 'ts',
   },
@@ -59,6 +64,7 @@ const native = (await import(
   requests: string[];
   previews: { request: string; token: string }[];
   canceled: string[];
+  edits: { request: string; token: string }[];
   failNextSend(): void;
 };
 const selection: SendFile = {
@@ -116,4 +122,28 @@ test('native draft review forwards canonical scope/revision/asset and cancellati
   assert.equal(native.previews[0]!.request.includes('uri'), false);
   await drafts.cancelPreview!('presentation-token');
   assert.deepEqual(native.canceled, ['presentation-token']);
+});
+
+test('native edited review uses canonical scope and revision without exposing an input URI', async () => {
+  native.edits.length = 0;
+  const drafts = native.createDriver().media!.drafts!;
+  const scope = {
+    expected_identity_id: 'owner',
+    expected_device_id: 'device',
+    space_id: 'chat',
+    thread_root_id: 'root',
+  };
+  assert.deepEqual(await drafts.edit!(scope, 'baseline', 'selected', 'presentation'), {
+    revision: 'edited',
+    content_json: 'null',
+    assets: [],
+    attempted: false,
+  });
+  assert.deepEqual(native.edits, [
+    {
+      request: JSON.stringify({ scope, expected_revision: 'baseline', asset_id: 'selected' }),
+      token: 'presentation',
+    },
+  ]);
+  assert.equal(native.edits[0]!.request.includes('uri'), false);
 });

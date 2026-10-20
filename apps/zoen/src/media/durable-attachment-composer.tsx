@@ -117,11 +117,34 @@ export function useDurableAttachmentComposer(
           const port = store.driver.media?.drafts;
           if (!port?.preview || !port.cancelPreview)
             throw new AttachmentDraftFailure('unavailable');
+          const latest = channel?.getSnapshot();
+          const asset = latest?.value?.assets.find((value) => value.id === request.assetId);
+          const editable =
+            asset &&
+            /^(image\/(jpeg|png|heic|heif)|video\/(mp4|quicktime|x-m4v))$/.test(asset.mime);
+          if (port.edit && channel && editable && !latest?.frozen) {
+            const content = latest?.content;
+            const position =
+              content?.kind === 'attachments'
+                ? content.items.findIndex((item) => item.asset_id === request.assetId)
+                : -1;
+            return channel.edit(request.assetId, token).then(() => {
+              const updated = channel.getSnapshot().content;
+              const selected =
+                updated?.kind === 'attachments' && position >= 0
+                  ? updated.items[position]?.asset_id
+                  : null;
+              if (selected && !runtime.closed)
+                setLocal((previous) =>
+                  previous.channel === channel ? { ...previous, selected } : previous,
+                );
+            });
+          }
           return port.preview(request.scope, request.revision, request.assetId, token);
         },
         cancel: (token) => store.driver.media?.drafts?.cancelPreview?.(token) ?? Promise.resolve(),
       }),
-    [channel, current, store],
+    [channel, current, store, runtime],
   );
   useLayoutEffect(() => review.refresh(), [review, options]);
   const reviewing = useSyncExternalStore(review.subscribe, review.getSnapshot, review.getSnapshot);

@@ -15,6 +15,7 @@ export type MediaDraftState = Readonly<{
   content: MediaDraftContent | null;
   saving: boolean;
   sending: boolean;
+  reviewing: boolean;
   frozen: boolean;
   error: Error | null;
 }>;
@@ -258,6 +259,7 @@ export class MediaDraftChannel {
     content: null,
     saving: false,
     sending: false,
+    reviewing: false,
     frozen: false,
     error: null,
   });
@@ -279,6 +281,7 @@ export class MediaDraftChannel {
   private readonly stages = new Set<Stage>();
   private retirementTask: Promise<void> | null = null;
   private releasing: Promise<void> | null = null;
+  private editing: { token: string; task: Promise<void> } | null = null;
   private clearing = false;
   private clearTask: Promise<MediaDraftDto> | null = null;
 
@@ -312,6 +315,7 @@ export class MediaDraftChannel {
       frozen:
         next.phase === 'closed' ||
         next.sending ||
+        next.reviewing ||
         this.clearing ||
         !!this.intent ||
         !!next.value?.attempted,
@@ -397,7 +401,7 @@ export class MediaDraftChannel {
       else this.open();
       this.loaded();
       if (this.clearing && !clearing) throw new MediaDraftFailure('busy');
-      if (this.state.sending && !stage) throw new MediaDraftFailure('busy');
+      if ((this.state.sending || this.editing) && !stage) throw new MediaDraftFailure('busy');
       if (content !== null && (this.intent || this.state.value!.attempted))
         throw new MediaDraftFailure('attempted');
       if (content === null && this.intent && !clearing) throw new MediaDraftFailure('attempted');
@@ -469,6 +473,7 @@ export class MediaDraftChannel {
     const task = (async () => {
       // Cancel retires preparation before waiting. An old prepare callback can
       // finish its native IO, but cannot save behind the explicit clear.
+      await this.cancelEdit();
       await Promise.allSettled(cancelled.flatMap((stage) => (stage.task ? [stage.task] : [])));
       for (const stage of cancelled) this.stages.delete(stage);
       // An explicit discard waits an already admitted send; it never retries it.
@@ -512,7 +517,13 @@ export class MediaDraftChannel {
     } catch (error) {
       return Promise.reject(error);
     }
-    if (this.clearing || this.state.sending || this.intent || this.state.value?.attempted)
+    if (
+      this.clearing ||
+      this.state.sending ||
+      this.editing ||
+      this.intent ||
+      this.state.value?.attempted
+    )
       return Promise.reject(new MediaDraftFailure('busy'));
     const stage: Stage = {
       work,
@@ -660,7 +671,7 @@ export class MediaDraftChannel {
     try {
       this.open();
       this.loaded();
-      if (this.clearing) throw new MediaDraftFailure('busy');
+      if (this.clearing || this.editing) throw new MediaDraftFailure('busy');
     } catch (error) {
       return Promise.reject(error);
     }
@@ -702,6 +713,78 @@ export class MediaDraftChannel {
     };
     void task.then(settled, settled);
     return task;
+  }
+  /** One writer barrier around native review; Rust remains the only content authority. */
+  edit(assetId: string, presentationId: string): Promise<void> {
+    try {
+      this.open();
+      this.loaded();
+      if (!this.port.edit || !this.port.cancelPreview) throw new MediaDraftFailure('invalid');
+      if (
+        this.editing ||
+        this.clearing ||
+        this.state.sending ||
+        this.stages.size ||
+        this.intent ||
+        this.state.value?.attempted
+      )
+        throw new MediaDraftFailure('busy');
+      const content = this.state.content;
+      if (
+        content?.kind !== 'attachments' ||
+        !content.items.some((item) => item.asset_id === assetId)
+      )
+        throw new MediaDraftFailure('invalid');
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    const editing = { token: presentationId, task: Promise.resolve() };
+    this.editing = editing;
+    const task = this.enqueue(async () => {
+      this.draining();
+      // prepare() flushed all prior writes before the presentation was admitted.
+      if (this.writes.length || this.writeError) throw new MediaDraftFailure('busy');
+      const baseline = this.state.value!;
+      try {
+        const result = await this.port.edit!(
+          this.scope,
+          baseline.revision,
+          assetId,
+          presentationId,
+        );
+        this.draining();
+        this.accept(result);
+      } catch (error) {
+        // Save may have won just before Cancel, or its bridge ACK may have been lost.
+        // Re-read Rust rather than restoring an obsolete optimistic original.
+        this.draining();
+        const recovered = await this.port.load(this.scope);
+        this.draining();
+        this.accept(recovered);
+        throw error;
+      }
+    });
+    editing.task = task;
+    this.publish({ reviewing: true, error: null });
+    const settled = () => {
+      if (this.editing === editing) this.editing = null;
+      this.publish({ reviewing: false });
+      this.scheduleRelease();
+    };
+    void task.then(settled, (reason: unknown) => {
+      settled();
+      if (!this.retirement)
+        this.publish({
+          error: reason instanceof Error ? reason : new Error('Media review failed'),
+        });
+    });
+    return task;
+  }
+  private async cancelEdit(): Promise<void> {
+    const editing = this.editing;
+    if (!editing) return;
+    await this.port.cancelPreview!(editing.token);
+    await editing.task.catch(() => {});
   }
   async materialize(assetId: string): Promise<MaterializedMediaDraftAsset> {
     this.open();
@@ -817,6 +900,7 @@ export class MediaDraftChannel {
     }
     if (this.retirementTask) return this.retirementTask;
     const task = (async () => {
+      await this.cancelEdit();
       if (this.retirement === 'discard') {
         await Promise.allSettled(
           [...this.stages].flatMap((stage) => (stage.task ? [stage.task] : [])),
@@ -845,6 +929,7 @@ export class MediaDraftChannel {
         content: null,
         saving: false,
         sending: false,
+        reviewing: false,
         frozen: true,
         error: null,
       });

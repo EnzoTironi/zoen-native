@@ -1,3 +1,4 @@
+import { PlaybackCoordinator } from '../media/playback-owner.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AttachmentReview, type AttachmentReviewRequest } from '../media/attachment-review.ts';
@@ -157,4 +158,82 @@ test('close before the deferred admission starts does not even prepare a native 
   await opening;
   assert.deepEqual(f.opened, []);
   assert.deepEqual(f.canceled, []);
+});
+
+test('opening native review interrupts received audio and never reclaims a newer play intent after delayed preparation', async () => {
+  const coordinator = new PlaybackCoordinator();
+  let pauses = 0,
+    playing = true;
+  const audio = coordinator.register(
+    () => {
+      pauses++;
+      playing = false;
+    },
+    () => playing,
+  );
+  audio.begin();
+  const preparation = deferred<AttachmentReviewRequest | null>();
+  let opened = 0;
+  const request = fixture().request;
+  const review = new AttachmentReview(
+    {
+      prepare: () => preparation.promise,
+      current: () => true,
+      token: () => 'preview',
+      preview: async () => {
+        opened++;
+      },
+      cancel: async () => {},
+    },
+    coordinator,
+  );
+  const pending = review.open('intent');
+  await tick();
+  assert.equal(pauses, 1);
+  assert.equal(playing, false);
+  const newer = coordinator.register(
+    () => {},
+    () => false,
+  );
+  const intent = newer.begin();
+  preparation.resolve(request);
+  await pending;
+  assert.equal(opened, 0);
+  assert.equal(newer.isCurrent(intent), true);
+  audio.dispose();
+  newer.dispose();
+});
+
+test('a newer playback intent dismisses the exact open native viewer before its lease is released', async () => {
+  const coordinator = new PlaybackCoordinator(),
+    viewer = deferred<void>();
+  const request = fixture().request,
+    tokens: string[] = [];
+  const review = new AttachmentReview(
+    {
+      prepare: async () => request,
+      current: () => true,
+      token: () => 'viewer',
+      preview: async () => viewer.promise,
+      cancel: async (token) => {
+        tokens.push(token);
+      },
+    },
+    coordinator,
+  );
+  const pending = review.open('intent');
+  await tick();
+  const newer = coordinator.register(
+      () => {},
+      () => false,
+    ),
+    intent = newer.begin();
+  await tick();
+  assert.deepEqual(tokens, ['viewer']);
+  assert.equal(review.getSnapshot().mutationId, 'intent');
+  viewer.resolve();
+  await pending;
+  assert.equal(review.getSnapshot().mutationId, null);
+  assert.equal(newer.isCurrent(intent), true);
+  newer.dispose();
 });

@@ -62,6 +62,21 @@ export function createDriver(): CoreDriver {
               typeof NativeCore?.cancelMediaDraftPreview === 'function'
                 ? (presentationId) => core().cancelMediaDraftPreview(presentationId)
                 : undefined,
+            edit:
+              typeof NativeCore?.editMediaDraftAsset === 'function' &&
+              typeof NativeCore?.cancelMediaDraftPreview === 'function'
+                ? async (scope, expectedRevision, assetId, presentationId) =>
+                    JSON.parse(
+                      await core().editMediaDraftAsset(
+                        JSON.stringify({
+                          scope,
+                          expected_revision: expectedRevision,
+                          asset_id: assetId,
+                        }),
+                        presentationId,
+                      ),
+                    )
+                : undefined,
             async send(scope, expectedRevision) {
               return JSON.parse(
                 await core().sendMediaDraft(
