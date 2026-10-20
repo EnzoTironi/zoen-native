@@ -1,20 +1,11 @@
 import { Column, Host, ListItem, Text } from '@expo/ui';
 import { accessibilityHint, accessibilityLabel, frame, padding } from '@expo/ui/swift-ui/modifiers';
-import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { SymbolViewProps } from 'expo-symbols';
 import { useTheme } from '../theme';
 import { Icon } from './primitives';
+import type { SettingsRow } from './settings-row-types';
 
-export type SettingsRow = {
-  id: string;
-  title: string;
-  hint?: string;
-  icon?: SymbolViewProps['name'];
-  leading?: ReactNode;
-  supportingText?: string;
-  onPress: () => void;
-};
+export type { SettingsRow } from './settings-row-types';
 
 /** Native rows without a second scrolling container or an opaque grouped-list background. */
 export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; testID: string }) {
