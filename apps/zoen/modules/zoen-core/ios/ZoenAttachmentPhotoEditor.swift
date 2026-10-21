@@ -235,6 +235,7 @@ import UIKit
     grid.fillColor=UIColor.clear.cgColor;grid.strokeColor=UIColor.white.withAlphaComponent(0.6).cgColor;grid.lineWidth=1
     layer.addSublayer(grid);layer.addSublayer(outline);addGestureRecognizer(UIPanGestureRecognizer(target:self,action:#selector(pan(_:))))
     corners.image=ZoenTelegramAttachmentGlyph.image(.cropCorners)?.resizableImage(withCapInsets:UIEdgeInsets(top:20,left:20,bottom:20,right:20))
+    corners.tintColor = .white
     corners.isUserInteractionEnabled=false;addSubview(corners)
     accessibilityLabel=NSLocalizedString("Crop area",comment:"Image crop rectangle")
   }

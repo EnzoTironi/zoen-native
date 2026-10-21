@@ -17,7 +17,8 @@ Pod::Spec.new do |s|
   # Official renderer for the pinned Telegram attachment category animations.
   s.dependency 'lottie-ios', '4.6.1'
   s.resource_bundles = {
-    'ZoenTelegramAttachmentPresentation' => ['TelegramAttachmentPresentation/Resources/**/*']
+    'ZoenTelegramAttachmentPresentation' => ['TelegramAttachmentPresentation/Resources/**/*'],
+    'ZoenTelegramVideoEditing' => ['TelegramVideoEditing/Resources/**/*']
   }
   s.vendored_frameworks = 'generated/ClientFFI.xcframework'
 
@@ -27,5 +28,5 @@ Pod::Spec.new do |s|
   }
 
   s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
-  s.public_header_files = "TelegramAttachmentPresentation/ZoenTelegramPresentationRuntime.h"
+  s.public_header_files = ["TelegramAttachmentPresentation/ZoenTelegramPresentationRuntime.h", "TelegramVideoEditing/Sources/*.h"]
 end

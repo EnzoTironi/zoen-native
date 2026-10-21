@@ -61,8 +61,9 @@ export function AttachmentPhotoKeyboard({
   const canEdit = Boolean(
     onSubmission &&
     gallery &&
-    previewItem?.mediaType === 'image' &&
-    /\.(jpe?g|png|heic|heif)$/i.test(previewItem.filename ?? ''),
+    ((previewItem?.mediaType === 'image' &&
+      /\.(jpe?g|png|heic|heif)$/i.test(previewItem.filename ?? '')) ||
+      (previewItem?.mediaType === 'video' && /\.(mp4|mov|m4v)$/i.test(previewItem.filename ?? ''))),
   );
   const caption =
     currentDraft.forced ??
