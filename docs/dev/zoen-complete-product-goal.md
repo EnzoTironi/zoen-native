@@ -84,6 +84,23 @@ os outros históricos foram preservados. Esse lote não aprova o editor completo
 nem altera as três flags globais. Os resultados anteriores abaixo mantêm seu
 escopo original.
 
+No Release v238 de `5c2212a0`, a instalação preserva os dados e confere todos os
+452 arquivos e a assinatura. O núcleo configurado passa; passam também 1.370
+testes do app, tipos e Oxlint/Oxfmt. A suíte Rust configurada passa 574 casos do
+client-core e três de registro em `7ef8e1f3`; depois muda somente uma fixture
+TypeScript do frame nativo, com esse delta verificado antes do reuso da prova.
+O binário inclui a recuperação de cursor durável do PR 150.
+
+A captura nativa do primeiro toque mostra cursor e seleção de texto, com o
+TextAgent ativo antes do `touchend`, mas sem teclado de software. São 12
+observações numéricas v2 não saturadas sobre o mesmo WASM imutável do v236.
+Elas distinguem eventos Pointer, Touch e foco; não comprovam o proprietário
+interno do gesto nem a causa do teclado ausente. O fluxo diagnóstico mantém a
+verificação de teclado que falhou e não tem aceite de replay. Recibo:
+`/private/tmp/zoen-ios-contact-runtime-v238/native/native-result.json`.
+O simulador retorna à conversa `Teste Zoen` vazia; os três chats e dois Apps
+existentes continuam presentes. A correção do primeiro toque segue pendente.
+
 O [PR 144](https://github.com/EnzoTironi/zoen-native/pull/144) foi integrado
 em `ec28d8bc`. Suas evidências abaixo mantêm o escopo original. A fonte iOS
 `bd10bf35` cobre 1.039 casos no lote e repetição isolada:
