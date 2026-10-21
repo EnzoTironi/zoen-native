@@ -60,6 +60,30 @@ marcar as três flags globais como aprovadas antes do produto completo. Não há
 meta indefinida de copiar todas as features ou a escala global de concorrentes;
 o escopo verificável é a matriz de 30 jornadas, criação e perfil numérico declarado.
 
+### Progresso iOS — 21 de outubro de 2026
+
+O Release v228 de `b1eee705`, com o motor DeckCraft experimental fixado por hash,
+passou nos dois casos conhecidos de perda de maiúsculas a 35 ms. Um documento
+novo recebeu o título completo de 18 caracteres; Notes preservou os 18 caracteres
+minúsculos e o acréscimo `AN`. Título e notas permaneceram exatos após fechar,
+reiniciar o processo e reabrir. Os exports reais da versão 7 foram salvos pelo
+compartilhamento nativo: PDF contém o título e PPTX contém título e notas exatos.
+A inspeção independente também renderizou o PDF sem corte. Recibo delimitado:
+`/private/tmp/zoen-ios-deck-input-v230/native-result-v230.json`.
+
+A correção permanente de configuração iOS está em `59dcf887`: 1.366 testes,
+tipos, Oxlint/Oxfmt e os prebuilds reais isolados passaram. Só a configuração
+Release do widget muda; os demais 33 arquivos iOS gerados permanecem idênticos.
+Essa prova de geração não executa novamente o build ou o widget.
+
+O teclado do editor ainda exige um gesto adicional; IME, seleção/delete/undo,
+acessibilidade, aparelho físico e alteração pelo agente com modelo real seguem
+pendentes. A leitura independente do arquivo canônico não foi executada. A
+conversa `Teste Zoen` permanece vazia, com compositor vazio e teclado fechado;
+os outros históricos foram preservados. Esse lote não aprova o editor completo
+nem altera as três flags globais. Os resultados anteriores abaixo mantêm seu
+escopo original.
+
 O [PR 144](https://github.com/EnzoTironi/zoen-native/pull/144) foi integrado
 em `ec28d8bc`. Suas evidências abaixo mantêm o escopo original. A fonte iOS
 `bd10bf35` cobre 1.039 casos no lote e repetição isolada:

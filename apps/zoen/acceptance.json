@@ -4345,12 +4345,32 @@
       "wholeProductAcceptance": false,
       "historicalPolicy": "Earlier batch objects retain their source/artifact and failed/partial results."
     },
+    "subsequentNativeInputBatch": {
+      "date": "2026-10-21",
+      "source": "b1eee705e9902fe70cfe3c5985083ea2cc0e1d4e",
+      "status": "BOUNDED_PASS; full editor unaccepted",
+      "receipt": "/private/tmp/zoen-ios-deck-input-v230/native-result-v230.json",
+      "nativeArtifact": "/private/tmp/zoen-ios-deck-runtime-v228/release-01/installed-verification.json",
+      "appCheck": "1366/1366 tests,0failed/0skipped,TypeScript/Oxlint/Oxfmt PASS; b1eee705 plus widget config overlay committed as59dcf887",
+      "appCheckReceipt": "/private/tmp/zoen-ios-deck-input-v230/app-check-v231.json",
+      "widgetReleaseGeneration": "Source59dcf887: isolated real SDK58 baseline/candidate prebuilds PASS; only PBX change is widget Release ENABLE_DEBUG_DYLIB=NO, other33generated iOSfiles identical; generated configuration action idempotent. No new metadata extraction/native build/widget runtime from this CNG proof",
+      "widgetGenerationReceipt": "/private/tmp/zoen-widget-cng-v232/comparison.json",
+      "runtime": "Explicit experimental eframe Shift patch; WASM SHA256 1d93416d46bf0c3aa2802e6f0eaf3e6b1c6c31ae0c105082e9d3ca0de14f7bf3",
+      "manualInput": "New QA230 Input: mixed-case title18chars at35ms exact with18input pairs; Notes18lowercase exact plusAN at35ms adds2pairs, no truncation",
+      "recovery": "Title and Notes exact after close, process restart and reopening same item; canonical source independently unread",
+      "exports": "Actual native Share/Save to Files version7: PDF51442bytes SHA256 bfc5fd414a8db9ccd74eff0e68e9e8af5c959b02f9ad29a570a2c2d9a611f604; PPTX25053bytes SHA256 3a219bfa7d5fa716d0d8dbc7e4424b6b7d585aa7737cb8062b1a391cae9b9715. Independent text/XML and PDF render PASS; PPTX retains Notes",
+      "exportReceipt": "/private/tmp/zoen-deckcraft-export-qa230/independent-export-read.json",
+      "recordingBoundary": "83-step diagnostic walkthrough,10 cross-tree warnings and source/visual canvas coordinates; not portable/replayed acceptance",
+      "limits": "Simulator only; first-gesture keyboard, IME/autocorrect/selection/delete/undo, real-agent provider, physical lifecycle/accessibility, independent canonical read and export failure/cancel/recipient unaccepted",
+      "wholeProductAcceptance": false,
+      "historicalPolicy": "Earlier failed and partial native batches remain unchanged; this qualifies only the explicit new artifact and scenarios"
+    },
     "currentRemaining": [
-      "Diagnose actual WK focus and qualify manual title/Notes edit, blur/save, close and cold content recovery",
-      "Qualify notes draft retirement/identity/freeze-ACK fixes before building a new managed package",
+      "Make first edit gesture open iOS keyboard; qualify IME/autocorrect, selection/delete/undo and broader software keyboard",
+      "Qualify retained/failing canonical saves, independent source read, conflicts and version recovery",
       "Repair landscape compact layout and qualify both orientations with keyboard and gestures",
       "Integrate qualified isolated agent worker; prove a real provider/model and authorized native interoperability with a newly admitted artifact",
-      "Export and inspect the chosen edited canonical version, including failure/cancellation and sharing",
+      "Qualify export failure/cancellation and sharing to an independent recipient; version7 native PDF/PPTX content proof is recorded above",
       "Implement editor semantic accessibility; qualify physical-device memory, startup and lifecycle",
       "Integrate the other selected Storytold editors after the first complete DeckCraft journey"
     ]
