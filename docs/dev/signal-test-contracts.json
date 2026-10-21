@@ -2331,6 +2331,47 @@
         "Three delayed fixture pages exercise canonical progress but not production500-event server pagination, PostgreSQL/FDB/NATS, MLS, HTTPmedia, mobile suspension, CPU preemption, power loss or capacity.",
         "Historical scenario records and earlier immutable qualification limits remain unchanged; this does not complete S04 or product acceptance."
       ]
+    },
+    {
+      "id": "C02-upload-publication-after-http-2026-10-21",
+      "date": "2026-10-21",
+      "relatedHistoricalScenarios": [
+        "C01",
+        "C02",
+        "C08",
+        "S08"
+      ],
+      "sourceBase": "b5bec14489ffaea63e79c5b82044c46dd362e911",
+      "negativeRegressionCommit": "0b07872c",
+      "defaultRecoveryNegativeCommit": "d4a83695",
+      "implementationCommit": "f7f2e6b8619713ad3c283c5b6b912c3c1d2822bc",
+      "status": "PASS_BOUNDED_CLIENT_CORE_SUBSET",
+      "report": "docs/dev/media-upload-refusal-qualification-2026-10-21.md",
+      "receipt": "/Users/enzotironi/.codex/builds/zoen-media-upload-refusal-v262/source-ready.json",
+      "validation": {
+        "executedOriginalNegative": "HTTP400_and_413_cold_sender_Sent_cold_receiver_one_message_ciphertext_queue_deleted",
+        "executedDefaultNegative": "cold_failed_default_message_card_None_vs_original_Some",
+        "focusedMediaContractsPassed": 55,
+        "finalUploadAndCompatibilityCasesPassed": 7,
+        "storeSyncCasesPassed": 4,
+        "explicitMlsRecoveryCasePassed": 1,
+        "fullClientCoreInitialImplementation": {
+          "commit": "35a8a158ecfe70ecfd42b91c60580ee92c86306e",
+          "passed": 629,
+          "finalFollowupFullSuiteRepeated": false
+        },
+        "strictClippy": "PASS_store_client-core_all-targets_D_warnings",
+        "actualTransport": "HTTP_PUT_and_GET_WebSocket_session_ordered_events_SQLite_cold_reopen",
+        "upstreamSuitesExecuted": false,
+        "nativeRuntimeQualified": false,
+        "productionClusterQualified": false
+      },
+      "limits": [
+        "Existing blob_uploads plus failed outbox remain authority; only retained/new uploads gain facts. Already erased historical upload rows cannot be reconstructed.",
+        "The bounded HTTP/WS relay fixture is not production blob storage/PG/FDB/NATS, and successful HTTP acceptance is trusted under the existing relay durability contract.",
+        "File publication/default recovery and existing MLS recovery boundaries are qualified; Page/App/background/profile/revert blob lifetimes, power loss and performance are not fully audited.",
+        "Explicit failed-send recovery/discard UI and same-worker user download-retry backoff remain separate open next slices."
+      ]
     }
   ]
 }

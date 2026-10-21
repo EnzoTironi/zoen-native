@@ -362,3 +362,21 @@ reconciliação periódica passaram em transporte local real. O prazo de 60 segu
 é provisório; avanço genuíno em outro Space ainda pode renovar a janela do stream.
 A fonte, os limites e a prova RED→GREEN são registrados separadamente, sem alterar
 as classificações históricas nem afirmar equivalência com o Signal.
+
+## Seguimento: recusa de upload e confirmação de anexos
+
+O [recorte de upload](media-upload-refusal-qualification-2026-10-21.md)
+reproduziu HTTP 400/413 com mensagem `Sent` no remetente reaberto, mensagem no
+destinatário frio e ciphertext removido da fila. Agora File e sua mensagem
+aguardam o upload; a recusa terminal retém bytes e falha o outbox existente
+atomicamente, incluindo o grupo e criações órfãs que bloqueariam mensagens
+posteriores. Uma segunda regressão confirmou e corrigiu a perda do cartão na
+recuperação de anexos default sem metadados explícitos; isso não autoriza
+publicação ou edição do File reservado para recuperação.
+
+O lote final passou em 55 casos de mídia, sete casos finais de upload/compatibilidade,
+quatro de armazenamento, um de recovery MLS e Clippy estrito. A execução completa
+de 629 testes qualificou a implementação inicial; o pequeno follow-up default
+recebeu os testes afetados. O relay é um fixture local, não o cluster de produção.
+Recuperar/descartar um envio falho pela interface e limpar backoff de download
+num Retry explícito continuam recortes seguintes, separados deste reparo.
