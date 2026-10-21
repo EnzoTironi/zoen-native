@@ -279,6 +279,7 @@ fn message(author: &Author, space: &str, seen: &Seen, text: &str) -> Envelope {
             text: text.into(),
             attaches: None,
             reply: None,
+            media: None,
             forwarded: false,
         },
     )

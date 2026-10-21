@@ -114,6 +114,7 @@ pub(crate) struct MessageMarks {
     pub edited: bool,
     pub deleted: bool,
     pub forwarded: bool,
+    pub media: Option<types::MessageMedia>,
     /// One reaction per person, in the order people first reacted.
     pub reactions: Vec<(IdentityId, String)>,
 }
@@ -232,9 +233,19 @@ pub(crate) struct GrantState {
     pub revoked: bool,
 }
 
+#[derive(Clone)]
+struct MediaGroupProjection {
+    next: u32,
+    count: u32,
+    presentation: types::AttachmentPresentation,
+    reply: Option<types::ReplyRef>,
+}
+
 #[derive(Default)]
 pub(crate) struct State {
     pub spaces: HashMap<SpaceId, SpaceState>,
+    // Derived from the signed log, not another durable authority. O(1) membership checks.
+    media_groups: HashMap<(SpaceId, IdentityId, String), MediaGroupProjection>,
     pub items: HashMap<ItemId, ItemState>,
     pub requests: HashMap<RequestId, RequestState>,
     pub request_order: Vec<RequestId>,
@@ -320,12 +331,67 @@ impl State {
         }
     }
 
+    /// New metadata cannot point at another space's file or splice into another
+    /// author's album. Partial arrival is allowed, but membership is ordered and
+    /// unique within the signed (space, author, album id) scope.
+    fn media_message_valid(&self, space: &str, author: &str, body: &EventBody) -> bool {
+        let EventBody::MessagePosted {
+            media: Some(media),
+            attaches,
+            reply,
+            forwarded,
+            ..
+        } = body
+        else {
+            return true;
+        };
+        if !media.is_valid() || (*forwarded && media.group.is_some()) || !self.writer(space, author)
+        {
+            return false;
+        }
+        let Some(file) = attaches
+            .as_ref()
+            .and_then(|id| self.items.get(id))
+            .filter(|item| item.space == space)
+        else {
+            return false;
+        };
+        if !matches!(&file.current().content, ItemContent::File(doc) if !doc.is_voice()) {
+            return false;
+        }
+        let Some(group) = media.group.as_ref() else {
+            return true;
+        };
+        if file
+            .versions
+            .first()
+            .is_none_or(|version| version.author != author)
+        {
+            return false;
+        }
+        match self
+            .media_groups
+            .get(&(space.to_owned(), author.to_owned(), group.id.clone()))
+        {
+            None => group.index == 0,
+            Some(previous) => {
+                previous.next == group.index
+                    && previous.count == group.count
+                    && previous.presentation == media.presentation
+                    && &previous.reply == reply
+            }
+        }
+    }
+
     pub(crate) fn apply_checked(
         &mut self,
         e: &Event,
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        if !self.media_message_valid(&e.space, &e.author, &e.body) {
+            return Projection::Refused;
+        }
         match self.approval_event_valid(e, identities, context) {
             Projection::Refused => return Projection::Refused,
             Projection::Waiting => {
@@ -392,6 +458,7 @@ impl State {
                 attaches,
                 reply,
                 forwarded,
+                media,
                 ..
             } => {
                 // Older Android builds posted the file, then a marker naming its Item.
@@ -427,10 +494,25 @@ impl State {
                         reply: reply.clone(),
                         marks: MessageMarks {
                             forwarded: *forwarded,
+                            media: media.clone(),
                             ..Default::default()
                         },
                     }));
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
+                }
+                if let Some((metadata, group)) = media
+                    .as_ref()
+                    .and_then(|metadata| metadata.group.as_ref().map(|group| (metadata, group)))
+                {
+                    self.media_groups.insert(
+                        (e.space.clone(), e.author.clone(), group.id.clone()),
+                        MediaGroupProjection {
+                            next: group.index + 1,
+                            count: group.count,
+                            presentation: metadata.presentation,
+                            reply: reply.clone(),
+                        },
+                    );
                 }
             }
             EventBody::ChatPrefsSet { space, prefs } => {
@@ -724,6 +806,12 @@ impl Engine {
             if let Some(projected) = scoped.spaces.get(space) {
                 state.spaces.insert(space.clone(), projected.clone());
             }
+            state.media_groups.extend(
+                scoped
+                    .media_groups
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.clone())),
+            );
             // Only a Personal Space projects prefs (checked when applied).
             state.chat_prefs.extend(
                 scoped
@@ -910,6 +998,14 @@ impl Engine {
     ) -> R<Event> {
         if self.approval_replay_needed {
             self.reproject_approval_overlay()?;
+        }
+        if !self.state.media_message_valid(space, author, &body) {
+            return Err(CoreError::Invalid {
+                reason: t(
+                    "metadata de anexo inválida ou não autorizada",
+                    "invalid or unauthorized attachment metadata",
+                ),
+            });
         }
         let signer = self.author_for(author)?;
         if self.net.synced.contains(space) {
@@ -1450,6 +1546,9 @@ impl Engine {
             r.mine = r.people.iter().any(|p| p.id == me);
         }
         TimelineEntry {
+            media: (!marks.deleted)
+                .then(|| marks.media.as_ref().map(MessageMediaDto::from))
+                .flatten(),
             edited: marks.edited,
             deleted: marks.deleted,
             forwarded: marks.forwarded,
@@ -1856,6 +1955,7 @@ impl Engine {
         if marks.deleted {
             return Err(not_found(&t("Mensagem", "Message")));
         }
+        let media = marks.media.as_ref().map(types::MessageMedia::without_group);
         let (text, attaches) = (text.clone(), attaches.clone());
         // Resolve the canonical entry, including old Android markers. Its current
         // audio and metadata are copied; source item/reply/thread ids never travel.
@@ -1867,6 +1967,7 @@ impl Engine {
                     to_space,
                     "",
                     Some(&voice),
+                    None,
                 );
             }
             if text.starts_with("⟦voice:") {
@@ -1892,7 +1993,7 @@ impl Engine {
                         ),
                     });
                 }
-                return self.forward_file_message(from_space, item, to_space, &text, None);
+                return self.forward_file_message(from_space, item, to_space, &text, None, media);
             }
         }
         self.append(
@@ -1903,6 +2004,7 @@ impl Engine {
                 text,
                 attaches,
                 reply: None,
+                media,
                 forwarded: true,
             },
         )?;
@@ -1959,6 +2061,7 @@ impl Engine {
                 text: text.to_string(),
                 attaches,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         )?;

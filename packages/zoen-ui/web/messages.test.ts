@@ -63,6 +63,31 @@ test('message snapshots preserve reaction participant identities and compound em
   assert.deepEqual(state.conversations[0]?.messages[0]?.reactions, conversation.messages[0]!.reactions);
 });
 
+test('message attachment presentation and signed group membership are bounded and clear on deletion', () => {
+  const file = {name: 'photo.jpg', mime: 'image/jpeg', bytes: 3, sha256: 'ab'.repeat(32), chunks: [], thumb: null, voice: null};
+  const media = {presentation: 'file', group: {id: `album_${'12'.repeat(32)}`, index: 1, count: 2}};
+  const posted = {...conversation.messages[0], file, file_item_id: 'it_photo', file_version: 1, media};
+  const parse = (message: unknown) => parseConversation({...conversation, messages: [message]}).messages[0]!;
+  assert.deepEqual(parse(posted).media, media);
+  assert.equal(parse({...posted, deleted: true}).media, null);
+  assert.equal(parse({...posted, file: null}).media, null);
+  for (const invalid of [
+    {...media, presentation: 'document'},
+    {...media, quality: 'original'},
+    {...media, group: {...media.group, index: 2}},
+    {...media, group: {...media.group, count: 11}},
+    {...media, group: {...media.group, id: 'invented-group'}},
+  ]) {
+    const result = parse({...posted, media: invalid});
+    assert.equal(result.file, null);
+    assert.equal(result.media, null);
+    assert.equal(result.text, 'Anexo indisponível');
+  }
+  assert.equal(parse({...posted, forwarded: true}).media, null);
+  assert.deepEqual(parse({...posted, forwarded: true, media: {presentation: 'file'}}).media,
+    {presentation: 'file', group: null});
+});
+
 test('conversation projections preserve real privacy, roles, profiles and exact preference values', () => {
   for (const privacy of ['EndToEnd', 'Closed', 'Public']) {
     const parsed = parseConversation({ ...conversation, privacy, roster: { [identity]: 'Owner', [other]: 'Reader' },

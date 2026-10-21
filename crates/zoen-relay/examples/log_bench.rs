@@ -84,6 +84,7 @@ async fn main() -> anyhow::Result<()> {
                 text: "x".repeat(200),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );

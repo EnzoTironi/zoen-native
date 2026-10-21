@@ -27,6 +27,7 @@ type FileAttachmentProps = {
   voice?: TimelineEntry['voice'];
   expectedHash?: string;
   presentation?: Presentation;
+  renderAsFile?: boolean;
   mine?: boolean;
   onActions?: () => void;
   onImageDecoded?: (image: DecodedMessageImage) => void;
@@ -50,6 +51,7 @@ function FileAttachmentContent({
   voice,
   expectedHash,
   presentation = 'document',
+  renderAsFile = false,
   mine = false,
   onActions,
   onImageDecoded,
@@ -128,7 +130,8 @@ function FileAttachmentContent({
 
   // Only already-arrived, modest visual files become inline previews. Large files
   // remain an explicit open action; audio never starts or requests permission here.
-  const visual = Boolean(info?.mime.startsWith('image/') || info?.mime.startsWith('video/'));
+  const visual =
+    !renderAsFile && Boolean(info?.mime.startsWith('image/') || info?.mime.startsWith('video/'));
   useEffect(() => {
     if (!driver || !message || !info?.ready || !visual || Number(info.bytes) > 16 * 1048576) return;
     let active = true;
@@ -237,8 +240,8 @@ function FileAttachmentContent({
           count: info.chunks,
         })
     : t('media.loading');
-  const image = local?.info.mime.startsWith('image/');
-  const video = local?.info.mime.startsWith('video/');
+  const image = !renderAsFile && local?.info.mime.startsWith('image/');
+  const video = !renderAsFile && local?.info.mime.startsWith('video/');
   const imageFrame = inlineImageFrame(availableWidth, ratio);
   const outline = scheme === 'dark' ? '#FFFFFF1A' : '#0000001A';
   return (
@@ -538,6 +541,7 @@ export function MessageMedia({
       title={card.title}
       onImageDecoded={onImageDecoded}
       presentation={presentation}
+      renderAsFile={entry.media?.presentation === 'file'}
       mine={entry.author.is_me}
       onActions={onActions}
     />

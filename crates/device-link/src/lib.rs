@@ -360,6 +360,7 @@ mod tests {
                 text: "Actual history".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );

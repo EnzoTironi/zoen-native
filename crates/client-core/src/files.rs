@@ -354,6 +354,34 @@ impl Engine {
         mutation_id: &str,
         caption: &str,
     ) -> R<TimelineEntry> {
+        self.send_file_message_with_media(
+            space,
+            name,
+            mime,
+            bytes,
+            thumbnail,
+            reply_to,
+            thread,
+            mutation_id,
+            caption,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_file_message_with_media(
+        &mut self,
+        space: &str,
+        name: &str,
+        mime: &str,
+        bytes: &[u8],
+        thumbnail: Option<&[u8]>,
+        reply_to: Option<&str>,
+        thread: bool,
+        mutation_id: &str,
+        caption: &str,
+        media: Option<types::MessageMedia>,
+    ) -> R<TimelineEntry> {
         let me = self.me_id()?;
         if !self.state.writer(space, &me) {
             return Err(CoreError::Forbidden {
@@ -378,6 +406,7 @@ impl Engine {
             || caption.len() > MAX_FILE_CAPTION_BYTES
             || caption.contains('\0')
             || (thread && reply_to.is_none())
+            || media.as_ref().is_some_and(|value| !value.is_valid())
         {
             return Err(invalid("envio de arquivo inválido", "invalid file send"));
         }
@@ -402,7 +431,9 @@ impl Engine {
         );
         // Preserve the original blank-caption fingerprint for accepted sends
         // made before caption support. Nonempty captions cannot reuse it.
-        let intent = if caption.is_empty() {
+        let intent = if let Some(media) = media.as_ref() {
+            serde_json::to_vec(&("zoen.media.send.v1", file_intent, caption, media))
+        } else if caption.is_empty() {
             serde_json::to_vec(&file_intent)
         } else {
             serde_json::to_vec(&(file_intent, caption))
@@ -437,6 +468,7 @@ impl Engine {
                     text: caption.to_string(),
                     attaches: Some(item),
                     reply,
+                    media,
                     forwarded: false,
                 },
             )?;
@@ -512,6 +544,7 @@ impl Engine {
         to_space: &str,
         caption: &str,
         voice: Option<&VoiceNoteDto>,
+        media: Option<types::MessageMedia>,
     ) -> R<TimelineEntry> {
         let me = self.me_id()?;
         if !self.is_member(from_space, &me) || !self.state.writer(to_space, &me) {
@@ -587,6 +620,7 @@ impl Engine {
                     text: caption.to_string(),
                     attaches: Some(item),
                     reply: None,
+                    media,
                     forwarded: true,
                 },
             )?;

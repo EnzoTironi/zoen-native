@@ -558,6 +558,7 @@ impl Engine {
                 text: caption.into(),
                 attaches: Some(item.clone()),
                 reply: None,
+                media: None,
                 forwarded,
             },
         )?;

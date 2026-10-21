@@ -581,6 +581,7 @@ mod tests {
                 text: "Bora pra Paraty?".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );
@@ -592,6 +593,7 @@ mod tests {
                 text: "Bora!".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );
@@ -648,6 +650,7 @@ mod tests {
                     text: "Bora pra Búzios?".into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             )))
@@ -667,6 +670,7 @@ mod tests {
             text: "Bora pra Búzios?".into(),
             attaches: None,
             reply: None,
+            media: None,
             forwarded: false,
         };
         assert_eq!(
@@ -686,6 +690,7 @@ mod tests {
                     text: "Não vou.".into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             )))
@@ -768,6 +773,7 @@ mod tests {
                 text: "Concordo".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );
@@ -810,6 +816,7 @@ mod tests {
                 text: "Vamos sábado".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );
@@ -823,6 +830,7 @@ mod tests {
                 text: "Cancelado".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );
@@ -836,6 +844,7 @@ mod tests {
                 text: "Confirmado".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );
@@ -866,6 +875,7 @@ mod tests {
                 text: "?".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );
@@ -971,6 +981,7 @@ mod tests {
                 text: "oi".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );
@@ -1010,6 +1021,7 @@ mod tests {
                     text: "x".into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             ))

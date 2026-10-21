@@ -22,6 +22,28 @@ function parseItemEdit(input: unknown, space: string) {
   return { space_id, item_id, title: string(value.title), version,
     note: string(value.note), is_undo: boolean(value.is_undo) };
 }
+function exactKeys(value: Record<string, unknown>, expected: readonly string[]) {
+  if (Object.keys(value).sort().join(',') !== [...expected].sort().join(',')) throw new Error('Invalid attachment metadata.');
+}
+export type MessageAttachmentMedia = Readonly<{
+  presentation: 'media' | 'file';
+  group: {id: string; index: number; count: number} | null;
+}>;
+function parseMessageMedia(input: unknown): MessageAttachmentMedia | null {
+  if (input === undefined || input === null) return null;
+  const value = object(input);
+  exactKeys(value, ['presentation', ...(Object.hasOwn(value, 'group') ? ['group'] : [])]);
+  if (value.presentation !== 'media' && value.presentation !== 'file') throw new Error('Invalid attachment presentation.');
+  let group: {id: string; index: number; count: number} | null = null;
+  if (value.group !== undefined && value.group !== null) {
+    const raw = object(value.group);
+    exactKeys(raw, ['id', 'index', 'count']);
+    const id = string(raw.id), index = integer(raw.index), count = integer(raw.count);
+    if (!/^album_[a-f0-9]{64}$/.test(id) || count < 2 || count > 10 || index >= count) throw new Error('Invalid attachment group.');
+    group = {id, index, count};
+  }
+  return {presentation: value.presentation, group};
+}
 function parseMessage(input: unknown, space: string) {
   const value = object(input);
   const delivery = string(value.delivery);
@@ -34,12 +56,13 @@ function parseMessage(input: unknown, space: string) {
   let text = string(value.text);
   const item_edit = parseItemEdit(value.item_edit, space);
   if (item_edit && (text !== item_edit.note || value.card || value.file || value.quote || value.thread ||
-    value.deleted === true || value.edited === true || value.forwarded === true ||
+    value.deleted === true || value.edited === true || value.forwarded === true || value.media ||
     array(value.reactions ?? []).length))
     throw new Error('Invalid mixed mini-app activity.');
   let file: FileDoc | null = null;
   let fileItemId: string | null = null;
   let fileVersion: number | null = null;
+  let media: ReturnType<typeof parseMessageMedia> = null;
   // A bad attachment must not prevent saving or restoring the conversation's sync state.
   if (value.file) {
     try {
@@ -47,8 +70,10 @@ function parseMessage(input: unknown, space: string) {
       fileItemId = string(value.file_item_id);
       fileVersion = integer(value.file_version);
       if (!fileItemId || fileVersion < 1) throw new Error('Invalid file identity.');
+      media = parseMessageMedia(value.media);
+      if (media && (file.voice || (value.forwarded === true && media.group))) throw new Error('Invalid attachment context.');
     }
-    catch { file = null; fileItemId = null; fileVersion = null; text = 'Anexo indisponível'; }
+    catch { file = null; fileItemId = null; fileVersion = null; media = null; text = 'Anexo indisponível'; }
   }
   return { id: string(value.id), entry: value.entry ? string(value.entry) : null, seq: sequence, author: publicKey(value.author), name: string(value.name), text,
     at_ms: timestamp(value.at_ms), delivery, failure: nullableText(value.failure), ticks: ticks as 'sent' | 'delivered' | 'read' | null,
@@ -60,7 +85,7 @@ function parseMessage(input: unknown, space: string) {
     quote: quote ? { id: string(quote.id), name: string(quote.name), text: string(quote.text) } : null,
     thread: value.thread ? string(value.thread) : null, replies: integer(value.replies ?? 0),
     repliers: array(value.repliers ?? []).map(string), last_reply_ms: typeof value.last_reply_ms === 'number' ? value.last_reply_ms : null,
-    file, file_item_id: fileItemId, file_version: fileVersion, card: value.card ? parseCard(value.card) : null, item_edit };
+    file, media: value.deleted === true ? null : media, file_item_id: fileItemId, file_version: fileVersion, card: value.card ? parseCard(value.card) : null, item_edit };
 }
 
 function parseCard(input: unknown) {
@@ -101,6 +126,7 @@ function parseFile(input: unknown) {
 export type FileDoc = ReturnType<typeof parseFile>;
 export type Chunk = ReturnType<typeof parseChunk>;
 export type VoiceMeta = ReturnType<typeof parseVoice>;
+export type MessageMedia = NonNullable<ReturnType<typeof parseMessageMedia>>;
 
 // Keep received media within the same bounds as client-core/src/files.rs.
 const MAX_FILE_BYTES = 512 << 20;
@@ -197,11 +223,40 @@ function plain(reason: string): string {
 }
 
 /** Exact user selection intent; keep this object unchanged for a failed Send retry. */
+export type AttachmentSendOptions = Readonly<{
+  presentation: 'media' | 'file';
+  grouping: 'separate' | 'grouped';
+}>;
+function attachmentOptions(input: unknown, count: number): AttachmentSendOptions | undefined {
+  if (count < 1 || count > 10) throw new Error('Selecione de um a dez arquivos.');
+  if (input === undefined) return undefined;
+  const value = object(input);
+  exactKeys(value, ['presentation', 'grouping']);
+  if ((value.presentation !== 'media' && value.presentation !== 'file') ||
+      (value.grouping !== 'separate' && value.grouping !== 'grouped') ||
+      (value.grouping === 'grouped' && count < 2)) throw new Error('Opções de envio inválidas.');
+  if (value.presentation === 'media' && value.grouping === 'separate') return undefined;
+  return Object.freeze({presentation: value.presentation, grouping: value.grouping});
+}
 export type AttachmentIntent = Readonly<{
   mutationId: string;
   caption: string;
   replyTo: string | null;
   thread: boolean;
+  options?: AttachmentSendOptions;
+}>;
+export type AttachmentBatchIntent = Readonly<{
+  replyTo: string | null;
+  thread: boolean;
+  options?: AttachmentSendOptions;
+}>;
+export type AttachmentBatchFile = Readonly<{
+  name: string;
+  mime: string;
+  bytes: Uint8Array;
+  thumb?: Uint8Array | null;
+  mutationId: string;
+  caption: string;
 }>;
 
 export type MessagesState =
@@ -348,7 +403,10 @@ export class Messages {
 
   /** Seal like native, upload every encrypted chunk, then post the file into the chat. */
   async sendFile(space: string, file: { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null; voice?: VoiceMeta; attachment?: AttachmentIntent }, progress?: (done: number, total: number) => void): Promise<{itemId: string; messageId: string}> {
-    const attachment = file.attachment ? Object.freeze({...file.attachment}) : undefined;
+    const options = file.attachment ? attachmentOptions(file.attachment.options, 1) : undefined;
+    const attachment = file.attachment ? Object.freeze({mutationId: file.attachment.mutationId,
+      caption: file.attachment.caption, replyTo: file.attachment.replyTo, thread: file.attachment.thread,
+      ...(options ? {options} : {})}) : undefined;
     if (attachment && file.voice) throw new Error('Este arquivo tem dois tipos de envio. Selecione-o novamente.');
     if (file.bytes.length > MAX_FILE_BYTES) throw new Error('Este arquivo é grande demais para o navegador.');
     let framed: Uint8Array;
@@ -391,6 +449,52 @@ export class Messages {
     }
   }
 
+  /** All files and their exact ordered intent enter the existing outbox together. */
+  async sendFiles(space: string, files: readonly AttachmentBatchFile[], intent: AttachmentBatchIntent): Promise<readonly {itemId: string; messageId: string}[]> {
+    const options = attachmentOptions(intent.options, files.length);
+    let plainBytes = 0;
+    const selected = files.map(file => {
+      if (!(file.bytes instanceof Uint8Array) || !file.bytes.length ||
+          file.bytes.length > (64 << 20) - plainBytes) throw new Error('O envio precisa ter até 64 MB.');
+      plainBytes += file.bytes.length;
+      if (file.thumb && (!(file.thumb instanceof Uint8Array) || file.thumb.length > MAX_THUMBNAIL_BYTES)) throw new Error('Prévia inválida.');
+      // Caller edits during asynchronous sealing cannot change the admitted intent or bytes.
+      return {name: file.name.replace(/[\\/\0]/g, '_').slice(0, 255) || 'arquivo',
+        mime: file.mime || 'application/octet-stream', bytes: Uint8Array.from(file.bytes),
+        thumb: file.thumb ? Uint8Array.from(file.thumb) : new Uint8Array(),
+        mutationId: file.mutationId, caption: file.caption};
+    });
+    if (new Set(selected.map(file => file.mutationId)).size !== selected.length) throw new Error('Seleção de arquivos inválida.');
+    const request = JSON.stringify({space_id: space, reply_to: intent.replyTo, thread: intent.thread,
+      ...(options ? {options} : {}), items: selected.map(file => ({mutation_id: file.mutationId, caption: file.caption}))});
+    const frames: Uint8Array[] = [];
+    let length = 0;
+    for (const file of selected) {
+      let frame: Uint8Array;
+      try { frame = await this.core.bytes({kind: 'seal_file', name: file.name, mime: file.mime, bytes: file.bytes, thumb: file.thumb}); }
+      catch { throw new Error('Não deu para preparar estes arquivos.'); }
+      if (frame.length < 4 || frame.length > (64 << 20) + MAX_THUMBNAIL_BYTES + (256 << 10)) throw new Error('Arquivo preparado inválido.');
+      length += 4 + frame.length;
+      if (length > (64 << 20) + 10 * (MAX_THUMBNAIL_BYTES + (256 << 10) + 4)) throw new Error('O envio é grande demais.');
+      frames.push(frame);
+    }
+    const framed = new Uint8Array(length);
+    const view = new DataView(framed.buffer);
+    let offset = 0;
+    for (const frame of frames) {
+      view.setUint32(offset, frame.length, true); offset += 4;
+      framed.set(frame, offset); offset += frame.length;
+    }
+    return this.sendAttachmentRequest('queue_attachment_batch', request, framed, value => {
+      const posted = array(value);
+      if (posted.length !== selected.length) throw new Error('Resposta de envio incompleta.');
+      return Object.freeze(posted.map(input => {
+        const entry = object(input);
+        return Object.freeze({itemId: string(entry.itemId), messageId: string(entry.messageId)});
+      }));
+    });
+  }
+
   async newAttachmentMutationId(): Promise<string> {
     let mutation = '';
     await this.enqueue(async () => {
@@ -408,17 +512,24 @@ export class Messages {
   }
 
   private async sendAttachment(space: string, intent: AttachmentIntent, framed: Uint8Array): Promise<{itemId: string; messageId: string}> {
-    let result: {itemId: string; messageId: string} | undefined;
     // Freeze exact metadata before entering the serial queue or crossing a reload.
     const request = JSON.stringify({space_id: space, mutation_id: intent.mutationId,
-      caption: intent.caption, reply_to: intent.replyTo, thread: intent.thread});
+      caption: intent.caption, reply_to: intent.replyTo, thread: intent.thread,
+      ...(intent.options ? {options: intent.options} : {})});
+    return this.sendAttachmentRequest('queue_attachment', request, framed, value => {
+      const posted = object(value);
+      return {itemId: string(posted.itemId), messageId: string(posted.messageId)};
+    });
+  }
+
+  private async sendAttachmentRequest<T>(kind: 'queue_attachment' | 'queue_attachment_batch', request: string, framed: Uint8Array, parse: (value: unknown) => T): Promise<T> {
+    let result: T | undefined;
     await this.enqueue(async () => {
       const generation = this.generation;
       let response: Record<string, unknown>;
-      try { response = object(JSON.parse(await this.core.text({kind: 'queue_attachment', request, framed, now: Date.now()}))); }
+      try { response = object(JSON.parse(await this.core.text({kind, request, framed, now: Date.now()}))); }
       catch (error) { throw Object.assign(new Error(plain(message(error))), {soft: true}); }
-      const posted = object(response.result);
-      result = {itemId: string(posted.itemId), messageId: string(posted.messageId)};
+      result = parse(response.result);
       // The existing encrypted snapshot owns the signed events, ciphertext and receipt.
       // No PUT or publish may precede this durable save.
       await this.apply(JSON.stringify(response.update), generation);

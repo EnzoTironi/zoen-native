@@ -175,6 +175,7 @@ pub struct MessageView {
     last_reply_ms: Option<i64>,
     /// A shared file, photo, video or voice note (the chunks to fetch and open).
     file: Option<types::FileDoc>,
+    media: Option<types::MessageMedia>,
     file_item_id: Option<String>,
     file_version: Option<u32>,
     card: Option<serde_json::Value>,
@@ -574,6 +575,7 @@ impl<S: Signer> Client<S> {
                 text: text.into(),
                 attaches: None,
                 reply,
+                media: None,
                 forwarded,
             },
             now_ms,
@@ -716,6 +718,7 @@ impl<S: Signer> Client<S> {
                 text: String::new(),
                 attaches: Some(item),
                 reply: None,
+                media: None,
                 forwarded: false,
             });
         }
@@ -1621,7 +1624,7 @@ impl<S: Signer> Client<S> {
                 }
                 if let Some(f) = folded.get(&event.hash) {
                     view.deleted = f.deleted;
-                    if f.deleted { view.text.clear(); view.file = None; view.file_item_id = None; view.file_version = None; view.card = None; }
+                    if f.deleted { view.text.clear(); view.media = None; view.file = None; view.file_item_id = None; view.file_version = None; view.card = None; }
                     if let Some(text) = &f.text { view.text = text.clone(); view.edited = true; }
                     let mut groups: BTreeMap<&str, Vec<ReactionParticipant>> = BTreeMap::new();
                     for (who, emoji) in &f.reactions {
@@ -1764,6 +1767,28 @@ impl<S: Signer> Client<S> {
             }
             _ => return None,
         };
+        let media = match &event.body {
+            EventBody::MessagePosted { media, .. } if file.is_some() => media
+                .as_ref()
+                .filter(|value| {
+                    value.is_valid() && !file.as_ref().is_some_and(types::FileDoc::is_voice)
+                })
+                .filter(|value| {
+                    value.group.is_none()
+                        || match &event.body {
+                            EventBody::MessagePosted {
+                                attaches: Some(item),
+                                ..
+                            } => self
+                                .folded_files(&event.space)
+                                .get(item.as_str())
+                                .is_some_and(|(author, _)| *author == event.author),
+                            _ => false,
+                        }
+                })
+                .cloned(),
+            _ => None,
+        };
         let name = if event.author == self.account.identity {
             self.account.name.clone()
         } else {
@@ -1826,6 +1851,7 @@ impl<S: Signer> Client<S> {
             repliers: Vec::new(),
             last_reply_ms: None,
             file,
+            media,
             file_item_id,
             file_version,
             card,

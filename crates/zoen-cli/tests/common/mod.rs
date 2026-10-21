@@ -835,6 +835,7 @@ impl RawClient {
                 text: text.into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );
@@ -852,6 +853,7 @@ impl RawClient {
                 text: text.into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );

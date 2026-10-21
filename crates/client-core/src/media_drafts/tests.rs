@@ -1214,3 +1214,379 @@ fn legacy_receipt_without_output_revision_preserves_cold_draft_but_cannot_guess_
     drop(f);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+fn media_options(ids: &[&str], presentation: &str, grouping: &str) -> String {
+    let mut value: serde_json::Value = serde_json::from_str(&attachments(ids, None)).unwrap();
+    value["options"] = serde_json::json!({"presentation":presentation,"grouping":grouping});
+    value.to_string()
+}
+
+#[test]
+fn media_contract_defaults_preserve_legacy_save_receipts_and_signed_bytes() {
+    let f = fixture(":memory:");
+    let old = attachments(&["a"], None);
+    let draft = save(&f, "0", &old, vec![input("a")]);
+    assert!(!draft.content_json.contains("options"));
+    let replay = save_ack(
+        &f,
+        "0",
+        &media_options(&["a"], "media", "separate"),
+        vec![input("a")],
+    );
+    assert_eq!(replay.accepted_revision, draft.revision);
+    let sent = f
+        .engine
+        .send_media_draft(f.scope.clone(), draft.revision.clone())
+        .unwrap();
+    assert!(sent.entries[0].media.is_none());
+    let pending = f.engine.lock().store.outbox().unwrap();
+    let posted = pending
+        .iter()
+        .find(|pending| pending.event.client_id == sent.entries[0].id)
+        .unwrap();
+    assert!(!serde_json::to_string(&posted.event.body)
+        .unwrap()
+        .contains("media"));
+    event_log::verify_author(&posted.event).unwrap();
+    let before = counts(&f.engine);
+    assert_eq!(
+        f.engine
+            .send_media_draft(f.scope.clone(), draft.revision)
+            .unwrap()
+            .entries,
+        sent.entries
+    );
+    assert_eq!(counts(&f.engine), before);
+}
+
+#[test]
+fn media_contract_file_album_preserves_real_mime_order_signature_and_retry() {
+    let dir = temp();
+    let path = dir.join("album.sqlite");
+    let f = fixture(path.to_str().unwrap());
+    let mut image = input("a");
+    image.name = "photo.jpg".into();
+    image.mime = "image/jpeg".into();
+    let mut video = input("b");
+    video.name = "video.mov".into();
+    video.mime = "video/quicktime".into();
+    let draft = save(
+        &f,
+        "0",
+        &media_options(&["b", "a"], "file", "grouped"),
+        vec![image, video],
+    );
+    let sent = f
+        .engine
+        .send_media_draft(f.scope.clone(), draft.revision.clone())
+        .unwrap();
+    let first = sent.entries[0].media.as_ref().unwrap();
+    assert_eq!(first.presentation, crate::AttachmentPresentationDto::File);
+    let group_id = first.group.as_ref().unwrap().id.clone();
+    for (index, (entry, expected_mime)) in sent
+        .entries
+        .iter()
+        .zip(["video/quicktime", "image/jpeg"])
+        .enumerate()
+    {
+        let media = entry.media.as_ref().unwrap();
+        let group = media.group.as_ref().unwrap();
+        assert_eq!(
+            (&group.id, group.index, group.count),
+            (&group_id, index as u32, 2)
+        );
+        let crate::EntryKind::Message {
+            card: Some(card), ..
+        } = &entry.kind
+        else {
+            panic!("missing file")
+        };
+        assert_eq!(
+            f.engine
+                .file_info_at(card.item_id.clone(), None)
+                .unwrap()
+                .mime,
+            expected_mime
+        );
+    }
+    let posted = f
+        .engine
+        .lock()
+        .store
+        .outbox()
+        .unwrap()
+        .into_iter()
+        .find(|pending| pending.event.client_id == sent.entries[0].id)
+        .unwrap()
+        .event;
+    event_log::verify_author(&posted).unwrap();
+    let mut tampered = posted.clone();
+    let types::EventBody::MessagePosted {
+        media: Some(media), ..
+    } = &mut tampered.body
+    else {
+        panic!("missing signed media")
+    };
+    media.presentation = types::AttachmentPresentation::Media;
+    assert!(event_log::verify_author(&tampered).is_err());
+    let scope = f.scope.clone();
+    let vault = f.vault.clone();
+    drop(f);
+    let restored = Client::open(path.to_string_lossy().into(), "en".into()).unwrap();
+    assert!(restored.unlock(vault).unwrap());
+    let before = counts(&restored);
+    let replay = restored.send_media_draft(scope, draft.revision).unwrap();
+    assert_eq!(replay.entries, sent.entries);
+    assert_eq!(counts(&restored), before);
+    drop(restored);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn media_contract_group_failure_rolls_back_and_retains_frozen_options() {
+    let f = fixture(":memory:");
+    let json = media_options(&["a", "b"], "media", "grouped");
+    let draft = save(&f, "0", &json, vec![input("a"), input("b")]);
+    let before = counts(&f.engine);
+    f.engine.lock().store.conn().execute_batch("CREATE TRIGGER fail_album BEFORE INSERT ON outbox WHEN NEW.json LIKE '%MessagePosted%' AND NEW.json LIKE '%Private caption b%' BEGIN SELECT RAISE(ABORT,'fail album'); END;").unwrap();
+    assert!(f
+        .engine
+        .send_media_draft(f.scope.clone(), draft.revision.clone())
+        .is_err());
+    assert_eq!(counts(&f.engine), before);
+    assert!(read(&f).attempted);
+    assert_eq!(read(&f).content_json, draft.content_json);
+    assert!(f
+        .engine
+        .save_media_draft(
+            f.scope.clone(),
+            draft.revision.clone(),
+            media_options(&["a", "b"], "file", "separate"),
+            vec![]
+        )
+        .is_err());
+    f.engine
+        .lock()
+        .store
+        .conn()
+        .execute_batch("DROP TRIGGER fail_album")
+        .unwrap();
+    let sent = f
+        .engine
+        .send_media_draft(f.scope.clone(), draft.revision.clone())
+        .unwrap();
+    assert_eq!(sent.entries.len(), 2);
+    assert_eq!(
+        sent.entries[0]
+            .media
+            .as_ref()
+            .unwrap()
+            .group
+            .as_ref()
+            .unwrap()
+            .index,
+        0
+    );
+    assert_eq!(
+        sent.entries[1]
+            .media
+            .as_ref()
+            .unwrap()
+            .group
+            .as_ref()
+            .unwrap()
+            .index,
+        1
+    );
+    let after = counts(&f.engine);
+    assert_eq!(
+        f.engine
+            .send_media_draft(f.scope.clone(), draft.revision)
+            .unwrap()
+            .entries,
+        sent.entries
+    );
+    assert_eq!(counts(&f.engine), after);
+}
+
+#[test]
+fn media_contract_rejects_invalid_options_and_foreign_authority_without_mutation() {
+    let f = fixture(":memory:");
+    let before = counts(&f.engine);
+    for options in [
+        serde_json::json!({"presentation":"file","grouping":"grouped"}),
+        serde_json::json!({"presentation":"media","grouping":"guessed"}),
+        serde_json::json!({"presentation":"fake_mime","grouping":"separate"}),
+        serde_json::json!({"presentation":"media","grouping":"separate","quality":"original"}),
+        serde_json::json!({"grouping":"separate"}),
+    ] {
+        let mut value: serde_json::Value =
+            serde_json::from_str(&attachments(&["a"], None)).unwrap();
+        value["options"] = options;
+        assert!(f
+            .engine
+            .save_media_draft(
+                f.scope.clone(),
+                "0".into(),
+                value.to_string(),
+                vec![input("a")]
+            )
+            .is_err());
+        assert_eq!(counts(&f.engine), before);
+    }
+    let draft = save(
+        &f,
+        "0",
+        &media_options(&["a", "b"], "file", "grouped"),
+        vec![input("a"), input("b")],
+    );
+    let mut foreign = f.scope.clone();
+    foreign.expected_identity_id = event_log::Signer::generate().id();
+    let before = counts(&f.engine);
+    assert!(f.engine.send_media_draft(foreign, draft.revision).is_err());
+    assert_eq!(counts(&f.engine), before);
+}
+
+#[test]
+fn media_contract_rejects_invalid_group_index_and_duplicate_membership_atomically() {
+    let f = fixture(":memory:");
+    let options = types::AttachmentSendOptions {
+        presentation: types::AttachmentPresentation::File,
+        grouping: types::AttachmentGrouping::Grouped,
+    };
+    let before = counts(&f.engine);
+    let invalid = options.metadata(
+        &f.scope.expected_identity_id,
+        &f.scope.space_id,
+        None,
+        false,
+        &["one", "two"],
+        1,
+    );
+    assert!(f
+        .engine
+        .lock()
+        .send_file_message_with_media(
+            &f.scope.space_id,
+            "a.jpg",
+            "image/jpeg",
+            &[1, 2, 3],
+            None,
+            None,
+            false,
+            "one",
+            "",
+            invalid
+        )
+        .is_err());
+    assert_eq!(counts(&f.engine), before);
+    let first = options.metadata(
+        &f.scope.expected_identity_id,
+        &f.scope.space_id,
+        None,
+        false,
+        &["one", "two"],
+        0,
+    );
+    f.engine
+        .lock()
+        .send_file_message_with_media(
+            &f.scope.space_id,
+            "a.jpg",
+            "image/jpeg",
+            &[1, 2, 3],
+            None,
+            None,
+            false,
+            "one",
+            "",
+            first.clone(),
+        )
+        .unwrap();
+    let before = counts(&f.engine);
+    assert!(f
+        .engine
+        .lock()
+        .send_file_message_with_media(
+            &f.scope.space_id,
+            "b.jpg",
+            "image/jpeg",
+            &[4, 5, 6],
+            None,
+            None,
+            false,
+            "other",
+            "",
+            first
+        )
+        .is_err());
+    assert_eq!(counts(&f.engine), before);
+}
+
+#[test]
+fn media_contract_forwarded_group_is_rejected_and_single_forward_preserves_file_presentation() {
+    let f = fixture(":memory:");
+    let draft = save(
+        &f,
+        "0",
+        &media_options(&["a", "b"], "file", "grouped"),
+        vec![input("a"), input("b")],
+    );
+    let sent = f
+        .engine
+        .send_media_draft(f.scope.clone(), draft.revision)
+        .unwrap();
+    let forwarded = f
+        .engine
+        .lock()
+        .forward(&f.scope.space_id, &sent.entries[0].id, &f.scope.space_id)
+        .unwrap();
+    assert_eq!(
+        forwarded.media.as_ref().unwrap().presentation,
+        crate::AttachmentPresentationDto::File
+    );
+    assert!(forwarded.media.as_ref().unwrap().group.is_none());
+    assert!(forwarded.forwarded);
+    let item = f
+        .engine
+        .lock()
+        .file_add(
+            &f.scope.space_id,
+            "new",
+            "new.pdf",
+            "application/pdf",
+            &[7, 8, 9],
+            None,
+        )
+        .unwrap();
+    let metadata = types::AttachmentSendOptions {
+        presentation: types::AttachmentPresentation::File,
+        grouping: types::AttachmentGrouping::Grouped,
+    }
+    .metadata(
+        &f.scope.expected_identity_id,
+        &f.scope.space_id,
+        None,
+        false,
+        &["new-1", "new-2"],
+        0,
+    );
+    let before = counts(&f.engine);
+    assert!(f
+        .engine
+        .lock()
+        .append(
+            &f.scope.space_id,
+            &f.scope.expected_identity_id,
+            types::EventBody::MessagePosted {
+                message: types::new_id("msg"),
+                text: String::new(),
+                attaches: Some(item),
+                media: metadata,
+                reply: None,
+                forwarded: true,
+            }
+        )
+        .is_err());
+    assert_eq!(counts(&f.engine), before);
+}
