@@ -109,9 +109,13 @@ guardas de proprietário, cancelamento e arraste. Passam 259 testes reais de UI;
 quatro testes longos/screenshot preexistentes permanecem ignorados. A falha
 anterior (257 passaram, um falhou) permanece registrada. A receita reproduz os
 621 arquivos, com as mesmas allowlists e dependências: dez testes Python e três
-Node passam. Isso qualifica fonte; o novo WASM e o primeiro toque no iPhone
-ainda precisam de comprovação. Recibo:
+Node passam. O Release WASM locked/offline passa em 389,305 segundos, com audit
+dos assets e fonte idêntica à testada. Passam também os 1.370 testes do app,
+tipos, Oxlint/Oxfmt em `e9f86fe4`. Os novos assets ainda não mudam os pins do
+runtime nem o iPhone instalado; o primeiro toque continua sem aceite. Recibo:
 `/private/tmp/zoen-deckcraft-recipe-v240/result-01/composition-proof.json`.
+Qualificação do build:
+`/private/tmp/zoen-deckcraft-v240-build-receipts/qualification.json`.
 
 O [PR 151](https://github.com/EnzoTironi/zoen-native/pull/151), de limites de
 tempo e tamanho no transporte de aprovações, foi integrado em `773a4e6f` após
