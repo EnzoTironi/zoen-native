@@ -663,6 +663,7 @@ private struct GalleryItem:Equatable {
   private let progress=UIProgressView(progressViewStyle:.bar)
   private let retry=UIButton(type:.system)
   private let fallback=UILabel()
+  private let videoThumbnail=ZoenAttachmentVideoThumbnail()
   private var request:PHImageRequestID?
   private var generation=UUID()
   private(set)var retired=false
@@ -677,10 +678,17 @@ private struct GalleryItem:Equatable {
     addSubview(fallback);addSubview(progress);addSubview(retry);load()
   }
   required init?(coder:NSCoder){return nil}
+  override func didMoveToWindow(){
+    super.didMoveToWindow()
+    guard item.video,item.uri != nil,!retired else{return}
+    if window == nil{generation=UUID();videoThumbnail.cancel();progress.isHidden=true}
+    else if image.image == nil{load()}
+  }
   override func layoutSubviews(){super.layoutSubviews();if image.superview===self{image.frame=bounds};progress.frame=CGRect(x:bounds.midX-50,y:bounds.midY+40,width:100,height:2);retry.frame=CGRect(x:bounds.midX-60,y:bounds.midY-22,width:120,height:44);fallback.frame=CGRect(x:24,y:bounds.midY+65,width:max(0,bounds.width-48),height:44)}
   private func load(){
     guard !retired else{return}
     if let request{manager.cancelImageRequest(request)}
+    videoThumbnail.cancel()
     generation=UUID();let ticket=generation;retry.isHidden=true
     if let id=item.photoId,let asset=PHAsset.fetchAssets(withLocalIdentifiers:[id],options:nil).firstObject {
       let options=PHImageRequestOptions();options.isNetworkAccessAllowed=allowNetwork;options.deliveryMode = .opportunistic
@@ -693,13 +701,27 @@ private struct GalleryItem:Equatable {
         }
       }
     } else if let url=item.uri {
+      if item.video {
+        guard window != nil else{return}
+        progress.isHidden=false
+        videoThumbnail.load(url:url,maximumPixels:targetPixels){[weak self] result in
+          guard let self,!retired,generation==ticket,window != nil else{return}
+          progress.isHidden=true
+          switch result {
+          case let .success(cg):
+            let value=UIImage(cgImage:cg);image.image=value;fallback.isHidden=true;loaded?(value)
+          case .failure:retry.isHidden=false
+          }
+        }
+        return
+      }
       let options:[CFString:Any]=[kCGImageSourceShouldCache:false]
       if let source=CGImageSourceCreateWithURL(url as CFURL,options as CFDictionary),let cg=CGImageSourceCreateThumbnailAtIndex(source,0,[kCGImageSourceCreateThumbnailFromImageAlways:true,kCGImageSourceCreateThumbnailWithTransform:true,kCGImageSourceThumbnailMaxPixelSize:targetPixels] as CFDictionary){
         image.image=UIImage(cgImage:cg);fallback.isHidden=true
       }
     }
   }
-  func retire(){guard !retired else{return};retired=true;generation=UUID();if let request{manager.cancelImageRequest(request)};request=nil;loaded=nil}
+  func retire(){guard !retired else{return};retired=true;generation=UUID();videoThumbnail.cancel();if let request{manager.cancelImageRequest(request)};request=nil;loaded=nil}
 }
 
 @MainActor private final class GalleryMediaView:GalleryAssetView,UIScrollViewDelegate {

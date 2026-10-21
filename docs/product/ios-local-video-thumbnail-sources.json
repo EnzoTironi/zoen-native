@@ -1,0 +1,48 @@
+{
+  "scope": "Native gallery previews for already-authorized durable local video files.",
+  "base_commit": "3495313f",
+  "implementation": [
+    "apps/zoen/modules/zoen-core/ios/ZoenAttachmentGalleryContent.swift",
+    "apps/zoen/modules/zoen-core/ios/ZoenAttachmentVideoThumbnail.swift"
+  ],
+  "origin": "Zoen integration using public AVFoundation APIs; no additional Telegram code copied for this fix.",
+  "official_references": [
+    {
+      "url": "https://developer.apple.com/documentation/avfoundation/avassetimagegenerator",
+      "contract": "Asynchronous first-frame image generation, preferred track transform and cancellation."
+    },
+    {
+      "url": "https://developer.apple.com/documentation/avfoundation/avassetimagegenerator/maximumsize",
+      "contract": "Bound decoded image dimensions rather than generating the full native-resolution frame."
+    },
+    {
+      "url": "https://developer.apple.com/documentation/avfoundation/avurlassetreferencerestrictionskey",
+      "contract": "forbidAll permits only media stored inside the exact leased container, excluding secondary local or remote references."
+    }
+  ],
+  "lifetime": [
+    "GalleryItem retains its existing cache/tmp regular-file, symlink-resolution and 64 MiB validation.",
+    "Only local video takes the new first-frame path; PHImageManager and still-image decode are unchanged.",
+    "The view starts video image requests on window attachment and cancels on window removal or retirement.",
+    "Both request owner and display view fence completion by generation; a task does not retain its display owner.",
+    "One bounded in-memory CGImage/UIImage is retained per existing surface; no new file, thumbnail cache or durable state is written."
+  ],
+  "tests": {
+    "file": "apps/zoen/modules/zoen-core/tests/AttachmentLocalVideoThumbnailTests.swift",
+    "execution": "Host macOS SwiftPM XCTest with byte-identical production helper and actual H.264 files created by AVAssetWriter.",
+    "cases": 6,
+    "behaviors": [
+      "First-frame decoded pixels distinguish red first frame from blue later frames; maximum dimension is bounded.",
+      "Preferred track transform produces portrait output.",
+      "Replacing, cancelling or releasing an owner does not deliver stale results.",
+      "Malformed local media fails and a subsequent valid retry succeeds.",
+      "Nonlocal URLs and invalid dimensions are refused before decoder creation.",
+      "Source hash and fixture directory contents stay unchanged."
+    ]
+  },
+  "limits": [
+    "Actual Gallery/Photos/UIKit interaction and iOS visual validation remain part of the integrated app batch.",
+    "The SDK typecheck includes actual Gallery/motion/mosaic/glass sources; only unrelated Expo host prefix and File maximumBytes declaration are extracted from production.",
+    "No bridge, permission, journal, Photos request, playback, night-theme contrast or send behavior is changed."
+  ]
+}
