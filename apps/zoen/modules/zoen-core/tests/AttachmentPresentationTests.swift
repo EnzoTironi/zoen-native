@@ -34,8 +34,8 @@ import UIKit
     let second = ZoenAttachmentContainer(content: Content(), appearance: appearance, requestClose: {})
     first.present(in: window); second.present(in: window)
     XCTAssertEqual(parent.children.count, 2)
-    XCTAssertTrue(first.next === parent.children[0]); XCTAssertTrue(second.next === parent.children[1])
-    XCTAssertTrue(first.superview === parent.view); XCTAssertFalse(parent.view.accessibilityElementsHidden)
+    XCTAssertTrue(first.superview?.next === parent.children[0]); XCTAssertTrue(second.superview?.next === parent.children[1])
+    XCTAssertTrue(first.superview === parent.children[0].view); XCTAssertFalse(parent.view.accessibilityElementsHidden)
     XCTAssertTrue(underlying.accessibilityElementsHidden); XCTAssertTrue(prehidden.accessibilityElementsHidden)
     XCTAssertFalse(first.accessibilityElementsHidden); XCTAssertFalse(second.accessibilityElementsHidden)
     let laterSystemSurface = UIView(); parent.view.addSubview(laterSystemSurface)
@@ -81,4 +81,31 @@ import UIKit
       XCTAssertFalse(underlying.accessibilityElementsHidden)
     }
   }
+  func testSharedCoverSuspensionAndChildPresentationKeepOriginalAccessibilityAndAttachmentAuthority() throws {
+    let (window, parent, underlying, prehidden) = window(); defer { window.isHidden = true }
+    let cover = UIView(); var lost = 0
+    let owner = try XCTUnwrap(ZoenAttachmentPresentationOwner(content: cover, in: window, onWindowLoss: { lost += 1 }))
+    XCTAssertTrue(owner.isAttached(in: window)); XCTAssertTrue(owner.updateFrame(in: window))
+    XCTAssertTrue(underlying.accessibilityElementsHidden)
+    owner.setSuspended(true)
+    XCTAssertTrue(cover.isHidden); XCTAssertFalse(underlying.accessibilityElementsHidden)
+    XCTAssertTrue(prehidden.accessibilityElementsHidden); XCTAssertTrue(owner.isAttached(in: window))
+    let childCover = UIView()
+    let child = try XCTUnwrap(ZoenAttachmentPresentationOwner(content: childCover, in: window, onWindowLoss: {}))
+    XCTAssertFalse(childCover.accessibilityElementsHidden)
+    owner.setSuspended(false)
+    XCTAssertFalse(cover.isHidden); XCTAssertTrue(underlying.accessibilityElementsHidden)
+    child.remove()
+    XCTAssertTrue(underlying.accessibilityElementsHidden, "the resumed owner still holds its prior-sibling lease")
+    let laterMenu = UIView(); parent.view.addSubview(laterMenu)
+    XCTAssertFalse(laterMenu.accessibilityElementsHidden)
+    parent.view.removeFromSuperview()
+    XCTAssertEqual(lost, 1); XCTAssertFalse(owner.isAttached(in: window)); XCTAssertFalse(owner.updateFrame(in: window))
+    XCTAssertNil(cover.superview); XCTAssertTrue(parent.children.isEmpty)
+    XCTAssertFalse(underlying.accessibilityElementsHidden); XCTAssertTrue(prehidden.accessibilityElementsHidden)
+    XCTAssertFalse(laterMenu.accessibilityElementsHidden)
+    owner.setSuspended(false); owner.remove()
+    XCTAssertEqual(lost, 1); XCTAssertFalse(underlying.accessibilityElementsHidden)
+  }
+
 }

@@ -21,16 +21,14 @@ import UIKit
     let context: String
     let gallery: ZoenAttachmentGalleryContent
     let cover = UIView()
-    var accessibility: ZoenAttachmentAccessibilityLease?
-    weak var root:UIView?
+    var presentation: ZoenAttachmentPresentationOwner?
     var revision: String
     var retiring = false
     var suspended = false
     var propSuspended = false
     var childLeases = Set<UUID>()
-    init(token:String,context:String,revision:String,gallery:ZoenAttachmentGalleryContent,root:UIView) {
+    init(token:String,context:String,revision:String,gallery:ZoenAttachmentGalleryContent) {
       self.token=token;self.context=context;self.revision=revision;self.gallery=gallery
-      self.root=root;accessibility=ZoenAttachmentAccessibilityLease(root:root)
     }
   }
   required init(appContext:AppContext?=nil) {
@@ -83,26 +81,31 @@ import UIKit
     let gallery=ZoenAttachmentGalleryContent{[weak self] action,payload in self?.send(action,payload:payload,token:token,context:context)}
     do{try gallery.update(model:value,appearance:appearance(request))}
     catch{gallery.retire();reject(token:token,context:context,reason:"invalid");return}
-    let owner=Owner(token:token,context:context,revision:revision,gallery:gallery,root:root)
+    let owner=Owner(token:token,context:context,revision:revision,gallery:gallery)
     self.owner=owner
     owner.cover.backgroundColor = .clear
     owner.cover.accessibilityViewIsModal=true
+    gallery.view.autoresizingMask=[.flexibleWidth,.flexibleHeight]
     owner.cover.addSubview(gallery.view)
-    window.addSubview(owner.cover)
+    guard let presentation=ZoenAttachmentPresentationOwner(content:owner.cover,in:window,onWindowLoss:{[weak self,weak owner] in
+      guard let self,let owner,self.owner===owner else{return}
+      self.close(reason:"unmounted",sensitive:true)
+    }) else{close(reason:"unavailable",sensitive:true);return}
+    guard self.owner===owner,!owner.retiring else{presentation.remove();return}
+    owner.presentation=presentation
     layoutOwner()
     UIAccessibility.post(notification:.screenChanged,argument:gallery.view)
   }
   private func layoutOwner() {
-    guard let owner,let window,owner.cover.superview===window else{return}
-    owner.cover.frame=window.bounds;owner.gallery.view.frame=owner.cover.bounds
+    guard let owner,let window,owner.presentation?.updateFrame(in:window)==true else{return}
+    owner.gallery.view.frame=owner.cover.bounds
     owner.gallery.updatePresentation(keyboardHeight:keyboardHeight,safeArea:window.safeAreaInsets)
   }
   private func suspend(_ owner:Owner,requested:Bool) {
     guard owner.suspended != requested else{return}
-    owner.suspended=requested;owner.cover.isHidden=requested
+    owner.suspended=requested
+    owner.presentation?.setSuspended(requested)
     owner.gallery.setVisible(!requested)
-    if requested {owner.accessibility?.release();owner.accessibility=nil}
-    else if let root=owner.root {owner.accessibility=ZoenAttachmentAccessibilityLease(root:root)}
   }
   private func refreshSuspension(_ owner:Owner) {
     guard self.owner===owner,!owner.retiring else{return}
@@ -150,7 +153,7 @@ import UIKit
   }
   private func send(_ action:String,payload:[String:Any],token:String,context:String) {
     guard let owner,!owner.retiring,!owner.suspended,owner.token==token,owner.context==context,
-      let window,owner.cover.superview===window,window.windowScene?.activationState == .foregroundActive,
+      let window,owner.presentation?.isAttached(in:window)==true,window.windowScene?.activationState == .foregroundActive,
       let request=Self.json(binding,limit:8192),request["active"] as? Bool == true,
       request["token"] as? String==token,request["context"] as? String==context,
       payload["revision"] as? String==owner.revision else{return}
@@ -172,8 +175,9 @@ import UIKit
     guard let owner,!owner.retiring else{return}
     owner.retiring=true;terminal.insert(owner.token)
     if sensitive{owner.gallery.conceal()}else{owner.gallery.retire()}
-    owner.cover.removeFromSuperview();owner.gallery.view.removeFromSuperview()
-    owner.accessibility?.release();owner.accessibility=nil;self.owner=nil;keyboardHeight=0
+    owner.presentation?.remove();owner.presentation=nil
+    owner.gallery.view.removeFromSuperview()
+    self.owner=nil;keyboardHeight=0
     onClosed(["token":owner.token,"context":owner.context,"reason":reason])
   }
   private func reject(token:String,context:String,reason:String){guard !terminal.contains(token) else{return};terminal.insert(token);onClosed(["token":token,"context":context,"reason":reason])}
