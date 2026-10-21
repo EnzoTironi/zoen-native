@@ -44,22 +44,12 @@ import UIKit
     super.viewDidLayoutSubviews()
     let insets = view.safeAreaInsets, bounds = view.bounds
     content.view.frame = bounds
-    content.headerView.frame = CGRect(x: 0, y: insets.top, width: bounds.width, height: 64)
-    // MediaPickerPhotoToolbarView.sideButtonFrames uses26pt and44×44 in
-    // portrait, bottom/top controls on the corresponding side in landscape.
-    if bounds.width > bounds.height {
-      let left = view.window?.windowScene?.effectiveGeometry.interfaceOrientation == .landscapeLeft
-      let width: CGFloat = 44 + (left ? insets.left : insets.right)
-      toolbar.frame = CGRect(x: left ? 0 : bounds.width - width, y: 0, width: width, height: bounds.height)
-      let x: CGFloat = left ? width - 44 : 0
-      cancelButton.frame = CGRect(x: x, y: bounds.height - 44, width: 44, height: 44)
-      commitButton.frame = CGRect(x: x, y: 0, width: 44, height: 44)
-    } else {
-      toolbar.frame = CGRect(x: 0, y: bounds.height - 44 - insets.bottom, width: bounds.width, height: 44 + insets.bottom)
-      cancelButton.frame = CGRect(x: 26, y: 0, width: 44, height: 44)
-      commitButton.frame = CGRect(x: bounds.width - 44 - 26, y: 0, width: 44, height: 44)
-    }
-    content.updateLayout(safeArea: insets)
+    let layout = ZoenTelegramVideoEditorLayout.make(bounds: bounds, safeArea: insets,
+      landscapeLeft: view.window?.windowScene?.effectiveGeometry.interfaceOrientation == .landscapeLeft)
+    content.headerView.frame = layout.header
+    toolbar.frame = layout.toolbar
+    cancelButton.frame = layout.cancel; commitButton.frame = layout.commit
+    content.updateLayout(safeArea: layout.headerSafeArea)
   }
   override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); content.setVisible(true) }
   override func viewWillDisappear(_ animated: Bool) { super.viewWillDisappear(animated); content.setVisible(false) }

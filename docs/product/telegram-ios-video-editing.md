@@ -26,6 +26,17 @@ landscape side placement. No new design system, remote account or editor
 storage is introduced. A scoped CADisplayLink replaces the one linear POP
 frame animation; the original rest of the UIKit control code remains pinned.
 
+The header now uses the original initial44-point setup with scrubber origin0,
+followed by the source final72-point portrait /64-point landscape frame. The
+actual trim row occupies local24…64 inside the64-point panel. Landscape layout
+excludes the side toolbar and clears only the safe-area inset already consumed
+by that toolbar. The editor keeps its existing top safe-area placement. This
+preserves the whole visible trim row through every parent hit region rather
+than accepting only its upper half. The actual UIKit hit-test regression in
+`VideoHeaderHitTests.swift` covers both original handle buttons at the top,
+center and bottom, portrait safe areas and both landscape sides. It is authored
+and SDK-typechecked; execution requires the hosted native test batch.
+
 ## One capture and save owner
 
 `ZoenFilePreview.Editing.receiveVideo(render:)` gives the renderer an absent
@@ -68,6 +79,10 @@ The renderer itself does not delete a caller's output or create directories.
   clients are **not** implemented or claimed here.
 - Quality/HD choices, cover editing, filters, text, stickers and video drawing
   are not enabled. The full Telegram GPU/converter engine is not imported.
+- Original trim buttons still need localized accessibility labels and adjustable
+  actions. The existing TS catalog has trim-start/end labels, but this native
+  editor currently receives no localized-string input; this slice does not
+  introduce separate language or trim state to bypass that boundary.
 - There is no new AVAudioSession override. Existing app audio policy remains
   in effect; call/recording interruption and audio focus require runtime QA.
 - Main CocoaPods/Expo/FFI linkage, iPhone gestures, scrubber long press/zoom,

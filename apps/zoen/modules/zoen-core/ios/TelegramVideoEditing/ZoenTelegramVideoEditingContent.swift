@@ -18,7 +18,7 @@ struct ZoenTelegramVideoState: Equatable, Sendable {
 @MainActor final class ZoenTelegramVideoEditingContent: NSObject,
   ZoenTGMediaPickerGalleryVideoScrubberDataSource, ZoenTGMediaPickerGalleryVideoScrubberDelegate, UIGestureRecognizerDelegate {
   let view = ZoenTelegramVideoSurface()
-  let headerView = ZoenTGMediaPickerScrubberHeaderView(frame: .zero)
+  let headerView: ZoenTGMediaPickerScrubberHeaderView
   let muteButton = UIButton(type: .custom)
   let asset: AVAsset
   private(set) var state: ZoenTelegramVideoState
@@ -30,7 +30,7 @@ struct ZoenTelegramVideoState: Equatable, Sendable {
   var didPause: (() -> Void)?
   var failed: ((Error) -> Void)?
   private let player: AVPlayer
-  private let scrubber = ZoenTGMediaPickerGalleryVideoScrubber(frame: .zero, cover: false)!
+  private let scrubber: ZoenTGMediaPickerGalleryVideoScrubber
   private let playButton = UIButton(type: .custom)
   private let info = UILabel()
   private let dimensions: CGSize
@@ -85,6 +85,9 @@ struct ZoenTelegramVideoState: Equatable, Sendable {
     self.asset = asset; self.duration = duration; self.dimensions = dimensions
     self.state = state; self.initialState = state; self.glyphs = glyphs
     self.fileInfo = fileInfo
+    let scrubber = ZoenTGMediaPickerGalleryVideoScrubber(frame: .zero, cover: false)!
+    self.scrubber = scrubber
+    headerView = ZoenTelegramVideoEditorLayout.makeHeader(scrubber: scrubber)
     player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
     super.init()
     view.layerPlayer.player = player
@@ -105,23 +108,15 @@ struct ZoenTelegramVideoState: Equatable, Sendable {
     muteButton.addTarget(self, action: #selector(toggleMute), for: .touchUpInside)
     muteButton.accessibilityLabel = NSLocalizedString("Send without sound", comment: "Gallery send video as animation")
     view.addSubview(muteButton)
-    let panel = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 64))
-    panel.autoresizingMask = [.flexibleWidth]
-    headerView.panelView = panel; headerView.addSubview(panel)
-    // VideoItemView224–247: 64-point panel, scrubber at headerHeight-44,
-    // 68-point control. The original header expands its hit region by16.
-    scrubber.frame = CGRect(x: 0, y: 20, width: 320, height: 68)
-    scrubber.autoresizingMask = [.flexibleWidth]
     scrubber.delegate = self; scrubber.dataSource = self
     scrubber.allowsTrimming = allowsTrimming && duration >= 1.5
     scrubber.trimStartValue = state.trimStart; scrubber.trimEndValue = state.trimEnd
     scrubber.value = state.position
     scrubber.setTrimApplied(state.trimStart > 0 || state.trimEnd < duration)
-    headerView.scrubberView = scrubber; panel.addSubview(scrubber)
     info.frame = CGRect(x: 0, y: 10, width: 320, height: 21)
     info.autoresizingMask = [.flexibleWidth]
     info.textColor = .white; info.textAlignment = .center; info.font = .systemFont(ofSize: 13)
-    panel.addSubview(info)
+    headerView.panelView.addSubview(info)
     updateInfo(); updateMute(); updatePlayerRange()
     timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
       MainActor.assumeIsolated {

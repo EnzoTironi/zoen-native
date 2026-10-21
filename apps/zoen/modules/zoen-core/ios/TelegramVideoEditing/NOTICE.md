@@ -40,6 +40,14 @@ validation, authorization, CAS, retry and recovery.
 
 The optional controller requires the host's shared original Cancel/Commit
 controls. It does not implement a competing glass/pressed-state design system.
+`ZoenTelegramVideoEditorLayout` translates the pinned item/header setup and
+gallery final header/safe-area geometry. The initial44-point header seeds a
+scrubber origin of0; final headers are72 points in portrait and64 in landscape.
+The original64-point panel and68-point scrubber remain unchanged. Landscape
+headers exclude the side toolbar and consume its safe inset exactly once.
+The standalone editor retains its top safe-area anchor rather than importing
+the gallery caption/navigation authority. Sources and exact hashes are recorded
+in `docs/product/telegram-ios-video-header-sources.json` at the repository root.
 Its horizontal footer uses MediaPickerPhotoToolbarView's44-point controls and
 26-point side inset. Gallery hosts can embed the same content and retain their
 existing caption, selection and footer. Landscape host layout, source image
