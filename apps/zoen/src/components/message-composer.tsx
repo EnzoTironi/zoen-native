@@ -247,7 +247,7 @@ export function MessageComposer({
         }
         prominent
         disabled={files.sending || files.remaining === 0 || sending}
-        onPress={files.onSend}
+        onPress={() => files.onSend()}
       />
     ) : hasText || editing || !voice ? (
       <ComposerAction

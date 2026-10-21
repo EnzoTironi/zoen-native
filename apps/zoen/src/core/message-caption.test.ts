@@ -518,7 +518,10 @@ test('plain text uses compact Telegram metrics while canonical App/media present
     } as TimelineEntry['kind'],
   });
   const appTree = render(app).tree;
-  assert.equal(styleOf(nodeById(appTree, `message-bubble-${app.id}`)).width, 160);
+  assert.equal(styleOf(nodeById(appTree, `message-bubble-${app.id}`)).width, 164);
+  const appMetadata = nodeById(appTree, `message-metadata-${app.id}`);
+  assert.equal(styleOf(appMetadata).paddingBottom, 6);
+  assert.equal(styleOf(appMetadata).paddingHorizontal, 11);
   assert.equal(
     elements(appTree).find((node) => node.type === 'MiniappMessageCard')?.props.width,
     160,
@@ -639,7 +642,7 @@ test('plain bubble fill uses viewport coordinates before edge and author insets 
     }
 });
 
-test('only plain bubbles own the native background and reserve the6pt tail-side content inset', () => {
+test('text and App shares own the native background; file and voice boundaries retain their own rendering', () => {
   for (const mine of [true, false]) {
     const msg = plainMessage('Editable text', { author: { ...entry().author, is_me: mine } });
     const f = render(msg);
@@ -674,7 +677,7 @@ test('only plain bubbles own the native background and reserve the6pt tail-side 
       elements(render(msg).tree).filter(
         (node) => typeof node.type === 'function' && node.type.name === 'MessageBubbleGraphic',
       ).length,
-      0,
+      'Message' in msg.kind && msg.kind.Message.card?.kind_id === 'app' ? 1 : 0,
     );
   }
 });

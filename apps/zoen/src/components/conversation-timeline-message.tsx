@@ -31,7 +31,11 @@ export function ConversationTimelineMessage({
             })
       : null;
   const content = activity ? (
-    <MiniappTimelineActivityView activity={activity} highlighted={message.highlighted} />
+    <MiniappTimelineActivityView
+      activity={activity}
+      highlighted={message.highlighted}
+      disabled={message.disabled}
+    />
   ) : (
     <ConversationMessage {...message} />
   );

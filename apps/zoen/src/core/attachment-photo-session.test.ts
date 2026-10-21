@@ -48,6 +48,7 @@ function fixture() {
     },
     albums: async () => [{ id: 'album', title: 'Album' }],
     load: async () => ['a', 'b', 'c'].map(item),
+    refresh: async (items) => [...items],
     manage: async () => {},
     materialize: async (items) => {
       copied.push(items.map((value) => value.id));
@@ -188,16 +189,29 @@ test('undetermined permission requests once from Photos admission, denied has no
 test('new album query fences old asynchronous page results without losing the selected order', async () => {
   const f = fixture(),
     held = deferred<PhotoLibraryItem[]>();
-  f.port.load = (id) => (id === null ? held.promise : Promise.resolve([item('album-only')]));
+  f.port.albums = async () => [{ id: 'new', title: 'New album' }];
+  f.port.load = async () => [item('retained')];
   const result = f.session.open(2, f.current);
   await tick();
-  f.session.album('album');
+  f.session.select(item('retained'));
+  // Establish the authorized album list before holding a later page request.
+  // An album that has never been enumerated must not gain query authority.
+  f.port.load = (id) => (id === null ? held.promise : Promise.resolve([item('album-only')]));
+  const oldWork = f.session.reload();
+  await tick();
+  f.session.album('new');
   await tick();
   held.resolve([item('old')]);
+  await oldWork;
   await tick();
+  assert.equal(f.session.getSnapshot().albumId, 'new');
   assert.deepEqual(
     f.session.getSnapshot().items.map((i) => i.id),
     ['album-only'],
+  );
+  assert.deepEqual(
+    f.session.getSnapshot().selected.map((i) => i.id),
+    ['retained'],
   );
   f.session.cancel();
   await result;

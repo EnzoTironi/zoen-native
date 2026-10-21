@@ -10,6 +10,7 @@ import type { AttachmentApprovalProps } from '../media/attachment-approval.types
 import type { MediaDraftScope } from '../media/media-draft-types.ts';
 import type { AttachmentComposerOptions } from '../media/attachment-composer.tsx';
 import type { AttachmentAsset } from '../media/attachment-draft.ts';
+import type { PhotoPickerSubmission } from '../media/attachment-photo-session.ts';
 import type { MediaDraftDto, MediaDraftPort } from '../media/media-draft-types.ts';
 
 type Element = { type: unknown; props: Record<string, unknown> };
@@ -22,7 +23,7 @@ type Result = {
     value: string;
     editable: boolean;
     onChange(text: string): void;
-    onSend(): void;
+    onSend(finalCaption?: string): void;
     scope: { replyTo: string | null; thread: boolean };
   };
   review: Element | null;
@@ -82,6 +83,7 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
   let effects: (() => void)[] = [];
   let durable = initial;
   let failRead = false,
+    failSave = false,
     failMaterialize = false,
     loseSendAck = false,
     holdCancellation = false;
@@ -92,6 +94,7 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     discarded: string[] = [],
     writes: string[] = [],
     sent: string[] = [];
+  const journalEvents: string[] = [];
   const previews: { revision: string; assetId: string; token: string }[] = [];
   const canceled: string[] = [];
   const previewWaiters = new Map<string, ReturnType<typeof deferred<void>>>();
@@ -108,7 +111,9 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
       return durable;
     },
     save: async (_scope, expected, json, assets) => {
+      journalEvents.push('save-start');
       if (saveGate) await saveGate;
+      if (failSave) throw new Error('Synthetic rejected draft save');
       assert.equal(expected, durable.revision);
       writes.push(json);
       const content = JSON.parse(json);
@@ -127,6 +132,7 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
           );
         }),
       };
+      journalEvents.push('save-accepted');
       return { accepted_revision: durable.revision, draft: durable };
     },
     materialize: async (_scope, expected, id) => {
@@ -150,6 +156,7 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
       if (!holdCancellation) previewWaiters.get(token)?.resolve();
     },
     send: async (_scope, expected) => {
+      journalEvents.push('send');
       sendCalls++;
       const receipt = sendReceipts.get(expected);
       if (receipt) return { ...receipt, draft: durable };
@@ -212,11 +219,21 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
   };
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
   let preferredPhotoUri: string | null = null;
+  let nextPhotoSubmission: PhotoPickerSubmission | null = null;
+  let photoSubmission: PhotoPickerSubmission | null = null;
   const photoPicker = {
-    pick: () => selection(),
+    pick: async () => {
+      const intent = nextPhotoSubmission;
+      nextPhotoSubmission = null;
+      photoSubmission = null;
+      const files = await selection();
+      photoSubmission = intent;
+      return files;
+    },
     cancel: () => {},
     view: null,
     preferredUri: () => preferredPhotoUri,
+    submission: () => photoSubmission,
   };
   const ports: Record<string, unknown> = {
     react: {
@@ -340,6 +357,7 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     discarded,
     writes,
     sent,
+    journalEvents,
     previews,
     canceled,
     previewStarted: previewStarted.promise,
@@ -409,6 +427,12 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     durable: () => durable,
     select: (assets: AttachmentAsset[] | (() => Promise<AttachmentAsset[]>)) => {
       selection = typeof assets === 'function' ? assets : async () => assets;
+    },
+    submitPhotos: (intent: PhotoPickerSubmission) => {
+      nextPhotoSubmission = intent;
+    },
+    saveFailure: (value: boolean) => {
+      failSave = value;
     },
     readFailure: (value: boolean) => {
       failRead = value;
@@ -762,6 +786,120 @@ test(
   },
 );
 
+test('native gallery Send journals its final keystroke after older queued caption saves and coalesces a duplicate tap', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([photo()]);
+  await f.render().pick('photo');
+  const gate = deferred<void>();
+  f.holdSaves(gate.promise);
+  const ui = f.render();
+  ui.field!.onChange('Older native callback');
+  ui.field!.onSend('  Final 🪁 keystroke\nexact  ');
+  ui.field!.onSend('Duplicate must not replace the accepted intent');
+  await tick();
+  assert.equal(f.sendCalls(), 0);
+  gate.resolve();
+  await f.channel.flush();
+  await tick();
+  assert.equal(f.sendCalls(), 1);
+  assert.equal(JSON.parse(f.sent[0]!).items[0].caption, '  Final 🪁 keystroke\nexact  ');
+});
+
+test(
+  'Photos Edit stages the authorized selection and final caption before opening the canonical editor, without sending',
+  { timeout: 2000 },
+  async () => {
+    const f = fixture();
+    f.enableNativeEditing();
+    f.render();
+    await tick();
+    f.select([photo()]);
+    f.submitPhotos({
+      caption: 'Before editing 🪁',
+      captions: ['Before editing 🪁'],
+      send: false,
+      requestEdit: true,
+    });
+    const picking = f.render().pick('photo');
+    await f.previewStarted;
+    assert.equal(f.sendCalls(), 0);
+    assert.equal(JSON.parse(f.durable().content_json).items[0].caption, 'Before editing 🪁');
+    assert.equal(f.channel.getSnapshot().reviewing, true);
+    f.saveEditedCopy();
+    await picking;
+    const saved = JSON.parse(f.durable().content_json);
+    assert.equal(saved.items[0].asset_id, 'edited-asset-1');
+    assert.equal(saved.items[0].caption, 'Before editing 🪁');
+    assert.equal(f.sendCalls(), 0);
+  },
+);
+
+test('native selected-media reordering preserves the latest captions, identities and captured destination', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([photo('first.jpg'), photo('second.jpg')]);
+  await f.render({ replyTo: 'captured-thread' }).pick('photo');
+  const approval = f.approval()!;
+  const ids = approval.state.items.map((item) => item.mutationId);
+  approval.field.onChange('Caption newer than the rendered reorder action');
+  approval.onReorder?.([...ids].reverse());
+  await f.channel.flush();
+  const saved = JSON.parse(f.durable().content_json);
+  assert.deepEqual(
+    saved.items.map((item: { mutation_id: string }) => item.mutation_id),
+    [...ids].reverse(),
+  );
+  assert.deepEqual(
+    saved.items.map((item: { caption: string }) => item.caption),
+    ['', 'Caption newer than the rendered reorder action'],
+  );
+  assert.equal(saved.reply_to, 'captured-thread');
+  const previous = f.durable().content_json;
+  approval.onReorder?.([ids[0]!, ids[0]!]);
+  approval.onReorder?.(['foreign', ids[1]!]);
+  await tick();
+  assert.equal(f.durable().content_json, previous);
+});
+
+test('native gallery final-caption save failure cannot send or discard the previous durable revision', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([photo()]);
+  await f.render().pick('photo');
+  const previous = f.durable().content_json;
+  f.saveFailure(true);
+  f.render().field!.onSend('Do not deliver without a durable caption');
+  await tick();
+  assert.equal(f.sendCalls(), 0);
+  assert.equal(f.durable().content_json, previous);
+  assert.equal(f.render().active, true);
+});
+
+test('native gallery final-caption Send is revoked by a destination change while its journal is saving', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([photo()]);
+  await f.render().pick('photo');
+  const gate = deferred<void>();
+  f.holdSaves(gate.promise);
+  f.render().field!.onSend('Retain this draft, revoke delivery');
+  await tick();
+  f.render({ spaceId: 'other-space' });
+  gate.resolve();
+  await f.channel.flush();
+  await tick();
+  assert.equal(f.sendCalls(), 0);
+  assert.equal(
+    JSON.parse(f.durable().content_json).items[0].caption,
+    'Retain this draft, revoke delivery',
+  );
+});
+
 test(
   'explicit retry after an ambiguous native Send uses the same receipt without duplicating its message',
   { timeout: 2000 },
@@ -863,6 +1001,63 @@ test('recovered attachments remain compact until explicitly expanded and expandi
   f.unmount();
   await f.channel.flush();
   assert.deepEqual(f.released, ['file:///cache/fresh-old']);
+});
+
+test(
+  'Edit journals its final native caption before editor admission and coalesces a competing Send',
+  { timeout: 10_000 },
+  async () => {
+    const f = fixture(),
+      saved = deferred<void>();
+    f.enableNativeEditing();
+    f.render();
+    await tick();
+    f.select([photo()]);
+    await f.render().pick('photo');
+    const approval = f.approval()!;
+    const finalCaption = 'Final native edit keystroke 🪁';
+    f.holdSaves(saved.promise);
+    approval.onEdit(finalCaption);
+    approval.field.onSend('Competing Send');
+    approval.onEdit('Duplicate Edit');
+    await tick();
+    assert.equal(f.previews.length, 0);
+    assert.equal(f.sendCalls(), 0);
+    saved.resolve();
+    await f.previewStarted;
+    assert.equal(f.previews.length, 1);
+    assert.equal(JSON.parse(f.durable().content_json).items[0].caption, finalCaption);
+    assert.equal(f.sendCalls(), 0);
+    f.closePreview();
+    await tick();
+    f.unmount();
+  },
+);
+
+test('a failed caption save or retired approval cannot admit an editor after a pending final caption', async () => {
+  for (const kind of ['save', 'close', 'destination', 'retire'] as const) {
+    const f = fixture(),
+      saved = deferred<void>();
+    f.enableNativeEditing();
+    f.render();
+    await tick();
+    f.select([photo()]);
+    await f.render().pick('photo');
+    const approval = f.approval()!;
+    f.holdSaves(saved.promise);
+    approval.onEdit('Preserve the caption, revalidate editor admission');
+    await tick();
+    if (kind === 'save') f.saveFailure(true);
+    else if (kind === 'close') approval.onClose();
+    else if (kind === 'destination') f.render({ spaceId: 'another-chat' });
+    else f.retire();
+    saved.resolve();
+    await f.channel.flush().catch(() => {});
+    await tick();
+    assert.equal(f.previews.length, 0, kind);
+    assert.equal(f.sendCalls(), 0, kind);
+    f.unmount();
+  }
 });
 
 test('closing approval drains the pending native child, preserves an already accepted edit, and fences its old Send', async () => {
@@ -1084,4 +1279,209 @@ test('library preview focus selects the exact returned copy without reordering t
   assert.equal(approval.field.position, 2);
   assert.equal(f.sendCalls(), 0);
   assert.equal(approval.state.items[0]!.caption, '');
+});
+
+test('Photos direct Send waits for picker removal and durably saves the exact caption before sending once', async () => {
+  const f = fixture(),
+    removed = deferred<AttachmentAsset[]>();
+  f.render();
+  await tick();
+  f.select(() => removed.promise);
+  f.submitPhotos({ caption: '  Final keystroke! 🖼️\nkept  ', send: true });
+  const picking = f.render({ replyTo: 'captured-reply' }).pick('photo');
+  await tick();
+  assert.deepEqual(f.journalEvents, []);
+  assert.equal(f.approval(), undefined);
+  assert.equal(f.sendCalls(), 0);
+  removed.resolve([photo('first.jpg'), photo('second.jpg')]);
+  await picking;
+  assert.deepEqual(f.journalEvents, ['save-start', 'save-accepted', 'send']);
+  assert.equal(f.sendCalls(), 1);
+  assert.equal(f.sent.length, 1);
+  const sent = JSON.parse(f.sent[0]!);
+  assert.equal(sent.reply_to, 'captured-reply');
+  assert.deepEqual(
+    sent.items.map((value: { caption: string }) => value.caption),
+    ['  Final keystroke! 🖼️\nkept  ', ''],
+  );
+  assert.equal(f.sent[0], f.writes[0], 'Send must consume the exact accepted draft revision');
+  assert.equal(f.approval(), undefined, 'Direct Send must not briefly enter media approval');
+  assert.equal(f.durable().content_json, 'null');
+});
+
+test('Photos gallery Send preserves captions in the exact ordered selection without using filenames as identity', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([photo('same.jpg'), { ...photo('same.jpg'), uri: 'file:///cache/other.jpg' }]);
+  f.submitPhotos({ caption: 'First', captions: ['First', 'Second 🪁'], send: true });
+  await f.render().pick('photo');
+  assert.equal(f.sendCalls(), 1);
+  const sent = JSON.parse(f.sent[0]!);
+  assert.deepEqual(
+    sent.items.map((value: { caption: string }) => value.caption),
+    ['First', 'Second 🪁'],
+  );
+  assert.notEqual(sent.items[0].mutation_id, sent.items[1].mutation_id);
+});
+
+test('Photos direct Send cannot bypass a rejected caption and attachment journal save', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([photo()]);
+  f.submitPhotos({ caption: 'Must be durable before Send', send: true });
+  f.saveFailure(true);
+  await f.render().pick('photo');
+  assert.deepEqual(f.journalEvents, ['save-start']);
+  assert.deepEqual(f.writes, []);
+  assert.equal(f.durable().content_json, 'null');
+  assert.equal(f.sendCalls(), 0);
+  assert.equal(f.approval(), undefined);
+  f.unmount();
+});
+
+test('Photos direct Send preserves a recovered batch and applies its caption only to the first new asset', async () => {
+  const content = {
+    kind: 'attachments',
+    reply_to: 'original-reply',
+    items: [{ asset_id: 'old', mutation_id: 'old-send', caption: 'Existing caption' }],
+  };
+  const f = fixture({
+    revision: 'saved',
+    content_json: JSON.stringify(content),
+    attempted: false,
+    assets: [
+      {
+        id: 'old',
+        name: 'old.jpg',
+        mime: 'image/jpeg',
+        size: 12,
+        sha256: 'a'.repeat(64),
+      },
+    ],
+  });
+  f.render();
+  await tick();
+  f.select([photo('first-new.jpg'), photo('second-new.jpg')]);
+  f.submitPhotos({ caption: 'New selection caption', send: true });
+  await f.render({ replyTo: 'later-reply' }).pick('photo');
+  assert.equal(f.sendCalls(), 1);
+  const sent = JSON.parse(f.sent[0]!);
+  assert.equal(sent.reply_to, 'original-reply');
+  assert.deepEqual(
+    sent.items.map((value: { caption: string }) => value.caption),
+    ['Existing caption', 'New selection caption', ''],
+  );
+  assert.equal(sent.items[0].asset_id, 'old');
+  assert.equal(sent.items[0].mutation_id, 'old-send');
+  assert.equal(f.approval(), undefined);
+});
+
+test('Photos direct Send is revoked when the picker returns after account or destination retirement', async () => {
+  for (const retirement of ['retire', 'destination'] as const) {
+    const f = fixture(),
+      removed = deferred<AttachmentAsset[]>();
+    f.render();
+    await tick();
+    f.select(() => removed.promise);
+    f.submitPhotos({ caption: 'Retired intent', send: true });
+    const picking = f.render().pick('photo');
+    await tick();
+    if (retirement === 'destination') f.render({ spaceId: 'other-chat' });
+    else f[retirement]();
+    removed.resolve([photo()]);
+    await picking;
+    assert.deepEqual(f.journalEvents, [], retirement);
+    assert.equal(f.sendCalls(), 0, retirement);
+    assert.equal(f.approval(), undefined, retirement);
+    assert.deepEqual(f.discarded, [photo().uri], retirement);
+    f.unmount();
+  }
+});
+
+test('account, destination or route revocation while a direct Send save is pending cannot queue delivery', async () => {
+  for (const retirement of ['retire', 'destination', 'unmount'] as const) {
+    const f = fixture(),
+      saved = deferred<void>();
+    f.render();
+    await tick();
+    f.select([photo()]);
+    f.submitPhotos({ caption: 'Keep the saved draft, revoke Send', send: true });
+    f.holdSaves(saved.promise);
+    const picking = f.render().pick('photo');
+    await tick();
+    assert.deepEqual(f.journalEvents, ['save-start']);
+    if (retirement === 'destination') f.render({ spaceId: 'other-chat' });
+    else f[retirement]();
+    saved.resolve();
+    await picking;
+    assert.equal(f.sendCalls(), 0, retirement);
+    assert.equal(f.approval(), undefined, retirement);
+    assert.equal(
+      JSON.parse(f.durable().content_json).items[0].caption,
+      'Keep the saved draft, revoke Send',
+    );
+    f.unmount();
+  }
+});
+
+test('an explicit Send accepted in foreground completes exactly once when only the app backgrounds during its durable save', async () => {
+  const f = fixture(),
+    saved = deferred<void>();
+  f.render();
+  await tick();
+  f.select([photo()]);
+  f.submitPhotos({ caption: 'Already authorized delivery', send: true });
+  f.holdSaves(saved.promise);
+  const picking = f.render().pick('photo');
+  await tick();
+  assert.deepEqual(f.journalEvents, ['save-start']);
+  // Background alone does not revoke this already explicit Send. Identity,
+  // destination and route lifetime still fence it in the separate regression.
+  f.background();
+  saved.resolve();
+  await picking;
+  assert.deepEqual(f.journalEvents, ['save-start', 'save-accepted', 'send']);
+  assert.equal(f.sendCalls(), 1);
+  assert.equal(f.sent[0], f.writes[0]);
+  const accepted = JSON.parse(f.sent[0]!);
+  assert.equal(accepted.items[0].caption, 'Already authorized delivery');
+  assert.equal(accepted.items[0].mutation_id, 'asset-1');
+  assert.equal(f.durable().content_json, 'null');
+  assert.equal(f.approval(), undefined);
+  f.unmount();
+});
+
+test('Photos Review persists its caption and opens approval without sending', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([photo()]);
+  f.submitPhotos({ caption: 'Review before sending', send: false });
+  await f.render().pick('photo');
+  const approval = f.approval();
+  assert.ok(approval);
+  assert.equal(approval.field.value, 'Review before sending');
+  assert.equal(JSON.parse(f.durable().content_json).items[0].caption, 'Review before sending');
+  assert.equal(f.sendCalls(), 0);
+  assert.deepEqual(f.journalEvents, ['save-start', 'save-accepted']);
+  f.unmount();
+});
+
+test('an empty Photos result cannot send and its stale submission cannot authorize a later document pick', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  f.select([]);
+  f.submitPhotos({ caption: 'Stale Photos Send', send: true });
+  await f.render().pick('photo');
+  assert.deepEqual(f.journalEvents, []);
+  assert.equal(f.sendCalls(), 0);
+  f.select([{ ...photo('file.pdf'), mime: 'application/pdf' }]);
+  await f.render().pick('document');
+  assert.equal(JSON.parse(f.durable().content_json).items[0].caption, '');
+  assert.equal(f.sendCalls(), 0);
+  assert.deepEqual(f.journalEvents, ['save-start', 'save-accepted']);
+  f.unmount();
 });

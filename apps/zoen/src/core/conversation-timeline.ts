@@ -4,8 +4,6 @@ export type MiniappTimelineActivity = Readonly<{
   /** Canonical events remain individually addressable; this is only a visual run. */
   entries: readonly TimelineEntry[];
   item?: ItemDetail;
-  /** Older activity stays in place; only the last run repeats the current preview. */
-  showCard: boolean;
 }>;
 export type ConversationTimelineRow = Readonly<{
   /** The first event anchors a growing run without recycling the row on every save. */
@@ -49,7 +47,7 @@ export function projectConversationTimeline(
   const rows: {
     key: string;
     entry: TimelineEntry;
-    activity?: { item?: ItemDetail; entries: TimelineEntry[]; showCard: boolean };
+    activity?: { item?: ItemDetail; entries: TimelineEntry[] };
   }[] = [];
   for (const entry of entries) {
     if (
@@ -70,7 +68,7 @@ export function projectConversationTimeline(
     const edit = entry.kind.ItemEdited;
     const candidate = scoped.get(edit.item_id);
     // A removed/unavailable item still has its signed note and history entry.
-    // An older or unrelated projection must never manufacture a current card.
+    // An older or unrelated projection must never expose a current history target.
     const item =
       candidate?.kind_id === 'app' && candidate.app && candidate.version >= edit.version
         ? candidate
@@ -100,16 +98,8 @@ export function projectConversationTimeline(
       previous.activity.entries.push(entry);
       previous.entry = entry;
     } else {
-      rows.push({ key: entry.id, entry, activity: { item, entries: [entry], showCard: false } });
+      rows.push({ key: entry.id, entry, activity: { item, entries: [entry] } });
     }
-  }
-  const shown = new Set<string>();
-  for (let index = rows.length - 1; index >= 0; index--) {
-    const row = rows[index]!;
-    const activity = row.activity;
-    if (!activity?.item || row.entry.deleted || shown.has(activity.item.id)) continue;
-    activity.showCard = true;
-    shown.add(activity.item.id);
   }
   return rows;
 }

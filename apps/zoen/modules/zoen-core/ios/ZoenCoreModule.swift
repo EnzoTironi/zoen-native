@@ -76,6 +76,20 @@ public class ZoenCoreModule: Module {
       Prop("model") { (view: ZoenKeyboardPanelHost, value: String) in view.model = value }
       OnViewDidUpdateProps { (view: ZoenKeyboardPanelHost) in view.applyProps() }
     }
+    View(ZoenAttachmentGalleryHost.self) {
+      ViewName("ZoenAttachmentGalleryHost")
+      Events("onAction", "onClosed")
+      Prop("binding") { (view: ZoenAttachmentGalleryHost, value: String) in view.binding = value }
+      Prop("model") { (view: ZoenAttachmentGalleryHost, value: String) in view.model = value }
+      OnViewDidUpdateProps { (view: ZoenAttachmentGalleryHost) in view.applyProps() }
+    }
+    View(ZoenStandaloneAttachmentPanelHost.self) {
+      ViewName("ZoenStandaloneAttachmentPanelHost")
+      Events("onAction", "onClosed")
+      Prop("binding") { (view: ZoenStandaloneAttachmentPanelHost, value: String) in view.binding = value }
+      Prop("model") { (view: ZoenStandaloneAttachmentPanelHost, value: String) in view.model = value }
+      OnViewDidUpdateProps { (view: ZoenStandaloneAttachmentPanelHost) in view.applyProps() }
+    }
     View(ZoenEmojiKeyboardPanelHost.self) {
       ViewName("ZoenEmojiKeyboardPanelHost")
       Events("onAction", "onClosed")
@@ -221,6 +235,7 @@ public class ZoenCoreModule: Module {
 private actor ZoenSession {
   // A close returns its exact native UI epoch; a stale open cannot resume a newer retirement.
   private var keyboardAdmissionTicket: UUID?
+  private var galleryAdmissionTicket: UUID?
   nonisolated private let pickupLifetime = ZoenModulePickupLifetime()
   private var pickupBinding: UUID?
   private var core: Client?
@@ -712,7 +727,8 @@ private actor ZoenSession {
     guard !erasing else { throw ZoenDeviceErasure.Failure.incomplete }
     try await close(cancelOpening: false)
     guard openingAttempt == attempt, !erasing else { throw SessionError.closed }
-    guard let keyboardTicket = keyboardAdmissionTicket else { throw SessionError.closed }
+    guard let keyboardTicket = keyboardAdmissionTicket,
+          let galleryTicket = galleryAdmissionTicket else { throw SessionError.closed }
     let openingGeneration = generation
     let root = mode == "account" ? ZoenDeviceErasure.accountRoot
       : URL.applicationSupportDirectory.appending(path: "demo", directoryHint: .isDirectory)
@@ -738,7 +754,11 @@ private actor ZoenSession {
       } else if vault.hasAccountMaterial() { throw SessionError.orphanedKeys }
       let snapshot = try await engine.clientRequest(request: #"{"op":"snapshot"}"#)
       guard generation == openingGeneration, openingAttempt == attempt else { throw SessionError.closed }
-      guard await ZoenKeyboardPanelHost.resumeAdmissions(expected: keyboardTicket) else { throw SessionError.closed }
+      let resumed = await MainActor.run {
+        ZoenKeyboardPanelHost.resumeAdmissions(expected: keyboardTicket)
+          && ZoenAttachmentGalleryHost.resumeAdmissions(expected: galleryTicket)
+      }
+      guard resumed else { throw SessionError.closed }
       guard generation == openingGeneration, openingAttempt == attempt, !erasing, !closing else { throw SessionError.closed }
       // Publish only the fully validated session. A rejected unlock must leave
       // no callable engine behind; an older async open cannot replace a newer one.
@@ -997,8 +1017,14 @@ private actor ZoenSession {
       try await self.saveDraftMediaEdit(file, token: token)
     }
     let task = Task { @MainActor in
+      let resumeGallery = ZoenAttachmentGalleryHost.yieldForChildPresentation()
+      defer { resumeGallery() }
       try await preview.open(id: id, title: asset.name, edit: nil, mediaEdit: edit) { editing in
-        ZoenQuickLookPreview(presenter: presenter, editing: editing)
+        if kind == .image, let editing {
+          ZoenAttachmentPhotoEditor(presenter: presenter, editing: editing)
+        } else {
+          ZoenQuickLookPreview(presenter: presenter, editing: editing)
+        }
       }
     }
     draftPreviewTasks[token] = task
@@ -1486,6 +1512,7 @@ private actor ZoenSession {
     syncStarted = false
     let task = Task {
       await ZoenKeyboardPanelHost.retireAll()
+      await ZoenAttachmentGalleryHost.retireAll()
       await pageDrain.value
       try await filePreview.clear(before: clearingGeneration)
       await closeAssistants()
@@ -1543,6 +1570,8 @@ private actor ZoenSession {
       defer { self.closing = false; self.forceClosing = false; self.closeTask = nil }
       let keyboardTicket = await ZoenKeyboardPanelHost.retireAll()
       self.keyboardAdmissionTicket = keyboardTicket
+      let galleryTicket = await ZoenAttachmentGalleryHost.retireAll()
+      self.galleryAdmissionTicket = galleryTicket
       do {
         if let forcedPageDrain { await forcedPageDrain.value }
         if discardEdits {
@@ -1571,7 +1600,11 @@ private actor ZoenSession {
         // Never reopen UI admissions across erasure, forced teardown or a newer native epoch.
         if !self.forceClosing, !self.erasing, self.generation == closeGeneration,
            let retiringCore, self.core === retiringCore {
-          await ZoenKeyboardPanelHost.resumeAdmissions(expected: keyboardTicket)
+          await MainActor.run {
+            if ZoenKeyboardPanelHost.resumeAdmissions(expected: keyboardTicket) {
+              ZoenAttachmentGalleryHost.resumeAdmissions(expected: galleryTicket)
+            }
+          }
         }
         throw error
       }

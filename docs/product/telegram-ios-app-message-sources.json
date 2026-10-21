@@ -1,0 +1,42 @@
+{
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "sources": [
+    {
+      "path": "submodules/Display/Source/LinkHighlightingNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/LinkHighlightingNode.swift",
+      "sha256": "48f949dd1ced05ee7c147935eedc8e3ab7acb3d85c6accacf1bc501af70f9006",
+      "bytes": 21612,
+      "lines": [10, 28, 199, 273, 275, 295, 297, 323],
+      "ported": "legacy rectangle fill and full/connecting-corner clear/ellipse mask translated to a local SVG alpha mask"
+    },
+    {
+      "path": "submodules/TelegramUI/Components/Chat/ChatMessageActionBubbleContentNode/Sources/ChatMessageActionBubbleContentNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ChatMessageActionBubbleContentNode/Sources/ChatMessageActionBubbleContentNode.swift",
+      "sha256": "cfe2d76add3aa2142d3f9cf03249bd49c2afa38d417435a4f1d540379531cb90",
+      "bytes": 64224,
+      "lines": [189, 429, 438, 447, 463, 492, 493, 627, 802, 837],
+      "ported": "centered service classification; measured line smoothing,22pt mask,+7pt sides,radius11,+4pt content height,optical x−1"
+    },
+    {
+      "path": "submodules/TelegramUI/Components/Chat/ChatMessageRichDataBubbleContentNode/Sources/ChatMessageRichDataBubbleContentNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ChatMessageRichDataBubbleContentNode/Sources/ChatMessageRichDataBubbleContentNode.swift",
+      "sha256": "31fd4d6d7e3fba29c0be1b0dddd2d218ed44ba6196d4a35e34614dea7e6e7634",
+      "bytes": 153977,
+      "lines": [601, 626, 639, 1173, 1259],
+      "ported": "2pt content rim,11pt text/status sides,6pt date/status bottom inset; canonical160pt App cover remains Zoen-owned"
+    }
+  ],
+  "selectedLicense": "GPL-3.0 under upstream GPL-2.0-or-later option, combined with Zoen under AGPLv3 section13",
+  "implementation": [
+    "apps/zoen/src/miniapps/telegram-service-message.ts",
+    "apps/zoen/src/miniapps/timeline-activity.tsx",
+    "apps/zoen/src/components/conversation-message.tsx"
+  ],
+  "scope": "Presentation only. No Telegram account, protocol, data model, storage, fonts or media imported. App update events and authenticated history remain canonical Zoen core data.",
+  "adaptations": [
+    "UIKit line rects supplied by React Native native Text layout; local SVG mask decoded by existing expo-image.",
+    "Native text taller than22pt expands the mask to avoid clipping accessibility text.",
+    "App shares keep their canonical160pt cover inside a164pt message face; updates do not repeat the cover."
+  ],
+  "nativeRuntimeQualified": false
+}

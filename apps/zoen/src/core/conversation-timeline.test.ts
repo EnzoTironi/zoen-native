@@ -69,7 +69,7 @@ const message = (id = 'human', text = 'Updated the drawing'): TimelineEntry =>
 const flatten = (rows: ReturnType<typeof projectConversationTimeline>) =>
   rows.flatMap((row) => row.activity?.entries ?? [row.entry]);
 
-test('eleven actual-shaped drawing autosaves become one current card, retaining every canonical event', () => {
+test('eleven actual-shaped drawing autosaves become one service activity, retaining every canonical event', () => {
   const edits = Array.from({ length: 11 }, (_, index) => update(index));
   const before = JSON.stringify(edits);
   const current = item();
@@ -103,9 +103,8 @@ test('human messages and intentional shares keep exact order even with identical
   assert.deepEqual(flatten(rows), entries);
   assert.equal(rows[1]!.activity, undefined);
   assert.equal(rows[3]!.activity, undefined);
-  assert.equal(rows[0]!.activity!.showCard, false);
-  assert.equal(rows[2]!.activity!.showCard, false);
-  assert.equal(rows[4]!.activity!.showCard, true);
+  assert.ok(rows.filter((row) => row.activity).every((row) => !('showCard' in row.activity!)));
+  assert.strictEqual(rows[4]!.activity!.item, rows[0]!.activity!.item);
 });
 
 test('author, thread, undo, note, reaction, reply, receipt and hidden-event boundaries stay separate', () => {

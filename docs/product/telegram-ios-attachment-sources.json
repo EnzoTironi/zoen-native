@@ -1,0 +1,89 @@
+{
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "sources": [
+    {
+      "path": "submodules/AttachmentUI/Sources/AttachmentPanel.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/AttachmentUI/Sources/AttachmentPanel.swift",
+      "bytes": 151725,
+      "sha256": "cac470843acd91d19a479966bf58013964cb6b72a03c84b1ff40eea296d8f788",
+      "lines": [35, 58, 2080, 2134, 2530, 2805]
+    },
+    {
+      "path": "submodules/AttachmentUI/Sources/AttachmentContainer.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/AttachmentUI/Sources/AttachmentContainer.swift",
+      "bytes": 35673,
+      "sha256": "c73c19d8a5120bd06308b808be3b311bdde783c4d44f6fe2450bc187872cca3a",
+      "lines": [16, 28, 247, 477, 504, 550]
+    },
+    {
+      "path": "submodules/AttachmentUI/Sources/AttachmentController.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/AttachmentUI/Sources/AttachmentController.swift",
+      "bytes": 84815,
+      "sha256": "d0035962fe5c2615868d4a04e671524bfb84505579f8572083e2e05486714fb5",
+      "lines": [650, 784]
+    },
+    {
+      "path": "submodules/MediaPickerUI/Sources/MediaPickerScreen.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/MediaPickerUI/Sources/MediaPickerScreen.swift",
+      "bytes": 212272,
+      "sha256": "3e4aa6ed563f05a03ec684ed2120c2823b31003f029e1bc5f6b3c33ec2138ce8",
+      "lines": [538, 541, 744, 834, 943, 972, 1745, 1771, 3515, 3610]
+    },
+    {
+      "path": "submodules/MediaPickerUI/Sources/MediaPickerGridItem.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/MediaPickerUI/Sources/MediaPickerGridItem.swift",
+      "bytes": 41424,
+      "sha256": "a98543e05c4346d2f6d75d0ed9587a70c229d293a5d7c9ce3582471386b0f031",
+      "lines": [824, 825]
+    },
+    {
+      "path": "submodules/CheckNode/Sources/CheckNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/CheckNode/Sources/CheckNode.swift",
+      "bytes": 28291,
+      "sha256": "5271b25a39ed9387dcb8b7bacf3d496f1d6d12637e6814f3b81ad5d3c076147e",
+      "lines": [39, 57, 476, 488, 604, 618]
+    },
+    {
+      "path": "submodules/Display/Source/ContainedViewLayoutTransition.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/ContainedViewLayoutTransition.swift",
+      "bytes": 125046,
+      "sha256": "114c1d341ab4611a78bd4150a9de9166ec6e3e502f714cb7d6e6c809efecf310",
+      "lines": [46, 46]
+    },
+    {
+      "path": "submodules/Display/Source/CAAnimationUtils.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/CAAnimationUtils.swift",
+      "bytes": 31263,
+      "sha256": "d15229d08439c36f6583bb2635cbd7e289adcd408c1767d6962570a388fdb6e5",
+      "lines": [84, 104, 139, 139]
+    }
+  ],
+  "implementation": [
+    "apps/zoen/modules/zoen-core/ios/ZoenAttachmentContainer.swift",
+    "apps/zoen/modules/zoen-core/ios/ZoenAttachmentKeyboardContent.swift",
+    "apps/zoen/modules/zoen-core/ios/ZoenKeyboardPanelHost.swift",
+    "apps/zoen/src/media/attachment-photo-keyboard.ios.tsx",
+    "apps/zoen/src/media/attachment-keyboard-session.ts",
+    "apps/zoen/src/media/durable-attachment-composer.tsx"
+  ],
+  "selectedLicense": "GPL-3.0 under upstream GPL-2.0-or-later option, combined with Zoen under AGPLv3 section13",
+  "adaptations": [
+    "ASDisplayNode/NavigationContainer replaced with a window-sibling UIKit overlay bound to the exact Zoen mounted composer.",
+    "Compact gallery expansion, drag/scroll handoff, settlement, floating category metrics and selection/caption transition translated from the pinned implementation.",
+    "Horizontal selection gesture translated for Photos IDs; PhotoSession retains sole ordered selection authority.",
+    "Native text and Send are bounded to4096 UTF16 units and no NUL; Send carries the actual final native caption.",
+    "The existing Rust media-draft journal persists caption/selection before the existing delivery path; background alone does not revoke an explicitly accepted Send.",
+    "Camera return keeps the same Photos picker authority and selection but receives a fresh native presentation token.",
+    "Settlement uses upstream CASpringAnimation mass5/stiffness900/damping124 and explicit settling-duration speed scaling; entrance uses the upstream non-button fallback curve and fixed full sheet geometry.",
+    "Original pinned GlassBackground, LiquidLens, TabSelectionRecognizer and scoped rendering dependencies run inside the Expo module; original category TGS payloads and PDF/PNG glyphs are retained with per-file provenance.",
+    "The category interaction scroll surface is a sibling above the two visual lens item containers, matching AttachmentPanel:2671-2687. Photos, durable review and standalone entry use the same native gallery.",
+    "Native selection, caption and explicitly requested Edit/Send remain bounded by the existing account/destination owner and encrypted journal CAS; no second durable gallery store is introduced."
+  ],
+  "remaining": [
+    "Complete File/Audio child controllers, recent-file indexing/search/scan and supported attachment categories.",
+    "Media-as-file and grouping require the separately reviewed durable contract and menu/render wiring; quality/spoiler/caption-position and other send variants are not yet implemented.",
+    "The complete upstream photo/video editing engine and its toolset are tracked in telegram-ios-gallery-sources.json.",
+    "Side-by-side pixel and animation comparison, physical keyboard/camera/audio lifecycle, iCloud, accessibility, rotation and performance qualification remain incomplete. Integrated Simulator journeys and builds prove only the recorded subset."
+  ],
+  "nativeRuntimeQualified": false
+}

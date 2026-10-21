@@ -9,6 +9,8 @@ export type NativeKeyboardAction = {
   action: string;
   id?: string;
   revision?: string;
+  text?: string;
+  ids?: string[];
 };
 export type NativeKeyboardClosed = { token: string; context: string; reason: string };
 type Props = ViewProps & {
@@ -20,6 +22,10 @@ type Props = ViewProps & {
 export const NativeAttachmentKeyboard = requireNativeView<Props>(
   'ZoenCore',
   'ZoenKeyboardPanelHost',
+);
+export const NativeStandaloneAttachmentPanel = requireNativeView<Props>(
+  'ZoenCore',
+  'ZoenStandaloneAttachmentPanelHost',
 );
 export const NativeEmojiKeyboard = requireNativeView<Props>(
   'ZoenCore',

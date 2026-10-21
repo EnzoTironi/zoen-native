@@ -116,6 +116,10 @@ extension ZoenFilePreviewPresentation {
       if let mediaKind { captured?(ZoenMediaEditCapture.stage(url, kind: mediaKind, maximumBytes: maximumBytes)) }
       else { captured?(ZoenPDFEditCapture.stage(url, maximumBytes: maximumBytes)) }
     }
+    func receiveImage(_ png: Data) {
+      guard allowsEditing, mediaKind == .image else { return }
+      captured?(ZoenMediaEditCapture.stageImage(png, maximumBytes: maximumBytes))
+    }
   }
 
   private final class Scope: @unchecked Sendable {

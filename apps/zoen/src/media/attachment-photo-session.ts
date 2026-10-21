@@ -16,20 +16,33 @@ export type PhotoPickerState = Readonly<{
   loading: boolean;
   hasMore: boolean;
   error: unknown;
+  screen: 'grid' | 'albums' | 'preview' | 'selected';
+  previewId: string | null;
+  category: 'photos' | 'document' | 'audio';
 }>;
 export type PhotoPickerPort = {
   permission(): Promise<PhotoLibraryPermission>;
   requestPermission(): Promise<PhotoLibraryPermission>;
   load(albumId: string | null, offset: number): Promise<PhotoLibraryItem[]>;
+  refresh(items: readonly PhotoLibraryItem[]): Promise<PhotoLibraryItem[]>;
   albums(): Promise<PhotoLibraryAlbum[]>;
+  albumDetails?(id: string): Promise<{ count: number; previewId: string | null }>;
   manage(): Promise<void>;
   materialize(
     items: readonly PhotoLibraryItem[],
     current: () => boolean,
   ): Promise<AttachmentAsset[]>;
   capture(remaining: number, current: () => boolean): Promise<AttachmentAsset[]>;
+  browse?(remaining: number, current: () => boolean): Promise<AttachmentAsset[]>;
   discard(uri: string): void;
 };
+export type PhotoPickerSubmission = Readonly<{
+  caption: string;
+  /** Ordered exactly like the materialized selection; never addressed by filename. */
+  captions?: readonly string[];
+  send: boolean;
+  requestEdit?: boolean;
+}>;
 type Request = {
   current(): boolean;
   remaining: number;
@@ -37,8 +50,11 @@ type Request = {
   retired: boolean;
   working: boolean;
   epoch: number;
-  action: 'camera' | null;
+  needsReconciliation: boolean;
+  pageOffset: number;
+  action: 'camera' | 'document' | null;
   result: AttachmentAsset[] | null;
+  albumDetails: Map<string, object>;
 };
 const empty: PhotoPickerState = {
   token: 0,
@@ -52,6 +68,9 @@ const empty: PhotoPickerState = {
   loading: false,
   hasMore: false,
   error: null,
+  screen: 'grid',
+  previewId: null,
+  category: 'photos',
 };
 
 /** Ephemeral library selection only. The existing channel remains the sole durable draft authority. */
@@ -59,6 +78,7 @@ export class AttachmentPhotoSession {
   private state = empty;
   private request: Request | null = null;
   private sequence = 0;
+  private previewOrigin: 'grid' | 'selected' = 'grid';
   private listeners = new Set<() => void>();
   private readonly port: PhotoPickerPort;
   constructor(port: PhotoPickerPort) {
@@ -90,11 +110,15 @@ export class AttachmentPhotoSession {
         retired: false,
         working: false,
         epoch: 0,
+        needsReconciliation: false,
+        pageOffset: 0,
         action: null,
         result: null,
+        albumDetails: new Map(),
       };
       this.request = request;
       this.state = empty;
+      this.previewOrigin = 'grid';
       this.publish({ token: ++this.sequence, visible: true });
       void this.reload(true);
     });
@@ -130,17 +154,106 @@ export class AttachmentPhotoSession {
       if (requestPermission && permission.status === 'undetermined')
         permission = await this.port.requestPermission();
       if (!this.current(request) || epoch !== request.epoch) return;
+      if (
+        this.state.permission &&
+        (this.state.permission.status !== permission.status ||
+          this.state.permission.accessPrivileges !== permission.accessPrivileges)
+      )
+        request.needsReconciliation = true;
       this.publish({ permission });
       if (!permission.granted) {
-        this.publish({ items: [], selected: [], albums: [], hasMore: false });
+        this.publish({
+          items: [],
+          selected: [],
+          albums: [],
+          hasMore: false,
+          screen: 'grid',
+          previewId: null,
+        });
         return;
       }
-      const [items, albums] = await Promise.all([
+      const reconciling = request.needsReconciliation;
+      const retained = new Map(this.state.selected.map((item) => [item.id, item]));
+      const preview = this.state.items.find((item) => item.id === this.state.previewId);
+      if (preview) retained.set(preview.id, preview);
+      const [items, albums, refreshed] = await Promise.all([
         this.port.load(this.state.albumId, 0),
         this.port.albums(),
+        reconciling ? this.port.refresh([...retained.values()]) : Promise.resolve([]),
       ]);
       if (!this.current(request) || epoch !== request.epoch) return;
-      this.publish({ items, albums, hasMore: items.length === 60 });
+      if (reconciling) {
+        // Permission can change during a metadata read. Never publish a result
+        // under the privileges from a different authorization snapshot.
+        const checked = await this.port.permission();
+        if (!this.current(request) || epoch !== request.epoch) return;
+        if (!checked.granted) {
+          this.publish({
+            permission: checked,
+            items: [],
+            selected: [],
+            albums: [],
+            hasMore: false,
+            screen: 'grid',
+            previewId: null,
+          });
+          return;
+        }
+        if (
+          checked.status !== permission.status ||
+          checked.accessPrivileges !== permission.accessPrivileges
+        ) {
+          void this.reload();
+          return;
+        }
+        const verified = new Map(refreshed.map((item) => [item.id, item]));
+        if (verified.size !== refreshed.length || refreshed.some((item) => !retained.has(item.id)))
+          throw new Error('Invalid Photos reconciliation');
+        // A user may deselect/reorder while the read is in flight. Reconcile
+        // CURRENT identities, never restore the selection captured before await.
+        if (
+          this.state.selected.some((item) => !retained.has(item.id)) ||
+          (this.state.previewId !== null && !retained.has(this.state.previewId))
+        ) {
+          void this.reload();
+          return;
+        }
+        const selected = this.state.selected.flatMap((item) => {
+          const current = verified.get(item.id);
+          return current ? [current] : [];
+        });
+        const currentPreview =
+          this.state.previewId === null ? null : verified.get(this.state.previewId);
+        // The visible item may be beyond the refreshed first page. Retain only
+        // its freshly authorized metadata, while the next offset stays based on
+        // actual queried rows rather than this additional display identity.
+        const reconciled = items.flatMap((item) => {
+          if (retained.has(item.id) && !verified.has(item.id)) return [];
+          return [verified.get(item.id) ?? item];
+        });
+        const displayed =
+          currentPreview && !reconciled.some((item) => item.id === currentPreview.id)
+            ? [...reconciled, currentPreview]
+            : reconciled;
+        const screen = this.state.screen;
+        const lostPreview = this.state.previewId !== null && !currentPreview;
+        request.needsReconciliation = false;
+        request.pageOffset = items.length;
+        this.publish({
+          items: displayed,
+          albums,
+          selected,
+          hasMore: items.length === 60,
+          ...(lostPreview
+            ? screen === 'selected' && selected.length
+              ? { previewId: selected[0]!.id }
+              : { screen: 'grid', previewId: null }
+            : {}),
+        });
+      } else {
+        request.pageOffset = items.length;
+        this.publish({ items, albums, hasMore: items.length === 60 });
+      }
     } catch (error) {
       if (this.current(request) && epoch === request.epoch) this.publish({ error });
     } finally {
@@ -148,8 +261,9 @@ export class AttachmentPhotoSession {
     }
   }
   invalidate = () => {
-    if (this.request && this.state.visible && !this.state.busy) {
-      this.publish({ selected: [] });
+    if (this.request && this.current(this.request) && this.state.visible && !this.state.busy) {
+      this.request.needsReconciliation = true;
+      this.request.albumDetails.clear();
       void this.reload();
     }
   };
@@ -164,11 +278,12 @@ export class AttachmentPhotoSession {
     )
       return;
     const epoch = request.epoch,
-      offset = this.state.items.length;
+      offset = request.pageOffset;
     this.publish({ loading: true });
     try {
       const items = await this.port.load(this.state.albumId, offset);
       if (this.current(request) && epoch === request.epoch) {
+        request.pageOffset += items.length;
         const ids = new Set(this.state.items.map((item) => item.id));
         this.publish({
           items: [...this.state.items, ...items.filter((item) => !ids.has(item.id))],
@@ -184,25 +299,115 @@ export class AttachmentPhotoSession {
   album(id: string | null) {
     if (!this.request || !this.current(this.request) || !this.state.visible || this.state.busy)
       return;
-    this.publish({ albumId: id, items: [] });
+    if (id !== null && !this.state.albums.some((album) => album.id === id)) return;
+    this.publish({ albumId: id, items: [], screen: 'grid', previewId: null });
     void this.reload();
+  }
+  showGrid() {
+    if (this.isInteractive(this.state.token)) this.publish({ screen: 'grid', previewId: null });
+  }
+  showCategory(category: PhotoPickerState['category']) {
+    if (this.isInteractive(this.state.token) && !this.state.selected.length)
+      this.publish({ category, screen: 'grid', previewId: null });
+  }
+  showAlbums() {
+    if (this.isInteractive(this.state.token)) this.publish({ screen: 'albums' });
+  }
+  back() {
+    if (!this.isInteractive(this.state.token)) return;
+    if (
+      this.state.screen === 'preview' &&
+      this.previewOrigin === 'selected' &&
+      this.state.selected.length
+    )
+      this.showSelected();
+    else this.showGrid();
+  }
+  async albumDetails(id: string) {
+    const request = this.request;
+    const album = this.state.albums.find((item) => item.id === id);
+    if (
+      !request ||
+      !this.isInteractive(this.state.token) ||
+      this.state.screen !== 'albums' ||
+      !album ||
+      album.count !== undefined ||
+      request.albumDetails.has(id) ||
+      !this.port.albumDetails
+    )
+      return;
+    const owner = {};
+    const epoch = request.epoch;
+    request.albumDetails.set(id, owner);
+    try {
+      const value = await this.port.albumDetails(id);
+      if (
+        !this.current(request) ||
+        request.epoch !== epoch ||
+        !Number.isSafeInteger(value.count) ||
+        value.count < 0 ||
+        (value.previewId !== null && !value.previewId.startsWith('ph://'))
+      )
+        return;
+      this.publish({
+        albums: this.state.albums.map((item) => (item.id === id ? { ...item, ...value } : item)),
+      });
+    } catch {
+      // A single unavailable album thumbnail must not retire the Photos picker.
+    } finally {
+      if (request.albumDetails.get(id) === owner) request.albumDetails.delete(id);
+    }
+  }
+  preview(id: string) {
+    if (
+      this.isInteractive(this.state.token) &&
+      [...this.state.items, ...this.state.selected].some((item) => item.id === id)
+    ) {
+      if (this.state.screen !== 'preview')
+        this.previewOrigin = this.state.screen === 'selected' ? 'selected' : 'grid';
+      this.publish({ screen: 'preview', previewId: id });
+    }
+  }
+  showSelected() {
+    if (!this.isInteractive(this.state.token) || !this.state.selected.length) return;
+    const previewId = this.state.selected.some((item) => item.id === this.state.previewId)
+      ? this.state.previewId
+      : this.state.selected[0]!.id;
+    this.publish({ screen: 'selected', previewId });
+  }
+  reorder(ids: readonly string[]) {
+    if (
+      !this.isInteractive(this.state.token) ||
+      ids.length !== this.state.selected.length ||
+      new Set(ids).size !== ids.length
+    )
+      return;
+    const selected = new Map(this.state.selected.map((item) => [item.id, item]));
+    if (ids.some((id) => !selected.has(id))) return;
+    this.publish({ selected: ids.map((id) => selected.get(id)!) });
   }
   select(item: PhotoLibraryItem) {
     const request = this.request;
-    if (
-      !request ||
-      !this.current(request) ||
-      !this.state.visible ||
-      this.state.busy ||
-      !this.state.items.some((value) => value.id === item.id)
-    )
+    const knownItem = [...this.state.items, ...this.state.selected].find(
+      (value) => value.id === item.id,
+    );
+    if (!request || !this.current(request) || !this.state.visible || this.state.busy || !knownItem)
       return;
     const existing = this.state.selected.some((value) => value.id === item.id);
     if (!existing && this.state.selected.length >= request.remaining) return;
+    const selected = existing
+      ? this.state.selected.filter((value) => value.id !== item.id)
+      : [...this.state.selected, knownItem];
     this.publish({
-      selected: existing
-        ? this.state.selected.filter((value) => value.id !== item.id)
-        : [...this.state.selected, item],
+      selected,
+      ...(this.state.screen === 'selected'
+        ? {
+            screen: selected.length ? 'selected' : 'grid',
+            previewId: selected.some((value) => value.id === this.state.previewId)
+              ? this.state.previewId
+              : (selected[0]?.id ?? null),
+          }
+        : {}),
     });
   }
   async manage() {
@@ -215,16 +420,40 @@ export class AttachmentPhotoSession {
       if (this.current(request)) this.publish({ error });
     }
   }
-  async approve() {
+  canApprove(currentItemId?: string) {
+    const request = this.request;
+    if (!request || request.needsReconciliation || !this.isInteractive(this.state.token))
+      return false;
+    if (currentItemId === undefined) return this.state.selected.length > 0;
+    if (this.state.selected.some((item) => item.id === currentItemId)) return true;
+    return (
+      this.state.selected.length < request.remaining &&
+      this.state.items.some((item) => item.id === currentItemId)
+    );
+  }
+  async approve(currentItemId?: string) {
     const request = this.request;
     if (
       !request ||
       !this.current(request) ||
       !this.state.visible ||
       this.state.busy ||
-      !this.state.selected.length
+      !this.canApprove(currentItemId)
     )
       return;
+    // MediaPickerScreen.sendSelected selects the gallery's current item before
+    // sending the ordered selection. Merely opening the gallery never selects it.
+    if (currentItemId !== undefined) {
+      const item = [...this.state.items, ...this.state.selected].find(
+        (value) => value.id === currentItemId,
+      );
+      if (!item) return;
+      if (!this.state.selected.some((value) => value.id === item.id)) {
+        if (this.state.selected.length >= request.remaining) return;
+        this.select(item);
+      }
+    }
+    if (!this.state.selected.length) return;
     request.working = true;
     this.publish({ busy: true, error: null });
     try {
@@ -250,10 +479,24 @@ export class AttachmentPhotoSession {
       !this.current(request) ||
       !this.state.visible ||
       this.state.busy ||
+      request.needsReconciliation ||
       this.state.selected.length >= request.remaining
     )
       return;
     request.action = 'camera';
+    this.publish({ visible: false });
+  }
+  browse() {
+    const request = this.request;
+    if (
+      !request ||
+      !this.isInteractive(this.state.token) ||
+      !this.port.browse ||
+      this.state.category !== 'document' ||
+      this.state.selected.length
+    )
+      return;
+    request.action = 'document';
     this.publish({ visible: false });
   }
   dismissing(token: number) {
@@ -275,7 +518,8 @@ export class AttachmentPhotoSession {
       this.finish(request, result);
       return;
     }
-    if (request.action !== 'camera') {
+    const action = request.action;
+    if (action !== 'camera' && action !== 'document') {
       this.cancel();
       return;
     }
@@ -284,9 +528,12 @@ export class AttachmentPhotoSession {
     this.publish({ busy: true });
     let captures: AttachmentAsset[] = [];
     try {
-      captures = await this.port.capture(request.remaining - this.state.selected.length, () =>
-        this.current(request),
-      );
+      captures =
+        action === 'camera'
+          ? await this.port.capture(request.remaining - this.state.selected.length, () =>
+              this.current(request),
+            )
+          : await this.port.browse!(request.remaining, () => this.current(request));
       if (!this.current(request)) return;
       if (!captures.length) {
         this.publish({ visible: true });

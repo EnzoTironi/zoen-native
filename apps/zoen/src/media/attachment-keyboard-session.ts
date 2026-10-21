@@ -21,6 +21,7 @@ export type AttachmentKeyboardState = Readonly<{
 }>;
 type Work = {
   presentation: KeyboardPresentation;
+  pickerId: string;
   field: KeyboardField;
   generation: number;
   pickerDone: boolean;
@@ -123,6 +124,7 @@ export class AttachmentKeyboardSession {
     };
     const work: Work = {
       presentation,
+      pickerId: presentation.id,
       field,
       generation: this.generation,
       pickerDone: kind === 'emoji',
@@ -211,6 +213,34 @@ export class AttachmentKeyboardSession {
       return false;
     work.pickerStarted = true;
     return true;
+  }
+  /** Resume the same Photos selection after Camera removed its native panel. */
+  resumePicker(id: string): KeyboardPresentation | null {
+    const work = this.work;
+    if (
+      !work ||
+      !this.live(work) ||
+      work.presentation.id !== id ||
+      work.presentation.kind !== 'attachments' ||
+      work.presentation.closing ||
+      !work.nativeClosed ||
+      !work.pickerStarted ||
+      work.pickerDone
+    )
+      return null;
+    // Each actual native presentation has a terminal token. Keep the picker
+    // authority, but never reuse the removed panel's token or admit its events.
+    work.presentation = {
+      ...work.presentation,
+      id: `${this.token()}:${work.generation}:${++this.sequence}`,
+    };
+    work.nativeClosed = false;
+    this.publish({ presentation: work.presentation });
+    return work.presentation;
+  }
+  /** Picker lifecycle ownership only; native actions must use isCurrent(). */
+  ownsPicker(id: string) {
+    return !!this.work && this.work.pickerId === id && this.owned(this.work);
   }
   private complete(work: Work) {
     if (!this.owned(work) || !work.pickerDone) return;

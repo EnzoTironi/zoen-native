@@ -557,7 +557,12 @@ test('native media and miniapp boundaries remain ungrouped and never hide indepe
     assert.ok(elements(wrapper).some((node) => node.type === 'MessageMedia'));
     if (entry === miniapp) {
       assert.ok(elements(wrapper).some((node) => node.type === 'MiniappMessageCard'));
-      assert.equal((bubble.props.style as Record<string, unknown>).width, 160);
+      assert.equal((bubble.props.style as Record<string, unknown>).width, 164);
+      assert.equal(
+        elements(wrapper).find((node) => node.type === 'MiniappMessageCard')?.props.width,
+        160,
+        'The Telegram media rim does not resize the canonical App cover',
+      );
     }
     act(group, 'actions');
     assert.equal(f.calls.length, 0);

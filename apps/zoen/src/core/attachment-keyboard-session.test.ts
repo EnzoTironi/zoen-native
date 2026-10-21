@@ -243,3 +243,106 @@ test('category waits the newly committed enabled callback and fences replacement
   await tick();
   assert.deepEqual(f.calls, ['photo']);
 });
+
+test('camera cancellation rotates only the native presentation while preserving the original Photos picker owner', async () => {
+  const f = fixture(),
+    original = f.open(),
+    field = f.session.getSnapshot().field;
+  const ownership: boolean[] = [];
+  const unsubscribe = f.session.subscribe(() => ownership.push(f.session.ownsPicker(original)));
+  assert.equal(f.session.ownsPicker(original), true);
+  assert.equal(f.session.resumePicker(original), null, 'a mounted sheet has not drained yet');
+  assert.equal(f.session.closed(original), true);
+  const resumed = f.session.resumePicker(original);
+  assert.ok(resumed);
+  assert.notEqual(resumed.id, original);
+  assert.equal(resumed.kind, 'attachments');
+  assert.equal(resumed.field, field);
+  assert.equal(resumed.closing, false);
+  assert.equal(f.session.getSnapshot().presentation, resumed);
+  assert.equal(f.session.ownsPicker(original), true);
+  assert.equal(f.session.ownsPicker(resumed.id), false, 'native tokens are not Photos task owners');
+  assert.equal(f.session.owns(original), false);
+  assert.equal(f.session.isCurrent(resumed.id), true);
+  assert.equal(ownership.every(Boolean), true, 'publication cannot transiently retire the picker');
+  assert.equal(f.session.resumePicker(original), null, 'duplicate completion cannot rotate again');
+  assert.equal(f.session.closed(original), false);
+  assert.deepEqual(f.calls, ['photo'], 'continuation does not start a second Photos picker');
+  unsubscribe();
+  f.session.closed(resumed.id);
+  f.done.resolve();
+  await tick();
+  assert.equal(f.session.getSnapshot().presentation, null);
+  assert.equal(f.session.ownsPicker(original), false);
+});
+
+test('resumed picker rejects old native actions and permits another current native close without losing its original owner', async () => {
+  const f = fixture(),
+    original = f.open();
+  f.session.closed(original);
+  const first = f.session.resumePicker(original)!;
+  f.session.handoff(original, 'document');
+  assert.equal(f.session.getSnapshot().presentation, first);
+  assert.equal(f.session.closed('foreign'), false);
+  assert.equal(f.session.resumePicker('foreign'), null);
+  assert.equal(f.session.resumePicker(first.id), null, 'the current sheet is still mounted');
+  f.session.closed(first.id);
+  const second = f.session.resumePicker(first.id)!;
+  assert.notEqual(second.id, first.id);
+  assert.equal(f.session.ownsPicker(original), true);
+  assert.equal(f.session.isCurrent(first.id), false);
+  assert.equal(f.session.isCurrent(second.id), true);
+  assert.deepEqual(f.calls, ['photo']);
+  f.session.retire();
+  f.done.resolve();
+  await tick();
+});
+
+test('picker continuation requires a live, started, unfinished and non-closing Photos task', async () => {
+  for (const condition of ['not-started', 'done', 'closing', 'inactive'] as const) {
+    const f = fixture();
+    let id: string;
+    if (condition === 'not-started') {
+      f.session.openAttachments();
+      id = f.session.getSnapshot().presentation!.id;
+    } else id = f.open();
+    if (condition === 'done') {
+      f.done.resolve();
+      await tick();
+    } else if (condition === 'closing') f.session.handoff(id, 'document');
+    else if (condition === 'inactive') f.session.setForeground(false, false);
+    f.session.closed(id);
+    assert.equal(f.session.resumePicker(id), null, condition);
+    assert.deepEqual(f.calls, ['photo'], condition);
+    f.session.retire();
+    f.done.resolve();
+    await tick();
+  }
+});
+
+test('a retired Photos picker cannot resume after field, route, foreground or scope replacement', async () => {
+  for (const retire of [
+    (s: AttachmentKeyboardSession) => s.retire(),
+    (s: AttachmentKeyboardSession) =>
+      s.bind({ tag: 8, context: 'other', label: 'Message', placeholder: '' }),
+    (s: AttachmentKeyboardSession) => {
+      s.setFocused(false);
+      s.setFocused(true);
+    },
+    (s: AttachmentKeyboardSession) => {
+      s.setForeground(false);
+      s.setForeground(true);
+    },
+    (s: AttachmentKeyboardSession) => s.configure('other-scope', true),
+  ]) {
+    const f = fixture(),
+      original = f.open();
+    f.session.closed(original);
+    retire(f.session);
+    assert.equal(f.session.ownsPicker(original), false);
+    assert.equal(f.session.resumePicker(original), null);
+    f.done.resolve();
+    await tick();
+    assert.deepEqual(f.calls, ['photo']);
+  }
+});
