@@ -11,10 +11,16 @@ const ports: Record<string, string> = {
     export const previews = [];
     export const canceled = [];
     export const edits = [];
+    export const recoveryRequests = [];
     let failure = false;
     export function failNextSend() { failure = true; }
-    export default {
+    export const nativeModule = {
+      failedMediaRecoveryVersion: 1,
       async loadMediaDraft() {},
+      async request(request) {
+        recoveryRequests.push(JSON.parse(request));
+        return JSON.stringify({revision:'recovered',content_json:'null',assets:[{id:'a',name:'a.pdf',mime:'application/pdf',size:'1048576',sha256:'a'.repeat(64)}],attempted:false});
+      },
       async previewMediaDraftAsset(request, token) { previews.push({request, token}); },
       async editMediaDraftAsset(request, token) {
         edits.push({request, token});
@@ -27,6 +33,7 @@ const ports: Record<string, string> = {
         return JSON.stringify({itemId: 'qa_file', messageId: 'qa_message'});
       },
     };
+    export default nativeModule;
   `,
   '../profile/native-driver': 'export const createNativeProfilePhotoDriver = () => undefined;',
   'react-native': 'export const Platform = { OS: "ios" };',
@@ -36,7 +43,7 @@ const ports: Record<string, string> = {
 const output = await build({
   stdin: {
     contents: `export {createDriver} from './driver.ts';
-      export {requests, previews, edits, canceled, failNextSend} from '../../modules/zoen-core/src/ZoenCoreModule';`,
+      export {requests, previews, edits, canceled, recoveryRequests, nativeModule, failNextSend} from '../../modules/zoen-core/src/ZoenCoreModule';`,
     resolveDir: new URL('.', import.meta.url).pathname,
     loader: 'ts',
   },
@@ -66,6 +73,8 @@ const native = (await import(
   previews: { request: string; token: string }[];
   canceled: string[];
   edits: { request: string; token: string }[];
+  recoveryRequests: unknown[];
+  nativeModule: { failedMediaRecoveryVersion?: number };
   failNextSend(): void;
 };
 const selection: SendFile = {
@@ -77,6 +86,43 @@ const selection: SendFile = {
   thread: true,
   mutationId: 'qa_fixed_selection',
 };
+
+test('native recovery adapter sends only scoped CAS identities and converts bounded integer wire sizes without Send', async () => {
+  native.recoveryRequests.length = 0;
+  native.requests.length = 0;
+  const scope = {
+    expected_identity_id: 'owner',
+    expected_device_id: 'device',
+    space_id: 'chat',
+    thread_root_id: null,
+  };
+  const result = await native.createDriver().media!.drafts!.recoverFailed!(
+    scope,
+    'failed',
+    'media-revision',
+    'normal-revision',
+  );
+  assert.deepEqual(native.recoveryRequests, [
+    {
+      op: 'recover_failed_media_draft',
+      scope,
+      message_id: 'failed',
+      expected_revision: 'media-revision',
+      expected_message_revision: 'normal-revision',
+    },
+  ]);
+  assert.equal(result.assets[0]!.size, 1048576);
+  assert.equal(native.requests.length, 0);
+});
+
+test('older native binaries cannot advertise or invoke the new recovery command', () => {
+  delete native.nativeModule.failedMediaRecoveryVersion;
+  try {
+    assert.equal(native.createDriver().media!.drafts!.recoverFailed, undefined);
+  } finally {
+    native.nativeModule.failedMediaRecoveryVersion = 1;
+  }
+});
 
 test('native file sends preserve caption bytes and the same retry intent after an interrupted reply', async () => {
   native.requests.length = 0;

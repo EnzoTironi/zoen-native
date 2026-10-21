@@ -121,6 +121,7 @@ function fixture() {
     },
     '../core/message-presentation': {
       messageCanInteract: () => true,
+      messageCanRecoverMedia: () => false,
       messageCanEdit: () => false,
       messageCard: () => null,
     },

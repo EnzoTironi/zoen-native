@@ -75,6 +75,7 @@ public class ZoenCoreModule: Module {
       OnViewDidUpdateProps { (view: ZoenPageTextInput) in view.bind() }
     }
     Constant("composerGlassVersion") { 1 }
+    Constant("failedMediaRecoveryVersion") { 1 }
     View(ZoenComposerGlassSurface.self) {
       ViewName("ComposerGlassSurface")
       Prop("isDark") { (view: ZoenComposerGlassSurface, value: Bool) in view.isDark = value }

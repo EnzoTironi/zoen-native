@@ -13,6 +13,7 @@ declare class ZoenCoreModule extends NativeModule<{
   onChange: (event: CoreEvent) => void;
   onPageInputStatus: (event: { json: string }) => void;
 }> {
+  readonly failedMediaRecoveryVersion?: number;
   attachmentMosaicLayout?(
     width: number,
     height: number,

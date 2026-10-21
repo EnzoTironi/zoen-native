@@ -152,6 +152,58 @@ test('store channel lookup has no native IO, scopes account/device/thread, and r
   await web.close();
 });
 
+test('actual store recovery service uses both scoped channels and never invokes Send', async () => {
+  const driver = new Driver(),
+    store = new ClientStore(driver);
+  await store.open();
+  const requests: unknown[] = [];
+  driver.media!.drafts!.recoverFailed = async (scope, messageId, mediaRevision, normalRevision) => {
+    requests.push([scope, messageId, mediaRevision, normalRevision]);
+    return (
+      await driver.media!.drafts!.save(scope, mediaRevision, JSON.stringify(content), [ingest])
+    ).draft;
+  };
+  await store.mediaDrafts.recoverFailed('chat', null, 'failed', () => true);
+  assert.deepEqual(requests, [
+    [
+      {
+        expected_identity_id: 'owner',
+        expected_device_id: 'device',
+        space_id: 'chat',
+        thread_root_id: null,
+      },
+      'failed',
+      '0',
+      '0',
+    ],
+  ]);
+  assert.equal(store.mediaDrafts.channel('chat', null)!.getSnapshot().content?.kind, 'attachments');
+  await store.close();
+});
+
+test('actual store recovery service preserves concurrent normal typing and rejects a late composer adoption', async () => {
+  const driver = new Driver(),
+    store = new ClientStore(driver),
+    entered = deferred(),
+    finished = deferred();
+  await store.open();
+  driver.media!.drafts!.recoverFailed = async (scope, _message, revision) => {
+    entered.resolve();
+    await finished.promise;
+    return (await driver.media!.drafts!.save(scope, revision, JSON.stringify(content), [ingest]))
+      .draft;
+  };
+  const pending = store.mediaDrafts.recoverFailed('chat', null, 'failed', () => true);
+  await entered.promise;
+  const normal = store.messageDrafts.channel('chat', null)!;
+  normal.controller.setText(normal.scope, 'Keep concurrent text');
+  finished.resolve();
+  await assert.rejects(pending);
+  assert.equal(normal.controller.getSnapshot(normal.scope).text, 'Keep concurrent text');
+  assert.equal(store.mediaDrafts.channel('chat', null)!.getSnapshot().content, null);
+  await store.close();
+});
+
 test('actual Store.close waits admitted ingress and durable CAS before closing the native engine', async () => {
   const driver = new Driver();
   const store = new ClientStore(driver);

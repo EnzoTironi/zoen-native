@@ -71,6 +71,13 @@ export type MediaDraftSaveResult = Readonly<{
 export type MaterializedMediaDraftAsset = MediaDraftAsset & Readonly<{ uri: string }>;
 export interface MediaDraftPort {
   load(scope: MediaDraftScope): Promise<MediaDraftDto>;
+  /** Copies a refused send to a new private draft. Never sends or retries it. */
+  recoverFailed?(
+    scope: MediaDraftScope,
+    messageId: string,
+    expectedRevision: string,
+    expectedMessageRevision: string,
+  ): Promise<MediaDraftDto>;
   save(
     scope: MediaDraftScope,
     expectedRevision: string,

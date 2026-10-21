@@ -4,6 +4,7 @@ export type MessageContextAction =
   | 'thread'
   | 'copy'
   | 'edit'
+  | 'recover'
   | 'forward'
   | 'share'
   | 'delete';

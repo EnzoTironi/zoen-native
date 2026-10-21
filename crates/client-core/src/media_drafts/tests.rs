@@ -2,6 +2,8 @@ use super::*;
 use crate::{PrivacyDto, SecretVault};
 use std::sync::{Arc, Mutex};
 
+mod recovery;
+
 #[derive(Default)]
 struct Vault(Mutex<HashMap<String, Vec<u8>>>);
 impl SecretVault for Vault {

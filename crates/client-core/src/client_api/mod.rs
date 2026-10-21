@@ -97,6 +97,12 @@ enum Command {
         thread_root_id: Option<String>,
         expected_revision: String,
     },
+    RecoverFailedMediaDraft {
+        scope: crate::MediaDraftScope,
+        message_id: String,
+        expected_revision: String,
+        expected_message_revision: String,
+    },
     SendMessage {
         space_id: String,
         text: String,
@@ -762,6 +768,20 @@ impl Client {
                     thread_root_id,
                 };
                 encode(&self.lock().send_message_draft(&scope, &expected_revision)?)
+            }
+            RecoverFailedMediaDraft {
+                scope,
+                message_id,
+                expected_revision,
+                expected_message_revision,
+            } => {
+                let draft = self.lock().recover_failed_media_draft(
+                    &scope,
+                    &message_id,
+                    &expected_revision,
+                    &expected_message_revision,
+                )?;
+                encode(&draft)
             }
             SendMessage {
                 space_id,

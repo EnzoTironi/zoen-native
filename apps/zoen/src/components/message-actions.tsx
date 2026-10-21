@@ -41,6 +41,17 @@ export function MessageActions(props: MessageActionsProps) {
         ) : null}
         {props.mode === 'actions' ? (
           <View style={{ backgroundColor: colors.surface, padding: 12, borderRadius: 20, gap: 6 }}>
+            {props.onRecover &&
+            entry?.author.is_me &&
+            !entry.deleted &&
+            entry.delivery === 'Failed' ? (
+              <NativeButton
+                secondary
+                label={t('media.prepareNewSend')}
+                disabled={props.pending}
+                onPress={() => run(props.onRecover)}
+              />
+            ) : null}
             <NativeButton
               secondary
               label={t('chat.reply')}

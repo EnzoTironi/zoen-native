@@ -305,6 +305,8 @@ export class MediaDraftChannel {
   private editing: { token: string; task: Promise<void> } | null = null;
   private clearing = false;
   private clearTask: Promise<MediaDraftDto> | null = null;
+  private recovering = false;
+  private needsReload = false;
 
   constructor(scope: MediaDraftScope, port: MediaDraftPort, admitted: () => boolean = () => true) {
     if (
@@ -338,6 +340,7 @@ export class MediaDraftChannel {
         next.sending ||
         next.reviewing ||
         this.clearing ||
+        this.recovering ||
         !!this.intent ||
         !!next.value?.attempted,
     });
@@ -387,13 +390,15 @@ export class MediaDraftChannel {
       return Promise.reject(error);
     }
     if (this.loading) return this.loading;
-    if (this.state.value && !this.intent && !this.state.error) return Promise.resolve();
+    if (this.state.value && !this.intent && !this.state.error && !this.needsReload)
+      return Promise.resolve();
     const task = this.enqueue(async () => {
       this.draining();
       try {
         const value = await this.port.load(this.scope);
         this.draining();
         this.accept(value, this.writes.length > 0);
+        this.needsReload = false;
         this.publish({ phase: this.retirement ? 'closed' : 'ready' });
       } catch (cause) {
         const error = cause instanceof Error ? cause : new Error('Media draft read failed');
@@ -407,6 +412,58 @@ export class MediaDraftChannel {
     };
     void task.then(settled, settled);
     return task;
+  }
+
+  /** Prepare a new immutable copy, never resume the old transport intent. */
+  async recoverFailed(
+    messageId: string,
+    normalRevision: string,
+    current: () => boolean,
+  ): Promise<void> {
+    this.open();
+    if (
+      !this.port.recoverFailed ||
+      this.recovering ||
+      this.intent ||
+      this.state.sending ||
+      this.clearing ||
+      this.editing ||
+      this.stages.size ||
+      this.writes.length ||
+      this.writeError
+    )
+      throw new MediaDraftFailure('busy');
+    this.recovering = true;
+    this.publish({ saving: true });
+    try {
+      await this.load();
+      await this.enqueue(async () => {
+        this.open();
+        this.loaded();
+        const baseline = this.state.value!;
+        if (!current() || this.state.content || baseline.attempted || baseline.assets.length)
+          throw new MediaDraftFailure('conflict');
+        const result = await this.port.recoverFailed!(
+          this.scope,
+          messageId,
+          baseline.revision,
+          normalRevision,
+        );
+        this.open();
+        if (!current() || this.state.value !== baseline || this.state.content || this.writes.length)
+          throw new MediaDraftFailure('conflict');
+        this.accept(result);
+      });
+    } catch (cause) {
+      // An ACK may be lost after the encrypted copy committed. A subsequent
+      // explicit Retry/route load reads the journal; it never repeats this action.
+      this.needsReload = true;
+      this.publish({ error: cause instanceof Error ? cause : new MediaDraftFailure('conflict') });
+      throw cause;
+    } finally {
+      this.recovering = false;
+      this.publish({ saving: false });
+    }
   }
 
   save(
@@ -430,6 +487,7 @@ export class MediaDraftChannel {
       } else if (clearing) this.draining();
       else this.open();
       this.loaded();
+      if (this.recovering) throw new MediaDraftFailure('busy');
       if (this.clearing && !clearing) throw new MediaDraftFailure('busy');
       if ((this.state.sending || this.editing) && !stage) throw new MediaDraftFailure('busy');
       if (content !== null && (this.intent || this.state.value!.attempted))
@@ -491,6 +549,7 @@ export class MediaDraftChannel {
     try {
       this.open();
       this.loaded();
+      if (this.recovering) throw new MediaDraftFailure('busy');
     } catch (error) {
       return Promise.reject(error);
     }
@@ -549,6 +608,7 @@ export class MediaDraftChannel {
     }
     if (
       this.clearing ||
+      this.recovering ||
       this.state.sending ||
       this.editing ||
       this.intent ||
@@ -692,7 +752,7 @@ export class MediaDraftChannel {
       await this.send();
       return;
     }
-    if (!this.state.value) await this.load();
+    if (!this.state.value || this.needsReload) await this.load();
     await this.flush();
   }
 
@@ -701,7 +761,8 @@ export class MediaDraftChannel {
     try {
       this.open();
       this.loaded();
-      if (this.clearing || this.editing) throw new MediaDraftFailure('busy');
+      if (this.clearing || this.editing || this.recovering || this.needsReload)
+        throw new MediaDraftFailure('busy');
     } catch (error) {
       return Promise.reject(error);
     }

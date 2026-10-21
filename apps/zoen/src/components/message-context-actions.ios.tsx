@@ -50,6 +50,13 @@ export function ExtractedMessageActions({
       ['forward', t('chat.forward'), !entry.deleted ? props.onForward : undefined],
       ['copy', t('chat.copyText'), props.onCopy],
       ['share', t('media.share'), props.onShare],
+      [
+        'recover',
+        t('media.prepareNewSend'),
+        entry.author.is_me && !entry.deleted && entry.delivery === 'Failed'
+          ? props.onRecover
+          : undefined,
+      ],
       ['edit', t('chat.edit'), entry.author.is_me && !entry.deleted ? props.onEdit : undefined],
       [
         'delete',
@@ -87,6 +94,7 @@ export function ExtractedMessageActions({
           copy: props.onCopy,
           share: props.onShare,
           edit: props.onEdit,
+          recover: props.onRecover,
           delete: props.onDelete,
         }[value as MessageContextAction];
         run?.(entry);

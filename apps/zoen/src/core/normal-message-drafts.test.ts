@@ -106,6 +106,71 @@ test('cold restore gates input, caches a loaded scope, and keeps opaque revision
   assert.equal(f.calls.filter((call) => call.op === 'load').length, 1);
 });
 
+test('empty recovery barrier never flushes or resumes an ambiguous normal send', async () => {
+  const f = fixture();
+  await f.drafts.activate(main);
+  f.drafts.setText(main, 'An ambiguous accepted send');
+  f.hooks.sent = async () => {
+    throw new Error('Synthetic ACK loss');
+  };
+  await assert.rejects(f.drafts.send(main), kind('send'));
+  const calls = f.calls.length;
+  let recovered = false;
+  await assert.rejects(
+    f.drafts.withEmptyDraft(main, async () => {
+      recovered = true;
+    }),
+    kind('conflict'),
+  );
+  assert.equal(recovered, false);
+  assert.equal(f.calls.length, calls);
+  assert.equal(f.posts.length, 1);
+});
+
+test('empty recovery barrier preserves concurrent typing and invalidates late adoption without a send', async () => {
+  const f = fixture();
+  const entered = deferred<void>(),
+    done = deferred<void>();
+  let current: (() => boolean) | undefined;
+  const task = f.drafts.withEmptyDraft(main, async (revision, unchanged) => {
+    assert.equal(revision, '0');
+    current = unchanged;
+    entered.resolve();
+    await done.promise;
+  });
+  await entered.promise;
+  assert.equal(current?.(), true);
+  f.drafts.setText(main, 'Typed while preparing media');
+  assert.equal(current?.(), false);
+  done.resolve();
+  await task;
+  await f.drafts.flush(main);
+  assert.equal(f.current(main).text, 'Typed while preparing media');
+  assert.equal(f.posts.length, 0);
+  assert.equal(
+    f.calls.some((call) => call.op === 'send'),
+    false,
+  );
+});
+
+test('empty recovery barrier rejects occupied normal text or reply without mutation', async () => {
+  for (const reply of [false, true]) {
+    const f = fixture();
+    await f.drafts.activate(main);
+    if (reply) f.drafts.setReply(main, 'quoted');
+    else f.drafts.setText(main, 'Keep it');
+    await f.drafts.flush(main);
+    const before = { ...f.current(main) },
+      calls = f.calls.length;
+    await assert.rejects(
+      f.drafts.withEmptyDraft(main, async () => assert.fail('occupied')),
+      kind('conflict'),
+    );
+    assert.deepEqual(f.current(main), before);
+    assert.equal(f.calls.length, calls);
+  }
+});
+
 test('account, device, session, demo, chat and two thread scopes cannot share drafts', async () => {
   const f = fixture();
   const scopes: NormalDraftScope[] = [

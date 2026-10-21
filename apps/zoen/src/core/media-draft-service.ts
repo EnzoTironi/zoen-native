@@ -1,7 +1,9 @@
 import { homeOwnerFor, homeSpacesFor } from '../home/access.ts';
-import { MediaDraftChannel } from '../media/media-draft-channel.ts';
+import { MediaDraftChannel, MediaDraftFailure } from '../media/media-draft-channel.ts';
 import type { MediaDraftScope } from '../media/media-draft-types.ts';
 import type { ClientStore } from './store.ts';
+import { NormalDraftFailure } from './normal-message-drafts.ts';
+import { t } from '../i18n/index.ts';
 
 /** Session-owned channels only; no native work is started by render-time lookup. */
 export class MediaDraftService {
@@ -58,6 +60,38 @@ export class MediaDraftService {
       owner.deviceId === scope.expected_device_id &&
       homeSpacesFor(state).has(scope.space_id)
     );
+  }
+
+  async recoverFailed(
+    spaceId: string,
+    threadRootId: string | null,
+    messageId: string,
+    current: () => boolean,
+  ): Promise<void> {
+    const media = this.channel(spaceId, threadRootId);
+    const normal = this.store.messageDrafts.channel(spaceId, threadRootId);
+    if (!media || !normal || !this.store.driver.media?.drafts?.recoverFailed)
+      throw new Error(t('media.recoveryUnavailable'));
+    try {
+      await normal.controller.withEmptyDraft(normal.scope, (revision, unchanged) =>
+        media.recoverFailed(
+          messageId,
+          revision,
+          () =>
+            current() &&
+            unchanged() &&
+            this.isCurrent(media) &&
+            this.store.messageDrafts.isCurrent(normal),
+        ),
+      );
+    } catch (cause) {
+      if (
+        (cause instanceof NormalDraftFailure || cause instanceof MediaDraftFailure) &&
+        (cause.kind === 'conflict' || cause.kind === 'busy')
+      )
+        throw new Error(t('media.recoveryDraftOccupied'), { cause });
+      throw cause;
+    }
   }
 
   private async retire(discard: boolean): Promise<void> {

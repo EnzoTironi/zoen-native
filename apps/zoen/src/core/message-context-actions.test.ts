@@ -47,6 +47,7 @@ function fixture(
     selected?: boolean;
     pending?: boolean;
     row?: boolean;
+    recover?: boolean;
   } = {},
 ) {
   const result = deferred<string | null>(),
@@ -82,6 +83,7 @@ function fixture(
       id: 'message',
       author: { is_me: options.mine ?? true },
       deleted: options.deleted ?? false,
+      delivery: options.recover ? 'Failed' : 'Sent',
       reactions: options.selected ? [{ emoji: '❤️', mine: true }] : [],
     },
     nativeSource: request,
@@ -95,7 +97,8 @@ function fixture(
     onForward: () => calls.push('forward'),
     onCopy: () => calls.push('copy'),
     onShare: () => calls.push('share'),
-    onEdit: () => calls.push('edit'),
+    onEdit: options.recover ? undefined : () => calls.push('edit'),
+    onRecover: options.recover ? () => calls.push('recover') : undefined,
     onDelete: () => calls.push('delete'),
   };
   const theme = {
@@ -203,6 +206,24 @@ test('actual compiled reply waits native completion, closes selection, then call
   f.result.resolve('reply');
   await tick();
   assert.deepEqual(f.calls, ['close', 'reply']);
+});
+
+test('actual compiled recovery action waits native removal and delegates only the supplied explicit callback', async () => {
+  const f = fixture({ recover: true });
+  f.render();
+  await tick();
+  assert.equal(
+    f.configurations[0].actions.some((value: any) => value.id === 'recover'),
+    true,
+  );
+  assert.equal(
+    f.configurations[0].actions.some((value: any) => value.id === 'edit'),
+    false,
+  );
+  assert.deepEqual(f.calls, []);
+  f.result.resolve('recover');
+  await tick();
+  assert.deepEqual(f.calls, ['close', 'recover']);
 });
 test('selected reaction toggles null and leaves selection for the existing mutation success/error contract', async () => {
   const f = fixture({ selected: true });

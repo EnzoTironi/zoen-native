@@ -300,6 +300,7 @@ struct ZoenMessageContextConfiguration: Decodable {
       case "thread": "bubble.left.and.bubble.right"
       case "copy": "doc.on.doc"
       case "edit": "pencil"
+      case "recover": "arrow.clockwise"
       case "forward": "arrowshape.turn.up.right"
       case "share": "square.and.arrow.up"
       case "delete": "trash"

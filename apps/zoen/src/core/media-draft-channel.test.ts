@@ -175,6 +175,104 @@ function fixture() {
   };
 }
 
+test('Failed recovery adopts a new journal only after the same empty composer admission and never sends', async () => {
+  const f = fixture();
+  const requests: unknown[] = [];
+  f.port.recoverFailed = async (actual, message, mediaRevision, normalRevision) => {
+    requests.push([actual, message, mediaRevision, normalRevision]);
+    return (await f.port.save(scope, mediaRevision, JSON.stringify(content()), [ingest()])).draft;
+  };
+  await f.channel.recoverFailed('failed-message', 'normal-7', () => true);
+  assert.deepEqual(requests, [[scope, 'failed-message', '0', 'normal-7']]);
+  assert.equal(f.channel.getSnapshot().content?.kind, 'attachments');
+  assert.equal(f.channel.getSnapshot().frozen, false);
+  assert.equal(
+    f.calls.some((call) => call.op === 'send'),
+    false,
+  );
+});
+
+test('Failed recovery excludes parallel media writes and preserves late normal typing until explicit reload', async () => {
+  const f = fixture(),
+    entered = deferred(),
+    finish = deferred();
+  let current = true;
+  f.port.recoverFailed = async (_scope, _message, revision) => {
+    entered.resolve();
+    await finish.promise;
+    return (await f.port.save(scope, revision, JSON.stringify(content()), [ingest()])).draft;
+  };
+  const work = f.channel.recoverFailed('failed', '0', () => current);
+  await entered.promise;
+  assert.equal(f.channel.getSnapshot().frozen, true);
+  await assert.rejects(f.channel.save(content('later'), [ingest()]), kind('busy'));
+  await assert.rejects(f.channel.clear(), kind('busy'));
+  await assert.rejects(f.channel.send(), kind('busy'));
+  current = false;
+  finish.resolve();
+  await assert.rejects(work, kind('conflict'));
+  assert.equal(
+    f.channel.getSnapshot().content,
+    null,
+    'a late ACK cannot replace the changed composer',
+  );
+  await f.channel.retry();
+  assert.equal(
+    f.channel.getSnapshot().content?.kind,
+    'attachments',
+    'explicit Retry reloads committed canonical data',
+  );
+  assert.equal(
+    f.calls.some((call) => call.op === 'send'),
+    false,
+  );
+});
+
+test('lost Failed recovery ACK reloads the committed draft without repeating the recovery or sending', async () => {
+  const f = fixture();
+  let recoveries = 0;
+  f.port.recoverFailed = async (_scope, _message, revision) => {
+    recoveries++;
+    await f.port.save(scope, revision, JSON.stringify(content()), [ingest()]);
+    throw new Error('Synthetic recovery ACK loss');
+  };
+  await assert.rejects(
+    f.channel.recoverFailed('failed', '0', () => true),
+    /ACK loss/,
+  );
+  assert.equal(f.channel.getSnapshot().content, null);
+  await f.channel.retry();
+  assert.equal(f.channel.getSnapshot().content?.kind, 'attachments');
+  assert.equal(recoveries, 1);
+  assert.equal(
+    f.calls.some((call) => call.op === 'send'),
+    false,
+  );
+});
+
+test('retiring Failed recovery cannot adopt a prior account result', async () => {
+  const f = fixture(),
+    entered = deferred(),
+    finish = deferred();
+  f.port.recoverFailed = async (_scope, _message, revision) => {
+    entered.resolve();
+    await finish.promise;
+    return (await f.port.save(scope, revision, JSON.stringify(content()), [ingest()])).draft;
+  };
+  const work = f.channel.recoverFailed('failed', '0', () => true);
+  await entered.promise;
+  const closed = f.channel.retire(false);
+  finish.resolve();
+  await assert.rejects(work, kind('closed'));
+  await closed;
+  assert.equal(f.channel.getSnapshot().phase, 'closed');
+  assert.equal(f.channel.getSnapshot().content, null);
+  assert.equal(
+    f.calls.some((call) => call.op === 'send'),
+    false,
+  );
+});
+
 for (const discard of [false, true]) {
   test(`throwing observers cannot abandon ${discard ? 'discard' : 'preserve'} retirement edit cancellation or file-release retry`, async (t) => {
     const f = fixture();
