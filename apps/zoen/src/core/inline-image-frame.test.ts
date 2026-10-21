@@ -12,6 +12,10 @@ import type { DecodedMessageImage } from '../media/inline-image-frame.ts';
 import { contrastRatio, resolveSkyTheme, skyBackdrops } from '../theme/sky.ts';
 import { DEFAULT_THEME_CUSTOMIZATION } from '../theme/telegram.ts';
 import { formatFileSize } from '../media/file-size.ts';
+import { albumDelivery, type MediaAlbum } from './media-albums.ts';
+import { messageCard } from './message-presentation.ts';
+import { messageText } from './presentation.ts';
+import type { TimelineEntry } from './types';
 
 const sourcePath = fileURLToPath(new URL('../media/MediaAttachment.tsx', import.meta.url));
 const require = createRequire(import.meta.url);
@@ -57,6 +61,22 @@ const compiled = await build({
     },
   ],
 });
+const albumCode = (
+  await build({
+    stdin: {
+      contents: readFileSync(
+        new URL('../components/conversation-album-message.tsx', import.meta.url),
+        'utf8',
+      ),
+      loader: 'tsx',
+    },
+    bundle: false,
+    platform: 'node',
+    format: 'cjs',
+    jsx: 'automatic',
+    write: false,
+  })
+).outputFiles[0]!.text;
 type Element = { type: unknown; props: Record<string, unknown> };
 function elements(value: unknown): Element[] {
   if (Array.isArray(value)) return value.flatMap(elements);
@@ -81,6 +101,8 @@ function fixture(
     info?: Partial<FileDto>;
     voice?: Record<string, unknown>;
     onInlineUnavailable?: () => void;
+    fileInfoError?: boolean;
+    materializeError?: boolean;
   } = {},
 ) {
   const info: FileDto = {
@@ -120,8 +142,14 @@ function fixture(
     });
   };
   const driver = {
-    fileInfo: async () => info,
-    materializeFile: async () => file,
+    fileInfo: async () => {
+      if (options.fileInfoError) throw new Error('Synthetic metadata unavailable');
+      return info;
+    },
+    materializeFile: async () => {
+      if (options.materializeError) throw new Error('Synthetic copy unavailable');
+      return file;
+    },
     releaseLocalFile: async () => {},
   };
   const snapshot = { account: null };
@@ -143,6 +171,7 @@ function fixture(
         return (current.value ??= { current: value });
       },
       useEffect: effect,
+      useLayoutEffect: effect,
       useCallback: (work: unknown) => work,
     },
     'react/compiler-runtime': {
@@ -150,7 +179,12 @@ function fixture(
         (caches[compilerCursor++] ??= Array(size).fill(Symbol.for('react.memo_cache_sentinel'))),
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    'react-native': { View: 'View', Text: 'Text', ActivityIndicator: 'ActivityIndicator' },
+    'react-native': {
+      View: 'View',
+      Text: 'Text',
+      ActivityIndicator: 'ActivityIndicator',
+      useWindowDimensions: () => ({ width: 390, scale: 3 }),
+    },
     'expo-image': { Image: 'Image' },
     'expo-sharing': {},
     '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en-US' },
@@ -173,6 +207,20 @@ function fixture(
     './VideoClip': { VideoClip: 'VideoClip' },
     './preview-file': { previewMediaFile: async () => {} },
     './file-size': { formatFileSize },
+    '../core/media-albums': { albumDelivery },
+    '../core/message-presentation': { messageCard },
+    '../core/presentation': { messageText },
+    './conversation-message': { ConversationMessage: 'CanonicalConversationMessage' },
+    '../media/mosaic-layout': {
+      mediaMosaicLayout: () => ({
+        width: 201,
+        height: 100,
+        items: [
+          { x: 0, y: 0, width: 100, height: 100, position: 1 },
+          { x: 101, y: 0, width: 100, height: 100, position: 2 },
+        ],
+      }),
+    },
   };
   const module = {
     exports: {} as { FileAttachmentContent(props: Record<string, unknown>): Element },
@@ -183,6 +231,19 @@ function fixture(
     require: (path: string) => {
       assert.ok(path in ports, path);
       return ports[path];
+    },
+  });
+  const albumModule = {
+    exports: {} as {
+      ConversationAlbumMessage(props: Record<string, unknown>): Element | Element[];
+    },
+  };
+  runInNewContext(albumCode, {
+    module: albumModule,
+    exports: albumModule.exports,
+    require: (name: string) => {
+      assert.ok(name in ports, name);
+      return ports[name];
     },
   });
   const render = () => {
@@ -211,6 +272,18 @@ function fixture(
   };
   return {
     render,
+    renderAlbum: (album: MediaAlbum) => {
+      cursor = 0;
+      compilerCursor = 0;
+      effects = [];
+      const tree = albumModule.exports.ConversationAlbumMessage({
+        album,
+        spaceId: album.spaceId,
+        entry: album.entries[0],
+      });
+      for (const work of effects) work();
+      return tree;
+    },
     parts,
     file,
     decoded,
@@ -381,5 +454,70 @@ test('actual canonical file metadata releases a visual album to individual rows 
       'Unchanged metadata must not publish another classification',
     );
     f.unmount();
+  }
+});
+
+test('actual metadata, materialize and image decode failures invoke the production album callback and retain EVERY canonical row', async () => {
+  for (const failure of ['fileInfoError', 'materializeError', 'decode'] as const) {
+    const parent = fixture();
+    const album: MediaAlbum = {
+      id: 'qa-signed-group',
+      spaceId: 'qa',
+      presentation: 'media',
+      entries: [0, 1].map(
+        (index) =>
+          ({
+            id: `member-${index}`,
+            author: { is_me: true },
+            delivery: 'Sent',
+            kind: {
+              Message: {
+                text: `Caption ${index}`,
+                card: { item_id: index ? 'other' : 'item', kind_id: 'file', version: 3 },
+              },
+            },
+          }) as TimelineEntry,
+      ),
+    };
+    const first = parent.renderAlbum(album) as Element;
+    const media = first.props.albumContent as { media: Element };
+    const leaf = (media.media.props.children as Element[])[0]!.props.children as Element;
+    const part = leaf.props.albumPart as { onInlineUnavailable(): void };
+    const file = fixture(true, {
+      onInlineUnavailable: part.onInlineUnavailable,
+      ...(failure === 'decode' ? {} : { [failure]: true }),
+    });
+    await file.ready();
+    if (failure === 'decode') {
+      const failedImage = file.parts().image;
+      (failedImage.props.onError as () => void)();
+      file.render();
+    }
+    const rows = parent.renderAlbum(album) as Element[];
+    assert.ok(Array.isArray(rows), `${failure} must release the clipped mosaic`);
+    assert.deepEqual(
+      rows.map((row) => row.props.entry),
+      album.entries,
+    );
+    assert.ok(rows.every((row) => row.type === 'CanonicalConversationMessage'));
+    // A late error from the old version cannot disband a newly rendered album.
+    const successor = {
+      ...album,
+      entries: album.entries.map((entry, index) =>
+        index
+          ? entry
+          : {
+              ...entry,
+              kind: {
+                Message: { text: 'Successor', card: { ...messageCard(entry)!, version: 4 } },
+              },
+            },
+      ),
+    };
+    assert.ok(!Array.isArray(parent.renderAlbum(successor)));
+    part.onInlineUnavailable();
+    assert.ok(!Array.isArray(parent.renderAlbum(successor)));
+    file.unmount();
+    parent.unmount();
   }
 });

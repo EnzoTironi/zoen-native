@@ -14,8 +14,15 @@ type VideoClipProps = {
   compact?: boolean;
   tile?: { width: number; height: number };
   onDimensions?: (size: { width: number; height: number }) => void;
+  onInlineUnavailable?: () => void;
 };
-export function VideoClip({ uri, compact = false, tile, onDimensions }: VideoClipProps) {
+export function VideoClip({
+  uri,
+  compact = false,
+  tile,
+  onDimensions,
+  onInlineUnavailable,
+}: VideoClipProps) {
   const [attempt, setAttempt] = useState(0);
   return (
     <VideoClipContent
@@ -24,6 +31,7 @@ export function VideoClip({ uri, compact = false, tile, onDimensions }: VideoCli
       compact={compact}
       tile={tile}
       onDimensions={onDimensions}
+      onInlineUnavailable={onInlineUnavailable}
       onRetry={() => setAttempt((value) => value + 1)}
     />
   );
@@ -35,12 +43,14 @@ function VideoClipContent({
   onRetry,
   tile,
   onDimensions,
+  onInlineUnavailable,
 }: {
   uri: string;
   compact: boolean;
   onRetry: () => void;
   tile?: VideoClipProps['tile'];
   onDimensions?: VideoClipProps['onDimensions'];
+  onInlineUnavailable?: VideoClipProps['onInlineUnavailable'];
 }) {
   const { colors } = useTheme();
   const messagePan = useMessagePan();
@@ -74,6 +84,12 @@ function VideoClipContent({
     if (current?.player === player) current.owner.observe(isPlaying);
   });
   const status = useEvent(player, 'statusChange', { status: player.status, error: undefined });
+  useEffect(() => {
+    // The ordinary row keeps its visible Retry. A failed mosaic cell must
+    // release the bounded tile before that control would fall below its clip.
+    if ((status.status === 'error' || status.error) && playback.current?.player === player)
+      onInlineUnavailable?.();
+  }, [player, status.status, status.error, onInlineUnavailable]);
   const source = useEvent(player, 'sourceLoad', {
     videoSource: { uri },
     duration: player.duration,

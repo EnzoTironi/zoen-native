@@ -141,8 +141,9 @@ function FileAttachmentContent({
   useEffect(() => {
     // A signed media group can contain a generic/large file. Retain its ordinary
     // canonical row rather than squeezing a file action into a visual mosaic.
-    if (info && (!visual || Number(info.bytes) > 16 * 1048576)) onInlineUnavailable?.();
-  }, [info, visual, onInlineUnavailable]);
+    if (mounted.current && (error || (info && (!visual || Number(info.bytes) > 16 * 1048576))))
+      onInlineUnavailable?.();
+  }, [info, visual, error, onInlineUnavailable]);
   useEffect(() => {
     if (!driver || !message || !info?.ready || !visual || Number(info.bytes) > 16 * 1048576) return;
     let active = true;
@@ -159,7 +160,7 @@ function FileAttachmentContent({
         if (previous) await driver.releaseLocalFile(previous.uri);
       })
       .catch((reason: unknown) => {
-        if (active && mounted.current)
+        if (active && mounted.current && expectedGeneration === generation.current)
           setError(reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'));
       });
     return () => {
@@ -323,7 +324,10 @@ function FileAttachmentContent({
                 });
               }
             }}
-            onError={() => setError(t('media.thisFileCouldNotBeOpened'))}
+            onError={() => {
+              if (mounted.current && owned.current === local)
+                setError(t('media.thisFileCouldNotBeOpened'));
+            }}
             style={{ position: 'absolute', inset: 0 }}
           />
           <View
@@ -344,6 +348,7 @@ function FileAttachmentContent({
             uri={local.uri}
             compact
             tile={tile}
+            onInlineUnavailable={onInlineUnavailable}
             onDimensions={
               tile
                 ? (size) => {
