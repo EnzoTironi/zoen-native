@@ -62,23 +62,23 @@ export function ComposerGlyph({
 }) {
   const glyphs = {
     plus: {
-      source: require('../../assets/telegram-composer/attach@2x.png'),
+      source: require('../../assets/telegram-composer/attach.png'),
       width: 30,
       height: 30,
     },
-    mic: { source: require('../../assets/telegram-composer/mic@2x.png'), width: 30, height: 30 },
+    mic: { source: require('../../assets/telegram-composer/mic.png'), width: 30, height: 30 },
     'arrow.up': {
-      source: require('../../assets/telegram-composer/send@2x.png'),
+      source: require('../../assets/telegram-composer/send.png'),
       width: 34,
       height: 34,
     },
     keyboard: {
-      source: require('../../assets/telegram-composer/keyboard@2x.png'),
+      source: require('../../assets/telegram-composer/keyboard.png'),
       width: 29,
       height: 24,
     },
     'face.smiling': {
-      source: require('../../assets/telegram-composer/stickers@2x.png'),
+      source: require('../../assets/telegram-composer/stickers.png'),
       width: 24,
       height: 24,
     },
