@@ -342,7 +342,7 @@ impl State {
     pub(crate) fn reserve_failed_attachment(&mut self, event: &Event, local: &str, source: &Event) {
         let EventBody::MessagePosted {
             attaches: Some(item),
-            media: Some(media),
+            media,
             forwarded,
             ..
         } = &event.body
@@ -363,8 +363,9 @@ impl State {
             && event.space == source.space
             && item == source_item
             && !doc.is_voice()
-            && media.is_valid()
-            && !(*forwarded && media.group.is_some())
+            && media
+                .as_ref()
+                .is_none_or(|media| media.is_valid() && !(*forwarded && media.group.is_some()))
             && event_log::verify_author(event).is_ok()
             && event_log::verify_author(source).is_ok()
         {
@@ -447,7 +448,7 @@ impl State {
         let EventBody::MessagePosted {
             text,
             attaches: Some(item),
-            media: Some(media),
+            media,
             reply,
             forwarded,
             ..
@@ -457,8 +458,9 @@ impl State {
         };
         if event.author != local
             || event_log::verify_author(event).is_err()
-            || !media.is_valid()
-            || (*forwarded && media.group.is_some())
+            || media
+                .as_ref()
+                .is_some_and(|media| !media.is_valid() || (*forwarded && media.group.is_some()))
             || !self.spaces.contains_key(&event.space)
         {
             return false;
@@ -492,7 +494,7 @@ impl State {
             .filter(|file| {
                 file.space == event.space
                     && matches!(&file.current().content, ItemContent::File(doc) if !doc.is_voice())
-                    && (media.group.is_none()
+                    && (media.as_ref().is_none_or(|media| media.group.is_none())
                         || file
                             .versions
                             .first()
@@ -522,7 +524,7 @@ impl State {
                 attaches: Some(item.clone()),
                 reply: reply.clone(),
                 marks: MessageMarks {
-                    media: Some(media.clone()),
+                    media: media.clone(),
                     forwarded: *forwarded,
                     ..Default::default()
                 },

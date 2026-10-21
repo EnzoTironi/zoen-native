@@ -378,7 +378,6 @@ impl Engine {
             for row in pending.iter().filter(|row| row.failed) {
                 if let EventBody::MessagePosted {
                     attaches: Some(item),
-                    media: Some(_),
                     ..
                 } = &row.event.body
                 {
@@ -433,7 +432,6 @@ impl Engine {
                     let scoped = projections.get_mut(&e.space).expect("checked above");
                     if let EventBody::MessagePosted {
                         attaches: Some(item),
-                        media: Some(_),
                         ..
                     } = &e.body
                     {

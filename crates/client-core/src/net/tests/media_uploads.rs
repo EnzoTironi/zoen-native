@@ -531,6 +531,43 @@ async fn terminal_upload(status: u16, file_presentation: bool) {
     );
     assert_eq!(local.kind, sent.entries[0].kind);
     assert_eq!(local.media, sent.entries[0].media);
+    if !file_presentation {
+        let crate::EntryKind::Message {
+            card: Some(card), ..
+        } = &local.kind
+        else {
+            panic!("default attachment lost its recovery card")
+        };
+        let mut engine = sender.lock();
+        assert!(engine.state.is_recovery_item(&card.item_id));
+        let before = engine.store.conn().total_changes();
+        assert!(engine
+            .post_as(
+                &space,
+                &scope.expected_identity_id,
+                "new claim",
+                Some(card.item_id.clone())
+            )
+            .is_err());
+        assert!(engine
+            .file_new_version_typed(
+                &card.item_id,
+                b"must not write",
+                None,
+                "new version",
+                "new.pdf",
+                "application/pdf"
+            )
+            .is_err());
+        assert!(engine
+            .restore_version(&card.item_id, 1, "new revert")
+            .is_err());
+        assert_eq!(
+            engine.store.conn().total_changes(),
+            before,
+            "display-only default recovery cannot authorize writes"
+        );
+    }
     let engine = sender.lock();
     let retained: Vec<u8> = engine
         .store
