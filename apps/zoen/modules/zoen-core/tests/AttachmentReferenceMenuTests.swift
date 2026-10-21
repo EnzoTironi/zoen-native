@@ -49,6 +49,14 @@ import UIKit
       XCTAssertEqual(sends, 0)
       if invalidation == 0 {
         let outside = try XCTUnwrap(menu.hitTest(CGPoint(x: 20, y: 500), with: nil) as? UIControl)
+        // A clear hit target also needs rendered contents for iOS 27 delivery.
+        // This structural assertion and sendActions do not prove real OS taps.
+        let contents = try XCTUnwrap(outside.layer.contents)
+        guard CFGetTypeID(contents as CFTypeRef) == CGImage.typeID else {
+          XCTFail("outside-dismiss contents must be an actual rendered image"); return
+        }
+        let rendered = contents as! CGImage
+        XCTAssertEqual(rendered.width, 1); XCTAssertEqual(rendered.height, 1)
         outside.sendActions(for: .touchUpInside)
       } else if invalidation == 1 { parent.view.removeFromSuperview() }
       menu.retire(); row.sendActions(for: .touchUpInside)

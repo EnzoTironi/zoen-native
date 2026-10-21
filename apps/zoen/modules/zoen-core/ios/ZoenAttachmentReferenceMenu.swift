@@ -7,6 +7,15 @@ import UIKit
 // No new selection, caption, permission or send authority lives in this view.
 @MainActor
 final class ZoenAttachmentReferenceMenu: UIView {
+  // ContextSourceContainer.swift:17–25,410–423. Transparent rendered contents
+  // keep the clear outside-dismiss surface in iOS 27 touch delivery; hitTest
+  // alone is insufficient. Shared per class; no visible backdrop is introduced.
+  private static let transparentHitTestImage: UIImage = {
+    UIGraphicsBeginImageContextWithOptions(CGSize(width: 1, height: 1), false, 1)
+    let image = UIGraphicsGetImageFromCurrentImageContext()
+    UIGraphicsEndImageContext()
+    return image ?? UIImage()
+  }()
   struct Action {
     let id: String
     let title: String
@@ -55,6 +64,7 @@ final class ZoenAttachmentReferenceMenu: UIView {
     shield.accessibilityTraits = .button; shield.isAccessibilityElement = true
     shield.accessibilityIdentifier = "attachment-reference-menu-dismiss"
     shield.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
+    shield.layer.contents = Self.transparentHitTestImage.cgImage
     // Keep a full-window clear cancellation surface; only menu contents scroll.
     addSubview(shield); addSubview(scroll)
     scroll.backgroundColor = .clear; scroll.contentInsetAdjustmentBehavior = .never

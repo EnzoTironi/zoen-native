@@ -31,6 +31,10 @@ offset. The immediate-touch selection recognizer follows
 `ContextControllerActionsStackNode:1405–1467`; enabled rows highlight with
 selection haptics,0.16s movement and0.2s appearance/release. A canceled gesture
 does not perform an action. Outside tap and accessibility Escape dismiss.
+`ContextSourceContainer:17–25,410–423` supplies the same invisible1×1 rendered
+image to the outside-dismiss layer: the pinned source records that a clear layer
+with no contents can pass hit testing yet receive no delivered touches on iOS27.
+The image is shared and creates no visible dimming or change to the hit rectangle.
 
 `MediaPickerScreen:3174–3181` begins dismissal before invoking Send-as-File;
 sending does not wait for the animation completion. Zoen's existing
@@ -76,3 +80,8 @@ must qualify actual More hit targets, drag/outside cancel, close during opening,
 caption focus/final keystroke, invalidation/retirement and day/night geometry
 in the next integrated runtime batch. Pixel/animation parity is not certified by
 typechecking or arithmetic tests.
+The outside-dismiss UIKit assertion checks the1×1 rendered contents; calling
+`sendActions` still does not establish that the OS delivered a physical tap.
+That touch-delivery follow-up is SDK-qualified in
+`/Users/enzotironi/.codex/builds/zoen-reference-menu-touch-v253/`; its UIKit test
+has only been typechecked. Integrated iOS27 outside taps remain the parent batch.
