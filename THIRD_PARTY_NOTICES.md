@@ -86,6 +86,16 @@ The selected license is GPLv3 under the upstream GPL-2.0-or-later option, combin
 
 The attachment settlement spring parameters and speed scaling translate `ContainedViewLayoutTransition.swift` and `CAAnimationUtils.swift` at the same revision. The entrance uses the upstream fallback without a native glass source-button frame. These animation sources and remaining adaptations are included in the same inventory.
 
+The Photos More reference menu translates the modern `ContextControllerImpl`,
+`ContextSourceContainer`, `ContextControllerExtractedPresentationNode` and
+`ContextControllerActionsStackNode` plain reference/list branch at the same pin,
+including geometry, immediate-touch selection, haptics and layer animations.
+Exact source hashes, selected ranges and UIKit adaptations are recorded in
+`docs/product/telegram-ios-reference-menu-sources.json`. The existing original
+glass implementation and selected GPLv3 terms are reused. This slice does not
+import Telegram's account model, extracted message rows or optional liquid-morph
+runtime; existing Zoen revision/selection/caption/send authority remains intact.
+
 The shared native gallery, selected-media mosaic, photo strip, gallery spring
 and image-edit controls also translate the pinned `TGMediaPickerGalleryInterfaceView`,
 `TGModernGalleryController`, `JNWSpringAnimation`, `MosaicLayout`,

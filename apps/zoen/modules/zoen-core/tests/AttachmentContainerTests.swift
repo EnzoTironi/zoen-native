@@ -81,7 +81,8 @@ final class AttachmentContainerTests: XCTestCase {
     try content.update(model: value, appearance: appearance)
     let caption = try XCTUnwrap(find(content.view, type: UITextView.self, id: "attachment-caption"))
     let more = try XCTUnwrap(find(content.view, type: UIButton.self, id: "attachment-keyboard-review"))
-    XCTAssertEqual((more.menu?.children.first as? UIAction)?.title, "Send as File")
+    XCTAssertNil(more.menu, "Photos uses the pinned reference renderer rather than a UIKit menu")
+    XCTAssertFalse(more.showsMenuAsPrimaryAction)
     caption.text = "final native file caption 🪁"
     content.performSendAsFileOption(revision: "selected-a", selection: ["ph://synthetic-a"])
     XCTAssertEqual(events.count, 1)

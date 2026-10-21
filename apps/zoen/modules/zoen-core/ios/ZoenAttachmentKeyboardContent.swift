@@ -111,6 +111,8 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
   private var requestedCount: Int?
   private var sendOptionsRevision: String?
   private var sendAsFileOptionEnabled = false
+  private var sendOptionActions: [ZoenAttachmentReferenceMenu.Action] = []
+  private var referenceMenu: ZoenAttachmentReferenceMenu?
   private var albumId: String?
   private var screen = "grid"
   private var activeCategory = "photos"
@@ -171,8 +173,9 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
       self.send(self.activeCategory == "photos" ? "send" : "recentSend", ["text": self.caption.text ?? ""])
     }, for: .touchUpInside)
     review.addAction(UIAction { [weak self] _ in
-      guard let self, !self.retired, !self.busy, self.activeCategory != "photos", self.fileLanding.searchAvailable else { return }
-      self.send("recentSearch", [:])
+      guard let self, !self.retired, !self.busy else { return }
+      if self.activeCategory == "photos" { self.showSendOptions() }
+      else if self.fileLanding.searchAvailable { self.send("recentSearch", [:]) }
     }, for: .touchUpInside)
     countLabel.font = .systemFont(ofSize: 11, weight: .semibold); countLabel.textAlignment = .center
     countLabel.layer.cornerRadius = 9; countLabel.clipsToBounds = true
@@ -185,7 +188,7 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     review.setImage(ZoenTelegramAttachmentGlyph.image(.more), for: .normal)
     review.accessibilityIdentifier = "attachment-keyboard-review"
     // Telegram's more control exposes send options, never terminal approval.
-    review.showsMenuAsPrimaryAction = true
+    review.showsMenuAsPrimaryAction = false
     albums.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
     albums.addAction(UIAction { [weak self] _ in self?.emit("albums") }, for: .touchUpInside)
     selectedButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
@@ -281,7 +284,7 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     let optionSelection = selected
     let options = activeCategory == "photos" && screen == "grid" && revision != nil
       ? model["sendOptions"] as? [[String: Any]] ?? [] : []
-    review.menu = UIMenu(children: options.compactMap { option -> UIAction? in
+    sendOptionActions = options.compactMap { option -> ZoenAttachmentReferenceMenu.Action? in
       guard option["id"] as? String == "send-as-file", let revision,
             let title = option["title"] as? String, !title.isEmpty,
             title.utf16.count <= 1024, !title.contains("\0"),
@@ -290,12 +293,12 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
       sendAsFileOptionEnabled = enabled
       // MediaPickerScreen:3174–3181 uses the actual Context Menu/File glyph and
       // an explicit terminal file intent. No quality or MIME substitution.
-      return UIAction(title: title, image: ZoenTelegramAttachmentGlyph.image(.sendAsFile),
-                      attributes: enabled ? [] : .disabled) { [weak self] _ in
+      return ZoenAttachmentReferenceMenu.Action(id: "send-as-file", title: title,
+        image: ZoenTelegramAttachmentGlyph.image(.sendAsFile), enabled: enabled) { [weak self] in
         self?.performSendAsFileOption(revision: revision, selection: optionSelection)
       }
-    })
-    let hasOptions = review.menu?.children.isEmpty == false
+    }
+    let hasOptions = !sendOptionActions.isEmpty
     review.isEnabled = !busy && hasOptions
     review.isHidden = !hasOptions
     headerRightSurface.isHidden = !hasOptions
@@ -322,14 +325,12 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     recentSelected = (model["recent"] as? [String: Any])?["selected"] as? [String] ?? []
     try updateCaption(model["caption"] as? [String: Any])
     if activeCategory != "photos" {
-      review.menu = nil; review.showsMenuAsPrimaryAction = false
       review.setImage(ZoenTelegramFileVisuals.searchIcon(), for: .normal)
       review.accessibilityLabel = labels["search"]
       review.isEnabled = !busy && fileLanding.searchAvailable
       review.isHidden = !fileLanding.searchAvailable
       headerRightSurface.isHidden = !fileLanding.searchAvailable
     } else {
-      review.showsMenuAsPrimaryAction = true
       review.setImage(ZoenTelegramAttachmentGlyph.image(.more), for: .normal)
     }
     rebuildCategories(model["categories"] as? [[String: String]])
@@ -370,6 +371,7 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
       }
     }
     reflow()
+    referenceMenu?.invalidateIfNeeded()
     if activeCategory != "photos" && fileLanding.searching {
       DispatchQueue.main.async { [weak self] in self?.fileLanding.focusSearch() }
     }
@@ -459,6 +461,7 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
       gallery.updatePresentation(keyboardHeight: keyboardHeight, safeArea: gallerySafeArea)
     }
     reflow()
+    referenceMenu?.invalidateIfNeeded()
   }
   private func updateSelectionPresentation() {
     let active = selecting && captionEnabled
@@ -572,6 +575,26 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
   private func emit(_ action: String, id: String? = nil) {
     guard !retired, !busy else { return }
     send(action, id.map { ["id": $0] } ?? [:])
+  }
+  private func showSendOptions() {
+    guard referenceMenu == nil, let appearance, let window = review.window,
+          let revision = sendOptionsRevision, !sendOptionActions.isEmpty else { return }
+    let selection = selected
+    let optionKeys = sendOptionActions.map { [$0.id, $0.title, $0.enabled ? "enabled" : "disabled"] }
+    let menu = ZoenAttachmentReferenceMenu(source: review, actions: sendOptionActions,
+      dismissLabel: labels["close"] ?? "", appearance: appearance,
+      isValid: { [weak self] in
+        guard let self else { return false }
+        return !self.retired && !self.busy && !self.captionSending && self.captionEnabled &&
+          self.activeCategory == "photos" && self.screen == "grid" &&
+          self.sendOptionsRevision == revision && self.selected == selection &&
+          self.sendOptionActions.map { [$0.id, $0.title, $0.enabled ? "enabled" : "disabled"] } == optionKeys &&
+          !self.review.isHidden && self.appearance?.isDark == appearance.isDark
+      }, didDismiss: { [weak self] menu in
+        if self?.referenceMenu === menu { self?.referenceMenu = nil }
+      })
+    referenceMenu = menu
+    if !menu.present(in: window) { referenceMenu = nil }
   }
   func performSendAsFileOption(revision: String, selection: [String]) {
     guard !retired, !busy, !captionSending, captionEnabled, sendAsFileOptionEnabled,
@@ -709,6 +732,7 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
   func retire() {
     guard !retired else { return }
     retired = true; root.isUserInteractionEnabled = false
+    referenceMenu?.retire(); referenceMenu = nil; sendOptionActions.removeAll()
     attachmentDidBeginEditing = nil
     attachmentPresentationChanged = nil
     gallery.didBeginEditing = nil
