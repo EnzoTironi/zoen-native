@@ -215,6 +215,10 @@ function fixture(name: keyof typeof sources, dependencies: Record<string, unknow
     '../media/attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
     './message-context': { MessageContext: 'MessageContext' },
     './composer-action': { ComposerAction: 'ComposerAction' },
+    './composer-glass': {
+      ComposerGlassContainer: 'ComposerGlassContainer',
+      ComposerGlassSurface: 'ComposerGlassSurface',
+    },
     './conversation-composer-access': { ConversationComposerAccess: 'ConversationComposerAccess' },
     './composer-text-field': { ComposerTextField: 'ComposerTextField' },
     ...dependencies,
@@ -552,6 +556,12 @@ test('composer uses the same field for reply/edit/search/caption and retains rea
     false,
     'retained hidden Send must not masquerade as an available action',
   );
+  for (const label of ['chat.sendMessage', 'chat.olderSearchResult', 'chat.newerSearchResult']) {
+    const hidden = nodes(tree).find((node) => node.props.accessibilityLabel === label)!;
+    assert.equal(hidden.props.accessible, false);
+    assert.equal(hidden.props.accessibilityElementsHidden, true);
+    assert.equal(hidden.props.importantForAccessibility, 'no-hide-descendants');
+  }
   const oldVoiceTap = byLabel(tree, 'media.recordVoiceMessage').props.onAccessibilityTap;
   oldVoiceTap();
   await tick();

@@ -160,6 +160,7 @@ final class ZoenTelegramAttachmentGlassView: UIView {
   private var isDark = false
   private var radius: CGFloat = 0
   private var interactive = true
+  private var tintKind: GlassBackgroundView.TintColor.Kind = .panel
 
   override init(frame: CGRect) {
     ZoenTelegramInstallPresentationRuntime()
@@ -167,15 +168,17 @@ final class ZoenTelegramAttachmentGlassView: UIView {
     addSubview(glassView)
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-  func update(isDark: Bool, cornerRadius: CGFloat, isInteractive: Bool = true) {
+  func update(isDark: Bool, cornerRadius: CGFloat, isInteractive: Bool = true,
+              tintKind: GlassBackgroundView.TintColor.Kind = .panel) {
     self.isDark = isDark; radius = cornerRadius; interactive = isInteractive
+    self.tintKind = tintKind
     setNeedsLayout()
     updateGlass()
   }
   private func updateGlass() {
     glassView.frame = bounds
     glassView.update(size: bounds.size, cornerRadius: radius, isDark: isDark,
-      tintColor: .init(kind: .panel), isInteractive: interactive, transition: .immediate)
+      tintColor: .init(kind: tintKind), isInteractive: interactive, transition: .immediate)
   }
   override func layoutSubviews() { super.layoutSubviews(); updateGlass() }
 }

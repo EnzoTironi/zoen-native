@@ -45,6 +45,9 @@ export function ComposerAction({
   return (
     <Pressable
       testID={testID}
+      accessible={active}
+      accessibilityElementsHidden={!active}
+      importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: disabled || !active }}

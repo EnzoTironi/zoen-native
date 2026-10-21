@@ -1,0 +1,44 @@
+{
+  "repository": "https://github.com/TelegramMessenger/Telegram-iOS",
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "license": "GPL-2.0-or-later; GPL-3.0 selected",
+  "files": [
+    {
+      "path": "submodules/WallpaperBackgroundNode/Sources/WallpaperBackgroundNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/WallpaperBackgroundNode/Sources/WallpaperBackgroundNode.swift",
+      "bytes": 92908,
+      "sha256": "3011a4ab3683a098507400f04504b8379367ed3294e309dcd8292f6c19e3d444",
+      "lines": [
+        [55, 90],
+        [1370, 1416]
+      ]
+    },
+    {
+      "path": "submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift",
+      "bytes": 344617,
+      "sha256": "87512514ad430d822d18362d6546d62eb00125a4f36992cc56752c32f606d064",
+      "lines": [
+        [1614, 1622],
+        [3131, 3131],
+        [3538, 3538],
+        [3873, 3873]
+      ]
+    },
+    {
+      "path": "submodules/TelegramUI/Sources/ChatController.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Sources/ChatController.swift",
+      "bytes": 657859,
+      "sha256": "ca64811789b3696283acf47957e05545e94eaf16a00fad9c00f8d248adc49b0c",
+      "lines": [[758, 774]]
+    }
+  ],
+  "renderer": "apps/zoen/modules/zoen-core/ios/TelegramAttachmentPresentation/UPSTREAM_SOURCES.json",
+  "adaptations": [
+    "Named Expo presentation hosts mount Fabric children into the original glass content views without cloning or editing child frames.",
+    "The original facade tint kind is defaulted to panel for all existing attachment callers; composer selects original panel/clear kinds.",
+    "Wallpaper saturation translates the original gradient-color calculation over the current SkyLayer gradient. Photographic composite pixel sampling is not implemented.",
+    "Native renderer unavailable in an older development binary uses existing semantic surfaces; Web and Android do not import the native adapter.",
+    "Full attachment source lease/morph, source4pt Send blur and full glyph tint-mask treatment remain separate work."
+  ]
+}

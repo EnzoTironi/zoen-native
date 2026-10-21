@@ -40,3 +40,16 @@ The Files child intro uses the original `Telegram/Telegram-iOS/Resources/Files.t
 loop from `AttachmentFileEmptyItem.swift`, with native visibility/window/retirement
 pause and reduced-motion start frame. Cloud/Image browse and crop/rotate/done/crop
 corner glyphs are the original assets recorded in the asset manifest.
+
+The composer also uses these original GlassBackgroundView and
+GlassBackgroundContainerView implementations through named Expo/Fabric hosts.
+The hosts retain the original React children and their frames, including the
+live editor, gestures and accessibility owner. The facade accepts the original
+panel/clear tint kind with a panel default for existing attachment callers.
+Composer preference translates the pinned WallpaperBackgroundNode gradient
+saturation calculation over Zoen's current SkyLayer colors; photographic
+composite pixel sampling is not included. Exact composer/source inventory and
+adaptations are recorded in `docs/product/telegram-ios-composer-glass-sources.json`
+at the repository root. Full attachment source-button morph, Send blur and
+glyph tint-mask integration remain separate; source reuse does not establish
+runtime visual parity.

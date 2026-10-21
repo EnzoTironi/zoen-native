@@ -1,12 +1,9 @@
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import type { ReactNode } from 'react';
 import { Image } from 'expo-image';
-import { View } from 'react-native';
-import { composerGlassAppearance } from '../core/telegram-composer-presentation';
-import { useTheme } from '../theme';
+import { ComposerGlassSurface } from './composer-glass';
 import { Icon } from './primitives';
 
-/** Controls and field share the parent GlassContainer; no separate SwiftUI effect tree. */
+/** Controls and field share the original native Telegram glass container. */
 export function ComposerControlSurface({
   children,
   size = 40,
@@ -14,31 +11,18 @@ export function ComposerControlSurface({
   children: ReactNode;
   size?: number;
 }) {
-  const { scheme, presentation: p } = useTheme();
-  const glass = process.env.EXPO_OS === 'ios' && isLiquidGlassAvailable();
-  const appearance = composerGlassAppearance(scheme === 'dark', 'panel');
   const style = {
     width: size,
     height: size,
     borderRadius: size / 2,
+    borderWidth: 0,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   };
-  return glass ? (
-    <GlassView
-      pointerEvents="none"
-      colorScheme={scheme}
-      glassEffectStyle={appearance.style}
-      tintColor={appearance.tintColor}
-      isInteractive
-      style={style}
-    >
+  return (
+    <ComposerGlassSurface pointerEvents="none" cornerRadius={size / 2} style={style}>
       {children}
-    </GlassView>
-  ) : (
-    <View pointerEvents="none" style={[style, { backgroundColor: p.chat.input.fill }]}>
-      {children}
-    </View>
+    </ComposerGlassSurface>
   );
 }
 

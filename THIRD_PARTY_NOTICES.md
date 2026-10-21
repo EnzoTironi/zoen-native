@@ -63,6 +63,14 @@ The original attachment, microphone, keyboard, sticker and send glyphs in `apps/
 
 The pinned Unicode emoji ordering/data and compact-grid metrics are attributed separately in `apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md` and `provenance.json`, with the same upstream revision and GPLv3 selection. Emoji glyphs are rendered by the operating system; Telegram emoji artwork is not imported. The UIKit content adapter, variant overlay and host are Zoen implementations.
 
+The composer field, control backgrounds and container reuse the original native
+GlassBackgroundView/GlassBackgroundContainerView already inventoried under
+`TelegramAttachmentPresentation`. The Expo hosts preserve the React/Fabric child
+and editor ownership. Panel/clear selection also translates the original
+WallpaperBackgroundNode gradient saturation calculation over Zoen's existing
+SkyLayer gradient. Exact pinned sources, hashes and limitations are recorded in
+`docs/product/telegram-ios-composer-glass-sources.json`; the same GPLv3/AGPLv3
+selection applies. No Telegram account, network or durable state is imported.
 
 ## Telegram iOS App message presentation
 

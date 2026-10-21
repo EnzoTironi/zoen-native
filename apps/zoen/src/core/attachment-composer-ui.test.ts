@@ -299,6 +299,10 @@ function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass = false)
     '../media/attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
     './message-context': { MessageContext: 'MessageContext' },
     './composer-action': { ComposerAction: 'ComposerAction' },
+    './composer-glass': {
+      ComposerGlassContainer: 'ComposerGlassContainer',
+      ComposerGlassSurface: 'ComposerGlassSurface',
+    },
     './composer-action-motion': {
       ComposerMotionSlot: 'ComposerMotionSlot',
       composerFrameTransition: () => 'SourceFrameTransition',
@@ -823,31 +827,29 @@ test('compiled source minimum tracks larger named font geometry for field, mode 
   assert.equal(field.props.ref, first.props.ref);
   assert.equal(styleOf(field).fontSize, 23);
   assert.equal(styleOf(field).minHeight, 47);
-  assert.equal(styleOf(find(tree, byId('message-composer-field-surface'))).borderRadius, 23);
+  assert.equal(find(tree, byId('message-composer-field-surface')).props.cornerRadius, 23);
   assert.equal(styleOf(find(tree, byId('composer-input-mode'))).height, 47);
   assert.equal(find(tree, byId('send-message')).props.minimumHeight, 47);
   assert.equal(styleOf(field).paddingRight, 67);
   assert.equal(inputRef.current, f.nativeField);
 });
 
-test('iOS26 compiled renderer shares the source glass container and interactive tinted field; older iOS keeps semantic fill', () => {
-  const glass = fixture('ios', 1, true);
-  const tree = glass.render();
-  const row = find(tree, byId('message-composer-row'));
-  const field = find(tree, byId('message-composer-field-surface'));
-  assert.equal(row.type, 'GlassContainer');
-  assert.equal(row.props.spacing, 7);
-  assert.equal(field.type, 'GlassView');
-  assert.equal(field.props.glassEffectStyle, 'regular');
-  assert.equal(field.props.isInteractive, true);
-  assert.equal(String(field.props.tintColor).replaceAll(' ', ''), 'rgba(255,255,255,0.025)');
-  assert.equal(styleOf(field).borderRadius, 20);
-  const legacy = fixture('ios', 1, false);
-  const olderTree = legacy.render();
-  assert.equal(find(olderTree, byId('message-composer-row')).type, 'View');
-  const olderField = find(olderTree, byId('message-composer-field-surface'));
-  assert.equal(olderField.type, 'View');
-  assert.equal(styleOf(olderField).backgroundColor, legacy.theme.presentation.chat.input.fill);
+test('compiled composer routes its exact field children through the reusable original glass surfaces', () => {
+  for (const available of [true, false]) {
+    const f = fixture('ios', 1, available);
+    const tree = f.render();
+    const row = find(tree, byId('message-composer-row'));
+    const field = find(tree, byId('message-composer-field-surface'));
+    assert.equal(row.type, 'ComposerGlassContainer');
+    assert.equal(field.type, 'ComposerGlassSurface');
+    assert.equal(field.props.cornerRadius, 20);
+    assert.equal(scan(field).filter(byId('message-input')).length, 1);
+    assert.equal(
+      styleOf(field).backgroundColor,
+      undefined,
+      'the original renderer owns its fill and stroke',
+    );
+  }
 });
 
 test('the shared composer guards both main and thread content while retaining query-only search', () => {

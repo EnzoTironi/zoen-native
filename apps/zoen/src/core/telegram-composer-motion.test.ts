@@ -204,10 +204,16 @@ test('retained Send callbacks cannot send a retired caption or act through a hid
   f.context.active = false;
   const hidden = f.action({ onPress: () => calls.push('normal') });
   assert.equal(hidden.props.disabled, true);
+  assert.equal(hidden.props.accessible, false);
+  assert.equal(hidden.props.accessibilityElementsHidden, true);
+  assert.equal(hidden.props.importantForAccessibility, 'no-hide-descendants');
   oldPress();
   assert.equal(calls.length, 0);
   f.context.active = true;
-  f.action({ onPress: () => calls.push('caption-B') });
+  const shown = f.action({ onPress: () => calls.push('caption-B') });
+  assert.equal(shown.props.accessible, true);
+  assert.equal(shown.props.accessibilityElementsHidden, false);
+  assert.equal(shown.props.importantForAccessibility, 'auto');
   oldPress();
   assert.deepEqual(calls, ['caption-B']);
   f.action({ disabled: true, onPress: () => calls.push('forbidden') });

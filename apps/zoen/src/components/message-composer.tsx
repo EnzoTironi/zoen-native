@@ -1,11 +1,9 @@
-import { GlassContainer, GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import type { ReactNode, Ref } from 'react';
 import { Text, View, Pressable, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardMotion } from './keyboard-motion';
 import {
   composerFieldInsets,
-  composerGlassAppearance,
   composerSourceMinimumHeight,
   telegramComposer,
 } from '../core/telegram-composer-presentation';
@@ -19,6 +17,7 @@ import type { TimelineEntry } from '../core/types';
 import { MessageContext } from './message-context';
 import { useTheme } from '../theme';
 import { ComposerAction } from './composer-action';
+import { ComposerGlassContainer, ComposerGlassSurface } from './composer-glass';
 import {
   ComposerMotionSlot,
   composerFrameTransition,
@@ -43,6 +42,9 @@ function ComposerInputAccessory({ minimumHeight }: { minimumHeight: number }) {
   return (
     <Pressable
       testID="composer-input-mode"
+      accessible={active}
+      accessibilityElementsHidden={!active}
+      importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
       accessibilityRole="button"
       accessibilityLabel={t(emoji ? 'composerKeyboard.keyboard' : 'composerKeyboard.emoji')}
       hitSlop={6}
@@ -130,11 +132,7 @@ export function MessageComposer({
     search.state.query.trim() &&
     conversationQueryFits(search.state.query.trim()),
   );
-  const glass = process.env.EXPO_OS === 'ios' && isLiquidGlassAvailable();
-  // Both shipped sky photographs fall below Telegram's0.35 saturation threshold.
-  const material = composerGlassAppearance(scheme === 'dark', 'panel');
   const minimumHeight = composerSourceMinimumHeight(p.typography.message.fontSize) ?? 40;
-  const Row = glass ? GlassContainer : View;
   function controls({
     attachment,
     voice,
@@ -334,9 +332,8 @@ export function MessageComposer({
         ) : (
           review
         )}
-        <Row
+        <ComposerGlassContainer
           testID="message-composer-row"
-          {...(glass ? { spacing: telegramComposer.glassSpacing } : {})}
           style={{ flexDirection: 'row', gap: native ? 6 : 10, alignItems: 'flex-end' }}
         >
           {search ? (
@@ -363,30 +360,12 @@ export function MessageComposer({
                 : 0,
             }}
           >
-            {glass ? (
-              <GlassView
-                colorScheme={scheme}
-                glassEffectStyle="regular"
-                tintColor={material.tintColor}
-                isInteractive
-                testID="message-composer-field-surface"
-                style={{ borderRadius: native ? Math.floor(minimumHeight / 2) : 27 }}
-              >
-                {fieldContents}
-              </GlassView>
-            ) : (
-              <View
-                testID="message-composer-field-surface"
-                style={{
-                  borderRadius: native ? Math.floor(minimumHeight / 2) : 27,
-                  backgroundColor: p.chat.input.fill,
-                  borderColor: p.chat.input.stroke,
-                  borderWidth: 0.5,
-                }}
-              >
-                {fieldContents}
-              </View>
-            )}
+            <ComposerGlassSurface
+              testID="message-composer-field-surface"
+              cornerRadius={native ? Math.floor(minimumHeight / 2) : 27}
+            >
+              {fieldContents}
+            </ComposerGlassSurface>
           </Animated.View>
           {native ? (
             <>
@@ -410,7 +389,7 @@ export function MessageComposer({
           ) : (
             action
           )}
-        </Row>
+        </ComposerGlassContainer>
       </>
     );
   }

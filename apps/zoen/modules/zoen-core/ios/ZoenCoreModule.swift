@@ -68,6 +68,20 @@ public class ZoenCoreModule: Module {
       Prop("token") { (view: ZoenPageTextInput, token: String) in view.token = token }
       OnViewDidUpdateProps { (view: ZoenPageTextInput) in view.bind() }
     }
+    Constant("composerGlassVersion") { 1 }
+    View(ZoenComposerGlassSurface.self) {
+      ViewName("ComposerGlassSurface")
+      Prop("isDark") { (view: ZoenComposerGlassSurface, value: Bool) in view.isDark = value }
+      Prop("cornerRadius") { (view: ZoenComposerGlassSurface, value: Double) in view.cornerRadius = value }
+      Prop("interactive") { (view: ZoenComposerGlassSurface, value: Bool) in view.interactive = value }
+      Prop("preference") { (view: ZoenComposerGlassSurface, value: String) in view.preference = value }
+      OnViewDidUpdateProps { (view: ZoenComposerGlassSurface) in view.apply() }
+    }
+    View(ZoenComposerGlassContainer.self) {
+      ViewName("ComposerGlassContainer")
+      Prop("isDark") { (view: ZoenComposerGlassContainer, value: Bool) in view.isDark = value }
+      OnViewDidUpdateProps { (view: ZoenComposerGlassContainer) in view.apply() }
+    }
     // Named presentation-only views; the existing first/default page-input view stays unchanged.
     View(ZoenKeyboardPanelHost.self) {
       ViewName("ZoenKeyboardPanelHost")

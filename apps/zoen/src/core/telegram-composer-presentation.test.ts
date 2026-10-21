@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   composerFieldInsets,
-  composerGlassAppearance,
   composerPreferredGlass,
   composerSendGeometry,
   composerSourceMinimumHeight,
@@ -94,20 +93,4 @@ test('material selection follows actual dark+saturation policy with explicit ove
   assert.equal(composerPreferredGlass({ dark: true, saturatedWallpaper: false }), 'panel');
   assert.equal(composerPreferredGlass({ dark: true, saturatedWallpaper: true }), 'clear');
   assert.equal(composerPreferredGlass({ dark: false, forceClear: true }), 'clear');
-});
-test('iOS26 material provides exact panel/clear tints, interactivity and7pt container', () => {
-  assert.deepEqual(composerGlassAppearance(true, 'panel'), {
-    style: 'regular',
-    tintColor: 'rgba(255, 255, 255, 0.025)',
-    isInteractive: true,
-    spacing: 7,
-  });
-  assert.equal(composerGlassAppearance(false, 'panel').tintColor, 'rgba(255, 255, 255, 0.1)');
-  assert.deepEqual(composerGlassAppearance(true, 'clear'), {
-    style: 'clear',
-    tintColor: 'rgba(0, 0, 0, 0.28)',
-    isInteractive: true,
-    spacing: 7,
-  });
-  assert.equal(composerGlassAppearance(false, 'clear').tintColor, undefined);
 });

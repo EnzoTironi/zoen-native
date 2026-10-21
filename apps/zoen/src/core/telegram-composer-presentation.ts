@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Translated Telegram-iOS composer contracts at f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838.
 // ChatTextInputPanelNode, ChatTextInputFontMetrics, ChatTextInputActionButtonsNode,
-// AccessoryItemIconButton and GlassBackgroundComponent; GPLv3 option selected.
+// AccessoryItemIconButton, GlassBackgroundComponent and WallpaperBackgroundNode; GPLv3 option selected.
 import { composerVerticalInsets } from './telegram-audio-presentation.ts';
 
 export const telegramComposer = Object.freeze({
@@ -94,19 +94,40 @@ export function composerPreferredGlass({
   return forceClear || (dark && saturatedWallpaper) ? 'clear' : 'panel';
 }
 
-/** iOS26 effect parameters only; legacy fallback uses existing shared theme surfaces. */
-export function composerGlassAppearance(dark: boolean, preference: ComposerGlassPreference) {
-  return {
-    style: preference === 'clear' ? ('clear' as const) : ('regular' as const),
-    tintColor:
-      preference === 'clear'
-        ? dark
-          ? 'rgba(0, 0, 0, 0.28)'
-          : undefined
-        : dark
-          ? 'rgba(255, 255, 255, 0.025)'
-          : 'rgba(255, 255, 255, 0.1)',
-    isInteractive: true,
-    spacing: telegramComposer.glassSpacing,
-  };
+/** WallpaperBackgroundNode:55-90 at the same pin; current SkyLayer's gradient
+ * colors are supplied by its existing theme owner. No new wallpaper authority. */
+export function composerWallpaperSaturation(colors: readonly string[]): number {
+  const hsb = colors
+    .filter((color) => /^#[\da-f]{6}$/i.test(color))
+    .map((color) => {
+      const [r, g, b] = [1, 3, 5].map(
+        (offset) => parseInt(color.slice(offset, offset + 2), 16) / 255,
+      ) as [number, number, number];
+      const high = Math.max(r, g, b),
+        low = Math.min(r, g, b),
+        delta = high - low;
+      const hue =
+        delta === 0
+          ? 0
+          : high === r
+            ? ((g - b) / delta) % 6
+            : high === g
+              ? (b - r) / delta + 2
+              : (r - g) / delta + 4;
+      return { h: (hue / 6 + 1) % 1, s: high === 0 ? 0 : delta / high, b: high };
+    });
+  const diverse = hsb.some((a, index) =>
+    hsb.slice(index + 1).some((b) => {
+      const difference = Math.abs(a.h - b.h);
+      return Math.min(difference, 1 - difference) > 0.167;
+    }),
+  );
+  return hsb.reduce(
+    (maximum, color) =>
+      Math.max(
+        maximum,
+        color.s * (diverse ? Math.min(color.b * 2, 1) : Math.min(color.b, 1 - color.b) * 2),
+      ),
+    0,
+  );
 }
