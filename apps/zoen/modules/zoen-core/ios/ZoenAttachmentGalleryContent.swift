@@ -36,6 +36,7 @@ import UIKit
   var hasKeyboardFocus: Bool { caption.isFirstResponder }
   var didBeginEditing: (() -> Void)?
   var transitionSourceView: ((String) -> UIView?)?
+  weak var mediaController: UIViewController?
   private let send: (String,[String:Any]) -> Void
   private let pager = UIScrollView()
   private let selection = UIScrollView()
@@ -59,6 +60,8 @@ import UIKit
   private let errorLabel = UILabel()
   private let retry = UIButton(type: .system)
   private let title = UILabel()
+  private let conversationCaption = UITextView()
+  private let position = UILabel()
   private let dragHint = UILabel()
   private var pages: [String:GalleryMediaView] = [:]
   private var selectedViews: [String:GallerySelectionTile] = [:]
@@ -116,6 +119,14 @@ import UIKit
     selection.keyboardDismissMode = .onDrag
     selection.accessibilityIdentifier = "attachment-gallery-selected-list"
     for child in [pager,selection,toolbar,captionPanel,counter,check,recipient,recipientArrow,errorLabel,retry] { root.addSubview(child) }
+    conversationCaption.textColor = .white; conversationCaption.font = .systemFont(ofSize:17)
+    conversationCaption.backgroundColor = .clear; conversationCaption.isEditable = false
+    conversationCaption.textContainerInset = .zero; conversationCaption.isScrollEnabled = true
+    position.textColor = .white; position.font = .systemFont(ofSize:17)
+    root.addSubview(conversationCaption); root.addSubview(position)
+    conversationCaption.accessibilityIdentifier = "conversation-gallery-caption"
+    position.textAlignment = .center
+    position.accessibilityIdentifier = "conversation-gallery-position"
     toolbar.addSubview(centerGlass); toolbar.addSubview(closeGlass); toolbar.addSubview(sendGlass)
     closeGlass.contentView.addSubview(close); sendGlass.contentView.addSubview(sendButton)
     centerGlass.contentView.addSubview(edit); root.addSubview(add)
@@ -170,7 +181,7 @@ import UIKit
   }
 
   func update(model: [String:Any], appearance: ZoenKeyboardPanelAppearance) throws {
-    guard !retired, let source = model["source"] as? String, ["photos","draft"].contains(source),
+    guard !retired, let source = model["source"] as? String, ["photos","draft","conversation"].contains(source),
       let incoming = model["items"] as? [[String:Any]], incoming.count <= 20000,
       let selected = model["selected"] as? [String], selected.count <= 10,
       Set(selected).count == selected.count,
@@ -185,10 +196,12 @@ import UIKit
     guard preview.isEmpty || parsed.contains(where: { $0.id == preview }) else { throw GalleryFailure.invalid }
     let captionModel = model["caption"] as? [String:Any] ?? [:]
     let text = captionModel["value"] as? String ?? ""
-    guard text.utf16.count <= 4096, !text.contains("\0") else { throw GalleryFailure.invalid }
+    guard text.utf16.count <= (source == "conversation" ? 65536 : 4096), !text.contains("\0"),
+      source != "conversation" || (incoming.count <= 10 && selected.isEmpty && model["screen"] as? String == "preview") else { throw GalleryFailure.invalid }
     let newSelectedMode = model["screen"] as? String == "selected"
     let newGrouped = model["grouped"] as? Bool ?? true
     let mediaChanged = self.source != source || self.items != parsed || self.previewId != preview || selectedMode != newSelectedMode || grouped != newGrouped
+    let focusedChanged = self.source != source || self.previewId != preview
     if self.revision != revision { cancelReorder() }
     let itemChanged = captionItem != preview
     self.source = source; self.items = parsed; self.selected = selected
@@ -200,12 +213,14 @@ import UIKit
     root.overrideUserInterfaceStyle = selectedMode ? (appearance.isDark ? .dark : .light) : .dark
     caption.keyboardAppearance = selectedMode ? (appearance.isDark ? .dark : .light) : .dark
     labels = model["labels"] as? [String:String] ?? [:]
-    canEdit = model["canEdit"] as? Bool == true
+    canEdit = source != "conversation" && model["canEdit"] as? Bool == true
     canAdd = source == "draft" && model["canAdd"] as? Bool == true
     canRemove = source == "draft" && model["canRemove"] as? Bool == true
     canReorder = model["canReorder"] as? Bool ?? (source == "photos")
-    canSend = captionModel["sendEnabled"] as? Bool ?? (!selected.isEmpty || (source == "photos" && !preview.isEmpty))
-    captionEditable = captionModel["editable"] as? Bool == true && !busy
+    canSend = source != "conversation" && (captionModel["sendEnabled"] as? Bool ?? (!selected.isEmpty || (source == "photos" && !preview.isEmpty)))
+    captionEditable = source != "conversation" && captionModel["editable"] as? Bool == true && !busy
+    conversationCaption.text = text
+    position.text = model["position"] as? String
     caption.isEditable = captionEditable
     if itemChanged || (!caption.isFirstResponder && caption.text != text) { caption.text = text }
     captionItem = preview
@@ -213,6 +228,9 @@ import UIKit
     placeholder.isHidden = !caption.text.isEmpty
     recipient.text = model["recipient"] as? String ?? ""
     close.accessibilityLabel = labels["back"] ?? labels["close"]
+    close.accessibilityIdentifier = source == "conversation" ? "conversation-gallery-close":"attachment-approval-close"
+    pager.accessibilityIdentifier = source == "conversation" ? "conversation-gallery-pager":"attachment-gallery-pager"
+    root.accessibilityIdentifier = source == "conversation" ? "conversation-gallery-surface":"attachment-gallery-surface"
     sendButton.accessibilityLabel = captionModel["sendLabel"] as? String
     edit.accessibilityLabel = labels["edit"]; add.accessibilityLabel = labels["add"]
     check.accessibilityLabel = labels["select"]
@@ -230,9 +248,11 @@ import UIKit
     sendGlass.contentView.layer.cornerRadius = 22
     root.isUserInteractionEnabled = true
     if mediaChanged {
-      controlsHidden = false
-      for view in [toolbar,captionPanel,counter,check,recipient,recipientArrow,strip] {
-        view.layer.removeAnimation(forKey:"opacity");view.alpha = view === recipientArrow ? 0.6 : 1
+      if source != "conversation" || focusedChanged {
+        controlsHidden = false
+        for view in [toolbar,captionPanel,counter,check,recipient,recipientArrow,strip,conversationCaption,position] {
+          view.layer.removeAnimation(forKey:"opacity");view.alpha = view === recipientArrow ? 0.6 : 1
+        }
       }
       if visible {rebuildMedia()} else {needsRebuild=true}
     }
@@ -242,6 +262,26 @@ import UIKit
   func updatePresentation(keyboardHeight:CGFloat,safeArea:UIEdgeInsets) {
     guard !retired else { return }
     self.keyboardHeight = max(0,keyboardHeight); safe = safeArea; reflow()
+  }
+  /// GalleryControllerNode:420–515 simple-animation path when no native
+  /// transition image survives (for example, a virtualized Fabric message).
+  func animateConversationIn() {
+    guard source == "conversation",!retired else{return}
+    root.backgroundColor = .clear;pager.alpha=0
+    for view in [toolbar,recipient,position,conversationCaption]{view.alpha=0}
+    UIView.animate(withDuration:UIAccessibility.isReduceMotionEnabled ? 0:0.15,delay:0,options:[.curveLinear,.beginFromCurrentState]) {
+      self.root.backgroundColor = .black
+      for view in [self.toolbar,self.recipient,self.position,self.conversationCaption]{view.alpha=1}
+    }
+    UIView.animate(withDuration:UIAccessibility.isReduceMotionEnabled ? 0:0.3,delay:0,options:[.curveLinear,.beginFromCurrentState]) {self.pager.alpha=1}
+  }
+  func animateConversationOut(completion:@escaping()->Void) {
+    root.isUserInteractionEnabled=false
+    UIView.animate(withDuration:UIAccessibility.isReduceMotionEnabled ? 0:0.1,delay:0,options:[.curveLinear,.beginFromCurrentState]) {
+      self.root.backgroundColor = .clear
+      for view in [self.toolbar,self.recipient,self.position,self.conversationCaption]{view.alpha=0}
+    }
+    UIView.animate(withDuration:UIAccessibility.isReduceMotionEnabled ? 0:0.25,delay:0,options:[.curveLinear,.beginFromCurrentState],animations:{self.pager.alpha=0}){_ in completion()}
   }
   func setVisible(_ visible:Bool) {
     guard !retired,self.visible != visible else{return}
@@ -273,7 +313,7 @@ import UIKit
     add.isEnabled = !busy && canAdd
     sendButton.isEnabled = !busy && canSend && aligned; sendGlass.alpha = sendButton.isEnabled ? 1 : 0.2
     check.isEnabled = !busy && aligned && (source == "photos" || canRemove) && !hasKeyboardFocus
-    check.isHidden = selectedMode || hasKeyboardFocus || (source == "draft" && !canRemove)
+    check.isHidden = source == "conversation" || selectedMode || hasKeyboardFocus || (source == "draft" && !canRemove)
     check.accessibilityIdentifier = source == "draft" ? "attachment-approval-remove":"attachment-approval-select"
     check.accessibilityLabel = labels[source == "draft" ? "remove":"select"]
     let order = selected.firstIndex(of:previewId).map { $0 + 1 }
@@ -286,6 +326,13 @@ import UIKit
     add.isHidden = !canAdd || hasKeyboardFocus || selectedMode
     toolbar.isHidden = controlsHidden
     captionPanel.isHidden = controlsHidden
+    if source == "conversation" {
+      sendGlass.isHidden = true; centerGlass.isHidden = true
+      captionPanel.isHidden = true; counter.isHidden = true; strip.isHidden = true
+      recipientArrow.isHidden = true
+    } else { sendGlass.isHidden = false }
+    conversationCaption.isHidden = source != "conversation" || controlsHidden || (conversationCaption.text ?? "").isEmpty
+    position.isHidden = source != "conversation" || controlsHidden
     strip.isHidden = controlsHidden || !railVisible || hasKeyboardFocus || selectedMode
     captionPanel.isUserInteractionEnabled = !controlsHidden
   }
@@ -296,6 +343,25 @@ import UIKit
     return abs(pager.contentOffset.x-CGFloat(index)*pager.bounds.width)<1/max(1,root.traitCollection.displayScale)
   }
   private func rebuildMedia() {
+    if source == "conversation",let index=items.firstIndex(where:{$0.id==previewId}) {
+      let wanted=Array(items[max(0,index-1)...min(items.count-1,index+1)])
+      for id in Array(pages.keys) {
+        guard let page=pages[id] else{continue}
+        if !wanted.contains(where:{$0 == page.item}) {page.retire();page.removeFromSuperview();pages.removeValue(forKey:id)}
+      }
+      for item in wanted {
+        if pages[item.id] == nil {
+          let page=GalleryMediaView(item:item,allowNetwork:false,controller:mediaController)
+          page.accessibilityIdentifier="conversation-gallery-item-\(item.id)"
+          page.toggle = { [weak self] in self?.toggleControls() }
+          page.zoomChanged = { [weak self] _ in self?.updateControls() }
+          pages[item.id]=page;pager.addSubview(page)
+        }
+        pages[item.id]?.active = item.id == previewId
+      }
+      pager.isHidden=false;selection.isHidden=true
+      return
+    }
     for page in pages.values { page.retire(); page.removeFromSuperview() }; pages.removeAll()
     for tile in selectedViews.values { tile.retire(); tile.removeFromSuperview() }; selectedViews.removeAll()
     for background in backgrounds { background.removeFromSuperview() }; backgrounds.removeAll()
@@ -310,7 +376,7 @@ import UIKit
       guard let index = items.firstIndex(where:{$0.id == previewId}) else{return}
       for position in max(0,index-1)...min(items.count-1,index+1) {
         let item = items[position]
-        let page = GalleryMediaView(item:item,allowNetwork:position == index)
+        let page = GalleryMediaView(item:item,allowNetwork:position == index,controller:source == "conversation" ? mediaController:nil)
         page.active = position == index
         page.toggle = { [weak self] in self?.toggleControls() }
         page.zoomChanged = { [weak self] _ in self?.updateControls() }
@@ -371,16 +437,32 @@ import UIKit
     check.frame = CGRect(x:size.width-safe.right-44,y:safe.top+5,width:40,height:40)
     add.frame = CGRect(x:size.width-safe.right-96,y:captionY-49,width:44,height:44)
     if add.superview !== root {root.addSubview(add)}
-    pager.frame = root.bounds; pager.contentSize = CGSize(width:size.width*CGFloat(items.count),height:size.height)
+    // GalleryPagerNode:420–424 uses a20pt gap at either side of each page.
+    // Picker geometry remains the separately ported MediaPicker gallery.
+    let gap:CGFloat = source == "conversation" ? 20:0
+    let stride = size.width+gap*2
+    pager.frame = CGRect(x:-gap,y:0,width:stride,height:size.height)
+    pager.contentSize = CGSize(width:stride*CGFloat(items.count),height:size.height)
     let changedSize = lastSize != size; lastSize = size
-    for (position,item) in items.enumerated() { pages[item.id]?.frame = CGRect(x:CGFloat(position)*size.width,y:0,width:size.width,height:size.height) }
+    for (position,item) in items.enumerated() { pages[item.id]?.frame = CGRect(x:CGFloat(position)*stride+gap,y:0,width:size.width,height:size.height) }
     if let index = items.firstIndex(where:{$0.id == previewId}), (!pager.isDragging && !pager.isDecelerating) || changedSize {
-      pager.setContentOffset(CGPoint(x:CGFloat(index)*size.width,y:0),animated:false)
+      pager.setContentOffset(CGPoint(x:CGFloat(index)*stride,y:0),animated:false)
     }
     selection.frame = root.bounds
     layoutSelected(size:CGSize(width:size.width,height:captionY-10))
     errorLabel.frame = CGRect(x:16,y:captionY-76,width:max(0,size.width-32),height:50)
     retry.frame = CGRect(x:size.width-100,y:captionY-26,width:84,height:24)
+    if source == "conversation" {
+      toolbar.frame = CGRect(x:0,y:safe.top,width:size.width,height:44)
+      closeGlass.frame = CGRect(x:safe.left+8,y:0,width:44,height:44); close.frame = closeGlass.bounds
+      recipient.frame = CGRect(x:safe.left+64,y:safe.top+3,width:max(0,size.width-safe.left-safe.right-128),height:20)
+      recipient.textAlignment = .center
+      position.frame = CGRect(x:safe.left+64,y:safe.top+23,width:max(0,size.width-safe.left-safe.right-128),height:20)
+      position.font = .systemFont(ofSize:13)
+      let available = max(0,size.height-safe.top-safe.bottom-110)
+      let text = conversationCaption.sizeThatFits(CGSize(width:max(1,size.width-safe.left-safe.right-32),height:available))
+      conversationCaption.frame = CGRect(x:safe.left+16,y:size.height-safe.bottom-16-min(available,text.height),width:max(0,size.width-safe.left-safe.right-32),height:min(available,text.height))
+    } else { recipient.textAlignment = .left }
     updateControls()
   }
 
@@ -498,7 +580,7 @@ import UIKit
     controlsHidden.toggle()
     UIView.animate(withDuration:UIAccessibility.isReduceMotionEnabled ? 0 : 0.2,delay:0,
       options:[.beginFromCurrentState,.curveLinear],animations:{[weak self] in
-        guard let self else{return}; for v in [toolbar,captionPanel,counter,check,recipient,recipientArrow,strip] {v.alpha = controlsHidden ? 0 : 1}
+        guard let self else{return}; for v in [toolbar,captionPanel,counter,check,recipient,recipientArrow,strip,conversationCaption,position] {v.alpha = controlsHidden ? 0 : 1}
       },completion:{[weak self] _ in self?.updateControls()})
   }
   @objc private func highlight(_ sender:UIButton) {sender.alpha = 0.4}
@@ -540,6 +622,12 @@ import UIKit
   func gestureRecognizerShouldBegin(_ recognizer:UIGestureRecognizer)->Bool {
     guard !retired,!busy,!hasKeyboardFocus else{return false}
     if recognizer === dismissal {
+      if source == "conversation", !conversationCaption.isHidden,
+        conversationCaption.frame.contains(dismissal.location(in:root)) {return false}
+      if source == "conversation" {
+        var hit=root.hitTest(dismissal.location(in:root),with:nil)
+        while let view=hit,view !== root {if view is UIControl{return false};hit=view.superview}
+      }
       let v=dismissal.velocity(in:root)
       return !selectedMode && abs(v.y)>abs(v.x) && pages[previewId]?.isZoomed != true
     }
@@ -556,7 +644,10 @@ import UIKit
       root.backgroundColor=UIColor.black.withAlphaComponent(1-min(1,progress*4))
       toolbar.alpha=1-min(1,progress*2);captionPanel.alpha=toolbar.alpha
     case .ended:
-      if ZoenAttachmentGalleryMetrics.dismiss(distance:y,velocity:gesture.velocity(in:root).y,height:root.bounds.height) {back()}
+      let dismiss = source == "conversation"
+        ? abs(y)>root.bounds.height/4 || abs(gesture.velocity(in:root).y)>1000
+        : ZoenAttachmentGalleryMetrics.dismiss(distance:y,velocity:gesture.velocity(in:root).y,height:root.bounds.height)
+      if dismiss {back()}
       else {restoreDrag()}
     case .cancelled,.failed:restoreDrag()
     default:break
@@ -722,9 +813,10 @@ private struct GalleryItem:Equatable {
       let options:[CFString:Any]=[kCGImageSourceShouldCache:false]
       if let source=CGImageSourceCreateWithURL(url as CFURL,options as CFDictionary),let cg=CGImageSourceCreateThumbnailAtIndex(source,0,[kCGImageSourceCreateThumbnailFromImageAlways:true,kCGImageSourceCreateThumbnailWithTransform:true,kCGImageSourceThumbnailMaxPixelSize:targetPixels] as CFDictionary){
         image.image=UIImage(cgImage:cg);fallback.isHidden=true
-      }
+      } else {retry.isHidden=false}
     }
   }
+  func promoteStatus(){for view in [fallback,progress,retry]{bringSubviewToFront(view)}}
   func retire(){guard !retired else{return};retired=true;generation=UUID();videoThumbnail.cancel();if let request{manager.cancelImageRequest(request)};request=nil;loaded=nil}
 }
 
@@ -732,15 +824,20 @@ private struct GalleryItem:Equatable {
   private let zoom=UIScrollView()
   private var player:AVPlayer?
   private var playerLayer:AVPlayerLayer?
+  private weak var controller:UIViewController?
+  private var playerController:AVPlayerViewController?
+  private var playerStatus:NSKeyValueObservation?
   private var videoRequest:PHImageRequestID?
   private let videoManager=PHImageManager()
   private let play=UIButton(type:.system)
   var toggle:(()->Void)?;var zoomChanged:((Bool)->Void)?
   var active=false {didSet{if !active{stop()}}}
   var isZoomed:Bool{abs(zoom.zoomScale-1)>0.01}
-  init(item:GalleryItem,allowNetwork:Bool){
+  init(item:GalleryItem,allowNetwork:Bool,controller:UIViewController?=nil){
+    self.controller=controller
     super.init(item:item,targetPixels:2048,allowNetwork:allowNetwork)
     image.removeFromSuperview();zoom.addSubview(image);addSubview(zoom)
+    promoteStatus()
     zoom.delegate=self;zoom.minimumZoomScale=1;zoom.maximumZoomScale=3;zoom.bouncesZoom=true
     zoom.showsHorizontalScrollIndicator=false;zoom.showsVerticalScrollIndicator=false
     image.contentMode = .scaleAspectFit;image.isUserInteractionEnabled=false
@@ -750,7 +847,7 @@ private struct GalleryItem:Equatable {
     play.accessibilityLabel=item.name;play.addAction(UIAction{[weak self] _ in self?.playVideo()},for:.touchUpInside);play.isHidden = !item.video;addSubview(play)
   }
   required init?(coder:NSCoder){return nil}
-  override func layoutSubviews(){super.layoutSubviews();zoom.frame=bounds;if !isZoomed{image.frame=zoom.bounds};playerLayer?.frame=bounds;play.frame=CGRect(x:bounds.midX-30,y:bounds.midY-30,width:60,height:60)}
+  override func layoutSubviews(){super.layoutSubviews();zoom.frame=bounds;if !isZoomed{image.frame=zoom.bounds};playerLayer?.frame=bounds;playerController?.view.frame=bounds;play.frame=CGRect(x:bounds.midX-30,y:bounds.midY-30,width:60,height:60)}
   func viewForZooming(in scrollView:UIScrollView)->UIView?{image}
   func scrollViewDidZoom(_ scrollView:UIScrollView){zoomChanged?(isZoomed)}
   @objc private func singleTap(){if item.video,let player,player.rate>0{player.pause();play.isHidden=false}else{toggle?()}}
@@ -761,7 +858,10 @@ private struct GalleryItem:Equatable {
   }
   private func playVideo(){
     guard item.video,active,!retired else{return}
-    if let player{player.rate==0 ? player.play() : player.pause();return}
+    if let player {
+      if player.currentItem?.status == .failed,let uri=item.uri{install(AVPlayerItem(url:uri))}
+      else {player.rate==0 ? player.play() : player.pause()};return
+    }
     if let url=item.uri{install(AVPlayerItem(url:url))}
     else if let id=item.photoId,let asset=PHAsset.fetchAssets(withLocalIdentifiers:[id],options:nil).firstObject{
       let options=PHVideoRequestOptions();options.isNetworkAccessAllowed=true
@@ -771,12 +871,37 @@ private struct GalleryItem:Equatable {
     }
   }
   private func install(_ item:AVPlayerItem){
+    playerStatus=nil;player?.pause();player?.replaceCurrentItem(with:nil)
     let player=AVPlayer(playerItem:item);player.allowsExternalPlayback=false
-    let layer=AVPlayerLayer(player:player);layer.videoGravity = .resizeAspect;self.layer.insertSublayer(layer,above:zoom.layer)
-    self.player=player;playerLayer=layer;layer.frame=bounds;play.isHidden=true;player.play()
+    self.player=player
+    if let controller {
+      let child:AVPlayerViewController
+      if let existing=playerController {child=existing}
+      else {
+        child=AVPlayerViewController();child.allowsPictureInPicturePlayback=false
+        controller.addChild(child);addSubview(child.view);child.didMove(toParent:controller);playerController=child
+      }
+      child.player=player;child.view.frame=bounds;bringSubviewToFront(play)
+    } else {
+      let layer=AVPlayerLayer(player:player);layer.videoGravity = .resizeAspect;self.layer.insertSublayer(layer,above:zoom.layer)
+      playerLayer?.removeFromSuperlayer();playerLayer=layer;layer.frame=bounds
+    }
+    playerStatus=item.observe(\.status,options:[.initial,.new]){[weak self,weak player] item,_ in
+      Task{@MainActor [weak self,weak player] in
+        guard let self,!retired,self.player === player,player?.currentItem === item else{return}
+        if item.status == .failed {play.isHidden=false;play.accessibilityLabel=NSLocalizedString("Try again",comment:"Retry conversation video")}
+      }
+    }
+    play.isHidden=true;player.play()
   }
   func stop(){player?.pause()}
-  override func retire(){super.retire();stop();if let videoRequest{videoManager.cancelImageRequest(videoRequest)};videoRequest=nil;player?.replaceCurrentItem(with:nil);player=nil;playerLayer?.removeFromSuperlayer();playerLayer=nil;toggle=nil;zoomChanged=nil}
+  override func retire(){
+    guard !retired else{return}
+    // Preserve the last rendered conversation frame through a user dismissal;
+    // authority/player work retires now, and the parent removes this surface.
+    if let child=playerController,let snapshot=child.view.snapshotView(afterScreenUpdates:false){snapshot.frame=bounds;addSubview(snapshot)}
+    super.retire();stop();if let videoRequest{videoManager.cancelImageRequest(videoRequest)};videoRequest=nil;playerStatus=nil;player?.replaceCurrentItem(with:nil);player=nil;playerLayer?.removeFromSuperlayer();playerLayer=nil;playerController?.willMove(toParent:nil);playerController?.view.removeFromSuperview();playerController?.removeFromParent();playerController=nil;toggle=nil;zoomChanged=nil
+  }
 }
 
 @MainActor private final class GallerySelectionTile:GalleryAssetView {

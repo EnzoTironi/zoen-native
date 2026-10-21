@@ -202,6 +202,24 @@ export function createDriver(): CoreDriver {
             await core().previewLocalFile(file.uri);
           }
         : undefined,
+    previewConversationMedia:
+      Platform.OS === 'ios' &&
+      typeof NativeCore?.previewConversationMedia === 'function' &&
+      typeof NativeCore?.cancelConversationMedia === 'function'
+        ? async (request, signal) => {
+            if (signal.aborted) return;
+            const token = randomUUID();
+            const cancel = () => {
+              void core().cancelConversationMedia!(token).catch(() => {});
+            };
+            signal.addEventListener('abort', cancel, { once: true });
+            try {
+              await core().previewConversationMedia!(JSON.stringify(request), token);
+            } finally {
+              signal.removeEventListener('abort', cancel);
+            }
+          }
+        : undefined,
     async releaseLocalFile(uri) {
       await core().releaseLocalFile(uri);
     },

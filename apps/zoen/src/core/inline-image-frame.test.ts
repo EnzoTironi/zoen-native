@@ -206,6 +206,11 @@ function fixture(
     './voice-transcript': { VoiceTranscript: 'VoiceTranscript' },
     './VideoClip': { VideoClip: 'VideoClip' },
     './preview-file': { previewMediaFile: async () => {} },
+    './conversation-media-preview': {
+      previewConversationMedia: async () => {
+        throw new Error('Unexpected conversation viewer admission in inline rendering test');
+      },
+    },
     './file-size': { formatFileSize },
     '../core/media-albums': { albumDelivery },
     '../core/message-presentation': { messageCard },

@@ -60,6 +60,7 @@ export type ConversationMessageProps = {
     captionOnly?: boolean;
     onDecoded?: (image: DecodedMessageImage) => void;
     onInlineUnavailable?: () => void;
+    galleryEntries?: readonly TimelineEntry[];
   };
   onReply: (entry: TimelineEntry) => void;
   onThread: (entry: TimelineEntry) => void;
@@ -443,6 +444,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                 onActions={() => open('actions')}
                 onImageDecoded={albumPart.onDecoded}
                 onInlineUnavailable={albumPart.onInlineUnavailable}
+                galleryEntries={albumPart.galleryEntries}
               />
             ) : (
               <Pressable

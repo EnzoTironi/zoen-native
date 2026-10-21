@@ -109,6 +109,11 @@ and image-edit controls also translate the pinned `TGMediaPickerGalleryInterface
 `TGModernGalleryController`, `JNWSpringAnimation`, `MosaicLayout`,
 `MediaPickerPhotoToolbarView` and `TGPhotoCropAreaView` implementations. Exact
 sources and adaptations are recorded in `docs/product/telegram-ios-gallery-sources.json`.
+The read-only conversation pager additionally adapts `GalleryController`,
+`GalleryPagerNode` and `GalleryControllerNode` at that same pinned revision.
+Its exact hashes, translated geometry and qualified limitations are recorded in
+`docs/product/telegram-ios-conversation-gallery-sources.json` and
+`docs/product/telegram-ios-conversation-gallery.md` (GPLv3 selected).
 The original glyphs and animation assets, GlassBackground/LiquidLens components
 and supporting rendering code are attributed per file in
 `apps/zoen/modules/zoen-core/ios/TelegramAttachmentPresentation/NOTICE.md`,

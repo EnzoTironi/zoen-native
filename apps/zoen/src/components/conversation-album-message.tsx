@@ -119,6 +119,7 @@ export function ConversationAlbumMessage({
                       tile: { width: frame.width, height: frame.height },
                       onDecoded: (image) => receive(entry.id, image),
                       onInlineUnavailable: () => cannotInline(entry),
+                      galleryEntries: album.entries,
                     }}
                   />
                 </View>

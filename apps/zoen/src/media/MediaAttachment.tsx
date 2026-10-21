@@ -16,6 +16,7 @@ import { AudioWaveform } from './audio-progress';
 import { VoiceTranscript } from './voice-transcript';
 import { VideoClip } from './VideoClip';
 import { previewMediaFile } from './preview-file';
+import { previewConversationMedia } from './conversation-media-preview';
 import { formatFileSize } from './file-size';
 import { inlineImageFrame, type DecodedMessageImage } from './inline-image-frame';
 
@@ -33,6 +34,7 @@ type FileAttachmentProps = {
   onActions?: () => void;
   onImageDecoded?: (image: DecodedMessageImage) => void;
   messageSource?: { spaceId: string; entry: TimelineEntry };
+  galleryEntries?: readonly TimelineEntry[];
   tile?: MediaTile;
   onInlineUnavailable?: () => void;
 };
@@ -59,6 +61,7 @@ function FileAttachmentContent({
   onActions,
   onImageDecoded,
   messageSource,
+  galleryEntries,
   tile,
   onInlineUnavailable,
 }: FileAttachmentProps) {
@@ -222,6 +225,15 @@ function FileAttachmentContent({
     setError(null);
     let file: LocalMediaFile | null = null;
     try {
+      if (messageSource && driver.previewConversationMedia && visual && !voice) {
+        await previewConversationMedia(
+          store,
+          messageSource.spaceId,
+          messageSource.entry.id,
+          galleryEntries ?? [messageSource.entry],
+        );
+        return;
+      }
       // A separate native-viewer lease outlives the virtualized message row.
       file = await materialize(driver);
       if (!mounted.current || expectedGeneration !== generation.current) return;
@@ -548,6 +560,7 @@ export function MessageMedia({
   onImageDecoded,
   tile,
   onInlineUnavailable,
+  galleryEntries,
 }: {
   spaceId: string;
   entry: TimelineEntry;
@@ -556,6 +569,7 @@ export function MessageMedia({
   onImageDecoded?: (image: DecodedMessageImage) => void;
   tile?: MediaTile;
   onInlineUnavailable?: () => void;
+  galleryEntries?: readonly TimelineEntry[];
 }) {
   if (entry.deleted) return null;
   if (entry.voice)
@@ -580,6 +594,8 @@ export function MessageMedia({
       onImageDecoded={onImageDecoded}
       tile={tile}
       onInlineUnavailable={onInlineUnavailable}
+      messageSource={{ spaceId, entry }}
+      galleryEntries={galleryEntries}
       presentation={presentation}
       renderAsFile={entry.media?.presentation === 'file'}
       mine={entry.author.is_me}

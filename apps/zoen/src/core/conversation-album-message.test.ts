@@ -153,6 +153,7 @@ test('album composition forwards canonical identity, actions, every signed capti
     for (const key of Object.keys(f.callbacks))
       assert.strictEqual(part.props[key], f.callbacks[key as keyof typeof f.callbacks]);
   assert.deepEqual(Object.keys(parts[0]!.props.albumPart.tile), ['width', 'height']);
+  for (const part of parts) assert.strictEqual(part.props.albumPart.galleryEntries, value.entries);
   const captions = tree.props.albumContent.captions.props.children as Element[];
   assert.deepEqual(
     captions.map((caption) => caption.props.entry),
