@@ -142,8 +142,8 @@ e soak longo conservam esse estado. O gesto textual inicial, cancelamento,
 seleção e o caminho real de IME têm controles negativos executados. A composição
 também preserva a apresentação completa no replay, incluindo formatação,
 hyperlinks, marcas de parágrafo, navegação e desfazer. A receita reproduziu os
-621 arquivos da fonte testada byte a byte. O pacote atualizado está em geração;
-teclado de software, correção e recuperação no novo iPhone ainda precisam de
+621 arquivos da fonte testada byte a byte. O pacote atualizado compilou com
+JS/WASM verificados; teclado de software, correção e recuperação no novo iPhone ainda precisam de
 validação. Recibo: `/private/tmp/zoen-deckcraft-input-batch-v233/source-qualification-v235.json`.
 O check completo do app também passou: 1.366 casos, tipos, Oxlint e Oxfmt;
 o artefato iOS instalado continua sendo o v228 até o próximo build.
