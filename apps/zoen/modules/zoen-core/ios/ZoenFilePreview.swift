@@ -233,6 +233,14 @@ extension ZoenFilePreviewPresentation {
       let ids = pending.keys.filter { pending[$0]?.owner === owner }
       return ids.compactMap { pending.removeValue(forKey: $0) }.flatMap(\.files)
     }
+    /// A late producer may fail deletion after finishReadOnly already drained
+    /// its registration. Transfer that retained failure to the ordinary owner's
+    /// cleanup/busy guard, rather than waiting for a future account generation.
+    func drainRetiredReadOnly() -> [ZoenPreviewFile] {
+      lock.lock(); defer { lock.unlock() }
+      let ids = pending.keys.filter { pending[$0]?.owner?.retired == true }
+      return ids.compactMap { pending.removeValue(forKey: $0) }.flatMap(\.files)
+    }
     func take(_ id: UUID) -> Transfer? {
       lock.lock(); defer { lock.unlock() }
       return pending.removeValue(forKey: id)
@@ -347,6 +355,7 @@ extension ZoenFilePreviewPresentation {
             readOnlyCopies == nil || (edit == nil && mediaEdit == nil && transfer.recovered.isEmpty && readOnlyCopies?.bound == false) else { throw Failure.unavailable }
       if let owner = transfer.owner { guard owner === readOnlyCopies?.registration else { throw Failure.changed } }
       guard !Task.isCancelled else { throw Failure.changed }
+      retained.append(contentsOf: scope.drainRetiredReadOnly())
       guard active == nil, retained.isEmpty else { throw Failure.busy }
       guard transfer.recovered.isEmpty || edit != nil else { throw Failure.unavailable }
       guard !title.contains("\0"), title.utf8.count <= 1024 else { throw Failure.unavailable }
@@ -656,12 +665,15 @@ extension ZoenFilePreviewPresentation {
   func clear(before generation: UInt64) async throws {
     invalidate(before: generation)
     for transfer in scope.drain(before: generation) { retained.append(contentsOf: transfer.files) }
+    retained.append(contentsOf: scope.drainRetiredReadOnly())
     if let active, active.generation < generation {
       try await withCheckedThrowingContinuation { continuation in
         active.waiters.append(continuation)
         stop(active, error: Failure.changed)
       }
     }
+    // Include a failed late producer that arrived during UIKit dismissal.
+    retained.append(contentsOf: scope.drainRetiredReadOnly())
     let previous = retained
     retained = []
     var failure: Error?

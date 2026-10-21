@@ -39,6 +39,10 @@ Every page transfers through the existing locked `Scope` before the actor return
 its ticket. Closing drains that viewer's pending tickets as well as visible leases;
 its retired registration refuses and deletes a late producer's copy. Account clear
 also drains pending generations. Tickets from another viewer cannot be adopted.
+If late deletion fails after the registration closed, the next preview and every
+explicit clear promote that failure into the existing retained cleanup list. The
+busy guard prevents another preview until cleanup succeeds; clear also collects
+failures that arrive while a native hierarchy dismissal is still pending.
 
 The existing native `draftMediaEditLifetime`, cancellation tokens and preview task
 registry also fence background/foreground, early cancellation and account cleanup.
