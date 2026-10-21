@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import ExpoModulesCore
 @testable import ZoenCore
 
 // AUTHORED, NOT_RUN. These qualify only the content/event boundary once executed;
@@ -35,6 +36,23 @@ final class EmojiKeyboardContentTests: XCTestCase {
     XCTAssertFalse(host.admitsInsertion("untrusted text"))
     XCTAssertFalse(host.admitsInsertion("\u{202E}text"))
     XCTAssertFalse(host.admitsInsertion("\n"))
+  }
+  func testConcreteEmojiHostExposesAndUsesItsOwnExpoEventDispatchers() throws {
+    let host = ZoenEmojiKeyboardPanelHost()
+    // Expo58 EventDispatcher.swift installs only immediate Mirror children.
+    let events = Mirror(reflecting: host).children.compactMap { child -> (String, EventDispatcher)? in
+      guard let label = child.label, let value = child.value as? EventDispatcher else { return nil }
+      return (label, value)
+    }
+    XCTAssertEqual(Set(events.map(\.0)), ["emojiActionEvent", "emojiClosedEvent"])
+    let action = try XCTUnwrap(events.first { $0.0 == "emojiActionEvent" }?.1)
+    let closed = try XCTUnwrap(events.first { $0.0 == "emojiClosedEvent" }?.1)
+    var delivered: [String] = []
+    action.onEventSent = { delivered.append($0["token"] as? String ?? "invalid") }
+    closed.onEventSent = { delivered.append($0["token"] as? String ?? "invalid") }
+    host.emitActionEvent(["token": "action-owner"])
+    host.emitClosedEvent(["token": "closed-owner"])
+    XCTAssertEqual(delivered, ["action-owner", "closed-owner"])
   }
   func testSelectionEmitsOnlyExactNativeEmojiAndRetirementRefusesRetainedActivation() throws {
     var events: [(String, [String: Any])] = []

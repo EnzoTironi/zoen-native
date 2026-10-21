@@ -1,9 +1,14 @@
 import UIKit
+import ExpoModulesCore
 
 // Original UIKit content adapter; pinned Telegram Unicode order/metrics are
 // attributed in EmojiKeyboard/NOTICE.md. The shared host alone owns UITextInput.
 @MainActor
 final class ZoenEmojiKeyboardPanelHost: ZoenKeyboardPanelHost {
+  private let emojiActionEvent = EventDispatcher("onAction")
+  private let emojiClosedEvent = EventDispatcher("onClosed")
+  override func emitActionEvent(_ value: [String: Any]) { emojiActionEvent(value) }
+  override func emitClosedEvent(_ value: [String: Any]) { emojiClosedEvent(value) }
   override var allowsTextEditingActions: Bool { true }
   override func admitsInsertion(_ text: String) -> Bool { ZoenEmojiKeyboardData.allowed.contains(text) }
   override func makeContent(send: @escaping (String, [String: Any]) -> Void) -> any ZoenKeyboardPanelContent {

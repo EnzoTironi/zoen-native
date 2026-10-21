@@ -52,7 +52,8 @@ test('two presentation families retain pinned palette, typography and motion, wi
   assert.deepEqual(day.chat.outgoing.fillColors, ['#E1FFC7']);
   assert.deepEqual(night.chat.outgoing.fillColors, ['#61BCF9', '#0088FF']);
   assert.equal(night.chat.incoming.fill, '#1D1D1DE6');
-  assert.equal(night.accent, '#FFFFFF');
+  assert.equal(night.accent, '#3E88F7');
+  assert.equal(night.chat.input.actionText, '#FFFFFF');
   assert.equal(day.typography.message.fontSize, 17);
   assert.equal(day.typography.title.fontSize, 17);
   assert.deepEqual(day.motion.replyReturn.bezier, [0.38, 0.7, 0.125, 1]);

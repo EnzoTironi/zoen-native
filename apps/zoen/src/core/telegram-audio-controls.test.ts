@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import * as presentation from './telegram-audio-presentation.ts';
+import * as composerPresentation from './telegram-composer-presentation.ts';
 import { VoiceHoldIntent } from '../media/voice-hold-intent.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
 
@@ -140,7 +141,11 @@ function fixture(name: keyof typeof sources, dependencies: Record<string, unknow
       useTapGesture: (config: any) => ({ kind: 'tap', ...config }),
       useExclusiveGestures: (...gestures: any[]) => gestures,
     },
-    'expo-glass-effect': { GlassView: 'GlassView', isLiquidGlassAvailable: () => true },
+    'expo-glass-effect': {
+      GlassContainer: 'GlassContainer',
+      GlassView: 'GlassView',
+      isLiquidGlassAvailable: () => true,
+    },
     'expo-haptics': { selectionAsync: async () => {} },
     '../theme': { useTheme: () => theme },
     '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en' },
@@ -156,6 +161,19 @@ function fixture(name: keyof typeof sources, dependencies: Record<string, unknow
     },
     './primitives': { Icon: 'Icon', IconButton: 'IconButton', NativeButton: 'NativeButton' },
     '../core/telegram-audio-presentation': presentation,
+    '../core/telegram-composer-presentation': composerPresentation,
+    '../components/composer-control-surface': {
+      ComposerControlSurface: 'ComposerControlSurface',
+      ComposerGlyph: 'ComposerGlyph',
+    },
+    './composer-control-surface': {
+      ComposerControlSurface: 'ComposerControlSurface',
+      ComposerGlyph: 'ComposerGlyph',
+    },
+    '../media/attachment-keyboard-context': {
+      AttachmentKeyboardProvider: 'AttachmentKeyboardProvider',
+      useAttachmentKeyboard: () => null,
+    },
     './voice-hold-intent': { VoiceHoldIntent },
     './audio-progress': { AudioProgress: 'AudioProgress' },
     './playback-owner.ts': { mediaPlayback: { pauseAll() {} } },

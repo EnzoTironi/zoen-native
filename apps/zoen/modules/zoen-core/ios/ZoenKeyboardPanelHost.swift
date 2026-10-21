@@ -24,6 +24,10 @@ protocol ZoenKeyboardPanelContent: AnyObject {
 class ZoenKeyboardPanelHost: ExpoView {
   let onAction = EventDispatcher()
   let onClosed = EventDispatcher()
+  // Expo58 installs dispatchers from the concrete class's immediate Mirror children.
+  // Leaf adapters provide their own named dispatchers and override these sinks.
+  func emitActionEvent(_ value: [String: Any]) { onAction(value) }
+  func emitClosedEvent(_ value: [String: Any]) { onClosed(value) }
   var binding = ""
   var model = "{}"
   var allowsTextEditingActions: Bool { false }
@@ -178,7 +182,7 @@ class ZoenKeyboardPanelHost: ExpoView {
     var event: [String: Any] = ["token": owner.token, "context": owner.context, "action": action]
     if let id = payload["id"] as? String, id.utf8.count <= 2048 { event["id"] = id }
     if let revision = dictionary(model, maximum: 4_194_304)?["revision"] as? String { event["revision"] = revision }
-    onAction(event)
+    emitActionEvent(event)
   }
   private func close(reason: String, returnToKeyboard: Bool) {
     guard let owner else { resumeWaiters(); return }
@@ -203,7 +207,7 @@ class ZoenKeyboardPanelHost: ExpoView {
     self.owner = nil
     owner.input.changedWindow = nil
     owner.content.view.removeFromSuperview()
-    onClosed(["token": owner.token, "context": owner.context, "reason": owner.reason])
+    emitClosedEvent(["token": owner.token, "context": owner.context, "reason": owner.reason])
     resumeWaiters()
     // A prop update may have replaced this owner while UIKit was dismissing it.
     applyProps()
@@ -253,7 +257,7 @@ class ZoenKeyboardPanelHost: ExpoView {
     guard let token = requested["token"] as? String, let context = requested["context"] as? String else { return }
     guard !terminalTokens.contains(token) else { return }
     terminalTokens.insert(token)
-    onClosed(["token": token, "context": context, "reason": reason])
+    emitClosedEvent(["token": token, "context": context, "reason": reason])
   }
   private func dictionary(_ value: String, maximum: Int) -> [String: Any]? {
     guard let data = value.data(using: .utf8), data.count <= maximum else { return nil }
