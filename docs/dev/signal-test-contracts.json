@@ -2194,5 +2194,38 @@
     "Continue unread assertions, parameter expansions, conditional fixtures and fuzz drivers across all six pinned repositories, including remaining RingRTC Rust/Swift/Node bodies and its unread Android tests; its bounded inventory is now recorded, not exhaustive.",
     "Complete independent-recipient media, multi-attachment/video, physical lifecycle and recovery journeys under Zoen own policies."
   ],
-  "comparisonPolicy": "The top-level zoenSourceCompared is the inherited baseline for the original 42 records. Explicit per-record zoenSourceCompared overrides apply to the nine RingRTC records. Baseline statuses and evidence remain historical; implementedZoenSubset records use their own immutable Zoen commit and retain narrower assertion/execution boundaries rather than redefining the baseline or approving product equivalence."
+  "comparisonPolicy": "The top-level zoenSourceCompared is the inherited baseline for the original 42 records. Explicit per-record zoenSourceCompared overrides apply to the nine RingRTC records. Baseline statuses and evidence remain historical; implementedZoenSubset records use their own immutable Zoen commit and retain narrower assertion/execution boundaries rather than redefining the baseline or approving product equivalence.",
+  "qualificationBatches": [
+    {
+      "id": "S04-cursor-tail-repair-2026-10-21",
+      "date": "2026-10-21",
+      "relatedHistoricalScenario": "S04",
+      "implementationCommit": "288cec096b011f6e59f412888dc08fde6c2c42b0",
+      "sourceBase": "fc223f8eef4c71b8bc229d77962b646e554888b3",
+      "status": "PASS_BOUNDED_BACKEND_SUBSET",
+      "report": "docs/dev/cursor-repair-qualification-2026-10-21.md",
+      "behavior": "Reconcile accepted retained-log cursors after a completely lost final live Event, including healthy Ping/Pong and no subsequent content, Joined, refresh or reconnect. Discover a newly authorized space when Joined and all of its live events were missed.",
+      "validation": {
+        "integratedClientCoreTestsPassed": 558,
+        "separatePreferenceCandidate": "66878c2252a64a641db39e419a2bd90921f5f64a",
+        "restoredFocusedCursorTestsPassed": 9,
+        "strictClippy": "PASS_client-core_and_zoen-cli_all-targets_D_warnings",
+        "workspaceFormatting": "PASS",
+        "realClusterPositive": "PASS_two_actual_relays_PG_FDB_NATS_same_WS_single_replay_60002ms",
+        "realClusterNegative": "INTENDED_FAIL_missing_repair_same_socket_natural_Pongs_to_100s_no_Sync_or_replay",
+        "realClusterRestoredPositive": "PASS_recompiled_new_fixture_60004ms_SQLite_equals_verified_FDB_chain",
+        "independentCursorBranch": "PASS_288cec096b011f6e59f412888dc08fde6c2c42b0_same_real_cluster_journey",
+        "upstreamSuitesExecuted": false,
+        "nativeBackendRebuildQualified": false,
+        "ciQualified": false
+      },
+      "limits": [
+        "Fault drops one post-NATS relay-to-client Event; not NATS broker loss or every relay snapshot/subscription interleaving.",
+        "Closed plaintext group isolates cursor recovery; MLS, media, mobile suspension, power loss, battery and large-history cost remain unqualified.",
+        "Initial catch-up before its first SyncDone retains the previous unbounded path.",
+        "60s/30s are Zoen policy choices, not Signal constants or a delivery/capacity promise.",
+        "Historical 51 scenario classifications and their immutable source pins remain unchanged; this partial follow-up does not complete S04 or product acceptance."
+      ]
+    }
+  ]
 }

@@ -337,3 +337,18 @@ abertura da edição normal; salvar no QuickLook volta ao rascunho compacto, nã
 diretamente à aprovação expandida. Não há perda de rascunho observada nesse caso.
 A aprovação desse cenário não encerra as jornadas completas nem altera as três
 flags de prontidão.
+
+## Reconciliação periódica após perda de entrega ao vivo
+
+A [qualificação de 21/10/2026](cursor-repair-qualification-2026-10-21.md)
+acrescenta uma prova delimitada ao acompanhamento de S04: com dois relays e
+PG/FDB/NATS reais, perder o último Event depois do broker não deixa o cliente
+permanentemente desatualizado enquanto o mesmo socket recebe Pongs. O cliente
+reconcilia cursores aceitos e salva uma única repetição do evento. O controle sem
+agendamento falha na asserção esperada; o código restaurado passa novamente.
+A suíte integrada passou em 558 testes, incluindo o candidato independente de
+preferências locais; nove regressões de cursor e Clippy estrito também passaram.
+As classificações históricas dos 51 registros continuam preservadas. Perda no
+broker, todas as corridas de inscrição, MLS/mídia, ciclo de vida móvel e custo de
+históricos grandes continuam fora dessa prova. As flags de produto permanecem
+inalteradas.
