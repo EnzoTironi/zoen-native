@@ -2301,6 +2301,36 @@
         "The ordering fixture does not execute the production relay/FDB/NATS cluster.",
         "The per-offer confirmed-history replay cost and public failed-send recovery remain unqualified."
       ]
+    },
+    {
+      "id": "S04-initial-catchup-inactivity-2026-10-21",
+      "date": "2026-10-21",
+      "relatedHistoricalScenario": "S04",
+      "implementationCommit": "d5c4d1f088baf6f56991b2afe966095f3dbed0d0",
+      "negativeRegressionCommit": "d8c898d805e186609add48577147e27d43adae5f",
+      "sourceBase": "5cb1a7f7ac14c4279c0c739c063d90f17f12d50c",
+      "status": "PASS_BOUNDED_BACKEND_SUBSET",
+      "report": "docs/dev/initial-catchup-liveness-qualification-2026-10-21.md",
+      "behavior": "Before FIRST SyncDone, abort initial stream inactivity through the existing session guard unless Applied/Confirmed actually advances a durable accepted cursor under the same Engine lock. Genuine advancing history has no absolute duration cap; initial completion retains existing periodic reconciliation and exact durable outbox.",
+      "validation": {
+        "initialCatchupFocusedTestsPassed": 5,
+        "existingPeriodicCursorTestsPassed": 9,
+        "executedNegative": "INTENDED_FAIL_45_healthy_pongs_no_SyncDone_no_Publish_session_retained_cold_outbox_unchanged",
+        "actualTransport": "TCP_WebSocket_authentication_signed_events_SQLite_and_cold_reopen",
+        "strictClippy": "PASS_client-core_all-targets_D_warnings",
+        "formatting": "PASS_four_changed_Rust_files",
+        "upstreamSuitesExecuted": false,
+        "realClusterExecuted": false,
+        "nativeBackendRebuildQualified": false,
+        "ciQualified": false
+      },
+      "limits": [
+        "Initial inactivity60s is a provisional Zoen policy, not a measured SLA or Signal constant. Short test-policy injection qualifies behavior, not production-duration timing.",
+        "Event/SyncDone frames have no replay request frontier. Genuine advancement in any Space renews stream inactivity; this does not detect a stalled individual Space while another keeps advancing. Historical/duplicate cross-Space traffic does not renew.",
+        "No second scheduler/cache/queue or wire changes. Existing backoff and exact outbox remain authority; automatic reconnect end-to-end is not executed in this subset.",
+        "Three delayed fixture pages exercise canonical progress but not production500-event server pagination, PostgreSQL/FDB/NATS, MLS, HTTPmedia, mobile suspension, CPU preemption, power loss or capacity.",
+        "Historical scenario records and earlier immutable qualification limits remain unchanged; this does not complete S04 or product acceptance."
+      ]
     }
   ]
 }

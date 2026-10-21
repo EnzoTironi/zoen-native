@@ -352,3 +352,13 @@ As classificações históricas dos 51 registros continuam preservadas. Perda no
 broker, todas as corridas de inscrição, MLS/mídia, ciclo de vida móvel e custo de
 históricos grandes continuam fora dessa prova. As flags de produto permanecem
 inalteradas.
+
+## Seguimento: primeiro catch-up sem progresso
+
+O [recorte de inatividade inicial](initial-catchup-liveness-qualification-2026-10-21.md)
+reproduziu uma sessão presa apesar de Pongs saudáveis e a corrigiu no responsável
+de sincronização existente. Cinco casos novos de progresso/inatividade e nove de
+reconciliação periódica passaram em transporte local real. O prazo de 60 segundos
+é provisório; avanço genuíno em outro Space ainda pode renovar a janela do stream.
+A fonte, os limites e a prova RED→GREEN são registrados separadamente, sem alterar
+as classificações históricas nem afirmar equivalência com o Signal.
