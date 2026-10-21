@@ -48,6 +48,13 @@ ports, including final captions, ordered IDs, stale canonical revision, ordinary
 draft rejection, recovery, failed/canceled requests and ambiguous-receipt retry.
 The native tests exercise retained menu actions against actual content state.
 An actual UIKit/glass/Lottie dependency-closure typecheck and Host parser check
-are separate from executing those tests. Integrated Expo linkage, the real menu
-and native removal behavior still require the parent's main iOS validation
-batch; source reuse alone does not establish visual parity.
+are separate from executing those tests. The installed Release14 at `7b116e3f`
+also passes a real Photos selection, final native caption, explicit More → Send
+as File and confirmed JPEG message. Cold restart retains the caption and the
+new signed file-mode recent row. The same artifact passes pending-PDF append,
+repeated Add, editor cancellation and Gallery Add/File cancellation resumption.
+The full Expo check passes 1,496 tests, types, lint and format; all 415 installed
+files match the signed build. Evidence is under
+`output/telegram-attachment-port-v242/presentation-proof/runtime-14-batch.json`.
+This local single-account sender proof does not qualify independent recipient
+delivery, HD/original conversion or Telegram menu animation/pixel parity.

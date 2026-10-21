@@ -17,7 +17,8 @@ menu animation parity.
 Only the presenter's preexisting sibling views receive the existing overlap-safe
 accessibility leases. The ancestor, other attachment containers and later system
 menu/controller views remain unhidden. Each original sibling accessibility flag
-is restored after its last lease, including prehidden values. Suspension hides both content and its wrapper so no invisible touch blocker is
+is restored after its last lease, including prehidden values. Suspension hides
+both content and its wrapper so no invisible touch blocker is
 left behind, and releases those same leases. Resume only reacquires the captured
 prior siblings; it does not hide a later picker or system menu. Dismissal and
 loss of the window remove the actual content/child controller and release leases
@@ -38,5 +39,18 @@ with the app build owner. Original evidence is retained under
 `/Users/enzotironi/.codex/builds/zoen-context-menu-v248`; the final shared-owner
 eight-case execution and exact source inventory are under
 `/Users/enzotironi/.codex/builds/zoen-shared-menu-v249`.
-Integrated Expo/Fabric/account/background behavior and final source visual parity
-remain part of the owning app validation batch; this fixture does not replace it.
+The installed Release14 at `7b116e3f` passes the integrated pending-PDF Add,
+system File import, repeated Add, image Edit/cancel and durable Gallery Add →
+Files → Cancel/resume journey. Closing retains the three-item draft; explicit
+discard removes only that temporary QA draft. No Send occurs in this portion.
+The 415 installed files and signature match the built artifact. Evidence:
+`output/telegram-attachment-port-v242/presentation-proof/runtime-14-batch.json`.
+
+That batch first exposed two separate integration failures: a React registration
+feedback loop, then a pending caption field becoming noneditable before native
+picker admission. The stable committed callback dispatcher removes the first;
+preserving the mounted editor while fencing canonical caption writes during
+picking removes the second. Native tag, label, window and editability admission
+checks remain intact. Original failures and recovery evidence are retained.
+Background/accessibility-device qualification and final source visual parity
+remain separate; neither this fixture nor this scoped sender journey proves them.
