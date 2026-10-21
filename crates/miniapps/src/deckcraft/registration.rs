@@ -17,12 +17,12 @@ pub const MANIFEST: &str = match option_env!("ZOEN_DECKCRAFT_RESOURCE_MANIFEST_J
     Some(manifest) => manifest,
     None => include_str!("../../resources/deckcraft.manifest.json"),
 };
-// Reviewed managed iOS input candidate; the builder records the exact engine and
-// dependency patches. Native keyboard acceptance is tracked separately.
+// Reproduced candidate 02 = 04; see docs/dev/artcraft-editor-integration.md.
+// The missing original WASM was not recovered. Native acceptance remains separate.
 const MODULE_FILE: &str = "deckcraft-web-1eb288115950a000.js";
 const MODULE_SHA: &str = "4a3a583c958a150900c58e773c2ed58df6213e733ed3496e9c60c173cd9bebc4";
-const WASM_FILE: &str = "deckcraft-web-41f0085af1d7648c_bg.wasm";
-const WASM_SHA: &str = "2c6ab9025a157f346849dcbb4e7cc956e2afbb6665048727654f60995eee24c6";
+const WASM_FILE: &str = "deckcraft-web-b257808a686003f1_bg.wasm";
+const WASM_SHA: &str = "cb0af84197762083dc06f9b3812b6c60fe2bbbfeac534ff44c186081dd37b241";
 fn exact_keys(value: &Value, expected: &[&str]) -> bool {
     value.as_object().is_some_and(|object| {
         object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
@@ -124,7 +124,7 @@ pub fn valid_resource(html: &str, manifest: &str) -> bool {
     let Some(wasm) = asset(
         &runtime["wasm"],
         WASM_FILE,
-        36_387_050,
+        36_387_042,
         WASM_SHA,
         "application/wasm",
     ) else {
@@ -222,7 +222,7 @@ mod tests {
     use super::*;
     fn fixture(html: &str) -> Value {
         let directory = format!("https://runtime.invalid/deckcraft/{ENGINE_REVISION}/");
-        json!({"id":APP,"resourceUri":RESOURCE,"mimeType":crate::MIME,"bytes":html.len(),"sha256":format!("{:x}",Sha256::digest(html.as_bytes())),"capabilities":[],"allowedDomains":[],"linkDomains":[],"permissions":{},"csp":{"connectDomains":[],"resourceDomains":[],"frameDomains":[],"baseUriDomains":[]},"runtimePackage":{"schema":1,"engine":APP,"revision":ENGINE_REVISION,"abi":"zoen-host-v1","module":{"url":format!("{directory}{MODULE_FILE}"),"bytes":157851,"sha256":MODULE_SHA,"mime":"text/javascript"},"wasm":{"url":format!("{directory}{WASM_FILE}"),"bytes":36387050,"sha256":WASM_SHA,"mime":"application/wasm"}}})
+        json!({"id":APP,"resourceUri":RESOURCE,"mimeType":crate::MIME,"bytes":html.len(),"sha256":format!("{:x}",Sha256::digest(html.as_bytes())),"capabilities":[],"allowedDomains":[],"linkDomains":[],"permissions":{},"csp":{"connectDomains":[],"resourceDomains":[],"frameDomains":[],"baseUriDomains":[]},"runtimePackage":{"schema":1,"engine":APP,"revision":ENGINE_REVISION,"abi":"zoen-host-v1","module":{"url":format!("{directory}{MODULE_FILE}"),"bytes":157851,"sha256":MODULE_SHA,"mime":"text/javascript"},"wasm":{"url":format!("{directory}{WASM_FILE}"),"bytes":36387042,"sha256":WASM_SHA,"mime":"application/wasm"}}})
     }
     #[test]
     fn runtime_config_requires_exact_html_code_identity_and_zero_guest_network_authority() {
@@ -293,6 +293,32 @@ mod tests {
             let mut changed = good.clone();
             *changed.pointer_mut(pointer).unwrap() = value;
             assert!(!valid_resource(html, &changed.to_string()), "{pointer}");
+        }
+    }
+    #[test]
+    fn reproduced_candidate_requires_the_complete_new_tuple_and_retires_the_missing_original() {
+        let directory = format!("https://runtime.invalid/deckcraft/{ENGINE_REVISION}/");
+        let mut candidate = fixture(HTML);
+        candidate["runtimePackage"]["wasm"] = json!({
+            "url":format!("{directory}deckcraft-web-b257808a686003f1_bg.wasm"),
+            "bytes":36387042,
+            "sha256":"cb0af84197762083dc06f9b3812b6c60fe2bbbfeac534ff44c186081dd37b241",
+            "mime":"application/wasm"
+        });
+        assert!(valid_resource(HTML, &candidate.to_string()));
+        let original = json!({
+            "url":format!("{directory}deckcraft-web-41f0085af1d7648c_bg.wasm"),
+            "bytes":36387050,
+            "sha256":"2c6ab9025a157f346849dcbb4e7cc956e2afbb6665048727654f60995eee24c6",
+            "mime":"application/wasm"
+        });
+        let mut retired = candidate.clone();
+        retired["runtimePackage"]["wasm"] = original.clone();
+        assert!(!valid_resource(HTML, &retired.to_string()));
+        for field in ["url", "bytes", "sha256"] {
+            let mut mixed = candidate.clone();
+            mixed["runtimePackage"]["wasm"][field] = original[field].clone();
+            assert!(!valid_resource(HTML, &mixed.to_string()), "{field}");
         }
     }
     #[test]

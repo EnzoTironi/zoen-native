@@ -5,6 +5,38 @@ de repetir o padrão nos outros editores. Reutilizar seu motor, comandos e
 exportadores; o Zoen continua responsável pelo documento criptografado, identidade,
 permissões, versões, sincronização e histórico de pessoas e agentes.
 
+## Pacote reproduzido — 21 de outubro de 2026
+
+O registro fixa deliberadamente o candidato 04 abaixo, reproduzido a partir da
+revisão upstream `a31b990d32f2c8562f1588562f922960c3fde48b` e da receita gerenciada
+com `0017-eframe-ios-input.patch`. O rebuild independente recompilou o crate Web
+final e os componentes próprios, executou bindgen/otimização e produziu JS/WASM
+idênticos ao candidato 02. Reutilizou dependências externas em cache; não foi
+um bootstrap hermético em máquina limpa. Os avisos e a origem das fontes foram
+preservados, sem uma nova auditoria completa das dependências transitivas.
+
+| Recurso | Arquivo                                  |      Bytes | SHA-256                                                            |
+| ------- | ---------------------------------------- | ---------: | ------------------------------------------------------------------ |
+| JS      | `deckcraft-web-1eb288115950a000.js`      |    157.851 | `4a3a583c958a150900c58e773c2ed58df6213e733ed3496e9c60c173cd9bebc4` |
+| WASM    | `deckcraft-web-b257808a686003f1_bg.wasm` | 36.387.042 | `cb0af84197762083dc06f9b3812b6c60fe2bbbfeac534ff44c186081dd37b241` |
+
+O WASM anterior `2c6ab9025a157f346849dcbb4e7cc956e2afbb6665048727654f60995eee24c6`,
+de 36.387.050 bytes, continua ausente. A causa da diferença restante não foi
+comprovada; **o novo pacote não é recuperação nem prova de equivalência daquele
+binário**. O registro rejeita o tuplo antigo e combinações parciais. Revisão do
+motor, ABI, JS, limites, permissões e autoridade canônica do documento permanecem
+os mesmos. O manifesto padrão continua sem endpoint e indisponível.
+
+Proveniência e os 36 testes de motor/ponte/input da reprodução estão em
+`/Users/enzotironi/.codex/builds/zoen-deckcraft-repro-v249/candidate-qualification.json`.
+O pacote selado fica em `sealed-candidate-04/` nesse mesmo diretório; o JSON tem
+SHA-256 `c972da1a80f30c889e6d3ad7d08e8821822bbf96cc98e525459e6d856716169e`.
+O novo manifesto completo deve ser gerado contra o HTML do build que o utiliza,
+com o gerador existente e sem ampliar a rede do guest. A promoção dos pins não
+ativa entrega HTTPS, confiança TLS ou um build nativo. Carregamento, teclado,
+edição manual/por agente, persistência, reinício e exportação no iPhone com
+**este** pacote ainda precisam de aceite; as provas antigas abaixo são históricas.
+
 ## Checkpoint de integração — 20 de outubro de 2026
 
 O carregador gerenciado, registro e UI nativa usam o documento binário
