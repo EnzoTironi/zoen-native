@@ -71,7 +71,7 @@
     "ChatVideoGalleryItemScrubberView.swift": "standard line8pt/round/nohandle,white42% background,13pt monospaced medium time,44pt row,y15+14pt wrapper,58pt reservations/long timestamp expansion,22pt glass radius",
     "MediaPlayerScrubbingNode.swift": "relative origin+duration*fraction clamp,commit-on-release/cancel restoration,8pt line centered in14pt wrapper,pixel-floor progress",
     "MediaPlayerTimeTextNode.swift": "floor elapsed and abs(floor(position-duration)) remaining,h:mm:ss formatting",
-    "ChatItemGalleryFooterContentNode.swift": "44pt scrubber,8pt bottom,8/26pt source side inset condition; existing Zoen read-only caption retains own block and10pt separation",
+    "ChatItemGalleryFooterContentNode.swift": "44pt scrubber,8pt bottom,8/26pt source side inset condition; existing Zoen read-only caption retains own block and10pt separation;1189\u20131193 compact landscape caption hidden;1218\u20131230 caption>100pt\u219280pt scrolling viewport; short regular viewports clamp against actual transport/footer bounds",
     "UniversalVideoGalleryItem.swift": "1281\u20131318 center transport64/92/30;15s seeks; no AVKit chrome"
   },
   "adaptations": [

@@ -330,7 +330,7 @@ import UIKit
       captionPanel.isHidden = true; counter.isHidden = true; strip.isHidden = true
       recipientArrow.isHidden = true
     } else { sendGlass.isHidden = false }
-    conversationCaption.isHidden = source != "conversation" || controlsHidden || (conversationCaption.text ?? "").isEmpty
+    conversationCaption.isHidden = source != "conversation" || controlsHidden || (conversationCaption.text ?? "").isEmpty || conversationCaption.frame.height<=0
     position.isHidden = source != "conversation" || controlsHidden
     strip.isHidden = controlsHidden || !railVisible || hasKeyboardFocus || selectedMode
     captionPanel.isUserInteractionEnabled = !controlsHidden
@@ -461,7 +461,16 @@ import UIKit
       position.font = .systemFont(ofSize:13)
       let available = max(0,size.height-safe.top-safe.bottom-110)
       let text = conversationCaption.sizeThatFits(CGSize(width:max(1,size.width-safe.left-safe.right-32),height:available))
-      conversationCaption.frame = CGRect(x:safe.left+16,y:size.height-safe.bottom-16-min(available,text.height),width:max(0,size.width-safe.left-safe.right-32),height:min(available,text.height))
+      // ChatItemGalleryFooterContentNode1189–1193,1218–1230: compact
+      // landscape hides caption; text over100pt uses an80pt scroll viewport.
+      let displaysCaption = !landscape || root.traitCollection.horizontalSizeClass == .regular
+      let bottom = size.height-safe.bottom-16
+      let sourceHeight:CGFloat = text.height>100 ? 80:text.height
+      let transportLimit = items.first(where:{$0.id==previewId})?.video == true
+        ? max(0,bottom-ZoenConversationVideoControls.minimumCaptionY(height:size.height)):available
+      let captionHeight = displaysCaption ? min(available,sourceHeight,transportLimit):0
+      conversationCaption.frame = CGRect(x:safe.left+16,y:bottom-captionHeight,width:max(0,size.width-safe.left-safe.right-32),height:captionHeight)
+      conversationCaption.isScrollEnabled = captionHeight>0 && text.height>captionHeight
     } else { recipient.textAlignment = .left }
     updateControls()
   }

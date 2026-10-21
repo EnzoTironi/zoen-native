@@ -5,6 +5,10 @@ import UIKit
 import Lottie
 
 @MainActor final class ZoenConversationVideoControls: UIView {
+  static let centerDiameter: CGFloat = 92
+  /// The caption cannot cover either the centered transport or its44pt footer.
+  /// This is only a viewport clamp over the pinned footer100→80pt text rule.
+  static func minimumCaptionY(height: CGFloat) -> CGFloat { height / 2 + centerDiameter / 2 + 44 + 10 }
   let scrubber = ZoenConversationVideoScrubber()
   private let centerButton = ZoenConversationPlaybackButton(direction: nil)
   private let backward = ZoenConversationPlaybackButton(direction: false)
@@ -96,7 +100,7 @@ import Lottie
   override func layoutSubviews() {
     super.layoutSubviews()
     // UniversalVideoGalleryItem1281–1318. No additional AVKit close or toolbar.
-    let side: CGFloat = 64, middle: CGFloat = 92, spacing: CGFloat = 30
+    let side: CGFloat = 64, middle = Self.centerDiameter, spacing: CGFloat = 30
     let width = side * 2 + middle + spacing * 2, x = floor((bounds.width - width) / 2)
     backward.frame = CGRect(x: x, y: floor((bounds.height - side) / 2), width: side, height: side)
     centerButton.frame = CGRect(x: x + side + spacing, y: floor((bounds.height - middle) / 2), width: middle, height: middle)

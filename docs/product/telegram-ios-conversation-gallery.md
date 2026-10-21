@@ -44,6 +44,10 @@ scrubbing commits an exact seek on release, restores the origin on cancel and
 resumes only the prior active playback. The44pt adjustable scrubber exposes
 15-second accessibility steps; hidden/inactive/retired controls cannot dispatch.
 Caption and transport occupy distinct footer rows in portrait and landscape.
+The original footer bounds long captions: above100pt of text uses an80pt
+scrolling viewport; compact landscape hides the caption. A regular short
+viewport additionally clamps this caption against the actual92pt centered
+control and44pt footer, so readable caption content cannot intercept playback.
 
 All temporary copies belong to `ZoenFilePreview.ReadOnlyCopies`, including the
 initial page. The owner enforces three copies, retires display requests/players

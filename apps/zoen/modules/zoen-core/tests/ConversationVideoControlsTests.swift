@@ -84,4 +84,41 @@ import XCTest
     scrubber.endTracking(nil, with: nil)
     XCTAssertEqual(endings, [false])
   }
+  func testActualGalleryLongCaptionCannotCoverPlayOrScrubberInEitherSizeClass() throws {
+    let file = URL.temporaryDirectory.appendingPathComponent("zoen-video-layout-\(UUID().uuidString).mp4")
+    try Data("Synthetic layout-only media; playback is separately host-tested".utf8).write(to: file)
+    defer { try? FileManager.default.removeItem(at: file) }
+    let appearance = ZoenKeyboardPanelAppearance(background: .black, text: .white, secondary: .gray, accent: .white, separator: .darkGray, bottomInset: 0)
+    for (size, safe, sizeClass) in [
+      (CGSize(width: 390, height: 844), UIEdgeInsets(top: 59, left: 0, bottom: 34, right: 0), UIUserInterfaceSizeClass.compact),
+      (CGSize(width: 844, height: 390), UIEdgeInsets(top: 0, left: 59, bottom: 21, right: 59), .compact),
+      (CGSize(width: 844, height: 390), UIEdgeInsets(top: 0, left: 59, bottom: 21, right: 59), .regular)
+    ] {
+      let gallery = ZoenAttachmentGalleryContent { _, _ in }
+      gallery.view.traitOverrides.horizontalSizeClass = sizeClass
+      gallery.view.frame = CGRect(origin: .zero, size: size)
+      try gallery.update(model: ["source": "conversation", "screen": "preview", "previewId": "a", "revision": "one", "selected": [String](),
+        "items": [["id": "a", "name": "Synthetic video", "mime": "video/mp4", "uri": file.absoluteString]],
+        "caption": ["value": String(repeating: "A real long caption must keep playback reachable. ", count: 100)]], appearance: appearance)
+      gallery.updatePresentation(keyboardHeight: 0, safeArea: safe)
+      gallery.view.layoutIfNeeded()
+      let caption = try XCTUnwrap(descendants(gallery.view).first { $0.accessibilityIdentifier == "conversation-gallery-caption" } as? UITextView)
+      let play = try control(gallery.view, "conversation-video-play-pause")
+      let scrubber = try control(gallery.view, "conversation-video-scrubber")
+      let playFrame = play.convert(play.bounds, to: gallery.view), scrubberFrame = scrubber.convert(scrubber.bounds, to: gallery.view)
+      XCTAssertFalse(playFrame.intersects(scrubberFrame))
+      XCTAssertEqual(scrubberFrame.height, 44)
+      if size.width > size.height && sizeClass == .compact {
+        XCTAssertTrue(caption.isHidden)
+      } else {
+        XCTAssertFalse(caption.isHidden)
+        XCTAssertLessThanOrEqual(caption.frame.height, 80)
+        XCTAssertTrue(caption.isScrollEnabled)
+        XCTAssertFalse(caption.frame.intersects(playFrame))
+        XCTAssertFalse(caption.frame.intersects(scrubberFrame))
+      }
+      XCTAssertEqual(descendants(gallery.view).filter { $0.accessibilityIdentifier == "conversation-gallery-close" }.count, 1)
+      gallery.retire()
+    }
+  }
 }
