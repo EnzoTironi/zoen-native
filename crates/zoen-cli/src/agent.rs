@@ -43,11 +43,48 @@ const MAX_STATE_FAILURES: u32 = 6;
 /// Source messages whose tool steps the journal keeps (older ones are long answered).
 const JOURNAL_KEEP: usize = 200;
 
-struct ReqwestTransport(reqwest::Client);
+// Match the existing Workers AI ModelBrain envelope/budgets (citizen/models.rs).
+// Clef returns typed question answers inside its JSON envelope, not binary data.
+const GATE_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+const GATE_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const GATE_MAX_RESPONSE_BYTES: usize = 1024 * 1024;
+
+struct ReqwestTransport {
+    client: reqwest::Client,
+    max_response_bytes: usize,
+}
+impl ReqwestTransport {
+    fn new() -> Result<Self, String> {
+        Self::with_limits(
+            reqwest::Client::builder(),
+            GATE_REQUEST_TIMEOUT,
+            GATE_CONNECT_TIMEOUT,
+            GATE_MAX_RESPONSE_BYTES,
+        )
+    }
+
+    fn with_limits(
+        builder: reqwest::ClientBuilder,
+        timeout: Duration,
+        connect_timeout: Duration,
+        max_response_bytes: usize,
+    ) -> Result<Self, String> {
+        let client = builder
+            .connect_timeout(connect_timeout)
+            .read_timeout(timeout)
+            .timeout(timeout)
+            .build()
+            .map_err(|_| "transport configuration".to_string())?;
+        Ok(Self {
+            client,
+            max_response_bytes,
+        })
+    }
+}
 impl HttpTransport for ReqwestTransport {
     fn post_json(&self, url: &str, bearer: Option<&str>, body: &str) -> Result<String, String> {
         let mut rq = self
-            .0
+            .client
             .post(url)
             .header("content-type", "application/json")
             .body(body.to_string());
@@ -56,12 +93,31 @@ impl HttpTransport for ReqwestTransport {
         }
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let r = rq.send().await.map_err(|_| "transport".to_string())?;
-                r.text().await.map_err(|_| "body".to_string())
+                let mut response = rq.send().await.map_err(|_| "transport".to_string())?;
+                if response
+                    .content_length()
+                    .is_some_and(|length| length > self.max_response_bytes as u64)
+                {
+                    return Err("response too large".to_string());
+                }
+                let mut bytes = Vec::new();
+                while let Some(chunk) = response.chunk().await.map_err(|_| "body".to_string())? {
+                    if chunk.len() > self.max_response_bytes.saturating_sub(bytes.len()) {
+                        return Err("response too large".to_string());
+                    }
+                    bytes.extend_from_slice(&chunk);
+                }
+                // Retain reqwest::Response::text's UTF-8/lossy behavior with
+                // this workspace's charset-disabled reqwest configuration.
+                Ok(String::from_utf8_lossy(&bytes).into_owned())
             })
         })
     }
 }
+
+#[cfg(test)]
+#[path = "agent/gate_transport_tests.rs"]
+mod gate_transport_tests;
 
 fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.is_empty())
@@ -76,7 +132,7 @@ fn gate() -> Result<Gate, String> {
     match (env("CLOUDFLARE_WORKERS_AI_TOKEN"), env("CLOUDFLARE_ACCOUNT_ID")) {
         (Some(token), Some(account)) => Ok(Gate {
             remote: Some(Box::new(Clef {
-                transport: Arc::new(ReqwestTransport(reqwest::Client::new())),
+                transport: Arc::new(ReqwestTransport::new()?),
                 account,
                 token,
                 model: ClefModel::Flash,
