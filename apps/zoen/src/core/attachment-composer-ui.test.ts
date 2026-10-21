@@ -1,5 +1,6 @@
 import { composerVerticalInsets } from './telegram-audio-presentation.ts';
 import * as composerPresentation from './telegram-composer-presentation.ts';
+import * as composerMotion from './telegram-composer-motion.ts';
 import { telegramPresentation, DEFAULT_THEME_CUSTOMIZATION } from '../theme/telegram.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -298,6 +299,12 @@ function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass = false)
     '../media/attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
     './message-context': { MessageContext: 'MessageContext' },
     './composer-action': { ComposerAction: 'ComposerAction' },
+    './composer-action-motion': {
+      ComposerMotionSlot: 'ComposerMotionSlot',
+      composerFrameTransition: () => 'SourceFrameTransition',
+      useComposerActionMotion: () => ({ active: true }),
+    },
+    '../core/telegram-composer-motion': composerMotion,
     './conversation-composer-access': { ConversationComposerAccess: 'ConversationComposerAccess' },
     './primitives': { NativeButton: 'NativeButton' },
   };
@@ -525,12 +532,25 @@ test('iOS keeps the exact send intent inside the field while empty audio and sea
   assert.equal(scan(tree).filter(byId('send-message')).length, 1);
 
   tree = f.render(undefined, { value: '' });
-  assert.equal(scan(surface(tree)).some(byId('send-message')), false);
-  assert.equal(scan(tree).some(byId('send-message')), false);
-  assert.ok(
-    (find(tree, byId('message-composer-row')).props.children as unknown[]).includes('Microphone'),
+  assert.equal(
+    scan(surface(tree)).some(byId('send-message')),
+    true,
+    'Send remains mounted while hidden',
   );
-  assert.equal((surface(tree).props.children as unknown[]).includes('Microphone'), false);
+  assert.equal(
+    find(tree, (node) => node.type === 'ComposerMotionSlot' && node.props.kind === 'send').props
+      .active,
+    false,
+  );
+  assert.equal(
+    find(tree, (node) => node.type === 'ComposerMotionSlot' && node.props.kind === 'media').props
+      .children,
+    'Microphone',
+  );
+  assert.equal(
+    scan(surface(tree)).some((node) => node.props.children === 'Microphone'),
+    false,
+  );
 
   tree = f.render(f.file);
   (find(surface(tree), byId('send-attachments')).props.onPress as Handler)();
@@ -681,7 +701,7 @@ test('compiled iOS renderer keeps a full-width field and reserves the source ins
   assert.equal(fieldStyle.paddingTop, 9.5);
   assert.equal(fieldStyle.paddingBottom, 9.5);
   assert.equal(field.props.selectionColor, f.theme.presentation.chat.input.action);
-  assert.equal(styleOf(surface).flex, 1);
+  assert.equal(styleOf(find(tree, byId('message-composer-field-frame'))).flex, 1);
   assert.notEqual(
     styleOf(surface).flexDirection,
     'row',
@@ -690,7 +710,12 @@ test('compiled iOS renderer keeps a full-width field and reserves the source ins
   const mode = find(tree, byId('composer-input-mode'));
   assert.equal(styleOf(mode).width, 32);
   assert.equal(styleOf(mode).height, 40);
-  assert.deepEqual(styleOf(parentOf(tree, mode)), { position: 'absolute', bottom: 0, right: 50 });
+  assert.deepEqual(styleOf(parentOf(tree, mode)), { position: 'absolute', bottom: 0, right: 4 });
+  assert.equal(
+    parentOf(tree, mode).props.hasSend,
+    true,
+    'mode translates with the retained Send slot',
+  );
   const send = find(tree, byId('send-message'));
   assert.equal(send.props.minimumHeight, 40);
   assert.deepEqual(styleOf(parentOf(tree, send)), { position: 'absolute', bottom: 0, right: 0 });
@@ -702,9 +727,12 @@ test('compiled iOS renderer keeps a full-width field and reserves the source ins
     bottom: 0,
     right: 4,
   });
-  assert.ok(
-    (find(tree, byId('message-composer-row')).props.children as unknown[]).includes('Microphone'),
+  assert.equal(
+    find(tree, (node) => node.type === 'ComposerMotionSlot' && node.props.kind === 'media').props
+      .children,
+    'Microphone',
   );
+  assert.equal(styleOf(find(tree, byId('message-composer-field-frame'))).marginRight, 46);
 });
 
 test('compiled field preserves its actual native owner while input-mode, caption, edit and search change', () => {
@@ -759,12 +787,18 @@ test('compiled field preserves its actual native owner while input-mode, caption
     assert.equal(field.props.ref, first.props.ref);
     assert.equal(field.props.value, current.value);
     assert.equal(scan(tree).filter(byId('message-input')).length, 1);
+    assert.equal(
+      find(tree, (node) => node.type === 'ComposerMotionSlot' && node.props.kind === 'media').props
+        .children,
+      'Microphone',
+      'normal, caption, edit and search retain the exact media gesture path',
+    );
     assert.equal(inputRef.current, f.nativeField);
     assert.ok(
       f.keyboardFields.some(([tag, context]) => tag === 101 && context === current.context),
     );
     if (current.context.endsWith('search'))
-      assert.equal(scan(tree).some(byId('composer-input-mode')), false);
+      assert.equal(parentOf(tree, find(tree, byId('composer-input-mode'))).props.active, false);
   }
   const providerFor = (patch: Record<string, unknown>) =>
     find(f.renderRoot(patch), (node) => node.type === 'AttachmentKeyboardProvider');

@@ -19,6 +19,12 @@ import type { TimelineEntry } from '../core/types';
 import { MessageContext } from './message-context';
 import { useTheme } from '../theme';
 import { ComposerAction } from './composer-action';
+import {
+  ComposerMotionSlot,
+  composerFrameTransition,
+  useComposerActionMotion,
+} from './composer-action-motion';
+import { composerExternalWidth } from '../core/telegram-composer-motion';
 import { ConversationComposerAccess } from './conversation-composer-access';
 import { ComposerTextField } from './composer-text-field';
 import { NativeButton } from './primitives';
@@ -30,6 +36,7 @@ import {
 
 function ComposerInputAccessory({ minimumHeight }: { minimumHeight: number }) {
   const keyboard = useAttachmentKeyboard();
+  const { active } = useComposerActionMotion();
   const { presentation: p } = useTheme();
   if (!keyboard) return null;
   const emoji = keyboard.kind === 'emoji';
@@ -39,7 +46,10 @@ function ComposerInputAccessory({ minimumHeight }: { minimumHeight: number }) {
       accessibilityRole="button"
       accessibilityLabel={t(emoji ? 'composerKeyboard.keyboard' : 'composerKeyboard.emoji')}
       hitSlop={6}
-      onPress={keyboard.toggleEmoji}
+      disabled={!active}
+      onPress={() => {
+        if (active) keyboard.toggleEmoji();
+      }}
       style={{
         width: telegramComposer.inputModeControl,
         height: minimumHeight,
@@ -102,7 +112,7 @@ export function MessageComposer({
   context?: { entry?: TimelineEntry; onCancel: () => void };
   draft?: { ready: boolean; error: boolean; rejected?: boolean; onRetry: () => void };
 }) {
-  const { colors, scheme, presentation: p } = useTheme();
+  const { colors, scheme, presentation: p, reducedMotion } = useTheme();
   const insets = useSafeAreaInsets();
   const { progress } = useKeyboardMotion();
   const restingBottom = Math.max(insets.bottom, 12);
@@ -201,8 +211,8 @@ export function MessageComposer({
         }}
       />
     );
-    const action = search ? (
-      canAsk ? (
+    const sendAction =
+      search && canAsk ? (
         <ComposerAction
           testID="ask-conversation"
           name="arrow.up"
@@ -211,56 +221,88 @@ export function MessageComposer({
           prominent
           onPress={search.onAsk}
         />
+      ) : !search && files ? (
+        <ComposerAction
+          testID="send-attachments"
+          name="arrow.up"
+          minimumHeight={minimumHeight}
+          label={
+            files.retry
+              ? t('media.attachmentsRetry')
+              : t('media.attachmentSendCount', { count: files.remaining })
+          }
+          prominent
+          disabled={files.sending || files.remaining === 0 || sending}
+          onPress={() => files.onSend()}
+        />
       ) : (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 52 }}>
-          <ComposerAction
-            testID="older-search-result"
-            name="chevron.up"
-            size={44}
-            label={t('chat.olderSearchResult')}
-            disabled={
-              search.state.loading ||
-              search.state.index < 0 ||
-              (!search.state.cursor && search.state.index >= search.state.hits.length - 1)
-            }
-            onPress={() => search.onMove('older')}
-          />
-          <ComposerAction
-            testID="newer-search-result"
-            name="chevron.down"
-            size={44}
-            label={t('chat.newerSearchResult')}
-            disabled={search.state.loading || search.state.index <= 0}
-            onPress={() => search.onMove('newer')}
-          />
-        </View>
-      )
-    ) : files ? (
-      <ComposerAction
-        testID="send-attachments"
-        name="arrow.up"
-        minimumHeight={minimumHeight}
-        label={
-          files.retry
-            ? t('media.attachmentsRetry')
-            : t('media.attachmentSendCount', { count: files.remaining })
-        }
-        prominent
-        disabled={files.sending || files.remaining === 0 || sending}
-        onPress={() => files.onSend()}
-      />
-    ) : hasText || editing || !voice ? (
-      <ComposerAction
-        testID="send-message"
-        name={editing ? 'checkmark' : 'arrow.up'}
-        minimumHeight={minimumHeight}
-        label={editing ? t('chat.saveEdit') : t('chat.sendMessage')}
-        prominent
-        disabled={(!hasText && !allowEmptyEdit) || sending || draft?.ready === false}
-        onPress={onSend}
-      />
-    ) : (
-      voice
+        <ComposerAction
+          testID="send-message"
+          name={editing ? 'checkmark' : 'arrow.up'}
+          minimumHeight={minimumHeight}
+          label={editing ? t('chat.saveEdit') : t('chat.sendMessage')}
+          prominent
+          disabled={(!hasText && !allowEmptyEdit) || sending || draft?.ready === false}
+          onPress={onSend}
+        />
+      );
+    const searchNavigation = (
+      <View
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: native ? 40 : 52 }}
+      >
+        <ComposerAction
+          testID="older-search-result"
+          name="chevron.up"
+          size={44}
+          label={t('chat.olderSearchResult')}
+          disabled={
+            !search ||
+            search.state.loading ||
+            search.state.index < 0 ||
+            (!search.state.cursor && search.state.index >= search.state.hits.length - 1)
+          }
+          onPress={() => search?.onMove('older')}
+        />
+        <ComposerAction
+          testID="newer-search-result"
+          name="chevron.down"
+          size={44}
+          label={t('chat.newerSearchResult')}
+          disabled={!search || search.state.loading || search.state.index <= 0}
+          onPress={() => search?.onMove('newer')}
+        />
+      </View>
+    );
+    const action = search
+      ? canAsk
+        ? sendAction
+        : searchNavigation
+      : files || hasText || editing || !voice
+        ? sendAction
+        : voice;
+    const fieldContents = (
+      <>
+        {field}
+        {native ? (
+          <>
+            <ComposerMotionSlot
+              kind="accessory"
+              active={hasInputMode}
+              hasSend={inlineAction}
+              style={{ position: 'absolute', bottom: 0, right: 4 }}
+            >
+              <ComposerInputAccessory minimumHeight={minimumHeight} />
+            </ComposerMotionSlot>
+            <ComposerMotionSlot
+              kind="send"
+              active={inlineAction}
+              style={{ position: 'absolute', bottom: 0, right: 0 }}
+            >
+              {sendAction}
+            </ComposerMotionSlot>
+          </>
+        ) : null}
+      </>
     );
     return (
       <>
@@ -307,63 +349,67 @@ export function MessageComposer({
           ) : (
             attachment
           )}
-          {glass ? (
-            <GlassView
-              colorScheme={scheme}
-              glassEffectStyle="regular"
-              tintColor={material.tintColor}
-              isInteractive
-              testID="message-composer-field-surface"
-              style={{
-                flex: 1,
-                borderRadius: native ? Math.floor(minimumHeight / 2) : 27,
-              }}
-            >
-              {field}
-              {hasInputMode ? (
-                <View
-                  style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    right: 4 + (inlineAction ? telegramComposer.sendSlot : 0),
-                  }}
-                >
-                  <ComposerInputAccessory minimumHeight={minimumHeight} />
-                </View>
-              ) : null}
-              {inlineAction ? (
-                <View style={{ position: 'absolute', bottom: 0, right: 0 }}>{action}</View>
-              ) : null}
-            </GlassView>
+          <Animated.View
+            testID="message-composer-field-frame"
+            layout={native ? composerFrameTransition(reducedMotion) : undefined}
+            style={{
+              flex: 1,
+              marginRight: native
+                ? composerExternalWidth({
+                    searching: Boolean(search),
+                    hasSend: inlineAction,
+                    hasVoice: Boolean(voice),
+                  })
+                : 0,
+            }}
+          >
+            {glass ? (
+              <GlassView
+                colorScheme={scheme}
+                glassEffectStyle="regular"
+                tintColor={material.tintColor}
+                isInteractive
+                testID="message-composer-field-surface"
+                style={{ borderRadius: native ? Math.floor(minimumHeight / 2) : 27 }}
+              >
+                {fieldContents}
+              </GlassView>
+            ) : (
+              <View
+                testID="message-composer-field-surface"
+                style={{
+                  borderRadius: native ? Math.floor(minimumHeight / 2) : 27,
+                  backgroundColor: p.chat.input.fill,
+                  borderColor: p.chat.input.stroke,
+                  borderWidth: 0.5,
+                }}
+              >
+                {fieldContents}
+              </View>
+            )}
+          </Animated.View>
+          {native ? (
+            <>
+              <ComposerMotionSlot
+                kind="media"
+                active={!search && !inlineAction && Boolean(voice)}
+                // Source: text moves the retained mic offscreen; only search fades it.
+                visible={!search && Boolean(voice)}
+                style={{ position: 'absolute', bottom: 0, right: 0, width: 40, height: 40 }}
+              >
+                {voice}
+              </ComposerMotionSlot>
+              <ComposerMotionSlot
+                kind="search"
+                active={Boolean(search && !canAsk)}
+                style={{ position: 'absolute', bottom: 0, right: 0 }}
+              >
+                {searchNavigation}
+              </ComposerMotionSlot>
+            </>
           ) : (
-            <View
-              testID="message-composer-field-surface"
-              style={{
-                flex: 1,
-                borderRadius: native ? Math.floor(minimumHeight / 2) : 27,
-                backgroundColor: p.chat.input.fill,
-                borderColor: p.chat.input.stroke,
-                borderWidth: 0.5,
-              }}
-            >
-              {field}
-              {hasInputMode ? (
-                <View
-                  style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    right: 4 + (inlineAction ? telegramComposer.sendSlot : 0),
-                  }}
-                >
-                  <ComposerInputAccessory minimumHeight={minimumHeight} />
-                </View>
-              ) : null}
-              {inlineAction ? (
-                <View style={{ position: 'absolute', bottom: 0, right: 0 }}>{action}</View>
-              ) : null}
-            </View>
+            action
           )}
-          {!inlineAction ? action : null}
         </Row>
       </>
     );
@@ -422,7 +468,8 @@ export function MessageComposer({
             renderControls={({ attachment, voice, review, files }) =>
               controls({
                 attachment: editing ? null : attachment,
-                voice: editing ? null : voice,
+                // Keep the same gesture owner mounted while editing hides its slot.
+                voice,
                 review,
                 files: editing || search ? undefined : files,
               })
