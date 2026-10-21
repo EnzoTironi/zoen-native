@@ -31,7 +31,7 @@ const compiled = await build({
     },
   ],
 });
-const theme = resolveSkyTheme('deepNight', new Date(2026, 9, 19));
+const theme = resolveSkyTheme('night', new Date(2026, 9, 19));
 const navigation: string[] = [];
 const module = {
   exports: {} as {

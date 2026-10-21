@@ -1,0 +1,795 @@
+--- a/crates/engine/src/cmd/text.rs
++++ b/crates/engine/src/cmd/text.rs
+@@ -36,6 +36,18 @@
+             autocorrect_options
+         ),
+         cmd!("text.insert", "Type Text", [], None, "{text} (\\n = new paragraph, \\u000b = line break)", has_text, insert),
++        // Surrounding deletions are part of the existing IME composition, when present.
++        CommandSpec {
++            id: "text.deleteSurrounding",
++            label: "Delete Surrounding Text",
++            menu: &[],
++            shortcut: None,
++            params: "{before, after} — remove scalar characters before/after the selection, keeping selected text and composition",
++            enabled: has_text,
++            run: delete_surrounding,
++            journal: false,
++            undoable: false,
++        },
+         // The input method's composition: shown in place, an undo step only once committed.
+         CommandSpec {
+             id: "text.compose",
+@@ -48,15 +60,17 @@
+             journal: false,
+             undoable: false,
+         },
+-        cmd!(
+-            noundo "text.commit",
+-            "Commit Composition",
+-            [],
+-            None,
+-            "{text} — the input method's result replaces its composition, as one undo step",
+-            has_text,
+-            commit
+-        ),
++        CommandSpec {
++            id: "text.commit",
++            label: "Commit Composition",
++            menu: &[],
++            shortcut: None,
++            params: "{text, before?, after?, props?} — commit the input method's result as one undo step; optional coalesced scalar deltas and run properties are for canonical replay",
++            enabled: has_text,
++            run: commit,
++            journal: false,
++            undoable: false,
++        },
+         cmd!(
+             "text.delete",
+             "Delete Text",
+@@ -86,10 +100,21 @@
+ 
+ /// The text body a text selection edits.
+ pub fn body_of<'a>(st: &'a DocState, t: &TextSel) -> Option<&'a TextBody> {
++    body_at(&st.doc, &st.selection, t)
++}
++
++/// Resolve the original owner even if a selection change is what settles its composition.
++fn body_at<'a>(doc: &'a Presentation, sel: &Selection, t: &TextSel) -> Option<&'a TextBody> {
+     if t.notes {
+-        return st.current_slide().map(|s| &s.notes);
+-    }
+-    let sh = st.shape(t.shape)?;
++        return doc.slides.get(sel.slide).map(|s| &s.notes);
++    }
++    let shapes = match sel.target {
++        Target::Slides => doc.slides.get(sel.slide).map(|s| s.shapes.as_slice()),
++        Target::Master { master } => doc.masters.get(master).map(|m| m.shapes.as_slice()),
++        Target::Handout | Target::NotesMaster => crate::page_master(doc, sel.target).map(|m| m.shapes.as_slice()),
++        Target::Layout { master, layout } => doc.masters.get(master).and_then(|m| m.layouts.get(layout)).map(|l| l.shapes.as_slice()),
++    }?;
++    let sh = deckcraft_model::find_shape(shapes, t.shape)?;
+     if let (Some((r, c)), ShapeKind::Table(tb)) = (t.cell, &sh.kind) {
+         return tb.cell(r, c).map(|x| &x.text);
+     }
+@@ -827,11 +852,105 @@
+     body.paragraphs.get(c.start.0).is_some_and(|p| c.start.1.saturating_add(c.len) <= p.char_len())
+ }
+ 
++/// Unicode-scalar offsets into a rich text body, including one separator per paragraph.
++/// Counts from an IME never drive a loop proportional to an untrusted deletion request.
++fn ime_index(body: &TextBody, at: Pos) -> usize {
++    let para = at.0.min(body.paragraphs.len().saturating_sub(1));
++    body.paragraphs
++        .iter()
++        .take(para)
++        .map(|p| p.char_len().saturating_add(1))
++        .fold(0, usize::saturating_add)
++        .saturating_add(body.paragraphs.get(para).map_or(0, |p| at.1.min(p.char_len())))
++}
++
++fn ime_pos(body: &TextBody, mut index: usize) -> Pos {
++    for (pi, paragraph) in body.paragraphs.iter().enumerate() {
++        let n = paragraph.char_len();
++        if index <= n || pi + 1 == body.paragraphs.len() {
++            return (pi, index.min(n));
++        }
++        index -= n + 1;
++    }
++    (0, 0)
++}
++
++fn ime_removed_index(index: usize, start: usize, end: usize) -> usize {
++    index.saturating_sub(index.min(end).saturating_sub(start))
++}
++
++/// Unlike Delete/Backspace, selected text (or the active preedit) is protected. Deleting after
++/// it first keeps both original ranges valid and retains all surviving runs and paragraph props.
++fn delete_surrounding(s: &mut Session, p: &Value) -> Result<Value> {
++    let count = |name| {
++        p.get(name)
++            .and_then(Value::as_u64)
++            .map(|n| usize::try_from(n).unwrap_or(usize::MAX))
++            .ok_or_else(|| bad("text.deleteSurrounding", "`before` and `after` must be nonnegative integer counts"))
++    };
++    let before = count("before")?;
++    let after = count("after")?;
++    let st = s.doc()?;
++    let t = st.selection.text.as_ref().ok_or_else(|| bad("text.deleteSurrounding", NO_TEXT_POINT))?;
++    let body = body_of(st, t).ok_or_else(|| bad("text.deleteSurrounding", "the text being edited is gone"))?;
++    let composition = st.composition.clone();
++    if composition.as_ref().is_some_and(|c| !composition_fits(st, c)) {
++        return Err(bad("text.deleteSurrounding", "the composition is no longer in the edited text"));
++    }
++    // egui's composition cursor range brackets the preedit, whereas Deck's caret sits after it.
++    let (a, b) = composition.as_ref().map_or_else(|| t.ordered(), |c| (c.start, (c.start.0, c.start.1 + c.len)));
++    let (a, b) = (ime_index(body, a), ime_index(body, b));
++    let from = a.saturating_sub(before);
++    let to = b.saturating_add(after).min(body.char_len());
++    if from == a && b == to {
++        return Ok(json!({"handled": true, "changed": false}));
++    }
++    let snapshot = (st.doc.clone(), st.selection.clone());
++    let composition_start = composition.as_ref().map(|c| ime_index(body, c.start));
++    let shifted = |index| ime_removed_index(ime_removed_index(index, b, to), from, a);
++    let next_composition_start = edit_text(s, |body, t| {
++        let anchor = shifted(ime_index(body, t.anchor));
++        let caret = shifted(ime_index(body, t.caret));
++        if b != to {
++            let start = ime_pos(body, b);
++            let end = ime_pos(body, to);
++            ed::delete(body, start, end);
++        }
++        if from != a {
++            let start = ime_pos(body, from);
++            let end = ime_pos(body, a);
++            ed::delete(body, start, end);
++        }
++        t.anchor = ime_pos(body, anchor);
++        t.caret = ime_pos(body, caret);
++        t.line_end = None;
++        composition_start.map(|index| ime_pos(body, shifted(index)))
++    })?;
++    if let (Some(mut c), Some(start)) = (composition, next_composition_start) {
++        c.start = start;
++        c.delete_before = c.delete_before.saturating_add(a - from);
++        c.delete_after = c.delete_after.saturating_add(to - b);
++        s.doc_mut()?.composition = Some(c);
++    } else if s.depth == 1 {
++        // Static command metadata cannot express "undo only when not already composing".
++        // The existing composition's original snapshot remains its sole undo step.
++        crate::push_undo(s.doc_mut()?, crate::HistoryEntry { label: "Delete Surrounding Text".into(), doc: snapshot.0, selection: snapshot.1 });
++        s.journal_command("text.deleteSurrounding", json!({"before": a - from, "after": to - b}));
++    }
++    Ok(json!({"handled": true, "changed": true}))
++}
++
+ /// `text.compose`: put an input method's preedit at the insertion point (replacing the selection)
+ /// or replace the composition with the new preedit. An empty preedit cancels: the presentation
+ /// goes back to how it was before the composition began.
+ fn compose(s: &mut Session, p: &Value) -> Result<Value> {
+     let text = ime_text(str_param(p, "text").ok_or_else(|| bad("text.compose", "missing `text`"))?);
++    // Canonical replay must retain the properties picked before adjacent runs were deleted.
++    let replay_props = p
++        .get("props")
++        .map(|v| serde_json::from_value::<Option<RunProps>>(v.clone()))
++        .transpose()
++        .map_err(|_| bad("text.compose", "invalid replay run properties"))?;
+     let n = text.chars().count();
+     let active = p.get("active").and_then(Value::as_array).and_then(|a| {
+         let (x, y) = (a.first()?.as_u64()? as usize, a.get(1)?.as_u64()? as usize);
+@@ -854,13 +973,17 @@
+             let (start, props) = edit_text(s, |body, t| {
+                 let (a, b) = t.ordered();
+                 let at = ed::delete(body, a, b);
+-                let props = if a != b { Some(ed::props_at(body, at)) } else { unlinked_at_link_end(body, at) };
++                let props = replay_props.unwrap_or_else(|| if a != b { Some(ed::props_at(body, at)) } else { unlinked_at_link_end(body, at) });
++                // Resolve the same inheritance as insert(None) once: surrounding deletion can
++                // remove that run before a later preedit replacement or canonical replay.
++                let props = Some(props.unwrap_or_else(|| ed::props_at(body, at)));
+                 let c = ed::insert(body, at, &text, props.clone());
+                 t.anchor = c;
+                 t.caret = c;
+                 (at, props)
+             })?;
+-            s.doc_mut()?.composition = Some(crate::Composition { start, len: n, active, props, before, before_selection });
++            s.doc_mut()?.composition =
++                Some(crate::Composition { start, len: n, active, delete_before: 0, delete_after: 0, props, before, before_selection });
+             Ok(json!({"composing": true, "start": [start.0, start.1], "len": n}))
+         }
+         Some(c) if text.is_empty() => {
+@@ -874,8 +997,14 @@
+         Some(c) => {
+             let (start, len, props) = (c.start, c.len, c.props.clone());
+             edit_text(s, |body, t| {
++                // Replacing transient preedit changes its runs, not the paragraph mark. In
++                // particular, deleting its sole run must not inherit that run into end_props.
++                let end_props = body.paragraphs.get(start.0).map(|p| p.end_props.clone());
+                 ed::delete(body, start, (start.0, start.1 + len));
+                 let e = ed::insert(body, start, &text, props);
++                if let (Some(p), Some(end_props)) = (body.paragraphs.get_mut(start.0), end_props) {
++                    p.end_props = end_props;
++                }
+                 t.anchor = e;
+                 t.caret = e;
+             })?;
+@@ -887,10 +1016,43 @@
+ 
+ /// `text.commit`: the input method's result replaces the composition (or is typed at the
+ /// insertion point when there is none) and the whole composition becomes one undo step.
++/// The final preedit and its two coalesced surrounding deltas replay from the original
++/// selection. No transient preedit or cancelled deletion enters the journal.
++pub(crate) fn composition_commit_params(doc: &Presentation, c: &crate::Composition) -> Option<Value> {
++    let t = c.before_selection.text.as_ref()?;
++    let body = body_at(doc, &c.before_selection, t)?;
++    let text = ed::text_range(body, c.start, (c.start.0, c.start.1.saturating_add(c.len)));
++    Some(json!({"text": text, "before": c.delete_before, "after": c.delete_after, "props": c.props}))
++}
++
+ fn commit(s: &mut Session, p: &Value) -> Result<Value> {
+     let text = ime_text(str_param(p, "text").ok_or_else(|| bad("text.commit", "missing `text`"))?);
++    let count = |name| match p.get(name) {
++        None => Ok(0),
++        Some(v) => v
++            .as_u64()
++            .map(|n| usize::try_from(n).unwrap_or(usize::MAX))
++            .ok_or_else(|| bad("text.commit", "replay counts must be nonnegative integers")),
++    };
++    let before = count("before")?;
++    let after = count("after")?;
++    // Validate all replay metadata and policies before the first insertion changes the document.
++    let _: Option<Option<RunProps>> =
++        p.get("props").map(|v| serde_json::from_value(v.clone())).transpose().map_err(|_| bad("text.commit", "invalid replay run properties"))?;
++    let replay = before != 0 || after != 0;
++    if replay {
++        if s.doc()?.composition.is_some() || text.is_empty() {
++            return Err(bad("text.commit", "surrounding replay requires nonempty text and no active composition"));
++        }
++        if let Some(policy) = s.command_policy {
++            policy("text.deleteSurrounding", &json!({"before": before, "after": after}))?;
++        }
++    }
+     if s.doc()?.composition.is_some() || !text.is_empty() {
+-        compose(s, &json!({"text": text}))?;
++        compose(s, p)?;
++    }
++    if replay {
++        delete_surrounding(s, &json!({"before": before, "after": after}))?;
+     }
+     s.end_composition();
+     let caret = s.doc()?.selection.text.as_ref().map(|t| t.caret).unwrap_or_default();
+--- a/crates/engine/src/keys.rs
++++ b/crates/engine/src/keys.rs
+@@ -225,6 +225,15 @@
+         self.execute("text.insert", &json!({"text": text}))
+     }
+ 
++    /// Remove Unicode scalar characters around the edited selection, without starting text
++    /// editing on a selected object. The IME owns an existing composition until it commits it.
++    pub fn delete_surrounding_text(&mut self, before: usize, after: usize) -> Result<Value> {
++        if self.doc()?.selection.text.is_none() {
++            return Ok(json!({"handled": false}));
++        }
++        self.execute("text.deleteSurrounding", &json!({"before": before, "after": after}))
++    }
++
+     /// An input method's preedit (#101). On a selected shape that isn't being edited, the first
+     /// one starts editing its text and replaces it, as typing does ([`Session::type_text`]).
+     /// `active` is the part being converted, in characters of `text`.
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -197,6 +197,9 @@
+     pub len: usize,
+     /// The part the input method is converting, relative to `start` (drawn with a thicker line).
+     pub active: Option<(usize, usize)>,
++    /// Surrounding scalar deletions coalesced until commit/cancel (never an unbounded event list).
++    pub delete_before: usize,
++    pub delete_after: usize,
+     /// The formatting the composed text is typed with (as `text.insert` would choose).
+     pub props: Option<deckcraft_model::text::RunProps>,
+     /// The presentation and selection before the composition began.
+@@ -591,7 +594,7 @@
+     fn execute_unguarded(&mut self, id: &str, params: &Value) -> Result<Value> {
+         let spec = find_command(id).ok_or_else(|| EngineError::UnknownCommand(id.into()))?;
+         // Any other edit (or a click, a key, undo) settles an input method's composition first.
+-        if self.depth == 0 && (spec.journal || spec.undoable) && !matches!(id, "text.compose" | "text.commit") {
++        if self.depth == 0 && (spec.journal || spec.undoable) && !matches!(id, "text.compose" | "text.commit" | "text.deleteSurrounding") {
+             self.end_composition();
+         }
+         if let Err(e) = (spec.enabled)(self) {
+@@ -635,12 +638,17 @@
+             push_undo(st, HistoryEntry { label: spec.label.to_string(), doc: old, selection: sel });
+         }
+         if spec.journal && outer {
+-            self.journal.push((id.to_string(), params.clone()));
+-            if self.journal.len() > 10_000 {
+-                self.journal.drain(..1000);
+-            }
++            self.journal_command(id, params.clone());
+         }
+         Ok(r)
++    }
++
++    /// A canonical replay entry. Transient IME updates are recorded only once they settle.
++    pub(crate) fn journal_command(&mut self, id: &str, params: Value) {
++        self.journal.push((id.to_string(), params));
++        if self.journal.len() > 10_000 {
++            self.journal.drain(..1000);
++        }
+     }
+ 
+     pub fn commands(&self) -> Vec<CommandInfo> {
+@@ -666,7 +674,11 @@
+         let Some(st) = self.active_mut() else { return };
+         let Some(c) = st.composition.take() else { return };
+         if !Arc::ptr_eq(&c.before, &st.doc) {
++            let record = cmd::text::composition_commit_params(&st.doc, &c);
+             push_undo(st, HistoryEntry { label: "Type Text".into(), doc: c.before, selection: c.before_selection });
++            if let Some(params) = record {
++                self.journal_command("text.commit", params);
++            }
+         }
+     }
+ 
+@@ -788,4 +800,6 @@
+ #[cfg(test)]
+ mod tests;
+ #[cfg(test)]
++mod tests_ime_surrounding;
++#[cfg(test)]
+ mod tests_keys;
+--- /dev/null
++++ b/crates/engine/src/tests_ime_surrounding.rs
+@@ -0,0 +1,398 @@
++//! IME surrounding deletion operates on scalar indices and the canonical Session document.
++#![allow(clippy::unwrap_used, clippy::expect_used)]
++use crate::*;
++use deckcraft_model::ShapeKind;
++use serde_json::json;
++use std::sync::Arc;
++
++fn editing(text: &str, anchor: (usize, usize), caret: (usize, usize)) -> Session {
++    let mut s = Session::with_new();
++    let id = s.doc().unwrap().current_slide().unwrap().shapes[0].id.0;
++    s.execute("text.set", &json!({"id":id,"text":text})).unwrap();
++    s.execute("text.edit", &json!({"id":id})).unwrap();
++    s.execute("text.select", &json!({"anchor":anchor,"caret":caret})).unwrap();
++    s
++}
++fn text(s: &Session) -> String {
++    let st = s.doc().unwrap();
++    cmd::text::body_of(st, st.selection.text.as_ref().unwrap()).unwrap().text()
++}
++fn range(s: &Session) -> ((usize, usize), (usize, usize)) {
++    let t = s.doc().unwrap().selection.text.as_ref().unwrap();
++    (t.anchor, t.caret)
++}
++fn replay(snapshot: &DocState, commands: &[(String, serde_json::Value)]) -> Session {
++    let mut s = Session::new();
++    s.add_document(snapshot.clone());
++    for (id, p) in commands {
++        s.execute(id, p).unwrap();
++    }
++    s
++}
++
++#[test]
++fn ime_surrounding_ios_correction_removes_the_old_prefix_before_replacement() {
++    let mut s = editing("tex", (0, 3), (0, 3));
++    let baseline = s.doc().unwrap().clone();
++    let j0 = s.journal.len();
++    s.delete_surrounding_text(3, 0).unwrap();
++    s.type_text("Texto").unwrap();
++    assert_eq!(text(&s), "Texto");
++    let repeated = replay(&baseline, &s.journal[j0..]);
++    assert_eq!(*s.doc().unwrap().doc, *repeated.doc().unwrap().doc);
++    assert_eq!(range(&s), range(&repeated));
++    s.execute("edit.undo", &json!({})).unwrap();
++    assert_eq!(text(&s), "");
++    s.execute("edit.undo", &json!({})).unwrap();
++    assert_eq!(text(&s), "tex");
++}
++
++#[test]
++fn ime_surrounding_keeps_selected_text_direction_unicode_and_paragraph_boundaries() {
++    let cases = [
++        ("<<L_R>>", (0, 3), (0, 4), 1, 1, "<<_>>", (0, 2), (0, 3)),
++        ("<<L_R>>", (0, 4), (0, 3), 1, 1, "<<_>>", (0, 3), (0, 2)),
++        ("L😀e\u{301}R", (0, 4), (0, 2), 1, 1, "Le\u{301}", (0, 3), (0, 1)),
++        // One scalar removes only the combining accent, not the whole grapheme.
++        ("Ae\u{301}B", (0, 3), (0, 3), 1, 0, "AeB", (0, 2), (0, 2)),
++        ("😀AB🚀", (0, 1), (0, 3), usize::MAX, usize::MAX, "AB", (0, 0), (0, 2)),
++        ("AA\nBB\nCC", (1, 2), (1, 0), 3, 3, "BB", (0, 2), (0, 0)),
++        ("a\n\nb", (1, 0), (1, 0), 1, 1, "ab", (0, 1), (0, 1)),
++        ("", (0, 0), (0, 0), usize::MAX, usize::MAX, "", (0, 0), (0, 0)),
++    ];
++    for (initial, a, c, before, after, expected, ea, ec) in cases {
++        let mut s = editing(initial, a, c);
++        let base = s.doc().unwrap().clone();
++        let j0 = s.journal.len();
++        s.delete_surrounding_text(before, after).unwrap();
++        assert_eq!(text(&s), expected, "{initial:?}");
++        assert_eq!(range(&s), (ea, ec), "{initial:?}");
++        assert_eq!(s.doc().unwrap().history.undo.len(), base.history.undo.len() + usize::from(initial != expected));
++        let repeated = replay(&base, &s.journal[j0..]);
++        assert_eq!(*s.doc().unwrap().doc, *repeated.doc().unwrap().doc);
++        assert_eq!(range(&s), range(&repeated));
++    }
++}
++
++#[test]
++fn ime_surrounding_composition_commit_and_navigation_replay_one_grouped_edit() {
++    for settle_with_navigation in [false, true] {
++        let mut s = editing("AB tail", (0, 2), (0, 2));
++        let base = s.doc().unwrap().clone();
++        let j0 = s.journal.len();
++        s.compose_text("한글", Some((1, 2))).unwrap();
++        let original_before = s.doc().unwrap().composition.as_ref().unwrap().before.clone();
++        // Two requests coalesce. They remove outside the preedit, never the preedit itself.
++        s.delete_surrounding_text(1, 1).unwrap();
++        s.delete_surrounding_text(usize::MAX, 0).unwrap();
++        assert_eq!(text(&s), "한글tail");
++        let c = s.doc().unwrap().composition.as_ref().unwrap();
++        assert_eq!((c.start, c.len, c.active, c.delete_before, c.delete_after), ((0, 0), 2, Some((1, 2)), 2, 1));
++        assert!(Arc::ptr_eq(&c.before, &original_before));
++        assert_eq!(s.doc().unwrap().history.undo.len(), base.history.undo.len());
++        assert_eq!(s.journal.len(), j0, "transient preedit/deletion has no durable replay record yet");
++        if settle_with_navigation {
++            s.execute("text.move", &json!({"to":"left"})).unwrap();
++        } else {
++            s.commit_text("한국").unwrap();
++        }
++        let expected = if settle_with_navigation { "한글tail" } else { "한국tail" };
++        assert_eq!(text(&s), expected);
++        assert!(s.doc().unwrap().composition.is_none());
++        assert_eq!(s.doc().unwrap().history.undo.len(), base.history.undo.len() + 1);
++        let recorded = &s.journal[j0..];
++        assert_eq!(recorded[0].0, "text.commit");
++        assert_eq!(recorded[0].1["before"], 2);
++        assert_eq!(recorded[0].1["after"], 1);
++        assert_eq!(recorded.len(), if settle_with_navigation { 2 } else { 1 });
++        let repeated = replay(&base, recorded);
++        assert_eq!(*s.doc().unwrap().doc, *repeated.doc().unwrap().doc);
++        assert_eq!(range(&s), range(&repeated));
++        assert_eq!(s.doc().unwrap().history.undo.len(), repeated.doc().unwrap().history.undo.len());
++        assert_eq!(&repeated.journal, recorded, "replaying produces the same canonical records");
++        s.execute("edit.undo", &json!({})).unwrap();
++        assert_eq!(text(&s), "AB tail");
++        s.execute("edit.redo", &json!({})).unwrap();
++        assert_eq!(text(&s), expected);
++    }
++}
++
++#[test]
++fn ime_surrounding_cancel_restores_snapshot_selection_and_emits_no_replay_edit() {
++    let mut s = editing("AA OLD ZZ", (0, 6), (0, 3));
++    let base = s.doc().unwrap().clone();
++    let j0 = s.journal.len();
++    s.compose_text("日本", Some((0, 1))).unwrap();
++    s.delete_surrounding_text(usize::MAX, usize::MAX).unwrap();
++    assert_eq!(text(&s), "日本");
++    s.compose_text("", None).unwrap();
++    assert!(Arc::ptr_eq(&s.doc().unwrap().doc, &base.doc));
++    assert_eq!(s.doc().unwrap().selection, base.selection);
++    assert_eq!(s.doc().unwrap().history.undo.len(), base.history.undo.len());
++    assert_eq!(s.journal.len(), j0);
++    let repeated = replay(&base, &s.journal[j0..]);
++    assert_eq!(*s.doc().unwrap().doc, *repeated.doc().unwrap().doc);
++}
++
++#[test]
++fn ime_surrounding_policy_denial_and_invalid_counts_change_nothing_even_during_preedit() {
++    let mut s = editing("AB tail", (0, 2), (0, 2));
++    s.compose_text("한글", Some((1, 2))).unwrap();
++    let base = s.doc().unwrap().clone();
++    let j0 = s.journal.len();
++    s.command_policy = Some(|id, _| if id == "text.deleteSurrounding" { Err(EngineError::Other("denied".into())) } else { Ok(()) });
++    assert!(s.delete_surrounding_text(2, 1).is_err());
++    s.command_policy = None;
++    for invalid in [json!(-1), json!(1.5), json!("1"), json!(null)] {
++        assert!(s.execute("text.deleteSurrounding", &json!({"before":invalid,"after":0})).is_err());
++    }
++    let st = s.doc().unwrap();
++    assert!(Arc::ptr_eq(&st.doc, &base.doc));
++    assert_eq!(st.selection, base.selection);
++    assert_eq!((st.revision, st.history.undo.len(), s.journal.len()), (base.revision, base.history.undo.len(), j0));
++    let c = st.composition.as_ref().unwrap();
++    assert_eq!((c.start, c.len, c.active, c.delete_before, c.delete_after), ((0, 2), 2, Some((1, 2)), 0, 0));
++}
++
++#[test]
++fn ime_surrounding_replay_preflights_delete_policy_before_inserting_any_text() {
++    let mut s = editing("AB tail", (0, 2), (0, 2));
++    let base = s.doc().unwrap().clone();
++    let j0 = s.journal.len();
++    s.command_policy = Some(|id, _| if id == "text.deleteSurrounding" { Err(EngineError::Other("denied".into())) } else { Ok(()) });
++    assert!(s.execute("text.commit", &json!({"text":"日本","before":2,"after":1,"props":null})).is_err());
++    assert!(Arc::ptr_eq(&s.doc().unwrap().doc, &base.doc));
++    assert_eq!(s.doc().unwrap().selection, base.selection);
++    assert!(s.doc().unwrap().composition.is_none());
++    assert_eq!((s.doc().unwrap().revision, s.doc().unwrap().history.undo.len(), s.journal.len()), (base.revision, base.history.undo.len(), j0));
++}
++
++#[test]
++fn ime_surrounding_does_not_start_editing_a_selected_object_and_zero_is_a_noop() {
++    let mut s = editing("Keep this", (0, 4), (0, 4));
++    let base = s.doc().unwrap().clone();
++    let j0 = s.journal.len();
++    s.delete_surrounding_text(0, 0).unwrap();
++    assert!(Arc::ptr_eq(&s.doc().unwrap().doc, &base.doc));
++    assert_eq!((s.doc().unwrap().revision, s.doc().unwrap().history.undo.len(), s.journal.len()), (base.revision, base.history.undo.len(), j0));
++    s.execute("text.exit", &json!({})).unwrap();
++    let base = s.doc().unwrap().clone();
++    let j0 = s.journal.len();
++    assert_eq!(s.delete_surrounding_text(999, 999).unwrap()["handled"], false);
++    assert!(Arc::ptr_eq(&s.doc().unwrap().doc, &base.doc));
++    assert_eq!(s.doc().unwrap().selection, base.selection);
++    assert_eq!((s.doc().unwrap().revision, s.doc().unwrap().history.undo.len(), s.journal.len()), (base.revision, base.history.undo.len(), j0));
++}
++
++#[test]
++fn ime_surrounding_targets_active_document_slide_table_cell_and_notes_only() {
++    let mut s = editing("Original title", (0, 0), (0, 0));
++    let first = s.doc().unwrap().doc.clone();
++    s.add_document(Session::with_new().doc().unwrap().clone());
++    s.execute("slide.new", &json!({})).unwrap();
++    let id = s.execute("insert.table", &json!({"rows":1,"cols":2,"rect":[10,10,300,100],"data":[["Keep cell","AB日本CD"]]})).unwrap()["id"]
++        .as_u64()
++        .unwrap();
++    s.execute("text.edit", &json!({"id":id,"cell":[0,1]})).unwrap();
++    s.execute("text.select", &json!({"anchor":[0,4],"caret":[0,2]})).unwrap();
++    s.delete_surrounding_text(2, 2).unwrap();
++    assert_eq!(text(&s), "日本");
++    let ShapeKind::Table(table) = &s.doc().unwrap().shape(ShapeId(id as u32)).unwrap().kind else { panic!("table") };
++    assert_eq!(table.cell(0, 0).unwrap().text.text(), "Keep cell");
++    s.execute("slide.notes", &json!({"text":"AB note CD"})).unwrap();
++    s.execute("text.edit", &json!({"notes":true})).unwrap();
++    s.execute("text.select", &json!({"anchor":[0,3],"caret":[0,7]})).unwrap();
++    s.delete_surrounding_text(3, 3).unwrap();
++    assert_eq!(text(&s), "note");
++    assert_eq!(s.doc().unwrap().doc.slides[0].notes.text(), "");
++    assert_eq!(*s.documents()[0].doc, *first);
++}
++
++#[test]
++fn ime_surrounding_committed_replay_preserves_run_props_even_when_adjacent_run_is_deleted() {
++    let mut s = editing("AA old ZZ", (0, 6), (0, 3));
++    s.execute("format.bold", &json!({})).unwrap();
++    let base = s.doc().unwrap().clone();
++    let j0 = s.journal.len();
++    s.compose_text("日本", None).unwrap();
++    s.delete_surrounding_text(3, 3).unwrap();
++    s.commit_text("日本語").unwrap();
++    let repeated = replay(&base, &s.journal[j0..]);
++    assert_eq!(*s.doc().unwrap().doc, *repeated.doc().unwrap().doc);
++    assert_eq!(text(&s), "日本語");
++}
++
++fn mixed_props_boundary(paragraph_break: bool) -> Session {
++    let mut s = editing(if paragraph_break { "AA\nBB" } else { "AABB" }, (0, 0), (0, 2));
++    s.execute("format.bold", &json!({"on":true})).unwrap();
++    s.execute("format.italic", &json!({"on":false})).unwrap();
++    let (start, end) = if paragraph_break { ((1, 0), (1, 2)) } else { ((0, 2), (0, 4)) };
++    s.execute("text.select", &json!({"anchor":start,"caret":end})).unwrap();
++    s.execute("format.bold", &json!({"on":false})).unwrap();
++    s.execute("format.italic", &json!({"on":true})).unwrap();
++    s.execute("text.select", &json!({"anchor":start,"caret":start})).unwrap();
++    s
++}
++
++#[test]
++fn ime_surrounding_collapsed_boundary_keeps_initial_run_props_and_replays_the_full_presentation() {
++    for paragraph_break in [false, true] {
++        let mut s = mixed_props_boundary(paragraph_break);
++        let base = s.doc().unwrap().clone();
++        let j0 = s.journal.len();
++        let t = base.selection.text.as_ref().unwrap();
++        let body = cmd::text::body_of(&base, t).unwrap();
++        let inherited = deckcraft_model::edit::props_at(body, t.caret);
++        assert_eq!(inherited.bold == Some(true), !paragraph_break);
++        assert_eq!(inherited.italic == Some(true), paragraph_break);
++        // This is exactly the original compose insertion when props remained None.
++        let mut first_preedit = body.clone();
++        deckcraft_model::edit::insert(&mut first_preedit, t.caret, "X", None);
++        s.compose_text("X", None).unwrap();
++        let st = s.doc().unwrap();
++        assert_eq!(cmd::text::body_of(st, st.selection.text.as_ref().unwrap()).unwrap(), &first_preedit);
++        // Remove the run (or paragraph boundary) that determined the first inheritance.
++        s.delete_surrounding_text(if paragraph_break { 1 } else { 2 }, 0).unwrap();
++        s.commit_text("Y").unwrap();
++        assert_eq!(text(&s), if paragraph_break { "AAYBB" } else { "YBB" });
++        let recorded = &s.journal[j0..];
++        assert_eq!(recorded.len(), 1);
++        assert_eq!(recorded[0].0, "text.commit");
++        let repeated = replay(&base, recorded);
++        // Plain text agrees on the unfixed implementation; the run properties do not.
++        assert_eq!(*s.doc().unwrap().doc, *repeated.doc().unwrap().doc);
++        assert_eq!(s.doc().unwrap().selection, repeated.doc().unwrap().selection);
++        assert_eq!(&repeated.journal, recorded);
++        assert_eq!(recorded[0].1["props"], serde_json::to_value(&inherited).unwrap());
++        let committed = s.doc().unwrap().doc.clone();
++        assert_eq!(s.doc().unwrap().history.undo.len(), base.history.undo.len() + 1);
++        s.execute("edit.undo", &json!({})).unwrap();
++        assert_eq!(*s.doc().unwrap().doc, *base.doc);
++        assert_eq!(s.doc().unwrap().selection, base.selection);
++        s.execute("edit.redo", &json!({})).unwrap();
++        assert_eq!(*s.doc().unwrap().doc, *committed);
++    }
++}
++
++#[test]
++fn ime_surrounding_collapsed_boundary_cancel_restores_the_original_rich_document() {
++    let mut s = mixed_props_boundary(false);
++    let base = s.doc().unwrap().clone();
++    let j0 = s.journal.len();
++    s.compose_text("X", None).unwrap();
++    s.delete_surrounding_text(2, 0).unwrap();
++    s.compose_text("Y", None).unwrap();
++    s.compose_text("", None).unwrap();
++    assert!(s.doc().unwrap().composition.is_none());
++    assert!(Arc::ptr_eq(&s.doc().unwrap().doc, &base.doc));
++    assert_eq!(s.doc().unwrap().selection, base.selection);
++    assert_eq!(s.doc().unwrap().history.undo.len(), base.history.undo.len());
++    assert_eq!(s.journal.len(), j0);
++}
++
++#[test]
++fn ime_surrounding_composition_keeps_the_explicit_unlinked_override_at_a_link_end() {
++    let mut s = editing("AA", (0, 0), (0, 2));
++    s.execute("insert.hyperlink", &json!({"url":"https://example.org"})).unwrap();
++    s.execute("text.select", &json!({"anchor":[0,2],"caret":[0,2]})).unwrap();
++    let base = s.doc().unwrap().clone();
++    let j0 = s.journal.len();
++    s.compose_text("X", None).unwrap();
++    let props = s.doc().unwrap().composition.as_ref().unwrap().props.as_ref().unwrap();
++    assert!(props.link.is_none(), "inherited link must not replace the existing explicit unlinked override");
++    s.delete_surrounding_text(2, 0).unwrap();
++    let mark = {
++        let st = s.doc().unwrap();
++        cmd::text::body_of(st, st.selection.text.as_ref().unwrap()).unwrap().paragraphs[0].end_props.clone()
++    };
++    assert!(mark.link.is_some(), "deleting adjacent runs must retain the existing linked paragraph mark");
++    s.compose_text("XY", None).unwrap();
++    {
++        let st = s.doc().unwrap();
++        assert_eq!(cmd::text::body_of(st, st.selection.text.as_ref().unwrap()).unwrap().paragraphs[0].end_props, mark);
++    }
++    s.commit_text("Y").unwrap();
++    let repeated = replay(&base, &s.journal[j0..]);
++    assert_eq!(*s.doc().unwrap().doc, *repeated.doc().unwrap().doc);
++    let st = s.doc().unwrap();
++    let body = cmd::text::body_of(st, st.selection.text.as_ref().unwrap()).unwrap();
++    assert_eq!(body.paragraphs[0].end_props, mark, "committing replaces preedit without changing the paragraph mark");
++    assert!(body.paragraphs[0].runs.iter().all(|run| run.props.link.is_none()));
++    assert_eq!(text(&s), "Y");
++}
++
++#[test]
++fn ime_surrounding_repeated_preedit_preserves_the_surviving_paragraph_mark_across_commit_and_navigation() {
++    for settle_with_navigation in [false, true] {
++        let mut s = editing("AA\nBB\nCC", (0, 0), (2, 2));
++        for (para, (url, align)) in
++            [("https://example.org/first", "left"), ("https://example.org/middle", "center"), ("https://example.org/last", "right")]
++                .into_iter()
++                .enumerate()
++        {
++            s.execute("text.select", &json!({"anchor":[para,0],"caret":[para,2]})).unwrap();
++            s.execute("insert.hyperlink", &json!({"url":url})).unwrap();
++            s.execute("format.align", &json!({"align":align})).unwrap();
++        }
++        s.execute("text.select", &json!({"anchor":[1,2],"caret":[1,2]})).unwrap();
++        let base = s.doc().unwrap().clone();
++        let j0 = s.journal.len();
++        let first_para = cmd::text::body_of(&base, base.selection.text.as_ref().unwrap()).unwrap().paragraphs[0].clone();
++        assert!(first_para.end_props.link.is_some());
++        s.compose_text("X", None).unwrap();
++        assert!(s.doc().unwrap().composition.as_ref().unwrap().props.as_ref().unwrap().link.is_none());
++        // Each request crosses a different side of the middle paragraph. The first
++        // paragraph survives the merge; the second request leaves only the preedit.
++        s.delete_surrounding_text(3, 1).unwrap();
++        assert_eq!(text(&s), "AAXCC");
++        s.delete_surrounding_text(2, 2).unwrap();
++        assert_eq!(text(&s), "X");
++        for next_preedit in ["XX", "XYZ"] {
++            let st = s.doc().unwrap();
++            let p = &cmd::text::body_of(st, st.selection.text.as_ref().unwrap()).unwrap().paragraphs[0];
++            assert_eq!(p.end_props, first_para.end_props, "real surrounding deletion keeps the surviving paragraph mark");
++            s.compose_text(next_preedit, None).unwrap();
++            let st = s.doc().unwrap();
++            let p = &cmd::text::body_of(st, st.selection.text.as_ref().unwrap()).unwrap().paragraphs[0];
++            assert_eq!(p.end_props, first_para.end_props, "transient replacement must not rewrite the surviving paragraph mark");
++            assert_eq!((p.level, &p.props, &p.def_props), (first_para.level, &first_para.props, &first_para.def_props));
++        }
++        if settle_with_navigation {
++            s.execute("text.move", &json!({"to":"left"})).unwrap();
++        } else {
++            s.commit_text("Y").unwrap();
++        }
++        assert_eq!(text(&s), if settle_with_navigation { "XYZ" } else { "Y" });
++        let st = s.doc().unwrap();
++        let p = &cmd::text::body_of(st, st.selection.text.as_ref().unwrap()).unwrap().paragraphs[0];
++        assert_eq!(p.end_props, first_para.end_props, "both settlement paths retain the paragraph mark");
++        let recorded = &s.journal[j0..];
++        assert_eq!(recorded.len(), if settle_with_navigation { 2 } else { 1 });
++        assert_eq!(recorded[0].0, "text.commit");
++        assert_eq!((recorded[0].1["before"].clone(), recorded[0].1["after"].clone()), (json!(5), json!(3)));
++        let repeated = replay(&base, recorded);
++        assert_eq!(*s.doc().unwrap().doc, *repeated.doc().unwrap().doc);
++        assert_eq!(s.doc().unwrap().selection, repeated.doc().unwrap().selection);
++        assert_eq!(&repeated.journal, recorded);
++        s.execute("edit.undo", &json!({})).unwrap();
++        assert_eq!(*s.doc().unwrap().doc, *base.doc);
++        assert_eq!(s.doc().unwrap().selection, base.selection);
++    }
++}
++
++#[test]
++fn ime_preedit_settled_by_navigation_has_a_canonical_replay_record_without_any_delete() {
++    let mut s = editing("AB tail", (0, 2), (0, 2));
++    let base = s.doc().unwrap().clone();
++    let j0 = s.journal.len();
++    s.compose_text("한글", Some((0, 1))).unwrap();
++    s.execute("text.move", &json!({"to":"left"})).unwrap();
++    assert_eq!(text(&s), "AB한글 tail");
++    let recorded = &s.journal[j0..];
++    assert_eq!(recorded.len(), 2, "commit must precede the navigation that settles it");
++    assert_eq!(recorded[0].0, "text.commit");
++    assert_eq!((recorded[0].1["before"].clone(), recorded[0].1["after"].clone()), (json!(0), json!(0)));
++    let repeated = replay(&base, recorded);
++    assert_eq!(*s.doc().unwrap().doc, *repeated.doc().unwrap().doc);
++    assert_eq!(range(&s), range(&repeated));
++}
+--- a/crates/ui-egui/src/ime_tests.rs
++++ b/crates/ui-egui/src/ime_tests.rs
+@@ -215,3 +215,42 @@
+         assert!(h.ctx.fonts_mut(|f| f.has_glyphs(&FontId::proportional(13.0), typed)));
+     }
+ }
++
++#[test]
++fn ios_replacement_event_pair_uses_the_actual_slide_ime_path() {
++    let mut s = Session::with_new();
++    let id = s.doc().unwrap().current_slide().unwrap().shapes[0].id.0;
++    s.execute("text.set", &json!({"id":id,"text":"tex"})).unwrap();
++    s.execute("text.edit", &json!({"id":id,"end":true})).unwrap();
++    let mut h = harness(s);
++    h.event(Event::Ime(ImeEvent::DeleteSurrounding { before_chars: 3, after_chars: 0 }));
++    h.event(Event::Text("Texto".into()));
++    h.run_steps(2);
++    assert_eq!(title_text(h.state()), "Texto");
++}
++
++#[test]
++fn surrounding_delete_stays_with_the_focused_notes_egui_field_and_never_double_mutates_slide() {
++    let mut s = Session::with_new();
++    let title = s.doc().unwrap().current_slide().unwrap().shapes[0].id.0;
++    s.execute("text.set", &json!({"id":title,"text":"Keep slide"})).unwrap();
++    s.execute("text.edit", &json!({"id":title,"end":true})).unwrap();
++    let mut h = harness(s);
++    let notes = egui::Id::new("notes_edit");
++    h.ctx.memory_mut(|m| m.request_focus(notes));
++    h.run_steps(2);
++    h.event(Event::Text("tex".into()));
++    h.run_steps(1);
++    assert_eq!(h.state().notes_buf.2.text, "tex");
++    let j0 = h.state().session.journal.len();
++    h.event(Event::Ime(ImeEvent::DeleteSurrounding { before_chars: 3, after_chars: 0 }));
++    h.event(Event::Text("Texto".into()));
++    h.run_steps(2);
++    assert_eq!(h.state().notes_buf.2.text, "Texto");
++    assert_eq!(title_text(h.state()), "Keep slide");
++    assert!(!h.state().session.journal[j0..].iter().any(|(id, _)| id == "text.deleteSurrounding"));
++    h.ctx.memory_mut(|m| m.surrender_focus(notes));
++    h.run_steps(2);
++    assert_eq!(h.state().session.doc().unwrap().doc.slides[0].notes.text(), "Texto");
++    assert_eq!(title_text(h.state()), "Keep slide");
++}
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -1674,6 +1674,7 @@
+                 self.session.compose_text(text, active_range_chars.as_ref().map(|r| (r.start, r.end)))
+             }
+             egui::ImeEvent::Commit(text) => self.session.commit_text(text),
++            egui::ImeEvent::DeleteSurrounding { before_chars, after_chars } => self.session.delete_surrounding_text(*before_chars, *after_chars),
+             #[allow(deprecated)]
+             egui::ImeEvent::Disabled => {
+                 self.session.end_composition();

@@ -245,6 +245,26 @@ mod browser {
             .map_err(error)
         }
 
+        /// An ordered attachment selection crosses the boundary as bounded binary frames.
+        pub fn queue_attachment_batch(
+            &mut self,
+            request: &str,
+            framed: &[u8],
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            let _language = localization::enter(self.lang);
+            let (update, entries) = self
+                .client
+                .queue_attachment_batch(request, framed, time(now_ms)?)
+                .map_err(error)?;
+            let result = entries
+                .into_iter()
+                .map(|(item, message)| serde_json::json!({"itemId":item,"messageId":message}))
+                .collect::<Vec<_>>();
+            serde_json::to_string(&serde_json::json!({"update":update,"result":result}))
+                .map_err(error)
+        }
+
         pub fn queue_file_record(
             &mut self,
             space: &str,

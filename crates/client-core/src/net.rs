@@ -730,18 +730,10 @@ async fn session_with_repair_policy(
     });
 
     // ── catch up, then flush what we wrote offline ──
-    let cursors = engine!(|engine| engine.cursors());
-    if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors, all: true }).await {
-        return Exit::Retry(e);
-    }
-    let mut cursor_repair = CursorRepair::new(repair_policy);
+    let mut cursor_repair = CursorRepair::new(repair_policy, tokio::time::Instant::now());
     // Preserve the actual sent epoch even if maintenance reseals the outbox while
     // this publication is still waiting for the relay's answer.
     let mut sent: HashMap<String, Option<u64>> = HashMap::new();
-    if let Err(e) = flush(ctx, &mut sink, &mut sent).await {
-        return Exit::Retry(e);
-    }
-
     let mut waiting: HashMap<u64, Waiting> = HashMap::new();
     let mut next_id: u64 = 1;
     let mut dirty: HashSet<String> = HashSet::new();
@@ -764,8 +756,17 @@ async fn session_with_repair_policy(
     )
     .chain(stream);
 
-    let (repair_deadline, repair_deadline_rx) = watch::channel(None);
+    let (repair_deadline, repair_deadline_rx) = watch::channel(cursor_repair.abort_deadline());
     let (exit, repair_expired) = cursor_repair::drive(async {
+    // Initial admission belongs to this same guard. A blocked first Sync write
+    // must not escape the inactivity owner by preceding the dispatcher.
+    let cursors = engine!(|engine| engine.cursors());
+    if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors, all: true }).await {
+        return Exit::Retry(e);
+    }
+    if let Err(e) = flush(ctx, &mut sink, &mut sent).await {
+        return Exit::Retry(e);
+    }
     loop {
         tokio::select! {
             frame = stream.next() => {
@@ -787,7 +788,16 @@ async fn session_with_repair_policy(
                     ServerFrame::Event { ev } => {
                         let space = ev.env.space().to_string();
                         let client_id = ev.env.client_id().to_string();
-                        let r = engine!(|engine| engine.ingest(ev));
+                        let (r, advanced) = engine!(|engine| {
+                            let before = engine.next_seq(&space);
+                            let result = engine.ingest(ev);
+                            let advanced = matches!(&result, Ingest::Applied | Ingest::Confirmed)
+                                && engine.next_seq(&space) > before;
+                            (result, advanced)
+                        });
+                        if advanced && cursor_repair.progressed(tokio::time::Instant::now()) {
+                            let _ = repair_deadline.send_replace(cursor_repair.abort_deadline());
+                        }
                         if r == Ingest::Confirmed { sent.remove(&client_id); }
                         match r {
                             Ingest::Confirmed => {
@@ -825,9 +835,9 @@ async fn session_with_repair_policy(
                             let poke = engine!(|engine| engine.net.poke.is_some());
                             if poke { tokio::time::sleep(Duration::from_millis(500)).await; }
                         }
-                        if matches!(outcome, RejectionOutcome::Retry) {
-                            // The relay refuses the old encoding permanently, but the
-                            // queued plaintext may already have a current sealed copy.
+                        if matches!(outcome, RejectionOutcome::Retry | RejectionOutcome::UserFailed) {
+                            // Retry may already have a current sealed copy. A terminal
+                            // dependency failure can release later Space heads immediately.
                             if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                         }
                         report_rejection(ctx, &outcome);
@@ -1346,7 +1356,20 @@ async fn media_worker(
                         &sha[..12],
                         r.status()
                     ));
-                    engine!(|engine| engine.upload_refused(&sha));
+                    match engine!(|engine| engine.upload_refused(&sha)) {
+                        Ok(spaces) => {
+                            if let Some(listener) = &listener {
+                                if !spaces.is_empty() {
+                                    listener.on_change(spaces);
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            tracing_like(&format!("media: refusal storage failed: {error}"));
+                            upload_failed = true;
+                            break;
+                        }
+                    }
                 }
                 Ok(r) => {
                     tracing_like(&format!(
@@ -1611,6 +1634,9 @@ async fn fetch_link_attempt(
 mod tests {
     mod cursor_repair;
     mod incoming_pipeline;
+    mod initial_catchup;
+    mod media_dependencies;
+    mod media_uploads;
 
     #[tokio::test]
     async fn pickup_expired_deadline_opens_no_connection() {
@@ -2092,6 +2118,7 @@ mod tests {
                     text: "Already in the replay snapshot".into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             )),
@@ -2114,6 +2141,7 @@ mod tests {
                     text: "Committed at the replay/live boundary".into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             )),
@@ -2597,6 +2625,7 @@ mod tests {
                     text: "Written offline, already sealed".into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             )
@@ -2614,6 +2643,7 @@ mod tests {
                     text: "Written offline, still plaintext".into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             )
@@ -3365,6 +3395,7 @@ mod tests {
                     text: "other-fork".into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             )),

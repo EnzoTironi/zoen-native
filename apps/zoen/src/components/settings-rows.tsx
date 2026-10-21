@@ -1,5 +1,5 @@
 import { Column, Host, ListItem, Text } from '@expo/ui';
-import { accessibilityHint, accessibilityLabel, frame, padding } from '@expo/ui/swift-ui/modifiers';
+import { accessibilityHint, accessibilityLabel, frame } from '@expo/ui/swift-ui/modifiers';
 import { View } from 'react-native';
 import { useTheme } from '../theme';
 import { Icon } from './primitives';
@@ -9,14 +9,17 @@ export type { SettingsRow } from './settings-row-types';
 
 /** Native rows without a second scrolling container or an opaque grouped-list background. */
 export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; testID: string }) {
-  const { colors, scheme } = useTheme();
+  const { presentation: p, scheme } = useTheme();
   return (
-    <View testID={testID} style={{ width: '100%' }}>
+    <View
+      testID={testID}
+      style={{ width: '100%', backgroundColor: p.list.block, borderRadius: 10, overflow: 'hidden' }}
+    >
       <Host
         matchContents={{ vertical: true }}
         style={{ width: '100%', backgroundColor: 'transparent' }}
         colorScheme={scheme}
-        seedColor={colors.accent}
+        seedColor={p.list.accent}
       >
         <Column
           spacing={0}
@@ -31,7 +34,7 @@ export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; t
               key={row.id}
               testID={row.id}
               onPress={row.onPress}
-              colors={{ containerColor: 'transparent', contentColor: colors.text }}
+              colors={{ containerColor: 'transparent', contentColor: p.list.text }}
               leading={
                 <View
                   accessible={false}
@@ -43,7 +46,8 @@ export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; t
                     justifyContent: 'center',
                   }}
                 >
-                  {row.leading ?? (row.icon ? <Icon name={row.icon} size={22} /> : null)}
+                  {row.leading ??
+                    (row.icon ? <Icon name={row.icon} size={22} color={p.list.accent} /> : null)}
                 </View>
               }
               trailing={
@@ -51,20 +55,25 @@ export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; t
                   <Icon
                     name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
                     size={13}
-                    color={colors.tertiary}
+                    color={p.list.disclosure}
                   />
                 </View>
               }
               supportingText={
                 row.supportingText ? (
-                  <Text textStyle={{ color: colors.secondary }}>{row.supportingText}</Text>
+                  <Text textStyle={{ color: p.list.secondary, fontSize: 13 }}>
+                    {row.supportingText}
+                  </Text>
                 ) : undefined
               }
               modifiers={
                 process.env.EXPO_OS === 'ios'
                   ? [
-                      padding({ vertical: 6 }),
-                      frame({ minHeight: 56, maxWidth: Infinity, alignment: 'leading' }),
+                      frame({
+                        minHeight: row.supportingText ? 58 : 44,
+                        maxWidth: Infinity,
+                        alignment: 'leading',
+                      }),
                       accessibilityLabel(
                         row.supportingText ? `${row.title}, ${row.supportingText}` : row.title,
                       ),
@@ -73,7 +82,7 @@ export function SettingsRows({ rows, testID }: { rows: readonly SettingsRow[]; t
                   : undefined
               }
             >
-              <Text textStyle={{ color: colors.text }}>{row.title}</Text>
+              <Text textStyle={{ color: p.list.text, fontSize: 17 }}>{row.title}</Text>
             </ListItem>
           ))}
         </Column>

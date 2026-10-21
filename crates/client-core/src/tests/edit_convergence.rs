@@ -70,6 +70,7 @@ fn post(id: &str, text: &str, reply: Option<ReplyRef>) -> EventBody {
         text: text.into(),
         attaches: None,
         reply,
+        media: None,
         forwarded: false,
     }
 }

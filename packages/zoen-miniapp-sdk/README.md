@@ -47,7 +47,7 @@ tokens e convenções de experiência.
 | --- | --- |
 | HTML/CSS e JavaScript/TypeScript | Usar o SDK sem React. O produtor atual compila uma entrada JS/TS em HTML offline com integridade; ele não aceita `.html` como entrada de manifesto. Um provedor MCP externo pode fornecer seu recurso HTML padrão. |
 | React | Usar `@zoen/ui`, seus hooks e tokens. Manter uma única cópia de React com o produtor existente. |
-| WASM | Usar uma interface HTML/JS MCP App ao redor do motor. Não inventar um segundo protocolo para WASM. Admissão de binários, carregamento verificado, CSP específica e ponte de documento ainda precisam da integração de pacote; um build WASM isolado não comprova suporte no host. |
+| WASM | Usar uma interface HTML/JS MCP App ao redor do motor. O perfil explícito do DeckCraft já integra a identidade fixada do par JS/WASM, carregamento verificado, isolamento e ponte para o documento canônico. Isso não admite automaticamente outros motores: cada pacote precisa de identidade, orçamento, ABI e jornada próprios. Um build WASM isolado não comprova suporte no host. |
 
 O agente escolhe a tecnologia a partir da tarefa e dos recursos comprovados do
 host. A escolha não aparece como uma etapa para a pessoa. Preferir o caminho
@@ -105,3 +105,43 @@ ou armazenamento dos projetos usados como motores.
 Referências: [MCP Apps](https://modelcontextprotocol.io/extensions/apps/overview),
 [host e persistência atuais](../../docs/dev/mcp-apps.md),
 [plano de editores](../../docs/dev/artcraft-editor-integration.md).
+
+## Motores de documento gerenciados
+
+O helper independente [`src/managed-host-ui.ts`](src/managed-host-ui.ts) compartilha
+somente apresentação: dimensões/áreas seguras/tema, área do X, fila de geometria,
+validação do ACK, aposentadoria e um pedido de exportação de cada vez. Ele não
+importa `src/index.ts`, não cria outro `App`, não conecta transporte e não guarda
+documentos. Um bootstrap que já possui o cliente oficial MCP deve importar essa
+entrada diretamente; importar o SDK principal criaria a instância padrão dele.
+
+O adaptador tipado oferece `applyHostLayout(layout)` e
+`setExportIntentHandler(callback)`. A configuração empacotada fornece formatos
+suportados, `share(format)`, guarda `ready()` e tratamento de erro. Os formatos
+são copiados ao instalar o owner. Não obter essa política de conteúdo, de callbacks
+do motor, de `kind`/`revision`/`capabilities` declarados pelo guest nem do contexto
+da interface. Esse adaptador não concede acesso: ferramentas do host e núcleo
+continuam verificando artefato, versão, autoria, permissões e bytes.
+
+| Comum, já extraído nesta camada | Continua específico de cada editor |
+| --- | --- |
+| Geometria finita, áreas seguras, X e tema | Como o motor aplica esses dados aos seus controles/canvas |
+| Coalescência, ACK limitado e aposentadoria | Binding/API da Session do motor e sua inicialização |
+| Exclusão de pedidos de exportação simultâneos | Lista de formatos permitida pelo build e ferramenta nativa autorizada |
+| Categorias fixas de erro de inicialização | Formato nativo, parsing, imports/exports e bytes exatos |
+| Protocolo MCP e loader verificado existentes | Revisão/ABI/asset hashes, registro e validação canônica aceitos |
+
+A fachada DeckCraft permanece em
+[`miniapps/deckcraft-ui/src/host-ui.ts`](../../miniapps/deckcraft-ui/src/host-ui.ts).
+Ela traduz o adaptador para o binding `zoenHostRequest`, conserva PDF/PPTX e captura
+o Item já autorizado para a ferramenta existente `app_binary_share`. As validações
+nativas/Rust do DeckCraft continuam fixas; a extração não torna outros formatos,
+revisões, motores ou apps disponíveis.
+
+O codec CSS de [`host-chrome.ts`](src/host-chrome.ts) conserva seu contrato próprio
+para modo fullscreen e limites de controles. Ele não é substituído silenciosamente
+pelo codec do motor, cujo contrato já existente aceita a geometria finita completa.
+Um novo editor ainda precisa de adaptador de formato/Session, seed real, validação
+canônica/recibos/CAS, registro e recursos pinados, exportação autorizada, integração
+de agente e provas reais de edição/fechamento/recuperação. Não há integração de
+Grid ou de outro editor anunciada por este helper.

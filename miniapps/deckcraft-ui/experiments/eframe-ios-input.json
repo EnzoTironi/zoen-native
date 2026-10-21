@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "name": "eframe-ios-input",
+  "status": "EXPERIMENT_NOT_NATIVE_QUALIFIED",
+  "upstreamRevision": "a31b990d32f2c8562f1588562f922960c3fde48b",
+  "baseManagedCargoLockSha256": "4bc9179aa45efdf20b633a624e5b61b9144160770c03b6ac4193ea7f5348274f",
+  "managedCargoLockSha256": "ea1b257672f1e4e0f73644766b0163ebd166ea0358a976563d81420eaa826a00",
+  "crate": {
+    "name": "eframe",
+    "version": "0.36.2",
+    "prefix": "eframe-0.36.2",
+    "vendorPath": "vendor/eframe-0.36.2",
+    "archiveSha256": "55ad41fac6e3149abb4866e93df37dbd33baa95db525c3368c944584e95a5dc2",
+    "sourceRevision": "49682f8baa058bf49e011035cfbd6e825f88a5ef",
+    "beforeTreeSha256": "6d5168aabcbf959b2c7670dd255baef5d79b9e89ad274b9f2a8b20f7acd3aac2",
+    "afterTreeSha256": "51b9fd73a2cdc8ad45738933cff2c3789058543525614f3c0be9de5949639dba",
+    "changedFiles": [
+      "src/web/app_runner.rs",
+      "src/web/backend.rs",
+      "src/web/events.rs",
+      "src/web/mod.rs",
+      "src/web/text_agent.rs",
+      "src/web/text_input_activation.rs"
+    ]
+  },
+  "patch": {
+    "path": "patches/0017-eframe-ios-input.patch",
+    "sha256": "20ac9af88b43e2cb3bb387349af3a0fce7c0c49031db029596adeb852cfc461b"
+  },
+  "sourceFiles": [
+    {
+      "path": "Cargo.toml",
+      "before": "ab469a18077b9ce929fe755bf9b54b0971b81f93b024c1d0291a14eb4618a6b8",
+      "after": "10b4611b202ce26d7299f37a1716ada04012fd368e74d0a765f2d894a968bf12"
+    },
+    {
+      "path": "Cargo.lock",
+      "before": "4bc9179aa45efdf20b633a624e5b61b9144160770c03b6ac4193ea7f5348274f",
+      "after": "ea1b257672f1e4e0f73644766b0163ebd166ea0358a976563d81420eaa826a00"
+    },
+    {
+      "path": "crates/ui-egui/src/canvas.rs",
+      "before": "1f0bd0e216aba789e26fcf82bb8ae16a1571def1c172fe04c6843cb70d676380",
+      "after": "1322185293d8b7f952859a0be5d13e86538869158491537c9d361d2eb41682a7"
+    },
+    {
+      "path": "crates/ui-egui/src/host_phone_landscape_tests.rs",
+      "before": "fee671e3cf6ec30a760395dd51bf2352c628ce60987eec75b2946cea115ce83d",
+      "after": "7ec0046ffd9dc5f93f01a30089ca5eb2055027771b6712db46e860d7ce67277d"
+    }
+  ]
+}

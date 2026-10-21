@@ -1,0 +1,62 @@
+[
+  {
+    "path": "submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoScreen.swift",
+    "bytes": 410713,
+    "sha256": "5d132a7a352dd9fa44e9336390d54b15cb177ff5dcb325763aa5d08ac8d4be44"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderNode.swift",
+    "bytes": 167157,
+    "sha256": "4befb3015cc2cda45a9f2a899fed40589981197746a3cbd117f36e405387afb5"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderEditingContentNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderEditingContentNode.swift",
+    "bytes": 9270,
+    "sha256": "2758c88f209b3d5bf7010f9fa7b3fbf30ef69b08463326d4b2a4409c4709ce00"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderButtonNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderButtonNode.swift",
+    "bytes": 14708,
+    "sha256": "a4e55840901d75717d893081fd27d72c5afac6a25e1633ba001b1d020eb22330"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderActionButtonNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoHeaderActionButtonNode.swift",
+    "bytes": 3781,
+    "sha256": "d4d01356b5d780a32c0ca2ca308d66ef106ec7ebb71232f7bb42f030c659a36e"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoPaneContainerNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoPaneContainerNode.swift",
+    "bytes": 77924,
+    "sha256": "01245231670a073150471fd228485164042a2c9f6e487b0e910a434ca85fd957"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/ListItems/PeerInfoScreenDisclosureItem.swift",
+    "bytes": 21330,
+    "sha256": "e4bf35e01f21973552ccbdb46bfa630bb74eb9a70bd3875e16bf8f10faa30978"
+  },
+  {
+    "path": "submodules/SettingsUI/Sources/SettingsController.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/SettingsUI/Sources/SettingsController.swift",
+    "bytes": 4371,
+    "sha256": "ebad57c5d1afdc3f5bf8cf1299aab1ed5b071b8a5ce03ddf7b0f25c308b7ded0"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/HorizontalTabsComponent/Sources/HorizontalTabsComponent.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/HorizontalTabsComponent/Sources/HorizontalTabsComponent.swift",
+    "bytes": 64664,
+    "sha256": "dd50dac77fe8e0a7636b8812baa2db192e3cd4cc5861c2844d80fbfa3feef5d1"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoVisualMediaPaneNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode/Sources/PeerInfoVisualMediaPaneNode.swift",
+    "bytes": 107565,
+    "sha256": "c64ba90763e49100555b71e56a730fde6d588222a614bfc78d1eab4cc598e9b0"
+  }
+]

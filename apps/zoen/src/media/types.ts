@@ -1,6 +1,7 @@
 import type { FileDto } from '../core/generated/FileDto';
 import type { VoiceNativePort } from './voice-session';
 import type { MediaDraftPort } from './media-draft-types';
+import type { RecentAttachmentPort } from './attachment-recent-session';
 
 // The current UniFFI API takes one contiguous payload. Keep its native copies
 // within a predictable mobile memory budget until the Rust API supports streams.
@@ -45,6 +46,7 @@ export type LocalMediaFile = {
 
 /** Bytes stay in native storage. The bridge carries local URIs and small metadata only. */
 export interface MediaDriver {
+  recentAttachments?: RecentAttachmentPort;
   /** Private encrypted pre-send journal, owned by the native Rust account session. */
   drafts?: MediaDraftPort;
   /** Browser producer lease; IDs are issued by Rust and retired after UI acceptance. */

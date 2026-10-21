@@ -23,16 +23,17 @@ import { NativeIntentConsumer } from '../native-surfaces/intent-consumer';
 import { SkyBackground } from '../components/sky-background';
 import { HomeProvider } from '../home/provider';
 import { ConversationCardsProvider } from '../miniapps/conversation-provider';
+import { MessageContextSession } from '../components/message-context-session';
 
 // Cold links keep the real tabs beneath their destination, including on iOS.
 export const unstable_settings = { anchor: '(tabs)' };
 
 void SplashScreen.preventAutoHideAsync();
 function Navigation() {
-  const { scheme, colors, sky } = useTheme();
+  const { scheme, colors, sky, presentation: p, appearanceReady } = useTheme();
   useEffect(() => {
-    void SplashScreen.hideAsync();
-  }, []);
+    if (appearanceReady) void SplashScreen.hideAsync();
+  }, [appearanceReady]);
   const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
   return (
     <NavigationThemeProvider
@@ -48,59 +49,67 @@ function Navigation() {
         },
       }}
     >
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      {process.env.EXPO_OS !== 'ios' && <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />}
       <View style={{ flex: 1, backgroundColor: sky.bottom }}>
         <SkyBackground />
-        <SessionGate>
-          <NativeIntentConsumer />
-          <Stack
-            screenOptions={({ route }) => ({
-              // Tab surfaces own their headings; never restore a native group header.
-              headerShown: route.name !== '(tabs)',
-              headerBackButtonDisplayMode: 'minimal',
-              headerShadowVisible: false,
-              headerTransparent: process.env.EXPO_OS !== 'android',
-              headerBlurEffect: 'none',
-              headerStyle: { backgroundColor: 'transparent' },
-              headerLargeStyle: { backgroundColor: 'transparent' },
-              headerLargeTitleShadowVisible: false,
-              headerTitleStyle: { color: colors.text },
-              headerLargeTitleStyle: { color: colors.text },
-              scrollEdgeEffects: { top: 'hidden', bottom: 'hidden' },
-              headerTintColor: colors.text,
-              contentStyle: { backgroundColor: 'transparent' },
-            })}
-          >
-            <Stack.Screen name="(tabs)" options={{ title: '' }} />
-            <Stack.Screen name="chat/[id]" options={{ title: '' }} />
-            <Stack.Screen
-              name="miniapps"
-              options={{
-                presentation: process.env.EXPO_OS === 'ios' ? 'fullScreenModal' : 'card',
-                headerShown: false,
-              }}
-            />
-            <Stack.Screen
-              name="miniapp"
-              options={{
-                presentation: process.env.EXPO_OS === 'web' ? 'card' : 'fullScreenModal',
-                orientation: 'default',
-                animation: process.env.EXPO_OS === 'web' ? undefined : 'slide_from_bottom',
-                gestureEnabled: true,
-                headerShown: false,
-              }}
-            />
-            <Stack.Screen
-              name="new-chat"
-              options={{
-                title: t('common.newChat'),
-                presentation: 'formSheet',
-                sheetGrabberVisible: true,
-              }}
-            />
-            <Stack.Screen name="item/[id]" options={{ title: t('common.details') }} />
-          </Stack>
-        </SessionGate>
+        <MessageContextSession>
+          <SessionGate>
+            <NativeIntentConsumer />
+            <Stack
+              screenOptions={({ route }) => ({
+                // Tab surfaces own their headings; never restore a native group header.
+                headerShown: route.name !== '(tabs)',
+                headerBackButtonDisplayMode: 'minimal',
+                headerShadowVisible: false,
+                headerTransparent: process.env.EXPO_OS !== 'android',
+                headerBlurEffect: 'none',
+                headerStyle: { backgroundColor: 'transparent' },
+                headerLargeStyle: { backgroundColor: 'transparent' },
+                headerLargeTitleShadowVisible: false,
+                headerTitleStyle: { ...p.typography.title, color: p.navigation.text },
+                headerLargeTitleStyle: { ...p.typography.largeTitle, color: p.navigation.text },
+                scrollEdgeEffects: { top: 'hidden', bottom: 'hidden' },
+                headerTintColor: p.navigation.control,
+                contentStyle: { backgroundColor: 'transparent' },
+                ...(process.env.EXPO_OS === 'ios'
+                  ? {
+                      statusBarStyle: scheme === 'dark' ? 'light' : 'dark',
+                      statusBarAnimation: 'none',
+                    }
+                  : {}),
+              })}
+            >
+              <Stack.Screen name="(tabs)" options={{ title: '' }} />
+              <Stack.Screen name="chat/[id]" options={{ title: '' }} />
+              <Stack.Screen
+                name="miniapps"
+                options={{
+                  presentation: process.env.EXPO_OS === 'ios' ? 'fullScreenModal' : 'card',
+                  headerShown: false,
+                }}
+              />
+              <Stack.Screen
+                name="miniapp"
+                options={{
+                  presentation: process.env.EXPO_OS === 'web' ? 'card' : 'fullScreenModal',
+                  orientation: 'default',
+                  animation: process.env.EXPO_OS === 'web' ? undefined : 'slide_from_bottom',
+                  gestureEnabled: true,
+                  headerShown: false,
+                }}
+              />
+              <Stack.Screen
+                name="new-chat"
+                options={{
+                  title: t('common.newChat'),
+                  presentation: 'formSheet',
+                  sheetGrabberVisible: true,
+                }}
+              />
+              <Stack.Screen name="item/[id]" options={{ title: t('common.details') }} />
+            </Stack>
+          </SessionGate>
+        </MessageContextSession>
       </View>
     </NavigationThemeProvider>
   );

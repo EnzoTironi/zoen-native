@@ -102,6 +102,32 @@ impl Engine {
         item: &str,
         mut app: AppDoc,
     ) -> R<AppDoc> {
+        if app.app == miniapps::deckcraft::APP {
+            let seed = miniapps::deckcraft::registration::EMPTY;
+            if !miniapps::deckcraft::registration::available()
+                || app.resource_uri != miniapps::deckcraft::RESOURCE
+                || app.document.is_some()
+            {
+                return Err(invalid());
+            }
+            let document = miniapps::deckcraft::Document::parse(seed).map_err(|_| invalid())?;
+            let key = self.file_key(None)?;
+            let file = self.file_doc(
+                space,
+                &key,
+                "presentation.deckcraft",
+                "",
+                miniapps::deckcraft::MIME,
+                seed,
+                None,
+                &HashMap::new(),
+            )?;
+            self.store
+                .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
+            app.document = Some(file);
+            app.state_json = document.metadata(&app.title);
+            return Ok(app);
+        }
         if app.app != "excalidraw" {
             return Ok(app);
         }
@@ -532,6 +558,7 @@ impl Engine {
                 text: caption.into(),
                 attaches: Some(item.clone()),
                 reply: None,
+                media: None,
                 forwarded,
             },
         )?;

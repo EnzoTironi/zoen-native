@@ -1,6 +1,6 @@
 import { t } from '../../i18n/index.ts';
 import { Host, Picker } from '@expo/ui';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text } from 'react-native';
 import { useClient } from '../../core/provider';
@@ -12,6 +12,7 @@ import { SchemaForm } from '../../miniapps/schema-form';
 import { exactJson, formValue, parseSchema } from '../../miniapps/schema';
 import { useDirtyEditor } from '../../documents/use-dirty-editor';
 import { useDialogs } from '../../components/dialogs';
+import { installIntent } from '../../miniapps/install-intent';
 
 function Install({
   spec,
@@ -29,6 +30,7 @@ function Install({
   const [draft, setDraft] = useState<unknown>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const intent = useRef(installIntent()).current;
   const chats =
     snapshot?.conversations.filter((chat) => chat.members.some((person) => person.is_me)) ?? [];
   const target = chats.find((chat) => chat.id === space);
@@ -102,7 +104,14 @@ function Install({
           setBusy(true);
           setError(null);
           void (async () => {
-            const args_json = exactJson(formValue(schema, draft)!);
+            let args_json = exactJson(formValue(schema, draft)!);
+            if (spec.id === 'deckcraft') {
+              const epoch = store.sessionEpoch;
+              const key = JSON.stringify([epoch, target.id, spec.id, args_json]);
+              const mutationId = await intent(key, () => store.request({ op: 'new_mutation_id' }));
+              if (store.sessionEpoch !== epoch) throw Error(t('decks.accountChanged'));
+              args_json = exactJson({ ...JSON.parse(args_json), mutationId });
+            }
             const item = await store.request({
               op: 'install_app',
               space_id: target.id,

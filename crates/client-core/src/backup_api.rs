@@ -553,6 +553,9 @@ impl Client {
         }
         let sealed = r.bytes().await.map_err(offline)?;
         let (mut header, db) = backup::open_payload(&k, &s.identity, &sealed)?;
+        // Prove the authenticated payload can be imported before enrolling a
+        // device or touching this device's existing data or vault.
+        backup::preflight_snapshot(&header, &db)?;
         // Restore onto the relay the person chose (the backup may predate a move).
         header.relay_url = relay_url.clone();
         let fail = || {
@@ -724,3 +727,6 @@ mod pin_tests {
         server.abort();
     }
 }
+
+#[cfg(test)]
+mod structural_tests;

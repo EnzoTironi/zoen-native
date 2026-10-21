@@ -11,21 +11,20 @@ import {
   tint,
 } from '@expo/ui/swift-ui/modifiers';
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
+import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { useAttachmentKeyboardSession } from './attachment-keyboard-context';
 import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
-import type { MediaActionsProps } from './media-actions.types';
+import type { MediaActionsProps, MediaPickKind } from './media-actions.types';
+import { ComposerAction } from '../components/composer-action';
 
-export function MediaActions({
-  disabled: isDisabled,
-  hasVoiceEditor,
-  onChoose,
-}: MediaActionsProps) {
+function MediaActionsMenu({ disabled: isDisabled, hasVoiceEditor, onChoose }: MediaActionsProps) {
   const { scheme, colors } = useTheme();
   const glass = isLiquidGlassAvailable();
   return (
     <Host
       testID="add-attachment-host"
-      style={{ width: 52, height: 52 }}
+      style={{ width: 40, height: 40 }}
       colorScheme={scheme}
       ignoreSafeArea="keyboard"
     >
@@ -36,12 +35,12 @@ export function MediaActions({
         modifiers={[
           buttonStyle(glass ? 'glass' : 'bordered'),
           buttonBorderShape('circle'),
-          controlSize('large'),
+          controlSize('regular'),
           labelStyle('iconOnly'),
           tint(colors.text),
           foregroundStyle(colors.text),
           disabled(isDisabled),
-          frame({ width: 52, height: 52 }),
+          frame({ width: 40, height: 40 }),
         ]}
       >
         <Button
@@ -60,5 +59,44 @@ export function MediaActions({
         <Button label={t('media.file2')} systemImage="doc" onPress={() => onChoose('document')} />
       </Menu>
     </Host>
+  );
+}
+
+const emptyPanel = () => null;
+const subscribeEmptyPanel = () => () => {};
+export function MediaActions(props: MediaActionsProps) {
+  const panel = useAttachmentKeyboardSession();
+  const choose = useRef(props.onChoose);
+  useLayoutEffect(() => {
+    choose.current = props.onChoose;
+  }, [props.onChoose]);
+  const dispatch = useCallback((kind: MediaPickKind) => choose.current(kind), []);
+  const state = useSyncExternalStore(
+    panel?.subscribe ?? subscribeEmptyPanel,
+    panel?.getSnapshot ?? emptyPanel,
+    panel?.getSnapshot ?? emptyPanel,
+  );
+  useLayoutEffect(
+    // Callback identity can change on every composer render. Keep one admitted
+    // registration; its committed callback updates without cleanup/publish loops.
+    () => panel?.register(dispatch, props.hasVoiceEditor, !props.disabled),
+    [panel, dispatch, props.hasVoiceEditor, props.disabled],
+  );
+  if (!panel) return <MediaActionsMenu {...props} />;
+  return (
+    <ComposerAction
+      testID="add-attachment"
+      label={t(
+        state?.presentation?.kind === 'attachments' ? 'common.close' : 'media.addAttachment',
+      )}
+      name={state?.presentation?.kind === 'attachments' ? 'xmark' : 'plus'}
+      onPress={panel.openAttachments}
+      disabled={
+        (props.disabled && state?.presentation?.kind !== 'attachments') ||
+        !state?.enabled ||
+        !state.field ||
+        !!state.presentation?.closing
+      }
+    />
   );
 }

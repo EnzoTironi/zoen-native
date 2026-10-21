@@ -33,6 +33,12 @@ const MAX_THUMBNAIL_BYTES: usize = 2 << 20;
 const MAX_FILE_CHUNKS: usize = MAX_FILE_BYTES / MIN_CHUNK + 1;
 const MAX_FILE_METADATA_BYTES: usize = 128 << 10;
 
+#[cfg(test)]
+thread_local! {
+    /// Counts actual historical fallback comparisons, not elapsed test time.
+    pub(crate) static FILE_VERSION_HISTORY_PROBES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 #[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct FileDto {
@@ -354,6 +360,34 @@ impl Engine {
         mutation_id: &str,
         caption: &str,
     ) -> R<TimelineEntry> {
+        self.send_file_message_with_media(
+            space,
+            name,
+            mime,
+            bytes,
+            thumbnail,
+            reply_to,
+            thread,
+            mutation_id,
+            caption,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_file_message_with_media(
+        &mut self,
+        space: &str,
+        name: &str,
+        mime: &str,
+        bytes: &[u8],
+        thumbnail: Option<&[u8]>,
+        reply_to: Option<&str>,
+        thread: bool,
+        mutation_id: &str,
+        caption: &str,
+        media: Option<types::MessageMedia>,
+    ) -> R<TimelineEntry> {
         let me = self.me_id()?;
         if !self.state.writer(space, &me) {
             return Err(CoreError::Forbidden {
@@ -378,6 +412,7 @@ impl Engine {
             || caption.len() > MAX_FILE_CAPTION_BYTES
             || caption.contains('\0')
             || (thread && reply_to.is_none())
+            || media.as_ref().is_some_and(|value| !value.is_valid())
         {
             return Err(invalid("envio de arquivo inválido", "invalid file send"));
         }
@@ -402,7 +437,9 @@ impl Engine {
         );
         // Preserve the original blank-caption fingerprint for accepted sends
         // made before caption support. Nonempty captions cannot reuse it.
-        let intent = if caption.is_empty() {
+        let intent = if let Some(media) = media.as_ref() {
+            serde_json::to_vec(&("zoen.media.send.v1", file_intent, caption, media))
+        } else if caption.is_empty() {
             serde_json::to_vec(&file_intent)
         } else {
             serde_json::to_vec(&(file_intent, caption))
@@ -437,6 +474,7 @@ impl Engine {
                     text: caption.to_string(),
                     attaches: Some(item),
                     reply,
+                    media,
                     forwarded: false,
                 },
             )?;
@@ -512,6 +550,7 @@ impl Engine {
         to_space: &str,
         caption: &str,
         voice: Option<&VoiceNoteDto>,
+        media: Option<types::MessageMedia>,
     ) -> R<TimelineEntry> {
         let me = self.me_id()?;
         if !self.is_member(from_space, &me) || !self.state.writer(to_space, &me) {
@@ -587,6 +626,7 @@ impl Engine {
                     text: caption.to_string(),
                     attaches: Some(item),
                     reply: None,
+                    media,
                     forwarded: true,
                 },
             )?;
@@ -658,7 +698,10 @@ impl Engine {
     ) -> R<FileEditStatus> {
         let me = self.me_id()?;
         let (it, current) = self.file_item(item)?;
-        if !self.state.writer(&it.space, &me) || !it.voice_edit_allowed(&me, None) {
+        if self.state.is_recovery_item(item)
+            || !self.state.writer(&it.space, &me)
+            || !it.voice_edit_allowed(&me, None)
+        {
             return Ok(FileEditStatus::Forbidden);
         }
         if it.current().number != expected_version || current.sha256 != expected_sha256 {
@@ -759,7 +802,10 @@ impl Engine {
         let me = self.me_id()?;
         let (it, cur) = self.file_item(item)?;
         let space = it.space.clone();
-        if !self.state.writer(&space, &me) || !it.voice_edit_allowed(&me, None) {
+        if self.state.is_recovery_item(item)
+            || !self.state.writer(&space, &me)
+            || !it.voice_edit_allowed(&me, None)
+        {
             return Err(CoreError::Forbidden {
                 reason: t("edição de arquivo não autorizada", "unauthorized file edit"),
             });
@@ -822,7 +868,14 @@ impl Engine {
             self.app_document_identity(&it.space)?;
         }
         let v = match version {
-            Some(n) => it.versions.iter().find(|v| v.number == n),
+            // Most demand workers and recent-source checks pin the current
+            // number. Resolving it must not walk every earlier File manifest.
+            Some(n) if it.current().number == n => Some(it.current()),
+            Some(n) => it.versions.iter().find(|v| {
+                #[cfg(test)]
+                FILE_VERSION_HISTORY_PROBES.with(|count| count.set(count.get() + 1));
+                v.number == n
+            }),
             None => it.versions.last(),
         };
         let Some(f) = v.and_then(|v| v.content.owned_file()) else {

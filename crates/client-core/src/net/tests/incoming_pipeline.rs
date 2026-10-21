@@ -230,6 +230,7 @@ async fn malformed_wire_and_rejected_signature_do_not_poison_following_messages_
                     text: text.into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             )),

@@ -11,14 +11,19 @@ const stubs: Record<string, string> = {
   expo: 'export const requireOptionalNativeModule = () => ({});',
   'expo-crypto': 'export const randomUUID = () => "activity_link_1";',
   'expo-file-system': `
-    export const fileState = { paths: [], reads: [], records: new Map() };
+    export const fileState = { paths: [], reads: [], records: new Map(), writes: [], deletes: [], writeGate: null, writeError: null };
     export class File {
       constructor(...parts) { this.path = parts.join('/'); fileState.paths.push(this.path); }
       get exists() { return fileState.records.has(this.path); }
       get size() { return fileState.records.get(this.path)?.length ?? 0; }
       async text() { fileState.reads.push(this.path); return fileState.records.get(this.path); }
-      write(value) { fileState.records.set(this.path, value); }
-      delete() { fileState.records.delete(this.path); }
+      async write(value) {
+        fileState.writes.push(value);
+        await fileState.writeGate;
+        if (fileState.writeError) throw fileState.writeError;
+        fileState.records.set(this.path, value);
+      }
+      delete() { fileState.deletes.push(this.path); fileState.records.delete(this.path); }
     }
     export const Paths = { document: 'fixture' };
   `,
@@ -115,7 +120,15 @@ const adapter = (await import(
     options: { parameter: string; values: { name: string; value: string }[] }[];
     failure: 'timeline' | 'configuration' | null;
   };
-  fileState: { paths: string[]; reads: string[]; records: Map<string, string> };
+  fileState: {
+    paths: string[];
+    reads: string[];
+    records: Map<string, string>;
+    writes: string[];
+    deletes: string[];
+    writeGate: Promise<void> | null;
+    writeError: Error | null;
+  };
   MiniappWidget(catalog: WidgetTimelineCatalog, environment: Record<string, unknown>): WidgetTree;
 };
 
@@ -388,4 +401,89 @@ test('preferences use only the current canonical file and never read an obsolete
     adapter.fileState.records.get('fixture/native-surfaces-v1.json'),
     'obsolete test record',
   );
+});
+
+const tick = () => new Promise<void>((done) => setImmediate(done));
+function gateWrite() {
+  let release!: () => void;
+  adapter.fileState.writeGate = new Promise<void>((done) => (release = done));
+  return release;
+}
+test('SDK58 preferences save awaits native write before queued clear can delete the committed file', async () => {
+  const port = await adapter.createSurfacePort();
+  adapter.fileState.records.clear();
+  adapter.fileState.deletes = [];
+  adapter.fileState.writeError = null;
+  const release = gateWrite();
+  let settled = false;
+  const saving = port.writePreferences('pending preferences').then(() => {
+    settled = true;
+  });
+  const clearing = saving.then(() => port.writePreferences(null));
+  try {
+    await tick();
+    assert.equal(settled, false, 'the save queue must wait for the SDK write Promise');
+    assert.equal(adapter.fileState.records.size, 0);
+    assert.equal(
+      adapter.fileState.deletes.length,
+      0,
+      'clear cannot race an admitted native writer',
+    );
+  } finally {
+    release();
+    await clearing;
+    adapter.fileState.writeGate = null;
+  }
+  assert.equal(settled, true);
+  assert.equal(
+    adapter.fileState.records.size,
+    0,
+    'queued clear runs after write, with no late recreation',
+  );
+  assert.equal(adapter.fileState.deletes.length, 1);
+  assert.ok(adapter.fileState.deletes[0]!.endsWith('native-surfaces.json'));
+});
+
+test('SDK58 preferences write rejection reaches the caller and null cleanup still uses synchronous delete', async () => {
+  const port = await adapter.createSurfacePort();
+  adapter.fileState.records.clear();
+  adapter.fileState.deletes = [];
+  const failure = new Error('native preference write rejected');
+  adapter.fileState.writeError = failure;
+  const release = gateWrite();
+  let settled = false;
+  const outcome = port.writePreferences('uncommitted preferences').then(
+    () => {
+      settled = true;
+      return null;
+    },
+    (error: unknown) => {
+      settled = true;
+      return error;
+    },
+  );
+  try {
+    await tick();
+    assert.equal(settled, false);
+    assert.equal(adapter.fileState.records.size, 0);
+  } finally {
+    release();
+    await outcome;
+    adapter.fileState.writeGate = null;
+    adapter.fileState.writeError = null;
+  }
+  assert.equal(
+    await outcome,
+    failure,
+    'the exact native rejection must reach save failure handling',
+  );
+  assert.equal(adapter.fileState.records.size, 0);
+  const path = adapter.fileState.paths.at(-1)!;
+  adapter.fileState.records.set(path, 'previous preferences');
+  const writes = adapter.fileState.writes.length;
+  const clearing = port.writePreferences(null);
+  assert.equal(adapter.fileState.records.size, 0, 'delete remains immediate SDK Function behavior');
+  await clearing;
+  assert.equal(adapter.fileState.writes.length, writes);
+  assert.deepEqual(adapter.fileState.deletes, [path]);
 });

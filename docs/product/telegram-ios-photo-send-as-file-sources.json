@@ -1,0 +1,49 @@
+{
+  "repository": "https://github.com/TelegramMessenger/Telegram-iOS",
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "license": "GPL-2.0-or-later; GPL-3.0 selected; combined with Zoen AGPLv3 under section 13",
+  "sources": [
+    {
+      "upstreamPath": "submodules/MediaPickerUI/Sources/MediaPickerScreen.swift",
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/MediaPickerUI/Sources/MediaPickerScreen.swift",
+      "sha256": "3e4aa6ed563f05a03ec684ed2120c2823b31003f029e1bc5f6b3c33ec2138ce8",
+      "ranges": [
+        {
+          "lines": [
+            3174,
+            3181
+          ],
+          "contract": "Localized singular/plural terminal Send as File(s) action and original Context Menu/File icon"
+        },
+        {
+          "lines": [
+            1498,
+            1559
+          ],
+          "contract": "Same completed send owner, file vs media export intent; HEIC conversion chooser observed but not ported"
+        },
+        {
+          "lines": [
+            3195,
+            3203
+          ],
+          "contract": "Separate Send Without Grouping action observed and excluded from this slice"
+        }
+      ],
+      "adapters": [
+        "apps/zoen/modules/zoen-core/ios/ZoenAttachmentKeyboardContent.swift",
+        "apps/zoen/src/media/attachment-photo-keyboard.ios.tsx",
+        "apps/zoen/src/media/attachment-photo-session.ts",
+        "apps/zoen/src/media/durable-attachment-composer.tsx"
+      ],
+      "adaptations": "Backed terminal file intent through the existing bounded UIMenu/Expo event and canonical Rust journal. No Telegram Postbox/account/transport or ContextController renderer imported. Global existing Zoen draft options permit zero-file or existing file-mode admission; mixed ordinary-media drafts hide the action."
+    },
+    {
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Context Menu/File.imageset/Icon-6.pdf",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Images.xcassets/Chat/Context%20Menu/File.imageset/Icon-6.pdf",
+      "sha256": "cad414babe888c793fbb6dc0d8e7a63716be648db90414b0b1aa5f117d867ed8",
+      "localPath": "apps/zoen/modules/zoen-core/ios/TelegramAttachmentPresentation/Resources/sendAsFile.pdf",
+      "adaptations": "Byte-identical original PDF; native template tint follows resolved presentation theme."
+    }
+  ]
+}

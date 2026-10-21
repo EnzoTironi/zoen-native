@@ -171,6 +171,11 @@ pub struct TimelineEntry {
     pub author: Persona,
     pub at_ms: i64,
     pub kind: EntryKind,
+    /// Signed attachment presentation and explicit album membership. Legacy messages omit it.
+    #[uniffi(default = None)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "client-types", ts(optional))]
+    pub media: Option<MessageMediaDto>,
     /// Where this entry is on its way to the others.
     pub delivery: Delivery,
     /// Inline reply: a quote of the message this one answers.
@@ -778,4 +783,41 @@ pub struct UniversalResults {
     pub hits: Vec<UniversalHit>,
     /// Query time in microseconds (index refresh included).
     pub took_us: u64,
+}
+
+/// Presentation does not change a file's real MIME, hash or encrypted bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+#[serde(rename_all = "snake_case")]
+pub enum AttachmentPresentationDto {
+    Media,
+    File,
+}
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct MediaGroupDto {
+    pub id: String,
+    pub index: u32,
+    pub count: u32,
+}
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct MessageMediaDto {
+    pub presentation: AttachmentPresentationDto,
+    pub group: Option<MediaGroupDto>,
+}
+impl From<&types::MessageMedia> for MessageMediaDto {
+    fn from(value: &types::MessageMedia) -> Self {
+        Self {
+            presentation: match value.presentation {
+                types::AttachmentPresentation::Media => AttachmentPresentationDto::Media,
+                types::AttachmentPresentation::File => AttachmentPresentationDto::File,
+            },
+            group: value.group.as_ref().map(|group| MediaGroupDto {
+                id: group.id.clone(),
+                index: group.index,
+                count: group.count,
+            }),
+        }
+    }
 }

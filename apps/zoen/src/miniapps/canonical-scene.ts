@@ -30,7 +30,7 @@ const token = (value: unknown): value is string =>
   typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 const digest = (value: unknown): value is string =>
   typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
-const hash = (value: Uint8Array) =>
+export const hash = (value: Uint8Array) =>
   Array.from(sha256(value), (byte) => byte.toString(16).padStart(2, '0')).join('');
 const integer = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value);
@@ -54,7 +54,7 @@ function utf8Length(value: string): number {
   }
   return bytes;
 }
-function encode64(bytes: Uint8Array): string {
+export function encode64(bytes: Uint8Array): string {
   const parts: string[] = [];
   for (let i = 0; i < bytes.length; i += 3) {
     const a = bytes[i];
@@ -102,7 +102,7 @@ function decodeUtf8(bytes: Uint8Array): string {
   }
   return new TextDecoder().decode(bytes);
 }
-function decode64(value: unknown): Uint8Array {
+export function decode64(value: unknown): Uint8Array {
   if (
     typeof value !== 'string' ||
     !value.length ||

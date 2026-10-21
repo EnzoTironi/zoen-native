@@ -1,0 +1,226 @@
+{
+  "repository": "https://github.com/TelegramMessenger/Telegram-iOS",
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "license": "GPL-2.0-or-later; GPL-3.0 selected",
+  "files": [
+    {
+      "file": "TelegramGlassBackground.swift",
+      "upstreamPath": "submodules/TelegramUI/Components/GlassBackgroundComponent/Sources/GlassBackgroundComponent.swift",
+      "upstreamSHA256": "396817889b36a99633688b99b1558e2329fe0ed08fad61669a8cfeca2f1fb0a5",
+      "adaptations": "Preserved UIView rendering, native UIGlassEffect/container luma and exact legacy generation; excluded unused ComponentFlow component/context-extraction wrappers; module imports resolved locally."
+    },
+    {
+      "file": "TelegramLegacyGlass.swift",
+      "upstreamPath": "submodules/TelegramUI/Components/GlassBackgroundComponent/Sources/LegacyGlassView.swift",
+      "upstreamSHA256": "48949eb87daa1dcbfb1f673d7e8fd4edffb67f4717d20f0489c931ef933e51e6",
+      "adaptations": "Removed separate upstream module imports only; same implementation."
+    },
+    {
+      "file": "TelegramGlassTouchEffect.swift",
+      "upstreamPath": "submodules/TelegramUI/Components/GlassBackgroundComponent/Sources/TouchEffect.swift",
+      "upstreamSHA256": "103e9033942c91e3ef2ac8e42d07f057b084f0d667feb0db1084efd2ea767ce7",
+      "adaptations": "Removed separate upstream module imports only; same implementation."
+    },
+    {
+      "file": "TelegramLiquidLens.swift",
+      "upstreamPath": "submodules/TelegramUI/Components/LiquidLens/Sources/LiquidLensView.swift",
+      "upstreamSHA256": "c106323abb6ec03a2788606d450a0ce617f6a642e54c15571a2f9904eba01af4",
+      "adaptations": "Removed Display, ComponentFlow and GlassBackgroundComponent upstream module imports because the preserved rendering types are compiled together in ZoenCore; implementation otherwise unchanged."
+    },
+    {
+      "file": "TelegramGlassMeshGeneration.swift",
+      "upstreamPath": "submodules/TelegramUI/Components/MeshTransform/Sources/GenerateMesh.swift",
+      "upstreamSHA256": "d5ba7e4da2bc2f82cbd61232024c6437499859a3bf7eba5c60dbd91fcbf53adc",
+      "adaptations": "Removed separate upstream module imports; renamed file-local bezierPoint to meshDisplacementBezierPoint to avoid collision with Display/Spring.swift when upstream modules are combined. Same equations/calls."
+    },
+    {
+      "file": "TelegramGlassMesh.swift",
+      "upstreamPath": "submodules/TelegramUI/Components/MeshTransform/Sources/MeshTransform.swift",
+      "upstreamSHA256": "55e9008eac07c881e41a4939b7e8bd94fddbca38c81a201420cd6712aff82f2b",
+      "adaptations": "Removed separate upstream module imports only; same implementation."
+    },
+    {
+      "file": "TelegramSimpleLayer.swift",
+      "upstreamPath": "submodules/Display/Source/SimpleLayer.swift",
+      "upstreamSHA256": "a8f1543688b842f7b474df1a447a6363dc6f25e0f8a42e65e043b56a9283b0ee",
+      "adaptations": "Removed separate upstream module imports only; same implementation."
+    },
+    {
+      "file": "TelegramBezier.swift",
+      "upstreamPath": "submodules/Display/Source/Spring.swift",
+      "upstreamSHA256": "5e0bc7ac4dbc37442c8556a7a54a4160218cc612f2818fe115683450518ee006",
+      "adaptations": "Removed separate upstream module imports only; same implementation."
+    },
+    {
+      "file": "TelegramGlassTransition.swift",
+      "upstreamPath": "submodules/ComponentFlow/Source/Base/Transition.swift",
+      "upstreamSHA256": "3279b04549300b59cd05def776246d7ccfbb447724c04c9ec299a853a445dc08",
+      "adaptations": "Retained native transition prefix and only methods required by the glass/lens closure; omitted unused curve solve method (ListView dependency); bodies unchanged."
+    },
+    {
+      "file": "TelegramGlassLayerAnimation.swift",
+      "upstreamPath": "submodules/Display/Source/CAAnimationUtils.swift",
+      "upstreamSHA256": "d15229d08439c36f6583bb2635cbd7e289adcd408c1767d6962570a388fdb6e5",
+      "adaptations": "Same layer animations; namespaced module import removed; animationDurationFactor function normalized to ComponentFlow equivalent property to combine modules."
+    },
+    {
+      "file": "ZoenTelegramPresentationRuntime.h",
+      "upstreamPath": "submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIViewController+Navigation.h",
+      "upstreamSHA256": "4b62fab3da943c5507178e77dbff356570f5b7d07c62e534943f3f2da5e7d648",
+      "adaptations": "Extracted rendering-only declarations plus MeshTransform C ABI. See corresponding ObjC source; no application/keyboard/navigation APIs."
+    },
+    {
+      "file": "ZoenTelegramPresentationRuntime.h",
+      "upstreamPath": "submodules/TelegramUI/Components/MeshTransform/MeshTransformApi/PublicHeaders/MeshTransformApi/MeshTransformApi.h",
+      "upstreamSHA256": "eb2e8f89c6a3999598e99e6a8dc379daef958154fe0bfd23c698cea41e54c04f",
+      "adaptations": "Preserved MeshTransform C ABI."
+    },
+    {
+      "file": "ZoenTelegramPresentationRuntime.m",
+      "upstreamPath": "submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIKitUtils.m",
+      "upstreamSHA256": "33b0603927601034041f7baead0d09501ab9cc4a23bdf833e0cd25cb677d904b",
+      "adaptations": "Extracted spring/filter/monochromatic rendering only. RuntimeUtils method lookup replaced with Objective-C runtime equivalent; once-only explicit presentation initializer replaces global navigation +load installer; exact original spring/luma algorithms retained."
+    },
+    {
+      "file": "ZoenTelegramPresentationRuntime.m",
+      "upstreamPath": "submodules/UIKitRuntimeUtils/Source/UIKitRuntimeUtils/UIViewController+Navigation.m",
+      "upstreamSHA256": "b5c212d46312fae4b368ad44d736e587a68c17bcd8735c13efdd9296a7c473f3",
+      "adaptations": "Extracted only CALayer spring override and luma container/hook; no navigation/keyboard/scene/private data APIs."
+    },
+    {
+      "file": "ZoenTelegramRenderingAdapters.swift",
+      "upstreamPaths": [
+        "submodules/Display/Source/DeviceMetrics.swift",
+        "submodules/Display/Source/UIKitUtils.swift",
+        "submodules/Display/Source/GenerateImage.swift"
+      ],
+      "adaptations": "Rendering-only capability/filter/monochromatic adapters; original circle geometry and caps. AsyncDisplayKit DrawingContext replaced by UIKit image renderer for legacy fallback only; RGB blend helper local.",
+      "upstreamSHA256": {
+        "submodules/Display/Source/DeviceMetrics.swift": "0dc85cb7521f6c9b73300eed75389bd3728b55234a7e59f592558abd286c0dc6",
+        "submodules/Display/Source/UIKitUtils.swift": "e4bad639084dc2173862d0f48bee6973c54262136d4dca3a1245279e2ed26963",
+        "submodules/Display/Source/GenerateImage.swift": "d9e52a9ea7dd8cd641c655618e6add9ecf158777440e9e28ad24b5e562b1c6e8"
+      }
+    },
+    {
+      "file": "TelegramTabSelectionRecognizer.swift",
+      "upstreamPath": "submodules/TelegramUI/Components/TabSelectionRecognizer/Sources/TabSelectionRecognizer.swift",
+      "upstreamSHA256": "bf6e55e4ccd5280d9f5cdc1e4200e17efd06e8d8f9aec73835a1b203c1b750c5",
+      "adaptations": "Original class and gestures unchanged; no threshold inserted."
+    },
+    {
+      "file": "ZoenTelegramAttachmentFileIntroView.swift",
+      "upstreamPath": "submodules/TelegramUI/Components/AttachmentFileController/Sources/AttachmentFileEmptyItem.swift",
+      "upstreamSHA256": "e1f441320088f89ff5b73916238a628f0723c65bde6bef007e061c11278e6e5e",
+      "adaptations": "Native Expo lifecycle adapter for original Files .loop animation and144/112pt source layout contract; original TGS colors/frames unchanged, official Lottie rendering. Visibility/window/retirement pause; reduced motion original start frame."
+    },
+    {
+      "file": "TelegramSharedDisplayLinkDriver.swift",
+      "upstreamPath": "submodules/Display/Source/DisplayLinkAnimator.swift",
+      "upstreamSHA256": "7168d565dbe76338816c58db6a420d970b52100fe26191c958c6ca750797cab1",
+      "adaptations": "Retained original SharedDisplayLinkDriver protocol, device FPS choice, weak request ownership, frame pacing, pause/invalidation and foreground notifications; excluded unrelated DisplayLinkAnimator wrappers. Added explicit main-actor type/notification boundary for the UIKit-native host, no algorithm changes."
+    }
+  ],
+  "renderer": {
+    "repository": "https://github.com/airbnb/lottie-ios",
+    "version": "4.6.1",
+    "revision": "f4db77d7feacba0c2360b84a40c38a6ce8ff399d",
+    "license": "Apache-2.0",
+    "iosDeploymentTarget": "13.0",
+    "swiftVersion": "5.9",
+    "dependency": "lottie-ios = 4.6.1",
+    "licenseSHA256": "8d9d1a4edccb3d4be09229e9978af4c84cf266067107e788c44c4913b57fdd5f"
+  },
+  "localAdapters": [
+    {
+      "file": "ZoenTelegramAttachmentPresentation.swift",
+      "purpose": "Expo-facing UIKit wrappers, original PDF/PNG bundle loader and official Lottie category renderer; no identity/state authority."
+    }
+  ],
+  "portedFiles": [
+    {
+      "path": "TelegramBezier.swift",
+      "sha256": "3b91d079dd8a8669dfd74f69ba2449aa5389b7d8c4c06a86bf0f223ed8308265",
+      "bytes": 1680
+    },
+    {
+      "path": "TelegramGlassBackground.swift",
+      "sha256": "f2eb91d6379918ed26381e43b2bcacdaa47e3c7df7387da03775878108a5c85c",
+      "bytes": 66356
+    },
+    {
+      "path": "TelegramGlassLayerAnimation.swift",
+      "sha256": "36e4936d3b61d5d8cc2d9073d374b9e397c879805f83712fe4e50344ca8c2b06",
+      "bytes": 31375
+    },
+    {
+      "path": "TelegramGlassMesh.swift",
+      "sha256": "d5383a2f1abd796cf786656416a28a6e6105f89a1161266d0b7463c2108d89d5",
+      "bytes": 6830
+    },
+    {
+      "path": "TelegramGlassMeshGeneration.swift",
+      "sha256": "a490540ea5a1228e48f8c15f809573ca3b40e7ddb5553d85e02f80b36fa2243a",
+      "bytes": 31271
+    },
+    {
+      "path": "TelegramGlassTouchEffect.swift",
+      "sha256": "b3c9fd64ff2f37ff6dcbb42019bae40c9ef8fb73f48e5e428ff9590e65da3644",
+      "bytes": 13541
+    },
+    {
+      "path": "TelegramGlassTransition.swift",
+      "sha256": "a4c405bb3eea136ec3edca951ca7be94b8bcef5ea005e23b3d6380d542d6499c",
+      "bytes": 27758
+    },
+    {
+      "path": "TelegramLegacyGlass.swift",
+      "sha256": "17413df92ec4d444fd9b1878e7635cfc56acedb503f2cdb2d96c92ba45d862ea",
+      "bytes": 9580
+    },
+    {
+      "path": "TelegramLiquidLens.swift",
+      "sha256": "40d24e0ae9787cd2101d84e05e437b86e70acdf305fcceff62a8a80184cb9aed",
+      "bytes": 22617
+    },
+    {
+      "path": "TelegramSharedDisplayLinkDriver.swift",
+      "sha256": "d27ad880ea5fce2adac83f1775038fab16808f5388663a4d32e303a2b60ddb98",
+      "bytes": 9050
+    },
+    {
+      "path": "TelegramSimpleLayer.swift",
+      "sha256": "152cd084e8c536db41a743c0ec8d50af7ad45cc78f937eb151a3771e5e661ab0",
+      "bytes": 3526
+    },
+    {
+      "path": "TelegramTabSelectionRecognizer.swift",
+      "sha256": "e55f4c3fae6cb72b14fec610c5718161827419ab491c04a9fecfeb1be7c0e32b",
+      "bytes": 1958
+    },
+    {
+      "path": "ZoenTelegramAttachmentFileIntroView.swift",
+      "sha256": "c0324427d076ccfd86614b5b39a17658e122e2ebbcedbdd56514ac7ccf343094",
+      "bytes": 2354
+    },
+    {
+      "path": "ZoenTelegramAttachmentPresentation.swift",
+      "sha256": "a607ab681f5db4594ceb56b0a6c71d5c55efef8d392c7e859aaa34ceb1f809dd",
+      "bytes": 8311
+    },
+    {
+      "path": "ZoenTelegramPresentationRuntime.h",
+      "sha256": "236abd29611519ec6743a2cb85cb95e3e26ec68df5f104ec3b5aa1ded7cdfcf9",
+      "bytes": 3039
+    },
+    {
+      "path": "ZoenTelegramPresentationRuntime.m",
+      "sha256": "b44fb2cd1a806227020155a3138b919833db74c0a0be037e3bcac4ee1020b6f5",
+      "bytes": 15559
+    },
+    {
+      "path": "ZoenTelegramRenderingAdapters.swift",
+      "sha256": "d3646bf7d6a3f5fff8fd56c1a23368c91aa813c8e59f27e758e9e17542603cf0",
+      "bytes": 6282
+    }
+  ]
+}

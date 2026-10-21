@@ -29,8 +29,8 @@ export const kindOf = (mime: string) => mime.startsWith('image/') ? 'image' : mi
 const size = (n: number) => n < 1024 ? `${n} B` : n < 1 << 20 ? `${Math.round(n / 1024)} KB` : `${(n / (1 << 20)).toFixed(1).replace('.', ',')} MB`;
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-export function FileView({ file, messages }: { file: FileDoc; messages: Messages | null }) {
-  const kind = kindOf(file.mime);
+export function FileView({ file, messages, presentation }: { file: FileDoc; messages: Messages | null; presentation?: 'media' | 'file' | undefined }) {
+  const kind = presentation === 'file' ? 'file' : kindOf(file.mime);
   if (kind === 'audio') return <VoicePlayer file={file} messages={messages} />;
   if (kind === 'image' || kind === 'video') return <Visual file={file} messages={messages} kind={kind} />;
   return <FileCard file={file} messages={messages} />;

@@ -14,6 +14,7 @@ fn policy() -> CursorRepairPolicy {
         // The missing-Sync oracle expires before the watchdog fallback so its
         // negative control cannot be disguised as a transport-close failure.
         timeout: Duration::from_secs(5),
+        initial_inactivity: Duration::from_secs(5),
     }
 }
 
@@ -21,7 +22,7 @@ fn policy() -> CursorRepairPolicy {
 fn ordered_partial_completions_cannot_complete_or_postpone_a_full_repair() {
     let start = tokio::time::Instant::now();
     let policy = policy();
-    let mut repair = CursorRepair::new(policy);
+    let mut repair = CursorRepair::new(policy, start);
     assert_eq!(
         repair.admission(),
         None,
@@ -60,9 +61,12 @@ fn ordered_partial_completions_cannot_complete_or_postpone_a_full_repair() {
         Some(completed + policy.interval),
         "later partial and unsolicited completions do not postpone reconciliation"
     );
-    let fresh_socket = CursorRepair::new(policy);
+    let fresh_socket = CursorRepair::new(policy, start);
     assert_eq!(fresh_socket.admission(), None);
-    assert_eq!(fresh_socket.abort_deadline(), None);
+    assert_eq!(
+        fresh_socket.abort_deadline(),
+        Some(start + policy.initial_inactivity)
+    );
     assert!(
         !fresh_socket.in_flight(),
         "no repair admission survives reconnect"
@@ -266,6 +270,7 @@ async fn healthy_socket_recovers_final_unannounced_event_without_reconnect_or_fo
                 text: TEXT.into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         )),
@@ -495,6 +500,7 @@ async fn pending_repair_is_session_owned_and_pongs_cannot_mask_failure_or_stop()
                 CursorRepairPolicy {
                     interval: Duration::from_millis(40),
                     timeout: Duration::from_millis(120),
+                    initial_inactivity: Duration::from_secs(5),
                 },
             )
             .await;
@@ -561,9 +567,9 @@ async fn the_actual_dispatch_guard_cancels_a_stalled_await_and_drops_its_owner()
 fn a_ready_work_exit_cannot_reenter_socket_close_after_the_repair_budget() {
     let at = tokio::time::Instant::now();
     let policy = policy();
-    let mut repair = CursorRepair::new(policy);
-    // No periodic budget exists until the initial full catch-up completes.
-    assert!(!repair.abandon_transport(false, at + Duration::from_secs(86_400)));
+    let mut repair = CursorRepair::new(policy, at);
+    // An unfinished initial catch-up also drops rather than awaits socket close.
+    assert!(repair.abandon_transport(false, at));
     repair.completed(at);
     let until = at + policy.interval + policy.timeout;
     // Deterministically model work winning the fair select, so expired=false
@@ -661,7 +667,7 @@ async fn legitimate_full_completion_retargets_the_cleanup_budget_before_close() 
     let now = tokio::time::Instant::now();
     let policy = policy();
     let old = now - policy.interval - policy.timeout - Duration::from_millis(10);
-    let mut repair = CursorRepair::new(policy);
+    let mut repair = CursorRepair::new(policy, old);
     repair.completed(old);
     assert!(repair.begin(old + policy.interval));
     let obsolete = repair.abort_deadline().unwrap();
@@ -831,6 +837,7 @@ async fn healthy_socket_discovers_new_authorized_space_when_joined_and_all_live_
                     text: TEXT.into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             )),

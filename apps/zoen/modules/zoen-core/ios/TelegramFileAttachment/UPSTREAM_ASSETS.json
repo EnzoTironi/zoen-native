@@ -1,0 +1,12 @@
+{
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "assets": [
+    {
+      "source": "submodules/TelegramUI/Images.xcassets/Navigation/Search.imageset/headersearch_30.pdf",
+      "target": "Resources/search.pdf",
+      "sha256": "a1407e0146b87201276a3ecf499bb0e747e479cbeb326c66446234aca817093d",
+      "bytes": 6286
+    }
+  ],
+  "rendering": "Original 30pt PDF, template tint and 0.8 scale from AttachmentFileSearchItem. Document and search-close fixed paths are ported in source; other icons/Files Lottie reuse the existing pinned presentation bundle."
+}

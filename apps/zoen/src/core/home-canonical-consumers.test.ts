@@ -127,8 +127,10 @@ async function fixture() {
 function renderScreen(
   name: keyof typeof sources,
   home: ReturnType<Awaited<ReturnType<typeof fixture>>['home']>,
+  timelineOverride?: TimelineEntry[],
+  mosaic = false,
 ) {
-  const timeline = entries(name === 'Thread');
+  const timeline = timelineOverride ?? entries(name === 'Thread');
   const snapshot = {
     me: { id: 'alice' },
     account: { identity_id: 'alice', device_id: 'phone' },
@@ -245,6 +247,7 @@ function renderScreen(
     if (path.endsWith('/native-surfaces/controls'))
       return { MiniappSurfaceControls: 'MiniappSurfaceControls' };
     if (path === './actions' || path.endsWith('/assistant/launch')) return {};
+    if (path.endsWith('/media/mosaic-layout')) return { supportsMediaMosaic: mosaic };
     return assert.fail(`Missing screen port: ${path}`);
   }
   const jsx = (type: string, props: Element['props']) => ({ type, props });
@@ -300,9 +303,9 @@ test('hidden Home shortcuts retain current canonical cards in actual Chat/Thread
         'Hidden shortcut must still resolve the latest authorized App for message cards',
       );
       const activity = rows.find((row) => row.activity?.item?.id === canonical.id)?.activity;
-      assert.ok(activity, 'Hidden shortcut must retain its canonical activity preview');
+      assert.ok(activity, 'Hidden shortcut must retain its canonical service activity');
       assert.equal(activity.item, canonical);
-      assert.equal(activity.showCard, true);
+      assert.ok(!('showCard' in activity), 'Updates do not repeat an App cover');
       assert.equal(
         activity.entries.length,
         2,
@@ -329,4 +332,45 @@ test('hidden Home shortcuts retain current canonical cards in actual Chat/Thread
     assert.deepEqual(f.controller.getSnapshot().hiddenIds, []);
     assert.equal(f.controller.getSnapshot().items[0], canonical);
   });
+});
+
+test('actual Chat and Thread pass every complete signed album to the shared renderer, while unsupported native versions keep individual rows', async () => {
+  const f = await fixture();
+  for (const screen of ['Chat', 'Thread'] as const) {
+    const root = entries(screen === 'Thread')[0]!;
+    const members: TimelineEntry[] = [0, 1].map((index) => ({
+      ...root,
+      id: `album-member-${index}`,
+      seq: String(index + 2),
+      kind: {
+        Message: {
+          text: `Canonical caption ${index}`,
+          card: { ...embedded, kind_id: 'file', app: null, item_id: `file-${index}` },
+        },
+      },
+      media: { presentation: 'media', group: { id: `album_${'a'.repeat(64)}`, index, count: 2 } },
+    }));
+    for (const supported of [false, true]) {
+      const list = nodes(renderScreen(screen, f.home(), [root, ...members], supported)).find(
+        (node) => node.type === 'FlashList',
+      )!;
+      const rows = list.props.data as ConversationTimelineRow[];
+      assert.equal(rows.length, supported ? 2 : 3);
+      assert.deepEqual(
+        rows.flatMap((row) => row.album?.entries ?? [row.entry]),
+        [root, ...members],
+      );
+      if (supported) {
+        const row = rows[1]!;
+        const rendered = nodes(list.props.renderItem({ item: row, index: 1 })).find(
+          (node) => node.type === 'ConversationMessage',
+        )!;
+        assert.strictEqual(
+          rendered.props.album,
+          row.album,
+          `${screen} must not hide projected children without passing their canonical album to the renderer`,
+        );
+      }
+    }
+  }
 });

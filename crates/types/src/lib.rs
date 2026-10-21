@@ -13,6 +13,10 @@
 //! Tudo que acontece num Espaço vira um [`Event`] assinado no log daquele Espaço
 //! (ver `event-log`). Nenhuma tela mostra o log; ele é a fonte da verdade.
 
+pub mod media;
+pub use media::{
+    AttachmentGrouping, AttachmentPresentation, AttachmentSendOptions, MediaGroup, MessageMedia,
+};
 pub mod annotation;
 pub mod owner_budget;
 pub use annotation::Annotation;
@@ -586,6 +590,9 @@ pub enum EventBody {
         message: ItemId,
         text: String,
         attaches: Option<ItemId>,
+        /// Signed per-message presentation and explicit album membership. Omitted for legacy sends.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        media: Option<MessageMedia>,
         /// Inline reply or thread reply (see [`reply`]). Absent on plain messages, so their
         /// bytes are exactly what older peers expect.
         #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -114,6 +114,7 @@ pub(crate) struct MessageMarks {
     pub edited: bool,
     pub deleted: bool,
     pub forwarded: bool,
+    pub media: Option<types::MessageMedia>,
     /// One reaction per person, in the order people first reacted.
     pub reactions: Vec<(IdentityId, String)>,
 }
@@ -197,6 +198,9 @@ pub(crate) struct ItemState {
     pub kind: ItemKind,
     pub origin: String,
     pub versions: Vec<Version>,
+    /// Derived only while applying accepted content, including replay. A MIME or
+    /// path change must not turn an earlier voice recording into recent music.
+    pub has_voice_history: bool,
 }
 
 impl ItemState {
@@ -235,6 +239,10 @@ pub(crate) struct GrantState {
 #[derive(Default)]
 pub(crate) struct State {
     pub spaces: HashMap<SpaceId, SpaceState>,
+    // Derived from the signed log, not another durable authority. O(1) membership checks.
+    media_groups: types::media::MediaGroupTracker,
+    // Local failed bytes are readable recovery data, never a new attachment target.
+    recovery_items: HashSet<ItemId>,
     pub items: HashMap<ItemId, ItemState>,
     pub requests: HashMap<RequestId, RequestState>,
     pub request_order: Vec<RequestId>,
@@ -257,6 +265,9 @@ impl State {
         content: &ItemContent,
         origin: &str,
     ) {
+        // A validated creation in the signed projection, rather than readable
+        // failed-outbox bytes, establishes an Item's authority.
+        self.recovery_items.remove(item);
         self.items.insert(
             item.to_string(),
             ItemState {
@@ -264,6 +275,7 @@ impl State {
                 space: e.space.clone(),
                 kind,
                 origin: origin.to_string(),
+                has_voice_history: matches!(content, ItemContent::File(file) if file.is_voice()),
                 versions: vec![Version {
                     number: 1,
                     content: content.clone(),
@@ -320,12 +332,217 @@ impl State {
         }
     }
 
+    pub(crate) fn is_recovery_item(&self, item: &str) -> bool {
+        self.recovery_items.contains(item)
+    }
+
+    /// Reserve a failed local identity before confirmed events are replayed. A
+    /// legacy attachment claim must not acquire a card when recovery bytes are
+    /// inserted later. A validated ItemCreated clears this derived reservation.
+    pub(crate) fn reserve_failed_attachment(&mut self, event: &Event, local: &str, source: &Event) {
+        let EventBody::MessagePosted {
+            attaches: Some(item),
+            media,
+            forwarded,
+            ..
+        } = &event.body
+        else {
+            return;
+        };
+        let EventBody::ItemCreated {
+            item: source_item,
+            kind: ItemKind::File,
+            content: ItemContent::File(doc),
+            ..
+        } = &source.body
+        else {
+            return;
+        };
+        if event.author == local
+            && source.author == local
+            && event.space == source.space
+            && item == source_item
+            && !doc.is_voice()
+            && media
+                .as_ref()
+                .is_none_or(|media| media.is_valid() && !(*forwarded && media.group.is_some()))
+            && event_log::verify_author(event).is_ok()
+            && event_log::verify_author(source).is_ok()
+        {
+            self.recovery_items.insert(item.clone());
+        }
+    }
+
+    /// New metadata cannot point at another space's file or splice into another
+    /// author's album. Partial arrival is allowed, but membership is ordered and
+    /// unique within the signed (space, author, album id) scope.
+    fn media_message_valid(&self, space: &str, author: &str, body: &EventBody) -> bool {
+        self.media_message_dependencies_valid(space, author, body)
+            && (!matches!(body, EventBody::MessagePosted { media: Some(_), .. })
+                || self.writer(space, author))
+    }
+
+    /// Shared by projection admission and confirmed-only outbox dependencies.
+    /// Membership remains a separate admission check: a newly revoked queued
+    /// author still needs the existing relay refusal and local recovery path.
+    pub(crate) fn media_message_dependencies_valid(
+        &self,
+        space: &str,
+        author: &str,
+        body: &EventBody,
+    ) -> bool {
+        let EventBody::MessagePosted {
+            media,
+            attaches,
+            reply,
+            forwarded,
+            ..
+        } = body
+        else {
+            return true;
+        };
+        if attaches
+            .as_ref()
+            .is_some_and(|item| self.recovery_items.contains(item))
+        {
+            return false;
+        }
+        let Some(media) = media else {
+            return true;
+        };
+        if !self
+            .media_groups
+            .allows(space, author, reply, *forwarded, media)
+        {
+            return false;
+        }
+        let Some(file) = attaches
+            .as_ref()
+            .and_then(|id| self.items.get(id))
+            .filter(|item| item.space == space)
+        else {
+            return false;
+        };
+        if !matches!(&file.current().content, ItemContent::File(doc) if !doc.is_voice()) {
+            return false;
+        }
+        if media.group.is_none() {
+            return true;
+        }
+        if file
+            .versions
+            .first()
+            .is_none_or(|version| version.author != author)
+        {
+            return false;
+        }
+        true
+    }
+
+    pub(crate) fn retain_failed_attachment(
+        &mut self,
+        event: &Event,
+        local: &str,
+        source: Option<&Event>,
+    ) -> bool {
+        let EventBody::MessagePosted {
+            text,
+            attaches: Some(item),
+            media,
+            reply,
+            forwarded,
+            ..
+        } = &event.body
+        else {
+            return false;
+        };
+        if event.author != local
+            || event_log::verify_author(event).is_err()
+            || media
+                .as_ref()
+                .is_some_and(|media| !media.is_valid() || (*forwarded && media.group.is_some()))
+            || !self.spaces.contains_key(&event.space)
+        {
+            return false;
+        }
+        if !self.items.contains_key(item) {
+            let Some(source) = source.filter(|source| {
+                source.space == event.space
+                    && source.author == local
+                    && event_log::verify_author(source).is_ok()
+            }) else {
+                return false;
+            };
+            let EventBody::ItemCreated {
+                item: source_item,
+                kind: ItemKind::File,
+                content: content @ ItemContent::File(doc),
+                origin,
+            } = &source.body
+            else {
+                return false;
+            };
+            if source_item != item || doc.is_voice() {
+                return false;
+            }
+            self.create_item(source, item, ItemKind::File, content, origin);
+            self.recovery_items.insert(item.clone());
+        }
+        if self
+            .items
+            .get(item)
+            .filter(|file| {
+                file.space == event.space
+                    && matches!(&file.current().content, ItemContent::File(doc) if !doc.is_voice())
+                    && (media.as_ref().is_none_or(|media| media.group.is_none())
+                        || file
+                            .versions
+                            .first()
+                            .is_some_and(|version| version.author == local))
+            })
+            .is_none()
+        {
+            return false;
+        }
+        let state = self.spaces.get_mut(&event.space).expect("checked above");
+        if state
+            .entries
+            .iter()
+            .any(|entry| entry.client_id == event.client_id)
+        {
+            return true;
+        }
+        state.entries.push(Entry {
+            hash: event.hash.clone(),
+            client_id: event.client_id.clone(),
+            space: event.space.clone(),
+            seq: event.seq,
+            author: event.author.clone(),
+            at_ms: event.at_ms,
+            body: EntryBody::Message {
+                text: text.clone(),
+                attaches: Some(item.clone()),
+                reply: reply.clone(),
+                marks: MessageMarks {
+                    media: media.clone(),
+                    forwarded: *forwarded,
+                    ..Default::default()
+                },
+            },
+        });
+        state.last_at_ms = state.last_at_ms.max(event.at_ms);
+        true
+    }
+
     pub(crate) fn apply_checked(
         &mut self,
         e: &Event,
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        if !self.media_message_valid(&e.space, &e.author, &e.body) {
+            return Projection::Refused;
+        }
         match self.approval_event_valid(e, identities, context) {
             Projection::Refused => return Projection::Refused,
             Projection::Waiting => {
@@ -392,6 +609,7 @@ impl State {
                 attaches,
                 reply,
                 forwarded,
+                media,
                 ..
             } => {
                 // Older Android builds posted the file, then a marker naming its Item.
@@ -427,10 +645,15 @@ impl State {
                         reply: reply.clone(),
                         marks: MessageMarks {
                             forwarded: *forwarded,
+                            media: media.clone(),
                             ..Default::default()
                         },
                     }));
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
+                }
+                if let Some(metadata) = media.as_ref() {
+                    self.media_groups
+                        .record(&e.space, &e.author, reply, *forwarded, metadata);
                 }
             }
             EventBody::ChatPrefsSet { space, prefs } => {
@@ -492,6 +715,8 @@ impl State {
                     let content =
                         crate::apps::reconcile_concurrent(&it.current().content, content, e.at_ms)
                             .unwrap_or_else(|| content.clone());
+                    it.has_voice_history |=
+                        matches!(&content, ItemContent::File(file) if file.is_voice());
                     it.versions.push(Version {
                         number,
                         content,
@@ -524,6 +749,8 @@ impl State {
                         .cloned()
                     {
                         let number = it.versions.len() as u32 + 1;
+                        it.has_voice_history |=
+                            matches!(&target.content, ItemContent::File(file) if file.is_voice());
                         it.versions.push(Version {
                             number,
                             content: target.content,
@@ -724,6 +951,10 @@ impl Engine {
             if let Some(projected) = scoped.spaces.get(space) {
                 state.spaces.insert(space.clone(), projected.clone());
             }
+            state.media_groups.extend(&scoped.media_groups);
+            state
+                .recovery_items
+                .extend(scoped.recovery_items.iter().cloned());
             // Only a Personal Space projects prefs (checked when applied).
             state.chat_prefs.extend(
                 scoped
@@ -910,6 +1141,14 @@ impl Engine {
     ) -> R<Event> {
         if self.approval_replay_needed {
             self.reproject_approval_overlay()?;
+        }
+        if !self.state.media_message_valid(space, author, &body) {
+            return Err(CoreError::Invalid {
+                reason: t(
+                    "metadata de anexo inválida ou não autorizada",
+                    "invalid or unauthorized attachment metadata",
+                ),
+            });
         }
         let signer = self.author_for(author)?;
         if self.net.synced.contains(space) {
@@ -1450,6 +1689,9 @@ impl Engine {
             r.mine = r.people.iter().any(|p| p.id == me);
         }
         TimelineEntry {
+            media: (!marks.deleted)
+                .then(|| marks.media.as_ref().map(MessageMediaDto::from))
+                .flatten(),
             edited: marks.edited,
             deleted: marks.deleted,
             forwarded: marks.forwarded,
@@ -1856,6 +2098,7 @@ impl Engine {
         if marks.deleted {
             return Err(not_found(&t("Mensagem", "Message")));
         }
+        let media = marks.media.as_ref().map(types::MessageMedia::without_group);
         let (text, attaches) = (text.clone(), attaches.clone());
         // Resolve the canonical entry, including old Android markers. Its current
         // audio and metadata are copied; source item/reply/thread ids never travel.
@@ -1867,6 +2110,7 @@ impl Engine {
                     to_space,
                     "",
                     Some(&voice),
+                    None,
                 );
             }
             if text.starts_with("⟦voice:") {
@@ -1892,7 +2136,7 @@ impl Engine {
                         ),
                     });
                 }
-                return self.forward_file_message(from_space, item, to_space, &text, None);
+                return self.forward_file_message(from_space, item, to_space, &text, None, media);
             }
         }
         self.append(
@@ -1903,6 +2147,7 @@ impl Engine {
                 text,
                 attaches,
                 reply: None,
+                media,
                 forwarded: true,
             },
         )?;
@@ -1959,6 +2204,7 @@ impl Engine {
                 text: text.to_string(),
                 attaches,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         )?;
@@ -3796,6 +4042,7 @@ impl Engine {
             state_json: state.to_string(),
         };
         let message = match spec.id {
+            "deckcraft" => t("Criei a apresentação. Podemos editar o mesmo documento aqui.", "Created the presentation. We can edit the same document here."),
             "pet" => t(
                 "Ele mora aqui agora. Dá para dar comida, jogar a Corrida do Jumento e revezar quem cuida dele.",
                 "He lives here now. You can feed him, play Donkey Dash and take turns looking after him.",
@@ -3848,7 +4095,37 @@ impl Engine {
 
     /// Installs a catalog mini-app as the current user, with an Item-scoped grant.
     pub fn install_app(&mut self, space: &str, app_id: &str, args_json: &str) -> R<ItemDetail> {
+        if app_id == apps::deckcraft::APP {
+            return self.install_deckcraft(space, args_json);
+        }
         self.atomic_agent_action(|e| e.install_app_inner(space, app_id, args_json))
+    }
+
+    fn install_deckcraft(&mut self, space: &str, args_json: &str) -> R<ItemDetail> {
+        fn default_title() -> String {
+            t("Apresentação", "Presentation")
+        }
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Args {
+            #[serde(default = "default_title")]
+            title: String,
+            #[serde(rename = "mutationId")]
+            mutation_id: String,
+        }
+        let args: Args = serde_json::from_str(args_json).map_err(|_| CoreError::Invalid {
+            reason: t(
+                "Argumentos de apresentação inválidos.",
+                "Invalid presentation arguments.",
+            ),
+        })?;
+        let (title, _) = apps::deckcraft::registration::create(&json!({"title":args.title}))
+            .map_err(|reason| CoreError::Invalid { reason })?;
+        use base64::Engine as _;
+        let initial =
+            base64::engine::general_purpose::STANDARD.encode(apps::deckcraft::registration::EMPTY);
+        let accepted = self.app_binary_create(space, &title, &initial, &args.mutation_id)?;
+        self.item(&accepted.item_id)
     }
 
     fn install_app_inner(&mut self, space: &str, app_id: &str, args_json: &str) -> R<ItemDetail> {

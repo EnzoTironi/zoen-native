@@ -15,7 +15,13 @@ import { formatFileSize } from './file-size';
 const draftVideoThumbnail = createDraftVideoThumbnails((uri) =>
   createVideoPlayer({ uri, useCaching: false }),
 );
-export function DraftThumbnail({ item }: { item: AttachmentDraftItem }) {
+export function DraftThumbnail({
+  item,
+  borderRadius = 14,
+}: {
+  item: AttachmentDraftItem;
+  borderRadius?: number;
+}) {
   const { colors, scheme } = useTheme();
   const [preview, setPreview] = useState<{ uri: string; image: VideoThumbnail } | null>(null);
   const thumbnail = preview?.uri === item.uri ? preview.image : null;
@@ -78,7 +84,7 @@ export function DraftThumbnail({ item }: { item: AttachmentDraftItem }) {
           style={{
             position: 'absolute',
             inset: 0,
-            borderRadius: 14,
+            borderRadius,
             borderWidth: 1,
             borderColor: scheme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
           }}

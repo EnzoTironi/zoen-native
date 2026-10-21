@@ -14,6 +14,13 @@ Pod::Spec.new do |s|
   s.dependency 'ExpoModulesCore'
   s.dependency 'ReactNativeEnrichedMarkdown'
   s.dependency 'GoogleSignIn', '~> 10.0'
+  # Official renderer for the pinned Telegram attachment category animations.
+  s.dependency 'lottie-ios', '4.6.1'
+  s.resource_bundles = {
+    'ZoenTelegramAttachmentPresentation' => ['TelegramAttachmentPresentation/Resources/**/*'],
+    'ZoenTelegramVideoEditing' => ['TelegramVideoEditing/Resources/**/*'],
+    'ZoenTelegramFileAttachment' => ['TelegramFileAttachment/Resources/**/*']
+  }
   s.vendored_frameworks = 'generated/ClientFFI.xcframework'
 
   # Swift/Objective-C compatibility
@@ -22,4 +29,5 @@ Pod::Spec.new do |s|
   }
 
   s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
+  s.public_header_files = ["TelegramAttachmentPresentation/ZoenTelegramPresentationRuntime.h", "TelegramVideoEditing/Sources/*.h"]
 end

@@ -855,7 +855,44 @@
       "zoenEvidence": "crates/zoen-relay/src/session.rs request/session ownership; no exact late-result resource-registration test located.",
       "adoptionBoundary": "Important generic ownership invariant, but Signal watch objects do not directly exist in Zoen.",
       "upstreamExecution": "NOT_RUN",
-      "zoenStatusAtComparedSource": "gap"
+      "zoenStatusAtComparedSource": "gap",
+      "implementedZoenSubset": {
+        "test": "crates/zoen-relay/tests/session_revocation.rs::closed_session_cancels_presence_lookup_before_late_result_and_reconnect",
+        "comparedBase": "3b3c960f1fd0ea198e95931044e7ce4487297483",
+        "testSourceSha256": "ebfb7491dfbc04cb8f64de389b965286955bb36e22b831f6fdea9465979f067c",
+        "status": "partial",
+        "verification": "Root-operated isolated PostgreSQL16 and actual authenticated loopback WebSocket: original focused positive and restored positive each passed 1/1, zero failed/ignored, 13 filtered (test bodies 0.20s and 0.25s; wrappers 1.130s and 0.916s). The separate private spawn-detachment control failed with exit 101 at the intended closing-socket cancellation assertion before reconnect (test body 1.14s; wrapper 2.040s), with the normal production two-second lookup timeout unchanged. Strict Clippy for zoen-relay --test session_revocation with -D warnings passed 6.901446s; this is not all-target or full-suite qualification. Original and restored positives share exact production Session SHA 9f40fc5c and test executable SHA 96a0fa76, distinct from negative executable SHA 92151206. This source-only documentation update ran no compiler, service or test.",
+        "boundary": "Original test-owned LogStore oneshot holds one actually polled co_members lookup. Close must retire it once after logical Hub offline, with the entire first-poll-to-Drop lifetime strictly below the own one-second fixture bound, separate from the unchanged production two-second lookup deadline. A late empty producer finds no receiver; the post-await continuation remains zero. Fresh signed reconnect requires Ready{registered:true}, Ping/Pong and local online state, while old Drop/continuation counts stay 1/0. This is Session-owned pending presence cancellation and authenticated replacement-session liveness; Ready/Pong do not establish catch-up or delivery. Hub::is_online proves logical offline in this non-revocation fixture, not generic structural removal of every revoked mailbox. No actual FDB availability watch, FDB network/server, NATS/multi-node presence, durable message delivery/order, MLS, whole-process restart, device behavior or full Signal parity is qualified. Heavy scheduling may fail the strict fixture; do not widen its bound toward the production timeout.",
+        "sourceEvidence": [
+          {
+            "path": "crates/zoen-relay/tests/session_revocation.rs",
+            "lines": [802, 886],
+            "sha256": "ebfb7491dfbc04cb8f64de389b965286955bb36e22b831f6fdea9465979f067c",
+            "qualification": "Private consolidated v165+v169 candidate; no integrated commit yet"
+          }
+        ],
+        "executionReceipts": {
+          "positive": "/private/tmp/zoen-signal-s06-runtime-v172/positive-7f0f5738bcc4474ba7eaf3e2d878e7b0/focused-test.json",
+          "negative": "/private/tmp/zoen-signal-s06-runtime-v172/negative-1f0f491011f54c298c980e5348dc788a/focused-test.json",
+          "restoredPositive": "/private/tmp/zoen-signal-s06-runtime-v172/positive-2bad5d9c7e5a4cec8ebfb927cae0926e/focused-test.json",
+          "strictClippy": "/private/tmp/zoen-signal-s06-runtime-v172/positive-2bad5d9c7e5a4cec8ebfb927cae0926e/strict-clippy-01.json"
+        },
+        "fixtureCleanup": "All five owned fixture attempts, including the two retained setup/cache failures, report postgres terminal and entire fresh cluster/test databases discarded. Successful runs verified the exact fresh data_directory on port 15565; relay listener was 127.0.0.1:0. Protected/shared services were not used. Root runner v181 TCP-only and source-fresh03 changes are fixture-only; original positive/test production bytes unchanged.",
+        "upstreamExecution": "NOT_RUN",
+        "integrationStatusAtQualification": "ROOT_OPERATED_PRIVATE_TEST_CANDIDATE; live integration is not asserted by this dated record",
+        "integrationCommit": "399bdef392d9661d122c2e3cb9868eabed08dfba",
+        "currentIntegration": "The original Zoen regression is present in the current source ancestry. This records integration only and does not rerun or broaden the dated qualification.",
+        "restorationEvidence": {
+          "productionSessionSha256": "9f40fc5c97a2d472a7c0a0b062697923d39ef73be6547a81ffa0ad03d97dbeca",
+          "positiveAndRestoredTestExecutableSha256": "96a0fa76166922582838cb93d92da15ed7a8dc46e7d057a22f82cac875513d89",
+          "negativeTestExecutableSha256": "92151206d0f0cbcf4fab2a0262ed2c44190e67e2234e58ee8fb4ae631eee803e",
+          "runnerTimestampRefreshWasBytesUnchanged": true,
+          "retainedNonqualificationFailures": [
+            "Original PG setup Unix socket path exceeded the OS limit before assertions; root runner switched this owned fixture to TCP-only.",
+            "First restoration reused the negative binary from shared cache despite restored source because source mtimes were preserved. It is not counted as a valid restoration or product regression. Root refreshed only the owned Session source timestamp, recorded the source hash and rebuilt; the final restored executable equals the original positive executable."
+          ]
+        }
+      }
     },
     {
       "id": "S07",
@@ -1326,7 +1363,20 @@
       "adoptionBoundary": "Add a same-space three-intent retry/reopen assertion only if transport ordering policy requires it; preserve per-space log semantics rather than serializing all spaces.",
       "upstreamExecution": "NOT_RUN",
       "zoenStatusAtComparedSource": "partial",
-      "guardedRisk": "Scheduling/restoration can reorder work."
+      "guardedRisk": "Scheduling/restoration can reorder work.",
+      "implementedZoenSubset": {
+        "sourceCommit": "c8d70728a5e3e141a6f9250a1f102d3fbe09a408",
+        "status": "partial",
+        "report": "docs/dev/attachment-publication-order-qualification-2026-10-21.md",
+        "verification": "21 focused media contracts, two actual client WebSocket/MLS cases and two existing MLS-window regressions passed; scoped strict client-core library/tests Clippy and formatting passed. Root and a separate reviewer read the immutable production paths and test assertions; all seven committed source hashes match the receipt. Integrated native and production-cluster qualification remain pending.",
+        "boundary": "Original Zoen tests exercise confirmed File/predecessor admission, transient refusal with exact signed/ciphertext retry, sender/receiver SQLite reopen, terminal failed-intent preservation, atomic rollback and scope isolation. The actual client transport tests distinguish Accepted from canonical Event using a FIFO barrier and prove terminal refusal itself wakes a later ordinary head. This is attachment dependency ordering, not generic FIFO serialization of every message or an execution of the Signal suite.",
+        "receipt": "/Users/enzotironi/.codex/builds/zoen-signal-album-order-v254/source-ready.json",
+        "remaining": [
+          "Confirmed history is replayed once per relevant Space/offer pass; latency, allocation and large-history cost are unmeasured.",
+          "WebSocket uses the production client with an ephemeral ordering fixture, not the production relay/FDB/NATS cluster.",
+          "Public failed-send retry/discard actions remain a separate product gap."
+        ]
+      }
     },
     {
       "id": "C03",
@@ -2045,10 +2095,7 @@
           "project": "signalapp/ringrtc",
           "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
           "path": "src/rust/tests/outgoing.rs",
-          "lines": [
-            3618,
-            3637
-          ],
+          "lines": [3618, 3637],
           "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/rust/tests/outgoing.rs#L3618-L3637"
         }
       ],
@@ -2201,6 +2248,7 @@
       "date": "2026-10-21",
       "relatedHistoricalScenario": "S04",
       "implementationCommit": "288cec096b011f6e59f412888dc08fde6c2c42b0",
+      "integrationCommit": "00a008bab8227ab12aa3d332881fbd7b386a645e",
       "sourceBase": "fc223f8eef4c71b8bc229d77962b646e554888b3",
       "status": "PASS_BOUNDED_BACKEND_SUBSET",
       "report": "docs/dev/cursor-repair-qualification-2026-10-21.md",
@@ -2225,6 +2273,104 @@
         "Initial catch-up before its first SyncDone retains the previous unbounded path.",
         "60s/30s are Zoen policy choices, not Signal constants or a delivery/capacity promise.",
         "Historical 51 scenario classifications and their immutable source pins remain unchanged; this partial follow-up does not complete S04 or product acceptance."
+      ]
+    },
+    {
+      "id": "C02-media-confirmed-dependencies-2026-10-21",
+      "date": "2026-10-21",
+      "relatedHistoricalScenario": "C02",
+      "implementationCommit": "c8d70728a5e3e141a6f9250a1f102d3fbe09a408",
+      "sourceBase": "e12ddee2f07f926516eee460b0f73c6552ee8410",
+      "status": "PASS_BOUNDED_CLIENT_CORE_SUBSET",
+      "report": "docs/dev/attachment-publication-order-qualification-2026-10-21.md",
+      "receipt": "/Users/enzotironi/.codex/builds/zoen-signal-album-order-v254/source-ready.json",
+      "validation": {
+        "focusedMediaContractsPassed": 21,
+        "actualClientWebSocketMlsCasesPassed": 2,
+        "existingMlsWindowCasesPassed": 2,
+        "strictClippy": "PASS_client-core_library_tests_D_warnings",
+        "immutableSourceHashesVerified": 7,
+        "independentSourceReview": "No actionable regressions found",
+        "upstreamSuitesExecuted": false,
+        "nativeRuntimeQualified": false,
+        "productionClusterQualified": false,
+        "performanceQualified": false
+      },
+      "limits": [
+        "The source gate applies to metadata-bearing single attachments and albums; legacy media and voice retain their existing paths.",
+        "The ordering fixture does not execute the production relay/FDB/NATS cluster.",
+        "The per-offer confirmed-history replay cost and public failed-send recovery remain unqualified."
+      ]
+    },
+    {
+      "id": "S04-initial-catchup-inactivity-2026-10-21",
+      "date": "2026-10-21",
+      "relatedHistoricalScenario": "S04",
+      "implementationCommit": "d5c4d1f088baf6f56991b2afe966095f3dbed0d0",
+      "negativeRegressionCommit": "d8c898d805e186609add48577147e27d43adae5f",
+      "sourceBase": "5cb1a7f7ac14c4279c0c739c063d90f17f12d50c",
+      "status": "PASS_BOUNDED_BACKEND_SUBSET",
+      "report": "docs/dev/initial-catchup-liveness-qualification-2026-10-21.md",
+      "behavior": "Before FIRST SyncDone, abort initial stream inactivity through the existing session guard unless Applied/Confirmed actually advances a durable accepted cursor under the same Engine lock. Genuine advancing history has no absolute duration cap; initial completion retains existing periodic reconciliation and exact durable outbox.",
+      "validation": {
+        "initialCatchupFocusedTestsPassed": 5,
+        "existingPeriodicCursorTestsPassed": 9,
+        "executedNegative": "INTENDED_FAIL_45_healthy_pongs_no_SyncDone_no_Publish_session_retained_cold_outbox_unchanged",
+        "actualTransport": "TCP_WebSocket_authentication_signed_events_SQLite_and_cold_reopen",
+        "strictClippy": "PASS_client-core_all-targets_D_warnings",
+        "formatting": "PASS_four_changed_Rust_files",
+        "upstreamSuitesExecuted": false,
+        "realClusterExecuted": false,
+        "nativeBackendRebuildQualified": false,
+        "ciQualified": false
+      },
+      "limits": [
+        "Initial inactivity60s is a provisional Zoen policy, not a measured SLA or Signal constant. Short test-policy injection qualifies behavior, not production-duration timing.",
+        "Event/SyncDone frames have no replay request frontier. Genuine advancement in any Space renews stream inactivity; this does not detect a stalled individual Space while another keeps advancing. Historical/duplicate cross-Space traffic does not renew.",
+        "No second scheduler/cache/queue or wire changes. Existing backoff and exact outbox remain authority; automatic reconnect end-to-end is not executed in this subset.",
+        "Three delayed fixture pages exercise canonical progress but not production500-event server pagination, PostgreSQL/FDB/NATS, MLS, HTTPmedia, mobile suspension, CPU preemption, power loss or capacity.",
+        "Historical scenario records and earlier immutable qualification limits remain unchanged; this does not complete S04 or product acceptance."
+      ]
+    },
+    {
+      "id": "C02-upload-publication-after-http-2026-10-21",
+      "date": "2026-10-21",
+      "relatedHistoricalScenarios": [
+        "C01",
+        "C02",
+        "C08",
+        "S08"
+      ],
+      "sourceBase": "b5bec14489ffaea63e79c5b82044c46dd362e911",
+      "negativeRegressionCommit": "0b07872c",
+      "defaultRecoveryNegativeCommit": "d4a83695",
+      "implementationCommit": "f7f2e6b8619713ad3c283c5b6b912c3c1d2822bc",
+      "status": "PASS_BOUNDED_CLIENT_CORE_SUBSET",
+      "report": "docs/dev/media-upload-refusal-qualification-2026-10-21.md",
+      "receipt": "/Users/enzotironi/.codex/builds/zoen-media-upload-refusal-v262/source-ready.json",
+      "validation": {
+        "executedOriginalNegative": "HTTP400_and_413_cold_sender_Sent_cold_receiver_one_message_ciphertext_queue_deleted",
+        "executedDefaultNegative": "cold_failed_default_message_card_None_vs_original_Some",
+        "focusedMediaContractsPassed": 55,
+        "finalUploadAndCompatibilityCasesPassed": 7,
+        "storeSyncCasesPassed": 4,
+        "explicitMlsRecoveryCasePassed": 1,
+        "fullClientCoreInitialImplementation": {
+          "commit": "35a8a158ecfe70ecfd42b91c60580ee92c86306e",
+          "passed": 629,
+          "finalFollowupFullSuiteRepeated": false
+        },
+        "strictClippy": "PASS_store_client-core_all-targets_D_warnings",
+        "actualTransport": "HTTP_PUT_and_GET_WebSocket_session_ordered_events_SQLite_cold_reopen",
+        "upstreamSuitesExecuted": false,
+        "nativeRuntimeQualified": false,
+        "productionClusterQualified": false
+      },
+      "limits": [
+        "Existing blob_uploads plus failed outbox remain authority; only retained/new uploads gain facts. Already erased historical upload rows cannot be reconstructed.",
+        "The bounded HTTP/WS relay fixture is not production blob storage/PG/FDB/NATS, and successful HTTP acceptance is trusted under the existing relay durability contract.",
+        "File publication/default recovery and existing MLS recovery boundaries are qualified; Page/App/background/profile/revert blob lifetimes, power loss and performance are not fully audited.",
+        "Explicit failed-send recovery/discard UI and same-worker user download-retry backoff remain separate open next slices."
       ]
     }
   ]

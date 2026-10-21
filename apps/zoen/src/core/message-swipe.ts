@@ -1,46 +1,48 @@
-export const MESSAGE_SWIPE_THRESHOLD = 64;
 export const MESSAGE_EDGE_ZONE = 24;
 export type MessageSwipeIntent = 'reply' | 'thread';
 
-/** A retreat or cancellation disarms the gesture; a new directional crossing ticks again. */
+export function messageSwipeThreshold(mine: boolean): number {
+  'worklet';
+  return mine ? 60 : 45;
+}
+
+/** The source prepares one threshold impact per gesture, including retreat and reversal. */
 export function messageSwipeFeedback(
-  previous: MessageSwipeIntent | null,
+  played: boolean,
   distance: number | null,
   reducedMotion: boolean,
-): { armed: MessageSwipeIntent | null; tick: boolean } {
+  mine: boolean,
+): { played: boolean; tick: boolean } {
   'worklet';
-  const armed =
-    distance !== null && Number.isFinite(distance) && Math.abs(distance) >= MESSAGE_SWIPE_THRESHOLD
-      ? distance < 0
-        ? 'reply'
-        : 'thread'
-      : null;
-  return { armed, tick: !reducedMotion && armed !== null && armed !== previous };
+  const crossed =
+    distance !== null &&
+    Number.isFinite(distance) &&
+    Math.abs(distance) >= messageSwipeThreshold(mine);
+  return { played: played || crossed, tick: !reducedMotion && crossed && !played };
 }
 
-/** Release semantics match the original iPhone editor, including a deliberate short flick. */
-export function messageSwipeIntent(distance: number, velocity: number): MessageSwipeIntent | null {
+/** Commit strictly beyond the raw drag threshold; a velocity-only flick cannot send an intent. */
+export function messageSwipeIntent(distance: number, mine: boolean): MessageSwipeIntent | null {
   'worklet';
-  if (!Number.isFinite(distance) || !Number.isFinite(velocity)) return null;
-  const ahead = distance + velocity * 0.15;
-  const crossed = Math.abs(distance) >= MESSAGE_SWIPE_THRESHOLD;
-  const flick =
-    Math.abs(distance) >= MESSAGE_SWIPE_THRESHOLD * 0.55 &&
-    Math.abs(ahead) >= MESSAGE_SWIPE_THRESHOLD * 1.8 &&
-    Math.sign(distance) === Math.sign(ahead);
-  return crossed || flick ? (distance < 0 ? 'reply' : 'thread') : null;
+  return Number.isFinite(distance) && Math.abs(distance) > messageSwipeThreshold(mine)
+    ? distance < 0
+      ? 'reply'
+      : 'thread'
+    : null;
 }
-export function messageSwipeOffset(distance: number): number {
+
+/** Telegram's rational band; the positive direction is Zoen's mirrored thread extension. */
+export function messageSwipeOffset(distance: number, mine: boolean): number {
   'worklet';
-  const magnitude = Math.abs(distance);
+  if (!Number.isFinite(distance)) return 0;
+  const magnitude = Math.abs(distance),
+    start = messageSwipeThreshold(mine);
   const shown =
-    magnitude <= MESSAGE_SWIPE_THRESHOLD
-      ? magnitude * 0.9
-      : MESSAGE_SWIPE_THRESHOLD * 0.9 + (magnitude - MESSAGE_SWIPE_THRESHOLD) * 0.22;
-  return Math.sign(distance) * Math.min(104, shown);
+    magnitude < start ? magnitude : start + (1 - 1 / (((magnitude - start) * 0.4) / 100 + 1)) * 100;
+  return Math.sign(distance) * Math.min(180, shown);
 }
 
-/** Fail before activation, so native vertical scrolling and the system back edge win. */
+/** Fail before activation, preserving native vertical scrolling and the system back edge. */
 export function messageSwipeAdmission(
   startX: number,
   dx: number,
@@ -48,12 +50,8 @@ export function messageSwipeAdmission(
   pointers = 1,
 ): 'wait' | 'fail' | 'activate' {
   'worklet';
-  if (
-    ![startX, dx, dy].every(Number.isFinite) ||
-    pointers !== 1 ||
-    startX < MESSAGE_EDGE_ZONE ||
-    Math.abs(dy) > 12
-  )
+  if (![startX, dx, dy].every(Number.isFinite) || pointers !== 1 || startX < MESSAGE_EDGE_ZONE)
     return 'fail';
-  return Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.8 ? 'activate' : 'wait';
+  if (Math.abs(dy) > 2 && Math.abs(dy) > Math.abs(dx) * 2) return 'fail';
+  return Math.abs(dx) > 2 && Math.abs(dy) * 2 < Math.abs(dx) ? 'activate' : 'wait';
 }

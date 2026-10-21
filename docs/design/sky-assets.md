@@ -2,7 +2,7 @@
 
 Generated with the built-in image generation tool for Zoen; no Hark artwork is copied. The user authorized observing Hark on their Samsung as a visual reference: a tightly cropped, heavily defocused sky with low contrast.
 
-The three project assets are `apps/zoen/assets/sky/day.jpg`, `warm.jpg` and `night.jpg`, each1024×1536. The original generated PNGs were encoded as JPEG quality86; rendering handles the enlarged crop and native20-point blur. The app uses only a quiet part of each texture, with no landscape or prominent cloud outlines. No network image request is required.
+The shipped assets are `apps/zoen/assets/sky/day.jpg` and `night.jpg`, each1024×1536. The unused earlier `warm.jpg` study texture has been removed from the source assets. There are only two sky families. Release bundle inspection remains a separate packaging check. The original generated PNGs were encoded as JPEG quality86; rendering handles the enlarged crop and native20-point blur. The app uses only a quiet part of each texture, with no landscape or prominent cloud outlines. No network image request is required.
 
 Each exact generation prompt was the common prefix followed by the corresponding suffix below.
 

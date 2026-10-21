@@ -467,6 +467,7 @@ mod tests {
                     text: format!("History {now}"),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             );

@@ -175,7 +175,8 @@ impl State {
                     && content_matches(*kind, content)
             }
             EventBody::ItemVersioned { item, content, .. } => {
-                self.writer(&e.space, &e.author)
+                !self.is_recovery_item(item)
+                    && self.writer(&e.space, &e.author)
                     && self.items.get(item).is_some_and(|it| {
                         it.space == e.space
                             && it.voice_edit_allowed(&e.author, Some(content))
@@ -195,7 +196,8 @@ impl State {
             EventBody::ItemReverted {
                 item, to_version, ..
             } => {
-                self.writer(&e.space, &e.author)
+                !self.is_recovery_item(item)
+                    && self.writer(&e.space, &e.author)
                     && self.items.get(item).is_some_and(|it| {
                         it.space == e.space
                             && it.voice_edit_allowed(&e.author, None)
@@ -362,6 +364,7 @@ impl State {
                         space: r.space.clone(),
                         kind: p.kind,
                         origin: p.origin.clone(),
+                        has_voice_history: matches!(&p.content, ItemContent::File(file) if file.is_voice()),
                         versions: vec![Version {
                             number: 1,
                             content: p.content.clone(),

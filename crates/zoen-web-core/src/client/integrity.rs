@@ -149,6 +149,7 @@ mod tests {
                             attaches: None,
                             message: format!("msg_{now}"),
                             reply: None,
+                            media: None,
                             forwarded: false,
                         },
                         now,

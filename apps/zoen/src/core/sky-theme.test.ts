@@ -11,51 +11,35 @@ import {
   sampleSkyClock,
 } from '../theme/sky.ts';
 const at = (minutes: number) => new Date(2026, 9, 17, 0, minutes);
-const channelDifference = (a: string, b: string) =>
-  Math.max(
-    ...[1, 3, 5].map((offset) =>
-      Math.abs(
-        parseInt(a.slice(offset, offset + 2), 16) - parseInt(b.slice(offset, offset + 2), 16),
-      ),
-    ),
-  );
-
 test('each fixed sky is distinct and independent of clock and device appearance', () => {
   const skies = SKY_PHASES.map((phase) => {
     const morning = resolveSkyTheme(phase, at(480));
     assert.deepEqual(morning, resolveSkyTheme(phase, at(1380)));
     assert.equal(morning.phase, phase);
-    assert.equal(morning.scheme, phase === 'deepNight' || phase === 'night' ? 'dark' : 'light');
+    assert.equal(morning.scheme, phase === 'night' ? 'dark' : 'light');
     return morning.sky.top;
   });
-  assert.equal(new Set(skies).size, 6);
+  assert.equal(new Set(skies).size, 2);
 });
 
-test('automatic sky follows civil local hours, including midnight and fractional minutes', () => {
+test('automatic sky selects only day and night at local06:00 and20:00, including exact boundaries', () => {
   for (const [minute, phase] of [
-    [0, 'deepNight'],
-    [300, 'dawn'],
-    [480, 'morning'],
-    [780, 'day'],
-    [1080, 'sunset'],
-    [1260, 'night'],
-  ] as const) {
+    [0, 'night'],
+    [359, 'night'],
+    [360, 'day'],
+    [1199, 'day'],
+    [1200, 'night'],
+    [1439, 'night'],
+  ] as const)
     assert.equal(resolveSkyTheme('auto', at(minute)).phase, phase);
-    const before = resolveSkyTheme('auto', new Date(at(minute).getTime() - 1));
-    const after = resolveSkyTheme('auto', at(minute));
-    for (const stop of ['top', 'middle', 'bottom'] as const)
-      assert.ok(
-        channelDifference(before.sky[stop], after.sky[stop]) <= 1,
-        `${phase}/${stop} must join continuously`,
-      );
-  }
+  assert.equal(resolveSkyTheme('auto', new Date(at(360).getTime() - 1)).phase, 'night');
+  assert.equal(resolveSkyTheme('auto', new Date(at(1200).getTime() - 1)).phase, 'day');
   const local = at(480);
   local.getUTCHours = () => {
     throw new Error('UTC is not the local clock');
   };
-  assert.equal(resolveSkyTheme('auto', local).phase, 'morning');
-  assert.equal(resolveSkyTheme('auto', at(779)).phase, 'morning');
-  assert.equal(resolveSkyTheme('auto', at(780)).phase, 'day');
+  assert.equal(resolveSkyTheme('auto', local).phase, 'day');
+  assert.deepEqual(resolveSkyTheme('auto', at(0)), resolveSkyTheme('night', at(780)));
   assert.throws(() => resolveSkyTheme('auto', new Date(NaN)), RangeError);
 });
 
@@ -64,6 +48,9 @@ test('appearance migration retains the old selection without resetting account d
   assert.equal(normalizeAppearance('light'), 'day');
   assert.equal(normalizeAppearance('dark'), 'night');
   for (const phase of SKY_PHASES) assert.equal(normalizeAppearance(phase), phase);
+  for (const value of ['dawn', 'morning', 'sunset'])
+    assert.equal(normalizeAppearance(value), 'day');
+  assert.equal(normalizeAppearance('deepNight'), 'night');
   for (const value of [null, '', 'obsolete', 'AUTO'])
     assert.equal(normalizeAppearance(value), 'auto');
 });
@@ -94,39 +81,21 @@ test('every local minute keeps exposed sky, haze, translucent cards and paired c
           contrastRatio(colors[ink], background) >= 4.5,
           `${minute}/${ink}: ${colors[ink]} on ${background}`,
         );
-    assert.ok(contrastRatio(colors.onMine, colors.mine) >= 4.5, `own message ${minute}`);
+    // Default bubble colors follow the pinned source; arbitrary custom colors
+    // have a separate contrast contract in theme-customization.test.ts.
+    assert.equal(colors.onMine, sky.textureWeights.night ? '#FFFFFF' : '#000000');
     assert.ok(contrastRatio(colors.onAccent, colors.accent) >= 4.5, `action ${minute}`);
   }
 });
 
-test('independently animated sky cannot show new ink against an unreadable outgoing layer', () => {
-  const sunset = resolveSkyTheme('sunset', at(1080));
-  const morning = resolveSkyTheme('morning', at(480));
-  assert.equal(
-    canTransitionSky(sunset, morning),
-    true,
-    'subtle fixed light skies share enough contrast for a safe fade',
-  );
-  const twilight = resolveSkyTheme('auto', at(285));
-  assert.equal(twilight.scheme, morning.scheme);
-  assert.equal(
-    canTransitionSky(twilight, morning),
-    false,
-    'new secondary ink must still read on an outgoing twilight',
-  );
-  assert.equal(canTransitionSky(resolveSkyTheme('night', at(1260)), morning), false);
-  assert.equal(canTransitionSky(morning, morning), true);
-  let smooth = 0;
-  for (let minute = 0; minute < 1440; minute += 5) {
-    const from = resolveSkyTheme('auto', at(minute));
-    const to = resolveSkyTheme('auto', new Date(at(minute).getTime() + 30_000));
-    if (!canTransitionSky(from, to)) continue;
-    smooth++;
-    for (const background of skyBackdrops(from.sky))
-      for (const ink of [to.colors.text, to.colors.secondary, to.colors.tertiary])
-        assert.ok(contrastRatio(ink, background) >= 4.5);
-  }
-  assert.ok(smooth > 250, 'ordinary clock progression should remain smooth, not disable all fades');
+test('a scheme change never fades new ink across the old sky, and an unsafe photo cannot borrow safe opacity', () => {
+  const day = resolveSkyTheme('day', at(480));
+  const night = resolveSkyTheme('night', at(1260));
+  assert.equal(canTransitionSky(night, day), false);
+  assert.equal(canTransitionSky(day, night), false);
+  assert.equal(canTransitionSky(day, day), true);
+  assert.equal(canTransitionSky(night, night), true);
+  assert.equal(canTransitionSky({ ...day, sky: { ...day.sky, textureOpacity: 0.9 } }, day), false);
 });
 
 test('clock sampling snaps on foreground, clock jumps and timezone changes but fades normal ticks', () => {
@@ -147,7 +116,7 @@ test('clock sampling snaps on foreground, clock jumps and timezone changes but f
 });
 
 test('daytime skies stay nearly white and semantic cards never interpolate through gray', () => {
-  for (const phase of ['dawn', 'morning', 'day', 'sunset'] as const) {
+  for (const phase of ['day'] as const) {
     const theme = resolveSkyTheme(phase, at(600));
     for (const color of [theme.sky.top, theme.sky.middle, theme.sky.bottom]) {
       const channels = [1, 3, 5].map((offset) => parseInt(color.slice(offset, offset + 2), 16));
@@ -178,15 +147,8 @@ test('daytime skies stay nearly white and semantic cards never interpolate throu
   );
 });
 
-test('photo families match the six moments and unknown pixels preserve sky ink contrast', () => {
-  const families = {
-    deepNight: 'night',
-    dawn: 'warm',
-    morning: 'day',
-    day: 'day',
-    sunset: 'warm',
-    night: 'night',
-  } as const;
+test('photo families match the two shipped skies and unknown pixels preserve sky ink contrast', () => {
+  const families = { day: 'day', night: 'night' } as const;
   const blend = (background: string, foreground: string, alpha: number) =>
     `#${[1, 3, 5]
       .map((offset) => {
@@ -201,7 +163,6 @@ test('photo families match the six moments and unknown pixels preserve sky ink c
     const { sky, colors } = resolveSkyTheme(phase, at(600));
     assert.deepEqual(sky.textureWeights, {
       day: families[phase] === 'day' ? 1 : 0,
-      warm: families[phase] === 'warm' ? 1 : 0,
       night: families[phase] === 'night' ? 1 : 0,
     });
     assert.equal(

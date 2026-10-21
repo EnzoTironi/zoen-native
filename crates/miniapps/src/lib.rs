@@ -24,6 +24,7 @@ use localization as i18n;
 use localization::{is_en, t, thousands, tr, ts};
 use serde_json::{json, Value};
 
+pub mod deckcraft;
 pub mod excalidraw;
 mod schedule;
 pub use schedule::Actor;
@@ -107,7 +108,7 @@ fn empty() -> Value {
 
 pub fn specs() -> Vec<AppSpec> {
     use ActionClass::*;
-    vec![
+    let mut specs = vec![
         AppSpec {
             id: "excalidraw",
             name: "Excalidraw",
@@ -403,7 +404,11 @@ pub fn specs() -> Vec<AppSpec> {
                 ),
             ],
         },
-    ]
+    ];
+    if let Some(deckcraft) = deckcraft::registration::spec() {
+        specs.push(deckcraft);
+    }
+    specs
 }
 
 pub fn spec(app: &str) -> Option<AppSpec> {
@@ -449,6 +454,7 @@ fn push_log(state: &mut Value, who: &str, what: &str, now: i64) {
 
 pub fn create(app: &str, args: &Value, actor: &str, now: i64) -> Result<(String, Value), String> {
     match app {
+        "deckcraft" => deckcraft::registration::create(args),
         "excalidraw" => {
             let title = args
                 .get("title")
@@ -752,6 +758,15 @@ fn pet_mood(v: &Value) -> &'static str {
 pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64)>) {
     let v = view(app, state, now);
     match app {
+        "deckcraft" => {
+            let slides = state["slides"].as_u64().unwrap_or(0);
+            let label = if slides == 1 {
+                t("1 slide", "1 slide")
+            } else {
+                tr!("{} slides", "{} slides", slides)
+            };
+            (label, vec![])
+        }
         "excalidraw" => {
             let count = state["elementCount"].as_u64().unwrap_or(0);
             let label = if count == 1 {
@@ -944,6 +959,9 @@ pub fn snapshot(app: &str, state: &Value, item_id: &str, now: i64) -> Option<Val
     let v = view(app, state, now);
     let link = format!("zoen://app/{item_id}");
     let snap = match app {
+        "deckcraft" => {
+            json!({"template":"caption","title":state["title"],"eyebrow":t("Apresentação", "Presentation"),"detail":headline(app,state,now).0,"accentHex":"#9B6E51","symbol":"rectangle.stack","art":"slides"})
+        }
         "excalidraw" => {
             json!({"template":"caption","title":state["title"],"eyebrow":"Excalidraw","detail":headline(app,state,now).0,"accentHex":"#6965DB","symbol":"pencil.and.outline","art":"drawing"})
         }

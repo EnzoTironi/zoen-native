@@ -1,0 +1,268 @@
+{
+  "repository": "https://github.com/TelegramMessenger/Telegram-iOS",
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "license": "GPL-2.0-or-later; GPL-3.0 selected by Zoen",
+  "files": [
+    {
+      "logicalName": "camera",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Attach Menu/Camera.imageset/Icon-5.pdf",
+      "sha256": "8f5f021e60c8a53a6ccd952e05925f3593aa93cf3a69cd5868e72f2d9deebc77",
+      "resource": "camera.pdf"
+    },
+    {
+      "logicalName": "openCamera",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Attach Menu/OpenCamera.imageset/Icon-7.pdf",
+      "sha256": "f2d366ff2c9375369e7b82ab6a7e05130e8803e1af0aec352aa19a829ea04c3a",
+      "resource": "openCamera.pdf"
+    },
+    {
+      "logicalName": "send",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Media Editor/Send.imageset/attachlogo.pdf",
+      "sha256": "92869d431926e3f9633af6e2f44f2f6123671433801f565e91a3486f6de970d7",
+      "resource": "send.pdf"
+    },
+    {
+      "logicalName": "composerSend",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/SendIcon.imageset/send.pdf",
+      "sha256": "a90522d04c6e64d3cd951fd59b19a1e1c9044c301b737b1d01fdee4dd7d6afa8",
+      "resource": "composerSend.pdf"
+    },
+    {
+      "logicalName": "close",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Navigation/Close.imageset/headercross_30.pdf",
+      "sha256": "23683a1d817a18c12e2dcb914e3a908ad780cef9c4192d69c5fe716447939170",
+      "resource": "close.pdf"
+    },
+    {
+      "logicalName": "back",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Navigation/Back.imageset/headerback_30.pdf",
+      "sha256": "bc1f725ba7da7a7bb55857203cf8468fc52cb3c32f4f44e81eb7a55f85de0668",
+      "resource": "back.pdf"
+    },
+    {
+      "logicalName": "pencil",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Media Editor/Pencil.imageset/pencil_30 (4).pdf",
+      "sha256": "231ffb7a7dfce30ce9da6b1e78b5d1306020b343f17494cd137e95d9e4b390a9",
+      "resource": "pencil.pdf"
+    },
+    {
+      "logicalName": "check",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Media Gallery/Check.imageset/checkattach_30.pdf",
+      "sha256": "d0d4d269653dc25e7fad679885fce9e8763d67bd19138270b0208faec480f970",
+      "resource": "check.pdf"
+    },
+    {
+      "logicalName": "selected",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Media Gallery/SelectedIcon.imageset/albumcheck.pdf",
+      "sha256": "99e0db9705ffa99ca5f99125d0faa115901b06bd0170ebb7fe69a11fae927283",
+      "resource": "selected.pdf"
+    },
+    {
+      "logicalName": "more",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat List/NavigationMore.imageset/more_30.pdf",
+      "sha256": "90d1d0371f293b7837e1df7f65ff47ad08b5d1f9b5a39357e3f83de8c90fafd6",
+      "resource": "more.pdf"
+    },
+    {
+      "logicalName": "titleExpand",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Navigation/TitleExpand.imageset/down_24.pdf",
+      "sha256": "b918fbc96a68987d298f3eadd6021bf9af14acdc36ce17f8317d4e012e5d7a09",
+      "resource": "titleExpand.pdf"
+    },
+    {
+      "logicalName": "recipientArrow@2x",
+      "upstreamPath": "submodules/LegacyComponents/Resources/LegacyComponentsResources.bundle/PhotoPickerArrow@2x.png",
+      "sha256": "966b163f529b7c04e1fa46dff50ec0048a14d128d8bffb919190e47378b8b17d",
+      "resource": "recipientArrow@2x.png"
+    },
+    {
+      "logicalName": "recipientArrow@3x",
+      "upstreamPath": "submodules/LegacyComponents/Resources/LegacyComponentsResources.bundle/PhotoPickerArrow@3x.png",
+      "sha256": "e6b31b3272e8f9c1a47b225bf350a8872308ac5c7a1f4c033b0570a25d2f7f95",
+      "resource": "recipientArrow@3x.png"
+    },
+    {
+      "logicalName": "TabPhoto",
+      "upstreamPath": "submodules/TelegramUI/Resources/Animations/TabPhoto.tgs",
+      "sha256": "8989b901b38a0112eb865c2ca1ea32690a485ef3e85ac01d5fd55ef14160abca",
+      "resource": "TabPhoto.tgs",
+      "jsonResource": "TabPhoto.json",
+      "jsonSHA256": "97440c55cba07a03cf6c406cc4add3457bfb9af7412b1029254888f563bdc270",
+      "transform": "gzip.decompress; original animation structure unchanged",
+      "startFrame": 0,
+      "endFrame": 37,
+      "framesPerSecond": 60,
+      "width": 512,
+      "height": 512,
+      "idle": "start",
+      "selectionPlayback": "once"
+    },
+    {
+      "logicalName": "TabFile",
+      "upstreamPath": "submodules/TelegramUI/Resources/Animations/TabFile.tgs",
+      "sha256": "fc70df210425ee800fa1b8219f3b22f017a08bf682dac44974091b73e7348f6e",
+      "resource": "TabFile.tgs",
+      "jsonResource": "TabFile.json",
+      "jsonSHA256": "3c19d487c49d57d6751e089f164019526364f65045d31b4e5f6069421968fa0d",
+      "transform": "gzip.decompress; original animation structure unchanged",
+      "startFrame": 0,
+      "endFrame": 36,
+      "framesPerSecond": 60,
+      "width": 512,
+      "height": 512,
+      "idle": "start",
+      "selectionPlayback": "once"
+    },
+    {
+      "logicalName": "TabAudio",
+      "upstreamPath": "submodules/TelegramUI/Resources/Animations/TabAudio.tgs",
+      "sha256": "b0d12e638d40754fccfbe804e8b396f29df50dbc1c533c7faee3fd4043f2f3f3",
+      "resource": "TabAudio.tgs",
+      "jsonResource": "TabAudio.json",
+      "jsonSHA256": "b455a006614fed262231046029f3848057e501ce5bf4e13970977d3f10ebdb9d",
+      "transform": "gzip.decompress; original animation structure unchanged",
+      "startFrame": 0,
+      "endFrame": 34,
+      "framesPerSecond": 60,
+      "width": 512,
+      "height": 512,
+      "idle": "start",
+      "selectionPlayback": "once"
+    },
+    {
+      "logicalName": "TabLocation",
+      "upstreamPath": "submodules/TelegramUI/Resources/Animations/TabLocation.tgs",
+      "sha256": "b0b9fdcc101ef17ce6761c3fe161125b765f0728a50ab3cc694b2c9386968355",
+      "resource": "TabLocation.tgs",
+      "jsonResource": "TabLocation.json",
+      "jsonSHA256": "c0fa04dad0b90c69d0e1ed201b401d91dfdc2ecc9ed7428c66ec85858f0bdfd8",
+      "transform": "gzip.decompress; original animation structure unchanged",
+      "startFrame": 0,
+      "endFrame": 36,
+      "framesPerSecond": 60,
+      "width": 512,
+      "height": 512,
+      "idle": "start",
+      "selectionPlayback": "once"
+    },
+    {
+      "logicalName": "TabContacts",
+      "upstreamPath": "submodules/TelegramUI/Resources/Animations/TabContacts.json",
+      "sha256": "5def98f48197bf77c69f0097d1b1151b4a672614c778dcf461c94bd1672e350c",
+      "resource": "TabContacts.json",
+      "startFrame": 0,
+      "endFrame": 35,
+      "framesPerSecond": 60,
+      "width": 512,
+      "height": 512,
+      "idle": "start",
+      "selectionPlayback": "once"
+    },
+    {
+      "logicalName": "TabPoll",
+      "upstreamPath": "submodules/TelegramUI/Resources/Animations/TabPoll.tgs",
+      "sha256": "e76f3a6e23c4b0eb64c7415066ed76eac7d2de7f8caf8edbb0a0cc2a6688374f",
+      "resource": "TabPoll.tgs",
+      "jsonResource": "TabPoll.json",
+      "jsonSHA256": "144a58aa7c20dd39b10fa56001339052fd251459ff6a40cd46fb1b07a65182f3",
+      "transform": "gzip.decompress; original animation structure unchanged",
+      "startFrame": 0,
+      "endFrame": 35,
+      "framesPerSecond": 60,
+      "width": 512,
+      "height": 512,
+      "idle": "start",
+      "selectionPlayback": "once"
+    },
+    {
+      "logicalName": "keyboard@2x",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/AccessoryIconKeyboard.imageset/ConversationInputFieldKeyboardIcon@2x.png",
+      "sha256": "d656c903e0d36489d47e254912e906bffeeef149004d94f2143a77d408198115",
+      "resource": "keyboard@2x.png",
+      "transform": "unmodified byte copy from already pinned composer assets"
+    },
+    {
+      "logicalName": "keyboard@3x",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/AccessoryIconKeyboard.imageset/ConversationInputFieldKeyboardIcon@3x.png",
+      "sha256": "28ba67fa2cd4bd39c63f2536a3b03cb31ad91d48f9e0ad8cc8c285e88704f294",
+      "resource": "keyboard@3x.png",
+      "transform": "unmodified byte copy from already pinned composer assets"
+    },
+    {
+      "logicalName": "Files",
+      "upstreamPath": "Telegram/Telegram-iOS/Resources/Files.tgs",
+      "sha256": "ddd0394267fea16d0c590724f59bb2cbd8c9e7ee63a7757e9ea89f36a1c97546",
+      "resource": "Files.tgs",
+      "jsonResource": "Files.json",
+      "jsonSHA256": "c4b5502fcd8f9cad120aa11baf56bdedc75737820af5ed11c06a839cc7bc6e64",
+      "transform": "gzip.decompress; original animation structure unchanged",
+      "startFrame": 0,
+      "endFrame": 120,
+      "framesPerSecond": 60,
+      "width": 512,
+      "height": 512,
+      "selectionPlayback": "loop",
+      "source": "AttachmentFileEmptyItem.swift:73\u201382,122\u2013136"
+    },
+    {
+      "logicalName": "cloud",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Attach Menu/Cloud.imageset/cloud_30.pdf",
+      "sha256": "6fb0323afbca9a714cb656ba92a681ff416b3d970c3f20a8cc20ecc4ce5c5d6d",
+      "resource": "cloud.pdf"
+    },
+    {
+      "logicalName": "image",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Attach Menu/Image.imageset/image_30.pdf",
+      "sha256": "fd9be8c199deb962703d04928cf06cf8dca6c70b5d1eb13b5eed525a7fce01f6",
+      "resource": "image.pdf"
+    },
+    {
+      "logicalName": "crop",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Media Editor/Crop.imageset/crop_30 (4).pdf",
+      "sha256": "cd437cfc05f10b1611fcb297ffc902a75af842af9b42aaa16a028485b3752667",
+      "resource": "crop.pdf"
+    },
+    {
+      "logicalName": "rotate",
+      "upstreamPath": "submodules/LegacyComponents/LegacyImages.xcassets/Editor/Rotate.imageset/ic_editor_rotate.pdf",
+      "sha256": "4e306cfb6fb901bf4c72cd594b8657cb842f3ca562bf7e45d8b4c7968eddd38a",
+      "resource": "rotate.pdf"
+    },
+    {
+      "logicalName": "done",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Navigation/Done.imageset/headercheck_30.pdf",
+      "sha256": "8c4e7ec7ba92c8e7f0fd7a594d740c860500b954a8e6b371350b29c47f346459",
+      "resource": "done.pdf"
+    },
+    {
+      "logicalName": "cropCorners@2x",
+      "upstreamPath": "submodules/LegacyComponents/Resources/LegacyComponentsResources.bundle/PhotoEditorCropCorners@2x.png",
+      "sha256": "4349d4a335ca6bbfe545103fc2fee6d5ff6bd6c4c39b65f3c204f58bb3df6ef7",
+      "resource": "cropCorners@2x.png"
+    },
+    {
+      "logicalName": "play",
+      "upstreamPath": "submodules/LegacyComponents/LegacyImages.xcassets/Editor/Play.imageset/ic_editor_play.pdf",
+      "sha256": "67699ecc05478418245885b1ce833ec2d9fd50faa0453c25497cd08ecc703e10",
+      "resource": "play.pdf"
+    },
+    {
+      "logicalName": "sendAsFile",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Context Menu/File.imageset/Icon-6.pdf",
+      "sha256": "cad414babe888c793fbb6dc0d8e7a63716be648db90414b0b1aa5f117d867ed8",
+      "resource": "sendAsFile.pdf"
+    },
+    {
+      "logicalName": "contextSelect",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Context Menu/Select.imageset/ic_select.pdf",
+      "sha256": "e39fe6cd9b3fd5af388d17627dbdc2a830c247acde0d93b8fde2d95bbf89728a",
+      "resource": "contextSelect.pdf"
+    },
+    {
+      "logicalName": "sendUngrouped",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Media Grid/GroupingOff.imageset/albumoff_24.pdf",
+      "sha256": "0f457517b5e1a7aaf5097dd082ad8fae15eb1596fc37e2849dc4164ae170c6ae",
+      "resource": "sendUngrouped.pdf"
+    }
+  ]
+}

@@ -13,9 +13,9 @@ pub mod testing;
 
 pub use creator::{creator_definition, CREATOR_HANDLE, CREATOR_NAME};
 pub use host::{
-    parse_reply, AgentSpec, Brain, BrainOut, Host, HostError, Runtime, ToolCall, ToolDef, ToolHost,
-    ToolStep, Turn, TurnContext, TurnOutcome, CREATE_AGENT_CAPABILITY, MAX_CALLS_PER_ROUND,
-    MAX_TOOL_ROUNDS,
+    parse_reply, AgentSpec, Brain, BrainOut, Host, HostError, PublicArtifactReferences, Runtime,
+    ToolCall, ToolDef, ToolHost, ToolStep, Turn, TurnContext, TurnOutcome, CREATE_AGENT_CAPABILITY,
+    MAX_CALLS_PER_ROUND, MAX_TOOL_ROUNDS,
 };
 pub use models::{system_prompt, CheapTierAuthority, ModelBrain, CHEAP_CHAT_PROFILE, CHEAP_MODEL};
 pub use profile::{

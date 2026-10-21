@@ -28,6 +28,7 @@ import {
 import { AttachmentDraftStrip } from './attachment-draft-strip';
 import { AttachmentApproval, supportsMediaApproval } from './attachment-approval';
 import { pickAttachmentAssets, type AttachmentPickKind } from './attachment-picker';
+import { useAttachmentPhotoPicker } from './attachment-photo-picker';
 import { discardCacheCopy } from './cache-files';
 import { sensitiveCacheWork } from './cache-work';
 import { mediaPlayback } from './playback-owner';
@@ -36,6 +37,16 @@ const emptySubscribe = () => () => {};
 const emptySnapshot = () => null;
 type Preview = AttachmentAsset & { release: () => Promise<void> };
 type ApprovalPresentation = { closing: boolean };
+const sameAttachmentSelection = (value: MediaDraftAttachments, observed: MediaDraftAttachments) =>
+  value.reply_to === observed.reply_to &&
+  (value.options?.presentation ?? 'media') === (observed.options?.presentation ?? 'media') &&
+  (value.options?.grouping ?? 'separate') === (observed.options?.grouping ?? 'separate') &&
+  value.items.length === observed.items.length &&
+  value.items.every(
+    (item, index) =>
+      item.asset_id === observed.items[index]?.asset_id &&
+      item.mutation_id === observed.items[index]?.mutation_id,
+  );
 
 /** Rust owns durable content; this route owns only replaceable preview leases. */
 export function useDurableAttachmentComposer(
@@ -43,6 +54,15 @@ export function useDurableAttachmentComposer(
   channel: MediaDraftChannel | null,
 ) {
   const { store, snapshot } = useClient();
+  const recentConfiguration = useMemo(
+    () =>
+      channel && store.driver.media?.recentAttachments
+        ? { scope: channel.scope, port: store.driver.media.recentAttachments }
+        : undefined,
+    [channel, store],
+  );
+  const photos = useAttachmentPhotoPicker(recentConfiguration);
+  const cancelPhotos = photos.cancel;
   const { colors } = useTheme();
   const state = useSyncExternalStore(
     channel?.subscribe ?? emptySubscribe,
@@ -56,6 +76,7 @@ export function useDurableAttachmentComposer(
       focused: false,
       foreground: AppState.currentState !== 'background' && AppState.currentState !== 'inactive',
       picking: false,
+      submitting: false,
       approval: null as ApprovalPresentation | null,
       previews: new Map<string, Preview>(),
     }),
@@ -208,10 +229,14 @@ export function useDurableAttachmentComposer(
   }, [current, retireApproval, review, options]);
   useEffect(() => {
     const refresh = () => {
-      if (!current()) retireApproval();
+      if (!current()) {
+        retireApproval();
+        cancelPhotos();
+      }
       review.refresh();
     };
     const close = async () => {
+      cancelPhotos();
       retireApproval();
       await review.close();
     };
@@ -221,7 +246,11 @@ export function useDurableAttachmentComposer(
     const stopSession = store.registerSessionCleanup(close);
     const background = AppState.addEventListener('change', (value) => {
       runtime.foreground = value === 'active';
-      if (value !== 'active') void close().catch(() => {});
+      if (value !== 'active') {
+        retireApproval();
+        if (value === 'background') cancelPhotos();
+        void review.close().catch(() => {});
+      }
     });
     return () => {
       stopStore();
@@ -235,16 +264,17 @@ export function useDurableAttachmentComposer(
         })
         .catch(() => {});
     };
-  }, [review, channel, store, current, retireApproval, runtime]);
+  }, [review, channel, store, current, retireApproval, runtime, cancelPhotos]);
   useFocusEffect(
     useCallback(() => {
       runtime.focused = true;
       return () => {
         runtime.focused = false;
+        cancelPhotos();
         retireApproval();
         void review.close().catch(() => {});
       };
-    }, [runtime, review, retireApproval]),
+    }, [runtime, review, retireApproval, cancelPhotos]),
   );
   useEffect(() => {
     runtime.closed = false;
@@ -382,19 +412,59 @@ export function useDurableAttachmentComposer(
     let selected: AttachmentAsset[] = [];
     let delegated = false;
     let approve = false;
+    let directSend: MediaDraftAttachments | null = null;
+    let editAfterPicking: string | null = null;
     const pickedFor = runtime.approval;
     try {
       await sensitiveCacheWork.run(async () => {
-        const before = channel.getSnapshot().content;
+        const admissionDraft = channel.getSnapshot();
+        const before = admissionDraft.content;
         const count = before?.kind === 'attachments' ? before.items.length : 0;
+        const sendAsFileAllowed =
+          count === 0 ||
+          (before?.kind === 'attachments' && before.options?.presentation === 'file');
         if (count >= MAX_ATTACHMENT_ITEMS) throw new AttachmentDraftFailure('limit');
-        selected = await pickAttachmentAssets(kind, MAX_ATTACHMENT_ITEMS - count, current);
+        selected = await (kind === 'photo'
+          ? photos.pick(MAX_ATTACHMENT_ITEMS - count, current, {
+              sendAsFileAllowed,
+              ...(before?.kind === 'attachments' && count > 0
+                ? {
+                    existingOptions: before.options ?? {
+                      presentation: 'media',
+                      grouping: 'separate',
+                    },
+                  }
+                : {}),
+            })
+          : pickAttachmentAssets(kind, MAX_ATTACHMENT_ITEMS - count, current));
         if (!selected.length) return;
         if (!current()) return;
         const latest = channel.getSnapshot();
         if (latest.content && latest.content.kind !== 'attachments')
           throw new AttachmentDraftFailure('unavailable');
         const existing = latest.content?.kind === 'attachments' ? latest.content : null;
+        const submission = kind === 'photo' ? photos.submission?.() : null;
+        if (
+          submission?.options &&
+          (latest.value?.revision !== admissionDraft.value?.revision ||
+            !['media', 'file'].includes(submission.options.presentation) ||
+            !['separate', 'grouped'].includes(submission.options.grouping) ||
+            (submission.options.presentation === 'file' &&
+              (!sendAsFileAllowed ||
+                ((!existing || !existing.items.length) &&
+                  (!submission.send || submission.requestEdit)) ||
+                submission.options.grouping !== 'separate' ||
+                (existing &&
+                  existing.items.length > 0 &&
+                  existing.options?.presentation !== 'file'))) ||
+            (submission.options.grouping === 'grouped' &&
+              (existing?.items.length ?? 0) + selected.length < 2) ||
+            (existing &&
+              existing.items.length > 0 &&
+              (submission.options.presentation !== (existing.options?.presentation ?? 'media') ||
+                submission.options.grouping !== (existing.options?.grouping ?? 'separate'))))
+        )
+          throw new AttachmentDraftFailure('unavailable');
         if ((existing?.items.length ?? 0) + selected.length > MAX_ATTACHMENT_ITEMS)
           throw new AttachmentDraftFailure('limit');
         const retained =
@@ -421,20 +491,41 @@ export function useDurableAttachmentComposer(
         for (const asset of additions)
           runtime.previews.set(asset.id, {
             ...asset,
-            release: async () => discardCacheCopy(asset.uri),
+            release: async () => {
+              await store.driver.media?.releaseLocalFile(asset.uri);
+              discardCacheCopy(asset.uri);
+            },
           });
         delegated = true;
-        publish({ previews: new Map(runtime.previews), selected: additions[0]?.id ?? null });
+        const preferred = kind === 'photo' ? photos.preferredUri?.() : null;
+        publish({
+          previews: new Map(runtime.previews),
+          selected:
+            additions.find((asset) => asset.uri === preferred)?.id ?? additions[0]?.id ?? null,
+        });
         const next: MediaDraftAttachments = {
           kind: 'attachments',
           reply_to: existing ? existing.reply_to : admission.current.replyTo,
           items: [
             ...(existing?.items ?? []),
-            ...additions.map(({ id }) => ({ asset_id: id, caption: '', mutation_id: id })),
+            ...additions.map(({ id }, index) => ({
+              asset_id: id,
+              caption:
+                submission?.captions?.[index] ?? (index === 0 ? (submission?.caption ?? '') : ''),
+              mutation_id: id,
+            })),
           ],
+          ...((existing?.options ?? submission?.options)
+            ? { options: existing?.options ?? submission!.options }
+            : {}),
         };
         await channel.save(next, inputs);
-        approve = selected.some((asset) => /^(image|video)\//.test(asset.mime));
+        if (submission?.requestEdit) {
+          editAfterPicking =
+            additions.find((asset) => asset.uri === preferred)?.id ?? additions[0]?.id ?? null;
+        }
+        if (submission?.send) directSend = next;
+        else approve = selected.some((asset) => /^(image|video)\//.test(asset.mime));
       });
     } catch (reason) {
       failure(reason);
@@ -442,6 +533,7 @@ export function useDurableAttachmentComposer(
       if (!delegated)
         for (const asset of selected) {
           try {
+            await store.driver.media?.releaseLocalFile(asset.uri);
             discardCacheCopy(asset.uri);
           } catch (reason) {
             failure(reason);
@@ -449,7 +541,18 @@ export function useDurableAttachmentComposer(
         }
       runtime.picking = false;
       publish({ picking: false });
-      if (approve && runtime.approval === pickedFor) openApproval();
+      // The picker resolves only after the real native sheet removal. The
+      // existing journal saves caption/selection before the same send path runs.
+      // Background alone does not revoke an explicitly accepted Send; the
+      // account, destination, selection and route must still be current below.
+      if (directSend && runtime.approval === pickedFor) await send(directSend, pickedFor);
+      else if (approve && runtime.approval === pickedFor) {
+        openApproval(editAfterPicking ?? undefined);
+        if (editAfterPicking && runtime.approval) {
+          const presentation = runtime.approval;
+          await edit(editAfterPicking, presentation);
+        }
+      }
     }
   }
   async function cancel() {
@@ -489,18 +592,129 @@ export function useDurableAttachmentComposer(
     if (latest.frozen || currentContent?.kind !== 'attachments') return;
     const items = currentContent.items.filter((item) => item.asset_id !== id);
     try {
-      await channel.save(items.length ? { ...currentContent, items } : null);
+      await channel.save(
+        items.length
+          ? {
+              ...currentContent,
+              items,
+              ...(items.length === 1 && currentContent.options?.grouping === 'grouped'
+                ? {
+                    options: {
+                      presentation: currentContent.options.presentation,
+                      grouping: 'separate',
+                    },
+                  }
+                : {}),
+            }
+          : null,
+      );
       if (!items.length) retireApproval();
     } catch (reason) {
       failure(reason);
     }
   }
-  async function send(observed: MediaDraftAttachments, presentation: ApprovalPresentation | null) {
+  async function reorder(ids: readonly string[]) {
+    if (
+      !channel ||
+      !current() ||
+      runtime.picking ||
+      runtime.submitting ||
+      runtime.approval?.closing ||
+      review.getSnapshot().mutationId
+    )
+      return;
+    const latest = channel.getSnapshot();
+    if (latest.frozen || latest.content?.kind !== 'attachments') return;
+    const items = latest.content.items;
+    if (ids.length !== items.length || new Set(ids).size !== ids.length) return;
+    const byId = new Map(items.map((item) => [item.mutation_id, item]));
+    if (ids.some((id) => !byId.has(id))) return;
+    try {
+      await channel.save({ ...latest.content, items: ids.map((id) => byId.get(id)!) });
+    } catch (reason) {
+      failure(reason);
+    }
+  }
+  async function edit(
+    mutationId: string,
+    presentation: ApprovalPresentation,
+    finalCaption?: string,
+  ) {
+    if (
+      !channel ||
+      !current() ||
+      runtime.picking ||
+      runtime.submitting ||
+      review.getSnapshot().mutationId ||
+      runtime.approval !== presentation ||
+      presentation.closing
+    )
+      return;
+    const latest = channel.getSnapshot();
+    const before = latest.content;
+    if (before?.kind !== 'attachments' || latest.frozen || latest.sending || latest.reviewing)
+      return;
+    const index = before.items.findIndex((item) => item.mutation_id === mutationId);
+    if (index < 0) return;
+    if (
+      finalCaption !== undefined &&
+      (typeof finalCaption !== 'string' ||
+        finalCaption.length > 4096 ||
+        finalCaption.includes('\0'))
+    )
+      return;
+    runtime.submitting = true;
+    publish({ error: null });
+    try {
+      if (finalCaption !== undefined && before.items[index]!.caption !== finalCaption)
+        await channel.save({
+          ...before,
+          items: before.items.map((item) =>
+            item.mutation_id === mutationId ? { ...item, caption: finalCaption } : item,
+          ),
+        });
+      const saved = channel.getSnapshot();
+      if (
+        !current() ||
+        runtime.approval !== presentation ||
+        presentation.closing ||
+        saved.content?.kind !== 'attachments' ||
+        !sameAttachmentSelection(saved.content, before)
+      )
+        return;
+      await review.open(mutationId);
+      const after = channel.getSnapshot().content;
+      if (
+        current() &&
+        runtime.approval === presentation &&
+        !presentation.closing &&
+        after?.kind === 'attachments' &&
+        after.reply_to === before.reply_to &&
+        after.items.length === before.items.length &&
+        after.items.every(
+          (item, position) =>
+            position === index || item.mutation_id === before.items[position]?.mutation_id,
+        )
+      )
+        publish({ selected: after.items[index]!.asset_id });
+    } catch (reason) {
+      failure(reason);
+    } finally {
+      runtime.submitting = false;
+      publish({});
+    }
+  }
+  async function send(
+    observed: MediaDraftAttachments,
+    presentation: ApprovalPresentation | null,
+    finalCaption?: { mutationId: string; text: string },
+  ) {
     // A stale Send action must not dismiss review and queue delivery behind it.
     if (
       !channel ||
       !current() ||
       runtime.picking ||
+      runtime.submitting ||
       review.getSnapshot().mutationId ||
       runtime.approval !== presentation ||
       presentation?.closing
@@ -509,19 +723,47 @@ export function useDurableAttachmentComposer(
     const latest = channel.getSnapshot();
     if (latest.content?.kind !== 'attachments' || latest.sending || latest.reviewing) return;
     // Caption saves can drain, but this action belongs only to its rendered selection.
+    if (!sameAttachmentSelection(latest.content, observed)) return;
     if (
-      latest.content.reply_to !== observed.reply_to ||
-      latest.content.items.length !== observed.items.length ||
-      latest.content.items.some(
-        (item, index) =>
-          item.asset_id !== observed.items[index]?.asset_id ||
-          item.mutation_id !== observed.items[index]?.mutation_id,
-      )
+      finalCaption &&
+      (typeof finalCaption.text !== 'string' ||
+        finalCaption.text.length > 4096 ||
+        finalCaption.text.includes('\0'))
     )
       return;
     const sent = admission.current.onSent;
+    runtime.submitting = true;
     publish({ error: null });
     try {
+      if (finalCaption) {
+        const item = latest.content.items.find(
+          (value) => value.mutation_id === finalCaption.mutationId,
+        );
+        if (!item) return;
+        if (item.caption !== finalCaption.text) {
+          if (latest.frozen) return;
+          // The final native UITextView value can be newer than React's last
+          // caption callback. Journal it through the same CAS writer before Send.
+          await channel.save({
+            ...latest.content,
+            items: latest.content.items.map((value) =>
+              value.mutation_id === finalCaption.mutationId
+                ? { ...value, caption: finalCaption.text }
+                : value,
+            ),
+          });
+        }
+        const after = channel.getSnapshot();
+        if (
+          !current() ||
+          runtime.approval !== presentation ||
+          presentation?.closing ||
+          review.getSnapshot().mutationId ||
+          after.content?.kind !== 'attachments' ||
+          !sameAttachmentSelection(after.content, observed)
+        )
+          return;
+      }
       const result = await sensitiveCacheWork.run(() => channel.send());
       if (result.entries.length) {
         retireApproval();
@@ -530,6 +772,9 @@ export function useDurableAttachmentComposer(
       }
     } catch (reason) {
       failure(reason);
+    } finally {
+      runtime.submitting = false;
+      publish({});
     }
   }
   const presentation = runtime.approval;
@@ -537,6 +782,7 @@ export function useDurableAttachmentComposer(
   const retry = Boolean(state?.frozen && !state.reviewing);
   const restoring = !!content?.items.some((item) => !own?.previews.has(item.asset_id));
   const busy = Boolean(
+    runtime.submitting ||
     reviewing.mutationId ||
     presentation?.closing ||
     own?.picking ||
@@ -589,7 +835,6 @@ export function useDurableAttachmentComposer(
             !options.suspended &&
             !reviewing.mutationId &&
             !state?.frozen &&
-            !own?.picking &&
             !restoring,
           sending: busy,
           remaining: items.length,
@@ -598,6 +843,9 @@ export function useDurableAttachmentComposer(
             if (
               !channel ||
               !current() ||
+              // Photos anchors to this editable native field. While its overlay
+              // owns interaction, even a retained callback cannot change the draft.
+              runtime.picking ||
               state?.frozen ||
               runtime.approval !== presentation ||
               presentation?.closing
@@ -614,8 +862,14 @@ export function useDurableAttachmentComposer(
               })
               .catch(failure);
           },
-          onSend: () => {
-            void send(content, presentation);
+          onSend: (finalCaption) => {
+            void send(
+              content,
+              presentation,
+              finalCaption === undefined
+                ? undefined
+                : { mutationId: selected.mutationId, text: finalCaption },
+            );
           },
         }
       : undefined;
@@ -646,139 +900,156 @@ export function useDurableAttachmentComposer(
       (!state.content || state.content.kind === 'attachments') &&
       items.length < MAX_ATTACHMENT_ITEMS,
     ),
-    review:
-      strip || (!state?.content && error) ? (
-        <View style={{ gap: 8 }}>
-          {strip ? (
-            <AttachmentDraftStrip
-              state={strip}
-              selectedId={selected?.mutationId ?? null}
-              busy={Boolean(
-                reviewing.mutationId ||
-                own?.picking ||
-                own?.clearing ||
-                state?.sending ||
-                (restoring && !error),
-              )}
-              error={error}
-              onPreview={
-                canReview
-                  ? (id) => {
-                      const item = items.find((item) => item.mutationId === id);
-                      if (supportsMediaApproval && item && /^(image|video)\//.test(item.mime))
-                        openApproval(id);
-                      else void review.open(id);
-                    }
-                  : undefined
-              }
-              onSelect={(id) =>
-                publish({
-                  selected:
-                    content?.items.find((item) => item.mutation_id === id)?.asset_id ?? null,
-                })
-              }
-              onRemove={(id) => {
-                const item = content?.items.find((item) => item.mutation_id === id);
-                if (item) void remove(item.asset_id);
-              }}
-              onCancel={() => {
-                void cancel();
-              }}
-            />
-          ) : (
-            <Text accessibilityRole="alert" style={{ color: colors.danger }}>
-              {error}
-            </Text>
-          )}
-          {strip && field && presentation && own?.approval === presentation ? (
-            <AttachmentApproval
-              testID="attachment-approval"
-              state={strip}
-              field={field}
-              selectedId={selected?.mutationId ?? null}
-              recipient={
-                snapshot?.conversations.find((chat) => chat.id === channel?.scope.space_id)
-                  ?.title ?? t('media.attachmentConversation')
-              }
-              busy={busy}
-              editing={Boolean(reviewing.mutationId)}
-              canAdd={!state?.frozen && !busy && items.length < MAX_ATTACHMENT_ITEMS}
-              canEdit={Boolean(
-                canReview &&
-                store.driver.media?.drafts?.edit &&
-                !state?.frozen &&
-                selected &&
-                /^(image\/(jpeg|png|heic|heif)|video\/(mp4|quicktime|x-m4v))$/.test(selected.mime),
-              )}
-              error={error}
-              isCurrent={() =>
-                Boolean(
-                  current() &&
-                  runtime.foreground &&
-                  runtime.approval === presentation &&
-                  !presentation.closing &&
-                  !runtime.picking &&
-                  !review.getSnapshot().mutationId &&
-                  !channel?.getSnapshot().sending,
-                )
-              }
-              onClose={() => {
-                void closeApproval();
-              }}
-              onSelect={(id) => {
-                if (!current() || runtime.approval !== presentation || presentation.closing || busy)
-                  return;
-                mediaPlayback.pauseAll();
-                publish({
-                  selected:
-                    content?.items.find((item) => item.mutation_id === id)?.asset_id ?? null,
-                });
-              }}
-              onEdit={() => {
-                if (runtime.approval === presentation && !presentation.closing && selected)
-                  void review.open(selected.mutationId);
-              }}
-              onAdd={(kind) => {
-                if (runtime.approval === presentation && !presentation.closing) void pick(kind);
-              }}
-              onRemove={(id) => {
-                if (runtime.approval !== presentation || presentation.closing) return;
-                const item = content?.items.find((item) => item.mutation_id === id);
-                if (item) void remove(item.asset_id);
-              }}
-              onRetry={() => {
-                if (runtime.approval !== presentation || presentation.closing) return;
-                publish({ error: null });
-                void channel
-                  ?.retry()
-                  .then(() => {
-                    if (!runtime.closed) setRestoreEpoch((value) => value + 1);
-                  })
-                  .catch(failure);
-              }}
-            />
-          ) : null}
-          {error && channel ? (
-            <NativeButton
-              testID="retry-media-draft"
-              secondary
-              label={t('chat.tryAgain2')}
-              onPress={() => {
-                if (reviewFailed && selected) {
-                  void review.open(selected.mutationId);
-                  return;
+    review: (
+      <>
+        {!(strip && field && presentation && own?.approval === presentation) ? photos.view : null}
+        {strip || (!state?.content && error) ? (
+          <View style={{ gap: 8 }}>
+            {strip ? (
+              <AttachmentDraftStrip
+                state={strip}
+                selectedId={selected?.mutationId ?? null}
+                busy={Boolean(
+                  reviewing.mutationId ||
+                  own?.picking ||
+                  own?.clearing ||
+                  state?.sending ||
+                  (restoring && !error),
+                )}
+                error={error}
+                onPreview={
+                  canReview
+                    ? (id) => {
+                        const item = items.find((item) => item.mutationId === id);
+                        if (supportsMediaApproval && item && /^(image|video)\//.test(item.mime))
+                          openApproval(id);
+                        else void review.open(id);
+                      }
+                    : undefined
                 }
-                publish({ error: null });
-                void channel
-                  .retry()
-                  .then(() => {
-                    if (!runtime.closed) setRestoreEpoch((value) => value + 1);
+                onSelect={(id) =>
+                  publish({
+                    selected:
+                      content?.items.find((item) => item.mutation_id === id)?.asset_id ?? null,
                   })
-                  .catch(failure);
-              }}
-            />
-          ) : null}
-        </View>
-      ) : null,
+                }
+                onRemove={(id) => {
+                  const item = content?.items.find((item) => item.mutation_id === id);
+                  if (item) void remove(item.asset_id);
+                }}
+                onCancel={() => {
+                  void cancel();
+                }}
+              />
+            ) : (
+              <Text accessibilityRole="alert" style={{ color: colors.danger }}>
+                {error}
+              </Text>
+            )}
+            {strip && field && presentation && own?.approval === presentation ? (
+              <AttachmentApproval
+                grouped={content?.options?.grouping === 'grouped'}
+                libraryPicker={photos.view}
+                testID="attachment-approval"
+                state={strip}
+                field={field}
+                selectedId={selected?.mutationId ?? null}
+                recipient={
+                  snapshot?.conversations.find((chat) => chat.id === channel?.scope.space_id)
+                    ?.title ?? t('media.attachmentConversation')
+                }
+                busy={busy}
+                editing={Boolean(reviewing.mutationId)}
+                suspended={Boolean(own?.picking || reviewing.mutationId)}
+                canAdd={!state?.frozen && !busy && items.length < MAX_ATTACHMENT_ITEMS}
+                canEdit={Boolean(
+                  canReview &&
+                  store.driver.media?.drafts?.edit &&
+                  !state?.frozen &&
+                  selected &&
+                  /^(image\/(jpeg|png|heic|heif)|video\/(mp4|quicktime|x-m4v))$/.test(
+                    selected.mime,
+                  ),
+                )}
+                error={error}
+                isCurrent={() =>
+                  Boolean(
+                    current() &&
+                    runtime.foreground &&
+                    runtime.approval === presentation &&
+                    !presentation.closing &&
+                    !runtime.picking &&
+                    !review.getSnapshot().mutationId &&
+                    !channel?.getSnapshot().sending,
+                  )
+                }
+                onClose={() => {
+                  void closeApproval();
+                }}
+                onSelect={(id) => {
+                  if (
+                    !current() ||
+                    runtime.approval !== presentation ||
+                    presentation.closing ||
+                    busy
+                  )
+                    return;
+                  mediaPlayback.pauseAll();
+                  publish({
+                    selected:
+                      content?.items.find((item) => item.mutation_id === id)?.asset_id ?? null,
+                  });
+                }}
+                onEdit={(finalCaption) => {
+                  if (runtime.approval === presentation && !presentation.closing && selected)
+                    void edit(selected.mutationId, presentation, finalCaption);
+                }}
+                onReorder={(ids) => {
+                  if (runtime.approval === presentation && !presentation.closing) void reorder(ids);
+                }}
+                onAdd={(kind) => {
+                  if (runtime.approval === presentation && !presentation.closing) void pick(kind);
+                }}
+                onRemove={(id) => {
+                  if (runtime.approval !== presentation || presentation.closing) return;
+                  const item = content?.items.find((item) => item.mutation_id === id);
+                  if (item) void remove(item.asset_id);
+                }}
+                onRetry={() => {
+                  if (runtime.approval !== presentation || presentation.closing) return;
+                  publish({ error: null });
+                  void channel
+                    ?.retry()
+                    .then(() => {
+                      if (!runtime.closed) setRestoreEpoch((value) => value + 1);
+                    })
+                    .catch(failure);
+                }}
+              />
+            ) : null}
+            {error && channel ? (
+              <NativeButton
+                testID="retry-media-draft"
+                secondary
+                label={t('chat.tryAgain2')}
+                onPress={() => {
+                  if (reviewFailed && selected) {
+                    void review.open(selected.mutationId);
+                    return;
+                  }
+                  publish({ error: null });
+                  void channel
+                    .retry()
+                    .then(() => {
+                      if (!runtime.closed) setRestoreEpoch((value) => value + 1);
+                    })
+                    .catch(failure);
+                }}
+              />
+            ) : null}
+          </View>
+        ) : null}
+      </>
+    ),
   };
 }

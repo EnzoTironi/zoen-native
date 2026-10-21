@@ -8,6 +8,7 @@ import { Text, View, type TextInputInstance } from 'react-native';
 import { useCoreQuery } from '../../../core/query';
 import { useClient } from '../../../core/provider';
 import { useMessageAudioFocus } from '../../../media/message-audio-provider';
+import { supportsMediaMosaic } from '../../../media/mosaic-layout';
 import { messageText } from '../../../core/presentation';
 import { messageCard } from '../../../core/message-presentation';
 import {
@@ -53,7 +54,7 @@ export default function Thread() {
     retry,
   } = useCoreQuery({ op: 'thread', space_id: space, root_id: root });
   const rows = useMemo(
-    () => projectConversationTimeline(entries ?? [], items, space, root),
+    () => projectConversationTimeline(entries ?? [], items, space, root, supportsMediaMosaic),
     [entries, items, space, root],
   );
   const { colors } = useTheme();
@@ -189,12 +190,13 @@ export default function Thread() {
                 startRenderingFromBottom: false,
                 autoscrollToBottomThreshold: 0.15,
               }}
-              renderItem={({ item: { entry, activity }, index }) => (
+              renderItem={({ item: { entry, activity, album }, index }) => (
                 <View>
                   <ConversationMessage
                     spaceId={space}
                     entry={entry}
                     activity={activity}
+                    album={album}
                     previous={index > 1 ? rows[index - 1]?.entry : undefined}
                     next={index > 0 ? rows[index + 1]?.entry : undefined}
                     groupChat={groupChat}
@@ -208,7 +210,11 @@ export default function Thread() {
                       void actions.react(message, emoji);
                     }}
                     onQuote={(messageId) => {
-                      const target = rows.findIndex((row) => row.entry.id === messageId);
+                      const target = rows.findIndex(
+                        (row) =>
+                          row.entry.id === messageId ||
+                          row.album?.entries.some((entry) => entry.id === messageId),
+                      );
                       if (target >= 0)
                         void list.current
                           ?.scrollToIndex({ index: target, animated: true, viewPosition: 0.5 })

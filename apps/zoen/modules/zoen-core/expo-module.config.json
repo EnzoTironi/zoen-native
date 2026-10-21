@@ -2,7 +2,8 @@
   "platforms": ["apple", "android"],
   "apple": {
     "modules": ["ZoenCoreModule"],
-    "appDelegateSubscribers": ["ZoenGoogleSignInDelegate"]
+    "appDelegateSubscribers": ["ZoenGoogleSignInDelegate", "ZoenPresentationOrientationDelegate"],
+    "reactDelegateHandlers": ["ZoenPresentationRootDelegate"]
   },
   "android": {
     "modules": ["xyz.tironi.zoen.core.ZoenCoreModule"]

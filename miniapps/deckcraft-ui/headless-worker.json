@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/storytold/deckcraft",
+  "revision": "a31b990d32f2c8562f1588562f922960c3fde48b",
+  "license": "MIT OR Apache-2.0",
+  "requiredHostBridgePatchSha256": "96b4927f01b8c3ddff984ee08752ab550155a7263903de60696b4597a1cf2cdc",
+  "patch": "patches/0005-headless-worker.patch",
+  "patchSha256": "e562453e547b78deab33e49c76297f61e5adb6df11643546e5b369c6fc792ade",
+  "sourceFiles": [
+    {
+      "path": "Cargo.lock",
+      "baseSha256": "4bc9179aa45efdf20b633a624e5b61b9144160770c03b6ac4193ea7f5348274f",
+      "finalSha256": "47855287bccc0396baf0c8b3c98410ec15e168fba8ce61d68052429baa8ec1e9"
+    },
+    {
+      "path": "crates/engine/Cargo.toml",
+      "baseSha256": "e9a620988def26f087760b73e4ee17e5a1a3f89f04d48867c844137c28594eb9",
+      "finalSha256": "f9a32689e4c45b45c250c029da9d00aaf335b3a7bfcc2c96879f518e4a16a4fe"
+    },
+    {
+      "path": "crates/engine/src/cmd/review.rs",
+      "baseSha256": "4a107ee988dd5350ae7b39e139d2c528993986df17dbd3e2b4279f6d9a93b745",
+      "finalSha256": "566ee058d302b9457ce7c79da0e067ea06013119282077f475819d2104e02e52"
+    },
+    {
+      "path": "apps/deckcraft-zoen-worker/Cargo.toml",
+      "baseSha256": null,
+      "finalSha256": "32241b79ae0b11a2480c412aa009e1611402297f763a2bae849e3ebaefadb254"
+    },
+    {
+      "path": "apps/deckcraft-zoen-worker/src/main.rs",
+      "baseSha256": null,
+      "finalSha256": "dce0ac9f8a56e2e5465b8cc7f35a6267ae5f721bd55c1bb0994ff19ddfdbbfc7"
+    }
+  ],
+  "target": "wasm32-wasip2",
+  "package": "deckcraft-zoen-worker",
+  "requestProtocol": "u32le JSON metadata length + JSON metadata + exact native ZIP bytes",
+  "documentLimitBytes": 524288,
+  "metadataLimitBytes": 65536,
+  "globalWasmOutputLimitUnchanged": 1048576,
+  "commands": [
+    "text.set",
+    "slide.notes",
+    "shape.insert",
+    "slide.new"
+  ],
+  "readOnlyInspection": true,
+  "browserActorAuthority": false,
+  "environmentFilesystemNetworkInherited": false,
+  "qualification": "Actual pinned component plus signed native core and production Runtime/Gate/SpaceTools passed explicit local scripted-brain test; real provider, relay, phone and whole-host restart remain unqualified",
+  "sharedPortabilityDependency": {
+    "path": "patches/0006-portable-recovery.patch",
+    "sha256": "1c812a2cc66a6e97719b793568aa8726deff8a33ec605ecb580fe01c839fd909",
+    "sourcePath": "crates/engine/src/recovery.rs",
+    "sourceSha256": "832b91e6c03bf37aabe5a843789e45aac679a13330390c5823f22e21320c83b1",
+    "owner": "shared browser/worker portability; not duplicated in0005"
+  },
+  "buildProfile": "original upstream release: opt-level3,thinLTO,codegen16; one job; no global Cargo profile override",
+  "verifiedPrivateComponent": {
+    "bytes": 31107894,
+    "sha256": "facb0ce69b11974cfee090f0ff1114a8058015e6d53b2b57c5b23b803d805f68",
+    "headerHex": "0061736d0d000100",
+    "runtimeExecuted": true
+  },
+  "qualificationEvidence": {
+    "test": "actual_pinned_component_edits_as_certified_agent_and_cold_replay_does_not_duplicate",
+    "passed": 1,
+    "ignored": 0,
+    "hostProfile": "unoptimized Cargo test,debug0,Rayon1",
+    "coldLoadMilliseconds": 444553,
+    "priorColdLoadMilliseconds": 234426,
+    "subsequentWholeJourneyMilliseconds": 1493,
+    "commands": 4,
+    "canonicalFinalVersion": 8,
+    "secondArtifactUnchanged": true,
+    "sqliteClientReopened": true,
+    "compiledWorkerRetainedDuringSqliteReopen": true,
+    "wholeAgentProcessRestartProven": false,
+    "providerModelCalled": false,
+    "relayJourneyProven": false,
+    "nativePhoneJourneyProven": false,
+    "globalPolicyLoosened": false,
+    "meaningfulNegativeControls": 2,
+    "strictClippy": "PASS: all targets client-core, zoen-agentd, zoen-cli; strict-clippy-03.json"
+  }
+}

@@ -215,7 +215,10 @@ class AgentPlannerTest {
             ownerId = null, ownerName = null, ownerTintHex = null,
             photoSha256 = null, photoReady = false, photoMime = null, isMe = false, isMine = false,
         )
-        fun message(name: String, text: String, at: Long = 100) = TimelineEntry(name, 1uL, person(name), at, EntryKind.Message(text, null), Delivery.SENT)
+        fun message(name: String, text: String, at: Long = 100) = TimelineEntry(
+            name, 1uL, person(name), at, EntryKind.Message(text, null),
+            media = null, delivery = Delivery.SENT,
+        )
         val entries = listOf(message("Lucas", "I can drive, room for 3"), message("Marina", "I'm in"), message("Ana", "conta comigo"))
         val demo = Json.parseToJsonElement(HikePlanner.plan(entries, 0, listOf("Enzo", "Marina"), true)!!).jsonObject
         assertEquals("Lucas", demo["driver"]!!.jsonPrimitive.content)

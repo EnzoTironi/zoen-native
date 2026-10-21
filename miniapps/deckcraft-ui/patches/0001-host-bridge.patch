@@ -1,0 +1,1410 @@
+diff --git a/Cargo.toml b/Cargo.toml
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -24,6 +24,7 @@
+ deckcraft-format = { path = "crates/format" }
+ deckcraft-anim = { path = "crates/anim" }
+ deckcraft-engine = { path = "crates/engine" }
++deckcraft-host-bridge = { path = "crates/host-bridge" }
+ deckcraft-mcp = { path = "crates/mcp" }
+ deckcraft-ui-egui = { path = "crates/ui-egui" }
+ deckcraft-media = { path = "crates/media" }
+diff --git a/Cargo.lock b/Cargo.lock
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -485,6 +485,15 @@
+ version = "2.13.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
++
++[[package]]
++name = "block-buffer"
++version = "0.10.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
++dependencies = [
++ "generic-array",
++]
+ 
+ [[package]]
+ name = "block2"
+@@ -821,6 +830,15 @@
+ ]
+ 
+ [[package]]
++name = "cpufeatures"
++version = "0.2.17"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
++dependencies = [
++ "libc",
++]
++
++[[package]]
+ name = "craft-pdf"
+ version = "0.1.0"
+ source = "git+https://github.com/storytold/craft-libs?rev=c3487320b2d1de657b860b3c8abb44e1f2b32bd8#c3487320b2d1de657b860b3c8abb44e1f2b32bd8"
+@@ -877,6 +895,16 @@
+ version = "0.2.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
++
++[[package]]
++name = "crypto-common"
++version = "0.1.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
++dependencies = [
++ "generic-array",
++ "typenum",
++]
+ 
+ [[package]]
+ name = "cursor-icon"
+@@ -1026,6 +1054,17 @@
+ ]
+ 
+ [[package]]
++name = "deckcraft-host-bridge"
++version = "0.9.0"
++dependencies = [
++ "deckcraft-engine",
++ "serde",
++ "serde_json",
++ "sha2",
++ "zip",
++]
++
++[[package]]
+ name = "deckcraft-isobmff"
+ version = "0.9.0"
+ dependencies = [
+@@ -1197,12 +1236,14 @@
+ version = "0.9.0"
+ dependencies = [
+  "deckcraft-engine",
++ "deckcraft-host-bridge",
+  "deckcraft-ui-egui",
+  "eframe",
+  "egui",
+  "js-sys",
+  "log",
+  "rfd",
++ "serde",
+  "serde_json",
+  "wasm-bindgen",
+  "wasm-bindgen-futures",
+@@ -1231,6 +1272,16 @@
+  "getopts",
+  "image",
+  "rayon",
++]
++
++[[package]]
++name = "digest"
++version = "0.10.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
++dependencies = [
++ "block-buffer",
++ "crypto-common",
+ ]
+ 
+ [[package]]
+@@ -1753,6 +1804,16 @@
+ ]
+ 
+ [[package]]
++name = "generic-array"
++version = "0.14.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
++dependencies = [
++ "typenum",
++ "version_check",
++]
++
++[[package]]
+ name = "gethostname"
+ version = "1.1.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -3869,6 +3930,17 @@
+ ]
+ 
+ [[package]]
++name = "sha2"
++version = "0.10.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
++dependencies = [
++ "cfg-if",
++ "cpufeatures",
++ "digest",
++]
++
++[[package]]
+ name = "shlex"
+ version = "2.0.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -4520,6 +4592,12 @@
+ dependencies = [
+  "rustc-hash 2.1.3",
+ ]
++
++[[package]]
++name = "typenum"
++version = "1.20.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+ 
+ [[package]]
+ name = "uds_windows"
+diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -446,6 +446,8 @@
+ }
+ 
+ pub struct Session {
++    /// Optional embedding policy, checked before every command (including nested UI/key commands).
++    pub command_policy: Option<fn(&str, &Value) -> Result<()>>,
+     docs: Vec<DocState>,
+     active: Option<usize>,
+     pub prefs: Prefs,
+@@ -490,6 +492,7 @@
+     pub fn new() -> Self {
+         guard::install_panic_hook();
+         Session {
++            command_policy: None,
+             docs: vec![],
+             active: None,
+             prefs: Prefs::default(),
+@@ -579,6 +582,9 @@
+     /// Run command `id`. A panic inside it becomes [`EngineError::Internal`] and leaves the
+     /// presentation as it was.
+     pub fn execute(&mut self, id: &str, params: &Value) -> Result<Value> {
++        if let Some(policy) = self.command_policy {
++            policy(id, params)?;
++        }
+         self.guarded(id, |s| s.execute_unguarded(id, params))
+     }
+ 
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -654,7 +654,10 @@
+     /// Run a command by id (UI commands here, everything else in the engine). Errors show in the
+     /// status bar and are returned.
+     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
+-        let r = if UI_COMMANDS.iter().any(|c| c.0 == id) {
++        let denied = self.session.command_policy.and_then(|policy| policy(id, &params).err());
++        let r = if let Some(error) = denied {
++            Err(error.to_string())
++        } else if UI_COMMANDS.iter().any(|c| c.0 == id) {
+             self.run_ui(id, &params)
+         } else {
+             self.session.execute(id, &params).map_err(|e| e.to_string())
+diff --git a/crates/host-bridge/Cargo.toml b/crates/host-bridge/Cargo.toml
+new file mode 100644
+--- /dev/null
++++ b/crates/host-bridge/Cargo.toml
+@@ -0,0 +1,17 @@
++[package]
++name = "deckcraft-host-bridge"
++description = "Artifact-scoped host proposals over the existing DeckCraft Session"
++version.workspace = true
++edition.workspace = true
++license.workspace = true
++publish = false
++
++[lints]
++workspace = true
++
++[dependencies]
++deckcraft-engine = { workspace = true }
++serde = { workspace = true }
++serde_json = { workspace = true }
++zip = { workspace = true }
++sha2 = "=0.10.9"
+diff --git a/crates/host-bridge/src/lib.rs b/crates/host-bridge/src/lib.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/host-bridge/src/lib.rs
+@@ -0,0 +1,823 @@
++//! Artifact-local bridge over the very same Session rendered by SlideApp.
++//!
++//! These identities are host bindings, not authentication. Zoen must derive the actor,
++//! authorize the artifact and CAS-commit bytes in its existing encrypted store. A proposal
++//! is never an accepted version until that host acknowledges its exact hash.
++#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
++#![forbid(unsafe_code)]
++
++use std::collections::BTreeMap;
++use std::io::{Cursor, Read};
++use std::sync::Arc;
++
++use deckcraft_engine::cmd::file::{open_checked, save_bytes};
++use deckcraft_engine::{DocState, EngineError, Session, Target, model::Presentation};
++use serde::{Deserialize, Serialize};
++use serde_json::{Value, json};
++use sha2::{Digest, Sha256};
++
++pub mod lifecycle;
++
++pub const ENGINE_REVISION: &str = "a31b990d32f2c8562f1588562f922960c3fde48b";
++pub const MAX_DOCUMENT_BYTES: usize = 8 << 20;
++pub const MAX_EXPORT_BYTES: usize = 16 << 20;
++const MAX_TEXT: usize = 8192;
++
++type Result<T> = std::result::Result<T, BridgeError>;
++#[derive(Debug, Serialize)]
++pub struct BridgeError {
++    pub code: &'static str,
++}
++fn failure(code: &'static str) -> BridgeError {
++    BridgeError { code }
++}
++fn engine(_: EngineError) -> BridgeError {
++    failure("engine_failed")
++}
++fn hash(bytes: &[u8]) -> String {
++    format!("{:x}", Sha256::digest(bytes))
++}
++fn identifier(value: &str) -> bool {
++    !value.is_empty() && value.len() <= 128 && value.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
++}
++fn valid_hash(value: &str) -> bool {
++    value.len() == 64 && value.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
++}
++#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct Scope {
++    pub artifact_id: String,
++    pub actor_id: String,
++    pub actor_kind: ActorKind,
++}
++#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase")]
++pub enum ActorKind {
++    Human,
++    Agent,
++}
++#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
++#[serde(deny_unknown_fields)]
++pub struct Head {
++    /// Decimal u64 string, avoiding JavaScript's integer precision boundary.
++    pub version: String,
++    pub sha256: String,
++}
++impl Head {
++    fn number(&self) -> Result<u64> {
++        if self.version.is_empty()
++            || self.version.len() > 20
++            || (self.version.len() > 1 && self.version.starts_with('0'))
++            || !self.version.bytes().all(|c| c.is_ascii_digit())
++            || !valid_hash(&self.sha256)
++        {
++            return Err(failure("invalid_head"));
++        }
++        self.version.parse().map_err(|_| failure("invalid_head"))
++    }
++}
++#[derive(Clone, Debug, Deserialize, Serialize)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct Open {
++    pub scope: Scope,
++    pub head: Head,
++}
++#[derive(Clone, Debug, Deserialize, Serialize)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct Mutation {
++    pub scope: Scope,
++    pub base: Head,
++    pub mutation_id: String,
++}
++#[derive(Clone, Debug, Deserialize, Serialize)]
++#[serde(deny_unknown_fields)]
++pub struct Command {
++    pub mutation: Mutation,
++    pub action: Action,
++}
++#[derive(Clone, Debug, Deserialize, Serialize)]
++#[serde(tag = "command", content = "params", deny_unknown_fields)]
++pub enum Action {
++    #[serde(rename = "text.set")]
++    TextSet(TextSet),
++    #[serde(rename = "slide.notes")]
++    SlideNotes(SlideNotes),
++    #[serde(rename = "shape.insert")]
++    ShapeInsert(ShapeInsert),
++    #[serde(rename = "slide.new")]
++    SlideNew(SlideNew),
++}
++#[derive(Clone, Debug, Deserialize, Serialize)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct TextSet {
++    pub slide_id: u32,
++    pub id: u32,
++    pub text: String,
++}
++#[derive(Clone, Debug, Deserialize, Serialize)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct SlideNotes {
++    pub slide_id: u32,
++    pub text: String,
++}
++#[derive(Clone, Debug, Deserialize, Serialize)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct ShapeInsert {
++    pub slide_id: u32,
++    pub preset: String,
++    pub rect: [f64; 4],
++    pub text: String,
++}
++#[derive(Clone, Debug, Deserialize, Serialize)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct SlideNew {
++    pub after_slide_id: u32,
++    pub layout: String,
++    pub title: String,
++    pub body: String,
++}
++#[derive(Clone, Debug, Deserialize)]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct Accept {
++    pub scope: Scope,
++    pub mutation_id: String,
++    pub head: Head,
++}
++#[derive(Clone, Debug, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Export {
++    pub scope: Scope,
++    pub head: Head,
++    pub format: ExportFormat,
++}
++#[derive(Clone, Debug, Deserialize, PartialEq)]
++#[serde(rename_all = "lowercase")]
++pub enum ExportFormat {
++    Pptx,
++    Pdf,
++}
++#[derive(Clone)]
++pub struct Proposal {
++    pub bytes: Vec<u8>,
++    pub metadata: Value,
++}
++struct Pending {
++    id: String,
++    fingerprint: String,
++    doc: Arc<Presentation>,
++    proposal: Proposal,
++}
++struct Accepted {
++    id: String,
++    fingerprint: String,
++    proposal: Proposal,
++}
++#[derive(Default)]
++pub struct HostBridge {
++    scope: Option<Scope>,
++    head: Option<Head>,
++    document_uid: Option<u64>,
++    accepted_doc: Option<Arc<Presentation>>,
++    pending: Option<Pending>,
++    last: Option<Accepted>,
++}
++impl HostBridge {
++    fn scope(&self, scope: &Scope) -> Result<()> {
++        if self.scope.as_ref() != Some(scope) {
++            return Err(failure("scope_changed"));
++        }
++        Ok(())
++    }
++    fn document(&self, session: &Session) -> Result<()> {
++        if session.documents().len() != 1 || session.active().map(|d| d.uid) != self.document_uid {
++            return Err(failure("document_changed"));
++        }
++        Ok(())
++    }
++    pub fn dirty(&self, session: &Session) -> bool {
++        match (self.accepted_doc.as_ref(), session.active()) {
++            (Some(accepted), Some(current)) => !Arc::ptr_eq(accepted, &current.doc),
++            _ => false,
++        }
++    }
++    pub fn status(&self, session: &Session) -> Value {
++        json!({"engineRevision":ENGINE_REVISION,"scope":self.scope,"head":self.head,"dirty":self.dirty(session),"pendingMutationId":self.pending.as_ref().map(|p| &p.id)})
++    }
++    /// Only exact native documents are adopted. Repairs/unknown fields/media/font imports
++    /// require a separate explicit host import flow; original bytes remain with the host.
++    pub fn open(&mut self, session: &mut Session, request: Open, bytes: &[u8]) -> Result<Value> {
++        if !identifier(&request.scope.artifact_id) || !identifier(&request.scope.actor_id) {
++            return Err(failure("invalid_scope"));
++        }
++        request.head.number()?;
++        if let Some(scope) = self.scope.as_ref() {
++            if scope != &request.scope {
++                return Err(failure("scope_changed"));
++            }
++            self.document(session)?;
++            if self.pending.is_some() || self.dirty(session) {
++                return Err(failure("local_changes"));
++            }
++            let old_head = self.head.as_ref().ok_or_else(|| failure("not_open"))?;
++            if request.head.number()? < old_head.number()? || (request.head.version == old_head.version && request.head != *old_head) {
++                return Err(failure("stale_head"));
++            }
++        }
++        if bytes.len() > MAX_DOCUMENT_BYTES || hash(bytes) != request.head.sha256 {
++            return Err(failure("invalid_document_hash_or_size"));
++        }
++        let original = native_manifest(bytes)?;
++        let (doc, damage) = open_checked("document.deckcraft", bytes).map_err(engine)?;
++        if !damage.is_empty() {
++            return Err(failure("import_requires_review"));
++        }
++        validate_model(&doc)?;
++        let encoded = save_bytes(&doc, "deckcraft").map_err(engine)?;
++        if native_manifest(&encoded)? != original {
++            return Err(failure("import_requires_review"));
++        }
++        // A fresh one-document Session prevents untracked window/file state or a second store.
++        let mut next = Session::new();
++        next.prefs.author = request.scope.actor_id.clone();
++        next.add_document(DocState::new(doc, None, "Presentation".into()));
++        next.command_policy = Some(managed_command_policy);
++        self.document_uid = next.active().map(|d| d.uid);
++        self.accepted_doc = next.active().map(|d| d.doc.clone());
++        self.scope = Some(request.scope);
++        self.head = Some(request.head);
++        self.pending = None;
++        self.last = None;
++        *session = next;
++        Ok(self.status(session))
++    }
++    fn admission(&self, session: &Session, mutation: &Mutation, fingerprint: &str) -> Result<Option<Proposal>> {
++        self.scope(&mutation.scope)?;
++        self.document(session)?;
++        if mutation.base.number()? == u64::MAX {
++            return Err(failure("version_exhausted"));
++        }
++        if !identifier(&mutation.mutation_id) {
++            return Err(failure("invalid_mutation_id"));
++        }
++        // A response retry is the same proposal, including allocated IDs, never replay.
++        if let Some(last) = &self.last
++            && last.id == mutation.mutation_id
++        {
++            return if last.fingerprint == fingerprint { Ok(Some(last.proposal.clone())) } else { Err(failure("mutation_reused")) };
++        }
++        if let Some(pending) = &self.pending {
++            if pending.id == mutation.mutation_id {
++                return if pending.fingerprint == fingerprint { Ok(Some(pending.proposal.clone())) } else { Err(failure("mutation_reused")) };
++            }
++            return Err(failure("proposal_pending"));
++        }
++        if self.head.as_ref() != Some(&mutation.base) {
++            return Err(failure("stale_head"));
++        }
++        let current = session.doc().map_err(engine)?;
++        if current.composition.is_some() || current.interaction.is_some() {
++            return Err(failure("human_interaction"));
++        }
++        Ok(None)
++    }
++    fn prepare(&mut self, session: &Session, mutation: Mutation, fingerprint: String, operation: Value) -> Result<Proposal> {
++        let doc = session.doc().map_err(engine)?.doc.clone();
++        validate_model(&doc)?;
++        let bytes = save_bytes(&doc, "deckcraft").map_err(engine)?;
++        if bytes.len() > MAX_DOCUMENT_BYTES {
++            return Err(failure("document_too_large"));
++        }
++        let metadata = json!({"scope":mutation.scope,"mutationId":mutation.mutation_id,"base":mutation.base,"sha256":hash(&bytes),"byteLength":bytes.len(),"engineRevision":ENGINE_REVISION,"operation":operation,"acceptedHead":null});
++        let proposal = Proposal { bytes, metadata };
++        self.pending = Some(Pending { id: mutation.mutation_id, fingerprint, doc, proposal: proposal.clone() });
++        Ok(proposal)
++    }
++    /// Capture human UI changes; this is a proposal, not a local accepted-version counter.
++    pub fn snapshot(&mut self, session: &Session, mutation: Mutation) -> Result<Proposal> {
++        let fingerprint = hash(&serde_json::to_vec(&json!({"checkpoint":mutation})).map_err(|_| failure("invalid_request"))?);
++        if let Some(proposal) = self.admission(session, &mutation, &fingerprint)? {
++            return Ok(proposal);
++        }
++        self.prepare(session, mutation, fingerprint, json!({"kind":"humanCheckpoint"}))
++    }
++    /// Exact, explicit reviewed commands only. No generic run_command/batch/file-path API.
++    pub fn execute(&mut self, session: &mut Session, command: Command) -> Result<Proposal> {
++        let fingerprint = hash(&serde_json::to_vec(&command).map_err(|_| failure("invalid_request"))?);
++        if let Some(proposal) = self.admission(session, &command.mutation, &fingerprint)? {
++            return Ok(proposal);
++        }
++        if self.dirty(session) {
++            return Err(failure("local_changes"));
++        }
++        let before = session.doc().map_err(engine)?.clone();
++        let journal_len = session.journal.len();
++        let requests_len = session.ui_requests.len();
++        let look = session.default_look.take();
++        let result = apply(session, &command.action).and_then(|result| {
++            self.prepare(session, command.mutation, fingerprint, json!({"kind":"command","action":command.action,"result":result}))
++        });
++        session.default_look = look;
++        if result.is_err() {
++            if let Some(current) = session.active_mut() {
++                *current = before;
++            }
++            session.journal.truncate(journal_len);
++            session.ui_requests.truncate(requests_len);
++        }
++        result
++    }
++    pub fn accept(&mut self, session: &mut Session, receipt: Accept) -> Result<Value> {
++        self.scope(&receipt.scope)?;
++        self.document(session)?;
++        if self.pending.is_none() {
++            if let Some(last) = &self.last
++                && last.id == receipt.mutation_id
++                && self.head.as_ref() == Some(&receipt.head)
++                && last.proposal.metadata.get("acceptedHead") == Some(&json!(&receipt.head))
++            {
++                return Ok(self.status(session));
++            }
++            return Err(failure("no_proposal"));
++        }
++        let pending = self.pending.as_ref().ok_or_else(|| failure("no_proposal"))?;
++        let next = self.head.as_ref().ok_or_else(|| failure("not_open"))?.number()?.checked_add(1).ok_or_else(|| failure("version_exhausted"))?;
++        if pending.id != receipt.mutation_id
++            || receipt.head.number()? != next
++            || pending.proposal.metadata.get("sha256").and_then(Value::as_str) != Some(receipt.head.sha256.as_str())
++        {
++            return Err(failure("receipt_mismatch"));
++        }
++        let mut pending = self.pending.take().ok_or_else(|| failure("no_proposal"))?;
++        // If the UI changed while saving, retain that newer draft and only advance its base.
++        self.accepted_doc = Some(pending.doc.clone());
++        if let Some(current) = session.active_mut() {
++            current.saved_doc = pending.doc;
++        }
++        self.head = Some(receipt.head.clone());
++        pending.proposal.metadata["acceptedHead"] = json!(receipt.head);
++        self.last = Some(Accepted { id: pending.id, fingerprint: pending.fingerprint, proposal: pending.proposal });
++        Ok(self.status(session))
++    }
++    /// Export the explicitly selected accepted model, even if newer local draft edits exist.
++    pub fn export(&self, session: &Session, request: Export) -> Result<Proposal> {
++        self.scope(&request.scope)?;
++        self.document(session)?;
++        if self.head.as_ref() != Some(&request.head) {
++            return Err(failure("stale_head"));
++        }
++        let doc = self.accepted_doc.as_ref().ok_or_else(|| failure("not_open"))?;
++        let (format, mime) = match request.format {
++            ExportFormat::Pptx => ("pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
++            ExportFormat::Pdf => ("pdf", "application/pdf"),
++        };
++        let bytes = save_bytes(doc, format).map_err(engine)?;
++        if bytes.len() > MAX_EXPORT_BYTES {
++            return Err(failure("export_too_large"));
++        }
++        Ok(Proposal {
++            metadata: json!({"scope":request.scope,"sourceHead":request.head,"format":format,"mime":mime,"sha256":hash(&bytes),"byteLength":bytes.len(),"engineRevision":ENGINE_REVISION}),
++            bytes,
++        })
++    }
++}
++fn text(value: &str) -> Result<()> {
++    if value.len() > MAX_TEXT { Err(failure("text_too_large")) } else { Ok(()) }
++}
++fn slide(session: &mut Session, id: u32) -> Result<usize> {
++    let index = session.doc().map_err(engine)?.doc.slides.iter().position(|slide| slide.id.0 == id).ok_or_else(|| failure("unknown_slide"))?;
++    let state = session.doc_mut().map_err(engine)?;
++    state.selection.target = Target::Slides;
++    state.selection.slide = index;
++    state.selection.shapes.clear();
++    state.selection.text = None;
++    Ok(index)
++}
++fn apply(session: &mut Session, action: &Action) -> Result<Value> {
++    match action {
++        Action::TextSet(p) => {
++            text(&p.text)?;
++            slide(session, p.slide_id)?;
++            session.execute("text.set", &json!({"id":p.id,"text":p.text})).map_err(engine)
++        }
++        Action::SlideNotes(p) => {
++            text(&p.text)?;
++            let index = slide(session, p.slide_id)?;
++            session.execute("slide.notes", &json!({"index":index,"text":p.text})).map_err(engine)
++        }
++        Action::ShapeInsert(p) => {
++            text(&p.text)?;
++            if !matches!(p.preset.as_str(), "rect" | "ellipse" | "roundRect")
++                || !p.rect.iter().all(|n| n.is_finite() && n.abs() <= 20_000.0)
++                || p.rect[2] <= 0.0
++                || p.rect[3] <= 0.0
++            {
++                return Err(failure("invalid_shape"));
++            }
++            slide(session, p.slide_id)?;
++            session.execute("shape.insert", &json!({"preset":p.preset,"rect":p.rect,"text":p.text})).map_err(engine)
++        }
++        Action::SlideNew(p) => {
++            text(&p.title)?;
++            text(&p.body)?;
++            if !matches!(p.layout.as_str(), "blank" | "title" | "titleAndContent") {
++                return Err(failure("invalid_layout"));
++            }
++            let at = slide(session, p.after_slide_id)?.checked_add(1).ok_or_else(|| failure("invalid_slide"))?;
++            session.execute("slide.new", &json!({"at":at,"layout":p.layout,"title":p.title,"body":p.body})).map_err(engine)
++        }
++    }
++}
++fn validate_model(doc: &Presentation) -> Result<()> {
++    // First slice has no asset-import or licensed embedded-font capability. Preserve these
++    // inputs outside this editor until the host's scoped import pipeline is implemented.
++    if !doc.media.is_empty() || !doc.embedded_fonts.is_empty() {
++        return Err(failure("asset_import_not_enabled"));
++    }
++    if doc.slides.len() > 100 || doc.slides.iter().map(|s| s.shapes.len()).sum::<usize>() > 1000 {
++        return Err(failure("document_too_complex"));
++    }
++    let model = serde_json::to_value(doc).map_err(|_| failure("invalid_document"))?;
++    if unsupported_action(&model, 0) {
++        return Err(failure("external_action_not_enabled"));
++    }
++    Ok(())
++}
++fn unsupported_action(value: &Value, depth: usize) -> bool {
++    if depth > 64 {
++        return true;
++    }
++    match value {
++        Value::Object(object) => {
++            if object.get("action").and_then(|a| a.get("kind")).and_then(Value::as_str).is_some_and(|kind| matches!(kind, "url" | "program"))
++                || object.get("type").and_then(Value::as_str) == Some("opaque")
++                || object.get("rawExt").is_some_and(|v| !v.is_null())
++            {
++                return true;
++            }
++            object.values().any(|v| unsupported_action(v, depth + 1))
++        }
++        Value::Array(values) => values.iter().any(|v| unsupported_action(v, depth + 1)),
++        _ => false,
++    }
++}
++fn native_manifest(bytes: &[u8]) -> Result<(Value, BTreeMap<String, String>)> {
++    if bytes.len() > MAX_DOCUMENT_BYTES {
++        return Err(failure("document_too_large"));
++    }
++    let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|_| failure("invalid_native_document"))?;
++    if zip.len() > 512 {
++        return Err(failure("document_too_complex"));
++    }
++    let mut total = 0u64;
++    let mut entries = BTreeMap::new();
++    for index in 0..zip.len() {
++        let mut entry = zip.by_index(index).map_err(|_| failure("invalid_native_document"))?;
++        let name = entry.name();
++        if name.len() > 256
++            || name.starts_with('/')
++            || name.split('/').any(|s| s == "..")
++            || entries.contains_key(name)
++            || entry.size() > MAX_DOCUMENT_BYTES as u64
++        {
++            return Err(failure("invalid_native_document"));
++        }
++        total = total.checked_add(entry.size()).ok_or_else(|| failure("document_too_large"))?;
++        if total > MAX_EXPORT_BYTES as u64 {
++            return Err(failure("document_too_large"));
++        }
++        let name = name.to_string();
++        // Check CRC and compare every preserved binary member, not just its name.
++        // JSON is compared semantically below, so harmless JSON whitespace is not a repair.
++        let mut content = Vec::new();
++        entry.by_ref().take(MAX_DOCUMENT_BYTES as u64 + 1).read_to_end(&mut content).map_err(|_| failure("invalid_native_document"))?;
++        if content.len() > MAX_DOCUMENT_BYTES {
++            return Err(failure("document_too_large"));
++        }
++        entries.insert(name.clone(), if name == "presentation.json" { String::new() } else { hash(&content) });
++    }
++    let mut entry = zip.by_name("presentation.json").map_err(|_| failure("invalid_native_document"))?;
++    let mut json = Vec::new();
++    entry.by_ref().take((4 << 20) + 1).read_to_end(&mut json).map_err(|_| failure("invalid_native_document"))?;
++    if json.len() > 4 << 20 {
++        return Err(failure("document_too_large"));
++    }
++    let manifest: Value = serde_json::from_slice(&json).map_err(|_| failure("invalid_native_document"))?;
++    if manifest.get("format").and_then(Value::as_str) != Some("deckcraft") || manifest.get("version").and_then(Value::as_u64) != Some(1) {
++        return Err(failure("import_requires_review"));
++    }
++    Ok((manifest, entries))
++}
++/// Applied by Session to UI/key/nested commands too, not just the host's narrow allowlist.
++pub fn managed_command_policy(id: &str, _: &Value) -> deckcraft_engine::Result<()> {
++    if ["file.", "window.", "font."].iter().any(|prefix| id.starts_with(prefix))
++        || matches!(
++            id,
++            "design.browseTheme"
++                | "review.compare"
++                | "review.spelling"
++                | "review.dictionary"
++                | "review.addToDictionary"
++                | "insert.picture"
++                | "insert.audio"
++                | "insert.video"
++                | "picture.change"
++                | "insert.photoAlbum"
++                | "insert.photoAlbumEdit"
++                | "smartArt.picture"
++                | "transition.sound"
++                | "insert.hyperlink"
++                | "shape.action"
++        )
++    {
++        return Err(EngineError::Other("This operation requires a scoped host capability".into()));
++    }
++    Ok(())
++}
++
++#[cfg(test)]
++#[allow(clippy::unwrap_used)]
++mod tests {
++    use super::*;
++    fn fixture() -> (HostBridge, Session, Open, u32, u32) {
++        let mut session = Session::new();
++        session.execute("file.new", &json!({})).unwrap();
++        let doc = session.doc().unwrap();
++        let slide = doc.doc.slides[0].id.0;
++        let shape = doc.doc.slides[0].shapes[0].id.0;
++        let bytes = save_bytes(&doc.doc, "deckcraft").unwrap();
++        let open = Open {
++            scope: Scope { artifact_id: "artifact_a".into(), actor_id: "actor_a".into(), actor_kind: ActorKind::Human },
++            head: Head { version: "1".into(), sha256: hash(&bytes) },
++        };
++        let mut bridge = HostBridge::default();
++        bridge.open(&mut session, open.clone(), &bytes).unwrap();
++        (bridge, session, open, slide, shape)
++    }
++    fn mutation(open: &Open, id: &str) -> Mutation {
++        Mutation { scope: open.scope.clone(), base: open.head.clone(), mutation_id: id.into() }
++    }
++    fn notes(open: &Open, id: &str, slide: u32) -> Command {
++        Command {
++            mutation: mutation(open, id),
++            action: Action::SlideNotes(SlideNotes { slide_id: slide, text: "Agent edits the same document".into() }),
++        }
++    }
++    fn bytes(session: &Session) -> Vec<u8> {
++        save_bytes(&session.doc().unwrap().doc, "deckcraft").unwrap()
++    }
++    fn receipt(open: &Open, proposal: &Proposal, id: &str) -> Accept {
++        Accept {
++            scope: open.scope.clone(),
++            mutation_id: id.into(),
++            head: Head { version: "2".into(), sha256: proposal.metadata["sha256"].as_str().unwrap().into() },
++        }
++    }
++    #[test]
++    fn one_session_commands_change_that_live_document_and_only_a_host_receipt_advances_head() {
++        let (mut bridge, mut session, open, slide, shape) = fixture();
++        let uid = session.doc().unwrap().uid;
++        let command = Command {
++            mutation: mutation(&open, "human_edit"),
++            action: Action::TextSet(TextSet { slide_id: slide, id: shape, text: "Human title".into() }),
++        };
++        let proposal = bridge.execute(&mut session, command).unwrap();
++        assert_eq!(session.doc().unwrap().uid, uid);
++        assert!(serde_json::to_string(&session.doc().unwrap().doc).unwrap().contains("Human title"));
++        assert_eq!(bridge.status(&session)["head"]["version"], "1");
++        assert_eq!(proposal.metadata["scope"]["actorId"], "actor_a");
++        assert_eq!(proposal.metadata["scope"]["actorKind"], "human");
++        bridge.accept(&mut session, receipt(&open, &proposal, "human_edit")).unwrap();
++        assert_eq!(bridge.status(&session)["head"]["version"], "2");
++        assert!(!bridge.dirty(&session));
++    }
++    #[test]
++    fn scope_actor_command_base_and_unknown_field_boundaries_cannot_change_the_document() {
++        let (mut bridge, mut session, open, slide, _) = fixture();
++        let before = bytes(&session);
++        for field in ["artifact", "actor", "kind", "version", "hash", "mutation"] {
++            let mut command = notes(&open, "safe_id", slide);
++            match field {
++                "artifact" => command.mutation.scope.artifact_id = "artifact_b".into(),
++                "actor" => command.mutation.scope.actor_id = "actor_b".into(),
++                "kind" => command.mutation.scope.actor_kind = ActorKind::Agent,
++                "version" => command.mutation.base.version = "2".into(),
++                "hash" => command.mutation.base.sha256 = "0".repeat(64),
++                _ => command.mutation.mutation_id = "../outside".into(),
++            }
++            assert!(bridge.execute(&mut session, command).is_err(), "{field}");
++            assert_eq!(bytes(&session), before);
++        }
++        for command in [
++            json!({"mutation":mutation(&open,"x"),"action":{"command":"file.open","params":{"path":"/private"}}}),
++            json!({"mutation":mutation(&open,"x"),"action":{"command":"text.set","params":{"slideId":slide,"id":1,"text":"x","path":"/private"}}}),
++            json!({"mutation":mutation(&open,"x"),"action":{"command":"batch","params":{"commands":[]}}}),
++        ] {
++            assert!(serde_json::from_value::<Command>(command).is_err());
++        }
++        assert_eq!(bytes(&session), before);
++    }
++    #[test]
++    fn creation_retries_return_the_same_actual_ids_without_reexecuting_even_after_acceptance() {
++        let (mut bridge, mut session, open, slide, _) = fixture();
++        let command = Command {
++            mutation: mutation(&open, "create_shape"),
++            action: Action::ShapeInsert(ShapeInsert {
++                slide_id: slide,
++                preset: "rect".into(),
++                rect: [12.0, 12.0, 100.0, 60.0],
++                text: "One shape".into(),
++            }),
++        };
++        let first = bridge.execute(&mut session, command.clone()).unwrap();
++        let count = session.doc().unwrap().doc.slides[0].shapes.len();
++        let next_id = session.doc().unwrap().doc.next_id;
++        let retry = bridge.execute(&mut session, command.clone()).unwrap();
++        assert_eq!(first.bytes, retry.bytes);
++        assert_eq!(first.metadata["operation"]["result"]["id"], retry.metadata["operation"]["result"]["id"]);
++        let mut reused = command.clone();
++        if let Action::ShapeInsert(ref mut p) = reused.action {
++            p.text = "Different intent".into();
++        }
++        assert_eq!(bridge.execute(&mut session, reused).err().unwrap().code, "mutation_reused");
++        bridge.accept(&mut session, receipt(&open, &first, "create_shape")).unwrap();
++        // The host may lose either the command response or the accepted receipt response.
++        bridge.accept(&mut session, receipt(&open, &first, "create_shape")).unwrap();
++        let accepted_retry = bridge.execute(&mut session, command).unwrap();
++        assert_eq!(accepted_retry.bytes, first.bytes);
++        assert_eq!(accepted_retry.metadata["acceptedHead"]["version"], "2");
++        assert_eq!(session.doc().unwrap().doc.slides[0].shapes.len(), count);
++        assert_eq!(session.doc().unwrap().doc.next_id, next_id);
++    }
++    #[test]
++    fn failed_command_keeps_model_selection_history_journal_and_pending_state_unchanged() {
++        let (mut bridge, mut session, open, slide, _) = fixture();
++        let before = session.doc().unwrap().clone();
++        let original = bytes(&session);
++        let command = Command {
++            mutation: mutation(&open, "invalid_target"),
++            action: Action::TextSet(TextSet { slide_id: slide, id: u32::MAX, text: "must fail".into() }),
++        };
++        assert!(bridge.execute(&mut session, command).is_err());
++        assert_eq!(original, bytes(&session));
++        assert_eq!(session.doc().unwrap().selection, before.selection);
++        assert_eq!(session.doc().unwrap().revision, before.revision);
++        assert_eq!(session.doc().unwrap().history.undo.len(), before.history.undo.len());
++        assert!(session.journal.is_empty());
++        assert!(bridge.pending.is_none());
++    }
++    #[test]
++    fn manual_drafts_block_remote_commands_and_open_but_acknowledgment_never_overwrites_newer_typing() {
++        let (mut bridge, mut session, open, slide, shape) = fixture();
++        session.execute("text.set", &json!({"id":shape,"text":"first draft"})).unwrap();
++        assert_eq!(bridge.execute(&mut session, notes(&open, "agent", slide)).err().unwrap().code, "local_changes");
++        let saved = bridge.snapshot(&session, mutation(&open, "checkpoint")).unwrap();
++        session.execute("text.set", &json!({"id":shape,"text":"newer unsaved typing"})).unwrap();
++        let newer = bytes(&session);
++        assert_eq!(bridge.open(&mut session, open.clone(), &saved.bytes).err().unwrap().code, "local_changes");
++        bridge.accept(&mut session, receipt(&open, &saved, "checkpoint")).unwrap();
++        assert_eq!(bytes(&session), newer);
++        assert!(bridge.dirty(&session));
++        let head = bridge.head.clone().unwrap();
++        let pptx = bridge.export(&session, Export { scope: open.scope.clone(), head, format: ExportFormat::Pptx }).unwrap();
++        let (document, _) = open_checked("accepted.pptx", &pptx.bytes).unwrap();
++        let content = serde_json::to_string(&document).unwrap();
++        assert!(content.contains("first draft"));
++        assert!(!content.contains("newer unsaved typing"));
++    }
++    #[test]
++    fn forged_receipts_exports_and_file_commands_cannot_advance_or_replace_a_pending_proposal() {
++        let (mut bridge, mut session, open, slide, _) = fixture();
++        let proposal = bridge.execute(&mut session, notes(&open, "change", slide)).unwrap();
++        let before = bytes(&session);
++        for field in ["actor", "version", "hash", "id"] {
++            let mut receipt = receipt(&open, &proposal, "change");
++            match field {
++                "actor" => receipt.scope.actor_id = "other".into(),
++                "version" => receipt.head.version = "3".into(),
++                "hash" => receipt.head.sha256 = "0".repeat(64),
++                _ => receipt.mutation_id = "another".into(),
++            }
++            assert!(bridge.accept(&mut session, receipt).is_err());
++            assert!(bridge.pending.is_some());
++            assert_eq!(bridge.status(&session)["head"]["version"], "1");
++        }
++        for id in [
++            "file.new",
++            "file.open",
++            "file.close",
++            "file.export",
++            "font.add",
++            "font.rescan",
++            "review.addToDictionary",
++            "insert.picture",
++            "insert.hyperlink",
++            "shape.action",
++        ] {
++            assert!(session.execute(id, &json!({"path":"/outside"})).is_err(), "{id}");
++            assert_eq!(bytes(&session), before);
++        }
++        let mut head = open.head.clone();
++        head.version = "99".into();
++        assert!(bridge.export(&session, Export { scope: open.scope.clone(), head, format: ExportFormat::Pdf }).is_err());
++        assert_eq!(bytes(&session), before);
++    }
++    #[test]
++    fn exports_both_real_formats_from_the_exact_accepted_version_without_changing_session() {
++        let (bridge, session, open, _, _) = fixture();
++        let before = bytes(&session);
++        for format in [ExportFormat::Pptx, ExportFormat::Pdf] {
++            let pdf = format == ExportFormat::Pdf;
++            let output = bridge.export(&session, Export { scope: open.scope.clone(), head: open.head.clone(), format }).unwrap();
++            assert!(output.bytes.starts_with(if pdf { b"%PDF-" } else { b"PK" }));
++            assert_eq!(output.metadata["sha256"], hash(&output.bytes));
++            assert_eq!(bytes(&session), before);
++        }
++    }
++    #[test]
++    fn human_and_agent_adopt_the_returned_document_once_without_replaying_creation() {
++        let (mut human, mut ui, mut open, slide, shape) = fixture();
++        ui.execute("text.set", &json!({"id":shape,"text":"Human's accepted title"})).unwrap();
++        let checkpoint = human.snapshot(&ui, mutation(&open, "human_save")).unwrap();
++        let ack = receipt(&open, &checkpoint, "human_save");
++        open.head = ack.head.clone();
++        human.accept(&mut ui, ack).unwrap();
++
++        // A real agent must receive its own authorized binding from Zoen. It executes
++        // once against these accepted bytes; the UI receives the result, never the command.
++        let mut agent_open = open.clone();
++        agent_open.scope.actor_id = "authorized_agent".into();
++        agent_open.scope.actor_kind = ActorKind::Agent;
++        let mut agent = HostBridge::default();
++        let mut worker = Session::new();
++        agent.open(&mut worker, agent_open.clone(), &checkpoint.bytes).unwrap();
++        worker.prefs.author = "editable display preference".into();
++        let change = agent
++            .execute(
++                &mut worker,
++                Command {
++                    mutation: mutation(&agent_open, "agent_add_slide"),
++                    action: Action::SlideNew(SlideNew {
++                        after_slide_id: slide,
++                        layout: "title".into(),
++                        title: "Agent's new slide".into(),
++                        body: "Same document".into(),
++                    }),
++                },
++            )
++            .unwrap();
++        assert_eq!(change.metadata["scope"]["actorId"], "authorized_agent");
++        assert_eq!(change.metadata["scope"]["actorKind"], "agent");
++        let next = Head { version: "3".into(), sha256: change.metadata["sha256"].as_str().unwrap().into() };
++        agent.accept(&mut worker, Accept { scope: agent_open.scope, mutation_id: "agent_add_slide".into(), head: next.clone() }).unwrap();
++        open.head = next;
++        human.open(&mut ui, open.clone(), &change.bytes).unwrap();
++        assert_eq!(bytes(&ui), change.bytes);
++        assert_eq!(ui.doc().unwrap().doc.slides.len(), 2);
++        let model = serde_json::to_string(&ui.doc().unwrap().doc).unwrap();
++        assert!(model.contains("Human's accepted title"));
++        assert!(model.contains("Agent's new slide"));
++        assert_eq!(ui.doc().unwrap().doc.next_id, worker.doc().unwrap().doc.next_id);
++
++        // This is engine-level cold open, not a durability claim about Zoen storage.
++        let mut reopened = HostBridge::default();
++        let mut restarted = Session::new();
++        reopened.open(&mut restarted, open, &change.bytes).unwrap();
++        assert_eq!(bytes(&restarted), change.bytes);
++        assert_eq!(restarted.doc().unwrap().doc.slides.len(), 2);
++    }
++    #[test]
++    fn invalid_document_bytes_unknown_future_fields_and_same_version_hash_replacement_are_rejected_before_adoption() {
++        let (mut bridge, mut session, open, _, _) = fixture();
++        let before = bytes(&session);
++        let mut bad = open.clone();
++        bad.head.version = "2".into();
++        bad.head.sha256 = hash(b"not a zip");
++        assert!(bridge.open(&mut session, bad, b"not a zip").is_err());
++        let mut replacement = open.clone();
++        replacement.head.sha256 = "0".repeat(64);
++        assert_eq!(bridge.open(&mut session, replacement, &before).err().unwrap().code, "stale_head");
++        let mut original = zip::ZipArchive::new(Cursor::new(&before)).unwrap();
++        let mut manifest = Vec::new();
++        original.by_name("presentation.json").unwrap().read_to_end(&mut manifest).unwrap();
++        let mut value: Value = serde_json::from_slice(&manifest).unwrap();
++        value["presentation"]["futureFeature"] = json!({"mustRemain":true});
++        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
++        use std::io::Write;
++        for index in 0..original.len() {
++            let mut entry = original.by_index(index).unwrap();
++            let mut content = Vec::new();
++            entry.read_to_end(&mut content).unwrap();
++            if entry.name() == "presentation.json" {
++                content = serde_json::to_vec(&value).unwrap();
++            }
++            writer.start_file(entry.name(), zip::write::SimpleFileOptions::default().compression_method(entry.compression())).unwrap();
++            writer.write_all(&content).unwrap();
++        }
++        let changed = writer.finish().unwrap().into_inner();
++        let mut import = open.clone();
++        import.head.version = "2".into();
++        import.head.sha256 = hash(&changed);
++        assert_eq!(bridge.open(&mut session, import, &changed).err().unwrap().code, "import_requires_review");
++        assert_eq!(bytes(&session), before);
++    }
++}
+diff --git a/crates/host-bridge/src/lifecycle.rs b/crates/host-bridge/src/lifecycle.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/host-bridge/src/lifecycle.rs
+@@ -0,0 +1,47 @@
++//! A hosted binding is retired permanently for the lifetime of this WASM module.
++//! A fresh WebView/module creates a new binding; an asynchronous initialization callback
++//! cannot revive a dismissed view or inherit the previous artifact's pending work.
++#[derive(Default)]
++pub struct HostLifecycle {
++    active: bool,
++    retired: bool,
++}
++impl HostLifecycle {
++    pub fn install(&mut self, hosted: bool) -> bool {
++        self.active = hosted && !self.retired;
++        self.active
++    }
++    pub fn active(&self) -> bool {
++        self.active && !self.retired
++    }
++    pub fn retire(&mut self) {
++        self.retired = true;
++        self.active = false;
++    }
++}
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn dismissal_before_async_ready_cannot_reactivate_a_binding() {
++        let mut binding = HostLifecycle::default();
++        assert!(binding.install(true)); // start, before WebRunner readiness
++        binding.retire();
++        assert!(!binding.active());
++        assert!(!binding.install(true)); // delayed WebRunner callback
++        assert!(!binding.active());
++        binding.retire();
++        assert!(!binding.install(false));
++        assert!(!binding.install(true));
++    }
++    #[test]
++    fn standalone_is_never_hosted_and_a_fresh_module_has_its_own_lifetime() {
++        let mut standalone = HostLifecycle::default();
++        assert!(!standalone.install(false));
++        standalone.retire();
++        let mut fresh = HostLifecycle::default();
++        assert!(fresh.install(true));
++        assert!(fresh.active());
++        assert!(!standalone.active());
++    }
++}
+diff --git a/apps/deckcraft-web/Cargo.toml b/apps/deckcraft-web/Cargo.toml
+--- a/apps/deckcraft-web/Cargo.toml
++++ b/apps/deckcraft-web/Cargo.toml
+@@ -15,10 +15,12 @@
+ 
+ [dependencies]
+ deckcraft-engine = { workspace = true }
++deckcraft-host-bridge = { workspace = true }
+ deckcraft-ui-egui = { workspace = true }
+ egui = { workspace = true }
+ log = { workspace = true }
+ serde_json = { workspace = true }
++serde = { workspace = true }
+ 
+ [target.'cfg(target_arch = "wasm32")'.dependencies]
+ # `wgpu` pulls egui-wgpu's defaults: WebGPU plus the WebGL2 fallback.
+diff --git a/apps/deckcraft-web/src/main.rs b/apps/deckcraft-web/src/main.rs
+--- a/apps/deckcraft-web/src/main.rs
++++ b/apps/deckcraft-web/src/main.rs
+@@ -19,6 +19,8 @@
+ #![forbid(unsafe_code)]
+ 
+ #[cfg(target_arch = "wasm32")]
++mod host_api;
++#[cfg(target_arch = "wasm32")]
+ mod web;
+ 
+ #[cfg(target_arch = "wasm32")]
+diff --git a/apps/deckcraft-web/src/web.rs b/apps/deckcraft-web/src/web.rs
+--- a/apps/deckcraft-web/src/web.rs
++++ b/apps/deckcraft-web/src/web.rs
+@@ -1,7 +1,10 @@
+ //! The browser shell: web `Services`, drag-and-drop, and the eframe web runner.
+ 
++use crate::host_api;
+ use deckcraft_engine::Session;
++use deckcraft_host_bridge::{HostBridge, managed_command_policy};
+ use deckcraft_ui_egui::{Inbox, InboxEvent, InboxFile, Services, SlideApp};
++use std::sync::Arc;
+ use wasm_bindgen::JsCast as _;
+ 
+ const PRESENTATION_EXTS: &[&str] = &["deckcraft", "pptx", "potx", "ppsx", "txt", "md"];
+@@ -12,8 +15,10 @@
+ const LOADING_ID: &str = "deckcraft_loading";
+ 
+ pub fn start() {
++    let hosted = query().trim_start_matches('?').split('&').any(|part| part == "zoenHost=1");
++    host_api::install(hosted, None);
+     eframe::WebLogger::init(log::LevelFilter::Info).ok();
+-    wasm_bindgen_futures::spawn_local(async {
++    wasm_bindgen_futures::spawn_local(async move {
+         let Some(document) = web_sys::window().and_then(|w| w.document()) else {
+             log::error!("no document");
+             return;
+@@ -37,19 +42,27 @@
+                         log::info!("deckcraft-web {}: wgpu backend {:?}", env!("CARGO_PKG_VERSION"), rs.adapter.get_info().backend);
+                     }
+                     let inbox: Inbox = Inbox::default();
+-                    let mut app = SlideApp::new(Session::new(), services(inbox.clone(), cc.egui_ctx.clone()));
++                    let mut session = Session::new();
++                    if hosted {
++                        session.command_policy = Some(managed_command_policy);
++                    }
++                    host_api::install(hosted, Some(cc.egui_ctx.clone()));
++                    let mut app = SlideApp::new(session, if hosted { Services::default() } else { services(inbox.clone(), cc.egui_ctx.clone()) });
+                     let q = query();
+-                    if !q.contains("blank") {
++                    if hosted {
++                        // The authenticated host opens exact accepted bytes. No sample, browser
++                        // account, local storage, file picker, recovery or upstream collaboration.
++                    } else if !q.contains("blank") {
+                         if let Err(e) = deckcraft_engine::sample::open_sample(&mut app.session) {
+                             log::error!("sample deck: {e}");
+                         }
+                     } else if let Err(e) = app.run("file.new", serde_json::json!({})) {
+                         log::error!("new presentation: {e}");
+                     }
+-                    if q.contains("show") {
++                    if !hosted && q.contains("show") {
+                         app.start_show(0, false);
+                     }
+-                    Ok(Box::new(WebShell { app, inbox }))
++                    Ok(Box::new(WebShell { app, inbox, bridge: hosted.then(HostBridge::default), observed: None }))
+                 }),
+             )
+             .await;
+@@ -71,10 +84,20 @@
+ struct WebShell {
+     app: SlideApp,
+     inbox: Inbox,
++    bridge: Option<HostBridge>,
++    observed: Option<Arc<deckcraft_engine::model::Presentation>>,
+ }
+ 
+ impl eframe::App for WebShell {
+     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
++        if let Some(bridge) = &mut self.bridge {
++            ctx.input_mut(|i| {
++                i.raw.dropped_files.clear();
++            });
++            host_api::drain(bridge, &mut self.app.session, ctx);
++            self.app.logic(ctx);
++            return;
++        }
+         let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
+         for f in dropped {
+             // Capture the document and slide now. The bytes arrive later, after the user may
+@@ -101,11 +124,29 @@
+     }
+ 
+     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
++        if self.bridge.is_some() {
++            raw.dropped_files.clear();
++            raw.events.retain(|event| !matches!(event, egui::Event::Paste(_)));
++        }
+         self.app.raw_input_hook(raw);
+     }
+ 
+     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+         self.app.ui(ui);
++        if let Some(bridge) = &self.bridge {
++            // No browser clipboard, popup, OS URL or download authority is inherited.
++            ui.ctx().output_mut(|output| output.commands.clear());
++            let current = self.app.session.active().map(|d| &d.doc);
++            let changed = match (&self.observed, current) {
++                (Some(previous), Some(current)) => !Arc::ptr_eq(previous, current),
++                (None, Some(_)) | (Some(_), None) => true,
++                _ => false,
++            };
++            if changed {
++                self.observed = current.cloned();
++                host_api::changed(bridge, &self.app.session);
++            }
++        }
+     }
+ }
+ 
+diff --git a/apps/deckcraft-web/src/host_api.rs b/apps/deckcraft-web/src/host_api.rs
+new file mode 100644
+--- /dev/null
++++ b/apps/deckcraft-web/src/host_api.rs
+@@ -0,0 +1,160 @@
++//! In-process WASM calls only. MCP transport is owned by the official Apps SDK in
++//! the embedding shell; this module never sends window/postMessage/network traffic.
++use std::cell::RefCell;
++use std::collections::VecDeque;
++
++use deckcraft_engine::Session;
++use deckcraft_host_bridge::lifecycle::HostLifecycle;
++use deckcraft_host_bridge::{Accept, Command, Export, HostBridge, MAX_DOCUMENT_BYTES, Mutation, Open, Proposal};
++use serde::Deserialize;
++use serde_json::json;
++use wasm_bindgen::prelude::*;
++
++#[derive(Deserialize)]
++#[serde(tag = "op", content = "input", deny_unknown_fields, rename_all = "camelCase")]
++enum Request {
++    Open(Open),
++    Command(Command),
++    Snapshot(Mutation),
++    Accept(Accept),
++    Export(Export),
++    Status,
++}
++struct Pending {
++    request: Request,
++    bytes: Vec<u8>,
++    resolve: js_sys::Function,
++    reject: js_sys::Function,
++}
++#[derive(Default)]
++struct Queue {
++    lifecycle: HostLifecycle,
++    ctx: Option<egui::Context>,
++    pending: VecDeque<Pending>,
++    bytes: usize,
++    on_change: Option<js_sys::Function>,
++}
++thread_local! { static QUEUE: RefCell<Queue> = RefCell::new(Queue::default()); }
++fn error(code: &str) -> JsValue {
++    JsValue::from_str(&json!({"code":code}).to_string())
++}
++pub fn install(hosted: bool, ctx: Option<egui::Context>) {
++    QUEUE.with(|q| {
++        let mut q = q.borrow_mut();
++        q.ctx = if q.lifecycle.install(hosted) { ctx } else { None };
++    });
++}
++/// A narrow, bounded FIFO onto the application's own egui/Session owner. The
++/// embedding JS adapter must enforce the same Uint8Array limit before wasm-bindgen
++/// copies it; this Rust limit alone does not bound that initial allocation.
++#[wasm_bindgen(js_name = zoenHostRequest)]
++pub fn request(envelope: String, bytes: Vec<u8>) -> js_sys::Promise {
++    if envelope.len() > 65_536 || bytes.len() > MAX_DOCUMENT_BYTES {
++        return js_sys::Promise::reject(&error("request_too_large"));
++    }
++    let request: Request = match serde_json::from_str(&envelope) {
++        Ok(request) => request,
++        Err(_) => return js_sys::Promise::reject(&error("invalid_request")),
++    };
++    if !matches!(&request, Request::Open(_)) && !bytes.is_empty() {
++        return js_sys::Promise::reject(&error("unexpected_binary_input"));
++    }
++    let mut work = Some((request, bytes));
++    js_sys::Promise::new(&mut |resolve, reject| {
++        let Some((request, bytes)) = work.take() else {
++            return;
++        };
++        QUEUE.with(|queue| {
++            let mut queue = queue.borrow_mut();
++            if !queue.lifecycle.active() || queue.pending.len() >= 8 || queue.bytes.saturating_add(bytes.len()) > MAX_DOCUMENT_BYTES * 2 {
++                let _ = reject.call1(&JsValue::NULL, &error("host_unavailable_or_busy"));
++                return;
++            }
++            queue.bytes += bytes.len();
++            queue.pending.push_back(Pending { request, bytes, resolve, reject });
++            if let Some(ctx) = &queue.ctx {
++                ctx.request_repaint();
++            }
++        });
++    })
++}
++#[wasm_bindgen(js_name = zoenHostOnChange)]
++pub fn on_change(callback: Option<js_sys::Function>) -> std::result::Result<(), JsValue> {
++    QUEUE.with(|q| {
++        let mut q = q.borrow_mut();
++        if !q.lifecycle.active() {
++            return Err(error("host_unavailable_or_retired"));
++        }
++        q.on_change = callback;
++        Ok(())
++    })
++}
++#[wasm_bindgen(js_name = zoenHostRetire)]
++pub fn retire() {
++    let pending = QUEUE.with(|q| {
++        let mut q = q.borrow_mut();
++        q.lifecycle.retire();
++        q.ctx = None;
++        q.bytes = 0;
++        q.on_change = None;
++        std::mem::take(&mut q.pending)
++    });
++    for work in pending {
++        let _ = work.reject.call1(&JsValue::NULL, &error("host_retired"));
++    }
++}
++pub fn changed(bridge: &HostBridge, session: &Session) {
++    let callback = QUEUE.with(|q| {
++        let q = q.borrow();
++        if q.lifecycle.active() { q.on_change.clone() } else { None }
++    });
++    if let Some(callback) = callback {
++        let _ = callback.call1(&JsValue::NULL, &JsValue::from_str(&bridge.status(session).to_string()));
++    }
++}
++pub fn drain(bridge: &mut HostBridge, session: &mut Session, ctx: &egui::Context) {
++    // One request per frame; a request owns a Promise, so results cannot cross callers.
++    let pending = QUEUE.with(|q| {
++        let mut q = q.borrow_mut();
++        let p = q.pending.pop_front();
++        if let Some(p) = &p {
++            q.bytes = q.bytes.saturating_sub(p.bytes.len());
++        }
++        p
++    });
++    let Some(work) = pending else {
++        return;
++    };
++    let result = match work.request {
++        Request::Open(input) => bridge.open(session, input, &work.bytes).map(|metadata| Proposal { bytes: vec![], metadata }),
++        Request::Command(input) => bridge.execute(session, input),
++        Request::Snapshot(input) => bridge.snapshot(session, input),
++        Request::Accept(input) => bridge.accept(session, input).map(|metadata| Proposal { bytes: vec![], metadata }),
++        Request::Export(input) => bridge.export(session, input),
++        Request::Status => Ok(Proposal { bytes: vec![], metadata: bridge.status(session) }),
++    };
++    match result {
++        Ok(proposal) => {
++            let object = js_sys::Object::new();
++            let metadata = JsValue::from_str(&proposal.metadata.to_string());
++            let bytes = js_sys::Uint8Array::from(proposal.bytes.as_slice());
++            let wrapped = js_sys::Reflect::set(&object, &JsValue::from_str("metadata"), &metadata)
++                .and_then(|_| js_sys::Reflect::set(&object, &JsValue::from_str("bytes"), &bytes));
++            match wrapped {
++                Ok(_) => {
++                    let _ = work.resolve.call1(&JsValue::NULL, &object);
++                }
++                Err(error) => {
++                    let _ = work.reject.call1(&JsValue::NULL, &error);
++                }
++            }
++        }
++        Err(error) => {
++            let value = serde_json::to_string(&error).unwrap_or_else(|_| json!({"code":"bridge_failed"}).to_string());
++            let _ = work.reject.call1(&JsValue::NULL, &JsValue::from_str(&value));
++        }
++    }
++    if QUEUE.with(|q| !q.borrow().pending.is_empty()) {
++        ctx.request_repaint();
++    }
++}

@@ -1,8 +1,14 @@
+import {
+  DEFAULT_THEME_CUSTOMIZATION,
+  telegramPresentation,
+  type ThemeCustomization,
+} from './telegram.ts';
+
 /** Local civil time only: no location, solar service, network, or system appearance. */
-export const SKY_PHASES = ['deepNight', 'dawn', 'morning', 'day', 'sunset', 'night'] as const;
+export const SKY_PHASES = ['day', 'night'] as const;
 export type SkyPhase = (typeof SKY_PHASES)[number];
 export type ThemePreference = 'auto' | SkyPhase;
-export type SkyTextureWeights = { day: number; warm: number; night: number };
+export type SkyTextureWeights = { day: number; night: number };
 export type SkyColors = {
   top: string;
   middle: string;
@@ -40,7 +46,7 @@ const anchors: ReadonlyArray<{
   haze: number;
 }> = [
   {
-    phase: 'deepNight',
+    phase: 'night',
     minute: 0,
     top: '#080F19',
     middle: '#0D1723',
@@ -49,26 +55,8 @@ const anchors: ReadonlyArray<{
     haze: 0.03,
   },
   {
-    phase: 'dawn',
-    minute: 300,
-    top: '#F2F5F8',
-    middle: '#F7F4F1',
-    bottom: '#FBF3E9',
-    stars: 0,
-    haze: 0.12,
-  },
-  {
-    phase: 'morning',
-    minute: 480,
-    top: '#EEF5FA',
-    middle: '#F5F8FA',
-    bottom: '#FBFAF6',
-    stars: 0,
-    haze: 0.08,
-  },
-  {
     phase: 'day',
-    minute: 780,
+    minute: 360,
     top: '#ECF4FA',
     middle: '#F4F8FB',
     bottom: '#FBFCFC',
@@ -76,22 +64,13 @@ const anchors: ReadonlyArray<{
     haze: 0.05,
   },
   {
-    phase: 'sunset',
-    minute: 1080,
-    top: '#F4F5F7',
-    middle: '#FAF5EF',
-    bottom: '#FCF2E8',
-    stars: 0,
-    haze: 0.1,
-  },
-  {
     phase: 'night',
-    minute: 1260,
-    top: '#0D1421',
-    middle: '#121D2B',
-    bottom: '#1B2934',
-    stars: 0.2,
-    haze: 0.05,
+    minute: 1200,
+    top: '#080F19',
+    middle: '#0D1723',
+    bottom: '#14212C',
+    stars: 0.35,
+    haze: 0.03,
   },
 ];
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
@@ -165,8 +144,8 @@ function skyInk(sky: SkyColors): string {
     Math.min(...backgrounds.map((background) => contrastRatio(ink, background)));
   return score('#181D24') >= score('#FFFFFF') ? '#181D24' : '#FFFFFF';
 }
-function constrainSky(sky: SkyColors): { sky: SkyColors; text: string } {
-  const text = skyInk(sky);
+function constrainSky(sky: SkyColors, preferredInk?: string): { sky: SkyColors; text: string } {
+  const text = preferredInk ?? skyInk(sky);
   const opposite = text === '#FFFFFF' ? '#000000' : '#FFFFFF';
   // Preserve curated hue and saturation wherever possible. Only a mixed dawn /
   // dusk frontier needs its outlying stop nudged into the same legibility band.
@@ -185,16 +164,17 @@ function constrainSky(sky: SkyColors): { sky: SkyColors; text: string } {
 function semanticColors(
   sky: SkyColors,
   text: string,
+  presentation: ReturnType<typeof telegramPresentation>,
 ): { scheme: 'light' | 'dark'; colors: SemanticColors } {
   const scheme = text === '#FFFFFF' ? 'dark' : 'light';
   const dark = scheme === 'dark';
   // Content plates remain coherent. Mixing light and dark surface colors with
   // the clock produces muddy gray cards during otherwise light afternoons.
-  const background = dark ? '#0D1421' : '#F8FAFB';
-  const surface = dark ? '#121D2BF5' : '#FFFFFFF5';
-  const raised = dark ? '#17212DF5' : '#FFFFFFF5';
-  const muted = dark ? '#1E2A36' : '#EDF1F4';
-  const theirs = dark ? '#262628' : '#E9E9EB';
+  const background = dark ? '#000000' : '#F8FAFB';
+  const surface = dark ? '#1C1C1DF5' : '#FFFFFFF5';
+  const raised = dark ? '#2C2C2EF5' : '#FFFFFFF5';
+  const muted = dark ? '#272728' : '#EDEDF1';
+  const theirs = presentation.chat.incoming.fill;
   const plates = [
     background,
     muted,
@@ -206,8 +186,8 @@ function semanticColors(
   ];
   const foreground = (night: string, day: string) =>
     readable(dark ? night : day, plates, text, 4.6);
-  const accent = foreground('#9BCD6A', '#2E6B31');
-  const mine = dark ? '#000000' : '#FFFFFF';
+  const accent = readable(presentation.selectedAccent, plates, text, 4.6);
+  const mine = presentation.chat.outgoing.fill;
   return {
     scheme,
     colors: {
@@ -223,20 +203,12 @@ function semanticColors(
       accent,
       onAccent: inkFor(accent),
       mine,
-      onMine: dark ? '#FFFFFF' : '#000000',
+      onMine: presentation.chat.outgoing.text,
       danger: foreground('#FF9B9D', '#AE2843'),
       read: foreground('#8CCEE9', '#225C88'),
     },
   };
 }
-const textureForPhase: Record<SkyPhase, keyof SkyTextureWeights> = {
-  deepNight: 'night',
-  dawn: 'warm',
-  morning: 'day',
-  day: 'day',
-  sunset: 'warm',
-  night: 'night',
-};
 /** Keep native images decorative: every possible pixel must preserve the same
  * text contrast as the bare sky. A small margin covers channel quantization. */
 function textureOpacityFor(sky: SkyColors, inks: string[], cap: number, minimum = 4.55): number {
@@ -255,13 +227,17 @@ function textureOpacityFor(sky: SkyColors, inks: string[], cap: number, minimum 
   return Math.floor(low * 10_000) / 10_000;
 }
 export function normalizeAppearance(value: string | null): ThemePreference {
-  if (value === 'light') return 'day';
-  if (value === 'dark') return 'night';
+  if (['light', 'dawn', 'morning', 'sunset'].includes(value ?? '')) return 'day';
+  if (value === 'dark' || value === 'deepNight') return 'night';
   return value === 'auto' || SKY_PHASES.some((phase) => phase === value)
     ? (value as ThemePreference)
     : 'auto';
 }
-export function resolveSkyTheme(preference: ThemePreference, date: Date) {
+export function resolveSkyTheme(
+  preference: ThemePreference,
+  date: Date,
+  customization: ThemeCustomization = DEFAULT_THEME_CUSTOMIZATION,
+) {
   const minute =
     date.getHours() * 60 +
     date.getMinutes() +
@@ -273,43 +249,34 @@ export function resolveSkyTheme(preference: ThemePreference, date: Date) {
       ? anchors.reduce((found, anchor, position) => (minute >= anchor.minute ? position : found), 0)
       : anchors.findIndex((anchor) => anchor.phase === preference);
   const from = anchors[Math.max(0, index)]!;
-  const to = anchors[(index + 1) % anchors.length]!;
-  const end = to.minute || 1440;
-  // Hold the quiet night for the night. A five-hour midnight-to-dawn blend
-  // otherwise turns the app gray at 02:30. Only actual day/night crossings use
-  // a short, smooth twilight; subtle same-scheme sky changes span their phase.
-  const twilight =
-    (from.phase === 'deepNight' && to.phase === 'dawn') ||
-    (from.phase === 'sunset' && to.phase === 'night');
-  const start = twilight ? end - 30 : from.minute;
-  const linear = preference === 'auto' ? clamp((minute - start) / (end - start)) : 0;
-  const progress = linear * linear * (3 - 2 * linear);
-  const scalar = (a: number, b: number) => a + (b - a) * progress;
+  const top = customization.backgroundTop ?? from.top;
+  const bottom = customization.backgroundBottom ?? from.bottom;
+  // Only two shipped skies. Automatic mode selects Day06:00–20:00 and Night
+  // outside it; it never synthesizes extra dawn/sunset themes or a gray blend.
   const rawSky: SkyColors = {
-    top: mixColor(from.top, to.top, progress),
-    middle: mixColor(from.middle, to.middle, progress),
-    bottom: mixColor(from.bottom, to.bottom, progress),
-    stars: scalar(from.stars, to.stars),
-    haze: scalar(from.haze, to.haze),
+    top,
+    middle:
+      customization.backgroundTop || customization.backgroundBottom
+        ? mixColor(top, bottom, 0.54)
+        : from.middle,
+    bottom,
+    stars: from.stars,
+    haze: from.haze,
     transitionMs: 0,
-    textureWeights: Object.fromEntries(
-      (['day', 'warm', 'night'] as const).map((texture) => [
-        texture,
-        scalar(
-          textureForPhase[from.phase] === texture ? 1 : 0,
-          textureForPhase[to.phase] === texture ? 1 : 0,
-        ),
-      ]),
-    ) as SkyTextureWeights,
+    textureWeights: { day: from.phase === 'day' ? 1 : 0, night: from.phase === 'night' ? 1 : 0 },
     textureOpacity: 0,
   };
-  const { sky, text } = constrainSky(rawSky);
+  const { sky, text } = constrainSky(rawSky, from.phase === 'night' ? '#FFFFFF' : '#000000');
   // Preserve visible photography, then choose ink against that full envelope.
   // Only the primary label's immutable scheme limits opacity during twilight;
   // secondary and colored labels adapt toward that same readable primary ink.
   const cap = 0.28 - sky.textureWeights.night * 0.08;
   const photoSky = { ...sky, textureOpacity: textureOpacityFor(sky, [text], cap, 4.7) };
-  const semantic = semanticColors(photoSky, text);
+  const basePresentation = telegramPresentation(from.phase, customization);
+  const semantic = semanticColors(photoSky, text, basePresentation);
+  const presentation = customization.accent
+    ? telegramPresentation(from.phase, customization, semantic.colors.accent)
+    : basePresentation;
   const inks = [
     semantic.colors.text,
     semantic.colors.secondary,
@@ -325,6 +292,7 @@ export function resolveSkyTheme(preference: ThemePreference, date: Date) {
       textureOpacity: textureOpacityFor(photoSky, inks, photoSky.textureOpacity),
     },
     ...semantic,
+    presentation,
   };
 }
 

@@ -144,6 +144,18 @@ enum Command {
         kinds: Vec<String>,
         limit: u32,
     },
+    RecentAttachments {
+        scope: crate::MediaDraftScope,
+        kind: crate::RecentAttachmentKind,
+        query: String,
+        cursor: Option<String>,
+        limit: u32,
+    },
+    AttachmentReferenceValidate {
+        scope: crate::MediaDraftScope,
+        kind: crate::RecentAttachmentKind,
+        reference: crate::RecentAttachmentReference,
+    },
     SetChatPrefs {
         space_id: String,
         pinned: bool,
@@ -330,6 +342,32 @@ enum Command {
         extra_cents: String,
     },
     AppSpecs {},
+    AppBinaryRead {
+        item_id: String,
+        version: Option<u32>,
+        expected_sha256: Option<String>,
+    },
+    AppBinaryCreate {
+        space_id: String,
+        title: String,
+        data_base64: String,
+        mutation_id: String,
+    },
+    AppBinarySave {
+        item_id: String,
+        expected_version: u32,
+        expected_sha256: String,
+        data_base64: String,
+        mutation_id: String,
+        intent_sha256: String,
+    },
+    AppBinaryResult {
+        item_id: String,
+        expected_version: u32,
+        expected_sha256: String,
+        mutation_id: String,
+        intent_sha256: String,
+    },
     AppDocumentRead {
         item_id: String,
     },
@@ -481,8 +519,11 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::PlanPageDto::export_all(&config)?;
     crate::SearchHit::export_all(&config)?;
     crate::MessageSearchPage::export_all(&config)?;
+    crate::RecentAttachmentPage::export_all(&config)?;
+    crate::RecentAttachmentSourceBinding::export_all(&config)?;
     crate::AppSpecDto::export_all(&config)?;
     crate::AppDocumentDto::export_all(&config)?;
+    crate::AppBinaryDocumentDto::export_all(&config)?;
     crate::AppCallOutcome::export_all(&config)?;
     crate::AppResourceDto::export_all(&config)?;
     crate::DeviceGrantDto::export_all(&config)?;
@@ -533,7 +574,10 @@ fn decode(request: &str) -> Result<Command, CoreError> {
         }
         let envelope: Envelope<'_> =
             serde_json::from_str(request).map_err(|_| invalid("Invalid application command."))?;
-        if !matches!(envelope.op, "app_document_save" | "app_document_copy") {
+        let binary = matches!(envelope.op, "app_binary_create" | "app_binary_save");
+        if (binary && request.len() > crate::app_binary_documents::MAX_BASE64_BYTES + 8 * 1024)
+            || (!binary && !matches!(envelope.op, "app_document_save" | "app_document_copy"))
+        {
             return Err(invalid("Application request is too large."));
         }
     }
@@ -542,7 +586,10 @@ fn decode(request: &str) -> Result<Command, CoreError> {
     if request.len() > MAX_REQUEST_BYTES
         && !matches!(
             command,
-            Command::AppDocumentSave { .. } | Command::AppDocumentCopy { .. }
+            Command::AppDocumentSave { .. }
+                | Command::AppDocumentCopy { .. }
+                | Command::AppBinarySave { .. }
+                | Command::AppBinaryCreate { .. }
         )
         && !(request.len() <= MAX_REQUEST_BYTES + 8 * 1024
             && matches!(
@@ -819,6 +866,18 @@ impl Client {
                 cursor,
                 limit,
             } => encode(&self.search_messages(space_id, query, cursor, limit.min(100))?),
+            RecentAttachments {
+                scope,
+                kind,
+                query,
+                cursor,
+                limit,
+            } => encode(&self.recent_attachments(scope, kind, query, cursor, limit)?),
+            AttachmentReferenceValidate {
+                scope,
+                kind,
+                reference,
+            } => encode(&self.attachment_reference_validate(scope, kind, reference)?),
             Items {} => encode(&self.items()),
             NativeSurfaceItems {
                 expected_identity_id,
@@ -918,6 +977,45 @@ impl Client {
                 extra_cents,
             } => encode(&self.raise_budget(agent_id, cents(extra_cents)?)?),
             AppSpecs {} => encode(&self.app_specs()),
+            AppBinaryRead {
+                item_id,
+                version,
+                expected_sha256,
+            } => encode(&self.app_binary_read(item_id, version, expected_sha256)?),
+            AppBinaryCreate {
+                space_id,
+                title,
+                data_base64,
+                mutation_id,
+            } => encode(&self.app_binary_create(space_id, title, data_base64, mutation_id)?),
+            AppBinarySave {
+                item_id,
+                expected_version,
+                expected_sha256,
+                data_base64,
+                mutation_id,
+                intent_sha256,
+            } => encode(&self.app_binary_save(
+                item_id,
+                expected_version,
+                expected_sha256,
+                data_base64,
+                mutation_id,
+                intent_sha256,
+            )?),
+            AppBinaryResult {
+                item_id,
+                expected_version,
+                expected_sha256,
+                mutation_id,
+                intent_sha256,
+            } => encode(&self.app_binary_result(
+                item_id,
+                expected_version,
+                expected_sha256,
+                mutation_id,
+                intent_sha256,
+            )?),
             AppDocumentRead { item_id } => encode(&self.app_document_read(item_id)?),
             AppDocumentCopy {
                 item_id,

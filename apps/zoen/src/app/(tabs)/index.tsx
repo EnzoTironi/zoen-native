@@ -86,6 +86,7 @@ export default function Home() {
           }}
         >
           <Text
+            testID="home-title"
             accessibilityRole="header"
             style={{ color: colors.text, fontSize: 34, fontWeight: '700', letterSpacing: -1 }}
           >

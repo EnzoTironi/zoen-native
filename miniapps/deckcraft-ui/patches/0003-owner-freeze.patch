@@ -1,0 +1,118 @@
+diff --git a/apps/deckcraft-web/src/host_api.rs b/apps/deckcraft-web/src/host_api.rs
+--- a/apps/deckcraft-web/src/host_api.rs
++++ b/apps/deckcraft-web/src/host_api.rs
+@@ -5,7 +5,7 @@
+ 
+ use deckcraft_engine::Session;
+ use deckcraft_host_bridge::lifecycle::HostLifecycle;
+-use deckcraft_host_bridge::{Accept, Command, Export, HostBridge, MAX_DOCUMENT_BYTES, Mutation, Open, Proposal};
++use deckcraft_host_bridge::{Accept, BridgeError, Command, Export, HostBridge, MAX_DOCUMENT_BYTES, Mutation, Open, Proposal};
+ use serde::Deserialize;
+ use serde_json::json;
+ use wasm_bindgen::prelude::*;
+@@ -19,6 +19,12 @@
+     Accept(Accept),
+     Export(Export),
+     Status,
++    Freeze(FreezeInput),
++}
++#[derive(Deserialize)]
++#[serde(deny_unknown_fields)]
++struct FreezeInput {
++    frozen: bool,
+ }
+ struct Pending {
+     request: Request,
+@@ -34,6 +40,7 @@
+     ctx: Option<egui::Context>,
+     pending: VecDeque<Pending>,
+     bytes: usize,
++    frozen: bool,
+     on_change: Option<js_sys::Function>,
+ }
+ thread_local! { static QUEUE: RefCell<Queue> = RefCell::new(Queue::default()); }
+@@ -114,6 +121,7 @@
+     let pending = QUEUE.with(|q| {
+         let mut q = q.borrow_mut();
+         q.lifecycle.retire();
++        q.frozen = true;
+         q.ctx = None;
+         q.bytes = 0;
+         q.on_change = None;
+@@ -123,6 +131,12 @@
+         let _ = work.reject.call1(&JsValue::NULL, &error("host_retired"));
+     }
+ }
++pub fn frozen() -> bool {
++    QUEUE.with(|q| {
++        let q = q.borrow();
++        q.frozen || !q.lifecycle.active()
++    })
++}
+ pub fn changed(bridge: &HostBridge, session: &Session) {
+     let callback = QUEUE.with(|q| {
+         let q = q.borrow();
+@@ -146,12 +160,27 @@
+         return;
+     };
+     let result = match work.request {
++        Request::Open(_) | Request::Command(_) if frozen() => Err(BridgeError { code: "host_frozen" }),
++        Request::Freeze(input) => {
++            if input.frozen && session.active().is_some_and(|d| d.composition.is_some() || d.interaction.is_some()) {
++                Err(BridgeError { code: "human_interaction" })
++            } else {
++                QUEUE.with(|q| q.borrow_mut().frozen = input.frozen);
++                let mut metadata = bridge.status(session);
++                metadata["frozen"] = serde_json::json!(input.frozen);
++                Ok(Proposal { bytes: vec![], metadata })
++            }
++        }
+         Request::Open(input) => bridge.open(session, input, &work.bytes).map(|metadata| Proposal { bytes: vec![], metadata }),
+         Request::Command(input) => bridge.execute(session, input),
+         Request::Snapshot(input) => bridge.snapshot(session, input),
+         Request::Accept(input) => bridge.accept(session, input).map(|metadata| Proposal { bytes: vec![], metadata }),
+         Request::Export(input) => bridge.export(session, input),
+-        Request::Status => Ok(Proposal { bytes: vec![], metadata: bridge.status(session) }),
++        Request::Status => {
++            let mut metadata = bridge.status(session);
++            metadata["frozen"] = serde_json::json!(frozen());
++            Ok(Proposal { bytes: vec![], metadata })
++        }
+     };
+     match result {
+         Ok(proposal) => {
+diff --git a/apps/deckcraft-web/src/web.rs b/apps/deckcraft-web/src/web.rs
+--- a/apps/deckcraft-web/src/web.rs
++++ b/apps/deckcraft-web/src/web.rs
+@@ -95,7 +95,9 @@
+                 i.raw.dropped_files.clear();
+             });
+             host_api::drain(bridge, &mut self.app.session, ctx);
+-            self.app.logic(ctx);
++            if !host_api::frozen() {
++                self.app.logic(ctx);
++            }
+             return;
+         }
+         let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
+@@ -126,12 +128,19 @@
+     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+         if self.bridge.is_some() {
+             raw.dropped_files.clear();
+-            raw.events.retain(|event| !matches!(event, egui::Event::Paste(_)));
++            if host_api::frozen() {
++                raw.events.clear();
++            } else {
++                raw.events.retain(|event| !matches!(event, egui::Event::Paste(_)));
++            }
+         }
+         self.app.raw_input_hook(raw);
+     }
+ 
+     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
++        if self.bridge.is_some() && host_api::frozen() {
++            ui.disable();
++        }
+         self.app.ui(ui);
+         if let Some(bridge) = &self.bridge {
+             // No browser clipboard, popup, OS URL or download authority is inherited.

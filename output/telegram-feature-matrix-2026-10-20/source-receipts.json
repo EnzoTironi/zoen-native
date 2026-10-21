@@ -1,0 +1,1645 @@
+{
+  "sources": [
+    {
+      "url": "https://core.telegram.org/api",
+      "final_url": "https://core.telegram.org/api",
+      "retrieved_at": "2026-10-20T21:31:23.756857+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api.html",
+      "sha256": "28cd9ef5d311ed7230ef5385181dd12cb9b21e2fdc7e7955189b4483d6ec0b7b",
+      "bytes": 45794
+    },
+    {
+      "url": "https://core.telegram.org/api/ai",
+      "final_url": "https://core.telegram.org/api/ai",
+      "retrieved_at": "2026-10-20T21:30:38.715612+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-ai.html",
+      "sha256": "4dc8690aad87bf1b5075a1dcfd54685aaf0dcf28a57a99c6b3afe9957558a018",
+      "bytes": 21572
+    },
+    {
+      "url": "https://core.telegram.org/api/auth",
+      "final_url": "https://core.telegram.org/api/auth",
+      "retrieved_at": "2026-10-20T21:30:38.776366+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-auth.html",
+      "sha256": "03db9d804819821eba81e7bbcab074eafdd3e7bb3c4a65e03332f2f479e44297",
+      "bytes": 52914
+    },
+    {
+      "url": "https://core.telegram.org/api/boost",
+      "final_url": "https://core.telegram.org/api/boost",
+      "retrieved_at": "2026-10-20T21:30:38.794313+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-boost.html",
+      "sha256": "36ed86e5e27564d81e78a565cd004018f74b1f9d6f4abd92883d8d62761db654",
+      "bytes": 63160
+    },
+    {
+      "url": "https://core.telegram.org/api/bots/connected-business-bots",
+      "final_url": "https://core.telegram.org/api/bots/connected-business-bots",
+      "retrieved_at": "2026-10-20T21:31:23.671567+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-bots-connected-business-bots.html",
+      "sha256": "41c01c389616484a411951c492b1627e6da7fb635e7e807b8c48db5c0e340b1c",
+      "bytes": 25917
+    },
+    {
+      "url": "https://core.telegram.org/api/business",
+      "final_url": "https://core.telegram.org/api/business",
+      "retrieved_at": "2026-10-20T21:30:38.923971+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-business.html",
+      "sha256": "9088708e8f7f8de896ddd8a9325713a801b5e9ca16267ab766038c7ef8ec03ab",
+      "bytes": 118297
+    },
+    {
+      "url": "https://core.telegram.org/api/channel",
+      "final_url": "https://core.telegram.org/api/channel",
+      "retrieved_at": "2026-10-20T21:30:38.717317+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-channel.html",
+      "sha256": "762913cf019c8d53565decfa7cbb1b8302377a9835cbd0e3c649cd134d185297",
+      "bytes": 52013
+    },
+    {
+      "url": "https://core.telegram.org/api/config",
+      "final_url": "https://core.telegram.org/api/config",
+      "retrieved_at": "2026-10-20T19:52:21.298431+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-config.html",
+      "sha256": "5f4be3d8205b635511798b12b4d4482b210d84e0d43423e8d6bb5be439f02cab",
+      "bytes": 181979
+    },
+    {
+      "url": "https://core.telegram.org/api/contacts",
+      "final_url": "https://core.telegram.org/api/contacts",
+      "retrieved_at": "2026-10-20T21:30:38.739909+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-contacts.html",
+      "sha256": "222c70459d3c5e3b9333b7a3175ab9e15714f96dd378747d074ebd10771819fc",
+      "bytes": 54522
+    },
+    {
+      "url": "https://core.telegram.org/api/end-to-end",
+      "final_url": "https://core.telegram.org/api/end-to-end",
+      "retrieved_at": "2026-10-20T21:30:39.668069+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-end-to-end.html",
+      "sha256": "7a40c92fbbb1ce9590b2d7899da748880188bb79e198ea3fa61f583a860317ed",
+      "bytes": 27530
+    },
+    {
+      "url": "https://core.telegram.org/api/entities",
+      "final_url": "https://core.telegram.org/api/entities",
+      "retrieved_at": "2026-10-20T21:30:39.722257+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-entities.html",
+      "sha256": "51c7c29598d215301b42ebf76cd44690dfa7bf87e9e2f0fab566003b2535c348",
+      "bytes": 25207
+    },
+    {
+      "url": "https://core.telegram.org/api/files",
+      "final_url": "https://core.telegram.org/api/files",
+      "retrieved_at": "2026-10-20T19:52:21.890501+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-files.html",
+      "sha256": "30ae8fbca17697cf80e4eef873b9696bec5412e416d0bc6c95d8574ef0446217",
+      "bytes": 112012
+    },
+    {
+      "url": "https://core.telegram.org/api/forum",
+      "final_url": "https://core.telegram.org/api/forum",
+      "retrieved_at": "2026-10-20T21:30:39.723192+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-forum.html",
+      "sha256": "7351739f2b733b363accb69385b6e5c1242fe2a1fcf50e92fc261c7cfe3ff369",
+      "bytes": 59370
+    },
+    {
+      "url": "https://core.telegram.org/api/gifts",
+      "final_url": "https://core.telegram.org/api/gifts",
+      "retrieved_at": "2026-10-20T21:30:40.144279+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-gifts.html",
+      "sha256": "9bc8c8f978f998cc570e8a78a9633c6c9d1626c4ddcee98167754cda198a89c1",
+      "bytes": 149963
+    },
+    {
+      "url": "https://core.telegram.org/api/group-calls",
+      "final_url": "https://core.telegram.org/api/group-calls",
+      "retrieved_at": "2026-10-20T21:31:25.087711+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-group-calls.html",
+      "sha256": "a609bde30a7823b5f4db738e910df0aa6d56db56fd346aa1397a3035247b4c67",
+      "bytes": 167312
+    },
+    {
+      "url": "https://core.telegram.org/api/premium",
+      "final_url": "https://core.telegram.org/api/premium",
+      "retrieved_at": "2026-10-20T19:52:20.880164+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-premium.html",
+      "sha256": "d9145309d74f50e0722a620b4fdc1a173faa38e0de7140b7d2ac7010242789d2",
+      "bytes": 52089
+    },
+    {
+      "url": "https://core.telegram.org/api/privacy",
+      "final_url": "https://core.telegram.org/api/privacy",
+      "retrieved_at": "2026-10-20T21:30:39.895363+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-privacy.html",
+      "sha256": "1fc1e5ecd585ada7396a46787117f5097ba2bc82afdd0902cf1612e39097d947",
+      "bytes": 43955
+    },
+    {
+      "url": "https://core.telegram.org/api/saved-messages",
+      "final_url": "https://core.telegram.org/api/saved-messages",
+      "retrieved_at": "2026-10-20T21:30:40.663182+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-saved-messages.html",
+      "sha256": "a196fbb6e2e75c3325faa813e333d101e4bd060f9c0a38d715d7679e19bb294c",
+      "bytes": 37497
+    },
+    {
+      "url": "https://core.telegram.org/api/stars",
+      "final_url": "https://core.telegram.org/api/stars",
+      "retrieved_at": "2026-10-20T21:30:40.717503+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-stars.html",
+      "sha256": "5107862717ef4c100b1924ca84d817d205a4fb6dc5c2f2191cf6ed6d94df9abd",
+      "bytes": 52748
+    },
+    {
+      "url": "https://core.telegram.org/api/updates",
+      "final_url": "https://core.telegram.org/api/updates",
+      "retrieved_at": "2026-10-20T21:30:40.885204+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-api-updates.html",
+      "sha256": "9f61aed5f9596581b66ec2cffeebaf9d8b24928e6e7d7caa4d19dce26de61cc6",
+      "bytes": 95362
+    },
+    {
+      "url": "https://core.telegram.org/bots/features",
+      "final_url": "https://core.telegram.org/bots/features",
+      "retrieved_at": "2026-10-20T21:30:41.096907+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-bots-features.html",
+      "sha256": "1305b3f1c92e0b82ed3bb9b0dcd0e3682b3b051e5ec1e85fbd5b2c79a944f8b0",
+      "bytes": 117106
+    },
+    {
+      "url": "https://core.telegram.org/bots/webapps",
+      "final_url": "https://core.telegram.org/bots/webapps",
+      "retrieved_at": "2026-10-20T19:52:51.184360+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-bots-webapps.html",
+      "sha256": "a5bb1b7ebeb249e7be816c5d8bbc0d6634045fe2764d06045df2cc3f307aceda",
+      "bytes": 154834
+    },
+    {
+      "url": "https://core.telegram.org/gateway",
+      "final_url": "https://core.telegram.org/gateway",
+      "retrieved_at": "2026-10-20T21:30:40.944273+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/core-telegram-org-gateway.html",
+      "sha256": "fec76b38fe463b6e7cf3e4d8ec2c60c58cbd3cda3934cc4ec4fd7236cf1ba99c",
+      "bytes": 16229
+    },
+    {
+      "url": "https://telegram.org/apps#source-code",
+      "final_url": "https://telegram.org/apps#source-code",
+      "retrieved_at": "2026-10-20T21:30:41.455356+00:00",
+      "capture": "Fresh public documentation request",
+      "status": 200,
+      "snapshot": "sources/telegram-org-apps.html",
+      "sha256": "6c1f09df4caf7572ea6e47e10482beb21abdc186dc477accfd783d18c52bd83e",
+      "bytes": 15653
+    },
+    {
+      "url": "https://telegram.org/blog",
+      "final_url": "https://telegram.org/blog",
+      "retrieved_at": "2026-10-20T19:52:20.699466+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog.html",
+      "sha256": "f84c74ef5266c45e6feba95e7fa37f760bf7fac8dba05df14cc4e79f9dba09bd",
+      "bytes": 19270
+    },
+    {
+      "url": "https://telegram.org/blog/700-million-and-premium",
+      "final_url": "https://telegram.org/blog/700-million-and-premium",
+      "retrieved_at": "2026-10-20T19:54:45.596618+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-700-million-and-premium.html",
+      "sha256": "b0e46079621581d11533a53de4abbbf6576bf8f64dfe4688c62980c174c6ec37",
+      "bytes": 39169
+    },
+    {
+      "url": "https://telegram.org/blog/AI-sticker-search-video-improvements",
+      "final_url": "https://telegram.org/blog/AI-sticker-search-video-improvements",
+      "retrieved_at": "2026-10-20T19:54:45.604923+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-ai-sticker-search-video-improvements.html",
+      "sha256": "9d16e69dd4a0ceaee66f4e5800841e19b4f2db0ba5b6a335a80e159f100babb2",
+      "bytes": 21496
+    },
+    {
+      "url": "https://telegram.org/blog/admin-revolution",
+      "final_url": "https://telegram.org/blog/admin-revolution",
+      "retrieved_at": "2026-10-20T19:54:45.345772+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-admin-revolution.html",
+      "sha256": "86c039519c30faaf988d002c574943cbff42e00a31902ff674030db329cd3ed9",
+      "bytes": 18478
+    },
+    {
+      "url": "https://telegram.org/blog/affiliate-programs-ai-sticker-search",
+      "final_url": "https://telegram.org/blog/affiliate-programs-ai-sticker-search",
+      "retrieved_at": "2026-10-20T19:54:45.577637+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-affiliate-programs-ai-sticker-search.html",
+      "sha256": "781d2d9c8ef2787a164f3e45508f457907b5373bb38896aa977b8f2fb91c1a75",
+      "bytes": 22829
+    },
+    {
+      "url": "https://telegram.org/blog/ai-bot-revolution-11-new-features",
+      "final_url": "https://telegram.org/blog/ai-bot-revolution-11-new-features",
+      "retrieved_at": "2026-10-20T19:54:45.585525+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-ai-bot-revolution-11-new-features.html",
+      "sha256": "c5b5d837191b1ba19a417edce008f3e84d94a18614af1091f5f3b813b2aadf24",
+      "bytes": 27368
+    },
+    {
+      "url": "https://telegram.org/blog/ai-editor-mighty-polls-and-more",
+      "final_url": "https://telegram.org/blog/ai-editor-mighty-polls-and-more",
+      "retrieved_at": "2026-10-20T19:54:45.575414+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-ai-editor-mighty-polls-and-more.html",
+      "sha256": "d4e6c65e4593557de0f8306769a49ebbaa074e0e6f258fd992450bcd310368b0",
+      "bytes": 25769
+    },
+    {
+      "url": "https://telegram.org/blog/albums-saved-messages",
+      "final_url": "https://telegram.org/blog/albums-saved-messages",
+      "retrieved_at": "2026-10-20T19:54:46.137738+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-albums-saved-messages.html",
+      "sha256": "a73263ea65c56c247b11b0ddfefb64b565673bda0a2f6c4eb8a40cc688a9d492",
+      "bytes": 18303
+    },
+    {
+      "url": "https://telegram.org/blog/android-2-0",
+      "final_url": "https://telegram.org/blog/android-2-0",
+      "retrieved_at": "2026-10-20T19:54:46.185001+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-android-2-0.html",
+      "sha256": "9321fe2d046dffe1adc6686549da635ef1d1638f943dbc53e88ef375237dcb90",
+      "bytes": 17845
+    },
+    {
+      "url": "https://telegram.org/blog/android-gif",
+      "final_url": "https://telegram.org/blog/android-gif",
+      "retrieved_at": "2026-10-20T19:55:11.328264+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-android-gif.html",
+      "sha256": "d1098f3a015ad8a1ca9286f391595e904ecb04b077209fc78526dae9a8708f32",
+      "bytes": 13625
+    },
+    {
+      "url": "https://telegram.org/blog/android-streaming",
+      "final_url": "https://telegram.org/blog/android-streaming",
+      "retrieved_at": "2026-10-20T19:54:46.410719+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-android-streaming.html",
+      "sha256": "b342313be1ac40128efb5f5f3dcf2fff91e9c94efc0c682d88782beca7144a27",
+      "bytes": 16017
+    },
+    {
+      "url": "https://telegram.org/blog/animated-backgrounds",
+      "final_url": "https://telegram.org/blog/animated-backgrounds",
+      "retrieved_at": "2026-10-20T19:54:46.452836+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-animated-backgrounds.html",
+      "sha256": "6ec39c122da41c77d86b18f966b10bc25c9509f870ba78741063bbc12b9897e2",
+      "bytes": 23809
+    },
+    {
+      "url": "https://telegram.org/blog/animated-stickers",
+      "final_url": "https://telegram.org/blog/animated-stickers",
+      "retrieved_at": "2026-10-20T19:54:46.382669+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-animated-stickers.html",
+      "sha256": "af8ebbf9d132f4aaa45f78ce45ea59aae3489475dff61e90caf48c81b27a481f",
+      "bytes": 19794
+    },
+    {
+      "url": "https://telegram.org/blog/archive-and-new-design",
+      "final_url": "https://telegram.org/blog/archive-and-new-design",
+      "retrieved_at": "2026-10-20T19:54:47.042627+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-archive-and-new-design.html",
+      "sha256": "cbdab2933adf22052a65da28cf22ba16b085d29558cd32fa0d7a6f04421ca8b0",
+      "bytes": 24563
+    },
+    {
+      "url": "https://telegram.org/blog/autodelete-inv2",
+      "final_url": "https://telegram.org/blog/autodelete-inv2",
+      "retrieved_at": "2026-10-20T19:54:47.189469+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-autodelete-inv2.html",
+      "sha256": "fc5b68b3235bcc53a301ea342916bc0e96a628af4381447cbcce8067a4436e1e",
+      "bytes": 24370
+    },
+    {
+      "url": "https://telegram.org/blog/autoplay",
+      "final_url": "https://telegram.org/blog/autoplay",
+      "retrieved_at": "2026-10-20T19:54:47.138354+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-autoplay.html",
+      "sha256": "486b49f1702ae63955c29df37954b5de2de2d545f2c9249ccd3ce3a528ebbb1b",
+      "bytes": 17959
+    },
+    {
+      "url": "https://telegram.org/blog/backgrounds-2-0",
+      "final_url": "https://telegram.org/blog/backgrounds-2-0",
+      "retrieved_at": "2026-10-20T19:54:47.135960+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-backgrounds-2-0.html",
+      "sha256": "98151cb17931b70ff48b855c610c05300b815c505a6d1376acd60f1058041cd6",
+      "bytes": 16384
+    },
+    {
+      "url": "https://telegram.org/blog/bot-revolution",
+      "final_url": "https://telegram.org/blog/bot-revolution",
+      "retrieved_at": "2026-10-20T19:54:47.199817+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-bot-revolution.html",
+      "sha256": "827d87773cac04966378450d1044243fe5f0b3a52c74dd409b41d61df9fbe10d",
+      "bytes": 19531
+    },
+    {
+      "url": "https://telegram.org/blog/cache-and-stickers",
+      "final_url": "https://telegram.org/blog/cache-and-stickers",
+      "retrieved_at": "2026-10-20T19:54:47.673931+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-cache-and-stickers.html",
+      "sha256": "dd05dac3be31d53e215ffd8557d05181f751309834277fd39ad49e53c7a47be2",
+      "bytes": 15615
+    },
+    {
+      "url": "https://telegram.org/blog/calls",
+      "final_url": "https://telegram.org/blog/calls",
+      "retrieved_at": "2026-10-20T19:54:47.829948+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-calls.html",
+      "sha256": "98c423d98a721e633bacf2ae6bd70195a1bf7b42a7cef4d1549d0561c74c1261",
+      "bytes": 20209
+    },
+    {
+      "url": "https://telegram.org/blog/calls-and-bots",
+      "final_url": "https://telegram.org/blog/calls-and-bots",
+      "retrieved_at": "2026-10-20T19:54:47.927194+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-calls-and-bots.html",
+      "sha256": "6edb25de2df1e4a91faf1cb2978ef1016a63bbded0ec48610b4024bfe3b3cce5",
+      "bytes": 19888
+    },
+    {
+      "url": "https://telegram.org/blog/captions-places",
+      "final_url": "https://telegram.org/blog/captions-places",
+      "retrieved_at": "2026-10-20T19:54:47.943865+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-captions-places.html",
+      "sha256": "45e987368422da2d9cc06beb2147a20369d8643c7148746de87e93eea0fae2f3",
+      "bytes": 16745
+    },
+    {
+      "url": "https://telegram.org/blog/channel-stories",
+      "final_url": "https://telegram.org/blog/channel-stories",
+      "retrieved_at": "2026-10-20T19:55:13.077872+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-channel-stories.html",
+      "sha256": "95f3e372bef81f379c646b003d7d489b9e8d2f5b308afdcb1f55ab7145bf8409",
+      "bytes": 24320
+    },
+    {
+      "url": "https://telegram.org/blog/channels",
+      "final_url": "https://telegram.org/blog/channels",
+      "retrieved_at": "2026-10-20T19:54:48.023530+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-channels.html",
+      "sha256": "7642c9b59acc3c22882fa1d33d21f5531cfa62c068636a9b8ff842c088feb16a",
+      "bytes": 15216
+    },
+    {
+      "url": "https://telegram.org/blog/channels-2-0",
+      "final_url": "https://telegram.org/blog/channels-2-0",
+      "retrieved_at": "2026-10-20T19:54:48.019554+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-channels-2-0.html",
+      "sha256": "13145f9128b3a33a71dc195086a1c445946f9c1cbac0d8e1e7a51c40b811ec02",
+      "bytes": 16889
+    },
+    {
+      "url": "https://telegram.org/blog/chat-themes-interactive-emoji-read-receipts",
+      "final_url": "https://telegram.org/blog/chat-themes-interactive-emoji-read-receipts",
+      "retrieved_at": "2026-10-20T19:54:48.700378+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-chat-themes-interactive-emoji-read-receipts.html",
+      "sha256": "92e8e35795ed2e893d710e01531fc6704dd4d985a555be8daa2cc2d5eeddf0ad",
+      "bytes": 23428
+    },
+    {
+      "url": "https://telegram.org/blog/checklists-suggested-posts",
+      "final_url": "https://telegram.org/blog/checklists-suggested-posts",
+      "retrieved_at": "2026-10-20T19:54:48.626761+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-checklists-suggested-posts.html",
+      "sha256": "13e29b643adc440e5067886c37e6d51478b16297f78c30e048e559c279e1007c",
+      "bytes": 20105
+    },
+    {
+      "url": "https://telegram.org/blog/collectible-gifts-and-more",
+      "final_url": "https://telegram.org/blog/collectible-gifts-and-more",
+      "retrieved_at": "2026-10-20T19:54:48.897926+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-collectible-gifts-and-more.html",
+      "sha256": "a9270c704aab980c37290dfd67edb175a0c669515534436b48c3ff9437cca580",
+      "bytes": 25768
+    },
+    {
+      "url": "https://telegram.org/blog/comments-in-video-chats-threads-for-bots",
+      "final_url": "https://telegram.org/blog/comments-in-video-chats-threads-for-bots",
+      "retrieved_at": "2026-10-20T19:54:48.919572+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-comments-in-video-chats-threads-for-bots.html",
+      "sha256": "7a668cd000db254b6f2e429ab6694180d5c6fadc0f0761a0ac7186a6f2219c12",
+      "bytes": 27384
+    },
+    {
+      "url": "https://telegram.org/blog/communities-editor-invisible-messages",
+      "final_url": "https://telegram.org/blog/communities-editor-invisible-messages",
+      "retrieved_at": "2026-10-20T19:54:48.795043+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-communities-editor-invisible-messages.html",
+      "sha256": "64008b2ace218b7d65746be907afa8ce3b5cbd3aa7f7d17951be00212c03c1aa",
+      "bytes": 21370
+    },
+    {
+      "url": "https://telegram.org/blog/contacts-local-groups",
+      "final_url": "https://telegram.org/blog/contacts-local-groups",
+      "retrieved_at": "2026-10-20T19:54:48.808321+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-contacts-local-groups.html",
+      "sha256": "9f2139d5575644eb4c4e481ab1305ec88fd43e0b1a20de9cee67015ee6f77d08",
+      "bytes": 21137
+    },
+    {
+      "url": "https://telegram.org/blog/crafting-android-design-and-more",
+      "final_url": "https://telegram.org/blog/crafting-android-design-and-more",
+      "retrieved_at": "2026-10-20T19:54:49.509679+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-crafting-android-design-and-more.html",
+      "sha256": "fda9f5cff7abf7de0c92d546226c48ec089a1ec2d4b9c86149aa2c75b9c9baa6",
+      "bytes": 20768
+    },
+    {
+      "url": "https://telegram.org/blog/custom-emoji",
+      "final_url": "https://telegram.org/blog/custom-emoji",
+      "retrieved_at": "2026-10-20T19:54:49.806835+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-custom-emoji.html",
+      "sha256": "5cc160892b039cdcb13b1cf68753077c29d43a3227f7fbd0fba6fbae55836b1d",
+      "bytes": 26532
+    },
+    {
+      "url": "https://telegram.org/blog/desktop-compact",
+      "final_url": "https://telegram.org/blog/desktop-compact",
+      "retrieved_at": "2026-10-20T19:55:14.664763+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-desktop-compact.html",
+      "sha256": "dfb2634d839265cc30ae1239c2da6b33fd61e19896bbf9e909beddb4b1a45036",
+      "bytes": 13648
+    },
+    {
+      "url": "https://telegram.org/blog/direct-to-channel-trim-voice-and-more",
+      "final_url": "https://telegram.org/blog/direct-to-channel-trim-voice-and-more",
+      "retrieved_at": "2026-10-20T19:54:50.505925+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-direct-to-channel-trim-voice-and-more.html",
+      "sha256": "a360d67fa884ea087294089a3da64e274b72282de0dafed3d9e6be1531a8f22b",
+      "bytes": 21331
+    },
+    {
+      "url": "https://telegram.org/blog/discover-stickers-and-more",
+      "final_url": "https://telegram.org/blog/discover-stickers-and-more",
+      "retrieved_at": "2026-10-20T19:54:50.394281+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-discover-stickers-and-more.html",
+      "sha256": "2c7b270dfb82e287810b32c8f2d03685d7334a3a901a0c113e9d199447874efc",
+      "bytes": 16543
+    },
+    {
+      "url": "https://telegram.org/blog/downloads-attachments-streaming",
+      "final_url": "https://telegram.org/blog/downloads-attachments-streaming",
+      "retrieved_at": "2026-10-20T19:54:50.684256+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-downloads-attachments-streaming.html",
+      "sha256": "b5248a7905f273a0ebb769ebe793738de99bdb4694d3f06d56df0fabe9ed0bfe",
+      "bytes": 24195
+    },
+    {
+      "url": "https://telegram.org/blog/drafts",
+      "final_url": "https://telegram.org/blog/drafts",
+      "retrieved_at": "2026-10-20T19:54:50.632270+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-drafts.html",
+      "sha256": "b4495528366bcf5a3843de21e272e88feb5f32a569465c6bab74f256dfd30146",
+      "bytes": 15978
+    },
+    {
+      "url": "https://telegram.org/blog/dynamic-video-quality-and-more",
+      "final_url": "https://telegram.org/blog/dynamic-video-quality-and-more",
+      "retrieved_at": "2026-10-20T19:54:51.369878+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-dynamic-video-quality-and-more.html",
+      "sha256": "94f7832c57553b6b12befeed71640fdb9b0aaafd8e7d904e8dffe6ed963849e9",
+      "bytes": 24821
+    },
+    {
+      "url": "https://telegram.org/blog/edit",
+      "final_url": "https://telegram.org/blog/edit",
+      "retrieved_at": "2026-10-20T19:54:51.284076+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-edit.html",
+      "sha256": "53c65b1955e3a2bd999c24ef101b50fa1c09754ab20d2aeda2067b07425ab14e",
+      "bytes": 16553
+    },
+    {
+      "url": "https://telegram.org/blog/export-and-more",
+      "final_url": "https://telegram.org/blog/export-and-more",
+      "retrieved_at": "2026-10-20T19:54:51.515489+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-export-and-more.html",
+      "sha256": "fc5eedf9674aff72f67d9157c8017453ae117c7bb234d5890c36bb5f77784e55",
+      "bytes": 17710
+    },
+    {
+      "url": "https://telegram.org/blog/february2024",
+      "final_url": "https://telegram.org/blog/february2024",
+      "retrieved_at": "2026-10-20T19:54:52.243513+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-february2024.html",
+      "sha256": "93a525661407ac68cc0b1f37d6de92f525fc759aed37871409e11077e1b36f32",
+      "bytes": 23151
+    },
+    {
+      "url": "https://telegram.org/blog/files-on-steroids",
+      "final_url": "https://telegram.org/blog/files-on-steroids",
+      "retrieved_at": "2026-10-20T19:55:17.304337+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-files-on-steroids.html",
+      "sha256": "40ee6685c493ec9e979ac579b5e887386be8e565f2dcc30c99054dcda0aad268",
+      "bytes": 16460
+    },
+    {
+      "url": "https://telegram.org/blog/filters-anonymous-admins-comments",
+      "final_url": "https://telegram.org/blog/filters-anonymous-admins-comments",
+      "retrieved_at": "2026-10-20T19:54:52.294731+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-filters-anonymous-admins-comments.html",
+      "sha256": "3b04126891a26c7754bc2011c2c0ad08043773c7619a9f6fc38c5599bf8a1bd4",
+      "bytes": 20048
+    },
+    {
+      "url": "https://telegram.org/blog/folders",
+      "final_url": "https://telegram.org/blog/folders",
+      "retrieved_at": "2026-10-20T19:54:53.244739+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-folders.html",
+      "sha256": "b6d43feac6b85a74a8fb0ff71287e6e401067ece38e69374cfa31f844677f1ad",
+      "bytes": 24592
+    },
+    {
+      "url": "https://telegram.org/blog/fullscreen-miniapps-and-more",
+      "final_url": "https://telegram.org/blog/fullscreen-miniapps-and-more",
+      "retrieved_at": "2026-10-20T19:54:53.288420+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-fullscreen-miniapps-and-more.html",
+      "sha256": "c5c0690fbed7659ed79dfdb1be69d64b740d6623833cdadafe8d51f6d2a5aad1",
+      "bytes": 28107
+    },
+    {
+      "url": "https://telegram.org/blog/games",
+      "final_url": "https://telegram.org/blog/games",
+      "retrieved_at": "2026-10-20T19:54:55.259938+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-games.html",
+      "sha256": "35411e92d8718941ca64153ac25042a6d7bb8db4672497c36e5abcba5325adda",
+      "bytes": 17914
+    },
+    {
+      "url": "https://telegram.org/blog/gift-marketplace-and-more",
+      "final_url": "https://telegram.org/blog/gift-marketplace-and-more",
+      "retrieved_at": "2026-10-20T19:55:21.053964+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-gift-marketplace-and-more.html",
+      "sha256": "5f70ef138e6a3f801b4cafd9829eae1d3a49145d5b56aba76c7b109afe8e372f",
+      "bytes": 21413
+    },
+    {
+      "url": "https://telegram.org/blog/gifts-verification-platform",
+      "final_url": "https://telegram.org/blog/gifts-verification-platform/",
+      "retrieved_at": "2026-10-20T19:55:12.342718+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-gifts-verification-platform.html",
+      "sha256": "430cd99ae68d80656bf73f3a9f335e00a9fb672c247cd3d05877585ab36e0f21",
+      "bytes": 23991
+    },
+    {
+      "url": "https://telegram.org/blog/gifts-verification-platform/",
+      "final_url": "https://telegram.org/blog/gifts-verification-platform/",
+      "retrieved_at": "2026-10-20T19:55:12.342718+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-gifts-verification-platform.html",
+      "sha256": "430cd99ae68d80656bf73f3a9f335e00a9fb672c247cd3d05877585ab36e0f21",
+      "bytes": 23991
+    },
+    {
+      "url": "https://telegram.org/blog/giveaways",
+      "final_url": "https://telegram.org/blog/giveaways",
+      "retrieved_at": "2026-10-20T19:55:13.233047+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-giveaways.html",
+      "sha256": "9cfa5d8e1562c3cb72bc4b2766908868bbca1ba4708de9ef2281b911733c572c",
+      "bytes": 20413
+    },
+    {
+      "url": "https://telegram.org/blog/group-calls-made-easy",
+      "final_url": "https://telegram.org/blog/group-calls-made-easy",
+      "retrieved_at": "2026-10-20T19:55:14.084397+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-group-calls-made-easy.html",
+      "sha256": "441f6128557eb69b592a749ccc8db6ffef816b749d4a3bb06ef99bbe28ee3c09",
+      "bytes": 28324
+    },
+    {
+      "url": "https://telegram.org/blog/group-video-calls",
+      "final_url": "https://telegram.org/blog/group-video-calls",
+      "retrieved_at": "2026-10-20T19:55:14.029473+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-group-video-calls.html",
+      "sha256": "9d12a9e9c4f9a6ce7ecb14b0a401832a10703d6a1baaf777b0fa4e0de283c241",
+      "bytes": 19613
+    },
+    {
+      "url": "https://telegram.org/blog/hidden-media-zero-storage-profile-pics",
+      "final_url": "https://telegram.org/blog/hidden-media-zero-storage-profile-pics",
+      "retrieved_at": "2026-10-20T19:55:15.009519+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-hidden-media-zero-storage-profile-pics.html",
+      "sha256": "bcd3f2431e38d56a332383052c1c29f7fc3f75bad61b53f54ed37cdd4a9a6bd4",
+      "bytes": 27675
+    },
+    {
+      "url": "https://telegram.org/blog/infinite-reactions-statuses",
+      "final_url": "https://telegram.org/blog/infinite-reactions-statuses",
+      "retrieved_at": "2026-10-20T19:55:15.061977+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-infinite-reactions-statuses.html",
+      "sha256": "62926ce6b32162ef869bc7b6a6c21f74021e83969d1c8f111aa9331a7500e749",
+      "bytes": 23226
+    },
+    {
+      "url": "https://telegram.org/blog/inline-bots",
+      "final_url": "https://telegram.org/blog/inline-bots",
+      "retrieved_at": "2026-10-20T19:55:15.182551+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-inline-bots.html",
+      "sha256": "bc46c031573b284b4263f165891a718ec420103264bc91fa286fbee6b09404c8",
+      "bytes": 16250
+    },
+    {
+      "url": "https://telegram.org/blog/instant-camera",
+      "final_url": "https://telegram.org/blog/instant-camera",
+      "retrieved_at": "2026-10-20T19:55:15.460199+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-instant-camera.html",
+      "sha256": "6241102a2522cb4d3ca1c59763282d45be20a5dfe25cca9859b3d27486781431",
+      "bytes": 15001
+    },
+    {
+      "url": "https://telegram.org/blog/instant-view",
+      "final_url": "https://telegram.org/blog/instant-view",
+      "retrieved_at": "2026-10-20T19:55:15.822229+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-instant-view.html",
+      "sha256": "360ed23ef1dab0edcbb900f7d6a65b523a1e319fd783d4b4d0c980bba38a2af6",
+      "bytes": 18946
+    },
+    {
+      "url": "https://telegram.org/blog/instant-view-contest-200K",
+      "final_url": "https://telegram.org/blog/instant-view-contest-200K",
+      "retrieved_at": "2026-10-20T19:55:15.832678+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-instant-view-contest-200k.html",
+      "sha256": "e4ab99f282186a312c3ad90b7fd9177b585e45834dfd3e7481a6d15237735ea6",
+      "bytes": 20835
+    },
+    {
+      "url": "https://telegram.org/blog/invite-links",
+      "final_url": "https://telegram.org/blog/invite-links",
+      "retrieved_at": "2026-10-20T19:55:15.969472+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-invite-links.html",
+      "sha256": "4c302fa63f8105151ecda202f0d1caabeda9f45b0d3113ee106e84c561beab0f",
+      "bytes": 14592
+    },
+    {
+      "url": "https://telegram.org/blog/live-locations",
+      "final_url": "https://telegram.org/blog/live-locations",
+      "retrieved_at": "2026-10-20T19:55:17.047715+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-live-locations.html",
+      "sha256": "f03918749345bc56b4708459a5808841d97c85dde719bdf5002825c497762c0c",
+      "bytes": 17139
+    },
+    {
+      "url": "https://telegram.org/blog/live-stories-gift-auctions",
+      "final_url": "https://telegram.org/blog/live-stories-gift-auctions",
+      "retrieved_at": "2026-10-20T19:55:17.062739+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-live-stories-gift-auctions.html",
+      "sha256": "150afc9e6c23739ebcadf9ced5df9f5ffb990beb281408a8991f3dea23063bf8",
+      "bytes": 22834
+    },
+    {
+      "url": "https://telegram.org/blog/live-streams-forwarding-next-channel",
+      "final_url": "https://telegram.org/blog/live-streams-forwarding-next-channel",
+      "retrieved_at": "2026-10-20T19:55:17.083712+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-live-streams-forwarding-next-channel.html",
+      "sha256": "ba812a566f75d8f3a7b93b39d8d0352e0e976281c9a26e55a1cde65d710e0dd1",
+      "bytes": 23981
+    },
+    {
+      "url": "https://telegram.org/blog/login",
+      "final_url": "https://telegram.org/blog/login",
+      "retrieved_at": "2026-10-20T19:55:17.417500+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-login.html",
+      "sha256": "b7e9d00bb6a0c3b70373c3bf759b19313c655ecc7badae3995ae73f37c0db948",
+      "bytes": 17139
+    },
+    {
+      "url": "https://telegram.org/blog/masks",
+      "final_url": "https://telegram.org/blog/masks",
+      "retrieved_at": "2026-10-20T19:55:17.433945+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-masks.html",
+      "sha256": "10ba2efc5db259b517a1ca1a43bb4b1243a25af36f2c2fd7fa608a555029985b",
+      "bytes": 16293
+    },
+    {
+      "url": "https://telegram.org/blog/member-tags-disable-sharing-and-more",
+      "final_url": "https://telegram.org/blog/member-tags-disable-sharing-and-more",
+      "retrieved_at": "2026-10-20T19:55:18.040148+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-member-tags-disable-sharing-and-more.html",
+      "sha256": "6daed88cda7e0ed1c143f655842779fb2c133806b5e1d137076f1f2aa742358a",
+      "bytes": 24476
+    },
+    {
+      "url": "https://telegram.org/blog/message-effects-and-more",
+      "final_url": "https://telegram.org/blog/message-effects-and-more",
+      "retrieved_at": "2026-10-20T19:55:42.988476+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-message-effects-and-more.html",
+      "sha256": "1a2d6d30e71748da24c37756e45d6a668d7559781de0f66b4e48937f89923a4d",
+      "bytes": 21942
+    },
+    {
+      "url": "https://telegram.org/blog/mini-app-bar-paid-media-and-more",
+      "final_url": "https://telegram.org/blog/mini-app-bar-paid-media-and-more",
+      "retrieved_at": "2026-10-20T19:55:18.086571+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-mini-app-bar-paid-media-and-more.html",
+      "sha256": "d6e890502cd6bbeb1bd5b8e4cf50a0187f90ff9058944e0a234e1dd171951272",
+      "bytes": 26240
+    },
+    {
+      "url": "https://telegram.org/blog/monetization-for-channels",
+      "final_url": "https://telegram.org/blog/monetization-for-channels",
+      "retrieved_at": "2026-10-20T19:55:18.237590+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-monetization-for-channels.html",
+      "sha256": "ecc7dd80ce8db979ec73198d660ca6971a8c1105ffc88af3163a933796b0399f",
+      "bytes": 17953
+    },
+    {
+      "url": "https://telegram.org/blog/move-history",
+      "final_url": "https://telegram.org/blog/move-history",
+      "retrieved_at": "2026-10-20T19:55:18.404986+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-move-history.html",
+      "sha256": "98d124f21806581657dc1a3a9cc23b2ef0405d9728c049039cb74e7f32cfa7ba",
+      "bytes": 22231
+    },
+    {
+      "url": "https://telegram.org/blog/my-profile-and-15-more",
+      "final_url": "https://telegram.org/blog/my-profile-and-15-more",
+      "retrieved_at": "2026-10-20T19:55:19.051505+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-my-profile-and-15-more.html",
+      "sha256": "35b509b924451e054ac3ed4218ccf80fa50d8b889f4cb93fa72dd5898be91225",
+      "bytes": 34090
+    },
+    {
+      "url": "https://telegram.org/blog/new-design-ai-summaries",
+      "final_url": "https://telegram.org/blog/new-design-ai-summaries",
+      "retrieved_at": "2026-10-20T19:55:43.838436+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-new-design-ai-summaries.html",
+      "sha256": "fec8d921648cb62fa0062ef4486132efca142defa00b502a3b7cfcf5ff5f90ea",
+      "bytes": 18252
+    },
+    {
+      "url": "https://telegram.org/blog/new-profiles-people-nearby",
+      "final_url": "https://telegram.org/blog/new-profiles-people-nearby",
+      "retrieved_at": "2026-10-20T19:55:18.912946+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-new-profiles-people-nearby.html",
+      "sha256": "af2acb5b5324737b3115d046563451405682d14b01f3fbf39b720b3b4daddfab",
+      "bytes": 20870
+    },
+    {
+      "url": "https://telegram.org/blog/new-saved-messages-and-9-more",
+      "final_url": "https://telegram.org/blog/new-saved-messages-and-9-more",
+      "retrieved_at": "2026-10-20T19:55:19.238304+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-new-saved-messages-and-9-more.html",
+      "sha256": "2e5608259c31d2455d25ab912dd01953c351e2baeb108391182cda4b6109d407",
+      "bytes": 28095
+    },
+    {
+      "url": "https://telegram.org/blog/notifications-bots",
+      "final_url": "https://telegram.org/blog/notifications-bots",
+      "retrieved_at": "2026-10-20T19:55:19.403005+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-notifications-bots.html",
+      "sha256": "5152d77dca926aff2cc2943ce027092adfa1ebe6ea87fcbe52b7409fbbf3b0d3",
+      "bytes": 28543
+    },
+    {
+      "url": "https://telegram.org/blog/now-you-see-me",
+      "final_url": "https://telegram.org/blog/now-you-see-me",
+      "retrieved_at": "2026-10-20T19:55:19.719829+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-now-you-see-me.html",
+      "sha256": "b2cddd4db4d9435a7b1240a44198ca4aa7ba11862ff9c1de4a095e22d1a92f31",
+      "bytes": 15723
+    },
+    {
+      "url": "https://telegram.org/blog/passkeys-and-gift-offers",
+      "final_url": "https://telegram.org/blog/passkeys-and-gift-offers",
+      "retrieved_at": "2026-10-20T19:55:44.851146+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-passkeys-and-gift-offers.html",
+      "sha256": "355df90116403377c513a138bcaa4c758a65028e2e0b668856c9c56948437e22",
+      "bytes": 18924
+    },
+    {
+      "url": "https://telegram.org/blog/passport",
+      "final_url": "https://telegram.org/blog/passport",
+      "retrieved_at": "2026-10-20T19:55:20.056418+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-passport.html",
+      "sha256": "5021decca1de38ef3cc34dd56a13ff4561d21372e711292cb12b41f3e4ed8125",
+      "bytes": 16402
+    },
+    {
+      "url": "https://telegram.org/blog/payments",
+      "final_url": "https://telegram.org/blog/payments",
+      "retrieved_at": "2026-10-20T19:55:20.217648+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-payments.html",
+      "sha256": "5151c9e35f3cae666bcd12036888d725230f646e3ae10aedbc896b3738d72b66",
+      "bytes": 19801
+    },
+    {
+      "url": "https://telegram.org/blog/payments-2-0-scheduled-voice-chats",
+      "final_url": "https://telegram.org/blog/payments-2-0-scheduled-voice-chats",
+      "retrieved_at": "2026-10-20T19:55:20.726276+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-payments-2-0-scheduled-voice-chats.html",
+      "sha256": "0153747b6ac273cbfd3811c154d8e4aa896a83a220754fff05d3329d0d8fb6e2",
+      "bytes": 27309
+    },
+    {
+      "url": "https://telegram.org/blog/permissions-groups-undo",
+      "final_url": "https://telegram.org/blog/permissions-groups-undo",
+      "retrieved_at": "2026-10-20T19:55:20.848748+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-permissions-groups-undo.html",
+      "sha256": "c36e818631d9450d5b858fb1556ceb5afb060b1a4277f6f60335b6be0a01e88a",
+      "bytes": 20038
+    },
+    {
+      "url": "https://telegram.org/blog/photo-editor-and-passcodes",
+      "final_url": "https://telegram.org/blog/photo-editor-and-passcodes",
+      "retrieved_at": "2026-10-20T19:55:21.012211+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-photo-editor-and-passcodes.html",
+      "sha256": "2f78220830dfb9056e660ef0708525a785b8d6187f57c90926ad724a7a6c5de8",
+      "bytes": 16637
+    },
+    {
+      "url": "https://telegram.org/blog/pin-and-ifttt",
+      "final_url": "https://telegram.org/blog/pin-and-ifttt",
+      "retrieved_at": "2026-10-20T19:55:21.509187+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-pin-and-ifttt.html",
+      "sha256": "7709ab9b9559c9cded319f8f4245665e68ce1585464b412c9052a34372765ce3",
+      "bytes": 19796
+    },
+    {
+      "url": "https://telegram.org/blog/pinned-messages-locations-playlists",
+      "final_url": "https://telegram.org/blog/pinned-messages-locations-playlists",
+      "retrieved_at": "2026-10-20T19:55:21.856268+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-pinned-messages-locations-playlists.html",
+      "sha256": "8b9f9839d5e84fcea6313575598c9899f8a278f6a3a826353ac85fd84a66028f",
+      "bytes": 23830
+    },
+    {
+      "url": "https://telegram.org/blog/polls",
+      "final_url": "https://telegram.org/blog/polls",
+      "retrieved_at": "2026-10-20T19:55:21.800005+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-polls.html",
+      "sha256": "6834af7256c2020ac2659fe6e5409ee2a5a1f0eb21fd098f255b31ad07f221e4",
+      "bytes": 15719
+    },
+    {
+      "url": "https://telegram.org/blog/polls-2-0-vmq",
+      "final_url": "https://telegram.org/blog/polls-2-0-vmq",
+      "retrieved_at": "2026-10-20T19:55:46.939716+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-polls-2-0-vmq.html",
+      "sha256": "2f10c878ccbf7882f69dbca0829ba01d65c3a3c83c563a54747e546c05fe264b",
+      "bytes": 21894
+    },
+    {
+      "url": "https://telegram.org/blog/post-search-story-albums-and-more",
+      "final_url": "https://telegram.org/blog/post-search-story-albums-and-more",
+      "retrieved_at": "2026-10-20T19:55:22.324359+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-post-search-story-albums-and-more.html",
+      "sha256": "6cb439cabf2417b4dc38e9e2927a84ea5a983d6f38bdf1540a2c7c1223dca839",
+      "bytes": 21688
+    },
+    {
+      "url": "https://telegram.org/blog/posts-in-stories-and-more",
+      "final_url": "https://telegram.org/blog/posts-in-stories-and-more",
+      "retrieved_at": "2026-10-20T19:55:22.547449+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-posts-in-stories-and-more.html",
+      "sha256": "e5671a884e42d8e2245f000dcd8f13878b9d2692992e584d199aa3364d8d0bd9",
+      "bytes": 22436
+    },
+    {
+      "url": "https://telegram.org/blog/power-saving",
+      "final_url": "https://telegram.org/blog/power-saving",
+      "retrieved_at": "2026-10-20T19:55:22.811386+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-power-saving.html",
+      "sha256": "c7e86f714aa32a58a4f5f68813128e7ebb075a52db871b9a2b24f03615e8f700",
+      "bytes": 23826
+    },
+    {
+      "url": "https://telegram.org/blog/privacy-discussions-web-bots",
+      "final_url": "https://telegram.org/blog/privacy-discussions-web-bots",
+      "retrieved_at": "2026-10-20T19:55:22.831773+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-privacy-discussions-web-bots.html",
+      "sha256": "17d5fe841a6571ca68a6bb2e02676cb35e5192ae14b4fceff1e7c4f7a9de4c3e",
+      "bytes": 22506
+    },
+    {
+      "url": "https://telegram.org/blog/privacy-revolution",
+      "final_url": "https://telegram.org/blog/privacy-revolution",
+      "retrieved_at": "2026-10-20T19:55:23.133986+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-privacy-revolution.html",
+      "sha256": "12bfca4e07647b6e1736068db9c859b90b54256d5873476c3619b76ba34d9e3b",
+      "bytes": 16493
+    },
+    {
+      "url": "https://telegram.org/blog/profile-music-gift-themes",
+      "final_url": "https://telegram.org/blog/profile-music-gift-themes",
+      "retrieved_at": "2026-10-20T19:55:23.534799+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-profile-music-gift-themes.html",
+      "sha256": "c9f8bd08b5379802dccae7f01c8d0b440f8cf2602aac8a1ee08f77769107a480",
+      "bytes": 22817
+    },
+    {
+      "url": "https://telegram.org/blog/profile-pics-emoji-translations",
+      "final_url": "https://telegram.org/blog/profile-pics-emoji-translations",
+      "retrieved_at": "2026-10-20T19:55:48.721040+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-profile-pics-emoji-translations.html",
+      "sha256": "1393991e7a49b51e6dbc72aa42ffbfe5b8c5970a8d4d70da5af221f803ccb71b",
+      "bytes": 27325
+    },
+    {
+      "url": "https://telegram.org/blog/profile-videos-people-nearby-and-more",
+      "final_url": "https://telegram.org/blog/profile-videos-people-nearby-and-more",
+      "retrieved_at": "2026-10-20T19:55:23.847713+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-profile-videos-people-nearby-and-more.html",
+      "sha256": "a40096240a3145f830973bf003740b20d69a7237baf3d40a23df15d231d55ad0",
+      "bytes": 27140
+    },
+    {
+      "url": "https://telegram.org/blog/protected-content-delete-by-date-and-more",
+      "final_url": "https://telegram.org/blog/protected-content-delete-by-date-and-more",
+      "retrieved_at": "2026-10-20T19:55:49.052827+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-protected-content-delete-by-date-and-more.html",
+      "sha256": "5ab85bf8742f00db3121f501636b64c032a622febd31e206547971df89dff7b0",
+      "bytes": 27261
+    },
+    {
+      "url": "https://telegram.org/blog/reactions-spoilers-translations",
+      "final_url": "https://telegram.org/blog/reactions-spoilers-translations",
+      "retrieved_at": "2026-10-20T19:55:24.526901+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-reactions-spoilers-translations.html",
+      "sha256": "28d1ff13a1aed69ae43a132a856d4de9bfd249a0a7a1fd1c7ac843c6fb044e67",
+      "bytes": 24450
+    },
+    {
+      "url": "https://telegram.org/blog/replies-mentions-hashtags",
+      "final_url": "https://telegram.org/blog/replies-mentions-hashtags",
+      "retrieved_at": "2026-10-20T19:55:24.648110+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-replies-mentions-hashtags.html",
+      "sha256": "affb2ada32a5bd20e0a2b8bc178a696f2d2839384dd1771b331dcfbd1902dde4",
+      "bytes": 16477
+    },
+    {
+      "url": "https://telegram.org/blog/replies-mentions-stickers",
+      "final_url": "https://telegram.org/blog/replies-mentions-stickers",
+      "retrieved_at": "2026-10-20T19:55:25.349239+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-replies-mentions-stickers.html",
+      "sha256": "2068082261628333b647ef3940157aa47acf917a58102a86e27648ba8724372f",
+      "bytes": 17407
+    },
+    {
+      "url": "https://telegram.org/blog/reply-revolution",
+      "final_url": "https://telegram.org/blog/reply-revolution",
+      "retrieved_at": "2026-10-20T19:55:25.437456+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-reply-revolution.html",
+      "sha256": "0ac020fd49c28d39ab5fe26185c20ce079fab58d86293699c26049c2f23b12fc",
+      "bytes": 22274
+    },
+    {
+      "url": "https://telegram.org/blog/scheduled-reminders-themes",
+      "final_url": "https://telegram.org/blog/scheduled-reminders-themes",
+      "retrieved_at": "2026-10-20T19:55:26.369780+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-scheduled-reminders-themes.html",
+      "sha256": "c2b0a8c0816570d8bb7342738b68426f4846a7f34acf006b67bb9e4a6d1b05dd",
+      "bytes": 22443
+    },
+    {
+      "url": "https://telegram.org/blog/search-and-media",
+      "final_url": "https://telegram.org/blog/search-and-media",
+      "retrieved_at": "2026-10-20T19:55:26.251297+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-search-and-media.html",
+      "sha256": "572c59ef97257dd662476f94ee98bff330ab3a9897f7984f8453b75aa785e1b2",
+      "bytes": 15128
+    },
+    {
+      "url": "https://telegram.org/blog/sessions-and-2-step-verification",
+      "final_url": "https://telegram.org/blog/sessions-and-2-step-verification",
+      "retrieved_at": "2026-10-20T19:55:51.995385+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-sessions-and-2-step-verification.html",
+      "sha256": "2369f96bd8ffcea61a6afba00c03aad282063bc192dcc522c81dc1cdcad37e17",
+      "bytes": 14781
+    },
+    {
+      "url": "https://telegram.org/blog/share-preview",
+      "final_url": "https://telegram.org/blog/share-preview",
+      "retrieved_at": "2026-10-20T19:55:27.168348+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-share-preview.html",
+      "sha256": "14cfda60bde197f5eb5ef30dab7b3e45b30188efc1141ae311a872f43b6d9008",
+      "bytes": 17881
+    },
+    {
+      "url": "https://telegram.org/blog/shareable-folders-custom-wallpapers",
+      "final_url": "https://telegram.org/blog/shareable-folders-custom-wallpapers",
+      "retrieved_at": "2026-10-20T19:55:28.157674+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-shareable-folders-custom-wallpapers.html",
+      "sha256": "988baf94bb1d955ef259233ebd51ebcf033e15a4cd5f1aae237344c48d301e34",
+      "bytes": 22958
+    },
+    {
+      "url": "https://telegram.org/blog/shared-media-scrolling-calendar-join-requests-and-more",
+      "final_url": "https://telegram.org/blog/shared-media-scrolling-calendar-join-requests-and-more",
+      "retrieved_at": "2026-10-20T19:55:30.757647+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-shared-media-scrolling-calendar-join-requests-and-more.html",
+      "sha256": "fbb473574d870e5739cb04b6aa2aef6e78f99386233d59354d3d10b7b30e779a",
+      "bytes": 30445
+    },
+    {
+      "url": "https://telegram.org/blog/silent-messages-slow-mode",
+      "final_url": "https://telegram.org/blog/silent-messages-slow-mode",
+      "retrieved_at": "2026-10-20T19:55:31.758727+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-silent-messages-slow-mode.html",
+      "sha256": "9de2173990d7017316b7c3c04b996f8a10088c8fc492bcaaa10ac7245d5fd99e",
+      "bytes": 25799
+    },
+    {
+      "url": "https://telegram.org/blog/similar-channels",
+      "final_url": "https://telegram.org/blog/similar-channels/",
+      "retrieved_at": "2026-10-20T19:55:33.762279+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-similar-channels.html",
+      "sha256": "5a5ebe5dcb640a7c3bfce3730e1fc055511b4bb02b1fe0427a7cb26a990a49a2",
+      "bytes": 30151
+    },
+    {
+      "url": "https://telegram.org/blog/similar-channels/",
+      "final_url": "https://telegram.org/blog/similar-channels/",
+      "retrieved_at": "2026-10-20T19:55:33.762279+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-similar-channels.html",
+      "sha256": "5a5ebe5dcb640a7c3bfce3730e1fc055511b4bb02b1fe0427a7cb26a990a49a2",
+      "bytes": 30151
+    },
+    {
+      "url": "https://telegram.org/blog/star-giveaways-iv-in-browser",
+      "final_url": "https://telegram.org/blog/star-giveaways-iv-in-browser",
+      "retrieved_at": "2026-10-20T19:55:34.743679+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-star-giveaways-iv-in-browser.html",
+      "sha256": "88c9cff6c678b5a68d44b6c6f6b0fa8579fbf4e1839e2549cc802fe9eca67be4",
+      "bytes": 20913
+    },
+    {
+      "url": "https://telegram.org/blog/star-messages-gateway-2-0-and-more",
+      "final_url": "https://telegram.org/blog/star-messages-gateway-2-0-and-more",
+      "retrieved_at": "2026-10-20T19:55:35.722310+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-star-messages-gateway-2-0-and-more.html",
+      "sha256": "637302d5adc35b662d416ad5b154fba799dd4a0675c3e136109faa197acdcea1",
+      "bytes": 26089
+    },
+    {
+      "url": "https://telegram.org/blog/sticker-maker",
+      "final_url": "https://telegram.org/blog/sticker-maker",
+      "retrieved_at": "2026-10-20T19:55:36.549534+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-sticker-maker.html",
+      "sha256": "e3a4cfebd4012769c81d47f055a5e7c01c66b40537f1a4cd1913fd71e724da36",
+      "bytes": 19040
+    },
+    {
+      "url": "https://telegram.org/blog/stickers-revolution",
+      "final_url": "https://telegram.org/blog/stickers-revolution",
+      "retrieved_at": "2026-10-20T19:55:43.794777+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-stickers-revolution.html",
+      "sha256": "dc5747e5abc48fcbffd89b162789e633bdc2a168ffe4042a2607f9169d6fc6e7",
+      "bytes": 15580
+    },
+    {
+      "url": "https://telegram.org/blog/stories",
+      "final_url": "https://telegram.org/blog/stories",
+      "retrieved_at": "2026-10-20T19:55:44.772608+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-stories.html",
+      "sha256": "1f4852a1fd11db88cd787e2f99a3ba20986daa551f3ab6c367635ea0e04c77ec",
+      "bytes": 23781
+    },
+    {
+      "url": "https://telegram.org/blog/superchannels-star-reactions-subscriptions",
+      "final_url": "https://telegram.org/blog/superchannels-star-reactions-subscriptions",
+      "retrieved_at": "2026-10-20T19:55:44.851212+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-superchannels-star-reactions-subscriptions.html",
+      "sha256": "b883ea0fd3eff162ac3ab315f598cfbe98ecd2f77720fe6bd909a436ddbe09c6",
+      "bytes": 25117
+    },
+    {
+      "url": "https://telegram.org/blog/supergroups5k",
+      "final_url": "https://telegram.org/blog/supergroups5k",
+      "retrieved_at": "2026-10-20T19:55:45.634930+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-supergroups5k.html",
+      "sha256": "79a7ab99579c04b57b53b47f70febd36d5e300b9c21249345cddd719f1583183",
+      "bytes": 15209
+    },
+    {
+      "url": "https://telegram.org/blog/telegram-5-ios",
+      "final_url": "https://telegram.org/blog/telegram-5-ios",
+      "retrieved_at": "2026-10-20T19:56:10.662426+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-telegram-5-ios.html",
+      "sha256": "f0b700409707e923f25437602ee97854442a0dc1ea6352e570be5b81664674ac",
+      "bytes": 20624
+    },
+    {
+      "url": "https://telegram.org/blog/telegram-business",
+      "final_url": "https://telegram.org/blog/telegram-business",
+      "retrieved_at": "2026-10-20T19:52:20.872376+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-telegram-business.html",
+      "sha256": "df880522cfcf248a75f0da4ba580de6a1da31939ba02b4c21833f5476d08dd67",
+      "bytes": 24339
+    },
+    {
+      "url": "https://telegram.org/blog/telegram-me-change-number-and-pfs",
+      "final_url": "https://telegram.org/blog/telegram-me-change-number-and-pfs",
+      "retrieved_at": "2026-10-20T19:55:46.364476+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-telegram-me-change-number-and-pfs.html",
+      "sha256": "c1984e8a696036750d387432a1d9d75d22896c105e2233c75b631b5cf8e7d1b4",
+      "bytes": 15140
+    },
+    {
+      "url": "https://telegram.org/blog/themes-accounts",
+      "final_url": "https://telegram.org/blog/themes-accounts",
+      "retrieved_at": "2026-10-20T19:55:47.748073+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-themes-accounts.html",
+      "sha256": "ed1c254e09a625d8d50779cd33f969defc455938ecfeeceea8b9c4fa967b0a88",
+      "bytes": 16678
+    },
+    {
+      "url": "https://telegram.org/blog/topics-in-groups-collectible-usernames",
+      "final_url": "https://telegram.org/blog/topics-in-groups-collectible-usernames",
+      "retrieved_at": "2026-10-20T19:55:48.189600+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-topics-in-groups-collectible-usernames.html",
+      "sha256": "99c3b156194df992749eb8a217fa9da0a9ee905887eaef471252bcbd19d48210",
+      "bytes": 24913
+    },
+    {
+      "url": "https://telegram.org/blog/translations-iv2",
+      "final_url": "https://telegram.org/blog/translations-iv2",
+      "retrieved_at": "2026-10-20T19:56:13.566348+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-translations-iv2.html",
+      "sha256": "afec586458d9707d292bf070ca49a8baf96c3107e2c533a739cd35ef26d6b4d3",
+      "bytes": 20436
+    },
+    {
+      "url": "https://telegram.org/blog/ultimate-privacy-topics-2-0",
+      "final_url": "https://telegram.org/blog/ultimate-privacy-topics-2-0",
+      "retrieved_at": "2026-10-20T19:55:49.702415+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-ultimate-privacy-topics-2-0.html",
+      "sha256": "4e35716533dab420891a0359b24691fb2cc2397fb4a072d994169376da47a322",
+      "bytes": 30851
+    },
+    {
+      "url": "https://telegram.org/blog/unread-replace-2x",
+      "final_url": "https://telegram.org/blog/unread-replace-2x",
+      "retrieved_at": "2026-10-20T19:55:49.977486+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-unread-replace-2x.html",
+      "sha256": "1b648a2b88f6af8a18f32adf868154a7347f1a6d2c74719b410cbfd083705c50",
+      "bytes": 18559
+    },
+    {
+      "url": "https://telegram.org/blog/unsend-privacy-emoji",
+      "final_url": "https://telegram.org/blog/unsend-privacy-emoji",
+      "retrieved_at": "2026-10-20T19:55:50.498824+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-unsend-privacy-emoji.html",
+      "sha256": "f873022d39d75142b695878ff002e5c2afd164ef9f993a2156a02bd4ff0e19d0",
+      "bytes": 19587
+    },
+    {
+      "url": "https://telegram.org/blog/verifiable-apps-and-more",
+      "final_url": "https://telegram.org/blog/verifiable-apps-and-more",
+      "retrieved_at": "2026-10-20T19:55:50.976605+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-verifiable-apps-and-more.html",
+      "sha256": "5499a158482956290427d01950fca765a907ff0df3166688b4d47d964cb77a5a",
+      "bytes": 38677
+    },
+    {
+      "url": "https://telegram.org/blog/video-1000",
+      "final_url": "https://telegram.org/blog/video-1000",
+      "retrieved_at": "2026-10-20T19:56:16.409370+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-video-1000.html",
+      "sha256": "bc74939b198574d6a4efb31a23f7235c40136f97d1210d3a91d72dba01a5f0d0",
+      "bytes": 29708
+    },
+    {
+      "url": "https://telegram.org/blog/video-calls",
+      "final_url": "https://telegram.org/blog/video-calls",
+      "retrieved_at": "2026-10-20T19:55:51.487851+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-video-calls.html",
+      "sha256": "205e48edeec8e56dad7d3bb32bff15749cda522940a906d640c43acfc05cfb59",
+      "bytes": 17213
+    },
+    {
+      "url": "https://telegram.org/blog/video-messages-and-telescope",
+      "final_url": "https://telegram.org/blog/video-messages-and-telescope",
+      "retrieved_at": "2026-10-20T19:55:52.297910+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-video-messages-and-telescope.html",
+      "sha256": "6dea101af44fca624d3dc8e5e7425bb4b0c4b57d97aab49ac555835b644ab6db",
+      "bytes": 17349
+    },
+    {
+      "url": "https://telegram.org/blog/video-stickers-better-reactions",
+      "final_url": "https://telegram.org/blog/video-stickers-better-reactions",
+      "retrieved_at": "2026-10-20T19:55:52.787204+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-video-stickers-better-reactions.html",
+      "sha256": "4b4f2cfdc24fabcc8bf3540ff7a8536bb21ea8e3871c7e3d93d48c6beaecc5c1",
+      "bytes": 22324
+    },
+    {
+      "url": "https://telegram.org/blog/voice-2-secret-3",
+      "final_url": "https://telegram.org/blog/voice-2-secret-3",
+      "retrieved_at": "2026-10-20T19:55:52.791092+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-voice-2-secret-3.html",
+      "sha256": "5e66e80af5784eb21db53ec0c3ca95bd944a53927160beb3201e3cbe35422328",
+      "bytes": 17066
+    },
+    {
+      "url": "https://telegram.org/blog/voice-chats",
+      "final_url": "https://telegram.org/blog/voice-chats",
+      "retrieved_at": "2026-10-20T19:55:53.318733+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-voice-chats.html",
+      "sha256": "3f4ffb60acfb8f1138805766be4ba61ff04852124cc48f371db86259590b1394",
+      "bytes": 26824
+    },
+    {
+      "url": "https://telegram.org/blog/voice-chats-on-steroids",
+      "final_url": "https://telegram.org/blog/voice-chats-on-steroids",
+      "retrieved_at": "2026-10-20T19:55:53.792321+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-voice-chats-on-steroids.html",
+      "sha256": "0b5861f7cffc5fc9df90248ec2c2c6082565274f731677f572fee69d6efe083e",
+      "bytes": 22175
+    },
+    {
+      "url": "https://telegram.org/blog/w3-browser-mini-app-store",
+      "final_url": "https://telegram.org/blog/w3-browser-mini-app-store",
+      "retrieved_at": "2026-10-20T19:55:53.788692+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-w3-browser-mini-app-store.html",
+      "sha256": "03c337ea1ce61c289fc5b4e5a48ad6b3bcfbdd3c5e817181c9af4dbed3933213",
+      "bytes": 23863
+    },
+    {
+      "url": "https://telegram.org/blog/w3-browser-mini-app-store/pt-br?setln=en",
+      "final_url": "https://telegram.org/blog/w3-browser-mini-app-store/pt-br?setln=en",
+      "retrieved_at": "2026-10-20T19:55:54.331327+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-w3-browser-mini-app-store-pt-br.html",
+      "sha256": "91f4f56aaf24c984b3b87c2fe864fc916e19945f3d0022f96647a75f9d4e7759",
+      "bytes": 23788
+    },
+    {
+      "url": "https://telegram.org/blog/watch-apps-and-more",
+      "final_url": "https://telegram.org/blog/watch-apps-and-more",
+      "retrieved_at": "2026-10-20T19:55:54.840425+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-watch-apps-and-more.html",
+      "sha256": "3520cec9764522b744e0e0e1260425480bba469a55ae9762f92ef78d77505ba4",
+      "bytes": 23801
+    },
+    {
+      "url": "https://telegram.org/blog/wear-gifts-blockchain-and-more",
+      "final_url": "https://telegram.org/blog/wear-gifts-blockchain-and-more",
+      "retrieved_at": "2026-10-20T19:55:54.855489+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-wear-gifts-blockchain-and-more.html",
+      "sha256": "5980cb0cfd27da92a93b01084f222b808cf113811c9e94063d991264e10fd908",
+      "bytes": 21414
+    },
+    {
+      "url": "https://telegram.org/blog/welcome-messages-buttons-TG-13",
+      "final_url": "https://telegram.org/blog/welcome-messages-buttons-TG-13",
+      "retrieved_at": "2026-10-20T19:55:55.369510+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-blog-welcome-messages-buttons-tg-13.html",
+      "sha256": "3e9dbdcfbd445a6c82c0263b788f621ff3ea4ed9f50f41ac4d16e8b13d076787",
+      "bytes": 25262
+    },
+    {
+      "url": "https://telegram.org/evolution",
+      "final_url": "https://telegram.org/evolution",
+      "retrieved_at": "2026-10-20T19:52:21.292287+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-evolution.html",
+      "sha256": "06342872c3835dc77cb04991ec4d26164457d55876a97ad90970eee063f6f927",
+      "bytes": 315641
+    },
+    {
+      "url": "https://telegram.org/faq",
+      "final_url": "https://telegram.org/faq",
+      "retrieved_at": "2026-10-20T19:52:21.092497+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-faq.html",
+      "sha256": "835f9f43dbb3b7765375d24a0d39a52a73c97ed79a3cc8da5b3cac5c1856d583",
+      "bytes": 120057
+    },
+    {
+      "url": "https://telegram.org/faq_premium",
+      "final_url": "https://telegram.org/faq_premium",
+      "retrieved_at": "2026-10-20T19:52:20.899373+00:00",
+      "capture": "Same-day preserved official snapshot",
+      "status": 200,
+      "snapshot": "sources/telegram-org-faq-premium.html",
+      "sha256": "d2d967cccb2daf7ab134fd1f5974ef90cfaf35b6c5d161c3270097699567d015",
+      "bytes": 42046
+    }
+  ],
+  "errors": []
+}

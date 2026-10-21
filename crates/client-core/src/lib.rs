@@ -6,7 +6,11 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
+mod agent_binary_documents;
 mod agent_notes;
+pub use agent_binary_documents::{AgentBinaryTurn, AGENT_BINARY_DOCUMENT_LIMIT};
+mod app_binary_documents;
+pub use app_binary_documents::AppBinaryDocumentDto;
 mod app_documents;
 pub use app_documents::AppDocumentDto;
 mod api;
@@ -31,9 +35,14 @@ pub use liveview::{LiveViewDemoVm, LiveViewInput, LiveViewKey, LiveViewSession};
 mod local_sealed;
 mod media;
 mod media_drafts;
+mod recent_attachments;
 pub use media_drafts::{
     MediaDraftAsset, MediaDraftAssetInput, MediaDraftDto, MediaDraftSaveResult, MediaDraftScope,
     MediaDraftSendResult,
+};
+pub use recent_attachments::{
+    RecentAttachment, RecentAttachmentKind, RecentAttachmentPage, RecentAttachmentReference,
+    RecentAttachmentSourceBinding,
 };
 mod message_drafts;
 mod native_surfaces;

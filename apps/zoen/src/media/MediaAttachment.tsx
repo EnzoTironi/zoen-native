@@ -13,12 +13,14 @@ import { Icon } from '../components/primitives';
 import { AudioClip, AudioClipControls, clipTime } from './AudioClip';
 import { useReceivedMessageAudio } from './message-audio-provider';
 import { AudioWaveform } from './audio-progress';
+import { VoiceTranscript } from './voice-transcript';
 import { VideoClip } from './VideoClip';
 import { previewMediaFile } from './preview-file';
 import { formatFileSize } from './file-size';
 import { inlineImageFrame, type DecodedMessageImage } from './inline-image-frame';
 
 type Presentation = 'message' | 'document';
+export type MediaTile = Readonly<{ width: number; height: number }>;
 type FileAttachmentProps = {
   itemId: string;
   version?: number;
@@ -26,10 +28,13 @@ type FileAttachmentProps = {
   voice?: TimelineEntry['voice'];
   expectedHash?: string;
   presentation?: Presentation;
+  renderAsFile?: boolean;
   mine?: boolean;
   onActions?: () => void;
   onImageDecoded?: (image: DecodedMessageImage) => void;
   messageSource?: { spaceId: string; entry: TimelineEntry };
+  tile?: MediaTile;
+  onInlineUnavailable?: () => void;
 };
 
 /** Generic media owns row copies; received voice controls use the account transport. */
@@ -49,10 +54,13 @@ function FileAttachmentContent({
   voice,
   expectedHash,
   presentation = 'document',
+  renderAsFile = false,
   mine = false,
   onActions,
   onImageDecoded,
   messageSource,
+  tile,
+  onInlineUnavailable,
 }: FileAttachmentProps) {
   const { store, snapshot, mode } = useClient();
   const driver = store.driver.media;
@@ -70,7 +78,8 @@ function FileAttachmentContent({
         }
       : null,
   );
-  const ink = message && mine ? colors.onMine : colors.text;
+  // Voice sits on its message bubble; generic file fallbacks sit on the sky.
+  const ink = message && mine && voice ? colors.onMine : colors.text;
   const [info, setInfo] = useState<FileDto | null>(null);
   const [local, setLocal] = useState<LocalMediaFile | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,7 +87,6 @@ function FileAttachmentContent({
   const [ratio, setRatio] = useState(1);
   const [availableWidth, setAvailableWidth] = useState(0);
   const [autoplay, setAutoplay] = useState(false);
-  const [transcriptExpanded, setTranscriptExpanded] = useState(false);
   const mounted = useRef(false);
   const generation = useRef(0);
   const owned = useRef<LocalMediaFile | null>(null);
@@ -128,7 +136,14 @@ function FileAttachmentContent({
 
   // Only already-arrived, modest visual files become inline previews. Large files
   // remain an explicit open action; audio never starts or requests permission here.
-  const visual = Boolean(info?.mime.startsWith('image/') || info?.mime.startsWith('video/'));
+  const visual =
+    !renderAsFile && Boolean(info?.mime.startsWith('image/') || info?.mime.startsWith('video/'));
+  useEffect(() => {
+    // A signed media group can contain a generic/large file. Retain its ordinary
+    // canonical row rather than squeezing a file action into a visual mosaic.
+    if (mounted.current && (error || (info && (!visual || Number(info.bytes) > 16 * 1048576))))
+      onInlineUnavailable?.();
+  }, [info, visual, error, onInlineUnavailable]);
   useEffect(() => {
     if (!driver || !message || !info?.ready || !visual || Number(info.bytes) > 16 * 1048576) return;
     let active = true;
@@ -145,7 +160,7 @@ function FileAttachmentContent({
         if (previous) await driver.releaseLocalFile(previous.uri);
       })
       .catch((reason: unknown) => {
-        if (active && mounted.current)
+        if (active && mounted.current && expectedGeneration === generation.current)
           setError(reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'));
       });
     return () => {
@@ -207,7 +222,7 @@ function FileAttachmentContent({
     setError(null);
     let file: LocalMediaFile | null = null;
     try {
-      // A separate lease stays alive for QuickLook even if its message scrolls away.
+      // A separate native-viewer lease outlives the virtualized message row.
       file = await materialize(driver);
       if (!mounted.current || expectedGeneration !== generation.current) return;
       const preview = file;
@@ -237,8 +252,8 @@ function FileAttachmentContent({
           count: info.chunks,
         })
     : t('media.loading');
-  const image = local?.info.mime.startsWith('image/');
-  const video = local?.info.mime.startsWith('video/');
+  const image = !renderAsFile && local?.info.mime.startsWith('image/');
+  const video = !renderAsFile && local?.info.mime.startsWith('video/');
   const imageFrame = inlineImageFrame(availableWidth, ratio);
   const outline = scheme === 'dark' ? '#FFFFFF1A' : '#0000001A';
   return (
@@ -249,6 +264,7 @@ function FileAttachmentContent({
       }}
       style={{
         width: '100%',
+        height: tile?.height,
         minWidth: 0,
         gap: message ? 0 : 8,
         padding: message ? 0 : 12,
@@ -278,10 +294,10 @@ function FileAttachmentContent({
           }}
           style={({ pressed }) => ({
             alignSelf: mine ? 'flex-end' : 'flex-start',
-            width: imageFrame.width || '100%',
-            height: imageFrame.height || undefined,
-            aspectRatio: imageFrame.width ? undefined : 1,
-            borderRadius: 24,
+            width: tile?.width ?? (imageFrame.width || '100%'),
+            height: tile?.height ?? (imageFrame.height || undefined),
+            aspectRatio: tile || imageFrame.width ? undefined : 1,
+            borderRadius: tile ? 0 : 24,
             borderCurve: 'continuous',
             overflow: 'hidden',
             opacity: pressed ? 0.8 : 1,
@@ -292,7 +308,7 @@ function FileAttachmentContent({
             recyclingKey={`${itemId}:${local.info.sha256}`}
             source={{ uri: local.uri }}
             accessible={false}
-            contentFit="contain"
+            contentFit={tile ? 'cover' : 'contain'}
             onLoad={(event) => {
               if (!mounted.current || owned.current !== local || event.source.url !== local.uri)
                 return;
@@ -308,7 +324,10 @@ function FileAttachmentContent({
                 });
               }
             }}
-            onError={() => setError(t('media.thisFileCouldNotBeOpened'))}
+            onError={() => {
+              if (mounted.current && owned.current === local)
+                setError(t('media.thisFileCouldNotBeOpened'));
+            }}
             style={{ position: 'absolute', inset: 0 }}
           />
           <View
@@ -316,15 +335,64 @@ function FileAttachmentContent({
             style={{
               position: 'absolute',
               inset: 0,
-              borderWidth: 1,
+              borderWidth: tile ? 0 : 1,
               borderColor: outline,
-              borderRadius: 24,
+              borderRadius: tile ? 0 : 24,
               borderCurve: 'continuous',
             }}
           />
         </Pressable>
       ) : local && video && message ? (
-        <VideoClip uri={local.uri} compact />
+        <View>
+          <VideoClip
+            uri={local.uri}
+            compact
+            tile={tile}
+            onInlineUnavailable={onInlineUnavailable}
+            onDimensions={
+              tile
+                ? (size) => {
+                    if (!mounted.current || owned.current !== local) return;
+                    onImageDecoded?.({
+                      itemId: local.itemId,
+                      version: local.version,
+                      sha256: local.info.sha256,
+                      ...size,
+                    });
+                  }
+                : undefined
+            }
+          />
+          <Pressable
+            testID={`message-video-gallery-${itemId}`}
+            accessibilityRole="button"
+            accessibilityLabel={t('media.openFileLabel', { name: label })}
+            onPress={() => {
+              void previewImage();
+            }}
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 6,
+              width: 44,
+              height: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 22,
+              backgroundColor: '#00000060',
+            }}
+          >
+            <Icon
+              name={{
+                ios: 'arrow.up.left.and.arrow.down.right',
+                android: 'fullscreen',
+                web: 'fullscreen',
+              }}
+              color="#FFFFFF"
+              size={20}
+            />
+          </Pressable>
+        </View>
       ) : voice && local ? (
         <View style={{ paddingHorizontal: message ? 10 : 0, paddingVertical: message ? 5 : 0 }}>
           <AudioClip
@@ -351,10 +419,10 @@ function FileAttachmentContent({
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
+            gap: 11,
             paddingHorizontal: 10,
             paddingVertical: 5,
-            minHeight: 58,
+            minHeight: 54,
             opacity: pressed ? 0.6 : 1,
           })}
         >
@@ -432,45 +500,17 @@ function FileAttachmentContent({
             <Text numberOfLines={2} style={{ color: ink, fontSize: 15, fontWeight: '600' }}>
               {label}
             </Text>
-            <Text style={{ color: ink, opacity: 0.72, fontSize: 12 }}>{readiness}</Text>
+            <Text style={{ color: colors.secondary, fontSize: 12 }}>{readiness}</Text>
           </View>
         </Pressable>
       )}
       {voice?.transcript ? (
-        <View
-          style={{ paddingHorizontal: message ? 14 : 0, paddingBottom: message ? 12 : 0, gap: 4 }}
-        >
-          <Pressable
-            accessibilityRole="button"
-            aria-expanded={transcriptExpanded}
-            accessibilityLabel={t('media.voiceTranscript')}
-            onPress={() => setTranscriptExpanded(!transcriptExpanded)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              minHeight: 44,
-            }}
-          >
-            <Text style={{ color: ink, fontSize: 12, fontWeight: '600' }}>
-              {t('media.voiceTranscript')}
-            </Text>
-            <Icon
-              name={
-                transcriptExpanded
-                  ? { ios: 'chevron.up', android: 'expand_less', web: 'expand_less' }
-                  : { ios: 'chevron.down', android: 'expand_more', web: 'expand_more' }
-              }
-              color={ink}
-              size={11}
-            />
-          </Pressable>
-          {transcriptExpanded ? (
-            <Text selectable style={{ color: ink, fontSize: 15, lineHeight: 21 }}>
-              {voice.transcript}
-            </Text>
-          ) : null}
-        </View>
+        <VoiceTranscript
+          text={voice.transcript}
+          ink={ink}
+          message={message}
+          onLongPress={onActions}
+        />
       ) : null}
       {!message ? (
         <Pressable
@@ -506,12 +546,16 @@ export function MessageMedia({
   presentation = 'message',
   onActions,
   onImageDecoded,
+  tile,
+  onInlineUnavailable,
 }: {
   spaceId: string;
   entry: TimelineEntry;
   presentation?: Presentation;
   onActions?: () => void;
   onImageDecoded?: (image: DecodedMessageImage) => void;
+  tile?: MediaTile;
+  onInlineUnavailable?: () => void;
 }) {
   if (entry.deleted) return null;
   if (entry.voice)
@@ -534,7 +578,10 @@ export function MessageMedia({
       version={card.version}
       title={card.title}
       onImageDecoded={onImageDecoded}
+      tile={tile}
+      onInlineUnavailable={onInlineUnavailable}
       presentation={presentation}
+      renderAsFile={entry.media?.presentation === 'file'}
       mine={entry.author.is_me}
       onActions={onActions}
     />

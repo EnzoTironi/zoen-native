@@ -4,6 +4,7 @@ import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import { contrastRatio } from '../theme/sky.ts';
 import { Icon } from './primitives';
+import { MessageReceiptGraphic } from './message-graphics';
 
 export function messageDeliveryLabel(delivery: Delivery): string {
   switch (delivery) {
@@ -25,18 +26,23 @@ export function messageDeliveryLabel(delivery: Delivery): string {
 /** Receipts reflect the core's acknowledgements, never a presentation timer. */
 export function MessageReceipt({
   delivery,
+  ownerKey,
   ink,
   background,
+  backgrounds,
 }: {
   delivery: Delivery;
+  ownerKey?: string;
   ink?: string;
   background?: string;
+  backgrounds?: readonly string[];
 }) {
-  const { colors } = useTheme();
+  const { colors, reducedMotion } = useTheme();
   const doubled = delivery === 'Delivered' || delivery === 'Read';
+  const papers = backgrounds?.length ? backgrounds : [background ?? colors.mine];
   const readBlue =
-    ['#168CD2', '#4CC3F2', '#1167A3', '#79D7FF'].find(
-      (color) => contrastRatio(color, background ?? colors.mine) >= 3,
+    ['#168CD2', '#4CC3F2', '#1167A3', '#79D7FF', '#003E60'].find((color) =>
+      papers.every((paper) => contrastRatio(color, paper) >= 3),
     ) ??
     ink ??
     colors.onMine;
@@ -59,14 +65,18 @@ export function MessageReceipt({
       accessibilityRole="text"
       accessibilityLabel={messageDeliveryLabel(delivery)}
       testID={`message-receipt-${delivery.toLowerCase()}`}
-      style={{ width: doubled ? 19 : 14, height: 14 }}
+      style={{ width: 13, height: 14, justifyContent: 'center' }}
     >
-      <Icon name={name} size={14} color={color} />
-      {doubled ? (
-        <View style={{ position: 'absolute', left: 5, top: 0 }}>
-          <Icon name={name} size={14} color={color} />
-        </View>
-      ) : null}
+      {delivery === 'Local' || delivery === 'Failed' ? (
+        <Icon name={name} size={11} color={color} />
+      ) : (
+        <MessageReceiptGraphic
+          ownerKey={ownerKey}
+          shape={delivery === 'Sending' ? 'clock' : doubled ? 'double' : 'single'}
+          color={color}
+          reducedMotion={reducedMotion}
+        />
+      )}
     </View>
   );
 }

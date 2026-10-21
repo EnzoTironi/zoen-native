@@ -1,0 +1,54 @@
+{
+  "repository": "https://github.com/storytold/craft-fonts",
+  "revision": "43913056ce82a3fdad0ef69f6b88d1dc922a8104",
+  "selectionPolicy": "exact pinned DeckCraft WASM build.rs subset; no other fonts/model weights downloaded",
+  "fonts": [
+    {
+      "family": "Inter",
+      "style": "Regular",
+      "path": "fonts/inter/Inter-Regular.ttf",
+      "sha256": "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82",
+      "bytes": 411640,
+      "license": "OFL-1.1",
+      "licensePath": "fonts/inter/OFL.txt",
+      "upstreamManifest": "fonts/latin-manifest.txt",
+      "source": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip#extras/ttf/Inter-Regular.ttf"
+    },
+    {
+      "family": "Inter",
+      "style": "Bold",
+      "path": "fonts/inter/Inter-Bold.ttf",
+      "sha256": "288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f",
+      "bytes": 420428,
+      "license": "OFL-1.1",
+      "licensePath": "fonts/inter/OFL.txt",
+      "upstreamManifest": "fonts/latin-manifest.txt",
+      "source": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip#extras/ttf/Inter-Bold.ttf"
+    },
+    {
+      "family": "BIZ UDPGothic",
+      "style": "Regular",
+      "path": "fonts/biz-ud-pgothic/BIZUDPGothic-Regular.ttf",
+      "sha256": "258d7156c165f2ff774b6efee637c22c3b950de0d8a10e501137061bc8085d01",
+      "bytes": 4669688,
+      "license": "OFL-1.1",
+      "licensePath": "fonts/biz-ud-pgothic/OFL.txt",
+      "upstreamManifest": "fonts/manifest.txt",
+      "source": "https://github.com/googlefonts/morisawa-biz-ud-gothic/tree/18934af56b9c003ca58c54bffbf226848cb11032"
+    }
+  ],
+  "licenseFiles": [
+    {
+      "path": "fonts/inter/OFL.txt",
+      "sha256": "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a",
+      "bytes": 4380,
+      "license": "OFL-1.1"
+    },
+    {
+      "path": "fonts/biz-ud-pgothic/OFL.txt",
+      "sha256": "e753d7155d53c747d037a445e584c8ecfca6dd79846db610417e282a736b28bc",
+      "bytes": 4408,
+      "license": "OFL-1.1"
+    }
+  ]
+}

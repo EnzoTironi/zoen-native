@@ -1,4 +1,5 @@
 import { useAppSheetCloseButton } from './app-sheet-context';
+import { AppKeyboardViewport } from './app-keyboard-viewport';
 import { t, locale } from '../i18n/index.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
@@ -26,6 +27,7 @@ import { frameAuthority, frameClosures } from './lifetime';
 import { DeviceConsent } from './device-consent';
 import { useDeviceConsent } from './use-device-consent';
 import { CanonicalDrawingView } from './canonical-view';
+import { DeckcraftView } from './deckcraft-view';
 import type { MiniappDocumentController } from './document-controller';
 
 export function MiniappView({
@@ -41,15 +43,30 @@ export function MiniappView({
   onDocumentCopied?: (itemId: string) => void;
   onDocumentDiscard?: () => void;
 }) {
-  return props.spec.id === 'excalidraw' ? (
-    <CanonicalDrawingView
-      {...props}
-      onDocumentController={onDocumentController}
-      onDocumentCopied={onDocumentCopied}
-      onDocumentDiscard={onDocumentDiscard}
-    />
-  ) : (
-    <BuiltinMiniappView {...props} />
+  const content =
+    props.spec.id === 'deckcraft' ? (
+      <DeckcraftView
+        {...props}
+        onDocumentController={onDocumentController}
+        onDocumentDiscard={onDocumentDiscard}
+      />
+    ) : props.spec.id === 'excalidraw' ? (
+      <CanonicalDrawingView
+        {...props}
+        onDocumentController={onDocumentController}
+        onDocumentCopied={onDocumentCopied}
+        onDocumentDiscard={onDocumentDiscard}
+      />
+    ) : (
+      <BuiltinMiniappView {...props} />
+    );
+  return (
+    <AppKeyboardViewport
+      enabled={!!props.fill}
+      scope={JSON.stringify([props.item.id, props.spec.resource_uri])}
+    >
+      {content}
+    </AppKeyboardViewport>
   );
 }
 
@@ -588,7 +605,10 @@ function ReadyView({
   useEffect(() => {
     session.current?.syncContext();
   }, [scheme, dimensions, safeAreaInsets, closeButton]);
-  const html = useMemo(() => sandboxHtml(resource.text, hosts), [resource.text, hosts]);
+  const html = useMemo(
+    () => sandboxHtml(resource.text, hosts, manifest.runtimePackage),
+    [resource.text, hosts, manifest.runtimePackage],
+  );
   const receive = useCallback((message: string) => {
     void session.current?.receive(message);
   }, []);
@@ -642,6 +662,7 @@ function ReadyView({
         <MiniappFrame
           ref={frame}
           html={html}
+          runtimePackage={manifest.runtimePackage}
           title={item.title}
           height={height}
           fill={fill}

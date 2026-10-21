@@ -1,17 +1,17 @@
 import type { ItemDetail, TimelineEntry } from './types';
+import { projectMediaAlbums, type MediaAlbum } from './media-albums.ts';
 
 export type MiniappTimelineActivity = Readonly<{
   /** Canonical events remain individually addressable; this is only a visual run. */
   entries: readonly TimelineEntry[];
   item?: ItemDetail;
-  /** Older activity stays in place; only the last run repeats the current preview. */
-  showCard: boolean;
 }>;
 export type ConversationTimelineRow = Readonly<{
   /** The first event anchors a growing run without recycling the row on every save. */
   key: string;
   entry: TimelineEntry;
   activity?: MiniappTimelineActivity;
+  album?: MediaAlbum;
 }>;
 
 function plainUpdate(entry: TimelineEntry) {
@@ -42,6 +42,7 @@ export function projectConversationTimeline(
   items: readonly ItemDetail[],
   spaceId: string,
   revealId?: string | null,
+  groupMedia = false,
 ): ConversationTimelineRow[] {
   const scoped = new Map(
     items.filter((item) => item.space_id === spaceId).map((item) => [item.id, item]),
@@ -49,9 +50,19 @@ export function projectConversationTimeline(
   const rows: {
     key: string;
     entry: TimelineEntry;
-    activity?: { item?: ItemDetail; entries: TimelineEntry[]; showCard: boolean };
+    activity?: { item?: ItemDetail; entries: TimelineEntry[] };
+    album?: MediaAlbum;
   }[] = [];
+  const { albums, hidden } = groupMedia
+    ? projectMediaAlbums(entries, spaceId, revealId)
+    : { albums: new Map<string, MediaAlbum>(), hidden: new Set<string>() };
   for (const entry of entries) {
+    if (hidden.has(entry.id)) continue;
+    const album = albums.get(entry.id);
+    if (album) {
+      rows.push({ key: entry.id, entry, album });
+      continue;
+    }
     if (
       !('ItemEdited' in entry.kind) ||
       entry.deleted ||
@@ -70,7 +81,7 @@ export function projectConversationTimeline(
     const edit = entry.kind.ItemEdited;
     const candidate = scoped.get(edit.item_id);
     // A removed/unavailable item still has its signed note and history entry.
-    // An older or unrelated projection must never manufacture a current card.
+    // An older or unrelated projection must never expose a current history target.
     const item =
       candidate?.kind_id === 'app' && candidate.app && candidate.version >= edit.version
         ? candidate
@@ -100,16 +111,8 @@ export function projectConversationTimeline(
       previous.activity.entries.push(entry);
       previous.entry = entry;
     } else {
-      rows.push({ key: entry.id, entry, activity: { item, entries: [entry], showCard: false } });
+      rows.push({ key: entry.id, entry, activity: { item, entries: [entry] } });
     }
-  }
-  const shown = new Set<string>();
-  for (let index = rows.length - 1; index >= 0; index--) {
-    const row = rows[index]!;
-    const activity = row.activity;
-    if (!activity?.item || row.entry.deleted || shown.has(activity.item.id)) continue;
-    activity.showCard = true;
-    shown.add(activity.item.id);
   }
   return rows;
 }

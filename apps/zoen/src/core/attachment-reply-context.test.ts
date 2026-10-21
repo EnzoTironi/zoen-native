@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
+import { telegramPresentation } from '../theme/telegram.ts';
 import { messageText } from './presentation.ts';
 import type { ClientState } from './store.ts';
 import type { TimelineEntry } from './types.ts';
@@ -33,6 +34,7 @@ const external = new Set([
   'react/compiler-runtime',
   'react/jsx-runtime',
   'react-native',
+  'react-native-reanimated',
   '../components/primitives',
   './primitives',
   '../core/provider',
@@ -119,6 +121,7 @@ function render({
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-native': { View: 'View', Text: 'Text' },
+    'react-native-reanimated': { View: 'AnimatedView' },
     '../core/provider': { useClient: () => state },
     '../core/query': {
       useCoreQuery: (command: unknown) => {
@@ -127,7 +130,13 @@ function render({
       },
     },
     '../core/presentation': { messageText },
-    '../theme': { useTheme: () => ({ colors: {} }) },
+    '../theme': {
+      useTheme: () => ({
+        colors: {},
+        presentation: telegramPresentation('day'),
+        reducedMotion: true,
+      }),
+    },
     '../i18n/index.ts': {
       t: (key: string, values?: unknown) => `${key}:${JSON.stringify(values)}`,
     },

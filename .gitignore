@@ -43,3 +43,6 @@ tools/dev-relay/blobs/
 .env.*
 /.tools/
 .zoen/
+
+# Local Telegram port QA captures, raw upstream extracts and build receipts
+/output/telegram-attachment-port-v242/

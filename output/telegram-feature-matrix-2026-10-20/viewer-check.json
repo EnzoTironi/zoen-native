@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-20",
+  "surface": "Generated research catalog in the in-app browser",
+  "scope": "Catalog usability only; no Telegram or Zoen app runtime validation",
+  "result": "pass",
+  "observations": [
+    {"section": "Feature matrix", "visible_rows": 506},
+    {"section": "Premium & Business", "visible_rows": 47},
+    {"section": "Limits & entrypoints", "visible_rows": 136},
+    {"section": "Release archive", "visible_rows": 676},
+    {"section": "Frontend map", "visible_areas": 23, "ios_primary_label_visible": true},
+    {"action": "Search voice", "visible_rows": 23, "result": "Filtered catalog updated"},
+    {"action": "Clear search", "result": "Complete matrix restored"},
+    {"observation": "Primary reference", "visible_text": "Telegram iOS is the primary UI reference for implementation."}
+  ]
+}

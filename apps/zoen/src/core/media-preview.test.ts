@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import type { PlaybackCoordinator } from '../media/playback-owner';
 import { build } from 'esbuild';
 import type { LocalMediaFile, MediaDriver } from '../media/types';
 
@@ -14,7 +16,12 @@ type SDKFixture = {
 };
 const globals = globalThis as typeof globalThis & { __zoenMediaPreviewFixture?: SDKFixture };
 const output = await build({
-  entryPoints: [new URL('../media/preview-file.ts', import.meta.url).pathname],
+  stdin: {
+    contents:
+      "export { previewMediaFile } from '../media/preview-file.ts'; export { mediaPlayback } from '../media/playback-owner.ts';",
+    resolveDir: fileURLToPath(new URL('.', import.meta.url)),
+    loader: 'ts',
+  },
   bundle: true,
   platform: 'node',
   format: 'esm',
@@ -57,10 +64,11 @@ const output = await build({
     },
   ],
 });
-const { previewMediaFile } = (await import(
+const { previewMediaFile, mediaPlayback } = (await import(
   `data:text/javascript;base64,${Buffer.from(output.outputFiles[0]!.text).toString('base64')}`
 )) as {
   previewMediaFile(media: MediaDriver, file: LocalMediaFile): Promise<void>;
+  mediaPlayback: PlaybackCoordinator;
 };
 
 function deferred<T>() {
@@ -243,4 +251,37 @@ test('cleanup failure surfaces only after the native preview has finished and is
   closed.resolve();
   await assert.rejects(preview, (reason) => reason === cleanupError);
   assert.deepEqual(f.released, [file.uri]);
+});
+
+test('opening the native visual gallery synchronously interrupts actual playback owners before admission and retains its lease until dismissal', async () => {
+  const closed = deferred<void>();
+  let playing = true;
+  const f = fixture(async () => {
+    f.sdk.events.push({ kind: 'native-open', uri: file.uri });
+    assert.equal(playing, false);
+    await closed.promise;
+  });
+  const owner = mediaPlayback.register(
+    () => {
+      playing = false;
+      f.sdk.events.push({ kind: 'pause-player', uri: file.uri });
+    },
+    () => playing,
+  );
+  const intent = owner.begin();
+  try {
+    const result = previewMediaFile(f.media, file);
+    assert.deepEqual(
+      f.sdk.events.map((event) => event.kind),
+      ['pause-player', 'native-open'],
+    );
+    assert.equal(owner.isCurrent(intent), false);
+    assert.deepEqual(f.released, []);
+    closed.resolve();
+    await result;
+    assert.deepEqual(f.released, [file.uri]);
+  } finally {
+    closed.resolve();
+    owner.dispose();
+  }
 });

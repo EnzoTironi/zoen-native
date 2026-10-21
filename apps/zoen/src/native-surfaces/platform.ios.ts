@@ -42,7 +42,7 @@ export async function createSurfacePort(): Promise<SurfacePort | null> {
         return;
       }
       if (value.length > 8_192) throw new Error(t('nativeSurfaces.tooManyPreferences'));
-      file.write(value);
+      await file.write(value);
     },
     widget(content) {
       publishWidgetCatalog(widget, content);

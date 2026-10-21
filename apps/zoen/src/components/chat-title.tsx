@@ -1,6 +1,6 @@
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { router } from 'expo-router';
-import { Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions, type ViewProps } from 'react-native';
 import type { Persona } from '../core/generated/Persona';
 import { t } from '../i18n/index.ts';
 import { ProfileAvatar } from '../profile/profile-avatar';
@@ -15,11 +15,50 @@ export type ChatHeaderProps = {
   search?: { active: boolean; onToggle: () => void };
 };
 
-export function ChatTitle({ id, title, counterpart, activityLabel }: ChatHeaderProps) {
-  const { colors, scheme } = useTheme();
+export function ChatTitle({
+  id,
+  title,
+  counterpart,
+  activityLabel,
+  search,
+  availableWidth,
+  onLayout,
+}: ChatHeaderProps & { availableWidth?: number; onLayout?: ViewProps['onLayout'] }) {
+  const { colors, presentation: p, scheme } = useTheme();
   const { width, fontScale } = useWindowDimensions();
   const glass = process.env.EXPO_OS === 'ios' && isLiquidGlassAvailable();
-  const content = (
+  const native = process.env.EXPO_OS === 'ios';
+  const nativeWidth = availableWidth ?? Math.max(88, width - 176);
+  // f1dd7a2 ChatTitleComponent:365,626,1047,1084. The avatar is
+  // a separate navigation item, not part of the centered title capsule.
+  const content = native ? (
+    <View
+      testID="chat-title-content"
+      style={{
+        minHeight: 44,
+        minWidth: Math.min(178, nativeWidth),
+        maxWidth: nativeWidth,
+        paddingHorizontal: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text
+        numberOfLines={1}
+        style={{ color: p.navigation.text, fontSize: 17, fontWeight: '600', textAlign: 'center' }}
+      >
+        {title}
+      </Text>
+      {activityLabel && fontScale <= 1.2 ? (
+        <Text
+          numberOfLines={1}
+          style={{ color: p.navigation.secondary, fontSize: 12, textAlign: 'center' }}
+        >
+          {activityLabel}
+        </Text>
+      ) : null}
+    </View>
+  ) : (
     <View
       style={{
         flexDirection: 'row',
@@ -52,10 +91,12 @@ export function ChatTitle({ id, title, counterpart, activityLabel }: ChatHeaderP
   return (
     <Pressable
       testID="chat-details-header"
+      onLayout={onLayout}
       accessibilityRole="button"
       accessibilityLabel={[title, activityLabel].filter(Boolean).join(', ')}
       accessibilityHint={t('chat.chatDetails')}
       onPress={() => router.push({ pathname: '/space/[id]', params: { id } })}
+      onLongPress={native && !search?.active ? search?.onToggle : undefined}
       style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
     >
       {glass ? (
@@ -63,12 +104,14 @@ export function ChatTitle({ id, title, counterpart, activityLabel }: ChatHeaderP
           isInteractive
           colorScheme={scheme}
           glassEffectStyle="regular"
-          style={{ borderRadius: 24 }}
+          style={{ borderRadius: native ? 22 : 24 }}
         >
           {content}
         </GlassView>
       ) : (
-        <View style={{ borderRadius: 24, backgroundColor: colors.surface }}>{content}</View>
+        <View style={{ borderRadius: native ? 22 : 24, backgroundColor: colors.surface }}>
+          {content}
+        </View>
       )}
     </Pressable>
   );

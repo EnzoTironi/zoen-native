@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "paths": {
+      "@modelcontextprotocol/ext-apps": [
+        "../../apps/zoen/node_modules/@modelcontextprotocol/ext-apps/dist/src/app.d.ts"
+      ],
+      "@modelcontextprotocol/client": [
+        "../../apps/zoen/node_modules/@modelcontextprotocol/client/dist/index.d.mts"
+      ],
+      "@noble/hashes/*": ["../../apps/zoen/node_modules/@noble/hashes/*"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

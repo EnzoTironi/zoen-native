@@ -1,0 +1,176 @@
+{
+  "pin": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "sources": [
+    {
+      "path": "submodules/GalleryUI/Sources/ZoomableContentGalleryItemNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/GalleryUI/Sources/ZoomableContentGalleryItemNode.swift",
+      "sha256": "aa3622cb64a22ff92877f236a45d8b080ab73b4f7c67828f1de7d1d0fb70c424",
+      "bytes": 12421
+    },
+    {
+      "path": "submodules/GalleryUI/Sources/GalleryControllerNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/GalleryUI/Sources/GalleryControllerNode.swift",
+      "sha256": "858233e35024a232f74794da2c6c35dcf41b765015482d75f4cdde12e6e0a481",
+      "bytes": 33195
+    },
+    {
+      "path": "submodules/GalleryUI/Sources/GalleryPagerNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/GalleryUI/Sources/GalleryPagerNode.swift",
+      "sha256": "c5bf71d78d62037ef84c95a95e860445a95b26097a77340f3ef0e5340770e563",
+      "bytes": 39636
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGModernGalleryZoomableScrollView.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGModernGalleryZoomableScrollView.m",
+      "sha256": "9112c0f4a30d8d28830844e4e2058a858d8574d435de2f776c5c370bcc7acdf7",
+      "bytes": 1834
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGModernGalleryZoomableScrollViewSwipeGestureRecognizer.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGModernGalleryZoomableScrollViewSwipeGestureRecognizer.m",
+      "sha256": "1bda1b7c87820eb09c9637ebcbf260d0e61737b01aa86473c8784479ed4c3f38",
+      "bytes": 2591
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGMediaPickerGalleryInterfaceView.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMediaPickerGalleryInterfaceView.m",
+      "sha256": "c0314e06594098956ea6a9afe4d0e973b2e2b903837b012958946e244344664c",
+      "bytes": 92613
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGMediaPickerGalleryPhotoItemView.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMediaPickerGalleryPhotoItemView.m",
+      "sha256": "c5b580ef56af5b216aff0c5a38b0a175715ad508af11a61faa174557ccc25381",
+      "bytes": 41298
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGMediaPickerGalleryVideoItemView.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMediaPickerGalleryVideoItemView.m",
+      "sha256": "a90cc4cf5ae05c0128edc3d5e0aa064d6643764cc32b44d3235a58f7c8985676",
+      "bytes": 66702
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGMediaPickerGallerySelectedItemsModel.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMediaPickerGallerySelectedItemsModel.m",
+      "sha256": "522eb18ea6f504c176211acedbf0bd913634f4725a04ee052bc111e500e94de3",
+      "bytes": 3709
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGPhotoEditorUtils.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGPhotoEditorUtils.m",
+      "sha256": "094efd1c6176b5e3b877b42fa1a5adc712c3ff830cf360632346fa6efee4669b",
+      "bytes": 30468
+    },
+    {
+      "path": "submodules/LegacyComponents/PublicHeaders/LegacyComponents/TGPhotoEditorUtils.h",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/PublicHeaders/LegacyComponents/TGPhotoEditorUtils.h",
+      "sha256": "6171968d7f6fb41fdddcd85fe0a44e0fd1bb54d08faf72f2857f8b07d641ec6c",
+      "bytes": 3159
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGPhotoEditorTabController.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGPhotoEditorTabController.m",
+      "sha256": "ed76b2e66994eec6a134a5cbf9a2f3be4f97194b2027f46dff1f58a5f6e0377c",
+      "bytes": 19646
+    },
+    {
+      "path": "submodules/LegacyComponents/PublicHeaders/LegacyComponents/TGPhotoEditorTabController.h",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/PublicHeaders/LegacyComponents/TGPhotoEditorTabController.h",
+      "sha256": "eea2d98b7da2b0d8a9b0a7123038dbae66ecb108968d2e53c6cd373ca5a4b850",
+      "bytes": 3732
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGMediaPickerPhotoCounterButton.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMediaPickerPhotoCounterButton.m",
+      "bytes": 30878,
+      "sha256": "04ef872d36911ace6ee9e80a66a29767a6d98529d4499c67172cf3a498ad6820"
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGMediaPickerPhotoStripView.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMediaPickerPhotoStripView.m",
+      "bytes": 24369,
+      "sha256": "073872e7647705bc5cca2f017397e5303bff68d9d47f8e9ad6f7d6d4e0641146"
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGPhotoCaptionInputMixin.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGPhotoCaptionInputMixin.m",
+      "bytes": 14191,
+      "sha256": "a579e289bd8e25dca97084c80f09efcdaf30fbc40ff24eded80d1a4d8c8732a1"
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGModernGalleryController.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGModernGalleryController.m",
+      "bytes": 69107,
+      "sha256": "652fe82c9ca6d315e806b7056aff229a5c92a2433cf89c36d6d8cdeb74c6c5a1"
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGModernGalleryView.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGModernGalleryView.m",
+      "bytes": 16525,
+      "sha256": "9afe28f938ffc6cd415df93546c31e3b2d26eba216e6adc196bf7cfb47e107e2"
+    },
+    {
+      "path": "submodules/MosaicLayout/Sources/ChatMessageBubbleMosaicLayout.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/MosaicLayout/Sources/ChatMessageBubbleMosaicLayout.swift",
+      "bytes": 18211,
+      "sha256": "8cbcbe860467d69dbf230b597ed609954ffeeeb743c905431ab66f9b59cbfaab"
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGMediaEditingContext.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMediaEditingContext.m",
+      "bytes": 50125,
+      "sha256": "3af54b6ef40bdcebf8f6f51fc3d8958c244ad1751aa314c062e52c5e4543e3f2"
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGMediaAssetsController.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMediaAssetsController.m",
+      "bytes": 97964,
+      "sha256": "329322bcc6b41f8ce6d5ba831275b69ca6b3f44eca032ffd2b477b1f506cd27a"
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/JNWSpringAnimation.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/JNWSpringAnimation.m",
+      "bytes": 10552,
+      "sha256": "d4464c217a6b25c852c960c158b89e308a7d1cdcb98a6d4af3e9868eb6ada252"
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGPhotoCropAreaView.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGPhotoCropAreaView.m",
+      "bytes": 21725,
+      "sha256": "b7339658ade2e9556d15520f22f6fae61bef5cbd62e2c119c4480fd7e914b68b"
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGMessageImageViewOverlayView.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMessageImageViewOverlayView.m",
+      "bytes": 55813,
+      "sha256": "61745a13863b27122d9b8897b7fe91769122f0bb7000e80870ea1325beb2bb32"
+    }
+  ],
+  "scope": "Pinned public source references. The implementation entries below now adapt selected source components; this document is not a claim of complete Telegram UI or runtime parity.",
+  "implementation": [
+    "apps/zoen/modules/zoen-core/ios/ZoenAttachmentGalleryContent.swift",
+    "apps/zoen/modules/zoen-core/ios/ZoenAttachmentGalleryHost.swift",
+    "apps/zoen/modules/zoen-core/ios/ZoenAttachmentMosaicLayout.swift",
+    "apps/zoen/modules/zoen-core/ios/ZoenAttachmentGalleryMotion.swift",
+    "apps/zoen/modules/zoen-core/ios/ZoenAttachmentPhotoEditor.swift",
+    "apps/zoen/src/media/attachment-approval.ios.tsx"
+  ],
+  "selectedLicense": "GPL-3.0 under upstream GPL-2.0-or-later option, combined with Zoen under AGPLv3 section13",
+  "adaptations": [
+    "The exact upstream MosaicLayout algorithm is namespaced and receives the actual view trait display scale instead of deprecated UIScreen.main.",
+    "Legacy gallery and photo-toolbar geometry, selection rail and selected bubble grouping are translated to UIKit under existing Zoen callback owners.",
+    "The invoked legacy gallery uses distance128/velocity700 and original JNW sampled spring parameters; this replaces the unrelated modern gallery viewport/4 policy.",
+    "GalleryContent is shared between Photos and durable private cache previews; it owns no selection, durable bytes, captions, backend state or delivery.",
+    "Explicit full Photos preview allows requested iCloud representation download with cancel/revision guards; thumbnail and neighbor requests remain offline.",
+    "A zero-size Expo adapter presents a window sibling, with native retirement, nonterminal child-presentation display leases and scoped callback identity.",
+    "The image-editor subset uses original toolbar/crop glyphs, 44-point crop hit regions and actual UIKit/ImageIO/PencilKit rendering; only crop, quarter-turn rotation, ink, ink undo and explicit Save are enabled. PNG bytes enter the existing canonical media capture/CAS path without a new temp file owner.",
+    "Photo and durable review use the same native gallery; final native caption text is journaled before Send or Edit, with selection/account/context revalidation after the CAS write.",
+    "Paging and reorder have separate interaction revisions. Stale paging snaps to the authoritative item; Send/Edit require the displayed page to match the authorized preview."
+  ],
+  "remaining": [
+    "Whole upstream GPU/filter, sticker, text, advanced paint and image-edit undo engines are not ported.",
+    "Movie scrubber/trim/editor UI is not ported; existing video editing remains Quick Look.",
+    "Integrated Release Simulator proof covers whole-image preview, nonterminal selection, caption focus/back, image rotation/save and category handoff. Software-keyboard timing, image interruption, real iCloud, memory, accessibility, rotation and canonical recovery are not fully qualified.",
+    "The source transition host/container snapshot and decoded-image crossfade are UIKit adaptations and require pixel/animation comparison; no pixel-perfect parity is claimed."
+  ]
+}

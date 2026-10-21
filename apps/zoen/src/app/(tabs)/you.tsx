@@ -6,9 +6,11 @@ import { router } from 'expo-router';
 import { useProfilePhoto } from '../../profile/use-profile-photo';
 import { useClient } from '../../core/provider';
 import { useTheme } from '../../theme';
-import { Avatar, NativeButton } from '../../components/primitives';
+import { NativeButton } from '../../components/primitives';
 import { IntegrityWarnings } from '../../integrity/integrity-warning';
 import { SettingsRows } from '../../components/settings-rows';
+import { ProfileHeader } from '../../profile/profile-header';
+import { ProfileInfoRow, ProfileSection } from '../../profile/profile-section';
 
 function YouContent() {
   const { snapshot, store, mode } = useClient();
@@ -21,39 +23,30 @@ function YouContent() {
       testID="you-settings-screen"
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{
-        padding: 24,
+        padding: 16,
+        paddingTop: 18,
         paddingBottom: 48,
-        gap: 28,
+        gap: 32,
         maxWidth: 640,
         width: '100%',
         alignSelf: 'center',
         backgroundColor: 'transparent',
       }}
     >
-      <Text
-        accessibilityRole="header"
-        style={{ fontSize: 34, fontWeight: '700', color: colors.text }}
-      >
-        {t('settings.you')}
-      </Text>
+      <ProfileHeader
+        top={4}
+        name={me?.name ?? t('settings.yourAccount')}
+        subtitle={me?.handle ? `@${me.handle}` : undefined}
+        photo={photo}
+        tint={me?.tint_hex}
+        onAvatarPress={() => router.push('/edit-profile')}
+        avatarLabel={t('settings.editMyProfile')}
+      />
       <View style={{ gap: 16 }}>
-        <View style={{ flexDirection: 'row', gap: 18, alignItems: 'center' }}>
-          <Avatar uri={photo} name={me?.name ?? t('settings.you')} color={me?.tint_hex} size={66} />
-          <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
-            <Text selectable style={{ fontSize: 23, fontWeight: '600', color: colors.text }}>
-              {me?.name ?? t('settings.yourAccount')}
-            </Text>
-            {me?.handle ? (
-              <Text selectable style={{ fontSize: 15, color: colors.secondary }}>
-                @{me.handle}
-              </Text>
-            ) : null}
-          </View>
-        </View>
         {me?.bio ? (
-          <Text selectable style={{ color: colors.secondary, lineHeight: 23 }}>
-            {me.bio}
-          </Text>
+          <ProfileSection>
+            <ProfileInfoRow label={t('profile.about')} value={me.bio} />
+          </ProfileSection>
         ) : null}
         <SettingsRows
           testID="profile-settings-rows"
@@ -78,6 +71,12 @@ function YouContent() {
         <SettingsRows
           testID="you-settings-rows"
           rows={[
+            {
+              id: 'settings-appearance',
+              title: t('settings.appearance'),
+              icon: { ios: 'paintbrush', android: 'palette', web: 'palette' },
+              onPress: () => router.push('/settings/appearance'),
+            },
             {
               id: 'settings-general',
               title: t('settings.general'),

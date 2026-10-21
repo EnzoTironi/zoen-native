@@ -1,0 +1,78 @@
+diff --git a/apps/deckcraft-web/Cargo.toml b/apps/deckcraft-web/Cargo.toml
+--- a/apps/deckcraft-web/Cargo.toml
++++ b/apps/deckcraft-web/Cargo.toml
+@@ -12,6 +12,10 @@
+ [[bin]]
+ name = "deckcraft-web"
+ path = "src/main.rs"
++
++[features]
++default = []
++zoen-host = []
+ 
+ [dependencies]
+ deckcraft-engine = { workspace = true }
+diff --git a/apps/deckcraft-web/src/main.rs b/apps/deckcraft-web/src/main.rs
+--- a/apps/deckcraft-web/src/main.rs
++++ b/apps/deckcraft-web/src/main.rs
+@@ -25,7 +25,8 @@
+ 
+ #[cfg(target_arch = "wasm32")]
+ fn main() {
+-    web::start();
++    #[cfg(not(feature = "zoen-host"))]
++    web::start(false);
+ }
+ 
+ #[cfg(not(target_arch = "wasm32"))]
+diff --git a/apps/deckcraft-web/src/web.rs b/apps/deckcraft-web/src/web.rs
+--- a/apps/deckcraft-web/src/web.rs
++++ b/apps/deckcraft-web/src/web.rs
+@@ -14,8 +14,8 @@
+ const CANVAS_ID: &str = "deckcraft_canvas";
+ const LOADING_ID: &str = "deckcraft_loading";
+ 
+-pub fn start() {
+-    let hosted = query().trim_start_matches('?').split('&').any(|part| part == "zoenHost=1");
++pub fn start(force_hosted: bool) {
++    let hosted = force_hosted || query().trim_start_matches('?').split('&').any(|part| part == "zoenHost=1");
+     host_api::install(hosted, None);
+     eframe::WebLogger::init(log::LevelFilter::Info).ok();
+     wasm_bindgen_futures::spawn_local(async move {
+diff --git a/apps/deckcraft-web/src/host_api.rs b/apps/deckcraft-web/src/host_api.rs
+--- a/apps/deckcraft-web/src/host_api.rs
++++ b/apps/deckcraft-web/src/host_api.rs
+@@ -29,6 +29,8 @@
+ #[derive(Default)]
+ struct Queue {
+     lifecycle: HostLifecycle,
++    #[cfg(feature = "zoen-host")]
++    started: bool,
+     ctx: Option<egui::Context>,
+     pending: VecDeque<Pending>,
+     bytes: usize,
+@@ -43,6 +45,24 @@
+         let mut q = q.borrow_mut();
+         q.ctx = if q.lifecycle.install(hosted) { ctx } else { None };
+     });
++}
++/// Start the managed package once, after verified WASM initialization.
++#[cfg(feature = "zoen-host")]
++#[wasm_bindgen(js_name = zoenHostStart)]
++pub fn start_managed() -> std::result::Result<(), JsValue> {
++    let start = QUEUE.with(|q| {
++        let mut q = q.borrow_mut();
++        if q.started || !q.lifecycle.install(true) {
++            return false;
++        }
++        q.started = true;
++        true
++    });
++    if !start {
++        return Err(error("host_started_or_retired"));
++    }
++    crate::web::start(true);
++    Ok(())
+ }
+ /// A narrow, bounded FIFO onto the application's own egui/Session owner. The
+ /// embedding JS adapter must enforce the same Uint8Array limit before wasm-bindgen

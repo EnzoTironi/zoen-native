@@ -13,6 +13,12 @@ public class ZoenCoreModule: Module {
     Name("ZoenCore")
     Events("onChange", "onPageInputStatus")
 
+    // Reuse the exact pinned Telegram mosaic already used by selected previews.
+    // Pure, bounded geometry only: no media bytes, authority or persistent state.
+    Function("attachmentMosaicLayout") { (width: Double, height: Double, scale: Double, sizes: [[Double]]) -> [String: Any]? in
+      ZoenAttachmentMosaicBridge.layout(width: width, height: height, scale: scale, sizes: sizes)
+    }
+
     AsyncFunction("measureComposer") { (tag: Int, expectedText: String, expectedLabel: String, expectedPlaceholder: String, width: Double, expectedFontSize: Double, nonce: Int) async -> [String: Double]? in
       await MainActor.run {
         guard let root = self.appContext?.findView(withTag: tag, ofType: UIView.self) else { return nil }
@@ -68,6 +74,97 @@ public class ZoenCoreModule: Module {
       Prop("token") { (view: ZoenPageTextInput, token: String) in view.token = token }
       OnViewDidUpdateProps { (view: ZoenPageTextInput) in view.bind() }
     }
+    Constant("composerGlassVersion") { 1 }
+    View(ZoenComposerGlassSurface.self) {
+      ViewName("ComposerGlassSurface")
+      Prop("isDark") { (view: ZoenComposerGlassSurface, value: Bool) in view.isDark = value }
+      Prop("cornerRadius") { (view: ZoenComposerGlassSurface, value: Double) in view.cornerRadius = value }
+      Prop("interactive") { (view: ZoenComposerGlassSurface, value: Bool) in view.interactive = value }
+      Prop("preference") { (view: ZoenComposerGlassSurface, value: String) in view.preference = value }
+      OnViewDidUpdateProps { (view: ZoenComposerGlassSurface) in view.apply() }
+    }
+    View(ZoenComposerGlassContainer.self) {
+      ViewName("ComposerGlassContainer")
+      Prop("isDark") { (view: ZoenComposerGlassContainer, value: Bool) in view.isDark = value }
+      OnViewDidUpdateProps { (view: ZoenComposerGlassContainer) in view.apply() }
+    }
+    // Named presentation-only views; the existing first/default page-input view stays unchanged.
+    View(ZoenKeyboardPanelHost.self) {
+      ViewName("ZoenKeyboardPanelHost")
+      Events("onAction", "onClosed")
+      Prop("binding") { (view: ZoenKeyboardPanelHost, value: String) in view.binding = value }
+      Prop("model") { (view: ZoenKeyboardPanelHost, value: String) in view.model = value }
+      OnViewDidUpdateProps { (view: ZoenKeyboardPanelHost) in view.applyProps() }
+    }
+    View(ZoenAttachmentGalleryHost.self) {
+      ViewName("ZoenAttachmentGalleryHost")
+      Events("onAction", "onClosed")
+      Prop("binding") { (view: ZoenAttachmentGalleryHost, value: String) in view.binding = value }
+      Prop("model") { (view: ZoenAttachmentGalleryHost, value: String) in view.model = value }
+      OnViewDidUpdateProps { (view: ZoenAttachmentGalleryHost) in view.applyProps() }
+    }
+    View(ZoenStandaloneAttachmentPanelHost.self) {
+      ViewName("ZoenStandaloneAttachmentPanelHost")
+      Events("onAction", "onClosed")
+      Prop("binding") { (view: ZoenStandaloneAttachmentPanelHost, value: String) in view.binding = value }
+      Prop("model") { (view: ZoenStandaloneAttachmentPanelHost, value: String) in view.model = value }
+      OnViewDidUpdateProps { (view: ZoenStandaloneAttachmentPanelHost) in view.applyProps() }
+    }
+    View(ZoenEmojiKeyboardPanelHost.self) {
+      ViewName("ZoenEmojiKeyboardPanelHost")
+      Events("onAction", "onClosed")
+      Prop("binding") { (view: ZoenEmojiKeyboardPanelHost, value: String) in view.binding = value }
+      Prop("model") { (view: ZoenEmojiKeyboardPanelHost, value: String) in view.model = value }
+      OnViewDidUpdateProps { (view: ZoenEmojiKeyboardPanelHost) in view.applyProps() }
+    }
+    View(ZoenMessageBubbleView.self) {
+      ViewName("MessageBubble")
+      Prop("ownerKey") { (view: ZoenMessageBubbleView, value: String) in view.ownerKey = value }
+      Prop("incoming") { (view: ZoenMessageBubbleView, value: Bool) in view.incoming = value }
+      Prop("tail") { (view: ZoenMessageBubbleView, value: Bool) in view.tail = value }
+      Prop("topLeft") { (view: ZoenMessageBubbleView, value: Double) in view.topLeft = value }
+      Prop("topRight") { (view: ZoenMessageBubbleView, value: Double) in view.topRight = value }
+      Prop("bottomLeft") { (view: ZoenMessageBubbleView, value: Double) in view.bottomLeft = value }
+      Prop("bottomRight") { (view: ZoenMessageBubbleView, value: Double) in view.bottomRight = value }
+      Prop("fill") { (view: ZoenMessageBubbleView, value: String) in view.fill = value }
+      Prop("fillColors") { (view: ZoenMessageBubbleView, value: [String]) in view.fillColors = value }
+      Prop("animateChanges") { (view: ZoenMessageBubbleView, value: Bool) in view.animateChanges = value }
+      OnViewDidUpdateProps { (view: ZoenMessageBubbleView) in view.apply() }
+    }
+    Constant("messageContextVersion") { 2 }
+    View(ZoenMessageContextStage.self) {
+      ViewName("MessageContextStage")
+      Prop("active") { (view: ZoenMessageContextStage, value: Bool) in view.requestedActive = value }
+      OnViewDidUpdateProps { (view: ZoenMessageContextStage) in view.bind(active: view.requestedActive) }
+      AsyncFunction("dismissContexts") { (view: ZoenMessageContextStage) async in await view.dismissContexts() }
+      AsyncFunction("retireContexts") { (view: ZoenMessageContextStage) async in await view.retireContexts() }
+    }
+    View(ZoenMessageContextSource.self) {
+      ViewName("MessageContextSource")
+      Events("onGesture")
+      Prop("binding") { (view: ZoenMessageContextSource, value: String) in view.requestedBinding = value }
+      Prop("active") { (view: ZoenMessageContextSource, value: Bool) in view.requestedActive = value }
+      Prop("handlesTap") { (view: ZoenMessageContextSource, value: Bool) in view.requestedHandlesTap = value }
+      Prop("reducedMotion") { (view: ZoenMessageContextSource, value: Bool) in view.requestedReducedMotion = value }
+      OnViewDidUpdateProps { (view: ZoenMessageContextSource) in
+        view.bind(view.requestedBinding, active: view.requestedActive, handlesTap: view.requestedHandlesTap, reducedMotion: view.requestedReducedMotion)
+      }
+      AsyncFunction("presentContext") { (view: ZoenMessageContextSource, requestId: String, binding: String, gestureId: String, configuration: String) async throws -> String? in
+        try await view.present(requestId: requestId, expectedBinding: binding, gestureId: gestureId, configuration: configuration)
+      }
+      AsyncFunction("consumeGesture") { (view: ZoenMessageContextSource, binding: String, gestureId: String) async -> Bool in
+        await view.consumeGesture(expectedBinding: binding, gestureId: gestureId)
+      }
+      AsyncFunction("dismissContext") { (view: ZoenMessageContextSource, requestId: String) async in await view.dismiss(requestId: requestId) }
+    }
+    View(ZoenMessageReceiptView.self) {
+      ViewName("MessageReceipt")
+      Prop("ownerKey") { (view: ZoenMessageReceiptView, value: String?) in view.ownerKey = value ?? "" }
+      Prop("shape") { (view: ZoenMessageReceiptView, value: String) in view.shape = value }
+      Prop("color") { (view: ZoenMessageReceiptView, value: String) in view.color = value }
+      Prop("reducedMotion") { (view: ZoenMessageReceiptView, value: Bool) in view.reducedMotion = value }
+      OnViewDidUpdateProps { (view: ZoenMessageReceiptView) in view.apply(propsDelivered: true) }
+    }
     AsyncFunction("openAssistant") { (spaceId: String, locale: String) async throws -> String in
       try await self.session.openAssistant(spaceId: spaceId, locale: locale)
     }
@@ -122,11 +219,21 @@ public class ZoenCoreModule: Module {
     AsyncFunction("materializeFile") { (itemId: String, version: Int?) async throws -> String in
       try await self.session.materializeFile(itemId: itemId, version: version)
     }
+    AsyncFunction("materializeRecentAttachment") { (request: String) async throws -> String in
+      try await self.session.materializeRecentAttachment(request)
+    }
+    AsyncFunction("previewRecentAttachment") { (request: String, presentationId: String) async throws in
+      let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
+      try await self.session.previewRecentAttachment(request, presentationId: presentationId, presenter: presenter)
+    }
     AsyncFunction("previewLocalFile") { (uri: String) async throws in
       let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
       try await self.session.previewLocalFile(uri, presenter: presenter)
     }
     AsyncFunction("releaseLocalFile") { (uri: String) async in await self.session.releaseLocalFile(uri) }
+    AsyncFunction("releaseMediaLibraryExport") { (uri: String) async throws in
+      try ZoenDeviceErasure.releaseMediaLibraryExport(uri)
+    }
     AsyncFunction("saveProfile") { (request: String) async throws in try await self.session.saveProfile(request) }
     AsyncFunction("materializeProfilePhoto") { (ownerId: String, deviceId: String, identityId: String, expectedSha256: String) async throws -> String in
       try await self.session.materializeProfilePhoto(ownerId: ownerId, deviceId: deviceId, identityId: identityId, expectedSha256: expectedSha256)
@@ -153,6 +260,9 @@ public class ZoenCoreModule: Module {
 }
 
 private actor ZoenSession {
+  // A close returns its exact native UI epoch; a stale open cannot resume a newer retirement.
+  private var keyboardAdmissionTicket: UUID?
+  private var galleryAdmissionTicket: UUID?
   nonisolated private let pickupLifetime = ZoenModulePickupLifetime()
   private var pickupBinding: UUID?
   private var core: Client?
@@ -178,6 +288,14 @@ private actor ZoenSession {
   private let mediaFiles = ZoenMediaFiles()
   private let filePreview = ZoenFilePreview()
   private var previewBindings: [String: PreviewBinding] = [:]
+  private struct RecentSelectionBinding {
+    let engine: Client
+    let generation: UInt64
+    let scope: ZoenMediaDraftBridge.Scope
+    let kind: RecentAttachmentKind
+    let reference: RecentAttachmentReference
+  }
+  private var recentSelections: [String: RecentSelectionBinding] = [:]
   nonisolated private let draftMediaEditLifetime = ZoenMediaEditLifetime()
   private var draftMediaEdits: [UUID: DraftMediaEditBinding] = [:]
   private var draftPreviewTasks: [UUID: Task<Void, Error>] = [:]
@@ -644,6 +762,8 @@ private actor ZoenSession {
     guard !erasing else { throw ZoenDeviceErasure.Failure.incomplete }
     try await close(cancelOpening: false)
     guard openingAttempt == attempt, !erasing else { throw SessionError.closed }
+    guard let keyboardTicket = keyboardAdmissionTicket,
+          let galleryTicket = galleryAdmissionTicket else { throw SessionError.closed }
     let openingGeneration = generation
     let root = mode == "account" ? ZoenDeviceErasure.accountRoot
       : URL.applicationSupportDirectory.appending(path: "demo", directoryHint: .isDirectory)
@@ -669,6 +789,12 @@ private actor ZoenSession {
       } else if vault.hasAccountMaterial() { throw SessionError.orphanedKeys }
       let snapshot = try await engine.clientRequest(request: #"{"op":"snapshot"}"#)
       guard generation == openingGeneration, openingAttempt == attempt else { throw SessionError.closed }
+      let resumed = await MainActor.run {
+        ZoenKeyboardPanelHost.resumeAdmissions(expected: keyboardTicket)
+          && ZoenAttachmentGalleryHost.resumeAdmissions(expected: galleryTicket)
+      }
+      guard resumed else { throw SessionError.closed }
+      guard generation == openingGeneration, openingAttempt == attempt, !erasing, !closing else { throw SessionError.closed }
       // Publish only the fully validated session. A rejected unlock must leave
       // no callable engine behind; an older async open cannot replace a newer one.
       guard let binding = pickupLifetime.bind(retire: { engine.retireLinkPickup() }) else {
@@ -738,6 +864,7 @@ private actor ZoenSession {
     let oldContent = try ZoenMediaDraftBridge.content(previous.contentJson)
     let content = try ZoenMediaDraftBridge.content(json)
     var inputs: [MediaDraftAssetInput] = []
+    var recentSources: [RecentAttachmentSourceBinding] = []
     var admitted = Set<String>()
     var voiceLeases: [(sourceId: String, renderUri: String?)] = []
     requests += 1
@@ -771,6 +898,11 @@ private actor ZoenSession {
       _ = try mediaDraftCore(value.scope)
       let selection = try mediaFiles.readSelection(uri: asset.uri, name: asset.name, mime: asset.mime)
       inputs.append(MediaDraftAssetInput(id: asset.id, name: selection.name, mime: selection.mime, bytes: selection.data))
+      if let recent = recentSelections[selection.url.path] {
+        guard recent.engine === core, recent.generation == expected, recent.scope == value.scope,
+              asset.voiceRole == nil, asset.voiceSourceId == nil else { throw SessionError.closed }
+        recentSources.append(RecentAttachmentSourceBinding(assetId: asset.id, kind: recent.kind, reference: recent.reference))
+      }
     }
     if previous.revision == revision, content?["kind"] as? String == "voice" {
       // An existing render is immutable too: metadata-only edits cannot relabel its bytes.
@@ -796,8 +928,12 @@ private actor ZoenSession {
       guard voiceSources[lease.sourceId] == expected,
             lease.renderUri.map({ voiceRenders[lease.sourceId] == $0 }) ?? true else { throw SessionError.closed }
     }
-    let saved = try core.saveMediaDraft(scope: value.scope.core, expectedRevision: revision,
-      contentJson: json, assets: inputs)
+    // Source-bound ingestion and its receipt retry happen under the existing
+    // canonical journal lock. A separate validation call cannot grant Save.
+    let saved = try recentSources.isEmpty
+      ? core.saveMediaDraft(scope: value.scope.core, expectedRevision: revision, contentJson: json, assets: inputs)
+      : core.saveMediaDraftWithRecentSources(scope: value.scope.core, expectedRevision: revision,
+        contentJson: json, assets: inputs, sourceBindings: recentSources)
     return try ZoenMediaFiles.json(["accepted_revision": saved.acceptedRevision,
       "draft": ZoenMediaDraftBridge.object(saved.draft)])
   }
@@ -846,9 +982,13 @@ private actor ZoenSession {
     let id = filePreview.register(file: file, generation: generation)
     let preview = filePreview
     let title = asset.name
+    let mime = asset.mime
     let task = Task { @MainActor in
       try await preview.open(id: id, title: title, edit: nil) { editing in
-        ZoenQuickLookPreview(presenter: presenter, editing: editing)
+        if editing == nil, ZoenMediaGalleryPreview.supports(mime: mime) {
+          return ZoenMediaGalleryPreview(presenter: presenter, mime: mime)
+        }
+        return ZoenQuickLookPreview(presenter: presenter, editing: editing)
       }
     }
     draftPreviewTasks[token] = task
@@ -917,13 +1057,24 @@ private actor ZoenSession {
     draftMediaEdits[token] = DraftMediaEditBinding(engine: engine, generation: generation, scope: value.scope,
       kind: kind, gate: gate, revision: revision, assetId: assetId, mutationId: mutationId, sha256: asset.sha256)
     let preview = filePreview
-    let edit = ZoenFilePreview.MediaEditContext(kind: kind, maximumBytes: ZoenMediaFiles.maximumBytes) { [weak self] file in
+    let edit = ZoenFilePreview.MediaEditContext(kind: kind, maximumBytes: ZoenMediaFiles.maximumBytes, authorize: { [weak self] in
+      guard let self else { throw CancellationError() }
+      try await self.authorizeDraftMediaEdit(token)
+    }) { [weak self] file in
       guard let self else { throw CancellationError() }
       try await self.saveDraftMediaEdit(file, token: token)
     }
     let task = Task { @MainActor in
+      let resumeGallery = ZoenAttachmentGalleryHost.yieldForChildPresentation()
+      defer { resumeGallery() }
       try await preview.open(id: id, title: asset.name, edit: nil, mediaEdit: edit) { editing in
-        ZoenQuickLookPreview(presenter: presenter, editing: editing)
+        if kind == .image, let editing {
+          ZoenAttachmentPhotoEditor(presenter: presenter, editing: editing)
+        } else if kind == .video, let editing {
+          ZoenAttachmentVideoEditor(presenter: presenter, editing: editing)
+        } else {
+          ZoenQuickLookPreview(presenter: presenter, editing: editing)
+        }
       }
     }
     draftPreviewTasks[token] = task
@@ -935,6 +1086,25 @@ private actor ZoenSession {
     guard self.core === engine else { throw SessionError.closed }
     _ = try mediaDraftCore(value.scope)
     return try ZoenMediaFiles.json(ZoenMediaDraftBridge.object(engine.mediaDraft(scope: value.scope.core)))
+  }
+
+  /// Render checkpoints consult the same exact canonical selection that owns
+  /// the CAS; a renamed/reordered/replaced item is never silently rebound.
+  private func authorizeDraftMediaEdit(_ token: UUID) throws {
+    guard let binding = draftMediaEdits[token], !erasing, !closing,
+          generation == binding.generation, self.core === binding.engine else { throw SessionError.closed }
+    _ = try mediaDraftCore(binding.scope)
+    try binding.gate.admitted {
+      let draft = try binding.engine.mediaDraft(scope: binding.scope.core)
+      guard draft.revision == binding.revision, !draft.attempted, binding.attempt == nil,
+            let content = try ZoenMediaDraftBridge.content(draft.contentJson),
+            content["kind"] as? String == "attachments",
+            let entries = content["items"] as? [[String: Any]],
+            entries.contains(where: { $0["asset_id"] as? String == binding.assetId && $0["mutation_id"] as? String == binding.mutationId }),
+            draft.assets.contains(where: { $0.id == binding.assetId && $0.sha256 == binding.sha256 }) else {
+        throw ZoenFilePreview.Failure.changed
+      }
+    }
   }
 
   private func saveDraftMediaEdit(_ file: ZoenPreviewFile, token: UUID) async throws {
@@ -1135,6 +1305,65 @@ private actor ZoenSession {
     return try ZoenMediaFiles.json(ZoenMediaFiles.info(try core.fileInfoAt(itemId: itemId, version: ZoenMediaFiles.version(version))))
   }
 
+  func materializeRecentAttachment(_ request: String) async throws -> String {
+    guard recentSelections.count < 20 else { throw ZoenMediaFiles.Failure.invalidFile }
+    let value = try ZoenRecentAttachmentBridge.decode(request)
+    let engine = try mediaDraftCore(value.scope), kind = try value.coreKind
+    let reference = value.reference.core, expected = generation
+    let row = try engine.attachmentReferenceValidate(scope: value.scope.core, kind: kind, reference: reference)
+    let local = try await materializeFile(itemId: reference.itemId, version: Int(reference.version))
+    guard let object = try JSONSerialization.jsonObject(with: Data(local.utf8)) as? [String: Any],
+          let uri = object["uri"] as? String else { throw ZoenMediaFiles.Failure.invalidFile }
+    do {
+      let identity = try mediaFiles.ownedSelectionURL(uri).path
+      guard !erasing, !closing, self.core === engine, generation == expected,
+            recentSelections.count < 20,
+            let binding = previewBindings[identity], bindingIsCurrent(binding),
+            binding.sha256 == reference.sha256, binding.version == reference.version else { throw SessionError.closed }
+      _ = try mediaDraftCore(value.scope)
+      let checked = try engine.attachmentReferenceValidate(scope: value.scope.core, kind: kind, reference: reference)
+      guard checked.name == row.name, checked.mime == row.mime, checked.bytes == row.bytes else { throw ZoenMediaFiles.Failure.invalidVersion }
+      recentSelections[identity] = RecentSelectionBinding(engine: engine, generation: expected, scope: value.scope, kind: kind, reference: reference)
+      return try ZoenMediaFiles.json(["uri": uri, "name": row.name, "mime": row.mime, "size": row.bytes])
+    } catch { releaseLocalFile(uri); throw error }
+  }
+
+  func previewRecentAttachment(_ request: String, presentationId: String, presenter: UIViewController?) async throws {
+    guard let token = UUID(uuidString: presentationId), draftPreviewTasks[token] == nil else { throw ZoenMediaFiles.Failure.invalidFile }
+    if let canceled = cancelledDraftPreviews.firstIndex(of: token) {
+      cancelledDraftPreviews.remove(at: canceled); throw CancellationError()
+    }
+    let gate = ZoenMediaEditGate()
+    try draftMediaEditLifetime.register(token, gate: gate)
+    let task = Task { try await self.openRecentAttachmentPreview(request, presenter: presenter, gate: gate) }
+    draftPreviewTasks[token] = task
+    defer { draftPreviewTasks.removeValue(forKey: token); draftMediaEditLifetime.remove(token) }
+    try await task.value
+  }
+
+  private func openRecentAttachmentPreview(_ request: String, presenter: UIViewController?, gate: ZoenMediaEditGate) async throws {
+    try Task.checkCancellation(); try gate.admitted { () }
+    let local = try await materializeRecentAttachment(request)
+    guard let object = try JSONSerialization.jsonObject(with: Data(local.utf8)) as? [String: Any],
+          let uri = object["uri"] as? String else { throw SessionError.closed }
+    let identity = try mediaFiles.ownedSelectionURL(uri).path
+    guard let source = recentSelections[identity], let binding = previewBindings[identity], bindingIsCurrent(binding) else { throw SessionError.closed }
+    let file: ZoenPreviewFile
+    do {
+      try Task.checkCancellation(); try gate.admitted { () }
+      _ = try source.engine.attachmentReferenceValidate(scope: source.scope.core, kind: source.kind, reference: source.reference)
+      file = try mediaFiles.takeForPreview(uri)
+    } catch { releaseLocalFile(uri); throw error }
+    recentSelections.removeValue(forKey: identity); previewBindings.removeValue(forKey: identity)
+    let ticket = filePreview.register(file: file, generation: generation)
+    try await filePreview.open(id: ticket, title: binding.name) {
+      if ZoenMediaGalleryPreview.supports(mime: binding.mime) {
+        return ZoenMediaGalleryPreview(presenter: presenter, mime: binding.mime)
+      }
+      return ZoenQuickLookPreview(presenter: presenter, editing: nil)
+    }
+  }
+
   func materializeFile(itemId: String, version: Int?) async throws -> String {
     guard !erasing, !closing, let core else { throw SessionError.closed }
     // Pin metadata, version and account before any suspension. History opens
@@ -1161,19 +1390,23 @@ private actor ZoenSession {
     info = try core.fileInfoAt(itemId: itemId, version: pinned)
     guard info.sha256 == expectedSHA256 else { throw ZoenMediaFiles.Failure.invalidVersion }
     let uri = try mediaFiles.stage(bytes, name: info.name)
-    previewBindings[uri] = PreviewBinding(engine: core, generation: generation, mode: mode,
+    previewBindings[try mediaFiles.ownedSelectionURL(uri).path] = PreviewBinding(engine: core, generation: generation, mode: mode,
       scope: scope, itemId: itemId, spaceId: item.spaceId,
       version: pinned, sha256: info.sha256, name: info.name, mime: info.mime)
     return try ZoenMediaFiles.json(["uri": uri, "itemId": itemId, "version": pinned, "info": ZoenMediaFiles.info(info)])
   }
 
   func releaseLocalFile(_ uri: String) {
-    previewBindings.removeValue(forKey: uri)
+    if let identity = mediaFiles.releaseIdentity(uri) {
+      recentSelections.removeValue(forKey: identity)
+      previewBindings.removeValue(forKey: identity)
+    }
     mediaFiles.release(uri)
   }
 
   func previewLocalFile(_ uri: String, presenter: UIViewController?) async throws {
-    guard !erasing, !closing, let binding = previewBindings[uri], bindingIsCurrent(binding) else { throw SessionError.closed }
+    let identity = try mediaFiles.ownedSelectionURL(uri).path
+    guard !erasing, !closing, let binding = previewBindings[identity], bindingIsCurrent(binding) else { throw SessionError.closed }
     // Historical versions stay read-only. Only ordinary Open of the current PDF
     // discovers this device's private edits; it never changes the shared version.
     let journal: ZoenPDFEditJournal?
@@ -1231,13 +1464,19 @@ private actor ZoenSession {
       throw error
     }
     guard let file = viewer else { throw ZoenMediaFiles.Failure.invalidFile }
-    previewBindings.removeValue(forKey: uri)
+    previewBindings.removeValue(forKey: identity)
+    // Recovery may open a separate viewer while the original remains owned.
+    // Keep that original's source provenance until its actual lease is retired.
+    if mediaFiles.releaseIdentity(uri) == nil { recentSelections.removeValue(forKey: identity) }
     let id = filePreview.register(file: file, generation: generation, recovered: recovered)
     let title = recovering
       ? "\(binding.name) — \(NSLocalizedString("Recovered changes", comment: "Recovered private PDF preview title"))"
       : binding.name
     try await filePreview.open(id: id, title: title, edit: edit) { editing in
-      ZoenQuickLookPreview(presenter: presenter, editing: editing)
+      if editing == nil, ZoenMediaGalleryPreview.supports(mime: binding.mime) {
+        return ZoenMediaGalleryPreview(presenter: presenter, mime: binding.mime)
+      }
+      return ZoenQuickLookPreview(presenter: presenter, editing: editing)
     }
   }
 
@@ -1260,7 +1499,7 @@ private actor ZoenSession {
       listener?.onChange(spaceIds: [binding.spaceId])
       return saved
     }
-    let selection = try mediaFiles.readSelection(uri: file.url.absoluteString,
+    let selection = try mediaFiles.readCapturedSelection(file,
       name: binding.name, mime: "application/pdf")
     guard selection.data.starts(with: Data("%PDF-".utf8)),
           let document = PDFDocument(data: selection.data), !document.isLocked,
@@ -1407,6 +1646,8 @@ private actor ZoenSession {
     engine.stopSync()
     syncStarted = false
     let task = Task {
+      await ZoenKeyboardPanelHost.retireAll()
+      await ZoenAttachmentGalleryHost.retireAll()
       await pageDrain.value
       try await filePreview.clear(before: clearingGeneration)
       await closeAssistants()
@@ -1422,6 +1663,7 @@ private actor ZoenSession {
       try vault.eraseAllVerified()
       mediaFiles.removeAll()
       previewBindings.removeAll()
+      recentSelections.removeAll()
       profilePhotos.removeAll()
       try ZoenDeviceErasure.erasePreviewCache()
       try erasure.complete()
@@ -1459,30 +1701,49 @@ private actor ZoenSession {
     let forcedPageDrain = discardEdits ? invalidatePageInputs() : nil
     let retiringCore = core
     retiringCore?.retireLinkPickup()
+    let closeGeneration = generation
     let task = Task {
       defer { self.closing = false; self.forceClosing = false; self.closeTask = nil }
-      if let forcedPageDrain { await forcedPageDrain.value }
-      if discardEdits {
-        // Module destruction drains accepted workers and discards temporary edits.
-        self.generation &+= 1
-        self.filePreview.invalidate(before: self.generation)
-        try await self.filePreview.clear(before: self.generation)
+      let keyboardTicket = await ZoenKeyboardPanelHost.retireAll()
+      self.keyboardAdmissionTicket = keyboardTicket
+      let galleryTicket = await ZoenAttachmentGalleryHost.retireAll()
+      self.galleryAdmissionTicket = galleryTicket
+      do {
+        if let forcedPageDrain { await forcedPageDrain.value }
+        if discardEdits {
+          // Module destruction drains accepted workers and discards temporary edits.
+          self.generation &+= 1
+          self.filePreview.invalidate(before: self.generation)
+          try await self.filePreview.clear(before: self.generation)
+        }
+        if let erasureTask = self.erasureTask { try await erasureTask.value }
+        await self.closeAssistants()
+        // Keep the exact engine/account live for already admitted edited copies.
+        // New bridge operations are fenced by `closing`; a save failure stays
+        // recoverable in native UI instead of turning account change into data loss.
+        do { try await self.preparePageInputsForClose() }
+        catch { if !self.forceClosing { throw error } }
+        if let pageDrain = self.pageInputForcedDrain { await pageDrain.value }
+        try await self.filePreview.prepareForClose(before: self.generation &+ 1)
+        if let retiringCore { await retiringCore.drainLinkPickup() }
+        if self.requests > 0 {
+          await withCheckedContinuation { self.requestDrain.append($0) }
+        }
+        guard !self.erasing else { throw SessionError.closed }
+        try await self.finishClose()
+      } catch {
+        // A failed graceful close may keep the exact old session available for recovery.
+        // Never reopen UI admissions across erasure, forced teardown or a newer native epoch.
+        if !self.forceClosing, !self.erasing, self.generation == closeGeneration,
+           let retiringCore, self.core === retiringCore {
+          await MainActor.run {
+            if ZoenKeyboardPanelHost.resumeAdmissions(expected: keyboardTicket) {
+              ZoenAttachmentGalleryHost.resumeAdmissions(expected: galleryTicket)
+            }
+          }
+        }
+        throw error
       }
-      if let erasureTask = self.erasureTask { try await erasureTask.value }
-      await self.closeAssistants()
-      // Keep the exact engine/account live for already admitted edited copies.
-      // New bridge operations are fenced by `closing`; a save failure stays
-      // recoverable in native UI instead of turning account change into data loss.
-      do { try await self.preparePageInputsForClose() }
-      catch { if !self.forceClosing { throw error } }
-      if let pageDrain = self.pageInputForcedDrain { await pageDrain.value }
-      try await self.filePreview.prepareForClose(before: self.generation &+ 1)
-      if let retiringCore { await retiringCore.drainLinkPickup() }
-      if self.requests > 0 {
-        await withCheckedContinuation { self.requestDrain.append($0) }
-      }
-      guard !self.erasing else { throw SessionError.closed }
-      try await self.finishClose()
     }
     closeTask = task
     try await task.value
@@ -1509,6 +1770,7 @@ private actor ZoenSession {
     syncStarted = false
     mediaFiles.removeAll()
     previewBindings.removeAll()
+    recentSelections.removeAll()
     profilePhotos.removeAll()
     await closeAssistants()
     try? await voiceEditor.releaseAll()

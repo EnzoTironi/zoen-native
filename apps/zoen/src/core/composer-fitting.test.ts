@@ -62,7 +62,8 @@ function fixture() {
 
 test('applies native fitting to the exact original snapshot and bounds height without adding padding', async () => {
   for (const [native, expected] of [
-    [31, 52],
+    [31, 40],
+    [40, 40],
     [74.5, 74.5],
     [220, 160],
   ]) {

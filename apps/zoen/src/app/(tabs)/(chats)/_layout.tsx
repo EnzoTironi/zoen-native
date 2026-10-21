@@ -2,7 +2,7 @@ import { SkyScene } from '../../../components/sky-background';
 import { Stack } from 'expo-router';
 import { useTheme } from '../../../theme';
 export default function ChatsLayout() {
-  const { colors } = useTheme();
+  const { presentation: p } = useTheme();
   return (
     <Stack
       screenLayout={({ children }) => <SkyScene tabScene>{children}</SkyScene>}
@@ -13,10 +13,10 @@ export default function ChatsLayout() {
         headerStyle: { backgroundColor: 'transparent' },
         headerLargeStyle: { backgroundColor: 'transparent' },
         headerLargeTitleShadowVisible: false,
-        headerTitleStyle: { color: colors.text },
-        headerLargeTitleStyle: { color: colors.text },
+        headerTitleStyle: { ...p.typography.title, color: p.navigation.text },
+        headerLargeTitleStyle: { ...p.typography.largeTitle, color: p.navigation.text },
         scrollEdgeEffects: { top: 'hidden', bottom: 'hidden' },
-        headerTintColor: colors.text,
+        headerTintColor: p.navigation.control,
         contentStyle: { backgroundColor: 'transparent' },
       }}
     />

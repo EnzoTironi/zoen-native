@@ -5,6 +5,7 @@ import { createNativeProfilePhotoDriver } from '../profile/native-driver';
 import type { MediaDriver } from '../media/types';
 import { Platform } from 'react-native';
 import { locale as appLocale } from '../i18n/index.ts';
+import { randomUUID } from 'expo-crypto';
 
 function core() {
   if (!NativeCore)
@@ -16,6 +17,52 @@ function core() {
 
 export function createDriver(): CoreDriver {
   const media: MediaDriver = {
+    recentAttachments:
+      Platform.OS === 'ios' &&
+      typeof NativeCore?.materializeRecentAttachment === 'function' &&
+      typeof NativeCore?.previewRecentAttachment === 'function' &&
+      typeof NativeCore?.cancelMediaDraftPreview === 'function'
+        ? {
+            async list(scope, kind, query, cursor) {
+              return JSON.parse(
+                await core().request(
+                  JSON.stringify({
+                    op: 'recent_attachments',
+                    scope,
+                    kind,
+                    query,
+                    cursor,
+                    limit: 50,
+                  }),
+                ),
+              );
+            },
+            async materialize(scope, kind, reference) {
+              return JSON.parse(
+                await core().materializeRecentAttachment!(
+                  JSON.stringify({ scope, kind, reference }),
+                ),
+              );
+            },
+            async preview(scope, kind, reference, signal) {
+              if (signal.aborted) return;
+              const token = randomUUID();
+              const cancel = () => {
+                void core().cancelMediaDraftPreview!(token).catch(() => {});
+              };
+              signal.addEventListener('abort', cancel, { once: true });
+              try {
+                await core().previewRecentAttachment!(
+                  JSON.stringify({ scope, kind, reference }),
+                  token,
+                );
+              } finally {
+                signal.removeEventListener('abort', cancel);
+              }
+            },
+            release: (uri) => core().releaseLocalFile(uri),
+          }
+        : undefined,
     drafts:
       Platform.OS === 'ios' && typeof NativeCore?.loadMediaDraft === 'function'
         ? {

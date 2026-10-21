@@ -84,6 +84,16 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          "photosPermission": "Choose photos and videos to share in your Zoen conversations.",
+          "savePhotosPermission": false,
+          "granularPermissions": ["photo", "video"],
+          "isAccessMediaLocationEnabled": false,
+          "preventAutomaticLimitedAccessAlert": true
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Use the camera to scan connection codes or create photos you choose to share.",

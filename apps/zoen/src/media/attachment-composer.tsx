@@ -51,7 +51,7 @@ export type AttachmentComposerField = {
   remaining: number;
   retry: boolean;
   onChange: (value: string) => void;
-  onSend: () => void;
+  onSend: (finalCaption?: string) => void;
 };
 
 function draftFailure(reason: unknown): string {
@@ -327,7 +327,17 @@ function useVolatileAttachmentComposer({
           onChange: (text) => {
             owner?.setCaption(selected.mutationId, text);
           },
-          onSend: () => {
+          onSend: (finalCaption) => {
+            if (ownerNow.current !== owner) return;
+            if (finalCaption !== undefined) {
+              if (
+                typeof finalCaption !== 'string' ||
+                finalCaption.length > 4096 ||
+                finalCaption.includes('\0')
+              )
+                return;
+              owner?.setCaption(selected.mutationId, finalCaption);
+            }
             void send();
           },
         }

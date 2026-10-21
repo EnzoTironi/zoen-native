@@ -39,6 +39,7 @@ const nativePorts = new Set([
   'react-native-reanimated',
   'react-native-worklets',
   'expo-haptics',
+  'expo-router',
   '../i18n/index.ts',
   '../media/MediaAttachment',
   '../miniapps/message-card',
@@ -46,56 +47,66 @@ const nativePorts = new Set([
   '../theme',
   './primitives',
 ]);
-const output = await build({
-  stdin: {
-    contents:
-      "export { ConversationMessage } from './conversation-message'; export { MessageInteraction } from './message-interaction';",
-    resolveDir: dirname(conversationPath),
-    loader: 'ts',
-  },
-  bundle: true,
-  platform: 'node',
-  format: 'cjs',
-  write: false,
-  plugins: [
-    {
-      name: 'message-accessibility-native-ports',
-      setup(builder) {
-        builder.onResolve({ filter: /./ }, ({ path }) =>
-          nativePorts.has(path) ? { path, external: true } : undefined,
-        );
-        builder.onLoad(
-          { filter: /(?:conversation-message|message-interaction)\.tsx$/ },
-          ({ path }) => {
-            const source = sources.get(path);
-            assert.ok(source, `Unexpected component source: ${path}`);
-            transformed.add(path);
-            const compiled = transformSync(source, {
-              filename: path,
-              configFile: false,
-              babelrc: false,
-              presets: [require.resolve('babel-preset-expo')],
-              caller: {
-                name: 'metro',
-                platform: 'ios',
-                engine: 'hermes',
-                isDev: false,
-                supportsReactCompiler: true,
-              },
-            }).code;
-            assert.match(compiled, /react\/compiler-runtime/, 'Execute the actual compiler output');
-            return {
-              contents: compiled,
-              resolveDir: dirname(path),
-              loader: 'js',
-            };
-          },
-        );
-      },
+async function compile(platform: 'ios' | 'web') {
+  const output = await build({
+    stdin: {
+      contents:
+        "export { ConversationMessage } from './conversation-message'; export { MessageInteraction } from './message-interaction';",
+      resolveDir: dirname(conversationPath),
+      loader: 'ts',
     },
-  ],
-});
-assert.equal(transformed.size, 2, 'Both production components must pass through iOS Babel');
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    write: false,
+    plugins: [
+      {
+        name: 'message-accessibility-native-ports',
+        setup(builder) {
+          builder.onResolve({ filter: /./ }, ({ path }) => {
+            if (path.startsWith('react-native-web/dist/exports/'))
+              return { path: `web-native-port:${path.split('/').at(-1)}`, external: true };
+            return nativePorts.has(path) ? { path, external: true } : undefined;
+          });
+          builder.onLoad(
+            { filter: /(?:conversation-message|message-interaction)\.tsx$/ },
+            ({ path }) => {
+              const source = sources.get(path);
+              assert.ok(source, `Unexpected component source: ${path}`);
+              transformed.add(path);
+              const compiled = transformSync(source, {
+                filename: path,
+                configFile: false,
+                babelrc: false,
+                presets: [require.resolve('babel-preset-expo')],
+                caller: {
+                  name: 'metro',
+                  platform,
+                  engine: 'hermes',
+                  isDev: false,
+                  supportsReactCompiler: true,
+                },
+              }).code;
+              assert.match(
+                compiled,
+                /react\/compiler-runtime/,
+                'Execute the actual compiler output',
+              );
+              return {
+                contents: compiled,
+                resolveDir: dirname(path),
+                loader: 'js',
+              };
+            },
+          );
+        },
+      },
+    ],
+  });
+  assert.equal(transformed.size, 2, 'Both production components must pass through Expo Babel');
+  return output.outputFiles[0]!.text;
+}
+const outputs = { ios: await compile('ios'), web: await compile('web') };
 
 type Element = { type: unknown; props: Record<string, unknown> };
 type Effect = () => void | (() => void);
@@ -181,7 +192,7 @@ function translated(key: string, params: Record<string, unknown> = {}) {
 
 /** Native ports are mocked; both real component functions, compiler caches,
  * effects and refs execute and persist through each explicit render/commit. */
-function fixture(initial = message(), disabled = false) {
+function fixture(initial = message(), disabled = false, platform: 'ios' | 'web' = 'ios') {
   const initialQuery = deferred<boolean>();
   const listeners = new Set<(enabled: boolean) => void>();
   const registered: ((enabled: boolean) => void)[] = [];
@@ -252,7 +263,9 @@ function fixture(initial = message(), disabled = false) {
         )),
     },
     'react/jsx-runtime': { jsx: element, jsxs: element },
+    'expo-router': { useFocusEffect: (callback: Effect) => effect(callback, [callback], true) },
     'react-native': {
+      AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       Text: 'Text',
       View: 'View',
       Pressable: 'NativePressable',
@@ -296,13 +309,16 @@ function fixture(initial = message(), disabled = false) {
         );
       },
       useAnimatedStyle: (calculate: () => unknown) => calculate(),
-      withSpring: (value: unknown) => value,
+      useDerivedValue: (read: () => unknown) => ({ get: read }),
+      Easing: { bezier: (...values: unknown[]) => values, linear: 'linear' },
+      withSequence: (...values: unknown[]) => values.at(-1),
+      withTiming: (value: unknown) => value,
     },
     'react-native-worklets': {
       scheduleOnRN: (callback: (...args: unknown[]) => void, ...args: unknown[]) =>
         callback(...args),
     },
-    'expo-haptics': { selectionAsync: async () => {} },
+    'expo-haptics': { impactAsync: async () => {}, ImpactFeedbackStyle: { Heavy: 'heavy' } },
     '../i18n/index.ts': { t: translated, locale: 'en', formatLocale: 'en-US' },
     '../theme': { useTheme: () => ({ ...theme, reducedMotion: false }) },
     '../media/MediaAttachment': { MessageMedia: 'MessageMedia' },
@@ -316,12 +332,18 @@ function fixture(initial = message(), disabled = false) {
       MessageInteraction(props: Record<string, unknown>): Element;
     },
   };
-  runInNewContext(output.outputFiles[0]!.text, {
+  runInNewContext(outputs[platform], {
     module,
     exports: module.exports,
     global: { Error },
-    process: { env: { EXPO_OS: 'ios' } },
+    process: { env: { EXPO_OS: platform } },
     require: (name: string) => {
+      if (name.startsWith('web-native-port:')) {
+        const port = name.slice('web-native-port:'.length);
+        const native = modules['react-native'] as Record<string, unknown>;
+        assert.ok(Object.hasOwn(native, port), `Unexpected Web native port: ${port}`);
+        return { __esModule: true, default: native[port] };
+      }
       assert.ok(Object.hasOwn(modules, name), `Unexpected native accessibility port: ${name}`);
       return modules[name];
     },
@@ -551,10 +573,54 @@ test('native media and miniapp boundaries remain ungrouped and never hide indepe
     assert.ok(elements(wrapper).some((node) => node.type === 'MessageMedia'));
     if (entry === miniapp) {
       assert.ok(elements(wrapper).some((node) => node.type === 'MiniappMessageCard'));
-      assert.equal((bubble.props.style as Record<string, unknown>).width, 160);
+      assert.equal((bubble.props.style as Record<string, unknown>).width, 164);
+      assert.equal(
+        elements(wrapper).find((node) => node.type === 'MiniappMessageCard')?.props.width,
+        160,
+        'The Telegram media rim does not resize the canonical App cover',
+      );
     }
     act(group, 'actions');
     assert.equal(f.calls.length, 0);
+    f.unmount();
+  }
+});
+
+test('Web App shares retain a visible author menu while iOS keeps the native hold presentation', () => {
+  const entry = message({
+    kind: {
+      Message: {
+        text: 'Shared canvas',
+        card: {
+          item_id: 'shared-canvas',
+          kind_id: 'app',
+          title: 'Drawing',
+          version: 1,
+          app: { app_id: 'excalidraw' },
+        },
+      },
+    } as TimelineEntry['kind'],
+  });
+  const label = 'Message actions for Nina Author';
+  for (const platform of ['ios', 'web'] as const) {
+    const f = fixture(entry, false, platform);
+    const controls = () =>
+      elements(f.render().tree).filter((node) => node.props.accessibilityLabel === label);
+    const menu = controls();
+    assert.equal(menu.length, platform === 'web' ? 1 : 0);
+    if (platform === 'web') {
+      assert.equal(menu[0]!.props.accessibilityRole, 'button');
+      (menu[0]!.props.onPress as () => void)();
+      assert.deepEqual(
+        f.calls.map(({ action, mode }) => ({ action, mode })),
+        [{ action: 'menu', mode: 'actions' }],
+      );
+      assert.equal(f.calls[0]!.entry, entry);
+      f.recycle(entry, true);
+      assert.equal(controls().length, 0, 'Disabled shares expose no executable action');
+      f.recycle({ ...entry, deleted: true });
+      assert.equal(controls().length, 0, 'Deleted shares cannot retain an App menu');
+    }
     f.unmount();
   }
 });

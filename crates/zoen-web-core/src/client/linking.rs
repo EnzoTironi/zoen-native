@@ -1172,6 +1172,7 @@ mod tests {
                 text: "Actual old message".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );
@@ -1315,6 +1316,7 @@ mod tests {
                 text: "\n".repeat(600_000),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );

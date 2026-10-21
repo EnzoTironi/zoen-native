@@ -3,6 +3,9 @@ import type { VoiceSendable, VoiceSession } from './voice-session';
 export type VoiceDockProps = Readonly<{
   session?: VoiceSession;
   recording: boolean;
+  paused?: boolean;
+  locked?: boolean;
+  onPause?: () => Promise<void>;
   uri?: string;
   durationMs: number;
   levels: readonly number[];

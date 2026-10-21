@@ -1,0 +1,21 @@
+diff --git a/crates/engine/src/recovery.rs b/crates/engine/src/recovery.rs
+--- a/crates/engine/src/recovery.rs
++++ b/crates/engine/src/recovery.rs
+@@ -44,8 +44,16 @@
+     *ID.get_or_init(|| {
+         use std::hash::{BuildHasher, Hasher};
+         let mut h = std::collections::hash_map::RandomState::new().build_hasher();
++        #[cfg(not(target_arch = "wasm32"))]
+         h.write_u32(std::process::id());
+-        #[cfg(not(target_arch = "wasm32"))]
++        // Browser instances have no process id. This nonce only namespaces local
++        // recovery/document IDs; authenticated artifact authority stays with the host.
++        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
++        {
++            h.write_u64(js_sys::Math::random().to_bits());
++            h.write_u64(js_sys::Date::now().to_bits());
++        }
++        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+         if let Ok(d) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+             h.write_u128(d.as_nanos());
+         }

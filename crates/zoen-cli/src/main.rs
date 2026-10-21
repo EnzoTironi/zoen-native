@@ -9,6 +9,7 @@
 //! connect, catch up, act, flush, exit. Killing it at any point loses nothing.
 
 mod agent;
+mod deckcraft;
 
 use std::{
     io::Write,

@@ -1,0 +1,40 @@
+{
+  "manifestSha256": "29b7c8b073aa4b9b686b9ff4aaf53ddcd52cc471755381206b6d0d4a25d83761",
+  "peerReviewSha256": "94c5649b883cbb1f7d904f371dc4b36edf26157261d55e6f1630ba15be2395de",
+  "files": [
+    {
+      "path": "apps/zoen/src/components/chat-header.ios.tsx",
+      "beforeSha256": "4e6be89f92f5cf8d5723266d6ff2a3110e9fe6283ef22d5df5c4e24bb853aae8",
+      "afterSha256": "607f36706db4ca00380f88d96c3132bf93d31500bd376cf04d1ee167ccbaa733",
+      "bytes": 6395,
+      "liveStillMatchesBefore": true,
+      "qualificationSourceMatches": true
+    },
+    {
+      "path": "apps/zoen/src/components/chat-title.tsx",
+      "beforeSha256": "d0fd1b9a3dd3bb7df39ae56ec5cd9092d381a70e00d1f122d70706f36498032b",
+      "afterSha256": "21c7c6c13f902ff0cec486f04d3a70f76e8844e8c8719bd0ac1d920cb7bd30b8",
+      "bytes": 3742,
+      "liveStillMatchesBefore": true,
+      "qualificationSourceMatches": true
+    },
+    {
+      "path": "apps/zoen/src/core/telegram-chat-chrome.test.ts",
+      "beforeSha256": "dd8b04c58cc613b6699e37a45f4e415ce1be7f600427fc579ad55d32536bccd1",
+      "afterSha256": "7ce8f6bad7cbde64e3c18a143744a6ff33450947855244d52d56386da2913d75",
+      "bytes": 12113,
+      "liveStillMatchesBefore": true,
+      "qualificationSourceMatches": true
+    },
+    {
+      "path": "apps/zoen/src/core/telegram-chat-header-layout.ts",
+      "beforeSha256": null,
+      "afterSha256": "cf6854a3a2959c3b93d004a7ad34b773df8ece762139e834b34064fa47c757cb",
+      "bytes": 1912,
+      "liveStillMatchesBefore": true,
+      "qualificationSourceMatches": true
+    }
+  ],
+  "applied": true,
+  "native": "PENDING"
+}

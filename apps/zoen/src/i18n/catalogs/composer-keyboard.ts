@@ -1,0 +1,34 @@
+import { defineFeature } from '../catalog.ts';
+
+export const composerKeyboard = defineFeature(
+  {
+    keyboard: 'Keyboard',
+    emoji: 'Emoji',
+    delete: 'Delete emoji',
+    recent: 'Recently used',
+    variants: 'Skin tones',
+    people: 'Smileys and people',
+    animalsAndNature: 'Animals and nature',
+    foodAndDrink: 'Food and drink',
+    activityAndSport: 'Activity and sport',
+    travelAndPlaces: 'Travel and places',
+    objects: 'Objects',
+    symbols: 'Symbols',
+    flags: 'Flags',
+  },
+  {
+    keyboard: 'Teclado',
+    emoji: 'Emojis',
+    delete: 'Apagar emoji',
+    recent: 'Usados recentemente',
+    variants: 'Tons de pele',
+    people: 'Rostos e pessoas',
+    animalsAndNature: 'Animais e natureza',
+    foodAndDrink: 'Comida e bebida',
+    activityAndSport: 'Atividades e esportes',
+    travelAndPlaces: 'Viagens e lugares',
+    objects: 'Objetos',
+    symbols: 'Símbolos',
+    flags: 'Bandeiras',
+  },
+);

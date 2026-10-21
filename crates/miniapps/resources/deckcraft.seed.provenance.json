@@ -1,0 +1,20 @@
+{
+  "upstreamRepository": "https://github.com/storytold/deckcraft",
+  "upstreamCommit": "a31b990d32f2c8562f1588562f922960c3fde48b",
+  "upstreamLicense": "MIT OR Apache-2.0",
+  "creationCommand": "Session::execute(\"file.new\", {})",
+  "serialization": "deckcraft_engine::cmd::file::save_bytes(document, \"deckcraft\")",
+  "nativeBytes": 4592,
+  "nativeSha256": "c1eabc895761e375e7516389cd7f4b029d29fef0da9382effbb831b0453b42d9",
+  "slides": 1,
+  "embeddedMedia": false,
+  "embeddedFonts": false,
+  "checks": [
+    "exact native model roundtrip",
+    "same model PPTX export and reimport",
+    "same model PDF export signature"
+  ],
+  "generatorSourceSha256": "308718f6fde28ba19589e370a94dba5bd4378946d58e0f78902a2567b0361542",
+  "randomness": "One upstream creation produced IDs/time; these exact frozen bytes are the reviewed seed. Regeneration is a new artifact, not deterministic command replay.",
+  "probeScope": "Engine only; no iPhone/runtime integration proof."
+}

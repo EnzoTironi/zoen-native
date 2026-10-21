@@ -13,6 +13,16 @@ declare class ZoenCoreModule extends NativeModule<{
   onChange: (event: CoreEvent) => void;
   onPageInputStatus: (event: { json: string }) => void;
 }> {
+  attachmentMosaicLayout?(
+    width: number,
+    height: number,
+    scale: number,
+    sizes: number[][],
+  ): {
+    width: number;
+    height: number;
+    items: { x: number; y: number; width: number; height: number; position: number }[];
+  } | null;
   measureComposer?(
     tag: number,
     expectedText: string,
@@ -54,8 +64,11 @@ declare class ZoenCoreModule extends NativeModule<{
   releaseVoice(sourceId: string): Promise<void>;
   fileInfo(itemId: string, version: number | null): Promise<string>;
   materializeFile(itemId: string, version: number | null): Promise<string>;
+  materializeRecentAttachment?(request: string): Promise<string>;
+  previewRecentAttachment?(request: string, presentationId: string): Promise<void>;
   previewLocalFile(uri: string): Promise<void>;
   releaseLocalFile(uri: string): Promise<void>;
+  releaseMediaLibraryExport?(uri: string): Promise<void>;
   saveProfile(request: string): Promise<void>;
   materializeProfilePhoto(
     ownerId: string,

@@ -1,0 +1,114 @@
+{
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "selectedLicense": "GPL-3.0 under GPL-2.0-or-later option, combined with Zoen under AGPLv3 section13",
+  "branch": "modern reference + plain action list; source morph opt-in false",
+  "sources": [
+    {
+      "path": "submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerImpl.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerImpl.swift",
+      "bytes": 126315,
+      "sha256": "6bbf0045eae9c35a785d1791c75afabf7a816a119f418834e88d6c888ef1ed58",
+      "ranges": [
+        [422, 500],
+        [270, 340],
+        [678, 685],
+        [2093, 2110]
+      ]
+    },
+    {
+      "path": "submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextSourceContainer.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextSourceContainer.swift",
+      "bytes": 38868,
+      "sha256": "be60e21245b1a384507363a8f8b09bc3cedff9de6636b25830ae084a3e02e83b",
+      "ranges": [
+        [17, 25],
+        [410, 423],
+        [125, 165],
+        [253, 284],
+        [509, 560],
+        [652, 666]
+      ]
+    },
+    {
+      "path": "submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerExtractedPresentationNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerExtractedPresentationNode.swift",
+      "bytes": 122801,
+      "sha256": "1177f2c981015502e35e5380d91858abed7bca5e3165b232ff8134d5329fb4d3",
+      "ranges": [
+        [522, 568],
+        [734, 759],
+        [981, 1016],
+        [1100, 1168],
+        [1267, 1337],
+        [1420, 1454],
+        [1469, 1470],
+        [1653, 1707],
+        [1754, 1771],
+        [2090, 2137]
+      ]
+    },
+    {
+      "path": "submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerActionsStackNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerActionsStackNode.swift",
+      "bytes": 98934,
+      "sha256": "c3307bf7ab997dbf8f331cac36b9c7079241fa44fd77997e71131aa746d60ced",
+      "ranges": [
+        [186, 195],
+        [212, 239],
+        [512, 575],
+        [993, 1044],
+        [1114, 1193],
+        [1405, 1467],
+        [1472, 1572],
+        [2024, 2044]
+      ]
+    },
+    {
+      "path": "submodules/MediaPickerUI/Sources/MediaPickerScreen.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/MediaPickerUI/Sources/MediaPickerScreen.swift",
+      "bytes": 212272,
+      "sha256": "3e4aa6ed563f05a03ec684ed2120c2823b31003f029e1bc5f6b3c33ec2138ce8",
+      "ranges": [
+        [2761, 2769],
+        [3174, 3181],
+        [3286, 3287],
+        [3501, 3512]
+      ]
+    },
+    {
+      "path": "submodules/Display/Source/HapticFeedback.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/HapticFeedback.swift",
+      "bytes": 7740,
+      "sha256": "55c58765e9888c001e096d9e6d9c86269458cb745a978bf2b1a75586f3e38566",
+      "ranges": [
+        [17, 38],
+        [187, 207]
+      ]
+    },
+    {
+      "path": "submodules/Display/Source/ContextContentSourceNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/ContextContentSourceNode.swift",
+      "bytes": 7921,
+      "sha256": "e4a44cb25e861f4d066c0ecc5a986378b2394e5edf5f3dc521881ac9abc4dab8",
+      "ranges": [[7, 17]]
+    },
+    {
+      "path": "submodules/TelegramUI/Components/GlassControls/Sources/GlassControlGroup.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/GlassControls/Sources/GlassControlGroup.swift",
+      "bytes": 12629,
+      "sha256": "4998ea2b8293b5a0ef4beb66b3d319d0bf49e1c6685b5ef35d9ba0f7823ebd25",
+      "ranges": [[242, 273]]
+    }
+  ],
+  "adaptations": [
+    "ASDisplayNode/ContextController/SwiftSignalKit are translated to UIKit and the existing ZoenAttachmentPresentationOwner.",
+    "The actual already-ported glass and Display layer spring implementations are reused; there is no new effect tree, animation dependency or private morph bridge.",
+    "Plain two-line titles/default17pt font and the currently authorized Photos send-as-file action only; no rich/subtitle/badge/submenu or extracted-row branch.",
+    "Existing Photos revision/ordered selection/native final caption authority is unchanged; invalidation retires the menu rather than maintaining a second selection owner.",
+    "Reduced motion retains opacity and removes transforms. Close samples the in-flight presentation geometry; retirement/window loss synchronously removes ownership.",
+    "Source geometry formulas are retained. Width additionally caps to viewport minus32pt for unusually narrow hosts. Content overflow uses a native scroll view.",
+    "The menu does not resign/reparent the caption input. Native background/menu invalidation and accessibility restoration use the existing owner."
+  ],
+  "runtimeQualified": false,
+  "proof": "/Users/enzotironi/.codex/builds/zoen-reference-menu-v251"
+}

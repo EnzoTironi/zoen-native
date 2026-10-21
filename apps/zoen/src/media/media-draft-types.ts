@@ -27,10 +27,16 @@ export type MediaDraftAttachment = Readonly<{
   caption: string;
   mutation_id: string;
 }>;
+export type MediaDraftAttachmentOptions = Readonly<{
+  presentation: 'media' | 'file';
+  grouping: 'separate' | 'grouped';
+}>;
 export type MediaDraftAttachments = Readonly<{
   kind: 'attachments';
   reply_to: string | null;
   items: readonly MediaDraftAttachment[];
+  /** Omitted for the legacy media/separate defaults; persisted by the Rust journal. */
+  options?: MediaDraftAttachmentOptions;
 }>;
 export type MediaDraftVoice = Readonly<{
   kind: 'voice';

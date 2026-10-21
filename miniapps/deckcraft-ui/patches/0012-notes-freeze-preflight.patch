@@ -1,0 +1,151 @@
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -1832,6 +1832,12 @@
+         ctx.copy_text(system_clipboard_text(&text));
+     }
+ 
++    /// Host close/export may freeze only after UI-local Notes enter the same Session.
++    /// A rejected command leaves its exact draft intact and refuses the freeze ACK.
++    pub fn prepare_host_freeze(&mut self) -> Result<(), String> {
++        status::flush_notes_draft(self)
++    }
++
+     /// Lay out the whole window.
+     pub fn ui(&mut self, ui: &mut egui::Ui) {
+         if host_layout::current(ui.ctx()).is_some() {
+--- a/crates/ui-egui/src/status.rs
++++ b/crates/ui-egui/src/status.rs
+@@ -135,7 +135,7 @@
+     }
+ }
+ 
+-fn flush_notes_draft(app: &mut SlideApp) -> Result<(), String> {
++pub(crate) fn flush_notes_draft(app: &mut SlideApp) -> Result<(), String> {
+     if !app.notes_buf.2.edited {
+         return Ok(());
+     }
+@@ -276,17 +276,17 @@
+                     }
+                 });
+             }
++            let corrected = changed.is_some();
+             if let Some(new) = changed {
+                 // A correction is typed into the formatted draft, then saved.
+                 buf = new;
+                 app.squiggles.notes_menu = None;
+                 draft.text = buf.clone();
+                 deckcraft_model::edit::replace_text(&mut draft.body, &buf);
+-                draft.edited = false;
+-                let _ = app.run("slide.notes", json!({"body": draft.body, "index": idx}));
++                draft.edited = true;
+             }
+             app.notes_buf.2 = draft;
+-            if r.lost_focus()
++            if (corrected || r.lost_focus())
+                 && app.notes_buf.2.edited
+                 && let Err(error) = flush_notes_draft(app)
+             {
+--- a/crates/ui-egui/src/host_compact_tests.rs
++++ b/crates/ui-egui/src/host_compact_tests.rs
+@@ -374,3 +374,56 @@
+     assert!(h.state().app.notes_buf.2.edited);
+     assert_eq!(h.state().app.notes_buf.2.text, "Retain this instead of writing into a different slide");
+ }
++
++#[test]
++fn host_freeze_preparation_commits_a_visible_notes_draft_exactly_once() {
++    let mut h = fixture(Some(portrait(430.0, Brightness::Dark)));
++    type_hosted_notes(&mut h, "The close snapshot must include these notes");
++    let undo = h.state().app.session.active().unwrap().history.undo.len();
++    h.state_mut().app.prepare_host_freeze().unwrap();
++    assert_eq!(h.state().app.session.active().unwrap().doc.slides[0].notes.text(), "The close snapshot must include these notes");
++    assert!(!h.state().app.notes_buf.2.edited);
++    assert_eq!(h.state().app.session.active().unwrap().history.undo.len(), undo + 1);
++    h.state_mut().app.prepare_host_freeze().unwrap();
++    assert_eq!(h.state().app.session.active().unwrap().history.undo.len(), undo + 1);
++}
++
++#[test]
++fn host_freeze_preparation_refuses_a_hidden_denied_draft_then_retries_original_body() {
++    let mut h = fixture(Some(portrait(430.0, Brightness::Dark)));
++    type_hosted_notes(&mut h, "No close ACK may discard this pending body");
++    h.state_mut().app.session.command_policy =
++        Some(|id, _| if id == "slide.notes" { Err(deckcraft_engine::EngineError::Other("notes rejected".into())) } else { Ok(()) });
++    h.get_by_label("Speaker notes").click();
++    h.run_steps(2);
++    let before = h.state().app.session.active().unwrap().doc.clone();
++    let undo = h.state().app.session.active().unwrap().history.undo.len();
++    assert!(h.state_mut().app.prepare_host_freeze().is_err());
++    assert!(h.state().app.notes_buf.2.edited);
++    assert_eq!(h.state().app.notes_buf.2.text, "No close ACK may discard this pending body");
++    assert!(Arc::ptr_eq(&before, &h.state().app.session.active().unwrap().doc));
++    assert_eq!(h.state().app.session.active().unwrap().history.undo.len(), undo);
++    h.state_mut().app.session.command_policy = None;
++    h.state_mut().app.prepare_host_freeze().unwrap();
++    assert_eq!(h.state().app.session.active().unwrap().doc.slides[0].notes.text(), "No close ACK may discard this pending body");
++    assert_eq!(h.state().app.session.active().unwrap().history.undo.len(), undo + 1);
++    assert!(!h.state().app.notes_buf.2.edited);
++    h.state_mut().app.prepare_host_freeze().unwrap();
++    assert_eq!(h.state().app.session.active().unwrap().history.undo.len(), undo + 1);
++}
++
++#[test]
++fn host_freeze_preparation_refuses_notes_from_another_document_without_rebinding() {
++    let mut h = fixture(Some(portrait(430.0, Brightness::Dark)));
++    type_hosted_notes(&mut h, "Only the captured document can own this");
++    let origin = h.state().app.notes_buf.0;
++    h.state_mut().app.run("file.new", json!({})).unwrap();
++    assert_ne!(h.state().app.session.active().unwrap().uid, origin);
++    let before = h.state().app.session.active().unwrap().doc.clone();
++    let undo = h.state().app.session.active().unwrap().history.undo.len();
++    assert!(h.state_mut().app.prepare_host_freeze().is_err());
++    assert!(Arc::ptr_eq(&before, &h.state().app.session.active().unwrap().doc));
++    assert_eq!(h.state().app.session.active().unwrap().history.undo.len(), undo);
++    assert!(h.state().app.notes_buf.2.edited);
++    assert_eq!(h.state().app.notes_buf.2.text, "Only the captured document can own this");
++}
+--- a/apps/deckcraft-web/src/host_api.rs
++++ b/apps/deckcraft-web/src/host_api.rs
+@@ -166,7 +166,7 @@
+         let _ = callback.call1(&JsValue::NULL, &JsValue::from_str(&bridge.status(session).to_string()));
+     }
+ }
+-pub fn drain(bridge: &mut HostBridge, session: &mut Session, ctx: &egui::Context) {
++pub fn drain(bridge: &mut HostBridge, app: &mut deckcraft_ui_egui::SlideApp, ctx: &egui::Context) {
+     // One request per frame; a request owns a Promise, so results cannot cross callers.
+     let pending = QUEUE.with(|q| {
+         let mut q = q.borrow_mut();
+@@ -179,6 +179,12 @@
+     let Some(work) = pending else {
+         return;
+     };
++    // Freeze is an admitted host operation, not an implicit discard of UI drafts.
++    // Keep the existing composition/interaction refusal ahead of any Notes edit.
++    let wants_freeze = matches!(&work.request, Request::Freeze(input) if input.frozen);
++    let interacting = app.session.active().is_some_and(|d| d.composition.is_some() || d.interaction.is_some());
++    let notes_ready = !wants_freeze || interacting || app.prepare_host_freeze().is_ok();
++    let session = &mut app.session;
+     let result = match work.request {
+         Request::Open(_) | Request::Command(_) if frozen() => Err(BridgeError { code: "host_frozen" }),
+         Request::Layout(layout) => {
+@@ -194,6 +200,9 @@
+         Request::Freeze(input) => {
+             if input.frozen && session.active().is_some_and(|d| d.composition.is_some() || d.interaction.is_some()) {
+                 Err(BridgeError { code: "human_interaction" })
++            } else if input.frozen && !notes_ready {
++                // No frozen/clean ACK may retire a rejected, still-local draft.
++                Err(BridgeError { code: "notes_pending" })
+             } else {
+                 QUEUE.with(|q| q.borrow_mut().frozen = input.frozen);
+                 let mut metadata = bridge.status(session);
+--- a/apps/deckcraft-web/src/web.rs
++++ b/apps/deckcraft-web/src/web.rs
+@@ -117,7 +117,7 @@
+             ctx.input_mut(|i| {
+                 i.raw.dropped_files.clear();
+             });
+-            host_api::drain(bridge, &mut self.app.session, ctx);
++            host_api::drain(bridge, &mut self.app, ctx);
+             if !host_api::frozen() {
+                 self.app.logic(ctx);
+             }

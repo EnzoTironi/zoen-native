@@ -855,6 +855,88 @@ function stagedAttachmentCore() {
     }};
   return core;
 }
+
+test('attachment batch snapshots options order and bytes before sealing and persists once before any publish', async (t) => {
+  install(t);
+  const codec = messagingCore();
+  const sealed: Uint8Array[] = [];
+  const plaintext: Uint8Array[] = [];
+  const requests: Extract<CoreOperation, {kind: 'queue_attachment_batch'}>[] = [];
+  let releaseSeal = () => {};
+  const sealing = new Promise<void>(resolve => { releaseSeal = resolve; });
+  let releaseSave = () => {};
+  const saving = new Promise<void>(resolve => { releaseSave = resolve; });
+  const core = {...codec, bytes: async (operation: CoreOperation) => {
+    if (operation.kind !== 'seal_file') return codec.bytes(operation);
+    plaintext.push(Uint8Array.from(operation.bytes));
+    if (plaintext.length === 1) await sealing;
+    const frame = new Uint8Array([1, 2, 3, plaintext.length]);
+    sealed.push(frame);
+    return frame;
+  }, text: async (operation: CoreOperation) => {
+    if (operation.kind !== 'queue_attachment_batch') return codec.text(operation);
+    requests.push(operation);
+    return JSON.stringify({result: [{itemId: 'it_a', messageId: 'msg_a'}, {itemId: 'it_b', messageId: 'msg_b'}],
+      update: {snapshot: 'retained batch', frames: [[71], [72], [73], [74]], conversations: [conversation]}});
+  }};
+  let saves = 0;
+  const messages = new Messages({core, session: linked, vault: {...vault, save: async session => {
+    if (session.kind === 'linked' && session.snapshot === 'retained batch') { saves++; await saving; }
+  }}, changed: () => {}});
+  t.after(() => messages.stop());
+  await messages.start(); await authenticate();
+  const sent = socket().sent.length;
+  const options: {presentation: 'media' | 'file'; grouping: 'grouped' | 'separate'} = {presentation: 'file', grouping: 'grouped'};
+  const files = [
+    {name: 'a.jpg', mime: 'image/jpeg', bytes: new Uint8Array([1]), mutationId: 'owner_1', caption: '  First  '},
+    {name: 'b.jpg', mime: 'image/jpeg', bytes: new Uint8Array([2]), mutationId: 'owner_2', caption: 'Second\n'},
+  ];
+  const sending = messages.sendFiles('sp_fixture', files, {replyTo: 'root', thread: true, options});
+  options.presentation = 'media'; options.grouping = 'separate';
+  files[1]!.caption = 'late'; files[1]!.bytes[0] = 99;
+  releaseSeal(); await settle();
+  assert.equal(saves, 1);
+  assert.equal(socket().sent.length, sent, 'No publication can precede the complete durable save');
+  assert.deepEqual(plaintext, [new Uint8Array([1]), new Uint8Array([2])]);
+  assert.equal(requests.length, 1);
+  assert.deepEqual(JSON.parse(requests[0]!.request), {space_id: 'sp_fixture', reply_to: 'root', thread: true,
+    options: {presentation: 'file', grouping: 'grouped'},
+    items: [{mutation_id: 'owner_1', caption: '  First  '}, {mutation_id: 'owner_2', caption: 'Second\n'}]});
+  const framed = requests[0]!.framed;
+  const view = new DataView(framed.buffer, framed.byteOffset, framed.byteLength);
+  assert.equal(view.getUint32(0, true), sealed[0]!.length);
+  assert.deepEqual(framed.slice(4, 8), sealed[0]);
+  assert.equal(view.getUint32(8, true), sealed[1]!.length);
+  assert.deepEqual(framed.slice(12), sealed[1]);
+  releaseSave();
+  assert.deepEqual(await sending, [{itemId: 'it_a', messageId: 'msg_a'}, {itemId: 'it_b', messageId: 'msg_b'}]);
+  assert.equal(socket().sent.length, sent + 4);
+});
+
+test('attachment batch rejects unsupported options or incomplete sealing before admitting any outbox call', async (t) => {
+  install(t);
+  const codec = messagingCore();
+  let seals = 0, queues = 0;
+  const core = {...codec, bytes: async (operation: CoreOperation) => {
+    if (operation.kind !== 'seal_file') return codec.bytes(operation);
+    if (++seals === 2) throw Error('Encoder failed');
+    return new Uint8Array([1, 2, 3, 4]);
+  }, text: async (operation: CoreOperation) => {
+    if (operation.kind === 'queue_attachment_batch') queues++;
+    return codec.text(operation);
+  }};
+  const messages = new Messages({core, session: linked, vault: {...vault, save: async () => {}}, changed: () => {}});
+  t.after(() => messages.stop());
+  await messages.start(); await authenticate();
+  const files = [1, 2].map(index => ({name: `${index}.jpg`, mime: 'image/jpeg', bytes: new Uint8Array([index]), mutationId: `owner_${index}`, caption: ''}));
+  await assert.rejects(messages.sendFiles('sp_fixture', files, {replyTo: null, thread: false,
+    options: {presentation: 'media', grouping: 'separate', quality: 'original'} as never}));
+  assert.equal(seals, 0);
+  await assert.rejects(messages.sendFiles('sp_fixture', files, {replyTo: null, thread: false,
+    options: {presentation: 'media', grouping: 'grouped'}}), /preparar/);
+  assert.equal(seals, 2);
+  assert.equal(queues, 0, 'A failed second file cannot queue the first file');
+});
 const exactAttachment={mutationId:'attachment_owner_1',caption:'  Página 🗂️\nExact.  ',replyTo:'root-hash',thread:true};
 
 test('attachment waits for durable ciphertext/intent before first PUT and saves barrier removal before publish',async(t)=>{

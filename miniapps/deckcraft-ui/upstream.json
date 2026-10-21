@@ -1,0 +1,101 @@
+{
+  "repository": "https://github.com/storytold/deckcraft",
+  "revision": "a31b990d32f2c8562f1588562f922960c3fde48b",
+  "version": "0.9.0",
+  "license": "MIT OR Apache-2.0",
+  "originalCargoLockSha256": "ae6a4aff5aba7e4718d76ba63f736e46b4579d925a82df59e4d2d12dd45ed4cd",
+  "managedCargoLockSha256": "4bc9179aa45efdf20b633a624e5b61b9144160770c03b6ac4193ea7f5348274f",
+  "patches": [
+    {
+      "path": "patches/0001-host-bridge.patch",
+      "sha256": "96b4927f01b8c3ddff984ee08752ab550155a7263903de60696b4597a1cf2cdc"
+    },
+    {
+      "path": "patches/0002-managed-start.patch",
+      "sha256": "a90a0cc1b47ff2cbc2d8f9c93c944e64b5e46da7718189ac6cfb01bda2a1883d"
+    },
+    {
+      "path": "patches/0003-owner-freeze.patch",
+      "sha256": "0080cb06a7189fd38c8fae363f22240bd666b320c8a05f8e4159e89509a3f678"
+    },
+    {
+      "path": "patches/0004-host-layout-export.patch",
+      "sha256": "ad2c44dd26d76cd9611eb71da180c274dc756c88e73bf3f2b49848e6d3875ac3"
+    },
+    {
+      "path": "patches/0006-portable-recovery.patch",
+      "sha256": "1c812a2cc66a6e97719b793568aa8726deff8a33ec605ecb580fe01c839fd909"
+    },
+    {
+      "path": "patches/0007-host-compact-theme.patch",
+      "sha256": "9c1dd9f6b86d5b84ed1b79bb06f5fa43df46e8446474ebffe391cd4f1b979148"
+    },
+    {
+      "path": "patches/0008-host-safe-content.patch",
+      "sha256": "4a0229160a4d5ec44b0fe15fd97a3f5505f8da12d012a84a120969ee78b5c8cf"
+    },
+    {
+      "path": "patches/0009-compact-qualification.patch",
+      "sha256": "7114efd470e52313177615574ce95105a95b9060ce07f6ade47cb743fb6b4715"
+    },
+    {
+      "path": "patches/0010-notes-retirement.patch",
+      "sha256": "ad7c324af2d1dc3004c5eee8a7e3e41e06198d56bfdb74a2209b871b05366917"
+    },
+    {
+      "path": "patches/0011-notes-slide-identity.patch",
+      "sha256": "7c87724ca613b39185b58d64f419e46ef83ce74b512112c2dab0b280ba6e1c4c"
+    },
+    {
+      "path": "patches/0012-notes-freeze-preflight.patch",
+      "sha256": "653a3e94bf7715c9c39b0588ca5a5adda8256c7e8c007bdb0af16b0b3325f801"
+    },
+    {
+      "path": "patches/0013-phone-landscape-compact.patch",
+      "sha256": "b7eb59461ee7201938a2de9fa010648f946ac544058e67d6ade83565fd292393"
+    },
+    {
+      "path": "patches/0014-input-ime-boundary-tests.patch",
+      "sha256": "efcffad999bd0a22a28be9db6d6388257f447353a0789cf8e51f0a3bf938e60c"
+    },
+    {
+      "path": "patches/0016-ime-surrounding-replay.patch",
+      "sha256": "9d2b2d69a4c00d9cfc07163e77c0d42c633baae74f8cc80a1e46ab10e8a6f58a"
+    }
+  ],
+  "abi": "zoen-host-v1",
+  "cargoFeature": "zoen-host",
+  "resourceUri": "ui://zoen/deckcraft/index.html",
+  "nativeDocumentMime": "application/vnd.storyteller.deckcraft+zip",
+  "canvasId": "deckcraft_canvas",
+  "loadingId": "deckcraft_loading",
+  "toolVersions": {
+    "rustc": "1.99.1",
+    "cargo": "1.99.1",
+    "trunk": "0.22.0",
+    "wasmBindgen": "0.2.129",
+    "binaryen": "version_133"
+  },
+  "reproducibleEnvironment": {
+    "DECKCRAFT_BUILD_DATE": "2026-10-20",
+    "SOURCE_DATE_EPOCH": "1792510809"
+  },
+  "modifications": [
+    "Bounded managed host requests onto the real SlideApp/Session; no second document store.",
+    "Hosted policy disables standalone import, file, clipboard, URL and network paths.",
+    "Explicit managed start after verified WASM init; automatic standalone main disabled only for zoen-host.",
+    "Canonical persistence/export is owned by Zoen tools; loading code grants no device/network capability.",
+    "Managed owner-queue freeze fences manual editing across final snapshot/commit/retirement.",
+    "Managed UI receives finite host safe areas/exact close corner through the owner queue; existing Export delegates PDF/PPTX intent to native accepted-head sharing before generating browser bytes.",
+    "Hosted narrow layouts reuse the slide sorter, inspector controls and ribbon groups with full-width canvas/touch actions; authenticated host theme changes egui tokens only.",
+    "Hosted panels use a real safe-content child Ui over a full-viewport backdrop; raw safe-area metadata alone does not position egui panels.",
+    "Real upstream egui Harness validates compact safe bounds, theme, inspector/Notes draft rotation and command reuse; compact status excludes its separator from44pt hit space.",
+    "Hosted editor drains a removed speaker-notes draft through the original slide.notes command before document observation; failed writes retain the exact draft for retry.",
+    "Retained speaker-notes drafts bind to document UID and immutable SlideId, resolving current order only at commit; missing slides remain retryable without writing to replacements.",
+    "Host Freeze drains the UI-local Notes body through the existing command before frozen ACK; policy or origin failures keep the draft and refuse teardown instead of reporting clean.",
+    "Phone-height hosted landscape windows reuse compact toolbar/status/ribbon/inspector, keeping the safe canvas full width and retaining live choices/drafts across actual wide-panel transitions.",
+    "Actual title/Notes taps assert final egui PlatformOutput.ime before typed input and real document commit; these engine assertions do not claim native DOM/WK keyboard acceptance.",
+    "IME surrounding deletion uses Unicode scalar selection bounds and the existing composition snapshot; commit/navigation records one canonical grouped edit, cancellation restores it, and initial run properties plus paragraph end marks survive preedit replacement and replay."
+  ],
+  "distributionStatus": "Not advertised: final managed release, MCP adapter and iOS runtime proof required."
+}

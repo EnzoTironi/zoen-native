@@ -1,0 +1,34 @@
+{
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "repository": "https://github.com/TelegramMessenger/Telegram-iOS",
+  "license": "GPL-2.0-or-later; GPL-3.0 selected",
+  "files": [
+    {
+      "path": "submodules/LegacyComponents/Sources/TGMediaPickerGalleryVideoItemView.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMediaPickerGalleryVideoItemView.m",
+      "bytes": 66702,
+      "sha256": "a90cc4cf5ae05c0128edc3d5e0aa064d6643764cc32b44d3235a58f7c8985676",
+      "lines": [[220, 247]]
+    },
+    {
+      "path": "submodules/LegacyComponents/Sources/TGMediaPickerGalleryInterfaceView.m",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGMediaPickerGalleryInterfaceView.m",
+      "bytes": 92613,
+      "sha256": "c0314e06594098956ea6a9afe4d0e973b2e2b903837b012958946e244344664c",
+      "lines": [
+        [88, 100],
+        [2060, 2071],
+        [2158, 2173],
+        [2188, 2206]
+      ]
+    }
+  ],
+  "originalControlInventory": "apps/zoen/modules/zoen-core/ios/TelegramVideoEditing/upstream-sources.json",
+  "adaptations": [
+    "Preserve original initial header44/panel64/scrubber0x68 hierarchy. Final source header72portrait/64landscape admits the complete visible trim row24..64.",
+    "Reuse the existing standalone top safe-area anchor rather than importing gallery captions or navigation.",
+    "Exclude landscape side toolbar and consume its safe inset once using the original localSafeAreaInset rule.",
+    "No original Objective-C source was modified by this adapter fix.",
+    "Original trim button accessibility labels and adjustable actions remain pending an existing localized-string bridge."
+  ]
+}

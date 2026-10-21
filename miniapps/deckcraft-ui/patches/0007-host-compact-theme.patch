@@ -1,0 +1,788 @@
+diff --git a/crates/ui-egui/src/host_layout.rs b/crates/ui-egui/src/host_layout.rs
+--- a/crates/ui-egui/src/host_layout.rs
++++ b/crates/ui-egui/src/host_layout.rs
+@@ -25,6 +25,8 @@
+     pub height: f32,
+     pub insets: Insets,
+     pub close_button: Option<CloseRect>,
++    #[serde(default)]
++    pub theme: Option<crate::theme::Brightness>,
+ }
+ impl HostLayout {
+     pub fn valid(&self) -> bool {
+@@ -74,6 +76,11 @@
+ pub fn current(ctx: &egui::Context) -> Option<HostLayout> {
+     ctx.data(|data| data.get_temp(egui::Id::new(ID)))
+ }
++/// A hosted portrait-sized frame keeps the editor canvas full width.
++/// This ephemeral breakpoint never rewrites standalone preferences or document state.
++pub fn compact(ctx: &egui::Context) -> bool {
++    current(ctx).is_some() && ctx.content_rect().width() < 640.0
++}
+ /// Only popup controls avoid the floating native corner, never a global right gutter.
+ pub fn popup_rect(ctx: &egui::Context) -> Rect {
+     let mut rect = ctx.content_rect();
+@@ -99,6 +106,7 @@
+             height: 932.0,
+             insets: Insets { top: 62.0, right: 0.0, bottom: 34.0, left: 0.0 },
+             close_button: Some(CloseRect { x: 374.0, y: 70.0, width: 44.0, height: 44.0 }),
++            theme: None,
+         }
+     }
+     #[test]
+@@ -133,12 +141,14 @@
+                 height: 430.0,
+                 insets: Insets { top: 0.0, right: 0.0, bottom: 21.0, left: 62.0 },
+                 close_button: Some(CloseRect { x: 876.0, y: 8.0, width: 44.0, height: 44.0 }),
++                theme: None,
+             },
+             HostLayout {
+                 width: 932.0,
+                 height: 430.0,
+                 insets: Insets { top: 0.0, right: 62.0, bottom: 21.0, left: 0.0 },
+                 close_button: Some(CloseRect { x: 814.0, y: 8.0, width: 44.0, height: 44.0 }),
++                theme: None,
+             },
+         ] {
+             let full = Rect::from_min_size(pos2(0.0, 0.0), egui::vec2(layout.width, layout.height));
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -519,6 +519,8 @@
+     next_file_id: u64,
+     /// Picks and drops whose bytes have not arrived yet.
+     pending_files: Vec<PendingFile>,
++    // Hosted chrome preferences are initialized once, not on every rotation.
++    host_ui_initialized: bool,
+ }
+ 
+ fn grid_options_touched(p: &Value) -> bool {
+@@ -587,6 +589,7 @@
+             twisting: false,
+             next_file_id: 1,
+             pending_files: Vec::new(),
++            host_ui_initialized: false,
+         }
+     }
+ 
+@@ -1556,6 +1559,23 @@
+ 
+     /// Per-frame logic before layout: styles, control requests, screenshots, shortcuts.
+     pub fn logic(&mut self, ctx: &egui::Context) {
++        if let Some(layout) = host_layout::current(ctx) {
++            if !self.host_ui_initialized {
++                // No user draft exists before the first hosted frame. Later rotations
++                // retain Notes, ribbon choices and every live editor buffer.
++                if host_layout::compact(ctx) {
++                    self.ui.ribbon_collapsed = true;
++                    self.ui.notes = false;
++                }
++                self.host_ui_initialized = true;
++            }
++            if let Some(brightness) = layout.theme
++                && self.ui.brightness != brightness
++            {
++                self.ui.brightness = brightness;
++                self.restyle = true;
++            }
++        }
+         let scale = self.ui.ui_scale.clamp(0.5, 3.0);
+         if (ctx.zoom_factor() - scale).abs() > 1e-3 {
+             ctx.set_zoom_factor(scale);
+@@ -1861,7 +1881,7 @@
+                     }
+                     if self.ui.view == ViewMode::Outline {
+                         sorter::outline_pane(self, ui);
+-                    } else {
++                    } else if !host_layout::compact(ui.ctx()) {
+                         thumbs::show(self, ui);
+                     }
+                     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |ui| {
+@@ -2069,6 +2089,8 @@
+ mod compare_tests;
+ #[cfg(test)]
+ mod eyedropper_tests;
++#[cfg(test)]
++mod host_compact_tests;
+ #[cfg(test)]
+ mod huge_deck_tests;
+ #[cfg(test)]
+diff --git a/crates/ui-egui/src/panes.rs b/crates/ui-egui/src/panes.rs
+--- a/crates/ui-egui/src/panes.rs
++++ b/crates/ui-egui/src/panes.rs
+@@ -14,6 +14,25 @@
+ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
+     let t = Tokens::get(ui.ctx());
+     let Some(pane) = app.ui.pane.clone() else { return };
++    if crate::host_layout::compact(ui.ctx()) {
++        let safe = crate::host_layout::popup_rect(ui.ctx()).shrink(8.0);
++        if safe.width() <= 0.0 || safe.height() <= 0.0 {
++            return;
++        }
++        let height = (safe.height() * 0.58).min(420.0);
++        let rect = Rect::from_min_max(pos2(safe.left(), safe.bottom() - height), safe.right_bottom());
++        // Reuse the same pane/editor buffers and commands; only the presentation changes.
++        egui::Window::new("Inspector")
++            .id(egui::Id::new("host_task_pane"))
++            .title_bar(false)
++            .resizable(false)
++            .movable(false)
++            .fixed_rect(rect)
++            .constrain_to(safe)
++            .frame(egui::Frame::window(&ui.style()).fill(t.card))
++            .show(ui.ctx(), |ui| pane_contents(app, ui, &pane));
++        return;
++    }
+     egui::Panel::right("task_pane")
+         .resizable(true)
+         .default_size(app.ui.pane_width)
+@@ -21,45 +40,57 @@
+         .frame(egui::Frame::NONE.fill(t.card).inner_margin(egui::Margin::same(10)))
+         .show(ui, |ui| {
+             app.ui.pane_width = ui.available_width() + 20.0;
+-            let title = match pane.as_str() {
+-                "format" => "Format Shape",
+-                "background" => "Format Background",
+-                "animation" => "Animation Pane",
+-                "selection" => "Selection",
+-                "comments" => "Comments",
+-                "designer" => "Design Ideas",
+-                "smartart" => "Text Pane",
+-                "thesaurus" => "Thesaurus",
+-                "revisions" => "Revisions",
+-                _ => "Pane",
+-            };
+-            ui.horizontal(|ui| {
+-                ui.label(egui::RichText::new(title).font(theme::bold(16.0)));
+-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+-                    let (r, resp) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::click());
+-                    if resp.hovered() {
+-                        ui.painter().rect_filled(r, CornerRadius::same(4), t.hover);
+-                    }
+-                    icons::paint(ui.painter(), r.shrink(3.0), Icon::Close, t.text_dim, false);
+-                    if resp.clicked() {
+-                        app.ui.pane = None;
+-                    }
+-                });
+-            });
+-            ui.add_space(6.0);
+-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| match pane.as_str() {
+-                "format" => format_shape(app, ui),
+-                "background" => background(app, ui),
+-                "animation" => animation(app, ui),
+-                "selection" => crate::selpane::show(app, ui),
+-                "comments" => comments(app, ui),
+-                "designer" => designer(app, ui),
+-                "smartart" => smartart(app, ui),
+-                "thesaurus" => thesaurus(app, ui),
+-                "revisions" => revisions(app, ui),
+-                _ => {}
+-            });
++            pane_contents(app, ui, &pane);
+         });
++}
++
++fn pane_contents(app: &mut SlideApp, ui: &mut Ui, pane: &str) {
++    // Rotation changes the container, not the IDs or drafts of its actual editors.
++    ui.scope_builder(egui::UiBuilder::new().id(egui::Id::new("task_pane_body")), |ui| pane_contents_inner(app, ui, pane));
++}
++
++fn pane_contents_inner(app: &mut SlideApp, ui: &mut Ui, pane: &str) {
++    let t = Tokens::get(ui.ctx());
++    let title = match pane {
++        "format" => "Format Shape",
++        "background" => "Format Background",
++        "animation" => "Animation Pane",
++        "selection" => "Selection",
++        "comments" => "Comments",
++        "designer" => "Design Ideas",
++        "smartart" => "Text Pane",
++        "thesaurus" => "Thesaurus",
++        "revisions" => "Revisions",
++        _ => "Pane",
++    };
++    ui.horizontal(|ui| {
++        ui.label(egui::RichText::new(title).font(theme::bold(16.0)));
++        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
++            let side = if crate::host_layout::compact(ui.ctx()) { 44.0 } else { 20.0 };
++            let (r, resp) = ui.allocate_exact_size(vec2(side, side), Sense::click());
++            resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Close inspector"));
++            if resp.hovered() {
++                ui.painter().rect_filled(r, CornerRadius::same(4), t.hover);
++            }
++            icons::paint(ui.painter(), r.shrink(3.0), Icon::Close, t.text_dim, false);
++            if resp.clicked() {
++                app.ui.pane = None;
++            }
++        });
++    });
++    ui.add_space(6.0);
++    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| match pane {
++        "format" => format_shape(app, ui),
++        "background" => background(app, ui),
++        "animation" => animation(app, ui),
++        "selection" => crate::selpane::show(app, ui),
++        "comments" => comments(app, ui),
++        "designer" => designer(app, ui),
++        "smartart" => smartart(app, ui),
++        "thesaurus" => thesaurus(app, ui),
++        "revisions" => revisions(app, ui),
++        _ => {}
++    });
+ }
+ 
+ /// SmartArt Text Pane: one line per node, indented by level. Enter adds a line after, Tab and
+diff --git a/crates/ui-egui/src/ribbon.rs b/crates/ui-egui/src/ribbon.rs
+--- a/crates/ui-egui/src/ribbon.rs
++++ b/crates/ui-egui/src/ribbon.rs
+@@ -160,98 +160,134 @@
+ /// Tab row and the ribbon card.
+ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
+     let t = Tokens::get(ui.ctx());
++    let compact = crate::host_layout::compact(ui.ctx());
+     let ctx_tabs = contextual(app);
+     if !TABS.contains(&app.ui.tab.as_str()) && !ctx_tabs.contains(&app.ui.tab.as_str()) {
+         app.ui.tab = "Home".into();
+     }
+-    let h = 28.0 + if app.ui.ribbon_collapsed { 4.0 } else { RIBBON_H + 20.0 };
++    let tab_height = if compact { 44.0 } else { 28.0 };
++    let h = tab_height + if app.ui.ribbon_collapsed { 4.0 } else { RIBBON_H + 20.0 };
+     egui::Panel::top("ribbon").exact_size(h).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
+         let rect = ui.max_rect();
+-        // Tabs. File comes first and opens the File tab's full-window view (Backstage), as in
+-        // PowerPoint.
+-        let mut x = rect.min.x + 12.0;
+-        let y = rect.min.y + 2.0;
+-        {
+-            let w = ui.fonts_mut(|f| f.layout_no_wrap("File".to_string(), theme::font(13.0), t.text).size().x) + 18.0;
+-            let r = Rect::from_min_size(pos2(x, y), vec2(w, 24.0));
+-            let resp = ui.interact(r, ui.id().with("tab_file"), Sense::click());
+-            resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "File"));
+-            if resp.hovered() {
+-                ui.painter().rect_filled(r.shrink2(vec2(2.0, 2.0)), CornerRadius::same(4), t.hover);
+-            }
+-            ui.painter().text(r.center(), Align2::CENTER_CENTER, "File", theme::font(13.0), t.text);
+-            if resp.on_hover_text("File (Alt+F)").clicked() {
+-                app.open_backstage(crate::backstage::Page::Home);
+-            }
+-            x += w + 2.0;
+-        }
+-        let all: Vec<(&str, bool)> = TABS.iter().map(|s| (*s, false)).chain(ctx_tabs.iter().map(|s| (*s, true))).collect();
+-        for (name, contextual) in all {
+-            let font = theme::font(13.0);
+-            let w = ui.fonts_mut(|f| f.layout_no_wrap(name.to_string(), font.clone(), t.text).size().x) + 18.0;
+-            let r = Rect::from_min_size(pos2(x, y), vec2(w, 24.0));
+-            let resp = ui.interact(r, ui.id().with(("tab", name)), Sense::click());
+-            let active = app.ui.tab == name;
+-            if resp.hovered() && !active {
+-                ui.painter().rect_filled(r.shrink2(vec2(2.0, 2.0)), CornerRadius::same(4), t.hover);
+-            }
+-            let col = if contextual { t.contextual } else { t.text };
+-            let f = if active { theme::bold(13.0) } else { font };
+-            ui.painter().text(r.center(), Align2::CENTER_CENTER, name, f, col);
+-            if active {
+-                let uw = (w - 20.0).max(16.0);
+-                ui.painter().rect_filled(Rect::from_center_size(pos2(r.center().x, r.max.y - 1.0), vec2(uw, 3.0)), CornerRadius::same(1), t.accent);
+-            }
+-            if resp.clicked() {
+-                if active {
+-                    app.ui.ribbon_collapsed = !app.ui.ribbon_collapsed;
+-                } else {
+-                    app.ui.tab = name.to_string();
+-                    app.ui.ribbon_collapsed = false;
+-                }
+-            }
+-            if resp.double_clicked() {
+-                app.ui.ribbon_collapsed = !app.ui.ribbon_collapsed;
+-            }
+-            x += w + 2.0;
++        let tabs_rect = Rect::from_min_size(rect.min, vec2(rect.width(), tab_height));
++        let mut tabs = ui.new_child(egui::UiBuilder::new().max_rect(tabs_rect));
++        if compact {
++            egui::ScrollArea::horizontal()
++                .id_salt("host_ribbon_tabs")
++                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
++                .auto_shrink([false, false])
++                .show(&mut tabs, |ui| tab_row(app, ui, true));
++        } else {
++            tab_row(app, &mut tabs, false);
+         }
+         if app.ui.ribbon_collapsed {
+             return;
+         }
+-        // The white card.
+-        let card = Rect::from_min_max(pos2(rect.min.x + 8.0, rect.min.y + 30.0), pos2(rect.max.x - 8.0, rect.min.y + 30.0 + RIBBON_H + 10.0));
++        let card = Rect::from_min_max(
++            pos2(rect.min.x + 8.0, rect.min.y + tab_height + 2.0),
++            pos2(rect.max.x - 8.0, rect.min.y + tab_height + 2.0 + RIBBON_H + 10.0),
++        );
+         ui.painter().rect_filled(card.translate(vec2(0.0, 1.0)), CornerRadius::same(10), t.card_border);
+         ui.painter().rect_filled(card, CornerRadius::same(10), t.card);
+         let inner = Rect::from_min_size(pos2(card.min.x + 10.0, card.min.y + 5.0), vec2(card.width() - 20.0, RIBBON_H));
+-        let mut cui = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::left_to_right(egui::Align::Min)));
+-        cui.set_clip_rect(inner.expand2(vec2(0.0, 3.0)));
+-        cui.spacing_mut().item_spacing.x = 1.0;
+-        let ui = &mut cui;
+-        let tab = app.ui.tab.clone();
+-        match tab.as_str() {
+-            "Home" => home(app, ui),
+-            "Insert" => insert(app, ui),
+-            "Draw" => draw(app, ui),
+-            "Design" => design(app, ui),
+-            "Transitions" => transitions(app, ui),
+-            "Animations" => animations(app, ui),
+-            "Slide Show" => slide_show(app, ui),
+-            "Record" => record(app, ui),
+-            "Review" => review(app, ui),
+-            "View" => view(app, ui),
+-            "Shape Format" => shape_format(app, ui),
+-            "Picture Format" => picture_format(app, ui),
+-            "Table Design" => table_design(app, ui),
+-            "Layout" => table_layout(app, ui),
+-            "Chart Design" => chart_design(app, ui),
+-            "SmartArt Design" => smartart_design(app, ui),
+-            "Playback" => playback(app, ui),
+-            "Slide Master" => slide_master(app, ui),
+-            "Handout Master" => handout_master(app, ui),
+-            "Notes Master" => notes_master(app, ui),
+-            _ => {}
+-        }
+-    });
++        let mut controls = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::left_to_right(egui::Align::Min)));
++        controls.set_clip_rect(inner.expand2(vec2(0.0, 3.0)));
++        controls.spacing_mut().item_spacing.x = 1.0;
++        if compact {
++            egui::ScrollArea::horizontal()
++                .id_salt(("host_ribbon_groups", &app.ui.tab))
++                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
++                .auto_shrink([false, false])
++                .show(&mut controls, |ui| {
++                    ui.horizontal(|ui| tab_contents(app, ui));
++                });
++        } else {
++            tab_contents(app, &mut controls);
++        }
++    });
++}
++
++fn tab_row(app: &mut SlideApp, ui: &mut Ui, compact: bool) {
++    let t = Tokens::get(ui.ctx());
++    let ctx_tabs = contextual(app);
++    let rect = ui.max_rect();
++    let mut x = rect.min.x + 12.0;
++    let y = rect.min.y + if compact { 0.0 } else { 2.0 };
++    let hit_height = if compact { 44.0 } else { 24.0 };
++    {
++        let w = ui.fonts_mut(|f| f.layout_no_wrap("File".to_string(), theme::font(13.0), t.text).size().x) + 18.0;
++        let r = Rect::from_min_size(pos2(x, y), vec2(if compact { w.max(44.0) } else { w }, hit_height));
++        let resp = ui.interact(r, ui.id().with("tab_file"), Sense::click());
++        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "File"));
++        if resp.hovered() {
++            ui.painter().rect_filled(r.shrink2(vec2(2.0, 2.0)), CornerRadius::same(4), t.hover);
++        }
++        ui.painter().text(r.center(), Align2::CENTER_CENTER, "File", theme::font(13.0), t.text);
++        if resp.on_hover_text("File (Alt+F)").clicked() {
++            app.open_backstage(crate::backstage::Page::Home);
++        }
++        x += if compact { w.max(44.0) + 2.0 } else { w + 2.0 };
++    }
++    let all: Vec<(&str, bool)> = TABS.iter().map(|s| (*s, false)).chain(ctx_tabs.iter().map(|s| (*s, true))).collect();
++    for (name, contextual) in all {
++        let font = theme::font(13.0);
++        let w = ui.fonts_mut(|f| f.layout_no_wrap(name.to_string(), font.clone(), t.text).size().x) + 18.0;
++        let r = Rect::from_min_size(pos2(x, y), vec2(if compact { w.max(44.0) } else { w }, hit_height));
++        let resp = ui.interact(r, ui.id().with(("tab", name)), Sense::click());
++        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
++        let active = app.ui.tab == name;
++        if resp.hovered() && !active {
++            ui.painter().rect_filled(r.shrink2(vec2(2.0, 2.0)), CornerRadius::same(4), t.hover);
++        }
++        let col = if contextual { t.contextual } else { t.text };
++        let f = if active { theme::bold(13.0) } else { font };
++        ui.painter().text(r.center(), Align2::CENTER_CENTER, name, f, col);
++        if active {
++            let uw = (w - 20.0).max(16.0);
++            ui.painter().rect_filled(Rect::from_center_size(pos2(r.center().x, r.max.y - 1.0), vec2(uw, 3.0)), CornerRadius::same(1), t.accent);
++        }
++        if resp.clicked() {
++            if active {
++                app.ui.ribbon_collapsed = !app.ui.ribbon_collapsed;
++            } else {
++                app.ui.tab = name.to_string();
++                app.ui.ribbon_collapsed = false;
++            }
++        }
++        if resp.double_clicked() {
++            app.ui.ribbon_collapsed = !app.ui.ribbon_collapsed;
++        }
++        x += if compact { w.max(44.0) + 2.0 } else { w + 2.0 };
++    }
++    // Manually painted tabs must still expose their complete width to ScrollArea.
++    ui.set_min_size(vec2((x - rect.left()).max(1.0), if compact { 44.0 } else { 28.0 }));
++}
++
++fn tab_contents(app: &mut SlideApp, ui: &mut Ui) {
++    let tab = app.ui.tab.clone();
++    match tab.as_str() {
++        "Home" => home(app, ui),
++        "Insert" => insert(app, ui),
++        "Draw" => draw(app, ui),
++        "Design" => design(app, ui),
++        "Transitions" => transitions(app, ui),
++        "Animations" => animations(app, ui),
++        "Slide Show" => slide_show(app, ui),
++        "Record" => record(app, ui),
++        "Review" => review(app, ui),
++        "View" => view(app, ui),
++        "Shape Format" => shape_format(app, ui),
++        "Picture Format" => picture_format(app, ui),
++        "Table Design" => table_design(app, ui),
++        "Layout" => table_layout(app, ui),
++        "Chart Design" => chart_design(app, ui),
++        "SmartArt Design" => smartart_design(app, ui),
++        "Playback" => playback(app, ui),
++        "Slide Master" => slide_master(app, ui),
++        "Handout Master" => handout_master(app, ui),
++        "Notes Master" => notes_master(app, ui),
++        _ => {}
++    }
+ }
+ 
+ fn big(app: &mut SlideApp, ui: &mut Ui, icon: Icon, label: &str, id: &str, p: Value) {
+@@ -3649,6 +3685,10 @@
+ /// The managed editor keeps its existing commands in a compact touch toolbar.
+ /// Its background/canvas remain full viewport; only controls avoid the native X.
+ fn hosted_title_bar(app: &mut SlideApp, ui: &mut Ui) {
++    if crate::host_layout::compact(ui.ctx()) {
++        compact_title_bar(app, ui);
++        return;
++    }
+     let t = Tokens::get(ui.ctx());
+     let (height, right_edge) = crate::host_layout::title_bounds(ui.ctx(), ui.ctx().content_rect());
+     egui::Panel::top("title_bar").exact_size(height).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
+@@ -3685,3 +3725,50 @@
+         }
+     });
+ }
++
++/// The same upstream actions, with44pt targets and no permanent slide/inspector gutters.
++fn compact_title_bar(app: &mut SlideApp, ui: &mut Ui) {
++    let t = Tokens::get(ui.ctx());
++    let (height, right_edge) = crate::host_layout::title_bounds(ui.ctx(), ui.ctx().content_rect());
++    egui::Panel::top("title_bar").exact_size(height.max(52.0)).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
++        let rect = ui.max_rect();
++        let has_doc = app.session.active().is_some();
++        let mut left = ui.new_child(
++            egui::UiBuilder::new()
++                .max_rect(Rect::from_min_max(pos2(rect.left() + 8.0, rect.top()), pos2((right_edge - 140.0).max(rect.left() + 8.0), rect.bottom())))
++                .layout(egui::Layout::left_to_right(egui::Align::Center)),
++        );
++        left.spacing_mut().item_spacing.x = 4.0;
++        if widgets::touch_icon(&mut left, Icon::Export, "Export PDF or PowerPoint", has_doc, false).clicked() {
++            let _ = app.run("app.exportDialog", json!({}));
++        }
++        let sorter = app.ui.view == crate::ViewMode::Sorter;
++        if widgets::touch_icon(&mut left, Icon::ViewSorter, if sorter { "Back to slide" } else { "Slides" }, has_doc, sorter).clicked() {
++            let _ = app.run(if sorter { "view.normal" } else { "view.sorter" }, json!({}));
++        }
++        if right_edge - rect.left() >= 288.0
++            && widgets::touch_icon(&mut left, Icon::FormatBackground, "Format inspector", has_doc, app.ui.pane.is_some()).clicked()
++        {
++            let _ = app.run("view.pane", json!({"pane":"format", "toggle":true}));
++        }
++        let mut right = ui.new_child(
++            egui::UiBuilder::new()
++                .max_rect(Rect::from_min_max(pos2((right_edge - 128.0).max(rect.left() + 8.0), rect.top()), pos2(right_edge, rect.bottom())))
++                .layout(egui::Layout::right_to_left(egui::Align::Center)),
++        );
++        right.spacing_mut().item_spacing.x = 4.0;
++        if widgets::touch_icon(&mut right, Icon::Search, "Search commands", true, false).clicked() {
++            app.palette = Some((String::new(), 0));
++        }
++        if right
++            .add_enabled(
++                has_doc,
++                egui::Button::new(egui::RichText::new("Present").color(t.accent_text)).fill(t.accent).corner_radius(22.0).min_size(vec2(76.0, 44.0)),
++            )
++            .clicked()
++        {
++            let from = app.session.active().map(|d| d.selection.slide).unwrap_or(0);
++            app.start_show(from, false);
++        }
++    });
++}
+diff --git a/crates/ui-egui/src/status.rs b/crates/ui-egui/src/status.rs
+--- a/crates/ui-egui/src/status.rs
++++ b/crates/ui-egui/src/status.rs
+@@ -9,6 +9,10 @@
+ use crate::{SlideApp, ViewMode};
+ 
+ pub fn status_bar(app: &mut SlideApp, ui: &mut Ui) {
++    if crate::host_layout::compact(ui.ctx()) {
++        compact_status_bar(app, ui);
++        return;
++    }
+     let t = Tokens::get(ui.ctx());
+     egui::Panel::bottom("status").exact_size(28.0).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
+         let rect = ui.max_rect();
+@@ -248,3 +252,25 @@
+             app.notes_buf.2 = draft;
+         });
+ }
++
++fn compact_status_bar(app: &mut SlideApp, ui: &mut Ui) {
++    let t = Tokens::get(ui.ctx());
++    egui::Panel::bottom("status").exact_size(44.0).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
++        ui.horizontal_centered(|ui| {
++            let Some(st) = app.session.active() else { return };
++            let total = st.doc.slides.len();
++            let here = (st.selection.slide + 1).min(total.max(1));
++            if ui.add(egui::Button::new(format!("Slide {here} of {total}")).min_size(vec2(132.0, 44.0))).clicked() {
++                let _ = app.run("view.sorter", json!({}));
++            }
++            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
++                if crate::widgets::touch_icon(ui, Icon::FitSmall, "Fit slide to current window", true, false).clicked() {
++                    app.ui.zoom = None;
++                }
++                if crate::widgets::touch_icon(ui, Icon::NotesSmall, "Speaker notes", true, app.ui.notes).clicked() {
++                    app.ui.notes = !app.ui.notes;
++                }
++            });
++        });
++    });
++}
+diff --git a/crates/ui-egui/src/sorter.rs b/crates/ui-egui/src/sorter.rs
+--- a/crates/ui-egui/src/sorter.rs
++++ b/crates/ui-egui/src/sorter.rs
+@@ -232,6 +232,9 @@
+                         }
+                     } else {
+                         let _ = app.run("slide.go", json!({"index": i}));
++                        if crate::host_layout::compact(ui.ctx()) {
++                            app.ui.view = crate::ViewMode::Normal;
++                        }
+                     }
+                 }
+                 if resp.double_clicked() {
+diff --git a/crates/ui-egui/src/widgets.rs b/crates/ui-egui/src/widgets.rs
+--- a/crates/ui-egui/src/widgets.rs
++++ b/crates/ui-egui/src/widgets.rs
+@@ -183,6 +183,19 @@
+     // Named for screen readers (and tests) by its tooltip.
+     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, tip));
+     resp.on_hover_text(tip)
++}
++
++/// A hosted primary action uses a full touch target without scaling the document.
++pub(crate) fn touch_icon(ui: &mut Ui, icon: Icon, label: &str, enabled: bool, on: bool) -> Response {
++    let t = Tokens::get(ui.ctx());
++    let (rect, response) = ui.allocate_exact_size(vec2(44.0, 44.0), if enabled { Sense::click() } else { Sense::hover() });
++    let painter = ui.painter_at(rect);
++    if let Some(color) = bg(ui, &response, on, &t) {
++        painter.rect_filled(rect, CornerRadius::same(8), color);
++    }
++    icons::paint(&painter, Rect::from_center_size(rect.center(), vec2(22.0, 22.0)), icon, t.text, !enabled);
++    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
++    response.on_hover_text(label)
+ }
+ 
+ /// Icon with a colour bar under it and a dropdown arrow (Font Color, Highlight, Shape Fill…).
+diff --git a/crates/ui-egui/src/host_compact_tests.rs b/crates/ui-egui/src/host_compact_tests.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/ui-egui/src/host_compact_tests.rs
+@@ -0,0 +1,194 @@
++//! Real upstream egui/Session regression cases for hosted portrait chrome.
++//! These tests do not stand in for an iPhone keyboard/touch/memory qualification.
++#![allow(clippy::unwrap_used, clippy::expect_used)]
++use crate::{
++    Services, SlideApp, ViewMode,
++    host_layout::{self, CloseRect, HostLayout, Insets},
++    theme::Brightness,
++};
++use deckcraft_engine::Session;
++use egui::{Event, Modifiers, MouseWheelUnit, Rect, pos2, vec2};
++use egui_kittest::{Harness, kittest::Queryable};
++use serde_json::json;
++use std::sync::Arc;
++
++struct State {
++    app: SlideApp,
++    layout: Option<HostLayout>,
++}
++fn portrait(width: f32, theme: Brightness) -> HostLayout {
++    HostLayout {
++        width,
++        height: 932.0,
++        insets: Insets { top: 62.0, right: 0.0, bottom: 34.0, left: 0.0 },
++        close_button: Some(CloseRect { x: width - 56.0, y: 70.0, width: 44.0, height: 44.0 }),
++        theme: Some(theme),
++    }
++}
++fn fixture(layout: Option<HostLayout>) -> Harness<'static, State> {
++    let size = layout.map_or(vec2(1200.0, 800.0), |l| vec2(l.width, l.height));
++    let mut h = Harness::builder().with_size(size).build_ui_state(
++        |ui, state: &mut State| {
++            if let Some(layout) = state.layout {
++                host_layout::install(ui.ctx(), layout);
++            }
++            state.app.logic(ui.ctx());
++            state.app.ui(ui);
++        },
++        State { app: SlideApp::new(Session::with_new(), Services::default()), layout },
++    );
++    if let Some(layout) = layout {
++        let viewport = Rect::from_min_size(pos2(0.0, 0.0), size);
++        h.input_mut().safe_area_insets = Some(layout.safe_insets(viewport));
++    }
++    h.run_steps(3);
++    h
++}
++fn resize(h: &mut Harness<'_, State>, layout: HostLayout) {
++    h.state_mut().layout = Some(layout);
++    h.set_size(vec2(layout.width, layout.height));
++    h.input_mut().safe_area_insets = Some(layout.safe_insets(Rect::from_min_size(pos2(0.0, 0.0), vec2(layout.width, layout.height))));
++    h.run_steps(3);
++}
++
++#[test]
++fn hosted_portrait_canvas_and_primary_touch_hits_keep_the_safe_width() {
++    for width in [375.0, 390.0, 430.0] {
++        let layout = portrait(width, Brightness::Dark);
++        let h = fixture(Some(layout));
++        let canvas = h.state().app.canvas_rect.unwrap();
++        assert!(canvas.width() >= width - 16.0, "no permanent thumbnail gutter: {canvas:?}");
++        assert!(canvas.height() > 400.0, "the collapsed ribbon leaves editing space");
++        let close = layout.close_rect(h.ctx.viewport_rect()).unwrap();
++        let safe = h.ctx.content_rect();
++        let mut hits = vec![];
++        for label in
++            ["Export PDF or PowerPoint", "Slides", "Format inspector", "Search commands", "Present", "Fit slide to current window", "Speaker notes"]
++        {
++            let rect = h.get_by_label(label).rect();
++            assert!(rect.width() >= 43.9 && rect.height() >= 43.9, "{label}: {rect:?}");
++            assert!(safe.contains_rect(rect), "{label} remains in safe content: {rect:?} / {safe:?}");
++            assert!(!rect.intersects(close), "{label} cannot capture native Close");
++            assert!(hits.iter().all(|other: &Rect| !other.intersects(rect)), "primary targets cannot overlap: {label}");
++            hits.push(rect);
++        }
++    }
++}
++
++#[test]
++fn host_theme_updates_actual_egui_tokens_without_document_dirty_or_undo_changes() {
++    let mut h = fixture(Some(portrait(430.0, Brightness::Dark)));
++    let state = h.state().app.session.active().unwrap();
++    let doc = state.doc.clone();
++    let revision = state.revision;
++    let undo = state.history.undo.len();
++    let dirty = state.is_dirty();
++    assert!(h.ctx.global_style().visuals.dark_mode);
++    assert_eq!(h.state().app.ui.brightness, Brightness::Dark);
++    h.state_mut().layout.as_mut().unwrap().theme = Some(Brightness::Light);
++    h.run_steps(2);
++    assert!(!h.ctx.global_style().visuals.dark_mode);
++    let after = h.state().app.session.active().unwrap();
++    assert!(Arc::ptr_eq(&doc, &after.doc));
++    assert_eq!((after.revision, after.history.undo.len(), after.is_dirty()), (revision, undo, dirty));
++    // A legacy geometry-only context remains accepted; unknown theme values fail decoding.
++    let base = json!({"width":430,"height":932,"insets":{"top":62,"right":0,"bottom":34,"left":0},"closeButton":null});
++    assert!(serde_json::from_value::<HostLayout>(base.clone()).unwrap().theme.is_none());
++    let mut invalid = base;
++    invalid["theme"] = json!("system-or-document-payload");
++    assert!(serde_json::from_value::<HostLayout>(invalid).is_err());
++}
++
++#[test]
++fn compact_slides_browser_uses_upstream_selection_and_one_tap_returns_to_canvas() {
++    let mut h = fixture(Some(portrait(430.0, Brightness::Light)));
++    h.state_mut().app.run("slide.new", json!({})).unwrap();
++    h.state_mut().app.run("slide.go", json!({"index":0})).unwrap();
++    let before = h.state().app.session.active().unwrap().doc.clone();
++    let undo = h.state().app.session.active().unwrap().history.undo.len();
++    h.run_steps(2);
++    h.get_by_label("Slides").click();
++    h.run_steps(2);
++    assert_eq!(h.state().app.ui.view, ViewMode::Sorter);
++    h.get_by_label("Slide 2").click();
++    h.run_steps(2);
++    assert_eq!(h.state().app.ui.view, ViewMode::Normal);
++    let after = h.state().app.session.active().unwrap();
++    assert_eq!(after.selection.slide, 1);
++    assert!(Arc::ptr_eq(&before, &after.doc));
++    assert_eq!(after.history.undo.len(), undo);
++}
++
++#[test]
++fn hosted_inspector_reuses_controls_without_consuming_canvas_or_native_close() {
++    let layout = portrait(430.0, Brightness::Dark);
++    let mut h = fixture(Some(layout));
++    let canvas = h.state().app.canvas_rect.unwrap();
++    let doc = h.state().app.session.active().unwrap().doc.clone();
++    h.get_by_label("Format inspector").click();
++    h.run_steps(4);
++    assert_eq!(h.state().app.ui.pane.as_deref(), Some("format"));
++    assert_eq!(h.state().app.canvas_rect.unwrap().width(), canvas.width());
++    let close = h.get_by_label("Close inspector").rect();
++    assert!(host_layout::popup_rect(&h.ctx).contains_rect(close));
++    assert!(close.width() >= 44.0 && close.height() >= 44.0);
++    h.get_by_label("Close inspector").click();
++    h.run_steps(2);
++    assert!(h.state().app.ui.pane.is_none());
++    assert!(Arc::ptr_eq(&doc, &h.state().app.session.active().unwrap().doc));
++}
++
++#[test]
++fn compact_ribbon_scroll_reaches_the_last_upstream_tab_and_retains_its_commands() {
++    let mut h = fixture(Some(portrait(430.0, Brightness::Light)));
++    let home = h.get_by_label("Home").rect();
++    h.event(Event::PointerMoved(home.center()));
++    h.event(Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(-1400.0, 0.0), modifiers: Modifiers::NONE });
++    h.run_steps(12);
++    let view = h.get_by_label("View").rect();
++    assert!(h.ctx.content_rect().contains_rect(view), "last tab is reachable: {view:?}");
++    h.get_by_label("View").click();
++    h.run_steps(2);
++    assert_eq!(h.state().app.ui.tab, "View");
++    assert!(!h.state().app.ui.ribbon_collapsed);
++    assert!(h.query_by_label("Normal").is_some(), "the actual upstream View group renders");
++}
++
++#[test]
++fn hosted_rotation_preserves_notes_draft_ribbon_choice_and_same_document() {
++    let mut h = fixture(Some(portrait(430.0, Brightness::Dark)));
++    h.get_by_label("Speaker notes").click();
++    h.run_steps(2);
++    let id = egui::Id::new("notes_edit");
++    h.ctx.memory_mut(|m| m.request_focus(id));
++    h.run_steps(1);
++    h.event(Event::Text("A live note".into()));
++    h.run_steps(1);
++    assert!(h.state().app.notes_buf.2.text.contains("A live note"));
++    assert!(h.state().app.ui.notes);
++    h.state_mut().app.ui.ribbon_collapsed = false;
++    let doc = h.state().app.session.active().unwrap().doc.clone();
++    let landscape = HostLayout {
++        width: 932.0,
++        height: 430.0,
++        insets: Insets { top: 0.0, right: 0.0, bottom: 21.0, left: 62.0 },
++        close_button: Some(CloseRect { x: 876.0, y: 8.0, width: 44.0, height: 44.0 }),
++        theme: Some(Brightness::Dark),
++    };
++    resize(&mut h, landscape);
++    resize(&mut h, portrait(430.0, Brightness::Dark));
++    assert!(h.state().app.ui.notes, "rotation must not reset a user's visible notes editor");
++    assert!(!h.state().app.ui.ribbon_collapsed, "rotation must not collapse a chosen ribbon");
++    assert!(h.state().app.notes_buf.2.text.contains("A live note"));
++    assert!(Arc::ptr_eq(&doc, &h.state().app.session.active().unwrap().doc), "layout cannot commit or replace the live document");
++}
++
++#[test]
++fn standalone_desktop_keeps_its_original_layout_and_preferences() {
++    let h = fixture(None);
++    assert_eq!(h.state().app.ui.brightness, Brightness::Light);
++    assert!(!h.state().app.ui.ribbon_collapsed);
++    assert!(h.state().app.ui.notes);
++    assert!(h.state().app.canvas_rect.unwrap().left() >= 150.0);
++    assert!(h.query_by_label("File").is_some());
++}

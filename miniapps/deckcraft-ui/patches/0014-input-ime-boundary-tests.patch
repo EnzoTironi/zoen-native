@@ -1,0 +1,73 @@
+--- a/crates/ui-egui/src/host_phone_landscape_tests.rs
++++ b/crates/ui-egui/src/host_phone_landscape_tests.rs
+@@ -160,3 +160,70 @@
+     h.run_steps(2);
+     assert_eq!(h.state().app.session.active().unwrap().doc.slides[0].shapes[0].descr, "Retain the same inspector draft");
+ }
++
++fn actual_canvas_tap(h: &mut Harness<'_, State>, at: egui::Pos2) {
++    // Same real pointer-event route as the upstream canvas tests, no selection injection.
++    for pressed in [true, false] {
++        let time = h.ctx.input(|i| i.time) + 0.05;
++        h.input_mut().time = Some(time);
++        h.event(Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
++        h.step();
++    }
++}
++
++#[test]
++fn actual_title_tap_publishes_platform_ime_before_real_text_event_edits_the_shape() {
++    let portrait = layout(430.0, 932.0, 0.0, 0.0);
++    let mut h = fixture(Some(portrait), vec2(430.0, 932.0));
++    let state = h.state().app.session.active().unwrap();
++    let title = state
++        .shapes()
++        .iter()
++        .find(|s| matches!(s.ph_type(), Some(deckcraft_model::PhType::Title | deckcraft_model::PhType::CtrTitle)))
++        .expect("real new-presentation title placeholder");
++    let id = title.id;
++    let rect = deckcraft_engine::cmd::xfrm_of(&state.doc, &state.selection, title);
++    let app = &h.state().app;
++    let at = app.slide_rect.unwrap().min + vec2((rect.x + rect.w * 0.5) as f32, (rect.y + rect.h * 0.5) as f32) * app.canvas_scale;
++    actual_canvas_tap(&mut h, at);
++    h.run_steps(1);
++    let state = h.state().app.session.active().unwrap();
++    assert_eq!(state.selection.text.as_ref().expect("actual title tap enters text editing").shape, id);
++    assert!(h.ctx.memory(|m| m.focused()).is_none(), "custom canvas owns typing rather than an egui TextEdit");
++    let ime = h.output().platform_output.ime.as_ref().expect("the final full output must activate the platform TextAgent");
++    assert_eq!(ime.purpose, egui::IMEPurpose::Normal);
++    assert!(ime.cursor_rect.is_finite() && ime.cursor_rect.width() > 0.0 && ime.cursor_rect.height() > 0.0);
++    assert!(h.ctx.content_rect().contains(ime.cursor_rect.center()));
++    let before = state.doc.clone();
++    h.event(Event::Text("Zoen title IME boundary".into()));
++    h.run_steps(3);
++    let state = h.state().app.session.active().unwrap();
++    assert_eq!(state.shape(id).unwrap().text.as_ref().unwrap().text(), "Zoen title IME boundary");
++    assert!(!Arc::ptr_eq(&before, &state.doc), "typing must reach the upstream Session document");
++}
++
++#[test]
++fn actual_notes_tap_publishes_platform_ime_and_real_canvas_blur_commits_typed_notes() {
++    let portrait = layout(430.0, 932.0, 0.0, 0.0);
++    let mut h = fixture(Some(portrait), vec2(430.0, 932.0));
++    h.get_by_label("Speaker notes").click();
++    h.run_steps(2);
++    h.query_all_by_role(Role::MultilineTextInput).next().expect("actual Notes TextEdit").click();
++    h.run_steps(1);
++    assert!(h.ctx.memory(|m| m.focused()).is_some(), "real TextEdit focus was obtained by a tap");
++    let ime = h.output().platform_output.ime.as_ref().expect("the focused Notes field must publish IME in final full output");
++    assert_eq!(ime.purpose, egui::IMEPurpose::Normal);
++    assert!(ime.cursor_rect.is_finite() && ime.cursor_rect.width() > 0.0 && ime.cursor_rect.height() > 0.0);
++    assert!(h.ctx.content_rect().contains(ime.cursor_rect.center()));
++    h.event(Event::Text("Zoen Notes IME boundary".into()));
++    h.run_steps(2);
++    let input = h.query_all_by_role(Role::MultilineTextInput).next().expect("same mounted Notes input");
++    assert_eq!(input.accesskit_node().value().as_deref(), Some("Zoen Notes IME boundary"));
++    assert_eq!(h.state().app.session.active().unwrap().doc.slides[0].notes.text(), "", "still-focused Notes are a draft");
++    let at = h.state().app.canvas_rect.unwrap().left_top() + vec2(4.0, 4.0);
++    actual_canvas_tap(&mut h, at);
++    h.run_steps(3);
++    assert_eq!(h.state().app.session.active().unwrap().doc.slides[0].notes.text(), "Zoen Notes IME boundary");
++    assert!(h.ctx.memory(|m| m.focused()).is_none());
++    assert!(h.output().platform_output.ime.is_none(), "blank-canvas blur ends the text-input request");
++}

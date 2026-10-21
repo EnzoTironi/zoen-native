@@ -133,6 +133,28 @@ evaluates blinded points, and provides independent decoy evaluations and metadat
     independent of OPRF evaluations. A known account without backup keeps its public
     identity. Failed authentication returns the same refusal regardless of generation.
 
+### Snapshot admission before recovery enrollment
+
+An authenticated envelope is not proof that its SQLite image is complete. Before
+`restore/enroll`, vault writes or replacement of local content, the client validates
+header version/root binding and exact 32-byte identity/agreement secrets. The shared
+snapshot preflight inspects SQLite integrity and actual portable tables/required
+columns, then exercises the same column-intersection import against an ephemeral
+current-schema Store. This catches target constraints and the actual identity,
+profile-key and synced-Space reader failures before admission. It also binds the
+root profile/`me`, requires the supported event-format marker, and verifies every
+Space's signed log and indexed row fields with the existing event-log checks.
+Direct snapshot restore repeats this same preflight before its local wipe.
+
+Portable compatibility keeps nullable `identities.secret`, nullable
+`profile_keys.fields` and defaulted `profile_keys.seen_version` optional; unknown
+extra source columns are ignored by the same import intersection. This policy is
+justified by the stored schema's nullability/defaults, not by assuming that all
+columns in a newer build were mandatory in older snapshots. All eight portable
+tables and their baseline required fields already existed at the earliest retained
+backup implementation (`cbb4b1f6`); missing tables are not treated as empty history.
+The preflight runs no Engine migrations on input and adds no durable store.
+
 ### After a restore
 The device decrypts the snapshot, validates the identity root, makes a **new device key**,
 and certifies it with the restored identity. It proves control of that key and current

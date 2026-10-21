@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// A restartable operation intent, never another account store. It contains no keys or content.
 struct ZoenDeviceScope: Codable, Equatable, Sendable {
@@ -13,6 +14,7 @@ struct ZoenDeviceScope: Codable, Equatable, Sendable {
 }
 
 final class ZoenDeviceErasure {
+  private static let mediaLibraryExportDirectoryName = "MediaLibraryUriExtractorDirectory"
   static var accountRoot: URL { URL.applicationSupportDirectory.appending(path: "account", directoryHint: .isDirectory) }
   private let root: URL
   init(root: URL = ZoenDeviceErasure.accountRoot) { self.root = root }
@@ -58,12 +60,65 @@ final class ZoenDeviceErasure {
     if try Self.exists(marker) { try FileManager.default.removeItem(at: marker) }
     if try Self.exists(marker) { throw Failure.incomplete }
   }
+  /// Only the URI returned by our own SDK58 CURRENT operation may be submitted here.
+  /// Library originals are no-ops; only an exact direct SDK-export filename can be unlinked.
+  static func releaseMediaLibraryExport(_ uri: String, temporaryRoot: URL = FileManager.default.temporaryDirectory) throws {
+    guard let components = URLComponents(string: uri), components.scheme == "file", let url = components.url else { return }
+    let root = temporaryRoot.standardizedFileURL
+    let canonicalRoot = root.resolvingSymlinksInPath().standardizedFileURL
+    let namespace = root.appending(path: mediaLibraryExportDirectoryName, directoryHint: .isDirectory)
+    let canonicalNamespace = canonicalRoot.appending(path: mediaLibraryExportDirectoryName, directoryHint: .isDirectory)
+    let rawPath = components.path
+    let normalizedPath = url.standardizedFileURL.path
+    let roots = [namespace.path, canonicalNamespace.path]
+    guard roots.contains(where: { rawPath.hasPrefix($0 + "/") || normalizedPath.hasPrefix($0 + "/") }) else { return }
+    let filename = url.lastPathComponent
+    let prefix = "slowMoVideo-"
+    let suffix = ".mov"
+    guard components.host == nil || components.host == "",
+          components.query == nil, components.fragment == nil,
+          components.percentEncodedPath == rawPath,
+          rawPath == normalizedPath,
+          uri == URL(fileURLWithPath: rawPath).absoluteString,
+          roots.contains(url.deletingLastPathComponent().path),
+          filename.hasPrefix(prefix), filename.hasSuffix(suffix) else { throw Failure.incomplete }
+    let identifier = String(filename.dropFirst(prefix.count).dropLast(suffix.count))
+    guard UUID(uuidString: identifier)?.uuidString == identifier else { throw Failure.incomplete }
+
+    // Pin the real OS temp directory, then open its one SDK child without following links.
+    // Descriptor-relative unlink cannot be redirected by a later namespace rename/symlink swap.
+    let rootDescriptor = canonicalRoot.path.withCString { Darwin.open($0, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW) }
+    guard rootDescriptor >= 0 else {
+      if errno == ENOENT { return }
+      throw Failure.incomplete
+    }
+    defer { _ = Darwin.close(rootDescriptor) }
+    let directoryDescriptor = mediaLibraryExportDirectoryName.withCString { Darwin.openat(rootDescriptor, $0, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW) }
+    guard directoryDescriptor >= 0 else {
+      if errno == ENOENT { return }
+      throw Failure.incomplete
+    }
+    defer { _ = Darwin.close(directoryDescriptor) }
+    var attributes = stat()
+    let inspected = filename.withCString { Darwin.fstatat(directoryDescriptor, $0, &attributes, AT_SYMLINK_NOFOLLOW) }
+    guard inspected == 0 else {
+      if errno == ENOENT { return }
+      throw Failure.incomplete
+    }
+    guard (attributes.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else { throw Failure.incomplete }
+    let removed = filename.withCString { Darwin.unlinkat(directoryDescriptor, $0, 0) }
+    guard removed == 0 || errno == ENOENT else { throw Failure.incomplete }
+  }
   /// SDK58-owned copies only. Assets, fonts, updates, Documents and Photos stay untouched.
-  static func erasePreviewCache(cacheRoot: URL = .cachesDirectory) throws {
+  static func erasePreviewCache(cacheRoot: URL = .cachesDirectory, temporaryRoot: URL = FileManager.default.temporaryDirectory) throws {
     let owned = ["ZoenMedia", "ZoenVoiceEditor", "ImagePicker", "ImageManipulator", "DocumentPicker", "ExpoAudio", "zoen-exports"]
+    // SDK58 exports current slow-motion compositions into this exact app-temp namespace.
+    // Erasure reaches this only after the existing JS SDK-writer drain. Never sweep tmp itself.
+    let directories = owned.map { cacheRoot.appending(path: $0, directoryHint: .isDirectory) } + [
+      temporaryRoot.appending(path: mediaLibraryExportDirectoryName, directoryHint: .isDirectory)
+    ]
     var failed = false
-    for name in owned {
-      let directory = cacheRoot.appending(path: name, directoryHint: .isDirectory)
+    for directory in directories {
       do {
         if try exists(directory) { try FileManager.default.removeItem(at: directory) }
         if try exists(directory) { failed = true }

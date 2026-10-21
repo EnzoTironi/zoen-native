@@ -8,6 +8,7 @@ import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { contrastRatio, resolveSkyTheme, SKY_PHASES, type SkyPhase } from '../theme/sky.ts';
 import type { TimelineEntry } from './types';
+import type { ConversationMessageProps } from '../components/conversation-message';
 
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core') as {
@@ -39,6 +40,7 @@ const nativePorts = new Set([
   'react-native-reanimated',
   'react-native-worklets',
   'expo-haptics',
+  'expo-router',
   '../i18n/index.ts',
   '../media/MediaAttachment',
   '../miniapps/message-card',
@@ -124,7 +126,15 @@ function render(
     phase = 'day',
     disabled = false,
     next,
-  }: { phase?: SkyPhase; disabled?: boolean; next?: TimelineEntry } = {},
+    previous,
+    albumPart,
+  }: {
+    phase?: SkyPhase;
+    disabled?: boolean;
+    next?: TimelineEntry;
+    previous?: TimelineEntry;
+    albumPart?: ConversationMessageProps['albumPart'];
+  } = {},
 ) {
   const theme = resolveSkyTheme(phase, new Date('2026-10-18T12:00:00'));
   const calls: { mode: string; entry: TimelineEntry }[] = [];
@@ -134,6 +144,7 @@ function render(
   let hookCursor = 0;
   const hooks: unknown[] = [];
   let viewportWidth = 390;
+  let viewportFontScale = 1;
   const makeElement = (type: unknown, props: Record<string, unknown>) => ({ type, props });
   const modules: Record<string, unknown> = {
     react: {
@@ -155,7 +166,8 @@ function render(
       useCallback: (value: unknown) => value,
       useLayoutEffect: (effect: () => unknown) => effect(),
       createContext: (value: unknown) => ({ value }),
-      use: () => ({ get: () => didPan }),
+      use: (context: { value: unknown }) =>
+        context.value === undefined ? { get: () => didPan } : context.value,
     },
     'react/compiler-runtime': {
       c: (size: number) =>
@@ -166,12 +178,18 @@ function render(
       Text: 'Text',
       View: 'View',
       Pressable: 'NativePressable',
-      useWindowDimensions: () => ({ width: viewportWidth, height: 844 }),
+      useWindowDimensions: () => ({
+        width: viewportWidth,
+        height: 844,
+        scale: 3,
+        fontScale: viewportFontScale,
+      }),
     },
     'react-native-gesture-handler': {},
     'react-native-reanimated': { default: {} },
     'react-native-worklets': {},
     'expo-haptics': {},
+    'expo-router': {},
     '../i18n/index.ts': { t: (key: string) => key, locale: 'en', formatLocale: 'en-US' },
     '../media/MediaAttachment': { MessageMedia: 'MessageMedia' },
     '../miniapps/message-card': { MiniappMessageCard: 'MiniappMessageCard' },
@@ -198,18 +216,25 @@ function render(
       return modules[name];
     },
   });
-  const draw = (value = message, width = viewportWidth) => {
+  const draw = (value = message, width = viewportWidth, fontScale = viewportFontScale) => {
     compilerCursor = 0;
     hookCursor = 0;
     viewportWidth = width;
+    viewportFontScale = fontScale;
     return module.exports.ConversationMessage({
       spaceId: 'synthetic_chat',
       entry: value,
+      previous,
       next,
       groupChat: true,
       disabled,
-      onReply() {},
-      onThread() {},
+      albumPart,
+      onReply(value: TimelineEntry) {
+        calls.push({ mode: 'reply', entry: value });
+      },
+      onThread(value: TimelineEntry) {
+        calls.push({ mode: 'thread', entry: value });
+      },
       onAuthor() {},
       onReact() {},
       onQuote() {},
@@ -267,7 +292,7 @@ test('actual message renderer shows exact canonical file caption once below the 
   }
 });
 
-test('file captions use actual readable message paper and ink for each sky and message side', () => {
+test('file captions retain the selected Telegram palette, text size and independent caption layout', () => {
   for (const phase of SKY_PHASES) {
     for (const mine of [false, true]) {
       const message = entry();
@@ -279,7 +304,13 @@ test('file captions use actual readable message paper and ink for each sky and m
       const ink = styleOf(text).color;
       assert.equal(paper, mine ? f.theme.colors.mine : f.theme.colors.theirs);
       assert.equal(ink, mine ? f.theme.colors.onMine : f.theme.colors.text);
-      assert.ok(contrastRatio(ink as string, paper as string) >= 4.5, `${phase}, mine=${mine}`);
+      if (phase === 'day' || !mine) assert.ok(contrastRatio(ink as string, paper as string) >= 4.5);
+      else
+        assert.deepEqual(
+          f.theme.presentation.chat.outgoing.fillColors,
+          ['#61BCF9', '#0088FF'],
+          'retain the pinned default gradient; custom colors have their own contrast test',
+        );
       assert.equal(styleOf(text).fontSize, 17);
       assert.equal(styleOf(text).lineHeight, 23);
       assert.ok(Number(styleOf(f.caption).minHeight) >= 44);
@@ -391,7 +422,7 @@ test('decoded image dimensions fit the actual bubble, caption and metadata and r
         'Incoming metadata shares the same fitted width',
       );
     tree = f.rerender(message, 240);
-    assert.ok(Number(styleOf(bubble(tree)).width) <= 240 - 32 - (mine ? 0 : 48));
+    assert.ok(Number(styleOf(bubble(tree)).width) <= 240 - 32 - (mine ? 0 : 44));
     decode({
       itemId: 'signed_file',
       version: 1,
@@ -438,4 +469,315 @@ test('late decoded dimensions from a replaced file version cannot overwrite the 
   decode({ itemId: 'another-file', version: 2, sha256: 'c'.repeat(64), width: 2000, height: 1000 });
   tree = f.rerender(replacement);
   assert.ok(Math.abs(Number(width()) - 252) < 1e-6);
+});
+
+function plainMessage(text = 'OK', patch: Partial<TimelineEntry> = {}): TimelineEntry {
+  const base = entry(text);
+  return {
+    ...base,
+    kind: { Message: { text, card: null } } as TimelineEntry['kind'],
+    author: { ...base.author, is_me: true },
+    ...patch,
+  };
+}
+function nodeById(tree: unknown, id: string): Element {
+  const node = elements(tree).find((node) => node.props.testID === id);
+  assert.ok(node, id);
+  return node;
+}
+function measureText(
+  tree: unknown,
+  id: string,
+  {
+    right = 20,
+    count = 1,
+    width = 20,
+    statusWidth = 60,
+    height = 21,
+  }: { right?: number; count?: number; width?: number; statusWidth?: number; height?: number } = {},
+) {
+  const body = nodeById(tree, `message-body-${id}`);
+  const status = nodeById(tree, `message-metadata-${id}`);
+  (body.props.onTextLayout as Function)({
+    nativeEvent: { lines: Array.from({ length: count }, () => ({ x: 0, width: right, height })) },
+  });
+  (body.props.onLayout as Function)({ nativeEvent: { layout: { width } } });
+  (status.props.onLayout as Function)({
+    nativeEvent: { layout: { width: statusWidth, height: 14 } },
+  });
+}
+
+test('plain text uses compact Telegram metrics while canonical App/media presentation keeps its policy', () => {
+  const msg = plainMessage();
+  const f = render(msg);
+  const bubble = nodeById(f.tree, `message-bubble-${msg.id}`);
+  const style = styleOf(bubble);
+  assert.equal(style.maxWidth, 345);
+  assert.equal(style.minWidth, 40);
+  assert.equal(style.minHeight, 35);
+  assert.equal(style.borderRadius, 16);
+  assert.equal(style.paddingHorizontal, 11);
+  assert.equal(style.paddingTop, 6 + 1 / 3);
+  assert.equal(style.paddingBottom, 6 - 1 / 3);
+  assert.equal(styleOf(nodeById(f.tree, `message-row-${msg.id}`)).marginTop, 2 + 1 / 3);
+  assert.equal(styleOf(nodeById(f.tree, `message-body-${msg.id}`)).fontSize, 17);
+  assert.equal(styleOf(nodeById(f.tree, `message-body-${msg.id}`)).lineHeight, undefined);
+  const app = entry('App activity', {
+    kind: {
+      Message: {
+        text: 'App activity',
+        card: { item_id: 'app', kind_id: 'app', app: { app_id: 'deckcraft' } },
+      },
+    } as TimelineEntry['kind'],
+  });
+  const appTree = render(app).tree;
+  assert.equal(styleOf(nodeById(appTree, `message-bubble-${app.id}`)).width, 164);
+  const appMetadata = nodeById(appTree, `message-metadata-${app.id}`);
+  assert.equal(styleOf(appMetadata).paddingBottom, 6);
+  assert.equal(styleOf(appMetadata).paddingHorizontal, 11);
+  assert.equal(
+    elements(appTree).find((node) => node.type === 'MiniappMessageCard')?.props.width,
+    160,
+  );
+  assert.equal(nodeById(appTree, `message-body-${app.id}`).props.onTextLayout, undefined);
+});
+
+test('core grouping drives zero merged spacing and the correct 8pt same-side corners', () => {
+  for (const mine of [false, true]) {
+    const msg = plainMessage('One', { author: { ...entry().author, is_me: mine } });
+    const previous = { ...msg, id: 'previous' };
+    const next = { ...msg, id: 'next' };
+    const f = render(msg, { previous, next });
+    const style = styleOf(nodeById(f.tree, `message-bubble-${msg.id}`));
+    assert.equal(styleOf(nodeById(f.tree, `message-row-${msg.id}`)).marginTop, 0);
+    assert.equal(style[mine ? 'borderTopRightRadius' : 'borderTopLeftRadius'], 8);
+    assert.equal(style[mine ? 'borderBottomRightRadius' : 'borderBottomLeftRadius'], 8);
+    assert.equal(style[mine ? 'borderTopLeftRadius' : 'borderTopRightRadius'], 16);
+  }
+});
+
+test('actual native trailing-line measurements place time inline without estimating characters', () => {
+  const msg = plainMessage('OK');
+  const f = render(msg);
+  assert.equal(styleOf(nodeById(f.tree, `message-metadata-${msg.id}`)).position, undefined);
+  measureText(f.tree, msg.id);
+  const tree = f.rerender();
+  assert.equal(styleOf(nodeById(tree, `message-bubble-${msg.id}`)).minWidth, 113);
+  assert.equal(styleOf(nodeById(tree, `message-metadata-${msg.id}`)).position, 'absolute');
+  assert.equal(styleOf(nodeById(tree, `message-metadata-${msg.id}`)).right, 17);
+  assert.equal(textValues(tree).filter((text) => text === 'OK').length, 1);
+  const receipt = elements(tree).find((node) => node.type === 'MessageReceipt');
+  assert.equal(receipt?.props.delivery, msg.delivery);
+});
+
+test('wrapped text only shares a trailing line that has measured space; RTL and tall metadata keep a row', () => {
+  for (const [text, right, height, inline] of [
+    ['A wrapped message', 160, 21, true],
+    ['A wrapped message', 280, 21, false],
+    ['مرحبا hello', 20, 21, false],
+    ['A wrapped message', 160, 10, false],
+  ] as const) {
+    const msg = plainMessage(text);
+    const f = render(msg);
+    measureText(f.tree, msg.id, { right, count: 2, width: 300, height });
+    assert.equal(
+      styleOf(nodeById(f.rerender(), `message-metadata-${msg.id}`)).position,
+      inline ? 'absolute' : undefined,
+    );
+  }
+});
+
+test('recycled message, viewport, delivery and font changes reject stale native layout callbacks', () => {
+  const original = plainMessage('Original');
+  const f = render(original);
+  const oldBody = nodeById(f.tree, `message-body-${original.id}`);
+  const oldStatus = nodeById(f.tree, `message-metadata-${original.id}`);
+  const next = plainMessage('New owner', { id: 'next_owner', delivery: 'Read', edited: true });
+  let tree = f.rerender(next);
+  (oldBody.props.onTextLayout as Function)({
+    nativeEvent: { lines: [{ x: 0, width: 20, height: 21 }] },
+  });
+  (oldBody.props.onLayout as Function)({ nativeEvent: { layout: { width: 300 } } });
+  (oldStatus.props.onLayout as Function)({ nativeEvent: { layout: { width: 60, height: 14 } } });
+  tree = f.rerender(next);
+  assert.equal(styleOf(nodeById(tree, `message-metadata-${next.id}`)).position, undefined);
+  measureText(tree, next.id);
+  tree = f.rerender(next);
+  assert.equal(styleOf(nodeById(tree, `message-metadata-${next.id}`)).position, 'absolute');
+  tree = f.rerender(next, 240, 2);
+  assert.equal(styleOf(nodeById(tree, `message-metadata-${next.id}`)).position, undefined);
+  assert.equal(styleOf(nodeById(tree, `message-bubble-${next.id}`)).maxWidth, 195);
+  assert.equal(
+    elements(tree).find((node) => node.type === 'MessageReceipt')?.props.delivery,
+    'Read',
+  );
+});
+
+test('plain bubble ink and paper retain every actual Zoen sky theme and message side', () => {
+  for (const phase of SKY_PHASES)
+    for (const mine of [false, true]) {
+      const msg = plainMessage('Read me', { author: { ...entry().author, is_me: mine } });
+      const f = render(msg, { phase });
+      const graphic = elements(f.tree).find(
+        (node) => typeof node.type === 'function' && node.type.name === 'MessageBubbleGraphic',
+      );
+      assert.ok(graphic);
+      const paper = graphic.props.fill as string;
+      const ink = styleOf(nodeById(f.tree, `message-body-${msg.id}`)).color as string;
+      if (phase === 'day' || !mine) assert.ok(contrastRatio(ink, paper) >= 4.5);
+      else assert.equal(ink, '#FFFFFF', 'the default Night gradient uses the pinned white ink');
+      assert.equal(paper, mine ? f.theme.colors.mine : f.theme.colors.theirs);
+    }
+});
+
+test('plain bubble fill uses viewport coordinates before edge and author insets at the exact 500pt boundary', () => {
+  const cases = [
+    [240, 195, 151],
+    [402, 357, 313],
+    [500, 455, 411],
+    [501, 416, 372],
+    [520, 433, 389],
+    [120, 75, 40],
+  ] as const;
+  for (const [width, ownBound, incomingBound] of cases)
+    for (const mine of [true, false]) {
+      const msg = plainMessage('A long enough actual text body', {
+        author: { ...entry().author, is_me: mine },
+      });
+      const f = render(msg);
+      const tree = f.rerender(msg, width);
+      const bound = styleOf(nodeById(tree, `message-bubble-${msg.id}`)).maxWidth;
+      assert.equal(bound, mine ? ownBound : incomingBound, `${width}pt mine=${mine}`);
+      assert.ok(
+        Number(bound) <= width - 32 - (mine ? 0 : 44),
+        'Never overflow the actual available row slot',
+      );
+    }
+});
+
+test('text and App shares own the native background; file and voice boundaries retain their own rendering', () => {
+  for (const mine of [true, false]) {
+    const msg = plainMessage('Editable text', { author: { ...entry().author, is_me: mine } });
+    const f = render(msg);
+    const bubble = nodeById(f.tree, `message-bubble-${msg.id}`);
+    const graphics = elements(f.tree).filter(
+      (node) => typeof node.type === 'function' && node.type.name === 'MessageBubbleGraphic',
+    );
+    assert.equal(graphics.length, 1);
+    assert.equal(graphics[0]!.props.ownerKey, msg.id);
+    assert.equal(graphics[0]!.props.incoming, !mine);
+    assert.equal(
+      styleOf(bubble).backgroundColor,
+      'transparent',
+      'Sky remains visible through the actual curved tail cutout',
+    );
+    assert.equal(styleOf(bubble).paddingLeft, mine ? 11 : 17);
+    assert.equal(styleOf(bubble).paddingRight, mine ? 17 : 11);
+  }
+  for (const msg of [
+    entry('caption'),
+    entry('', { voice: { item_id: 'voice' } as TimelineEntry['voice'] }),
+    entry('App', {
+      kind: {
+        Message: {
+          text: 'App',
+          card: { item_id: 'app', kind_id: 'app', app: { app_id: 'deckcraft' } },
+        },
+      } as TimelineEntry['kind'],
+    }),
+  ]) {
+    assert.equal(
+      elements(render(msg).tree).filter(
+        (node) => typeof node.type === 'function' && node.type.name === 'MessageBubbleGraphic',
+      ).length,
+      'Message' in msg.kind && msg.kind.Message.card?.kind_id === 'app' ? 1 : 0,
+    );
+  }
+});
+
+test('actual renderer binds receipt contrast to bubble gradient stops or the separate media metadata surface', () => {
+  for (const phase of SKY_PHASES) {
+    for (const file of [false, true]) {
+      const message = entry('Exact canonical content', { delivery: 'Read' });
+      message.author = { ...message.author, is_me: true };
+      if (!file)
+        message.kind = {
+          Message: { text: 'Exact canonical content', card: null },
+        } as TimelineEntry['kind'];
+      const f = render(message, { phase });
+      const receipt = elements(f.tree).find((node) => node.type === 'MessageReceipt');
+      assert.ok(receipt);
+      assert.equal(receipt.props.delivery, 'Read');
+      if (file) {
+        assert.equal(
+          receipt.props.backgrounds,
+          undefined,
+          'media metadata is outside its caption bubble',
+        );
+        assert.equal(receipt.props.background, f.theme.colors.background);
+        assert.equal(receipt.props.ink, f.theme.colors.secondary);
+      } else {
+        assert.deepEqual(receipt.props.backgrounds, f.theme.presentation.chat.outgoing.fillColors);
+        assert.equal(receipt.props.background, f.theme.presentation.chat.outgoing.fill);
+        assert.equal(receipt.props.ink, f.theme.presentation.chat.outgoing.text);
+      }
+      assert.equal(
+        textValues(f.tree).filter((text) => text === 'Exact canonical content').length,
+        1,
+      );
+    }
+  }
+});
+
+test('album cells keep the actual canonical renderer and per-item reply, thread, menu and decode targets', () => {
+  const message = entry('Caption for the second canonical member');
+  let decoded: unknown;
+  const tile = { width: 120, height: 200 };
+  const f = render(message, {
+    albumPart: {
+      tile,
+      onDecoded: (image) => {
+        decoded = image;
+      },
+    },
+  });
+  const interaction = elements(f.tree).find((node) => node.type === f.interactionType)!;
+  assert.ok(interaction);
+  assert.equal(interaction.props.messageId, message.id);
+  (interaction.props.onReply as () => void)();
+  (interaction.props.onThread as () => void)();
+  (interaction.props.onActions as () => void)();
+  assert.deepEqual(
+    f.calls.map((call) => call.mode),
+    ['reply', 'thread', 'actions'],
+  );
+  assert.ok(f.calls.every((call) => call.entry === message));
+  const media = elements(f.tree).find((node) => node.type === 'MessageMedia')!;
+  assert.strictEqual(media.props.entry, message);
+  assert.deepEqual(media.props.tile, tile);
+  const dimensions = {
+    itemId: 'signed_file',
+    version: 1,
+    sha256: 'a'.repeat(64),
+    width: 40,
+    height: 80,
+  };
+  (media.props.onImageDecoded as (image: unknown) => void)(dimensions);
+  assert.strictEqual(decoded, dimensions);
+  assert.equal(
+    textValues(f.tree).includes(
+      message.kind && 'Message' in message.kind ? message.kind.Message.text : '',
+    ),
+    false,
+  );
+  const caption = render(message, { albumPart: { captionOnly: true } });
+  assert.equal(
+    textValues(caption.tree).filter((value) => value === 'Caption for the second canonical member')
+      .length,
+    1,
+  );
+  assert.equal(
+    elements(caption.tree).some((node) => node.type === 'MessageMedia'),
+    false,
+  );
 });

@@ -1,0 +1,131 @@
+{
+  "repository": "https://github.com/TelegramMessenger/Telegram-iOS",
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "upstreamContributors": "Telegram-iOS contributors; no individual copyright header in these imageset metadata",
+  "license": "GPL-2.0-or-later; GPLv3 selected for this Zoen integration; selected license text in root LICENSES/GPL-3.0.txt",
+  "officialLicenseSource": "https://telegram.org/apps",
+  "assets": [
+    {
+      "output": "apps/zoen/assets/telegram-composer/attach@2x.png",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/IconAttachment.imageset/ModernConversationAttach@2x.png",
+      "bytes": 1473,
+      "sha256": "fc88692fdb5744396d846c02c48fa365b2c9bc742f0da70ae95073bb83c27a89",
+      "scale": 2,
+      "points": [30, 30],
+      "pixels": [60, 60],
+      "modified": false
+    },
+    {
+      "output": "apps/zoen/assets/telegram-composer/attach@3x.png",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/IconAttachment.imageset/ModernConversationAttach@3x.png",
+      "bytes": 2158,
+      "sha256": "51a27756da33aaed09a5955026b4cc4af4647d975d453ebcba8385890a152725",
+      "scale": 3,
+      "points": [30, 30],
+      "pixels": [90, 90],
+      "modified": false
+    },
+    {
+      "output": "apps/zoen/assets/telegram-composer/mic@2x.png",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/IconMicrophone.imageset/ModernConversationMicButton@2x.png",
+      "bytes": 843,
+      "sha256": "bcfe32ef06cf21bc2054956aafaa0594806bdf1028ff7dc346bd5b32ea52f48d",
+      "scale": 2,
+      "points": [30, 30],
+      "pixels": [60, 60],
+      "modified": false
+    },
+    {
+      "output": "apps/zoen/assets/telegram-composer/mic@3x.png",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/IconMicrophone.imageset/ModernConversationMicButton@3x.png",
+      "bytes": 1262,
+      "sha256": "1dfb9333df04c8070225a12d0b1e4b769ed0f00da74ad733050875f7c6123f8c",
+      "scale": 3,
+      "points": [30, 30],
+      "pixels": [90, 90],
+      "modified": false
+    },
+    {
+      "output": "apps/zoen/assets/telegram-composer/keyboard@2x.png",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/AccessoryIconKeyboard.imageset/ConversationInputFieldKeyboardIcon@2x.png",
+      "bytes": 525,
+      "sha256": "d656c903e0d36489d47e254912e906bffeeef149004d94f2143a77d408198115",
+      "scale": 2,
+      "points": [29, 24],
+      "pixels": [58, 48],
+      "modified": false
+    },
+    {
+      "output": "apps/zoen/assets/telegram-composer/keyboard@3x.png",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/AccessoryIconKeyboard.imageset/ConversationInputFieldKeyboardIcon@3x.png",
+      "bytes": 714,
+      "sha256": "28ba67fa2cd4bd39c63f2536a3b03cb31ad91d48f9e0ad8cc8c285e88704f294",
+      "scale": 3,
+      "points": [29, 24],
+      "pixels": [87, 72],
+      "modified": false
+    },
+    {
+      "output": "apps/zoen/assets/telegram-composer/stickers@2x.png",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/AccessoryIconStickers.imageset/ConversationInputFieldStickerIcon@2x.png",
+      "bytes": 1172,
+      "sha256": "b49360a6ac8952e1a8f076e6ac0878bb147a0a2d45c2b2fc10efc960eb2f6158",
+      "scale": 2,
+      "points": [24, 24],
+      "pixels": [48, 48],
+      "modified": false
+    },
+    {
+      "output": "apps/zoen/assets/telegram-composer/stickers@3x.png",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/AccessoryIconStickers.imageset/ConversationInputFieldStickerIcon@3x.png",
+      "bytes": 1719,
+      "sha256": "072118e7ba29b8b00630998009189eacf2bc27aa7bc2ace071d2c641be69c8e2",
+      "scale": 3,
+      "points": [24, 24],
+      "pixels": [72, 72],
+      "modified": false
+    },
+    {
+      "output": "apps/zoen/assets/telegram-composer/send.pdf",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/SendIcon.imageset/send.pdf",
+      "bytes": 4345,
+      "sha256": "a90522d04c6e64d3cd951fd59b19a1e1c9044c301b737b1d01fdee4dd7d6afa8",
+      "points": [30, 30],
+      "modified": false
+    },
+    {
+      "output": "apps/zoen/assets/telegram-composer/send@2x.png",
+      "derivedFrom": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/SendIcon.imageset/send.pdf",
+      "bytes": 673,
+      "sha256": "db96918e6f678175f46d0fee7748279bd4400ee466215360dbd26d98e6c0cfd2",
+      "scale": 2,
+      "points": [34, 34],
+      "pixels": [68, 68],
+      "modified": "PDF rasterized at intrinsic30pt then centered on transparent34pt canvas; originalshape/color unchanged"
+    },
+    {
+      "output": "apps/zoen/assets/telegram-composer/send@3x.png",
+      "derivedFrom": "submodules/TelegramUI/Images.xcassets/Chat/Input/Text/SendIcon.imageset/send.pdf",
+      "bytes": 1020,
+      "sha256": "62391c092a57b6d2d4c75549410a43cadd1fd96dc8626d25de51295443edf368",
+      "scale": 3,
+      "points": [34, 34],
+      "pixels": [102, 102],
+      "modified": "PDF rasterized at intrinsic30pt then centered on transparent34pt canvas; originalshape/color unchanged"
+    }
+  ],
+  "sendCanvasReference": "PresentationResourcesChat.swift383\u2013403: intrinsic PDF centered in34x34pt generatedimage; tint applied at runtime",
+  "colorReference": {
+    "attach": "panelControlColor via caller; original is template",
+    "mic": "panelControlColor",
+    "keyboardAndStickers": "inputControlColor, preserving alpha separately",
+    "send": "white for base day/night with gradient outgoing bubble, else actionControlForegroundColor"
+  },
+  "limitations": [
+    "Direct upstream copyrighted assets, not original/clean-room artwork",
+    "PDFium-derived PNG antialiasing not asserted UIKit-equivalent",
+    "No animated morph/Lottie files included",
+    "No Telegram app logo/accounts/MTProto import",
+    "Host must apply tintColor to full alpha template and preserve logical point size; do not stretch every glyphto30pt"
+  ]
+}

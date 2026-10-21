@@ -175,6 +175,7 @@ pub struct MessageView {
     last_reply_ms: Option<i64>,
     /// A shared file, photo, video or voice note (the chunks to fetch and open).
     file: Option<types::FileDoc>,
+    media: Option<types::MessageMedia>,
     file_item_id: Option<String>,
     file_version: Option<u32>,
     card: Option<serde_json::Value>,
@@ -574,6 +575,7 @@ impl<S: Signer> Client<S> {
                 text: text.into(),
                 attaches: None,
                 reply,
+                media: None,
                 forwarded,
             },
             now_ms,
@@ -716,6 +718,7 @@ impl<S: Signer> Client<S> {
                 text: String::new(),
                 attaches: Some(item),
                 reply: None,
+                media: None,
                 forwarded: false,
             });
         }
@@ -1560,9 +1563,9 @@ impl<S: Signer> Client<S> {
         let preferences = self.chat_preferences();
         // The existing document fold enforces author roles, item ownership and valid
         // restores. Build one disposable index; never infer activity from note text.
-        let (item_edits, item_projection_error) = match self.document_items() {
-            Ok(items) => (documents::item_edits(&items), None),
-            Err(reason) => (BTreeMap::new(), Some(reason)),
+        let (item_edits, item_projection_error, media_items) = match self.document_items() {
+            Ok(items) => (documents::item_edits(&items), None, items),
+            Err(reason) => (BTreeMap::new(), Some(reason), BTreeMap::new()),
         };
         let mut conversations = self.logs.keys().filter_map(|space| {
             let (title, kind, privacy) = self.metadata(space)?;
@@ -1571,6 +1574,7 @@ impl<S: Signer> Client<S> {
             let events = self.logs.get(space)?.events();
             let me = &self.account.identity;
             let files = self.folded_files(space);
+            let accepted_media = self.received_media_posts(space, &media_items);
             // A direct chat is named after the other person, like every messenger.
             let title = match roster.keys().find(|m| *m != me) {
                 Some(other) if kind == SpaceKind::Direct => self.saved.profiles.get(other)
@@ -1606,7 +1610,7 @@ impl<S: Signer> Client<S> {
             let (all_delivered, all_read) = (watermark(|r| r.0.max(r.1)), watermark(|r| r.1));
             let my_read = receipts.and_then(|r| r.get(me)).map(|r| r.1).unwrap_or(0);
             let mut messages = events.iter().filter_map(|event| {
-                let mut view = self.message_view(event, "confirmed", None, &item_edits)?;
+                let mut view = self.message_view_with_media(event, "confirmed", None, &item_edits, &accepted_media)?;
                 view.entry = Some(event.hash.clone());
                 view.seq = Some(event.seq);
                 if let EventBody::ItemCreated { item, .. } = &event.body {
@@ -1621,7 +1625,7 @@ impl<S: Signer> Client<S> {
                 }
                 if let Some(f) = folded.get(&event.hash) {
                     view.deleted = f.deleted;
-                    if f.deleted { view.text.clear(); view.file = None; view.file_item_id = None; view.file_version = None; view.card = None; }
+                    if f.deleted { view.text.clear(); view.media = None; view.file = None; view.file_item_id = None; view.file_version = None; view.card = None; }
                     if let Some(text) = &f.text { view.text = text.clone(); view.edited = true; }
                     let mut groups: BTreeMap<&str, Vec<ReactionParticipant>> = BTreeMap::new();
                     for (who, emoji) in &f.reactions {
@@ -1642,7 +1646,7 @@ impl<S: Signer> Client<S> {
             messages.extend(self.saved.outbox.values().filter_map(|pending| {
                 let inner = pending.inner.as_ref()?;
                 if inner.space != *space { return None; }
-                self.message_view(inner, if pending.failure.is_some() { "failed" } else { "sending" }, pending.failure.clone(), &item_edits)
+                self.message_view_with_media(inner, if pending.failure.is_some() { "failed" } else { "sending" }, pending.failure.clone(), &item_edits, &accepted_media)
             }));
             // Native references may use client ids. Normalize before folding replies,
             // preserving real hash targets if an alias collides.
@@ -1723,6 +1727,164 @@ impl<S: Signer> Client<S> {
         preferences
     }
 
+    /// Replay received metadata in signed order, using the same membership cursor
+    /// as native. Final file caches alone cannot authorize an earlier album claim.
+    fn received_media_posts(
+        &self,
+        space: &str,
+        items: &BTreeMap<String, documents::Item>,
+    ) -> BTreeSet<String> {
+        let mut roles = BTreeMap::new();
+        let mut available: BTreeMap<String, (String, bool)> = BTreeMap::new();
+        let mut local_sources = BTreeSet::new();
+        let mut groups = types::media::MediaGroupTracker::default();
+        let mut accepted = BTreeSet::new();
+        let mut events = self
+            .logs
+            .get(space)
+            .into_iter()
+            .flat_map(|log| log.events())
+            .map(|event| (event, false, false))
+            .collect::<Vec<_>>();
+        let confirmed: BTreeSet<_> = events
+            .iter()
+            .map(|(event, _, _)| event.client_id.as_str())
+            .collect();
+        let mut pending = self
+            .saved
+            .outbox
+            .values()
+            .filter_map(|pending| {
+                pending
+                    .inner
+                    .as_ref()
+                    .filter(|event| {
+                        event.space == space && !confirmed.contains(event.client_id.as_str())
+                    })
+                    .map(|event| (pending, event))
+            })
+            .collect::<Vec<_>>();
+        pending.sort_by_key(|(pending, _)| (pending.order.unwrap_or(0), &pending.content));
+        events.extend(
+            pending
+                .into_iter()
+                .map(|(pending, event)| (event, true, pending.failure.is_some())),
+        );
+        for (event, pending, failed) in events {
+            if failed
+                && !matches!(
+                    &event.body,
+                    EventBody::ItemCreated {
+                        content: types::ItemContent::File(_),
+                        ..
+                    } | EventBody::MessagePosted { media: Some(_), .. }
+                )
+            {
+                continue;
+            }
+            let writer = roles
+                .get(&event.author)
+                .is_some_and(|role| *role != Role::Reader);
+            match &event.body {
+                EventBody::SpaceCreated { .. } => {
+                    roles.insert(event.author.clone(), Role::Owner);
+                }
+                EventBody::MemberAdded { identity, role } => {
+                    roles.insert(identity.clone(), *role);
+                }
+                EventBody::MemberRemoved { identity } => {
+                    roles.remove(identity);
+                }
+                EventBody::ItemCreated {
+                    item,
+                    content: types::ItemContent::File(doc),
+                    ..
+                } => {
+                    if pending
+                        && event.author == self.account.identity
+                        && !doc.is_voice()
+                        && event_log::verify_author(event).is_ok()
+                    {
+                        local_sources.insert(item.clone());
+                    }
+                    if !failed
+                        && writer
+                        && items
+                            .get(item)
+                            .filter(|file| file.space == space)
+                            .and_then(|file| file.versions.first())
+                            .is_some_and(|version| {
+                                event_log::content_hash_of(&version.event)
+                                    == event_log::content_hash_of(event)
+                            })
+                    {
+                        available
+                            .entry(item.clone())
+                            .or_insert((event.author.clone(), doc.is_voice()));
+                    }
+                }
+                EventBody::ItemVersioned { item, .. } | EventBody::ItemReverted { item, .. } => {
+                    if writer {
+                        if let Some(version) = items
+                            .get(item)
+                            .filter(|file| file.space == space)
+                            .and_then(|file| {
+                                file.versions.iter().find(|version| {
+                                    event_log::content_hash_of(&version.event)
+                                        == event_log::content_hash_of(event)
+                                })
+                            })
+                        {
+                            if let types::ItemContent::File(doc) = &version.content {
+                                if let Some((_, voice)) = available.get_mut(item) {
+                                    *voice = doc.is_voice();
+                                }
+                            }
+                        }
+                    }
+                }
+                EventBody::MessagePosted {
+                    media: Some(media),
+                    attaches: Some(item),
+                    reply,
+                    forwarded,
+                    ..
+                } => {
+                    let file = available.get(item).filter(|(_, voice)| !voice);
+                    // Failed local rows remain recovery views only; they cannot
+                    // consume a cursor or authorize a later signed member.
+                    let recovery = pending
+                        && failed
+                        && event.author == self.account.identity
+                        && event_log::verify_author(event).is_ok()
+                        && media.is_valid()
+                        && !(*forwarded && media.group.is_some())
+                        && (file.is_some_and(|(owner, _)| {
+                            media.group.is_none() || owner == &event.author
+                        }) || local_sources.contains(item));
+                    if recovery {
+                        accepted.insert(event_log::content_hash_of(event));
+                        continue;
+                    }
+                    if failed
+                        || !writer
+                        || !file.is_some_and(|(owner, _)| {
+                            media.group.is_none() || owner == &event.author
+                        })
+                    {
+                        continue;
+                    }
+                    if groups.record(space, &event.author, reply, *forwarded, media) {
+                        accepted.insert(event_log::content_hash_of(event));
+                    }
+                }
+                _ => {}
+            }
+        }
+        accepted
+    }
+
+    #[cfg(test)]
     fn message_view(
         &self,
         event: &Event,
@@ -1730,6 +1892,24 @@ impl<S: Signer> Client<S> {
         failure: Option<String>,
         item_edits: &BTreeMap<ItemEditKey, ItemEditView>,
     ) -> Option<MessageView> {
+        let accepted =
+            self.received_media_posts(&event.space, &self.document_items().unwrap_or_default());
+        self.message_view_with_media(event, delivery, failure, item_edits, &accepted)
+    }
+
+    fn message_view_with_media(
+        &self,
+        event: &Event,
+        delivery: &'static str,
+        failure: Option<String>,
+        item_edits: &BTreeMap<ItemEditKey, ItemEditView>,
+        accepted_media: &BTreeSet<String>,
+    ) -> Option<MessageView> {
+        if matches!(&event.body, EventBody::MessagePosted { media: Some(_), .. })
+            && !accepted_media.contains(&event_log::content_hash_of(event))
+        {
+            return None;
+        }
         let item_edit = item_edits.get(&item_edit_key(event)).cloned();
         let (text, reply, forwarded, file) = match &event.body {
             EventBody::MessagePosted {
@@ -1763,6 +1943,28 @@ impl<S: Signer> Client<S> {
                 (edit.note.clone(), None, false, None)
             }
             _ => return None,
+        };
+        let media = match &event.body {
+            EventBody::MessagePosted { media, .. } if file.is_some() => media
+                .as_ref()
+                .filter(|value| {
+                    value.is_valid() && !file.as_ref().is_some_and(types::FileDoc::is_voice)
+                })
+                .filter(|value| {
+                    value.group.is_none()
+                        || match &event.body {
+                            EventBody::MessagePosted {
+                                attaches: Some(item),
+                                ..
+                            } => self
+                                .folded_files(&event.space)
+                                .get(item.as_str())
+                                .is_some_and(|(author, _)| *author == event.author),
+                            _ => false,
+                        }
+                })
+                .cloned(),
+            _ => None,
         };
         let name = if event.author == self.account.identity {
             self.account.name.clone()
@@ -1826,6 +2028,7 @@ impl<S: Signer> Client<S> {
             repliers: Vec::new(),
             last_reply_ms: None,
             file,
+            media,
             file_item_id,
             file_version,
             card,

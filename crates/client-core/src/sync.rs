@@ -143,7 +143,80 @@ fn is_message_send(body: &EventBody) -> bool {
         } if doc.is_voice())
 }
 
+/// Disposable admission facts from the verified, relay-confirmed log only. An
+/// optimistic File or album member (including one already written to a socket)
+/// cannot release its dependent message. Build once per relevant Space/offer pass.
+struct ConfirmedMediaDependencies {
+    state: State,
+}
+
+impl ConfirmedMediaDependencies {
+    fn from_log(engine: &Engine, log: &SpaceLog) -> R<Self> {
+        let mut state = State::default();
+        let mut plans = PlanReplay::new(&engine.store, &engine.logs);
+        for (end, event) in log.events().iter().enumerate() {
+            let context = plans.before(&state, &engine.identities, event, end)?;
+            state.apply_checked(event, &engine.identities, &context);
+        }
+        Ok(Self { state })
+    }
+
+    fn allows(&self, event: &Event) -> bool {
+        self.state
+            .media_message_dependencies_valid(&event.space, &event.author, &event.body)
+    }
+}
+
+fn same_media_group(first: &Event, second: &Event) -> bool {
+    let (
+        EventBody::MessagePosted {
+            media: Some(first),
+            reply: first_reply,
+            forwarded: false,
+            ..
+        },
+        EventBody::MessagePosted {
+            media: Some(second),
+            reply: second_reply,
+            forwarded: false,
+            ..
+        },
+    ) = (&first.body, &second.body)
+    else {
+        return false;
+    };
+    first.is_valid()
+        && second.is_valid()
+        && first.presentation == second.presentation
+        && first_reply == second_reply
+        && first
+            .group
+            .as_ref()
+            .zip(second.group.as_ref())
+            .is_some_and(|(first, second)| first.id == second.id && first.count == second.count)
+}
+
 impl Engine {
+    /// Upload availability is not write authority: signed/canonical admission still
+    /// runs normally. This only resolves the File bytes an outbox intent references.
+    fn outbox_attachment<'a>(&'a self, event: &'a Event) -> Option<&'a FileDoc> {
+        let content = match &event.body {
+            EventBody::ItemCreated { content, .. } | EventBody::ItemVersioned { content, .. } => {
+                content
+            }
+            EventBody::MessagePosted {
+                attaches: Some(item),
+                ..
+            } => &self.state.items.get(item)?.current().content,
+            _ => return None,
+        };
+        if let ItemContent::File(file) = content {
+            Some(file)
+        } else {
+            None
+        }
+    }
+
     /// Logs from an older event format can't be re-verified under the current one: start over (pre-launch only; ADR 0010).
     pub(crate) fn migrate_event_format(&mut self) -> R<()> {
         let fmt = self.store.meta(EVENT_FORMAT_META)?;
@@ -280,11 +353,57 @@ impl Engine {
         self.approval_replay_needed = true;
         let mut order = self.store.space_ids()?;
         let pending = self.store.outbox()?;
+        // These source events stay in the one existing outbox. References below are
+        // display-only recovery facts, never a second durable or writer authority.
+        let sources: HashMap<_, _> = pending
+            .iter()
+            .filter_map(|row| match &row.event.body {
+                EventBody::ItemCreated {
+                    item,
+                    kind: types::ItemKind::File,
+                    ..
+                } => Some((
+                    (
+                        row.event.space.as_str(),
+                        item.as_str(),
+                        row.event.author.as_str(),
+                    ),
+                    &row.event,
+                )),
+                _ => None,
+            })
+            .collect();
+        let mut recovery_sources: HashMap<&str, Vec<(&Event, &Event)>> = HashMap::new();
+        if let Some(local) = self.me.as_deref() {
+            for row in pending.iter().filter(|row| row.failed) {
+                if let EventBody::MessagePosted {
+                    attaches: Some(item),
+                    ..
+                } = &row.event.body
+                {
+                    if let Some(source) =
+                        sources.get(&(row.event.space.as_str(), item.as_str(), local))
+                    {
+                        recovery_sources
+                            .entry(row.event.space.as_str())
+                            .or_default()
+                            .push((&row.event, source));
+                    }
+                }
+            }
+        }
         let mut projections = HashMap::new();
         let mut confirmed = HashSet::new();
         let mut plans = PlanReplay::new(&self.store, &self.logs);
         for space in &order {
             let mut scoped = State::default();
+            if let (Some(local), Some(recovery)) =
+                (self.me.as_deref(), recovery_sources.get(space.as_str()))
+            {
+                for (event, source) in recovery {
+                    scoped.reserve_failed_attachment(event, local, source);
+                }
+            }
             if let Some(log) = self.logs.get(space) {
                 for (end, e) in log.events().iter().enumerate() {
                     confirmed.insert((e.space.clone(), e.client_id.clone()));
@@ -299,8 +418,8 @@ impl Engine {
             projections.insert(space.clone(), scoped);
         }
         let mut optimistic = HashSet::new();
-        for p in pending {
-            let e = p.event;
+        for p in &pending {
+            let e = &p.event;
             if confirmed.contains(&(e.space.clone(), e.client_id.clone())) {
                 continue;
             }
@@ -311,11 +430,30 @@ impl Engine {
                         .is_some_and(|scoped| scoped.spaces.contains_key(&e.space))
                 {
                     let scoped = projections.get_mut(&e.space).expect("checked above");
-                    if matches!(e.body, EventBody::MessagePosted { .. }) {
-                        let context = plans.pending(scoped, &self.identities, &e)?;
-                        scoped.apply_checked(&e, &self.identities, &context);
+                    let retained = if let EventBody::MessagePosted {
+                        attaches: Some(item),
+                        ..
+                    } = &e.body
+                    {
+                        self.me.as_deref().is_some_and(|local| {
+                            scoped.retain_failed_attachment(
+                                e,
+                                local,
+                                sources
+                                    .get(&(e.space.as_str(), item.as_str(), local))
+                                    .copied(),
+                            )
+                        })
                     } else {
-                        scoped.retain_failed_voice(&e);
+                        false
+                    };
+                    // Preserve normal replay for text and canonical non-File
+                    // cards. Recovery reservations still fence the checked fold.
+                    if !retained && matches!(e.body, EventBody::MessagePosted { media: None, .. }) {
+                        let context = plans.pending(scoped, &self.identities, e)?;
+                        scoped.apply_checked(e, &self.identities, &context);
+                    } else if !matches!(e.body, EventBody::MessagePosted { .. }) {
+                        scoped.retain_failed_voice(e);
                     }
                 }
                 continue;
@@ -327,8 +465,8 @@ impl Engine {
                 optimistic.insert(e.space.clone());
             }
             let scoped = projections.entry(e.space.clone()).or_default();
-            let context = plans.pending(scoped, &self.identities, &e)?;
-            scoped.apply_checked(&e, &self.identities, &context);
+            let context = plans.pending(scoped, &self.identities, e)?;
+            scoped.apply_checked(e, &self.identities, &context);
         }
         let state = Self::merge_space_projections(&projections, &order);
         self.state = state;
@@ -636,11 +774,11 @@ impl Engine {
                 Err(error) => return RejectionOutcome::StorageFailure(error.to_string()),
             }
         }
-        match self.store.outbox_get(client_id) {
+        let rejected = match self.store.outbox_get(client_id) {
             Ok(None) => return RejectionOutcome::Ignored,
             Err(error) => return RejectionOutcome::StorageFailure(error.to_string()),
-            Ok(Some(_)) => {}
-        }
+            Ok(Some(event)) => event,
+        };
         // Written in the clear just before the Space went end-to-end: it waits for the
         // group and goes out sealed, it doesn't fail.
         // Sealed before this device caught up with a commit: it seals again once it has.
@@ -657,9 +795,15 @@ impl Engine {
             None
         };
         let noted = if let Some(creation) = rejected_creation {
-            self.store.outbox_refuse_space(&creation.space, reason)
+            self.store
+                .outbox_refuse_space(&creation.space, reason)
+                .map_err(CoreError::from)
+        } else if permanent {
+            self.refuse_outbox_media_dependents(&rejected, reason)
         } else {
-            self.store.outbox_note(client_id, reason, permanent)
+            self.store
+                .outbox_note(client_id, reason, permanent)
+                .map_err(CoreError::from)
         };
         if let Err(error) = noted {
             return RejectionOutcome::StorageFailure(error.to_string());
@@ -671,6 +815,150 @@ impl Engine {
         // Re-project without the refused event (messages stay visible as failed).
         let _ = self.reload();
         RejectionOutcome::UserFailed
+    }
+
+    /// Preserve terminal signed intents as readable failures, atomically. A
+    /// refused File fails its exact referencing media messages; a refused group
+    /// member also fails its matching group, so newer Space heads can progress.
+    fn refuse_outbox_media_dependents(&self, rejected: &Event, reason: &str) -> R<()> {
+        let candidate = matches!(
+            &rejected.body,
+            EventBody::MessagePosted { media: Some(_), .. }
+        ) || matches!(&rejected.body, EventBody::ItemCreated { kind: ItemKind::File, content: ItemContent::File(file), .. } if !file.is_voice());
+        if !candidate || event_log::verify_author(rejected).is_err() {
+            return self
+                .store
+                .outbox_note(&rejected.client_id, reason, true)
+                .map_err(Into::into);
+        }
+        let rows = self.store.outbox()?;
+        let mut seeds = Vec::new();
+        if matches!(&rejected.body, EventBody::MessagePosted { media: Some(media), .. } if media.is_valid())
+        {
+            seeds.push(rejected);
+        }
+        if let EventBody::ItemCreated {
+            item,
+            kind: ItemKind::File,
+            content: ItemContent::File(file),
+            ..
+        } = &rejected.body
+        {
+            if !file.is_voice() {
+                // A refused duplicate creation must not invalidate references to
+                // an already authoritative Item. Never consult optimistic state.
+                let confirmed = self
+                    .logs
+                    .get(&rejected.space)
+                    .map(|log| ConfirmedMediaDependencies::from_log(self, log))
+                    .transpose()?;
+                if confirmed
+                    .as_ref()
+                    .is_none_or(|confirmed| !confirmed.state.items.contains_key(item))
+                {
+                    seeds.extend(
+                        rows.iter()
+                            .filter(|row| !row.failed)
+                            .map(|row| &row.event)
+                            .filter(|event| {
+                                event.space == rejected.space
+                                    && event.author == rejected.author
+                                    && event_log::verify_author(event).is_ok()
+                                    && matches!(&event.body, EventBody::MessagePosted {
+                                attaches: Some(attaches), media: Some(media), ..
+                            } if attaches == item && media.is_valid())
+                            }),
+                    );
+                }
+            }
+        }
+        if seeds.is_empty() {
+            return self
+                .store
+                .outbox_note(&rejected.client_id, reason, true)
+                .map_err(Into::into);
+        }
+        let is_member = |event: &Event| {
+            event.space == rejected.space
+                && event.author == rejected.author
+                && event_log::verify_author(event).is_ok()
+                && seeds
+                    .iter()
+                    .any(|seed| seed.client_id == event.client_id || same_media_group(seed, event))
+        };
+        // An aborted album must not leave a fresh, otherwise unused File head
+        // blocking later ordinary messages while that orphan's upload retries.
+        // Shared references and already canonical Items retain their own fate.
+        let orphan_files: HashSet<_> = rows.iter().filter(|row| is_member(&row.event))
+            .filter_map(|row| match &row.event.body {
+                EventBody::MessagePosted { attaches: Some(item), .. } => Some(item),
+                _ => None,
+            }).filter(|item| !rows.iter().any(|row| !row.failed && !is_member(&row.event)
+                && matches!(&row.event.body, EventBody::MessagePosted { attaches: Some(other), .. } if other == *item)))
+            .collect();
+        let confirmed = self
+            .logs
+            .get(&rejected.space)
+            .map(|log| ConfirmedMediaDependencies::from_log(self, log))
+            .transpose()?;
+        let tx = self
+            .store
+            .conn()
+            .is_autocommit()
+            .then(|| self.store.conn().unchecked_transaction())
+            .transpose()
+            .map_err(store::StoreError::from)?;
+        for row in &rows {
+            let same_owner = row.event.space == rejected.space
+                && row.event.author == rejected.author
+                && event_log::verify_author(&row.event).is_ok();
+            let orphan = same_owner
+                && matches!(&row.event.body,
+                EventBody::ItemCreated { item, kind: ItemKind::File, content: ItemContent::File(file), .. }
+                    if orphan_files.contains(item) && confirmed.as_ref().is_none_or(|state| !state.state.items.contains_key(item))
+                    && file.chunks.iter().chain(file.thumb.iter()).any(|chunk| self.store.upload_pending(&chunk.blob).unwrap_or(true)));
+            let dependent = is_member(&row.event) || orphan;
+            if row.event.client_id == rejected.client_id || (!row.failed && dependent) {
+                self.store.outbox_note(&row.event.client_id, reason, true)?;
+            }
+        }
+        if let Some(tx) = tx {
+            tx.commit().map_err(store::StoreError::from)?;
+        }
+        Ok(())
+    }
+
+    /// A terminal HTTP refusal and the corresponding failed signed intents are
+    /// one durable transaction. No relay confirmation is inferred from local bytes.
+    pub fn upload_refused(&mut self, blob: &str) -> R<Vec<String>> {
+        let tx = self
+            .store
+            .conn()
+            .unchecked_transaction()
+            .map_err(store::StoreError::from)?;
+        if !self.store.upload_refused(blob)? {
+            return Ok(Vec::new());
+        }
+        let mut changed = HashSet::new();
+        for row in self.store.outbox()? {
+            let file = self.outbox_attachment(&row.event);
+            if !row.failed
+                && event_log::verify_author(&row.event).is_ok()
+                && file.is_some_and(|file| {
+                    file.chunks
+                        .iter()
+                        .chain(file.thumb.iter())
+                        .any(|chunk| chunk.blob == blob)
+                })
+            {
+                self.refuse_outbox_media_dependents(&row.event, "attachment upload refused")?;
+                changed.insert(row.event.space.clone());
+            }
+        }
+        tx.commit().map_err(store::StoreError::from)?;
+        self.reload()?;
+        self.net.wake();
+        Ok(changed.into_iter().collect())
     }
 
     pub fn cursors(&self) -> Vec<Cursor> {
@@ -699,8 +987,9 @@ impl Engine {
     }
 
     /// The outbox as envelopes, leaving out the ones already sent on this connection.
-    /// Called after every write, so it skips sent entries before any sealing work and asks
-    /// each Space's group for its epoch once: a long import stays linear, not quadratic.
+    /// Skips sent entries before sealing work and asks each Space's group for its epoch
+    /// once. Media admission separately folds confirmed history once per relevant Space
+    /// and offer pass; that replay cost is not a constant-time publication guarantee.
     ///
     /// At most [`APPLICATION_IN_FLIGHT`] application messages per Space are unpublished
     /// or still awaiting accept. Once a Space is at that cap, every later head of that
@@ -711,6 +1000,7 @@ impl Engine {
     /// sequenced.
     pub fn outbox_envelopes_except(&self, sent: &HashMap<String, Option<u64>>) -> Vec<Envelope> {
         let mut ready = HashMap::new();
+        let mut media_dependencies = HashMap::new();
         // A Welcome goes out only once its commit is in: sent together, a commit held back
         // by the relay (rate limit) would let the Welcome arrive first and be refused.
         let held = self.welcomes_behind_commits();
@@ -758,6 +1048,37 @@ impl Engine {
                 .is_some_and(|seen| self.next_seq(&event.space) <= seen.seq)
             {
                 continue;
+            }
+            // File publication must not outrun its actual HTTP upload. A terminal
+            // refusal retains this row and fails the exact dependent outbox intents;
+            // transient retries keep the original signature/CID/ciphertext queued.
+            let file = self.outbox_attachment(&event);
+            if file.is_some_and(|file| {
+                file.chunks
+                    .iter()
+                    .chain(file.thumb.iter())
+                    .any(|chunk| self.store.upload_pending(&chunk.blob).unwrap_or(true))
+            }) {
+                blocked.insert(event.space.clone());
+                continue;
+            }
+            if matches!(&event.body, EventBody::MessagePosted { media: Some(_), .. }) {
+                let Some(log) = self.logs.get(&event.space) else {
+                    blocked.insert(event.space.clone());
+                    continue;
+                };
+                let confirmed = media_dependencies
+                    .entry(event.space.clone())
+                    .or_insert_with(|| ConfirmedMediaDependencies::from_log(self, log).ok());
+                if !confirmed
+                    .as_ref()
+                    .is_some_and(|confirmed| confirmed.allows(&event))
+                {
+                    // Keep the same Space's sealed generations behind this head;
+                    // skipping it could outrun OpenMLS's existing reorder window.
+                    blocked.insert(event.space.clone());
+                    continue;
+                }
             }
             let Some(mut env) = self.outgoing_envelope_with(&event, &mut ready) else {
                 continue;
