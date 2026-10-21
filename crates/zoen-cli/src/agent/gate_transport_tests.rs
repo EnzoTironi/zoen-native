@@ -84,6 +84,9 @@ fn request(stream: &mut TcpStream) -> Vec<u8> {
 }
 impl Peer {
     fn start(reply: Reply) -> Self {
+        // These tests bypass CLI/Net startup, which installs the same provider.
+        // Install it explicitly rather than depending on another test's order.
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let scheme = if matches!(&reply, Reply::HoldTls) {
