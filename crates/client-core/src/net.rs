@@ -1623,6 +1623,7 @@ mod tests {
     mod incoming_pipeline;
     mod initial_catchup;
     mod media_dependencies;
+    mod media_uploads;
 
     #[tokio::test]
     async fn pickup_expired_deadline_opens_no_connection() {
