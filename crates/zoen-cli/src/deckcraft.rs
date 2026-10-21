@@ -489,7 +489,22 @@ mod tests {
             base,
         }
     }
-    fn worker() -> DeckcraftWorker {
+    fn worker() -> Arc<DeckcraftWorker> {
+        if [
+            "ZOEN_DECKCRAFT_WORKER_COMPONENT",
+            "ZOEN_DECKCRAFT_WORKER_MANIFEST",
+            "ZOEN_DECKCRAFT_WORKER_PUBLISHER",
+        ]
+        .iter()
+        .any(|name| std::env::var_os(name).is_some())
+        {
+            // Explicit operator QA exercises the production loader and trusted
+            // publisher. Partial/invalid configuration must never use the fixture.
+            eprintln!("actual worker factory: production configured operator manifest");
+            return configured()
+                .expect("valid explicit worker deployment configuration required")
+                .expect("an explicitly configured worker is required");
+        }
         let path = std::env::var("ZOEN_TEST_DECKCRAFT_COMPONENT")
             .expect("explicit real WASI-p2 component path required; see v160 build receipt");
         let bytes = bounded_file(&path, 64 * 1024 * 1024).unwrap();
@@ -507,7 +522,7 @@ mod tests {
         let mut tampered = bytes.clone();
         tampered.push(0);
         assert!(DeckcraftWorker::load(vec![key.verifying_key()], &signed, &tampered).is_err());
-        DeckcraftWorker::load(vec![key.verifying_key()], &signed, &bytes).unwrap()
+        Arc::new(DeckcraftWorker::load(vec![key.verifying_key()], &signed, &bytes).unwrap())
     }
     async fn inspect(f: &Fixture, worker: &DeckcraftWorker) -> Value {
         serde_json::from_str(
@@ -665,10 +680,10 @@ mod tests {
     // Explicitly ignored in generic `cargo test`: this test requires an actual
     // separately pinned upstream build, not a substitute WAT component or mock.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    #[ignore = "requires ZOEN_TEST_DECKCRAFT_COMPONENT built from pinned upstream + headless supplement"]
+    #[ignore = "requires a pinned component via ZOEN_TEST_DECKCRAFT_COMPONENT or complete worker deployment configuration"]
     async fn actual_pinned_component_edits_as_certified_agent_and_cold_replay_does_not_duplicate() {
         let translation_started = std::time::Instant::now();
-        let worker = Arc::new(worker());
+        let worker = worker();
         eprintln!(
             "actual pinned Component::new/load elapsed_ms={}",
             translation_started.elapsed().as_millis()
