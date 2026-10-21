@@ -379,6 +379,9 @@ mod tests {
     fn fixture() -> Fixture {
         let path = std::env::temp_dir().join(types::new_id("deckcraft-worker-test"));
         std::fs::create_dir_all(&path).unwrap();
+        fixture_at(path, [72; 32])
+    }
+    fn fixture_at(path: std::path::PathBuf, root: [u8; 32]) -> Fixture {
         let owner_path = path.join("owner.sqlite");
         let owner_vault = Arc::new(Vault::default());
         let human = Client::open(owner_path.to_str().unwrap().into(), "en".into()).unwrap();
@@ -391,7 +394,6 @@ mod tests {
             )
             .unwrap()
             .identity_id;
-        let root = [72; 32];
         let id = event_log::Signer::from_secret(&root).id();
         let proof = human.authorize_agent_json(id).unwrap();
         drop(human);
@@ -523,6 +525,9 @@ mod tests {
         tampered.push(0);
         assert!(DeckcraftWorker::load(vec![key.verifying_key()], &signed, &tampered).is_err());
         Arc::new(DeckcraftWorker::load(vec![key.verifying_key()], &signed, &bytes).unwrap())
+    }
+    mod restart {
+        include!("deckcraft/restart_tests.rs");
     }
     async fn inspect(f: &Fixture, worker: &DeckcraftWorker) -> Value {
         serde_json::from_str(

@@ -844,6 +844,80 @@ impl ToolHost for SpaceTools<'_> {
 }
 
 #[cfg(test)]
+pub(crate) async fn exercise_deckcraft_operation(
+    e: &Arc<Client>,
+    worker: Arc<zoen_agentd::deckcraft::DeckcraftWorker>,
+    journal: &Path,
+    binding: (&str, &str, &str),
+    arguments: serde_json::Value,
+) -> Vec<ToolStep> {
+    use zoen_agentd::citizen::testing::scripted::ScriptedBrain;
+    let (item, source, serving) = binding;
+    let space = e.item(item.into()).unwrap().space_id;
+    let account = e.account().unwrap();
+    let call_name = crate::deckcraft::model_name("deckcraft_slide_notes", item).unwrap();
+    let response = format!(
+        "```tools\n{}\n```\nApplied the reviewed notes.",
+        json!([{"name":call_name,"arguments":arguments}])
+    );
+    let cx = Ctx {
+        me: account.identity_id,
+        device: account.device_id,
+        owner: e.agent_owner().unwrap(),
+        runtime: Runtime::new(
+            Gate::default(),
+            Box::new(ScriptedBrain {
+                replies: [("reviewed edits".into(), response)].into(),
+            }),
+        ),
+        deckcraft: Some(worker),
+        journal: journal.into(),
+    };
+    let host = SpaceTools::new(e, &cx, &space, serving, source);
+    let definition: Definition = serde_json::from_value(json!({"version":1,"kind":"user","persona":"Apply the reviewed presentation edit.","rules":[],"state":{}})).unwrap();
+    let context = TurnContext {
+        agent: &cx.me,
+        device: &cx.device,
+        owner: &cx.owner,
+        definition: &definition,
+    };
+    let entry = e
+        .timeline(space.clone())
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.id == source)
+        .unwrap();
+    let EntryKind::Message { text, .. } = entry.kind else {
+        panic!("signed message source")
+    };
+    let outcome = cx
+        .runtime
+        .turn_with_tools(
+            context,
+            &[],
+            &Turn {
+                space,
+                from: entry.author.id,
+                text,
+            },
+            &host,
+            vec![],
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(outcome, TurnOutcome::Say { ref text } if text == "Applied the reviewed notes."),
+        "actual Runtime outcome: {outcome:?}; durable steps: {:?}",
+        host.done()
+    );
+    let steps = host.done();
+    assert_eq!(steps.len(), 1);
+    assert!(!steps[0].is_error);
+    assert_eq!(steps[0].call.name, call_name);
+    steps
+}
+
+#[cfg(test)]
 pub(crate) async fn exercise_deckcraft_dispatch(
     e: &Arc<Client>,
     worker: Arc<zoen_agentd::deckcraft::DeckcraftWorker>,
