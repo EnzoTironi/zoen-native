@@ -39,6 +39,8 @@ import UIKit
   private var retired = false
   private var visible = false
   private var wantsSearchFocus = false
+  private var emptyImageVisible = false
+  private var emptyTextVisible = false
   private var appearance = ZoenKeyboardPanelAppearance(background: .systemBackground, text: .label, secondary: .secondaryLabel, accent: .systemBlue, separator: .separator, bottomInset: 0)
   init(send: @escaping (String, [String: Any]) -> Void) {
     self.send = send; super.init()
@@ -51,6 +53,8 @@ import UIKit
     scrollView.register(RecentActionCell.self, forCellReuseIdentifier: "action")
     view.addSubview(scrollView)
     for child in [intro, explanation, stateLabel, spinner, retry] { view.addSubview(child) }
+    intro.accessibilityIdentifier = "attachment-file-empty-art"
+    explanation.accessibilityIdentifier = "attachment-file-empty-text"
     explanation.font = .systemFont(ofSize: 15); explanation.numberOfLines = 0; explanation.textAlignment = .center
     stateLabel.font = .systemFont(ofSize: 15); stateLabel.numberOfLines = 0; stateLabel.textAlignment = .center
     more.titleLabel?.font = .systemFont(ofSize: 17); more.addAction(UIAction { [weak self] _ in self?.emit("recentMore") }, for: .touchUpInside)
@@ -126,12 +130,12 @@ import UIKit
     guard !retired else { return }
     visible = value
     if !value { searchField.resignFirstResponder(); wantsSearchFocus = false }
-    intro.setVisible(value && !searching && rows.isEmpty && !loading && !hasError)
+    intro.setVisible(value && emptyImageVisible && !searching && rows.isEmpty && !loading && !hasError)
   }
   private func updateVisibility() {
     let emptyIntro = !searching && rows.isEmpty && !loading && !hasError
-    intro.isHidden = !emptyIntro; explanation.isHidden = !emptyIntro
-    intro.setVisible(visible && emptyIntro)
+    intro.isHidden = !emptyIntro || !emptyImageVisible; explanation.isHidden = !emptyIntro || !emptyTextVisible
+    intro.setVisible(visible && emptyIntro && emptyImageVisible)
     stateLabel.isHidden = loading || (!hasError && (!searching || query.isEmpty || !rows.isEmpty))
     retry.isHidden = !hasError; retry.isEnabled = enabled
     if loading { spinner.startAnimating() } else { spinner.stopAnimating() }
@@ -139,7 +143,7 @@ import UIKit
     searchSurface.isHidden = !searching; searchCloseSurface.isHidden = !searching
     if !searching { searchField.resignFirstResponder() }
   }
-  func updateLayout(navigationHeight: CGFloat, bottomInset: CGFloat, safeArea: UIEdgeInsets) {
+  func updateLayout(navigationHeight: CGFloat, bottomInset: CGFloat, safeArea: UIEdgeInsets, additionalBottomInset: CGFloat = 0) {
     let size = view.bounds.size, width = size.width
     scrollView.frame = CGRect(x: safeArea.left + 16, y: searching ? 56 : navigationHeight, width: max(0, width - safeArea.left - safeArea.right - 32), height: max(0, size.height - (searching ? 56 : navigationHeight)))
     scrollView.contentInset.bottom = bottomInset + 12; scrollView.verticalScrollIndicatorInsets.bottom = bottomInset
@@ -150,16 +154,17 @@ import UIKit
     let iconSize = searchIcon.image?.size ?? .zero, iconScale: CGFloat = 0.8
     searchIcon.frame = CGRect(x: 12, y: floor((44 - iconSize.height * iconScale) / 2), width: iconSize.width * iconScale, height: iconSize.height * iconScale)
     searchField.frame = CGRect(x: 36, y: 0, width: max(0, background.width - 40), height: 44)
-    var imageSize = CGSize(width: 144, height: 144), topInset: CGFloat = 120
-    if width == 320 { imageSize = CGSize(width: 112, height: 112); topInset = -60 }
-    let imageHeight = width < size.height ? imageSize.height + 12 : 0
+    let topInset: CGFloat = width == 320 ? -60 : 120
+    let intrinsicBottom = max(0, bottomInset - additionalBottomInset)
     let available = max(0, width - safeArea.left - safeArea.right - 40)
-    let textSize = explanation.sizeThatFits(CGSize(width: available, height: max(1, size.height - topInset - bottomInset)))
-    let total = imageHeight + 12 + textSize.height + 15 + 52 + 33
-    let top = topInset + floor((size.height - topInset - bottomInset - total) / 2)
-    intro.frame = CGRect(x: floor((width - imageSize.width) / 2), y: top, width: imageSize.width, height: imageSize.height)
-    if imageHeight == 0 { intro.isHidden = true }
-    explanation.frame = CGRect(x: floor((width - textSize.width) / 2), y: top + imageHeight + 12, width: textSize.width, height: textSize.height)
+    let textSize = explanation.sizeThatFits(CGSize(width: available, height: max(1, size.height - topInset - intrinsicBottom)))
+    let empty = ZoenAttachmentFileEmptyLayout.measure(size: size, textSize: textSize,
+      navigationHeight: navigationHeight, actionRows: kind == "file" ? 2 : 1,
+      actionHeight: ceil(UIFont.systemFont(ofSize: 17).lineHeight) + 30,
+      bottomInset: bottomInset, additionalBottomInset: additionalBottomInset,
+      left: safeArea.left, right: safeArea.right)
+    intro.frame = empty.image; explanation.frame = empty.text
+    emptyImageVisible = empty.showsImage; emptyTextVisible = empty.showsText
     // AttachmentFileSearchItem:862–870 centers the actual empty result in the
     // viewport remaining above the keyboard instead of a fixed top offset.
     let statusSize = stateLabel.sizeThatFits(CGSize(width: max(0, width - safeArea.left - safeArea.right - 32), height: .greatestFiniteMagnitude))
@@ -168,6 +173,7 @@ import UIKit
     retry.frame = CGRect(x: 24, y: stateLabel.frame.maxY, width: max(0, width - 48), height: 44)
     spinner.center = CGPoint(x: width / 2, y: max(navigationHeight + 88, (size.height - bottomInset) / 2))
     more.frame = CGRect(x: 0, y: 0, width: scrollView.bounds.width, height: 50)
+    updateVisibility()
   }
   func focusSearch() {
     guard !retired, visible, searching, enabled, wantsSearchFocus else { return }
@@ -353,5 +359,48 @@ import UIKit
     previewButton.frame = frames.icon.insetBy(dx: -8, dy: -8)
     fileExtension.frame = frames.icon.insetBy(dx: 1, dy: 0).offsetBy(dx: 0, dy: 5)
     check.frame = frames.selection; check.layer.cornerRadius = 13; separator.frame = frames.separator
+  }
+}
+
+// Empty-state geometry: AttachmentFileEmptyItem:117–160 and
+// ItemListControllerNode:857–865. Empty state receives intrinsic panel insets;
+// only search receives the collapsed sheet's additional bottom inset.
+struct ZoenAttachmentFileEmptyLayout {
+  let image: CGRect
+  let text: CGRect
+  let showsImage: Bool
+  let showsText: Bool
+  static func measure(size: CGSize, textSize: CGSize, navigationHeight: CGFloat,
+                      actionRows: Int, actionHeight: CGFloat, bottomInset: CGFloat,
+                      additionalBottomInset: CGFloat, left: CGFloat, right: CGFloat) -> Self {
+    let imageSize = CGSize(width: size.width == 320 ? 112 : 144, height: size.width == 320 ? 112 : 144)
+    let topInset: CGFloat = size.width == 320 ? -60 : 120
+    let intrinsicBottom = max(0, bottomInset - additionalBottomInset)
+    let sourceImageHeight: CGFloat = size.width < size.height ? imageSize.height + 12 : 0
+    // Source reserves the optional button geometry even for .intro, where the
+    // actual button is absent. The Gallery/Files actions remain separate rows.
+    let sourceTotal = sourceImageHeight + 12 + textSize.height + 15 + 52 + 33
+    var top = topInset + floor((size.height - topInset - intrinsicBottom - sourceTotal) / 2)
+    var imageHeight = sourceImageHeight
+    let actionsBottom = navigationHeight + 24 + CGFloat(actionRows) * actionHeight
+    let contentTop = actionsBottom + 12, contentBottom = max(0, size.height - bottomInset)
+    let freeHeight = max(0, contentBottom - contentTop)
+    let showsText = freeHeight >= textSize.height
+    let preferredTextBottom = top + imageHeight + 12 + textSize.height
+    var textY = top + imageHeight + 12
+    // Keep the source target whenever it fits. Compact viewports reuse its
+    // no-artwork mode rather than painting decorative content over actions or
+    // the keyboard/category panel. The remaining text stays in the free area.
+    if top < contentTop || preferredTextBottom > contentBottom {
+      if imageHeight + 12 + textSize.height > freeHeight { imageHeight = 0 }
+      let height = imageHeight > 0 ? imageHeight + 12 + textSize.height : textSize.height
+      top = contentTop + floor((freeHeight - height) / 2)
+      textY = imageHeight > 0 ? top + imageHeight + 12 : top
+    }
+    let imageFrame = CGRect(x: floor((size.width - imageSize.width) / 2), y: top, width: imageSize.width, height: imageSize.height)
+    let textX = left + floor((size.width - textSize.width - left - right) / 2)
+    let textFrame = CGRect(x: textX, y: textY, width: textSize.width, height: textSize.height)
+    let showsImage = showsText && imageHeight > 0
+    return Self(image: imageFrame, text: textFrame, showsImage: showsImage, showsText: showsText)
   }
 }

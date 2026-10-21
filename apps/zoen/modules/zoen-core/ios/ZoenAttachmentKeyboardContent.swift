@@ -532,7 +532,7 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     let footerTop = selecting && captionEnabled ? captionPanel.frame.minY : footer.frame.minY
     fileLanding.view.frame = root.bounds
     fileLanding.view.isHidden = activeCategory == "photos"
-    fileLanding.updateLayout(navigationHeight: headerHeight, bottomInset: max(0, height - footerTop, fileLanding.searching ? keyboardHeight : 0), safeArea: safeArea)
+    fileLanding.updateLayout(navigationHeight: headerHeight, bottomInset: max(0, height - footerTop, fileLanding.searching ? keyboardHeight : 0), safeArea: safeArea, additionalBottomInset: additionalBottomInset)
     if activeCategory != "photos" && fileLanding.searching {
       header.isHidden = true; footer.isHidden = true; captionPanel.isHidden = true
     }

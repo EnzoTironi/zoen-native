@@ -54,3 +54,31 @@ import UIKit
     content.setVisible(true); content.retire(); play.sendActions(for: .touchUpInside); XCTAssertTrue(events.values.isEmpty)
   }
 }
+
+extension RecentAttachmentContentTests {
+  func testEmptyIntroSeparatesIntrinsicPanelFromCollapsedInsetAndNeverOverlapsActions() throws {
+    let cases: [(CGSize, CGFloat, CGFloat)] = [(CGSize(width: 402, height: 810), 308, 218), (CGSize(width: 375, height: 620), 254, 154), (CGSize(width: 844, height: 390), 90, 0)]
+    for (size, bottom, additional) in cases {
+      for category in ["document", "audio"] {
+        let content = ZoenAttachmentFileContent { _, _ in }
+        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
+        let controller = UIViewController(); window.rootViewController = controller
+        controller.view.addSubview(content.view); window.isHidden = false
+        defer { window.isHidden = true; content.retire() }
+        content.view.frame = CGRect(origin: .zero, size: size)
+        try content.update(model: ["revision": "geometry", "activeCategory": category, "fileItems": [[String: Any]](), "audioItems": [[String: Any]](), "recent": ["selected": [String](), "query": "", "searching": false, "loading": false, "hasMore": false, "error": false], "labels": ["filesIntro": "Choose a file from your device or iCloud Drive.", "chooseGallery": "Gallery", "browseFiles": "Browse"]], appearance: ZoenKeyboardPanelAppearance(background: .black, text: .white, secondary: .gray, accent: .systemBlue, separator: .darkGray, bottomInset: 0))
+        content.setVisible(true)
+        content.updateLayout(navigationHeight: 68, bottomInset: bottom, safeArea: .zero, additionalBottomInset: additional)
+        content.scrollView.layoutIfNeeded()
+        let last = try XCTUnwrap(content.scrollView.cellForRow(at: IndexPath(row: category == "document" ? 1 : 0, section: 0)))
+        let actionsBottom = last.convert(last.bounds, to: content.view).maxY
+        let art = try XCTUnwrap(content.view.subviews.first { $0.accessibilityIdentifier == "attachment-file-empty-art" })
+        let text = try XCTUnwrap(content.view.subviews.first { $0.accessibilityIdentifier == "attachment-file-empty-text" })
+        if !art.isHidden { XCTAssertGreaterThanOrEqual(art.frame.minY, actionsBottom + 12) }
+        if !text.isHidden { XCTAssertGreaterThanOrEqual(text.frame.minY, actionsBottom + 12); XCTAssertLessThanOrEqual(text.frame.maxY, size.height - bottom) }
+        if size.width >= size.height { XCTAssertTrue(art.isHidden) }
+        content.retire()
+      }
+    }
+  }
+}

@@ -96,3 +96,23 @@ on-device validation remain required before claiming this integration shipped.
 Web and Android do not expose the native recent picker until their equivalent
 owners and presentation are qualified. No network music provider or filesystem
 is enumerated automatically.
+
+### Empty File and Audio geometry
+
+`AttachmentFileController` creates the intro when recent results are loaded and
+empty, while Gallery/Files rows remain present. Its `empty` entries flag is for
+banned media, not empty history. `AttachmentFileEmptyItem` deliberately reserves
+its optional 52pt button and 33pt bottom geometry even when that button is absent.
+`AttachmentController` supplies the intrinsic panel inset; the container adds the
+collapsed offset separately. `ItemListControllerNode` passes the original layout
+to the empty state and applies additional insets only to search. Combining those
+insets moved the decoration into Browse in the runtime10 capture.
+
+The port now preserves that separation and source target. If a genuinely compact
+viewport cannot fit it between the actual action block and visible footer, the
+port reuses the source's no-artwork mode and centers the remaining text in that
+free region. With insufficient room for the text, decorative intro content is
+hidden while the real actions remain scrollable. Search hides the intro as in
+the source. The original 144/112pt artwork, portrait/landscape rule, source spacing
+and optional-button reservation remain intact. This compact fallback is an
+explicit UIKit adaptation rather than a claim of an upstream condition.

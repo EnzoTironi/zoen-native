@@ -72,11 +72,29 @@
       "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ItemListUI/Sources/Items/ItemListSectionHeaderItem.swift",
       "sha256": "8c66333c69560f4343e2d79a87297262b1d40432b7568a4b3dc4a2dc91dc0998",
       "bytes": 22141
+    },
+    {
+      "path": "submodules/ItemListUI/Sources/ItemListControllerNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ItemListUI/Sources/ItemListControllerNode.swift",
+      "sha256": "16810a93f7e2d2a417a21cd967f3a945307e6aa477fc863cfa751739ed829556",
+      "bytes": 63015
+    },
+    {
+      "path": "submodules/Display/Source/ContainerViewLayout.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/ContainerViewLayout.swift",
+      "sha256": "fc9d81e6d31e144a372c0ffbd64dfcbadf2b433fceef4162fc8dac50d6f9ef37",
+      "bytes": 8816
+    },
+    {
+      "path": "submodules/AttachmentUI/Sources/AttachmentController.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/AttachmentUI/Sources/AttachmentController.swift",
+      "sha256": "d0035962fe5c2615868d4a04e671524bfb84505579f8572083e2e05486714fb5",
+      "bytes": 84815
     }
   ],
   "port": {
-    "ZoenAttachmentFileContent.swift": "AttachmentFileController:236-299,313-390,742-761,877-949; AttachmentFileSearchItem:862-870,1102-1187; ItemListPeerActionItem:215-224,267,310,385; ItemListSectionHeaderItem:225-235,251; AttachmentFileEmptyItem:117-160; ItemListSelectableControlNode:25-59",
+    "ZoenAttachmentFileContent.swift": "AttachmentFileController:236-299,313-390,742-761,877-949; AttachmentFileSearchItem:862-870,1102-1187; ItemListPeerActionItem:215-224,267,310,385; ItemListSectionHeaderItem:225-235,251; AttachmentFileEmptyItem:117-160; ItemListSelectableControlNode:25-59; Empty intrinsic/additional inset separation: AttachmentController:1512-1568; ItemListControllerNode:857-865; ContainerViewLayout:121-129",
     "ZoenTelegramFileVisuals.swift": "ListMessageFileItemNode:26-115,216-230,637-658,1107-1120,1240,1282-1319; AttachmentFileSearchItem:1154-1174"
   },
-  "adaptation": "Original fixed document paths/colors, glyph, dimensions and interaction conditions with UIKit list/text/reuse. Zoen authorized query/preview and encrypted draft journal replace Postbox, account services, file transfer and remote music. Not complete Telegram row/animation or runtime parity."
+  "adaptation": "Original fixed document paths/colors, glyph, dimensions and interaction conditions with UIKit list/text/reuse. Zoen authorized query/preview and encrypted draft journal replace Postbox, account services, file transfer and remote music. Not complete Telegram row/animation or runtime parity. Empty-state centering retains original52+33 optional-button reservation and intrinsic panel inset, excluding collapsed additional inset. Compact collision fallback reuses source no-artwork mode inside actual action/footer bounds; not an arbitrary top offset."
 }
