@@ -1343,6 +1343,112 @@ fn media_contract_file_album_preserves_real_mime_order_signature_and_retry() {
 }
 
 #[test]
+fn media_contract_transient_first_album_refusal_preserves_all_confirmed_members_after_reopen() {
+    let dir = temp();
+    let sender_path = dir.join("album-sender.sqlite");
+    let receiver_path = dir.join("album-receiver.sqlite");
+    let f = fixture(sender_path.to_str().unwrap());
+    media_contract_confirm_scope(&f);
+    let mut relay = f.engine.lock().logs[&f.scope.space_id].clone();
+    let mut receiver = crate::engine::Engine::open(receiver_path.to_str().unwrap()).unwrap();
+    let frame = |event: &types::Event| protocol::Sequenced {
+        seq: event.seq,
+        prev: event.prev.clone(),
+        hash: event.hash.clone(),
+        env: protocol::Envelope::plain(event),
+    };
+    for event in relay.events() {
+        assert_eq!(receiver.ingest(frame(event)), crate::sync::Ingest::Applied);
+    }
+    let draft = save(
+        &f,
+        "0",
+        &media_options(&["a", "b"], "file", "grouped"),
+        vec![input("a"), input("b")],
+    );
+    let sent = f
+        .engine
+        .send_media_draft(f.scope.clone(), draft.revision)
+        .unwrap();
+    let expected_ids: Vec<_> = sent.entries.iter().map(|entry| entry.id.clone()).collect();
+    assert_eq!(expected_ids.len(), 2);
+    // The actual dispatcher publishes this offered batch before any relay answer.
+    // Refuse only its first album member, then sequence the remaining real signed
+    // envelopes exactly in their offered order. No metadata or signatures change.
+    let offered = f.engine.lock().outbox_envelopes();
+    assert!(offered.iter().any(|env| env.client_id() == expected_ids[0]));
+    assert!(offered.iter().any(|env| env.client_id() == expected_ids[1]));
+    for env in offered {
+        if env.client_id() == expected_ids[0] {
+            f.engine.lock().reject(
+                env.client_id(),
+                "injected transient relay refusal",
+                false,
+                None,
+            );
+            continue;
+        }
+        let event = f
+            .engine
+            .lock()
+            .store
+            .outbox_get(env.client_id())
+            .unwrap()
+            .unwrap();
+        let accepted = relay.sequence(event).clone();
+        assert_eq!(
+            f.engine.lock().ingest(frame(&accepted)),
+            crate::sync::Ingest::Confirmed
+        );
+        assert_eq!(
+            receiver.ingest(frame(&accepted)),
+            crate::sync::Ingest::Applied
+        );
+    }
+    let retry = f.engine.lock().outbox_envelopes();
+    assert_eq!(retry.len(), 1);
+    assert_eq!(retry[0].client_id(), expected_ids[0]);
+    let event = f
+        .engine
+        .lock()
+        .store
+        .outbox_get(retry[0].client_id())
+        .unwrap()
+        .unwrap();
+    let accepted = relay.sequence(event).clone();
+    assert_eq!(
+        f.engine.lock().ingest(frame(&accepted)),
+        crate::sync::Ingest::Confirmed
+    );
+    assert_eq!(
+        receiver.ingest(frame(&accepted)),
+        crate::sync::Ingest::Applied
+    );
+    assert!(f.engine.lock().store.outbox().unwrap().is_empty());
+    assert_eq!(
+        receiver.store.event_count().unwrap(),
+        relay.events().len() as u64
+    );
+    relay.verify().unwrap();
+    drop(receiver);
+    let receiver = crate::engine::Engine::open(receiver_path.to_str().unwrap()).unwrap();
+    let actual_ids: Vec<_> = receiver
+        .timeline(&f.scope.space_id)
+        .unwrap()
+        .iter()
+        .filter(|entry| expected_ids.contains(&entry.id))
+        .map(|entry| entry.id.clone())
+        .collect();
+    assert_eq!(
+        actual_ids, expected_ids,
+        "both confirmed album members must survive transient refusal and cold replay"
+    );
+    drop(receiver);
+    drop(f);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn media_contract_group_failure_rolls_back_and_retains_frozen_options() {
     let f = fixture(":memory:");
     let json = media_options(&["a", "b"], "media", "grouped");
