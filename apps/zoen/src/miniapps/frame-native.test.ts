@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import { build } from 'esbuild';
+import type { RuntimePackage } from './runtime-package';
 
 const source = new URL('./frame.tsx', import.meta.url);
 const compiled = await build({
@@ -31,7 +32,7 @@ const compiled = await build({
 const require = createRequire(import.meta.url);
 type Element = { type: unknown; props: Record<string, unknown> };
 type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
-function fixture(platform: string) {
+function fixture(platform: string, qa = false) {
   const slots: Slot[] = [];
   let cursor = 0;
   let sequence = 0;
@@ -50,6 +51,18 @@ function fixture(platform: string) {
         const s = slot();
         if (!Object.hasOwn(s, 'value')) s.value = { current: initial };
         return s.value;
+      },
+      useState: (initial: unknown) => {
+        const s = slot();
+        if (!Object.hasOwn(s, 'value'))
+          s.value = typeof initial === 'function' ? (initial as () => unknown)() : initial;
+        return [
+          s.value,
+          (next: unknown) => {
+            s.value =
+              typeof next === 'function' ? (next as (prior: unknown) => unknown)(s.value) : next;
+          },
+        ];
       },
       useMemo: (read: () => unknown, deps: readonly unknown[]) => {
         const s = slot();
@@ -77,7 +90,7 @@ function fixture(platform: string) {
       jsx: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
       jsxs: (type: unknown, props: Record<string, unknown>) => ({ type, props }),
     },
-    'react-native': { View: 'View', Platform: { OS: platform } },
+    'react-native': { Text: 'Text', View: 'View', Platform: { OS: platform } },
     'react-native-webview': { WebView: 'WebView' },
     'expo-crypto': {
       randomUUID: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`,
@@ -91,6 +104,10 @@ function fixture(platform: string) {
   };
   runInNewContext(compiled.outputFiles[0]!.text, {
     module,
+    TextEncoder,
+    TextDecoder,
+    URL,
+    process: { env: { EXPO_PUBLIC_ZOEN_DECKCRAFT_INPUT_QA: qa ? '1' : undefined } },
     exports: module.exports,
     require: (name: string) => ports[name] ?? require(name),
   });
@@ -100,6 +117,7 @@ function fixture(platform: string) {
       height: 640,
       fill: false,
     },
+    runtimePackage?: RuntimePackage,
   ) {
     cursor = 0;
     effects = [];
@@ -109,12 +127,14 @@ function fixture(platform: string) {
         title: 'Drawing',
         ...geometry,
         blocked: geometry.blocked ?? false,
+        runtimePackage,
         onMessage: (message: string) => deliveries.push(message),
         onError: (reason: string) => assert.fail(reason),
       },
       handle,
     );
-    const web = element.props.children as Element;
+    const children = element.props.children as (Element | null)[];
+    const web = children[0]!;
     assert.equal(web.type, 'WebView');
     (web.props.ref as { current: unknown }).current = {
       injectJavaScript: (code: string) => injected.push(code),
@@ -130,6 +150,9 @@ function fixture(platform: string) {
       receive: web.props.onMessage as (event: unknown) => void,
       nonce,
       source: web.props.source,
+      qaScript: web.props.injectedJavaScriptBeforeContentLoaded as string | undefined,
+      qaMainOnly: web.props.injectedJavaScriptBeforeContentLoadedForMainFrameOnly,
+      qaLabel: children[1]?.props.accessibilityLabel as string | undefined,
       key: web.props.key,
       touch: web.props.onTouchStart as () => void,
       fail: web.props.onError as (event: unknown) => void,
@@ -289,4 +312,136 @@ test('retired native callbacks cannot poison a replacement App with fatal frame 
   f.handle.current!.dispose();
   assert.doesNotThrow(() => current.fail({ nativeEvent: { description: 'disposed failure' } }));
   assert.doesNotThrow(() => current.terminate());
+});
+
+const inputQaRevision = 'a31b990d32f2c8562f1588562f922960c3fde48b';
+const inputQaRuntime: RuntimePackage = {
+  schema: 1,
+  engine: 'deckcraft',
+  revision: inputQaRevision,
+  abi: 'zoen-host-v1',
+  module: {
+    url: `https://127.0.0.1:9443/deckcraft/${inputQaRevision}/runtime.js`,
+    bytes: 1,
+    sha256: '0'.repeat(64),
+    mime: 'text/javascript',
+  },
+  wasm: {
+    url: `https://127.0.0.1:9443/deckcraft/${inputQaRevision}/runtime.wasm`,
+    bytes: 8,
+    sha256: '1'.repeat(64),
+    mime: 'application/wasm',
+  },
+};
+function inputQaSession(script: string | undefined) {
+  const token = script?.match(/const session="([a-f0-9-]+)"/)?.[1];
+  assert.ok(token);
+  return token;
+}
+function inputQaEvent(session: string, extra: Record<string, unknown> = {}) {
+  return {
+    nativeEvent: {
+      url: 'about:srcdoc',
+      data: JSON.stringify({
+        marker: 'zoen.deckcraft.input-order.qa.v1',
+        session,
+        rows: [[1, 1, 0, 1, 1, 0, 14, 14, 14, 1, 0, 0, 1]],
+        truncated: false,
+        ...extra,
+      }),
+    },
+  };
+}
+
+test('input-order observation is default-off and absent outside the configured iOS DeckCraft', () => {
+  for (const platform of ['ios', 'android', 'web', 'macos']) {
+    const disabled = fixture(platform).render(undefined, undefined, inputQaRuntime);
+    assert.equal(disabled.qaScript, undefined, platform);
+    assert.equal(disabled.qaMainOnly, undefined, platform);
+    assert.equal(disabled.qaLabel, undefined, platform);
+  }
+  for (const platform of ['android', 'web', 'macos']) {
+    const other = fixture(platform, true).render(undefined, undefined, inputQaRuntime);
+    assert.equal(other.qaScript, undefined, platform);
+    assert.equal(other.qaLabel, undefined, platform);
+  }
+  const generic = fixture('ios', true).render();
+  assert.equal(generic.qaScript, undefined);
+  assert.equal(generic.qaLabel, undefined);
+  const wrongRevision = fixture('ios', true).render(undefined, undefined, {
+    ...inputQaRuntime,
+    revision: '0'.repeat(40),
+    module: {
+      ...inputQaRuntime.module,
+      url: inputQaRuntime.module.url.replace(inputQaRevision, '0'.repeat(40)),
+    },
+    wasm: {
+      ...inputQaRuntime.wasm,
+      url: inputQaRuntime.wasm.url.replace(inputQaRevision, '0'.repeat(40)),
+    },
+  });
+  assert.equal(wrongRevision.qaScript, undefined);
+  assert.equal(wrongRevision.qaLabel, undefined);
+});
+
+test('actual native frame consumes only bounded input scalars without canonical delivery or reload', () => {
+  const f = fixture('ios', true);
+  const doc = f.render(undefined, undefined, inputQaRuntime);
+  const session = inputQaSession(doc.qaScript);
+  assert.notEqual(session, doc.nonce);
+  assert.equal(doc.qaMainOnly, false, 'observe the opaque canvas child at document start');
+  assert.equal(doc.qaLabel, 'input trace: pending');
+  doc.receive(inputQaEvent(session));
+  assert.deepEqual(f.deliveries, [], 'numeric diagnostics never reach SDK/core RPC');
+  const updated = f.render(undefined, { height: 393, fill: true }, inputQaRuntime);
+  assert.equal(updated.source, doc.source);
+  assert.equal(updated.nonce, doc.nonce);
+  assert.equal(updated.qaScript, doc.qaScript);
+  assert.equal(updated.qaLabel, 'input trace: 1 rows; truncated=0; 1/1/0/1/1/0/14/14/14/1/0/0/1');
+  assert.equal(
+    f.injected.some((code) => code.includes('"dispose"')),
+    false,
+  );
+  doc.receive(event('about:blank', doc.nonce));
+  assert.equal(f.deliveries.length, 1, 'ordinary canonical source/nonce admission is unchanged');
+  doc.receive(event('about:srcdoc', doc.nonce));
+  assert.equal(f.deliveries.length, 1, 'diagnostics never loosen opaque-child RPC source policy');
+});
+
+test('input-order frame refuses stale tokens, extra fields and wrong scalar types', () => {
+  const f = fixture('ios', true);
+  const doc = f.render(undefined, undefined, inputQaRuntime);
+  const token = inputQaSession(doc.qaScript);
+  for (const bad of [
+    inputQaEvent(doc.nonce),
+    inputQaEvent('00000000-0000-4000-8000-999999999999'),
+    inputQaEvent(token, { text: 'private content must not be displayed' }),
+    inputQaEvent(token, { rows: [[1, 1, 0, 1, 1, 0, 'private', 0, 0, 1, 0, 0, 1]] }),
+  ])
+    doc.receive(bad);
+  const unchanged = f.render(undefined, undefined, inputQaRuntime);
+  assert.equal(unchanged.qaLabel, 'input trace: pending');
+  assert.equal(unchanged.source, doc.source);
+  assert.deepEqual(f.deliveries, []);
+});
+
+test('replacement and explicit disposal retire diagnostic state and old callback authority', () => {
+  const f = fixture('ios', true);
+  const old = f.render(undefined, undefined, inputQaRuntime);
+  old.receive(inputQaEvent(inputQaSession(old.qaScript)));
+  const currentHtml = '<!doctype html><p>Replacement verified resource</p>';
+  const current = f.render(currentHtml, undefined, inputQaRuntime);
+  assert.notEqual(current.source, old.source);
+  assert.equal(current.qaLabel, 'input trace: pending');
+  old.receive(inputQaEvent(inputQaSession(old.qaScript)));
+  current.receive(inputQaEvent(inputQaSession(old.qaScript)));
+  assert.equal(f.render(currentHtml, undefined, inputQaRuntime).qaLabel, 'input trace: pending');
+  current.receive(inputQaEvent(inputQaSession(current.qaScript)));
+  assert.match(f.render(currentHtml, undefined, inputQaRuntime).qaLabel!, /^input trace: 1 rows;/);
+  f.handle.current!.dispose();
+  current.receive(inputQaEvent(inputQaSession(current.qaScript)));
+  const disposed = f.render(currentHtml, undefined, inputQaRuntime);
+  assert.equal(disposed.source, current.source);
+  assert.equal(disposed.qaLabel, 'input trace: pending');
+  assert.deepEqual(f.deliveries, []);
 });

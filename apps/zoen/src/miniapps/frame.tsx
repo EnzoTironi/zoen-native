@@ -1,8 +1,16 @@
 import { t } from '../i18n/index.ts';
-import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react';
-import { Platform, View } from 'react-native';
+import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Platform, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { randomUUID } from 'expo-crypto';
+import { DECKCRAFT_ENGINE_REVISION } from './canonical-binary';
+import {
+  deckcraftInputOrderQaEnabled,
+  deckcraftInputOrderQaLabel,
+  deckcraftInputOrderQaScript,
+  decodeDeckcraftInputOrderQa,
+  type DeckcraftInputOrderQa,
+} from './deckcraft-input-order-qa';
 import type { MiniappFrameHandle, MiniappFrameProps } from './frame-types';
 import {
   nativeMiniappCommand,
@@ -17,10 +25,26 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
   ref,
 ) {
   const view = useRef<WebView<object>>(null);
+  const inputOrderQa = deckcraftInputOrderQaEnabled(
+    Platform.OS,
+    process.env.EXPO_PUBLIC_ZOEN_DECKCRAFT_INPUT_QA,
+    runtimePackage,
+    DECKCRAFT_ENGINE_REVISION,
+  );
   const document = useMemo(() => {
     const nonce = randomUUID();
-    return { nonce, html: nativeMiniappHtml(html, 'Zoen', nonce, runtimePackage) };
-  }, [html, runtimePackage]);
+    const qaSession = inputOrderQa ? randomUUID() : null;
+    return {
+      nonce,
+      qaSession,
+      qaScript: qaSession ? deckcraftInputOrderQaScript(qaSession) : undefined,
+      html: nativeMiniappHtml(html, 'Zoen', nonce, runtimePackage),
+    };
+  }, [html, runtimePackage, inputOrderQa]);
+  const [qaState, setQaState] = useState<{
+    owner: typeof document;
+    trace: DeckcraftInputOrderQa;
+  } | null>(null);
   // Layout/theme updates must not submit a fresh native source and reload the App.
   const source = useMemo(() => ({ html: document.html }), [document]);
   const active = useRef<typeof document | null>(document);
@@ -47,6 +71,7 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
       dispose: () => {
         if (active.current !== document) return;
         active.current = null;
+        setQaState(null);
         view.current?.stopLoading();
         view.current?.injectJavaScript(nativeMiniappCommand(document.nonce, 'dispose'));
       },
@@ -67,6 +92,10 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
       <WebView<object>
         ref={view}
         source={source}
+        injectedJavaScriptBeforeContentLoaded={document.qaScript}
+        injectedJavaScriptBeforeContentLoadedForMainFrameOnly={
+          document.qaScript ? false : undefined
+        }
         originWhitelist={['*']}
         incognito
         sharedCookiesEnabled={false}
@@ -101,6 +130,13 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         }}
         onMessage={(event) => {
           if (active.current !== document) return;
+          if (inputOrderQa && document.qaSession) {
+            const trace = decodeDeckcraftInputOrderQa(event.nativeEvent.data, document.qaSession);
+            if (trace) {
+              setQaState({ owner: document, trace });
+              return;
+            }
+          }
           if (!nativeMiniappMessageSource(event.nativeEvent.url, Platform.OS)) return;
           const message = nativeMiniappMessage(event.nativeEvent.data, document.nonce);
           if (message !== null) onMessage(message);
@@ -114,6 +150,28 @@ export const MiniappFrame = forwardRef<MiniappFrameHandle, MiniappFrameProps>(fu
         }}
         style={{ backgroundColor: 'transparent' }}
       />
+      {inputOrderQa ? (
+        <Text
+          testID="deckcraft-input-order-qa"
+          accessible
+          accessibilityLabel={deckcraftInputOrderQaLabel(
+            qaState?.owner === document ? qaState.trace : null,
+          )}
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: 1,
+            height: 1,
+            fontSize: 1,
+            color: 'transparent',
+            overflow: 'hidden',
+          }}
+        >
+          {deckcraftInputOrderQaLabel(qaState?.owner === document ? qaState.trace : null)}
+        </Text>
+      ) : null}
     </View>
   );
 });
