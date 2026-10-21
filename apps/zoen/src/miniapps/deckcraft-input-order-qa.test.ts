@@ -17,7 +17,12 @@ function fixture() {
   const sent: string[] = [];
   let sequence = 0;
   const parent = {};
-  const canvas = { tagName: 'CANVAS', parentElement: parent, isConnected: true };
+  const canvas = {
+    tagName: 'CANVAS',
+    parentElement: parent,
+    isConnected: true,
+    nextElementSibling: undefined as unknown,
+  };
   const input = {
     tagName: 'INPUT',
     type: 'text',
@@ -28,6 +33,7 @@ function fixture() {
     selectionStart: 0,
     selectionEnd: 0,
   };
+  canvas.nextElementSibling = input;
   const document = {
     activeElement: input as unknown,
     getElementById: (id: string) => (id === 'deckcraft_canvas' ? canvas : null),
@@ -65,24 +71,26 @@ function fixture() {
   const dispatch = (
     kind: string,
     patch: Record<string, unknown> = {},
-    targetWork: () => void = () => {},
+    targetWork: (event: Record<string, unknown>) => void = () => {},
   ) => {
-    const event = {
+    const event: Record<string, unknown> = {
       type: kind,
       target: input,
       inputType: kind === 'input' || kind === 'beforeinput' ? 'insertText' : '',
       isTrusted: true,
-      ...patch,
+      defaultPrevented: false,
     };
+    Object.defineProperties(event, Object.getOwnPropertyDescriptors(patch));
     for (const listener of listeners.get(`${kind}:true`) ?? []) listener(event);
     // Native dispatch can checkpoint microtasks after the capture callback,
     // before the target listener. A microtask cannot claim after-target order.
     while (microtasks.length) microtasks.shift()!();
-    targetWork();
+    targetWork(event);
     // Real focus/blur do not bubble. This fixture only simulates DOM order,
     // not native WebKit dispatch or its microtask checkpoint implementation.
-    if (kind !== 'focus' && kind !== 'blur')
+    if (kind !== 'focus' && kind !== 'blur' && !event.cancelBubble)
       for (const listener of listeners.get(`${kind}:false`) ?? []) listener(event);
+    return event;
   };
   const drain = () => {
     while (microtasks.length) microtasks.shift()!();
@@ -219,5 +227,187 @@ test('authored enablement is default-off and restricted to the exact configured 
   assert.equal(
     deckcraftInputOrderQaEnabled('ios', '1', runtime, 'a31b990d32f2c8562f1588562f922960c3fde48b'),
     true,
+  );
+});
+
+test('contact and focus observations preserve DOM order without claiming final prevention or engine ownership', () => {
+  const f = fixture();
+  f.dispatch(
+    'pointerdown',
+    { target: f.canvas, pointerType: 'touch', isPrimary: true },
+    (event) => {
+      event.defaultPrevented = true;
+      f.document.activeElement = {};
+      f.dispatch('blur', { target: f.input, relatedTarget: f.canvas });
+      f.document.activeElement = f.canvas;
+      f.dispatch('focus', { target: f.canvas, relatedTarget: f.input });
+    },
+  );
+  f.dispatch(
+    'touchstart',
+    { target: f.canvas, touches: { length: 1 }, changedTouches: { length: 1 } },
+    (event) => {
+      event.defaultPrevented = true;
+      event.cancelBubble = true;
+    },
+  );
+  const up = f.dispatch('pointerup', {
+    target: f.canvas,
+    pointerType: 'touch',
+    isPrimary: true,
+  });
+  // eframe's document listener can be registered after this document-bubble
+  // observer, so later prevention is not an after-engine assertion.
+  up.defaultPrevented = true;
+  f.dispatch('touchend', {
+    target: f.canvas,
+    touches: { length: 0 },
+    changedTouches: { length: 1 },
+  });
+  const state = f.drain()!;
+  assert.deepEqual(
+    state.rows
+      .filter((row) => row[2] === 0)
+      .map((row) => [row[1], row[3], row[9], ...row.slice(13)]),
+    [
+      [1, 9, 1, 2, 0, 2, 1, -1, -1, 0],
+      [2, 6, 3, 1, 2, 0, -1, -1, -1, 0],
+      [3, 5, 2, 2, 1, 0, -1, -1, -1, 0],
+      [4, 12, 2, 2, 0, 0, -1, 1, 1, 0],
+      [5, 10, 2, 2, 0, 2, 1, -1, -1, 0],
+      [6, 13, 2, 2, 0, 0, -1, 0, 1, 0],
+    ],
+  );
+  assert.equal(state.rows.find((row) => row[1] === 1 && row[2] === 1)![19], 1);
+  assert.equal(state.rows.find((row) => row[1] === 5 && row[2] === 1)![19], 0);
+  assert.ok(
+    !state.rows.some((row) => row[1] === 4 && row[2] === 1),
+    'stopped propagation has no bubble sample',
+  );
+  assert.ok(state.rows.filter((row) => row[2] === 2).every((row) => row[19] === -1));
+  assert.ok(
+    state.rows
+      .filter((row) => row[3]! >= 9)
+      .every((row) => row[6] === 0 && row[7] === -1 && row[8] === -1),
+  );
+});
+
+test('pointer kinds, cancellation and bounded touch counts contain no keys, contacts, coordinates or text', () => {
+  const f = fixture();
+  Object.defineProperty(f.input, 'value', {
+    get: () => {
+      throw new Error('contact samples must not read TextAgent text');
+    },
+  });
+  const forbidden = () => {
+    throw new Error('private event field was read');
+  };
+  for (const [pointerType, expected] of [
+    ['mouse', 1],
+    ['touch', 2],
+    ['pen', 3],
+    ['__proto__', 4],
+  ] as const) {
+    f.dispatch('pointercancel', {
+      target: f.canvas,
+      pointerType,
+      isPrimary: false,
+      get data() {
+        return forbidden();
+      },
+      get key() {
+        return forbidden();
+      },
+      get pointerId() {
+        return forbidden();
+      },
+      get clientX() {
+        return forbidden();
+      },
+      get clientY() {
+        return forbidden();
+      },
+    });
+    const last = f
+      .drain()!
+      .rows.filter((row) => row[2] === 0)
+      .at(-1)!;
+    assert.deepEqual([last[3], last[15], last[16]], [11, expected, 0]);
+  }
+  f.dispatch('touchcancel', {
+    target: f.canvas,
+    touches: {
+      length: 100000,
+      get 0() {
+        return forbidden();
+      },
+    },
+    changedTouches: {
+      length: 2,
+      get 0() {
+        return forbidden();
+      },
+    },
+  });
+  const state = f.drain()!;
+  const cancelled = state.rows.filter((row) => row[2] === 0).at(-1)!;
+  assert.deepEqual([cancelled[3], cancelled[17], cancelled[18]], [14, 65535, 2]);
+  assert.ok(state.rows.every((row) => row.length === 20 && row.every(Number.isSafeInteger)));
+});
+
+test('the strict v2 decoder rejects v1 rows, extra fields and inapplicable or misleading scalar values', () => {
+  const f = fixture();
+  f.dispatch('pointerdown', { target: f.canvas, pointerType: 'touch', isPrimary: true });
+  f.drain();
+  const encoded = f.sent.at(-1)!;
+  const reject = (change: (value: { marker: string; rows: number[][] }) => void) => {
+    const value = JSON.parse(encoded);
+    change(value);
+    assert.equal(decodeDeckcraftInputOrderQa(JSON.stringify(value), token), null);
+  };
+  reject((v) => {
+    v.marker = 'zoen.deckcraft.input-order.qa.v1';
+  });
+  reject((v) => {
+    v.rows[0]!.length = 13;
+  });
+  reject((v) => {
+    v.rows[0]!.push(0);
+  });
+  for (const [index, bad] of [
+    [3, 15],
+    [13, 4],
+    [14, 1],
+    [15, 0],
+    [16, 2],
+    [17, 1],
+    [18, 1],
+    [19, -1],
+  ] as const)
+    reject((v) => {
+      v.rows[0]![index] = bad;
+    });
+  reject((v) => {
+    v.rows.find((row) => row[2] === 2)![19] = 0;
+  });
+});
+
+test('the exact canvas/TextAgent pair is checked on capture, bubble and later-task sampling', () => {
+  const missing = fixture();
+  missing.canvas.nextElementSibling = {};
+  missing.dispatch('pointerdown', {
+    target: missing.canvas,
+    pointerType: 'touch',
+    isPrimary: true,
+  });
+  assert.equal(missing.drain(), null);
+  const f = fixture();
+  f.dispatch('pointerdown', { target: f.canvas, pointerType: 'touch', isPrimary: true }, () => {
+    f.canvas.nextElementSibling = { ...f.input };
+  });
+  assert.deepEqual(
+    f.drain()!.rows.map((row) => row[2]),
+    [0],
+    'a different connected sibling cannot inherit samples',
   );
 });
