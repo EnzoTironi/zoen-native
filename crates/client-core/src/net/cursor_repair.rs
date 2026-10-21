@@ -5,17 +5,21 @@ use tokio::sync::watch;
 /// A healthy socket is not proof that its at-most-once live fanout was complete.
 /// Recheck durable cursors once per minute without turning the 50ms UI/crypto
 /// maintenance pass into a log poll. This bounds repair admission, not delivery
-/// latency when the relay or authorization is unavailable. An unanswered scan reconnects
-/// through the existing backoff after 30s; Pong cannot renew that deadline.
+/// latency when the relay or authorization is unavailable. Initial catch-up must
+/// advance verified durable cursors within 60s; after its first SyncDone, an
+/// unanswered periodic scan reconnects after 30s. These are provisional Zoen
+/// inactivity policies, not measured SLAs or Signal constants. Pong renews neither.
 #[derive(Clone, Copy)]
 pub(super) struct CursorRepairPolicy {
     pub(super) interval: Duration,
     pub(super) timeout: Duration,
+    pub(super) initial_inactivity: Duration,
 }
 impl CursorRepairPolicy {
     pub(super) const DEFAULT: Self = Self {
         interval: Duration::from_secs(60),
         timeout: Duration::from_secs(30),
+        initial_inactivity: Duration::from_secs(60),
     };
 }
 
@@ -28,16 +32,30 @@ pub(super) struct CursorRepair {
     repair_position: Option<usize>,
     due: Option<tokio::time::Instant>,
     deadline: Option<tokio::time::Instant>,
+    initial_deadline: Option<tokio::time::Instant>,
 }
 impl CursorRepair {
-    pub(super) fn new(policy: CursorRepairPolicy) -> Self {
+    pub(super) fn new(policy: CursorRepairPolicy, now: tokio::time::Instant) -> Self {
         Self {
             policy,
             pending: 1,
             repair_position: None,
             due: None,
             deadline: None,
+            initial_deadline: Some(now + policy.initial_inactivity),
         }
+    }
+    /// Call only after Applied/Confirmed AND a durable next_seq increase,
+    /// measured under the same engine lock. The wire has no per-Space replay
+    /// frontier: genuine advancement in any Space renews stream inactivity.
+    /// Never revive an already-expired owner while its watchdog is also ready.
+    pub(super) fn progressed(&mut self, now: tokio::time::Instant) -> bool {
+        let Some(until) = self.initial_deadline.filter(|until| now < *until) else {
+            return false;
+        };
+        let next = now + self.policy.initial_inactivity;
+        self.initial_deadline = Some(next);
+        next != until
     }
     pub(super) fn submitted(&mut self) -> bool {
         let Some(next) = self.pending.checked_add(1) else {
@@ -64,6 +82,8 @@ impl CursorRepair {
             return;
         }
         self.pending -= 1;
+        // The first ordered completion belongs to the initial full Sync.
+        self.initial_deadline = None;
         if let Some(position) = self.repair_position {
             if position == 1 {
                 self.repair_position = None;
@@ -82,7 +102,8 @@ impl CursorRepair {
         self.due
     }
     pub(super) fn abort_deadline(&self) -> Option<tokio::time::Instant> {
-        self.deadline
+        self.initial_deadline
+            .or(self.deadline)
             .or_else(|| self.due.map(|due| due + self.policy.timeout))
     }
     pub(super) fn in_flight(&self) -> bool {
@@ -91,7 +112,10 @@ impl CursorRepair {
     pub(super) fn abandon_transport(&self, expired: bool, now: tokio::time::Instant) -> bool {
         // A ready work future may win the fair select over an already-ready
         // watchdog. Never enter another unbounded close after the same budget.
-        expired || self.in_flight() || self.abort_deadline().is_some_and(|until| now >= until)
+        expired
+            || self.initial_deadline.is_some()
+            || self.in_flight()
+            || self.abort_deadline().is_some_and(|until| now >= until)
     }
 }
 
@@ -134,8 +158,8 @@ pub(super) async fn drive(
 }
 
 /// Cleanup must not outlive the CURRENT repair budget after the dispatcher exits.
-/// Stop/retirement abandons without polling another transport write. A failed
-/// initial catch-up has no periodic budget yet and retains its prior close path.
+/// Stop/retirement or an incomplete initial catch-up abandons without polling
+/// another transport write. Periodic cleanup retains its current deadline.
 pub(super) async fn close_transport<T>(
     close: impl Future<Output = T>,
     deadline: Option<tokio::time::Instant>,
