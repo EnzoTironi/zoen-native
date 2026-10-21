@@ -63,6 +63,23 @@ actual configured Gate and production transport for one synthetic inbound check.
 It requires `ZOEN_LIVE_CLEF_QA=1` in addition to the existing credentials and cannot
 be activated by an ordinary test run. It reads no Zoen account/profile/history.
 
+Executed against code commit `52365dcb`:
+
+| Batch | Result |
+| --- | --- |
+| All Gate unit tests | 17 passed |
+| Actual CLI transport regression tests | 6 passed; live probe ignored by default |
+| All citizen runtime journeys | 11 passed |
+| Explicit configured Gate hosted probe | 1 passed; `allow`, `model:clear`, 512 ms provider call |
+| Strict Clippy for Gate and CLI including tests | Both passed |
+| Rustfmt, documentation formatting and diff whitespace | Passed |
+
+The configured hosted probe returned probabilities 0.031 and 0.0166 for the two
+inbound-injection questions. The two hosted calls in this qualification are the
+small three-type contract request and that production Gate request. There are no
+additional retries, background host runs or conversational-model calls in this
+slice. The separate runtime journey suite uses its explicit deterministic Brain.
+
 Evidence and raw command results are retained under
 `/Users/enzotironi/.codex/builds/zoen-cloudflare-clef-v260/`.
 The local schema validation and hosted probes do not establish a durable shared
