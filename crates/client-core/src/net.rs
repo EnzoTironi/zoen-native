@@ -1611,6 +1611,7 @@ async fn fetch_link_attempt(
 mod tests {
     mod cursor_repair;
     mod incoming_pipeline;
+    mod initial_catchup;
     mod media_dependencies;
 
     #[tokio::test]
