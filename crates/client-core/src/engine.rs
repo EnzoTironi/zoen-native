@@ -1162,16 +1162,39 @@ impl Engine {
     }
 
     fn personal_space(&self) -> Option<SpaceId> {
+        let me = self.me.as_deref()?;
         self.space_order
             .iter()
             .find(|s| {
-                self.state
-                    .spaces
-                    .get(*s)
-                    .map(|x| x.kind == SpaceKind::Personal)
-                    .unwrap_or(false)
+                self.state.spaces.get(*s).is_some_and(|space| {
+                    space.kind == SpaceKind::Personal
+                        && space
+                            .members
+                            .iter()
+                            .any(|(id, role)| id == me && *role == Role::Owner)
+                })
             })
             .cloned()
+    }
+
+    /// Local signed bootstrap, also used to repair linked databases created before
+    /// Personal Spaces were installed there. This does not establish relay sync.
+    pub(crate) fn ensure_personal_space(&mut self) -> R<SpaceId> {
+        let me = self.me_id()?;
+        if let Some(personal) = self.personal_space() {
+            return Ok(personal);
+        }
+        let personal = new_id("sp");
+        self.append(
+            &personal,
+            &me,
+            EventBody::SpaceCreated {
+                title: "Personal".into(),
+                kind: SpaceKind::Personal,
+                privacy: Privacy::EndToEnd,
+            },
+        )?;
+        Ok(personal)
     }
 
     fn line_hash(line: &PlanLine) -> String {
@@ -1887,16 +1910,15 @@ impl Engine {
         Ok(self.entry_dto(s.entries.last().expect("acabou de entrar")))
     }
 
-    /// Pins, archives or mutes one of my chats on all my devices (my Personal Space).
+    /// Pins, archives or mutes one of my chats in its signed local Personal log.
+    /// Replication of this log across devices is a separate transport contract.
     pub fn set_chat_prefs(&mut self, space: &str, prefs: types::ChatPrefs) -> R<()> {
         let me = self.me_id()?;
         self.space_state(space)?;
         if self.state.chat_prefs.get(space) == Some(&prefs) {
             return Ok(());
         }
-        let personal = self
-            .personal_space()
-            .ok_or_else(|| not_found(&t("Espaço pessoal", "Personal Space")))?;
+        let personal = self.ensure_personal_space()?;
         self.append(
             &personal,
             &me,
