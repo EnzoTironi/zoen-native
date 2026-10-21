@@ -98,3 +98,13 @@ Viewer speed, chapters, scrub-frame previews, vertical precision scaling, fetch
 shimmer, interactive glass morph and blur visibility transitions are not ported
 by the bounded playback controls adaptation. Source metrics/assets do not imply
 full Telegram pixel or interaction parity.
+
+The installed Native20 batch exposed a scrubber touch-delivery failure: two
+horizontal drags left playback at zero although play/pause and seek buttons
+worked. The pager now delivers content touches immediately, using UIKit's
+default refusal to cancel a tracking UIControl. Scrubbing no longer toggles
+`isScrollEnabled` on its ancestor pager during `beginTracking`; busy and zoom
+still gate paging. This removes two dispatch hazards without adding a competing
+gesture recognizer. The exact cancellation cause was not instrumented. A sixth
+UIKit regression checks the actual pager/control contract and is SDK-typechecked,
+not executed. Installed verification of this follow-up remains required.

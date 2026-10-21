@@ -111,6 +111,10 @@ import UIKit
     root.onLayout = { [weak self] in self?.reflow() }
     root.accessibilityEscape = { [weak self] in self?.emit("back") }
     pager.isPagingEnabled = true; pager.alwaysBounceHorizontal = true
+    // UIScrollView's delay can let its pan win before the scrubber receives
+    // touchesBegan. Deliver immediately; UIKit already preserves UIControl
+    // tracking through touchesShouldCancelInContentView's default contract.
+    pager.delaysContentTouches = false
     pager.showsHorizontalScrollIndicator = false; pager.delegate = self
     pager.contentInsetAdjustmentBehavior = .never
     pager.accessibilityIdentifier = "attachment-gallery-pager"
@@ -307,7 +311,7 @@ import UIKit
   }
   private func updateControls() {
     let aligned = previewIsVisible
-    pager.isScrollEnabled = !busy && pages[previewId]?.isZoomed != true && pages[previewId]?.isScrubbing != true
+    pager.isScrollEnabled = !busy && pages[previewId]?.isZoomed != true
     close.isEnabled = !busy; edit.isEnabled = !busy && canEdit && aligned
     add.isEnabled = !busy && canAdd
     sendButton.isEnabled = !busy && canSend && aligned; sendGlass.alpha = sendButton.isEnabled ? 1 : 0.2
@@ -851,7 +855,6 @@ private struct GalleryItem:Equatable {
     playback?.setActive(active);if !active{stop()};refreshVideoPresentation()
   }}
   var isZoomed:Bool{abs(zoom.zoomScale-1)>0.01}
-  var isScrubbing:Bool{playback?.state.scrubbing == true}
   init(item:GalleryItem,allowNetwork:Bool,conversation:Bool=false){
     self.conversation=conversation
     super.init(item:item,targetPixels:2048,allowNetwork:allowNetwork)
@@ -902,7 +905,6 @@ private struct GalleryItem:Equatable {
       let transport=ZoenConversationVideoPlayback(player:player)
       let controls=ZoenConversationVideoControls(playback:transport)
       playback=transport;videoControls=controls;addSubview(controls);controls.frame=bounds;bringSubviewToFront(play)
-      controls.interacting = { [weak self] _ in self?.zoomChanged?(false) }
       transport.setActive(active);refreshVideoPresentation()
     }
     playerStatus=item.observe(\.status,options:[.initial,.new]){[weak self,weak player] item,_ in

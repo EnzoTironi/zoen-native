@@ -22,7 +22,6 @@ import Lottie
   private var retired = false
   private var safeArea = UIEdgeInsets.zero
   private var captionFrame = CGRect.zero
-  var interacting: ((Bool) -> Void)?
 
   init(playback: ZoenConversationVideoPlayback) {
     self.playback = playback
@@ -61,7 +60,6 @@ import Lottie
     guard active, chromeVisible, !retired, let playback else { return }; body(playback)
   }
   private func update(state: ZoenConversationVideoPlayback.State) {
-    let wasScrubbing = scrubber.playbackState.scrubbing
     scrubber.playbackState = state
     backward.isEnabled = active && state.seekable
     forward.isEnabled = active && state.seekable
@@ -80,7 +78,6 @@ import Lottie
       lastPlaying = state.playing
       setNeedsLayout()
     }
-    if wasScrubbing != state.scrubbing { interacting?(state.scrubbing) }
     applyVisibility()
   }
   private func applyVisibility() {
@@ -122,7 +119,7 @@ import Lottie
   func retire() {
     retired = true; active = false; animation.stop(); isUserInteractionEnabled = false
     scrubber.cancelTracking(with: nil); accessibilityElementsHidden = true
-    interacting = nil; playback = nil
+    playback = nil
   }
 }
 

@@ -84,6 +84,23 @@ import XCTest
     scrubber.endTracking(nil, with: nil)
     XCTAssertEqual(endings, [false])
   }
+  func testActualPagerDeliversScrubberTouchesWithoutCancellingItsControl() throws {
+    let file = URL.temporaryDirectory.appendingPathComponent("zoen-video-touch-\(UUID().uuidString).mp4")
+    try Data("Synthetic layout-only fixture".utf8).write(to: file)
+    defer { try? FileManager.default.removeItem(at: file) }
+    let gallery = ZoenAttachmentGalleryContent { _, _ in }
+    defer { gallery.retire() }
+    gallery.view.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+    try gallery.update(model: ["source": "conversation", "screen": "preview", "previewId": "a", "revision": "one", "selected": [String](),
+      "items": [["id": "a", "name": "Synthetic video", "mime": "video/mp4", "uri": file.absoluteString]],
+      "caption": ["value": "Caption"]], appearance: .init(background: .black, text: .white, secondary: .gray, accent: .white, separator: .darkGray, bottomInset: 0))
+    gallery.updatePresentation(keyboardHeight: 0, safeArea: .zero)
+    gallery.view.layoutIfNeeded()
+    let scrubber = try control(gallery.view, "conversation-video-scrubber")
+    XCTAssertFalse(gallery.scrollView.delaysContentTouches)
+    XCTAssertFalse(gallery.scrollView.touchesShouldCancel(in: scrubber))
+    XCTAssertTrue(gallery.scrollView.isScrollEnabled)
+  }
   func testActualGalleryLongCaptionCannotCoverPlayOrScrubberInEitherSizeClass() throws {
     let file = URL.temporaryDirectory.appendingPathComponent("zoen-video-layout-\(UUID().uuidString).mp4")
     try Data("Synthetic layout-only media; playback is separately host-tested".utf8).write(to: file)
