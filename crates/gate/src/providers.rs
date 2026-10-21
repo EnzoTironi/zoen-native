@@ -144,6 +144,10 @@ impl DecisionProvider for SystemOneHttp {
 
 // ── Cloudflare Clef ──
 
+// Text-only Gate profile: bound the complete state + questions conservatively
+// below Clef's 64K-token context, leaving room for provider-side framing.
+const MAX_CLEF_REQUEST_BYTES: usize = 32 * 1024;
+
 /// Cloudflare's Clef decision models on Workers AI (`@cf/cloudflare/clef`, `clef-flash`).
 /// System One's request and answers, inside Cloudflare's `{ success, result, errors }`
 /// envelope at `/accounts/{account}/ai/run/@cf/cloudflare/{model}`.
@@ -254,7 +258,7 @@ impl DecisionProvider for Clef {
     fn decide(&self, req: &DecisionRequest) -> Result<DecisionResponse, GateError> {
         validate_clef_request(req)?;
         let body = system_one_body(req, Some(self.model.id())).to_string();
-        if body.len() > 256 * 1024 {
+        if body.len() > MAX_CLEF_REQUEST_BYTES {
             return Err(clef_invalid("request too large"));
         }
         let out = self

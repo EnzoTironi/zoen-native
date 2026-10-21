@@ -40,6 +40,12 @@ Four-decimal distribution rounding is bounded explicitly; probabilities are neve
 renormalized and a missing confidence does not become certainty. Invalid replies
 use the existing `Ask`/irreversible `Block` failure path, without automatic retry.
 Other provider wire formats are not migrated to the Clef schema.
+The complete serialized text-only request is capped at 32 KiB, including question
+instructions and criteria. This conservative Zoen profile leaves room within the
+documented 64K-token model context; it is not a tokenizer implementation or an
+upstream maximum. A separate RED against the intermediate 256-KiB budget proves
+that two individually admitted 6,000-character fields could otherwise exceed the
+complete-request budget. The request is refused without dispatch or clipping.
 
 The retained synthetic fixture has no human data. It checks `2 + 2 = 4`, routes
 the topic between mathematics/weather, and rates an explicitly harmless impact.

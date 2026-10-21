@@ -309,3 +309,15 @@ fn clef_contract_gate_invalid_probability_obeys_existing_fail_policy() {
     assert_eq!(gate.check(&check).outcome, Outcome::Block);
     assert_eq!(transport.requests.lock().unwrap().len(), 2);
 }
+
+#[test]
+fn clef_contract_complete_text_and_questions_share_one_conservative_byte_budget() {
+    let mut req = request();
+    req.input = "🙂".repeat(6000);
+    if let Question::Predicate { instructions, .. } = &mut req.questions[0] {
+        *instructions = "🙂".repeat(6000);
+    }
+    let (clef, transport) = provider(LIVE.into());
+    assert!(clef.decide(&req).is_err());
+    assert!(transport.requests.lock().unwrap().is_empty());
+}
