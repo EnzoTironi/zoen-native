@@ -5,12 +5,14 @@
 //! owner is offline. Exact code covers crypto, sync and permissions; persona and behavior
 //! live in prompts and free JSON state.
 
+mod codex;
 mod creator;
 mod host;
 mod models;
 mod profile;
 pub mod testing;
 
+pub use codex::CodexBrain;
 pub use creator::{creator_definition, CREATOR_HANDLE, CREATOR_NAME};
 pub use host::{
     parse_reply, AgentSpec, Brain, BrainOut, Host, HostError, PublicArtifactReferences, Runtime,
