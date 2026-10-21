@@ -34,6 +34,10 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::time::Instant;
 
+/// Existing decision context ceiling. Oversize checks fail to ask/block rather
+/// than allowing a model to judge a prefix that omits relevant instructions.
+const MAX_DECISION_INPUT_CHARS: usize = 6000;
+
 // ───────────────────────────── questions and answers ─────────────────────────────
 
 /// A typed question. `Predicate` is System One's `noul` and OpenAI's `predicate`.
@@ -396,17 +400,21 @@ impl Gate {
             }
         }
         // 2. Pick the provider: sensitive stays on device; remote gets redacted text.
-        let (provider, input): (&dyn DecisionProvider, String) = if c.sensitive {
+        let (provider, redacted): (&dyn DecisionProvider, bool) = if c.sensitive {
             match &self.on_device {
-                Some(p) => (p.as_ref(), describe(c, false)),
-                None => (&self.fallback, describe(c, false)),
+                Some(p) => (p.as_ref(), false),
+                None => (&self.fallback, false),
             }
         } else if let Some(p) = &self.remote {
-            (p.as_ref(), describe(c, true))
+            (p.as_ref(), true)
         } else if let Some(p) = &self.on_device {
-            (p.as_ref(), describe(c, false))
+            (p.as_ref(), false)
         } else {
-            (&self.fallback, describe(c, false))
+            (&self.fallback, false)
+        };
+        let Some(input) = describe(c, redacted) else {
+            let (outcome, rule) = fail(c, "decision context too large");
+            return self.finish(c, outcome, rule, provider.name(), BTreeMap::new(), start);
         };
         let req = DecisionRequest {
             input,
@@ -620,7 +628,7 @@ fn fail(c: &Check, why: &str) -> (Outcome, String) {
 }
 
 /// The text the model sees: the request plus what the user just did. Redacted for remote.
-fn describe(c: &Check, redacted: bool) -> String {
+fn describe(c: &Check, redacted: bool) -> Option<String> {
     let mut s = String::new();
     if let Some(i) = &c.user_intent {
         s.push_str(&format!("User just said or did: {i}\n"));
@@ -629,11 +637,13 @@ fn describe(c: &Check, redacted: bool) -> String {
         s.push_str(&format!("Capability: {cap}\n"));
     }
     s.push_str(&c.text);
-    let s: String = s.chars().take(6000).collect();
+    if s.chars().count() > MAX_DECISION_INPUT_CHARS {
+        return None;
+    }
     if redacted {
-        redact::redact(&s)
+        Some(redact::redact(&s))
     } else {
-        s
+        Some(s)
     }
 }
 

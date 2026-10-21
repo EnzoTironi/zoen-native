@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 use zoen_agentd::citizen::testing::{fault, scripted_brain_from_env};
-use zoen_agentd::citizen::ModelBrain;
+use zoen_agentd::citizen::{CodexBrain, ModelBrain};
 use zoen_agentd::{
     AgentSpec, Brain, Definition, Runtime, ToolCall, ToolDef, ToolHost, ToolStep, Turn,
     TurnContext, TurnOutcome,
@@ -150,9 +150,15 @@ fn brain() -> Result<Box<dyn Brain>, String> {
     if let Some(scripted) = scripted_brain_from_env() {
         return scripted;
     }
-    ModelBrain::workers_ai_from_env()
-        .map(|b| Box::new(b) as Box<dyn Brain>)
-        .ok_or_else(|| "no model: set CLOUDFLARE_WORKERS_AI_TOKEN and CLOUDFLARE_ACCOUNT_ID".into())
+    match env("ZOEN_BRAIN").as_deref() {
+        Some("codex-local") => CodexBrain::from_env().map(|b| Box::new(b) as Box<dyn Brain>),
+        None | Some("workers-ai") => ModelBrain::workers_ai_from_env()
+            .map(|b| Box::new(b) as Box<dyn Brain>)
+            .ok_or_else(|| {
+                "no model: set CLOUDFLARE_WORKERS_AI_TOKEN and CLOUDFLARE_ACCOUNT_ID".into()
+            }),
+        Some(_) => Err("unsupported ZOEN_BRAIN; use workers-ai or codex-local".into()),
+    }
 }
 
 /// The engine's events, as a wake-up and a connection state.
@@ -1297,3 +1303,9 @@ mod deckcraft_binding_tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "agent/codex_brain_tests.rs"]
+mod codex_brain_tests;
+#[cfg(test)]
+pub(crate) use codex_brain_tests::exercise_codex_deckcraft;

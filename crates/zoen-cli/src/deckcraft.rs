@@ -529,6 +529,9 @@ mod tests {
     mod restart {
         include!("deckcraft/restart_tests.rs");
     }
+    mod codex {
+        include!("deckcraft/codex_tests.rs");
+    }
     async fn inspect(f: &Fixture, worker: &DeckcraftWorker) -> Value {
         serde_json::from_str(
             &call(
