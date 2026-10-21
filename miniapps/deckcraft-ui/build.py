@@ -13,6 +13,8 @@ import sys
 import tarfile
 import time
 
+from dependency_experiment import load_experiment, stage_experiment
+
 ROOT = Path(__file__).resolve().parent
 
 def sha(data):
@@ -27,7 +29,7 @@ def checked_file(path, digest):
 def run(command, cwd, env=None, timeout=30):
     return subprocess.check_output(command, cwd=cwd, env=env, timeout=timeout, stderr=subprocess.STDOUT).decode()
 
-def prepare(upstream, fonts, work, metadata):
+def prepare(upstream, fonts, work, metadata, experiment=None, experiment_crate=None):
     # Archive the pinned Git object, never the caller's working tree or local changes.
     archive = subprocess.check_output(['git', '-C', str(upstream), 'archive', '--format=tar', metadata['revision']], timeout=30)
     source = work / 'source'
@@ -45,6 +47,12 @@ def prepare(upstream, fonts, work, metadata):
         run(['git', 'apply', '--check', str(path)], source)
         run(['git', 'apply', str(path)], source)
     checked_file(source / 'Cargo.lock', metadata['managedCargoLockSha256'])
+    if experiment is not None:
+        def apply_dependency_patch(target, patch):
+            run(['git', 'apply', '--check', str(patch)], target)
+            run(['git', 'apply', str(patch)], target)
+        proof = stage_experiment(source, experiment, experiment_crate, ROOT, apply_dependency_patch)
+        (work / 'dependency-experiment.json').write_text(json.dumps(proof, indent=2) + '\n')
     index = source / 'apps/deckcraft-web/index.html'
     original = index.read_text()
     marker = 'data-bin="deckcraft-web"'
@@ -77,8 +85,13 @@ def main():
     parser.add_argument('--cache-target', type=Path, help='Optional existing inactive Cargo target, copied read-only into the private target')
     parser.add_argument('--deadline', type=int, default=1800)
     parser.add_argument('--prepare-only', action='store_true')
+    parser.add_argument('--experiment', choices=['eframe-shift'], help='Explicit unqualified browser dependency experiment; default off')
+    parser.add_argument('--experiment-crate', type=Path, help='Existing local exact dependency .crate archive; never downloads or edits Cargo registry source')
     args = parser.parse_args()
     metadata = json.loads((ROOT / 'upstream.json').read_text())
+    if bool(args.experiment) != bool(args.experiment_crate):
+        raise ValueError('Experiment and exact local crate input must be supplied together')
+    experiment = load_experiment(ROOT, args.experiment, metadata) if args.experiment else None
     if not 1 <= args.deadline <= 3600 or not args.work.is_absolute():
         raise ValueError('Use an absolute private directory and a bounded deadline <=3600s')
     work = args.work.resolve()
@@ -87,9 +100,11 @@ def main():
     if args.base_url and not args.base_url.endswith('/'):
         raise ValueError('An explicit code-asset base URL must end in /; build does not publish it')
     work.mkdir(exist_ok=False, parents=True)
-    source, fonts = prepare(args.upstream.resolve(), args.fonts.resolve(), work, metadata)
+    source, fonts = prepare(args.upstream.resolve(), args.fonts.resolve(), work, metadata, experiment, args.experiment_crate.resolve() if args.experiment_crate else None)
     receipt = {'revision': metadata['revision'], 'patches': metadata['patches'], 'prepared': True, 'advertised': False,
                'jobs': 1, 'binaryenCores': 1, 'deadlineSeconds': args.deadline}
+    if experiment is not None:
+        receipt['dependencyExperiment'] = json.loads((work / 'dependency-experiment.json').read_text())
     (work / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
     if args.prepare_only:
         (work / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')

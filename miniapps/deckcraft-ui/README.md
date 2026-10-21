@@ -98,3 +98,20 @@ Node/module tests and a wasm32 check cannot establish WKWebView WebGL support,
 peak memory, native close/rotation behavior, accepted document durability or
 canonical export. Those require the final managed package and real runtime
 proof, with passed/failed/pending reported separately.
+
+## Opt-in Shift experiment
+
+The default builder and worker recipe stay unchanged. An explicitly requested
+`--experiment eframe-shift --experiment-crate /absolute/eframe-0.36.2.crate` stages
+the complete checksum-pinned published crate inside the new private source tree,
+applies 0015 through the normal checked patch mechanism, and verifies the exact
+root lock and dependency source trees. It never patches the shared Cargo cache,
+downloads code, changes the pinned upstream revision, or relaxes locked/offline
+builds. `receipt.json` records the experiment and before/after tree manifests.
+
+This is an unqualified WebKit-input hypothesis, not a shipping correction.
+The native before/after title/Notes, mixed-case/lowercase, modifier/deletion/IME
+and canonical save/reopen/export proofs must pass before promotion. Keep the
+original assets and manifests for comparison. The independent headless worker
+source/lock is not an input for this experiment. Current dependency license audit
+limits remain; preserve eframe's actual pinned licenses before distribution.
