@@ -4,6 +4,8 @@ use super::*;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
+type UnpackedAttachment = (types::FileDoc, BTreeMap<String, Vec<u8>>);
+
 const MAX_FILE_BYTES: usize = 64 << 20;
 const MAX_HEADER_BYTES: usize = 256 << 10;
 const MAX_FRAMED_BYTES: usize = MAX_FILE_BYTES + (2 << 20) + MAX_HEADER_BYTES;
@@ -126,10 +128,7 @@ fn descriptor(doc: &types::FileDoc) -> serde_json::Value {
 }
 
 /// The outer framing has exactly one bounded sealed frame for every ordered item.
-fn unpack_batch(
-    framed: &[u8],
-    count: usize,
-) -> Result<Vec<(types::FileDoc, BTreeMap<String, Vec<u8>>)>, String> {
+fn unpack_batch(framed: &[u8], count: usize) -> Result<Vec<UnpackedAttachment>, String> {
     if framed.len() > MAX_BATCH_FRAMED_BYTES {
         return Err("Attachment batch too large.".into());
     }
@@ -162,7 +161,7 @@ fn unpack_batch(
 }
 
 /// Validate the actual sealed frame, not caller-declared size/hash metadata alone.
-fn unpack(framed: &[u8]) -> Result<(types::FileDoc, BTreeMap<String, Vec<u8>>), String> {
+fn unpack(framed: &[u8]) -> Result<UnpackedAttachment, String> {
     if framed.len() < 4 || framed.len() > MAX_FRAMED_BYTES {
         return Err("Invalid attachment payload.".into());
     }

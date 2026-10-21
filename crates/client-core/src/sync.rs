@@ -366,7 +366,7 @@ impl Engine {
                     {
                         if let Some(local) = self.me.as_deref() {
                             scoped.retain_failed_attachment(
-                                &e,
+                                e,
                                 local,
                                 sources
                                     .get(&(e.space.as_str(), item.as_str(), local))
@@ -374,10 +374,10 @@ impl Engine {
                             );
                         }
                     } else if matches!(e.body, EventBody::MessagePosted { .. }) {
-                        let context = plans.pending(scoped, &self.identities, &e)?;
-                        scoped.apply_checked(&e, &self.identities, &context);
+                        let context = plans.pending(scoped, &self.identities, e)?;
+                        scoped.apply_checked(e, &self.identities, &context);
                     } else {
-                        scoped.retain_failed_voice(&e);
+                        scoped.retain_failed_voice(e);
                     }
                 }
                 continue;
@@ -389,8 +389,8 @@ impl Engine {
                 optimistic.insert(e.space.clone());
             }
             let scoped = projections.entry(e.space.clone()).or_default();
-            let context = plans.pending(scoped, &self.identities, &e)?;
-            scoped.apply_checked(&e, &self.identities, &context);
+            let context = plans.pending(scoped, &self.identities, e)?;
+            scoped.apply_checked(e, &self.identities, &context);
         }
         let state = Self::merge_space_projections(&projections, &order);
         self.state = state;
