@@ -28,25 +28,30 @@ impl Drop for Directory {
 
 #[tokio::test(flavor = "current_thread")]
 async fn public_media_upload_400_never_confirms_unrecoverable_attachment() {
-    terminal_upload(400, true).await;
+    terminal_upload(400, true, false).await;
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn public_media_upload_413_never_confirms_unrecoverable_attachment() {
-    terminal_upload(413, true).await;
+    terminal_upload(413, true, false).await;
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn public_media_upload_transient_cold_retry_keeps_exact_intent_and_remote_bytes() {
-    terminal_upload(503, true).await;
+    terminal_upload(503, true, false).await;
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn public_default_media_upload_refusal_retains_caption_card_and_bytes_after_cold_reopen() {
-    terminal_upload(400, false).await;
+    terminal_upload(400, false, false).await;
 }
 
-async fn terminal_upload(status: u16, file_presentation: bool) {
+#[tokio::test(flavor = "current_thread")]
+async fn public_voice_upload_refusal_retains_voice_metadata_controls_and_bytes_after_cold_reopen() {
+    terminal_upload(400, false, true).await;
+}
+
+async fn terminal_upload(status: u16, file_presentation: bool, voice: bool) {
     let retrying = status == 503;
     let grouped = status == 413;
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -84,12 +89,26 @@ async fn terminal_upload(status: u16, file_presentation: bool) {
         space_id: space.clone(),
         thread_root_id: None,
     };
-    let plain = b"%PDF-1.4 private upload refusal fixture".to_vec();
-    let ids = if grouped { vec!["a", "b"] } else { vec!["a"] };
+    let plain = if voice {
+        pcm_wave()
+    } else {
+        b"%PDF-1.4 private upload refusal fixture".to_vec()
+    };
+    let ids = if voice {
+        vec!["original", "edited"]
+    } else if grouped {
+        vec!["a", "b"]
+    } else {
+        vec!["a"]
+    };
     let mut content = serde_json::json!({"kind":"attachments", "options":{"presentation":"file", "grouping":if grouped {"grouped"} else {"separate"}},
         "items":ids.iter().map(|id| serde_json::json!({"asset_id":id, "caption":format!("Keep caption {id}"), "mutation_id":format!("upload-{id}")})).collect::<Vec<_>>()});
     if !file_presentation {
         content.as_object_mut().unwrap().remove("options");
+    }
+    if voice {
+        content = serde_json::json!({"kind":"voice", "source_asset_id":"original", "editor":{"trim":[0,250]},
+            "render":{"asset_id":"edited","mime":"audio/wav","duration_ms":250.0,"levels":[0.0,0.0],"transcript":"Keep voice transcript"}});
     }
     let content = content.to_string();
     let saved = sender
@@ -100,9 +119,13 @@ async fn terminal_upload(status: u16, file_presentation: bool) {
             ids.iter()
                 .map(|id| MediaDraftAssetInput {
                     id: (*id).into(),
-                    name: format!("{id}.pdf"),
-                    mime: "application/pdf".into(),
-                    bytes: if *id == "a" {
+                    name: format!("{id}.{}", if voice { "wav" } else { "pdf" }),
+                    mime: if voice {
+                        "audio/wav".into()
+                    } else {
+                        "application/pdf".into()
+                    },
+                    bytes: if voice || *id == "a" {
                         plain.clone()
                     } else {
                         b"%PDF-1.4 group second file".to_vec()
@@ -122,7 +145,7 @@ async fn terminal_upload(status: u16, file_presentation: bool) {
     });
     let message = sent.entries[0].id.clone();
     let queued = sender.lock().pending_uploads(8);
-    assert_eq!(queued.len(), ids.len());
+    assert_eq!(queued.len(), if voice { 1 } else { ids.len() });
     let (blob, ciphertext) = queued[0].clone();
     assert_eq!(hex::encode(Sha256::digest(&ciphertext)), blob);
     let http = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -531,7 +554,20 @@ async fn terminal_upload(status: u16, file_presentation: bool) {
     );
     assert_eq!(local.kind, sent.entries[0].kind);
     assert_eq!(local.media, sent.entries[0].media);
-    if !file_presentation {
+    assert_eq!(local.voice, sent.entries[0].voice);
+    if voice {
+        let voice = local
+            .voice
+            .as_ref()
+            .expect("failed voice must keep its playback metadata");
+        assert_eq!(voice.ms, 250);
+        assert_eq!(voice.transcript, "Keep voice transcript");
+        assert_eq!(
+            sender.file_bytes(voice.item_id.clone(), None).unwrap(),
+            Some(plain.clone())
+        );
+    }
+    if !file_presentation && !voice {
         let crate::EntryKind::Message {
             card: Some(card), ..
         } = &local.kind
@@ -594,6 +630,9 @@ async fn terminal_upload(status: u16, file_presentation: bool) {
             .unwrap(),
         Some(plain.clone())
     );
+    if voice {
+        return;
+    }
     let fresh = sender.save_media_draft(scope.clone(), receipt.draft.revision, serde_json::json!({"kind":"attachments", "items":[{"asset_id":"fresh", "caption":"Explicit fresh send", "mutation_id":"fresh-send"}]}).to_string(), vec![MediaDraftAssetInput { id:"fresh".into(), name:"fresh.pdf".into(), mime:"application/pdf".into(), bytes:plain }]).unwrap();
     let fresh = sender
         .send_media_draft(scope, fresh.draft.revision)
@@ -703,6 +742,76 @@ fn terminal_upload_rolls_back_outbox_and_blob_together() {
     );
 }
 
+#[test]
+fn failed_nonfile_attachment_keeps_its_canonical_app_card_after_cold_reopen() {
+    let directory = Directory(std::env::temp_dir().join(types::new_id("failed-app-card")));
+    std::fs::create_dir(&directory.0).unwrap();
+    let path = directory.0.join("sender.sqlite");
+    let sender = Client::open(path.to_str().unwrap().into(), "en".into()).unwrap();
+    let vault = Arc::new(Vault::default());
+    sender
+        .create_account(
+            "App owner".into(),
+            "app_owner".into(),
+            "http://127.0.0.1:1".into(),
+            vault.clone(),
+        )
+        .unwrap();
+    let space = sender
+        .create_group_with("Canonical App".into(), vec![], PrivacyDto::Closed)
+        .unwrap();
+    let me = sender.account().unwrap().identity_id;
+    let mut head = None;
+    let setup = sender.lock().store.outbox().unwrap();
+    for row in setup {
+        assert_eq!(
+            sender
+                .lock()
+                .ingest(sequence(Envelope::plain(&row.event), &mut head)),
+            Ingest::Confirmed
+        );
+    }
+    let item = types::new_id("app");
+    let created = sender.lock().append(&space, &me, EventBody::ItemCreated {
+        item: item.clone(), kind: types::ItemKind::App, content: types::ItemContent::App(types::AppDoc {
+            app:"countdown".into(), resource_uri:"ui://builtin/countdown".into(), title:"Retained App".into(),
+            state_json:serde_json::json!({"title":"Retained App","place":"QA","target":1_800_000_000_000i64,"log":[]}).to_string(), document:None,
+        }), origin:"local canonical fixture".into(),
+    }).unwrap();
+    assert_eq!(
+        sender
+            .lock()
+            .ingest(sequence(Envelope::plain(&created), &mut head)),
+        Ingest::Confirmed
+    );
+    let sent = sender
+        .lock()
+        .post_as(&space, &me, "Keep my App message", Some(item))
+        .unwrap();
+    assert!(matches!(
+        &sent.kind,
+        crate::EntryKind::Message { card: Some(_), .. }
+    ));
+    assert!(sender
+        .lock()
+        .reject(&sent.id, "terminal message refusal", true, None)
+        .user_failed());
+    let check = |sender: &Client| {
+        let timeline = sender.timeline(space.clone()).unwrap();
+        let failed = timeline
+            .iter()
+            .find(|entry| entry.id == sent.id)
+            .expect("a refused canonical App message must remain visible");
+        assert_eq!(failed.delivery, crate::Delivery::Failed);
+        assert_eq!(failed.kind, sent.kind);
+    };
+    check(&sender);
+    drop(sender);
+    let sender = Client::open(path.to_str().unwrap().into(), "en".into()).unwrap();
+    assert!(sender.unlock(vault).unwrap());
+    check(&sender);
+}
+
 fn http_request(socket: &mut std::net::TcpStream) -> (String, Vec<u8>) {
     socket
         .set_read_timeout(Some(Duration::from_secs(5)))
@@ -726,4 +835,24 @@ fn http_request(socket: &mut std::net::TcpStream) -> (String, Vec<u8>) {
     let mut body = vec![0; length];
     socket.read_exact(&mut body).unwrap();
     (headers, body)
+}
+
+// Valid250ms, mono16-bit PCM WAV. This fixture qualifies retained bytes/DTO,
+// not playback hardware or codec support on a device.
+fn pcm_wave() -> Vec<u8> {
+    let pcm = vec![0u8; 4000];
+    let mut bytes = b"RIFF".to_vec();
+    bytes.extend_from_slice(&(36u32 + pcm.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&16u32.to_le_bytes());
+    bytes.extend_from_slice(&1u16.to_le_bytes());
+    bytes.extend_from_slice(&1u16.to_le_bytes());
+    bytes.extend_from_slice(&8000u32.to_le_bytes());
+    bytes.extend_from_slice(&16000u32.to_le_bytes());
+    bytes.extend_from_slice(&2u16.to_le_bytes());
+    bytes.extend_from_slice(&16u16.to_le_bytes());
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&(pcm.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(&pcm);
+    bytes
 }

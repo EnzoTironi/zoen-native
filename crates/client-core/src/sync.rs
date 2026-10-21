@@ -430,24 +430,29 @@ impl Engine {
                         .is_some_and(|scoped| scoped.spaces.contains_key(&e.space))
                 {
                     let scoped = projections.get_mut(&e.space).expect("checked above");
-                    if let EventBody::MessagePosted {
+                    let retained = if let EventBody::MessagePosted {
                         attaches: Some(item),
                         ..
                     } = &e.body
                     {
-                        if let Some(local) = self.me.as_deref() {
+                        self.me.as_deref().is_some_and(|local| {
                             scoped.retain_failed_attachment(
                                 e,
                                 local,
                                 sources
                                     .get(&(e.space.as_str(), item.as_str(), local))
                                     .copied(),
-                            );
-                        }
-                    } else if matches!(e.body, EventBody::MessagePosted { .. }) {
+                            )
+                        })
+                    } else {
+                        false
+                    };
+                    // Preserve normal replay for text and canonical non-File
+                    // cards. Recovery reservations still fence the checked fold.
+                    if !retained && matches!(e.body, EventBody::MessagePosted { media: None, .. }) {
                         let context = plans.pending(scoped, &self.identities, e)?;
                         scoped.apply_checked(e, &self.identities, &context);
-                    } else {
+                    } else if !matches!(e.body, EventBody::MessagePosted { .. }) {
                         scoped.retain_failed_voice(e);
                     }
                 }
