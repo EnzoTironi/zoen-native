@@ -41,6 +41,12 @@ loop from `AttachmentFileEmptyItem.swift`, with native visibility/window/retirem
 pause and reduced-motion start frame. Cloud/Image browse and crop/rotate/done/crop
 corner glyphs are the original assets recorded in the asset manifest.
 
+The Photos More menu uses the original `Chat/Context Menu/File` PDF unchanged
+for its explicit Send as File(s) action. The selected terminal action contract
+comes from `MediaPickerScreen.swift:3174–3181` at the same pin. Exact source
+hashes and the bounded journal/Expo adaptations are recorded in
+`docs/product/telegram-ios-photo-send-as-file-sources.json` at the repository root.
+
 The composer also uses these original GlassBackgroundView and
 GlassBackgroundContainerView implementations through named Expo/Fabric hosts.
 The hosts retain the original React children and their frames, including the

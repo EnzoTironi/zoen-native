@@ -72,6 +72,50 @@ final class AttachmentContainerTests: XCTestCase {
     content.textViewDidChange(caption)
     XCTAssertEqual(events.count, 1)
   }
+  func testFileOptionCarriesFinalNativeCaptionAndOriginalSelectionWithoutRetargetingAStaleMenu() throws {
+    var events: [(String, [String: Any])] = []
+    let content = try content { events.append(($0, $1)) }
+    var value = model
+    value["revision"] = "selected-a"
+    value["sendOptions"] = [["id": "send-as-file", "title": "Send as File", "enabled": true]]
+    try content.update(model: value, appearance: appearance)
+    let caption = try XCTUnwrap(find(content.view, type: UITextView.self, id: "attachment-caption"))
+    let more = try XCTUnwrap(find(content.view, type: UIButton.self, id: "attachment-keyboard-review"))
+    XCTAssertEqual((more.menu?.children.first as? UIAction)?.title, "Send as File")
+    caption.text = "final native file caption 🪁"
+    content.performSendAsFileOption(revision: "selected-a", selection: ["ph://synthetic-a"])
+    XCTAssertEqual(events.count, 1)
+    XCTAssertEqual(events.first?.0, "option")
+    XCTAssertEqual(events.first?.1["text"] as? String, caption.text)
+    XCTAssertEqual(events.first?.1["ids"] as? [String], ["ph://synthetic-a"])
+    XCTAssertEqual(events.first?.1["revision"] as? String, "selected-a")
+    value["revision"] = "changed-selection"
+    try content.update(model: value, appearance: appearance)
+    content.performSendAsFileOption(revision: "selected-a", selection: ["ph://synthetic-a"])
+    content.performSendAsFileOption(revision: "changed-selection", selection: ["ph://other"])
+    XCTAssertEqual(events.count, 1)
+    content.retire()
+    content.performSendAsFileOption(revision: "changed-selection", selection: ["ph://synthetic-a"])
+    XCTAssertEqual(events.count, 1)
+  }
+  func testFileOptionCannotBypassReconciliationDisabledModeOrCaptionBounds() throws {
+    var events = 0
+    let content = try content { _, _ in events += 1 }
+    var value = model
+    value["revision"] = "current"
+    value["sendOptions"] = [["id": "send-as-file", "title": "Send as File", "enabled": false]]
+    try content.update(model: value, appearance: appearance)
+    content.performSendAsFileOption(revision: "current", selection: ["ph://synthetic-a"])
+    value["sendOptions"] = [["id": "send-as-file", "title": "Send as File", "enabled": true]]
+    try content.update(model: value, appearance: appearance)
+    let caption = try XCTUnwrap(find(content.view, type: UITextView.self, id: "attachment-caption"))
+    for text in [String(repeating: "🪁", count: 2049), "invalid\0caption"] {
+      caption.text = text
+      content.performSendAsFileOption(revision: "current", selection: ["ph://synthetic-a"])
+    }
+    XCTAssertEqual(events, 0)
+    content.retire()
+  }
   func testCaptionBoundsUseUTF16AndRejectNulWithoutPublishing() throws {
     var events = 0
     let content = try content { _, _ in events += 1 }

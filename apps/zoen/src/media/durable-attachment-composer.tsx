@@ -39,6 +39,8 @@ type Preview = AttachmentAsset & { release: () => Promise<void> };
 type ApprovalPresentation = { closing: boolean };
 const sameAttachmentSelection = (value: MediaDraftAttachments, observed: MediaDraftAttachments) =>
   value.reply_to === observed.reply_to &&
+  (value.options?.presentation ?? 'media') === (observed.options?.presentation ?? 'media') &&
+  (value.options?.grouping ?? 'separate') === (observed.options?.grouping ?? 'separate') &&
   value.items.length === observed.items.length &&
   value.items.every(
     (item, index) =>
@@ -415,11 +417,15 @@ export function useDurableAttachmentComposer(
     const pickedFor = runtime.approval;
     try {
       await sensitiveCacheWork.run(async () => {
-        const before = channel.getSnapshot().content;
+        const admissionDraft = channel.getSnapshot();
+        const before = admissionDraft.content;
         const count = before?.kind === 'attachments' ? before.items.length : 0;
+        const sendAsFileAllowed =
+          count === 0 ||
+          (before?.kind === 'attachments' && before.options?.presentation === 'file');
         if (count >= MAX_ATTACHMENT_ITEMS) throw new AttachmentDraftFailure('limit');
         selected = await (kind === 'photo'
-          ? photos.pick(MAX_ATTACHMENT_ITEMS - count, current)
+          ? photos.pick(MAX_ATTACHMENT_ITEMS - count, current, { sendAsFileAllowed })
           : pickAttachmentAssets(kind, MAX_ATTACHMENT_ITEMS - count, current));
         if (!selected.length) return;
         if (!current()) return;
@@ -427,6 +433,18 @@ export function useDurableAttachmentComposer(
         if (latest.content && latest.content.kind !== 'attachments')
           throw new AttachmentDraftFailure('unavailable');
         const existing = latest.content?.kind === 'attachments' ? latest.content : null;
+        const submission = kind === 'photo' ? photos.submission?.() : null;
+        if (
+          submission?.options &&
+          (!sendAsFileAllowed ||
+            !submission.send ||
+            submission.requestEdit ||
+            submission.options.presentation !== 'file' ||
+            submission.options.grouping !== 'separate' ||
+            latest.value?.revision !== admissionDraft.value?.revision ||
+            (existing && existing.items.length > 0 && existing.options?.presentation !== 'file'))
+        )
+          throw new AttachmentDraftFailure('unavailable');
         if ((existing?.items.length ?? 0) + selected.length > MAX_ATTACHMENT_ITEMS)
           throw new AttachmentDraftFailure('limit');
         const retained =
@@ -465,7 +483,6 @@ export function useDurableAttachmentComposer(
           selected:
             additions.find((asset) => asset.uri === preferred)?.id ?? additions[0]?.id ?? null,
         });
-        const submission = kind === 'photo' ? photos.submission?.() : null;
         const next: MediaDraftAttachments = {
           kind: 'attachments',
           reply_to: existing ? existing.reply_to : admission.current.replyTo,
@@ -478,6 +495,9 @@ export function useDurableAttachmentComposer(
               mutation_id: id,
             })),
           ],
+          ...((existing?.options ?? submission?.options)
+            ? { options: existing?.options ?? submission!.options }
+            : {}),
         };
         await channel.save(next, inputs);
         if (submission?.requestEdit) {

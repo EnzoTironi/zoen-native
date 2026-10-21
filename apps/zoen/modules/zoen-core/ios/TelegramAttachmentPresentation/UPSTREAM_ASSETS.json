@@ -245,6 +245,12 @@
       "upstreamPath": "submodules/LegacyComponents/LegacyImages.xcassets/Editor/Play.imageset/ic_editor_play.pdf",
       "sha256": "67699ecc05478418245885b1ce833ec2d9fd50faa0453c25497cd08ecc703e10",
       "resource": "play.pdf"
+    },
+    {
+      "logicalName": "sendAsFile",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Context Menu/File.imageset/Icon-6.pdf",
+      "sha256": "cad414babe888c793fbb6dc0d8e7a63716be648db90414b0b1aa5f117d867ed8",
+      "resource": "sendAsFile.pdf"
     }
   ]
 }

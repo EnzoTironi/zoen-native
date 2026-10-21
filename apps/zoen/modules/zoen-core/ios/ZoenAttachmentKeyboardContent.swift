@@ -6,7 +6,7 @@ import UIKit
 // f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838: AttachmentPanel.swift:35–58,
 // 326–432, 1968–2059, 2080–2310, 2530–2805;
 // MediaPickerScreen.swift:1236–1307, 1745–1769, 2508–2558, 2688–2720,
-// 2848–2855, 3515–3610; Display/Source/ViewController.swift:263–283.
+// 2848–2855, 3174–3181, 3515–3610; Display/Source/ViewController.swift:263–283.
 // Selection: MediaPickerGridItem.swift:824–825; CheckNode.swift:39–57, 476–488,
 // 604–618 (29-point overlay, inset stroke and rounded selection order).
 // File/Audio landing: TelegramUI/Components/AttachmentFileController/Sources/
@@ -109,6 +109,8 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
   private var additionalBottomInset: CGFloat = 0
   private var safeArea = UIEdgeInsets.zero
   private var requestedCount: Int?
+  private var sendOptionsRevision: String?
+  private var sendAsFileOptionEnabled = false
   private var albumId: String?
   private var screen = "grid"
   private var activeCategory = "photos"
@@ -271,16 +273,32 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     albumRows.append(contentsOf: (model["albums"] as? [[String: Any]] ?? []).filter { ($0["id"] as? String) != "" })
     try albumMenu.update(rows: albumRows, dismissLabel: labels["back"] ?? labels["close"], appearance: appearance)
     review.tintColor = appearance.text; review.accessibilityLabel = labels["more"]
-    let options = model["sendOptions"] as? [[String: Any]] ?? []
+    let revision = (model["revision"] as? String).flatMap {
+      !$0.isEmpty && $0.utf8.count <= 128 && !$0.contains("\0") ? $0 : nil
+    }
+    sendOptionsRevision = revision
+    sendAsFileOptionEnabled = false
+    let optionSelection = selected
+    let options = activeCategory == "photos" && screen == "grid" && revision != nil
+      ? model["sendOptions"] as? [[String: Any]] ?? [] : []
     review.menu = UIMenu(children: options.compactMap { option -> UIAction? in
-      guard let id = option["id"] as? String, id.utf16.count <= 128,
-            let title = option["title"] as? String, !title.isEmpty, title.utf16.count <= 1024 else { return nil }
-      return UIAction(title: title, attributes: option["enabled"] as? Bool == false ? .disabled : [],
-                      state: option["selected"] as? Bool == true ? .on : .off) { [weak self] _ in self?.emit("option", id: id) }
+      guard option["id"] as? String == "send-as-file", let revision,
+            let title = option["title"] as? String, !title.isEmpty,
+            title.utf16.count <= 1024, !title.contains("\0"),
+            (1...10).contains(optionSelection.count) else { return nil }
+      let enabled = option["enabled"] as? Bool != false
+      sendAsFileOptionEnabled = enabled
+      // MediaPickerScreen:3174–3181 uses the actual Context Menu/File glyph and
+      // an explicit terminal file intent. No quality or MIME substitution.
+      return UIAction(title: title, image: ZoenTelegramAttachmentGlyph.image(.sendAsFile),
+                      attributes: enabled ? [] : .disabled) { [weak self] _ in
+        self?.performSendAsFileOption(revision: revision, selection: optionSelection)
+      }
     })
-    review.isEnabled = !busy && !options.isEmpty
-    review.isHidden = options.isEmpty
-    headerRightSurface.isHidden = options.isEmpty
+    let hasOptions = review.menu?.children.isEmpty == false
+    review.isEnabled = !busy && hasOptions
+    review.isHidden = !hasOptions
+    headerRightSurface.isHidden = !hasOptions
     selectedButton.setImage(ZoenTelegramAttachmentGlyph.image(.selected), for: .normal)
     selectedButton.setTitle(" \(selected.count)", for: .normal)
     selectedButton.tintColor = appearance.text
@@ -554,6 +572,14 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
   private func emit(_ action: String, id: String? = nil) {
     guard !retired, !busy else { return }
     send(action, id.map { ["id": $0] } ?? [:])
+  }
+  func performSendAsFileOption(revision: String, selection: [String]) {
+    guard !retired, !busy, !captionSending, captionEnabled, sendAsFileOptionEnabled,
+          activeCategory == "photos", screen == "grid", sendOptionsRevision == revision,
+          (1...10).contains(selection.count), selection == selected,
+          caption.text.utf16.count <= 4096, !caption.text.contains("\0") else { return }
+    send("option", ["id": "send-as-file", "ids": selection,
+                    "revision": revision, "text": caption.text ?? ""])
   }
   func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
     guard captionEditable, !busy, !retired, !text.contains("\0"), let swiftRange = Range(range, in: textView.text) else { return false }

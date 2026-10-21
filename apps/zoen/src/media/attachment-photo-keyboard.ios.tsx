@@ -36,6 +36,7 @@ export function AttachmentPhotoKeyboard({
   onSubmission,
   onResume,
   recent,
+  sendAsFileAllowed = false,
 }: {
   state: PhotoPickerState;
   session: AttachmentPhotoSession;
@@ -45,6 +46,7 @@ export function AttachmentPhotoKeyboard({
   onSubmission?(submission: PhotoPickerSubmission): void;
   onResume?(presentation: KeyboardPresentation): void;
   recent?: { session: AttachmentRecentSession; state: RecentAttachmentState };
+  sendAsFileAllowed?: boolean;
 }) {
   const [draft, setDraft] = useState<{
     token: number;
@@ -85,8 +87,15 @@ export function AttachmentPhotoKeyboard({
   const { width, height } = useWindowDimensions();
   const presentation = owner.presentation?.id === request.id ? owner.presentation : request;
   const renderOwner = useMemo(
-    () => ({ state, request, owner, recent: recent?.state, revision: randomUUID() }),
-    [state, request, owner, recent?.state],
+    () => ({
+      state,
+      request,
+      owner,
+      recent: recent?.state,
+      sendAsFileAllowed,
+      revision: randomUUID(),
+    }),
+    [state, request, owner, recent?.state, sendAsFileAllowed],
   );
   const revision = renderOwner.revision;
   const committed = useRef<object | null>(null);
@@ -162,6 +171,20 @@ export function AttachmentPhotoKeyboard({
       height: item.height,
     })),
     selected: state.selected.map((item) => item.id),
+    sendOptions:
+      onSubmission &&
+      sendAsFileAllowed &&
+      state.category === 'photos' &&
+      state.screen === 'grid' &&
+      state.selected.length > 0
+        ? [
+            {
+              id: 'send-as-file',
+              title: t('media.attachmentSendAsFile', { count: state.selected.length }),
+              enabled: session.canApprove(),
+            },
+          ]
+        : [],
     albums: state.albums,
     albumId: state.albumId,
     albumTitle:
@@ -341,10 +364,24 @@ export function AttachmentPhotoKeyboard({
             break;
           case 'send':
           case 'edit':
+          case 'option':
             if (onSubmission && !state.busy) {
+              const asFile = event.action === 'option';
+              if (
+                asFile &&
+                (!sendAsFileAllowed ||
+                  state.category !== 'photos' ||
+                  state.screen !== 'grid' ||
+                  event.id !== 'send-as-file' ||
+                  !Array.isArray(event.ids) ||
+                  event.ids.length !== state.selected.length ||
+                  !event.ids.every((id, index) => id === state.selected[index]?.id) ||
+                  typeof event.text !== 'string')
+              )
+                return;
               if (event.action === 'edit' && !canEdit) return;
               if (gallery && (!item || event.id !== state.previewId)) return;
-              if (!gallery && event.id !== undefined) return;
+              if (!gallery && !asFile && event.id !== undefined) return;
               if (!session.canApprove(gallery ? item?.id : undefined)) return;
               const selected = [...state.selected];
               if (gallery && item && !selected.some((value) => value.id === item.id))
@@ -371,13 +408,18 @@ export function AttachmentPhotoKeyboard({
               onPreferredIndex(
                 requestEdit ? selected.findIndex((value) => value.id === item?.id) : null,
               );
-              onSubmission({
+              const intent: PhotoPickerSubmission = {
                 caption: captions[0] ?? '',
                 captions,
                 send: !requestEdit,
                 ...(requestEdit ? { requestEdit: true } : {}),
-              });
-              void session.approve(gallery ? item?.id : undefined);
+                ...(asFile
+                  ? { options: { presentation: 'file', grouping: 'separate' } as const }
+                  : {}),
+              };
+              // A failed/canceled export never leaves a terminal file-mode
+              // intent behind for a later ordinary selection or Browse action.
+              void session.approve(gallery ? item?.id : undefined, () => onSubmission(intent));
             }
             break;
           case 'keyboard':

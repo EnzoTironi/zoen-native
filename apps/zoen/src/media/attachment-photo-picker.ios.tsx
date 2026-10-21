@@ -1,7 +1,11 @@
 import { randomUUID } from 'expo-crypto';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
-import { AttachmentPhotoSession, type PhotoPickerSubmission } from './attachment-photo-session';
+import {
+  AttachmentPhotoSession,
+  type PhotoPickerAdmission,
+  type PhotoPickerSubmission,
+} from './attachment-photo-session';
 import { photoLibrary } from './attachment-photo-library';
 import { pickAttachmentAssets } from './attachment-picker';
 import { useAttachmentKeyboardSession } from './attachment-keyboard-context';
@@ -21,6 +25,7 @@ export function useAttachmentPhotoPicker(recentConfiguration?: RecentAttachmentC
   const preferredIndex = useRef<number | null>(null);
   const preferred = useRef<string | null>(null);
   const submission = useRef<PhotoPickerSubmission | null>(null);
+  const [sendAsFileAllowed, setSendAsFileAllowed] = useState(false);
   const session = useMemo(
     () =>
       new AttachmentPhotoSession({
@@ -94,10 +99,11 @@ export function useAttachmentPhotoPicker(recentConfiguration?: RecentAttachmentC
     };
   }, [cancel]);
   return {
-    pick: async (remaining: number, current: () => boolean) => {
+    pick: async (remaining: number, current: () => boolean, admission?: PhotoPickerAdmission) => {
       preferredIndex.current = null;
       preferred.current = null;
       submission.current = null;
+      setSendAsFileAllowed(admission?.sendAsFileAllowed === true);
       const presentation = keyboard?.getSnapshot().presentation;
       const request =
         presentation?.kind === 'attachments' && keyboard?.admitPicker(presentation.id)
@@ -131,6 +137,7 @@ export function useAttachmentPhotoPicker(recentConfiguration?: RecentAttachmentC
         session={session}
         keyboard={mountedOwner ? keyboard : null}
         request={keyboardRequest}
+        sendAsFileAllowed={sendAsFileAllowed}
         onResume={setKeyboardRequest}
         onPreferredIndex={(index) => {
           preferredIndex.current = index;

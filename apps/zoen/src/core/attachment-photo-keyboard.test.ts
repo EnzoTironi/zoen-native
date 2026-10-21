@@ -62,6 +62,7 @@ async function fixture(
   withSubmission = false,
   mediaItems: PhotoLibraryItem[] = [item('a'), item('b'), item('c')],
   recent?: AttachmentRecentSession,
+  sendAsFileAllowed = false,
 ) {
   let sequence = 0,
     slotIndex = 0,
@@ -78,6 +79,15 @@ async function fixture(
   let browse: () => Promise<AttachmentAsset[]> = async () => [
     { uri: 'file:///owned/document', mime: 'application/pdf', name: 'document.pdf', size: 12 },
   ];
+  let materialize: (values: readonly PhotoLibraryItem[]) => Promise<AttachmentAsset[]> = async (
+    values,
+  ) =>
+    values.map((v) => ({
+      uri: `file:///owned/${v.id.slice(5)}`,
+      mime: v.mediaType === 'video' ? 'video/quicktime' : 'image/jpeg',
+      name: v.filename!,
+      size: 12,
+    }));
   const keyboard = new AttachmentKeyboardSession('space:thread', true, () => `owner-${++sequence}`);
   keyboard.bind({ tag: 7, context: 'space:normal', label: 'Message', placeholder: 'Message' });
   const photos = new AttachmentPhotoSession({
@@ -96,12 +106,7 @@ async function fixture(
     manage: async () => {},
     materialize: async (values) => {
       copies.push(values.map((v) => v.id));
-      return values.map((v) => ({
-        uri: `file:///owned/${v.id.slice(5)}`,
-        mime: v.mediaType === 'video' ? 'video/quicktime' : 'image/jpeg',
-        name: v.filename!,
-        size: 12,
-      }));
+      return materialize(values);
     },
     capture: async (remaining) => {
       captures.push(remaining);
@@ -217,6 +222,7 @@ async function fixture(
       session: photos,
       keyboard,
       request,
+      sendAsFileAllowed,
       ...(recent ? { recent: { session: recent, state: recent.getSnapshot() } } : {}),
       onPreferredIndex: (value: number | null) => {
         preferred = value;
@@ -280,6 +286,9 @@ async function fixture(
     },
     browseNext: (next: () => Promise<AttachmentAsset[]>) => {
       browse = next;
+    },
+    materializeNext: (next: typeof materialize) => {
+      materialize = next;
     },
     picked: () => picked,
     preferred: () => preferred,
@@ -397,6 +406,107 @@ test('direct Send admits a 4096-character caption but rejects an empty or busy s
   assert.equal(submission.caption.length, 4096);
   f.close(tree);
   await tick();
+});
+
+test('Photos More sends only an admitted file intent with exact ordered IDs and final native caption after export', async () => {
+  const f = await fixture(true, undefined, undefined, true);
+  assert.deepEqual(JSON.parse(f.render().props.model).sendOptions, []);
+  f.photos.select(item('b'));
+  f.photos.select(item('a'));
+  const tree = f.render(),
+    menu = JSON.parse(tree.props.model).sendOptions;
+  assert.equal(menu.length, 1);
+  assert.equal(menu[0].id, 'send-as-file');
+  assert.equal(menu[0].enabled, true);
+  const exportReady = deferred<AttachmentAsset[]>();
+  f.materializeNext(() => exportReady.promise);
+  f.act(tree, 'option', 'send-as-file', {
+    ids: ['ph://b', 'ph://a'],
+    text: 'Final file caption 🪁',
+  });
+  assert.deepEqual(f.submissions, [], 'No terminal mode before materialization succeeds');
+  exportReady.resolve([
+    { uri: 'file:///owned/b', mime: 'image/jpeg', name: 'b.jpg', size: 12 },
+    { uri: 'file:///owned/a', mime: 'image/jpeg', name: 'a.jpg', size: 12 },
+  ]);
+  await tick();
+  assert.deepEqual(f.copies, [['ph://b', 'ph://a']]);
+  assert.equal(f.submission()?.caption, 'Final file caption 🪁');
+  assert.equal(f.submission()?.options?.presentation, 'file');
+  assert.equal(f.submission()?.options?.grouping, 'separate');
+  assert.deepEqual(Array.from(f.submission()?.captions ?? []), ['Final file caption 🪁', '']);
+  assert.equal(f.picked(), undefined, 'The actual close barrier still owns handoff');
+  f.close(tree);
+  await tick();
+  assert.deepEqual(
+    (f.picked() as AttachmentAsset[]).map((file) => file.name),
+    ['b.jpg', 'a.jpg'],
+  );
+});
+
+test('file option rejects unsupported mode, stale selection/revision, malformed caption and disabled admission', async () => {
+  const blocked = await fixture(true);
+  blocked.photos.select(item('a'));
+  const unavailable = blocked.render();
+  assert.deepEqual(JSON.parse(unavailable.props.model).sendOptions, []);
+  blocked.act(unavailable, 'option', 'send-as-file', { ids: ['ph://a'], text: 'blocked' });
+  assert.deepEqual(blocked.copies, []);
+  blocked.retire();
+  const f = await fixture(true, undefined, undefined, true);
+  f.photos.select(item('a'));
+  const old = f.render();
+  f.photos.select(item('b'));
+  const tree = f.render();
+  for (const [id, payload] of [
+    ['unknown', { ids: ['ph://a', 'ph://b'], text: 'bad option' }],
+    ['send-as-file', { ids: ['ph://b', 'ph://a'], text: 'wrong order' }],
+    ['send-as-file', { ids: ['ph://a'], text: 'missing member' }],
+    ['send-as-file', { ids: ['ph://a', 'ph://b'], text: 'bad\0caption' }],
+    ['send-as-file', { ids: ['ph://a', 'ph://b'], text: 'x'.repeat(4097) }],
+    ['send-as-file', { ids: ['ph://a', 'ph://b'], text: 'foreign', revision: 'foreign' }],
+  ] as const)
+    f.act(tree, 'option', id, payload);
+  f.act(old, 'option', 'send-as-file', { ids: ['ph://a'], text: 'stale menu' });
+  assert.deepEqual(f.submissions, []);
+  assert.deepEqual(f.copies, []);
+  f.retire();
+  f.act(tree, 'option', 'send-as-file', { ids: ['ph://a', 'ph://b'], text: 'retired' });
+  assert.deepEqual(f.copies, []);
+});
+
+test('failed as-file export leaves no mode for a later ordinary media send', async () => {
+  const f = await fixture(true, undefined, undefined, true);
+  f.photos.select(item('a'));
+  f.materializeNext(async () => {
+    throw new Error('export failed');
+  });
+  f.act(f.render(), 'option', 'send-as-file', { ids: ['ph://a'], text: 'failed file intent' });
+  await tick();
+  assert.equal(f.photos.getSnapshot().visible, true);
+  assert.deepEqual(f.submissions, []);
+  f.materializeNext(async () => [
+    { uri: 'file:///owned/a', mime: 'image/jpeg', name: 'a.jpg', size: 12 },
+  ]);
+  const ordinary = f.render();
+  f.act(ordinary, 'send', undefined, { text: 'ordinary caption' });
+  await tick();
+  assert.equal(f.submission()?.options, undefined);
+  assert.equal(f.submission()?.caption, 'ordinary caption');
+  f.close(ordinary);
+  await tick();
+});
+
+test('retirement during as-file export cannot record a terminal file submission', async () => {
+  const f = await fixture(true, undefined, undefined, true),
+    pending = deferred<AttachmentAsset[]>();
+  f.photos.select(item('a'));
+  f.materializeNext(() => pending.promise);
+  f.act(f.render(), 'option', 'send-as-file', { ids: ['ph://a'], text: 'canceled' });
+  f.retire();
+  pending.resolve([{ uri: 'file:///owned/a', mime: 'image/jpeg', name: 'a.jpg', size: 12 }]);
+  await tick();
+  assert.deepEqual(f.submissions, []);
+  assert.deepEqual(f.picked(), []);
 });
 
 test('removed legacy Review cannot prepare files and native Preview stays inside the same Photos task', async () => {

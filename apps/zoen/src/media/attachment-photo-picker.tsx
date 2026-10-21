@@ -1,8 +1,8 @@
 import { pickAttachmentAssets } from './attachment-picker';
-import type { PhotoPickerSubmission } from './attachment-photo-session';
+import type { PhotoPickerAdmission, PhotoPickerSubmission } from './attachment-photo-session';
 import type { RecentAttachmentConfiguration } from './attachment-recent-session';
 const cancel = () => {};
-const pick = (remaining: number, current: () => boolean) =>
+const pick = (remaining: number, current: () => boolean, _admission?: PhotoPickerAdmission) =>
   pickAttachmentAssets('photo', remaining, current);
 /** Native embedded library is iOS-only; other platforms keep their existing SDK picker. */
 export function useAttachmentPhotoPicker(_recentConfiguration?: RecentAttachmentConfiguration) {

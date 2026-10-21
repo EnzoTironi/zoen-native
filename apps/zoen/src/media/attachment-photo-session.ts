@@ -1,4 +1,5 @@
 import type { AttachmentAsset } from './attachment-draft';
+import type { MediaDraftAttachmentOptions } from './media-draft-types';
 import type {
   PhotoLibraryAlbum,
   PhotoLibraryItem,
@@ -46,7 +47,10 @@ export type PhotoPickerSubmission = Readonly<{
   captions?: readonly string[];
   send: boolean;
   requestEdit?: boolean;
+  options?: MediaDraftAttachmentOptions;
 }>;
+/** Derived by the current durable draft owner; never a second draft authority. */
+export type PhotoPickerAdmission = Readonly<{ sendAsFileAllowed: boolean }>;
 type Request = {
   current(): boolean;
   remaining: number;
@@ -437,7 +441,7 @@ export class AttachmentPhotoSession {
       this.state.items.some((item) => item.id === currentItemId)
     );
   }
-  async approve(currentItemId?: string) {
+  async approve(currentItemId?: string, prepared?: () => void) {
     const request = this.request;
     if (
       !request ||
@@ -462,15 +466,28 @@ export class AttachmentPhotoSession {
     if (!this.state.selected.length) return;
     request.working = true;
     this.publish({ busy: true, error: null });
+    let preparedFiles: AttachmentAsset[] | null = null;
     try {
       const result = await this.port.materialize(this.state.selected, () => this.current(request));
       if (!this.current(request)) {
         result.forEach((file) => this.port.discard(file.uri));
         return;
       }
+      preparedFiles = result;
+      if (!result.length || result.length !== this.state.selected.length) {
+        throw new Error('Attachment selection changed');
+      }
+      prepared?.();
+      if (!this.current(request)) {
+        result.forEach((file) => this.port.discard(file.uri));
+        preparedFiles = null;
+        return;
+      }
       request.result = result;
+      preparedFiles = null;
       this.publish({ visible: false });
     } catch (error) {
+      preparedFiles?.forEach((file) => this.port.discard(file.uri));
       if (this.current(request)) this.publish({ error });
     } finally {
       request.working = false;

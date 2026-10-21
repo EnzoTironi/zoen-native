@@ -254,13 +254,18 @@ class ZoenKeyboardPanelHost: ExpoView {
     }
     var event: [String: Any] = ["token": owner.token, "context": owner.context, "action": action]
     if let id = payload["id"] as? String, id.utf8.count <= 2048, !id.contains("\0") { event["id"] = id }
-    if action == "reorder" {
-      guard owner.attachment != nil, let ids = payload["ids"] as? [String], ids.count <= 100,
+    if action == "option" {
+      guard owner.attachment != nil, payload["id"] as? String == "send-as-file",
+            let supplied = payload["revision"] as? String, supplied == currentRevision else { return }
+    }
+    if action == "reorder" || action == "option" {
+      guard owner.attachment != nil, let ids = payload["ids"] as? [String],
+            action == "option" ? (1...10).contains(ids.count) : ids.count <= 100,
             Set(ids).count == ids.count,
             ids.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 2048 && !$0.contains("\0") }) else { return }
       event["ids"] = ids
     }
-    if action == "caption" || action == "send" || action == "edit" || action == "recentSend" || action == "recentQuery" {
+    if action == "caption" || action == "send" || action == "edit" || action == "recentSend" || action == "recentQuery" || action == "option" {
       guard owner.attachment != nil, let text = payload["text"] as? String,
             text.utf16.count <= (action == "recentQuery" ? 512 : 4096), !text.contains("\0") else { return }
       event["text"] = text
