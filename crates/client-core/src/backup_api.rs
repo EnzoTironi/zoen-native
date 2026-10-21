@@ -724,3 +724,6 @@ mod pin_tests {
         server.abort();
     }
 }
+
+#[cfg(test)]
+mod structural_tests;
