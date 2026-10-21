@@ -165,11 +165,17 @@ final class AttachmentContainerTests: XCTestCase {
   func testNonAnimatedDismissalCompletesOnlyAfterActualRemovalAndExactlyOnce() {
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
     window.rootViewController = UIViewController()
-    let background = window.rootViewController!.view!
+    let presenter = window.rootViewController!
+    let background = UIView(frame: window.bounds)
+    presenter.view.addSubview(background)
+    window.isHidden = false
+    defer { window.isHidden = true }
     XCTAssertFalse(background.accessibilityElementsHidden)
     let overlay = ZoenAttachmentContainer(content: OverlayContent(), appearance: appearance, requestClose: {})
     overlay.present(in: window)
-    XCTAssertTrue(overlay.superview === window)
+    XCTAssertTrue(overlay.superview === presenter.view)
+    XCTAssertTrue(presenter.children.first?.view === overlay)
+    XCTAssertFalse(presenter.view.accessibilityElementsHidden)
     XCTAssertTrue(background.accessibilityElementsHidden)
     let sheet = find(overlay, type: UIView.self, id: "attachment-container-sheet")
     let wrapping = find(overlay, type: UIView.self, id: "attachment-container-wrapping")
@@ -183,6 +189,7 @@ final class AttachmentContainerTests: XCTestCase {
     var completions = 0
     overlay.dismiss(animated: false) {
       XCTAssertNil(overlay.superview)
+      XCTAssertTrue(presenter.children.isEmpty)
       XCTAssertFalse(background.accessibilityElementsHidden, "restore only after actual overlay removal")
       completions += 1
     }
@@ -220,6 +227,7 @@ final class AttachmentContainerTests: XCTestCase {
     let content = try content { action, _ in events.append(action) }
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
     window.rootViewController = UIViewController()
+    window.isHidden = false
     let overlay = ZoenAttachmentContainer(content: content, appearance: appearance, requestClose: {})
     overlay.present(in: window)
     defer { content.retire(); overlay.dismiss(animated: false, completion: {}); window.isHidden = true }
@@ -266,9 +274,10 @@ final class AttachmentContainerTests: XCTestCase {
     let content = OverlayContent()
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
     window.rootViewController = UIViewController()
+    window.isHidden = false
     let overlay = ZoenAttachmentContainer(content: content, appearance: appearance, requestClose: {})
     overlay.present(in: window)
-    defer { overlay.dismiss(animated: false, completion: {}) }
+    defer { overlay.dismiss(animated: false, completion: {}); window.isHidden = true }
     let sheet = try XCTUnwrap(find(overlay, type: UIView.self, id: "attachment-container-sheet"))
     let wrapping = try XCTUnwrap(find(overlay, type: UIView.self, id: "attachment-container-wrapping"))
     let navigation = try XCTUnwrap(find(overlay, type: UIView.self, id: "attachment-container-navigation"))

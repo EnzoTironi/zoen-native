@@ -85,9 +85,9 @@ extension ZoenAttachmentOverlayContent {
   }
 }
 
-/// Hide only the underlying root's accessibility subtree while an admitted
-/// window-sibling attachment is present. Overlapping owners restore the exact
-/// original value only after the last removal; no composer or draft is mutated.
+/// Hide only preexisting presenter content while its admitted attachment child
+/// is present. Overlapping owners restore each exact original value only after
+/// the last removal; no composer, draft or later system-menu child is mutated.
 @MainActor
 final class ZoenAttachmentAccessibilityLease {
   private final class State {
@@ -124,8 +124,8 @@ final class ZoenAttachmentAccessibilityLease {
   }
 }
 
-/// The attachment owner is a window sibling, never a reparented React view or a
-/// second inputView. Removal completion is the close-before-handoff barrier.
+/// A native child controller owns the attachment responder/presentation chain.
+/// No React view is reparented and removal remains the close-before-handoff barrier.
 @MainActor
 final class ZoenAttachmentContainer: UIView, UIGestureRecognizerDelegate {
   private let dim = UIControl()
@@ -138,7 +138,9 @@ final class ZoenAttachmentContainer: UIView, UIGestureRecognizerDelegate {
   private let requestClose: () -> Void
   private var animator: UIViewPropertyAnimator?
   private var layerMotionViews: [UIView] = []
-  private var accessibilityLease: ZoenAttachmentAccessibilityLease?
+  private var accessibilityLeases: [ZoenAttachmentAccessibilityLease] = []
+  private weak var presentationController: AttachmentPresentationController?
+  private var removingPresentation = false
   private var expanded = false
   private var fullScreen = false
   private var expansionBeforeFullScreen: Bool?
@@ -231,14 +233,24 @@ final class ZoenAttachmentContainer: UIView, UIGestureRecognizerDelegate {
 
   func present(in window: UIWindow) {
     guard !presented, !closing else { return }
+    guard let parent = Self.presenter(in: window) else { requestClose(); return }
     presented = true
     fullScreen = content.attachmentPrefersFullScreen
     if fullScreen { expansionBeforeFullScreen = expanded; expanded = true }
-    frame = window.bounds
-    window.addSubview(self)
-    if let root = window.rootViewController?.view, !isDescendant(of: root) {
-      accessibilityLease = ZoenAttachmentAccessibilityLease(root: root)
-    }
+    // UIKit's table/button context menus resolve their presenting controller
+    // through the responder chain. A window-sibling UIView has no such owner.
+    // Capture only existing content: hiding the presenter itself also hides this
+    // child, while menus inserted later must remain outside these leases.
+    accessibilityLeases = parent.view.subviews.filter { !($0 is ZoenAttachmentContainer) }
+      .map { ZoenAttachmentAccessibilityLease(root: $0) }
+    let controller = AttachmentPresentationController(attachment: self)
+    presentationController = controller
+    parent.addChild(controller)
+    controller.beginAppearanceTransition(true, animated: false)
+    frame = parent.view.convert(window.bounds, from: window)
+    parent.view.addSubview(self)
+    controller.didMove(toParent: parent)
+    controller.endAppearanceTransition()
     layoutIfNeeded()
     sheetY = restingY
     applyLayout(updateDim: false)
@@ -354,10 +366,31 @@ final class ZoenAttachmentContainer: UIView, UIGestureRecognizerDelegate {
 
   override func didMoveToWindow() {
     super.didMoveToWindow()
-    if window == nil {
-      accessibilityLease?.release()
-      accessibilityLease = nil
-    }
+    if window == nil { removePresentation() }
+  }
+
+  private static func presenter(in window: UIWindow) -> UIViewController? {
+    guard var parent = window.rootViewController else { return nil }
+    while let presented = parent.presentedViewController, !presented.isBeingDismissed { parent = presented }
+    parent.loadViewIfNeeded()
+    guard !parent.isBeingDismissed, parent.view.window === window else { return nil }
+    return parent
+  }
+
+  private func removePresentation() {
+    guard !removingPresentation else { return }
+    removingPresentation = true
+    if let controller = presentationController {
+      presentationController = nil
+      controller.willMove(toParent: nil)
+      controller.beginAppearanceTransition(false, animated: false)
+      removeFromSuperview()
+      controller.removeFromParent()
+      controller.endAppearanceTransition()
+    } else { removeFromSuperview() }
+    accessibilityLeases.forEach { $0.release() }
+    accessibilityLeases.removeAll()
+    removingPresentation = false
   }
 
   private func finishDismissal() {
@@ -366,9 +399,7 @@ final class ZoenAttachmentContainer: UIView, UIGestureRecognizerDelegate {
     if animator?.state == .active { animator?.stopAnimation(true) }
     animator = nil
     removeLayerMotion()
-    removeFromSuperview()
-    accessibilityLease?.release()
-    accessibilityLease = nil
+    removePresentation()
     completion()
   }
 
@@ -597,6 +628,15 @@ final class ZoenAttachmentContainer: UIView, UIGestureRecognizerDelegate {
     }
   }
   override func accessibilityPerformEscape() -> Bool { requestClose(); return true }
+}
+
+@MainActor
+private final class AttachmentPresentationController: UIViewController {
+  init(attachment: ZoenAttachmentContainer) {
+    super.init(nibName: nil, bundle: nil)
+    view = attachment
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 }
 
 @MainActor
