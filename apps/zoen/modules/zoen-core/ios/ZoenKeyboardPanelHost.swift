@@ -275,6 +275,11 @@ class ZoenKeyboardPanelHost: ExpoView {
   }
   private func close(reason: String, returnToKeyboard: Bool) {
     guard let owner else { resumeWaiters(); return }
+    if reason != "closed" && reason != "keyboard" {
+      // A sensitive close may overtake an ordinary animated close or its camera
+      // drain. Conceal immediately even when action authority is already retired.
+      owner.content.view.isHidden = true
+    }
     if owner.retiring { finishIfRemoved(owner); return }
     owner.retiring = true
     terminalTokens.insert(owner.token)
@@ -282,11 +287,6 @@ class ZoenKeyboardPanelHost: ExpoView {
     owner.returnToKeyboard = returnToKeyboard
     if let attachment = owner.attachment {
       guard let content = owner.content as? any ZoenAttachmentOverlayContent else { return }
-      if reason != "closed" && reason != "keyboard" {
-        // Hide native pixels immediately on background/context retirement. The
-        // camera/player stop and actual removal still precede closed/erasure.
-        content.view.isHidden = true
-      }
       content.retireForDismissal { [weak self, weak owner] in
         guard let self, let owner, self.owner === owner else { return }
         attachment.dismiss(animated: reason != "inactive" && reason != "retired" && reason != "unmounted") { [weak self, weak owner] in

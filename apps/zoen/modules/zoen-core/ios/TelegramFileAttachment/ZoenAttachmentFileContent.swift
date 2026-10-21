@@ -339,11 +339,19 @@ import UIKit
   }
   func retire() {
     guard !retired else { return }
-    retired = true; visible = false; extractedMenu?.retire(); extractedMenu = nil
+    retired = true; visible = false; enabled = false
+    extractedMenu?.retire(); extractedMenu = nil
     for case let cell as RecentFileCell in scrollView.visibleCells { cell.contextGesture.cancel() }
-    searchField.resignFirstResponder(); searchField.text = nil; intro.retire()
+    wantsSearchFocus = false; didBeginEditing = nil
+    searchField.resignFirstResponder(); searchField.delegate = nil; intro.retire()
     view.isUserInteractionEnabled = false; view.accessibilityElementsHidden = true
-    rows = []; selected = []; labels = [:]; explanation.text = nil; stateLabel.text = nil; scrollView.reloadData()
+    scrollView.setContentOffset(scrollView.contentOffset, animated: false)
+    scrollView.isScrollEnabled = false
+    // Retire action authority immediately, preserving the original cells,
+    // labels and search text while their owner animates out. Clearing/reloading
+    // here flashed the empty illustration before actual presentation removal.
+    // These read-only display values die with the removed owner's content;
+    // retired guards reject callbacks, late models and attempts to show it again.
   }
   enum Failure: Error { case invalid }
 }

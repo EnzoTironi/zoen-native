@@ -95,4 +95,65 @@ final class KeyboardPanelAdmissionTests: XCTestCase {
     XCTAssertEqual(fresh.closed.first?["reason"] as? String, "unavailable",
       "a fresh host reaches strict tag validation after admissions resume")
   }
+
+  /// This double holds the real host's camera-stop boundary open. It does not
+  /// replace the production File renderer tested in RecentAttachmentContentTests.
+  private final class HeldContent: ZoenAttachmentOverlayContent {
+    let view = UIView(), attachmentScrollView = UIScrollView()
+    let attachmentHasKeyboardFocus = false
+    let attachmentAnimatedViews: [UIView] = []
+    var attachmentDidBeginEditing: (() -> Void)?
+    var attachmentPresentationChanged: (() -> Void)?
+    var finishStop: (@MainActor () -> Void)?
+    var send: (String, [String: Any]) -> Void = { _, _ in }
+    private(set) var retirements = 0
+    func update(model: [String: Any], appearance: ZoenKeyboardPanelAppearance) throws {}
+    func updatePresentation(expansion: CGFloat, keyboardHeight: CGFloat, safeArea: UIEdgeInsets) {}
+    func retire() { retirements += 1 }
+    func retireForDismissal(completion: @escaping @MainActor () -> Void) {
+      retire(); finishStop = completion
+    }
+  }
+  private final class DismissalHost: ZoenKeyboardPanelHost {
+    let held = HeldContent()
+    var closed: [[String: Any]] = [], actions: [[String: Any]] = []
+    var didClose: (() -> Void)?
+    override var requiresMountedEditor: Bool { false }
+    override func makeContent(send: @escaping (String, [String: Any]) -> Void) -> any ZoenKeyboardPanelContent {
+      held.send = send; return held
+    }
+    override func emitActionEvent(_ value: [String: Any]) { actions.append(value) }
+    override func emitClosedEvent(_ value: [String: Any]) { closed.append(value); didClose?() }
+  }
+  func testSensitiveRetirementOvertakesOrdinaryCloseBeforeCameraDrainWithoutRestoringAuthority() async throws {
+    let window = try mountedWindow(), host = DismissalHost(), token = UUID().uuidString
+    let request: [String: Any] = ["token": token, "context": "synthetic-dismissal", "active": true, "standalone": true]
+    func json(_ value: [String: Any]) throws -> String {
+      String(decoding: try JSONSerialization.data(withJSONObject: value), as: UTF8.self)
+    }
+    host.binding = try json(request); host.model = "{\"revision\":\"admitted\"}"
+    window.isHidden = false
+    defer { remove(host, from: window) }
+    try XCTUnwrap(window.rootViewController).view.addSubview(host)
+    XCTAssertNotNil(host.held.view.window); XCTAssertTrue(host.closed.isEmpty)
+    host.held.send("caption", ["text": "before", "revision": "admitted"])
+    XCTAssertEqual(host.actions.count, 1)
+    var closedRequest = request; closedRequest["active"] = false
+    host.binding = try json(closedRequest); host.applyProps()
+    XCTAssertEqual(host.held.retirements, 1)
+    XCTAssertNotNil(host.held.finishStop)
+    XCTAssertFalse(host.held.view.isHidden, "ordinary close retains original pixels through the held stop")
+    NotificationCenter.default.post(name: UIApplication.willResignActiveNotification, object: nil)
+    XCTAssertTrue(host.held.view.isHidden, "sensitive retirement must conceal even an already retiring owner")
+    XCTAssertTrue(host.closed.isEmpty, "closed cannot precede stop and actual removal")
+    host.binding = try json(request); host.applyProps()
+    host.held.send("caption", ["text": "after", "revision": "admitted"])
+    XCTAssertEqual(host.actions.count, 1, "late active props and retained callbacks cannot revive the owner")
+    let removed = expectation(description: "actual overlay removal")
+    host.didClose = { removed.fulfill() }
+    let finish = try XCTUnwrap(host.held.finishStop); host.held.finishStop = nil; finish()
+    await fulfillment(of: [removed], timeout: 2)
+    XCTAssertEqual(host.closed.count, 1); XCTAssertNil(host.held.view.superview)
+    XCTAssertEqual(host.held.retirements, 1)
+  }
 }

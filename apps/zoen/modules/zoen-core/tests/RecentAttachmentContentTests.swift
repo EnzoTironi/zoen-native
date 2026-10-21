@@ -58,6 +58,70 @@ import UIKit
     content.setVisible(false); play.sendActions(for: .touchUpInside); XCTAssertTrue(events.values.isEmpty)
     content.setVisible(true); content.retire(); play.sendActions(for: .touchUpInside); XCTAssertTrue(events.values.isEmpty)
   }
+  private func text(in view: UIView) -> [String] {
+    let own = (view as? UILabel).flatMap(\.text).map { [$0] } ?? []
+    return own + view.subviews.flatMap { text(in: $0) }
+  }
+  private func searchField(in view: UIView) -> UITextField? {
+    if let field = view as? UITextField { return field }
+    return view.subviews.lazy.compactMap { self.searchField(in: $0) }.first
+  }
+  func testRetirementKeepsOriginalFileAndAudioCellsUntilRemovalWithoutRetainingActionAuthority() throws {
+    for category in ["document", "audio"] {
+      var initial = model("admitted")
+      initial["activeCategory"] = category
+      initial["fileItems"] = initial["audioItems"]
+      initial["labels"] = ["previewFile": "Preview", "browseFiles": "Browse", "chooseGallery": "Gallery", "chatsMusic": "Music", "recentlySentFiles": "Recent"]
+      let events = Events(), content = ZoenAttachmentFileContent { events.values.append(($0, $1)) }
+      let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+      window.rootViewController = UIViewController()
+      try XCTUnwrap(window.rootViewController).view.addSubview(content.view)
+      content.view.frame = window.bounds; window.isHidden = false
+      defer { window.isHidden = true; content.retire() }
+      try content.update(model: initial, appearance: appearance); content.setVisible(true)
+      content.updateLayout(navigationHeight: 56, bottomInset: 90, safeArea: .zero)
+      content.scrollView.layoutIfNeeded()
+      let path = IndexPath(row: 0, section: 1)
+      let cell = try XCTUnwrap(content.scrollView.cellForRow(at: path))
+      let labels = text(in: content.view)
+      XCTAssertTrue(labels.contains("track.m4a")); XCTAssertTrue(labels.contains("Browse"))
+      content.retire()
+      // The container can lay out once more while its original view animates out.
+      content.updateLayout(navigationHeight: 56, bottomInset: 90, safeArea: .zero)
+      content.scrollView.layoutIfNeeded()
+      XCTAssertEqual(content.tableView(content.scrollView, numberOfRowsInSection: 1), 1)
+      XCTAssertTrue(content.scrollView.cellForRow(at: path) === cell)
+      XCTAssertEqual(text(in: content.view), labels)
+      let art = try XCTUnwrap(content.view.subviews.first { $0.accessibilityIdentifier == "attachment-file-empty-art" })
+      XCTAssertTrue(art.isHidden, "outgoing populated content must never become the empty illustration")
+      XCTAssertFalse(content.view.isUserInteractionEnabled)
+      XCTAssertTrue(content.view.accessibilityElementsHidden)
+      XCTAssertFalse(content.scrollView.isScrollEnabled)
+      content.tableView(content.scrollView, didSelectRowAt: path)
+      previewButton(in: cell)?.sendActions(for: .touchUpInside)
+      content.setVisible(true)
+      var stale = initial; stale["fileItems"] = [[String: Any]](); stale["audioItems"] = [[String: Any]]()
+      try content.update(model: stale, appearance: appearance)
+      content.retire()
+      XCTAssertTrue(events.values.isEmpty)
+      XCTAssertEqual(content.tableView(content.scrollView, numberOfRowsInSection: 1), 1)
+      XCTAssertEqual(text(in: content.view), labels, "late props cannot replace the retired renderer")
+      content.view.removeFromSuperview()
+      XCTAssertNil(content.view.superview)
+    }
+  }
+  func testRetirementPreservesSearchQueryButDropsRetainedDelegateAndFocusCallbacks() throws {
+    let events = Events(), content = ZoenAttachmentFileContent { events.values.append(($0, $1)) }
+    var initial = model("search")
+    initial["recent"] = ["selected": [String](), "query": "track", "searching": true, "loading": false, "hasMore": false, "error": false]
+    try content.update(model: initial, appearance: appearance); content.setVisible(true)
+    let field = try XCTUnwrap(searchField(in: content.view))
+    var focus = 0; content.didBeginEditing = { focus += 1 }
+    content.retire(); content.setVisible(true); content.focusSearch()
+    content.textFieldDidBeginEditing(field); field.sendActions(for: .editingChanged)
+    XCTAssertEqual(field.text, "track")
+    XCTAssertNil(field.delegate); XCTAssertEqual(focus, 0); XCTAssertTrue(events.values.isEmpty)
+  }
 }
 
 extension RecentAttachmentContentTests {
