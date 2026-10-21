@@ -18,11 +18,18 @@ class ZoenAttachmentContextMenu: UIView {
     return image ?? UIImage()
   }()
   struct Action {
+    enum Invocation { case afterDismissalBegins, afterContentReturns }
     let id: String
     let title: String
     let image: UIImage?
     let enabled: Bool
+    let invocation: Invocation
     let perform: () -> Void
+    init(id: String, title: String, image: UIImage?, enabled: Bool,
+         invocation: Invocation = .afterDismissalBegins, perform: @escaping () -> Void) {
+      self.id = id; self.title = title; self.image = image; self.enabled = enabled
+      self.invocation = invocation; self.perform = perform
+    }
   }
   private let source: WeakSource
   private final class WeakSource {
@@ -50,6 +57,8 @@ class ZoenAttachmentContextMenu: UIView {
   private var highlightedIndex: Int?
   private var externalInitialPoint: CGPoint?
   private var externalMoved = false
+  private var returnedAction: (() -> Void)?
+  private(set) var isReturningAfterAction = false
   private let haptic = UISelectionFeedbackGenerator()
   private var observers: [NSObjectProtocol] = []
   private let reducedMotion: @MainActor () -> Bool
@@ -276,11 +285,14 @@ class ZoenAttachmentContextMenu: UIView {
     guard lifecycle.isInteractive, actions.indices.contains(index), actions[index].enabled,
           let window = admittedWindow, presentation?.isAttached(in: window) == true,
           source.view?.window === window, sourceIsVisible, isValid() else { invalidateIfNeeded(); return }
-    let perform = actions[index].perform
-    // MediaPickerScreen:3174–3181 starts dismissal before the terminal action;
-    // it does not postpone sending until an animation callback.
+    let action = actions[index]
+    isReturningAfterAction = extraction != nil
+    if action.invocation == .afterContentReturns, extraction != nil { returnedAction = action.perform }
+    // MediaPickerScreen:3174–3181 and AttachmentFileController:724–734 start
+    // dismissal, then act immediately. Restore-before-handoff is only for the
+    // explicit Zoen Preview extension, absent from upstream's normal File menu.
     dismiss(animated: true)
-    perform()
+    if action.invocation == .afterDismissalBegins || extraction == nil { action.perform() }
   }
   func dismiss(animated: Bool) {
     guard lifecycle.dismiss() else { return }
@@ -316,7 +328,7 @@ class ZoenAttachmentContextMenu: UIView {
       }
     }
     layer.animateAlpha(from: CGFloat(alpha), to: 0, duration: ZoenAttachmentReferenceMenuLayout.closingDuration, removeOnCompletion: false)
-    let finish: (Bool) -> Void = { [weak self] _ in self?.remove() }
+    let finish: (Bool) -> Void = { [weak self] completed in self?.remove(allowReturnedAction: completed) }
     if reducedMotion() {
       layer.animateAlpha(from: CGFloat(alpha), to: 0, duration: ZoenAttachmentReferenceMenuLayout.closingDuration,
         removeOnCompletion: false, completion: finish)
@@ -332,8 +344,13 @@ class ZoenAttachmentContextMenu: UIView {
   /// Retirement interrupts an in-flight opening/closing and restores ownership
   /// synchronously. A superseded CA completion cannot execute any action.
   func retire() { remove() }
-  private func remove() {
+  private func remove(allowReturnedAction: Bool = false) {
     guard lifecycle.remove() else { return }
+    let action: (() -> Void)?
+    if allowReturnedAction, let window = admittedWindow, presentation?.isAttached(in: window) == true,
+       source.view?.window === window, sourceIsVisible, isValid() { action = returnedAction }
+    else { action = nil }
+    returnedAction = nil; isReturningAfterAction = false
     isUserInteractionEnabled = false
     observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll()
     glassContainer.layer.removeAllAnimations(); highlight.layer.removeAllAnimations()
@@ -344,6 +361,7 @@ class ZoenAttachmentContextMenu: UIView {
     if let source = source.view, source.window === admittedWindow, sourceIsVisible, isValid() {
       UIAccessibility.post(notification: .layoutChanged, argument: source)
     }
+    action?()
   }
   override func accessibilityPerformEscape() -> Bool { dismiss(animated: true); return true }
 }

@@ -40,6 +40,8 @@ import UIKit
   private var visible = false
   private var extractedMenu: ZoenAttachmentExtractedMenu?
   private weak var extractedCell: UITableViewCell?
+  private var deferredTableUpdate = false
+  private var deferredTableReload = false
   private var wantsSearchFocus = false
   private var emptyImageVisible = false
   private var emptyTextVisible = false
@@ -87,11 +89,21 @@ import UIKit
     let recent = model["recent"] as? [String: Any] ?? [:]
     let selected = recent["selected"] as? [String] ?? []
     guard selected.count <= 10, Set(selected).count == selected.count else { throw Failure.invalid }
-    // Restore the actual owned row before any model reconfiguration/reload can
-    // recycle its source cell. Retained callbacks keep their revision fences.
-    extractedMenu?.retire(); extractedMenu = nil
-    for case let cell as RecentFileCell in scrollView.visibleCells { cell.contextGesture.cancel() }
+    let nextQuery = recent["query"] as? String ?? ""
+    guard nextQuery.utf16.count <= 512, !nextQuery.contains("\0") else { throw Failure.invalid }
     let themeChanged = !self.appearance.background.isEqual(appearance.background) || !self.appearance.text.isEqual(appearance.text) || !self.appearance.accent.isEqual(appearance.accent) || !self.appearance.secondary.isEqual(appearance.secondary) || !self.appearance.separator.isEqual(appearance.separator)
+    // Select updates canonical state immediately after beginning the original
+    // return. Keep only its real row rendering leased until that return ends;
+    // current revision/busy/selection below are never deferred. Disappearance,
+    // disabling, category/search/theme changes still retire synchronously.
+    let returningSource = extractedCell?.accessibilityIdentifier
+    let keepReturning = extractedMenu?.isReturningAfterAction == true && !themeChanged &&
+      kind == self.kind && recent["searching"] as? Bool != true && model["busy"] as? Bool != true &&
+      rows.contains { "attachment-recent-file-" + ($0["id"] as? String ?? "") == returningSource }
+    if !keepReturning {
+      extractedMenu?.retire(); extractedMenu = nil
+      for case let cell as RecentFileCell in scrollView.visibleCells { cell.contextGesture.cancel() }
+    }
     let changed = themeChanged || self.kind != kind || !NSArray(array: rows).isEqual(to: self.rows) || self.selected != selected || self.searching != (recent["searching"] as? Bool == true)
     self.revision = revision; self.rows = rows; self.selected = selected; self.kind = kind; self.appearance = appearance
     labels = model["labels"] as? [String: String] ?? [:]
@@ -100,8 +112,7 @@ import UIKit
     let nextSearching = recent["searching"] as? Bool == true
     if nextSearching && !searching { wantsSearchFocus = true }
     searching = nextSearching
-    query = recent["query"] as? String ?? ""
-    guard query.utf16.count <= 512, !query.contains("\0") else { throw Failure.invalid }
+    query = nextQuery
     enabled = model["busy"] as? Bool != true
     searchAvailable = selected.isEmpty && (loading || rows.count > 10 || hasMore)
     view.backgroundColor = appearance.background
@@ -122,7 +133,13 @@ import UIKit
     more.isEnabled = enabled && !loading; searchField.isEnabled = enabled
     more.accessibilityIdentifier = "attachment-recent-more"
     scrollView.tableFooterView = hasMore && !hasError ? more : nil
-    if changed { scrollView.reloadData() }
+    if keepReturning {
+      deferredTableUpdate = true; deferredTableReload = deferredTableReload || changed
+    } else { reconfigureTable(reload: changed) }
+    updateVisibility()
+  }
+  private func reconfigureTable(reload: Bool) {
+    if reload { scrollView.reloadData() }
     else {
       for cell in scrollView.visibleCells {
         guard let path = scrollView.indexPath(for: cell) else { continue }
@@ -130,7 +147,12 @@ import UIKit
         else if let cell = cell as? RecentActionCell { updateActionCell(cell, indexPath: path) }
       }
     }
-    updateVisibility()
+  }
+  private func completeDeferredTableUpdate() {
+    let needsUpdate = deferredTableUpdate, reload = deferredTableReload
+    deferredTableUpdate = false; deferredTableReload = false
+    guard needsUpdate, !retired else { return }
+    reconfigureTable(reload: reload)
   }
   func setVisible(_ value: Bool) {
     guard !retired else { return }
@@ -288,7 +310,7 @@ import UIKit
     if let selected = scrollView.indexPathForSelectedRow { scrollView.deselectRow(at: selected, animated: false) }
     let source = cell.extractedSource()
     let actions: [ZoenAttachmentContextMenu.Action] = [
-      .init(id: "preview", title: labels["previewFile"] ?? "", image: nil, enabled: true,
+      .init(id: "preview", title: labels["previewFile"] ?? "", image: nil, enabled: true, invocation: .afterContentReturns,
         perform: { [weak self] in guard let self, self.revision == revision else { return }; self.emit("recentPreview", id: id) }),
       .init(id: "select", title: labels["selectFile"] ?? "", image: ZoenTelegramAttachmentGlyph.image(.contextSelect), enabled: true,
         perform: { [weak self] in guard let self, self.revision == revision else { return }; self.emit("recentSelect", id: id) }),
@@ -301,7 +323,10 @@ import UIKit
           cell.accessibilityIdentifier == "attachment-recent-file-" + id
       }, didDismiss: { [weak self, weak gesture] menu in
         gesture?.cancel()
-        if self?.extractedMenu === menu { self?.extractedMenu = nil; self?.extractedCell = nil }
+        if self?.extractedMenu === menu {
+          self?.extractedMenu = nil; self?.extractedCell = nil
+          self?.completeDeferredTableUpdate()
+        }
       })
     extractedMenu = menu; extractedCell = cell
     guard menu.present(in: window) else { extractedMenu = nil; extractedCell = nil; return false }

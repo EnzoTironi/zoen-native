@@ -142,7 +142,9 @@
     "A single native presentation owner and common action-list renderer serve distinct reference and extracted contracts. No caption/send/account/file authority is added.",
     "Every model reconfiguration restores the real body before reuse. Source-size changes cancel extraction and restore live row bounds instead of stretching text during UIKit rotation.",
     "Existing Zoen Preview remains an extra action without invented artwork. File Select uses the original pinned context Select PDF; Audio/search retain their previous menu.",
-    "Reduced Motion omits movement/scale; Reduce Transparency makes the backdrop opaque. Retained callbacks revalidate revision/visibility/busy/source identity."
+    "Reduced Motion omits movement/scale; Reduce Transparency makes the backdrop opaque. Retained callbacks revalidate revision/visibility/busy/source identity.",
+    "AttachmentFileController:724\u2013734 Select remains immediate after dismissal starts; canonical model fields advance immediately, table reconfiguration alone waits for actual content return. The Zoen-only Preview extension waits for a valid normal return and cancels on interruption.",
+    "ContextControllerImpl:270\u2013296 takes the initial continuation point from the first external move. Its modern branch:494\u2013500 sets readiness synchronously before animateIn, so no artificial .42-second input delay is added."
   ],
   "notPorted": [
     "Original overlay status-bar hiding requires shared presentation-controller policy and is outside this bounded change.",

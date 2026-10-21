@@ -42,7 +42,11 @@ by the existing original `SharedDisplayLinkDriver`. Source compression follows
 `ContextControllerSourceNode:97–128`, including the 15pt/0.7 minimum and 0.2s
 easeOut return. UIKit table deselection replaces Texture selection cancellation.
 The retained source gesture can drag into the action list after the original
-4pt vertical threshold. Enabled actions retain the existing selection haptics,
+4pt vertical threshold. Its first external move establishes the baseline; the
+activation point is not used. `ContextControllerImpl:494–500` marks the modern
+source-container branch ready synchronously before starting its animation. It
+does not wait for the 0.42s spring; the legacy blur-readiness path is different.
+Enabled actions retain the existing selection haptics,
 highlight geometry and once-only dismissal/action gate. Canceling never performs
 an action. VoiceOver receives the localized More action and Escape/outside close.
 
@@ -59,6 +63,18 @@ visibility loss or retirement. Retained actions check the current revision,
 source identity, category, visibility and busy state before the existing native
 session event can run. Final caption and durable send ownership stay outside the
 menu. Opening, closing or repeating a canceled action cannot publish a message.
+
+`AttachmentFileController:724–734` starts dismissal and then updates selection
+immediately; it does not put Select in the dismissal completion. Zoen preserves
+that order and advances native revision, busy and selection state immediately.
+Only table reconfiguration is deferred during that action's 0.2s return, so the
+actual content cannot be reused before being restored. Pending renders collapse
+to the latest current state. Disabled/revoked sources, category/search/theme
+changes, visibility loss and retirement still interrupt synchronously. The
+existing Zoen-only Preview action instead waits for normal content restoration
+before handing off to a viewer; canceled/interrupted or stale returns discard
+that pending handoff. Photos Send-as-File remains immediate after dismissal
+begins.
 
 Reduced Motion preserves opacity while omitting transforms. Parent/window loss
 and app deactivation remove the overlay and restore its real row immediately.
