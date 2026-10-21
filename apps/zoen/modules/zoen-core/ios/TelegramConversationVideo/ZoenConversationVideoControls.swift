@@ -239,7 +239,8 @@ private extension UIFont {
   }
   override func endTracking(_ touch: UITouch?, with event: UIEvent?) {
     if let touch { changed?(Double((touch.location(in: self).x - origin.x) / max(1, track.width))) }
-    ended?(true)
+    // UIKit may call endTracking(nil) from cancelTracking. It cannot commit.
+    ended?(touch != nil)
   }
   override func cancelTracking(with event: UIEvent?) { super.cancelTracking(with: event); ended?(false) }
   override func accessibilityIncrement() { adjust?(15) }

@@ -76,4 +76,12 @@ import XCTest
     XCTAssertEqual(deltas, [15, -15])
     XCTAssertEqual(scrubber.bounds.height, 44)
   }
+  func testUIKitMissingEndTouchCannotCommitCancelledScrub() {
+    let scrubber = ZoenConversationVideoScrubber(frame: CGRect(x: 0, y: 0, width: 338, height: 44))
+    var endings: [Bool] = []
+    scrubber.ended = { endings.append($0) }
+    // UIControl.h explicitly permits this call during cancellation.
+    scrubber.endTracking(nil, with: nil)
+    XCTAssertEqual(endings, [false])
+  }
 }
