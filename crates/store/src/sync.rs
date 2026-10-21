@@ -117,6 +117,45 @@ mod tests {
         store.clear_recovery_upload("context").unwrap();
         assert!(!store.recovery_upload_confirmed("context").unwrap());
     }
+
+    #[test]
+    fn terminal_upload_migration_preserves_ciphertext_and_transaction_rollback() {
+        let store = Store::in_memory().unwrap();
+        // The pre-patch queue is additive: old rows remain retryable until an
+        // actual transport result, never guessed from missing historical facts.
+        store.conn().execute_batch("DROP TABLE blob_uploads; CREATE TABLE blob_uploads(blob_sha TEXT PRIMARY KEY, bytes BLOB NOT NULL, created_ms INTEGER NOT NULL); INSERT INTO blob_uploads VALUES ('blob', X'010203', 1);").unwrap();
+        store.migrate_sync().unwrap();
+        store.migrate_sync().unwrap();
+        assert_eq!(
+            store.pending_uploads(8).unwrap(),
+            vec![("blob".into(), vec![1, 2, 3])]
+        );
+        {
+            let _transaction = store.conn().unchecked_transaction().unwrap();
+            assert!(store.upload_refused("blob").unwrap());
+            assert!(store.pending_uploads(8).unwrap().is_empty());
+        }
+        assert_eq!(
+            store.pending_uploads(8).unwrap(),
+            vec![("blob".into(), vec![1, 2, 3])]
+        );
+        assert!(store.upload_refused("blob").unwrap());
+        assert!(!store.upload_refused("blob").unwrap());
+        assert!(
+            store.upload_pending("blob").unwrap(),
+            "failed is not uploaded"
+        );
+        assert_eq!(store.uploads_pending().unwrap(), 0);
+        let retained: Vec<u8> = store
+            .conn()
+            .query_row(
+                "SELECT bytes FROM blob_uploads WHERE blob_sha = 'blob' AND failed = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(retained, vec![1, 2, 3]);
+    }
 }
 
 /// An outbox entry without its event.
@@ -184,7 +223,8 @@ impl Store {
             CREATE TABLE IF NOT EXISTS blob_uploads (
                 blob_sha   TEXT PRIMARY KEY,
                 bytes      BLOB NOT NULL,
-                created_ms INTEGER NOT NULL
+                created_ms INTEGER NOT NULL,
+                failed     INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS mls_recovery_uploads (
                 blob_sha TEXT PRIMARY KEY,
@@ -197,6 +237,16 @@ impl Store {
             );
             ",
         )?;
+        let has_failed: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('blob_uploads') WHERE name = 'failed')",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_failed {
+            self.conn.execute_batch(
+                "ALTER TABLE blob_uploads ADD COLUMN failed INTEGER NOT NULL DEFAULT 0",
+            )?;
+        }
         Ok(())
     }
 
@@ -446,7 +496,7 @@ impl Store {
     pub fn pending_uploads(&self, limit: u32) -> Result<Vec<(String, Vec<u8>)>> {
         let mut st = self
             .conn
-            .prepare("SELECT blob_sha, bytes FROM blob_uploads ORDER BY created_ms LIMIT ?1")?;
+            .prepare("SELECT blob_sha, bytes FROM blob_uploads WHERE failed = 0 ORDER BY created_ms LIMIT ?1")?;
         let rows = st.query_map([limit], |r| Ok((r.get(0)?, r.get(1)?)))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
@@ -460,11 +510,11 @@ impl Store {
     }
 
     pub fn uploads_pending(&self) -> Result<u64> {
-        Ok(self
-            .conn
-            .query_row("SELECT count(*) FROM blob_uploads", [], |r| {
-                r.get::<_, i64>(0)
-            })? as u64)
+        Ok(self.conn.query_row(
+            "SELECT count(*) FROM blob_uploads WHERE failed = 0",
+            [],
+            |r| r.get::<_, i64>(0),
+        )? as u64)
     }
 
     pub fn upload_done(&self, blob_sha: &str) -> Result<()> {
@@ -485,14 +535,15 @@ impl Store {
         Ok(())
     }
 
-    /// A permanent media refusal cannot acknowledge a recovery dependency.
-    pub fn upload_refused(&self, blob_sha: &str) -> Result<()> {
-        self.conn.execute(
-            "DELETE FROM blob_uploads WHERE blob_sha = ?1 AND NOT EXISTS
+    /// Retain exact ciphertext, but stop automatic retries after a permanent refusal.
+    /// Recovery keeps its existing retry/confirmation contract.
+    pub fn upload_refused(&self, blob_sha: &str) -> Result<bool> {
+        let changed = self.conn.execute(
+            "UPDATE blob_uploads SET failed = 1 WHERE blob_sha = ?1 AND failed = 0 AND NOT EXISTS
              (SELECT 1 FROM mls_recovery_uploads WHERE blob_sha = ?1)",
             [blob_sha],
         )?;
-        Ok(())
+        Ok(changed != 0)
     }
 
     /// Called inside the transaction that stages MLS state and its signed commit.

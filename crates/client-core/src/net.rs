@@ -1356,7 +1356,20 @@ async fn media_worker(
                         &sha[..12],
                         r.status()
                     ));
-                    engine!(|engine| engine.upload_refused(&sha));
+                    match engine!(|engine| engine.upload_refused(&sha)) {
+                        Ok(spaces) => {
+                            if let Some(listener) = &listener {
+                                if !spaces.is_empty() {
+                                    listener.on_change(spaces);
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            tracing_like(&format!("media: refusal storage failed: {error}"));
+                            upload_failed = true;
+                            break;
+                        }
+                    }
                 }
                 Ok(r) => {
                     tracing_like(&format!(

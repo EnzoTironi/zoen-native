@@ -197,6 +197,26 @@ fn same_media_group(first: &Event, second: &Event) -> bool {
 }
 
 impl Engine {
+    /// Upload availability is not write authority: signed/canonical admission still
+    /// runs normally. This only resolves the File bytes an outbox intent references.
+    fn outbox_attachment<'a>(&'a self, event: &'a Event) -> Option<&'a FileDoc> {
+        let content = match &event.body {
+            EventBody::ItemCreated { content, .. } | EventBody::ItemVersioned { content, .. } => {
+                content
+            }
+            EventBody::MessagePosted {
+                attaches: Some(item),
+                ..
+            } => &self.state.items.get(item)?.current().content,
+            _ => return None,
+        };
+        if let ItemContent::File(file) = content {
+            Some(file)
+        } else {
+            None
+        }
+    }
+
     /// Logs from an older event format can't be re-verified under the current one: start over (pre-launch only; ADR 0010).
     pub(crate) fn migrate_event_format(&mut self) -> R<()> {
         let fmt = self.store.meta(EVENT_FORMAT_META)?;
@@ -855,25 +875,87 @@ impl Engine {
                 .outbox_note(&rejected.client_id, reason, true)
                 .map_err(Into::into);
         }
+        let is_member = |event: &Event| {
+            event.space == rejected.space
+                && event.author == rejected.author
+                && event_log::verify_author(event).is_ok()
+                && seeds
+                    .iter()
+                    .any(|seed| seed.client_id == event.client_id || same_media_group(seed, event))
+        };
+        // An aborted album must not leave a fresh, otherwise unused File head
+        // blocking later ordinary messages while that orphan's upload retries.
+        // Shared references and already canonical Items retain their own fate.
+        let orphan_files: HashSet<_> = rows.iter().filter(|row| is_member(&row.event))
+            .filter_map(|row| match &row.event.body {
+                EventBody::MessagePosted { attaches: Some(item), .. } => Some(item),
+                _ => None,
+            }).filter(|item| !rows.iter().any(|row| !row.failed && !is_member(&row.event)
+                && matches!(&row.event.body, EventBody::MessagePosted { attaches: Some(other), .. } if other == *item)))
+            .collect();
+        let confirmed = self
+            .logs
+            .get(&rejected.space)
+            .map(|log| ConfirmedMediaDependencies::from_log(self, log))
+            .transpose()?;
         let tx = self
             .store
             .conn()
-            .unchecked_transaction()
+            .is_autocommit()
+            .then(|| self.store.conn().unchecked_transaction())
+            .transpose()
             .map_err(store::StoreError::from)?;
         for row in &rows {
             let same_owner = row.event.space == rejected.space
                 && row.event.author == rejected.author
                 && event_log::verify_author(&row.event).is_ok();
-            let dependent = same_owner
-                && seeds.iter().any(|seed| {
-                    seed.client_id == row.event.client_id || same_media_group(seed, &row.event)
-                });
+            let orphan = same_owner
+                && matches!(&row.event.body,
+                EventBody::ItemCreated { item, kind: ItemKind::File, content: ItemContent::File(file), .. }
+                    if orphan_files.contains(item) && confirmed.as_ref().is_none_or(|state| !state.state.items.contains_key(item))
+                    && file.chunks.iter().chain(file.thumb.iter()).any(|chunk| self.store.upload_pending(&chunk.blob).unwrap_or(true)));
+            let dependent = is_member(&row.event) || orphan;
             if row.event.client_id == rejected.client_id || (!row.failed && dependent) {
                 self.store.outbox_note(&row.event.client_id, reason, true)?;
             }
         }
-        tx.commit().map_err(store::StoreError::from)?;
+        if let Some(tx) = tx {
+            tx.commit().map_err(store::StoreError::from)?;
+        }
         Ok(())
+    }
+
+    /// A terminal HTTP refusal and the corresponding failed signed intents are
+    /// one durable transaction. No relay confirmation is inferred from local bytes.
+    pub fn upload_refused(&mut self, blob: &str) -> R<Vec<String>> {
+        let tx = self
+            .store
+            .conn()
+            .unchecked_transaction()
+            .map_err(store::StoreError::from)?;
+        if !self.store.upload_refused(blob)? {
+            return Ok(Vec::new());
+        }
+        let mut changed = HashSet::new();
+        for row in self.store.outbox()? {
+            let file = self.outbox_attachment(&row.event);
+            if !row.failed
+                && event_log::verify_author(&row.event).is_ok()
+                && file.is_some_and(|file| {
+                    file.chunks
+                        .iter()
+                        .chain(file.thumb.iter())
+                        .any(|chunk| chunk.blob == blob)
+                })
+            {
+                self.refuse_outbox_media_dependents(&row.event, "attachment upload refused")?;
+                changed.insert(row.event.space.clone());
+            }
+        }
+        tx.commit().map_err(store::StoreError::from)?;
+        self.reload()?;
+        self.net.wake();
+        Ok(changed.into_iter().collect())
     }
 
     pub fn cursors(&self) -> Vec<Cursor> {
@@ -962,6 +1044,19 @@ impl Engine {
                 .as_ref()
                 .is_some_and(|seen| self.next_seq(&event.space) <= seen.seq)
             {
+                continue;
+            }
+            // File publication must not outrun its actual HTTP upload. A terminal
+            // refusal retains this row and fails the exact dependent outbox intents;
+            // transient retries keep the original signature/CID/ciphertext queued.
+            let file = self.outbox_attachment(&event);
+            if file.is_some_and(|file| {
+                file.chunks
+                    .iter()
+                    .chain(file.thumb.iter())
+                    .any(|chunk| self.store.upload_pending(&chunk.blob).unwrap_or(true))
+            }) {
+                blocked.insert(event.space.clone());
                 continue;
             }
             if matches!(&event.body, EventBody::MessagePosted { media: Some(_), .. }) {

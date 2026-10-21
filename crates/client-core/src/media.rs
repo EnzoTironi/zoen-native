@@ -64,10 +64,6 @@ impl Engine {
         }
     }
 
-    pub fn upload_refused(&self, blob: &str) {
-        let _ = self.store.upload_refused(blob);
-    }
-
     /// Photos the chats on the relay and the profiles I can read show right now that this
     /// device is missing.
     pub fn wanted_media(&self) -> Vec<Wanted> {

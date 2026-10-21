@@ -1370,6 +1370,7 @@ fn media_contract_transient_first_album_refusal_preserves_all_confirmed_members_
         .engine
         .send_media_draft(f.scope.clone(), draft.revision)
         .unwrap();
+    media_contract_upload_all(&f);
     let expected_ids: Vec<_> = sent.entries.iter().map(|entry| entry.id.clone()).collect();
     assert_eq!(expected_ids.len(), 2);
     // Drive actual offered batches as the dispatcher does: all offers in a batch
@@ -1495,6 +1496,7 @@ fn media_contract_single_media_transient_file_refusal_survives_cold_receiver() {
         .engine
         .send_media_draft(f.scope.clone(), draft.revision)
         .unwrap();
+    media_contract_upload_all(&f);
     assert_eq!(sent.entries.len(), 1);
     assert!(sent.entries[0].media.as_ref().unwrap().group.is_none());
     let mut rejected = None;
@@ -1602,6 +1604,20 @@ fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_not_block_o
         .engine
         .send_message(other_space, "Unrelated space stays live".into())
         .unwrap();
+    let waiting_for_upload = f.engine.lock().outbox_envelopes();
+    assert!(
+        waiting_for_upload
+            .iter()
+            .any(|env| env.client_id() == independent.id),
+        "a different Space must not wait for this upload"
+    );
+    assert!(
+        waiting_for_upload
+            .iter()
+            .all(|env| env.space() != f.scope.space_id),
+        "this Space waits while actual upload is pending"
+    );
+    media_contract_upload_all(&f);
     let offered = f.engine.lock().outbox_envelopes();
     let first_file = f
         .engine
@@ -1692,6 +1708,7 @@ fn media_contract_grouped_preexisting_confirmed_files_need_no_new_creation() {
                 .unwrap()
         })
         .collect();
+    media_contract_upload_all(&f);
     media_contract_confirm_scope(&f);
     let original_file = f.engine.file_info_at(items[0].clone(), None).unwrap();
     media_contract_receive(
@@ -1781,6 +1798,7 @@ fn media_contract_permanent_file_refusal_fails_dependents_and_releases_later_hea
             .engine
             .send_media_draft(f.scope.clone(), draft.revision)
             .unwrap();
+        media_contract_upload_all(&f);
         let later = f
             .engine
             .send_message(f.scope.space_id.clone(), "Later ordinary message".into())
@@ -1880,6 +1898,7 @@ fn media_contract_refused_duplicate_creation_cannot_poison_confirmed_file_refere
         .engine
         .send_media_draft(f.scope.clone(), draft.revision)
         .unwrap();
+    media_contract_upload_all(&f);
     let file = f
         .engine
         .lock()
@@ -1963,6 +1982,7 @@ fn media_contract_terminal_group_refusal_is_atomic_and_exactly_scoped() {
         .engine
         .send_media_draft(f.scope.clone(), draft.revision)
         .unwrap();
+    media_contract_upload_all(&f);
     let later = f
         .engine
         .send_message(
@@ -2933,4 +2953,13 @@ fn media_contract_recovery_reservation_yields_to_a_validated_file_creation() {
         f.engine.file_bytes(item, None).unwrap(),
         Some(b"authorized after actual creation".to_vec())
     );
+}
+
+// These projection/WS tests start AFTER the upload prerequisite succeeds. Actual
+// HTTP terminal/transient and cold recovery coverage is in net/tests/media_uploads.
+fn media_contract_upload_all(f: &Fixture) {
+    let uploads = f.engine.lock().pending_uploads(64);
+    for (blob, _) in uploads {
+        f.engine.lock().upload_done(&blob);
+    }
 }

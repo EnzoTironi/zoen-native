@@ -951,7 +951,7 @@ fn context_and_commit_roll_back_together_and_wait_for_upload_after_restart() {
         engine.unlock_profile(Some(agreement.to_vec())).unwrap();
         assert!(engine.device().unwrap().pending(space));
         assert!(engine.outbox_envelopes().is_empty());
-        engine.upload_refused(&reference.blob);
+        engine.upload_refused(&reference.blob).unwrap();
         assert_eq!(engine.uploads_pending(), 1);
         assert!(
             engine.outbox_envelopes().is_empty(),

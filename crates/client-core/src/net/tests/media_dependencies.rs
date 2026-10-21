@@ -178,6 +178,12 @@ async fn run_media_dependencies_ws(terminal: bool) {
         .send_media_draft(scope, saved.draft.revision)
         .unwrap();
     let ids: Vec<_> = sent.entries.iter().map(|entry| entry.id.clone()).collect();
+    // This fixture exercises WS ordering after the upload prerequisite succeeds;
+    // media_uploads covers the actual HTTP worker and its terminal/transient paths.
+    let uploaded = sender.lock().pending_uploads(8);
+    for (blob, _) in uploaded {
+        sender.lock().upload_done(&blob);
+    }
     let later = terminal.then(|| {
         sender
             .send_message(space.clone(), "Later ordinary wire message".into())
