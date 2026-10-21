@@ -33,6 +33,12 @@ const MAX_THUMBNAIL_BYTES: usize = 2 << 20;
 const MAX_FILE_CHUNKS: usize = MAX_FILE_BYTES / MIN_CHUNK + 1;
 const MAX_FILE_METADATA_BYTES: usize = 128 << 10;
 
+#[cfg(test)]
+thread_local! {
+    /// Counts actual historical fallback comparisons, not elapsed test time.
+    pub(crate) static FILE_VERSION_HISTORY_PROBES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 #[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct FileDto {
@@ -862,7 +868,14 @@ impl Engine {
             self.app_document_identity(&it.space)?;
         }
         let v = match version {
-            Some(n) => it.versions.iter().find(|v| v.number == n),
+            // Most demand workers and recent-source checks pin the current
+            // number. Resolving it must not walk every earlier File manifest.
+            Some(n) if it.current().number == n => Some(it.current()),
+            Some(n) => it.versions.iter().find(|v| {
+                #[cfg(test)]
+                FILE_VERSION_HISTORY_PROBES.with(|count| count.set(count.get() + 1));
+                v.number == n
+            }),
             None => it.versions.last(),
         };
         let Some(f) = v.and_then(|v| v.content.owned_file()) else {

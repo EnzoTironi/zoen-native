@@ -126,12 +126,7 @@ impl Engine {
             return None;
         }
         let item = self.state.items.get(id)?;
-        if item.kind != ItemKind::File
-            || item.space != entry.space
-            || item.versions.iter().any(
-                |version| matches!(&version.content, ItemContent::File(file) if file.is_voice()),
-            )
-        {
+        if item.kind != ItemKind::File || item.space != entry.space || item.has_voice_history {
             return None;
         }
         let ItemContent::File(file) = &item.current().content else {

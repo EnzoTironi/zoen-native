@@ -16,6 +16,14 @@ Any voice version excludes the source. Library-only Items, deleted messages,
 unconfirmed sends, recovery-only files and inaccessible conversations are absent.
 This is an explicit schema adaptation, not a claim of identical media tagging.
 
+The canonical in-memory Item projection derives a monotonic voice-history flag
+while applying each accepted create/version/revert or approved proposal. Replay
+reconstructs that flag from the same signed events. Classification reads the flag
+without revisiting every old manifest for every referencing message; the SQL
+accelerator never supplies this authority. Exact current-version file demand
+resolves the last canonical version directly. Explicit older-version reads retain
+their existing historical lookup behavior.
+
 `recent_attachments` takes the existing exact identity/device/destination/thread
 draft scope, kind, query (at most 512 UTF-8 bytes), optional cursor and limit
 1–50. Results contain metadata and an exact source reference: conversation,

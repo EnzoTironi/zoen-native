@@ -260,6 +260,119 @@ fn classifications_follow_current_file_presentation_and_all_author_music_without
 }
 
 #[test]
+fn current_source_resolution_does_not_probe_history_as_versions_increase() {
+    let f = fixture();
+    let (item, _) = add(&f, "application/pdf", "history.pdf", false);
+    confirm(&f);
+    let original = {
+        let core = f.core.lock();
+        let ItemContent::File(file) = &core.state.items[&item].current().content else {
+            panic!("missing file");
+        };
+        file.clone()
+    };
+    let mut versions = 1;
+    for target in [1, 8, 64, 256] {
+        while versions < target {
+            let mut file = original.clone();
+            file.name = format!("history-{}.pdf", versions + 1);
+            receive(
+                &f,
+                &f.scope.expected_identity_id,
+                EventBody::ItemVersioned {
+                    item: item.clone(),
+                    content: ItemContent::File(file),
+                    note: "rename".into(),
+                },
+            );
+            versions += 1;
+        }
+        crate::files::FILE_VERSION_HISTORY_PROBES.with(|count| count.set(0));
+        // Rebuild classification, row resolution and the final source check all
+        // use the actual current manifest, regardless of its history length.
+        f.core.lock().index_dirty = true;
+        let source = selected(&f);
+        assert_eq!(source.reference.version, target);
+        let checked = f
+            .core
+            .attachment_reference_validate(
+                f.scope.clone(),
+                RecentAttachmentKind::File,
+                source.reference,
+            )
+            .unwrap();
+        let current = f.core.lock().file_info_at(&item, Some(target)).unwrap();
+        assert_eq!(checked.reference.sha256, current.sha256);
+        let probes = crate::files::FILE_VERSION_HISTORY_PROBES.with(|count| count.get());
+        assert_eq!(
+            probes, 0,
+            "current version must not inspect older manifests"
+        );
+        eprintln!("recent current-source history={target} historical_comparisons={probes}");
+    }
+    // Confirm the counter observes the real arbitrary-version fallback; the
+    // optimization must preserve historical reads rather than hiding all probes.
+    crate::files::FILE_VERSION_HISTORY_PROBES.with(|count| count.set(0));
+    let older = f.core.lock().file_info_at(&item, Some(128)).unwrap();
+    assert_eq!(older.name, "history-128.pdf");
+    assert_eq!(
+        crate::files::FILE_VERSION_HISTORY_PROBES.with(|count| count.get()),
+        128
+    );
+    assert!(f.core.lock().file_info_at(&item, Some(257)).is_err());
+}
+
+#[test]
+fn accepted_voice_history_survives_rename_revert_and_signed_replay() {
+    let f = fixture();
+    let (item, _) = add(&f, "audio/mpeg", "ordinary.mp3", false);
+    confirm(&f);
+    assert_eq!(list(&f, RecentAttachmentKind::Audio).items.len(), 1);
+    let ordinary = {
+        let core = f.core.lock();
+        let ItemContent::File(file) = &core.state.items[&item].current().content else {
+            panic!("missing audio file");
+        };
+        file.clone()
+    };
+    let mut voice = ordinary.clone();
+    voice.path = "VoiceNotes/recording.mp3".into();
+    receive(
+        &f,
+        &f.scope.expected_identity_id,
+        EventBody::ItemVersioned {
+            item: item.clone(),
+            content: ItemContent::File(voice),
+            note: "recording".into(),
+        },
+    );
+    assert!(f.core.lock().state.items[&item].has_voice_history);
+    receive(
+        &f,
+        &f.scope.expected_identity_id,
+        EventBody::ItemVersioned {
+            item: item.clone(),
+            content: ItemContent::File(ordinary),
+            note: "ordinary path again".into(),
+        },
+    );
+    receive(
+        &f,
+        &f.scope.expected_identity_id,
+        EventBody::ItemReverted {
+            item: item.clone(),
+            to_version: 1,
+            note: "restore ordinary version".into(),
+        },
+    );
+    assert_eq!(f.core.lock().state.items[&item].current().number, 4);
+    assert!(list(&f, RecentAttachmentKind::Audio).items.is_empty());
+    f.core.lock().reload().unwrap();
+    assert!(f.core.lock().state.items[&item].has_voice_history);
+    assert!(list(&f, RecentAttachmentKind::Audio).items.is_empty());
+}
+
+#[test]
 fn bounded_search_filters_before_limit_and_cursors_bind_scope_kind_query_and_generation() {
     let f = fixture();
     for index in 0..65 {

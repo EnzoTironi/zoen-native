@@ -198,6 +198,9 @@ pub(crate) struct ItemState {
     pub kind: ItemKind,
     pub origin: String,
     pub versions: Vec<Version>,
+    /// Derived only while applying accepted content, including replay. A MIME or
+    /// path change must not turn an earlier voice recording into recent music.
+    pub has_voice_history: bool,
 }
 
 impl ItemState {
@@ -272,6 +275,7 @@ impl State {
                 space: e.space.clone(),
                 kind,
                 origin: origin.to_string(),
+                has_voice_history: matches!(content, ItemContent::File(file) if file.is_voice()),
                 versions: vec![Version {
                     number: 1,
                     content: content.clone(),
@@ -696,6 +700,8 @@ impl State {
                     let content =
                         crate::apps::reconcile_concurrent(&it.current().content, content, e.at_ms)
                             .unwrap_or_else(|| content.clone());
+                    it.has_voice_history |=
+                        matches!(&content, ItemContent::File(file) if file.is_voice());
                     it.versions.push(Version {
                         number,
                         content,
@@ -728,6 +734,8 @@ impl State {
                         .cloned()
                     {
                         let number = it.versions.len() as u32 + 1;
+                        it.has_voice_history |=
+                            matches!(&target.content, ItemContent::File(file) if file.is_voice());
                         it.versions.push(Version {
                             number,
                             content: target.content,
