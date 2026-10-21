@@ -1,12 +1,13 @@
 import UIKit
 
-// UIKit translation of the modern reference/list ContextController branch at
+// UIKit translation of the modern reference/extracted ContextController at
 // Telegram-iOS f1dd7a2 (GPL-2.0-or-later, GPLv3 selected). Exact source ranges
-// and adaptations: docs/product/telegram-ios-reference-menu.md. Uses the actual
+// and adaptations: docs/product/telegram-ios-{reference,file-extracted}-menu.md.
+// Uses the actual
 // ported GlassBackgroundView/Container and Display layer spring implementation.
 // No new selection, caption, permission or send authority lives in this view.
 @MainActor
-final class ZoenAttachmentReferenceMenu: UIView {
+class ZoenAttachmentContextMenu: UIView {
   // ContextSourceContainer.swift:17–25,410–423. Transparent rendered contents
   // keep the clear outside-dismiss surface in iOS 27 touch delivery; hitTest
   // alone is insufficient. Shared per class; no visible backdrop is introduced.
@@ -31,7 +32,11 @@ final class ZoenAttachmentReferenceMenu: UIView {
   private let actions: [Action]
   private let appearance: ZoenKeyboardPanelAppearance
   private let isValid: () -> Bool
-  private let didDismiss: (ZoenAttachmentReferenceMenu) -> Void
+  private let didDismiss: (ZoenAttachmentContextMenu) -> Void
+  private let extraction: ZoenAttachmentExtractedContent?
+  private let extractedStage = UIView()
+  private var extractedGeometry: ZoenAttachmentExtractedMenuLayout.Geometry?
+  private var backdrop: ZoenAttachmentContextBackdrop?
   private let shield = UIControl()
   private let scroll = UIScrollView()
   private let glassContainer = ZoenTelegramAttachmentGlassContainerView(spacing: 28)
@@ -43,34 +48,42 @@ final class ZoenAttachmentReferenceMenu: UIView {
   private var lifecycle = ZoenAttachmentReferenceMenuLifecycle()
   private var geometry: ZoenAttachmentReferenceMenuLayout.Geometry?
   private var highlightedIndex: Int?
+  private var externalInitialPoint: CGPoint?
+  private var externalMoved = false
   private let haptic = UISelectionFeedbackGenerator()
   private var observers: [NSObjectProtocol] = []
   private let reducedMotion: @MainActor () -> Bool
   private lazy var drag = ReferenceMenuSelectionRecognizer(target: self, action: #selector(dragged(_:)))
 
-  init(source: UIView, actions: [Action], dismissLabel: String,
+  init(source: UIView, extraction: ZoenAttachmentExtractedContent?, actions: [Action], dismissLabel: String,
        appearance: ZoenKeyboardPanelAppearance, isValid: @escaping () -> Bool,
        reducedMotion: @escaping @MainActor () -> Bool = { UIAccessibility.isReduceMotionEnabled },
-       didDismiss: @escaping (ZoenAttachmentReferenceMenu) -> Void) {
+       didDismiss: @escaping (ZoenAttachmentContextMenu) -> Void) {
     self.source = WeakSource(source); self.actions = actions
+    self.extraction = extraction
     self.appearance = appearance; self.isValid = isValid
     self.didDismiss = didDismiss; self.reducedMotion = reducedMotion
     super.init(frame: .zero)
-    accessibilityIdentifier = "attachment-reference-menu"
+    accessibilityIdentifier = extraction == nil ? "attachment-reference-menu" : "attachment-extracted-menu"
     accessibilityViewIsModal = true
     overrideUserInterfaceStyle = appearance.isDark ? .dark : .light
     backgroundColor = .clear
     shield.accessibilityLabel = dismissLabel
     shield.accessibilityTraits = .button; shield.isAccessibilityElement = true
-    shield.accessibilityIdentifier = "attachment-reference-menu-dismiss"
+    shield.accessibilityIdentifier = extraction == nil ? "attachment-reference-menu-dismiss" : "attachment-extracted-menu-dismiss"
     shield.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
     shield.layer.contents = Self.transparentHitTestImage.cgImage
     // Keep a full-window clear cancellation surface; only menu contents scroll.
+    if extraction != nil {
+      let backdrop = ZoenAttachmentContextBackdrop(isDark: appearance.isDark)
+      self.backdrop = backdrop; addSubview(backdrop)
+    }
     addSubview(shield); addSubview(scroll)
     scroll.backgroundColor = .clear; scroll.contentInsetAdjustmentBehavior = .never
     scroll.showsVerticalScrollIndicator = false; scroll.alwaysBounceVertical = false
     scroll.delaysContentTouches = false; scroll.scrollsToTop = false
     scroll.addSubview(glassContainer)
+    if extraction != nil { scroll.addSubview(extractedStage); extractedStage.isUserInteractionEnabled = false }
     glassContainer.contentView.addSubview(surface)
     surface.contentView.clipsToBounds = true
     surface.contentView.addSubview(highlight)
@@ -99,6 +112,7 @@ final class ZoenAttachmentReferenceMenu: UIView {
     guard lifecycle.present() else { owner.remove(); return false }
     setNeedsLayout(); layoutIfNeeded()
     guard lifecycle.isInteractive, geometry != nil else { remove(); return false }
+    if let extraction, !extraction.take(into: extractedStage) { remove(); return false }
     observers = [UIApplication.willResignActiveNotification, UIAccessibility.reduceMotionStatusDidChangeNotification].map { name in
       NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
         MainActor.assumeIsolated { self?.dismiss(animated: false) }
@@ -106,6 +120,12 @@ final class ZoenAttachmentReferenceMenu: UIView {
     }
     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     haptic.prepare()
+    backdrop?.layer.animateAlpha(from: 0, to: 1, duration: 0.2)
+    if !reducedMotion(), let extractedGeometry {
+      extractedStage.layer.animateSpring(from: extractedGeometry.contentOpeningOffset as NSNumber, to: 0 as NSNumber,
+        keyPath: "position.y", duration: ZoenAttachmentReferenceMenuLayout.openingDuration,
+        initialVelocity: 0, damping: ZoenAttachmentReferenceMenuLayout.springDamping, additive: true, key: "extracted-content-origin")
+    }
     if !reducedMotion(), let geometry {
       glassContainer.layer.animateAlpha(from: 0, to: 1, duration: ZoenAttachmentReferenceMenuLayout.openingOpacityDuration)
       glassContainer.layer.animateSpring(from: ZoenAttachmentReferenceMenuLayout.closedScale as NSNumber, to: 1 as NSNumber,
@@ -146,7 +166,7 @@ final class ZoenAttachmentReferenceMenu: UIView {
           sourceIsVisible, isValid(), bounds.width > 0 else {
       if lifecycle.isInteractive { dismiss(animated: false) }; return
     }
-    shield.frame = bounds
+    shield.frame = bounds; backdrop?.frame = bounds
     let font = UIFont.systemFont(ofSize: 17)
     let measured = rows.map { $0.measure(font: font, constrainedWidth: min(240, max(0, bounds.width - 32))) }
     let width = ZoenAttachmentReferenceMenuLayout.width(textWidths: measured.map(\.width),
@@ -157,9 +177,25 @@ final class ZoenAttachmentReferenceMenu: UIView {
       row.frame = CGRect(x: 0, y: y, width: width, height: height); y += height
     }
     y += ZoenAttachmentReferenceMenuLayout.listInset
-    let next = ZoenAttachmentReferenceMenuLayout.geometry(viewport: bounds.size,
-      source: source.convert(source.bounds, to: self), measuredSize: CGSize(width: width, height: y),
-      intrinsicBottom: window.safeAreaInsets.bottom)
+    let sourceFrame = source.convert(source.bounds, to: self)
+    // UIKit owns the table's rotation/reuse layout. Return its real content
+    // synchronously before a changed row size could stretch an extracted body.
+    if extraction != nil, let previous = geometry, previous.source.size != sourceFrame.size {
+      dismiss(animated: false); return
+    }
+    let next: ZoenAttachmentReferenceMenuLayout.Geometry
+    if let extraction {
+      let extracted = ZoenAttachmentExtractedMenuLayout.geometry(viewport: bounds.size, source: sourceFrame,
+        menuSize: CGSize(width: width, height: y), statusBarHeight: window.windowScene?.statusBarManager?.statusBarFrame.height ?? 0,
+        intrinsicBottom: window.safeAreaInsets.bottom)
+      extractedGeometry = extracted
+      next = .init(source: extracted.content, menu: extracted.menu, contentSize: extracted.contentSize,
+        initialScrollY: extracted.initialScrollY, originOffset: extracted.menuOpeningOffset)
+      extraction.layout(in: extractedStage, frame: extracted.content)
+    } else {
+      next = ZoenAttachmentReferenceMenuLayout.geometry(viewport: bounds.size,
+        source: sourceFrame, measuredSize: CGSize(width: width, height: y), intrinsicBottom: window.safeAreaInsets.bottom)
+    }
     let oldGeometry = geometry; geometry = next
     scroll.frame = bounds; scroll.contentSize = next.contentSize
     // A clear UIScrollView must not steal outside cancellation touches.
@@ -195,6 +231,20 @@ final class ZoenAttachmentReferenceMenu: UIView {
     guard lifecycle.isInteractive, isValid() else { return }
     let index = point.flatMap { point in rows.indices.first { rows[$0].frame.contains(point) && actions[$0].enabled } }
     setHighlighted(index, animated: true)
+  }
+  // ContextControllerImpl:270–340 continues the source long press into the
+  // action list only after 4pt of vertical movement. Lift-in-place leaves it open.
+  func continueSourceGesture(view: UIView?, point: CGPoint) {
+    guard lifecycle.isInteractive else { return }
+    let local = convert(point, from: view)
+    if externalInitialPoint == nil { externalInitialPoint = local }
+    if let initial = externalInitialPoint, abs(local.y - initial.y) > 4 { externalMoved = true }
+    if externalMoved { highlight(at: convert(local, to: surface)) }
+  }
+  func endSourceGesture(performAction: Bool) {
+    let index = externalMoved ? highlightedIndex : nil
+    setHighlighted(nil, animated: true, feedback: false)
+    if performAction, let index { choose(index) }
   }
   private func setHighlighted(_ index: Int?, animated: Bool, feedback: Bool = true) {
     guard highlightedIndex != index else { return }
@@ -246,9 +296,25 @@ final class ZoenAttachmentReferenceMenu: UIView {
       var sourceRect = source.convert(source.bounds, to: self).insetBy(dx: -2, dy: 0)
       sourceRect.size.width += 5
       let center = glassContainer.convert(CGPoint(x: glassContainer.bounds.midX, y: glassContainer.bounds.midY), to: self)
-      targetOffset = CGPoint(x: sourceRect.midX - center.x, y: sourceRect.maxY - center.y)
+      targetOffset = CGPoint(x: extraction == nil ? sourceRect.midX - center.x : 0, y: sourceRect.maxY - center.y)
     }
     layer.removeAllAnimations()
+    let backdropOpacity = CGFloat(backdrop?.layer.presentation()?.opacity ?? 1)
+    backdrop?.layer.removeAllAnimations()
+    backdrop?.layer.animateAlpha(from: backdropOpacity, to: 0,
+      duration: ZoenAttachmentReferenceMenuLayout.closingDuration, removeOnCompletion: false)
+    if let extraction, let source = source.view {
+      extraction.beginReturn(animated: animated)
+      let target = source.convert(source.bounds, to: scroll)
+      let fromY = extractedStage.layer.presentation()?.position.y ?? extractedStage.layer.position.y
+      extractedStage.layer.removeAllAnimations()
+      extractedStage.layer.position.y = target.midY
+      if !reducedMotion() {
+        extractedStage.layer.animate(from: (fromY - target.midY) as NSNumber, to: 0 as NSNumber,
+          keyPath: "position.y", timingFunction: CAMediaTimingFunctionName.easeInEaseOut.rawValue,
+          duration: ZoenAttachmentReferenceMenuLayout.closingDuration, removeOnCompletion: false, additive: true)
+      }
+    }
     layer.animateAlpha(from: CGFloat(alpha), to: 0, duration: ZoenAttachmentReferenceMenuLayout.closingDuration, removeOnCompletion: false)
     let finish: (Bool) -> Void = { [weak self] _ in self?.remove() }
     if reducedMotion() {
@@ -271,6 +337,8 @@ final class ZoenAttachmentReferenceMenu: UIView {
     isUserInteractionEnabled = false
     observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll()
     glassContainer.layer.removeAllAnimations(); highlight.layer.removeAllAnimations()
+    extractedStage.layer.removeAllAnimations(); backdrop?.layer.removeAllAnimations()
+    extraction?.restore()
     presentation?.remove(); presentation = nil
     didDismiss(self)
     if let source = source.view, source.window === admittedWindow, sourceIsVisible, isValid() {
@@ -280,10 +348,36 @@ final class ZoenAttachmentReferenceMenu: UIView {
   override func accessibilityPerformEscape() -> Bool { dismiss(animated: true); return true }
 }
 
+/// Photos uses the plain reference contract: no extraction, dim or blur.
+@MainActor final class ZoenAttachmentReferenceMenu: ZoenAttachmentContextMenu {
+  init(source: UIView, actions: [Action], dismissLabel: String,
+       appearance: ZoenKeyboardPanelAppearance, isValid: @escaping () -> Bool,
+       reducedMotion: @escaping @MainActor () -> Bool = { UIAccessibility.isReduceMotionEnabled },
+       didDismiss: @escaping (ZoenAttachmentReferenceMenu) -> Void) {
+    super.init(source: source, extraction: nil, actions: actions, dismissLabel: dismissLabel,
+      appearance: appearance, isValid: isValid, reducedMotion: reducedMotion,
+      didDismiss: { menu in if let menu = menu as? ZoenAttachmentReferenceMenu { didDismiss(menu) } })
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+}
+
+/// File uses the distinct actual-content take/put-back contract.
+@MainActor final class ZoenAttachmentExtractedMenu: ZoenAttachmentContextMenu {
+  init(source: ZoenAttachmentExtractedContent, actions: [Action], dismissLabel: String,
+       appearance: ZoenKeyboardPanelAppearance, isValid: @escaping () -> Bool,
+       reducedMotion: @escaping @MainActor () -> Bool = { UIAccessibility.isReduceMotionEnabled },
+       didDismiss: @escaping (ZoenAttachmentExtractedMenu) -> Void) {
+    super.init(source: source.anchor, extraction: source, actions: actions, dismissLabel: dismissLabel,
+      appearance: appearance, isValid: isValid, reducedMotion: reducedMotion,
+      didDismiss: { menu in if let menu = menu as? ZoenAttachmentExtractedMenu { didDismiss(menu) } })
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+}
+
 @MainActor private final class ReferenceActionRow: UIControl {
   private let title = UILabel()
   private let icon = UIImageView()
-  init(action: ZoenAttachmentReferenceMenu.Action, appearance: ZoenKeyboardPanelAppearance) {
+  init(action: ZoenAttachmentContextMenu.Action, appearance: ZoenKeyboardPanelAppearance) {
     super.init(frame: .zero)
     title.text = action.title; title.numberOfLines = 2
     title.lineBreakMode = .byTruncatingTail

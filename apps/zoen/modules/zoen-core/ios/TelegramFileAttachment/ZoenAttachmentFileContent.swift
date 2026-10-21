@@ -38,6 +38,8 @@ import UIKit
   private var enabled = true
   private var retired = false
   private var visible = false
+  private var extractedMenu: ZoenAttachmentExtractedMenu?
+  private weak var extractedCell: UITableViewCell?
   private var wantsSearchFocus = false
   private var emptyImageVisible = false
   private var emptyTextVisible = false
@@ -85,6 +87,10 @@ import UIKit
     let recent = model["recent"] as? [String: Any] ?? [:]
     let selected = recent["selected"] as? [String] ?? []
     guard selected.count <= 10, Set(selected).count == selected.count else { throw Failure.invalid }
+    // Restore the actual owned row before any model reconfiguration/reload can
+    // recycle its source cell. Retained callbacks keep their revision fences.
+    extractedMenu?.retire(); extractedMenu = nil
+    for case let cell as RecentFileCell in scrollView.visibleCells { cell.contextGesture.cancel() }
     let themeChanged = !self.appearance.background.isEqual(appearance.background) || !self.appearance.text.isEqual(appearance.text) || !self.appearance.accent.isEqual(appearance.accent) || !self.appearance.secondary.isEqual(appearance.secondary) || !self.appearance.separator.isEqual(appearance.separator)
     let changed = themeChanged || self.kind != kind || !NSArray(array: rows).isEqual(to: self.rows) || self.selected != selected || self.searching != (recent["searching"] as? Bool == true)
     self.revision = revision; self.rows = rows; self.selected = selected; self.kind = kind; self.appearance = appearance
@@ -129,7 +135,11 @@ import UIKit
   func setVisible(_ value: Bool) {
     guard !retired else { return }
     visible = value
-    if !value { searchField.resignFirstResponder(); wantsSearchFocus = false }
+    if !value {
+      extractedMenu?.retire(); extractedMenu = nil
+      for case let cell as RecentFileCell in scrollView.visibleCells { cell.contextGesture.cancel() }
+      searchField.resignFirstResponder(); wantsSearchFocus = false
+    }
     intro.setVisible(value && emptyImageVisible && !searching && rows.isEmpty && !loading && !hasError)
   }
   private func updateVisibility() {
@@ -238,6 +248,12 @@ import UIKit
     let expected = revision
     cell.preview = kind == "audio" ? { [weak self] in guard let self, self.revision == expected else { return }; self.searchField.resignFirstResponder(); self.emit("recentPreview", id: id) } : nil
     cell.previewLabel = labels["previewFile"]
+    cell.contextGesture.isEnabled = enabled && kind == "file" && !searching
+    cell.openContext = { [weak self, weak cell] gesture in
+      guard let self, let cell, self.revision == expected else { return false }
+      return self.openExtractedMenu(cell: cell, id: id, revision: expected, gesture: gesture)
+    }
+    cell.contextMenuLabel = labels["more"]
   }
   func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
     tableView.deselectRow(at: indexPath, animated: true)
@@ -246,6 +262,7 @@ import UIKit
     searchField.resignFirstResponder(); emit("recentOpen", id: id)
   }
   func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
+    if kind == "file", !searching { return nil }
     guard enabled, searching || indexPath.section == 1, rows.indices.contains(indexPath.row),
           let bytes = UInt64(rows[indexPath.row]["bytes"] as? String ?? ""), bytes > 0, bytes <= 64 << 20,
           let id = rows[indexPath.row]["id"] as? String else { return nil }
@@ -261,7 +278,48 @@ import UIKit
       return UIMenu(children: actions)
     }
   }
-  func retire() { guard !retired else { return }; retired = true; visible = false; searchField.resignFirstResponder(); searchField.text = nil; intro.retire(); view.isUserInteractionEnabled = false; view.accessibilityElementsHidden = true; rows = []; selected = []; labels = [:]; explanation.text = nil; stateLabel.text = nil; scrollView.reloadData() }
+  private func openExtractedMenu(cell: RecentFileCell, id: String, revision: String,
+                                 gesture: ZoenAttachmentContextGesture) -> Bool {
+    guard extractedMenu == nil, !retired, visible, enabled, kind == "file", !searching,
+          self.revision == revision, let row = rows.first(where: { $0["id"] as? String == id }),
+          let bytes = UInt64(row["bytes"] as? String ?? ""), bytes > 0, bytes <= 64 << 20,
+          let window = cell.window, scrollView.indexPath(for: cell) != nil else { return false }
+    gesture.endPressedAppearance()
+    if let selected = scrollView.indexPathForSelectedRow { scrollView.deselectRow(at: selected, animated: false) }
+    let source = cell.extractedSource()
+    let actions: [ZoenAttachmentContextMenu.Action] = [
+      .init(id: "preview", title: labels["previewFile"] ?? "", image: nil, enabled: true,
+        perform: { [weak self] in guard let self, self.revision == revision else { return }; self.emit("recentPreview", id: id) }),
+      .init(id: "select", title: labels["selectFile"] ?? "", image: ZoenTelegramAttachmentGlyph.image(.contextSelect), enabled: true,
+        perform: { [weak self] in guard let self, self.revision == revision else { return }; self.emit("recentSelect", id: id) }),
+    ]
+    let menu = ZoenAttachmentExtractedMenu(source: source, actions: actions, dismissLabel: labels["close"] ?? "",
+      appearance: appearance, isValid: { [weak self, weak cell] in
+        guard let self, let cell else { return false }
+        return !self.retired && self.visible && self.enabled && self.kind == "file" && !self.searching &&
+          self.revision == revision && self.scrollView.indexPath(for: cell) != nil &&
+          cell.accessibilityIdentifier == "attachment-recent-file-" + id
+      }, didDismiss: { [weak self, weak gesture] menu in
+        gesture?.cancel()
+        if self?.extractedMenu === menu { self?.extractedMenu = nil; self?.extractedCell = nil }
+      })
+    extractedMenu = menu; extractedCell = cell
+    guard menu.present(in: window) else { extractedMenu = nil; extractedCell = nil; return false }
+    gesture.externalUpdated = { [weak menu] view, point in menu?.continueSourceGesture(view: view, point: point) }
+    gesture.externalEnded = { [weak menu] perform in menu?.endSourceGesture(performAction: perform) }
+    return true
+  }
+  func tableView(_ tableView: UITableView, didEndDisplaying cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+    if cell === extractedCell { extractedMenu?.retire(); extractedMenu = nil; extractedCell = nil }
+  }
+  func retire() {
+    guard !retired else { return }
+    retired = true; visible = false; extractedMenu?.retire(); extractedMenu = nil
+    for case let cell as RecentFileCell in scrollView.visibleCells { cell.contextGesture.cancel() }
+    searchField.resignFirstResponder(); searchField.text = nil; intro.retire()
+    view.isUserInteractionEnabled = false; view.accessibilityElementsHidden = true
+    rows = []; selected = []; labels = [:]; explanation.text = nil; stateLabel.text = nil; scrollView.reloadData()
+  }
   enum Failure: Error { case invalid }
 }
 
@@ -298,16 +356,49 @@ import UIKit
 }
 
 @MainActor private final class RecentFileCell: UITableViewCell {
+  private let extractable = UIView(), body = UIView(), offset = UIView(), extractedBackground = UIView()
   private let icon = UIImageView(), fileExtension = UILabel(), title = UILabel(), subtitle = UILabel(), check = UILabel(), separator = UIView()
   private let previewButton = UIButton(type: .custom)
   var preview: (() -> Void)? { didSet { previewButton.isHidden = preview == nil } }
   var previewLabel: String? { didSet { previewButton.accessibilityLabel = previewLabel } }
   private var selecting = false
+  let contextGesture = ZoenAttachmentContextGesture(target: nil, action: nil)
+  var openContext: ((ZoenAttachmentContextGesture) -> Bool)?
+  var contextMenuLabel: String? {
+    didSet {
+      guard contextGesture.isEnabled, let label = contextMenuLabel, !label.isEmpty else { accessibilityCustomActions = nil; return }
+      accessibilityCustomActions = [UIAccessibilityCustomAction(name: label) { [weak self] _ in
+        guard let self, self.contextGesture.isEnabled else { return false }
+        return self.openContext?(self.contextGesture) ?? false
+      }]
+    }
+  }
   override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
     super.init(style: style, reuseIdentifier: reuseIdentifier)
     backgroundColor = .clear
-    for child in [icon, fileExtension, title, subtitle, check, separator] { contentView.addSubview(child) }
-    contentView.addSubview(previewButton)
+    extractable.accessibilityIdentifier = "attachment-file-extraction-source"
+    body.accessibilityIdentifier = "attachment-file-extraction-content"
+    contentView.addSubview(extractable); extractable.addSubview(body)
+    body.addSubview(extractedBackground); body.addSubview(offset)
+    extractedBackground.alpha = 0; extractedBackground.layer.cornerRadius = 14
+    for child in [icon, fileExtension, title, subtitle] { offset.addSubview(child) }
+    contentView.addSubview(check); contentView.addSubview(separator)
+    offset.addSubview(previewButton)
+    extractable.addGestureRecognizer(contextGesture)
+    contextGesture.shouldBegin = { [weak self] _ in self?.openContext != nil }
+    contextGesture.activated = { [weak self] gesture, _ in self?.openContext?(gesture) ?? false }
+    contextGesture.activationProgress = { [weak self] progress, state in
+      guard let self, self.extractable.bounds.width > 0 else { return }
+      let minimum = max(0.7, (self.extractable.bounds.width - 15) / self.extractable.bounds.width)
+      let scale = 1 * (1 - progress) + minimum * progress
+      let transform = CATransform3DMakeScale(scale, scale, 1)
+      let previous = self.extractable.layer.sublayerTransform
+      self.extractable.layer.sublayerTransform = UIAccessibility.isReduceMotionEnabled ? CATransform3DIdentity : transform
+      if case .ended = state, !UIAccessibility.isReduceMotionEnabled {
+        self.extractable.layer.animate(from: NSValue(caTransform3D: previous), to: NSValue(caTransform3D: transform),
+          keyPath: "sublayerTransform", timingFunction: CAMediaTimingFunctionName.easeOut.rawValue, duration: 0.2)
+      }
+    }
     previewButton.addAction(UIAction { [weak self] _ in self?.preview?() }, for: .touchUpInside)
     title.font = .systemFont(ofSize: 16, weight: .semibold); title.numberOfLines = 1
     subtitle.font = .systemFont(ofSize: 14); subtitle.numberOfLines = 1; subtitle.lineBreakMode = .byTruncatingMiddle
@@ -351,9 +442,22 @@ import UIKit
     accessibilityIdentifier = "attachment-recent-file-" + (row["id"] as? String ?? "")
     setNeedsLayout()
   }
-  func applyAppearance(_ value: ZoenKeyboardPanelAppearance) { title.textColor = value.text; subtitle.textColor = value.secondary; separator.backgroundColor = value.separator; backgroundColor = value.text.withAlphaComponent(value.isDark ? 0.06 : 0.035) }
+  func applyAppearance(_ value: ZoenKeyboardPanelAppearance) { title.textColor = value.text; subtitle.textColor = value.secondary; separator.backgroundColor = value.separator; backgroundColor = value.text.withAlphaComponent(value.isDark ? 0.06 : 0.035); extractedBackground.backgroundColor = value.isDark ? UIColor(red: 44 / 255, green: 44 / 255, blue: 46 / 255, alpha: 1) : .white }
+  func extractedSource() -> ZoenAttachmentExtractedContent {
+    ZoenAttachmentExtractedContent(anchor: extractable, content: body) { [weak self] extracted, transition in
+      guard let self else { return }
+      transition.setAlpha(view: self.extractedBackground, alpha: extracted ? 1 : 0)
+      transition.setFrame(view: self.extractedBackground, frame: extracted ? self.body.bounds : CGRect(x: -16, y: 0, width: self.body.bounds.width + 16, height: self.body.bounds.height))
+      transition.setPosition(view: self.offset, position: CGPoint(x: self.body.bounds.midX + (extracted ? 12 : 0), y: self.body.bounds.midY))
+    }
+  }
+  override func prepareForReuse() {
+    super.prepareForReuse(); contextGesture.cancel(); openContext = nil
+  }
   override func layoutSubviews() {
     super.layoutSubviews()
+    extractable.frame = contentView.bounds
+    if body.superview === extractable { body.frame = extractable.bounds; offset.frame = body.bounds; extractedBackground.frame = body.bounds }
     let frames = Self.rowLayout(width: bounds.width, scale: traitCollection.displayScale, selection: selecting)
     icon.frame = frames.icon; title.frame = frames.title; subtitle.frame = frames.subtitle
     previewButton.frame = frames.icon.insetBy(dx: -8, dy: -8)

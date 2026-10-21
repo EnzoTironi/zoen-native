@@ -251,6 +251,12 @@
       "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Context Menu/File.imageset/Icon-6.pdf",
       "sha256": "cad414babe888c793fbb6dc0d8e7a63716be648db90414b0b1aa5f117d867ed8",
       "resource": "sendAsFile.pdf"
+    },
+    {
+      "logicalName": "contextSelect",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Context Menu/Select.imageset/ic_select.pdf",
+      "sha256": "e39fe6cd9b3fd5af388d17627dbdc2a830c247acde0d93b8fde2d95bbf89728a",
+      "resource": "contextSelect.pdf"
     }
   ]
 }

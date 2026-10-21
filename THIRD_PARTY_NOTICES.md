@@ -96,6 +96,14 @@ glass implementation and selected GPLv3 terms are reused. This slice does not
 import Telegram's account model, extracted message rows or optional liquid-morph
 runtime; existing Zoen revision/selection/caption/send authority remains intact.
 
+The recent File row also translates the distinct actual-content `.extracted`
+branch, source gesture and NavigationBackgroundNode blur path at the same pin.
+Exact source hashes, selected ranges, original Select asset and UIKit ownership
+adaptations are in `docs/product/telegram-ios-file-extracted-menu-sources.json`.
+It reuses the existing action-list/glass/presentation owners without importing
+Telegram file transport or changing Zoen's canonical source/draft authority.
+The selected GPLv3 terms above also cover these translated portions.
+
 The shared native gallery, selected-media mosaic, photo strip, gallery spring
 and image-edit controls also translate the pinned `TGMediaPickerGalleryInterfaceView`,
 `TGModernGalleryController`, `JNWSpringAnimation`, `MosaicLayout`,

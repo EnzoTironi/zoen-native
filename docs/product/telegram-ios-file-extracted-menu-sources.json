@@ -1,0 +1,152 @@
+{
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "selectedLicense": "GPL-3.0 under GPL-2.0-or-later option, combined with Zoen under AGPLv3 section 13",
+  "branch": "modern extracted File source: actual UIKit-owned row, no portal surface, keepInPlace false, ignoreContentTouches true, blurBackground true",
+  "sources": [
+    {
+      "path": "submodules/TelegramUI/Components/AttachmentFileController/Sources/AttachmentFileController.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/AttachmentFileController/Sources/AttachmentFileController.swift",
+      "bytes": 54260,
+      "sha256": "d97a2322ff0cbf44a1b785a9d0011632118a668a7c4517e9f74f159e8af62de3",
+      "ranges": [
+        [236, 279],
+        [706, 738],
+        [1118, 1137]
+      ]
+    },
+    {
+      "path": "submodules/ListMessageItem/Sources/ListMessageFileItemNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ListMessageItem/Sources/ListMessageFileItemNode.swift",
+      "bytes": 110972,
+      "sha256": "b24548409afcabaf258ce47d1a53dda8bf3a004c27cc39fe3605544ed49c7a16",
+      "ranges": [
+        [430, 442],
+        [494, 541],
+        [1044, 1046],
+        [1135, 1152],
+        [1282, 1318]
+      ]
+    },
+    {
+      "path": "submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerImpl.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerImpl.swift",
+      "bytes": 126315,
+      "sha256": "6bbf0045eae9c35a785d1791c75afabf7a816a119f418834e88d6c888ef1ed58",
+      "ranges": [
+        [270, 340],
+        [422, 500],
+        [1941, 1967],
+        [2093, 2110]
+      ]
+    },
+    {
+      "path": "submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextSourceContainer.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextSourceContainer.swift",
+      "bytes": 38868,
+      "sha256": "be60e21245b1a384507363a8f8b09bc3cedff9de6636b25830ae084a3e02e83b",
+      "ranges": [
+        [410, 423],
+        [509, 559],
+        [652, 666]
+      ]
+    },
+    {
+      "path": "submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerExtractedPresentationNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerExtractedPresentationNode.swift",
+      "bytes": 122801,
+      "sha256": "1177f2c981015502e35e5380d91858abed7bca5e3165b232ff8134d5329fb4d3",
+      "ranges": [
+        [255, 300],
+        [734, 795],
+        [1100, 1113],
+        [1189, 1203],
+        [1267, 1328],
+        [1420, 1470],
+        [1536, 1588],
+        [1653, 1730],
+        [1754, 1771],
+        [1881, 1905],
+        [1950, 2028]
+      ]
+    },
+    {
+      "path": "submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerActionsStackNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerActionsStackNode.swift",
+      "bytes": 98934,
+      "sha256": "c3307bf7ab997dbf8f331cac36b9c7079241fa44fd77997e71131aa746d60ced",
+      "ranges": [
+        [212, 239],
+        [551, 575],
+        [993, 1044],
+        [1405, 1467],
+        [2024, 2044]
+      ]
+    },
+    {
+      "path": "submodules/Display/Source/NavigationBackgroundView.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/NavigationBackgroundView.swift",
+      "bytes": 13959,
+      "sha256": "461365d999db982a053525a4206a84d9daaf2ec0cf60aad1d4e3f6991e67b846",
+      "ranges": [[62, 139]]
+    },
+    {
+      "path": "submodules/Display/Source/ContextGesture.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/ContextGesture.swift",
+      "bytes": 9279,
+      "sha256": "29238b6b309aa7e5abae9fc4007f3f0de575c0b22d058ef22140b94bdf6e70ff",
+      "ranges": [
+        [23, 71],
+        [74, 253]
+      ]
+    },
+    {
+      "path": "submodules/Display/Source/ContextControllerSourceNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/ContextControllerSourceNode.swift",
+      "bytes": 16297,
+      "sha256": "b1352b5b69dbe324b83a47668e31c690905b4e61648c4a38189c89b1e6337180",
+      "ranges": [[97, 128]]
+    },
+    {
+      "path": "submodules/Display/Source/DisplayLinkAnimator.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/DisplayLinkAnimator.swift",
+      "bytes": 12226,
+      "sha256": "7168d565dbe76338816c58db6a420d970b52100fe26191c958c6ca750797cab1",
+      "ranges": [[271, 382]]
+    },
+    {
+      "path": "submodules/TelegramPresentationData/Sources/DefaultDayPresentationTheme.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramPresentationData/Sources/DefaultDayPresentationTheme.swift",
+      "bytes": 77983,
+      "sha256": "7bf8e82dc967216b70654f04e5a9bf54866af7ce9c2dd4711770dc06c0533a00",
+      "ranges": [
+        [480, 487],
+        [1040, 1048]
+      ]
+    },
+    {
+      "path": "submodules/TelegramPresentationData/Sources/DefaultDarkPresentationTheme.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramPresentationData/Sources/DefaultDarkPresentationTheme.swift",
+      "bytes": 49096,
+      "sha256": "372e3f82b5b78886ad75a5153436c90add13abaeb99cd7a401437ba9d6b15b34",
+      "ranges": [
+        [420, 428],
+        [763, 772]
+      ]
+    }
+  ],
+  "assetManifest": "apps/zoen/modules/zoen-core/ios/TelegramAttachmentPresentation/UPSTREAM_ASSETS.json",
+  "adaptations": [
+    "UIKit-owned row child replaces Texture containing node; UIKit cell contentView never moves. Current already-inset table source bounds are normalized; no full File list/header geometry rewrite.",
+    "UITableView deselection replaces Texture ListView cancellation; .12s delay and .2s linear activation use the existing original SharedDisplayLinkDriver.",
+    "The actual NavigationBackgroundNode UIView blur path, original day/night context dim and modal row background colors are retained.",
+    "A single native presentation owner and common action-list renderer serve distinct reference and extracted contracts. No caption/send/account/file authority is added.",
+    "Every model reconfiguration restores the real body before reuse. Source-size changes cancel extraction and restore live row bounds instead of stretching text during UIKit rotation.",
+    "Existing Zoen Preview remains an extra action without invented artwork. File Select uses the original pinned context Select PDF; Audio/search retain their previous menu.",
+    "Reduced Motion omits movement/scale; Reduce Transparency makes the backdrop opaque. Retained callbacks revalidate revision/visibility/busy/source identity."
+  ],
+  "notPorted": [
+    "Original overlay status-bar hiding requires shared presentation-controller policy and is outside this bounded change.",
+    "Portal-transition surfaces, reactions, other extracted messages, global-search File rows, Audio and Gallery Add menus.",
+    "The original controller handles continuous rotation relayout; this adapter cancels on source-size change to preserve real content ownership."
+  ]
+}

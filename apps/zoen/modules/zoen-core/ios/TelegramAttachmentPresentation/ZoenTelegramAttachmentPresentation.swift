@@ -9,7 +9,7 @@ private final class ZoenTelegramAttachmentResources: NSObject {}
 enum ZoenTelegramAttachmentGlyph: String, CaseIterable {
   case gallery, file, audio, location, contact, poll
   case camera, openCamera, send, composerSend, sendAsFile, close, more, keyboard
-  case back, titleExpand, pencil, check, selected, recipientArrow, cloud, image, crop, rotate, done, cropCorners, play
+  case back, titleExpand, pencil, check, selected, contextSelect, recipientArrow, cloud, image, crop, rotate, done, cropCorners, play
 
   static let bundle: Bundle = {
     let owner = Bundle(for: ZoenTelegramAttachmentResources.self)

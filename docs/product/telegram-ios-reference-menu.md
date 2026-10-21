@@ -57,8 +57,9 @@ These are explicit UIKit adaptations. An unusually narrow host caps width to
 its viewport minus32pt; overflow uses a native scroll view and disables the
 selection-drag recognizer while scrolling. Rich text, submenus, custom font-size
 configuration, hardware shortcut routing, reactions, extracted recent-file rows
-and optional liquid morph are outside this batch. Gallery Add still uses its
-existing UIKit menu.
+and optional liquid morph are outside this batch. The distinct extracted File
+source is covered by [its follow-up port](telegram-ios-file-extracted-menu.md).
+Gallery Add still uses its existing UIKit menu.
 
 ## Qualification
 

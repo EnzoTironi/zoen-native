@@ -5,6 +5,11 @@ import UIKit
 /// or source-text assertion; an isolated UIKit runner owns this test window.
 @MainActor final class RecentAttachmentContentTests: XCTestCase {
   private final class Events { var values: [(String, [String: Any])] = [] }
+  private func previewButton(in view: UIView) -> UIButton? {
+    if let button = view as? UIButton, button.accessibilityLabel == "Preview" { return button }
+    for child in view.subviews { if let button = previewButton(in: child) { return button } }
+    return nil
+  }
   private func model(_ revision: String, busy: Bool = false, loading: Bool = false) -> [String: Any] {
     ["revision": revision, "activeCategory": "audio", "busy": busy,
      "audioItems": [["id": "source-message", "name": "track.m4a", "mime": "audio/mp4", "bytes": "12", "at_ms": "10", "author_title": "Author"]],
@@ -23,7 +28,7 @@ import UIKit
     content.updateLayout(navigationHeight: 56, bottomInset: 90, safeArea: .zero)
     window.isHidden = false; controller.view.layoutIfNeeded(); content.scrollView.layoutIfNeeded()
     let cell = try XCTUnwrap(content.scrollView.cellForRow(at: IndexPath(row: 0, section: 1)))
-    let play = try XCTUnwrap(cell.contentView.subviews.compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == "Preview" })
+    let play = try XCTUnwrap(previewButton(in: cell.contentView))
     return (window, content, events, cell, play)
   }
   func testRevisionOnlyUpdateRebindsExistingVisiblePlayWithoutRemount() throws {
