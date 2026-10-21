@@ -41,6 +41,18 @@ final class ZoenMediaFiles {
   }
 
   func readSelection(uri: String, name: String, mime: String) throws -> Selection {
+    try readSelection(uri: uri, name: name, mime: mime, captured: nil)
+  }
+
+  /// Only the existing native preview/capture owner supplies this typed lease.
+  /// It is never an alternative admission flag on the JS URI selection API.
+  func readCapturedSelection(_ file: ZoenPreviewFile, name: String, mime: String) throws -> Selection {
+    let validated = try ZoenPreviewFile.validated(url: file.url, directory: file.directory,
+      cacheRoot: cacheRoot, maximumBytes: Self.maximumBytes)
+    return try readSelection(uri: validated.url.absoluteString, name: name, mime: mime, captured: validated)
+  }
+
+  private func readSelection(uri: String, name: String, mime: String, captured: ZoenPreviewFile?) throws -> Selection {
     guard !name.isEmpty, name.utf8.count <= 255,
           !name.contains("/"), !name.contains("\\"), !name.contains("\0"),
           mime.utf8.count <= 128, mime.contains("/"), !mime.contains("\0") else { throw Failure.invalidFile }
@@ -54,7 +66,9 @@ final class ZoenMediaFiles {
     // ordinary picker path, even if deletion failed or an alias changes case.
     // Case spellings not normalized by the filesystem are conservatively denied.
     if Self.isManagedNamespace(URL(string: uri)!) || Self.isManagedNamespace(resolved) {
-      _ = try ownedSelectionURL(uri)
+      if let captured {
+        guard resolved == captured.url else { throw Failure.invalidFile }
+      } else { _ = try ownedSelectionURL(uri) }
     }
     let values = try resolved.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
     guard values.isRegularFile == true, let size = values.fileSize, size > 0 else { throw Failure.invalidFile }

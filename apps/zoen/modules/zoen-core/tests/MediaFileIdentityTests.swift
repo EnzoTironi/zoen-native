@@ -44,6 +44,10 @@ import Foundation
     let transfer = try media.takeForPreview(link.absoluteString)
     precondition(manager.fileExists(atPath: transfer.url.path))
     for alias in aliases { denied { _ = try media.readSelection(uri: alias, name: "alpha.pdf", mime: "application/pdf") } }
+    let captured = try media.readCapturedSelection(transfer, name: "alpha.pdf", mime: "application/pdf")
+    precondition(captured.data == bytes, "Typed native PDF/capture owner lost its existing save admission")
+    let forged = ZoenPreviewFile(url: temporary.appendingPathComponent("outside.pdf"), directory: transfer.directory)
+    denied { _ = try media.readCapturedSelection(forged, name: "outside.pdf", mime: "application/pdf") }
     try transfer.remove()
 
     // Alias release removes the same lease. Simulate leftover bytes after a

@@ -1493,7 +1493,7 @@ private actor ZoenSession {
       listener?.onChange(spaceIds: [binding.spaceId])
       return saved
     }
-    let selection = try mediaFiles.readSelection(uri: file.url.absoluteString,
+    let selection = try mediaFiles.readCapturedSelection(file,
       name: binding.name, mime: "application/pdf")
     guard selection.data.starts(with: Data("%PDF-".utf8)),
           let document = PDFDocument(data: selection.data), !document.isLocked,
