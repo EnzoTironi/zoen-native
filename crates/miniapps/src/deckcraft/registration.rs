@@ -21,8 +21,8 @@ pub const MANIFEST: &str = match option_env!("ZOEN_DECKCRAFT_RESOURCE_MANIFEST_J
 // dependency patches. Native keyboard acceptance is tracked separately.
 const MODULE_FILE: &str = "deckcraft-web-1eb288115950a000.js";
 const MODULE_SHA: &str = "4a3a583c958a150900c58e773c2ed58df6213e733ed3496e9c60c173cd9bebc4";
-const WASM_FILE: &str = "deckcraft-web-f96d04a08b130930_bg.wasm";
-const WASM_SHA: &str = "88677fbf8df8dfe3f4ae3db408eda558b7c02179626750e6fb8b12fec33e767d";
+const WASM_FILE: &str = "deckcraft-web-41f0085af1d7648c_bg.wasm";
+const WASM_SHA: &str = "2c6ab9025a157f346849dcbb4e7cc956e2afbb6665048727654f60995eee24c6";
 fn exact_keys(value: &Value, expected: &[&str]) -> bool {
     value.as_object().is_some_and(|object| {
         object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
@@ -124,7 +124,7 @@ pub fn valid_resource(html: &str, manifest: &str) -> bool {
     let Some(wasm) = asset(
         &runtime["wasm"],
         WASM_FILE,
-        36_395_766,
+        36_387_050,
         WASM_SHA,
         "application/wasm",
     ) else {
@@ -222,7 +222,7 @@ mod tests {
     use super::*;
     fn fixture(html: &str) -> Value {
         let directory = format!("https://runtime.invalid/deckcraft/{ENGINE_REVISION}/");
-        json!({"id":APP,"resourceUri":RESOURCE,"mimeType":crate::MIME,"bytes":html.len(),"sha256":format!("{:x}",Sha256::digest(html.as_bytes())),"capabilities":[],"allowedDomains":[],"linkDomains":[],"permissions":{},"csp":{"connectDomains":[],"resourceDomains":[],"frameDomains":[],"baseUriDomains":[]},"runtimePackage":{"schema":1,"engine":APP,"revision":ENGINE_REVISION,"abi":"zoen-host-v1","module":{"url":format!("{directory}{MODULE_FILE}"),"bytes":157851,"sha256":MODULE_SHA,"mime":"text/javascript"},"wasm":{"url":format!("{directory}{WASM_FILE}"),"bytes":36395766,"sha256":WASM_SHA,"mime":"application/wasm"}}})
+        json!({"id":APP,"resourceUri":RESOURCE,"mimeType":crate::MIME,"bytes":html.len(),"sha256":format!("{:x}",Sha256::digest(html.as_bytes())),"capabilities":[],"allowedDomains":[],"linkDomains":[],"permissions":{},"csp":{"connectDomains":[],"resourceDomains":[],"frameDomains":[],"baseUriDomains":[]},"runtimePackage":{"schema":1,"engine":APP,"revision":ENGINE_REVISION,"abi":"zoen-host-v1","module":{"url":format!("{directory}{MODULE_FILE}"),"bytes":157851,"sha256":MODULE_SHA,"mime":"text/javascript"},"wasm":{"url":format!("{directory}{WASM_FILE}"),"bytes":36387050,"sha256":WASM_SHA,"mime":"application/wasm"}}})
     }
     #[test]
     fn runtime_config_requires_exact_html_code_identity_and_zero_guest_network_authority() {
@@ -249,6 +249,16 @@ mod tests {
         let good = fixture(html);
         assert!(valid_resource(html, &good.to_string()));
         let directory = format!("https://runtime.invalid/deckcraft/{ENGINE_REVISION}/");
+        // This release keeps the exact JS glue but retires the previous WASM.
+        // Shared glue never admits an older engine through the new identity.
+        let mut previous_contact = good.clone();
+        previous_contact["runtimePackage"]["wasm"] = json!({
+            "url":format!("{directory}deckcraft-web-f96d04a08b130930_bg.wasm"),
+            "bytes":36395766,
+            "sha256":"88677fbf8df8dfe3f4ae3db408eda558b7c02179626750e6fb8b12fec33e767d",
+            "mime":"application/wasm"
+        });
+        assert!(!valid_resource(html, &previous_contact.to_string()));
         let old_module = json!({
             "url":format!("{directory}deckcraft-web-d31e46606624b37e.js"),
             "bytes":157185,
@@ -274,7 +284,7 @@ mod tests {
         // Each descriptor independently pins name, byte count and digest, not only its pair.
         for (pointer, value) in [
             ("/runtimePackage/module/sha256", json!("0".repeat(64))),
-            ("/runtimePackage/wasm/bytes", json!(36395767)),
+            ("/runtimePackage/wasm/bytes", json!(36387051)),
             (
                 "/runtimePackage/module/url",
                 json!(format!("{directory}deckcraft-web-d31e46606624b37e.js")),
