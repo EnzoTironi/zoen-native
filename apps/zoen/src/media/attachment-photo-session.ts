@@ -50,7 +50,10 @@ export type PhotoPickerSubmission = Readonly<{
   options?: MediaDraftAttachmentOptions;
 }>;
 /** Derived by the current durable draft owner; never a second draft authority. */
-export type PhotoPickerAdmission = Readonly<{ sendAsFileAllowed: boolean }>;
+export type PhotoPickerAdmission = Readonly<{
+  sendAsFileAllowed: boolean;
+  existingOptions?: MediaDraftAttachmentOptions;
+}>;
 type Request = {
   current(): boolean;
   remaining: number;

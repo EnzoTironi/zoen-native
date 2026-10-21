@@ -59,3 +59,10 @@ adaptations are recorded in `docs/product/telegram-ios-composer-glass-sources.js
 at the repository root. Full attachment source-button morph, Send blur and
 glyph tint-mask integration remain separate; source reuse does not establish
 runtime visual parity.
+
+The Photos Send Without Grouping action uses the unchanged original
+`Media Grid/GroupingOff` PDF. Its source pin and byte/Git-blob hashes are
+recorded in the asset manifest and `telegram-ios-media-albums-sources.json`.
+The conversation uses the same already attributed original MosaicLayout
+implementation as selected previews; the bounded Expo geometry bridge and
+canonical signed-message composition are Zoen adapters.

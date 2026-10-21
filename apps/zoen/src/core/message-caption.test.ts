@@ -8,6 +8,7 @@ import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { contrastRatio, resolveSkyTheme, SKY_PHASES, type SkyPhase } from '../theme/sky.ts';
 import type { TimelineEntry } from './types';
+import type { ConversationMessageProps } from '../components/conversation-message';
 
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core') as {
@@ -126,7 +127,14 @@ function render(
     disabled = false,
     next,
     previous,
-  }: { phase?: SkyPhase; disabled?: boolean; next?: TimelineEntry; previous?: TimelineEntry } = {},
+    albumPart,
+  }: {
+    phase?: SkyPhase;
+    disabled?: boolean;
+    next?: TimelineEntry;
+    previous?: TimelineEntry;
+    albumPart?: ConversationMessageProps['albumPart'];
+  } = {},
 ) {
   const theme = resolveSkyTheme(phase, new Date('2026-10-18T12:00:00'));
   const calls: { mode: string; entry: TimelineEntry }[] = [];
@@ -220,8 +228,13 @@ function render(
       next,
       groupChat: true,
       disabled,
-      onReply() {},
-      onThread() {},
+      albumPart,
+      onReply(value: TimelineEntry) {
+        calls.push({ mode: 'reply', entry: value });
+      },
+      onThread(value: TimelineEntry) {
+        calls.push({ mode: 'thread', entry: value });
+      },
       onAuthor() {},
       onReact() {},
       onQuote() {},
@@ -714,4 +727,57 @@ test('actual renderer binds receipt contrast to bubble gradient stops or the sep
       );
     }
   }
+});
+
+test('album cells keep the actual canonical renderer and per-item reply, thread, menu and decode targets', () => {
+  const message = entry('Caption for the second canonical member');
+  let decoded: unknown;
+  const tile = { width: 120, height: 200 };
+  const f = render(message, {
+    albumPart: {
+      tile,
+      onDecoded: (image) => {
+        decoded = image;
+      },
+    },
+  });
+  const interaction = elements(f.tree).find((node) => node.type === f.interactionType)!;
+  assert.ok(interaction);
+  assert.equal(interaction.props.messageId, message.id);
+  (interaction.props.onReply as () => void)();
+  (interaction.props.onThread as () => void)();
+  (interaction.props.onActions as () => void)();
+  assert.deepEqual(
+    f.calls.map((call) => call.mode),
+    ['reply', 'thread', 'actions'],
+  );
+  assert.ok(f.calls.every((call) => call.entry === message));
+  const media = elements(f.tree).find((node) => node.type === 'MessageMedia')!;
+  assert.strictEqual(media.props.entry, message);
+  assert.deepEqual(media.props.tile, tile);
+  const dimensions = {
+    itemId: 'signed_file',
+    version: 1,
+    sha256: 'a'.repeat(64),
+    width: 40,
+    height: 80,
+  };
+  (media.props.onImageDecoded as (image: unknown) => void)(dimensions);
+  assert.strictEqual(decoded, dimensions);
+  assert.equal(
+    textValues(f.tree).includes(
+      message.kind && 'Message' in message.kind ? message.kind.Message.text : '',
+    ),
+    false,
+  );
+  const caption = render(message, { albumPart: { captionOnly: true } });
+  assert.equal(
+    textValues(caption.tree).filter((value) => value === 'Caption for the second canonical member')
+      .length,
+    1,
+  );
+  assert.equal(
+    elements(caption.tree).some((node) => node.type === 'MessageMedia'),
+    false,
+  );
 });

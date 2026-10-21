@@ -20,6 +20,7 @@ import { formatFileSize } from './file-size';
 import { inlineImageFrame, type DecodedMessageImage } from './inline-image-frame';
 
 type Presentation = 'message' | 'document';
+export type MediaTile = Readonly<{ width: number; height: number }>;
 type FileAttachmentProps = {
   itemId: string;
   version?: number;
@@ -32,6 +33,8 @@ type FileAttachmentProps = {
   onActions?: () => void;
   onImageDecoded?: (image: DecodedMessageImage) => void;
   messageSource?: { spaceId: string; entry: TimelineEntry };
+  tile?: MediaTile;
+  onInlineUnavailable?: () => void;
 };
 
 /** Generic media owns row copies; received voice controls use the account transport. */
@@ -56,6 +59,8 @@ function FileAttachmentContent({
   onActions,
   onImageDecoded,
   messageSource,
+  tile,
+  onInlineUnavailable,
 }: FileAttachmentProps) {
   const { store, snapshot, mode } = useClient();
   const driver = store.driver.media;
@@ -133,6 +138,11 @@ function FileAttachmentContent({
   // remain an explicit open action; audio never starts or requests permission here.
   const visual =
     !renderAsFile && Boolean(info?.mime.startsWith('image/') || info?.mime.startsWith('video/'));
+  useEffect(() => {
+    // A signed media group can contain a generic/large file. Retain its ordinary
+    // canonical row rather than squeezing a file action into a visual mosaic.
+    if (info && (!visual || Number(info.bytes) > 16 * 1048576)) onInlineUnavailable?.();
+  }, [info, visual, onInlineUnavailable]);
   useEffect(() => {
     if (!driver || !message || !info?.ready || !visual || Number(info.bytes) > 16 * 1048576) return;
     let active = true;
@@ -253,6 +263,7 @@ function FileAttachmentContent({
       }}
       style={{
         width: '100%',
+        height: tile?.height,
         minWidth: 0,
         gap: message ? 0 : 8,
         padding: message ? 0 : 12,
@@ -282,10 +293,10 @@ function FileAttachmentContent({
           }}
           style={({ pressed }) => ({
             alignSelf: mine ? 'flex-end' : 'flex-start',
-            width: imageFrame.width || '100%',
-            height: imageFrame.height || undefined,
-            aspectRatio: imageFrame.width ? undefined : 1,
-            borderRadius: 24,
+            width: tile?.width ?? (imageFrame.width || '100%'),
+            height: tile?.height ?? (imageFrame.height || undefined),
+            aspectRatio: tile || imageFrame.width ? undefined : 1,
+            borderRadius: tile ? 0 : 24,
             borderCurve: 'continuous',
             overflow: 'hidden',
             opacity: pressed ? 0.8 : 1,
@@ -296,7 +307,7 @@ function FileAttachmentContent({
             recyclingKey={`${itemId}:${local.info.sha256}`}
             source={{ uri: local.uri }}
             accessible={false}
-            contentFit="contain"
+            contentFit={tile ? 'cover' : 'contain'}
             onLoad={(event) => {
               if (!mounted.current || owned.current !== local || event.source.url !== local.uri)
                 return;
@@ -320,16 +331,33 @@ function FileAttachmentContent({
             style={{
               position: 'absolute',
               inset: 0,
-              borderWidth: 1,
+              borderWidth: tile ? 0 : 1,
               borderColor: outline,
-              borderRadius: 24,
+              borderRadius: tile ? 0 : 24,
               borderCurve: 'continuous',
             }}
           />
         </Pressable>
       ) : local && video && message ? (
         <View>
-          <VideoClip uri={local.uri} compact />
+          <VideoClip
+            uri={local.uri}
+            compact
+            tile={tile}
+            onDimensions={
+              tile
+                ? (size) => {
+                    if (!mounted.current || owned.current !== local) return;
+                    onImageDecoded?.({
+                      itemId: local.itemId,
+                      version: local.version,
+                      sha256: local.info.sha256,
+                      ...size,
+                    });
+                  }
+                : undefined
+            }
+          />
           <Pressable
             testID={`message-video-gallery-${itemId}`}
             accessibilityRole="button"
@@ -513,12 +541,16 @@ export function MessageMedia({
   presentation = 'message',
   onActions,
   onImageDecoded,
+  tile,
+  onInlineUnavailable,
 }: {
   spaceId: string;
   entry: TimelineEntry;
   presentation?: Presentation;
   onActions?: () => void;
   onImageDecoded?: (image: DecodedMessageImage) => void;
+  tile?: MediaTile;
+  onInlineUnavailable?: () => void;
 }) {
   if (entry.deleted) return null;
   if (entry.voice)
@@ -541,6 +573,8 @@ export function MessageMedia({
       version={card.version}
       title={card.title}
       onImageDecoded={onImageDecoded}
+      tile={tile}
+      onInlineUnavailable={onInlineUnavailable}
       presentation={presentation}
       renderAsFile={entry.media?.presentation === 'file'}
       mine={entry.author.is_me}

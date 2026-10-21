@@ -4,6 +4,8 @@ import { Linking, useWindowDimensions } from 'react-native';
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import * as Haptics from 'expo-haptics';
 import { t } from '../i18n';
+import { photoSendOptions, type PhotoSendMode } from './attachment-photo-options';
+import type { MediaDraftAttachmentOptions } from './media-draft-types';
 import type {
   AttachmentKeyboardSession,
   KeyboardPresentation,
@@ -37,6 +39,7 @@ export function AttachmentPhotoKeyboard({
   onResume,
   recent,
   sendAsFileAllowed = false,
+  existingOptions,
 }: {
   state: PhotoPickerState;
   session: AttachmentPhotoSession;
@@ -47,6 +50,7 @@ export function AttachmentPhotoKeyboard({
   onResume?(presentation: KeyboardPresentation): void;
   recent?: { session: AttachmentRecentSession; state: RecentAttachmentState };
   sendAsFileAllowed?: boolean;
+  existingOptions?: MediaDraftAttachmentOptions;
 }) {
   const [draft, setDraft] = useState<{
     token: number;
@@ -93,9 +97,10 @@ export function AttachmentPhotoKeyboard({
       owner,
       recent: recent?.state,
       sendAsFileAllowed,
+      existingOptions,
       revision: randomUUID(),
     }),
-    [state, request, owner, recent?.state, sendAsFileAllowed],
+    [state, request, owner, recent?.state, sendAsFileAllowed, existingOptions],
   );
   const revision = renderOwner.revision;
   const committed = useRef<object | null>(null);
@@ -171,18 +176,33 @@ export function AttachmentPhotoKeyboard({
       height: item.height,
     })),
     selected: state.selected.map((item) => item.id),
+    grouped: existingOptions ? existingOptions.grouping === 'grouped' : true,
     sendOptions:
       onSubmission &&
-      sendAsFileAllowed &&
       state.category === 'photos' &&
       state.screen === 'grid' &&
       state.selected.length > 0
         ? [
-            {
-              id: 'send-as-file',
-              title: t('media.attachmentSendAsFile', { count: state.selected.length }),
-              enabled: session.canApprove(),
-            },
+            ...(sendAsFileAllowed
+              ? [
+                  {
+                    id: 'send-as-file',
+                    title: t('media.attachmentSendAsFile', { count: state.selected.length }),
+                    enabled: session.canApprove(),
+                  },
+                ]
+              : []),
+            ...(state.selected.length > 1 &&
+            (!existingOptions ||
+              (existingOptions.presentation === 'media' && existingOptions.grouping === 'separate'))
+              ? [
+                  {
+                    id: 'send-without-grouping',
+                    title: t('media.attachmentSendWithoutGrouping'),
+                    enabled: session.canApprove(),
+                  },
+                ]
+              : []),
           ]
         : [],
     albums: state.albums,
@@ -366,13 +386,22 @@ export function AttachmentPhotoKeyboard({
           case 'edit':
           case 'option':
             if (onSubmission && !state.busy) {
-              const asFile = event.action === 'option';
+              const isOption = event.action === 'option';
+              const asFile = isOption && event.id === 'send-as-file';
+              const ungrouped = isOption && event.id === 'send-without-grouping';
               if (
-                asFile &&
-                (!sendAsFileAllowed ||
+                isOption &&
+                ((!asFile && !ungrouped) ||
+                  (asFile && !sendAsFileAllowed) ||
+                  (ungrouped &&
+                    (state.selected.length < 2 ||
+                      Boolean(
+                        existingOptions &&
+                        (existingOptions.presentation !== 'media' ||
+                          existingOptions.grouping !== 'separate'),
+                      ))) ||
                   state.category !== 'photos' ||
                   state.screen !== 'grid' ||
-                  event.id !== 'send-as-file' ||
                   !Array.isArray(event.ids) ||
                   event.ids.length !== state.selected.length ||
                   !event.ids.every((id, index) => id === state.selected[index]?.id) ||
@@ -381,7 +410,7 @@ export function AttachmentPhotoKeyboard({
                 return;
               if (event.action === 'edit' && !canEdit) return;
               if (gallery && (!item || event.id !== state.previewId)) return;
-              if (!gallery && !asFile && event.id !== undefined) return;
+              if (!gallery && !isOption && event.id !== undefined) return;
               if (!session.canApprove(gallery ? item?.id : undefined)) return;
               const selected = [...state.selected];
               if (gallery && item && !selected.some((value) => value.id === item.id))
@@ -405,6 +434,17 @@ export function AttachmentPhotoKeyboard({
                     : (currentDraft.items[value.id] ?? ''),
               );
               const requestEdit = event.action === 'edit';
+              const mode: PhotoSendMode = asFile
+                ? 'send-as-file'
+                : ungrouped
+                  ? 'send-without-grouping'
+                  : 'default';
+              let options: MediaDraftAttachmentOptions | undefined;
+              try {
+                options = photoSendOptions(selected.length, mode, existingOptions);
+              } catch {
+                return;
+              }
               onPreferredIndex(
                 requestEdit ? selected.findIndex((value) => value.id === item?.id) : null,
               );
@@ -413,9 +453,7 @@ export function AttachmentPhotoKeyboard({
                 captions,
                 send: !requestEdit,
                 ...(requestEdit ? { requestEdit: true } : {}),
-                ...(asFile
-                  ? { options: { presentation: 'file', grouping: 'separate' } as const }
-                  : {}),
+                ...(options ? { options } : {}),
               };
               // A failed/canceled export never leaves a terminal file-mode
               // intent behind for a later ordinary selection or Browse action.

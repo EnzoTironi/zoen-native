@@ -110,6 +110,7 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
   private var safeArea = UIEdgeInsets.zero
   private var requestedCount: Int?
   private var sendOptionsRevision: String?
+  private var sendUngroupedOptionEnabled = false
   private var sendAsFileOptionEnabled = false
   private var sendOptionActions: [ZoenAttachmentReferenceMenu.Action] = []
   private var referenceMenu: ZoenAttachmentReferenceMenu?
@@ -281,21 +282,23 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     }
     sendOptionsRevision = revision
     sendAsFileOptionEnabled = false
+    sendUngroupedOptionEnabled = false
     let optionSelection = selected
     let options = activeCategory == "photos" && screen == "grid" && revision != nil
       ? model["sendOptions"] as? [[String: Any]] ?? [] : []
     sendOptionActions = options.compactMap { option -> ZoenAttachmentReferenceMenu.Action? in
-      guard option["id"] as? String == "send-as-file", let revision,
+      guard let id = option["id"] as? String, ["send-as-file", "send-without-grouping"].contains(id), let revision,
             let title = option["title"] as? String, !title.isEmpty,
             title.utf16.count <= 1024, !title.contains("\0"),
-            (1...10).contains(optionSelection.count) else { return nil }
+            (id == "send-without-grouping" ? (2...10) : (1...10)).contains(optionSelection.count) else { return nil }
       let enabled = option["enabled"] as? Bool != false
-      sendAsFileOptionEnabled = enabled
-      // MediaPickerScreen:3174–3181 uses the actual Context Menu/File glyph and
-      // an explicit terminal file intent. No quality or MIME substitution.
-      return ZoenAttachmentReferenceMenu.Action(id: "send-as-file", title: title,
-        image: ZoenTelegramAttachmentGlyph.image(.sendAsFile), enabled: enabled) { [weak self] in
-        self?.performSendAsFileOption(revision: revision, selection: optionSelection)
+      if id == "send-as-file" { sendAsFileOptionEnabled = enabled }
+      else { sendUngroupedOptionEnabled = enabled }
+      // MediaPickerScreen:3174–3181,3195–3203 uses the original File and
+      // GroupingOff glyphs with explicit terminal intents; no MIME substitution.
+      return ZoenAttachmentReferenceMenu.Action(id: id, title: title,
+        image: ZoenTelegramAttachmentGlyph.image(id == "send-as-file" ? .sendAsFile : .sendUngrouped), enabled: enabled) { [weak self] in
+        self?.performSendOption(id: id, revision: revision, selection: optionSelection)
       }
     }
     let hasOptions = !sendOptionActions.isEmpty
@@ -597,11 +600,16 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     if !menu.present(in: window) { referenceMenu = nil }
   }
   func performSendAsFileOption(revision: String, selection: [String]) {
-    guard !retired, !busy, !captionSending, captionEnabled, sendAsFileOptionEnabled,
+    performSendOption(id: "send-as-file", revision: revision, selection: selection)
+  }
+  func performSendOption(id: String, revision: String, selection: [String]) {
+    guard ["send-as-file", "send-without-grouping"].contains(id),
+          id == "send-as-file" ? sendAsFileOptionEnabled : sendUngroupedOptionEnabled,
+          !retired, !busy, !captionSending, captionEnabled,
           activeCategory == "photos", screen == "grid", sendOptionsRevision == revision,
-          (1...10).contains(selection.count), selection == selected,
+          (id == "send-without-grouping" ? (2...10) : (1...10)).contains(selection.count), selection == selected,
           caption.text.utf16.count <= 4096, !caption.text.contains("\0") else { return }
-    send("option", ["id": "send-as-file", "ids": selection,
+    send("option", ["id": id, "ids": selection,
                     "revision": revision, "text": caption.text ?? ""])
   }
   func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {

@@ -26,6 +26,7 @@ export function useAttachmentPhotoPicker(recentConfiguration?: RecentAttachmentC
   const preferred = useRef<string | null>(null);
   const submission = useRef<PhotoPickerSubmission | null>(null);
   const [sendAsFileAllowed, setSendAsFileAllowed] = useState(false);
+  const [existingOptions, setExistingOptions] = useState<PhotoPickerAdmission['existingOptions']>();
   const session = useMemo(
     () =>
       new AttachmentPhotoSession({
@@ -104,6 +105,7 @@ export function useAttachmentPhotoPicker(recentConfiguration?: RecentAttachmentC
       preferred.current = null;
       submission.current = null;
       setSendAsFileAllowed(admission?.sendAsFileAllowed === true);
+      setExistingOptions(admission?.existingOptions ? { ...admission.existingOptions } : undefined);
       const presentation = keyboard?.getSnapshot().presentation;
       const request =
         presentation?.kind === 'attachments' && keyboard?.admitPicker(presentation.id)
@@ -138,6 +140,7 @@ export function useAttachmentPhotoPicker(recentConfiguration?: RecentAttachmentC
         keyboard={mountedOwner ? keyboard : null}
         request={keyboardRequest}
         sendAsFileAllowed={sendAsFileAllowed}
+        existingOptions={existingOptions}
         onResume={setKeyboardRequest}
         onPreferredIndex={(index) => {
           preferredIndex.current = index;

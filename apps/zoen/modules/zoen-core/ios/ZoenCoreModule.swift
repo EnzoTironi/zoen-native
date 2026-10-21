@@ -13,6 +13,12 @@ public class ZoenCoreModule: Module {
     Name("ZoenCore")
     Events("onChange", "onPageInputStatus")
 
+    // Reuse the exact pinned Telegram mosaic already used by selected previews.
+    // Pure, bounded geometry only: no media bytes, authority or persistent state.
+    Function("attachmentMosaicLayout") { (width: Double, height: Double, scale: Double, sizes: [[Double]]) -> [String: Any]? in
+      ZoenAttachmentMosaicBridge.layout(width: width, height: height, scale: scale, sizes: sizes)
+    }
+
     AsyncFunction("measureComposer") { (tag: Int, expectedText: String, expectedLabel: String, expectedPlaceholder: String, width: Double, expectedFontSize: Double, nonce: Int) async -> [String: Double]? in
       await MainActor.run {
         guard let root = self.appContext?.findView(withTag: tag, ofType: UIView.self) else { return nil }

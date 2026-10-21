@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { AttachmentPhotoSession } from '../media/attachment-photo-session.ts';
+import { photoSendOptions } from '../media/attachment-photo-options.ts';
 import type { PhotoPickerSubmission } from '../media/attachment-photo-session';
 import type { PhotoLibraryItem } from '../media/attachment-photo-library';
 import type { AttachmentAsset } from '../media/attachment-draft';
@@ -161,6 +162,7 @@ function fixture(recentConfiguration?: RecentAttachmentConfiguration) {
     discarded: string[] = [];
   const nativePorts: Record<string, unknown> = {
     './attachment-recent-session': { AttachmentRecentSession, recentAttachmentId },
+    './attachment-photo-options': { photoSendOptions },
     '../../modules/zoen-core/src/ZoenCoreModule': { releaseLocalFile: async () => {} },
     'expo-crypto': { randomUUID: () => `standalone-${++serial}` },
     expo: { requireNativeView: (_module: string, name: string) => name },

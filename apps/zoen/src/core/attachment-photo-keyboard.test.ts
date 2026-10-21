@@ -12,6 +12,8 @@ import {
 import type { PhotoLibraryItem } from '../media/attachment-photo-library';
 import type { AttachmentAsset } from '../media/attachment-draft';
 import { AttachmentRecentSession, recentAttachmentId } from '../media/attachment-recent-session.ts';
+import { photoSendOptions } from '../media/attachment-photo-options.ts';
+import type { MediaDraftAttachmentOptions } from '../media/media-draft-types';
 const compile = async (name: string) =>
   (
     await build({
@@ -63,6 +65,7 @@ async function fixture(
   mediaItems: PhotoLibraryItem[] = [item('a'), item('b'), item('c')],
   recent?: AttachmentRecentSession,
   sendAsFileAllowed = false,
+  existingOptions?: MediaDraftAttachmentOptions,
 ) {
   let sequence = 0,
     slotIndex = 0,
@@ -138,6 +141,7 @@ async function fixture(
     !!a && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   const jsx = (type: unknown, props: Record<string, any>) => ({ type, props });
   const ports: Record<string, unknown> = {
+    './attachment-photo-options': { photoSendOptions },
     './attachment-recent-session': { AttachmentRecentSession, recentAttachmentId },
     '../../modules/zoen-core/src/ZoenCoreModule': { releaseLocalFile: async () => {} },
     react: {
@@ -223,6 +227,7 @@ async function fixture(
       keyboard,
       request,
       sendAsFileAllowed,
+      existingOptions,
       ...(recent ? { recent: { session: recent, state: recent.getSnapshot() } } : {}),
       onPreferredIndex: (value: number | null) => {
         preferred = value;
@@ -415,7 +420,7 @@ test('Photos More sends only an admitted file intent with exact ordered IDs and 
   f.photos.select(item('a'));
   const tree = f.render(),
     menu = JSON.parse(tree.props.model).sendOptions;
-  assert.equal(menu.length, 1);
+  assert.equal(menu.length, 2);
   assert.equal(menu[0].id, 'send-as-file');
   assert.equal(menu[0].enabled, true);
   const exportReady = deferred<AttachmentAsset[]>();
@@ -1316,5 +1321,78 @@ test('Audio Browse always selects ordinary audio files and never falls back to v
   assert.equal(f.calls.includes('browse'), true);
   assert.equal((f.picked() as AttachmentAsset[])[0]?.mime, 'audio/mp4');
   assert.equal('voiceSourceId' in (f.picked() as AttachmentAsset[])[0]!, false);
+  f.retire();
+});
+
+test('default Photos Send exports a signed-group intent in selection order with the final caption', async () => {
+  const f = await fixture(true);
+  f.photos.select(item('b'));
+  f.photos.select(item('a'));
+  const tree = f.render();
+  assert.equal(JSON.parse(tree.props.model).grouped, true);
+  f.act(tree, 'send', undefined, { text: 'Final album caption' });
+  await tick();
+  assert.deepEqual(f.copies, [['ph://b', 'ph://a']]);
+  assert.equal(f.submission()?.options?.grouping, 'grouped');
+  assert.equal(f.submission()?.options?.presentation, 'media');
+  assert.deepEqual(Array.from(f.submission()?.captions ?? []), ['Final album caption', '']);
+  f.close(tree);
+  await tick();
+  f.retire();
+});
+
+test('Send Without Grouping is a typed terminal action with exact selection, revision and close barrier', async () => {
+  const f = await fixture(true);
+  f.photos.select(item('b'));
+  f.photos.select(item('a'));
+  const tree = f.render(),
+    model = JSON.parse(tree.props.model);
+  assert.deepEqual(
+    Array.from(model.sendOptions, (option: any) => option.id),
+    ['send-without-grouping'],
+  );
+  f.act(tree, 'option', 'send-without-grouping', {
+    ids: ['ph://a', 'ph://b'],
+    text: 'wrong order',
+  });
+  f.act(tree, 'option', 'send-without-grouping', {
+    ids: ['ph://b', 'ph://a'],
+    text: 'stale',
+    revision: 'stale',
+  });
+  assert.deepEqual(f.copies, []);
+  f.act(tree, 'option', 'send-without-grouping', {
+    ids: ['ph://b', 'ph://a'],
+    text: 'Final separate caption',
+  });
+  await tick();
+  assert.equal(f.submissions.length, 1);
+  assert.equal(f.submission()?.options?.grouping, 'separate');
+  assert.equal(f.submission()?.options?.presentation, 'media');
+  assert.equal(f.submission()?.caption, 'Final separate caption');
+  assert.equal(f.picked(), undefined);
+  f.close(tree);
+  await tick();
+  f.retire();
+});
+
+test('an existing grouped draft keeps its grouped preview and cannot be partially converted by a picker menu', async () => {
+  const f = await fixture(true, undefined, undefined, false, {
+    presentation: 'media',
+    grouping: 'grouped',
+  });
+  f.photos.select(item('a'));
+  f.photos.select(item('b'));
+  const tree = f.render(),
+    model = JSON.parse(tree.props.model);
+  assert.equal(model.grouped, true);
+  assert.deepEqual(model.sendOptions, []);
+  f.act(tree, 'option', 'send-without-grouping', { ids: ['ph://a', 'ph://b'], text: 'convert' });
+  assert.deepEqual(f.submissions, []);
+  f.act(tree, 'send', undefined, { text: 'Keep grouped' });
+  await tick();
+  assert.equal(f.submission()?.options?.grouping, 'grouped');
+  f.close(tree);
+  await tick();
   f.retire();
 });

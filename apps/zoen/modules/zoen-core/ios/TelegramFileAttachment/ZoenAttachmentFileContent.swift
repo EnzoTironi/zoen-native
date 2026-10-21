@@ -307,6 +307,9 @@ import UIKit
           let bytes = UInt64(row["bytes"] as? String ?? ""), bytes > 0, bytes <= 64 << 20,
           let window = cell.window, scrollView.indexPath(for: cell) != nil else { return false }
     gesture.endPressedAppearance()
+    // UITableView's simultaneous press highlight is independent from the
+    // extracted source and from canonical recentSelected membership.
+    cell.setHighlighted(false, animated: false)
     if let selected = scrollView.indexPathForSelectedRow { scrollView.deselectRow(at: selected, animated: false) }
     let source = cell.extractedSource()
     let actions: [ZoenAttachmentContextMenu.Action] = [
@@ -321,8 +324,11 @@ import UIKit
         return !self.retired && self.visible && self.enabled && self.kind == "file" && !self.searching &&
           self.revision == revision && self.scrollView.indexPath(for: cell) != nil &&
           cell.accessibilityIdentifier == "attachment-recent-file-" + id
-      }, didDismiss: { [weak self, weak gesture] menu in
+      }, didDismiss: { [weak self, weak gesture, weak cell] menu in
         gesture?.cancel()
+        if cell?.accessibilityIdentifier == "attachment-recent-file-" + id {
+          cell?.setHighlighted(false, animated: false)
+        }
         if self?.extractedMenu === menu {
           self?.extractedMenu = nil; self?.extractedCell = nil
           self?.completeDeferredTableUpdate()

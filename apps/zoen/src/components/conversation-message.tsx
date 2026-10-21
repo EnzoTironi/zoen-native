@@ -1,4 +1,12 @@
-import { memo, useCallback, useLayoutEffect, useRef, useState, type ComponentRef } from 'react';
+import {
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentRef,
+  type ReactNode,
+} from 'react';
 import {
   Text,
   View,
@@ -17,7 +25,7 @@ import {
 } from '../core/message-presentation';
 import { messageText } from '../core/presentation';
 import { t, formatLocale } from '../i18n/index.ts';
-import { MessageMedia } from '../media/MediaAttachment';
+import { MessageMedia, type MediaTile } from '../media/MediaAttachment';
 import { inlineImageFrame, type DecodedMessageImage } from '../media/inline-image-frame';
 import { MiniappMessageCard } from '../miniapps/message-card';
 import { APP_CARD_METRICS } from '../miniapps/app-card-layout';
@@ -41,6 +49,18 @@ export type ConversationMessageProps = {
   highlighted?: boolean;
   disabled?: boolean;
   reactionPending?: boolean;
+  albumContent?: {
+    width: number;
+    media: ReactNode;
+    captions: ReactNode;
+    delivery: TimelineEntry['delivery'];
+  };
+  albumPart?: {
+    tile?: MediaTile;
+    captionOnly?: boolean;
+    onDecoded?: (image: DecodedMessageImage) => void;
+    onInlineUnavailable?: () => void;
+  };
   onReply: (entry: TimelineEntry) => void;
   onThread: (entry: TimelineEntry) => void;
   onAuthor: (entry: TimelineEntry) => void;
@@ -67,6 +87,8 @@ export const ConversationMessage = memo(function ConversationMessage({
   highlighted = false,
   disabled = false,
   reactionPending = false,
+  albumContent,
+  albumPart,
   onReply,
   onThread,
   onAuthor,
@@ -152,7 +174,7 @@ export const ConversationMessage = memo(function ConversationMessage({
       : mediaLimit;
   // Telegram RichDataBubbleContentNode.pageContentInset: retain a 2pt media rim.
   // The cover itself is the exact same 160pt canonical tile used in Home/rails.
-  const attachmentWidth = appCard ? mediaWidth + 4 : mediaWidth;
+  const attachmentWidth = albumContent?.width ?? (appCard ? mediaWidth + 4 : mediaWidth);
   const time = new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
     hour: '2-digit',
     minute: '2-digit',
@@ -272,7 +294,7 @@ export const ConversationMessage = memo(function ConversationMessage({
       : null,
     !entry.deleted && entry.forwarded ? t('chat.forwarded') : null,
     entry.edited ? t('chat.editedAt', { time }) : time,
-    mine ? messageDeliveryLabel(entry.delivery) : null,
+    mine ? messageDeliveryLabel(albumContent?.delivery ?? entry.delivery) : null,
   ]
     .filter(Boolean)
     .join('. ');
@@ -355,7 +377,7 @@ export const ConversationMessage = memo(function ConversationMessage({
       </Text>
       {mine ? (
         <MessageReceipt
-          delivery={entry.delivery}
+          delivery={albumContent?.delivery ?? entry.delivery}
           ownerKey={entry.id}
           ink={outside ? colors.secondary : ink}
           background={outside ? colors.background : paper}
@@ -385,6 +407,75 @@ export const ConversationMessage = memo(function ConversationMessage({
       ) : null}
     </View>
   );
+  if (albumPart) {
+    const tile = albumPart.tile;
+    if (albumPart.captionOnly && !fileCaption) return null;
+    return (
+      <MessageInteraction
+        messageId={entry.id}
+        mine={mine}
+        disabled={disabled || !messageCanInteract(entry)}
+        onReply={() => onReply(entry)}
+        onThread={() => onThread(entry)}
+        onActions={() => open('actions')}
+        actionsAccessibilityLabel={t('chat.messageActions', { name: entry.author.name })}
+      >
+        <MessageContextSource
+          ownerKey={JSON.stringify([spaceId, entry.id, tile ? 'album-media' : 'album-caption'])}
+          active={!disabled && messageCanInteract(entry)}
+          handlesTap={false}
+          reducedMotion={reducedMotion}
+          style={tile ? { width: tile.width, height: tile.height } : { width: '100%' }}
+          onGesture={(request) =>
+            open(request.kind === 'hold' ? 'actions' : 'reactions', undefined, request)
+          }
+        >
+          <View
+            ref={bubble}
+            testID={`message-bubble-${entry.id}`}
+            style={tile ? { width: tile.width, height: tile.height } : undefined}
+          >
+            {tile ? (
+              <MessageMedia
+                spaceId={spaceId}
+                entry={entry}
+                tile={tile}
+                onActions={() => open('actions')}
+                onImageDecoded={albumPart.onDecoded}
+                onInlineUnavailable={albumPart.onInlineUnavailable}
+              />
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={accessibilityMessageLabel}
+                disabled={disabled}
+                onPress={() => open('reactions')}
+                onLongPress={() => open('actions')}
+                delayLongPress={350}
+                style={{
+                  backgroundColor: paper,
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  minHeight: 44,
+                }}
+              >
+                <Text
+                  testID={`message-caption-${entry.id}`}
+                  style={{
+                    color: ink,
+                    fontSize: p.typography.message.fontSize,
+                    lineHeight: Math.ceil(p.typography.message.fontSize * 1.3),
+                  }}
+                >
+                  {fileCaption}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </MessageContextSource>
+      </MessageInteraction>
+    );
+  }
   if (isSystemMessage(entry))
     return (
       <Text
@@ -456,7 +547,7 @@ export const ConversationMessage = memo(function ConversationMessage({
           <MessageInteraction
             messageId={entry.id}
             mine={mine}
-            disabled={disabled || !messageCanInteract(entry)}
+            disabled={disabled || !messageCanInteract(entry) || Boolean(albumContent)}
             accessibilityLabel={!attachment ? accessibilityMessageLabel : undefined}
             onReply={() => onReply(entry)}
             onThread={() => onThread(entry)}
@@ -469,7 +560,7 @@ export const ConversationMessage = memo(function ConversationMessage({
             <View style={{ width: '100%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
               <MessageContextSource
                 ownerKey={JSON.stringify([spaceId, entry.id])}
-                active={!disabled && messageCanInteract(entry)}
+                active={!disabled && messageCanInteract(entry) && !albumContent}
                 handlesTap={!attachment}
                 reducedMotion={reducedMotion}
                 style={{
@@ -483,7 +574,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                 <Bubble
                   {...bubbleInteraction}
                   ref={bubble}
-                  testID={`message-bubble-${entry.id}`}
+                  testID={`${albumContent ? 'message-album-bubble' : 'message-bubble'}-${entry.id}`}
                   style={{
                     width: attachment ? attachmentWidth : undefined,
                     maxWidth: attachment ? '100%' : textMaxWidth,
@@ -609,13 +700,18 @@ export const ConversationMessage = memo(function ConversationMessage({
                       {text}
                     </Text>
                   ) : null}
-                  <MessageMedia
-                    spaceId={spaceId}
-                    entry={entry}
-                    onActions={() => open('actions')}
-                    onImageDecoded={onImageDecoded}
-                  />
-                  {fileCaption ? (
+                  {albumContent ? (
+                    albumContent.media
+                  ) : (
+                    <MessageMedia
+                      spaceId={spaceId}
+                      entry={entry}
+                      onActions={() => open('actions')}
+                      onImageDecoded={onImageDecoded}
+                    />
+                  )}
+                  {albumContent?.captions}
+                  {!albumContent && fileCaption ? (
                     <Pressable
                       testID={`message-caption-${entry.id}`}
                       accessible

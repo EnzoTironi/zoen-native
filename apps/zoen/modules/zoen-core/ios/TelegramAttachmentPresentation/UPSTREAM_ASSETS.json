@@ -257,6 +257,12 @@
       "upstreamPath": "submodules/TelegramUI/Images.xcassets/Chat/Context Menu/Select.imageset/ic_select.pdf",
       "sha256": "e39fe6cd9b3fd5af388d17627dbdc2a830c247acde0d93b8fde2d95bbf89728a",
       "resource": "contextSelect.pdf"
+    },
+    {
+      "logicalName": "sendUngrouped",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Media Grid/GroupingOff.imageset/albumoff_24.pdf",
+      "sha256": "0f457517b5e1a7aaf5097dd082ad8fae15eb1596fc37e2849dc4164ae170c6ae",
+      "resource": "sendUngrouped.pdf"
     }
   ]
 }

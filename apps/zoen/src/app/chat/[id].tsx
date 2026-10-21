@@ -38,6 +38,7 @@ import { ConversationRail, ConversationRailSpacer } from '../../components/conve
 import { ConversationTimelineMessage as ConversationMessage } from '../../components/conversation-timeline-message';
 import { useMessageActions } from '../../components/use-message-actions';
 import { messageCard } from '../../core/message-presentation';
+import { supportsMediaMosaic } from '../../media/mosaic-layout';
 import {
   projectConversationTimeline,
   type ConversationTimelineRow,
@@ -145,6 +146,7 @@ export default function Chat() {
         selectedSearchId ??
           (revealedActivity?.scope === `${id}:${owner}` ? revealedActivity.id : null) ??
           jump,
+        supportsMediaMosaic,
       ),
     [page, items, id, owner, selectedSearchId, revealedActivity, jump],
   );
@@ -755,11 +757,12 @@ export default function Chat() {
                   detail={t('chat.writeTheFirstMessageInThisChat')}
                 />
               }
-              renderItem={({ item: { entry, activity }, index }) => (
+              renderItem={({ item: { entry, activity, album }, index }) => (
                 <ConversationMessage
                   spaceId={id}
                   entry={entry}
                   activity={activity}
+                  album={album}
                   previous={rows[index - 1]?.entry}
                   next={rows[index + 1]?.entry}
                   groupChat={chat.kind !== 'Direct'}

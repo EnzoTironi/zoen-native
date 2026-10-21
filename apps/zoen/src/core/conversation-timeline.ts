@@ -1,4 +1,5 @@
 import type { ItemDetail, TimelineEntry } from './types';
+import { projectMediaAlbums, type MediaAlbum } from './media-albums.ts';
 
 export type MiniappTimelineActivity = Readonly<{
   /** Canonical events remain individually addressable; this is only a visual run. */
@@ -10,6 +11,7 @@ export type ConversationTimelineRow = Readonly<{
   key: string;
   entry: TimelineEntry;
   activity?: MiniappTimelineActivity;
+  album?: MediaAlbum;
 }>;
 
 function plainUpdate(entry: TimelineEntry) {
@@ -40,6 +42,7 @@ export function projectConversationTimeline(
   items: readonly ItemDetail[],
   spaceId: string,
   revealId?: string | null,
+  groupMedia = false,
 ): ConversationTimelineRow[] {
   const scoped = new Map(
     items.filter((item) => item.space_id === spaceId).map((item) => [item.id, item]),
@@ -48,8 +51,18 @@ export function projectConversationTimeline(
     key: string;
     entry: TimelineEntry;
     activity?: { item?: ItemDetail; entries: TimelineEntry[] };
+    album?: MediaAlbum;
   }[] = [];
+  const { albums, hidden } = groupMedia
+    ? projectMediaAlbums(entries, spaceId, revealId)
+    : { albums: new Map<string, MediaAlbum>(), hidden: new Set<string>() };
   for (const entry of entries) {
+    if (hidden.has(entry.id)) continue;
+    const album = albums.get(entry.id);
+    if (album) {
+      rows.push({ key: entry.id, entry, album });
+      continue;
+    }
     if (
       !('ItemEdited' in entry.kind) ||
       entry.deleted ||

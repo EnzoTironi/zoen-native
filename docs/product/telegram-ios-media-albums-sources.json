@@ -1,0 +1,42 @@
+{
+  "repository": "https://github.com/TelegramMessenger/Telegram-iOS",
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "license": "GPL-2.0-or-later; GPL-3.0 selected; combined with Zoen AGPLv3 under section 13",
+  "sources": [
+    {
+      "upstreamPath": "submodules/MediaPickerUI/Sources/MediaPickerScreen.swift",
+      "sha256": "3e4aa6ed563f05a03ec684ed2120c2823b31003f029e1bc5f6b3c33ec2138ce8",
+      "ranges": [
+        {
+          "lines": [2041, 2041],
+          "contract": "groupedValue starts true"
+        },
+        {
+          "lines": [3195, 3203],
+          "contract": "Send Without Grouping, original GroupingOff image and groupedValue=false before send"
+        },
+        {
+          "lines": [649, 649],
+          "contract": "selected preview receives grouped state"
+        }
+      ],
+      "adaptations": "Existing native More menu and final-caption typed event; existing signed Zoen draft options own grouping. No Telegram Postbox transport imported.",
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/MediaPickerUI/Sources/MediaPickerScreen.swift"
+    },
+    {
+      "upstreamPath": "submodules/MosaicLayout/Sources/ChatMessageBubbleMosaicLayout.swift",
+      "sha256": "8cbcbe860467d69dbf230b597ed609954ffeeeb743c905431ab66f9b59cbfaab",
+      "adaptations": "Reuse existing namespaced original Swift implementation and supplied trait displayScale. A new bounded pure bridge exposes only CGRect geometry; no duplicate JS algorithm.",
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/MosaicLayout/Sources/ChatMessageBubbleMosaicLayout.swift"
+    },
+    {
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Media Grid/GroupingOff.imageset/albumoff_24.pdf",
+      "sha256": "0f457517b5e1a7aaf5097dd082ad8fae15eb1596fc37e2849dc4164ae170c6ae",
+      "gitBlobSha1": "3cd6c8100e17f6f062033adb618ccac66cd2a422",
+      "bytes": 2114,
+      "localPath": "apps/zoen/modules/zoen-core/ios/TelegramAttachmentPresentation/Resources/sendUngrouped.pdf",
+      "adaptations": "Byte-identical original PDF, verified against GitHub Contents API at the exact pin; native theme template tint.",
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Images.xcassets/Media Grid/GroupingOff.imageset/albumoff_24.pdf"
+    }
+  ]
+}

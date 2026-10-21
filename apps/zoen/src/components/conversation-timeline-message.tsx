@@ -5,13 +5,16 @@ import { t, formatLocale } from '../i18n';
 import { useTheme } from '../theme';
 import { MiniappTimelineActivityView } from '../miniapps/timeline-activity';
 import { ConversationMessage, type ConversationMessageProps } from './conversation-message';
+import type { MediaAlbum } from '../core/media-albums';
+import { ConversationAlbumMessage } from './conversation-album-message';
 
 export function ConversationTimelineMessage({
   activity,
+  album,
   ...message
-}: ConversationMessageProps & { activity?: MiniappTimelineActivity }) {
+}: ConversationMessageProps & { activity?: MiniappTimelineActivity; album?: MediaAlbum }) {
   const { presentation: p, localDate: now } = useTheme();
-  const first = activity?.entries[0] ?? message.entry;
+  const first = activity?.entries[0] ?? album?.entries[0] ?? message.entry;
   const at = new Date(Number(first.at_ms));
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
   const equalDate = (date: Date) =>
@@ -36,6 +39,8 @@ export function ConversationTimelineMessage({
       highlighted={message.highlighted}
       disabled={message.disabled}
     />
+  ) : album ? (
+    <ConversationAlbumMessage {...message} album={album} />
   ) : (
     <ConversationMessage {...message} />
   );

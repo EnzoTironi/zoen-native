@@ -18,6 +18,7 @@ export type AttachmentApprovalProps = {
   suspended?: boolean;
   canAdd: boolean;
   canEdit: boolean;
+  grouped?: boolean;
   error: string | null;
   isCurrent(): boolean;
   onClose(): void;

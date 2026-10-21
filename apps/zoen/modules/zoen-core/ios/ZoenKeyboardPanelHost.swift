@@ -255,7 +255,9 @@ class ZoenKeyboardPanelHost: ExpoView {
     var event: [String: Any] = ["token": owner.token, "context": owner.context, "action": action]
     if let id = payload["id"] as? String, id.utf8.count <= 2048, !id.contains("\0") { event["id"] = id }
     if action == "option" {
-      guard owner.attachment != nil, payload["id"] as? String == "send-as-file",
+      guard owner.attachment != nil, let option = payload["id"] as? String,
+            ["send-as-file", "send-without-grouping"].contains(option),
+            option != "send-without-grouping" || ((payload["ids"] as? [String])?.count ?? 0) >= 2,
             let supplied = payload["revision"] as? String, supplied == currentRevision else { return }
     }
     if action == "reorder" || action == "option" {

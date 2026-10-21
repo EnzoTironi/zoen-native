@@ -117,6 +117,32 @@ final class AttachmentContainerTests: XCTestCase {
     XCTAssertEqual(events, 0)
     content.retire()
   }
+  func testUngroupedOptionUsesExactSelectionRevisionAndFinalCaptionWithoutChangingTheSelection() throws {
+    var events: [(String, [String: Any])] = []
+    let content = try content { events.append(($0, $1)) }
+    var value = model
+    value["revision"] = "album-selection"
+    value["items"] = [["id": "ph://synthetic-a", "name": "a.jpg", "type": "image"],
+                      ["id": "ph://synthetic-b", "name": "b.jpg", "type": "image"]]
+    value["selected"] = ["ph://synthetic-b", "ph://synthetic-a"]
+    value["sendOptions"] = [["id": "send-without-grouping", "title": "Send Without Grouping", "enabled": true]]
+    try content.update(model: value, appearance: appearance)
+    let caption = try XCTUnwrap(find(content.view, type: UITextView.self, id: "attachment-caption"))
+    caption.text = "last ungrouped keystroke"
+    content.performSendOption(id: "send-without-grouping", revision: "stale", selection: ["ph://synthetic-b", "ph://synthetic-a"])
+    content.performSendOption(id: "send-without-grouping", revision: "album-selection", selection: ["ph://synthetic-a", "ph://synthetic-b"])
+    content.performSendOption(id: "unknown", revision: "album-selection", selection: ["ph://synthetic-b", "ph://synthetic-a"])
+    XCTAssertTrue(events.isEmpty)
+    content.performSendOption(id: "send-without-grouping", revision: "album-selection", selection: ["ph://synthetic-b", "ph://synthetic-a"])
+    XCTAssertEqual(events.count, 1)
+    XCTAssertEqual(events[0].0, "option")
+    XCTAssertEqual(events[0].1["id"] as? String, "send-without-grouping")
+    XCTAssertEqual(events[0].1["ids"] as? [String], ["ph://synthetic-b", "ph://synthetic-a"])
+    XCTAssertEqual(events[0].1["text"] as? String, "last ungrouped keystroke")
+    content.retire()
+    content.performSendOption(id: "send-without-grouping", revision: "album-selection", selection: ["ph://synthetic-b", "ph://synthetic-a"])
+    XCTAssertEqual(events.count, 1)
+  }
   func testCaptionBoundsUseUTF16AndRejectNulWithoutPublishing() throws {
     var events = 0
     let content = try content { _, _ in events += 1 }

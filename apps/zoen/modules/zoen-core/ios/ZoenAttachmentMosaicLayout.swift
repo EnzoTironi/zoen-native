@@ -364,3 +364,23 @@ public func zoenAttachmentMosaicLayout(maxSize: CGSize, itemSizes: [CGSize], spa
     
     return (itemInfos.map { ($0.layoutFrame, $0.position) }, dimensions)
 }
+
+
+// Zoen adapter: pure bounded code-only bridge; the original algorithm above is unchanged.
+enum ZoenAttachmentMosaicBridge {
+  static func layout(width: Double, height: Double, scale: Double, sizes: [[Double]]) -> [String: Any]? {
+      guard width.isFinite, height.isFinite, scale.isFinite,
+            (68...4096).contains(width), (81...4096).contains(height), (1...8).contains(scale),
+            (2...10).contains(sizes.count), sizes.allSatisfy({ size in
+              size.count == 2 && size.allSatisfy { $0.isFinite && $0 >= 1 && $0 <= 100_000 }
+            }) else { return nil }
+      let result = zoenAttachmentMosaicLayout(maxSize: CGSize(width: width, height: height),
+        itemSizes: sizes.map { CGSize(width: $0[0], height: $0[1]) }, spacing: 1,
+        fillWidth: true, screenScale: scale)
+      return ["width": result.1.width, "height": result.1.height,
+        "items": result.0.map { frame, position in
+          ["x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height,
+           "position": Int(position.rawValue)] as [String: Any]
+        }]
+  }
+}

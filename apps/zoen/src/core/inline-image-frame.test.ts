@@ -80,6 +80,7 @@ function fixture(
     theme?: ReturnType<typeof resolveSkyTheme>;
     info?: Partial<FileDto>;
     voice?: Record<string, unknown>;
+    onInlineUnavailable?: () => void;
   } = {},
 ) {
   const info: FileDto = {
@@ -195,6 +196,7 @@ function fixture(
       mine,
       voice: options.voice,
       onImageDecoded: (image: DecodedMessageImage) => decoded.push(image),
+      onInlineUnavailable: options.onInlineUnavailable,
     });
     for (const work of effects) work();
     return tree;
@@ -351,4 +353,33 @@ test('outgoing voice fallback retains its resolved bubble ink', async () => {
   const icon = elements(f.render()).find((node) => node.type === 'Icon')!;
   assert.equal(icon.props.color, theme.colors.onMine);
   f.unmount();
+});
+
+test('actual canonical file metadata releases a visual album to individual rows for generic or oversized members only', async () => {
+  for (const [mime, bytes, expected] of [
+    ['application/pdf', '1000', 1],
+    ['audio/mp4', '1000', 1],
+    ['image/png', String(16 * 1048576 + 1), 1],
+    ['image/png', '1000', 0],
+    ['video/mp4', '1000', 0],
+  ] as const) {
+    let unavailable = 0;
+    const f = fixture(true, {
+      info: { mime, bytes },
+      onInlineUnavailable: () => {
+        unavailable++;
+      },
+    });
+    f.render();
+    assert.equal(unavailable, 0, 'Unknown metadata must not invent a file classification');
+    await f.ready();
+    assert.equal(unavailable, expected, mime);
+    f.render();
+    assert.equal(
+      unavailable,
+      expected,
+      'Unchanged metadata must not publish another classification',
+    );
+    f.unmount();
+  }
 });

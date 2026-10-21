@@ -71,6 +71,7 @@ import UIKit
   private var labels: [String:String] = [:]
   private var appearance: ZoenKeyboardPanelAppearance?
   private var selectedMode = false
+  private var grouped = true
   private var retired = false
   private var visible = true
   private var needsRebuild = false
@@ -186,12 +187,14 @@ import UIKit
     let text = captionModel["value"] as? String ?? ""
     guard text.utf16.count <= 4096, !text.contains("\0") else { throw GalleryFailure.invalid }
     let newSelectedMode = model["screen"] as? String == "selected"
-    let mediaChanged = self.source != source || self.items != parsed || self.previewId != preview || selectedMode != newSelectedMode
+    let newGrouped = model["grouped"] as? Bool ?? true
+    let mediaChanged = self.source != source || self.items != parsed || self.previewId != preview || selectedMode != newSelectedMode || grouped != newGrouped
     if self.revision != revision { cancelReorder() }
     let itemChanged = captionItem != preview
     self.source = source; self.items = parsed; self.selected = selected
     self.previewId = preview; self.revision = revision; self.appearance = appearance
     selectedMode = newSelectedMode; busy = model["busy"] as? Bool ?? false
+    grouped = newGrouped
     if busy {pages.values.forEach{$0.stop()};caption.resignFirstResponder()}
     root.backgroundColor = selectedMode ? appearance.background : .black
     root.overrideUserInterfaceStyle = selectedMode ? (appearance.isDark ? .dark : .light) : .dark
@@ -387,8 +390,9 @@ import UIKit
     var y = safe.top+60
     title.frame = CGRect(x:0,y:safe.top+28,width:size.width,height:20)
     let selected = orderedItems
-    for (index,start) in stride(from:0,to:selected.count,by:10).enumerated() {
-      let group = Array(selected[start..<min(start+10,selected.count)])
+    let groupSize = grouped ? 10 : 1
+    for (index,start) in stride(from:0,to:selected.count,by:groupSize).enumerated() {
+      let group = Array(selected[start..<min(start+groupSize,selected.count)])
       let sizes = group.map { $0.resolvedDimensions }
       let layout: ([(CGRect,ZoenAttachmentMosaicPosition)],CGSize)
       if group.count>1 { layout = zoenAttachmentMosaicLayout(maxSize:CGSize(width:width,height:width),itemSizes:sizes,spacing:1,fillWidth:true,screenScale:max(1,root.traitCollection.displayScale)) }

@@ -425,7 +425,17 @@ export function useDurableAttachmentComposer(
           (before?.kind === 'attachments' && before.options?.presentation === 'file');
         if (count >= MAX_ATTACHMENT_ITEMS) throw new AttachmentDraftFailure('limit');
         selected = await (kind === 'photo'
-          ? photos.pick(MAX_ATTACHMENT_ITEMS - count, current, { sendAsFileAllowed })
+          ? photos.pick(MAX_ATTACHMENT_ITEMS - count, current, {
+              sendAsFileAllowed,
+              ...(before?.kind === 'attachments' && count > 0
+                ? {
+                    existingOptions: before.options ?? {
+                      presentation: 'media',
+                      grouping: 'separate',
+                    },
+                  }
+                : {}),
+            })
           : pickAttachmentAssets(kind, MAX_ATTACHMENT_ITEMS - count, current));
         if (!selected.length) return;
         if (!current()) return;
@@ -436,13 +446,23 @@ export function useDurableAttachmentComposer(
         const submission = kind === 'photo' ? photos.submission?.() : null;
         if (
           submission?.options &&
-          (!sendAsFileAllowed ||
-            !submission.send ||
-            submission.requestEdit ||
-            submission.options.presentation !== 'file' ||
-            submission.options.grouping !== 'separate' ||
-            latest.value?.revision !== admissionDraft.value?.revision ||
-            (existing && existing.items.length > 0 && existing.options?.presentation !== 'file'))
+          (latest.value?.revision !== admissionDraft.value?.revision ||
+            !['media', 'file'].includes(submission.options.presentation) ||
+            !['separate', 'grouped'].includes(submission.options.grouping) ||
+            (submission.options.presentation === 'file' &&
+              (!sendAsFileAllowed ||
+                ((!existing || !existing.items.length) &&
+                  (!submission.send || submission.requestEdit)) ||
+                submission.options.grouping !== 'separate' ||
+                (existing &&
+                  existing.items.length > 0 &&
+                  existing.options?.presentation !== 'file'))) ||
+            (submission.options.grouping === 'grouped' &&
+              (existing?.items.length ?? 0) + selected.length < 2) ||
+            (existing &&
+              existing.items.length > 0 &&
+              (submission.options.presentation !== (existing.options?.presentation ?? 'media') ||
+                submission.options.grouping !== (existing.options?.grouping ?? 'separate'))))
         )
           throw new AttachmentDraftFailure('unavailable');
         if ((existing?.items.length ?? 0) + selected.length > MAX_ATTACHMENT_ITEMS)
@@ -572,7 +592,22 @@ export function useDurableAttachmentComposer(
     if (latest.frozen || currentContent?.kind !== 'attachments') return;
     const items = currentContent.items.filter((item) => item.asset_id !== id);
     try {
-      await channel.save(items.length ? { ...currentContent, items } : null);
+      await channel.save(
+        items.length
+          ? {
+              ...currentContent,
+              items,
+              ...(items.length === 1 && currentContent.options?.grouping === 'grouped'
+                ? {
+                    options: {
+                      presentation: currentContent.options.presentation,
+                      grouping: 'separate',
+                    },
+                  }
+                : {}),
+            }
+          : null,
+      );
       if (!items.length) retireApproval();
     } catch (reason) {
       failure(reason);
@@ -913,6 +948,7 @@ export function useDurableAttachmentComposer(
             )}
             {strip && field && presentation && own?.approval === presentation ? (
               <AttachmentApproval
+                grouped={content?.options?.grouping === 'grouped'}
                 libraryPicker={photos.view}
                 testID="attachment-approval"
                 state={strip}

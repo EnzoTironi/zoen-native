@@ -9,13 +9,21 @@ import { t } from '../i18n/index.ts';
 import { NativeButton } from '../components/primitives';
 import { mediaPlayback, type PlaybackOwner } from './playback-owner.ts';
 
-export function VideoClip({ uri, compact = false }: { uri: string; compact?: boolean }) {
+type VideoClipProps = {
+  uri: string;
+  compact?: boolean;
+  tile?: { width: number; height: number };
+  onDimensions?: (size: { width: number; height: number }) => void;
+};
+export function VideoClip({ uri, compact = false, tile, onDimensions }: VideoClipProps) {
   const [attempt, setAttempt] = useState(0);
   return (
     <VideoClipContent
       key={`${uri}:${attempt}`}
       uri={uri}
       compact={compact}
+      tile={tile}
+      onDimensions={onDimensions}
       onRetry={() => setAttempt((value) => value + 1)}
     />
   );
@@ -25,10 +33,14 @@ function VideoClipContent({
   uri,
   compact,
   onRetry,
+  tile,
+  onDimensions,
 }: {
   uri: string;
   compact: boolean;
   onRetry: () => void;
+  tile?: VideoClipProps['tile'];
+  onDimensions?: VideoClipProps['onDimensions'];
 }) {
   const { colors } = useTheme();
   const messagePan = useMessagePan();
@@ -70,6 +82,16 @@ function VideoClipContent({
     availableSubtitleTracks: [],
   });
   const size = source?.availableVideoTracks[0]?.size;
+  useEffect(() => {
+    if (
+      size &&
+      Number.isFinite(size.width) &&
+      Number.isFinite(size.height) &&
+      size.width > 0 &&
+      size.height > 0
+    )
+      onDimensions?.(size);
+  }, [size, onDimensions]);
   const ratio = size && size.width > 0 && size.height > 0 ? size.width / size.height : 16 / 9;
   return (
     <View style={{ width: '100%', minWidth: 0, gap: 10 }}>
@@ -81,7 +103,7 @@ function VideoClipContent({
             if (playback.current?.player === player) playback.current.owner.refresh();
           }}
           style={{
-            borderRadius: compact ? 24 : 16,
+            borderRadius: tile ? 0 : compact ? 24 : 16,
             borderCurve: 'continuous',
             overflow: 'hidden',
             backgroundColor: '#000000',
@@ -90,15 +112,17 @@ function VideoClipContent({
           <VideoView
             player={player}
             style={
-              compact
-                ? {
-                    width: '100%',
-                    aspectRatio: Math.max(0.75, Math.min(1.9, ratio)),
-                    maxHeight: 360,
-                  }
-                : { width: '100%', height: 320 }
+              tile
+                ? { width: tile.width, height: tile.height }
+                : compact
+                  ? {
+                      width: '100%',
+                      aspectRatio: Math.max(0.75, Math.min(1.9, ratio)),
+                      maxHeight: 360,
+                    }
+                  : { width: '100%', height: 320 }
             }
-            contentFit="contain"
+            contentFit={tile ? 'cover' : 'contain'}
             nativeControls
             fullscreenOptions={{ enable: true }}
             playsInline

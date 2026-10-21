@@ -13,6 +13,16 @@ declare class ZoenCoreModule extends NativeModule<{
   onChange: (event: CoreEvent) => void;
   onPageInputStatus: (event: { json: string }) => void;
 }> {
+  attachmentMosaicLayout?(
+    width: number,
+    height: number,
+    scale: number,
+    sizes: number[][],
+  ): {
+    width: number;
+    height: number;
+    items: { x: number; y: number; width: number; height: number; position: number }[];
+  } | null;
   measureComposer?(
     tag: number,
     expectedText: string,

@@ -67,6 +67,7 @@ export function AttachmentApproval(props: AttachmentApprovalProps) {
   const model = JSON.stringify({
     revision: owner.revision,
     source: 'draft',
+    grouped: props.grouped === true,
     screen,
     previewId: selected.mutationId,
     items: state.items.map((item) => ({
