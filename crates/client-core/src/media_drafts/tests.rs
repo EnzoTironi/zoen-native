@@ -1590,3 +1590,263 @@ fn media_contract_forwarded_group_is_rejected_and_single_forward_preserves_file_
         .is_err());
     assert_eq!(counts(&f.engine), before);
 }
+
+fn media_contract_confirm_scope(f: &Fixture) {
+    let pending = f.engine.lock().store.outbox().unwrap();
+    let mut relay = f
+        .engine
+        .lock()
+        .logs
+        .get(&f.scope.space_id)
+        .cloned()
+        .unwrap_or_else(|| event_log::SpaceLog::new(&f.scope.space_id));
+    for row in pending
+        .into_iter()
+        .filter(|row| row.event.space == f.scope.space_id && !row.failed)
+    {
+        let event = relay.sequence(row.event);
+        let _ = f.engine.lock().ingest(protocol::Sequenced {
+            seq: event.seq,
+            prev: event.prev.clone(),
+            hash: event.hash.clone(),
+            env: protocol::Envelope::plain(event),
+        });
+    }
+}
+fn media_contract_receive(f: &Fixture, body: types::EventBody, foreign: bool) {
+    let mut engine = f.engine.lock();
+    let author = if foreign {
+        event_log::Author::root(event_log::Signer::generate())
+    } else {
+        engine.author_for(&f.scope.expected_identity_id).unwrap()
+    };
+    let mut relay = engine.logs[&f.scope.space_id].clone();
+    let signed = author.sign_event(
+        &f.scope.space_id,
+        &types::new_id("received"),
+        crate::engine::now_ms(),
+        relay.head(),
+        body,
+    );
+    let event = relay.sequence(signed);
+    let _ = engine.ingest(protocol::Sequenced {
+        seq: event.seq,
+        prev: event.prev.clone(),
+        hash: event.hash.clone(),
+        env: protocol::Envelope::plain(event),
+    });
+}
+
+#[test]
+fn media_contract_failed_local_metadata_remains_visible_after_revocation_and_cold_recovery() {
+    for (kind, ids) in [("separate", vec!["a"]), ("grouped", vec!["a", "b"])] {
+        let dir = temp();
+        let path = dir.join("refused.sqlite");
+        let f = fixture(path.to_str().unwrap());
+        media_contract_confirm_scope(&f);
+        let draft = save(
+            &f,
+            "0",
+            &media_options(&ids, "file", kind),
+            ids.iter().map(|id| input(id)).collect(),
+        );
+        let sent = f
+            .engine
+            .send_media_draft(f.scope.clone(), draft.revision)
+            .unwrap();
+        assert_eq!(read(&f).content_json, "null");
+        media_contract_receive(
+            &f,
+            types::EventBody::MemberRemoved {
+                identity: f.scope.expected_identity_id.clone(),
+            },
+            false,
+        );
+        let pending = f.engine.lock().store.outbox().unwrap();
+        for row in pending {
+            assert!(f
+                .engine
+                .lock()
+                .reject(&row.event.client_id, "permission denied", true, None)
+                .user_failed());
+        }
+        let recovered_scope = f.scope.clone();
+        let check = |engine: &Client| {
+            let timeline = engine.timeline(recovered_scope.space_id.clone()).unwrap();
+            for original in &sent.entries {
+                let recovered = timeline
+                    .iter()
+                    .find(|entry| entry.id == original.id)
+                    .expect("accepted draft must not vanish after permission refusal");
+                assert_eq!(recovered.delivery, crate::Delivery::Failed);
+                assert_eq!(recovered.kind, original.kind);
+                assert_eq!(recovered.media, original.media);
+                let crate::EntryKind::Message {
+                    card: Some(card), ..
+                } = &recovered.kind
+                else {
+                    panic!("missing retained file")
+                };
+                assert!(engine
+                    .file_bytes(card.item_id.clone(), None)
+                    .unwrap()
+                    .is_some());
+            }
+            assert!(engine.lock().outbox_envelopes().is_empty());
+        };
+        check(&f.engine);
+        let item = match &sent.entries[0].kind {
+            crate::EntryKind::Message {
+                card: Some(card), ..
+            } => card.item_id.clone(),
+            _ => unreachable!(),
+        };
+        media_contract_receive(
+            &f,
+            types::EventBody::MessagePosted {
+                message: types::new_id("msg"),
+                text: "unauthorized remote metadata".into(),
+                attaches: Some(item.clone()),
+                media: Some(types::MessageMedia {
+                    presentation: types::AttachmentPresentation::File,
+                    group: None,
+                }),
+                reply: None,
+                forwarded: false,
+            },
+            true,
+        );
+        assert!(!f.engine.timeline(recovered_scope.space_id.clone()).unwrap().iter().any(|entry|matches!(&entry.kind,crate::EntryKind::Message{text,..}if text=="unauthorized remote metadata")));
+        // Even a later writer must not publish a new claim against a file that
+        // exists only in the failed local recovery overlay.
+        let before = counts(&f.engine);
+        {
+            let mut engine = f.engine.lock();
+            engine
+                .state
+                .spaces
+                .get_mut(&f.scope.space_id)
+                .unwrap()
+                .members
+                .push((f.scope.expected_identity_id.clone(), types::Role::Member));
+            assert!(engine
+                .append(
+                    &f.scope.space_id,
+                    &f.scope.expected_identity_id,
+                    types::EventBody::MessagePosted {
+                        message: types::new_id("msg"),
+                        text: "new claim on failed local bytes".into(),
+                        attaches: Some(item),
+                        media: Some(types::MessageMedia {
+                            presentation: types::AttachmentPresentation::File,
+                            group: None
+                        }),
+                        reply: None,
+                        forwarded: false,
+                    }
+                )
+                .is_err());
+        }
+        assert_eq!(counts(&f.engine), before);
+        let scope = f.scope.clone();
+        let vault = f.vault.clone();
+        drop(f);
+        // Close/reopen the real database while preserving only the existing outbox.
+        let restored = Client::open(path.to_string_lossy().into(), "en".into()).unwrap();
+        assert!(restored.unlock(vault).unwrap());
+        check(&restored);
+        assert!(matches!(
+            restored.media_draft(scope),
+            Err(CoreError::Forbidden { .. })
+        ));
+        drop(restored);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
+fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser() {
+    let fixtures: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../../types/src/media-received-fixtures.json"
+    ))
+    .unwrap();
+    for scenario in fixtures {
+        let f = fixture(":memory:");
+        let members = scenario["members"].as_array().unwrap();
+        for index in 0..members.len() {
+            f.engine
+                .lock()
+                .file_add(
+                    &f.scope.space_id,
+                    "",
+                    &format!("{index}.pdf"),
+                    "application/pdf",
+                    &[index as u8, 7],
+                    None,
+                )
+                .unwrap();
+        }
+        media_contract_confirm_scope(&f);
+        let items = f
+            .engine
+            .lock()
+            .state
+            .items
+            .values()
+            .filter(|item| item.space == f.scope.space_id)
+            .map(|item| item.id.clone())
+            .collect::<Vec<_>>();
+        for (index, member) in members.iter().enumerate() {
+            let media = types::MessageMedia {
+                presentation: if member["presentation"] == "file" {
+                    types::AttachmentPresentation::File
+                } else {
+                    types::AttachmentPresentation::Media
+                },
+                group: Some(types::MediaGroup {
+                    id: format!("album_{}", "a".repeat(64)),
+                    index: member["index"].as_u64().unwrap() as u32,
+                    count: member["count"].as_u64().unwrap_or(2) as u32,
+                }),
+            };
+            media_contract_receive(
+                &f,
+                types::EventBody::MessagePosted {
+                    message: types::new_id("msg"),
+                    text: format!("fixture-{index}"),
+                    attaches: Some(items[index].clone()),
+                    media: Some(media),
+                    reply: member["reply"].as_str().map(|to| types::ReplyRef {
+                        to: to.into(),
+                        thread: false,
+                    }),
+                    forwarded: member["forwarded"].as_bool().unwrap_or(false),
+                },
+                false,
+            );
+        }
+        let accepted = f
+            .engine
+            .timeline(f.scope.space_id.clone())
+            .unwrap()
+            .iter()
+            .filter_map(|entry| match &entry.kind {
+                crate::EntryKind::Message { text, .. } => text
+                    .strip_prefix("fixture-")
+                    .and_then(|index| index.parse::<u64>().ok()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            accepted,
+            scenario["accepted"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| value.as_u64().unwrap())
+                .collect::<Vec<_>>(),
+            "{}",
+            scenario["name"]
+        );
+    }
+}

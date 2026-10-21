@@ -115,6 +115,78 @@ impl MessageMedia {
     }
 }
 
+/// Disposable ordered membership derived from signed message history. Failed local
+/// recovery views never record claims here and can never authorize a later send.
+#[derive(Clone, Default)]
+pub struct MediaGroupTracker {
+    groups: std::collections::HashMap<(String, String, String), GroupCursor>,
+}
+#[derive(Clone)]
+struct GroupCursor {
+    next: u32,
+    count: u32,
+    presentation: AttachmentPresentation,
+    reply: Option<crate::ReplyRef>,
+}
+impl MediaGroupTracker {
+    pub fn allows(
+        &self,
+        space: &str,
+        author: &str,
+        reply: &Option<crate::ReplyRef>,
+        forwarded: bool,
+        media: &MessageMedia,
+    ) -> bool {
+        if !media.is_valid() || (forwarded && media.group.is_some()) {
+            return false;
+        }
+        let Some(group) = media.group.as_ref() else {
+            return true;
+        };
+        match self
+            .groups
+            .get(&(space.to_owned(), author.to_owned(), group.id.clone()))
+        {
+            None => group.index == 0,
+            Some(previous) => {
+                previous.next == group.index
+                    && previous.count == group.count
+                    && previous.presentation == media.presentation
+                    && &previous.reply == reply
+            }
+        }
+    }
+    /// Call only after the adapter has verified writer/file ownership and applied
+    /// the event. Invalid or repeated membership cannot advance the cursor.
+    pub fn record(
+        &mut self,
+        space: &str,
+        author: &str,
+        reply: &Option<crate::ReplyRef>,
+        forwarded: bool,
+        media: &MessageMedia,
+    ) -> bool {
+        if !self.allows(space, author, reply, forwarded, media) {
+            return false;
+        }
+        if let Some(group) = media.group.as_ref() {
+            self.groups.insert(
+                (space.to_owned(), author.to_owned(), group.id.clone()),
+                GroupCursor {
+                    next: group.index + 1,
+                    count: group.count,
+                    presentation: media.presentation,
+                    reply: reply.clone(),
+                },
+            );
+        }
+        true
+    }
+    pub fn extend(&mut self, other: &Self) {
+        self.groups.extend(other.groups.clone());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

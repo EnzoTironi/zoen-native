@@ -45,3 +45,11 @@ uses a domain-separated fingerprint. No extra draft store or durable UI authorit
 is introduced. Signed membership is scoped by author and conversation; group
 validation rejects invalid counts/indices, duplicate membership, incompatible
 presentation/targets and foreign files.
+
+Failed local sends remain visible after membership revocation through a separate
+recovery projection of the signed local outbox row and its matching signed file
+source. This path grants neither writer authority nor album membership and cannot
+make recovered-only files eligible for a new attachment claim. Received metadata
+uses the same ordered group cursor on native and Web. A shared signed fixture
+covers reversed indices, duplicates, count/presentation/reply drift and forwarded
+album claims; invalid events remain in history without gaining a message view.

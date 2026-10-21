@@ -233,19 +233,13 @@ pub(crate) struct GrantState {
     pub revoked: bool,
 }
 
-#[derive(Clone)]
-struct MediaGroupProjection {
-    next: u32,
-    count: u32,
-    presentation: types::AttachmentPresentation,
-    reply: Option<types::ReplyRef>,
-}
-
 #[derive(Default)]
 pub(crate) struct State {
     pub spaces: HashMap<SpaceId, SpaceState>,
     // Derived from the signed log, not another durable authority. O(1) membership checks.
-    media_groups: HashMap<(SpaceId, IdentityId, String), MediaGroupProjection>,
+    media_groups: types::media::MediaGroupTracker,
+    // Local failed bytes are readable recovery data, never a new attachment target.
+    recovery_items: HashSet<ItemId>,
     pub items: HashMap<ItemId, ItemState>,
     pub requests: HashMap<RequestId, RequestState>,
     pub request_order: Vec<RequestId>,
@@ -345,7 +339,16 @@ impl State {
         else {
             return true;
         };
-        if !media.is_valid() || (*forwarded && media.group.is_some()) || !self.writer(space, author)
+        if attaches
+            .as_ref()
+            .is_some_and(|item| self.recovery_items.contains(item))
+        {
+            return false;
+        }
+        if !self
+            .media_groups
+            .allows(space, author, reply, *forwarded, media)
+            || !self.writer(space, author)
         {
             return false;
         }
@@ -359,9 +362,9 @@ impl State {
         if !matches!(&file.current().content, ItemContent::File(doc) if !doc.is_voice()) {
             return false;
         }
-        let Some(group) = media.group.as_ref() else {
+        if media.group.is_none() {
             return true;
-        };
+        }
         if file
             .versions
             .first()
@@ -369,18 +372,101 @@ impl State {
         {
             return false;
         }
-        match self
-            .media_groups
-            .get(&(space.to_owned(), author.to_owned(), group.id.clone()))
+        true
+    }
+
+    pub(crate) fn retain_failed_attachment(
+        &mut self,
+        event: &Event,
+        local: &str,
+        source: Option<&Event>,
+    ) -> bool {
+        let EventBody::MessagePosted {
+            text,
+            attaches: Some(item),
+            media: Some(media),
+            reply,
+            forwarded,
+            ..
+        } = &event.body
+        else {
+            return false;
+        };
+        if event.author != local
+            || event_log::verify_author(event).is_err()
+            || !media.is_valid()
+            || (*forwarded && media.group.is_some())
+            || !self.spaces.contains_key(&event.space)
         {
-            None => group.index == 0,
-            Some(previous) => {
-                previous.next == group.index
-                    && previous.count == group.count
-                    && previous.presentation == media.presentation
-                    && &previous.reply == reply
-            }
+            return false;
         }
+        if !self.items.contains_key(item) {
+            let Some(source) = source.filter(|source| {
+                source.space == event.space
+                    && source.author == local
+                    && event_log::verify_author(source).is_ok()
+            }) else {
+                return false;
+            };
+            let EventBody::ItemCreated {
+                item: source_item,
+                kind: ItemKind::File,
+                content: content @ ItemContent::File(doc),
+                origin,
+            } = &source.body
+            else {
+                return false;
+            };
+            if source_item != item || doc.is_voice() {
+                return false;
+            }
+            self.create_item(source, item, ItemKind::File, content, origin);
+            self.recovery_items.insert(item.clone());
+        }
+        if self
+            .items
+            .get(item)
+            .filter(|file| {
+                file.space == event.space
+                    && matches!(&file.current().content, ItemContent::File(doc) if !doc.is_voice())
+                    && (media.group.is_none()
+                        || file
+                            .versions
+                            .first()
+                            .is_some_and(|version| version.author == local))
+            })
+            .is_none()
+        {
+            return false;
+        }
+        let state = self.spaces.get_mut(&event.space).expect("checked above");
+        if state
+            .entries
+            .iter()
+            .any(|entry| entry.client_id == event.client_id)
+        {
+            return true;
+        }
+        state.entries.push(Entry {
+            hash: event.hash.clone(),
+            client_id: event.client_id.clone(),
+            space: event.space.clone(),
+            seq: event.seq,
+            author: event.author.clone(),
+            at_ms: event.at_ms,
+            body: EntryBody::Message {
+                text: text.clone(),
+                attaches: Some(item.clone()),
+                reply: reply.clone(),
+                marks: MessageMarks {
+                    media: Some(media.clone()),
+                    forwarded: *forwarded,
+                    ..Default::default()
+                },
+            },
+        });
+        state.last_at_ms = state.last_at_ms.max(event.at_ms);
+        true
     }
 
     pub(crate) fn apply_checked(
@@ -500,19 +586,9 @@ impl State {
                     }));
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
                 }
-                if let Some((metadata, group)) = media
-                    .as_ref()
-                    .and_then(|metadata| metadata.group.as_ref().map(|group| (metadata, group)))
-                {
-                    self.media_groups.insert(
-                        (e.space.clone(), e.author.clone(), group.id.clone()),
-                        MediaGroupProjection {
-                            next: group.index + 1,
-                            count: group.count,
-                            presentation: metadata.presentation,
-                            reply: reply.clone(),
-                        },
-                    );
+                if let Some(metadata) = media.as_ref() {
+                    self.media_groups
+                        .record(&e.space, &e.author, reply, *forwarded, metadata);
                 }
             }
             EventBody::ChatPrefsSet { space, prefs } => {
@@ -806,12 +882,10 @@ impl Engine {
             if let Some(projected) = scoped.spaces.get(space) {
                 state.spaces.insert(space.clone(), projected.clone());
             }
-            state.media_groups.extend(
-                scoped
-                    .media_groups
-                    .iter()
-                    .map(|(key, value)| (key.clone(), value.clone())),
-            );
+            state.media_groups.extend(&scoped.media_groups);
+            state
+                .recovery_items
+                .extend(scoped.recovery_items.iter().cloned());
             // Only a Personal Space projects prefs (checked when applied).
             state.chat_prefs.extend(
                 scoped

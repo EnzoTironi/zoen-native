@@ -395,3 +395,86 @@ fn media_contract_single_legacy_receipts_keep_the_exact_fingerprint_and_file_mod
         .queue_attachment(&request.to_string(), &frame(&files[0]), 14)
         .is_err());
 }
+
+#[test]
+fn media_contract_received_ordered_fixtures_match_native_projection() {
+    let fixtures: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "../../../../types/src/media-received-fixtures.json"
+    ))
+    .unwrap();
+    for scenario in fixtures {
+        let (mut client, mut log) = fixture();
+        let identity = NativeSigner::from_secret(&[81; 32]);
+        let device = NativeSigner::from_secret(&[82; 32]);
+        let author = Author::device(&identity, device);
+        let members = scenario["members"].as_array().unwrap();
+        let files = files(members.len());
+        for (index, file) in files.iter().enumerate() {
+            let raw = clear(
+                &mut log,
+                &author,
+                EventBody::ItemCreated {
+                    item: format!("fixture-{index}"),
+                    kind: types::ItemKind::File,
+                    content: types::ItemContent::File(file.doc.clone()),
+                    origin: "Fixture".into(),
+                },
+                4 + index as i64,
+            );
+            client.receive(&raw, 10).unwrap();
+        }
+        for (index, member) in members.iter().enumerate() {
+            let media = types::MessageMedia {
+                presentation: if member["presentation"] == "file" {
+                    types::AttachmentPresentation::File
+                } else {
+                    types::AttachmentPresentation::Media
+                },
+                group: Some(types::MediaGroup {
+                    id: format!("album_{}", "a".repeat(64)),
+                    index: member["index"].as_u64().unwrap() as u32,
+                    count: member["count"].as_u64().unwrap_or(2) as u32,
+                }),
+            };
+            let raw = clear(
+                &mut log,
+                &author,
+                EventBody::MessagePosted {
+                    message: format!("post-{index}"),
+                    text: format!("fixture-{index}"),
+                    attaches: Some(format!("fixture-{index}")),
+                    media: Some(media),
+                    reply: member["reply"].as_str().map(|to| types::ReplyRef {
+                        to: to.into(),
+                        thread: false,
+                    }),
+                    forwarded: member["forwarded"].as_bool().unwrap_or(false),
+                },
+                20 + index as i64,
+            );
+            client.receive(&raw, 30).unwrap();
+        }
+        let conversations = client.conversations();
+        let accepted = conversations[0]
+            .messages
+            .iter()
+            .filter_map(|message| {
+                message
+                    .text
+                    .strip_prefix("fixture-")
+                    .and_then(|index| index.parse::<u64>().ok())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            accepted,
+            scenario["accepted"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| value.as_u64().unwrap())
+                .collect::<Vec<_>>(),
+            "{}",
+            scenario["name"]
+        );
+    }
+}

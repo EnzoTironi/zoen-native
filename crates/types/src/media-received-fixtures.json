@@ -1,0 +1,8 @@
+[
+  {"name":"reversed","members":[{"index":1},{"index":0}],"accepted":[1]},
+  {"name":"duplicate","members":[{"index":0},{"index":0},{"index":1}],"accepted":[0,2]},
+  {"name":"count","members":[{"index":0},{"index":1,"count":3},{"index":1}],"accepted":[0,2]},
+  {"name":"presentation","members":[{"index":0},{"index":1,"presentation":"file"},{"index":1}],"accepted":[0,2]},
+  {"name":"reply","members":[{"index":0,"reply":"root-a"},{"index":1,"reply":"root-b"},{"index":1,"reply":"root-a"}],"accepted":[0,2]},
+  {"name":"forwarded","members":[{"index":0,"forwarded":true},{"index":0},{"index":1}],"accepted":[1,2]}
+]
