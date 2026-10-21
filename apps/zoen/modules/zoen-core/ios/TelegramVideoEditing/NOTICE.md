@@ -17,17 +17,17 @@ account, remote sticker provider or network protocol is introduced.
 The eight scrubber/trim/thumbnail/header sources preserve the original gestures,
 trim and zoom algorithms, shapes, dimensions and animation timing. Adaptations:
 
-* Classes are prefixed with Zoen. Module umbrella imports are replaced with
+- Classes are prefixed with Zoen. Module umbrella imports are replaced with
   scoped UIKit color/font/rotation helpers.
-* UIKit control subclasses implement the same expanded hit rectangles instead
+- UIKit control subclasses implement the same expanded hit rectangles instead
   of swizzling every UIControl in the process.
-* Display scale comes from the actual view's traits. The original separator
+- Display scale comes from the actual view's traits. The original separator
   policy (0.5 at 2x, 0.33 at 3x) and thumbnail stripe policy are retained.
-* The one POP linear frame animation is driven by a scoped CADisplayLink with
+- The one POP linear frame animation is driven by a scoped CADisplayLink with
   the same linear interpolation, clamping and half-point rounding. POP itself
   is not bundled; all other original UIKit animation calls remain upstream.
-* The UI-only delegate/data-source protocols are annotated MainActor for Swift.
-* An explicit suspension hook cancels deferred zoom and display animations.
+- The UI-only delegate/data-source protocols are annotated MainActor for Swift.
+- An explicit suspension hook cancels deferred zoom and display animations.
 
 `ZoenTelegramVideoEditingContent` adapts the original video item callbacks using
 AVPlayer and AVAssetImageGenerator. `ZoenTelegramVideoRenderer` performs actual

@@ -52,21 +52,21 @@ stale Save must not reopen or mutate a replaced gallery owner.
 
 Canonical export bridge in the existing owner
 
-* The async Editing.receiveVideo(render:) operation is backed by
+- The async Editing.receiveVideo(render:) operation is backed by
   existing ZoenMediaEditCapture. Allocate/register one private ZoenMedia UUID
   directory with0700 in that owner BEFORE render; seal the actual output0600 before ingestion.
-* Call `ZoenTelegramVideoRenderer.render(asset:range:sendAsGif:destination:
+- Call `ZoenTelegramVideoRenderer.render(asset:range:sendAsGif:destination:
   maximumBytes:progress:)` using that canonical destination. Do not route it
   through receive(URL), which would introduce a second plaintext copy.
-* During export that canonical owner tracks the output, cancellation and every
+- During export that canonical owner tracks the output, cancellation and every
   partial file. On failure remove it through existing tracked cleanup; retain
   it and report cleanup failure if deletion fails. The renderer never deletes
   an unknown destination or creates its own temporary namespace.
-* On success validate real video tracks, finite duration, MIME, size and hash,
+- On success validate real video tracks, finite duration, MIME, size and hash,
   then pass the same ZoenPreviewFile into existing captured callback/CAS.
-* Revalidate account/device, scope, exact selected mutation/asset/hash and base
+- Revalidate account/device, scope, exact selected mutation/asset/hash and base
   revision after every await. Preserve current lost-ACK/recovery behavior.
-* Persisted trim/mute recipes and delivery animation/GIF metadata are not part
+- Persisted trim/mute recipes and delivery animation/GIF metadata are not part
   of this byte-edit slice. Reopening edits the saved MP4; preview loop does not
   imply delivered-message looping. Do not create a second persistent UI store.
 
