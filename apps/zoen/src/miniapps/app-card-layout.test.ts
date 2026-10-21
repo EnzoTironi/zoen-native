@@ -20,7 +20,7 @@ type AppComponents = Record<
 >;
 type Element = { type: string | ((props: any) => unknown); props: Record<string, any> };
 const sources = {
-  react: ['useState', 'useRef'],
+  react: ['useState', 'useRef', 'useCallback', 'useLayoutEffect'],
   'react-native': ['View', 'Text', 'Pressable', 'ActivityIndicator', 'useWindowDimensions'],
   'expo-router': ['router'],
   '@expo/ui': ['Host'],
@@ -36,7 +36,7 @@ const sources = {
   sky: ['SkyScene'],
   menus: ['HomeActions', 'HomeCardMenu'],
   home: ['useHome'],
-  receipt: ['MessageReceipt'],
+  receipt: ['MessageReceipt', 'messageDeliveryLabel'],
   presentation: ['messageText'],
 } satisfies Record<string, string[]>;
 const aliases: Record<string, string> = {
@@ -146,6 +146,8 @@ function fixture(
   const ports = {
     react: {
       useRef: (value: unknown) => ({ current: value }),
+      useCallback: (value: unknown) => value,
+      useLayoutEffect: (effect: () => unknown) => effect(),
       useState: (value: unknown) => [
         options.stateValues && stateIndex < options.stateValues.length
           ? options.stateValues[stateIndex++]
@@ -181,6 +183,7 @@ function fixture(
       useTheme: () => ({
         reducedMotion: true,
         colors: { surface: '#fff', text: '#111', secondary: '#555', accent: '#396' },
+        presentation: { chat: { service: { background: '#FFFFFFCC', text: '#555555' } } },
       }),
     },
     i18n: { t, formatLocale: 'en-US', locale: 'en' },
@@ -200,7 +203,7 @@ function fixture(
         pendingRequestCount: 0,
       }),
     },
-    receipt: { MessageReceipt: 'MessageReceipt' },
+    receipt: { MessageReceipt: 'MessageReceipt', messageDeliveryLabel: () => 'Sending' },
     presentation: { messageText: () => 'Updated app' },
   };
   const module = { exports: {} as AppComponents };
@@ -353,7 +356,7 @@ test('normal pet, ticket and photo covers show real state and keep artwork and m
   );
 });
 
-test('inline messages, plain unknown-scope fallback, rails and activity use the same App tile without an Open footer', () => {
+test('inline messages and rails share the canonical App tile; activity remains a service event', () => {
   const f = fixture(3.2);
   const value = item('stat');
   const card = {
@@ -383,7 +386,6 @@ test('inline messages, plain unknown-scope fallback, rails and activity use the 
   assert.equal(reorder.props.gap, undefined);
   const activity = f.MiniappTimelineActivityView!({
     activity: {
-      showCard: true,
       item: value,
       entries: [
         {
@@ -395,7 +397,11 @@ test('inline messages, plain unknown-scope fallback, rails and activity use the 
       ],
     },
   });
-  assert.equal(style(cardFor(activity, value.id)).height, 160);
+  assert.equal(
+    cardFor(activity, value.id),
+    undefined,
+    'Updates are service events, not another cover',
+  );
   const generic = f.MiniappMessageCard!({
     card: { ...card, kind_id: 'note', app: null, summary: 'Shared page' },
     width: 280,
@@ -498,7 +504,7 @@ test('native Home Add menu exposes restore only for real hidden Apps and does no
   assert.equal(restores, 1);
 });
 
-test('the same canonical App has identical cover content and geometry in the top rail, inline message and activity', () => {
+test('the same canonical App has identical cover content and geometry in the top rail and inline message; updates do not duplicate it', () => {
   const signature = (tree: Element, id: string) =>
     nodes(cardFor(tree, id)).map((node) => ({
       type: node.type,
@@ -533,7 +539,6 @@ test('the same canonical App has identical cover content and geometry in the top
       });
       const activity = f.MiniappTimelineActivityView({
         activity: {
-          showCard: true,
           item: value,
           entries: [
             {
@@ -550,7 +555,7 @@ test('the same canonical App has identical cover content and geometry in the top
         width: 350,
       });
       assert.deepEqual(signature(inline, value.id), signature(rail, value.id));
-      assert.deepEqual(signature(activity, value.id), signature(rail, value.id));
+      assert.equal(cardFor(activity, value.id), undefined);
       assert.ok(nodes(inline).every((node) => node.props.children !== t('miniapps.openMiniapp')));
     }
   }

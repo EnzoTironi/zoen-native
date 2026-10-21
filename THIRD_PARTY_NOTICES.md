@@ -62,3 +62,33 @@ The profile geometry contracts in apps/zoen/src/profile/telegram-profile-present
 The original attachment, microphone, keyboard, sticker and send glyphs in `apps/zoen/assets/telegram-composer/` are from Telegram-iOS contributors at revision `f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838`. The selected license is GPLv3 under the upstream GPL-2.0-or-later option, combined with Zoen under AGPLv3 section13. Exact upstream paths, original hashes, logical sizes and the send PDF rasterization are recorded in that directory’s `UPSTREAM.json` and `NOTICE.md`. The layout/material contract in `src/core/telegram-composer-presentation.ts` translates ChatTextInputPanelNode, ChatTextInputFontMetrics, ChatTextInputActionButtonsNode, AccessoryItemIconButton and GlassBackgroundComponent at the same pin. These assets do not include Telegram branding, messaging infrastructure or animation artwork.
 
 The pinned Unicode emoji ordering/data and compact-grid metrics are attributed separately in `apps/zoen/modules/zoen-core/ios/EmojiKeyboard/NOTICE.md` and `provenance.json`, with the same upstream revision and GPLv3 selection. Emoji glyphs are rendered by the operating system; Telegram emoji artwork is not imported. The UIKit content adapter, variant overlay and host are Zoen implementations.
+
+
+## Telegram iOS App message presentation
+
+`apps/zoen/src/miniapps/telegram-service-message.ts` translates the service-line normalization and legacy clear/ellipse mask from Telegram-iOS contributors at revision `f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838`, specifically `ChatMessageActionBubbleContentNode.swift` and `LinkHighlightingNode.swift`. The App share container in `conversation-message.tsx` also adopts the pinned `ChatMessageRichDataBubbleContentNode.swift` content/status insets. Exact source URLs, SHA256 hashes and selected line ranges are in [the source inventory](docs/product/telegram-ios-app-message-sources.json).
+
+The upstream GPL-2.0-or-later option is retained and GPLv3 selected for this integration, combined with Zoen under AGPLv3 section13. Selected full terms are in `LICENSES/GPL-3.0.txt` and the root `LICENSE`. The mask is translated to a local SVG rendered by the existing image component; this slice includes no Telegram artwork, account services, message transport or durable state. Larger native accessibility text may expand the22pt upstream line mask to prevent clipping. Native parity remains a separate qualification.
+
+## Telegram iOS attachment container and panel
+
+`ZoenAttachmentContainer.swift` and `ZoenAttachmentKeyboardContent.swift` adapt the container geometry, pan/scroll arbitration, settlement, floating category layout, selection-to-caption transition, horizontal selection recognizer and selection badge geometry from Telegram-iOS contributors at revision `f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838`. The original files are `AttachmentContainer.swift`, `AttachmentPanel.swift`, `AttachmentController.swift`, `MediaPickerScreen.swift`, `MediaPickerGridItem.swift` and `CheckNode.swift`. Exact paths, selected line ranges, byte lengths and SHA256 values are recorded in [the attachment source inventory](docs/product/telegram-ios-attachment-sources.json).
+
+The selected license is GPLv3 under the upstream GPL-2.0-or-later option, combined with Zoen under AGPLv3 section13. The selected terms are retained in `LICENSES/GPL-3.0.txt` and the root `LICENSE`. Zoen replaces Telegram's display/navigation framework with UIKit and the existing Expo host. Photos selection, account authorization, durable draft state and delivery remain under their existing Zoen owners; no Telegram messaging service, account data, photo library or branding is imported. This attribution does not claim complete attachment-flow or pixel parity.
+
+The attachment settlement spring parameters and speed scaling translate `ContainedViewLayoutTransition.swift` and `CAAnimationUtils.swift` at the same revision. The entrance uses the upstream fallback without a native glass source-button frame. These animation sources and remaining adaptations are included in the same inventory.
+
+The shared native gallery, selected-media mosaic, photo strip, gallery spring
+and image-edit controls also translate the pinned `TGMediaPickerGalleryInterfaceView`,
+`TGModernGalleryController`, `JNWSpringAnimation`, `MosaicLayout`,
+`MediaPickerPhotoToolbarView` and `TGPhotoCropAreaView` implementations. Exact
+sources and adaptations are recorded in `docs/product/telegram-ios-gallery-sources.json`.
+The original glyphs and animation assets, GlassBackground/LiquidLens components
+and supporting rendering code are attributed per file in
+`apps/zoen/modules/zoen-core/ios/TelegramAttachmentPresentation/NOTICE.md`,
+`UPSTREAM_SOURCES.json` and `UPSTREAM_ASSETS.json`. Original assets retain their
+exact pinned bytes. Official Lottie iOS 4.6.1 (Apache-2.0) renders the original
+category/Files animations; its license is included in the resource bundle.
+UIKit, ImageIO, AVFoundation and PencilKit adapt rendering to the existing Expo
+module. This does not claim that Telegram's entire paint/filter/video engine,
+server-backed file index or messaging services have been imported.

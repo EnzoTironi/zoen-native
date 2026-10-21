@@ -300,9 +300,9 @@ test('hidden Home shortcuts retain current canonical cards in actual Chat/Thread
         'Hidden shortcut must still resolve the latest authorized App for message cards',
       );
       const activity = rows.find((row) => row.activity?.item?.id === canonical.id)?.activity;
-      assert.ok(activity, 'Hidden shortcut must retain its canonical activity preview');
+      assert.ok(activity, 'Hidden shortcut must retain its canonical service activity');
       assert.equal(activity.item, canonical);
-      assert.equal(activity.showCard, true);
+      assert.ok(!('showCard' in activity), 'Updates do not repeat an App cover');
       assert.equal(
         activity.entries.length,
         2,

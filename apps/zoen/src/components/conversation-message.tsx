@@ -90,6 +90,7 @@ export const ConversationMessage = memo(function ConversationMessage({
   }, [entry.id]);
   const mine = entry.author.is_me;
   const card = messageCard(entry);
+  const appCard = card?.kind_id === 'app' && !!card.app;
   const imageKey = card?.kind_id === 'file' ? `${card.item_id}:${card.version}` : null;
   const renderedImage = useRef(imageKey);
   const [decodedImage, setDecodedImage] = useState<(DecodedMessageImage & { key: string }) | null>(
@@ -144,12 +145,14 @@ export const ConversationMessage = memo(function ConversationMessage({
   const messageFontSize = emojiFont ?? p.typography.message.fontSize;
   const availableWidth = Math.max(0, width - 32 - authorGutter);
   const mediaLimit = Math.min(availableWidth, Math.max(160, Math.min(294, availableWidth * 0.87)));
-  const mediaWidth =
-    card?.kind_id === 'app' && card.app
-      ? APP_CARD_METRICS.size
-      : decodedImage?.key === imageKey
-        ? inlineImageFrame(mediaLimit, decodedImage.width / decodedImage.height).width
-        : mediaLimit;
+  const mediaWidth = appCard
+    ? APP_CARD_METRICS.size
+    : decodedImage?.key === imageKey
+      ? inlineImageFrame(mediaLimit, decodedImage.width / decodedImage.height).width
+      : mediaLimit;
+  // Telegram RichDataBubbleContentNode.pageContentInset: retain a 2pt media rim.
+  // The cover itself is the exact same 160pt canonical tile used in Home/rails.
+  const attachmentWidth = appCard ? mediaWidth + 4 : mediaWidth;
   const time = new Date(Number(entry.at_ms)).toLocaleTimeString(formatLocale, {
     hour: '2-digit',
     minute: '2-digit',
@@ -331,13 +334,13 @@ export const ConversationMessage = memo(function ConversationMessage({
         justifyContent: 'flex-end',
         alignItems: 'center',
         gap: 5,
-        paddingHorizontal: outside ? 8 : 0,
+        paddingHorizontal: outside ? 8 : appCard ? 11 : 0,
         alignSelf: 'flex-end',
         position: !outside && inlineStatus ? 'absolute' : undefined,
         right: !outside && inlineStatus ? (mine ? 17 : 11) : undefined,
         bottom: !outside && inlineStatus ? 6 - pixel : undefined,
-        paddingTop: outside ? 4 : inlineStatus ? 0 : 2,
-        paddingBottom: outside ? 3 : 0,
+        paddingTop: outside ? 4 : appCard ? 4 : inlineStatus ? 0 : 2,
+        paddingBottom: outside ? 3 : appCard ? 6 : 0,
       }}
     >
       <Text
@@ -471,7 +474,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                 reducedMotion={reducedMotion}
                 style={{
                   maxWidth: attachment ? '100%' : textMaxWidth,
-                  width: attachment ? mediaWidth : undefined,
+                  width: attachment ? attachmentWidth : undefined,
                 }}
                 onGesture={(request) =>
                   open(request.kind === 'hold' ? 'actions' : 'reactions', undefined, request)
@@ -482,11 +485,11 @@ export const ConversationMessage = memo(function ConversationMessage({
                   ref={bubble}
                   testID={`message-bubble-${entry.id}`}
                   style={{
-                    width: attachment ? mediaWidth : undefined,
+                    width: attachment ? attachmentWidth : undefined,
                     maxWidth: attachment ? '100%' : textMaxWidth,
                     minWidth: attachment ? undefined : textMinWidth,
                     minHeight: attachment ? undefined : 35,
-                    ...(attachment ? { borderRadius: 22 } : textCorners),
+                    ...(attachment && !appCard ? { borderRadius: 22 } : textCorners),
                     borderCurve: 'continuous',
                     backgroundColor: attachment && voice ? paper : 'transparent',
                     paddingHorizontal: attachment ? 0 : 11,
@@ -496,7 +499,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                     paddingBottom: attachment ? 0 : emojiFont ? 20 : 6 - pixel,
                   }}
                 >
-                  {!attachment && !emojiFont ? (
+                  {(!attachment || appCard) && !emojiFont ? (
                     <MessageBubbleGraphic
                       ownerKey={entry.id}
                       incoming={!mine}
@@ -520,6 +523,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                           alignSelf: 'flex-start',
                           maxWidth: '100%',
                           marginBottom: 2,
+                          ...(appCard ? { marginHorizontal: 11, marginTop: 7 } : {}),
                           opacity: pressed ? 0.6 : 1,
                         })}
                       >
@@ -554,7 +558,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                         <Text
                           numberOfLines={1}
                           style={{
-                            color: attachment && !voice ? colors.text : ink,
+                            color: attachment && !voice && !appCard ? colors.text : ink,
                             fontSize: 14,
                             fontWeight: '600',
                           }}
@@ -564,7 +568,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                         <Text
                           numberOfLines={2}
                           style={{
-                            color: attachment && !voice ? colors.secondary : ink,
+                            color: attachment && !voice && !appCard ? colors.secondary : ink,
                             fontSize: 14,
                             opacity: 0.75,
                           }}
@@ -577,7 +581,7 @@ export const ConversationMessage = memo(function ConversationMessage({
                   {!entry.deleted && entry.forwarded ? (
                     <Text
                       style={{
-                        color: attachment && !voice ? colors.secondary : ink,
+                        color: attachment && !voice && !appCard ? colors.secondary : ink,
                         opacity: 0.7,
                         fontSize: 12,
                         fontStyle: 'italic',
@@ -594,12 +598,12 @@ export const ConversationMessage = memo(function ConversationMessage({
                       onTextLayout={attachment ? undefined : onTextLayout}
                       onLayout={attachment ? undefined : onTextFrame}
                       style={{
-                        color: attachment ? colors.text : ink,
+                        color: attachment && !appCard ? colors.text : ink,
                         fontSize: messageFontSize,
                         lineHeight: attachment ? Math.ceil(messageFontSize * 1.3) : undefined,
                         fontStyle: entry.deleted ? 'italic' : 'normal',
-                        paddingHorizontal: attachment ? 12 : 0,
-                        paddingVertical: attachment ? 8 : 0,
+                        paddingHorizontal: appCard ? 11 : attachment ? 12 : 0,
+                        paddingVertical: appCard ? 6 : attachment ? 8 : 0,
                       }}
                     >
                       {text}
@@ -654,15 +658,17 @@ export const ConversationMessage = memo(function ConversationMessage({
                     </Pressable>
                   ) : null}
                   {card && card.kind_id !== 'file' ? (
-                    <MiniappMessageCard
-                      card={card}
-                      item={item}
-                      spaceId={spaceId}
-                      width={mediaWidth}
-                      onLongPress={() => open('actions')}
-                    />
+                    <View style={appCard ? { margin: 2 } : undefined}>
+                      <MiniappMessageCard
+                        card={card}
+                        item={item}
+                        spaceId={spaceId}
+                        width={mediaWidth}
+                        onLongPress={() => open('actions')}
+                      />
+                    </View>
                   ) : null}
-                  {!attachment && !emojiFont ? metadata() : null}
+                  {(!attachment || appCard) && !emojiFont ? metadata() : null}
                   {highlighted ? (
                     <View
                       pointerEvents="none"
@@ -672,13 +678,13 @@ export const ConversationMessage = memo(function ConversationMessage({
                         inset: 0,
                         borderWidth: 2,
                         borderColor: colors.accent,
-                        ...(attachment ? { borderRadius: 24 } : textCorners),
+                        ...(attachment && !appCard ? { borderRadius: 24 } : textCorners),
                       }}
                     />
                   ) : null}
                 </Bubble>
               </MessageContextSource>
-              {(attachment && mine) || emojiFont ? metadata(true) : null}
+              {(attachment && !appCard && mine) || emojiFont ? metadata(true) : null}
             </View>
           </MessageInteraction>
         </View>
@@ -690,7 +696,7 @@ export const ConversationMessage = memo(function ConversationMessage({
           alignItems: mine ? 'flex-end' : 'flex-start',
         }}
       >
-        {!mine && attachment ? (
+        {!mine && attachment && !appCard ? (
           <View style={{ width: mediaWidth, maxWidth: '100%' }}>{metadata(true)}</View>
         ) : null}
         {entry.reactions.length && !entry.deleted ? (

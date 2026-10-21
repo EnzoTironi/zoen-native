@@ -77,7 +77,7 @@ test('typed browser boundary feeds the shared timeline while every canonical sea
   const rows = projectConversationTimeline(canonical, [item], 'marina');
   assert.equal(rows.length, 2);
   assert.equal(rows[0]?.activity?.entries.length, 22);
-  assert.equal(rows[0]?.activity?.showCard, true);
+  assert.ok(rows[0]?.activity && !('showCard' in rows[0].activity));
   assert.equal(rows[1]?.activity, undefined, 'Identical human wording stays a human message');
   assert.deepEqual(
     rows.flatMap((row) => row.activity?.entries ?? [row.entry]),

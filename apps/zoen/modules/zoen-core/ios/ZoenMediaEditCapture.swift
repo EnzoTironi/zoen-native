@@ -18,6 +18,43 @@ enum ZoenMediaEditCapture {
     default: nil
     }
   }
+  /// The in-app editor renders into memory. Write directly into the same
+  /// tracked preview owner; there is no additional disposable plaintext URL.
+  static func stageImage(_ png: Data, maximumBytes: UInt64) -> Result<ZoenPreviewFile, ZoenPDFEditCapture.Failure> {
+    let manager = FileManager.default
+    var copy: ZoenPreviewFile?
+    do {
+      guard !png.isEmpty, UInt64(png.count) <= maximumBytes,
+            let source = CGImageSourceCreateWithData(png as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+            CGImageSourceGetType(source) as String? == UTType.png.identifier,
+            CGImageSourceGetCount(source) == 1,
+            CGImageSourceGetStatus(source) == .statusComplete,
+            CGImageSourceGetStatusAtIndex(source, 0) == .statusComplete else {
+        throw ZoenFilePreview.Failure.editedMedia
+      }
+      let directory = URL.cachesDirectory.appendingPathComponent("ZoenMedia/\(UUID().uuidString)", isDirectory: true)
+      try manager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+      let file = ZoenPreviewFile(url: directory.appendingPathComponent("edited.png"), directory: directory)
+      copy = file
+      #if os(iOS)
+      try manager.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: directory.path)
+      #endif
+      try png.write(to: file.url, options: .withoutOverwriting)
+      try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.url.path)
+      #if os(iOS)
+      try manager.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: file.url.path)
+      #endif
+      try regular(file.url, maximumBytes: maximumBytes)
+      guard try metadata(file.url, kind: .image).mime == "image/png" else { throw ZoenFilePreview.Failure.editedMedia }
+      return .success(file)
+    } catch {
+      if let copy {
+        do { try copy.remove() }
+        catch { return .failure(.init(cause: error, retained: copy)) }
+      }
+      return .failure(.init(cause: error, retained: nil))
+    }
+  }
   static func stage(_ source: URL, kind: Kind, maximumBytes: UInt64) -> Result<ZoenPreviewFile, ZoenPDFEditCapture.Failure> {
     let manager = FileManager.default
     var copy: ZoenPreviewFile?

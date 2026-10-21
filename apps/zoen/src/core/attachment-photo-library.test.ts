@@ -33,11 +33,21 @@ function fixture() {
     copies: string[][] = [],
     versions: unknown[] = [],
     queries: unknown[][] = [],
+    metadataReads: string[][] = [],
+    metadataErrors = new Map<string, unknown>(),
     exportsReleased: string[] = [];
   let sequence = 0,
     failCopy = false;
+  let metadata: PhotoLibraryItem[] = [];
   let getUri = (id: string) => Promise.resolve(uris.get(id)!);
   let copyGate = Promise.resolve();
+  const readMetadata = (id: string, field: keyof PhotoLibraryItem) => {
+    metadataReads.push([id, field]);
+    if (metadataErrors.has(id)) throw metadataErrors.get(id);
+    const item = metadata.find((value) => value.id === id);
+    if (!item) throw Object.assign(new Error('Asset not found'), { code: 'ERR_ASSET_NOT_FOUND' });
+    return item[field];
+  };
   class File {
     uri: string;
     constructor(base: string | { uri: string }, child?: string) {
@@ -84,7 +94,7 @@ function fixture() {
       return this;
     }
     exeForMetadata() {
-      return Promise.resolve([]);
+      return Promise.resolve(metadata);
     }
   }
   const core: { releaseMediaLibraryExport?: (uri: string) => Promise<void> } = {
@@ -106,6 +116,30 @@ function fixture() {
           versions.push(options);
           return getUri(this.id);
         }
+        async getMediaType() {
+          return readMetadata(this.id, 'mediaType');
+        }
+        async getFilename() {
+          return readMetadata(this.id, 'filename');
+        }
+        async getShape() {
+          return { width: readMetadata(this.id, 'width'), height: readMetadata(this.id, 'height') };
+        }
+        async getDuration() {
+          return readMetadata(this.id, 'duration');
+        }
+        async getCreationTime() {
+          return readMetadata(this.id, 'creationTime');
+        }
+        async getModificationTime() {
+          return readMetadata(this.id, 'modificationTime');
+        }
+        async getFavorite() {
+          return readMetadata(this.id, 'isFavorite');
+        }
+        async getMediaSubtypes() {
+          return readMetadata(this.id, 'mediaSubtypes');
+        }
       },
       Album: class {
         id: string;
@@ -114,6 +148,9 @@ function fixture() {
         }
         static getAlbumsMetadata() {
           return Promise.resolve([]);
+        }
+        getAssetCount() {
+          return Promise.resolve(metadata.length);
         }
       },
       AssetField: { MEDIA_TYPE: 'mediaType', CREATION_TIME: 'creationTime' },
@@ -128,6 +165,7 @@ function fixture() {
     'expo-file-system': { File, Paths: { cache: { uri: 'file:///cache/' } } },
     'expo-crypto': { randomUUID: () => String(++sequence) },
     './attachment-draft': {
+      MAX_ATTACHMENT_ITEMS: 10,
       MAX_ATTACHMENT_TOTAL_BYTES: 64 * 1024 * 1024,
       AttachmentDraftFailure: class extends Error {},
     },
@@ -144,7 +182,11 @@ function fixture() {
         items: PhotoLibraryItem[],
         current: () => boolean,
       ): Promise<{ uri: string; name: string; mime: string; size: number }[]>;
-      photoLibrary: { load(id: string | null, offset: number): Promise<unknown> };
+      photoLibrary: {
+        load(id: string | null, offset: number): Promise<PhotoLibraryItem[]>;
+        albumDetails(id: string): Promise<{ count: number; previewId: string | null }>;
+        refresh(items: readonly PhotoLibraryItem[]): Promise<PhotoLibraryItem[]>;
+      };
     },
   };
   runInNewContext(compiled.outputFiles[0]!.text, {
@@ -172,6 +214,11 @@ function fixture() {
     copies,
     versions,
     queries,
+    metadataReads,
+    metadataErrors,
+    metadata: (items: PhotoLibraryItem[]) => {
+      metadata = items;
+    },
     fail: () => {
       failCopy = true;
     },
@@ -185,6 +232,98 @@ function fixture() {
     },
   };
 }
+test('SDK58 metadata duration is normalized once from milliseconds while album thumbnails stay lazy', async () => {
+  const f = fixture();
+  const durations = [12000, 0, 1234.5, null, -1, NaN, Infinity];
+  f.metadata(
+    durations.map(
+      (duration, index) =>
+        ({
+          id: `ph://video-${index}`,
+          mediaType: 'video',
+          duration,
+        }) as PhotoLibraryItem,
+    ),
+  );
+  const loaded = await f.photoLibrary.load(null, 0);
+  assert.deepEqual(
+    Array.from(loaded, (item) => item.duration),
+    [12, 0, 1.2345, null, null, null, null],
+  );
+  assert.equal(
+    f.queries.some(([method]) => method === 'album'),
+    false,
+  );
+  const detail = await f.photoLibrary.albumDetails('holiday');
+  assert.equal(detail.count, durations.length);
+  assert.equal(detail.previewId, 'ph://video-0');
+  assert.ok(f.queries.some(([method, size]) => method === 'limit' && size === 1));
+});
+test('bounded identity refresh uses fresh cheap SDK getters, retains order, normalizes duration and drops only missing/unsupported media', async () => {
+  const f = fixture();
+  const metadata = (id: string, mediaType = 'image') =>
+    ({
+      id,
+      filename: `${id.slice(5)}.jpg`,
+      mediaType,
+      width: 2048,
+      height: 1536,
+      duration: mediaType === 'video' ? 12000 : null,
+      creationTime: 1000,
+      modificationTime: 3000,
+      isFavorite: true,
+      mediaSubtypes: [],
+    }) as PhotoLibraryItem;
+  const image = metadata('ph://photo'),
+    video = metadata('ph://video', 'video'),
+    audio = metadata('ph://audio', 'audio');
+  f.metadata([image, video, audio]);
+  const result = await f.photoLibrary.refresh([video, metadata('ph://missing'), image, audio]);
+  assert.deepEqual(
+    Array.from(result, (item) => item.id),
+    ['ph://video', 'ph://photo'],
+  );
+  assert.equal(result[0]?.duration, 12);
+  assert.equal(result[1]?.duration, null);
+  assert.equal(result[0]?.width, 2048);
+  assert.equal(result[0]?.isFavorite, true);
+  assert.deepEqual(f.queries, []);
+  assert.deepEqual(f.versions, []);
+  assert.deepEqual(f.copies, []);
+  assert.deepEqual(f.exportsReleased, []);
+  assert.ok(
+    f.metadataReads.every(([id]) => [image.id, video.id, audio.id, 'ph://missing'].includes(id!)),
+  );
+});
+test('identity refresh bounds reject malformed/duplicate/oversized requests without querying or resolving a file', async () => {
+  const f = fixture(),
+    asset = { id: 'ph://one', mediaType: 'image' } as PhotoLibraryItem;
+  for (const values of [
+    [asset, asset],
+    [{ ...asset, id: 'file:///cache/private' }],
+    [{ ...asset, id: 'ph://' }],
+    [{ ...asset, id: 'ph://bad\0id' }],
+    Array.from({ length: 12 }, (_, index) => ({ ...asset, id: `ph://${index}` })),
+  ])
+    await assert.rejects(f.photoLibrary.refresh(values));
+  assert.deepEqual(Array.from(await f.photoLibrary.refresh([])), []);
+  assert.deepEqual(f.metadataReads, []);
+  assert.deepEqual(f.queries, []);
+  assert.deepEqual(f.versions, []);
+});
+test('a transient SDK metadata error is surfaced rather than fabricating a missing or all-null asset', async () => {
+  const f = fixture(),
+    asset = { id: 'ph://photo', mediaType: 'image' } as PhotoLibraryItem;
+  const failure = Object.assign(new Error('Metadata temporarily unavailable'), {
+    code: 'ERR_READ_INTERRUPTED',
+  });
+  f.metadata([asset]);
+  f.metadataErrors.set(asset.id, failure);
+  await assert.rejects(f.photoLibrary.refresh([asset]), (error) => error === failure);
+  assert.deepEqual(f.versions, []);
+  assert.deepEqual(f.copies, []);
+  assert.deepEqual(f.queries, []);
+});
 test('actual SDK adapter resolves CURRENT and copies exact local bytes/order/type into fresh owned destinations', async () => {
   const f = fixture(),
     a = f.asset('a'),

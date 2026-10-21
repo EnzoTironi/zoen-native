@@ -7,8 +7,10 @@ import { AttachmentKeyboardSession } from '../media/attachment-keyboard-session.
 import {
   AttachmentPhotoSession,
   type PhotoPickerState,
+  type PhotoPickerSubmission,
 } from '../media/attachment-photo-session.ts';
 import type { PhotoLibraryItem } from '../media/attachment-photo-library';
+import type { AttachmentAsset } from '../media/attachment-draft';
 const compile = async (name: string) =>
   (
     await build({
@@ -28,13 +30,21 @@ const compile = async (name: string) =>
       ],
     })
   ).outputFiles[0]!.text;
-const [panelCode, nativeCode] = await Promise.all([
+const [panelCode, nativeCode, pickerCode] = await Promise.all([
   compile('../media/attachment-photo-keyboard.ios.tsx'),
   compile('../media/keyboard-panel-native.ios.tsx'),
+  compile('../media/attachment-photo-picker.ios.tsx'),
 ]);
 const tick = async () => {
   for (let i = 0; i < 14; i++) await Promise.resolve();
 };
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((yes) => {
+    resolve = yes;
+  });
+  return { promise, resolve };
+}
 const item = (id: string): PhotoLibraryItem =>
   ({
     id: `ph://${id}`,
@@ -47,7 +57,7 @@ const item = (id: string): PhotoLibraryItem =>
     modificationTime: null,
     isFavorite: false,
   }) as PhotoLibraryItem;
-async function fixture() {
+async function fixture(withSubmission = false) {
   let sequence = 0,
     slotIndex = 0,
     current = true,
@@ -55,6 +65,14 @@ async function fixture() {
   const calls: string[] = [],
     copies: string[][] = [],
     captures: number[] = [];
+  const submissions: PhotoPickerSubmission[] = [];
+  const resumed: { id: string }[] = [];
+  let capture: () => Promise<AttachmentAsset[]> = async () => [
+    { uri: 'file:///owned/camera', mime: 'image/jpeg', name: 'camera.jpg', size: 12 },
+  ];
+  let browse: () => Promise<AttachmentAsset[]> = async () => [
+    { uri: 'file:///owned/document', mime: 'application/pdf', name: 'document.pdf', size: 12 },
+  ];
   const keyboard = new AttachmentKeyboardSession('space:thread', true, () => `owner-${++sequence}`);
   keyboard.bind({ tag: 7, context: 'space:normal', label: 'Message', placeholder: 'Message' });
   const photos = new AttachmentPhotoSession({
@@ -68,6 +86,7 @@ async function fixture() {
       throw new Error('not requested at mount');
     },
     load: async () => [item('a'), item('b'), item('c')],
+    refresh: async (items) => [...items],
     albums: async () => [{ id: 'album', title: 'Album' }],
     manage: async () => {},
     materialize: async (values) => {
@@ -81,7 +100,11 @@ async function fixture() {
     },
     capture: async (remaining) => {
       captures.push(remaining);
-      return [{ uri: 'file:///owned/camera', mime: 'image/jpeg', name: 'camera.jpg', size: 12 }];
+      return capture();
+    },
+    browse: async () => {
+      calls.push('browse');
+      return browse();
     },
     discard: () => {},
   });
@@ -97,7 +120,7 @@ async function fixture() {
   }, true);
   keyboard.openAttachments();
   await tick();
-  const request = keyboard.getSnapshot().presentation!;
+  let request = keyboard.getSnapshot().presentation!;
   type Slot = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
   const slots: Slot[] = [];
   let effects: (() => void)[] = [];
@@ -107,6 +130,16 @@ async function fixture() {
   const ports: Record<string, unknown> = {
     react: {
       useSyncExternalStore: (_s: unknown, get: () => unknown) => get(),
+      useState: (initial: unknown) => {
+        const s = (slots[slotIndex++] ??= {});
+        if (!Object.hasOwn(s, 'value')) s.value = initial;
+        return [
+          s.value,
+          (value: unknown) => {
+            s.value = typeof value === 'function' ? value(s.value) : value;
+          },
+        ];
+      },
       useMemo: (read: () => unknown, deps: readonly unknown[]) => {
         const s = (slots[slotIndex++] ??= {});
         if (!same(s.deps, deps)) {
@@ -150,7 +183,10 @@ async function fixture() {
         },
       }),
     },
-    '../i18n': { t: (name: string) => name },
+    '../i18n': {
+      t: (name: string, values?: { count?: number }) =>
+        name === 'media.attachmentSendCount' ? `${name}:${values?.count}` : name,
+    },
   };
   const load = (code: string) => {
     const module = { exports: {} as any };
@@ -177,34 +213,66 @@ async function fixture() {
       onPreferredIndex: (value: number | null) => {
         preferred = value;
       },
+      onResume: (presentation: typeof request) => {
+        request = presentation;
+        resumed.push(presentation);
+      },
+      ...(withSubmission
+        ? {
+            onSubmission: (intent: PhotoPickerSubmission) => {
+              submissions.push(intent);
+            },
+          }
+        : {}),
     });
     effects.forEach((run) => run());
     return tree as { type: string; props: Record<string, any> };
   };
-  const act = (tree: ReturnType<typeof render>, action: string, id?: string) =>
+  const act = (
+    tree: ReturnType<typeof render>,
+    action: string,
+    id?: string,
+    payload: Record<string, unknown> = {},
+  ) =>
     tree.props.onAction({
       nativeEvent: {
-        token: request.id,
-        context: request.field.context,
+        token: JSON.parse(tree.props.binding).token,
+        context: JSON.parse(tree.props.binding).context,
         revision: JSON.parse(tree.props.model).revision,
         action,
         id,
+        ...payload,
       },
     });
   const close = (tree: ReturnType<typeof render>) =>
     tree.props.onClosed({
-      nativeEvent: { token: request.id, context: request.field.context, reason: 'closed' },
+      nativeEvent: {
+        token: JSON.parse(tree.props.binding).token,
+        context: JSON.parse(tree.props.binding).context,
+        reason: 'closed',
+      },
     });
   return {
     photos,
     keyboard,
-    request,
+    get request() {
+      return request;
+    },
     render,
     act,
     close,
     calls,
     copies,
     captures,
+    submissions,
+    submission: (): PhotoPickerSubmission | undefined => submissions.at(-1),
+    resumed,
+    captureNext: (next: () => Promise<AttachmentAsset[]>) => {
+      capture = next;
+    },
+    browseNext: (next: () => Promise<AttachmentAsset[]>) => {
+      browse = next;
+    },
     picked: () => picked,
     preferred: () => preferred,
     retire: () => {
@@ -231,6 +299,131 @@ test('actual native projection carries ordered selection/permission/palette and 
   assert.equal(model.columns, 3);
   assert.equal(model.hasAudio, true);
   f.retire();
+  await tick();
+});
+
+test('caption controls are projected only for the durable submission adapter', async () => {
+  const ordinary = await fixture(),
+    durable = await fixture(true);
+  assert.equal('caption' in JSON.parse(ordinary.render().props.model), false);
+  durable.photos.select(item('a'));
+  const tree = durable.render();
+  assert.equal(JSON.parse(tree.props.model).caption.count, 1);
+  durable.act(tree, 'caption', undefined, { text: '  Caption 🖼️\nkept exactly  ' });
+  assert.equal(
+    JSON.parse(durable.render().props.model).caption.value,
+    '  Caption 🖼️\nkept exactly  ',
+  );
+  assert.deepEqual(durable.submissions, []);
+  ordinary.retire();
+  durable.retire();
+  await tick();
+});
+
+test('direct Send takes the final native text and awaits native removal before releasing selected files', async () => {
+  const f = await fixture(true);
+  f.photos.select(item('b'));
+  f.photos.select(item('a'));
+  let tree = f.render();
+  f.act(tree, 'caption', undefined, { text: 'Before the final keystroke' });
+  tree = f.render();
+  const finalCaption = 'Before the final keystroke!';
+  f.act(tree, 'send', undefined, { text: finalCaption });
+  // The mounted callback still has the old model text. A second tap cannot submit again.
+  f.act(tree, 'send', undefined, { text: 'duplicate' });
+  await tick();
+  assert.equal(f.submissions.length, 1);
+  assert.equal(f.submissions[0]!.caption, finalCaption);
+  assert.equal(f.submissions[0]!.send, true);
+  assert.equal(f.preferred(), null);
+  assert.deepEqual(f.copies, [['ph://b', 'ph://a']]);
+  assert.equal(f.picked(), undefined, 'preparing bytes must not complete the still-mounted sheet');
+  f.close(tree);
+  await tick();
+  assert.deepEqual(
+    (f.picked() as AttachmentAsset[]).map((value) => value.uri),
+    ['file:///owned/b', 'file:///owned/a'],
+  );
+});
+
+test('caption and Send reject malformed text and foreign, stale or retired presentation callbacks', async () => {
+  const f = await fixture(true);
+  f.photos.select(item('a'));
+  const stale = f.render();
+  f.photos.select(item('b'));
+  const tree = f.render();
+  for (const text of ['x'.repeat(4097), 'nul\0text', 42]) {
+    f.act(tree, 'caption', undefined, { text });
+    f.act(tree, 'send', undefined, { text });
+  }
+  for (const payload of [
+    { token: 'other' },
+    { context: 'other-chat' },
+    { revision: 'other-render' },
+  ]) {
+    f.act(tree, 'caption', undefined, { text: 'foreign', ...payload });
+    f.act(tree, 'send', undefined, { text: 'foreign', ...payload });
+  }
+  f.act(stale, 'send', undefined, { text: 'old selection' });
+  assert.equal(JSON.parse(f.render().props.model).caption.value, '');
+  f.retire();
+  f.act(tree, 'send', undefined, { text: 'retired' });
+  await tick();
+  assert.deepEqual(f.submissions, []);
+  assert.deepEqual(f.copies, []);
+});
+
+test('direct Send admits a 4096-character caption but rejects an empty or busy selection', async () => {
+  const f = await fixture(true);
+  f.act(f.render(), 'send', undefined, { text: 'nothing selected' });
+  assert.deepEqual(f.submissions, []);
+  f.photos.select(item('a'));
+  f.act(f.render({ ...f.photos.getSnapshot(), busy: true }), 'send', undefined, { text: 'busy' });
+  assert.deepEqual(f.submissions, []);
+  const tree = f.render();
+  f.act(tree, 'send', undefined, { text: 'x'.repeat(4096) });
+  await tick();
+  assert.equal(f.submissions.length, 1);
+  const submission = f.submission();
+  assert.ok(submission);
+  assert.equal(submission.caption.length, 4096);
+  f.close(tree);
+  await tick();
+});
+
+test('removed legacy Review cannot prepare files and native Preview stays inside the same Photos task', async () => {
+  const review = await fixture(true);
+  review.photos.select(item('a'));
+  review.act(review.render(), 'caption', undefined, { text: 'Review this first' });
+  const tree = review.render();
+  review.act(tree, 'review');
+  await tick();
+  assert.deepEqual(review.submissions, []);
+  assert.deepEqual(review.copies, []);
+  assert.equal(review.photos.getSnapshot().visible, true);
+  assert.equal(review.picked(), undefined);
+  review.retire();
+  await tick();
+
+  const preview = await fixture(true);
+  preview.photos.select(item('a'));
+  const token = preview.photos.getSnapshot().token;
+  preview.act(preview.render(), 'preview', 'ph://b');
+  await tick();
+  assert.equal(preview.photos.getSnapshot().screen, 'preview');
+  assert.equal(preview.photos.getSnapshot().previewId, 'ph://b');
+  assert.equal(preview.photos.getSnapshot().visible, true);
+  assert.equal(preview.photos.getSnapshot().token, token);
+  assert.deepEqual(
+    preview.photos.getSnapshot().selected.map((value) => value.id),
+    ['ph://a'],
+  );
+  assert.deepEqual(preview.submissions, []);
+  assert.deepEqual(preview.copies, []);
+  assert.equal(preview.picked(), undefined);
+  preview.act(preview.render(), 'back');
+  assert.equal(preview.photos.getSnapshot().screen, 'grid');
+  preview.retire();
   await tick();
 });
 test('queued same-token old model actions cannot override newer album/selection projection', async () => {
@@ -265,37 +458,87 @@ test('retained native camera close consults CURRENT session state, waits removal
   assert.equal((f.picked() as any[])[0].uri, 'file:///owned/camera');
   assert.deepEqual(f.calls, ['photo', 'photo-drained']);
 });
-test('preview admits selected order and preferred index, but releases files only after native close', async () => {
+test('native preview navigates without selecting or preparing the viewed item', async () => {
   const f = await fixture();
   f.photos.select(item('b'));
   const tree = f.render();
   f.act(tree, 'preview', 'ph://a');
   await tick();
-  assert.deepEqual(f.copies, [['ph://b', 'ph://a']]);
-  assert.equal(f.preferred(), 1);
-  assert.equal(f.picked(), undefined);
-  f.close(tree);
-  await tick();
+  assert.deepEqual(f.copies, []);
+  assert.equal(f.preferred(), null);
+  assert.equal(f.photos.getSnapshot().screen, 'preview');
+  assert.equal(f.photos.getSnapshot().previewId, 'ph://a');
   assert.deepEqual(
-    (f.picked() as any[]).map((i) => i.uri),
-    ['file:///owned/b', 'file:///owned/a'],
+    f.photos.getSnapshot().selected.map((value) => value.id),
+    ['ph://b'],
   );
+  assert.equal(f.picked(), undefined);
+  f.act(f.render(), 'back');
+  assert.equal(f.photos.getSnapshot().screen, 'grid');
+  assert.equal(f.photos.getSnapshot().previewId, null);
+  f.retire();
+  await tick();
 });
-test('Files handoff waits native close plus the real Photos task finally; selection hides category admission', async () => {
+test('retained category selection never closes or copies, and Browse waits native close before the existing Files picker', async () => {
   const f = await fixture(),
     tree = f.render();
   f.act(tree, 'document');
+  assert.equal(
+    f.keyboard.getSnapshot().presentation?.closing,
+    false,
+    'Browse cannot be invoked from the Photos child',
+  );
+  f.act(tree, 'category', 'document');
+  assert.equal(f.photos.getSnapshot().category, 'document');
+  assert.equal(f.photos.getSnapshot().visible, true);
+  assert.equal(f.keyboard.getSnapshot().presentation?.closing, false);
   assert.deepEqual(f.calls, ['photo']);
-  assert.equal(f.keyboard.getSnapshot().presentation?.closing, true);
-  f.close(tree);
+  assert.deepEqual(f.copies, []);
+  assert.equal(f.picked(), undefined);
+  const files = f.render();
+  assert.equal(JSON.parse(files.props.model).activeCategory, 'document');
+  f.act(files, 'document');
+  assert.deepEqual(f.calls, ['photo']);
+  assert.equal(f.keyboard.getSnapshot().presentation?.closing, false);
+  assert.equal(f.photos.getSnapshot().visible, false);
+  await f.close(files);
   await tick();
-  assert.deepEqual(f.calls, ['photo', 'photo-drained', 'document']);
+  assert.deepEqual(f.calls, ['photo', 'browse', 'photo-drained']);
+  assert.equal(f.keyboard.getSnapshot().presentation, null);
+  assert.equal((f.picked() as AttachmentAsset[])[0]?.mime, 'application/pdf');
   const g = await fixture();
   g.photos.select(item('a'));
   const selected = g.render();
+  g.act(selected, 'category', 'audio');
   g.act(selected, 'audio');
+  assert.equal(g.photos.getSnapshot().category, 'photos');
   assert.equal(g.keyboard.getSnapshot().presentation?.closing, false);
   g.retire();
+  await tick();
+});
+test('cancelled mounted Browse resumes the same Files category and Photos owner with a fresh native token', async () => {
+  const f = await fixture();
+  f.browseNext(async () => []);
+  f.act(f.render(), 'category', 'document');
+  const files = f.render(),
+    original = f.request.id;
+  f.act(files, 'document');
+  assert.equal(f.photos.getSnapshot().visible, false);
+  assert.deepEqual(f.calls, ['photo']);
+  await f.close(files);
+  await tick();
+  assert.deepEqual(f.calls, ['photo', 'browse']);
+  assert.equal(f.photos.getSnapshot().visible, true);
+  assert.equal(f.photos.getSnapshot().category, 'document');
+  assert.equal(f.keyboard.ownsPicker(original), true);
+  const resumed = f.render();
+  assert.notEqual(f.request.id, original);
+  assert.equal(JSON.parse(resumed.props.model).activeCategory, 'document');
+  assert.deepEqual(f.copies, []);
+  assert.equal(f.picked(), undefined);
+  await f.close(files);
+  assert.deepEqual(f.calls, ['photo', 'browse']);
+  f.retire();
   await tick();
 });
 test('foreign action identity and retired ownership cannot select, prepare or handoff', async () => {
@@ -321,8 +564,9 @@ test('foreign action identity and retired ownership cannot select, prepare or ha
 
 test('native account retirement cannot approve pending Camera or category handoff', async () => {
   for (const action of ['camera', 'document']) {
-    const f = await fixture(),
-      tree = f.render();
+    const f = await fixture();
+    if (action === 'document') f.act(f.render(), 'category', 'document');
+    const tree = f.render();
     f.act(tree, action);
     tree.props.onClosed({
       nativeEvent: { token: f.request.id, context: f.request.field.context, reason: 'retired' },
@@ -332,4 +576,374 @@ test('native account retirement cannot approve pending Camera or category handof
     assert.deepEqual(f.calls, ['photo', 'photo-drained']);
     assert.equal(f.keyboard.getSnapshot().presentation, null);
   }
+});
+
+test('cancelled Camera resumes the existing Photos selection and caption with a fresh native token', async () => {
+  const f = await fixture(true);
+  f.photos.select(item('b'));
+  f.captureNext(async () => []);
+  f.act(f.render(), 'caption', undefined, { text: 'Keep the selected photo and caption' });
+  const tree = f.render(),
+    original = f.request.id,
+    photoToken = f.photos.getSnapshot().token;
+  f.act(tree, 'camera');
+  assert.equal(f.photos.getSnapshot().visible, false);
+  await f.close(tree);
+  await tick();
+  assert.deepEqual(f.captures, [2]);
+  assert.equal(f.resumed.length, 1);
+  assert.notEqual(f.request.id, original);
+  assert.equal(f.keyboard.ownsPicker(original), true);
+  assert.equal(f.photos.getSnapshot().token, photoToken);
+  assert.equal(f.photos.getSnapshot().visible, true);
+  assert.deepEqual(
+    f.photos.getSnapshot().selected.map((value) => value.id),
+    ['ph://b'],
+  );
+  const current = f.render();
+  assert.equal(
+    JSON.parse(current.props.model).caption.value,
+    'Keep the selected photo and caption',
+  );
+  assert.equal(f.picked(), undefined);
+  assert.deepEqual(f.calls, ['photo']);
+  // Old native view callbacks cannot address this resumed presentation.
+  f.act(tree, 'send', undefined, { text: 'old Send' });
+  f.act(tree, 'select', 'ph://a');
+  await f.close(tree);
+  assert.equal(f.resumed.length, 1);
+  assert.equal(f.submissions.length, 1);
+  assert.equal(f.submission()?.send, false);
+  assert.deepEqual(
+    f.photos.getSnapshot().selected.map((value) => value.id),
+    ['ph://b'],
+  );
+  f.act(current, 'send', undefined, { text: 'Current final caption' });
+  await tick();
+  assert.equal(f.submissions.length, 2);
+  const submission = f.submission();
+  assert.ok(submission);
+  assert.equal(submission.caption, 'Current final caption');
+  assert.equal(submission.send, true);
+  assert.deepEqual(f.copies, [['ph://b']]);
+  await f.close(current);
+  await tick();
+  assert.deepEqual(
+    (f.picked() as AttachmentAsset[]).map((value) => value.uri),
+    ['file:///owned/b'],
+  );
+  assert.equal(f.keyboard.ownsPicker(original), false);
+});
+
+test('duplicate and foreign native close cannot launch Camera twice or rotate a resumed Photos owner twice', async () => {
+  const f = await fixture(true),
+    cancelled = deferred<AttachmentAsset[]>();
+  f.captureNext(() => cancelled.promise);
+  const tree = f.render();
+  f.act(tree, 'camera');
+  await tree.props.onClosed({
+    nativeEvent: { token: 'foreign', context: f.request.field.context, reason: 'closed' },
+  });
+  assert.deepEqual(f.captures, []);
+  const firstClose = f.close(tree),
+    duplicateClose = f.close(tree);
+  await tick();
+  assert.deepEqual(f.captures, [3]);
+  assert.equal(f.resumed.length, 0);
+  cancelled.resolve([]);
+  await Promise.all([firstClose, duplicateClose]);
+  await tick();
+  assert.equal(f.resumed.length, 1);
+  await f.close(tree);
+  assert.equal(f.resumed.length, 1);
+  assert.deepEqual(f.calls, ['photo']);
+  f.retire();
+  await tick();
+});
+
+test('retirement during cancelled Camera capture cannot reopen Photos or revive its initial token', async () => {
+  const f = await fixture(true),
+    cancelled = deferred<AttachmentAsset[]>();
+  f.photos.select(item('a'));
+  f.captureNext(() => cancelled.promise);
+  const tree = f.render(),
+    original = f.request.id;
+  f.act(tree, 'camera');
+  const closed = f.close(tree);
+  await tick();
+  assert.deepEqual(f.captures, [2]);
+  f.retire();
+  cancelled.resolve([]);
+  await closed;
+  await tick();
+  assert.deepEqual(f.resumed, []);
+  assert.equal(f.keyboard.ownsPicker(original), false);
+  assert.equal(f.keyboard.getSnapshot().presentation, null);
+  assert.equal(f.submissions.filter((value) => value.send).length, 0);
+  assert.deepEqual(f.picked(), []);
+});
+
+test('actual Photos hook subscription retains its initial task owner across a resumed native presentation', async () => {
+  type Slot = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
+  const slots: Slot[] = [];
+  let cursor = 0;
+  let effects: (() => void)[] = [];
+  const slot = () => (slots[cursor++] ??= {});
+  const same = (a: readonly unknown[] | undefined, b: readonly unknown[]) =>
+    !!a && a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
+  const effect = (read: () => void | (() => void), deps: readonly unknown[]) => {
+    const current = slot();
+    if (same(current.deps, deps)) return;
+    current.deps = deps;
+    effects.push(() => {
+      current.cleanup?.();
+      current.cleanup = read() ?? undefined;
+    });
+  };
+  let token = 0;
+  const libraryObserver = { changed: null as (() => void) | null, subscriptions: 0 };
+  const keyboard = new AttachmentKeyboardSession('chat', true, () => `hook-${++token}`);
+  keyboard.bind({ tag: 7, context: 'chat', label: 'Message', placeholder: 'Message' });
+  const jsx = (type: unknown, props: Record<string, any>) => ({ type, props });
+  const ports: Record<string, unknown> = {
+    react: {
+      useState: (initial: unknown) => {
+        const current = slot();
+        if (!Object.hasOwn(current, 'value')) current.value = initial;
+        return [
+          current.value,
+          (next: unknown) => {
+            current.value = typeof next === 'function' ? next(current.value) : next;
+          },
+        ];
+      },
+      useRef: (initial: unknown) => {
+        const current = slot();
+        return (current.value ??= { current: initial });
+      },
+      useMemo: (read: () => unknown, deps: readonly unknown[]) => {
+        const current = slot();
+        if (!same(current.deps, deps)) {
+          current.value = read();
+          current.deps = deps;
+        }
+        return current.value;
+      },
+      useEffect: effect,
+      useSyncExternalStore: (_subscribe: unknown, read: () => unknown) => read(),
+    },
+    'react/jsx-runtime': { jsx, jsxs: jsx },
+    'react-native': { AppState: { addEventListener: () => ({ remove() {} }) } },
+    'expo-crypto': { randomUUID: () => `hook-render-${++token}` },
+    '@expo/ui': {},
+    '@expo/ui/swift-ui': {},
+    '@expo/ui/swift-ui/modifiers': {},
+    'expo-image': {},
+    'expo-camera': {},
+    'expo-haptics': {},
+    '../components/primitives': {},
+    '../theme': {},
+    '../i18n': {},
+    './attachment-photo-session': { AttachmentPhotoSession },
+    './attachment-photo-library': {
+      photoLibrary: {
+        permission: async () => ({ granted: true, status: 'granted', accessPrivileges: 'all' }),
+        requestPermission: async () => {
+          throw new Error('permission already granted');
+        },
+        load: async () => [item('a')],
+        refresh: async (items: readonly PhotoLibraryItem[]) => [...items],
+        albums: async () => [],
+        subscribe: (changed: () => void) => {
+          libraryObserver.changed = changed;
+          libraryObserver.subscriptions++;
+          return () => {
+            libraryObserver.changed = null;
+          };
+        },
+        manage: async () => {},
+        materialize: async () => [],
+        discard: () => {},
+      },
+    },
+    './attachment-picker': { pickAttachmentAssets: async () => [] },
+    './attachment-image-surface': {},
+    './attachment-keyboard-context': { useAttachmentKeyboardSession: () => keyboard },
+    './attachment-photo-keyboard.ios': { AttachmentPhotoKeyboard: 'AttachmentPhotoKeyboard' },
+  };
+  type HookResult = {
+    pick(remaining: number, current: () => boolean): Promise<AttachmentAsset[]>;
+    view: ReturnType<typeof jsx>;
+    submission(): { caption: string; send: boolean } | null;
+  };
+  const module = { exports: {} as { useAttachmentPhotoPicker(): HookResult } };
+  runInNewContext(pickerCode, {
+    module,
+    exports: module.exports,
+    require: (name: string) => {
+      assert.ok(name in ports, name);
+      return ports[name];
+    },
+  });
+  const render = () => {
+    cursor = 0;
+    effects = [];
+    const result = module.exports.useAttachmentPhotoPicker();
+    effects.forEach((run) => run());
+    return result;
+  };
+  let hook = render();
+  assert.equal(libraryObserver.subscriptions, 0, 'Chat mount must not enumerate/register Photos');
+  const picked = deferred<AttachmentAsset[]>();
+  keyboard.register(async () => picked.resolve(await hook.pick(3, () => true)), true);
+  keyboard.openAttachments();
+  await tick();
+  hook = render();
+  assert.equal(hook.view.type, 'AttachmentPhotoKeyboard');
+  const initialView = hook.view,
+    session = initialView.props.session as AttachmentPhotoSession,
+    original = keyboard.getSnapshot().presentation!.id;
+  session.select(item('a'));
+  assert.equal(libraryObserver.subscriptions, 1);
+  libraryObserver.changed?.();
+  await tick();
+  assert.deepEqual(
+    session.getSnapshot().selected.map((value) => value.id),
+    ['ph://a'],
+  );
+  initialView.props.onSubmission({ caption: 'Retain hook submission', send: false });
+  session.camera();
+  keyboard.closed(original);
+  await session.dismissed(session.getSnapshot().token);
+  assert.equal(session.getSnapshot().visible, true);
+  const resumed = keyboard.resumePicker(original);
+  assert.ok(resumed);
+  // resumePicker publishes synchronously. The actual mounted hook's subscription
+  // must consult ownsPicker(initialId), not owns(the retired native token).
+  assert.equal(session.getSnapshot().visible, true);
+  assert.deepEqual(
+    session.getSnapshot().selected.map((value) => value.id),
+    ['ph://a'],
+  );
+  initialView.props.onResume(resumed);
+  hook = render();
+  assert.equal(hook.view.props.request.id, resumed.id);
+  assert.equal(hook.submission()?.caption, 'Retain hook submission');
+  keyboard.retire();
+  assert.equal(session.getSnapshot().visible, false);
+  assert.deepEqual(await picked.promise, []);
+  for (const current of slots) current.cleanup?.();
+});
+
+test('gallery Send includes its current unselected item and the final native keystroke only after explicit Send', async () => {
+  const f = await fixture(true);
+  f.act(f.render(), 'preview', 'ph://b');
+  const tree = f.render();
+  assert.deepEqual(f.photos.getSnapshot().selected, []);
+  assert.equal(JSON.parse(tree.props.model).caption.sendEnabled, true);
+  assert.equal(JSON.parse(tree.props.model).caption.count, 0);
+  assert.equal(JSON.parse(tree.props.model).caption.sendLabel, 'media.attachmentSendCount:1');
+  assert.equal(JSON.parse(tree.props.model).labels.edit, 'media.attachmentEdit');
+  assert.deepEqual(f.submissions, []);
+  assert.deepEqual(f.copies, []);
+  f.act(tree, 'send', 'ph://b', { text: 'Final gallery keystroke!' });
+  f.act(tree, 'send', 'ph://b', { text: 'Duplicate' });
+  await tick();
+  assert.equal(f.submissions.length, 1);
+  assert.equal(f.submission()?.caption, 'Final gallery keystroke!');
+  assert.deepEqual(Array.from(f.submission()?.captions ?? []), ['Final gallery keystroke!']);
+  assert.deepEqual(f.copies, [['ph://b']]);
+  assert.equal(f.picked(), undefined);
+  f.close(tree);
+  await tick();
+  assert.deepEqual(
+    (f.picked() as AttachmentAsset[]).map((value) => value.uri),
+    ['file:///owned/b'],
+  );
+});
+
+test('gallery caption and Send reject missing, foreign and noncurrent item identities without changing selection', async () => {
+  const f = await fixture(true);
+  f.photos.select(item('a'));
+  f.act(f.render(), 'preview', 'ph://b');
+  const tree = f.render();
+  for (const id of ['ph://foreign', 'ph://a']) {
+    f.act(tree, 'caption', id, { text: 'Wrong photo' });
+    f.act(tree, 'send', id, { text: 'Wrong photo' });
+  }
+  f.act(tree, 'caption', undefined, { text: 'Missing gallery identity' });
+  f.act(tree, 'send', undefined, { text: 'Missing gallery identity' });
+  assert.deepEqual(f.submissions, []);
+  assert.deepEqual(f.copies, []);
+  assert.equal(JSON.parse(f.render().props.model).caption.value, '');
+  assert.deepEqual(
+    f.photos.getSnapshot().selected.map((value) => value.id),
+    ['ph://a'],
+  );
+  f.retire();
+  await tick();
+});
+
+test('grid Send rejects a supplied gallery identity and an empty grid remains unsendable', async () => {
+  const f = await fixture(true);
+  assert.equal(JSON.parse(f.render().props.model).caption.sendEnabled, false);
+  f.act(f.render(), 'send', undefined, { text: 'No selection' });
+  f.photos.select(item('a'));
+  f.act(f.render(), 'send', 'ph://foreign', { text: 'Unexpected gallery identity' });
+  assert.deepEqual(f.submissions, []);
+  assert.deepEqual(f.copies, []);
+  f.retire();
+  await tick();
+});
+
+test('per-photo gallery captions survive navigation and follow the exact reordered selection on Send', async () => {
+  const f = await fixture(true);
+  f.act(f.render(), 'preview', 'ph://a');
+  f.act(f.render(), 'caption', 'ph://a', { text: 'Caption A' });
+  assert.deepEqual(
+    f.photos.getSnapshot().selected.map((value) => value.id),
+    ['ph://a'],
+  );
+  f.act(f.render(), 'preview', 'ph://b');
+  assert.equal(JSON.parse(f.render().props.model).caption.value, '');
+  f.act(f.render(), 'caption', 'ph://b', { text: 'Caption B before final key' });
+  f.act(f.render(), 'preview', 'ph://a');
+  assert.equal(JSON.parse(f.render().props.model).caption.value, 'Caption A');
+  f.act(f.render(), 'reorder', undefined, { ids: ['ph://b', 'ph://a'] });
+  f.act(f.render(), 'preview', 'ph://b');
+  assert.equal(JSON.parse(f.render().props.model).caption.value, 'Caption B before final key');
+  const tree = f.render();
+  f.act(tree, 'send', 'ph://b', { text: 'Caption B before final key!' });
+  await tick();
+  assert.equal(f.submission()?.caption, 'Caption B before final key!');
+  assert.deepEqual(Array.from(f.submission()?.captions ?? []), [
+    'Caption B before final key!',
+    'Caption A',
+  ]);
+  assert.deepEqual(f.copies, [['ph://b', 'ph://a']]);
+  f.close(tree);
+  await tick();
+});
+
+test('a grid common caption replaces item captions on the first selected asset without leaking across Photos owners', async () => {
+  const f = await fixture(true);
+  f.act(f.render(), 'preview', 'ph://a');
+  f.act(f.render(), 'caption', 'ph://a', { text: 'Old per-photo caption' });
+  f.act(f.render(), 'back');
+  f.photos.select(item('b'));
+  f.act(f.render(), 'caption', undefined, { text: 'Common caption' });
+  f.act(f.render(), 'preview', 'ph://b');
+  assert.equal(JSON.parse(f.render().props.model).caption.value, 'Common caption');
+  const tree = f.render();
+  f.act(tree, 'send', 'ph://b', { text: 'Common caption final' });
+  await tick();
+  assert.deepEqual(Array.from(f.submission()?.captions ?? []), ['Common caption final', '']);
+  assert.deepEqual(f.copies, [['ph://a', 'ph://b']]);
+  f.close(tree);
+  await tick();
+  const next = await fixture(true);
+  next.act(next.render(), 'preview', 'ph://a');
+  assert.equal(JSON.parse(next.render().props.model).caption.value, '');
+  next.retire();
+  await tick();
 });

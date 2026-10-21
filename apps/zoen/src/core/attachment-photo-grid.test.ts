@@ -3,47 +3,65 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
-import {
-  AttachmentPhotoSession as ActualPhotoSession,
-  type PhotoPickerState,
-  type AttachmentPhotoSession,
-} from '../media/attachment-photo-session.ts';
-type Element = { type: unknown; props: Record<string, unknown> };
-const compiled = await build({
-  stdin: {
-    contents: readFileSync(
-      new URL('../media/attachment-photo-picker.ios.tsx', import.meta.url),
-      'utf8',
-    ),
-    loader: 'tsx',
-  },
-  bundle: true,
-  platform: 'node',
-  format: 'cjs',
-  jsx: 'automatic',
-  write: false,
-  plugins: [
-    {
-      name: 'actual-grid-native-ports',
-      setup(b) {
-        b.onResolve({ filter: /./ }, ({ path }) => ({ path, external: true }));
-      },
-    },
-  ],
+import { AttachmentPhotoSession } from '../media/attachment-photo-session.ts';
+import type { PhotoPickerSubmission } from '../media/attachment-photo-session';
+import type { PhotoLibraryItem } from '../media/attachment-photo-library';
+import type { AttachmentAsset } from '../media/attachment-draft';
+
+type Tree = { type: unknown; props: Record<string, any> };
+type Slot = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
+const compile = async (name: string) =>
+  (
+    await build({
+      stdin: { contents: readFileSync(new URL(name, import.meta.url), 'utf8'), loader: 'tsx' },
+      bundle: true,
+      platform: 'node',
+      format: 'cjs',
+      jsx: 'automatic',
+      write: false,
+      plugins: [
+        {
+          name: 'actual-standalone-native-ports',
+          setup(builder) {
+            builder.onResolve({ filter: /./ }, ({ path }) => ({ path, external: true }));
+          },
+        },
+      ],
+    })
+  ).outputFiles[0]!.text;
+const [hookCode, panelCode, bindingCode] = await Promise.all([
+  compile('../media/attachment-photo-picker.ios.tsx'),
+  compile('../media/attachment-photo-keyboard.ios.tsx'),
+  compile('../media/keyboard-panel-native.ios.tsx'),
+]);
+const tick = async () => {
+  for (let i = 0; i < 16; i++) await Promise.resolve();
+};
+const item = (id: string) =>
+  ({
+    id: `ph://${id}`,
+    filename: `${id}.jpg`,
+    mediaType: 'image',
+    width: 100,
+    height: 200,
+    duration: null,
+    creationTime: null,
+    modificationTime: null,
+    isFavorite: false,
+  }) as PhotoLibraryItem;
+const file = (id: string): AttachmentAsset => ({
+  uri: `file:///owned/${id}`,
+  name: `${id}.jpg`,
+  mime: 'image/jpeg',
+  size: 12,
 });
-function fixture() {
-  let width = 402,
-    height = 874,
-    cursor = 0,
-    current = true,
-    haptics = 0;
-  type Slot = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
-  const slots: Slot[] = [],
-    sheetSlots: Slot[] = [];
-  let activeSlots = slots;
-  const slot = () => (activeSlots[cursor++] ??= {});
-  const same = (a?: readonly unknown[], b?: readonly unknown[]) =>
-    !!a && !!b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+function runtime(ports: Record<string, unknown>) {
+  const slots: Slot[] = [];
+  let cursor = 0,
+    effects: (() => void)[] = [];
+  const slot = () => (slots[cursor++] ??= {});
+  const same = (a: readonly unknown[] | undefined, b: readonly unknown[]) =>
+    !!a && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   const effect = (read: () => void | (() => void), deps: readonly unknown[]) => {
     const s = slot();
     if (same(s.deps, deps)) return;
@@ -53,27 +71,18 @@ function fixture() {
       s.cleanup = read() ?? undefined;
     });
   };
-  let effects: (() => void)[] = [];
-  const calls: string[] = [];
-  const colors = {
-    background: '#000',
-    surface: '#222',
-    accent: '#af0',
-    onAccent: '#000',
-    text: '#fff',
-    secondary: '#aaa',
-    danger: '#f00',
-  };
-  const jsx = (type: unknown, props: Record<string, unknown>): Element => ({ type, props });
-  const ports: Record<string, unknown> = {
+  const jsx = (type: unknown, props: Record<string, any>): Tree => ({ type, props });
+  const values: Record<string, unknown> = {
+    ...ports,
     react: {
       useState: (initial: unknown) => {
         const s = slot();
-        if (!Object.hasOwn(s, 'value')) s.value = initial;
+        if (!Object.hasOwn(s, 'value'))
+          s.value = typeof initial === 'function' ? initial() : initial;
         return [
           s.value,
-          (value: any) => {
-            s.value = typeof value === 'function' ? value(s.value) : value;
+          (next: unknown) => {
+            s.value = typeof next === 'function' ? next(s.value) : next;
           },
         ];
       },
@@ -81,319 +90,79 @@ function fixture() {
         const s = slot();
         return (s.value ??= { current: initial });
       },
-      useEffect: effect,
-      useLayoutEffect: effect,
       useMemo: (read: () => unknown, deps: readonly unknown[]) => {
         const s = slot();
         if (!same(s.deps, deps)) {
-          s.value = read();
           s.deps = deps;
+          s.value = read();
         }
         return s.value;
       },
-      useSyncExternalStore: () => {},
+      useEffect: effect,
+      useLayoutEffect: effect,
+      useSyncExternalStore: (_subscribe: unknown, get: () => unknown) => get(),
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    'react-native': {
-      FlatList: 'FlatList',
-      View: 'View',
-      Pressable: 'Pressable',
-      Text: 'Text',
-      ActivityIndicator: 'ActivityIndicator',
-      PixelRatio: { get: () => 3 },
-      useWindowDimensions: () => ({ width, height }),
-      Linking: { openSettings: () => {} },
-      AppState: {},
-    },
-    '@expo/ui': { Host: 'Host', BottomSheet: 'BottomSheet' },
-    '@expo/ui/swift-ui': {
-      BottomSheet: 'NativeBottomSheet',
-      Group: 'Group',
-      Button: 'Button',
-      Menu: 'Menu',
-      RNHostView: 'RNHostView',
-    },
-    '@expo/ui/swift-ui/modifiers': new Proxy({}, { get: () => () => {} }),
-    'expo-image': { Image: 'Image' },
-    'expo-haptics': {
-      selectionAsync: () => {
-        haptics++;
-        return Promise.resolve();
-      },
-    },
-    'expo-camera': {
-      Camera: { getCameraPermissionsAsync: async () => ({ granted: true }) },
-      CameraView: 'CameraView',
-    },
-    '../components/primitives': { Icon: 'Icon' },
-    '../theme': { useTheme: () => ({ colors }) },
-    '../i18n': { t: (s: string) => s },
-    './attachment-photo-session': {},
-    './attachment-photo-library': {},
-    './attachment-picker': {},
-    './attachment-keyboard-context': { useAttachmentKeyboardSession: () => null },
-    './attachment-photo-keyboard.ios': { AttachmentPhotoKeyboard: 'AttachmentPhotoKeyboard' },
-    './attachment-image-surface': { AttachmentImageSurface: 'AttachmentImageSurface' },
   };
-  const module = {
-    exports: {} as {
-      AttachmentPhotoPickerSheet(props: {
-        state: PhotoPickerState;
-        session: AttachmentPhotoSession;
-      }): Element;
-      AttachmentPhotoGrid(props: {
-        state: PhotoPickerState;
-        session: AttachmentPhotoSession;
-        onPreview(item: { id: string }): void;
-      }): Element;
-    },
-  };
-  runInNewContext(compiled.outputFiles[0]!.text, {
-    module,
-    exports: module.exports,
-    require: (id: string) => {
-      assert.ok(id in ports, id);
-      return ports[id];
-    },
-  });
-  const state = {
-    token: 1,
-    visible: true,
-    busy: false,
-    permission: {
-      granted: true,
-      status: 'granted' as NonNullable<PhotoPickerState['permission']>['status'],
-      canAskAgain: true,
-    },
-    items: Array.from({ length: 10 }, (_, i) => ({
-      id: String(i),
-      filename: `${i}.jpg`,
-      mediaType: 'image',
-      width: 100,
-      height: 200,
-      duration: null,
-      creationTime: null,
-      modificationTime: null,
-      isFavorite: false,
-    })),
-    selected: ['2', '0'].map((id) => ({
-      id,
-      filename: id + '.jpg',
-      mediaType: 'image',
-      width: 100,
-      height: 200,
-      duration: null,
-      creationTime: null,
-      modificationTime: null,
-      isFavorite: false,
-    })),
-    albums: [],
-    albumId: null,
-    loading: false,
-    hasMore: false,
-    error: null,
-  } as { -readonly [K in keyof PhotoPickerState]: PhotoPickerState[K] };
-  const session = {
-    isCurrent: () => current,
-    isInteractive: () => current && state.visible && !state.busy,
-    isPresented: () => current && state.visible,
-    select: (i: PhotoPickerState['items'][number]) => {
-      calls.push(`select:${i.id}`);
-      state.selected = state.selected.some((value) => value.id === i.id)
-        ? state.selected.filter((value) => value.id !== i.id)
-        : [...state.selected, i];
-    },
-    approve: async () => {
-      calls.push('approve');
-    },
-    getSnapshot: () => state,
-    camera: () => calls.push('camera'),
-    dismissing: (token: number) => calls.push(`dismissing:${token}`),
-    dismissed: async (token: number) => {
-      calls.push(`dismissed:${token}`);
-    },
-    more: () => {
-      calls.push('more');
-      return Promise.resolve();
-    },
-  } as unknown as AttachmentPhotoSession;
-  const render = () => {
-    cursor = 0;
-    activeSlots = slots;
-    effects = [];
-    const root = module.exports.AttachmentPhotoGrid({
-      state,
-      session,
-      onPreview: (item) => calls.push(`preview:${item.id}`),
-    });
-    effects.forEach((f) => f());
-    return root;
-  };
-  const scan = (value: unknown): Element[] =>
-    Array.isArray(value)
-      ? value.flatMap(scan)
-      : value && typeof value === 'object' && 'props' in value
-        ? [
-            value as Element,
-            ...scan((value as Element).props.children),
-            ...scan((value as Element).props.ListHeaderComponent),
-          ]
-        : [];
   return {
-    render,
-    sheet: () => {
+    values,
+    load: (code: string) => {
+      const module = { exports: {} as any };
+      runInNewContext(code, {
+        module,
+        exports: module.exports,
+        require: (name: string) => {
+          assert.ok(name in values, name);
+          return values[name];
+        },
+      });
+      return module.exports;
+    },
+    render: <T>(read: () => T): T => {
       cursor = 0;
-      activeSlots = sheetSlots;
       effects = [];
-      const value = module.exports.AttachmentPhotoPickerSheet({ state, session });
+      const result = read();
       effects.forEach((run) => run());
-      return value;
+      return result;
     },
-    sheetFor: (state: PhotoPickerState, session: AttachmentPhotoSession) => {
-      cursor = 0;
-      activeSlots = sheetSlots;
-      effects = [];
-      const value = module.exports.AttachmentPhotoPickerSheet({ state, session });
-      effects.forEach((run) => run());
-      return value;
+    unmount: () => {
+      for (const s of slots) {
+        s.cleanup?.();
+        s.cleanup = undefined;
+      }
     },
-    state,
-    calls,
-    scan,
-    find: (root: Element, id: string) => {
-      const e = scan(root).find((e) => e.props.testID === id);
-      assert.ok(e, id);
-      return e;
-    },
-    rotate: () => {
-      width = 874;
-      height = 402;
-    },
-    retire: () => {
-      current = false;
-    },
-    haptics: () => haptics,
   };
 }
-test('actual grid uses source three-column one-point geometry with a true two-row camera cutout and exact ordered badges', () => {
-  const f = fixture(),
-    root = f.render();
-  assert.equal(root.props.numColumns, 3);
-  const camera = f.find(root, 'attachment-photos-camera');
-  const style = camera.props.style as { width: number; height: number };
-  const size = Math.floor(((402 - 2) / 3) * 3) / 3;
-  assert.equal(style.width, size);
-  assert.equal(style.height, size * 2 + 1);
-  assert.equal((root.props.data as unknown[]).length, 6);
-  const two = f.find(root, 'attachment-photo-2');
-  assert.ok(f.scan(two).some((e) => e.type === 'Text' && e.props.children === 1));
-  const zero = f.find(root, 'attachment-photo-0');
-  assert.ok(f.scan(zero).some((e) => e.type === 'Text' && e.props.children === 2));
-  (two.props.onPress as () => void)();
-  (camera.props.onPress as () => void)();
-  assert.deepEqual(f.calls, ['select:2', 'camera']);
-  assert.equal(f.haptics(), 1);
-});
-test('rotation preserves ordered selections and converges to actual presented width with five landscape columns', () => {
-  const f = fixture();
-  let root = f.render();
-  f.rotate();
-  root = f.render();
-  assert.equal(root.props.numColumns, 5);
-  (root.props.onLayout as (e: unknown) => void)({ nativeEvent: { layout: { width: 800 } } });
-  root = f.render();
-  const camera = f.find(root, 'attachment-photos-camera');
-  assert.equal(
-    (camera.props.style as { width: number }).width,
-    Math.floor(((800 - 4) / 5) * 3) / 3,
-  );
-  assert.deepEqual(
-    Array.from(f.state.selected, (i) => i.id),
-    ['2', '0'],
-  );
-});
-test('retired grid callbacks cannot select, capture, paginate or emit haptics; preview mounts only for a visible idle library', async () => {
-  const f = fixture(),
-    root = f.render();
-  await Promise.resolve();
-  const active = f.render();
-  assert.ok(f.scan(active).some((e) => e.type === 'CameraView'));
-  const tile = f.find(root, 'attachment-photo-0'),
-    camera = f.find(root, 'attachment-photos-camera');
-  f.retire();
-  (tile.props.onPress as () => void)();
-  (camera.props.onPress as () => void)();
-  (root.props.onEndReached as () => void)();
-  assert.deepEqual(f.calls, []);
-  assert.equal(f.haptics(), 0);
-  f.state.busy = true;
-  assert.ok(!f.scan(f.render()).some((e) => e.type === 'CameraView'));
-  f.state.busy = false;
-  f.state.visible = false;
-  assert.ok(!f.scan(f.render()).some((e) => e.type === 'CameraView'));
-});
-
-test('actual picker hook never observes Photos at chat mount and removes its native observer when hidden or retired', () => {
-  type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
-  const slots: Slot[] = [];
-  let cursor = 0,
-    effects: (() => void)[] = [];
-  let observing = 0,
+type Hook = {
+  pick(remaining: number, current: () => boolean): Promise<AttachmentAsset[]>;
+  view: Tree | null;
+  submission(): PhotoPickerSubmission | null;
+  preferredUri(): string | null;
+  cancel(): void;
+};
+function fixture() {
+  let serial = 0,
+    current = true,
+    width = 402,
+    height = 874,
+    observed = 0,
     stopped = 0,
-    canceled = 0;
+    permissions = 0;
   let background: ((value: string) => void) | undefined;
-  let snapshot = { visible: false, permission: null } as PhotoPickerState;
-  const same = (a: readonly unknown[] | undefined, b: readonly unknown[]) =>
-    Boolean(a && a.length === b.length && b.every((v, i) => Object.is(v, a[i])));
-  class Session {
-    subscribe = () => () => {};
-    getSnapshot = () => snapshot;
-    invalidate = () => {};
-    cancel = () => {
-      canceled++;
-    };
-    open = async () => [];
-  }
-  const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
-  const ports: Record<string, unknown> = {
-    react: {
-      useState: (initial: unknown) => {
-        const slot = (slots[cursor++] ??= {});
-        if (!Object.hasOwn(slot, 'value')) slot.value = initial;
-        return [
-          slot.value,
-          (value: unknown) => {
-            slot.value = value;
-          },
-        ];
-      },
-      useMemo: (read: () => unknown, deps: readonly unknown[]) => {
-        const slot = (slots[cursor++] ??= {});
-        if (!same(slot.deps, deps)) {
-          slot.deps = deps;
-          slot.value = read();
-        }
-        return slot.value;
-      },
-      useRef: (initial: unknown) => {
-        const slot = (slots[cursor++] ??= {});
-        return (slot.value ??= { current: initial });
-      },
-      useSyncExternalStore: (_subscribe: unknown, get: () => unknown) => get(),
-      useEffect: (run: () => void | (() => void), deps: readonly unknown[]) => {
-        const slot = (slots[cursor++] ??= {});
-        if (same(slot.deps, deps)) return;
-        slot.deps = deps;
-        effects.push(() => {
-          slot.cleanup?.();
-          slot.cleanup = run() ?? undefined;
-        });
-      },
-    },
-    'react/jsx-runtime': { jsx, jsxs: jsx },
+  let capture: () => Promise<AttachmentAsset[]> = async () => [];
+  let browse: () => Promise<AttachmentAsset[]> = async () => [];
+  const calls: string[] = [],
+    copies: string[][] = [],
+    discarded: string[] = [];
+  const nativePorts: Record<string, unknown> = {
+    'expo-crypto': { randomUUID: () => `standalone-${++serial}` },
+    expo: { requireNativeView: (_module: string, name: string) => name },
     'react-native': {
+      useWindowDimensions: () => ({ width, height }),
+      Keyboard: { metrics: () => undefined },
+      Linking: { openSettings: () => {} },
       AppState: {
-        addEventListener: (_event: string, listener: (state: string) => void) => {
+        addEventListener: (_name: string, listener: (value: string) => void) => {
           background = listener;
           return {
             remove: () => {
@@ -403,185 +172,290 @@ test('actual picker hook never observes Photos at chat mount and removes its nat
         },
       },
     },
-    './attachment-photo-session': { AttachmentPhotoSession: Session },
+    '../theme': {
+      useTheme: () => ({
+        presentation: {
+          actionSheet: { background: '#17212b' },
+          text: '#ffffff',
+          secondary: '#aaaaaa',
+          accent: '#0088ff',
+          separator: '#334455',
+        },
+      }),
+    },
+    '../i18n': { t: (key: string) => key },
+    'expo-glass-effect': { isLiquidGlassAvailable: () => true },
+    'expo-haptics': {
+      selectionAsync: async () => {
+        calls.push('haptic');
+      },
+    },
+  };
+  const hookRuntime = runtime({
+    ...nativePorts,
+    './attachment-photo-session': { AttachmentPhotoSession },
     './attachment-photo-library': {
       photoLibrary: {
+        permission: async () => {
+          permissions++;
+          return { granted: true, status: 'granted', canAskAgain: true, accessPrivileges: 'all' };
+        },
+        requestPermission: async () => {
+          throw new Error('Granted permission');
+        },
+        albums: async () => [],
+        load: async () => [item('a'), item('b')],
+        manage: async () => {},
+        materialize: async (items: readonly PhotoLibraryItem[]) => {
+          copies.push(items.map((value) => value.id));
+          return items.map((value) => file(value.id.slice(5)));
+        },
+        discard: (uri: string) => {
+          discarded.push(uri);
+        },
         subscribe: () => {
-          observing++;
+          observed++;
           return () => {
             stopped++;
           };
         },
       },
     },
-    './attachment-picker': {},
+    './attachment-picker': {
+      pickAttachmentAssets: async (kind: string) => {
+        calls.push(kind);
+        return kind === 'camera' ? capture() : browse();
+      },
+    },
     './attachment-keyboard-context': { useAttachmentKeyboardSession: () => null },
     './attachment-photo-keyboard.ios': { AttachmentPhotoKeyboard: 'AttachmentPhotoKeyboard' },
-    './attachment-image-surface': {},
-    '@expo/ui': {},
-    '@expo/ui/swift-ui': {},
-    '@expo/ui/swift-ui/modifiers': {},
-    'expo-image': {},
-    'expo-haptics': {},
-    'expo-camera': {},
-    '../components/primitives': {},
-    '../theme': {},
-    '../i18n': {},
-  };
-  const module = { exports: {} as { useAttachmentPhotoPicker(): unknown } };
-  runInNewContext(compiled.outputFiles[0]!.text, {
-    module,
-    exports: module.exports,
-    require: (id: string) => {
-      assert.ok(id in ports, id);
-      return ports[id];
-    },
   });
-  const render = () => {
-    cursor = 0;
-    effects = [];
-    module.exports.useAttachmentPhotoPicker();
-    effects.forEach((run) => run());
+  const usePicker = hookRuntime.load(hookCode).useAttachmentPhotoPicker as () => Hook;
+  const panelRuntime = runtime(nativePorts);
+  panelRuntime.values['./keyboard-panel-native.ios'] = panelRuntime.load(bindingCode);
+  const component = panelRuntime.load(panelCode).AttachmentPhotoKeyboard as (
+    props: Record<string, any>,
+  ) => Tree;
+  let hook = hookRuntime.render(usePicker);
+  const renderHook = () => {
+    hook = hookRuntime.render(usePicker);
+    return hook;
   };
-  render();
-  assert.equal(observing, 0);
-  assert.equal(canceled, 0);
-  snapshot = { ...snapshot, visible: true };
-  render();
-  assert.equal(observing, 0);
-  snapshot = {
-    ...snapshot,
-    permission: { granted: true } as NonNullable<PhotoPickerState['permission']>,
+  const panel = () => {
+    const latest = renderHook();
+    assert.ok(latest.view);
+    assert.equal(latest.view.type, 'AttachmentPhotoKeyboard');
+    return panelRuntime.render(() => component(latest.view!.props));
   };
-  render();
-  assert.equal(observing, 1);
-  render();
-  assert.equal(observing, 1);
-  background?.('inactive');
-  assert.equal(canceled, 0);
-  background?.('background');
-  assert.equal(canceled, 1);
-  snapshot = { ...snapshot, visible: false };
-  render();
-  assert.equal(stopped, 1);
-  slots.forEach((slot) => slot.cleanup?.());
-  assert.equal(stopped, 1);
-  assert.equal(canceled, 2);
-  assert.equal(background, undefined);
-});
+  const act = (tree: Tree, action: string, id?: string, payload: Record<string, unknown> = {}) => {
+    const binding = JSON.parse(tree.props.binding),
+      model = JSON.parse(tree.props.model);
+    tree.props.onAction({
+      nativeEvent: {
+        token: binding.token,
+        context: binding.context,
+        revision: model.revision,
+        action,
+        id,
+        ...payload,
+      },
+    });
+  };
+  const close = (tree: Tree, payload: Record<string, unknown> = {}) => {
+    const binding = JSON.parse(tree.props.binding);
+    return tree.props.onClosed({
+      nativeEvent: { token: binding.token, context: binding.context, reason: 'closed', ...payload },
+    });
+  };
+  return {
+    panel,
+    act,
+    close,
+    renderHook,
+    calls,
+    copies,
+    discarded,
+    pick: (remaining = 3) => hook.pick(remaining, () => current),
+    state: () => {
+      const view = renderHook().view;
+      assert.ok(view);
+      return (view.props.session as AttachmentPhotoSession).getSnapshot();
+    },
+    capture: (value: () => Promise<AttachmentAsset[]>) => {
+      capture = value;
+    },
+    browse: (value: () => Promise<AttachmentAsset[]>) => {
+      browse = value;
+    },
+    background: (value: string) => background?.(value),
+    observers: () => ({ observed, stopped, permissions }),
+    rotate: () => {
+      width = 874;
+      height = 402;
+    },
+    retire: () => {
+      current = false;
+      hook.cancel();
+    },
+    unmount: () => {
+      hookRuntime.unmount();
+      panelRuntime.unmount();
+    },
+  };
+}
 
-test('actual SwiftUI sheet uses distinct state-change and fully-dismissed callback ports', () => {
-  const f = fixture(),
-    root = f.sheet();
-  const sheet = f.scan(root).find((e) => e.type === 'NativeBottomSheet');
-  assert.ok(sheet);
-  (sheet.props.onIsPresentedChange as (value: boolean) => void)(false);
-  assert.deepEqual(f.calls, ['dismissing:1']);
-  (sheet.props.onDismiss as () => void)();
-  assert.deepEqual(f.calls, ['dismissing:1', 'dismissed:1']);
-});
-
-test('actual sheet callbacks drive the real session: only completed dismissal captures, and retirement in between cancels', async () => {
+test('standalone Add Photos uses the same native panel without a composer tag or any mount-time Photos query', async () => {
   const f = fixture();
-  let current = true,
-    captures = 0;
-  const session = new ActualPhotoSession({
-    permission: async () => ({
-      granted: true,
-      status: 'granted' as NonNullable<PhotoPickerState['permission']>['status'],
-      canAskAgain: true,
-    }),
-    requestPermission: async () => {
-      throw new Error('unexpected prompt');
-    },
-    load: async () => [],
-    albums: async () => [],
-    manage: async () => {},
-    materialize: async () => [],
-    capture: async () => {
-      captures++;
-      return [{ uri: 'file:///cache/camera', name: 'capture.jpg', mime: 'image/jpeg', size: 10 }];
-    },
-    discard: () => {},
+  assert.equal(f.renderHook().view, null);
+  assert.deepEqual(f.observers(), { observed: 0, stopped: 0, permissions: 0 });
+  const result = f.pick();
+  await tick();
+  const tree = f.panel(),
+    binding = JSON.parse(tree.props.binding),
+    model = JSON.parse(tree.props.model);
+  assert.equal(tree.type, 'ZoenStandaloneAttachmentPanelHost');
+  assert.equal(binding.standalone, true);
+  assert.equal(Object.hasOwn(binding, 'tag'), false);
+  assert.equal(binding.active, true);
+  assert.equal(model.columns, 3);
+  assert.equal(model.screen, 'grid');
+  assert.equal(model.hasAudio, false);
+  assert.equal(f.observers().observed, 1);
+  f.act(tree, 'select', 'ph://b');
+  f.rotate();
+  const rotated = JSON.parse(f.panel().props.model);
+  assert.equal(rotated.columns, 5);
+  assert.deepEqual(rotated.selected, ['ph://b']);
+  f.retire();
+  assert.deepEqual(await result, []);
+  f.renderHook();
+  assert.equal(f.observers().stopped, 1);
+  f.unmount();
+});
+
+test('standalone preview retains selection and explicit gallery Send waits actual native removal before releasing owned files', async () => {
+  const f = fixture(),
+    result = f.pick();
+  let resolved = false;
+  void result.then(() => {
+    resolved = true;
   });
-  const tick = async () => {
-    for (let i = 0; i < 12; i++) await Promise.resolve();
-  };
-  const first = session.open(2, () => current);
   await tick();
-  session.camera();
-  let sheet = f
-    .scan(f.sheetFor(session.getSnapshot(), session))
-    .find((e) => e.type === 'NativeBottomSheet')!;
-  (sheet.props.onIsPresentedChange as (v: boolean) => void)(false);
-  assert.equal(captures, 0);
-  current = false;
-  (sheet.props.onDismiss as () => void)();
+  f.act(f.panel(), 'select', 'ph://b');
+  f.act(f.panel(), 'preview', 'ph://a');
+  const tree = f.panel();
+  assert.equal(JSON.parse(tree.props.model).screen, 'preview');
+  assert.deepEqual(
+    f.state().selected.map((value) => value.id),
+    ['ph://b'],
+  );
+  assert.deepEqual(f.copies, []);
+  f.act(tree, 'send', 'ph://a', { text: 'Final standalone caption!' });
   await tick();
-  assert.deepEqual(await first, []);
-  assert.equal(captures, 0);
-  current = true;
-  const second = session.open(2, () => current);
+  assert.equal(resolved, false);
+  assert.deepEqual(f.copies, [['ph://b', 'ph://a']]);
+  assert.deepEqual(Array.from(f.renderHook().submission()?.captions ?? []), [
+    '',
+    'Final standalone caption!',
+  ]);
+  await f.close(f.panel());
   await tick();
-  session.camera();
-  sheet = f
-    .scan(f.sheetFor(session.getSnapshot(), session))
-    .find((e) => e.type === 'NativeBottomSheet')!;
-  (sheet.props.onIsPresentedChange as (v: boolean) => void)(false);
-  assert.equal(captures, 0);
-  (sheet.props.onDismiss as () => void)();
-  await tick();
-  const result = await second;
-  assert.equal(captures, 1);
-  assert.equal(result.length, 1);
-  assert.equal(result[0]?.uri, 'file:///cache/camera');
+  assert.deepEqual(await result, [file('b'), file('a')]);
+  assert.equal(f.renderHook().view, null);
+  f.unmount();
 });
 
-test('grid body previews independently from its 44-point ordered selection target', () => {
+test('standalone Camera cancel resumes one Photos request with a fresh native owner and ignores old duplicate close', async () => {
   const f = fixture(),
-    root = f.render();
-  const body = f.find(root, 'attachment-photo-preview-0');
-  (body.props.onPress as () => void)();
-  assert.deepEqual(f.calls, ['preview:0']);
+    result = f.pick();
+  await tick();
+  f.act(f.panel(), 'select', 'ph://b');
+  f.act(f.panel(), 'caption', undefined, { text: 'Keep me' });
+  const tree = f.panel(),
+    oldToken = JSON.parse(tree.props.binding).token,
+    photosToken = f.state().token;
+  f.act(tree, 'camera');
+  assert.equal(f.calls.includes('camera'), false);
+  await f.close(tree);
+  await tick();
+  const resumed = f.panel();
+  assert.notEqual(JSON.parse(resumed.props.binding).token, oldToken);
+  assert.equal(f.state().token, photosToken);
   assert.deepEqual(
-    Array.from(f.state.selected, (item) => item.id),
-    ['2', '0'],
+    f.state().selected.map((value) => value.id),
+    ['ph://b'],
   );
-  const check = f.find(root, 'attachment-photo-0');
-  assert.equal((check.props.style as { width: number }).width, 44);
-  (check.props.onPress as () => void)();
-  assert.deepEqual(f.calls, ['preview:0', 'select:0']);
+  assert.equal(JSON.parse(resumed.props.model).caption.value, 'Keep me');
+  await f.close(tree);
+  f.act(tree, 'send', undefined, { text: 'Stale' });
+  await tick();
+  assert.equal(f.state().visible, true);
   assert.deepEqual(
-    Array.from(f.state.selected, (item) => item.id),
-    ['2'],
+    f.calls.filter((value) => value === 'camera'),
+    ['camera'],
   );
+  assert.deepEqual(f.copies, []);
+  f.retire();
+  assert.deepEqual(await result, []);
+  f.unmount();
 });
 
-test('Photos body preview retains the authorized library URI; only current explicit Next enters ordered materialization', () => {
+test('standalone Files tab is retained and Browse launches the existing document picker only after native removal', async () => {
   const f = fixture();
-  const grid = (root: Element) =>
-    f
-      .scan(root)
-      .find((e) => typeof e.type === 'function' && e.type.name === 'AttachmentPhotoGrid')!;
-  let root = f.sheet();
-  const original = grid(root);
-  (original.props.onPreview as (item: unknown) => void)(f.state.items[0]);
-  root = f.sheet();
-  const image = f.scan(root).find((e) => e.type === 'AttachmentImageSurface')!;
-  assert.equal(image.props.uri, f.state.items[0]!.id);
-  assert.deepEqual(f.calls, [], 'opening a still photo neither selects nor exports it');
-  const oldNext = f.find(root, 'attachment-photos-review').props.onPress as () => void;
-  (f.find(root, 'attachment-photos-close').props.onPress as () => void)();
-  root = f.sheet();
-  (grid(root).props.onPreview as (item: unknown) => void)(f.state.items[1]);
-  root = f.sheet();
-  oldNext();
-  (original.props.onPreview as (item: unknown) => void)(f.state.items[3]);
-  assert.deepEqual(f.calls, [], 'retained Next/grid actions cannot replace a newer preview');
-  (f.find(root, 'attachment-photos-review').props.onPress as () => void)();
-  assert.deepEqual(f.calls, ['select:1', 'approve']);
-  assert.deepEqual(
-    Array.from(f.state.selected, (item) => item.id),
-    ['2', '0', '1'],
-  );
+  f.browse(async () => [file('document')]);
+  const result = f.pick();
+  await tick();
+  const photos = f.panel();
+  f.act(photos, 'document');
+  assert.deepEqual(f.calls, []);
+  f.act(photos, 'category', 'document');
+  assert.equal(f.state().visible, true);
+  assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.copies, []);
+  const files = f.panel();
+  f.act(files, 'document');
+  assert.equal(f.state().visible, false);
+  assert.deepEqual(f.calls, []);
+  await f.close(files);
+  await tick();
+  assert.deepEqual(f.calls, ['document']);
+  assert.deepEqual(await result, [file('document')]);
+  f.unmount();
+});
+
+test('standalone native retirement revokes a queued Camera or document Browse before either system picker is launched', async () => {
+  for (const action of ['camera', 'document']) {
+    const f = fixture(),
+      result = f.pick();
+    await tick();
+    if (action === 'document') f.act(f.panel(), 'category', 'document');
+    const tree = f.panel();
+    f.act(tree, action);
+    await f.close(tree, { reason: 'retired' });
+    await tick();
+    assert.deepEqual(await result, []);
+    assert.deepEqual(f.calls, []);
+    assert.deepEqual(f.copies, []);
+    f.unmount();
+  }
+});
+
+test('background cancels the standalone request and removes Photos observation without opening a replacement panel', async () => {
+  const f = fixture(),
+    result = f.pick();
+  await tick();
+  const tree = f.panel();
+  assert.equal(f.observers().observed, 1);
+  f.background('inactive');
+  assert.equal(f.state().visible, true);
+  f.background('background');
+  await tick();
+  assert.deepEqual(await result, []);
+  assert.equal(f.renderHook().view, null);
+  assert.equal(f.observers().stopped, 1);
+  f.act(tree, 'select', 'ph://a');
+  await f.close(tree);
+  assert.deepEqual(f.copies, []);
+  assert.deepEqual(f.calls, []);
+  f.unmount();
 });

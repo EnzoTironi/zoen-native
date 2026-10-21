@@ -106,8 +106,38 @@ private actor Saves {
     try await ordinaryCloseCancelsDraftEditor()
     try await badCaptureOffersExplicitDiscard()
     try await captureFormatsAndCleanup()
+    try await memoryImageUsesCanonicalCaptureOwner()
     try gateAndNativeBackgroundAdmission()
-    print("Synthetic media edit tests passed: 6 scenarios (exact copied bytes, draft cancellation/drain, ordinary close, malformed capture recovery, real PNG/MOV formats and cleanup, background gates).")
+    print("Synthetic media edit tests passed: 7 scenarios (exact copied bytes, draft cancellation/drain, ordinary close, malformed capture recovery, real PNG/MOV formats and cleanup, canonical in-memory PNG capture, background gates).")
+  }
+  static func memoryImageUsesCanonicalCaptureOwner() async throws {
+    let f = try Fixture(); defer { f.remove() }
+    let rendered = try f.file("rendered")
+    let bytes = try Data(contentsOf: rendered.url)
+    guard case .success(let copy) = ZoenMediaEditCapture.stageImage(bytes, maximumBytes: 4096) else { preconditionFailure("Valid memory PNG rejected") }
+    precondition(copy.directory.deletingLastPathComponent().lastPathComponent == "ZoenMedia")
+    let captured = try Data(contentsOf: copy.url)
+    precondition(captured == bytes)
+    try copy.remove()
+    precondition(!FileManager.default.fileExists(atPath: copy.directory.path))
+    for data in [Data(), Data("not PNG".utf8), Data(bytes.prefix(24))] {
+      guard case .failure(let error) = ZoenMediaEditCapture.stageImage(data, maximumBytes: 4096) else { preconditionFailure("Invalid image bytes admitted") }
+      precondition(error.retained == nil)
+    }
+    guard case .failure(let error) = ZoenMediaEditCapture.stageImage(bytes, maximumBytes: 1) else { preconditionFailure("Memory capture ignored size bound") }
+    precondition(error.retained == nil)
+    let owner = ZoenFilePreview(), store = Saves(gate: ZoenMediaEditGate()), p = Presentation(), result = Completion()
+    let task = begin(owner: owner, file: try f.file("viewer"), store: store, presentation: p, result: result)
+    await p.shown.wait()
+    result.editing!.receiveImage(bytes)
+    await store.waitForCall()
+    p.ended?(nil)
+    await task.value
+    guard case .success? = result.result else { preconditionFailure("Memory capture did not pass canonical save and dismissal") }
+    let accepted = await store.accepted, files = await store.files
+    precondition(accepted == [bytes] && files.count == 1)
+    precondition(files.allSatisfy { !FileManager.default.fileExists(atPath: $0.path) })
+    precondition(FileManager.default.fileExists(atPath: rendered.url.path))
   }
   static func copiedBytesAndNativeCancel() async throws {
     let f = try Fixture(); defer { f.remove() }
