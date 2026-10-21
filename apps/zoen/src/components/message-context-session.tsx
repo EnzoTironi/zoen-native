@@ -22,6 +22,9 @@ export function MessageContextSession({ children }: { children: ReactNode }) {
       : null;
   if (owner !== null && scope !== owner) setScope(owner);
   useLayoutEffect(() => {
+    // The initial inactive Stage has never admitted a context. Cold open runs
+    // before Fabric necessarily registers that view, so it has no owner to drain.
+    if (scope === 'initial') return;
     // Capture this exact native instance; a late cleanup must never close the
     // next session's Stage through a mutable ref.
     const stage = ref.current;
