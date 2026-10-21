@@ -825,9 +825,9 @@ async fn session_with_repair_policy(
                             let poke = engine!(|engine| engine.net.poke.is_some());
                             if poke { tokio::time::sleep(Duration::from_millis(500)).await; }
                         }
-                        if matches!(outcome, RejectionOutcome::Retry) {
-                            // The relay refuses the old encoding permanently, but the
-                            // queued plaintext may already have a current sealed copy.
+                        if matches!(outcome, RejectionOutcome::Retry | RejectionOutcome::UserFailed) {
+                            // Retry may already have a current sealed copy. A terminal
+                            // dependency failure can release later Space heads immediately.
                             if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                         }
                         report_rejection(ctx, &outcome);
@@ -1611,6 +1611,7 @@ async fn fetch_link_attempt(
 mod tests {
     mod cursor_repair;
     mod incoming_pipeline;
+    mod media_dependencies;
 
     #[tokio::test]
     async fn pickup_expired_deadline_opens_no_connection() {

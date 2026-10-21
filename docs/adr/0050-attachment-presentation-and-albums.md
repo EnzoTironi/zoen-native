@@ -54,19 +54,38 @@ uses the same ordered group cursor on native and Web. A shared signed fixture
 covers reversed indices, duplicates, count/presentation/reply drift and forwarded
 album claims; invalid events remain in history without gaining a message view.
 
-Grouped outbox members wait for their same-author File creation and exact previous
-group membership in the verified, relay-confirmed log. Optimistic state, a socket
-write and `Accepted` do not release those dependencies. A disposable per-offer
-snapshot uses the existing canonical `PlanReplay`/`State.apply_checked` fold and
-dependency predicate; signature-valid but projection-refused history cannot
-replace a File or advance the group cursor. It replays each relevant Space once
-per offer pass, with temporary state proportional to that history; no additional
-durable queue is introduced. A held member also holds later heads in
-that Space, so sealed generations cannot overtake it beyond the existing MLS
-window. Other Spaces remain independent. Retrying after a transient refusal or
-cold reopen preserves the original ciphertext, client ids, order and journal
-receipt. A permanently failed prerequisite stays available through the existing
-failed-send recovery path; later members wait for its explicit retry.
+Metadata-bearing outbox messages wait for an authoritative same-Space non-voice
+File in the verified, relay-confirmed log. Grouped messages also wait for the
+same-author File creation and exact previous group membership. Optimistic state,
+a socket write and `Accepted` do not release those dependencies. A disposable
+per-offer snapshot uses the existing canonical `PlanReplay`/`State.apply_checked`
+fold and dependency predicate; signature-valid but projection-refused history
+cannot replace a File or advance the group cursor. Voice and legacy messages
+without media metadata keep their existing transport behavior.
+
+This replays each relevant Space once per offer pass, with temporary state
+proportional to that confirmed history. Existing merged `state` and
+`space_projections` contain the pending overlay and cannot safely replace this
+confirmed-only fold. There is no persistent cache or additional durable queue;
+large-history latency and memory have not been performance-qualified. A held
+message also holds later heads in that Space, so sealed generations cannot
+overtake it beyond the existing MLS window. Other Spaces remain independent.
+Retrying after a transient refusal or cold reopen preserves the original
+ciphertext, client ids, order and journal receipt.
+
+A terminal refusal atomically marks the exact signed matching group's pending
+members failed. A refused unconfirmed File creation also fails its same-author,
+same-Space metadata-bearing references and their matching groups. Matching binds
+group id/count, presentation, reply, author and Space; invalid signatures and
+forwarded group claims cannot expand it. A refused duplicate creation cannot
+invalidate references to an already confirmed Item. Failed signed intents and
+readable private bytes remain available through the existing recovery projection,
+while newer ordinary heads can progress. The actual network refusal path flushes
+those newly released heads immediately, without waiting for incidental traffic.
+Source bytes/File creation rows unrelated
+to the failed message group are retained, not deleted. This adds no public retry
+or discard API; a user-facing failed-send recovery affordance remains separate
+work, and confirmed-message deletion semantics are unchanged.
 
 Recovery-only identities are reserved from authenticated failed outbox sources
 before confirmed history is folded. This also rejects legacy messages without

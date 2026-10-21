@@ -146,11 +146,11 @@ fn is_message_send(body: &EventBody) -> bool {
 /// Disposable admission facts from the verified, relay-confirmed log only. An
 /// optimistic File or album member (including one already written to a socket)
 /// cannot release its dependent message. Build once per relevant Space/offer pass.
-struct ConfirmedAlbumDependencies {
+struct ConfirmedMediaDependencies {
     state: State,
 }
 
-impl ConfirmedAlbumDependencies {
+impl ConfirmedMediaDependencies {
     fn from_log(engine: &Engine, log: &SpaceLog) -> R<Self> {
         let mut state = State::default();
         let mut plans = PlanReplay::new(&engine.store, &engine.logs);
@@ -165,6 +165,35 @@ impl ConfirmedAlbumDependencies {
         self.state
             .media_message_dependencies_valid(&event.space, &event.author, &event.body)
     }
+}
+
+fn same_media_group(first: &Event, second: &Event) -> bool {
+    let (
+        EventBody::MessagePosted {
+            media: Some(first),
+            reply: first_reply,
+            forwarded: false,
+            ..
+        },
+        EventBody::MessagePosted {
+            media: Some(second),
+            reply: second_reply,
+            forwarded: false,
+            ..
+        },
+    ) = (&first.body, &second.body)
+    else {
+        return false;
+    };
+    first.is_valid()
+        && second.is_valid()
+        && first.presentation == second.presentation
+        && first_reply == second_reply
+        && first
+            .group
+            .as_ref()
+            .zip(second.group.as_ref())
+            .is_some_and(|(first, second)| first.id == second.id && first.count == second.count)
 }
 
 impl Engine {
@@ -722,11 +751,11 @@ impl Engine {
                 Err(error) => return RejectionOutcome::StorageFailure(error.to_string()),
             }
         }
-        match self.store.outbox_get(client_id) {
+        let rejected = match self.store.outbox_get(client_id) {
             Ok(None) => return RejectionOutcome::Ignored,
             Err(error) => return RejectionOutcome::StorageFailure(error.to_string()),
-            Ok(Some(_)) => {}
-        }
+            Ok(Some(event)) => event,
+        };
         // Written in the clear just before the Space went end-to-end: it waits for the
         // group and goes out sealed, it doesn't fail.
         // Sealed before this device caught up with a commit: it seals again once it has.
@@ -743,9 +772,15 @@ impl Engine {
             None
         };
         let noted = if let Some(creation) = rejected_creation {
-            self.store.outbox_refuse_space(&creation.space, reason)
+            self.store
+                .outbox_refuse_space(&creation.space, reason)
+                .map_err(CoreError::from)
+        } else if permanent {
+            self.refuse_outbox_media_dependents(&rejected, reason)
         } else {
-            self.store.outbox_note(client_id, reason, permanent)
+            self.store
+                .outbox_note(client_id, reason, permanent)
+                .map_err(CoreError::from)
         };
         if let Err(error) = noted {
             return RejectionOutcome::StorageFailure(error.to_string());
@@ -757,6 +792,88 @@ impl Engine {
         // Re-project without the refused event (messages stay visible as failed).
         let _ = self.reload();
         RejectionOutcome::UserFailed
+    }
+
+    /// Preserve terminal signed intents as readable failures, atomically. A
+    /// refused File fails its exact referencing media messages; a refused group
+    /// member also fails its matching group, so newer Space heads can progress.
+    fn refuse_outbox_media_dependents(&self, rejected: &Event, reason: &str) -> R<()> {
+        let candidate = matches!(
+            &rejected.body,
+            EventBody::MessagePosted { media: Some(_), .. }
+        ) || matches!(&rejected.body, EventBody::ItemCreated { kind: ItemKind::File, content: ItemContent::File(file), .. } if !file.is_voice());
+        if !candidate || event_log::verify_author(rejected).is_err() {
+            return self
+                .store
+                .outbox_note(&rejected.client_id, reason, true)
+                .map_err(Into::into);
+        }
+        let rows = self.store.outbox()?;
+        let mut seeds = Vec::new();
+        if matches!(&rejected.body, EventBody::MessagePosted { media: Some(media), .. } if media.is_valid())
+        {
+            seeds.push(rejected);
+        }
+        if let EventBody::ItemCreated {
+            item,
+            kind: ItemKind::File,
+            content: ItemContent::File(file),
+            ..
+        } = &rejected.body
+        {
+            if !file.is_voice() {
+                // A refused duplicate creation must not invalidate references to
+                // an already authoritative Item. Never consult optimistic state.
+                let confirmed = self
+                    .logs
+                    .get(&rejected.space)
+                    .map(|log| ConfirmedMediaDependencies::from_log(self, log))
+                    .transpose()?;
+                if confirmed
+                    .as_ref()
+                    .is_none_or(|confirmed| !confirmed.state.items.contains_key(item))
+                {
+                    seeds.extend(
+                        rows.iter()
+                            .filter(|row| !row.failed)
+                            .map(|row| &row.event)
+                            .filter(|event| {
+                                event.space == rejected.space
+                                    && event.author == rejected.author
+                                    && event_log::verify_author(event).is_ok()
+                                    && matches!(&event.body, EventBody::MessagePosted {
+                                attaches: Some(attaches), media: Some(media), ..
+                            } if attaches == item && media.is_valid())
+                            }),
+                    );
+                }
+            }
+        }
+        if seeds.is_empty() {
+            return self
+                .store
+                .outbox_note(&rejected.client_id, reason, true)
+                .map_err(Into::into);
+        }
+        let tx = self
+            .store
+            .conn()
+            .unchecked_transaction()
+            .map_err(store::StoreError::from)?;
+        for row in &rows {
+            let same_owner = row.event.space == rejected.space
+                && row.event.author == rejected.author
+                && event_log::verify_author(&row.event).is_ok();
+            let dependent = same_owner
+                && seeds.iter().any(|seed| {
+                    seed.client_id == row.event.client_id || same_media_group(seed, &row.event)
+                });
+            if row.event.client_id == rejected.client_id || (!row.failed && dependent) {
+                self.store.outbox_note(&row.event.client_id, reason, true)?;
+            }
+        }
+        tx.commit().map_err(store::StoreError::from)?;
+        Ok(())
     }
 
     pub fn cursors(&self) -> Vec<Cursor> {
@@ -785,8 +902,9 @@ impl Engine {
     }
 
     /// The outbox as envelopes, leaving out the ones already sent on this connection.
-    /// Called after every write, so it skips sent entries before any sealing work and asks
-    /// each Space's group for its epoch once: a long import stays linear, not quadratic.
+    /// Skips sent entries before sealing work and asks each Space's group for its epoch
+    /// once. Media admission separately folds confirmed history once per relevant Space
+    /// and offer pass; that replay cost is not a constant-time publication guarantee.
     ///
     /// At most [`APPLICATION_IN_FLIGHT`] application messages per Space are unpublished
     /// or still awaiting accept. Once a Space is at that cap, every later head of that
@@ -797,7 +915,7 @@ impl Engine {
     /// sequenced.
     pub fn outbox_envelopes_except(&self, sent: &HashMap<String, Option<u64>>) -> Vec<Envelope> {
         let mut ready = HashMap::new();
-        let mut album_dependencies = HashMap::new();
+        let mut media_dependencies = HashMap::new();
         // A Welcome goes out only once its commit is in: sent together, a commit held back
         // by the relay (rate limit) would let the Welcome arrive first and be refused.
         let held = self.welcomes_behind_commits();
@@ -846,15 +964,14 @@ impl Engine {
             {
                 continue;
             }
-            if matches!(&event.body, EventBody::MessagePosted { media: Some(media), .. } if media.group.is_some())
-            {
+            if matches!(&event.body, EventBody::MessagePosted { media: Some(_), .. }) {
                 let Some(log) = self.logs.get(&event.space) else {
                     blocked.insert(event.space.clone());
                     continue;
                 };
-                let confirmed = album_dependencies
+                let confirmed = media_dependencies
                     .entry(event.space.clone())
-                    .or_insert_with(|| ConfirmedAlbumDependencies::from_log(self, log).ok());
+                    .or_insert_with(|| ConfirmedMediaDependencies::from_log(self, log).ok());
                 if !confirmed
                     .as_ref()
                     .is_some_and(|confirmed| confirmed.allows(&event))
