@@ -1,4 +1,27 @@
-const { createRunOncePlugin, withPlugins } = require('expo/config-plugins');
+const { createRunOncePlugin, withPlugins, withXcodeProject } = require('expo/config-plugins');
+
+function applyWidgetReleaseBuildSettings(config) {
+  const project = config.modResults;
+  const target = project.pbxTargetByName('ExpoWidgetsTarget');
+  if (
+    !target ||
+    !['com.apple.product-type.app-extension', '"com.apple.product-type.app-extension"'].includes(
+      target.productType,
+    )
+  )
+    throw new Error('Widget Release settings require the generated widget extension target.');
+  const list = project.pbxXCConfigurationList()[target.buildConfigurationList];
+  const configurations = project.pbxXCBuildConfigurationSection();
+  const releases = (list?.buildConfigurations ?? [])
+    .map(({ value }) => configurations[value])
+    .filter((configuration) => ['Release', '"Release"'].includes(configuration?.name));
+  if (releases.length !== 1)
+    throw new Error('Widget Release settings require exactly one Release configuration.');
+  // Keep the widget executable inspectable by AppIntents metadata extraction.
+  // Debug retains Xcode previews and every other upstream build setting.
+  releases[0].buildSettings.ENABLE_DEBUG_DYLIB = 'NO';
+  return config;
+}
 
 /** Source-controlled CNG only: compact projections in a distinct app group; no shared engine DB. */
 function withNativeSurfaces(config) {
@@ -12,7 +35,9 @@ function withNativeSurfaces(config) {
       watchedDirectories: [...new Set([...watched, 'app-intents'])],
     },
   };
-  return withPlugins(config, [
+  // SDK 58 Xcode mods run newest first: register before the widget creator so
+  // this action runs after its target/configurations exist.
+  return withPlugins(withXcodeProject(config, applyWidgetReleaseBuildSettings), [
     ['expo-app-intents', { directory: 'app-intents' }],
     [
       'expo-widgets',
@@ -57,3 +82,5 @@ function withNativeSurfaces(config) {
 }
 
 module.exports = createRunOncePlugin(withNativeSurfaces, 'zoen-native-surfaces', '1.0.0');
+
+module.exports.applyWidgetReleaseBuildSettings = applyWidgetReleaseBuildSettings;
