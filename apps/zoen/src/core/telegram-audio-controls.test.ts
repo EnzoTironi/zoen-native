@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import * as presentation from './telegram-audio-presentation.ts';
 import * as composerPresentation from './telegram-composer-presentation.ts';
+import * as composerMotion from './telegram-composer-motion.ts';
 import { VoiceHoldIntent } from '../media/voice-hold-intent.ts';
 import { telegramPresentation } from '../theme/telegram.ts';
 
@@ -17,6 +18,8 @@ const sources = {
   microphone: '../media/voice-record-button.tsx',
   accessory: '../components/message-context.tsx',
   composer: '../components/message-composer.tsx',
+  composerMotion: '../components/composer-action-motion.tsx',
+  composerAction: '../components/composer-action.ios.tsx',
 } as const;
 const compiled = Object.fromEntries(
   await Promise.all(
@@ -47,7 +50,8 @@ function nodes(tree: any): Element[] {
   return [tree, ...nodes(tree.props.children)];
 }
 function fixture(name: keyof typeof sources, dependencies: Record<string, unknown> = {}) {
-  const slots: Slot[] = [];
+  const scopes = new Map<string, Slot[]>([['root', []]]);
+  let slots = scopes.get('root')!;
   let cursor = 0;
   let effects: (() => void)[] = [];
   const next = () => (slots[cursor++] ??= {});
@@ -89,6 +93,8 @@ function fixture(name: keyof typeof sources, dependencies: Record<string, unknow
   };
   const ports: Record<string, any> = {
     react: {
+      createContext: (value: unknown) => ({ fixtureContext: true, value }),
+      useContext: (context: { value: unknown }) => context.value,
       useRef(value: any) {
         const slot = next();
         return (slot.value ??= { current: value });
@@ -105,6 +111,14 @@ function fixture(name: keyof typeof sources, dependencies: Record<string, unknow
       },
       useEffect: effect,
       useLayoutEffect: effect,
+      useCallback(callback: unknown, deps: unknown[]) {
+        const slot = next();
+        if (!slot.deps || deps.some((value, index) => !Object.is(value, slot.deps![index]))) {
+          slot.deps = deps;
+          slot.value = callback;
+        }
+        return slot.value;
+      },
       useSyncExternalStore: (_: unknown, read: () => any) => read(),
     },
     'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
@@ -121,6 +135,9 @@ function fixture(name: keyof typeof sources, dependencies: Record<string, unknow
         const slot = next();
         return (slot.value ??= {
           value: initial,
+          get() {
+            return this.value;
+          },
           set(value: any) {
             this.value = value;
           },
@@ -128,12 +145,17 @@ function fixture(name: keyof typeof sources, dependencies: Record<string, unknow
       },
       useAnimatedStyle: (read: () => any) => read(),
       withTiming: (value: any) => value,
+      ReduceMotion: { System: 'system' },
       Easing: { ease: 'ease', inOut: (v: any) => v, bezier: (...v: number[]) => v },
       FadeIn: motion('fade-in'),
       FadeOut: motion('fade-out'),
       ZoomIn: motion('zoom-in'),
       ZoomOut: motion('zoom-out'),
-      LinearTransition: { duration: (ms: number) => ({ easing: (curve: any) => ({ ms, curve }) }) },
+      LinearTransition: {
+        duration: (ms: number) => ({
+          easing: (curve: any) => ({ ms, curve, reduceMotion: () => ({ ms, curve }) }),
+        }),
+      },
     },
     'react-native-gesture-handler': {
       GestureDetector: 'GestureDetector',
@@ -162,6 +184,7 @@ function fixture(name: keyof typeof sources, dependencies: Record<string, unknow
     './primitives': { Icon: 'Icon', IconButton: 'IconButton', NativeButton: 'NativeButton' },
     '../core/telegram-audio-presentation': presentation,
     '../core/telegram-composer-presentation': composerPresentation,
+    '../core/telegram-composer-motion': composerMotion,
     '../components/composer-control-surface': {
       ComposerControlSurface: 'ComposerControlSurface',
       ComposerGlyph: 'ComposerGlyph',
@@ -196,33 +219,99 @@ function fixture(name: keyof typeof sources, dependencies: Record<string, unknow
     './composer-text-field': { ComposerTextField: 'ComposerTextField' },
     ...dependencies,
   };
-  const module = { exports: {} as Record<string, (props: any) => Element> };
-  runInNewContext(compiled[name]!, {
-    module,
-    exports: module.exports,
-    process: { env: { EXPO_OS: 'ios' } },
-    require: (path: string) => {
-      assert.ok(path in ports, path);
-      return ports[path];
-    },
-    Intl,
-  });
+  const load = (source: keyof typeof sources) => {
+    const module = { exports: {} as Record<string, (props: any) => Element> };
+    runInNewContext(compiled[source]!, {
+      module,
+      exports: module.exports,
+      process: { env: { EXPO_OS: 'ios' } },
+      require: (path: string) => {
+        assert.ok(path in ports, path);
+        return ports[path];
+      },
+      Intl,
+    });
+    return module.exports;
+  };
+  const actionMotion = load('composerMotion');
+  ports['./composer-action-motion'] = actionMotion;
+  const action = load('composerAction');
+  ports['./composer-action'] = action;
+  const microphone = load('microphone');
+  const exports = load(name);
+  const components = new Set([
+    actionMotion.ComposerMotionSlot,
+    action.ComposerAction,
+    microphone.VoiceRecordButton,
+  ]);
+  // Run retained native action children with their own hook slots and provider
+  // context. Reading all JSX indiscriminately would also find hidden Send/arrows.
+  const expand = (tree: any, path = 'root'): any => {
+    if (Array.isArray(tree)) return tree.map((child, index) => expand(child, `${path}/${index}`));
+    if (!tree?.props) return tree;
+    if (tree.type?.fixtureContext) {
+      const previous = tree.type.value;
+      tree.type.value = tree.props.value;
+      const children = expand(tree.props.children, `${path}/context`);
+      tree.type.value = previous;
+      return { ...tree, props: { ...tree.props, children } };
+    }
+    if (components.has(tree.type)) {
+      const previousSlots = slots;
+      const previousCursor = cursor;
+      const key = `${path}/${tree.type.name}`;
+      if (!scopes.has(key)) scopes.set(key, []);
+      slots = scopes.get(key)!;
+      cursor = 0;
+      const result = tree.type(tree.props);
+      slots = previousSlots;
+      cursor = previousCursor;
+      return expand(result, key);
+    }
+    if (tree.type === 'MediaComposer')
+      return {
+        ...tree,
+        props: {
+          ...tree.props,
+          renderControls: (args: any) => {
+            effects = [];
+            const result = expand(tree.props.renderControls(args), `${path}/controls`);
+            effects.forEach((read) => read());
+            return result;
+          },
+        },
+      };
+    return {
+      ...tree,
+      props: { ...tree.props, children: expand(tree.props.children, `${path}/children`) },
+    };
+  };
   return {
     theme,
+    microphone: (props: Record<string, unknown>): Element => ({
+      type: microphone.VoiceRecordButton,
+      props,
+    }),
     render(exportName: string, props: any) {
+      slots = scopes.get('root')!;
       cursor = 0;
       effects = [];
-      const tree = module.exports[exportName]!(props);
+      const tree = expand(exports[exportName]!(props));
       effects.forEach((read) => read());
       return tree;
     },
     unmount() {
-      slots.forEach((slot) => slot.cleanup?.());
+      scopes.forEach((slots) => slots.forEach((slot) => slot.cleanup?.()));
     },
   };
 }
+function interactiveNodes(tree: any): Element[] {
+  if (Array.isArray(tree)) return tree.flatMap(interactiveNodes);
+  if (!tree?.props || tree.props.accessibilityElementsHidden) return [];
+  return [tree, ...interactiveNodes(tree.props.children)];
+}
 const byLabel = (tree: Element, label: string) => {
-  const node = nodes(tree).find(
+  const node = interactiveNodes(tree).find(
     (node) => node.props.accessibilityLabel === label || node.props.label === label,
   );
   assert.ok(node, label);
@@ -419,7 +508,7 @@ test('microphone holds190ms, preserves pointer throughbusy, locks once and has a
   );
 });
 
-test('composer uses the same field for reply/edit/search/caption and retains realAI/arrows/send callbacks', () => {
+test('composer uses the same field for reply/edit/search/caption and retains realAI/arrows/send/voice callbacks', async () => {
   const f = fixture('composer');
   const calls: string[] = [];
   const props: any = {
@@ -437,7 +526,19 @@ test('composer uses the same field for reply/edit/search/caption and retains rea
     )!;
     return owner.props.renderControls({
       attachment: { type: 'Attachment', props: {} },
-      voice: { type: 'Mic', props: {} },
+      voice: f.microphone({
+        disabled: Boolean(next.editing || next.search),
+        active: false,
+        locked: false,
+        onStart: async (held: boolean) => {
+          calls.push(`voice:${held}`);
+          return true;
+        },
+        onReview: async () => calls.push('voice-review'),
+        onCancel: async () => calls.push('voice-cancel'),
+        onLock: () => calls.push('voice-lock'),
+        onError: () => calls.push('voice-error'),
+      }),
       files,
     });
   };
@@ -446,11 +547,26 @@ test('composer uses the same field for reply/edit/search/caption and retains rea
   assert.equal(nodes(tree).filter((node) => node.type === 'ComposerTextField').length, 1);
   assert.equal(field.props.context, 'one::normal');
   assert.ok(nodes(tree).some((node) => node.type === 'MessageContext'));
+  assert.equal(
+    interactiveNodes(tree).some((node) => node.props.accessibilityLabel === 'chat.sendMessage'),
+    false,
+    'retained hidden Send must not masquerade as an available action',
+  );
+  const oldVoiceTap = byLabel(tree, 'media.recordVoiceMessage').props.onAccessibilityTap;
+  oldVoiceTap();
+  await tick();
   tree = controls({ ...props, value: 'text', editing: true });
   assert.equal(
     nodes(tree).find((node) => node.type === 'ComposerTextField')!.props.context,
     'one::edit',
   );
+  assert.ok(nodes(tree).some((node) => node.props.testID === 'record-voice'));
+  assert.equal(
+    interactiveNodes(tree).some((node) => node.props.testID === 'record-voice'),
+    false,
+    'the actual recording gesture stays mounted while editing retires its hit target',
+  );
+  oldVoiceTap();
   byLabel(tree, 'chat.saveEdit').props.onPress();
   const search = {
     status: 'none',
@@ -469,12 +585,21 @@ test('composer uses the same field for reply/edit/search/caption and retains rea
     onSearch: () => calls.push('search'),
   };
   tree = controls({ ...props, search });
-  byLabel(tree, 'chat.askAboutChat').props.onPress();
-  search.state.hits = [{}] as never;
-  search.state.index = 0;
+  const oldAsk = byLabel(tree, 'chat.askAboutChat').props.onPress;
+  oldAsk();
+  search.state.hits = [{}, {}, {}] as never;
+  search.state.index = 1;
   tree = controls({ ...props, search });
   assert.ok(byLabel(tree, 'chat.olderSearchResult'));
   assert.ok(byLabel(tree, 'chat.newerSearchResult'));
+  byLabel(tree, 'chat.olderSearchResult').props.onPress();
+  byLabel(tree, 'chat.newerSearchResult').props.onPress();
+  assert.equal(
+    interactiveNodes(tree).some((node) => node.props.accessibilityLabel === 'chat.askAboutChat'),
+    false,
+    'the retained AI action is retired when real results replace it',
+  );
+  oldAsk();
   tree = controls(props, {
     value: 'caption',
     position: 1,
@@ -488,8 +613,11 @@ test('composer uses the same field for reply/edit/search/caption and retains rea
   const caption = nodes(tree).find((node) => node.type === 'ComposerTextField')!;
   assert.equal(caption.type, field.type);
   assert.equal(caption.props.value, 'caption');
-  byLabel(tree, 'media.attachmentSendCount').props.onPress();
-  assert.deepEqual(calls, ['send', 'AI', 'files']);
+  const oldAttachmentSend = byLabel(tree, 'media.attachmentSendCount').props.onPress;
+  oldAttachmentSend();
+  controls(props);
+  oldAttachmentSend();
+  assert.deepEqual(calls, ['voice-lock', 'voice:false', 'send', 'AI', 'older', 'newer', 'files']);
 });
 
 test('reply/edit accessory uses the pinned45pt frame, source typography and real Cancel for unavailable entries too', () => {
