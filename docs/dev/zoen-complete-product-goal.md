@@ -101,6 +101,23 @@ verificação de teclado que falhou e não tem aceite de replay. Recibo:
 O simulador retorna à conversa `Teste Zoen` vazia; os três chats e dois Apps
 existentes continuam presentes. A correção do primeiro toque segue pendente.
 
+O lote de fonte v240 transfere a liberação de um contato Pointer/Touch pareado
+para Touch sem emitir outro Down. A suíte também encontrou um Up omitido após
+duplo/triplo clique em texto: a seleção ficava em arraste e bloqueava a ativação.
+O reparo entrega esse Up físico preservando a seleção de palavra/parágrafo e os
+guardas de proprietário, cancelamento e arraste. Passam 259 testes reais de UI;
+quatro testes longos/screenshot preexistentes permanecem ignorados. A falha
+anterior (257 passaram, um falhou) permanece registrada. A receita reproduz os
+621 arquivos, com as mesmas allowlists e dependências: dez testes Python e três
+Node passam. Isso qualifica fonte; o novo WASM e o primeiro toque no iPhone
+ainda precisam de comprovação. Recibo:
+`/private/tmp/zoen-deckcraft-recipe-v240/result-01/composition-proof.json`.
+
+O [PR 151](https://github.com/EnzoTironi/zoen-native/pull/151), de limites de
+tempo e tamanho no transporte de aprovações, foi integrado em `773a4e6f` após
+11/11 checks e ausência de conflitos no head `d895215c`. Isso não qualifica
+um provedor real nem a execução nativa dos agentes.
+
 O [PR 144](https://github.com/EnzoTironi/zoen-native/pull/144) foi integrado
 em `ec28d8bc`. Suas evidências abaixo mantêm o escopo original. A fonte iOS
 `bd10bf35` cobre 1.039 casos no lote e repetição isolada:

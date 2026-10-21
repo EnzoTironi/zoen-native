@@ -4430,6 +4430,27 @@
       "finalState": "Teste Zoen empty timeline/composer, keyboard closed;3 existing chats and2 App cards retained",
       "wholeProductAcceptance": false
     },
+    "subsequentContactReleaseSourceBatch": {
+      "date": "2026-10-21",
+      "baseSource": "69d0b9048fc122e6eeca835ea0c7e228ba37bd00",
+      "status": "SOURCE_PASS; new WASM and native first gesture pending",
+      "receipt": "/private/tmp/zoen-deckcraft-recipe-v240/result-01/composition-proof.json",
+      "sourceTreeSha256": "599d4099df6950116fbf71b933eb8e373507671f52998a87865af96b24d77311",
+      "ui": "259 passed,0 failed,4 pre-existing screenshot/long-soak ignored; exact621 source files unchanged",
+      "uiReceipt": "/private/tmp/zoen-deckcraft-late-tests-v240/ui-tests-01.json",
+      "retainedFailure": "v239 full UI257 passed,1 failed: rapid second textual release left TextSelect active; baseline diagnostic reproduces, isolated timing control passes without being adopted",
+      "behavior": "Paired Pointer Down emits once; matching single Touch owns release. Actual multi-click physical Up completes TextSelect while preserving word/paragraph selection and unchanged document. Original owner/cancel/drag/IME gates retained",
+      "recipe": "Fresh pinned prepare reproduces all621 files; four source and six vendor paths unchanged; default and original Shift control retained; Python10 and Node3 PASS",
+      "nativeFirstGestureQualified": false,
+      "wholeProductAcceptance": false
+    },
+    "agentGateTransportMerge": {
+      "pullRequest": "https://github.com/EnzoTironi/zoen-native/pull/151",
+      "head": "d895215c5346a2abbd4eb3103f8555ad7af0b069",
+      "mergeCommit": "773a4e6ffe718661dad51520c3e898cc975c4dab",
+      "status": "MERGED after actual GitHub UI11/11 success and no conflicts",
+      "scope": "Bounded approval HTTP/TLS transport; real provider and native agent interoperability unqualified"
+    },
     "currentRemaining": [
       "Complete native single-tap activation; broaden IME, selection/delete/undo, Notes and software-keyboard qualification beyond the bounded correction/recovery proof above",
       "Qualify retained/failing canonical saves, independent source read, conflicts and version recovery",

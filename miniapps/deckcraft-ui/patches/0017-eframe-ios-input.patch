@@ -60,10 +60,11 @@
  fn pointer(app: &mut SlideApp, ui: &Ui, resp: &egui::Response, xf: Xf) {
      if crate::eyedropper::canvas(app, ui, resp, xf) {
          return;
-@@ -734,6 +753,25 @@
+@@ -734,7 +753,26 @@
          let _ = app.session.pointer(ev(PointerKind::Move));
      }
      let secondary = resp.hovered() && ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Secondary));
+-    let r = if secondary && !app.session.tool.dragging() {
 +    let arm = resp.id.with("text-contact-owner");
 +    let cancelled = ui.input(|i| {
 +        i.events.iter().any(|event| matches!(event, egui::Event::Touch { phase: egui::TouchPhase::Cancel, .. }))
@@ -83,13 +84,27 @@
 +    } else {
 +        None
 +    };
-     let r = if secondary && !app.session.tool.dragging() {
++    let mut r = if secondary && !app.session.tool.dragging() {
          // Select what's under the pointer before the context menu opens (on release).
          app.session.pointer(ev(PointerKind::ContextClick))
-@@ -750,6 +788,33 @@
+     } else if resp.triple_clicked() {
+@@ -750,6 +788,46 @@
      } else {
          Ok(serde_json::Value::Null)
      };
++    if r.is_ok()
++        && !cancelled
++        && ui.is_enabled()
++        && ui.input(|i| i.pointer.primary_released())
++        && (resp.double_clicked() || resp.triple_clicked())
++        && app.session.active().is_some_and(|state| state.selection.text.as_ref().is_some_and(|selection| !selection.notes))
++        && app.session.tool.dragging()
++    {
++        // The multi-click command chooses the word/paragraph before release.
++        // Complete its pending text-selection gesture with the real Up too.
++        // Otherwise Drag::TextSelect survives this frame and blocks admission.
++        r = app.session.pointer(ev(PointerKind::Up));
++    }
 +    if primary {
 +        ui.data_mut(|data| {
 +            data.insert_temp(arm, if r.is_ok() { pressed_owner } else { None });
@@ -122,7 +137,7 @@
      }
 --- a/crates/ui-egui/src/host_phone_landscape_tests.rs
 +++ b/crates/ui-egui/src/host_phone_landscape_tests.rs
-@@ -227,3 +227,172 @@
+@@ -227,3 +227,296 @@
      assert!(h.ctx.memory(|m| m.focused()).is_none());
      assert!(h.output().platform_output.ime.is_none(), "blank-canvas blur ends the text-input request");
  }
@@ -221,6 +236,8 @@
 +    let mut contact = PrimaryContact::default();
 +    assert!(contact.start(Family::Pointer, 1, true));
 +    primary_event(&mut h, at, true);
++    assert!(!contact.start(Family::Touch, 93, true));
++    touch_event(&mut h, at, 93, egui::TouchPhase::Start);
 +    assert!(h.ctx.input(|input| input.pointer.primary_down()));
 +    let mut cancelled_events = vec![];
 +    assert!(web_text_activation::cancel_primary(&h.ctx, &mut contact, &mut cancelled_events));
@@ -228,11 +245,13 @@
 +    for event in cancelled_events {
 +        h.event(event);
 +    }
++    touch_event(&mut h, at, 93, egui::TouchPhase::Cancel);
 +    h.step();
 +    assert!(!h.ctx.input(|input| input.pointer.any_down()));
 +    assert!(!h.state().app.session.tool.dragging(), "the real editor also ends the cancelled contact at its last position");
 +    assert!(!activation_after_current_frame(&h));
 +    assert_eq!(contact.end(Family::Pointer, 1), None, "cancel produces no fake clickable Up");
++    assert_eq!(contact.end(Family::Touch, 93), None, "the companion cannot revive a cancelled click");
 +    assert!(contact.start(Family::Pointer, 2, true));
 +    primary_event(&mut h, at, true);
 +    assert_eq!(contact.end(Family::Pointer, 2), Some(true));
@@ -242,15 +261,23 @@
 +
 +#[test]
 +fn actual_multitouch_revokes_the_title_owner_without_changing_egui_thresholds() {
++    use web_text_activation::{Family, PrimaryContact};
 +    let portrait = layout(430.0, 932.0, 0.0, 0.0);
 +    let mut h = fixture(Some(portrait), vec2(430.0, 932.0));
 +    let at = title_activation_target(&h);
-+    touch_event(&mut h, at, 1, egui::TouchPhase::Start);
++    let mut contact = PrimaryContact::default();
++    assert!(contact.start(Family::Pointer, 11, true));
 +    primary_event(&mut h, at, true);
-+    touch_event(&mut h, at + vec2(30.0, 0.0), 2, egui::TouchPhase::Start);
++    assert!(!contact.start(Family::Touch, 93, true));
++    touch_event(&mut h, at, 93, egui::TouchPhase::Start);
++    assert!(!contact.start(Family::Touch, 94, false));
++    touch_event(&mut h, at + vec2(30.0, 0.0), 94, egui::TouchPhase::Start);
 +    h.step();
-+    touch_event(&mut h, at + vec2(30.0, 0.0), 2, egui::TouchPhase::End);
-+    touch_event(&mut h, at, 1, egui::TouchPhase::End);
++    assert_eq!(contact.end(Family::Touch, 94), None, "secondary release cannot release the primary");
++    touch_event(&mut h, at + vec2(30.0, 0.0), 94, egui::TouchPhase::End);
++    touch_event(&mut h, at, 93, egui::TouchPhase::End);
++    assert_eq!(contact.end(Family::Pointer, 11), None);
++    assert_eq!(contact.end(Family::Touch, 93), Some(false), "multitouch revokes activation eligibility");
 +    primary_event(&mut h, at, false);
 +    assert!(!activation_after_current_frame(&h));
 +}
@@ -259,28 +286,140 @@
 +fn actual_title_uses_one_pair_for_pointer_only_touch_only_and_both_families() {
 +    use web_text_activation::{Family, PrimaryContact};
 +    for families in [vec![Family::Pointer], vec![Family::Touch], vec![Family::Pointer, Family::Touch], vec![Family::Touch, Family::Pointer]] {
++        for reverse_release in [false, true] {
++            let portrait = layout(430.0, 932.0, 0.0, 0.0);
++            let mut h = fixture(Some(portrait), vec2(430.0, 932.0));
++            let at = title_activation_target(&h);
++            let mut contact = PrimaryContact::default();
++            let mut downs = 0;
++            let mut ups = 0;
++            let mut activations = 0;
++            for (index, family) in families.iter().enumerate() {
++                if *family == Family::Touch {
++                    touch_event(&mut h, at, index as i32 + 10, egui::TouchPhase::Start);
++                }
++                if contact.start(*family, index as i32 + 10, true) {
++                    primary_event(&mut h, at, true);
++                    downs += 1;
++                }
++            }
++            let mut releases = families.iter().enumerate().collect::<Vec<_>>();
++            if reverse_release {
++                releases.reverse();
++            }
++            for (index, family) in releases {
++                if *family == Family::Touch {
++                    touch_event(&mut h, at, index as i32 + 10, egui::TouchPhase::End);
++                }
++                if let Some(allowed) = contact.end(*family, index as i32 + 10) {
++                    assert_eq!(*family, if families.contains(&Family::Touch) { Family::Touch } else { Family::Pointer });
++                    primary_event(&mut h, at, false);
++                    ups += 1;
++                    activations += usize::from(allowed && activation_after_current_frame(&h));
++                }
++            }
++            assert_eq!((downs, ups, activations), (1, 1, 1));
++        }
++    }
++}
++
++#[test]
++fn late_touch_start_uses_its_own_target_instead_of_a_previous_title_activation() {
++    use web_text_activation::{Family, PrimaryContact};
++    for next_is_text in [false, true] {
 +        let portrait = layout(430.0, 932.0, 0.0, 0.0);
 +        let mut h = fixture(Some(portrait), vec2(430.0, 932.0));
-+        let at = title_activation_target(&h);
++        let title = title_activation_target(&h);
++        let blank = h.state().app.canvas_rect.unwrap().left_top() + vec2(4.0, 4.0);
 +        let mut contact = PrimaryContact::default();
-+        let mut downs = 0;
-+        let mut ups = 0;
-+        let mut activations = 0;
-+        for (index, family) in families.iter().enumerate() {
-+            if contact.start(*family, index as i32 + 10, true) {
-+                primary_event(&mut h, at, true);
-+                downs += 1;
-+            }
-+        }
-+        for (index, family) in families.iter().enumerate() {
-+            if let Some(allowed) = contact.end(*family, index as i32 + 10) {
-+                primary_event(&mut h, at, false);
-+                ups += 1;
-+                activations += usize::from(allowed && activation_after_current_frame(&h));
-+            }
-+        }
-+        assert_eq!((downs, ups, activations), (1, 1, 1));
++        assert!(contact.start(Family::Pointer, 11, true));
++        primary_event(&mut h, title, true);
++        assert_eq!(contact.end(Family::Pointer, 11), Some(true));
++        primary_event(&mut h, title, false);
++        assert!(activation_after_current_frame(&h));
++        assert!(!activation_after_current_frame(&h));
++        let next = if next_is_text { title } else { blank };
++        assert!(contact.start(Family::Touch, 93, true), "a post-release Touch start is a new contact");
++        touch_event(&mut h, next, 93, egui::TouchPhase::Start);
++        primary_event(&mut h, next, true);
++        assert!(!activation_after_current_frame(&h), "no reuse of the previous release's consumed pulse");
++        assert_eq!(contact.end(Family::Pointer, 11), None);
++        assert_eq!(contact.end(Family::Touch, 93), Some(true));
++        touch_event(&mut h, next, 93, egui::TouchPhase::End);
++        primary_event(&mut h, next, false);
++        assert_eq!(activation_after_current_frame(&h), next_is_text, "only this gesture's actual target can authorize focus");
 +    }
++}
++
++#[test]
++fn rapid_title_word_and_paragraph_clicks_finish_the_gesture_and_preserve_selection() {
++    use web_text_activation::{Family, PrimaryContact};
++    let portrait = layout(430.0, 932.0, 0.0, 0.0);
++    let mut h = fixture(Some(portrait), vec2(430.0, 932.0));
++    let mut contact = PrimaryContact::default();
++    let at = title_activation_target(&h);
++    assert!(contact.start(Family::Pointer, 11, true));
++    primary_event(&mut h, at, true);
++    assert_eq!(contact.end(Family::Pointer, 11), Some(true));
++    primary_event(&mut h, at, false);
++    assert!(activation_after_current_frame(&h));
++    h.event(Event::Text("Alpha beta".into()));
++    h.run_steps(1);
++    let at = title_activation_target(&h);
++    let doc = h.state().app.session.active().unwrap().doc.clone();
++    for (index, id) in [93, 94].into_iter().enumerate() {
++        assert!(contact.start(Family::Touch, id, true));
++        touch_event(&mut h, at, id, egui::TouchPhase::Start);
++        primary_event(&mut h, at, true);
++        assert!(!activation_after_current_frame(&h), "a press cannot reuse the earlier activation");
++        let state = h.state().app.session.active().unwrap();
++        let before = state.selection.text.as_ref().unwrap().clone();
++        let body = deckcraft_engine::cmd::text::body_of(state, &before).unwrap();
++        let expected = if index == 0 {
++            deckcraft_model::edit::word_at(body, before.caret)
++        } else {
++            ((before.caret.0, 0), (before.caret.0, body.paragraphs[before.caret.0].char_len()))
++        };
++        assert_eq!(contact.end(Family::Pointer, 11), None);
++        assert_eq!(contact.end(Family::Touch, id), Some(true));
++        touch_event(&mut h, at, id, egui::TouchPhase::End);
++        primary_event(&mut h, at, false);
++        if index == 0 {
++            assert!(h.ctx.input(|input| input.pointer.button_double_clicked(egui::PointerButton::Primary)));
++        } else {
++            assert!(h.ctx.input(|input| input.pointer.button_triple_clicked(egui::PointerButton::Primary)));
++        }
++        let state = h.state().app.session.active().unwrap();
++        let selected = state.selection.text.as_ref().unwrap();
++        assert_eq!(selected.shape, before.shape);
++        assert_eq!((selected.anchor, selected.caret), expected, "physical Up keeps the engine's word/paragraph selection");
++        assert!(Arc::ptr_eq(&state.doc, &doc), "gesture completion cannot modify the document");
++        assert!(!h.state().app.session.tool.dragging(), "a released text selection is not an ongoing drag");
++        assert!(activation_after_current_frame(&h), "this actual multi-click admits its current textual owner");
++        assert!(!activation_after_current_frame(&h));
++    }
++}
++
++#[test]
++fn paired_touch_release_does_not_turn_an_actual_title_drag_into_text_activation() {
++    use web_text_activation::{Family, PrimaryContact};
++    let portrait = layout(430.0, 932.0, 0.0, 0.0);
++    let mut h = fixture(Some(portrait), vec2(430.0, 932.0));
++    let at = title_activation_target(&h);
++    let moved = at + vec2(45.0, 30.0);
++    let mut contact = PrimaryContact::default();
++    assert!(contact.start(Family::Pointer, 11, true));
++    primary_event(&mut h, at, true);
++    assert!(!contact.start(Family::Touch, 93, true));
++    touch_event(&mut h, at, 93, egui::TouchPhase::Start);
++    h.event(Event::PointerMoved(moved));
++    touch_event(&mut h, moved, 93, egui::TouchPhase::Move);
++    h.step();
++    assert_eq!(contact.end(Family::Pointer, 11), None);
++    assert_eq!(contact.end(Family::Touch, 93), Some(true), "contact eligibility is not text admission");
++    touch_event(&mut h, moved, 93, egui::TouchPhase::End);
++    primary_event(&mut h, moved, false);
++    assert!(!activation_after_current_frame(&h), "egui/Session reject the actual drag as before");
 +}
 +
 +#[test]
@@ -372,11 +511,13 @@
  
      /// Helps to track the delta scale from gesture events
      pub accumulated_scale: f32,
-@@ -63,6 +66,9 @@
+@@ -62,7 +65,10 @@
+         self.modifiers = egui::Modifiers::default(); // Avoid sticky modifier keys on alt-tab:
          self.raw.focused = focused;
          self.raw.events.push(egui::Event::WindowFocused(focused));
-         self.primary_touch = None;
+-        self.primary_touch = None;
 +        if !focused {
++            self.primary_touch = None;
 +            self.primary_contact.cancel();
 +        }
      }
@@ -786,8 +927,8 @@
                  || event.meta_key()
 --- /dev/null
 +++ b/vendor/eframe-0.36.2/src/web/text_input_activation.rs
-@@ -0,0 +1,173 @@
-+//! A primary contact has one event-family owner. This is not a gesture clock:
+@@ -0,0 +1,226 @@
++//! A primary contact has one release-family owner. This is not a gesture clock:
 +//! egui remains responsible for click/drag thresholds and textual admission.
 +
 +#[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -806,7 +947,9 @@
 +}
 +
 +impl PrimaryContact {
-+    /// Returns whether this family owns the emulated primary button stream.
++    /// Returns whether to emit this contact's single emulated primary Down.
++    /// If Touch accompanies an active Pointer contact, release moves to Touch;
++    /// the Pointer Down already admitted is retained without emitting another.
 +    pub fn start(&mut self, family: Family, id: i32, single_primary: bool) -> bool {
 +        if !single_primary {
 +            self.blocked = true;
@@ -826,6 +969,12 @@
 +            return false;
 +        }
 +        *slot = Some(id);
++        if family == Family::Touch && self.owner == Some(Family::Pointer) {
++            // Touch start still precedes release: use its native end callback
++            // for the existing semantic text admission, without a second Down.
++            self.owner = Some(Family::Touch);
++            return false;
++        }
 +        self.owner == Some(family)
 +    }
 +
@@ -925,7 +1074,7 @@
 +    }
 +
 +    #[test]
-+    fn both_families_use_first_owner_without_comparing_their_ids() {
++    fn both_families_release_on_touch_without_comparing_their_ids() {
 +        for (first, second) in [
 +            (Family::Pointer, Family::Touch),
 +            (Family::Touch, Family::Pointer),
@@ -934,14 +1083,59 @@
 +                let mut contact = PrimaryContact::default();
 +                assert!(contact.start(first, 11, true));
 +                assert!(!contact.start(second, 93, true));
++                let expected = |family| (family == Family::Touch).then_some(true);
 +                if release_owner_first {
-+                    assert_eq!(contact.end(first, 11), Some(true));
-+                    assert_eq!(contact.end(second, 93), None);
++                    assert_eq!(contact.end(first, 11), expected(first));
++                    assert_eq!(contact.end(second, 93), expected(second));
 +                } else {
-+                    assert_eq!(contact.end(second, 93), None);
-+                    assert_eq!(contact.end(first, 11), Some(true));
++                    assert_eq!(contact.end(second, 93), expected(second));
++                    assert_eq!(contact.end(first, 11), expected(first));
 +                }
++                assert_eq!(contact.end(Family::Pointer, 11), None);
++                assert_eq!(contact.end(Family::Touch, 93), None);
 +            }
++        }
++    }
++
++    #[test]
++    fn a_touch_start_after_pointer_release_is_an_independent_contact() {
++        let mut contact = PrimaryContact::default();
++        assert!(contact.start(Family::Pointer, 11, true));
++        assert_eq!(contact.end(Family::Pointer, 11), Some(true));
++        assert_eq!(contact.end(Family::Pointer, 11), None);
++        // No cross-family identifier or timeout guesses whether this is a
++        // delayed companion or a real next Touch-only gesture.
++        assert!(contact.start(Family::Touch, 93, true));
++        assert!(!contact.start(Family::Touch, 93, true));
++        assert_eq!(contact.end(Family::Pointer, 11), None);
++        assert_eq!(contact.end(Family::Touch, 11), None);
++        assert_eq!(contact.end(Family::Touch, 93), Some(true));
++        assert_eq!(contact.end(Family::Touch, 93), None);
++    }
++
++    #[test]
++    fn touch_handoff_rejects_duplicates_wrong_ids_cancel_and_multitouch() {
++        for cancel in [false, true] {
++            let mut contact = PrimaryContact::default();
++            assert!(contact.start(Family::Pointer, 11, true));
++            assert!(!contact.start(Family::Touch, 93, true));
++            assert!(!contact.start(Family::Pointer, 11, true));
++            assert!(!contact.start(Family::Touch, 93, true));
++            assert_eq!(contact.end(Family::Pointer, 11), None);
++            assert_eq!(contact.end(Family::Touch, 11), None);
++            if cancel {
++                assert!(contact.cancel());
++                assert!(!contact.cancel());
++                assert_eq!(contact.end(Family::Touch, 93), None);
++            } else {
++                assert!(!contact.start(Family::Touch, 94, false));
++                assert_eq!(contact.end(Family::Touch, 94), None);
++                assert_eq!(contact.end(Family::Touch, 93), Some(false));
++            }
++            assert_eq!(contact.end(Family::Pointer, 11), None);
++            assert_eq!(contact.end(Family::Touch, 93), None);
++            assert!(contact.start(Family::Pointer, 12, true));
++            assert_eq!(contact.end(Family::Pointer, 12), Some(true));
 +        }
 +    }
 +
