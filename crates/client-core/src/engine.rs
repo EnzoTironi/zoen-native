@@ -376,6 +376,20 @@ impl State {
     /// author's album. Partial arrival is allowed, but membership is ordered and
     /// unique within the signed (space, author, album id) scope.
     fn media_message_valid(&self, space: &str, author: &str, body: &EventBody) -> bool {
+        self.media_message_dependencies_valid(space, author, body)
+            && (!matches!(body, EventBody::MessagePosted { media: Some(_), .. })
+                || self.writer(space, author))
+    }
+
+    /// Shared by projection admission and confirmed-only outbox dependencies.
+    /// Membership remains a separate admission check: a newly revoked queued
+    /// author still needs the existing relay refusal and local recovery path.
+    pub(crate) fn media_message_dependencies_valid(
+        &self,
+        space: &str,
+        author: &str,
+        body: &EventBody,
+    ) -> bool {
         let EventBody::MessagePosted {
             media,
             attaches,
@@ -398,7 +412,6 @@ impl State {
         if !self
             .media_groups
             .allows(space, author, reply, *forwarded, media)
-            || !self.writer(space, author)
         {
             return false;
         }

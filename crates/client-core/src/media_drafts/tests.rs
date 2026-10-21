@@ -1347,7 +1347,7 @@ fn media_contract_transient_first_album_refusal_preserves_all_confirmed_members_
     let dir = temp();
     let sender_path = dir.join("album-sender.sqlite");
     let receiver_path = dir.join("album-receiver.sqlite");
-    let f = fixture(sender_path.to_str().unwrap());
+    let mut f = fixture(sender_path.to_str().unwrap());
     media_contract_confirm_scope(&f);
     let mut relay = f.engine.lock().logs[&f.scope.space_id].clone();
     let mut receiver = crate::engine::Engine::open(receiver_path.to_str().unwrap()).unwrap();
@@ -1372,57 +1372,77 @@ fn media_contract_transient_first_album_refusal_preserves_all_confirmed_members_
         .unwrap();
     let expected_ids: Vec<_> = sent.entries.iter().map(|entry| entry.id.clone()).collect();
     assert_eq!(expected_ids.len(), 2);
-    // The actual dispatcher publishes this offered batch before any relay answer.
-    // Refuse only its first album member, then sequence the remaining real signed
-    // envelopes exactly in their offered order. No metadata or signatures change.
-    let offered = f.engine.lock().outbox_envelopes();
-    assert!(offered.iter().any(|env| env.client_id() == expected_ids[0]));
-    assert!(offered.iter().any(|env| env.client_id() == expected_ids[1]));
-    for env in offered {
-        if env.client_id() == expected_ids[0] {
-            f.engine.lock().reject(
-                env.client_id(),
-                "injected transient relay refusal",
-                false,
-                None,
-            );
-            continue;
+    // Drive actual offered batches as the dispatcher does: all offers in a batch
+    // precede answers. Refuse the first group member once, then sequence every
+    // other original signed envelope in the offered order, including its retry.
+    let mut rejected = None;
+    let mut retried = false;
+    let mut reopened = false;
+    for _ in 0..8 {
+        let offered = f.engine.lock().outbox_envelopes();
+        if offered.is_empty() {
+            break;
         }
-        let event = f
-            .engine
-            .lock()
-            .store
-            .outbox_get(env.client_id())
-            .unwrap()
-            .unwrap();
-        let accepted = relay.sequence(event).clone();
-        assert_eq!(
-            f.engine.lock().ingest(frame(&accepted)),
-            crate::sync::Ingest::Confirmed
-        );
-        assert_eq!(
-            receiver.ingest(frame(&accepted)),
-            crate::sync::Ingest::Applied
-        );
+        for env in offered {
+            if env.client_id() == expected_ids[0] {
+                if let Some(original) = rejected.as_ref() {
+                    assert_eq!(
+                        &env, original,
+                        "retry must preserve the exact signed envelope"
+                    );
+                    retried = true;
+                } else {
+                    f.engine.lock().reject(
+                        env.client_id(),
+                        "injected transient relay refusal",
+                        false,
+                        None,
+                    );
+                    rejected = Some(env);
+                    continue;
+                }
+            }
+            let event = f
+                .engine
+                .lock()
+                .store
+                .outbox_get(env.client_id())
+                .unwrap()
+                .unwrap();
+            let accepted = relay.sequence(event).clone();
+            assert_eq!(
+                f.engine.lock().ingest(frame(&accepted)),
+                crate::sync::Ingest::Confirmed
+            );
+            assert_eq!(
+                receiver.ingest(frame(&accepted)),
+                crate::sync::Ingest::Applied
+            );
+        }
+        if rejected.is_some() && !reopened {
+            let Fixture {
+                engine,
+                vault,
+                scope,
+            } = f;
+            drop(engine);
+            let engine = Client::open(sender_path.to_string_lossy().into(), "en".into()).unwrap();
+            assert!(engine.unlock(vault.clone()).unwrap());
+            f = Fixture {
+                engine,
+                vault,
+                scope,
+            };
+            reopened = true;
+        }
     }
-    let retry = f.engine.lock().outbox_envelopes();
-    assert_eq!(retry.len(), 1);
-    assert_eq!(retry[0].client_id(), expected_ids[0]);
-    let event = f
-        .engine
-        .lock()
-        .store
-        .outbox_get(retry[0].client_id())
-        .unwrap()
-        .unwrap();
-    let accepted = relay.sequence(event).clone();
-    assert_eq!(
-        f.engine.lock().ingest(frame(&accepted)),
-        crate::sync::Ingest::Confirmed
+    assert!(
+        retried,
+        "the transient rejection and its retry must both execute"
     );
-    assert_eq!(
-        receiver.ingest(frame(&accepted)),
-        crate::sync::Ingest::Applied
+    assert!(
+        reopened,
+        "retry must use the reopened sender's durable outbox"
     );
     assert!(f.engine.lock().store.outbox().unwrap().is_empty());
     assert_eq!(
@@ -1446,6 +1466,199 @@ fn media_contract_transient_first_album_refusal_preserves_all_confirmed_members_
     drop(receiver);
     drop(f);
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn media_contract_group_dependencies_wait_for_confirmed_files_and_do_not_block_other_spaces() {
+    let f = fixture(":memory:");
+    media_contract_confirm_scope(&f);
+    let other_space = f
+        .engine
+        .create_group_with("Other space".into(), vec![], PrivacyDto::Closed)
+        .unwrap();
+    let other = Fixture {
+        engine: f.engine.clone(),
+        vault: f.vault.clone(),
+        scope: MediaDraftScope {
+            space_id: other_space.clone(),
+            ..f.scope.clone()
+        },
+    };
+    media_contract_confirm_scope(&other);
+    let draft = save(
+        &f,
+        "0",
+        &media_options(&["a", "b"], "file", "grouped"),
+        vec![input("a"), input("b")],
+    );
+    let sent = f
+        .engine
+        .send_media_draft(f.scope.clone(), draft.revision)
+        .unwrap();
+    let independent = f
+        .engine
+        .send_message(other_space, "Unrelated space stays live".into())
+        .unwrap();
+    let offered = f.engine.lock().outbox_envelopes();
+    let first_file = f
+        .engine
+        .lock()
+        .store
+        .outbox()
+        .unwrap()
+        .into_iter()
+        .find(|row| {
+            matches!(
+                &row.event.body,
+                types::EventBody::ItemCreated {
+                    kind: types::ItemKind::File,
+                    ..
+                }
+            ) && row.event.space == f.scope.space_id
+        })
+        .unwrap()
+        .event
+        .client_id;
+    assert!(offered.iter().any(|env| env.client_id() == first_file));
+    assert!(offered.iter().any(|env| env.client_id() == independent.id));
+    assert!(sent
+        .entries
+        .iter()
+        .all(|entry| !offered.iter().any(|env| env.client_id() == entry.id)));
+    let written = offered
+        .iter()
+        .map(|env| (env.client_id().to_string(), None))
+        .collect();
+    assert!(
+        f.engine
+            .lock()
+            .outbox_envelopes_except(&written)
+            .iter()
+            .all(|env| sent.entries.iter().all(|entry| env.client_id() != entry.id)),
+        "a socket write cannot confirm the referenced File"
+    );
+    media_contract_confirm_id(&f, &first_file);
+    let offered = f.engine.lock().outbox_envelopes();
+    assert!(offered
+        .iter()
+        .any(|env| env.client_id() == sent.entries[0].id));
+    assert!(!offered
+        .iter()
+        .any(|env| env.client_id() == sent.entries[1].id));
+    let second_file = offered
+        .iter()
+        .find(|env| env.client_id() != sent.entries[0].id && env.client_id() != independent.id)
+        .unwrap()
+        .client_id()
+        .to_string();
+    media_contract_confirm_id(&f, &second_file);
+    let written = HashMap::from([(sent.entries[0].id.clone(), None)]);
+    let offered = f.engine.lock().outbox_envelopes_except(&written);
+    assert!(
+        !offered
+            .iter()
+            .any(|env| env.client_id() == sent.entries[1].id),
+        "confirmed File bytes and a sent predecessor still do not confirm its group position"
+    );
+    assert!(offered.iter().any(|env| env.client_id() == independent.id));
+    media_contract_confirm_id(&f, &sent.entries[0].id);
+    assert!(f
+        .engine
+        .lock()
+        .outbox_envelopes()
+        .iter()
+        .any(|env| env.client_id() == sent.entries[1].id));
+}
+
+#[test]
+fn media_contract_grouped_preexisting_confirmed_files_need_no_new_creation() {
+    let f = fixture(":memory:");
+    let items: Vec<_> = ["one.pdf", "two.pdf"]
+        .into_iter()
+        .map(|name| {
+            f.engine
+                .lock()
+                .file_add(
+                    &f.scope.space_id,
+                    "",
+                    name,
+                    "application/pdf",
+                    name.as_bytes(),
+                    None,
+                )
+                .unwrap()
+        })
+        .collect();
+    media_contract_confirm_scope(&f);
+    let original_file = f.engine.file_info_at(items[0].clone(), None).unwrap();
+    media_contract_receive(
+        &f,
+        types::EventBody::ItemCreated {
+            item: items[0].clone(),
+            kind: types::ItemKind::Note,
+            content: types::ItemContent::Text {
+                text: "Refused duplicate creation".into(),
+            },
+            origin: String::new(),
+        },
+        false,
+    );
+    assert_eq!(
+        f.engine.file_info_at(items[0].clone(), None).unwrap(),
+        original_file,
+        "a signed but projection-refused duplicate cannot replace the confirmed File"
+    );
+    let options = types::AttachmentSendOptions {
+        grouping: types::AttachmentGrouping::Grouped,
+        ..Default::default()
+    };
+    let ids: Vec<_> = items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            f.engine
+                .lock()
+                .append(
+                    &f.scope.space_id,
+                    &f.scope.expected_identity_id,
+                    types::EventBody::MessagePosted {
+                        message: types::new_id("msg"),
+                        text: format!("Existing {index}"),
+                        attaches: Some(item.clone()),
+                        media: options.metadata(
+                            &f.scope.expected_identity_id,
+                            &f.scope.space_id,
+                            None,
+                            false,
+                            &["existing-one", "existing-two"],
+                            index,
+                        ),
+                        reply: None,
+                        forwarded: false,
+                    },
+                )
+                .unwrap()
+                .client_id
+        })
+        .collect();
+    let offered = f.engine.lock().outbox_envelopes();
+    assert_eq!(
+        offered
+            .iter()
+            .map(|env| env.client_id())
+            .collect::<Vec<_>>(),
+        [ids[0].as_str()]
+    );
+    media_contract_confirm_id(&f, &ids[0]);
+    assert_eq!(
+        f.engine
+            .lock()
+            .outbox_envelopes()
+            .iter()
+            .map(|env| env.client_id().to_string())
+            .collect::<Vec<_>>(),
+        [ids[1].clone()]
+    );
 }
 
 #[test]
@@ -1719,6 +1932,23 @@ fn media_contract_confirm_scope(f: &Fixture) {
         });
     }
 }
+
+fn media_contract_confirm_id(f: &Fixture, id: &str) {
+    let mut engine = f.engine.lock();
+    let pending = engine.store.outbox_get(id).unwrap().unwrap();
+    let mut relay = engine.logs[&pending.space].clone();
+    let event = relay.sequence(pending);
+    assert_eq!(
+        engine.ingest(protocol::Sequenced {
+            seq: event.seq,
+            prev: event.prev.clone(),
+            hash: event.hash.clone(),
+            env: protocol::Envelope::plain(event)
+        }),
+        crate::sync::Ingest::Confirmed
+    );
+}
+
 fn media_contract_receive(f: &Fixture, body: types::EventBody, foreign: bool) {
     let mut engine = f.engine.lock();
     let author = if foreign {

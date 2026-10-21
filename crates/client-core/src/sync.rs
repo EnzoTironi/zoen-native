@@ -143,6 +143,30 @@ fn is_message_send(body: &EventBody) -> bool {
         } if doc.is_voice())
 }
 
+/// Disposable admission facts from the verified, relay-confirmed log only. An
+/// optimistic File or album member (including one already written to a socket)
+/// cannot release its dependent message. Build once per relevant Space/offer pass.
+struct ConfirmedAlbumDependencies {
+    state: State,
+}
+
+impl ConfirmedAlbumDependencies {
+    fn from_log(engine: &Engine, log: &SpaceLog) -> R<Self> {
+        let mut state = State::default();
+        let mut plans = PlanReplay::new(&engine.store, &engine.logs);
+        for (end, event) in log.events().iter().enumerate() {
+            let context = plans.before(&state, &engine.identities, event, end)?;
+            state.apply_checked(event, &engine.identities, &context);
+        }
+        Ok(Self { state })
+    }
+
+    fn allows(&self, event: &Event) -> bool {
+        self.state
+            .media_message_dependencies_valid(&event.space, &event.author, &event.body)
+    }
+}
+
 impl Engine {
     /// Logs from an older event format can't be re-verified under the current one: start over (pre-launch only; ADR 0010).
     pub(crate) fn migrate_event_format(&mut self) -> R<()> {
@@ -773,6 +797,7 @@ impl Engine {
     /// sequenced.
     pub fn outbox_envelopes_except(&self, sent: &HashMap<String, Option<u64>>) -> Vec<Envelope> {
         let mut ready = HashMap::new();
+        let mut album_dependencies = HashMap::new();
         // A Welcome goes out only once its commit is in: sent together, a commit held back
         // by the relay (rate limit) would let the Welcome arrive first and be refused.
         let held = self.welcomes_behind_commits();
@@ -820,6 +845,25 @@ impl Engine {
                 .is_some_and(|seen| self.next_seq(&event.space) <= seen.seq)
             {
                 continue;
+            }
+            if matches!(&event.body, EventBody::MessagePosted { media: Some(media), .. } if media.group.is_some())
+            {
+                let Some(log) = self.logs.get(&event.space) else {
+                    blocked.insert(event.space.clone());
+                    continue;
+                };
+                let confirmed = album_dependencies
+                    .entry(event.space.clone())
+                    .or_insert_with(|| ConfirmedAlbumDependencies::from_log(self, log).ok());
+                if !confirmed
+                    .as_ref()
+                    .is_some_and(|confirmed| confirmed.allows(&event))
+                {
+                    // Keep the same Space's sealed generations behind this head;
+                    // skipping it could outrun OpenMLS's existing reorder window.
+                    blocked.insert(event.space.clone());
+                    continue;
+                }
             }
             let Some(mut env) = self.outgoing_envelope_with(&event, &mut ready) else {
                 continue;

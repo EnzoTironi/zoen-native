@@ -54,6 +54,20 @@ uses the same ordered group cursor on native and Web. A shared signed fixture
 covers reversed indices, duplicates, count/presentation/reply drift and forwarded
 album claims; invalid events remain in history without gaining a message view.
 
+Grouped outbox members wait for their same-author File creation and exact previous
+group membership in the verified, relay-confirmed log. Optimistic state, a socket
+write and `Accepted` do not release those dependencies. A disposable per-offer
+snapshot uses the existing canonical `PlanReplay`/`State.apply_checked` fold and
+dependency predicate; signature-valid but projection-refused history cannot
+replace a File or advance the group cursor. It replays each relevant Space once
+per offer pass, with temporary state proportional to that history; no additional
+durable queue is introduced. A held member also holds later heads in
+that Space, so sealed generations cannot overtake it beyond the existing MLS
+window. Other Spaces remain independent. Retrying after a transient refusal or
+cold reopen preserves the original ciphertext, client ids, order and journal
+receipt. A permanently failed prerequisite stays available through the existing
+failed-send recovery path; later members wait for its explicit retry.
+
 Recovery-only identities are reserved from authenticated failed outbox sources
 before confirmed history is folded. This also rejects legacy messages without
 `media` metadata and signed version/revert events, including after reopening;
