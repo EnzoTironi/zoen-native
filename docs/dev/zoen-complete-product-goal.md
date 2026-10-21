@@ -167,8 +167,10 @@ O [PR 149](https://github.com/EnzoTironi/zoen-native/pull/149) foi integrado em
 `ff303ec7`. O [PR 150](https://github.com/EnzoTironi/zoen-native/pull/150) recebeu
 a correção do fixture de logs em `266c313d`: recuperação real com dois relays e
 um único socket passou, e mudar somente JSON para texto reproduziu a falha do CI
-anterior. O novo CI está em andamento; a qualificação do núcleo recompilado no
-iPhone permanece pendente.
+anterior. As 11 verificações do novo head passaram e o PR foi integrado em
+`00a008ba`, sem conflitos nem bypass, em 21 de outubro. Recibo:
+`/private/tmp/zoen-ios-deck-runtime-v236/pr150-merge.json`.
+A qualificação desse lote no núcleo do iPhone permanece pendente.
 
 ## Plataformas e arquitetura
 
