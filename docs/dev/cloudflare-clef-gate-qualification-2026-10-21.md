@@ -65,14 +65,14 @@ be activated by an ordinary test run. It reads no Zoen account/profile/history.
 
 Executed against code commit `52365dcb`:
 
-| Batch | Result |
-| --- | --- |
-| All Gate unit tests | 17 passed |
-| Actual CLI transport regression tests | 6 passed; live probe ignored by default |
-| All citizen runtime journeys | 11 passed |
-| Explicit configured Gate hosted probe | 1 passed; `allow`, `model:clear`, 512 ms provider call |
-| Strict Clippy for Gate and CLI including tests | Both passed |
-| Rustfmt, documentation formatting and diff whitespace | Passed |
+| Batch                                                 | Result                                                 |
+| ----------------------------------------------------- | ------------------------------------------------------ |
+| All Gate unit tests                                   | 17 passed                                              |
+| Actual CLI transport regression tests                 | 6 passed; live probe ignored by default                |
+| All citizen runtime journeys                          | 11 passed                                              |
+| Explicit configured Gate hosted probe                 | 1 passed; `allow`, `model:clear`, 512 ms provider call |
+| Strict Clippy for Gate and CLI including tests        | Both passed                                            |
+| Rustfmt, documentation formatting and diff whitespace | Passed                                                 |
 
 The configured hosted probe returned probabilities 0.031 and 0.0166 for the two
 inbound-injection questions. The two hosted calls in this qualification are the
