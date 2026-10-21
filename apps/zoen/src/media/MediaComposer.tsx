@@ -27,7 +27,7 @@ import { useClient } from '../core/provider';
 import { AudioClip, clipTime, pauseAudioPlayback } from './AudioClip';
 import { discardCacheCopy } from './cache-files';
 import { sensitiveCacheWork } from './cache-work';
-import { ComposerAction } from '../components/composer-action';
+import { VoiceRecordButton } from './voice-record-button';
 import { VoiceReviewOwner } from './voice-review-owner';
 import { VoiceDraftOwner, frozenVoicePreview } from './voice-draft-owner';
 import { VoiceSessionFailure, type VoiceSendable, type VoiceSession } from './voice-session';
@@ -143,6 +143,9 @@ export function MediaComposer({
   const [expanded, setExpanded] = useState(false);
   const [clip, setClip] = useState<Recording | null>(null);
   const [busy, setBusy] = useState(false);
+  const [captureActive, setCaptureActive] = useState(false);
+  const [capturePaused, setCapturePaused] = useState(false);
+  const [recordingLocked, setRecordingLocked] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const levels = useRef<number[]>([]);
@@ -171,6 +174,19 @@ export function MediaComposer({
   const selecting = useRef(false);
   const busyNow = useRef(false);
   const clipNow = useRef<Recording | null>(null);
+  // Ephemeral UI admission only: a retained control from A must never affect B.
+  // A capture keeps its token when Stop materializes its own review draft.
+  const [voiceControl, setVoiceControl] = useState<object>(() => ({}));
+  const voiceControlNow = useRef(voiceControl);
+  const captureControl = useRef<object | null>(null);
+  const replaceVoiceControl = useCallback((control: object = {}) => {
+    voiceControlNow.current = control;
+    setVoiceControl(control);
+  }, []);
+  const controlIsCurrent = useCallback(
+    (control: object) => control === voiceControlNow.current && mounted.current,
+    [],
+  );
   const owners = useRef(new Set<VoiceReviewOwner>());
   const durableOwners = useRef(new Map<VoiceReviewOwner, VoiceDraftOwner>());
   const onPendingTrimChange = useCallback(
@@ -188,7 +204,7 @@ export function MediaComposer({
     replyTo,
     thread,
     threadRootId,
-    disabled: disabled || Boolean(clip) || recorderState.isRecording,
+    disabled: disabled || Boolean(clip) || captureActive || recorderState.isRecording,
     suspended,
     onSent,
   });
@@ -198,7 +214,12 @@ export function MediaComposer({
     durableOwners.current.delete(owner);
   }, []);
   const stageVoice = useCallback(
-    (capture: Omit<Recording, 'owner'>, preserveExpansion = false) => {
+    (capture: Omit<Recording, 'owner'>, preserveExpansion = false, control?: object) => {
+      if (control && control !== voiceControlNow.current) {
+        void discard(capture.uri);
+        return;
+      }
+      replaceVoiceControl(control);
       const durable =
         channel && media?.voiceEditor
           ? new VoiceDraftOwner({
@@ -238,7 +259,7 @@ export function MediaComposer({
           if (mounted.current) setFailure(failureMessage(reason));
         });
     },
-    [media, store, channel, replyTo],
+    [media, store, channel, replyTo, replaceVoiceControl],
   );
   useEffect(() => {
     uriToDiscard.current = clip?.owner ? undefined : clip?.uri;
@@ -312,6 +333,7 @@ export function MediaComposer({
           durationMs: savedVoice.render?.duration_ms ?? 0,
           levels: [...(savedVoice.render?.levels ?? [])],
         };
+        replaceVoiceControl();
         clipNow.current = value;
         setClip(value);
         await durable.prepare();
@@ -326,17 +348,18 @@ export function MediaComposer({
     return () => {
       active = false;
     };
-  }, [channel, savedVoice, media, store, restoreAttempt]);
+  }, [channel, savedVoice, media, store, restoreAttempt, replaceVoiceControl]);
   useLayoutEffect(() => {
     const previous = clipNow.current;
     if (previous?.durable && previous.durable.channel !== channel) {
       pauseAudioPlayback();
       clipNow.current = null;
       previous.durable.retire();
+      replaceVoiceControl();
       setClip(null);
       setExpanded(false);
     }
-  }, [channel]);
+  }, [channel, replaceVoiceControl]);
   useEffect(() => {
     if (!recorderState.isRecording) return;
     if (typeof recorderState.metering === 'number') {
@@ -348,6 +371,7 @@ export function MediaComposer({
   const stop = useCallback(() => {
     if (stopTask.current) return stopTask.current;
     const starting = startTask.current;
+    const control = captureControl.current;
     if (
       !starting &&
       !recording.current &&
@@ -399,6 +423,11 @@ export function MediaComposer({
           }
           // A failed stop retains capture ownership and can be retried; never discard live audio.
           recording.current = false;
+          if (mounted.current) {
+            setCaptureActive(false);
+            setCapturePaused(false);
+            setRecordingLocked(false);
+          }
           prepared.current = false;
           preparedUri.current = undefined;
           const { durationMs } = capture;
@@ -412,6 +441,7 @@ export function MediaComposer({
                 levels: levels.current.filter((_, index) => index % stride === 0),
               },
               true,
+              control ?? undefined,
             );
           } else {
             await discard(uri ?? undefined);
@@ -455,10 +485,26 @@ export function MediaComposer({
           !audioModeNeedsRestore.current
         )
           setCaptureLease(null);
+        if (
+          control &&
+          voiceControlNow.current === control &&
+          !recording.current &&
+          !clipNow.current &&
+          !audioModeNeedsRestore.current
+        )
+          replaceVoiceControl();
       })
       .catch(() => {});
     return sensitiveCacheWork.track(task);
-  }, [recorder, inform, stageVoice, captureOwner, getCaptureLease, setCaptureLease]);
+  }, [
+    recorder,
+    inform,
+    stageVoice,
+    captureOwner,
+    getCaptureLease,
+    setCaptureLease,
+    replaceVoiceControl,
+  ]);
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
     return store.registerDeviceCleanup(async () => {
@@ -567,8 +613,9 @@ export function MediaComposer({
       if (mounted.current) setBusy(false);
     }
   }
-  function start() {
+  function start(held = false): Promise<boolean> {
     if (
+      !controlIsCurrent(voiceControl) ||
       busy ||
       startTask.current ||
       stopTask.current ||
@@ -581,7 +628,9 @@ export function MediaComposer({
       (channel &&
         (channel.getSnapshot().phase !== 'ready' || channel.getSnapshot().content !== null))
     )
-      return;
+      return Promise.resolve(false);
+    captureControl.current = voiceControl;
+    setRecordingLocked(!held);
     const epoch = startEpoch.current.value;
     setBusy(true);
     setFailure(null);
@@ -614,7 +663,18 @@ export function MediaComposer({
           !audioModeNeedsRestore.current
         )
           setCaptureLease(null);
+        if (
+          voiceControlNow.current === voiceControl &&
+          !recording.current &&
+          !clipNow.current &&
+          !audioModeNeedsRestore.current
+        )
+          replaceVoiceControl();
       });
+    return task.then(
+      () => recording.current,
+      () => false,
+    );
   }
   async function startRecording(epoch: number) {
     const current = () =>
@@ -669,6 +729,8 @@ export function MediaComposer({
       setExpanded(false);
       recorder.record();
       recording.current = true;
+      setCaptureActive(true);
+      setCapturePaused(false);
       stoppedCapture.current = null;
       started = true;
       uriToDiscard.current = recorder.uri ?? undefined;
@@ -719,6 +781,12 @@ export function MediaComposer({
           }),
         );
       // Acknowledged once: cleanup/refresh failures cannot resubmit the mutation.
+      if (voiceControlNow.current !== voiceControl) {
+        void closeOwner(owner).catch(() => {});
+        void store.refresh().catch(() => {});
+        return;
+      }
+      replaceVoiceControl();
       clipNow.current = null;
       setClip(null);
       uriToDiscard.current = undefined;
@@ -731,13 +799,14 @@ export function MediaComposer({
     }
   }
   async function send() {
-    if (!media || busyNow.current || !clip || clip.owner) return;
+    if (!controlIsCurrent(voiceControl) || !media || busyNow.current || !clip || clip.owner) return;
     busyNow.current = true;
     setBusy(true);
     setFailure(null);
     const uri = clip.uri;
     try {
       await stop();
+      if (!controlIsCurrent(voiceControl)) return;
       await media.sendVoice({
         uri: clip.uri,
         durationMs: clip.durationMs,
@@ -747,6 +816,12 @@ export function MediaComposer({
         replyTo,
         thread,
       });
+      if (voiceControlNow.current !== voiceControl) {
+        void discard(uri).catch(() => {});
+        void store.refresh().catch(() => {});
+        return;
+      }
+      replaceVoiceControl();
       clipNow.current = null;
       setClip(null);
       uriToDiscard.current = undefined;
@@ -762,12 +837,13 @@ export function MediaComposer({
     }
   }
   async function cancel() {
-    if (busyNow.current) return;
+    if (!controlIsCurrent(voiceControl) || busyNow.current) return;
     busyNow.current = true;
     pauseAudioPlayback();
     setBusy(true);
     try {
       await stop();
+      if (voiceControlNow.current !== voiceControl) return;
       const capture = clipNow.current;
       if (capture?.durable) {
         await capture.durable.discard();
@@ -775,6 +851,8 @@ export function MediaComposer({
         durableOwners.current.delete(capture.durable.owner);
       } else if (capture?.owner) await closeOwner(capture.owner);
       else await discard(capture?.uri ?? recorder.uri ?? undefined);
+      if (voiceControlNow.current !== voiceControl) return;
+      replaceVoiceControl();
       clipNow.current = null;
       uriToDiscard.current = undefined;
       setClip(null);
@@ -787,11 +865,43 @@ export function MediaComposer({
       if (mounted.current) setBusy(false);
     }
   }
+  async function toggleCapturePause() {
+    // Pause/resume use the same prepared recorder and lease. A paused M4A still needs Stop.
+    if (
+      !controlIsCurrent(voiceControl) ||
+      busyNow.current ||
+      !recording.current ||
+      stopTask.current ||
+      startTask.current ||
+      !mounted.current ||
+      !focused.current ||
+      disabledNow.current ||
+      suspendedNow.current ||
+      appState.current !== 'active' ||
+      getCaptureLease()?.owner !== captureOwner
+    )
+      return;
+    try {
+      if (recorder.getStatus().isRecording) {
+        recorder.pause();
+        setCapturePaused(true);
+      } else {
+        recorder.record();
+        setCapturePaused(false);
+      }
+      setRecordingLocked(true);
+    } catch (reason) {
+      if (mounted.current) setFailure(failureMessage(reason));
+    }
+  }
   async function retryVoice() {
+    if (!controlIsCurrent(voiceControl)) return;
     // Restore the audio session first, without throwing away a successfully staged capture.
     const lease = getCaptureLease();
     if (lease?.owner !== captureOwner) await lease?.recover();
+    if (!controlIsCurrent(voiceControl)) return;
     await stop();
+    if (!controlIsCurrent(voiceControl)) return;
     const capturedClip = clipNow.current;
     if (!capturedClip && channel) {
       await channel.retry();
@@ -808,7 +918,7 @@ export function MediaComposer({
       return;
     }
     if (capturedClip?.durable) await capturedClip.durable.channel.retry();
-    if (!mounted.current || !focused.current) return;
+    if (!controlIsCurrent(voiceControl) || !focused.current) return;
     setFailure(null);
     const owner = clipNow.current?.owner;
     if (!owner) return;
@@ -820,7 +930,7 @@ export function MediaComposer({
       await (clipNow.current?.durable?.prepare() ?? owner.prepare());
   }
   if (!media) return renderControls?.({ attachment: null, voice: null }) ?? null;
-  const isRecording = recorderState.isRecording;
+  const isRecording = captureActive || recorderState.isRecording;
   const voiceActive = Boolean(clip || isRecording);
   const presented = Boolean(attachments.active || clip || isRecording || failure);
   const sheetVisible = Boolean(voiceActive ? expanded : failure);
@@ -832,6 +942,7 @@ export function MediaComposer({
   );
   function collapseVoice() {
     if (
+      !controlIsCurrent(voiceControl) ||
       busy ||
       busyNow.current ||
       (clip?.owner &&
@@ -847,18 +958,22 @@ export function MediaComposer({
         key={clip?.uri ?? 'recording'}
         session={clip?.owner?.session}
         recording={isRecording}
+        paused={capturePaused}
+        locked={recordingLocked}
+        onPause={toggleCapturePause}
         uri={clip?.uri}
         durationMs={isRecording ? recorderState.durationMillis : (clip?.durationMs ?? 0)}
         levels={isRecording ? recordingLevels : (clip?.levels ?? [])}
         busy={busy}
         failure={failure}
         onCancel={cancel}
-        onStop={stop}
+        onStop={() => (controlIsCurrent(voiceControl) ? stop() : Promise.resolve())}
         onRetry={failure || clip?.owner ? retryVoice : undefined}
         onExpand={() => {
-          setExpanded(true);
+          if (controlIsCurrent(voiceControl)) setExpanded(true);
         }}
         onSend={async (value) => {
+          if (!controlIsCurrent(voiceControl)) return;
           if (clip?.owner && value) await sendEdited(clip.owner, value);
           else if (!clip?.owner) await send();
         }}
@@ -881,11 +996,7 @@ export function MediaComposer({
     />
   );
   const voice = (
-    <ComposerAction
-      testID="record-voice"
-      label={t('media.recordVoiceMessage')}
-      name="mic"
-      prominent
+    <VoiceRecordButton
       disabled={
         disabled ||
         busy ||
@@ -893,8 +1004,24 @@ export function MediaComposer({
         presented ||
         Boolean(channel && (durableState?.phase !== 'ready' || durableState.content))
       }
-      onPress={() => {
-        void start();
+      active={isRecording}
+      locked={recordingLocked}
+      onStart={start}
+      onReview={async () => {
+        if (!controlIsCurrent(voiceControl)) return;
+        setRecordingLocked(true);
+        await stop();
+      }}
+      onCancel={async () => {
+        if (!controlIsCurrent(voiceControl)) return;
+        setRecordingLocked(true);
+        await cancel();
+      }}
+      onLock={() => {
+        if (controlIsCurrent(voiceControl)) setRecordingLocked(true);
+      }}
+      onError={(reason) => {
+        if (controlIsCurrent(voiceControl)) setFailure(failureMessage(reason));
       }}
     />
   );
@@ -932,19 +1059,24 @@ export function MediaComposer({
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
             flexGrow: 1,
-            padding: 24,
-            paddingTop: 24,
-            paddingBottom: 24,
-            gap: 24,
+            padding: 16,
+            paddingTop: 16,
+            paddingBottom: 16,
+            gap: 16,
             backgroundColor: 'transparent',
           }}
         >
           <View
-            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              minHeight: 44,
+            }}
           >
             <Text
               accessibilityRole="header"
-              style={{ color: colors.text, fontSize: 24, fontWeight: '600' }}
+              style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}
             >
               {isRecording
                 ? t('media.recording')
@@ -980,9 +1112,16 @@ export function MediaComposer({
                 {clipTime(recorderState.durationMillis / 1000)}
               </Text>
               <NativeButton
+                secondary
+                label={t(capturePaused ? 'voiceControls.resume' : 'voiceControls.pause')}
+                onPress={() => {
+                  void toggleCapturePause();
+                }}
+              />
+              <NativeButton
                 label={t('media.stopRecording')}
                 onPress={() => {
-                  void stop().catch(() => {});
+                  if (controlIsCurrent(voiceControl)) void stop().catch(() => {});
                 }}
               />
             </>

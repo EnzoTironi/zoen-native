@@ -3,6 +3,7 @@ import type { ReactNode, Ref } from 'react';
 import { Text, View, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardMotion } from './keyboard-motion';
+import { composerVerticalInsets } from '../core/telegram-audio-presentation';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { t } from '../i18n/index.ts';
 import { conversationQueryFits, type ConversationSearchState } from '../core/conversation-search';
@@ -66,7 +67,7 @@ export function MessageComposer({
   context?: { entry?: TimelineEntry; onCancel: () => void };
   draft?: { ready: boolean; error: boolean; rejected?: boolean; onRetry: () => void };
 }) {
-  const { colors, scheme } = useTheme();
+  const { colors, scheme, presentation: p } = useTheme();
   const insets = useSafeAreaInsets();
   const { progress } = useKeyboardMotion();
   const restingBottom = Math.max(insets.bottom, 12);
@@ -98,6 +99,7 @@ export function MessageComposer({
   }) {
     const fieldText = files ? files.value : value;
     const native = process.env.EXPO_OS === 'ios';
+    const inputInsets = composerVerticalInsets(p.typography.message.fontSize);
     // The native send action belongs inside the field; the empty microphone
     // remains a separate control. Telegram f1dd7a2 panel:3407,3453.
     const inlineAction =
@@ -125,7 +127,7 @@ export function MessageComposer({
                 ? t('chat.continueTheConversation')
                 : t('chat.message')
         }
-        placeholderTextColor={colors.tertiary}
+        placeholderTextColor={p.chat.input.placeholder}
         autoCorrect={search ? false : undefined}
         autoCapitalize={search ? 'none' : undefined}
         multiline
@@ -147,10 +149,10 @@ export function MessageComposer({
           // plus11pt internal inset, so the text stops41pt before the edge.
           paddingRight: native ? (inlineAction ? 1 : 11) : 18,
           // f1dd7a2: internal5/4 + regular text-container4.5/5.5.
-          paddingTop: native ? 9.5 : 15,
-          paddingBottom: native ? 9.5 : 14,
-          color: colors.text,
-          fontSize: native ? 17 : 16,
+          paddingTop: native ? inputInsets.top : 15,
+          paddingBottom: native ? inputInsets.bottom : 14,
+          color: p.chat.input.text,
+          fontSize: native ? p.typography.message.fontSize : 16,
           lineHeight: native ? undefined : 22,
         }}
       />
@@ -278,7 +280,9 @@ export function MessageComposer({
               style={{
                 flex: 1,
                 borderRadius: native ? 20 : 27,
-                backgroundColor: colors.surface,
+                backgroundColor: p.chat.input.fill,
+                borderColor: p.chat.input.stroke,
+                borderWidth: 0.5,
                 flexDirection: native ? 'row' : undefined,
                 alignItems: native ? 'flex-end' : undefined,
               }}
@@ -299,7 +303,7 @@ export function MessageComposer({
           // f1dd7a2 textFieldInsets:1432; separate action gap:3537.
           paddingHorizontal: process.env.EXPO_OS === 'ios' ? 8 : 12,
           paddingTop: process.env.EXPO_OS === 'ios' ? 0 : 10,
-          gap: 8,
+          gap: process.env.EXPO_OS === 'ios' ? 0 : 8,
         },
         // Choose the native layout on JS, outside the UI-runtime worklet.
         process.env.EXPO_OS === 'ios' ? { paddingBottom: restingBottom } : keyboardPadding,

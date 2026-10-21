@@ -13,6 +13,7 @@ import { Icon } from '../components/primitives';
 import { AudioClip, AudioClipControls, clipTime } from './AudioClip';
 import { useReceivedMessageAudio } from './message-audio-provider';
 import { AudioWaveform } from './audio-progress';
+import { VoiceTranscript } from './voice-transcript';
 import { VideoClip } from './VideoClip';
 import { previewMediaFile } from './preview-file';
 import { formatFileSize } from './file-size';
@@ -78,7 +79,6 @@ function FileAttachmentContent({
   const [ratio, setRatio] = useState(1);
   const [availableWidth, setAvailableWidth] = useState(0);
   const [autoplay, setAutoplay] = useState(false);
-  const [transcriptExpanded, setTranscriptExpanded] = useState(false);
   const mounted = useRef(false);
   const generation = useRef(0);
   const owned = useRef<LocalMediaFile | null>(null);
@@ -207,7 +207,7 @@ function FileAttachmentContent({
     setError(null);
     let file: LocalMediaFile | null = null;
     try {
-      // A separate lease stays alive for QuickLook even if its message scrolls away.
+      // A separate native-viewer lease outlives the virtualized message row.
       file = await materialize(driver);
       if (!mounted.current || expectedGeneration !== generation.current) return;
       const preview = file;
@@ -324,7 +324,38 @@ function FileAttachmentContent({
           />
         </Pressable>
       ) : local && video && message ? (
-        <VideoClip uri={local.uri} compact />
+        <View>
+          <VideoClip uri={local.uri} compact />
+          <Pressable
+            testID={`message-video-gallery-${itemId}`}
+            accessibilityRole="button"
+            accessibilityLabel={t('media.openFileLabel', { name: label })}
+            onPress={() => {
+              void previewImage();
+            }}
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 6,
+              width: 44,
+              height: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 22,
+              backgroundColor: '#00000060',
+            }}
+          >
+            <Icon
+              name={{
+                ios: 'arrow.up.left.and.arrow.down.right',
+                android: 'fullscreen',
+                web: 'fullscreen',
+              }}
+              color="#FFFFFF"
+              size={20}
+            />
+          </Pressable>
+        </View>
       ) : voice && local ? (
         <View style={{ paddingHorizontal: message ? 10 : 0, paddingVertical: message ? 5 : 0 }}>
           <AudioClip
@@ -351,10 +382,10 @@ function FileAttachmentContent({
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
+            gap: 11,
             paddingHorizontal: 10,
             paddingVertical: 5,
-            minHeight: 58,
+            minHeight: 54,
             opacity: pressed ? 0.6 : 1,
           })}
         >
@@ -437,40 +468,12 @@ function FileAttachmentContent({
         </Pressable>
       )}
       {voice?.transcript ? (
-        <View
-          style={{ paddingHorizontal: message ? 14 : 0, paddingBottom: message ? 12 : 0, gap: 4 }}
-        >
-          <Pressable
-            accessibilityRole="button"
-            aria-expanded={transcriptExpanded}
-            accessibilityLabel={t('media.voiceTranscript')}
-            onPress={() => setTranscriptExpanded(!transcriptExpanded)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              minHeight: 44,
-            }}
-          >
-            <Text style={{ color: ink, fontSize: 12, fontWeight: '600' }}>
-              {t('media.voiceTranscript')}
-            </Text>
-            <Icon
-              name={
-                transcriptExpanded
-                  ? { ios: 'chevron.up', android: 'expand_less', web: 'expand_less' }
-                  : { ios: 'chevron.down', android: 'expand_more', web: 'expand_more' }
-              }
-              color={ink}
-              size={11}
-            />
-          </Pressable>
-          {transcriptExpanded ? (
-            <Text selectable style={{ color: ink, fontSize: 15, lineHeight: 21 }}>
-              {voice.transcript}
-            </Text>
-          ) : null}
-        </View>
+        <VoiceTranscript
+          text={voice.transcript}
+          ink={ink}
+          message={message}
+          onLongPress={onActions}
+        />
       ) : null}
       {!message ? (
         <Pressable

@@ -7,6 +7,7 @@ import { mediaPlayback } from './playback-owner.ts';
 import { useAudioClipPlayback, type AudioClipPlayback } from './audio-clip-playback.ts';
 import { useTheme } from '../theme';
 import { AudioProgress } from './audio-progress';
+import { telegramAudio } from '../core/telegram-audio-presentation';
 
 export function clipTime(seconds: number) {
   const value = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
@@ -89,8 +90,12 @@ export function AudioClipControls({
   onLongPress?: () => void;
   onRetry?: () => void;
 }) {
-  const { colors } = useTheme();
-  const ink = appearance === 'mine' ? colors.onMine : colors.text;
+  const { presentation: p } = useTheme();
+  const bubble = appearance === 'mine' ? p.chat.outgoing : p.chat.incoming;
+  const ink = appearance === 'default' ? p.chat.input.text : bubble.text;
+  const controlFill = appearance === 'default' ? p.chat.input.action : bubble.accent;
+  const controlInk =
+    appearance === 'mine' && p.profile === 'night' ? bubble.fill : p.chat.input.actionText;
   const status = useSyncExternalStore(
     playback.subscribe,
     playback.getSnapshot,
@@ -104,7 +109,14 @@ export function AudioClipControls({
   const failureMessage = status.error ? t('media.thisAudioCouldNotBePlayed') : null;
   return (
     <View style={{ width: '100%', minWidth: 0, gap: compact ? 2 : 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 6 : 10 }}>
+      <View
+        testID="audio-playback-controls"
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: compact ? telegramAudio.voiceControlArea - telegramAudio.voiceControl : 10,
+        }}
+      >
         <Pressable
           onLongPress={onLongPress}
           delayLongPress={350}
@@ -122,16 +134,17 @@ export function AudioClipControls({
             else void playback.playFrom().catch(() => {});
           }}
           style={({ pressed }) => ({
-            width: 44,
-            height: 44,
-            borderRadius: 22,
+            width: telegramAudio.voiceControl,
+            height: telegramAudio.voiceControl,
+            borderRadius: telegramAudio.voiceControl / 2,
+            backgroundColor: compact ? controlFill : 'transparent',
             alignItems: 'center',
             justifyContent: 'center',
             opacity: pressed ? 0.6 : 1,
           })}
         >
           {!loadFailed && (!status.loaded || status.busy || status.buffering) ? (
-            <ActivityIndicator color={ink} size="small" />
+            <ActivityIndicator color={compact ? controlInk : ink} size="small" />
           ) : (
             <Icon
               name={
@@ -146,25 +159,46 @@ export function AudioClipControls({
                     : { ios: 'play.fill', android: 'play_arrow', web: 'play_arrow' }
               }
               size={25}
-              color={ink}
+              color={compact ? controlInk : ink}
             />
           )}
         </Pressable>
-        <AudioProgress
-          levels={levels}
-          progress={progress}
-          duration={total}
-          ink={ink}
-          compact={compact}
-          disabled={!status.loaded}
-          onSeek={(fraction) => {
-            void playback.seekSeconds(fraction * total).catch(() => {});
+        <View
+          style={{
+            flex: 1,
+            minWidth: 0,
+            minHeight: compact ? 44 : 60,
+            justifyContent: 'center',
           }}
-        />
-        <View style={{ alignItems: 'flex-end', justifyContent: 'center', minWidth: 44 }}>
-          <Text style={{ color: ink, opacity: 0.72, fontSize: 12, fontVariant: ['tabular-nums'] }}>
+        >
+          <AudioProgress
+            levels={levels}
+            progress={progress}
+            duration={total}
+            ink={ink}
+            compact={compact}
+            disabled={!status.loaded}
+            onSeek={(fraction) => {
+              void playback.seekSeconds(fraction * total).catch(() => {});
+            }}
+          />
+          <Text
+            pointerEvents="none"
+            style={{
+              position: compact ? 'absolute' : undefined,
+              bottom: compact ? 2 : undefined,
+              left: compact ? 0 : undefined,
+              color: ink,
+              opacity: 0.72,
+              fontSize: compact ? 13 : 12,
+              lineHeight: compact ? 16 : undefined,
+              fontVariant: ['tabular-nums'],
+            }}
+          >
             {clipTime(current > 0 && current < total ? current : total)}
           </Text>
+        </View>
+        <View style={{ alignItems: 'flex-end', justifyContent: 'center', minWidth: 44 }}>
           <Pressable
             onLongPress={onLongPress}
             delayLongPress={350}
@@ -178,7 +212,7 @@ export function AudioClipControls({
               playback.setRate(rate === 1 ? 1.5 : rate === 1.5 ? 2 : 1);
             }}
             style={({ pressed }) => ({
-              minHeight: 32,
+              minHeight: 44,
               minWidth: 44,
               alignItems: 'flex-end',
               justifyContent: 'center',

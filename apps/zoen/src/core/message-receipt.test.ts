@@ -12,19 +12,22 @@ import type { Delivery } from './generated/Delivery';
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
 const sourcePath = fileURLToPath(new URL('../components/message-receipt.tsx', import.meta.url));
-const compiled = transformSync(readFileSync(sourcePath, 'utf8'), {
-  filename: sourcePath,
-  configFile: false,
-  babelrc: false,
-  presets: [require.resolve('babel-preset-expo')],
-  caller: {
-    name: 'metro',
-    platform: 'ios',
-    engine: 'hermes',
-    isDev: false,
-    supportsReactCompiler: true,
+const compiled = transformSync(
+  readFileSync(process.env.ZOEN_MESSAGE_RECEIPT_SOURCE ?? sourcePath, 'utf8'),
+  {
+    filename: sourcePath,
+    configFile: false,
+    babelrc: false,
+    presets: [require.resolve('babel-preset-expo')],
+    caller: {
+      name: 'metro',
+      platform: 'ios',
+      engine: 'hermes',
+      isDev: false,
+      supportsReactCompiler: true,
+    },
   },
-}).code;
+).code;
 const ports = new Set([
   'react/compiler-runtime',
   'react/jsx-runtime',
@@ -87,9 +90,16 @@ function render(delivery: Delivery, phase: (typeof SKY_PHASES)[number], mine: bo
       return modules[name];
     },
   });
-  const ink = mine ? theme.colors.onMine : theme.colors.text;
-  const background = mine ? theme.colors.mine : theme.colors.theirs;
-  return { tree: module.exports.MessageReceipt({ delivery, ink, background }), ink, background };
+  const face = mine ? theme.presentation.chat.outgoing : theme.presentation.chat.incoming;
+  const ink = face.text;
+  const background = face.fill;
+  const backgrounds = face.fillColors;
+  return {
+    tree: module.exports.MessageReceipt({ delivery, ink, background, backgrounds }),
+    ink,
+    background,
+    backgrounds,
+  };
 }
 
 test('compiled receipt keeps all six core acknowledgement states and actual accessible labels', () => {
@@ -121,19 +131,20 @@ test('compiled receipt keeps all six core acknowledgement states and actual acce
   }
 });
 
-test('read acknowledgement stays legible against every actual sky bubble; delivery states never gain read color', () => {
+test('read acknowledgement stays legible against every actual bubble gradient stop; delivery states never gain read color', () => {
   for (const phase of SKY_PHASES)
     for (const mine of [false, true]) {
       for (const delivery of ['Local', 'Sending', 'Sent', 'Delivered', 'Read', 'Failed'] as const) {
-        const { tree, ink, background } = render(delivery, phase, mine);
+        const { tree, ink, backgrounds } = render(delivery, phase, mine);
         const icons = elements(tree).filter((node) => node.type === 'Icon');
         for (const icon of icons) {
-          if (delivery === 'Read')
-            assert.ok(
-              contrastRatio(icon.props.color as string, background) >= 3,
-              `${phase}/${mine}`,
-            );
-          else assert.equal(icon.props.color, ink);
+          if (delivery === 'Read') {
+            for (const paper of backgrounds)
+              assert.ok(
+                contrastRatio(icon.props.color as string, paper) >= 3,
+                `${phase}/${mine}/${paper}`,
+              );
+          } else assert.equal(icon.props.color, ink);
         }
       }
     }

@@ -160,6 +160,7 @@ async function fixture() {
     '../theme': { useTheme: () => ({ colors, scheme }) },
     './frame': { MiniappFrame: 'MiniappFrame' },
     './app-sheet-context': { useAppSheetCloseButton: () => closeButton },
+    './app-keyboard-viewport': { AppKeyboardViewport: 'AppKeyboardViewport' },
     './protocol': {
       MiniappSession: class extends MiniappSession {
         constructor(host: ConstructorParameters<typeof MiniappSession>[0]) {
@@ -334,5 +335,27 @@ test('floating close rectangle crosses the actual bridge without changing safe i
   assert.equal(f.sessionCount(), 1);
   assert.deepEqual(f.notifications, ['input', 'result']);
   assert.equal(f.draft(), 'unsaved local edit');
+  assert.deepEqual(f.writes, []);
+});
+
+test('actual App bridge publishes keyboard-sized native layout with its remaining safe area, without replaying content', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const html = f.frame().props.html;
+  for (const [height, bottom] of [
+    [852, 34],
+    [516, 0],
+    [652, 0],
+    [852, 34],
+  ] as const) {
+    await f.layout(393, height, { top: 107, right: 0, bottom, left: 0 });
+    assert.deepEqual(f.app.getHostContext()?.containerDimensions, { width: 393, height });
+    assert.equal(f.app.getHostContext()?.safeAreaInsets?.bottom, bottom);
+    assert.equal(f.frame().props.html, html);
+    assert.equal(f.draft(), 'unsaved local edit');
+  }
+  assert.equal(f.sessionCount(), 1);
+  assert.equal(f.disposals(), 0);
+  assert.deepEqual(f.notifications, ['input', 'result']);
   assert.deepEqual(f.writes, []);
 });

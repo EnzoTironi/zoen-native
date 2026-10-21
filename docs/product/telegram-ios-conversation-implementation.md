@@ -104,8 +104,76 @@ não substitui execução UIKit/iOS. O núcleo configurado Release e a atualiza�
 dos Pods passaram; a compilação e a validação nativa deste segundo lote
 permanecem pendentes nesta revisão.
 
-O menu extraído do Telegram está num protótipo privado separado, sem registro
-de produção. Retirar uma view React da raiz pode romper o recebimento de
-toques; os testes de orquestração não provam esse contrato nativo. A interface
-segura existente continua ativa até essa barreira ser resolvida. Não há aceite
-global de pixel matching ou animações completas.
+O menu extraído estava num protótipo privado separado nesta revisão anterior.
+O lote integrado descrito abaixo passa a registrar Stage/Source sob a mesma
+raiz Fabric/RNGH. Isso resolve a composição do código, mas ainda exige provar
+o recebimento de toques e a extração no UIKit. Não há aceite global de pixel
+matching ou animações completas.
+
+## App-wide design-system batch — in integration
+
+The user expanded the selected baseline to the entire Telegram iOS UI, including
+profiles, composer and theme customization. This supersedes the earlier
+conversation-only scope. Home, App cards, creation and agents remain Zoen
+extensions; no Telegram messaging/account backend is imported.
+
+The shared presentation layer translates the pinned Classic/Night factories,
+typography, navigation/list/context roles and selected motion constants. Exactly
+two default sky families ship: Day and Night, with local automatic selection
+(day06:00–20:00). Earlier phase preferences migrate without account changes.
+Native appearance editing has two live previews, custom accent/outgoing/sky
+colors, message text size, large static emoji and Reduce Motion. Custom colors
+retain the raw selection for backgrounds while foreground controls and custom
+bubble ink receive contrast protection. Device preference errors are tracked
+per appearance/day/night key; saving Night cannot acknowledge a failed Day write.
+
+The13–26pt continuous font control is currently a Zoen extension; Telegram's
+seven named font steps, theme cloud/import/export, wallpaper photo/pattern and
+automatic-night trigger editor are not yet claimed equivalent. Default Night
+bubble colors retain the source gradient; arbitrary custom bubble colors get
+adaptive ink. The native gradient currently uses the individual bubble bounds;
+Telegram's coordinated viewport-wide gradient alignment remains a visual gap.
+
+Inbox geometry now uses60pt avatars with16pt leading edge, compact16/15/14pt
+title/preview/date, source-inspired folder underlines, actual delivery state,
+muted unread badges and pin/mute indications. Conversation authors appear inside
+group bubbles with38pt avatars; direct messages reserve no group avatar gutter.
+The ten-minute grouping decision keeps real Zoen thread/day boundaries and
+refuses to infer missing forward attribution. Static emoji sizes use the pinned
+font-size rule; animated Telegram emoji assets are not imported. Date headers
+follow actual local civil days, including projected App activity rows.
+
+Three independently frozen packets are composed without replacing durable
+media or message authority: context Stage/Source v196, composer/audio v197 and
+attachment/gallery v197. Shared native module/media files were merged with exact
+base/packet hashes retained privately. A root-owned Stage remains above the
+actual navigation Stack under the same Fabric/RNGH root; its cleanup captures
+the old native instance and participates in existing session/device drains. A
+loading/erasing phase does not prematurely replace its ref with a new account.
+Native menu extraction and media gestures still require the integrated build.
+
+The reusable App keyboard viewport revision02 resizes the actual WebView using
+the existing keyboard clock and publishes its real child layout through the
+existing MCP host contract. No second keyboard clock or document authority is
+created. This is not a claim that the separately observed fast DeckCraft title/
+Notes character loss is repaired.
+
+Earlier d5a419dc Release compilation and code signing passed and its exact bundle
+was sealed; it was not installed or qualified after the user asked for a larger
+UI port first. That older build does not qualify this new app-wide source batch.
+Full app checks, native compilation, hardware gestures/accessibility and pixel
+matching remain distinct gates. Profile is now integrated in the same batch: You,
+Edit Profile, person/conversation details and actual scoped shared media. Profile
+save/picker callbacks retain account/session/epoch and focus fences, including
+blur without unmount. The presentation keeps existing permissions, draft ownership,
+file integrity and disposal barriers. Calls, expanded-avatar transitions and
+server-wide shared-link indexing are not fabricated by this port. None of these
+source inventories sets product/parity/production flags true.
+
+The integration review also corrected two presentation ownership races: native
+settings callbacks now merge only the changed field against the provider's latest
+admitted values, and retained voice controls cannot cancel, pause, retry or send
+a replacement capture/draft. Already admitted Stop and successful send ACKs still
+drain normally. Deterministic compiled-component regressions reproduce the old
+failures and pass with the corrections. These are source/test proofs; actual
+native touch and audio delivery remain part of the integrated device gate.

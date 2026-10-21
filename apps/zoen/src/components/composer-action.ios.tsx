@@ -24,7 +24,7 @@ export function ComposerAction({
   // Telegram iOS f1dd7a2, ChatTextInputPanelNode.swift:2480–2481.
   size = 40,
 }: ComposerActionProps) {
-  const { colors, scheme } = useTheme();
+  const { scheme, presentation: p } = useTheme();
   const glass = isLiquidGlassAvailable();
   return (
     <Host
@@ -51,8 +51,8 @@ export function ComposerAction({
           buttonBorderShape('circle'),
           controlSize(size <= 44 ? 'regular' : 'large'),
           labelStyle('iconOnly'),
-          tint(prominent ? colors.accent : colors.text),
-          foregroundStyle(prominent ? colors.onAccent : colors.text),
+          tint(prominent ? p.chat.input.action : p.chat.input.control),
+          foregroundStyle(prominent ? p.chat.input.actionText : p.chat.input.control),
           disabled(isDisabled),
           frame({ width: size, height: size }),
         ]}

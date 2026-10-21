@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { audioWaveformBars, telegramAudio } from '../core/telegram-audio-presentation';
 import { View } from 'react-native';
 import {
   GestureDetector,
@@ -23,33 +24,33 @@ export function AudioWaveform({
   ink: string;
   compact?: boolean;
 }) {
-  const count = compact ? 24 : 40;
-  const peaks = Array.from({ length: count }, (_, bin) => {
-    const start = Math.floor((bin * levels.length) / count);
-    const end = Math.ceil(((bin + 1) * levels.length) / count);
-    let peak = 0;
-    for (let index = start; index < end; index++) {
-      const level = levels[index];
-      if (typeof level === 'number' && Number.isFinite(level)) peak = Math.max(peak, clamp(level));
-    }
-    return peak;
-  });
+  const [width, setWidth] = useState(0);
+  const heights = audioWaveformBars(width, levels);
+  const fraction = clamp(Number.isFinite(progress) ? progress : 0);
   return (
     <View
       pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={{ flex: 1, height: 32, flexDirection: 'row', gap: 2, alignItems: 'center' }}
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      style={{
+        flex: 1,
+        height: compact ? telegramAudio.previewWaveformHeight : 32,
+        flexDirection: 'row',
+        gap: telegramAudio.waveformGap,
+        alignItems: 'center',
+        overflow: 'hidden',
+      }}
     >
-      {peaks.map((peak, index) => (
+      {heights.map((height, index) => (
         <View
           key={index}
           style={{
-            flex: 1,
-            height: 3 + peak * 26,
-            borderRadius: 2,
+            width: telegramAudio.waveformBar,
+            height,
+            borderRadius: telegramAudio.waveformBar / 2,
             backgroundColor: ink,
-            opacity: (index + 0.5) / count <= progress ? 1 : 0.48,
+            opacity: (index + 0.5) / heights.length <= fraction ? 1 : 0.5,
           }}
         />
       ))}
@@ -82,7 +83,16 @@ export function AudioProgress({
   const messagePan = useMessagePan();
   const consumePress = useMessagePressConsumption();
   const enabled = !disabled && duration > 0 && width > 0;
+  const admission = useRef<{ width: number; enabled: boolean; onSeek: typeof onSeek } | null>(null);
+  useLayoutEffect(() => {
+    admission.current = { width, enabled, onSeek };
+    return () => {
+      admission.current = null;
+    };
+  }, [width, enabled, onSeek]);
   const at = (x: number) => clamp(x / Math.max(1, width));
+  const current = (captured: number | null) =>
+    Boolean(admission.current?.enabled && admission.current.width === captured);
   const pan = usePanGesture({
     enabled,
     runOnJS: true,
@@ -94,10 +104,10 @@ export function AudioProgress({
     },
     onActivate: consumePress,
     onUpdate: (event) => {
-      if (enabled && drag.current === width) setDragging(at(event.x));
+      if (current(drag.current)) setDragging(at(event.x));
     },
     onDeactivate: (event) => {
-      if (!event.canceled && enabled && drag.current === width) onSeek(at(event.x));
+      if (!event.canceled && current(drag.current)) admission.current!.onSeek(at(event.x));
     },
     onFinalize: () => {
       drag.current = null;
@@ -113,7 +123,7 @@ export function AudioProgress({
     },
     onActivate: consumePress,
     onDeactivate: (event) => {
-      if (!event.canceled && enabled && tapping.current === width) onSeek(at(event.x));
+      if (!event.canceled && current(tapping.current)) admission.current!.onSeek(at(event.x));
     },
     onFinalize: () => {
       tapping.current = null;
@@ -146,9 +156,17 @@ export function AudioProgress({
             onSeek(clamp(progress + (action === 'increment' ? 10 : -10) / duration));
         }}
         onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-        style={{ flex: 1, minWidth: 36, height: 44, justifyContent: 'center' }}
+        style={{
+          flex: 1,
+          minWidth: 36,
+          height: 44,
+          justifyContent: compact ? 'flex-start' : 'center',
+          paddingTop: compact ? 1 : 0,
+        }}
       >
-        <AudioWaveform levels={levels} progress={fraction} ink={ink} compact={compact} />
+        <View pointerEvents="none" style={{ width: '100%', height: compact ? 18 : 32 }}>
+          <AudioWaveform levels={levels} progress={fraction} ink={ink} compact={compact} />
+        </View>
       </View>
     </GestureDetector>
   );

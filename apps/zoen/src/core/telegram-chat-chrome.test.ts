@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
+import { telegramPresentation } from '../theme/telegram.ts';
 
 type Element = { type: unknown; props: Record<string, any> };
 const compiled = await Promise.all(
@@ -81,6 +82,7 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
       useTheme: () => ({
         colors: { text: '#fff', secondary: '#aaa', accent: '#9f0' },
         scheme: 'dark',
+        presentation: telegramPresentation('night'),
       }),
     },
     './primitives': { Icon: 'Icon' },

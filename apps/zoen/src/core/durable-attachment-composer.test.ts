@@ -211,7 +211,13 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     });
   };
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
-  const photoPicker = { pick: () => selection(), cancel: () => {}, view: null };
+  let preferredPhotoUri: string | null = null;
+  const photoPicker = {
+    pick: () => selection(),
+    cancel: () => {},
+    view: null,
+    preferredUri: () => preferredPhotoUri,
+  };
   const ports: Record<string, unknown> = {
     react: {
       useMemo: memo,
@@ -324,6 +330,9 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     for (const current of slots) current.cleanup?.();
   };
   return {
+    preferPhoto: (uri: string | null) => {
+      preferredPhotoUri = uri;
+    },
     channel,
     render,
     unmount,
@@ -1057,3 +1066,22 @@ function findStrip(root: unknown): Element {
   }
   throw new Error('AttachmentDraftStrip missing');
 }
+
+test('library preview focus selects the exact returned copy without reordering the durable batch or changing Send', async () => {
+  const f = fixture();
+  f.render();
+  await tick();
+  const picked = [photo('first.jpg'), photo('viewed.jpg')];
+  f.select(picked);
+  f.preferPhoto(picked[1]!.uri);
+  await f.render().pick('photo');
+  const approval = f.approval()!;
+  assert.deepEqual(
+    approval.state.items.map((item) => item.name),
+    ['first.jpg', 'viewed.jpg'],
+  );
+  assert.equal(approval.selectedId, approval.state.items[1]!.mutationId);
+  assert.equal(approval.field.position, 2);
+  assert.equal(f.sendCalls(), 0);
+  assert.equal(approval.state.items[0]!.caption, '');
+});

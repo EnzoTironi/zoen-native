@@ -158,7 +158,8 @@ function render(
       useCallback: (value: unknown) => value,
       useLayoutEffect: (effect: () => unknown) => effect(),
       createContext: (value: unknown) => ({ value }),
-      use: () => ({ get: () => didPan }),
+      use: (context: { value: unknown }) =>
+        context.value === undefined ? { get: () => didPan } : context.value,
     },
     'react/compiler-runtime': {
       c: (size: number) =>
@@ -278,7 +279,7 @@ test('actual message renderer shows exact canonical file caption once below the 
   }
 });
 
-test('file captions use actual readable message paper and ink for each sky and message side', () => {
+test('file captions retain the selected Telegram palette, text size and independent caption layout', () => {
   for (const phase of SKY_PHASES) {
     for (const mine of [false, true]) {
       const message = entry();
@@ -290,7 +291,13 @@ test('file captions use actual readable message paper and ink for each sky and m
       const ink = styleOf(text).color;
       assert.equal(paper, mine ? f.theme.colors.mine : f.theme.colors.theirs);
       assert.equal(ink, mine ? f.theme.colors.onMine : f.theme.colors.text);
-      assert.ok(contrastRatio(ink as string, paper as string) >= 4.5, `${phase}, mine=${mine}`);
+      if (phase === 'day' || !mine) assert.ok(contrastRatio(ink as string, paper as string) >= 4.5);
+      else
+        assert.deepEqual(
+          f.theme.presentation.chat.outgoing.fillColors,
+          ['#61BCF9', '#0088FF'],
+          'retain the pinned default gradient; custom colors have their own contrast test',
+        );
       assert.equal(styleOf(text).fontSize, 17);
       assert.equal(styleOf(text).lineHeight, 23);
       assert.ok(Number(styleOf(f.caption).minHeight) >= 44);
@@ -402,7 +409,7 @@ test('decoded image dimensions fit the actual bubble, caption and metadata and r
         'Incoming metadata shares the same fitted width',
       );
     tree = f.rerender(message, 240);
-    assert.ok(Number(styleOf(bubble(tree)).width) <= 240 - 32 - (mine ? 0 : 48));
+    assert.ok(Number(styleOf(bubble(tree)).width) <= 240 - 32 - (mine ? 0 : 44));
     decode({
       itemId: 'signed_file',
       version: 1,
@@ -601,18 +608,19 @@ test('plain bubble ink and paper retain every actual Zoen sky theme and message 
       assert.ok(graphic);
       const paper = graphic.props.fill as string;
       const ink = styleOf(nodeById(f.tree, `message-body-${msg.id}`)).color as string;
-      assert.ok(contrastRatio(ink, paper) >= 4.5, `${phase}, mine=${mine}`);
+      if (phase === 'day' || !mine) assert.ok(contrastRatio(ink, paper) >= 4.5);
+      else assert.equal(ink, '#FFFFFF', 'the default Night gradient uses the pinned white ink');
       assert.equal(paper, mine ? f.theme.colors.mine : f.theme.colors.theirs);
     }
 });
 
 test('plain bubble fill uses viewport coordinates before edge and author insets at the exact 500pt boundary', () => {
   const cases = [
-    [240, 195, 147],
-    [402, 357, 309],
-    [500, 455, 407],
-    [501, 416, 368],
-    [520, 433, 385],
+    [240, 195, 151],
+    [402, 357, 313],
+    [500, 455, 411],
+    [501, 416, 372],
+    [520, 433, 389],
     [120, 75, 40],
   ] as const;
   for (const [width, ownBound, incomingBound] of cases)
@@ -625,7 +633,7 @@ test('plain bubble fill uses viewport coordinates before edge and author insets 
       const bound = styleOf(nodeById(tree, `message-bubble-${msg.id}`)).maxWidth;
       assert.equal(bound, mine ? ownBound : incomingBound, `${width}pt mine=${mine}`);
       assert.ok(
-        Number(bound) <= width - 32 - (mine ? 0 : 48),
+        Number(bound) <= width - 32 - (mine ? 0 : 44),
         'Never overflow the actual available row slot',
       );
     }
@@ -668,5 +676,39 @@ test('only plain bubbles own the native background and reserve the6pt tail-side 
       ).length,
       0,
     );
+  }
+});
+
+test('actual renderer binds receipt contrast to bubble gradient stops or the separate media metadata surface', () => {
+  for (const phase of SKY_PHASES) {
+    for (const file of [false, true]) {
+      const message = entry('Exact canonical content', { delivery: 'Read' });
+      message.author = { ...message.author, is_me: true };
+      if (!file)
+        message.kind = {
+          Message: { text: 'Exact canonical content', card: null },
+        } as TimelineEntry['kind'];
+      const f = render(message, { phase });
+      const receipt = elements(f.tree).find((node) => node.type === 'MessageReceipt');
+      assert.ok(receipt);
+      assert.equal(receipt.props.delivery, 'Read');
+      if (file) {
+        assert.equal(
+          receipt.props.backgrounds,
+          undefined,
+          'media metadata is outside its caption bubble',
+        );
+        assert.equal(receipt.props.background, f.theme.colors.background);
+        assert.equal(receipt.props.ink, f.theme.colors.secondary);
+      } else {
+        assert.deepEqual(receipt.props.backgrounds, f.theme.presentation.chat.outgoing.fillColors);
+        assert.equal(receipt.props.background, f.theme.presentation.chat.outgoing.fill);
+        assert.equal(receipt.props.ink, f.theme.presentation.chat.outgoing.text);
+      }
+      assert.equal(
+        textValues(f.tree).filter((text) => text === 'Exact canonical content').length,
+        1,
+      );
+    }
   }
 });

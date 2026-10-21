@@ -4,6 +4,8 @@ export const chat = defineFeature(
   {
     all: 'All',
     unread: 'Unread',
+    today: 'Today',
+    yesterday: 'Yesterday',
     people: 'People',
     groups: 'Groups',
     communities: 'Communities',
@@ -201,6 +203,8 @@ export const chat = defineFeature(
   {
     all: 'Todas',
     unread: 'Não lidas',
+    today: 'Hoje',
+    yesterday: 'Ontem',
     people: 'Pessoas',
     groups: 'Grupos',
     communities: 'Comunidades',

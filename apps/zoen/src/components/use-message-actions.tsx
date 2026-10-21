@@ -13,6 +13,7 @@ import { useDialogs } from './dialogs';
 import { MessageActions } from './message-actions';
 import { ReactionDetails } from './reaction-details';
 import type { MeasureMessageAnchor, MessageAnchor } from './message-actions.types';
+import type { MessageContextRequest } from './message-context-ports';
 
 export type { MeasureMessageAnchor, MessageAnchor } from './message-actions.types';
 export type MessageActionMode = 'reactions' | 'actions' | 'participants' | 'emoji';
@@ -67,6 +68,7 @@ export function useMessageActions({
     anchor?: MessageAnchor;
     emoji?: string;
     fromParticipants?: boolean;
+    nativeSource?: MessageContextRequest;
   } | null>(null);
   useLayoutEffect(() => {
     if (latest.current.scope !== scope || (disabled && !latest.current.disabled)) {
@@ -228,9 +230,68 @@ export function useMessageActions({
       anchor?: MessageAnchor,
       emoji?: string,
       measureAnchor?: MeasureMessageAnchor,
+      nativeSource?: MessageContextRequest,
     ) => {
       const value = current(entry);
-      if (!mounted.current || !value || pending.current || profileAttempt.current) return;
+      if (
+        !mounted.current ||
+        !value ||
+        pending.current ||
+        profileAttempt.current ||
+        (nativeSource && !nativeSource.current())
+      )
+        return;
+      if (nativeSource?.kind === 'double') {
+        // Exact native admission fences a held/replayed event after a NEW touch.
+        // The native view has no mutation authority; current() still checks the
+        // account, access, signed message and focus again after this bridge await.
+        const attempt = {
+          epoch: profileEpoch.current,
+          scope,
+          messageId: value.id,
+          mode: actionMode,
+          emoji,
+        };
+        openAttempt.current = attempt;
+        try {
+          const admitted = await nativeSource.native.consumeGesture(
+            nativeSource.binding,
+            nativeSource.gestureId,
+          );
+          const canonical = current(value);
+          if (
+            admitted &&
+            mounted.current &&
+            openAttempt.current === attempt &&
+            profileEpoch.current === attempt.epoch &&
+            nativeSource.current() &&
+            canonical &&
+            !pending.current
+          ) {
+            // Product default only; no invented saved reaction preference.
+            void react(
+              canonical,
+              canonical.reactions.some((reaction) => reaction.mine && reaction.emoji === '❤️')
+                ? null
+                : '❤️',
+            );
+          }
+        } catch (reason) {
+          if (
+            mounted.current &&
+            openAttempt.current === attempt &&
+            nativeSource.current() &&
+            current(value)
+          )
+            void inform(
+              t('chat.thisCouldNotBeCompleted'),
+              reason instanceof Error ? reason.message : t('chat.tryAgain'),
+            );
+        } finally {
+          if (openAttempt.current === attempt) openAttempt.current = null;
+        }
+        return;
+      }
       if (
         openAttempt.current?.messageId === value.id &&
         openAttempt.current.mode === actionMode &&
@@ -250,7 +311,8 @@ export function useMessageActions({
         openAttempt.current === attempt &&
         profileEpoch.current === attempt.epoch &&
         !pending.current &&
-        Boolean(current(value));
+        Boolean(current(value)) &&
+        (!nativeSource || nativeSource.current());
       try {
         // A native modal hides the keyboard. Finish that movement before
         // measuring the real bubble, rather than retaining its lifted position.
@@ -273,6 +335,7 @@ export function useMessageActions({
           mode: actionMode,
           anchor: measured ?? undefined,
           emoji,
+          nativeSource,
         });
       } catch (reason) {
         if (active())
@@ -349,6 +412,8 @@ export function useMessageActions({
           entry={selected}
           mode={selection?.mode === 'reactions' ? 'reactions' : 'actions'}
           anchor={selection?.anchor}
+          nativeSource={selection?.nativeSource}
+          isCurrent={() => Boolean(selected && current(selected))}
           pending={busy}
           error={failure?.scope === scope && failure.id === selected?.id ? failure.text : undefined}
           onClose={close}

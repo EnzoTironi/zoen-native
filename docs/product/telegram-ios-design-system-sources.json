@@ -1,0 +1,102 @@
+{
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "evidence": "Pinned source inspection; not native runtime or pixel qualification. Dark Tinted is study material, not a shipped preset.",
+  "files": [
+    {
+      "path": "submodules/TelegramPresentationData/Sources/DefaultDayPresentationTheme.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramPresentationData/Sources/DefaultDayPresentationTheme.swift",
+      "sha256": "7bf8e82dc967216b70654f04e5a9bf54866af7ce9c2dd4711770dc06c0533a00",
+      "bytes": 77983
+    },
+    {
+      "path": "submodules/TelegramPresentationData/Sources/DefaultDarkPresentationTheme.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramPresentationData/Sources/DefaultDarkPresentationTheme.swift",
+      "sha256": "372e3f82b5b78886ad75a5153436c90add13abaeb99cd7a401437ba9d6b15b34",
+      "bytes": 49096
+    },
+    {
+      "path": "submodules/TelegramPresentationData/Sources/DefaultDarkTintedPresentationTheme.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramPresentationData/Sources/DefaultDarkTintedPresentationTheme.swift",
+      "sha256": "9ff3d1b2b218aeaad7830c845fcd59e87ffe808d4ff4c61ce1e6d9576aa44ebb",
+      "bytes": 65139
+    },
+    {
+      "path": "submodules/TelegramPresentationData/Sources/PresentationTheme.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramPresentationData/Sources/PresentationTheme.swift",
+      "sha256": "e0df884681e586f848df68b939c4c53d0ed6e1dec53472a54f65f9037884dcd5",
+      "bytes": 108958
+    },
+    {
+      "path": "submodules/Display/Source/Font.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/Font.swift",
+      "sha256": "12ff2af7525693aee3b792631387bfee6980898eb507117c9e021e77c26cd99c",
+      "bytes": 13866
+    },
+    {
+      "path": "submodules/ChatListUI/Sources/Node/ChatListItem.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ChatListUI/Sources/Node/ChatListItem.swift",
+      "sha256": "93bad15cd4224a2b1de909633da116f2251c32a138208cbdd46ecd860a5b4c45",
+      "bytes": 360907
+    },
+    {
+      "path": "submodules/ItemListUI/Sources/Items/ItemListSectionHeaderItem.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ItemListUI/Sources/Items/ItemListSectionHeaderItem.swift",
+      "sha256": "8c66333c69560f4343e2d79a87297262b1d40432b7568a4b3dc4a2dc91dc0998",
+      "bytes": 22141
+    },
+    {
+      "path": "submodules/SettingsUI/Sources/Themes/ThemeSettingsController.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/SettingsUI/Sources/Themes/ThemeSettingsController.swift",
+      "sha256": "cc9e432418fa77f68fc89bb59c9e4a611ca7a29c357bf807016f49cf616671da",
+      "bytes": 92902
+    },
+    {
+      "path": "submodules/SettingsUI/Sources/Themes/ThemeSettingsAccentColorItem.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/SettingsUI/Sources/Themes/ThemeSettingsAccentColorItem.swift",
+      "sha256": "f1693cc50cdbbb43bdec1732afcdf301f77497e1f3708eb5784dbd3f5d1e8b5d",
+      "bytes": 46738
+    },
+    {
+      "path": "submodules/SettingsUI/Sources/Themes/ThemeSettingsChatPreviewItem.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/SettingsUI/Sources/Themes/ThemeSettingsChatPreviewItem.swift",
+      "sha256": "63468839b11bca7d40e7b4a8509d56b40cb89cb1a0c8c18b470403a4cee7948d",
+      "bytes": 17617
+    },
+    {
+      "path": "submodules/TelegramUI/Components/Settings/ThemeAccentColorScreen/Sources/ThemeAccentColorController.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Settings/ThemeAccentColorScreen/Sources/ThemeAccentColorController.swift",
+      "sha256": "794e013e7e3cb484f5f6ea9e1bbf6847a27bf838d1cab1336a7a01d17416bda1",
+      "bytes": 39324
+    },
+    {
+      "path": "submodules/TelegramUI/Components/Settings/ThemeAccentColorScreen/Sources/ThemeAccentColorControllerNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Settings/ThemeAccentColorScreen/Sources/ThemeAccentColorControllerNode.swift",
+      "sha256": "c6eccd08bc9647fd5d9c90aae3597c146cd15a2cae84666df55b57d574536430",
+      "bytes": 80764
+    },
+    {
+      "path": "submodules/TelegramUI/Components/Settings/ThemeSettingsThemeItem/Sources/ThemeSettingsThemeItem.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Settings/ThemeSettingsThemeItem/Sources/ThemeSettingsThemeItem.swift",
+      "sha256": "2cf46de95a89c865cc07413475e0bfc9abed94b573f51693ce61a0642f839d8f",
+      "bytes": 37551
+    },
+    {
+      "path": "submodules/TelegramUI/Components/Chat/ChatMessageStickerItemNode/Sources/ChatMessageStickerItemNode.swift",
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "sha256": "d28aa864698e27313f418344e855eb2f71c707ab20fd7973c45b5e22c74f68f6",
+      "size": 128342
+    },
+    {
+      "path": "submodules/TelegramUI/Components/Chat/ChatMessageAnimatedStickerItemNode/Sources/ChatMessageAnimatedStickerItemNode.swift",
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "sha256": "830e0f72eb986d3d00ec3142ce9a759175e96b2c8d1a4e474ac169932d516efa",
+      "size": 183875
+    },
+    {
+      "path": "submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/Sources/ChatMessageTextBubbleContentNode.swift",
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "sha256": "c72d288ec729dcf56b29970cb388e17ae3694c1a8b63861d66021f312b8d8d28",
+      "size": 103660
+    }
+  ]
+}

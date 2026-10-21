@@ -5,6 +5,7 @@ export type MessageBubbleGraphicProps = {
   above: boolean;
   below: boolean;
   fill: string;
+  fillColors?: readonly string[];
   /** Only an admitted parent layout pass may enable the pinned contents transition. */
   animateChanges?: boolean;
 };
@@ -12,6 +13,7 @@ export type MessageReceiptGraphicProps = {
   ownerKey?: string;
   shape: 'clock' | 'single' | 'double';
   color: string;
+  reducedMotion?: boolean;
 };
 
 export function messageBubbleGeometry({

@@ -3,10 +3,11 @@ import { ProfileAvatar } from '../../../profile/profile-avatar';
 import { Stack, router } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useClient } from '../../../core/provider';
 import { useTheme } from '../../../theme';
-import { EmptyState } from '../../../components/primitives';
+import { EmptyState, Icon } from '../../../components/primitives';
+import { MessageReceipt } from '../../../components/message-receipt';
 import { ChatsActions } from '../../../components/chats-actions';
 import { useHome } from '../../../home/provider';
 import { MiniappRail } from '../../../miniapps/rail';
@@ -21,7 +22,7 @@ const filters = [
 ] as const;
 export default function Chats() {
   const { snapshot, store } = useClient();
-  const { colors } = useTheme();
+  const { presentation: p } = useTheme();
   const home = useHome();
   const { items } = home;
   const [filter, setFilter] = useState<string>('all');
@@ -63,7 +64,7 @@ export default function Chats() {
             <View
               style={{
                 paddingTop: 18,
-                paddingHorizontal: 20,
+                paddingHorizontal: 16,
                 paddingBottom: 6,
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -74,7 +75,7 @@ export default function Chats() {
               <Text
                 testID="chats-title"
                 accessibilityRole="header"
-                style={{ color: colors.text, fontSize: 34, fontWeight: '700', letterSpacing: -1 }}
+                style={{ ...p.typography.largeTitle, color: p.text }}
               >
                 {t('chat.chats')}
               </Text>
@@ -103,7 +104,7 @@ export default function Chats() {
               horizontal
               style={{ backgroundColor: 'transparent' }}
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingTop: 12 }}
+              contentContainerStyle={{ gap: 24, paddingHorizontal: 16, paddingTop: 8 }}
             >
               {filters.map((item) => (
                 <Pressable
@@ -113,25 +114,35 @@ export default function Chats() {
                   aria-pressed={process.env.EXPO_OS === 'web' ? filter === item.id : undefined}
                   onPress={() => setFilter(item.id)}
                   style={({ pressed }) => ({
-                    minHeight: 36,
-                    paddingHorizontal: 14,
+                    minHeight: 44,
+                    paddingHorizontal: 0,
                     justifyContent: 'center',
-                    borderRadius: 18,
-                    backgroundColor: filter === item.id ? colors.text : 'transparent',
-                    borderWidth: 1,
-                    borderColor: filter === item.id ? colors.text : colors.line,
+                    backgroundColor: 'transparent',
                     opacity: pressed ? 0.65 : 1,
                   })}
                 >
                   <Text
                     style={{
-                      color: filter === item.id ? colors.surface : colors.secondary,
-                      fontSize: 14,
+                      color: filter === item.id ? p.accent : p.chatList.message,
+                      fontSize: 15,
                       fontWeight: '600',
                     }}
                   >
                     {item.label}
                   </Text>
+                  {filter === item.id ? (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: 3,
+                        borderRadius: 1.5,
+                        backgroundColor: p.accent,
+                      }}
+                    />
+                  ) : null}
                 </Pressable>
               ))}
             </ScrollView>
@@ -158,23 +169,26 @@ export default function Chats() {
             onPress={() => router.push({ pathname: '/chat/[id]', params: { id: chat.id } })}
             style={({ pressed }) => ({
               flexDirection: 'row',
-              gap: 14,
-              paddingHorizontal: 20,
-              paddingVertical: 14,
-              minHeight: 88,
+              gap: 10,
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              minHeight: 76,
               alignItems: 'center',
-              backgroundColor: 'transparent',
-              opacity: pressed ? 0.65 : 1,
+              backgroundColor: pressed
+                ? p.chatList.highlighted
+                : chat.pinned
+                  ? `${p.chatList.pinned}CC`
+                  : 'transparent',
             })}
           >
             <ProfileAvatar
               person={chat.counterpart}
               name={chat.title}
               color={chat.counterpart?.tint_hex}
-              size={54}
+              size={60}
               agent={chat.counterpart?.kind === 'Agent'}
             />
-            <View style={{ flex: 1, gap: 6 }}>
+            <View style={{ flex: 1, gap: 3 }}>
               <View
                 style={{
                   flexDirection: 'row',
@@ -187,16 +201,22 @@ export default function Chats() {
                   numberOfLines={1}
                   style={{
                     flex: 1,
-                    fontSize: 17,
-                    fontWeight: chat.unread ? '700' : '600',
-                    color: colors.text,
+                    fontSize: 16,
+                    fontWeight: '600',
+                    color: p.chatList.title,
                   }}
                 >
                   {chat.title}
                 </Text>
-                <Text
-                  style={{ fontSize: 12, color: chat.unread ? colors.accent : colors.secondary }}
-                >
+                {chat.last_author?.is_me && chat.last_delivery ? (
+                  <MessageReceipt
+                    delivery={chat.last_delivery}
+                    ownerKey={`${chat.id}:${chat.last_at_ms}`}
+                    ink={p.chatList.date}
+                    background={p.chatList.background}
+                  />
+                ) : null}
+                <Text style={{ fontSize: 14, color: p.chatList.date }}>
                   {Number(chat.last_at_ms)
                     ? new Date(Number(chat.last_at_ms)).toLocaleTimeString(formatLocale, {
                         hour: '2-digit',
@@ -208,29 +228,59 @@ export default function Chats() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Text
                   numberOfLines={2}
-                  style={{ flex: 1, lineHeight: 20, fontSize: 14, color: colors.secondary }}
+                  style={{ flex: 1, lineHeight: 19, fontSize: 15, color: p.chatList.message }}
                 >
                   {chat.last_preview}
                 </Text>
                 {chat.unread ? (
                   <View
                     style={{
-                      backgroundColor: colors.accent,
-                      minWidth: 22,
-                      height: 22,
-                      borderRadius: 11,
+                      backgroundColor: chat.muted ? p.chatList.mutedUnread : p.chatList.unread,
+                      minWidth: 20,
+                      height: 20,
+                      borderRadius: 10,
                       paddingHorizontal: 6,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Text style={{ color: colors.onAccent, fontSize: 12, fontWeight: '700' }}>
+                    <Text
+                      style={{
+                        color: chat.muted ? '#FFFFFF' : p.chatList.unreadText,
+                        fontSize: 12,
+                        fontWeight: '600',
+                        fontVariant: ['tabular-nums'],
+                      }}
+                    >
                       {chat.unread > 99 ? '99+' : chat.unread}
                     </Text>
                   </View>
+                ) : chat.pinned ? (
+                  <Icon
+                    name={{ ios: 'pin.fill', android: 'push_pin' }}
+                    size={14}
+                    color={p.chatList.pinnedIcon}
+                  />
+                ) : chat.muted ? (
+                  <Icon
+                    name={{ ios: 'bell.slash.fill', android: 'notifications_off' }}
+                    size={14}
+                    color={p.chatList.pinnedIcon}
+                  />
                 ) : null}
               </View>
             </View>
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: 86,
+                right: 0,
+                bottom: 0,
+                height: StyleSheet.hairlineWidth,
+                backgroundColor: p.separator,
+              }}
+            />
           </Pressable>
         )}
         refreshing={false}

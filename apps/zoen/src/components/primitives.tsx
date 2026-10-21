@@ -13,6 +13,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { useTheme } from '../theme';
+import { contrastingInk } from '../theme/telegram';
 
 export function Icon({
   name,
@@ -44,7 +45,7 @@ export function IconButton({
   onPress: () => void;
   disabled?: boolean;
 }) {
-  const { colors } = useTheme();
+  const { presentation: p } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -58,10 +59,10 @@ export function IconButton({
         justifyContent: 'center',
         opacity: disabled ? 0.35 : pressed ? 0.5 : 1,
         borderRadius: 22,
-        backgroundColor: pressed ? colors.muted : 'transparent',
+        backgroundColor: pressed ? p.list.highlighted : 'transparent',
       })}
     >
-      <Icon name={name} />
+      <Icon name={name} color={p.navigation.control} />
     </Pressable>
   );
 }
@@ -80,13 +81,9 @@ export function NativeButton({
   destructive?: boolean;
   testID?: string;
 }) {
-  const { colors, scheme } = useTheme();
+  const { presentation: p, scheme } = useTheme();
   return (
-    <Host
-      matchContents
-      colorScheme={scheme}
-      seedColor={destructive ? colors.danger : colors.accent}
-    >
+    <Host matchContents colorScheme={scheme} seedColor={destructive ? p.destructive : p.accent}>
       <Button
         testID={testID}
         label={label}
@@ -98,23 +95,23 @@ export function NativeButton({
   );
 }
 export function Field({ label, ...props }: TextInputProps & { label: string }) {
-  const { colors } = useTheme();
+  const { presentation: p } = useTheme();
   return (
     <View style={{ gap: 8 }}>
-      <Text style={{ fontSize: 14, fontWeight: '600', color: colors.secondary }}>{label}</Text>
+      <Text style={{ ...p.typography.footnote, color: p.list.section }}>{label}</Text>
       <TextInput
         {...props}
         accessibilityLabel={label}
-        placeholderTextColor={colors.tertiary}
+        placeholderTextColor={p.search.placeholder}
         style={[
           {
-            minHeight: 52,
+            minHeight: 44,
             paddingHorizontal: 16,
-            paddingVertical: 14,
+            paddingVertical: 10,
             fontSize: 17,
-            color: colors.text,
-            backgroundColor: colors.muted,
-            borderRadius: 16,
+            color: p.list.text,
+            backgroundColor: p.list.block,
+            borderRadius: 10,
             borderCurve: 'continuous',
           },
           props.style,
@@ -160,7 +157,11 @@ export function Avatar({
         // adjacent accessible name scales independently with Dynamic Type.
         <Text
           allowFontScaling={false}
-          style={{ fontSize: size * 0.32, fontWeight: '600', color: '#FFFFFF' }}
+          style={{
+            fontSize: size * 0.32,
+            fontWeight: '600',
+            color: contrastingInk(color ?? colors.accent),
+          }}
         >
           {name
             .split(/\s+/)

@@ -64,7 +64,7 @@ export function VoiceReview({
     sharedPreview?.playback.getSnapshot ?? noPlaybackSnapshot,
   );
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
-  const { colors, scheme } = useTheme();
+  const { colors, scheme, presentation: p } = useTheme();
   const [local, setLocal] = useState<LocalState>({ session, sending: false, error: null });
   const [editor, setEditor] = useState({ session, open: initiallyEditing });
   const pendingSend = useRef(new Set<VoiceSession>());
@@ -353,10 +353,10 @@ export function VoiceReview({
             />
           ) : null}
 
-          <View style={{ gap: 12 }}>
+          <View style={{ gap: 12, backgroundColor: p.list.block, borderRadius: 10, padding: 12 }}>
             <Text
               accessibilityRole="header"
-              style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
+              style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}
             >
               {t('media.voiceTranscript')}
             </Text>
@@ -410,10 +410,10 @@ export function VoiceReview({
           </View>
 
           {suggestions && (suggestions.fillers.length > 0 || suggestions.pauses.length > 0) ? (
-            <View style={{ gap: 12 }}>
+            <View style={{ gap: 12, backgroundColor: p.list.block, borderRadius: 10, padding: 12 }}>
               <Text
                 accessibilityRole="header"
-                style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
+                style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}
               >
                 {t('media.voiceSuggestions')}
               </Text>

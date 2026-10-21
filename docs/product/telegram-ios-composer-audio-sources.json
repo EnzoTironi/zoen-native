@@ -1,0 +1,116 @@
+[
+  {
+    "path": "submodules/TelegramUI/Components/AudioWaveformNode/Sources/AudioWaveformNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/AudioWaveformNode/Sources/AudioWaveformNode.swift",
+    "bytes": 9924,
+    "sha256": "8734c5460b23624487214617f77729b20a300c59daccc437231542edb9643452"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/Chat/ChatMessageInteractiveFileNode/Sources/ChatMessageInteractiveFileNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ChatMessageInteractiveFileNode/Sources/ChatMessageInteractiveFileNode.swift",
+    "bytes": 129875,
+    "sha256": "19560d2b46091417073e7782c9257f18cccef70cc35e47e9812a00fa3a1b14ad"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/Chat/ChatRecordingPreviewInputPanelNode/Sources/ChatRecordingPreviewInputPanelNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ChatRecordingPreviewInputPanelNode/Sources/ChatRecordingPreviewInputPanelNode.swift",
+    "bytes": 33465,
+    "sha256": "f85f8cb572363873ed6273449060f4250ac90b24e7c0f37af0c9594bd74a9710"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/Chat/ChatTextInputActionButtonsNode/Sources/ChatTextInputActionButtonsNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ChatTextInputActionButtonsNode/Sources/ChatTextInputActionButtonsNode.swift",
+    "bytes": 32517,
+    "sha256": "45458e6c1d6313e9dea8c390f638c9f0a69980dfc318e7701ef2a05f5b04fe2e"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/Chat/ChatTextInputAudioRecordingCancelIndicator/Sources/ChatTextInputAudioRecordingCancelIndicator.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ChatTextInputAudioRecordingCancelIndicator/Sources/ChatTextInputAudioRecordingCancelIndicator.swift",
+    "bytes": 8046,
+    "sha256": "249999c8e6d7b70ee2d03a4e44e4a2111906bc09f8f45d2711a845fb5a28a932"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/Chat/ChatTextInputAudioRecordingTimeNode/Sources/ChatTextInputAudioRecordingTimeNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ChatTextInputAudioRecordingTimeNode/Sources/ChatTextInputAudioRecordingTimeNode.swift",
+    "bytes": 6088,
+    "sha256": "e02b0810ba5ad0f8ba09d5785535ec90a9c0004660d3d740d3b1c8fb85700b75"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputFontMetrics.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputFontMetrics.swift",
+    "bytes": 2894,
+    "sha256": "17ba70ff1059eed0a9c2ae751a8914acb861bacc4c2eb8a8f6fecb63ace2f215"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelComponent.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelComponent.swift",
+    "bytes": 42301,
+    "sha256": "f16675640f7d169a19e012d5441edfc8dfbff81ff76dcdf714aa3890e7f98b06"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift",
+    "bytes": 344617,
+    "sha256": "87512514ad430d822d18362d6546d62eb00125a4f36992cc56752c32f606d064"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/Chat/ReplyAccessoryPanelNode/Sources/ReplyAccessoryPanelNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ReplyAccessoryPanelNode/Sources/ReplyAccessoryPanelNode.swift",
+    "bytes": 31380,
+    "sha256": "5b63a8b472ee986da4c585fe1eec1a16545d2c3c3c28e364c42b5c5655c2e25e"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/ChatTextInputMediaRecordingButton/Sources/ChatTextInputAudioRecordingOverlayButton.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ChatTextInputMediaRecordingButton/Sources/ChatTextInputAudioRecordingOverlayButton.swift",
+    "bytes": 7551,
+    "sha256": "3cb4dfae5e7a2f43477a8e3699e0058f4c7f0f67d0ee5b5235af743fe90e13e2"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/ChatTextInputMediaRecordingButton/Sources/ChatTextInputMediaRecordingButton.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ChatTextInputMediaRecordingButton/Sources/ChatTextInputMediaRecordingButton.swift",
+    "bytes": 31394,
+    "sha256": "ca176506a48c5bb1965fa4a77d39c4947df5e579927df30b69423647bc0c66d6"
+  },
+  {
+    "path": "submodules/TelegramUI/Components/ChatTextInputMediaRecordingButton/Sources/LockView.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ChatTextInputMediaRecordingButton/Sources/LockView.swift",
+    "bytes": 3932,
+    "sha256": "6554423e16f6ba7af1a465388843979b8a7ab46357c66bc61be3f9ed4f27b4e6"
+  },
+  {
+    "path": "submodules/TelegramUI/Sources/EditAccessoryPanelNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Sources/EditAccessoryPanelNode.swift",
+    "bytes": 22817,
+    "sha256": "4b03e52ae4a597c41970cfb507c1ba6e4885bbcb9cb8cea9e9692ad0e95f99d0"
+  },
+  {
+    "path": "submodules/LegacyComponents/Sources/TGModernConversationInputMicButton.m",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Sources/TGModernConversationInputMicButton.m",
+    "bytes": 44021,
+    "sha256": "2e0d833764c150a2c8e59e8f3644fce01676af3bc2c13f169f6ed52a833340ab"
+  },
+  {
+    "path": "submodules/LegacyComponents/PublicHeaders/LegacyComponents/TGModernConversationInputMicButton.h",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/PublicHeaders/LegacyComponents/TGModernConversationInputMicButton.h",
+    "bytes": 3350,
+    "sha256": "c3a611fcbcef64e3bc56f6f2e3bbbef0407be5acca70c9bf97d03f9b7ca6cd0a"
+  },
+  {
+    "path": "submodules/MediaPlayer/Sources/MediaPlayerScrubbingNode.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/MediaPlayer/Sources/MediaPlayerScrubbingNode.swift",
+    "bytes": 59374,
+    "sha256": "d1a7935b85d67b6e6bebd0e52091eea547da9ca9c6657fc52f97f990de53594e"
+  },
+  {
+    "path": "submodules/Display/Source/Spring.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/Spring.swift",
+    "bytes": 1511,
+    "sha256": "5e0bc7ac4dbc37442c8556a7a54a4160218cc612f2818fe115683450518ee006"
+  },
+  {
+    "path": "submodules/Display/Source/CAAnimationUtils.swift",
+    "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/CAAnimationUtils.swift",
+    "bytes": 31263,
+    "sha256": "d15229d08439c36f6583bb2635cbd7e289adcd408c1767d6962570a388fdb6e5"
+  }
+]

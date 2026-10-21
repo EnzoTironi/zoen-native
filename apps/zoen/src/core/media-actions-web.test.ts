@@ -33,7 +33,7 @@ const compiled = await build({
     },
   ],
 });
-const theme = resolveSkyTheme('deepNight', new Date(2026, 9, 19));
+const theme = resolveSkyTheme('night', new Date(2026, 9, 19));
 const result = {
   exports: {} as { MediaActions: (props: MediaActionsProps) => ReturnType<typeof createElement> },
 };

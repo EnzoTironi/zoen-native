@@ -438,7 +438,12 @@ export function useDurableAttachmentComposer(
             release: async () => discardCacheCopy(asset.uri),
           });
         delegated = true;
-        publish({ previews: new Map(runtime.previews), selected: additions[0]?.id ?? null });
+        const preferred = kind === 'photo' ? photos.preferredUri?.() : null;
+        publish({
+          previews: new Map(runtime.previews),
+          selected:
+            additions.find((asset) => asset.uri === preferred)?.id ?? additions[0]?.id ?? null,
+        });
         const next: MediaDraftAttachments = {
           kind: 'attachments',
           reply_to: existing ? existing.reply_to : admission.current.replyTo,

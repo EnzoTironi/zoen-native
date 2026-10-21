@@ -29,7 +29,7 @@ function ChatNavigationBar({
   native,
   ...props
 }: ChatHeaderProps & { native: NativeStackHeaderProps }) {
-  const { colors, scheme } = useTheme();
+  const { presentation: p, scheme } = useTheme();
   const { width, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const search = props.search;
@@ -76,7 +76,7 @@ function ChatNavigationBar({
         {children}
       </GlassView>
     ) : (
-      <View style={{ borderRadius: 22, backgroundColor: colors.surface }}>{children}</View>
+      <View style={{ borderRadius: 22, backgroundColor: p.navigation.background }}>{children}</View>
     );
   return (
     <View
@@ -103,6 +103,7 @@ function ChatNavigationBar({
               <Icon
                 name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
                 size={22}
+                color={p.navigation.control}
               />
             </Pressable>,
           )}
@@ -153,7 +154,7 @@ function ChatNavigationBar({
                 <Icon
                   name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
                   size={22}
-                  color={search.active ? colors.accent : colors.text}
+                  color={p.navigation.control}
                 />
               </Pressable>
             ) : null}

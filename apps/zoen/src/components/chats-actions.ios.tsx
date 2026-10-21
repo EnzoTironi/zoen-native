@@ -8,7 +8,7 @@ import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 
 export function ChatsActions() {
-  const { colors, scheme } = useTheme();
+  const { presentation: p, scheme } = useTheme();
   const content = (
     <Host style={{ width: 96, height: 44 }} colorScheme={scheme}>
       <HStack spacing={0}>
@@ -20,7 +20,7 @@ export function ChatsActions() {
             buttonStyle('plain'),
             labelStyle('iconOnly'),
             font({ size: 19 }),
-            foregroundStyle(colors.text),
+            foregroundStyle(p.navigation.control),
             frame({ width: 48, height: 44 }),
           ]}
         />
@@ -32,7 +32,7 @@ export function ChatsActions() {
             buttonStyle('plain'),
             labelStyle('iconOnly'),
             font({ size: 19 }),
-            foregroundStyle(colors.text),
+            foregroundStyle(p.navigation.control),
             frame({ width: 48, height: 44 }),
           ]}
         />
@@ -49,6 +49,6 @@ export function ChatsActions() {
       {content}
     </GlassView>
   ) : (
-    <View style={{ borderRadius: 24, backgroundColor: colors.surface }}>{content}</View>
+    <View style={{ borderRadius: 24, backgroundColor: p.navigation.background }}>{content}</View>
   );
 }

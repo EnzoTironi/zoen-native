@@ -15,7 +15,7 @@ import {
 import { Image } from 'expo-image';
 import { Camera, CameraView } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -33,6 +33,7 @@ import { t } from '../i18n';
 import { AttachmentPhotoSession, type PhotoPickerState } from './attachment-photo-session';
 import { photoLibrary, type PhotoLibraryItem } from './attachment-photo-library';
 import { pickAttachmentAssets } from './attachment-picker';
+import { AttachmentImageSurface } from './attachment-image-surface';
 
 function Action({
   label,
@@ -42,7 +43,7 @@ function Action({
   testID,
 }: {
   label: string;
-  symbol: 'xmark' | 'arrow.right';
+  symbol: 'xmark' | 'arrow.right' | 'chevron.left';
   onPress(): void;
   unavailable?: boolean;
   testID: string;
@@ -70,9 +71,11 @@ function Action({
 export function AttachmentPhotoGrid({
   state,
   session,
+  onPreview,
 }: {
   state: PhotoPickerState;
   session: AttachmentPhotoSession;
+  onPreview(item: PhotoLibraryItem): void;
 }) {
   const { width, height } = useWindowDimensions();
   const { colors } = useTheme();
@@ -99,63 +102,78 @@ export function AttachmentPhotoGrid({
   const tile = (item: PhotoLibraryItem, x?: number, y?: number) => {
     const selected = ids.indexOf(item.id);
     return (
-      <Pressable
+      <View
         key={item.id}
-        testID={`attachment-photo-${item.id}`}
-        accessibilityRole="checkbox"
-        accessibilityLabel={item.filename ?? t('media.photosAndVideos')}
-        accessibilityState={{ checked: selected >= 0, disabled: state.busy }}
-        onPress={() => {
-          if (admitted()) {
-            void Haptics.selectionAsync().catch(() => {});
-            session.select(item);
-          }
-        }}
         style={{
           width: size,
           height: size,
           ...(x === undefined ? {} : { position: 'absolute', left: x, top: y }),
         }}
       >
-        <Image
-          source={{ uri: item.id }}
-          style={{ width: size, height: size }}
-          contentFit="cover"
-          cachePolicy="none"
-          recyclingKey={item.id}
-        />
+        <Pressable
+          testID={`attachment-photo-preview-${item.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={t('media.previewAttachment', {
+            name: item.filename ?? t('media.photosAndVideos'),
+          })}
+          disabled={state.busy}
+          onPress={() => {
+            if (admitted()) onPreview(item);
+          }}
+          style={{ position: 'absolute', inset: 0 }}
+        >
+          <Image
+            source={{ uri: item.id }}
+            style={{ width: size, height: size }}
+            contentFit="cover"
+            cachePolicy="none"
+            recyclingKey={item.id}
+          />
+        </Pressable>
         {selected >= 0 ? (
           <View
             pointerEvents="none"
             style={{ position: 'absolute', inset: 0, borderWidth: 3, borderColor: colors.accent }}
           />
         ) : null}
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            right: 7,
-            top: 7,
-            width: 24,
-            height: 24,
-            borderRadius: 12,
-            borderWidth: selected < 0 ? 1.5 : 0,
-            borderColor: '#FFFFFF',
-            backgroundColor: selected >= 0 ? colors.accent : '#00000040',
-            alignItems: 'center',
-            justifyContent: 'center',
+        <Pressable
+          testID={`attachment-photo-${item.id}`}
+          accessibilityRole="checkbox"
+          accessibilityLabel={item.filename ?? t('media.photosAndVideos')}
+          accessibilityState={{ checked: selected >= 0, disabled: state.busy }}
+          disabled={state.busy}
+          onPress={() => {
+            if (admitted()) {
+              void Haptics.selectionAsync().catch(() => {});
+              session.select(item);
+            }
           }}
+          style={{ position: 'absolute', right: -3, top: -3, width: 44, height: 44, padding: 10 }}
         >
-          <Text
+          <View
+            pointerEvents="none"
             style={{
-              color: selected >= 0 ? colors.onAccent : '#FFFFFF',
-              fontSize: 14,
-              fontWeight: '600',
+              width: 24,
+              height: 24,
+              borderRadius: 12,
+              borderWidth: selected < 0 ? 1.5 : 0,
+              borderColor: '#FFFFFF',
+              backgroundColor: selected >= 0 ? colors.accent : '#00000040',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
-            {selected < 0 ? '' : selected + 1}
-          </Text>
-        </View>
+            <Text
+              style={{
+                color: selected >= 0 ? colors.onAccent : '#FFFFFF',
+                fontSize: 14,
+                fontWeight: '600',
+              }}
+            >
+              {selected < 0 ? '' : selected + 1}
+            </Text>
+          </View>
+        </Pressable>
         {item.mediaType === 'video' ? (
           <Text
             style={{
@@ -170,7 +188,7 @@ export function AttachmentPhotoGrid({
             }}
           >{`${Math.floor((item.duration ?? 0) / 60)}:${String(Math.floor((item.duration ?? 0) % 60)).padStart(2, '0')}`}</Text>
         ) : null}
-      </Pressable>
+      </View>
     );
   };
   return (
@@ -248,12 +266,48 @@ export function AttachmentPhotoGrid({
 export function AttachmentPhotoPickerSheet({
   state,
   session,
+  onPreferredIndex,
 }: {
   state: PhotoPickerState;
   session: AttachmentPhotoSession;
+  onPreferredIndex?(index: number | null): void;
 }) {
-  const { colors } = useTheme();
-  const current = () => session.isPresented(state.token);
+  const { colors, reducedMotion } = useTheme();
+  const [selection, setSelection] = useState<{ token: number; id: string | null }>({
+    token: state.token,
+    id: null,
+  });
+  const canPreview = state.visible && Boolean(state.permission?.granted);
+  const matchesToken = selection.token === state.token;
+  if (!matchesToken || (!canPreview && selection.id !== null))
+    setSelection({ token: state.token, id: null });
+  const preview =
+    matchesToken && canPreview
+      ? (state.items.find((item) => item.id === selection.id) ?? null)
+      : null;
+  const setPreviewId = (id: string | null) => setSelection({ token: state.token, id });
+  const previewOwner = useRef<{ token: number; id: string | null } | null>(null);
+  useLayoutEffect(() => {
+    const owner = { token: state.token, id: preview?.id ?? null };
+    previewOwner.current = owner;
+    return () => {
+      if (previewOwner.current === owner) previewOwner.current = null;
+    };
+  }, [state.token, preview?.id]);
+  const currentPreview = () =>
+    previewOwner.current?.token === state.token &&
+    previewOwner.current?.id === (preview?.id ?? null);
+  const approve = (item: PhotoLibraryItem | null = preview) => {
+    if (!session.isInteractive(state.token) || !currentPreview()) return;
+    if (item && !session.getSnapshot().selected.some((selected) => selected.id === item.id))
+      session.select(item);
+    if (item && !session.getSnapshot().selected.some((selected) => selected.id === item.id)) return;
+    onPreferredIndex?.(
+      item ? session.getSnapshot().selected.findIndex((selected) => selected.id === item.id) : null,
+    );
+    void session.approve();
+  };
+  const current = () => session.isPresented(state.token) && currentPreview();
   const allowed = state.permission?.granted;
   return (
     <Host style={{ position: 'absolute' }} pointerEvents="none">
@@ -269,7 +323,7 @@ export function AttachmentPhotoPickerSheet({
         <Group
           modifiers={[
             frame({ maxWidth: Infinity, maxHeight: Infinity }),
-            presentationDetents(['medium', 'large']),
+            presentationDetents(preview ? ['large'] : ['medium', 'large']),
             presentationDragIndicator('visible'),
             presentationBackground(colors.background),
             interactiveDismissDisabled(state.busy),
@@ -292,48 +346,65 @@ export function AttachmentPhotoPickerSheet({
                 <Action
                   testID="attachment-photos-close"
                   label={t('media.cancelAttachment')}
-                  symbol="xmark"
+                  symbol={preview ? 'chevron.left' : 'xmark'}
                   onPress={() => {
-                    if (current()) session.cancel();
+                    if (!current()) return;
+                    if (preview) setPreviewId(null);
+                    else session.cancel();
                   }}
                 />
-                <Host style={{ height: 44, flex: 1 }}>
-                  <Menu
-                    label={
-                      state.albums.find((album) => album.id === state.albumId)?.title ??
-                      t('media.photoLibraryRecents')
-                    }
-                    systemImage="chevron.down"
-                    modifiers={[
-                      buttonStyle('borderless'),
-                      foregroundStyle(colors.text),
-                      disabled(state.busy),
-                    ]}
+                {preview ? (
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      flex: 1,
+                      color: colors.text,
+                      fontSize: 17,
+                      fontWeight: '600',
+                      textAlign: 'center',
+                    }}
                   >
-                    <Button
-                      label={t('media.photoLibraryRecents')}
-                      onPress={() => {
-                        if (current()) session.album(null);
-                      }}
-                    />
-                    {state.albums.map((album) => (
+                    {preview.filename}
+                  </Text>
+                ) : (
+                  <Host style={{ height: 44, flex: 1 }}>
+                    <Menu
+                      label={
+                        state.albums.find((album) => album.id === state.albumId)?.title ??
+                        t('media.photoLibraryRecents')
+                      }
+                      systemImage="chevron.down"
+                      modifiers={[
+                        buttonStyle('borderless'),
+                        foregroundStyle(colors.text),
+                        disabled(state.busy),
+                      ]}
+                    >
                       <Button
-                        key={album.id}
-                        label={album.title}
+                        label={t('media.photoLibraryRecents')}
                         onPress={() => {
-                          if (current()) session.album(album.id);
+                          if (current()) session.album(null);
                         }}
                       />
-                    ))}
-                  </Menu>
-                </Host>
+                      {state.albums.map((album) => (
+                        <Button
+                          key={album.id}
+                          label={album.title}
+                          onPress={() => {
+                            if (current()) session.album(album.id);
+                          }}
+                        />
+                      ))}
+                    </Menu>
+                  </Host>
+                )}
                 <Action
                   testID="attachment-photos-review"
                   label={t('media.photoLibraryReview', { count: state.selected.length })}
                   symbol="arrow.right"
-                  unavailable={state.busy || !state.selected.length}
+                  unavailable={state.busy || (!preview && !state.selected.length)}
                   onPress={() => {
-                    if (current()) void session.approve();
+                    if (current()) approve();
                   }}
                 />
               </View>
@@ -351,7 +422,55 @@ export function AttachmentPhotoPickerSheet({
                 </Pressable>
               ) : null}
               {allowed ? (
-                <AttachmentPhotoGrid state={state} session={session} />
+                preview ? (
+                  <View style={{ flex: 1 }}>
+                    <AttachmentImageSurface
+                      identity={preview.id}
+                      uri={preview.id}
+                      label={preview.filename ?? t('media.photosAndVideos')}
+                      active
+                      disabled={state.busy}
+                      reducedMotion={reducedMotion}
+                      isCurrent={() =>
+                        session.isInteractive(state.token) &&
+                        previewOwner.current?.token === state.token &&
+                        previewOwner.current?.id === preview.id
+                      }
+                    />
+                    <Pressable
+                      testID="attachment-photo-preview-selection"
+                      accessibilityRole="checkbox"
+                      accessibilityLabel={preview.filename ?? t('media.photosAndVideos')}
+                      accessibilityState={{
+                        checked: state.selected.some((item) => item.id === preview.id),
+                        disabled: state.busy,
+                      }}
+                      onPress={() => {
+                        if (session.isInteractive(state.token) && currentPreview())
+                          session.select(preview);
+                      }}
+                      style={{ minHeight: 44, padding: 12, alignItems: 'center' }}
+                    >
+                      <Text style={{ color: colors.accent, fontSize: 17 }}>
+                        {state.selected.some((item) => item.id === preview.id)
+                          ? `✓ ${state.selected.findIndex((item) => item.id === preview.id) + 1}`
+                          : t('media.attachmentSelect', {
+                              name: preview.filename ?? t('media.photosAndVideos'),
+                            })}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <AttachmentPhotoGrid
+                    state={state}
+                    session={session}
+                    onPreview={(item) => {
+                      if (!session.isInteractive(state.token) || !currentPreview()) return;
+                      if (item.mediaType === 'video') approve(item);
+                      else setPreviewId(item.id);
+                    }}
+                  />
+                )
               ) : state.loading ? (
                 <ActivityIndicator style={{ flex: 1 }} />
               ) : (
@@ -416,6 +535,8 @@ export function AttachmentPhotoPickerSheet({
   );
 }
 export function useAttachmentPhotoPicker() {
+  const preferredIndex = useRef<number | null>(null);
+  const preferred = useRef<string | null>(null);
   const session = useMemo(
     () =>
       new AttachmentPhotoSession({
@@ -440,8 +561,24 @@ export function useAttachmentPhotoPicker() {
     };
   }, [session]);
   return {
-    pick: (remaining: number, current: () => boolean) => session.open(remaining, current),
+    pick: async (remaining: number, current: () => boolean) => {
+      preferredIndex.current = null;
+      preferred.current = null;
+      const files = await session.open(remaining, current);
+      preferred.current =
+        preferredIndex.current === null ? null : (files[preferredIndex.current]?.uri ?? null);
+      return files;
+    },
+    preferredUri: () => preferred.current,
     cancel: session.cancel,
-    view: <AttachmentPhotoPickerSheet state={state} session={session} />,
+    view: (
+      <AttachmentPhotoPickerSheet
+        state={state}
+        session={session}
+        onPreferredIndex={(index) => {
+          preferredIndex.current = index;
+        }}
+      />
+    ),
   };
 }

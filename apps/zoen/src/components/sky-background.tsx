@@ -11,7 +11,6 @@ export function skyGradient(sky: Pick<Sky, 'top' | 'middle' | 'bottom'>) {
 
 const photographs = {
   day: require('../../assets/sky/day.jpg'),
-  warm: require('../../assets/sky/warm.jpg'),
   night: require('../../assets/sky/night.jpg'),
 };
 

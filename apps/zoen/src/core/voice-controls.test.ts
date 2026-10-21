@@ -10,6 +10,8 @@ import { VoiceSession, VoiceSessionFailure, type VoiceNativePort } from '../medi
 import * as voiceEdit from '../media/voice-edit.ts';
 import * as voiceSuggestions from '../media/voice-suggestions.ts';
 import * as voiceTrimPreview from '../media/voice-trim-preview.ts';
+import { telegramAudio } from './telegram-audio-presentation.ts';
+import { telegramPresentation } from '../theme/telegram.ts';
 
 type Element = { type: unknown; props: Record<string, any> };
 type Slot = {
@@ -146,11 +148,22 @@ function component(name: (typeof files)[number], ports: Record<string, unknown>)
       useSharedValue: (initial: number) => ({ value: initial, set() {} }),
       useAnimatedStyle: (read: () => unknown) => read(),
       withSpring: (value: unknown) => value,
+      withTiming: (value: unknown) => value,
+      Easing: {
+        ease: 'ease',
+        inOut: (value: unknown) => value,
+        bezier: (...values: number[]) => values,
+      },
     },
     '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en', locale: 'en' },
-    '../theme': { useTheme: () => ({ colors: {}, scheme: 'light' }) },
+    '../theme': {
+      useTheme: () => ({ colors: {}, scheme: 'light', presentation: telegramPresentation('day') }),
+    },
     '../components/primitives': { NativeButton: 'NativeButton', IconButton: 'IconButton' },
     '../components/composer-action': { ComposerAction: 'ComposerAction' },
+    './voice-record-button': { VoiceRecordButton: 'VoiceRecordButton' },
+    '../core/telegram-audio-presentation': { telegramAudio },
+    './audio-progress': { AudioWaveform: 'AudioWaveform' },
     './AudioClip': {
       AudioClip: 'AudioClip',
       AudioClipControls: 'AudioClipControls',
@@ -311,6 +324,11 @@ function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
         state.isRecording = false;
       },
       sdk: {
+        pause() {
+          admitted();
+          events.push(`pause:${name}`);
+          state.isRecording = false;
+        },
         get uri() {
           admitted();
           return uriAvailable ? `file:///voice/${name}.m4a` : null;
@@ -441,6 +459,9 @@ function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
       pauseAudioPlayback: () => events.push('playback:pause'),
     },
     '../components/composer-action': { ComposerAction: 'ComposerAction' },
+    './voice-record-button': { VoiceRecordButton: 'VoiceRecordButton' },
+    '../core/telegram-audio-presentation': { telegramAudio },
+    './audio-progress': { AudioWaveform: 'AudioWaveform' },
     './voice-review-owner': { VoiceReviewOwner },
     './voice-review': { VoiceReview: 'VoiceReview' },
     './voice-dock': { VoiceDock: 'VoiceDock' },
@@ -495,7 +516,7 @@ function recording(editable = false, platform: 'ios' | 'web' = 'ios') {
 }
 
 async function stagedPreview(f: ReturnType<typeof recording>) {
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   await find(f.render(), 'VoiceDock').props.onStop();
   await tick();
@@ -615,7 +636,7 @@ for (const action of ['Send', 'Cancel'] as const)
 
 test('audio mode restore failure does not poison stop or prevent retrying discard', async () => {
   const f = recording();
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   assert.equal(f.state.isRecording, true);
   f.failRestore(true);
@@ -629,7 +650,7 @@ test('audio mode restore failure does not poison stop or prevent retrying discar
   await find(f.render(), 'VoiceDock').props.onCancel();
   assert.deepEqual(f.discarded, ['file:///voice/capture.m4a']);
   assert.equal(f.stops(), 1);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   await find(f.render(), 'VoiceDock').props.onStop();
   assert.equal(f.stops(), 2);
@@ -637,7 +658,7 @@ test('audio mode restore failure does not poison stop or prevent retrying discar
 
 test('failed recorder stop keeps the live recording owned until a confirmed stop retry', async () => {
   const f = recording();
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   f.failStop(true);
   await find(f.render(), 'VoiceDock').props.onCancel();
@@ -652,13 +673,13 @@ test('failed recorder stop keeps the live recording owned until a confirmed stop
 
 test('retry reconciles a completed native stop after its confirmation read failed', async () => {
   const f = recording();
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   f.failConfirmation();
   await assert.rejects(find(f.render(), 'VoiceDock').props.onStop(), /confirmation failure/);
   assert.equal(f.state.isRecording, false);
   assert.equal(f.discarded.length, 0);
-  find(f.render(), 'IconButton', 'media.cancelAttachment').props.onPress();
+  await find(f.render(), 'VoiceDock').props.onCancel();
   await tick();
   assert.equal(f.stops(), 1, 'a stopped recorder must not receive a second native stop');
   assert.deepEqual(f.discarded, ['file:///voice/capture.m4a']);
@@ -666,7 +687,7 @@ test('retry reconciles a completed native stop after its confirmation read faile
 
 test('a retained cleanup after unmount never calls the SDK-released recorder', async () => {
   const f = recording();
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   const cleanup = [...f.cleanups][0]!;
   f.releaseRecorder();
@@ -678,7 +699,7 @@ test('a retained cleanup after unmount never calls the SDK-released recorder', a
 
 test('the actual dock exposes non-destructive audio-mode recovery beside a playable preview', async () => {
   const f = recording(true);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   f.failRestore(true);
   await assert.rejects(find(f.render(), 'VoiceDock').props.onStop(), /restore failure/);
@@ -708,7 +729,7 @@ test('the actual dock exposes non-destructive audio-mode recovery beside a playa
 
 test('a system-paused recorder is finalized before its retained voice is prepared', async () => {
   const f = recording(true);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   f.pauseRecorder();
   f.background();
@@ -726,7 +747,7 @@ test('a system-paused recorder is finalized before its retained voice is prepare
 test('the Web recorder URI published only by stop is retained as one sendable review', async () => {
   const f = recording(false, 'web');
   f.publishUriOnStop();
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   const recordingDock = find(f.render(), 'VoiceDock');
   assert.equal(recordingDock.props.uri, undefined);
@@ -745,7 +766,7 @@ test('unsupported Web prepared cancellation cannot create a shared microphone lo
   const f = recording(false, 'web');
   const prepare = deferred<void>();
   f.waitPrepare(prepare.promise);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   interrupt(f, 'focus');
   prepare.resolve();
@@ -755,7 +776,7 @@ test('unsupported Web prepared cancellation cannot create a shared microphone lo
   const next = f.nextMount();
   // Keep the failed owner alive: another Web route still owns an independent
   // MediaRecorder, even before the old route has unmounted or cleaned up.
-  find(next.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(next.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   assert.equal(next.state.isRecording, true);
   assert.equal(f.records(), 1);
@@ -769,7 +790,7 @@ test('failed preparation restores the session without finalizing an unprepared r
   const f = recording();
   const prepare = deferred<void>();
   f.waitPrepare(prepare.promise);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   prepare.reject(new Error('synthetic prepare failure'));
   await tick();
@@ -777,7 +798,7 @@ test('failed preparation restores the session without finalizing an unprepared r
   assert.equal(f.stops(), 0);
   assert.equal(f.events.filter((event) => event === 'mode:false').length, 1);
   f.waitPrepare(undefined);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   assert.equal(f.records(), 1);
   await find(f.render(), 'VoiceDock').props.onCancel();
@@ -785,7 +806,7 @@ test('failed preparation restores the session without finalizing an unprepared r
 
 test('failed paused finalization retains ownership and retries before editor copy', async () => {
   const f = recording(true);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   f.pauseRecorder();
   f.failStop(true);
@@ -805,7 +826,7 @@ test('failed paused finalization retains ownership and retries before editor cop
 
 test('post-stop status failure retains original duration and does not stop twice on retry', async () => {
   const f = recording(true);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   f.failConfirmation();
   await assert.rejects(find(f.render(), 'VoiceDock').props.onStop(), /confirmation failure/);
@@ -820,7 +841,7 @@ test('post-stop status failure retains original duration and does not stop twice
 
 test('a failed initial status read keeps the source owned for a later successful stop', async () => {
   const f = recording(true);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   f.failStatus();
   await assert.rejects(find(f.render(), 'VoiceDock').props.onStop(), /initial status failure/);
@@ -837,7 +858,7 @@ test('a failed initial status read keeps the source owned for a later successful
 
 test('a resolved stop with native capture still active re-arms finalization for a real retry', async () => {
   const f = recording(true);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   f.ineffectiveStop();
   await assert.rejects(
@@ -860,10 +881,10 @@ test('two microphone presses before React commits admit only one permission and 
   const f = recording();
   const permission = deferred<{ granted: boolean }>();
   f.waitPermission(permission.promise);
-  const mic = find(f.render(), 'ComposerAction', 'media.recordVoiceMessage');
-  mic.props.onPress();
-  mic.props.onPress();
-  assert.equal(find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.disabled, true);
+  const mic = find(f.render(), 'VoiceRecordButton');
+  mic.props.onStart(false);
+  mic.props.onStart(false);
+  assert.equal(find(f.render(), 'VoiceRecordButton').props.disabled, true);
   await tick();
   assert.equal(f.permissionCalls(), 1);
   permission.resolve({ granted: true });
@@ -891,7 +912,7 @@ for (const kind of interruptions) {
     const f = recording();
     const permission = deferred<{ granted: boolean }>();
     f.waitPermission(permission.promise);
-    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    find(f.render(), 'VoiceRecordButton').props.onStart(false);
     await tick();
     interrupt(f, kind);
     permission.resolve({ granted: true });
@@ -899,7 +920,7 @@ for (const kind of interruptions) {
     assert.equal(f.prepares(), 0);
     assert.equal(f.records(), 0);
     assert.equal(f.events.includes('mode:true'), false);
-    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    find(f.render(), 'VoiceRecordButton').props.onStart(false);
     await tick();
     assert.equal(f.records(), 1, 'a new explicit intent can record after cleanup');
     await find(f.render(), 'VoiceDock').props.onCancel();
@@ -908,7 +929,7 @@ for (const kind of interruptions) {
     const f = recording();
     const prepare = deferred<void>();
     f.waitPrepare(prepare.promise);
-    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    find(f.render(), 'VoiceRecordButton').props.onStart(false);
     await tick();
     assert.equal(f.prepares(), 1);
     interrupt(f, kind);
@@ -919,7 +940,7 @@ for (const kind of interruptions) {
     assert.deepEqual(f.discarded, ['file:///voice/capture.m4a']);
     assert.equal(f.events.filter((event) => event === 'mode:false').length, 1);
     assert.ok(f.events.indexOf('stop:capture') < f.events.indexOf('mode:false'));
-    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    find(f.render(), 'VoiceRecordButton').props.onStart(false);
     await tick();
     assert.equal(f.records(), 1);
     await find(f.render(), 'VoiceDock').props.onCancel();
@@ -930,7 +951,7 @@ test('unmount during preparation drains audio restoration without touching the r
   const f = recording();
   const prepare = deferred<void>();
   f.waitPrepare(prepare.promise);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   const cleanup = [...f.cleanups][0]!;
   f.releaseRecorder();
@@ -947,7 +968,7 @@ test('unmount while permission is pending never prepares or restores an unused a
   const f = recording();
   const permission = deferred<{ granted: boolean }>();
   f.waitPermission(permission.promise);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   f.releaseRecorder();
   f.app.unmount();
@@ -965,7 +986,7 @@ for (const intent of ['device cleanup', 'Cancel'] as const) {
     const f = recording(true);
     const prepare = deferred<void>();
     f.waitPrepare(prepare.promise);
-    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    find(f.render(), 'VoiceRecordButton').props.onStart(false);
     await tick();
     let cleanup: Promise<void> | undefined;
     if (intent === 'device cleanup') cleanup = [...f.cleanups][0]!();
@@ -981,7 +1002,7 @@ for (const intent of ['device cleanup', 'Cancel'] as const) {
       nodes(f.render()).some((node) => node.type === 'VoiceDock'),
       false,
     );
-    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    find(f.render(), 'VoiceRecordButton').props.onStart(false);
     await tick();
     assert.equal(f.records(), 1, 'only a new explicit press can start after cancellation');
     await find(f.render(), 'VoiceDock').props.onCancel();
@@ -992,7 +1013,7 @@ test('a failed same-composer restoration can recover without deadlocking its nex
   const f = recording();
   const prepare = deferred<void>();
   f.waitPrepare(prepare.promise);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   f.failRestore(true);
   interrupt(f, 'focus');
@@ -1003,7 +1024,7 @@ test('a failed same-composer restoration can recover without deadlocking its nex
   f.failRestore(false);
   find(f.render(), 'NativeButton', 'media.voiceTryAgain').props.onPress();
   await tick();
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   assert.equal(f.records(), 1);
   await find(f.render(), 'VoiceDock').props.onCancel();
@@ -1013,7 +1034,7 @@ test('new route explicitly recovers departed cleanup before admission and expose
   const f = recording();
   const prepare = deferred<void>();
   f.waitPrepare(prepare.promise);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   f.failRestore(true);
   f.releaseRecorder();
@@ -1024,13 +1045,10 @@ test('new route explicitly recovers departed cleanup before admission and expose
   const restore = deferred<void>();
   f.waitRestore(restore.promise);
   f.failRestore(false);
-  const mic = find(next.render(), 'ComposerAction', 'media.recordVoiceMessage');
-  mic.props.onPress();
-  mic.props.onPress();
-  assert.equal(
-    find(next.render(), 'ComposerAction', 'media.recordVoiceMessage').props.disabled,
-    true,
-  );
+  const mic = find(next.render(), 'VoiceRecordButton');
+  mic.props.onStart(false);
+  mic.props.onStart(false);
+  assert.equal(find(next.render(), 'VoiceRecordButton').props.disabled, true);
   await tick();
   assert.equal(f.permissionCalls(), 1, 'no new preparation can overtake an old restore');
   restore.resolve();
@@ -1049,7 +1067,7 @@ test('new route cleanup failure stays retryable through its own visible recovery
   const f = recording();
   const prepare = deferred<void>();
   f.waitPrepare(prepare.promise);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   f.failRestore(true);
   f.releaseRecorder();
@@ -1057,7 +1075,7 @@ test('new route cleanup failure stays retryable through its own visible recovery
   prepare.resolve();
   await tick();
   const next = f.nextMount();
-  find(next.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(next.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   assert.equal(f.records(), 0);
   const retry = find(next.render(), 'NativeButton', 'media.voiceTryAgain');
@@ -1069,7 +1087,7 @@ test('new route cleanup failure stays retryable through its own visible recovery
   f.failRestore(false);
   retry.props.onPress();
   await tick();
-  find(next.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(next.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   assert.equal(f.records(), 1);
   assert.equal(f.releasedCalls(), 0);
@@ -1080,7 +1098,7 @@ test('new route cleanup failure stays retryable through its own visible recovery
 test('Send cannot bypass failed audio restoration and retries preserve the exact capture', async () => {
   for (const editable of [false, true]) {
     const f = recording(editable);
-    find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+    find(f.render(), 'VoiceRecordButton').props.onStart(false);
     await tick();
     f.failRestore(true);
     await assert.rejects(find(f.render(), 'VoiceDock').props.onStop(), /restore failure/);
@@ -1214,7 +1232,7 @@ test('unapplied precision blocks stale word, suggestion, selection and history a
 
 test('pending trim blocks parent send and stale sheet collapse until explicit discard', async () => {
   const f = recording(true);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   await find(f.render(), 'VoiceDock').props.onStop();
   await tick();
@@ -1274,7 +1292,7 @@ test('canonical draft changes invalidate old previews without letting delayed ca
 
 test('cleanup of an old review cannot unlock a newer review of the same canonical draft', async () => {
   const f = recording(true);
-  find(f.render(), 'ComposerAction', 'media.recordVoiceMessage').props.onPress();
+  find(f.render(), 'VoiceRecordButton').props.onStart(false);
   await tick();
   await find(f.render(), 'VoiceDock').props.onStop();
   await tick();
@@ -1577,4 +1595,136 @@ test('original waveform accessibility seeks edited time across cuts and displays
   assert.equal(lockedTrack.props.accessibilityState.disabled, true);
   lockedTrack.props.onAccessibilityAction({ nativeEvent: { actionName: 'decrement' } });
   assert.deepEqual(seeks, [7500]);
+});
+
+test('recording pause/resume retains one prepared capture and finalizes it once into the shared preview', async () => {
+  const f = recording(true);
+  await find(f.render(), 'VoiceRecordButton').props.onStart(false);
+  let dock = find(f.render(), 'VoiceDock');
+  assert.equal(dock.props.recording, true);
+  assert.equal(dock.props.locked, true);
+  await dock.props.onPause();
+  dock = find(f.render(), 'VoiceDock');
+  assert.equal(f.state.isRecording, false);
+  assert.equal(dock.props.recording, true, 'paused audio still owns the unfinished native capture');
+  assert.equal(dock.props.paused, true);
+  assert.equal(find(f.render(), 'VoiceRecordButton').props.disabled, true);
+  assert.equal(f.prepares(), 1);
+  assert.equal(f.stops(), 0);
+  await dock.props.onPause();
+  assert.equal(f.state.isRecording, true);
+  assert.equal(f.prepares(), 1, 'resume must not prepare a second source');
+  assert.equal(f.records(), 2);
+  await find(f.render(), 'VoiceDock').props.onStop();
+  await tick();
+  assert.equal(f.stops(), 1);
+  const tree = f.render();
+  const session = find(tree, 'VoicePreviewPlayback').props.session as VoiceSession;
+  assert.ok(session.getSendable());
+  assert.strictEqual(find(tree, 'VoiceDock').props.session, session);
+  assert.deepEqual(f.sent, []);
+  await find(tree, 'VoiceDock').props.onCancel();
+});
+
+test('suspending a paused capture finalizes its same draft without sending or discarding the source', async () => {
+  const f = recording(true);
+  await find(f.render(), 'VoiceRecordButton').props.onStart(false);
+  await find(f.render(), 'VoiceDock').props.onPause();
+  f.render({ suspended: true });
+  await tick();
+  const tree = f.render({ suspended: true });
+  assert.equal(f.stops(), 1);
+  assert.equal(f.prepares(), 1);
+  assert.deepEqual(f.sent, []);
+  assert.deepEqual(f.discarded, []);
+  assert.ok(find(tree, 'VoicePreviewPlayback').props.session?.getSendable());
+  await find(f.render(), 'VoiceDock').props.onCancel();
+});
+
+for (const editable of [false, true]) {
+  test(`retained Cancel from draft A cannot discard draft B; fresh Cancel still completes (${editable ? 'edited' : 'raw'})`, async () => {
+    const f = recording(editable);
+    await find(f.render(), 'VoiceRecordButton').props.onStart(false);
+    await find(f.render(), 'VoiceDock').props.onStop();
+    await tick();
+    const old = find(f.render(), 'VoiceDock').props;
+    await old.onCancel();
+
+    await find(f.render(), 'VoiceRecordButton').props.onStart(false);
+    await find(f.render(), 'VoiceDock').props.onStop();
+    await tick();
+    const current = find(f.render(), 'VoiceDock').props;
+    const session = current.session as VoiceSession | undefined;
+    const beforeDiscard = f.discarded.length;
+    await old.onCancel();
+    if (old.onRetry) await old.onRetry();
+    old.onExpand();
+
+    assert.equal(f.discarded.length, beforeDiscard, 'stale Cancel must not delete B');
+    assert.strictEqual(find(f.render(), 'VoiceDock').props.session, session);
+    assert.equal(
+      find(f.render(), 'MediaSheet').props.visible,
+      false,
+      'stale Expand cannot present B',
+    );
+    if (session) assert.equal(session.getSnapshot().phase, 'ready');
+    assert.deepEqual(f.sent, []);
+
+    await current.onCancel();
+    assert.equal(
+      nodes(f.render()).some((node) => node.type === 'VoiceDock'),
+      false,
+    );
+    if (session) assert.equal(session.getSnapshot().phase, 'closed');
+  });
+}
+
+test('retained recording controls and microphone callbacks cannot stop, pause, cancel or restart a later capture', async () => {
+  const f = recording(true);
+  const oldMic = find(f.render(), 'VoiceRecordButton').props;
+  await oldMic.onStart(false);
+  const oldDock = find(f.render(), 'VoiceDock').props;
+  await oldDock.onStop();
+  await tick();
+  await find(f.render(), 'VoiceDock').props.onCancel();
+
+  await find(f.render(), 'VoiceRecordButton').props.onStart(false);
+  const current = find(f.render(), 'VoiceDock').props;
+  const stops = f.stops();
+  const pauses = f.events.filter((event) => event.startsWith('pause:')).length;
+  await oldDock.onPause();
+  await oldDock.onStop();
+  await oldDock.onCancel();
+  await oldMic.onReview();
+  await oldMic.onCancel();
+  assert.equal(await oldMic.onStart(false), false);
+  assert.equal(f.stops(), stops, 'stale Stop/Review cannot finalize B');
+  assert.equal(f.events.filter((event) => event.startsWith('pause:')).length, pauses);
+  assert.equal(f.state.isRecording, true);
+  assert.equal(find(f.render(), 'VoiceDock').props.paused, false);
+
+  await current.onPause();
+  assert.equal(f.state.isRecording, false, 'fresh Pause still addresses B');
+  await find(f.render(), 'VoiceDock').props.onStop();
+  await tick();
+  await find(f.render(), 'VoiceDock').props.onCancel();
+});
+
+test('Cancel admitted during recording still drains Stop and discards its own newly prepared review', async () => {
+  const f = recording(true);
+  await find(f.render(), 'VoiceRecordButton').props.onStart(false);
+  const restoration = deferred<void>();
+  f.waitRestore(restoration.promise);
+  const admitted = find(f.render(), 'VoiceDock').props.onCancel();
+  await tick();
+  assert.equal(f.stops(), 1);
+  assert.equal(f.state.isRecording, false);
+  restoration.resolve();
+  await admitted;
+  assert.equal(
+    nodes(f.render()).some((node) => node.type === 'VoiceDock'),
+    false,
+  );
+  assert.deepEqual(f.sent, []);
+  assert.ok(f.discarded.includes('file:///voice/capture.m4a'));
 });

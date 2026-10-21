@@ -10,6 +10,7 @@ import {
 import {
   findNodeHandle,
   TextInput,
+  StyleSheet,
   useWindowDimensions,
   type TextInputInstance,
   type TextInputProps,
@@ -27,6 +28,19 @@ export function ComposerTextField({
   const [width, setWidth] = useState(0);
   const [tag, setTag] = useState<number | null>(null);
   const { fontScale } = useWindowDimensions();
+  const styledFont = StyleSheet.flatten(props.style)?.fontSize;
+  const fontSize =
+    typeof styledFont === 'number' && Number.isFinite(styledFont) && styledFont > 0
+      ? styledFont
+      : process.env.EXPO_OS === 'ios'
+        ? 17
+        : 16;
+  const scale =
+    props.allowFontScaling === false
+      ? 1
+      : props.maxFontSizeMultiplier && props.maxFontSizeMultiplier > 0
+        ? Math.min(fontScale, props.maxFontSizeMultiplier)
+        : fontScale;
   const [fitted, setFitted] = useState<{
     snapshot: ComposerFittingSnapshot;
     height: number;
@@ -49,10 +63,19 @@ export function ComposerTextField({
       label: props.accessibilityLabel ?? '',
       placeholder: props.placeholder ?? '',
       width,
-      fontSize: (process.env.EXPO_OS === 'ios' ? 17 : 16) * fontScale,
+      fontSize: fontSize * scale,
       context: `${context}:${props.placeholder ?? ''}`,
     }),
-    [tag, props.value, props.accessibilityLabel, props.placeholder, width, fontScale, context],
+    [
+      tag,
+      props.value,
+      props.accessibilityLabel,
+      props.placeholder,
+      width,
+      fontSize,
+      scale,
+      context,
+    ],
   );
   const current = useRef<ComposerFittingSnapshot | null>(null);
   useLayoutEffect(() => {
@@ -64,10 +87,13 @@ export function ComposerTextField({
     };
   }, [fitting, snapshot]);
   useImperativeHandle(inputRef, () => field.current!);
-  const ref = useCallback((node: TextInputInstance | null) => {
-    field.current = node;
-    setTag(process.env.EXPO_OS === 'ios' && node ? (findNodeHandle(node) ?? null) : null);
-  }, []);
+  const ref = useCallback(
+    (node: TextInputInstance | null) => {
+      field.current = node;
+      setTag(process.env.EXPO_OS === 'ios' && node ? (findNodeHandle(node) ?? null) : null);
+    },
+    [setTag],
+  );
   return (
     <TextInput
       {...props}

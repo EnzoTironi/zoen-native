@@ -1,23 +1,61 @@
 import { t } from '../../i18n/index.ts';
 import { IntegrityWarning } from '../../integrity/integrity-warning';
 import { ProfileAvatar } from '../../profile/profile-avatar';
-import { useState } from 'react';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { ProfileHeader } from '../../profile/profile-header';
+import { ProfileInfoRow, ProfileSection } from '../../profile/profile-section';
+import { peerInfo, profileTitleCollapseOffset } from '../../profile/telegram-profile-presentation';
+import { useProfilePhoto } from '../../profile/use-profile-photo';
+import { useCallback, useRef, useState } from 'react';
+import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Host, Column, Switch } from '@expo/ui';
 import { Pressable, ScrollView, Share, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialogs } from '../../components/dialogs';
 import { useClient } from '../../core/provider';
-import { Avatar, EmptyState, Icon, NativeButton, Surface } from '../../components/primitives';
+import { EmptyState } from '../../components/primitives';
 import { useTheme } from '../../theme';
 
 export default function Space() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { snapshot, store } = useClient();
-  const { colors, scheme } = useTheme();
+  const { presentation: p, scheme } = useTheme();
+  const insets = useSafeAreaInsets();
   const { confirm } = useDialogs();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const pending = useRef(false);
+  const active = useRef(false);
+  const owner = useRef({
+    identity: snapshot?.account?.identity_id,
+    device: snapshot?.account?.device_id,
+    epoch: store.sessionEpoch,
+    id,
+  });
+  useFocusEffect(
+    useCallback(() => {
+      active.current = true;
+      return () => {
+        active.current = false;
+      };
+    }, []),
+  );
+  function currentOwner() {
+    const state = store.getSnapshot();
+    return (
+      active.current &&
+      owner.current.id === id &&
+      owner.current.epoch === store.sessionEpoch &&
+      owner.current.identity === state.snapshot?.account?.identity_id &&
+      owner.current.device === state.snapshot?.account?.device_id
+    );
+  }
   const chat = snapshot?.conversations.find((item) => item.id === id);
+  const photo = useProfilePhoto(
+    chat?.counterpart?.id,
+    chat?.counterpart?.photo_sha256,
+    chat?.counterpart?.photo_ready ?? false,
+  );
   if (!chat)
     return (
       <EmptyState
@@ -26,93 +64,123 @@ export default function Space() {
       />
     );
   const selected = chat;
+  const subtitle =
+    chat.kind === 'Direct'
+      ? chat.counterpart?.handle
+        ? `@${chat.counterpart.handle}`
+        : undefined
+      : t('chat.participantCount', { count: chat.members.length });
   async function perform(action: () => Promise<unknown>) {
-    if (busy) return;
+    if (pending.current || !currentOwner()) return;
+    pending.current = true;
     setBusy(true);
     setError(null);
     try {
       await action();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : t('chat.thisCouldNotBeCompleted'));
+      if (currentOwner())
+        setError(failure instanceof Error ? failure.message : t('chat.thisCouldNotBeCompleted'));
     } finally {
-      setBusy(false);
+      pending.current = false;
+      if (currentOwner()) setBusy(false);
     }
   }
   function preference(key: 'pinned' | 'muted' | 'archived', value: boolean) {
-    void perform(() =>
-      store.request({
+    void perform(() => {
+      const current = store.getSnapshot().snapshot?.conversations.find((item) => item.id === id);
+      if (!current) throw new Error(t('chat.chatUnavailable'));
+      return store.request({
         op: 'set_chat_prefs',
         space_id: id,
-        pinned: selected.pinned,
-        muted: selected.muted,
-        archived: selected.archived,
+        pinned: current.pinned,
+        muted: current.muted,
+        archived: current.archived,
         [key]: value,
-      }),
-    );
+      });
+    });
   }
+  const privacy =
+    chat.privacy === 'EndToEnd'
+      ? t('chat.endToEndEncryption')
+      : chat.privacy === 'Closed'
+        ? t('chat.closedChatReadableByTheServer')
+        : t('chat.publicChat');
   return (
     <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={{ padding: 24, gap: 22 }}
+      testID="conversation-details-screen"
+      contentInsetAdjustmentBehavior="never"
+      scrollEventThrottle={16}
+      onScroll={(event) =>
+        setCollapsed(
+          event.nativeEvent.contentOffset.y > profileTitleCollapseOffset(Boolean(subtitle)),
+        )
+      }
+      contentContainerStyle={{
+        paddingHorizontal: 16,
+        paddingTop: insets.top + peerInfo.avatarTop,
+        paddingBottom: Math.max(insets.bottom, 16) + 24,
+        gap: 24,
+        maxWidth: 640,
+        width: '100%',
+        alignSelf: 'center',
+      }}
     >
-      <Stack.Screen options={{ title: t('chat.details') }} />
-      <View style={{ alignItems: 'center', gap: 16, paddingVertical: 16 }}>
-        <Avatar
-          name={chat.title}
-          size={90}
-          color={chat.counterpart?.tint_hex}
-          agent={chat.counterpart?.kind === 'Agent'}
-        />
-        <Text
-          selectable
-          accessibilityRole="header"
-          style={{ color: colors.text, fontSize: 30, fontWeight: '600', textAlign: 'center' }}
-        >
-          {chat.title}
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 7, alignItems: 'center' }}>
-          <Icon
-            name={{
-              ios:
-                chat.privacy === 'EndToEnd'
-                  ? 'lock.shield'
-                  : chat.privacy === 'Closed'
-                    ? 'shield'
-                    : 'globe',
-              android:
-                chat.privacy === 'EndToEnd'
-                  ? 'encrypted'
-                  : chat.privacy === 'Closed'
-                    ? 'shield'
-                    : 'public',
-              web:
-                chat.privacy === 'EndToEnd'
-                  ? 'encrypted'
-                  : chat.privacy === 'Closed'
-                    ? 'shield'
-                    : 'public',
-            }}
-            size={16}
-            color={colors.secondary}
-          />
-          <Text style={{ color: colors.secondary, fontSize: 13 }}>
-            {chat.privacy === 'EndToEnd'
-              ? t('chat.endToEndEncryption')
-              : chat.privacy === 'Closed'
-                ? t('chat.closedChatReadableByTheServer')
-                : t('chat.publicChat')}
-          </Text>
-        </View>
-      </View>
+      <Stack.Screen
+        options={{
+          title: collapsed ? chat.title : '',
+          headerTransparent: true,
+          headerShadowVisible: false,
+        }}
+      />
+      <ProfileHeader
+        name={chat.title}
+        photo={photo}
+        tint={chat.counterpart?.tint_hex}
+        agent={chat.counterpart?.kind === 'Agent'}
+        subtitle={subtitle}
+        actions={[
+          {
+            id: 'details-message',
+            label: t('peerInfo.backToChat'),
+            icon: { ios: 'bubble.left.fill', android: 'chat', web: 'chat' },
+            onPress: () => router.dismissTo({ pathname: '/chat/[id]', params: { id } }),
+          },
+          {
+            id: 'details-mute',
+            label: t(chat.muted ? 'peerInfo.unmute' : 'peerInfo.mute'),
+            icon: chat.muted
+              ? { ios: 'bell.slash.fill', android: 'notifications_off', web: 'notifications_off' }
+              : { ios: 'bell.fill', android: 'notifications', web: 'notifications' },
+            disabled: busy,
+            onPress: () => preference('muted', !chat.muted),
+          },
+          {
+            id: 'details-search',
+            label: t('peerInfo.search'),
+            icon: { ios: 'magnifyingglass', android: 'search', web: 'search' },
+            onPress: () => router.push({ pathname: '/search', params: { space: id } }),
+          },
+        ]}
+      />
       <IntegrityWarning spaceId={id} />
       {error ? (
-        <Text accessibilityRole="alert" selectable style={{ color: colors.danger }}>
+        <Text accessibilityRole="alert" selectable style={{ color: p.destructive }}>
           {error}
         </Text>
       ) : null}
-      <Surface>
-        <Host matchContents colorScheme={scheme} seedColor={colors.accent}>
-          <Column spacing={18}>
+      <ProfileSection>
+        <ProfileInfoRow label={t('peerInfo.privacy')} value={privacy} />
+      </ProfileSection>
+      <ProfileSection>
+        <ProfileInfoRow
+          testID="details-shared-media"
+          label={t('peerInfo.shared')}
+          onPress={() => router.push({ pathname: '/shared-media/[id]', params: { id } })}
+        />
+      </ProfileSection>
+      <ProfileSection title={t('peerInfo.preferences')}>
+        <Host matchContents colorScheme={scheme} seedColor={p.list.accent}>
+          <Column spacing={0}>
             <Switch
               label={t('chat.pinChat')}
               value={chat.pinned}
@@ -133,41 +201,39 @@ export default function Space() {
             />
           </Column>
         </Host>
-      </Surface>
-      <Surface>
-        <NativeButton
-          secondary
+      </ProfileSection>
+      <ProfileSection title={t('peerInfo.actions')}>
+        <ProfileInfoRow
           label={t('conversationCards.manage')}
           onPress={() => router.push({ pathname: '/conversation-cards/[id]', params: { id } })}
         />
-        <NativeButton
-          secondary
-          label={t('chat.searchThisChat2')}
-          onPress={() => router.push({ pathname: '/search', params: { space: id } })}
-        />
-        <NativeButton
-          secondary
+        <ProfileInfoRow
           label={t('chat.checkHistoryIntegrity')}
           onPress={() => router.push({ pathname: '/integrity/[id]', params: { id } })}
         />
-        <NativeButton
-          secondary
+        <ProfileInfoRow
           label={t('chat.createAPage')}
           onPress={() => router.push({ pathname: '/new-page', params: { space: id } })}
         />
-      </Surface>
+      </ProfileSection>
       {chat.members.length ? (
-        <Surface>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
-            {t('chat.participantCount', { count: chat.members.length })}
-          </Text>
+        <ProfileSection title={t('chat.participantCount', { count: chat.members.length })}>
           {chat.members.map((person) => (
             <Pressable
               key={person.id}
+              testID={`details-member-${person.id}`}
               accessibilityRole="button"
               accessibilityLabel={t('chat.viewPerson', { name: person.name })}
               onPress={() => router.push({ pathname: '/person/[id]', params: { id: person.id } })}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 13, paddingVertical: 9 }}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 13,
+                paddingHorizontal: 16,
+                paddingVertical: 9,
+                minHeight: 58,
+                backgroundColor: pressed ? p.list.highlighted : 'transparent',
+              })}
             >
               <ProfileAvatar
                 person={person}
@@ -176,11 +242,11 @@ export default function Space() {
                 agent={person.kind === 'Agent'}
                 size={38}
               />
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={{ color: colors.text, fontSize: 16, fontWeight: '500' }}>
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={{ color: p.list.text, fontSize: 17 }}>
                   {person.is_me ? t('chat.personIsYou', { name: person.name }) : person.name}
                 </Text>
-                <Text style={{ color: colors.secondary, fontSize: 12 }}>
+                <Text style={{ color: p.list.secondary, fontSize: 13 }}>
                   {person.handle
                     ? `@${person.handle}`
                     : person.kind === 'Agent'
@@ -190,43 +256,43 @@ export default function Space() {
               </View>
             </Pressable>
           ))}
-        </Surface>
+        </ProfileSection>
       ) : null}
       {chat.kind !== 'Direct' ? (
-        <NativeButton
-          label={t('chat.inviteSomeone')}
-          disabled={busy}
-          onPress={() => {
-            void perform(async () => {
-              const invite = await store.driver.request({ op: 'create_invite', space_id: id });
-              await Share.share({ message: invite.link });
-            });
-          }}
-        />
+        <ProfileSection>
+          <ProfileInfoRow
+            label={t('chat.inviteSomeone')}
+            disabled={busy}
+            onPress={() => {
+              void perform(async () => {
+                const invite = await store.driver.request({ op: 'create_invite', space_id: id });
+                if (currentOwner()) await Share.share({ message: invite.link });
+              });
+            }}
+          />
+          <ProfileInfoRow
+            destructive
+            label={t('chat.leaveChat')}
+            disabled={busy}
+            onPress={() => {
+              void confirm({
+                title: t('chat.leaveNamedChat', { title: chat.title }),
+                message: t('chat.youWillNeedANewInviteToReturn'),
+                confirmLabel: t('chat.leave'),
+                destructive: true,
+              }).then((accepted) => {
+                if (accepted)
+                  void perform(async () => {
+                    await store.request({ op: 'leave_space', space_id: id });
+                    if (currentOwner()) router.dismissTo('/');
+                  });
+              });
+            }}
+          />
+        </ProfileSection>
       ) : null}
-      {chat.kind !== 'Direct' ? (
-        <NativeButton
-          secondary
-          label={t('chat.leaveChat')}
-          disabled={busy}
-          onPress={() => {
-            void confirm({
-              title: t('chat.leaveNamedChat', { title: chat.title }),
-              message: t('chat.youWillNeedANewInviteToReturn'),
-              confirmLabel: t('chat.leave'),
-              destructive: true,
-            }).then((accepted) => {
-              if (accepted)
-                void perform(async () => {
-                  await store.request({ op: 'leave_space', space_id: id });
-                  router.dismissTo('/');
-                });
-            });
-          }}
-        />
-      ) : null}
-      <Text selectable style={{ color: colors.tertiary, fontSize: 11, textAlign: 'center' }}>
-        {t('chat.historyEventTotal', { total: chat.event_count })}
+      <Text selectable style={{ color: p.list.secondary, fontSize: 13, textAlign: 'center' }}>
+        {t('chat.historyEventTotal', { total: selected.event_count })}
       </Text>
     </ScrollView>
   );

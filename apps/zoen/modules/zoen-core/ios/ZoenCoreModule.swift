@@ -79,14 +79,42 @@ public class ZoenCoreModule: Module {
       Prop("bottomLeft") { (view: ZoenMessageBubbleView, value: Double) in view.bottomLeft = value }
       Prop("bottomRight") { (view: ZoenMessageBubbleView, value: Double) in view.bottomRight = value }
       Prop("fill") { (view: ZoenMessageBubbleView, value: String) in view.fill = value }
+      Prop("fillColors") { (view: ZoenMessageBubbleView, value: [String]) in view.fillColors = value }
       Prop("animateChanges") { (view: ZoenMessageBubbleView, value: Bool) in view.animateChanges = value }
       OnViewDidUpdateProps { (view: ZoenMessageBubbleView) in view.apply() }
+    }
+    Constant("messageContextVersion") { 2 }
+    View(ZoenMessageContextStage.self) {
+      ViewName("MessageContextStage")
+      Prop("active") { (view: ZoenMessageContextStage, value: Bool) in view.requestedActive = value }
+      OnViewDidUpdateProps { (view: ZoenMessageContextStage) in view.bind(active: view.requestedActive) }
+      AsyncFunction("dismissContexts") { (view: ZoenMessageContextStage) async in await view.dismissContexts() }
+      AsyncFunction("retireContexts") { (view: ZoenMessageContextStage) async in await view.retireContexts() }
+    }
+    View(ZoenMessageContextSource.self) {
+      ViewName("MessageContextSource")
+      Events("onGesture")
+      Prop("binding") { (view: ZoenMessageContextSource, value: String) in view.requestedBinding = value }
+      Prop("active") { (view: ZoenMessageContextSource, value: Bool) in view.requestedActive = value }
+      Prop("handlesTap") { (view: ZoenMessageContextSource, value: Bool) in view.requestedHandlesTap = value }
+      Prop("reducedMotion") { (view: ZoenMessageContextSource, value: Bool) in view.requestedReducedMotion = value }
+      OnViewDidUpdateProps { (view: ZoenMessageContextSource) in
+        view.bind(view.requestedBinding, active: view.requestedActive, handlesTap: view.requestedHandlesTap, reducedMotion: view.requestedReducedMotion)
+      }
+      AsyncFunction("presentContext") { (view: ZoenMessageContextSource, requestId: String, binding: String, gestureId: String, configuration: String) async throws -> String? in
+        try await view.present(requestId: requestId, expectedBinding: binding, gestureId: gestureId, configuration: configuration)
+      }
+      AsyncFunction("consumeGesture") { (view: ZoenMessageContextSource, binding: String, gestureId: String) async -> Bool in
+        await view.consumeGesture(expectedBinding: binding, gestureId: gestureId)
+      }
+      AsyncFunction("dismissContext") { (view: ZoenMessageContextSource, requestId: String) async in await view.dismiss(requestId: requestId) }
     }
     View(ZoenMessageReceiptView.self) {
       ViewName("MessageReceipt")
       Prop("ownerKey") { (view: ZoenMessageReceiptView, value: String?) in view.ownerKey = value ?? "" }
       Prop("shape") { (view: ZoenMessageReceiptView, value: String) in view.shape = value }
       Prop("color") { (view: ZoenMessageReceiptView, value: String) in view.color = value }
+      Prop("reducedMotion") { (view: ZoenMessageReceiptView, value: Bool) in view.reducedMotion = value }
       OnViewDidUpdateProps { (view: ZoenMessageReceiptView) in view.apply(propsDelivered: true) }
     }
     AsyncFunction("openAssistant") { (spaceId: String, locale: String) async throws -> String in
@@ -870,9 +898,13 @@ private actor ZoenSession {
     let id = filePreview.register(file: file, generation: generation)
     let preview = filePreview
     let title = asset.name
+    let mime = asset.mime
     let task = Task { @MainActor in
       try await preview.open(id: id, title: title, edit: nil) { editing in
-        ZoenQuickLookPreview(presenter: presenter, editing: editing)
+        if editing == nil, ZoenMediaGalleryPreview.supports(mime: mime) {
+          return ZoenMediaGalleryPreview(presenter: presenter, mime: mime)
+        }
+        return ZoenQuickLookPreview(presenter: presenter, editing: editing)
       }
     }
     draftPreviewTasks[token] = task
@@ -1261,7 +1293,10 @@ private actor ZoenSession {
       ? "\(binding.name) — \(NSLocalizedString("Recovered changes", comment: "Recovered private PDF preview title"))"
       : binding.name
     try await filePreview.open(id: id, title: title, edit: edit) { editing in
-      ZoenQuickLookPreview(presenter: presenter, editing: editing)
+      if editing == nil, ZoenMediaGalleryPreview.supports(mime: binding.mime) {
+        return ZoenMediaGalleryPreview(presenter: presenter, mime: binding.mime)
+      }
+      return ZoenQuickLookPreview(presenter: presenter, editing: editing)
     }
   }
 

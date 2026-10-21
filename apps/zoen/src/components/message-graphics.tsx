@@ -17,6 +17,10 @@ export function MessageBubbleGraphic(props: MessageBubbleGraphicProps) {
         position: 'absolute',
         inset: 0,
         backgroundColor: props.fill,
+        experimental_backgroundImage:
+          props.fillColors && props.fillColors.length > 1
+            ? `linear-gradient(to bottom, ${props.fillColors.join(', ')})`
+            : undefined,
         borderTopLeftRadius: shape.topLeft,
         borderTopRightRadius: shape.topRight,
         borderBottomLeftRadius: shape.bottomLeft,

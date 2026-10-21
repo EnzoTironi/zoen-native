@@ -21,9 +21,20 @@ import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import { ReactionPalette, ReactionButton, MORE_REACTIONS } from './reaction-palette';
 import type { MessageActionsProps } from './message-actions.types';
+import { ExtractedMessageActions } from './message-context-actions.ios';
 
 /** Contextual native modal. Focus/navigation callbacks wait for UIKit's real dismissal. */
 export function MessageActions(props: MessageActionsProps) {
+  return props.entry && props.nativeSource ? (
+    <ExtractedMessageActions
+      props={props}
+      fallback={(value) => <SafeMessageActions {...value} />}
+    />
+  ) : (
+    <SafeMessageActions {...props} />
+  );
+}
+function SafeMessageActions(props: MessageActionsProps) {
   const { colors, scheme, reducedMotion } = useTheme();
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();

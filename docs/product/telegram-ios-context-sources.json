@@ -1,0 +1,136 @@
+{
+  "telegramRevision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "sourceCopiedIntoCandidate": false,
+  "references": [
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/Display/Source/ContextGesture.swift",
+      "sha256": "29238b6b309aa7e5abae9fc4007f3f0de575c0b22d058ef22140b94bdf6e70ff",
+      "localReadOnlySource": "/private/tmp/zoen-telegram-message-interactions-v187/upstream/submodules/Display/Source/ContextGesture.swift",
+      "lines": [
+        77,
+        143
+      ],
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/ContextGesture.swift#L77",
+      "purpose": "120ms admission delay,200ms progress"
+    },
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/Display/Source/ContextControllerSourceNode.swift",
+      "sha256": "b1352b5b69dbe324b83a47668e31c690905b4e61648c4a38189c89b1e6337180",
+      "localReadOnlySource": "/private/tmp/zoen-telegram-context-plan-v191/upstream/submodules/Display/Source/ContextControllerSourceNode.swift",
+      "lines": [],
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/ContextControllerSourceNode.swift",
+      "purpose": "pressed scale and200ms ease-out reset"
+    },
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/Display/Source/TapLongTapOrDoubleTapGestureRecognizer.swift",
+      "sha256": "faaf3db397ff6a1058e359e85d70ae468f1f065cc227b5c871fcb1cf13ee0b61",
+      "localReadOnlySource": "/private/tmp/zoen-telegram-context-port-v196/upstream/TapLongTapOrDoubleTapGestureRecognizer.swift",
+      "lines": [
+        206,
+        320
+      ],
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/TapLongTapOrDoubleTapGestureRecognizer.swift#L206",
+      "purpose": "160ms double-tap wait,2pt movement cancellation"
+    },
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerExtractedPresentationNode.swift",
+      "sha256": "1177f2c981015502e35e5380d91858abed7bca5e3165b232ff8134d5329fb4d3",
+      "localReadOnlySource": "/private/tmp/zoen-telegram-motion-v190/upstream/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerExtractedPresentationNode.swift",
+      "lines": [
+        1469,
+        1470,
+        1629,
+        1660,
+        1761
+      ],
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerExtractedPresentationNode.swift#L1469",
+      "purpose": "420ms normalized spring;50/150ms chrome fades;200ms return"
+    },
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerActionsStackNode.swift",
+      "sha256": "c3307bf7ab997dbf8f331cac36b9c7079241fa44fd77997e71131aa746d60ced",
+      "localReadOnlySource": "/private/tmp/zoen-telegram-message-interactions-v187/upstream/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerActionsStackNode.swift",
+      "lines": [
+        213,
+        214,
+        216,
+        217,
+        587,
+        1571,
+        2031,
+        2043
+      ],
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerActionsStackNode.swift#L213",
+      "purpose": "18/20pt sides,11pt vertical,32pt icon +8pt gap,240pt max,glass radius30"
+    },
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/ReactionSelectionNode/Sources/ReactionContextNode.swift",
+      "sha256": "4441123dcdb678652781f21050d92849d030acf4b710404aad5d59bf35848877",
+      "localReadOnlySource": "/private/tmp/zoen-telegram-message-interactions-v187/upstream/submodules/ReactionSelectionNode/Sources/ReactionContextNode.swift",
+      "lines": [
+        1276,
+        1279,
+        1280,
+        1281,
+        1343,
+        858,
+        2485
+      ],
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ReactionSelectionNode/Sources/ReactionContextNode.swift#L1276",
+      "purpose": "36/8/6pt slots,56pt row,anchor22/\u22127,source-distance stagger"
+    },
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift",
+      "sha256": "0bc5846561791c3c7c0dce2e0e904950011d397705f494a34c548b449dea45eb",
+      "localReadOnlySource": "/private/tmp/zoen-telegram-conversation-v185/upstream/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift",
+      "lines": [
+        5822,
+        5850
+      ],
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift#L5822",
+      "purpose": "content-specific single/double behavior; canonical default reaction reference"
+    },
+    {
+      "installedSource": "react-native/React/Fabric/RCTSurfaceTouchHandler.h",
+      "sha256": "9a88c0912b33051806e1f02f0fdb3b29f5dc1958a7aa72b1092b256eec8e6562",
+      "purpose": "public original surface attach/detach API"
+    },
+    {
+      "installedSource": "react-native/React/Fabric/RCTSurfaceTouchHandler.mm",
+      "sha256": "7a3f2f2598c72902e4488b0853aa6e4538c5cb23954c56348d54e354e9e5a7dc",
+      "purpose": "Fabric tag/emitter walk and original-root coordinates"
+    },
+    {
+      "installedSource": "react-native-gesture-handler/apple/RNGestureHandlerManager.mm",
+      "sha256": "baddbbc46d35314259c3480f1fdc08c3d50719a033f8f909c6880e470d9f549c",
+      "purpose": "recognized original root registration"
+    },
+    {
+      "installedSource": "react-native-gesture-handler/apple/RNGestureHandlerDetector.mm",
+      "sha256": "b451de379bce2ecf9408671783e270ac6a0c39eeef05a04331ee928726afdf60",
+      "purpose": "window detachment/rearm; no uninterrupted-gesture claim"
+    },
+    {
+      "installedSource": "expo-router/ios/LinkPreview/LinkPreviewNativeView.swift",
+      "sha256": "2606a9aaf6a1d7e4009bf82f40aedc47da89efe13ebf35379c0d25d9c9b1639e",
+      "purpose": "public Surface touch cancellation via enable toggle"
+    },
+    {
+      "installedSource": "expo-modules-core/ios/Fabric/ExpoFabricViewObjC.h",
+      "sha256": "288f6e870d93d86b915b4bbbef3aff9201d96c78bb6604b1990e32432210ff48",
+      "purpose": "public native-owned mount/unmount override seam"
+    },
+    {
+      "installedSource": "react-native/React/Fabric/Mounting/ComponentViews/View/RCTViewComponentView.mm",
+      "sha256": "6124c891a61673fcb53f10af3a5dfe57cbee7c43f854e9d783adea7e9617fcdd",
+      "purpose": "public testID\u2192accessibilityIdentifier marker mapping"
+    }
+  ]
+}

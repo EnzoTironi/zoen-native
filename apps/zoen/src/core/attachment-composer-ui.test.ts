@@ -1,3 +1,5 @@
+import { composerVerticalInsets } from './telegram-audio-presentation.ts';
+import { telegramPresentation, DEFAULT_THEME_CUSTOMIZATION } from '../theme/telegram.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -84,7 +86,12 @@ const fieldOutputs = new Map(
   ),
 );
 function fixture(platform: Platform = 'ios', fontScale = 1) {
-  type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
+  type Slot = {
+    value?: unknown;
+    deps?: readonly unknown[];
+    cleanup?: () => void;
+    set?: (next: unknown) => void;
+  };
   type Effect = () => void | (() => void);
   const slots: Slot[] = [];
   const caches: unknown[][] = [];
@@ -103,6 +110,9 @@ function fixture(platform: Platform = 'ios', fontScale = 1) {
     fontSize: number;
     nonce: number;
   }[] = [];
+  const theme = { scheme: 'dark', colors: {}, presentation: telegramPresentation('night') };
+  const pendingFits: { request: Record<string, any>; resolve: (value: any) => void }[] = [];
+  let deferFits = false;
   const nativeField = { focus() {}, blur() {} };
   const slot = () => (slots[cursor++] ??= {});
   const same = (left?: readonly unknown[], right?: readonly unknown[]) =>
@@ -185,16 +195,14 @@ function fixture(platform: Platform = 'ios', fontScale = 1) {
         const current = slot();
         if (!Object.hasOwn(current, 'value'))
           current.value = typeof initial === 'function' ? initial() : initial;
-        return [
-          current.value,
-          (next: unknown) => {
-            const value = typeof next === 'function' ? next(current.value) : next;
-            if (!Object.is(value, current.value)) {
-              current.value = value;
-              dirty = true;
-            }
-          },
-        ];
+        current.set ??= (next: unknown) => {
+          const value = typeof next === 'function' ? next(current.value) : next;
+          if (!Object.is(value, current.value)) {
+            current.value = value;
+            dirty = true;
+          }
+        };
+        return [current.value, current.set];
       },
       useMemo: memo,
       useCallback: (callback: unknown, deps: readonly unknown[]) => memo(() => callback, deps),
@@ -226,6 +234,10 @@ function fixture(platform: Platform = 'ios', fontScale = 1) {
         return 101;
       },
       useWindowDimensions: () => ({ fontScale }),
+      StyleSheet: {
+        flatten: (style: any): any =>
+          Array.isArray(style) ? Object.assign({}, ...style.map((part: any) => part || {})) : style,
+      },
     },
     '../../modules/zoen-core/src/ZoenCoreModule': {
       __esModule: true,
@@ -239,7 +251,9 @@ function fixture(platform: Platform = 'ios', fontScale = 1) {
           fontSize: number,
           nonce: number,
         ) => {
-          measurements.push({ tag, text, label, placeholder, width, fontSize, nonce });
+          const request = { tag, text, label, placeholder, width, fontSize, nonce };
+          measurements.push(request);
+          if (deferFits) return new Promise((resolve) => pendingFits.push({ request, resolve }));
           return { tag, nonce, width, height: text ? 74 : 52, fontSize };
         },
       },
@@ -251,9 +265,10 @@ function fixture(platform: Platform = 'ios', fontScale = 1) {
     },
     'expo-glass-effect': { GlassView: 'GlassView', isLiquidGlassAvailable: () => false },
     './keyboard-motion': { useKeyboardMotion: () => ({ progress: { value: 0 } }) },
-    '../theme': { useTheme: () => ({ scheme: 'dark', colors: {} }) },
+    '../theme': { useTheme: () => theme },
     '../i18n/index.ts': { t: (key: string) => key },
     '../core/conversation-search': { conversationQueryFits: () => true },
+    '../core/telegram-audio-presentation': { composerVerticalInsets },
     '../media/MediaComposer': { MediaComposer: 'MediaComposer' },
     '../media/attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
     './message-context': { MessageContext: 'MessageContext' },
@@ -308,6 +323,11 @@ function fixture(platform: Platform = 'ios', fontScale = 1) {
     file,
     calls,
     measurements,
+    theme,
+    pendingFits,
+    deferFits: () => {
+      deferFits = true;
+    },
     nativeField,
     nativeHandleReads: () => nativeHandleReads,
     unmount: () => {
@@ -572,4 +592,39 @@ test('Android and Web keep the existing outside-send layout and composer sizing'
     assert.equal(style.fontSize, 16);
     assert.equal(f.measurements.length, 0);
   }
+});
+
+test('a theme font change measures the displayed font and rejects late fitting of the old font', async () => {
+  const f = fixture('ios', 1.5);
+  f.deferFits();
+  let tree = f.render();
+  assert.ok(f.pendingFits.length);
+  const first = f.pendingFits.map((fit) => fit);
+  assert.ok(first.every((fit) => fit.request.fontSize === 25.5));
+  f.theme.presentation = telegramPresentation('night', {
+    ...DEFAULT_THEME_CUSTOMIZATION,
+    textSize: 23,
+  });
+  tree = f.render();
+  const actual = find(tree, (node) => node.type === 'TextInput');
+  const flattened = Object.assign({}, ...(actual.props.style as any[]));
+  assert.equal(flattened.fontSize, 23);
+  const latest = f.pendingFits.at(-1)!;
+  assert.equal(latest.request.fontSize, 34.5);
+  for (const fit of first) fit.resolve({ ...fit.request, height: 154 });
+  await new Promise((done) => setImmediate(done));
+  tree = f.render();
+  assert.notEqual(
+    Object.assign({}, ...(find(tree, (node) => node.type === 'TextInput').props.style as any[]))
+      .height,
+    154,
+  );
+  latest.resolve({ ...latest.request, height: 88 });
+  await new Promise((done) => setImmediate(done));
+  tree = f.render();
+  assert.equal(
+    Object.assign({}, ...(find(tree, (node) => node.type === 'TextInput').props.style as any[]))
+      .height,
+    88,
+  );
 });

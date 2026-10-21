@@ -760,8 +760,8 @@ export default function Chat() {
                   spaceId={id}
                   entry={entry}
                   activity={activity}
-                  previous={visibleEntries[index - 1]}
-                  next={visibleEntries[index + 1]}
+                  previous={rows[index - 1]?.entry}
+                  next={rows[index + 1]?.entry}
                   groupChat={chat.kind !== 'Direct'}
                   item={items.find((item) => item.id === messageCard(entry)?.item_id)}
                   highlighted={entry.id === selectedSearchId}

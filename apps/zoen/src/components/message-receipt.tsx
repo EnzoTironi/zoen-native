@@ -29,17 +29,20 @@ export function MessageReceipt({
   ownerKey,
   ink,
   background,
+  backgrounds,
 }: {
   delivery: Delivery;
   ownerKey?: string;
   ink?: string;
   background?: string;
+  backgrounds?: readonly string[];
 }) {
-  const { colors } = useTheme();
+  const { colors, reducedMotion } = useTheme();
   const doubled = delivery === 'Delivered' || delivery === 'Read';
+  const papers = backgrounds?.length ? backgrounds : [background ?? colors.mine];
   const readBlue =
-    ['#168CD2', '#4CC3F2', '#1167A3', '#79D7FF'].find(
-      (color) => contrastRatio(color, background ?? colors.mine) >= 3,
+    ['#168CD2', '#4CC3F2', '#1167A3', '#79D7FF', '#003E60'].find((color) =>
+      papers.every((paper) => contrastRatio(color, paper) >= 3),
     ) ??
     ink ??
     colors.onMine;
@@ -71,6 +74,7 @@ export function MessageReceipt({
           ownerKey={ownerKey}
           shape={delivery === 'Sending' ? 'clock' : doubled ? 'double' : 'single'}
           color={color}
+          reducedMotion={reducedMotion}
         />
       )}
     </View>

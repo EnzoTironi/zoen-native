@@ -1,4 +1,5 @@
 import { useAppSheetCloseButton } from './app-sheet-context';
+import { AppKeyboardViewport } from './app-keyboard-viewport';
 import { t, locale } from '../i18n/index.ts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
@@ -42,21 +43,30 @@ export function MiniappView({
   onDocumentCopied?: (itemId: string) => void;
   onDocumentDiscard?: () => void;
 }) {
-  return props.spec.id === 'deckcraft' ? (
-    <DeckcraftView
-      {...props}
-      onDocumentController={onDocumentController}
-      onDocumentDiscard={onDocumentDiscard}
-    />
-  ) : props.spec.id === 'excalidraw' ? (
-    <CanonicalDrawingView
-      {...props}
-      onDocumentController={onDocumentController}
-      onDocumentCopied={onDocumentCopied}
-      onDocumentDiscard={onDocumentDiscard}
-    />
-  ) : (
-    <BuiltinMiniappView {...props} />
+  const content =
+    props.spec.id === 'deckcraft' ? (
+      <DeckcraftView
+        {...props}
+        onDocumentController={onDocumentController}
+        onDocumentDiscard={onDocumentDiscard}
+      />
+    ) : props.spec.id === 'excalidraw' ? (
+      <CanonicalDrawingView
+        {...props}
+        onDocumentController={onDocumentController}
+        onDocumentCopied={onDocumentCopied}
+        onDocumentDiscard={onDocumentDiscard}
+      />
+    ) : (
+      <BuiltinMiniappView {...props} />
+    );
+  return (
+    <AppKeyboardViewport
+      enabled={!!props.fill}
+      scope={JSON.stringify([props.item.id, props.spec.resource_uri])}
+    >
+      {content}
+    </AppKeyboardViewport>
   );
 }
 

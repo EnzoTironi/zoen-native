@@ -40,6 +40,7 @@ import {
 } from '../core/message-swipe.ts';
 import { Icon } from './primitives';
 import type { MessageInteractionProps } from './message-interaction.types';
+import { MessageContextOwnsPress, MessageContextControlBarrier } from './message-context-ports';
 
 const MessagePan = createContext<PanGesture | undefined>(undefined);
 const MessageDidPan = createContext<SharedValue<boolean> | undefined>(undefined);
@@ -60,23 +61,41 @@ export function useMessagePressConsumption() {
 export function MessagePressable({
   onPress,
   onLongPress,
+  onAccessibilityTap,
   ...props
 }: ComponentProps<typeof Pressable>) {
   const canPress = useMessagePressGuard();
+  const nativeOwnsPress = use(MessageContextOwnsPress);
+  const dismissContext = use(MessageContextControlBarrier);
+  function run(callback: () => void, physical = true) {
+    if (physical && !canPress()) return;
+    if (!dismissContext) callback();
+    else
+      void dismissContext()
+        .then(() => {
+          if (!physical || canPress()) callback();
+        })
+        .catch(() => {});
+  }
   return (
     <Pressable
       {...props}
       onPress={
-        onPress
+        onPress && !nativeOwnsPress
           ? (event) => {
-              if (canPress()) onPress(event);
+              if (dismissContext) event.persist();
+              run(() => onPress(event));
             }
           : undefined
       }
+      onAccessibilityTap={
+        onAccessibilityTap ? () => run(() => onAccessibilityTap(), false) : undefined
+      }
       onLongPress={
-        onLongPress
+        onLongPress && !nativeOwnsPress
           ? (event) => {
-              if (canPress()) onLongPress(event);
+              if (dismissContext) event.persist();
+              run(() => onLongPress(event));
             }
           : undefined
       }

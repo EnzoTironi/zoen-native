@@ -24,7 +24,7 @@ export function ChatTitle({
   availableWidth,
   onLayout,
 }: ChatHeaderProps & { availableWidth?: number; onLayout?: ViewProps['onLayout'] }) {
-  const { colors, scheme } = useTheme();
+  const { colors, presentation: p, scheme } = useTheme();
   const { width, fontScale } = useWindowDimensions();
   const glass = process.env.EXPO_OS === 'ios' && isLiquidGlassAvailable();
   const native = process.env.EXPO_OS === 'ios';
@@ -45,14 +45,14 @@ export function ChatTitle({
     >
       <Text
         numberOfLines={1}
-        style={{ color: colors.text, fontSize: 17, fontWeight: '600', textAlign: 'center' }}
+        style={{ color: p.navigation.text, fontSize: 17, fontWeight: '600', textAlign: 'center' }}
       >
         {title}
       </Text>
       {activityLabel && fontScale <= 1.2 ? (
         <Text
           numberOfLines={1}
-          style={{ color: colors.secondary, fontSize: 12, textAlign: 'center' }}
+          style={{ color: p.navigation.secondary, fontSize: 12, textAlign: 'center' }}
         >
           {activityLabel}
         </Text>

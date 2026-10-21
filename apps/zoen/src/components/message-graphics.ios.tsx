@@ -11,6 +11,7 @@ type NativeBubbleProps = ViewProps &
     ownerKey: string;
     incoming: boolean;
     fill: string;
+    fillColors: readonly string[];
     animateChanges: boolean;
   };
 const NativeBubble = requireNativeView<NativeBubbleProps>('ZoenCore', 'MessageBubble');
@@ -26,6 +27,7 @@ export function MessageBubbleGraphic(props: MessageBubbleGraphicProps) {
       ownerKey={props.ownerKey}
       incoming={props.incoming}
       fill={props.fill}
+      fillColors={props.fillColors ?? [props.fill]}
       animateChanges={props.animateChanges === true}
       pointerEvents="none"
       accessible={false}

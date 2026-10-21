@@ -98,8 +98,11 @@ import UIKit
   var bottomLeft = 16.0
   var bottomRight = 16.0
   var fill = ""
+  var fillColors: [String] = []
   var animateChanges = false
   private let image = UIImageView()
+  private let colorView = UIView()
+  private let gradient = CAGradientLayer()
   private var appliedKey = ""
   private var appliedOwner = ""
 
@@ -107,20 +110,31 @@ import UIKit
     super.init(appContext: appContext)
     isUserInteractionEnabled = false; isAccessibilityElement = false; clipsToBounds = false
     image.isUserInteractionEnabled = false; image.isAccessibilityElement = false
-    addSubview(image)
+    colorView.isUserInteractionEnabled = false; colorView.isAccessibilityElement = false
+    gradient.startPoint = CGPoint(x: 0.5, y: 0); gradient.endPoint = CGPoint(x: 0.5, y: 1)
+    colorView.layer.addSublayer(gradient); colorView.mask = image
+    addSubview(colorView)
     NotificationCenter.default.addObserver(self, selector: #selector(reduceMotionChanged), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
   }
   @objc private func reduceMotionChanged() { if UIAccessibility.isReduceMotionEnabled { image.layer.removeAllAnimations() } }
   func apply() {
     let raw = [topLeft, topRight, bottomLeft, bottomRight]
     guard !ownerKey.isEmpty, raw.allSatisfy({ $0.isFinite && $0 >= 0 && $0 <= 16 }),
-          let color = ZoenMessageInk.color(fill) else { image.image = nil; image.layer.removeAllAnimations(); appliedKey = ""; appliedOwner = ""; return }
-    let key = "\(incoming):\(tail):\(raw):\(fill):\(traitCollection.displayScale)"
+          ZoenMessageInk.color(fill) != nil else { image.image = nil; image.layer.removeAllAnimations(); gradient.colors = nil; appliedKey = ""; appliedOwner = ""; return }
+    let stops = fillColors.isEmpty ? [fill] : fillColors
+    let colors = stops.compactMap(ZoenMessageInk.color)
+    guard colors.count == stops.count, (1...4).contains(colors.count) else {
+      image.image = nil; image.layer.removeAllAnimations(); gradient.colors = nil; appliedKey = ""; appliedOwner = ""; return
+    }
+    let key = "\(incoming):\(tail):\(raw):\(stops):\(traitCollection.displayScale)"
     guard key != appliedKey || ownerKey != appliedOwner else { return }
     let animate = animateChanges && !UIAccessibility.isReduceMotionEnabled && window != nil && ownerKey == appliedOwner && !appliedKey.isEmpty
     var radii = raw.map { CGFloat($0) }
     if incoming { radii = [radii[1], radii[0], radii[3], radii[2]] }
-    let rendered = ZoenMessageInk.bubble(radii: radii, tail: tail, incoming: incoming, color: color, scale: max(1, traitCollection.displayScale))
+    let rendered = ZoenMessageInk.bubble(radii: radii, tail: tail, incoming: incoming, color: .white, scale: max(1, traitCollection.displayScale))
+    CATransaction.begin(); CATransaction.setDisableActions(true)
+    gradient.colors = (colors.count == 1 ? [colors[0], colors[0]] : colors).map(\.cgColor)
+    CATransaction.commit()
     if animate, let prior = image.image?.cgImage, let next = rendered.cgImage {
       let animation = CABasicAnimation(keyPath: "contents")
       animation.fromValue = prior; animation.toValue = next; animation.duration = 0.42
@@ -129,7 +143,11 @@ import UIKit
     } else { image.layer.removeAllAnimations() }
     image.image = rendered; appliedKey = key; appliedOwner = ownerKey
   }
-  override func layoutSubviews() { super.layoutSubviews(); image.frame = bounds.insetBy(dx: -1, dy: -1); apply() }
+  override func layoutSubviews() {
+    super.layoutSubviews(); colorView.frame = bounds; image.frame = colorView.bounds.insetBy(dx: -1, dy: -1)
+    CATransaction.begin(); CATransaction.setDisableActions(true); gradient.frame = colorView.bounds.insetBy(dx: -1, dy: -1); CATransaction.commit()
+    apply()
+  }
   override func didMoveToWindow() { super.didMoveToWindow(); if window == nil { image.layer.removeAllAnimations(); appliedOwner = "" } }
 }
 
@@ -137,6 +155,7 @@ import UIKit
   var ownerKey = ""
   var shape = ""
   var color = ""
+  var reducedMotion = false
   private let full = UIImageView()
   private let partial = UIImageView()
   private var appliedOwner = ""
@@ -156,14 +175,14 @@ import UIKit
     apply()
   }
   private func reveal(_ view: UIView) {
-    guard !UIAccessibility.isReduceMotionEnabled else { return }
+    guard !reducedMotion, !UIAccessibility.isReduceMotionEnabled else { return }
     let animation = CABasicAnimation(keyPath: "transform.scale")
     animation.fromValue = 1.3; animation.toValue = 1.0; animation.duration = 0.1
     animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
     view.layer.add(animation, forKey: "zoen.message.acknowledgement")
   }
   private func rotate(_ view: UIView, seconds: Double) {
-    guard !UIAccessibility.isReduceMotionEnabled, view.layer.animation(forKey: "zoen.message.clock") == nil else { return }
+    guard !reducedMotion, !UIAccessibility.isReduceMotionEnabled, view.layer.animation(forKey: "zoen.message.clock") == nil else { return }
     let animation = CABasicAnimation(keyPath: "transform.rotation.z")
     animation.fromValue = 0; animation.toValue = Double.pi * 2; animation.duration = seconds
     animation.timingFunction = CAMediaTimingFunction(name: .linear); animation.repeatCount = .infinity
@@ -171,6 +190,7 @@ import UIKit
     view.layer.add(animation, forKey: "zoen.message.clock")
   }
   func apply(propsDelivered: Bool = false) {
+    if reducedMotion { for image in [full, partial] { image.layer.removeAllAnimations() } }
     guard let selectedShape = ZoenMessageReceiptPresentation.Shape(rawValue: shape), let ink = ZoenMessageInk.color(color) else {
       for image in [full, partial] { image.image = nil; image.layer.removeAllAnimations() }
       presentation.invalidate()

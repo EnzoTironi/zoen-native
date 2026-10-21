@@ -14,7 +14,6 @@ import {
   tint,
 } from '@expo/ui/swift-ui/modifiers';
 import { useEvent, useEventListener } from 'expo';
-import { Image } from 'expo-image';
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
@@ -37,13 +36,14 @@ import { Icon } from '../components/primitives';
 import type { AttachmentComposerField } from './attachment-composer';
 import { DraftThumbnail } from './attachment-draft-strip';
 import { AttachmentGalleryPager } from './attachment-gallery-pager';
+import { AttachmentImageSurface } from './attachment-image-surface';
+import { AttachmentGallerySurface } from './attachment-gallery-surface';
 import type { AttachmentApprovalProps } from './attachment-approval.types';
 import { mediaPlayback, type PlaybackOwner } from './playback-owner';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
 
 export const supportsMediaApproval = true;
-const background = '#000000';
 const surface = '#1C1E22';
 const secondary = '#A9ADB6';
 
@@ -220,11 +220,32 @@ function reviewThumbnailSide(width: number, height: number, scale: number) {
 function ApprovalContent(props: AttachmentApprovalProps) {
   const { state, field, selectedId, recipient, busy, editing, canAdd, canEdit, error } = props;
   const selected = state.items.find((item) => item.mutationId === selectedId) ?? state.items[0];
-  const { bottom } = useSafeAreaInsets();
+  const { bottom, left, right } = useSafeAreaInsets();
   const { width, height, scale } = useWindowDimensions();
   const { reducedMotion } = useTheme();
   const [typing, setTyping] = useState(false);
   const [showSelection, setShowSelection] = useState(false);
+  const [visual, setVisual] = useState({
+    id: selected?.mutationId,
+    blocked: busy || editing || typing,
+    zoomed: false,
+    hidden: false,
+  });
+  const blocked = busy || editing || typing;
+  const sameVisual = visual.id === selected?.mutationId && visual.blocked === blocked;
+  if (!sameVisual) setVisual({ id: selected?.mutationId, blocked, zoomed: false, hidden: false });
+  const zoomed = sameVisual && !blocked && visual.zoomed;
+  const controlsHidden = sameVisual && !blocked && visual.hidden;
+  const currentSelected = useRef<string | null>(null);
+  const landscape = width > height;
+  const toolbarSide = left >= right ? 'left' : 'right';
+  useLayoutEffect(() => {
+    const id = selected?.mutationId ?? null;
+    currentSelected.current = id;
+    return () => {
+      if (currentSelected.current === id) currentSelected.current = null;
+    };
+  }, [selected?.mutationId]);
   const rail = useRef<ScrollViewInstance | null>(null);
   const position = Math.max(
     0,
@@ -234,280 +255,350 @@ function ApprovalContent(props: AttachmentApprovalProps) {
   useEffect(() => {
     if (showSelection)
       rail.current?.scrollTo({
-        x: Math.max(0, position * (thumbnailSide + 4) - 4),
+        [landscape ? 'y' : 'x']: Math.max(0, position * (thumbnailSide + 4) - 4),
         animated: !reducedMotion,
       });
-  }, [position, showSelection, thumbnailSide, reducedMotion]);
+  }, [position, showSelection, thumbnailSide, reducedMotion, landscape]);
   if (!selected) return null;
   const select = (id: string) => {
     if (busy || !props.isCurrent() || id === selected.mutationId) return;
     void Haptics.selectionAsync().catch(() => {});
     props.onSelect(id);
   };
-  return (
-    <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: background }}>
-      <KeyboardAvoidingView behavior="padding" automaticOffset style={{ flex: 1 }}>
-        <View testID="attachment-approval-stage" style={{ position: 'absolute', inset: 0 }}>
-          <AttachmentGalleryPager
-            items={state.items}
-            selectedId={selected.mutationId}
-            disabled={busy || editing || typing}
-            reducedMotion={reducedMotion}
-            isCurrent={props.isCurrent}
-            onSelect={select}
-            onDragStart={() => {
-              Keyboard.dismiss();
-              mediaPlayback.pauseAll();
-            }}
-            renderItem={(item, active) =>
-              !item.uri ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                  <ActivityIndicator color="#FFFFFF" />
-                  <Text style={{ color: secondary }}>{t('media.attachmentPreparing')}</Text>
-                </View>
-              ) : item.mime.startsWith('image/') ? (
-                <Image
-                  testID={`attachment-approval-image-${item.mutationId}`}
-                  source={{ uri: item.uri }}
-                  recyclingKey={item.mutationId}
-                  cachePolicy="none"
-                  contentFit="contain"
-                  accessibilityLabel={item.name}
-                  style={{ flex: 1 }}
-                />
-              ) : item.mime.startsWith('video/') && active ? (
-                <ApprovalVideo
-                  key={item.mutationId}
-                  uri={item.uri}
-                  active={!editing && !busy}
-                  isCurrent={props.isCurrent}
-                />
-              ) : (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                  <Icon
-                    name={
-                      item.mime.startsWith('video/')
-                        ? { ios: 'video', android: 'videocam', web: 'videocam' }
-                        : { ios: 'doc', android: 'description', web: 'description' }
-                    }
-                    color="#FFFFFF"
-                    size={42}
-                  />
-                  <Text style={{ color: '#FFFFFF', paddingHorizontal: 24 }} numberOfLines={2}>
-                    {item.name}
-                  </Text>
-                </View>
-              )
-            }
-          />
-        </View>
-        <View pointerEvents="box-none" style={{ flex: 1, justifyContent: 'flex-end' }}>
-          <View style={{ paddingBottom: typing ? 8 : bottom, gap: 10 }}>
-            {!typing ? (
-              <>
-                {showSelection ? (
-                  <ScrollView
-                    ref={rail}
-                    testID="attachment-approval-selection-rail"
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
-                    contentContainerStyle={{ gap: 4, paddingHorizontal: 4, paddingVertical: 4 }}
-                  >
-                    {state.items.map((item, index) => (
-                      <Pressable
-                        key={item.mutationId}
-                        testID={`attachment-approval-thumbnail-${index}`}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: item === selected, disabled: busy }}
-                        accessibilityLabel={t('media.attachmentPosition', {
-                          position: index + 1,
-                          total: state.items.length,
-                          name: item.name,
-                        })}
-                        disabled={busy}
-                        onPress={() => select(item.mutationId)}
-                        style={{
-                          width: thumbnailSide,
-                          height: thumbnailSide,
-                          borderWidth: 2,
-                          borderColor: item === selected ? '#FFFFFF' : 'transparent',
-                        }}
-                      >
-                        <DraftThumbnail item={item} borderRadius={0} />
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                ) : null}
-                <View style={{ alignItems: 'flex-end', paddingHorizontal: 8 }}>
-                  <Host
-                    style={{ width: 64, height: 38 }}
-                    colorScheme="dark"
-                    ignoreSafeArea="keyboard"
-                  >
-                    <Button
-                      testID="attachment-approval-selection-count"
-                      label={String(state.items.length)}
-                      systemImage="photo.on.rectangle"
-                      onPress={() => {
-                        if (!busy && props.isCurrent()) setShowSelection((value) => !value);
+  const overlay = (
+    <SafeAreaView edges={['left', 'right']} pointerEvents="box-none" style={{ flex: 1 }}>
+      <View
+        pointerEvents="box-none"
+        style={{
+          flex: 1,
+          justifyContent: 'flex-end',
+          paddingLeft:
+            landscape && toolbarSide === 'left' ? 49 + (showSelection ? thumbnailSide + 74 : 0) : 0,
+          paddingRight:
+            landscape && toolbarSide === 'right'
+              ? 49 + (showSelection ? thumbnailSide + 74 : 0)
+              : 0,
+        }}
+      >
+        <View
+          style={{
+            ...(landscape ? ({ flex: 1, justifyContent: 'flex-end' } as const) : {}),
+            paddingBottom: typing ? 8 : bottom + (landscape ? 59 : 0),
+            gap: 10,
+          }}
+        >
+          {!typing ? (
+            <>
+              {showSelection ? (
+                <ScrollView
+                  ref={rail}
+                  testID="attachment-approval-selection-rail"
+                  horizontal={!landscape}
+                  style={
+                    landscape
+                      ? {
+                          position: 'absolute',
+                          top: 4,
+                          bottom: 4,
+                          [toolbarSide]: 115,
+                          width: thumbnailSide + 8,
+                        }
+                      : undefined
+                  }
+                  showsHorizontalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={{ gap: 4, paddingHorizontal: 4, paddingVertical: 4 }}
+                >
+                  {state.items.map((item, index) => (
+                    <Pressable
+                      key={item.mutationId}
+                      testID={`attachment-approval-thumbnail-${index}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: item === selected, disabled: busy }}
+                      accessibilityLabel={t('media.attachmentPosition', {
+                        position: index + 1,
+                        total: state.items.length,
+                        name: item.name,
+                      })}
+                      disabled={busy}
+                      onPress={() => select(item.mutationId)}
+                      style={{
+                        width: thumbnailSide,
+                        height: thumbnailSide,
+                        borderWidth: 2,
+                        borderColor: item === selected ? '#FFFFFF' : 'transparent',
                       }}
-                      modifiers={[
-                        buttonStyle(isLiquidGlassAvailable() ? 'glass' : 'bordered'),
-                        font({ size: 15, weight: 'semibold' }),
-                        foregroundStyle('#FFFFFF'),
-                        disabled(busy),
-                        frame({ width: 64, height: 38 }),
-                        accessibilityLabel(
-                          t('media.attachmentDraftCount', { count: state.items.length }),
-                        ),
-                      ]}
-                    />
-                  </Host>
-                </View>
-              </>
-            ) : null}
-            <View style={{ paddingHorizontal: 8, gap: 8 }}>
-              {error ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Text
-                    accessibilityRole="alert"
-                    style={{ flex: 1, color: secondary, fontSize: 12 }}
-                  >
-                    {error}
-                  </Text>
-                  <Host matchContents colorScheme="dark">
-                    <Button
-                      label={t('chat.tryAgain2')}
-                      onPress={props.onRetry}
-                      modifiers={[disabled(editing)]}
-                    />
-                  </Host>
-                </View>
-              ) : null}
-              {field.retry ? (
-                <Text style={{ color: secondary, fontSize: 12 }}>
-                  {t('media.attachmentRetryLocked')}
-                </Text>
+                    >
+                      <DraftThumbnail item={item} borderRadius={0} />
+                    </Pressable>
+                  ))}
+                </ScrollView>
               ) : null}
               <View
-                style={{
-                  minHeight: 40,
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  borderRadius: 20,
-                  backgroundColor: surface,
-                }}
+                style={
+                  landscape
+                    ? { position: 'absolute', top: 6, [toolbarSide]: 50 }
+                    : { alignItems: 'flex-end', paddingHorizontal: 8 }
+                }
               >
-                <Caption key={selected.mutationId} field={field} onFocus={setTyping} />
+                <Host
+                  style={{ width: 64, height: 38 }}
+                  colorScheme="dark"
+                  ignoreSafeArea="keyboard"
+                >
+                  <Button
+                    testID="attachment-approval-selection-count"
+                    label={String(state.items.length)}
+                    systemImage="photo.on.rectangle"
+                    onPress={() => {
+                      if (!busy && props.isCurrent()) setShowSelection((value) => !value);
+                    }}
+                    modifiers={[
+                      buttonStyle(isLiquidGlassAvailable() ? 'glass' : 'bordered'),
+                      font({ size: 15, weight: 'semibold' }),
+                      foregroundStyle('#FFFFFF'),
+                      disabled(busy),
+                      frame({ width: 64, height: 38 }),
+                      accessibilityLabel(
+                        t('media.attachmentDraftCount', { count: state.items.length }),
+                      ),
+                    ]}
+                  />
+                </Host>
               </View>
-            </View>
+            </>
+          ) : null}
+          <View style={{ paddingHorizontal: 8, gap: 8 }}>
+            {error ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text accessibilityRole="alert" style={{ flex: 1, color: secondary, fontSize: 12 }}>
+                  {error}
+                </Text>
+                <Host matchContents colorScheme="dark">
+                  <Button
+                    label={t('chat.tryAgain2')}
+                    onPress={props.onRetry}
+                    modifiers={[disabled(editing)]}
+                  />
+                </Host>
+              </View>
+            ) : null}
+            {field.retry ? (
+              <Text style={{ color: secondary, fontSize: 12 }}>
+                {t('media.attachmentRetryLocked')}
+              </Text>
+            ) : null}
             <View
               style={{
-                flexDirection: 'row',
-                minHeight: 44,
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 4,
-                paddingHorizontal: 8,
+                minHeight: 40,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                borderRadius: 20,
+                backgroundColor: surface,
               }}
             >
-              <ApprovalAction
-                testID="attachment-approval-close"
-                name="chevron.left"
-                label={t('common.close')}
-                onPress={props.onClose}
-              />
-              {!typing ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  {canEdit ? (
-                    <ApprovalAction
-                      testID="attachment-approval-edit"
-                      name="pencil.tip.crop.circle"
-                      label={t('media.attachmentEdit')}
-                      disabled={busy}
-                      onPress={() => {
-                        Keyboard.dismiss();
-                        props.onEdit();
-                      }}
-                    />
-                  ) : null}
-                  <Host
-                    style={{ width: 44, height: 44 }}
-                    colorScheme="dark"
-                    ignoreSafeArea="keyboard"
-                  >
-                    <Menu
-                      testID="attachment-approval-add"
-                      label={t('media.addAttachment')}
-                      systemImage="plus"
-                      modifiers={[
-                        buttonStyle('plain'),
-                        labelStyle('iconOnly'),
-                        foregroundStyle('#FFFFFF'),
-                        disabled(!canAdd),
-                        frame({ width: 44, height: 44 }),
-                      ]}
-                    >
-                      <Button
-                        label={t('media.photosAndVideos')}
-                        systemImage="photo.on.rectangle"
-                        onPress={() => props.onAdd('photo')}
-                      />
-                      <Button
-                        label={t('media.camera')}
-                        systemImage="camera"
-                        onPress={() => props.onAdd('camera')}
-                      />
-                      <Button
-                        label={t('media.file2')}
-                        systemImage="doc"
-                        onPress={() => props.onAdd('document')}
-                      />
-                    </Menu>
-                  </Host>
-                  <ApprovalAction
-                    testID="attachment-approval-remove"
-                    name="trash"
-                    label={t('media.attachmentRemove', { name: selected.name })}
-                    disabled={busy || selected.attempted}
-                    onPress={() => props.onRemove(selected.mutationId)}
-                  />
-                </View>
-              ) : (
-                <Text numberOfLines={1} style={{ flex: 1, color: secondary, fontSize: 12 }}>
-                  {t('media.attachmentRecipient', { name: recipient })}
-                </Text>
-              )}
-              {state.phase === 'sending' ? (
-                <View style={{ width: 46, height: 44, justifyContent: 'center' }}>
-                  <ActivityIndicator
-                    color="#FFFFFF"
-                    accessibilityLabel={t('media.attachmentSending', {
-                      position: 1,
-                      total: state.items.length,
-                    })}
-                  />
-                </View>
-              ) : (
-                <ApprovalAction
-                  testID="attachment-approval-send"
-                  name="arrow.up"
-                  label={
-                    field.retry
-                      ? t('media.attachmentsRetry')
-                      : t('media.attachmentSendCount', { count: field.remaining })
-                  }
-                  prominent
-                  disabled={field.sending || !field.remaining}
-                  onPress={field.onSend}
-                />
-              )}
+              <Caption key={selected.mutationId} field={field} onFocus={setTyping} />
             </View>
           </View>
+          <View
+            style={{
+              ...(landscape
+                ? {
+                    position: 'absolute',
+                    top: 0,
+                    bottom: 0,
+                    [toolbarSide]: 0,
+                    width: 49,
+                    paddingVertical: 8,
+                  }
+                : {}),
+              flexDirection: landscape ? 'column' : 'row',
+              minHeight: 49,
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 4,
+              paddingHorizontal: 8,
+            }}
+          >
+            <ApprovalAction
+              testID="attachment-approval-close"
+              name="chevron.left"
+              label={t('common.close')}
+              onPress={props.onClose}
+            />
+            {!typing ? (
+              <View
+                style={{
+                  flexDirection: landscape ? 'column' : 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                {canEdit ? (
+                  <ApprovalAction
+                    testID="attachment-approval-edit"
+                    name="pencil.tip.crop.circle"
+                    label={t('media.attachmentEdit')}
+                    disabled={busy}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      props.onEdit();
+                    }}
+                  />
+                ) : null}
+                <Host
+                  style={{ width: 44, height: 44 }}
+                  colorScheme="dark"
+                  ignoreSafeArea="keyboard"
+                >
+                  <Menu
+                    testID="attachment-approval-add"
+                    label={t('media.addAttachment')}
+                    systemImage="plus"
+                    modifiers={[
+                      buttonStyle('plain'),
+                      labelStyle('iconOnly'),
+                      foregroundStyle('#FFFFFF'),
+                      disabled(!canAdd),
+                      frame({ width: 44, height: 44 }),
+                    ]}
+                  >
+                    <Button
+                      label={t('media.photosAndVideos')}
+                      systemImage="photo.on.rectangle"
+                      onPress={() => props.onAdd('photo')}
+                    />
+                    <Button
+                      label={t('media.camera')}
+                      systemImage="camera"
+                      onPress={() => props.onAdd('camera')}
+                    />
+                    <Button
+                      label={t('media.file2')}
+                      systemImage="doc"
+                      onPress={() => props.onAdd('document')}
+                    />
+                  </Menu>
+                </Host>
+                <ApprovalAction
+                  testID="attachment-approval-remove"
+                  name="trash"
+                  label={t('media.attachmentRemove', { name: selected.name })}
+                  disabled={busy || selected.attempted}
+                  onPress={() => props.onRemove(selected.mutationId)}
+                />
+              </View>
+            ) : (
+              <Text numberOfLines={1} style={{ flex: 1, color: secondary, fontSize: 12 }}>
+                {t('media.attachmentRecipient', { name: recipient })}
+              </Text>
+            )}
+            {state.phase === 'sending' ? (
+              <View style={{ width: 46, height: 44, justifyContent: 'center' }}>
+                <ActivityIndicator
+                  color="#FFFFFF"
+                  accessibilityLabel={t('media.attachmentSending', {
+                    position: 1,
+                    total: state.items.length,
+                  })}
+                />
+              </View>
+            ) : (
+              <ApprovalAction
+                testID="attachment-approval-send"
+                name="arrow.up"
+                label={
+                  field.retry
+                    ? t('media.attachmentsRetry')
+                    : t('media.attachmentSendCount', { count: field.remaining })
+                }
+                prominent
+                disabled={field.sending || !field.remaining}
+                onPress={field.onSend}
+              />
+            )}
+          </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
+  );
+  return (
+    <KeyboardAvoidingView behavior="padding" automaticOffset style={{ flex: 1 }}>
+      <AttachmentGallerySurface
+        identity={selected.mutationId}
+        disabled={busy || editing || typing || zoomed}
+        reducedMotion={reducedMotion}
+        controlsHidden={controlsHidden && !typing}
+        isCurrent={props.isCurrent}
+        onClose={props.onClose}
+        overlay={overlay}
+      >
+        <AttachmentGalleryPager
+          items={state.items}
+          selectedId={selected.mutationId}
+          disabled={busy || editing || typing || zoomed}
+          reducedMotion={reducedMotion}
+          isCurrent={props.isCurrent}
+          onSelect={select}
+          onDragStart={() => {
+            Keyboard.dismiss();
+            mediaPlayback.pauseAll();
+          }}
+          renderItem={(item, active) =>
+            !item.uri ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                <ActivityIndicator color="#FFFFFF" />
+                <Text style={{ color: secondary }}>{t('media.attachmentPreparing')}</Text>
+              </View>
+            ) : item.mime.startsWith('image/') ? (
+              <AttachmentImageSurface
+                identity={item.mutationId}
+                uri={item.uri}
+                label={item.name}
+                active={active}
+                disabled={busy || editing || typing}
+                reducedMotion={reducedMotion}
+                isCurrent={props.isCurrent}
+                onZoomChange={(id, value) => {
+                  if (
+                    currentSelected.current === id &&
+                    id === selected.mutationId &&
+                    props.isCurrent()
+                  )
+                    setVisual((previous) => ({ ...previous, zoomed: value }));
+                }}
+                onToggleControls={() => {
+                  if (!typing && currentSelected.current === item.mutationId && props.isCurrent())
+                    setVisual((previous) => ({ ...previous, hidden: !previous.hidden }));
+                }}
+              />
+            ) : item.mime.startsWith('video/') && active ? (
+              <ApprovalVideo
+                key={item.mutationId}
+                uri={item.uri}
+                active={!editing && !busy}
+                isCurrent={props.isCurrent}
+              />
+            ) : (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                <Icon
+                  name={
+                    item.mime.startsWith('video/')
+                      ? { ios: 'video', android: 'videocam', web: 'videocam' }
+                      : { ios: 'doc', android: 'description', web: 'description' }
+                  }
+                  color="#FFFFFF"
+                  size={42}
+                />
+                <Text style={{ color: '#FFFFFF', paddingHorizontal: 24 }} numberOfLines={2}>
+                  {item.name}
+                </Text>
+              </View>
+            )
+          }
+        />
+      </AttachmentGallerySurface>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -518,8 +609,9 @@ export function AttachmentApproval(props: AttachmentApprovalProps) {
     <Modal
       testID={props.testID}
       visible
-      presentationStyle="fullScreen"
-      animationType={reducedMotion ? 'none' : 'slide'}
+      transparent
+      presentationStyle="overFullScreen"
+      animationType={reducedMotion ? 'none' : 'fade'}
       supportedOrientations={['portrait', 'landscape']}
       onRequestClose={props.onClose}
     >

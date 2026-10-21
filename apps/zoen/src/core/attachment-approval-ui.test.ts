@@ -32,7 +32,7 @@ function scan(value: unknown): Element[] {
   if (Array.isArray(value)) return value.flatMap(scan);
   if (!value || typeof value !== 'object' || !('props' in value)) return [];
   const e = value as Element;
-  return [e, ...scan(e.props.children)];
+  return [e, ...scan(e.props.children), ...scan(e.props.overlay)];
 }
 function find(root: unknown, id: string) {
   const result = scan(root).find((e) => e.props.testID === id);
@@ -56,7 +56,10 @@ function fixture() {
     });
   };
   const calls: string[] = [];
-  let current = true;
+  let current = true,
+    width = 402,
+    height = 874;
+  let safe = { top: 62, left: 0, right: 0, bottom: 34 };
   const items = [
     {
       mutationId: 'photo',
@@ -148,7 +151,7 @@ function fixture() {
       ScrollView: 'ScrollView',
       Text: 'Text',
       View: 'View',
-      useWindowDimensions: () => ({ width: 402, height: 874, scale: 3 }),
+      useWindowDimensions: () => ({ width, height, scale: 3 }),
     },
     '@expo/ui': { Host: 'Host' },
     '@expo/ui/swift-ui': {
@@ -180,11 +183,13 @@ function fixture() {
     'react-native-safe-area-context': {
       SafeAreaProvider: 'SafeAreaProvider',
       SafeAreaView: 'SafeAreaView',
-      useSafeAreaInsets: () => ({ bottom: 34 }),
+      useSafeAreaInsets: () => safe,
     },
     '../components/primitives': { Icon: 'Icon' },
     './attachment-draft-strip': { DraftThumbnail: 'DraftThumbnail' },
     './attachment-gallery-pager': { AttachmentGalleryPager: 'AttachmentGalleryPager' },
+    './attachment-image-surface': { AttachmentImageSurface: 'AttachmentImageSurface' },
+    './attachment-gallery-surface': { AttachmentGallerySurface: 'AttachmentGallerySurface' },
     './playback-owner': { mediaPlayback: { pauseAll: () => calls.push('pause-previews') } },
     '../i18n': { t: (key: string) => key },
     '../theme': {
@@ -219,6 +224,16 @@ function fixture() {
     props,
     fieldFor,
     presentation,
+    landscape: (side: 'left' | 'right') => {
+      width = 874;
+      height = 402;
+      safe = {
+        top: 0,
+        bottom: 21,
+        left: side === 'left' ? 62 : 0,
+        right: side === 'right' ? 62 : 0,
+      };
+    },
     retire: () => {
       current = false;
     },
@@ -306,4 +321,55 @@ test('caption focus hides selection and edit tools while explicit send remains t
   );
   assert.equal(find(root, 'attachment-approval-send').props.onPress, f.props.field.onSend);
   assert.deepEqual(f.calls, []);
+});
+
+test('current photo zoom locks paging and dismissal; old photo chrome callbacks cannot lock a newly selected item', () => {
+  const f = fixture();
+  let root = f.render();
+  const pager = () => scan(root).find((e) => e.type === 'AttachmentGalleryPager')!;
+  const renderItem = pager().props.renderItem as (
+    item: (typeof f.props.state.items)[number],
+    active: boolean,
+  ) => Element;
+  const photo = renderItem(f.props.state.items[0]!, true);
+  (photo.props.onZoomChange as (id: string, value: boolean) => void)('photo', true);
+  root = f.render();
+  assert.equal(pager().props.disabled, true);
+  assert.equal(scan(root).find((e) => e.type === 'AttachmentGallerySurface')!.props.disabled, true);
+  root = f.render({ selectedId: 'video', field: f.fieldFor(1) });
+  root = f.render();
+  (photo.props.onZoomChange as (id: string, value: boolean) => void)('photo', true);
+  (photo.props.onToggleControls as () => void)();
+  root = f.render();
+  assert.equal(pager().props.disabled, false);
+  assert.equal(
+    scan(root).find((e) => e.type === 'AttachmentGallerySurface')!.props.controlsHidden,
+    false,
+  );
+  root = f.render({ editing: true });
+  assert.equal(pager().props.disabled, true);
+  root = f.render({ editing: false });
+  assert.equal(pager().props.disabled, false);
+});
+
+test('landscape uses the source 49-point side toolbar and vertical ordered rail on the safe-inset side without changing the field', () => {
+  for (const side of ['left', 'right'] as const) {
+    const f = fixture();
+    f.landscape(side);
+    let root = f.render();
+    (find(root, 'attachment-approval-selection-count').props.onPress as () => void)();
+    root = f.render();
+    const rail = find(root, 'attachment-approval-selection-rail');
+    assert.equal(rail.props.horizontal, false);
+    assert.equal((rail.props.style as Record<string, unknown>)[side], 115);
+    const toolbar = scan(root).find((e) => (e.props.style as { width?: number })?.width === 49)!;
+    assert.ok(toolbar);
+    assert.equal((toolbar.props.style as Record<string, unknown>).flexDirection, 'column');
+    assert.equal((toolbar.props.style as Record<string, unknown>)[side], 0);
+    assert.equal(find(root, 'attachment-approval-send').props.onPress, f.props.field.onSend);
+    assert.deepEqual(
+      f.props.state.items.map((item) => item.mutationId),
+      ['photo', 'video'],
+    );
+  }
 });

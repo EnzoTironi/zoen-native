@@ -13,6 +13,7 @@ import { conversationCards } from './catalogs/conversation-cards.ts';
 import { connectedApps } from './catalogs/connected-apps.ts';
 import { integrity } from './catalogs/integrity.ts';
 import { media } from './catalogs/media.ts';
+import { voiceControls } from './catalogs/voice-controls.ts';
 import { messageReactions } from './catalogs/message-reactions.ts';
 import { miniappFields } from './catalogs/miniappFields.ts';
 import { miniapps } from './catalogs/miniapps.ts';
@@ -20,6 +21,7 @@ import { nativeSurfaces } from './catalogs/nativeSurfaces.ts';
 import { notifications } from './catalogs/notifications.ts';
 import { presentation } from './catalogs/presentation.ts';
 import { profile } from './catalogs/profile.ts';
+import { peerInfo } from './catalogs/peer-info.ts';
 import { settings } from './catalogs/settings.ts';
 import { createLocalization } from './runtime.ts';
 import {
@@ -46,6 +48,7 @@ const catalogs = {
   connectedApps,
   integrity,
   media,
+  voiceControls,
   messageReactions,
   miniappFields,
   miniapps,
@@ -53,6 +56,7 @@ const catalogs = {
   notifications,
   presentation,
   profile,
+  peerInfo,
   settings,
 };
 function createAppLocalization(locale: AppLocale) {

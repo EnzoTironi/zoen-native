@@ -127,6 +127,7 @@ function fixture(mine = true) {
     },
     './message-audio-provider': { useReceivedMessageAudio: () => null },
     './audio-progress': { AudioWaveform: 'AudioWaveform' },
+    './voice-transcript': { VoiceTranscript: 'VoiceTranscript' },
     './VideoClip': { VideoClip: 'VideoClip' },
     './preview-file': { previewMediaFile: async () => {} },
     './file-size': { formatFileSize: () => '12 B' },

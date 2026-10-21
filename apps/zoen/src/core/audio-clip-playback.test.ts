@@ -8,6 +8,8 @@ import { AudioClipController, type AudioClipPlayback } from '../media/audio-clip
 import { PlaybackCoordinator } from '../media/playback-owner.ts';
 import { VoiceSession, type VoiceNativePort } from '../media/voice-session.ts';
 import * as voiceEdit from '../media/voice-edit.ts';
+import { telegramAudio } from './telegram-audio-presentation.ts';
+import { telegramPresentation } from '../theme/telegram.ts';
 
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core') as {
@@ -305,7 +307,8 @@ function fixture() {
     './playback-owner.ts': { mediaPlayback: coordinator },
     './voice-edit': voiceEdit,
     '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en' },
-    '../theme': { useTheme: () => ({ colors: {} }) },
+    '../theme': { useTheme: () => ({ colors: {}, presentation: telegramPresentation('day') }) },
+    '../core/telegram-audio-presentation': { telegramAudio },
     'react-native': { Text: 'Text', View: 'View', ActivityIndicator: 'Spinner' },
     '../components/message-interaction': { MessagePressable: 'Pressable' },
     '../components/primitives': { Icon: 'Icon', NativeButton: 'NativeButton' },

@@ -37,7 +37,22 @@ function fixture() {
     cursor = 0,
     current = true,
     haptics = 0;
-  const slots: unknown[] = [];
+  type Slot = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
+  const slots: Slot[] = [],
+    sheetSlots: Slot[] = [];
+  let activeSlots = slots;
+  const slot = () => (activeSlots[cursor++] ??= {});
+  const same = (a?: readonly unknown[], b?: readonly unknown[]) =>
+    !!a && !!b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+  const effect = (read: () => void | (() => void), deps: readonly unknown[]) => {
+    const s = slot();
+    if (same(s.deps, deps)) return;
+    s.deps = deps;
+    effects.push(() => {
+      s.cleanup?.();
+      s.cleanup = read() ?? undefined;
+    });
+  };
   let effects: (() => void)[] = [];
   const calls: string[] = [];
   const colors = {
@@ -53,19 +68,29 @@ function fixture() {
   const ports: Record<string, unknown> = {
     react: {
       useState: (initial: unknown) => {
-        const i = cursor++;
-        if (!(i in slots)) slots[i] = initial;
+        const s = slot();
+        if (!Object.hasOwn(s, 'value')) s.value = initial;
         return [
-          slots[i],
-          (value: unknown) => {
-            slots[i] = value;
+          s.value,
+          (value: any) => {
+            s.value = typeof value === 'function' ? value(s.value) : value;
           },
         ];
       },
-      useEffect: (effect: () => void) => {
-        effects.push(effect);
+      useRef: (initial: unknown) => {
+        const s = slot();
+        return (s.value ??= { current: initial });
       },
-      useMemo: (read: () => unknown) => read(),
+      useEffect: effect,
+      useLayoutEffect: effect,
+      useMemo: (read: () => unknown, deps: readonly unknown[]) => {
+        const s = slot();
+        if (!same(s.deps, deps)) {
+          s.value = read();
+          s.deps = deps;
+        }
+        return s.value;
+      },
       useSyncExternalStore: () => {},
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
@@ -106,6 +131,7 @@ function fixture() {
     './attachment-photo-session': {},
     './attachment-photo-library': {},
     './attachment-picker': {},
+    './attachment-image-surface': { AttachmentImageSurface: 'AttachmentImageSurface' },
   };
   const module = {
     exports: {} as {
@@ -116,6 +142,7 @@ function fixture() {
       AttachmentPhotoGrid(props: {
         state: PhotoPickerState;
         session: AttachmentPhotoSession;
+        onPreview(item: { id: string }): void;
       }): Element;
     },
   };
@@ -168,7 +195,16 @@ function fixture() {
     isCurrent: () => current,
     isInteractive: () => current && state.visible && !state.busy,
     isPresented: () => current && state.visible,
-    select: (i: { id: string }) => calls.push(`select:${i.id}`),
+    select: (i: PhotoPickerState['items'][number]) => {
+      calls.push(`select:${i.id}`);
+      state.selected = state.selected.some((value) => value.id === i.id)
+        ? state.selected.filter((value) => value.id !== i.id)
+        : [...state.selected, i];
+    },
+    approve: async () => {
+      calls.push('approve');
+    },
+    getSnapshot: () => state,
     camera: () => calls.push('camera'),
     dismissing: (token: number) => calls.push(`dismissing:${token}`),
     dismissed: async (token: number) => {
@@ -181,8 +217,13 @@ function fixture() {
   } as unknown as AttachmentPhotoSession;
   const render = () => {
     cursor = 0;
+    activeSlots = slots;
     effects = [];
-    const root = module.exports.AttachmentPhotoGrid({ state, session });
+    const root = module.exports.AttachmentPhotoGrid({
+      state,
+      session,
+      onPreview: (item) => calls.push(`preview:${item.id}`),
+    });
     effects.forEach((f) => f());
     return root;
   };
@@ -198,9 +239,22 @@ function fixture() {
         : [];
   return {
     render,
-    sheet: () => module.exports.AttachmentPhotoPickerSheet({ state, session }),
-    sheetFor: (state: PhotoPickerState, session: AttachmentPhotoSession) =>
-      module.exports.AttachmentPhotoPickerSheet({ state, session }),
+    sheet: () => {
+      cursor = 0;
+      activeSlots = sheetSlots;
+      effects = [];
+      const value = module.exports.AttachmentPhotoPickerSheet({ state, session });
+      effects.forEach((run) => run());
+      return value;
+    },
+    sheetFor: (state: PhotoPickerState, session: AttachmentPhotoSession) => {
+      cursor = 0;
+      activeSlots = sheetSlots;
+      effects = [];
+      const value = module.exports.AttachmentPhotoPickerSheet({ state, session });
+      effects.forEach((run) => run());
+      return value;
+    },
     state,
     calls,
     scan,
@@ -309,6 +363,10 @@ test('actual picker hook never observes Photos at chat mount and removes its nat
         }
         return slot.value;
       },
+      useRef: (initial: unknown) => {
+        const slot = (slots[cursor++] ??= {});
+        return (slot.value ??= { current: initial });
+      },
       useSyncExternalStore: (_subscribe: unknown, get: () => unknown) => get(),
       useEffect: (run: () => void | (() => void), deps: readonly unknown[]) => {
         const slot = (slots[cursor++] ??= {});
@@ -345,6 +403,7 @@ test('actual picker hook never observes Photos at chat mount and removes its nat
       },
     },
     './attachment-picker': {},
+    './attachment-image-surface': {},
     '@expo/ui': {},
     '@expo/ui/swift-ui': {},
     '@expo/ui/swift-ui/modifiers': {},
@@ -462,4 +521,53 @@ test('actual sheet callbacks drive the real session: only completed dismissal ca
   assert.equal(captures, 1);
   assert.equal(result.length, 1);
   assert.equal(result[0]?.uri, 'file:///cache/camera');
+});
+
+test('grid body previews independently from its 44-point ordered selection target', () => {
+  const f = fixture(),
+    root = f.render();
+  const body = f.find(root, 'attachment-photo-preview-0');
+  (body.props.onPress as () => void)();
+  assert.deepEqual(f.calls, ['preview:0']);
+  assert.deepEqual(
+    Array.from(f.state.selected, (item) => item.id),
+    ['2', '0'],
+  );
+  const check = f.find(root, 'attachment-photo-0');
+  assert.equal((check.props.style as { width: number }).width, 44);
+  (check.props.onPress as () => void)();
+  assert.deepEqual(f.calls, ['preview:0', 'select:0']);
+  assert.deepEqual(
+    Array.from(f.state.selected, (item) => item.id),
+    ['2'],
+  );
+});
+
+test('Photos body preview retains the authorized library URI; only current explicit Next enters ordered materialization', () => {
+  const f = fixture();
+  const grid = (root: Element) =>
+    f
+      .scan(root)
+      .find((e) => typeof e.type === 'function' && e.type.name === 'AttachmentPhotoGrid')!;
+  let root = f.sheet();
+  const original = grid(root);
+  (original.props.onPreview as (item: unknown) => void)(f.state.items[0]);
+  root = f.sheet();
+  const image = f.scan(root).find((e) => e.type === 'AttachmentImageSurface')!;
+  assert.equal(image.props.uri, f.state.items[0]!.id);
+  assert.deepEqual(f.calls, [], 'opening a still photo neither selects nor exports it');
+  const oldNext = f.find(root, 'attachment-photos-review').props.onPress as () => void;
+  (f.find(root, 'attachment-photos-close').props.onPress as () => void)();
+  root = f.sheet();
+  (grid(root).props.onPreview as (item: unknown) => void)(f.state.items[1]);
+  root = f.sheet();
+  oldNext();
+  (original.props.onPreview as (item: unknown) => void)(f.state.items[3]);
+  assert.deepEqual(f.calls, [], 'retained Next/grid actions cannot replace a newer preview');
+  (f.find(root, 'attachment-photos-review').props.onPress as () => void)();
+  assert.deepEqual(f.calls, ['select:1', 'approve']);
+  assert.deepEqual(
+    Array.from(f.state.selected, (item) => item.id),
+    ['2', '0', '1'],
+  );
 });

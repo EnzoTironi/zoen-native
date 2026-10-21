@@ -1,13 +1,20 @@
 import { useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { IconButton } from '../components/primitives';
 import { ComposerAction } from '../components/composer-action';
 import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import { AudioClip, AudioClipControls, clipTime, pauseAudioPlayback } from './AudioClip';
 import { useVoicePreviewPlayback } from './voice-preview-playback';
+import { telegramAudio } from '../core/telegram-audio-presentation';
+import { AudioWaveform } from './audio-progress';
 import type { VoiceDockProps } from './voice-dock.types';
 
 const subscribeEmpty = () => () => {};
@@ -16,7 +23,7 @@ const emptySnapshot = () => null;
 /** A compact view of the same native lease; expanding never creates a second draft. */
 export function VoiceDock(props: VoiceDockProps) {
   const sharedPreview = useVoicePreviewPlayback();
-  const { colors, reducedMotion } = useTheme();
+  const { presentation: p, reducedMotion } = useTheme();
   const state = useSyncExternalStore(
     props.session?.subscribe ?? subscribeEmpty,
     props.session?.getSnapshot ?? emptySnapshot,
@@ -79,7 +86,14 @@ export function VoiceDock(props: VoiceDockProps) {
       if (!event.canceled && event.translationY < -32) expand();
     },
     onFinalize: () => {
-      lift.set(reducedMotion ? 0 : withSpring(0, { damping: 22, stiffness: 240 }));
+      lift.set(
+        reducedMotion
+          ? 0
+          : withTiming(0, {
+              duration: telegramAudio.previewFadeMs,
+              easing: Easing.bezier(...telegramAudio.easeInOut),
+            }),
+      );
     },
   });
   const movement = useAnimatedStyle(() => ({ transform: [{ translateY: lift.value }] }));
@@ -90,25 +104,15 @@ export function VoiceDock(props: VoiceDockProps) {
         accessibilityHint={t('media.voiceExpandHint')}
         style={[
           {
-            borderRadius: 26,
-            paddingHorizontal: 6,
-            paddingVertical: 8,
-            backgroundColor: colors.surface,
-            gap: 4,
+            borderRadius: telegramAudio.previewHeight / 2,
+            paddingHorizontal: 0,
+            paddingVertical: 0,
+            backgroundColor: p.chat.input.fill,
+            gap: 0,
           },
           movement,
         ]}
       >
-        <View
-          style={{
-            alignSelf: 'center',
-            width: 26,
-            height: 3,
-            borderRadius: 2,
-            backgroundColor: colors.tertiary,
-            opacity: 0.5,
-          }}
-        />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 44 }}>
           <IconButton
             label={t('media.cancelAttachment')}
@@ -120,38 +124,46 @@ export function VoiceDock(props: VoiceDockProps) {
           />
           <View style={{ flex: 1, minWidth: 0 }}>
             {props.recording ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View
-                  style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.danger }}
-                />
-                <Text
-                  accessibilityLiveRegion="polite"
-                  style={{ color: colors.text, fontVariant: ['tabular-nums'] }}
-                >
-                  {clipTime(props.durationMs / 1000)}
-                </Text>
-                <View
-                  accessible={false}
-                  style={{
-                    flex: 1,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 2,
-                    height: 28,
-                  }}
-                >
-                  {props.levels.slice(-18).map((level, index) => (
-                    <View
-                      key={index}
-                      style={{
-                        flex: 1,
-                        borderRadius: 2,
-                        height: Math.max(2, Math.min(1, level) * 26),
-                        backgroundColor: colors.danger,
-                      }}
-                    />
-                  ))}
+              <View style={{ height: telegramAudio.previewHeight, justifyContent: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: 4,
+                      backgroundColor: p.chat.input.recording,
+                      opacity: props.paused ? 0.4 : 1,
+                    }}
+                  />
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    style={{
+                      color: p.chat.input.text,
+                      fontSize: 15,
+                      fontVariant: ['tabular-nums'],
+                    }}
+                  >
+                    {clipTime(props.durationMs / 1000)}
+                  </Text>
+                  <AudioWaveform
+                    levels={props.levels}
+                    progress={1}
+                    ink={p.chat.input.recording}
+                    compact
+                  />
                 </View>
+                <Text
+                  numberOfLines={1}
+                  style={{ color: p.chat.input.placeholder, fontSize: 14, lineHeight: 17 }}
+                >
+                  {t(
+                    props.paused
+                      ? 'voiceControls.paused'
+                      : props.locked
+                        ? 'voiceControls.locked'
+                        : 'voiceControls.slideToCancel',
+                  )}
+                </Text>
               </View>
             ) : uri ? (
               props.session ? (
@@ -163,8 +175,8 @@ export function VoiceDock(props: VoiceDockProps) {
               )
             ) : (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {!error && !tooShort ? <ActivityIndicator color={colors.accent} /> : null}
-                <Text numberOfLines={1} style={{ flex: 1, color: colors.secondary }}>
+                {!error && !tooShort ? <ActivityIndicator color={p.chat.input.action} /> : null}
+                <Text numberOfLines={1} style={{ flex: 1, color: p.chat.input.placeholder }}>
                   {t(
                     tooShort
                       ? 'media.recordingTooShort'
@@ -183,6 +195,20 @@ export function VoiceDock(props: VoiceDockProps) {
               disabled={locked}
               onPress={() => {
                 void action(props.onRetry!);
+              }}
+            />
+          ) : null}
+          {props.recording && props.onPause ? (
+            <IconButton
+              label={t(props.paused ? 'voiceControls.resume' : 'voiceControls.pause')}
+              name={
+                props.paused
+                  ? { ios: 'mic.fill', android: 'mic', web: 'mic' }
+                  : { ios: 'pause.fill', android: 'pause', web: 'pause' }
+              }
+              disabled={locked}
+              onPress={() => {
+                void action(props.onPause!);
               }}
             />
           ) : null}
@@ -217,7 +243,7 @@ export function VoiceDock(props: VoiceDockProps) {
         {error ? (
           <Text
             accessibilityRole="alert"
-            style={{ color: colors.danger, fontSize: 12, paddingHorizontal: 10 }}
+            style={{ color: p.chat.input.recording, fontSize: 12, paddingHorizontal: 10 }}
           >
             {error}
           </Text>
