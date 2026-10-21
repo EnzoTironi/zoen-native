@@ -1,6 +1,6 @@
 # Dependency patches
 
-`@expo+inline-modules+0.2.6.patch` fixes the SDK 58 watched-directory lookup after
+`@expo+inline-modules+0.2.7.patch` fixes the SDK 58 watched-directory lookup after
 CocoaPods' `xcodeproj` serializer quotes the same `SOURCE_ROOT` path. It uses the
 installed Expo Xcode utility to compare the path's value and records newly created
 groups immediately. It changes no dependency version. The existing native-surfaces

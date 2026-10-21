@@ -8,8 +8,11 @@ node-xcode retains those outer quotes. The lookup therefore missed the existing
 group. The serializer also discards the unsupported `name` field, but that is not
 the lookup key and is not the cause of this duplication.
 
-The pinned MIT package is already resolved by the app lockfile. Its original
-`build/xcodeProjectUpdates.js` SHA-256 is
+SDK 58 patch alignment now resolves the MIT package at 0.2.7. Its updater is
+byte-identical to 0.2.6, so the same patch is retained under its exact installed
+version. The original and patched updater assertions, isolated patch-package
+apply/reapply and parser/migration regressions are requalified against 0.2.7.
+Its original `build/xcodeProjectUpdates.js` SHA-256 is
 `1f8b6b02c574d6f32b82c43a942bce0b1a183b59d94fc897dd11fc49684d4db8`;
 the patched SHA-256 is
 `b78d656073f53a8ff116cc5d8a71799a6d6372be7088713d56a99515ba2ad12f`.
