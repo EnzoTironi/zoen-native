@@ -61,6 +61,25 @@ de readiness; troca de perfil ainda pendente antes da falha; e interpretação d
 log textual onde o produtor usa JSON. O harness final aguarda o preparo real e
 exige dois IDs distintos de relay com fan-out NATS nos logs JSON.
 
+### Correção do fixture após o CI
+
+O job Rust `39538544331/119020735478` falhou na contagem desses IDs:
+esperava dois e encontrou zero. O fixture herdava `LOG_FORMAT` e `RUST_LOG`,
+mas interpretava somente JSON; o relay emite texto por padrão. Agora os dois
+relays recebem explicitamente JSON e nível INFO. A exigência de dois IDs NATS
+distintos permanece intacta; o log é preservado antes da asserção, inclusive
+quando ela falha.
+
+O cenário real passou com o processo pai configurado para texto e logs
+desativados: reconciliação em 60.003 ms, um socket, um frame perdido, um replay
+e uma linha local. A leitura independente dos logs confirmou dois nós NATS.
+Alterar somente o formato dos filhos de JSON para texto reproduziu exatamente
+a falha de contagem zero, depois das verificações de recuperação. A fonte foi
+restaurada ao hash da execução positiva. Formatação e Clippy estrito do alvo
+também passaram. Evidências: `/private/tmp/zoen-cursor-ci-v234`, incluindo
+`positive.json`, `negative.json`, os logs e o resultado canônico. O novo CI
+continua pendente; a falha anterior permanece registrada.
+
 ## Reprodução e limites
 
 Com `ZOEN_TEST_PG`, `FDB_CLUSTER_FILE`, caminhos da biblioteca FDB e
@@ -76,7 +95,7 @@ cargo test --locked -p zoen-cli --test journey_cursor_repair_cluster \
 O teste cria banco/cell/portas próprios. `ZOEN_CURSOR_REPAIR_EVIDENCE_DIR` pode
 indicar um diretório novo; sem ele, o teste escolhe um caminho temporário único.
 Falhas preservam os fixtures e os traços. O CI existente fornece os serviços e
-executa esse teste dentro da suíte; o resultado do CI ainda precisa ser lido.
+executa esse teste dentro da suíte; a correção do fixture exige um novo CI verde.
 
 O recorte é perda de um frame **depois** da entrega NATS. Não comprova perda no
 broker, todas as corridas da inscrição ao vivo do servidor, MLS, anexos, suspensão

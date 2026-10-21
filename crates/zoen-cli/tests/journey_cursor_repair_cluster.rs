@@ -234,7 +234,19 @@ async fn final_wire_loss_recovers_with_real_cluster_and_same_healthy_client_sock
         "use a fresh evidence directory for each qualification"
     );
     std::fs::create_dir_all(&evidence).unwrap();
-    let mut w = World::with_nats("cursor_final_wire_loss").await;
+    // This fixture parses structured startup evidence below. Own the format and
+    // INFO filter for both spawned relays instead of inheriting a developer's
+    // shell or CI logging defaults (telemetry::init otherwise emits text).
+    let nats = std::env::var("ZOEN_NATS_URL").expect("set ZOEN_NATS_URL");
+    let mut w = World::new_with(
+        "cursor_final_wire_loss",
+        Some(nats),
+        &[
+            ("LOG_FORMAT", "json"),
+            ("RUST_LOG", "info,sqlx=warn,tower_http=warn"),
+        ],
+    )
+    .await;
     let relay_b = w.start_node();
     let proxy = FinalEventProxy::new(relay_b, evidence.clone()).await;
     std::fs::write(
@@ -478,6 +490,7 @@ async fn final_wire_loss_recovers_with_real_cluster_and_same_healthy_client_sock
     assert_eq!(bruno.core.connection().state, "online");
     assert!(bruno.core.connection().synced);
     let relay_logs = w.relay_log_text();
+    std::fs::write(evidence.join("owned-relays.log"), &relay_logs).unwrap();
     let nats_nodes = relay_logs
         .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
@@ -493,7 +506,6 @@ async fn final_wire_loss_recovers_with_real_cluster_and_same_healthy_client_sock
         2,
         "both distinct real relays must use NATS"
     );
-    std::fs::write(evidence.join("owned-relays.log"), relay_logs).unwrap();
     std::fs::write(
         evidence.join("receiver-timeline.json"),
         serde_json::to_vec_pretty(&timeline).unwrap(),
