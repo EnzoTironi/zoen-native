@@ -4464,6 +4464,25 @@
       "Qualify export failure/cancellation and sharing to an independent recipient; version7 native PDF/PPTX content proof is recorded above",
       "Implement editor semantic accessibility; qualify physical-device memory, startup and lifecycle",
       "Integrate the other selected Storytold editors after the first complete DeckCraft journey"
-    ]
+    ],
+    "currentNativeRuntimeBatch": {
+      "date": "2026-10-21",
+      "source": "e12ddee2f07f926516eee460b0f73c6552ee8410",
+      "status": "BOUNDED_PASS: reproduced candidate04 WK open, double-tap keyboard/title edit, cold recovery and edited v16 native exports",
+      "pullRequest": "https://github.com/EnzoTironi/zoen-native/pull/157",
+      "receipt": "output/telegram-attachment-port-v242/presentation-proof/runtime-15-batch.json",
+      "installedArtifact": "output/telegram-attachment-port-v242/installed-artifact-15.json",
+      "sourceAndInstalledInventory": "415 exact installed files and strict signature verified; full source input hashes match",
+      "appCheck": "1496 passed,0 failed,0 skipped; TypeScript/Oxlint/Oxfmt PASS",
+      "runtimePackageSha256": "c972da1a80f30c889e6d3ad7d08e8821822bbf96cc98e525459e6d856716169e",
+      "wasmSha256": "cb0af84197762083dc06f9b3812b6c60fe2bbbfeac534ff44c186081dd37b241",
+      "oldBinaryRecovered": false,
+      "manualEditing": "QA230 Input title: native single tap selects object; subsequent double-tap opens OS keyboard; inserted11chars at visible caret. Exact resulting title retained after close/process restart/reopen. Single-gesture text activation and broad IME/Notes remain unaccepted.",
+      "exports": "Edited accepted v16 PDF70579B and PPTX25070B shown by native Share; independent parse/text/XML plus rendered PDF confirm complete title,1slide/page; cancel removes both native tempfiles; no external recipient",
+      "exportInspection": "output/telegram-attachment-port-v242/presentation-proof/runtime-15-exports/independent-export-inspection.json",
+      "limits": "Simulator portrait; independent canonical byte read, physical device, first-gesture text, Notes/IME/undo, real provider/agent interoperability, landscape/accessibility/performance and failure/conflict/recipient acceptance remain open",
+      "wholeProductAcceptance": false,
+      "historicalPolicy": "All previous checkpoint source/artifact and failed/partial results remain historical and unchanged."
+    }
   }
 }

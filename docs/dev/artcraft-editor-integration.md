@@ -37,6 +37,34 @@ ativa entrega HTTPS, confiança TLS ou um build nativo. Carregamento, teclado,
 edição manual/por agente, persistência, reinício e exportação no iPhone com
 **este** pacote ainda precisam de aceite; as provas antigas abaixo são históricas.
 
+## Aceite nativo delimitado — candidato 04
+
+O Release `e12ddee2` foi instalado preservando os dados, com os 415 arquivos e a
+assinatura conferidos. Tipos, Oxlint/Oxfmt e 1.496 testes passaram. O manifesto
+completo e a entrega HTTPS local contêm os hashes acima; a CA de QA foi adicionada
+somente ao simulador designado, sem mudar a confiança do macOS.
+
+No simulador iPhone/iOS 27.1, o documento existente **QA230 Input** abriu no motor
+real. Um toque selecionou o objeto; o duplo toque seguinte abriu o teclado. A
+inserção de 11 caracteres no título apareceu no canvas, foi salva e continuou
+igual após fechar, terminar o processo e reabrir. Não é aceite de ativação textual
+por gesto único, Notes, IME, seleção, delete ou undo completos.
+
+Os menus reais abriram o compartilhamento nativo da versão editada 16 em PDF
+(70.579 bytes, SHA-256 `28ef084afe21bbc755c802582cb93d4c45cbffb1ad300f784111389c65668366`)
+e PPTX (25.070 bytes, SHA-256 `082a94ce5ed492568cb975a25fe4873272f5ce28eceec7c206b9199789bf5aae`).
+Uma inspeção independente leu o título completo nos dois arquivos, confirmou um
+slide/página e renderizou o PDF sem cortes aparentes. Cancelar removeu os arquivos
+temporários do app; cópias somente dos fixtures de QA foram guardadas como prova.
+Não houve envio a um destinatário externo, leitura independente dos bytes
+canônicos, edição por modelo/agente real ou qualificação de aparelho físico.
+
+Recibo: `output/telegram-attachment-port-v242/presentation-proof/runtime-15-batch.json`.
+Inspeção: `presentation-proof/runtime-15-exports/independent-export-inspection.json`
+no mesmo diretório. Orientações, acessibilidade, memória, desempenho, falhas de
+save/conflito e o restante da jornada continuam pendentes. A integração completa
+de ArtCraft e os indicadores de produto/produção/escala continuam **false**.
+
 ## Checkpoint de integração — 20 de outubro de 2026
 
 O carregador gerenciado, registro e UI nativa usam o documento binário
