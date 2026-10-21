@@ -144,6 +144,18 @@ enum Command {
         kinds: Vec<String>,
         limit: u32,
     },
+    RecentAttachments {
+        scope: crate::MediaDraftScope,
+        kind: crate::RecentAttachmentKind,
+        query: String,
+        cursor: Option<String>,
+        limit: u32,
+    },
+    AttachmentReferenceValidate {
+        scope: crate::MediaDraftScope,
+        kind: crate::RecentAttachmentKind,
+        reference: crate::RecentAttachmentReference,
+    },
     SetChatPrefs {
         space_id: String,
         pinned: bool,
@@ -507,6 +519,8 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::PlanPageDto::export_all(&config)?;
     crate::SearchHit::export_all(&config)?;
     crate::MessageSearchPage::export_all(&config)?;
+    crate::RecentAttachmentPage::export_all(&config)?;
+    crate::RecentAttachmentSourceBinding::export_all(&config)?;
     crate::AppSpecDto::export_all(&config)?;
     crate::AppDocumentDto::export_all(&config)?;
     crate::AppBinaryDocumentDto::export_all(&config)?;
@@ -852,6 +866,18 @@ impl Client {
                 cursor,
                 limit,
             } => encode(&self.search_messages(space_id, query, cursor, limit.min(100))?),
+            RecentAttachments {
+                scope,
+                kind,
+                query,
+                cursor,
+                limit,
+            } => encode(&self.recent_attachments(scope, kind, query, cursor, limit)?),
+            AttachmentReferenceValidate {
+                scope,
+                kind,
+                reference,
+            } => encode(&self.attachment_reference_validate(scope, kind, reference)?),
             Items {} => encode(&self.items()),
             NativeSurfaceItems {
                 expected_identity_id,

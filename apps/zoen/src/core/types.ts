@@ -22,6 +22,8 @@ import type { StandingDecisionDto } from './generated/StandingDecisionDto';
 import type { LogReport } from './generated/LogReport';
 import type { LogEventDto } from './generated/LogEventDto';
 import type { MessageSearchPage } from './generated/MessageSearchPage';
+import type { RecentAttachmentPage } from './generated/RecentAttachmentPage';
+import type { RecentAttachment } from './generated/RecentAttachment';
 import type { PageEditResult } from './generated/PageEditResult';
 import type { AgentStatus } from './generated/AgentStatus';
 import type { UniversalResults } from './generated/UniversalResults';
@@ -117,6 +119,8 @@ type Results = {
   log_events_page: LogEventsPage;
   log_events: LogEventDto[];
   search_messages: MessageSearchPage;
+  recent_attachments: RecentAttachmentPage;
+  attachment_reference_validate: RecentAttachment;
   page_apply: PageEditResult;
   agent_status: AgentStatus;
   open_agent_link: string;

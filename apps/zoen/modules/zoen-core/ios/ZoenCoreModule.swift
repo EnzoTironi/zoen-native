@@ -213,6 +213,13 @@ public class ZoenCoreModule: Module {
     AsyncFunction("materializeFile") { (itemId: String, version: Int?) async throws -> String in
       try await self.session.materializeFile(itemId: itemId, version: version)
     }
+    AsyncFunction("materializeRecentAttachment") { (request: String) async throws -> String in
+      try await self.session.materializeRecentAttachment(request)
+    }
+    AsyncFunction("previewRecentAttachment") { (request: String, presentationId: String) async throws in
+      let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
+      try await self.session.previewRecentAttachment(request, presentationId: presentationId, presenter: presenter)
+    }
     AsyncFunction("previewLocalFile") { (uri: String) async throws in
       let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
       try await self.session.previewLocalFile(uri, presenter: presenter)
@@ -275,6 +282,14 @@ private actor ZoenSession {
   private let mediaFiles = ZoenMediaFiles()
   private let filePreview = ZoenFilePreview()
   private var previewBindings: [String: PreviewBinding] = [:]
+  private struct RecentSelectionBinding {
+    let engine: Client
+    let generation: UInt64
+    let scope: ZoenMediaDraftBridge.Scope
+    let kind: RecentAttachmentKind
+    let reference: RecentAttachmentReference
+  }
+  private var recentSelections: [String: RecentSelectionBinding] = [:]
   nonisolated private let draftMediaEditLifetime = ZoenMediaEditLifetime()
   private var draftMediaEdits: [UUID: DraftMediaEditBinding] = [:]
   private var draftPreviewTasks: [UUID: Task<Void, Error>] = [:]
@@ -843,6 +858,7 @@ private actor ZoenSession {
     let oldContent = try ZoenMediaDraftBridge.content(previous.contentJson)
     let content = try ZoenMediaDraftBridge.content(json)
     var inputs: [MediaDraftAssetInput] = []
+    var recentSources: [RecentAttachmentSourceBinding] = []
     var admitted = Set<String>()
     var voiceLeases: [(sourceId: String, renderUri: String?)] = []
     requests += 1
@@ -876,6 +892,11 @@ private actor ZoenSession {
       _ = try mediaDraftCore(value.scope)
       let selection = try mediaFiles.readSelection(uri: asset.uri, name: asset.name, mime: asset.mime)
       inputs.append(MediaDraftAssetInput(id: asset.id, name: selection.name, mime: selection.mime, bytes: selection.data))
+      if let recent = recentSelections[asset.uri] {
+        guard recent.engine === core, recent.generation == expected, recent.scope == value.scope,
+              asset.voiceRole == nil, asset.voiceSourceId == nil else { throw SessionError.closed }
+        recentSources.append(RecentAttachmentSourceBinding(assetId: asset.id, kind: recent.kind, reference: recent.reference))
+      }
     }
     if previous.revision == revision, content?["kind"] as? String == "voice" {
       // An existing render is immutable too: metadata-only edits cannot relabel its bytes.
@@ -901,8 +922,12 @@ private actor ZoenSession {
       guard voiceSources[lease.sourceId] == expected,
             lease.renderUri.map({ voiceRenders[lease.sourceId] == $0 }) ?? true else { throw SessionError.closed }
     }
-    let saved = try core.saveMediaDraft(scope: value.scope.core, expectedRevision: revision,
-      contentJson: json, assets: inputs)
+    // Source-bound ingestion and its receipt retry happen under the existing
+    // canonical journal lock. A separate validation call cannot grant Save.
+    let saved = try recentSources.isEmpty
+      ? core.saveMediaDraft(scope: value.scope.core, expectedRevision: revision, contentJson: json, assets: inputs)
+      : core.saveMediaDraftWithRecentSources(scope: value.scope.core, expectedRevision: revision,
+        contentJson: json, assets: inputs, sourceBindings: recentSources)
     return try ZoenMediaFiles.json(["accepted_revision": saved.acceptedRevision,
       "draft": ZoenMediaDraftBridge.object(saved.draft)])
   }
@@ -1274,6 +1299,63 @@ private actor ZoenSession {
     return try ZoenMediaFiles.json(ZoenMediaFiles.info(try core.fileInfoAt(itemId: itemId, version: ZoenMediaFiles.version(version))))
   }
 
+  func materializeRecentAttachment(_ request: String) async throws -> String {
+    guard recentSelections.count < 20 else { throw ZoenMediaFiles.Failure.invalidFile }
+    let value = try ZoenRecentAttachmentBridge.decode(request)
+    let engine = try mediaDraftCore(value.scope), kind = try value.coreKind
+    let reference = value.reference.core, expected = generation
+    let row = try engine.attachmentReferenceValidate(scope: value.scope.core, kind: kind, reference: reference)
+    let local = try await materializeFile(itemId: reference.itemId, version: Int(reference.version))
+    guard let object = try JSONSerialization.jsonObject(with: Data(local.utf8)) as? [String: Any],
+          let uri = object["uri"] as? String else { throw ZoenMediaFiles.Failure.invalidFile }
+    do {
+      guard !erasing, !closing, self.core === engine, generation == expected,
+            recentSelections.count < 20,
+            let binding = previewBindings[uri], bindingIsCurrent(binding),
+            binding.sha256 == reference.sha256, binding.version == reference.version else { throw SessionError.closed }
+      _ = try mediaDraftCore(value.scope)
+      let checked = try engine.attachmentReferenceValidate(scope: value.scope.core, kind: kind, reference: reference)
+      guard checked.name == row.name, checked.mime == row.mime, checked.bytes == row.bytes else { throw ZoenMediaFiles.Failure.invalidVersion }
+      recentSelections[uri] = RecentSelectionBinding(engine: engine, generation: expected, scope: value.scope, kind: kind, reference: reference)
+      return try ZoenMediaFiles.json(["uri": uri, "name": row.name, "mime": row.mime, "size": row.bytes])
+    } catch { releaseLocalFile(uri); throw error }
+  }
+
+  func previewRecentAttachment(_ request: String, presentationId: String, presenter: UIViewController?) async throws {
+    guard let token = UUID(uuidString: presentationId), draftPreviewTasks[token] == nil else { throw ZoenMediaFiles.Failure.invalidFile }
+    if let canceled = cancelledDraftPreviews.firstIndex(of: token) {
+      cancelledDraftPreviews.remove(at: canceled); throw CancellationError()
+    }
+    let gate = ZoenMediaEditGate()
+    try draftMediaEditLifetime.register(token, gate: gate)
+    let task = Task { try await self.openRecentAttachmentPreview(request, presenter: presenter, gate: gate) }
+    draftPreviewTasks[token] = task
+    defer { draftPreviewTasks.removeValue(forKey: token); draftMediaEditLifetime.remove(token) }
+    try await task.value
+  }
+
+  private func openRecentAttachmentPreview(_ request: String, presenter: UIViewController?, gate: ZoenMediaEditGate) async throws {
+    try Task.checkCancellation(); try gate.admitted { () }
+    let local = try await materializeRecentAttachment(request)
+    guard let object = try JSONSerialization.jsonObject(with: Data(local.utf8)) as? [String: Any],
+          let uri = object["uri"] as? String, let source = recentSelections[uri],
+          let binding = previewBindings[uri], bindingIsCurrent(binding) else { throw SessionError.closed }
+    let file: ZoenPreviewFile
+    do {
+      try Task.checkCancellation(); try gate.admitted { () }
+      _ = try source.engine.attachmentReferenceValidate(scope: source.scope.core, kind: source.kind, reference: source.reference)
+      file = try mediaFiles.takeForPreview(uri)
+    } catch { releaseLocalFile(uri); throw error }
+    recentSelections.removeValue(forKey: uri); previewBindings.removeValue(forKey: uri)
+    let ticket = filePreview.register(file: file, generation: generation)
+    try await filePreview.open(id: ticket, title: binding.name) {
+      if ZoenMediaGalleryPreview.supports(mime: binding.mime) {
+        return ZoenMediaGalleryPreview(presenter: presenter, mime: binding.mime)
+      }
+      return ZoenQuickLookPreview(presenter: presenter, editing: nil)
+    }
+  }
+
   func materializeFile(itemId: String, version: Int?) async throws -> String {
     guard !erasing, !closing, let core else { throw SessionError.closed }
     // Pin metadata, version and account before any suspension. History opens
@@ -1307,6 +1389,7 @@ private actor ZoenSession {
   }
 
   func releaseLocalFile(_ uri: String) {
+    recentSelections.removeValue(forKey: uri)
     previewBindings.removeValue(forKey: uri)
     mediaFiles.release(uri)
   }
@@ -1566,6 +1649,7 @@ private actor ZoenSession {
       try vault.eraseAllVerified()
       mediaFiles.removeAll()
       previewBindings.removeAll()
+      recentSelections.removeAll()
       profilePhotos.removeAll()
       try ZoenDeviceErasure.erasePreviewCache()
       try erasure.complete()
@@ -1672,6 +1756,7 @@ private actor ZoenSession {
     syncStarted = false
     mediaFiles.removeAll()
     previewBindings.removeAll()
+    recentSelections.removeAll()
     profilePhotos.removeAll()
     await closeAssistants()
     try? await voiceEditor.releaseAll()

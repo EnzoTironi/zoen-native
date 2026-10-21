@@ -18,7 +18,8 @@ Pod::Spec.new do |s|
   s.dependency 'lottie-ios', '4.6.1'
   s.resource_bundles = {
     'ZoenTelegramAttachmentPresentation' => ['TelegramAttachmentPresentation/Resources/**/*'],
-    'ZoenTelegramVideoEditing' => ['TelegramVideoEditing/Resources/**/*']
+    'ZoenTelegramVideoEditing' => ['TelegramVideoEditing/Resources/**/*'],
+    'ZoenTelegramFileAttachment' => ['TelegramFileAttachment/Resources/**/*']
   }
   s.vendored_frameworks = 'generated/ClientFFI.xcframework'
 

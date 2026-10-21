@@ -7,8 +7,13 @@ import { pickAttachmentAssets } from './attachment-picker';
 import { useAttachmentKeyboardSession } from './attachment-keyboard-context';
 import type { KeyboardPresentation } from './attachment-keyboard-session';
 import { AttachmentPhotoKeyboard } from './attachment-photo-keyboard.ios';
+import {
+  AttachmentRecentSession,
+  type RecentAttachmentConfiguration,
+} from './attachment-recent-session';
+import CoreModule from '../../modules/zoen-core/src/ZoenCoreModule';
 
-export function useAttachmentPhotoPicker() {
+export function useAttachmentPhotoPicker(recentConfiguration?: RecentAttachmentConfiguration) {
   const keyboard = useAttachmentKeyboardSession();
   const [keyboardRequest, setKeyboardRequest] = useState<KeyboardPresentation | null>(null);
   const pickerOwner = useRef<string | null>(null);
@@ -20,20 +25,60 @@ export function useAttachmentPhotoPicker() {
     () =>
       new AttachmentPhotoSession({
         ...photoLibrary,
+        discard: (uri) => {
+          // A recent source is a native-owned verified cache lease. Releasing
+          // it also removes its source binding; SDK cache copies use the same
+          // existing cache remover. Native failure retains tracked cleanup.
+          void CoreModule?.releaseLocalFile(uri).catch(() => {});
+          photoLibrary.discard(uri);
+        },
         capture: (remaining, current) => pickAttachmentAssets('camera', remaining, current),
-        browse: (remaining, current) => pickAttachmentAssets('document', remaining, current),
+        browse: (remaining, current, category) =>
+          pickAttachmentAssets(
+            'document',
+            remaining,
+            current,
+            category === 'audio' ? { mime: 'audio/*' } : undefined,
+          ),
       }),
     [],
   );
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
+  const recent = useMemo(() => new AttachmentRecentSession(), []);
+  const recentState = useSyncExternalStore(
+    recent.subscribe,
+    recent.getSnapshot,
+    recent.getSnapshot,
+  );
+  const cancel = useMemo(
+    () => () => {
+      recent.retire();
+      session.cancel();
+    },
+    [recent, session],
+  );
+  const photoOwnerCurrent = session.isCurrent(state.token);
+  useEffect(() => {
+    if (!recentConfiguration || !photoOwnerCurrent || state.category === 'photos') {
+      recent.retire();
+      return;
+    }
+    recent.activate(
+      recentConfiguration,
+      state.category === 'audio' ? 'audio' : 'file',
+      session.remaining(),
+      () => session.isCurrent(state.token),
+    );
+  }, [recent, recentConfiguration, session, state.category, state.token, photoOwnerCurrent]);
+  useEffect(() => () => recent.retire(), [recent]);
   useEffect(() => {
     const unsubscribe = keyboard?.subscribe(() => {
-      if (pickerOwner.current && !keyboard.ownsPicker(pickerOwner.current)) session.cancel();
+      if (pickerOwner.current && !keyboard.ownsPicker(pickerOwner.current)) cancel();
     });
     return () => {
       unsubscribe?.();
     };
-  }, [keyboard, session]);
+  }, [keyboard, cancel]);
   useEffect(() => {
     // Registering the native observer performs a PHAsset fetch: never do it at chat mount.
     if (state.visible && state.permission?.granted)
@@ -41,13 +86,13 @@ export function useAttachmentPhotoPicker() {
   }, [session, state.visible, state.permission?.granted]);
   useEffect(() => {
     const background = AppState.addEventListener('change', (value) => {
-      if (value === 'background') session.cancel();
+      if (value === 'background') cancel();
     });
     return () => {
       background.remove();
-      session.cancel();
+      cancel();
     };
-  }, [session]);
+  }, [cancel]);
   return {
     pick: async (remaining: number, current: () => boolean) => {
       preferredIndex.current = null;
@@ -79,7 +124,7 @@ export function useAttachmentPhotoPicker() {
     },
     preferredUri: () => preferred.current,
     submission: () => submission.current,
-    cancel: session.cancel,
+    cancel,
     view: keyboardRequest ? (
       <AttachmentPhotoKeyboard
         state={state}
@@ -93,6 +138,7 @@ export function useAttachmentPhotoPicker() {
         onSubmission={(intent) => {
           submission.current = intent;
         }}
+        recent={recentConfiguration ? { session: recent, state: recentState } : undefined}
       />
     ) : null,
   };

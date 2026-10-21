@@ -12,13 +12,14 @@ export async function pickAttachmentAssets(
   kind: AttachmentPickKind,
   remaining: number,
   current: () => boolean,
+  filter?: { mime: 'audio/*' },
 ): Promise<AttachmentAsset[]> {
   let assets: { uri: string; name: string; mime: string; size?: number }[] = [];
   if (kind === 'document') {
     const result = await DocumentPicker.getDocumentAsync({
       copyToCacheDirectory: true,
       multiple: Platform.OS === 'ios',
-      type: '*/*',
+      type: filter?.mime ?? '*/*',
       base64: false,
     });
     if (!result.canceled)

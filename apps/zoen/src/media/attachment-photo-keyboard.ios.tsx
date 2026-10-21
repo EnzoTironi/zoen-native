@@ -18,6 +18,11 @@ import {
   NativeStandaloneAttachmentPanel,
   useKeyboardPanelBinding,
 } from './keyboard-panel-native.ios';
+import {
+  recentAttachmentId,
+  type AttachmentRecentSession,
+  type RecentAttachmentState,
+} from './attachment-recent-session';
 const standaloneOwner = { enabled: true, field: null, presentation: null, hasAudio: false };
 const standaloneSnapshot = () => standaloneOwner;
 const standaloneSubscribe = () => () => {};
@@ -30,6 +35,7 @@ export function AttachmentPhotoKeyboard({
   onPreferredIndex,
   onSubmission,
   onResume,
+  recent,
 }: {
   state: PhotoPickerState;
   session: AttachmentPhotoSession;
@@ -38,6 +44,7 @@ export function AttachmentPhotoKeyboard({
   onPreferredIndex(index: number | null): void;
   onSubmission?(submission: PhotoPickerSubmission): void;
   onResume?(presentation: KeyboardPresentation): void;
+  recent?: { session: AttachmentRecentSession; state: RecentAttachmentState };
 }) {
   const [draft, setDraft] = useState<{
     token: number;
@@ -48,6 +55,8 @@ export function AttachmentPhotoKeyboard({
     draft.token === state.token ? draft : { token: state.token, forced: null, items: {} };
   if (draft.token !== state.token) setDraft(currentDraft);
   const gallery = state.screen === 'preview' || state.screen === 'selected';
+  const recentActive = state.category !== 'photos' && recent !== undefined;
+  const recentSelection = recentActive ? recent.state.selected : [];
   const previewItem = [...state.items, ...state.selected].find(
     (item) => item.id === state.previewId,
   );
@@ -76,8 +85,8 @@ export function AttachmentPhotoKeyboard({
   const { width, height } = useWindowDimensions();
   const presentation = owner.presentation?.id === request.id ? owner.presentation : request;
   const renderOwner = useMemo(
-    () => ({ state, request, owner, revision: randomUUID() }),
-    [state, request, owner],
+    () => ({ state, request, owner, recent: recent?.state, revision: randomUUID() }),
+    [state, request, owner, recent?.state],
   );
   const revision = renderOwner.revision;
   const committed = useRef<object | null>(null);
@@ -116,8 +125,25 @@ export function AttachmentPhotoKeyboard({
     screen: state.screen,
     activeCategory: state.category,
     canEdit,
-    fileItems: [],
-    audioItems: [],
+    fileItems:
+      recent?.state.kind === 'file'
+        ? recent.state.items.map((row) => ({ ...row, id: recentAttachmentId(row) }))
+        : [],
+    audioItems:
+      recent?.state.kind === 'audio'
+        ? recent.state.items.map((row) => ({ ...row, id: recentAttachmentId(row) }))
+        : [],
+    recentSupported: Boolean(recent),
+    recent: recentActive
+      ? {
+          selected: recentSelection.map(recentAttachmentId),
+          query: recent.state.query,
+          searching: recent.state.searching,
+          loading: recent.state.loading,
+          hasMore: recent.state.nextCursor !== null,
+          error: Boolean(recent.state.error),
+        }
+      : null,
     previewId: state.previewId,
     items: state.items.map((item) => ({
       id: item.id,
@@ -147,7 +173,7 @@ export function AttachmentPhotoKeyboard({
     granted: state.permission?.granted ?? false,
     limited: state.permission?.accessPrivileges === 'limited',
     error: !!state.error,
-    hasAudio: owner.hasAudio,
+    hasAudio: Boolean(recent || owner.hasAudio),
     cameraAvailable: true,
     glass: isLiquidGlassAvailable(),
     ...(onSubmission
@@ -157,9 +183,13 @@ export function AttachmentPhotoKeyboard({
             placeholder: t('media.attachmentCaptionPlaceholder'),
             editable: !state.busy,
             sending: state.busy,
-            count: state.selected.length,
-            sendEnabled: session.canApprove(gallery ? (state.previewId ?? '') : undefined),
-            sendLabel: t('media.attachmentSendCount', { count: sendCount }),
+            count: recentActive ? recentSelection.length : state.selected.length,
+            sendEnabled: recentActive
+              ? recentSelection.length > 0
+              : session.canApprove(gallery ? (state.previewId ?? '') : undefined),
+            sendLabel: t('media.attachmentSendCount', {
+              count: recentActive ? recentSelection.length : sendCount,
+            }),
           },
         }
       : {}),
@@ -186,6 +216,17 @@ export function AttachmentPhotoKeyboard({
       audioTitle: t('media.attachmentAudio'),
       browseFiles: t('media.attachmentBrowseFiles'),
       filesIntro: t('media.attachmentFilesIntro'),
+      recentlySentFiles: t('media.attachmentRecentlySentFiles'),
+      chatsMusic: t('media.attachmentChatsMusic'),
+      search: t('chat.search'),
+      cancelSearch: t('common.cancel'),
+      noResults: t('media.attachmentNoRecentResults'),
+      loadingRecent: t('media.attachmentLoadingRecent'),
+      recentError: t('media.attachmentRecentError'),
+      loadMore: t('media.attachmentLoadMore'),
+      previewFile: t('media.attachmentPreviewFile'),
+      selectFile: t('media.attachmentSelectFile'),
+      chooseGallery: t('media.attachmentGallery'),
       manage: t('media.photoLibraryManageAccess'),
       permission: t('media.youCanAllowAccessInDeviceSettingsTo'),
       settings: t('media.allowPhotos'),
@@ -218,7 +259,66 @@ export function AttachmentPhotoKeyboard({
         )
           return;
         const item = [...state.items, ...state.selected].find((value) => value.id === event.id);
+        const prepareRecent = (ids: readonly string[], text: string) => {
+          if (
+            !recentActive ||
+            !recent ||
+            !onSubmission ||
+            !ids.length ||
+            text.length > 4096 ||
+            text.includes('\0') ||
+            ids.some((id) => !recent.session.find(id))
+          )
+            return;
+          void session.prepareFiles(async (current) => {
+            const files = await recent.session.materialize(ids, current);
+            if (current()) {
+              onPreferredIndex(null);
+              onSubmission({
+                caption: text,
+                captions: ids.map((_, index) => (index === 0 ? text : '')),
+                send: true,
+              });
+            }
+            return files;
+          });
+        };
         switch (event.action) {
+          case 'recentOpen':
+            if (recentActive && recent && event.id) {
+              if (recentSelection.length) recent.session.select(event.id);
+              else prepareRecent([event.id], caption);
+            }
+            break;
+          case 'recentSelect':
+            if (recentActive && recent && event.id) recent.session.select(event.id);
+            break;
+          case 'recentPreview':
+            if (recentActive && recent && event.id && recent.session.find(event.id)) {
+              const id = event.id;
+              session.previewFile((current) => recent.session.preview(id, current));
+            }
+            break;
+          case 'recentSend':
+            if (typeof event.text === 'string')
+              prepareRecent(recentSelection.map(recentAttachmentId), event.text);
+            break;
+          case 'recentSearch':
+            if (recentActive && recent) recent.session.search(event.id !== 'cancel');
+            break;
+          case 'recentQuery':
+            if (recentActive && recent && typeof event.text === 'string')
+              recent.session.query(event.text);
+            break;
+          case 'recentMore':
+            if (recentActive && recent) void recent.session.load(true);
+            break;
+          case 'recentRetry':
+            if (recentActive && recent) void recent.session.load(false);
+            break;
+          case 'recentGallery':
+            if (!recentSelection.length) session.showCategory('photos');
+            break;
           case 'caption':
             if (
               onSubmission &&
@@ -290,18 +390,20 @@ export function AttachmentPhotoKeyboard({
             // until review rather than silently discarding selected Photos.
             if (
               !state.selected.length &&
+              !recentSelection.length &&
               state.category === event.action &&
-              (event.action !== 'audio' || owner.hasAudio)
+              (event.action !== 'audio' || owner.hasAudio || recent)
             ) {
-              if (event.action === 'document') session.browse();
-              else if (keyboard) keyboard.handoff(event.token, event.action);
+              onSubmission?.({ caption, captions: [], send: false });
+              session.browse();
             }
             break;
           case 'category':
+            if (recentSelection.length) break;
             if (
               event.id === 'photos' ||
               event.id === 'document' ||
-              (event.id === 'audio' && owner.hasAudio)
+              (event.id === 'audio' && (owner.hasAudio || recent))
             )
               session.showCategory(event.id);
             break;

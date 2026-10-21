@@ -1,0 +1,82 @@
+{
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "files": [
+    {
+      "path": "submodules/ListMessageItem/Sources/ListMessageFileItemNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ListMessageItem/Sources/ListMessageFileItemNode.swift",
+      "sha256": "b24548409afcabaf258ce47d1a53dda8bf3a004c27cc39fe3605544ed49c7a16",
+      "bytes": 110972
+    },
+    {
+      "path": "submodules/ListMessageItem/Sources/ListMessageItem.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ListMessageItem/Sources/ListMessageItem.swift",
+      "sha256": "e1dc0560340b87d3d0182c59d9a65a318d6bbb88caf5231b383388b5c11204c1",
+      "bytes": 12913
+    },
+    {
+      "path": "submodules/ListMessageItem/Sources/ListMessageNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ListMessageItem/Sources/ListMessageNode.swift",
+      "sha256": "ab56f03fa691a62c703e5ebd664e0417acaf5ee335a256379246938ea3c5050b",
+      "bytes": 1285
+    },
+    {
+      "path": "submodules/TelegramUI/Components/AttachmentFileController/Sources/AttachmentFileController.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/AttachmentFileController/Sources/AttachmentFileController.swift",
+      "sha256": "d97a2322ff0cbf44a1b785a9d0011632118a668a7c4517e9f74f159e8af62de3",
+      "bytes": 54260
+    },
+    {
+      "path": "submodules/TelegramUI/Components/AttachmentFileController/Sources/AttachmentFileSearchItem.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/AttachmentFileController/Sources/AttachmentFileSearchItem.swift",
+      "sha256": "ba836648b57605e7d4b431669ef8305eba14b59639d1a6821fa5384bcf36816a",
+      "bytes": 57470
+    },
+    {
+      "path": "submodules/TelegramUI/Components/AttachmentFileController/Sources/AttachmentFileEmptyItem.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/AttachmentFileController/Sources/AttachmentFileEmptyItem.swift",
+      "sha256": "e1f441320088f89ff5b73916238a628f0723c65bde6bef007e061c11278e6e5e",
+      "bytes": 6692
+    },
+    {
+      "path": "submodules/TelegramCore/Sources/ApiUtils/StoreMessage_Telegram.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramCore/Sources/ApiUtils/StoreMessage_Telegram.swift",
+      "bytes": 102928,
+      "sha256": "b73b1089df9f9adb398b8e7225bd9cb240dbe737dac145076c62b100165bc36d"
+    },
+    {
+      "path": "submodules/TelegramCore/Sources/Utils/MessageUtils.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramCore/Sources/Utils/MessageUtils.swift",
+      "bytes": 30216,
+      "sha256": "aa2b255f88dd689c11597f7d71a561c3d29b258e89e3a7b9fce3b45a34bf8975"
+    },
+    {
+      "path": "submodules/ItemListUI/Sources/ItemListSelectableControlNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ItemListUI/Sources/ItemListSelectableControlNode.swift",
+      "sha256": "d622eb9f9c67f986960331bc0528ab0deef0a4ad7128d748c0eb0470f2b70a23",
+      "bytes": 2563
+    },
+    {
+      "path": "submodules/TelegramUI/Images.xcassets/Navigation/Search.imageset/headersearch_30.pdf",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Images.xcassets/Navigation/Search.imageset/headersearch_30.pdf",
+      "sha256": "a1407e0146b87201276a3ecf499bb0e747e479cbeb326c66446234aca817093d",
+      "bytes": 6286
+    },
+    {
+      "path": "submodules/ItemListPeerActionItem/Sources/ItemListPeerActionItem.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ItemListPeerActionItem/Sources/ItemListPeerActionItem.swift",
+      "sha256": "de17df4e16ab5871383a4cb2e50803ab3c74f614ce8308100a812a20d6a3c7b7",
+      "bytes": 23550
+    },
+    {
+      "path": "submodules/ItemListUI/Sources/Items/ItemListSectionHeaderItem.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/ItemListUI/Sources/Items/ItemListSectionHeaderItem.swift",
+      "sha256": "8c66333c69560f4343e2d79a87297262b1d40432b7568a4b3dc4a2dc91dc0998",
+      "bytes": 22141
+    }
+  ],
+  "port": {
+    "ZoenAttachmentFileContent.swift": "AttachmentFileController:236-299,313-390,742-761,877-949; AttachmentFileSearchItem:862-870,1102-1187; ItemListPeerActionItem:215-224,267,310,385; ItemListSectionHeaderItem:225-235,251; AttachmentFileEmptyItem:117-160; ItemListSelectableControlNode:25-59",
+    "ZoenTelegramFileVisuals.swift": "ListMessageFileItemNode:26-115,216-230,637-658,1107-1120,1240,1282-1319; AttachmentFileSearchItem:1154-1174"
+  },
+  "adaptation": "Original fixed document paths/colors, glyph, dimensions and interaction conditions with UIKit list/text/reuse. Zoen authorized query/preview and encrypted draft journal replace Postbox, account services, file transfer and remote music. Not complete Telegram row/animation or runtime parity."
+}

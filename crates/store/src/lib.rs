@@ -9,6 +9,8 @@
 
 mod image;
 mod profiles;
+mod recent_attachments;
+pub use recent_attachments::RecentAttachmentIndexRow;
 #[cfg(test)]
 mod search_tests;
 mod sync;

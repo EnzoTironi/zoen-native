@@ -33,7 +33,11 @@ export type PhotoPickerPort = {
     current: () => boolean,
   ): Promise<AttachmentAsset[]>;
   capture(remaining: number, current: () => boolean): Promise<AttachmentAsset[]>;
-  browse?(remaining: number, current: () => boolean): Promise<AttachmentAsset[]>;
+  browse?(
+    remaining: number,
+    current: () => boolean,
+    category?: 'document' | 'audio',
+  ): Promise<AttachmentAsset[]>;
   discard(uri: string): void;
 };
 export type PhotoPickerSubmission = Readonly<{
@@ -52,7 +56,8 @@ type Request = {
   epoch: number;
   needsReconciliation: boolean;
   pageOffset: number;
-  action: 'camera' | 'document' | null;
+  action: 'camera' | 'document' | 'recentPreview' | null;
+  preview?: (current: () => boolean) => Promise<void>;
   result: AttachmentAsset[] | null;
   albumDetails: Map<string, object>;
 };
@@ -100,6 +105,7 @@ export class AttachmentPhotoSession {
     Boolean(token === this.state.token && this.request && this.current(this.request));
   isPresented = (token: number) => this.isCurrent(token) && this.state.visible;
   isInteractive = (token: number) => this.isPresented(token) && !this.state.busy;
+  remaining = () => (this.request && this.current(this.request) ? this.request.remaining : 0);
   open(remaining: number, current: () => boolean) {
     if (this.request || !current() || remaining < 1) return Promise.resolve([]);
     return new Promise<AttachmentAsset[]>((resolve) => {
@@ -472,6 +478,47 @@ export class AttachmentPhotoSession {
       else this.publish({ busy: false });
     }
   }
+  /** Another admitted child supplies owned selections, never source IDs/keys.
+   * The same request still waits for actual native removal before resolving. */
+  async prepareFiles(producer: (current: () => boolean) => Promise<AttachmentAsset[]>) {
+    const request = this.request;
+    if (
+      !request ||
+      !this.isInteractive(this.state.token) ||
+      this.state.selected.length ||
+      this.state.category === 'photos'
+    )
+      return;
+    request.working = true;
+    this.publish({ busy: true, error: null });
+    try {
+      const result = await producer(() => this.current(request));
+      if (!this.current(request)) {
+        result.forEach((file) => this.port.discard(file.uri));
+        return;
+      }
+      if (!result.length || result.length > request.remaining) {
+        result.forEach((file) => this.port.discard(file.uri));
+        throw new Error('Attachment selection changed');
+      }
+      request.result = result;
+      this.publish({ visible: false });
+    } catch (error) {
+      if (this.current(request)) this.publish({ error });
+    } finally {
+      request.working = false;
+      if (request.retired) this.finish(request, []);
+      else this.publish({ busy: false });
+    }
+  }
+  previewFile(producer: (current: () => boolean) => Promise<void>) {
+    const request = this.request;
+    if (!request || !this.isInteractive(this.state.token) || this.state.category === 'photos')
+      return;
+    request.action = 'recentPreview';
+    request.preview = producer;
+    this.publish({ visible: false });
+  }
   camera() {
     const request = this.request;
     if (
@@ -492,7 +539,7 @@ export class AttachmentPhotoSession {
       !request ||
       !this.isInteractive(this.state.token) ||
       !this.port.browse ||
-      this.state.category !== 'document' ||
+      (this.state.category !== 'document' && this.state.category !== 'audio') ||
       this.state.selected.length
     )
       return;
@@ -519,6 +566,23 @@ export class AttachmentPhotoSession {
       return;
     }
     const action = request.action;
+    if (action === 'recentPreview') {
+      const preview = request.preview;
+      request.preview = undefined;
+      request.action = null;
+      request.working = true;
+      this.publish({ busy: true });
+      try {
+        await preview?.(() => this.current(request));
+      } catch (error) {
+        if (this.current(request)) this.publish({ error });
+      } finally {
+        request.working = false;
+        if (request.retired) this.finish(request, []);
+        else if (this.current(request)) this.publish({ busy: false, visible: true });
+      }
+      return;
+    }
     if (action !== 'camera' && action !== 'document') {
       this.cancel();
       return;
@@ -533,8 +597,18 @@ export class AttachmentPhotoSession {
           ? await this.port.capture(request.remaining - this.state.selected.length, () =>
               this.current(request),
             )
-          : await this.port.browse!(request.remaining, () => this.current(request));
+          : await this.port.browse!(
+              request.remaining,
+              () => this.current(request),
+              this.state.category === 'audio' ? 'audio' : 'document',
+            );
       if (!this.current(request)) return;
+      if (
+        action === 'document' &&
+        this.state.category === 'audio' &&
+        captures.some((file) => !file.mime.startsWith('audio/'))
+      )
+        throw new Error('Audio file unavailable');
       if (!captures.length) {
         this.publish({ visible: true });
         return;

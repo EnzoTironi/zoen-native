@@ -31,6 +31,7 @@ const ports: Record<string, string> = {
   '../profile/native-driver': 'export const createNativeProfilePhotoDriver = () => undefined;',
   'react-native': 'export const Platform = { OS: "ios" };',
   '../i18n/index.ts': 'export const locale = "en";',
+  'expo-crypto': 'export const randomUUID = () => "00000000-0000-4000-8000-000000000042";',
 };
 const output = await build({
   stdin: {

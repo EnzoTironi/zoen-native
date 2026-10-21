@@ -54,6 +54,8 @@ declare class ZoenCoreModule extends NativeModule<{
   releaseVoice(sourceId: string): Promise<void>;
   fileInfo(itemId: string, version: number | null): Promise<string>;
   materializeFile(itemId: string, version: number | null): Promise<string>;
+  materializeRecentAttachment?(request: string): Promise<string>;
+  previewRecentAttachment?(request: string, presentationId: string): Promise<void>;
   previewLocalFile(uri: string): Promise<void>;
   releaseLocalFile(uri: string): Promise<void>;
   releaseMediaLibraryExport?(uri: string): Promise<void>;

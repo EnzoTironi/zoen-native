@@ -364,6 +364,7 @@ impl State {
                         space: r.space.clone(),
                         kind: p.kind,
                         origin: p.origin.clone(),
+                        has_voice_history: matches!(&p.content, ItemContent::File(file) if file.is_voice()),
                         versions: vec![Version {
                             number: 1,
                             content: p.content.clone(),
