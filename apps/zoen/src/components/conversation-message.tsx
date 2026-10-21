@@ -362,7 +362,7 @@ export const ConversationMessage = memo(function ConversationMessage({
           backgrounds={outside ? undefined : face.fillColors}
         />
       ) : null}
-      {outside && attachment && !disabled ? (
+      {attachment && !disabled && (outside || (appCard && process.env.EXPO_OS !== 'ios')) ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t('chat.messageActions', { name: entry.author.name })}
@@ -379,7 +379,7 @@ export const ConversationMessage = memo(function ConversationMessage({
           <Icon
             name={{ ios: 'ellipsis', android: 'more_horiz', web: 'more_horiz' }}
             size={14}
-            color={colors.secondary}
+            color={outside ? colors.secondary : face.secondary}
           />
         </Pressable>
       ) : null}
