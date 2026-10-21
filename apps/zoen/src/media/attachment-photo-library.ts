@@ -99,7 +99,7 @@ export async function materializeLibrarySelection(
           (mime.startsWith('video/') ? '.mov' : '.jpg');
         const destination = new File(Paths.cache, `attachment-${randomUUID()}${extension}`);
         try {
-          source.copy(destination);
+          await source.copy(destination);
           const copy = { uri: destination.uri, name: source.name, mime, size: destination.size };
           owned.push(copy);
           if (

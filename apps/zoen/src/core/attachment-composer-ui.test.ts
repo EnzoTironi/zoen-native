@@ -298,6 +298,7 @@ function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass = false)
     '../media/attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
     './message-context': { MessageContext: 'MessageContext' },
     './composer-action': { ComposerAction: 'ComposerAction' },
+    './conversation-composer-access': { ConversationComposerAccess: 'ConversationComposerAccess' },
     './primitives': { NativeButton: 'NativeButton' },
   };
   // The real Expo Web transform rewrites RN imports to individual default exports.
@@ -765,12 +766,14 @@ test('compiled field preserves its actual native owner while input-mode, caption
     if (current.context.endsWith('search'))
       assert.equal(scan(tree).some(byId('composer-input-mode')), false);
   }
-  const provider = f.renderRoot({ search: { state: { completed: false } } });
+  const providerFor = (patch: Record<string, unknown>) =>
+    find(f.renderRoot(patch), (node) => node.type === 'AttachmentKeyboardProvider');
+  const provider = providerFor({ search: { state: { completed: false } } });
   assert.equal(provider.type, 'AttachmentKeyboardProvider');
   assert.equal(provider.props.scope, 'space:');
   assert.equal(provider.props.enabled, false, 'search retires accessory input authority');
-  assert.equal(f.renderRoot({ suspended: true }).props.enabled, false);
-  assert.equal(f.renderRoot({}).props.enabled, true);
+  assert.equal(providerFor({ suspended: true }).props.enabled, false);
+  assert.equal(providerFor({}).props.enabled, true);
 });
 
 test('compiled source minimum tracks larger named font geometry for field, mode and send without changing the native ref', () => {
@@ -811,4 +814,20 @@ test('iOS26 compiled renderer shares the source glass container and interactive 
   const olderField = find(olderTree, byId('message-composer-field-surface'));
   assert.equal(olderField.type, 'View');
   assert.equal(styleOf(olderField).backgroundColor, legacy.theme.presentation.chat.input.fill);
+});
+
+test('the shared composer guards both main and thread content while retaining query-only search', () => {
+  for (const threadRootId of [undefined, 'thread-root']) {
+    const f = fixture();
+    const root = f.renderRoot({ threadRootId });
+    assert.equal(root.type, 'ConversationComposerAccess');
+    assert.equal(root.props.spaceId, 'space');
+    assert.equal(root.props.searching, false);
+    assert.equal(
+      find(root, (node) => node.type === 'MediaComposer').props.threadRootId,
+      threadRootId ?? null,
+    );
+    const search = f.renderRoot({ search: { state: {} } });
+    assert.equal(search.props.searching, true);
+  }
 });

@@ -37,6 +37,7 @@ function fixture() {
   let sequence = 0,
     failCopy = false;
   let getUri = (id: string) => Promise.resolve(uris.get(id)!);
+  let copyGate = Promise.resolve();
   class File {
     uri: string;
     constructor(base: string | { uri: string }, child?: string) {
@@ -54,8 +55,9 @@ function fixture() {
     get name() {
       return entries.get(this.uri)?.name ?? this.uri.split('/').at(-1)!;
     }
-    copy(destination: File) {
+    async copy(destination: File) {
       copies.push([this.uri, destination.uri]);
+      await copyGate;
       entries.set(destination.uri, { ...entries.get(this.uri)! });
       if (failCopy) throw new Error('copy interrupted');
     }
@@ -172,6 +174,11 @@ function fixture() {
     queries,
     fail: () => {
       failCopy = true;
+    },
+    holdCopy: () => {
+      let release!: () => void;
+      copyGate = new Promise<void>((done) => (release = done));
+      return release;
     },
     delay: (read: (id: string) => Promise<string>) => {
       getUri = read;
@@ -295,4 +302,95 @@ test('missing native release capability prevents starting SDK exports and native
   assert.equal(f.copies.length, 1);
   assert.ok(f.deleted.some((uri) => uri.startsWith('file:///cache/attachment-')));
   assert.ok(f.entries.has(f.uris.get('v')!));
+});
+
+const tick = () => new Promise<void>((done) => setImmediate(done));
+test('SDK58 pending copy blocks validation, export release and publication until exact bytes exist', async () => {
+  const f = fixture(),
+    video = f.asset('gated', 'video/quicktime', 'current.mov');
+  const original = f.uris.get('gated')!;
+  const sdk =
+    'file:///owned-tmp/MediaLibraryUriExtractorDirectory/slowMoVideo-11111111-2222-3333-4444-555555555555.mov';
+  f.entries.set(sdk, { ...f.entries.get(original)! });
+  f.uris.set('gated', sdk);
+  const release = f.holdCopy();
+  let settled = false;
+  const result = f
+    .materializeLibrarySelection([video], () => true)
+    .then(
+      (files) => {
+        settled = true;
+        return { files, error: null };
+      },
+      (error: unknown) => {
+        settled = true;
+        return { files: null, error };
+      },
+    );
+  try {
+    await tick();
+    assert.equal(f.copies.length, 1);
+    assert.equal(settled, false, 'materialization must await the SDK copy Promise');
+    assert.equal(f.entries.has(f.copies[0]![1]!), false);
+    assert.deepEqual(f.exportsReleased, [], 'the copy still owns its CURRENT source');
+    assert.equal(f.deleted.length, 0, 'cleanup must not run ahead of its asynchronous writer');
+  } finally {
+    release();
+    await result;
+    await tick();
+  }
+  const outcome = await result;
+  assert.equal(outcome.error, null);
+  assert.equal(outcome.files?.length, 1);
+  assert.equal(f.entries.get(outcome.files![0]!.uri)?.bytes, 'actual-gated');
+  assert.deepEqual(f.exportsReleased, [sdk]);
+  assert.equal(f.entries.has(sdk), false);
+  assert.ok(f.entries.has(original));
+});
+
+test('SDK58 retirement during pending copy drains the writer then releases export and late owned copy', async () => {
+  const f = fixture(),
+    video = f.asset('retired', 'video/quicktime', 'retired.mov');
+  const original = f.uris.get('retired')!;
+  const sdk =
+    'file:///owned-tmp/MediaLibraryUriExtractorDirectory/slowMoVideo-11111111-2222-3333-4444-555555555555.mov';
+  f.entries.set(sdk, { ...f.entries.get(original)! });
+  f.uris.set('retired', sdk);
+  const release = f.holdCopy();
+  let current = true,
+    settled = false;
+  const result = f
+    .materializeLibrarySelection([video], () => current)
+    .then(
+      (files) => {
+        settled = true;
+        return { files, error: null };
+      },
+      (error: unknown) => {
+        settled = true;
+        return { files: null, error };
+      },
+    );
+  try {
+    await tick();
+    assert.equal(f.copies.length, 1);
+    current = false;
+    await tick();
+    assert.equal(settled, false, 'retirement must keep the admitted writer inside its drain');
+    assert.deepEqual(f.exportsReleased, []);
+    assert.equal(f.deleted.length, 0);
+  } finally {
+    release();
+    await result;
+    await tick();
+  }
+  const outcome = await result;
+  assert.equal(outcome.error, null);
+  assert.deepEqual(Array.from(outcome.files!), []);
+  const destination = f.copies[0]![1]!;
+  assert.deepEqual(f.exportsReleased, [sdk]);
+  assert.equal(f.entries.has(sdk), false);
+  assert.ok(f.deleted.includes(destination));
+  assert.equal(f.entries.has(destination), false, 'no late plaintext copy escapes retirement');
+  assert.ok(f.entries.has(original));
 });

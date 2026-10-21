@@ -19,6 +19,7 @@ import type { TimelineEntry } from '../core/types';
 import { MessageContext } from './message-context';
 import { useTheme } from '../theme';
 import { ComposerAction } from './composer-action';
+import { ConversationComposerAccess } from './conversation-composer-access';
 import { ComposerTextField } from './composer-text-field';
 import { NativeButton } from './primitives';
 import { ComposerGlyph } from './composer-control-surface';
@@ -367,7 +368,7 @@ export function MessageComposer({
       </>
     );
   }
-  return (
+  const composer = (
     <AttachmentKeyboardProvider
       scope={`${spaceId}:${threadRootId ?? ''}`}
       enabled={!search && !suspended}
@@ -432,5 +433,10 @@ export function MessageComposer({
         )}
       </Animated.View>
     </AttachmentKeyboardProvider>
+  );
+  return (
+    <ConversationComposerAccess spaceId={spaceId} searching={Boolean(search)}>
+      {composer}
+    </ConversationComposerAccess>
   );
 }
