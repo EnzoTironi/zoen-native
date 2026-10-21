@@ -343,9 +343,9 @@ function inputQaEvent(session: string, extra: Record<string, unknown> = {}) {
     nativeEvent: {
       url: 'about:srcdoc',
       data: JSON.stringify({
-        marker: 'zoen.deckcraft.input-order.qa.v1',
+        marker: 'zoen.deckcraft.input-order.qa.v2',
         session,
-        rows: [[1, 1, 0, 1, 1, 0, 14, 14, 14, 1, 0, 0, 1]],
+        rows: [[1, 1, 0, 1, 1, 0, 14, 14, 14, 1, 0, 0, 1, 1, 0, 0, -1, -1, -1, 0]],
         truncated: false,
         ...extra,
       }),
@@ -397,7 +397,10 @@ test('actual native frame consumes only bounded input scalars without canonical 
   assert.equal(updated.source, doc.source);
   assert.equal(updated.nonce, doc.nonce);
   assert.equal(updated.qaScript, doc.qaScript);
-  assert.equal(updated.qaLabel, 'input trace: 1 rows; truncated=0; 1/1/0/1/1/0/14/14/14/1/0/0/1');
+  assert.equal(
+    updated.qaLabel,
+    'input trace: 1 rows; truncated=0; 1/1/0/1/1/0/14/14/14/1/0/0/1/1/0/0/-1/-1/-1/0',
+  );
   assert.equal(
     f.injected.some((code) => code.includes('"dispose"')),
     false,
@@ -416,7 +419,11 @@ test('input-order frame refuses stale tokens, extra fields and wrong scalar type
     inputQaEvent(doc.nonce),
     inputQaEvent('00000000-0000-4000-8000-999999999999'),
     inputQaEvent(token, { text: 'private content must not be displayed' }),
-    inputQaEvent(token, { rows: [[1, 1, 0, 1, 1, 0, 'private', 0, 0, 1, 0, 0, 1]] }),
+    inputQaEvent(token, {
+      rows: [[1, 1, 0, 1, 1, 0, 'private', 0, 0, 1, 0, 0, 1, 1, 0, 0, -1, -1, -1, 0]],
+    }),
+    inputQaEvent(token, { marker: 'zoen.deckcraft.input-order.qa.v1' }),
+    inputQaEvent(token, { rows: [[1, 1, 0, 1, 1, 0, 14, 14, 14, 1, 0, 0, 1]] }),
   ])
     doc.receive(bad);
   const unchanged = f.render(undefined, undefined, inputQaRuntime);
