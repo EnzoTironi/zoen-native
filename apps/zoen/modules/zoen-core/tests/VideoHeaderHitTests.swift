@@ -17,8 +17,8 @@ import UIKit
   }
 }
 
-// AUTHORED, NOT_RUN: actual UIKit+original ObjC hitTest regression, requiring a
-// hosted iOS XCTest target. The data source supplies fixed metadata/no thumbnails;
+// Actual UIKit+original ObjC hitTest regression in an isolated iOS XCTest target.
+// The data source supplies fixed metadata/no thumbnails;
 // the hierarchy, controls and hitTest implementations are the production ones.
 @MainActor final class VideoHeaderHitTests: XCTestCase {
   private struct Fixture {
@@ -45,6 +45,10 @@ import UIKit
     toolbar.addSubview(save); toolbar.addSubview(cancel); root.addSubview(toolbar)
     let source = VideoHeaderSource()
     scrubber.dataSource = source; scrubber.allowsTrimming = true
+    // The production owner sets its valid initial range before reloadDataAndReset(false).
+    // Leaving both endpoints at zero overlaps the original handles and tests the wrong state.
+    scrubber.trimStartValue = 0
+    scrubber.trimEndValue = source.videoScrubberDuration(scrubber)
     root.layoutIfNeeded(); header.layoutIfNeeded(); header.panelView.layoutIfNeeded()
     scrubber.reloadDataAndReset(false)
     scrubber.setValue(5, resetPosition: true) // keep the seek cursor clear of both trim handles
@@ -53,6 +57,7 @@ import UIKit
     trim.setNeedsLayout(); trim.layoutIfNeeded()
     let handles = trim.subviews.compactMap { $0 as? UIButton }.sorted { $0.frame.minX < $1.frame.minX }
     XCTAssertEqual(handles.count, 2)
+    XCTAssertLessThan(handles[0].frame.maxX, handles[1].frame.minX, "The valid initial trim range must separate both original handles")
     return Fixture(root: root, header: header, scrubber: scrubber, toolbar: toolbar, source: source, handles: handles)
   }
   func testTopCenterAndBottomOfBothTrimHandlesReachTheOriginalButtonThroughEveryParent() throws {
