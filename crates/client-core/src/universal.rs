@@ -120,7 +120,7 @@ impl Engine {
 
     // ── universal search ──
 
-    fn reindex(&mut self) -> R<()> {
+    pub(crate) fn reindex(&mut self) -> R<()> {
         self.store.index_begin()?;
         if let Err(e) = self.fill_index() {
             self.store.index_abort();
@@ -169,6 +169,7 @@ impl Engine {
     fn fill_index(&self) -> R<()> {
         let st = &self.store;
         st.index_clear()?;
+        st.recent_attachments_reset()?;
         let me = self.me.clone().unwrap_or_default();
         for id in &self.identity_order {
             if *id == me {
@@ -210,7 +211,18 @@ impl Engine {
                 &s.title,
                 &names.join(", "),
             )?;
-            for e in &s.entries {
+            for (entry_index, e) in s.entries.iter().enumerate() {
+                if let Some((kind, file)) = self.recent_attachment_classification(e) {
+                    st.recent_attachment_put(
+                        kind.index_kind(),
+                        &s.id,
+                        e.id(),
+                        &e.author,
+                        e.at_ms,
+                        entry_index as u64,
+                        &file.name,
+                    )?;
+                }
                 let Some(body) = self.searchable_entry_text(e) else {
                     continue;
                 };

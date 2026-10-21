@@ -22,7 +22,9 @@ const MAX_RETAINED_BYTES: usize = 512 << 20;
 const MAX_SCOPES: usize = 4096;
 const MAX_SAVE_RECEIPTS: usize = 16;
 
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+#[serde(deny_unknown_fields)]
 pub struct MediaDraftScope {
     pub expected_identity_id: String,
     pub expected_device_id: String,
@@ -30,7 +32,7 @@ pub struct MediaDraftScope {
     pub thread_root_id: Option<String>,
 }
 impl MediaDraftScope {
-    fn normal(&self) -> DraftScope {
+    pub(crate) fn normal(&self) -> DraftScope {
         DraftScope {
             expected_identity_id: self.expected_identity_id.clone(),
             expected_device_id: self.expected_device_id.clone(),
@@ -451,12 +453,22 @@ impl Engine {
         json: &str,
         inputs: Vec<MediaDraftAssetInput>,
     ) -> R<MediaDraftSaveResult> {
+        self.save_media_draft_with_recent_sources(scope, expected, json, inputs, Vec::new())
+    }
+    fn save_media_draft_with_recent_sources(
+        &mut self,
+        scope: &MediaDraftScope,
+        expected: &str,
+        json: &str,
+        inputs: Vec<MediaDraftAssetInput>,
+        mut source_bindings: Vec<crate::RecentAttachmentSourceBinding>,
+    ) -> R<MediaDraftSaveResult> {
         let storage = self.media_draft_scope(scope)?;
         let previous = self.load_media_draft(&storage)?;
         if !intent_id(expected) {
             return Err(stale());
         }
-        if json.len() > MAX_CONTENT_BYTES || inputs.len() > 10 {
+        if json.len() > MAX_CONTENT_BYTES || inputs.len() > 10 || source_bindings.len() > 10 {
             return Err(invalid());
         }
         let content: Option<Content> = serde_json::from_str(json).map_err(|_| invalid())?;
@@ -500,15 +512,36 @@ impl Engine {
         }
         // The receipt is authoritative for lost native acknowledgements, including
         // cleared/pruned assets. Never infer acceptance from JSON equality alone.
-        let fingerprint = hex::encode(Sha256::digest(
+        source_bindings.sort_by(|left, right| left.asset_id.cmp(&right.asset_id));
+        if source_bindings
+            .windows(2)
+            .any(|pair| pair[0].asset_id == pair[1].asset_id)
+            || source_bindings.iter().any(|binding| {
+                !intent_id(&binding.asset_id)
+                    || !binding.reference.is_valid()
+                    || !incoming.contains_key(&binding.asset_id)
+            })
+        {
+            return Err(invalid());
+        }
+        let fingerprint_bytes = if source_bindings.is_empty() {
             serde_json::to_vec(&(
                 "zoen.media.draft.save.v1",
                 expected,
                 content_json(&content)?,
-                supplied,
+                &supplied,
             ))
-            .map_err(|_| invalid())?,
-        ));
+        } else {
+            serde_json::to_vec(&(
+                "zoen.media.draft.save.recent.v1",
+                expected,
+                content_json(&content)?,
+                &supplied,
+                &source_bindings,
+            ))
+        }
+        .map_err(|_| invalid())?;
+        let fingerprint = hex::encode(Sha256::digest(fingerprint_bytes));
         if let Some(receipt) = previous
             .save_receipts
             .iter()
@@ -525,6 +558,20 @@ impl Engine {
         }
         if previous.revision != expected || (previous.attempted && content.is_some()) {
             return Err(stale());
+        }
+        // Replays above prove the original accepted copy. Fresh copies revalidate
+        // every source and supplied byte hash before the journal writes anything.
+        for binding in &source_bindings {
+            let source =
+                self.attachment_reference_validate(scope, binding.kind, &binding.reference)?;
+            let (asset, _) = incoming.get(&binding.asset_id).ok_or_else(invalid)?;
+            if asset.sha256 != source.reference.sha256
+                || asset.name != source.name
+                || asset.mime != source.mime
+                || asset.size != source.bytes
+            {
+                return Err(invalid());
+            }
         }
         let mut assets = Vec::with_capacity(refs.len());
         let mut fresh = Vec::new();
@@ -783,6 +830,23 @@ impl Client {
         let _language = crate::i18n::enter(self.lang);
         self.lock()
             .save_media_draft(&scope, &expected_revision, &content_json, assets)
+    }
+    pub fn save_media_draft_with_recent_sources(
+        &self,
+        scope: MediaDraftScope,
+        expected_revision: String,
+        content_json: String,
+        assets: Vec<MediaDraftAssetInput>,
+        source_bindings: Vec<crate::RecentAttachmentSourceBinding>,
+    ) -> Result<MediaDraftSaveResult, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
+        self.lock().save_media_draft_with_recent_sources(
+            &scope,
+            &expected_revision,
+            &content_json,
+            assets,
+            source_bindings,
+        )
     }
     pub fn media_draft_asset(
         &self,
