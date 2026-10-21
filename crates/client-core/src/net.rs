@@ -28,6 +28,9 @@ use crate::engine::Engine;
 use crate::sync::{Ingest, RejectionOutcome};
 use crate::CoreListener;
 
+mod cursor_repair;
+use cursor_repair::{CursorRepair, CursorRepairPolicy};
+
 /// Live fan-out can race a room's membership history during catch-up. Hold only a
 /// bounded set of unvalidated pairs on this socket, never in the durable cache.
 #[derive(Default)]
@@ -584,6 +587,15 @@ async fn session(
     cmd_rx: &mut mpsc::UnboundedReceiver<Cmd>,
     backoff: &mut Duration,
 ) -> Exit {
+    session_with_repair_policy(ctx, cmd_rx, backoff, CursorRepairPolicy::DEFAULT).await
+}
+
+async fn session_with_repair_policy(
+    ctx: &Ctx,
+    cmd_rx: &mut mpsc::UnboundedReceiver<Cmd>,
+    backoff: &mut Duration,
+    repair_policy: CursorRepairPolicy,
+) -> Exit {
     macro_rules! engine {
         ($work:expr) => {
             match ctx.engine($work) {
@@ -722,6 +734,7 @@ async fn session(
     if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors, all: true }).await {
         return Exit::Retry(e);
     }
+    let mut cursor_repair = CursorRepair::new(repair_policy);
     // Preserve the actual sent epoch even if maintenance reseals the outbox while
     // this publication is still waiting for the relay's answer.
     let mut sent: HashMap<String, Option<u64>> = HashMap::new();
@@ -751,7 +764,9 @@ async fn session(
     )
     .chain(stream);
 
-    let exit = loop {
+    let (repair_deadline, repair_deadline_rx) = watch::channel(None);
+    let (exit, repair_expired) = cursor_repair::drive(async {
+    loop {
         tokio::select! {
             frame = stream.next() => {
                 let frame = match frame {
@@ -787,6 +802,7 @@ async fn session(
                             Ingest::Gap { next } => {
                                 let c = vec![protocol::Cursor { space, next_seq: next }];
                                 if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors: c, all: false }).await { break Exit::Retry(e) }
+                                if !cursor_repair.submitted() { break Exit::Retry("too many outstanding sync requests".into()) }
                             }
                             Ingest::Invalid(reason) => {
                                 // A relay that serves a bad chain or signature is not trusted for this
@@ -848,8 +864,11 @@ async fn session(
                         let next = engine!(|engine| engine.next_seq(&space));
                         let c = vec![protocol::Cursor { space, next_seq: next }];
                         if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors: c, all: false }).await { break Exit::Retry(e) }
+                        if !cursor_repair.submitted() { break Exit::Retry("too many outstanding sync requests".into()) }
                     }
                     ServerFrame::SyncDone => {
+                        cursor_repair.completed(tokio::time::Instant::now());
+                        let _ = repair_deadline.send_replace(cursor_repair.abort_deadline());
                         if let Err(e) = engine!(|engine| deferred_receipts.flush(engine, &mut dirty)) {
                             break Exit::Retry(e.to_string());
                         }
@@ -969,10 +988,10 @@ async fn session(
                             claim_clock = server_time_ms.and_then(KeyPackageClaimClock::from_server_ms).map(ClaimClockSample::new);
                         }
                     }
-                    // A failed initial Sync has no SyncDone and leaves the socket open.
+                    // A failed initial/repair Sync has no SyncDone and leaves the socket open.
                     // Reconnect to retry it; the normal run loop bounds retry frequency.
                     ServerFrame::Error { code: ErrorCode::Unavailable, message }
-                        if !ctx.status.borrow().synced => break Exit::Retry(message),
+                        if !ctx.status.borrow().synced || cursor_repair.in_flight() => break Exit::Retry(message),
                     ServerFrame::Error { message, .. } => tracing_like(&format!("relay: {message}")),
                     ServerFrame::Challenge { .. } | ServerFrame::Ready { .. } => {}
                 }
@@ -1125,12 +1144,32 @@ async fn session(
                 // burst of overdue scans over the same pending work.
                 tick.as_mut().reset(tokio::time::Instant::now() + MAINTENANCE_PERIOD);
             }
+            _ = async {
+                match cursor_repair.admission() {
+                    Some(next) => tokio::time::sleep_until(next).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                let cursors = engine!(|engine| engine.cursors());
+                if !cursor_repair.begin(tokio::time::Instant::now()) {
+                    break Exit::Retry("too many outstanding sync requests".into());
+                }
+                let _ = repair_deadline.send_replace(cursor_repair.abort_deadline());
+                if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors, all: true }).await {
+                    break Exit::Retry(e);
+                }
+            }
             _ = ping.tick() => {
                 if last_rx.elapsed() > Duration::from_secs(60) { break Exit::Retry("relay went quiet".into()) }
                 if let Err(e) = send(&mut sink, &ClientFrame::Ping).await { break Exit::Retry(e) }
             }
         }
-    };
+    }
+    }, repair_deadline_rx).await;
+    // A repair that failed/stopped is aborted, not flushed through another
+    // unbounded socket close; durable outbox/cursors remain the retry authority.
+    let repair_abandoned =
+        cursor_repair.abandon_transport(repair_expired, tokio::time::Instant::now());
     // Include unsent claims if writing a batch failed before their waiting entry existed.
     engine!(|engine| engine.mls_claims_disconnected());
     for (_, w) in waiting {
@@ -1143,7 +1182,12 @@ async fn session(
             l.on_change(dirty.into_iter().filter(|s| !s.is_empty()).collect());
         }
     }
-    let _ = sink.close().await;
+    cursor_repair::close_transport(
+        sink.close(),
+        cursor_repair.abort_deadline(),
+        repair_abandoned || matches!(&exit, Exit::Stop),
+    )
+    .await;
     exit
 }
 
@@ -1565,6 +1609,7 @@ async fn fetch_link_attempt(
 
 #[cfg(test)]
 mod tests {
+    mod cursor_repair;
     mod incoming_pipeline;
 
     #[tokio::test]
