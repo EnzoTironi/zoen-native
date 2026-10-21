@@ -28,20 +28,25 @@ impl Drop for Directory {
 
 #[tokio::test(flavor = "current_thread")]
 async fn public_media_upload_400_never_confirms_unrecoverable_attachment() {
-    terminal_upload(400).await;
+    terminal_upload(400, true).await;
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn public_media_upload_413_never_confirms_unrecoverable_attachment() {
-    terminal_upload(413).await;
+    terminal_upload(413, true).await;
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn public_media_upload_transient_cold_retry_keeps_exact_intent_and_remote_bytes() {
-    terminal_upload(503).await;
+    terminal_upload(503, true).await;
 }
 
-async fn terminal_upload(status: u16) {
+#[tokio::test(flavor = "current_thread")]
+async fn public_default_media_upload_refusal_retains_caption_card_and_bytes_after_cold_reopen() {
+    terminal_upload(400, false).await;
+}
+
+async fn terminal_upload(status: u16, file_presentation: bool) {
     let retrying = status == 503;
     let grouped = status == 413;
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -81,8 +86,12 @@ async fn terminal_upload(status: u16) {
     };
     let plain = b"%PDF-1.4 private upload refusal fixture".to_vec();
     let ids = if grouped { vec!["a", "b"] } else { vec!["a"] };
-    let content = serde_json::json!({"kind":"attachments", "options":{"presentation":"file", "grouping":if grouped {"grouped"} else {"separate"}},
-        "items":ids.iter().map(|id| serde_json::json!({"asset_id":id, "caption":format!("Keep caption {id}"), "mutation_id":format!("upload-{id}")})).collect::<Vec<_>>()}).to_string();
+    let mut content = serde_json::json!({"kind":"attachments", "options":{"presentation":"file", "grouping":if grouped {"grouped"} else {"separate"}},
+        "items":ids.iter().map(|id| serde_json::json!({"asset_id":id, "caption":format!("Keep caption {id}"), "mutation_id":format!("upload-{id}")})).collect::<Vec<_>>()});
+    if !file_presentation {
+        content.as_object_mut().unwrap().remove("options");
+    }
+    let content = content.to_string();
     let saved = sender
         .save_media_draft(
             scope.clone(),
@@ -123,15 +132,24 @@ async fn terminal_upload(status: u16) {
     let expected_uploads = queued.clone();
     let (observed_tx, mut observed) = mpsc::unbounded_channel();
     let (release_http, released_http) = std::sync::mpsc::channel();
+    let (release_interrupted, released_interrupted) = std::sync::mpsc::channel();
     let http_server = std::thread::spawn(move || {
-        for attempt in 0..if retrying { 2 } else { expected_uploads.len() } {
+        for attempt in 0..if retrying { 3 } else { expected_uploads.len() } {
             let (mut socket, _) = http.accept().unwrap();
             let (headers, body) = http_request(&mut socket);
             let expected = &expected_uploads[if retrying { 0 } else { attempt }];
             assert!(headers.starts_with(&format!("PUT /v1/blobs/{} ", expected.0)));
             assert_eq!(body, expected.1, "retry keeps exact ciphertext");
             observed_tx.send(attempt).unwrap();
-            let code = if attempt == 1 {
+            if retrying && attempt == 1 {
+                // This second PUT is proof that the SAME worker consumed the
+                // prior 503 and took its retry branch. Interrupt it in flight.
+                released_interrupted
+                    .recv_timeout(Duration::from_secs(10))
+                    .unwrap();
+                continue;
+            }
+            let code = if attempt != 0 {
                 if retrying {
                     released_http.recv_timeout(Duration::from_secs(10)).unwrap();
                 }
@@ -160,13 +178,14 @@ async fn terminal_upload(status: u16) {
     });
     let mut lease = EngineLease::new(sender.inner.clone());
     let (_, key, _, _, _, _) = sender.lock().net_credentials().unwrap();
+    let retry_kick = Arc::new(tokio::sync::Notify::new());
     let mut worker = tokio::spawn(media_worker(
         lease.clone(),
         None,
         base.clone(),
         "upload-fixture".into(),
         key.clone(),
-        Arc::new(tokio::sync::Notify::new()),
+        retry_kick.clone(),
     ));
     if retrying {
         assert_eq!(
@@ -175,9 +194,19 @@ async fn terminal_upload(status: u16) {
                 .unwrap(),
             Some(0)
         );
+        // Notify retains its permit until the production loop reaches the idle
+        // wait; no elapsed-time guess establishes that 503 was processed.
+        retry_kick.notify_one();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(5), observed.recv())
+                .await
+                .unwrap(),
+            Some(1)
+        );
         worker.abort();
         let _ = worker.await;
         lease.revoke();
+        release_interrupted.send(()).unwrap();
         assert_eq!(sender.lock().pending_uploads(8), queued);
         drop(sender);
         sender = Client::open(sender_path.to_str().unwrap().into(), "en".into()).unwrap();
@@ -219,7 +248,7 @@ async fn terminal_upload(status: u16) {
             tokio::time::timeout(Duration::from_secs(5), observed.recv())
                 .await
                 .unwrap(),
-            Some(1)
+            Some(2)
         );
     }
     if !retrying {
