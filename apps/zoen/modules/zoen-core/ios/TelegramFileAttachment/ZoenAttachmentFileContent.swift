@@ -113,7 +113,13 @@ import UIKit
     more.accessibilityIdentifier = "attachment-recent-more"
     scrollView.tableFooterView = hasMore && !hasError ? more : nil
     if changed { scrollView.reloadData() }
-    else { for case let cell as RecentFileCell in scrollView.visibleCells { cell.applyAppearance(appearance) } }
+    else {
+      for cell in scrollView.visibleCells {
+        guard let path = scrollView.indexPath(for: cell) else { continue }
+        if let cell = cell as? RecentFileCell, rows.indices.contains(path.row) { updateFileCell(cell, row: rows[path.row]) }
+        else if let cell = cell as? RecentActionCell { updateActionCell(cell, indexPath: path) }
+      }
+    }
     updateVisibility()
   }
   func setVisible(_ value: Bool) {
@@ -207,19 +213,25 @@ import UIKit
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
     if !searching && indexPath.section == 0 {
       let cell = tableView.dequeueReusableCell(withIdentifier: "action", for: indexPath) as! RecentActionCell
-      let gallery = kind == "file" && indexPath.row == 0
-      cell.update(title: labels[gallery ? "chooseGallery" : "browseFiles"] ?? "", image: ZoenTelegramAttachmentGlyph.image(gallery ? .image : .cloud), appearance: appearance, enabled: enabled && selected.isEmpty, first: indexPath.row == 0, last: kind == "audio" || indexPath.row == 1)
-      cell.accessibilityIdentifier = gallery ? "attachment-recent-gallery" : "attachment-file-browse"
+      updateActionCell(cell, indexPath: indexPath)
       return cell
     }
     guard rows.indices.contains(indexPath.row), let cell = tableView.dequeueReusableCell(withIdentifier: "file", for: indexPath) as? RecentFileCell else { return UITableViewCell() }
-    let row = rows[indexPath.row], id = row["id"] as? String ?? ""
+    updateFileCell(cell, row: rows[indexPath.row])
+    return cell
+  }
+  private func updateActionCell(_ cell: RecentActionCell, indexPath: IndexPath) {
+    let gallery = kind == "file" && indexPath.row == 0
+    cell.update(title: labels[gallery ? "chooseGallery" : "browseFiles"] ?? "", image: ZoenTelegramAttachmentGlyph.image(gallery ? .image : .cloud), appearance: appearance, enabled: enabled && selected.isEmpty, first: indexPath.row == 0, last: kind == "audio" || indexPath.row == 1)
+    cell.accessibilityIdentifier = gallery ? "attachment-recent-gallery" : "attachment-file-browse"
+  }
+  private func updateFileCell(_ cell: RecentFileCell, row: [String: Any]) {
+    let id = row["id"] as? String ?? ""
     cell.update(row: row, audio: kind == "audio", selection: !selected.isEmpty,
       order: selected.firstIndex(of: id).map { $0 + 1 }, appearance: appearance, enabled: enabled)
     let expected = revision
     cell.preview = kind == "audio" ? { [weak self] in guard let self, self.revision == expected else { return }; self.searchField.resignFirstResponder(); self.emit("recentPreview", id: id) } : nil
     cell.previewLabel = labels["previewFile"]
-    return cell
   }
   func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
     tableView.deselectRow(at: indexPath, animated: true)

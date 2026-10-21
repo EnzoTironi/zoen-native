@@ -47,6 +47,15 @@ validated atomically with the destination CAS. The destination receives new
 asset/file identities and keys. No source keys or source ID is sent as a new
 attachment. Once saved, the draft's own identities are authoritative.
 
+Native provenance and preview bindings use the validated canonical selection
+path, shared with the existing owned-media lease. Percent, dot, query/fragment
+and symlink spellings cannot fall through to ordinary ingestion. Files inside
+the reserved `ZoenMedia/<UUID>` namespace require a live owned lease, including
+lexical paths whose file or directory was substituted. Released/transferred
+leftovers are rejected; filesystem case spellings that do not resolve to the
+registered identity are denied rather than losing provenance. Ordinary picker
+cache/tmp files keep their existing ingestion behavior.
+
 Lost-ACK retries preserve the source-aware fingerprint until the URI is released;
 an exact receipt replay remains valid after the source is deleted or its role
 changes. Fresh writes still revalidate the live source. Native release and SDK

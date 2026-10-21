@@ -892,7 +892,7 @@ private actor ZoenSession {
       _ = try mediaDraftCore(value.scope)
       let selection = try mediaFiles.readSelection(uri: asset.uri, name: asset.name, mime: asset.mime)
       inputs.append(MediaDraftAssetInput(id: asset.id, name: selection.name, mime: selection.mime, bytes: selection.data))
-      if let recent = recentSelections[asset.uri] {
+      if let recent = recentSelections[selection.url.path] {
         guard recent.engine === core, recent.generation == expected, recent.scope == value.scope,
               asset.voiceRole == nil, asset.voiceSourceId == nil else { throw SessionError.closed }
         recentSources.append(RecentAttachmentSourceBinding(assetId: asset.id, kind: recent.kind, reference: recent.reference))
@@ -1309,14 +1309,15 @@ private actor ZoenSession {
     guard let object = try JSONSerialization.jsonObject(with: Data(local.utf8)) as? [String: Any],
           let uri = object["uri"] as? String else { throw ZoenMediaFiles.Failure.invalidFile }
     do {
+      let identity = try mediaFiles.ownedSelectionURL(uri).path
       guard !erasing, !closing, self.core === engine, generation == expected,
             recentSelections.count < 20,
-            let binding = previewBindings[uri], bindingIsCurrent(binding),
+            let binding = previewBindings[identity], bindingIsCurrent(binding),
             binding.sha256 == reference.sha256, binding.version == reference.version else { throw SessionError.closed }
       _ = try mediaDraftCore(value.scope)
       let checked = try engine.attachmentReferenceValidate(scope: value.scope.core, kind: kind, reference: reference)
       guard checked.name == row.name, checked.mime == row.mime, checked.bytes == row.bytes else { throw ZoenMediaFiles.Failure.invalidVersion }
-      recentSelections[uri] = RecentSelectionBinding(engine: engine, generation: expected, scope: value.scope, kind: kind, reference: reference)
+      recentSelections[identity] = RecentSelectionBinding(engine: engine, generation: expected, scope: value.scope, kind: kind, reference: reference)
       return try ZoenMediaFiles.json(["uri": uri, "name": row.name, "mime": row.mime, "size": row.bytes])
     } catch { releaseLocalFile(uri); throw error }
   }
@@ -1338,15 +1339,16 @@ private actor ZoenSession {
     try Task.checkCancellation(); try gate.admitted { () }
     let local = try await materializeRecentAttachment(request)
     guard let object = try JSONSerialization.jsonObject(with: Data(local.utf8)) as? [String: Any],
-          let uri = object["uri"] as? String, let source = recentSelections[uri],
-          let binding = previewBindings[uri], bindingIsCurrent(binding) else { throw SessionError.closed }
+          let uri = object["uri"] as? String else { throw SessionError.closed }
+    let identity = try mediaFiles.ownedSelectionURL(uri).path
+    guard let source = recentSelections[identity], let binding = previewBindings[identity], bindingIsCurrent(binding) else { throw SessionError.closed }
     let file: ZoenPreviewFile
     do {
       try Task.checkCancellation(); try gate.admitted { () }
       _ = try source.engine.attachmentReferenceValidate(scope: source.scope.core, kind: source.kind, reference: source.reference)
       file = try mediaFiles.takeForPreview(uri)
     } catch { releaseLocalFile(uri); throw error }
-    recentSelections.removeValue(forKey: uri); previewBindings.removeValue(forKey: uri)
+    recentSelections.removeValue(forKey: identity); previewBindings.removeValue(forKey: identity)
     let ticket = filePreview.register(file: file, generation: generation)
     try await filePreview.open(id: ticket, title: binding.name) {
       if ZoenMediaGalleryPreview.supports(mime: binding.mime) {
@@ -1382,20 +1384,23 @@ private actor ZoenSession {
     info = try core.fileInfoAt(itemId: itemId, version: pinned)
     guard info.sha256 == expectedSHA256 else { throw ZoenMediaFiles.Failure.invalidVersion }
     let uri = try mediaFiles.stage(bytes, name: info.name)
-    previewBindings[uri] = PreviewBinding(engine: core, generation: generation, mode: mode,
+    previewBindings[try mediaFiles.ownedSelectionURL(uri).path] = PreviewBinding(engine: core, generation: generation, mode: mode,
       scope: scope, itemId: itemId, spaceId: item.spaceId,
       version: pinned, sha256: info.sha256, name: info.name, mime: info.mime)
     return try ZoenMediaFiles.json(["uri": uri, "itemId": itemId, "version": pinned, "info": ZoenMediaFiles.info(info)])
   }
 
   func releaseLocalFile(_ uri: String) {
-    recentSelections.removeValue(forKey: uri)
-    previewBindings.removeValue(forKey: uri)
+    if let identity = mediaFiles.releaseIdentity(uri) {
+      recentSelections.removeValue(forKey: identity)
+      previewBindings.removeValue(forKey: identity)
+    }
     mediaFiles.release(uri)
   }
 
   func previewLocalFile(_ uri: String, presenter: UIViewController?) async throws {
-    guard !erasing, !closing, let binding = previewBindings[uri], bindingIsCurrent(binding) else { throw SessionError.closed }
+    let identity = try mediaFiles.ownedSelectionURL(uri).path
+    guard !erasing, !closing, let binding = previewBindings[identity], bindingIsCurrent(binding) else { throw SessionError.closed }
     // Historical versions stay read-only. Only ordinary Open of the current PDF
     // discovers this device's private edits; it never changes the shared version.
     let journal: ZoenPDFEditJournal?
@@ -1453,7 +1458,10 @@ private actor ZoenSession {
       throw error
     }
     guard let file = viewer else { throw ZoenMediaFiles.Failure.invalidFile }
-    previewBindings.removeValue(forKey: uri)
+    previewBindings.removeValue(forKey: identity)
+    // Recovery may open a separate viewer while the original remains owned.
+    // Keep that original's source provenance until its actual lease is retired.
+    if mediaFiles.releaseIdentity(uri) == nil { recentSelections.removeValue(forKey: identity) }
     let id = filePreview.register(file: file, generation: generation, recovered: recovered)
     let title = recovering
       ? "\(binding.name) — \(NSLocalizedString("Recovered changes", comment: "Recovered private PDF preview title"))"
