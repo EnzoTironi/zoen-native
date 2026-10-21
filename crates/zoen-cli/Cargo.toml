@@ -25,6 +25,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signa
 [dev-dependencies]
 # Journeys run the scripted brain and fault points; production builds never have them.
 zoen-agentd = { path = "../zoen-agentd", features = ["scripted"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 store.workspace = true
 hkdf.workspace = true
 async-nats = "0.50"
