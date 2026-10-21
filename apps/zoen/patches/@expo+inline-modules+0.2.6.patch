@@ -1,0 +1,24 @@
+diff --git a/node_modules/@expo/inline-modules/build/xcodeProjectUpdates.js b/node_modules/@expo/inline-modules/build/xcodeProjectUpdates.js
+--- a/node_modules/@expo/inline-modules/build/xcodeProjectUpdates.js
++++ b/node_modules/@expo/inline-modules/build/xcodeProjectUpdates.js
+@@ -72,7 +72,11 @@
+                 continue;
+             }
+             const groupObject = objects.PBXFileSystemSynchronizedRootGroup[key];
+-            fsSynchronizedRootGroups.set(groupObject.path, key);
++            // node-xcode retains PBX quotes written by CocoaPods/xcodeproj.
++            // Only SOURCE_ROOT groups identify watched paths relative to ios.
++            if (typeof groupObject.path === "string" && typeof groupObject.sourceTree === "string" && _configplugins().IOSConfig.XcodeUtils.unquote(groupObject.sourceTree) === "SOURCE_ROOT") {
++                fsSynchronizedRootGroups.set(_configplugins().IOSConfig.XcodeUtils.unquote(groupObject.path), key);
++            }
+         }
+     } else {
+         objects.PBXFileSystemSynchronizedRootGroup = {};
+@@ -131,6 +135,7 @@
+             path: dirRelativeToIos,
+             sourceTree: 'SOURCE_ROOT'
+         };
++        fsSynchronizedRootGroups.set(dirRelativeToIos, newUUID);
+         return newUUID;
+     };
+     const targetsToUpdate = pbxProject.getFirstProject().firstProject.targets.filter((target)=>{
