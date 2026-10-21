@@ -800,7 +800,6 @@ export function useDurableAttachmentComposer(
             !options.suspended &&
             !reviewing.mutationId &&
             !state?.frozen &&
-            !own?.picking &&
             !restoring,
           sending: busy,
           remaining: items.length,
@@ -809,6 +808,9 @@ export function useDurableAttachmentComposer(
             if (
               !channel ||
               !current() ||
+              // Photos anchors to this editable native field. While its overlay
+              // owns interaction, even a retained callback cannot change the draft.
+              runtime.picking ||
               state?.frozen ||
               runtime.approval !== presentation ||
               presentation?.closing

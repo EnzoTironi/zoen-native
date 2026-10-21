@@ -1019,6 +1019,68 @@ test('recovered attachments remain compact until explicitly expanded and expandi
   assert.deepEqual(f.released, ['file:///cache/fresh-old']);
 });
 
+test('adding to a recovered PDF preserves its mounted editor admission while freezing canonical caption and Send', async () => {
+  const initial = {
+    revision: 'saved',
+    content_json: JSON.stringify({
+      kind: 'attachments',
+      reply_to: null,
+      items: [{ asset_id: 'old', mutation_id: 'old-post', caption: 'Keep this PDF caption' }],
+    }),
+    attempted: false,
+    assets: [
+      {
+        id: 'old',
+        name: 'QA230 Input-v7.pdf',
+        mime: 'application/pdf',
+        size: 12,
+        sha256: 'a'.repeat(64),
+      },
+    ],
+  };
+  const f = fixture(initial),
+    removed = deferred<AttachmentAsset[]>();
+  f.render();
+  await tick();
+  let ui = f.render();
+  await tick();
+  ui = f.render();
+  assert.equal(ui.canAdd, true);
+  assert.equal(ui.field?.editable, true);
+  const retained = ui.field!;
+  f.select(() => removed.promise);
+  const adding = ui.pick('photo');
+  await tick();
+  ui = f.render();
+  assert.equal(ui.busy, true);
+  assert.equal(
+    ui.field?.editable,
+    true,
+    'Native mounted attachment admission requires the same underlying UITextView to remain editable',
+  );
+  retained.onChange('Late underlying caption');
+  ui.field!.onChange('Typing behind the attachment');
+  retained.onSend();
+  ui.field!.onSend();
+  await tick();
+  assert.equal(f.writes.length, 0, 'Adding cannot mutate the old canonical caption');
+  assert.equal(f.sendCalls(), 0);
+  removed.resolve([]);
+  await adding;
+  assert.equal(f.durable().content_json, initial.content_json);
+  assert.equal(f.render().field?.editable, true);
+  assert.equal(f.render().canAdd, true);
+  f.render().field!.onChange('User caption after closing picker');
+  await f.channel.flush();
+  assert.equal(
+    JSON.parse(f.durable().content_json).items[0].caption,
+    'User caption after closing picker',
+  );
+  assert.equal(f.durable().assets[0]?.name, 'QA230 Input-v7.pdf');
+  assert.equal(f.sendCalls(), 0);
+  f.unmount();
+});
+
 test(
   'Edit journals its final native caption before editor admission and coalesces a competing Send',
   { timeout: 10_000 },
