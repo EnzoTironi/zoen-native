@@ -866,10 +866,7 @@
         "sourceEvidence": [
           {
             "path": "crates/zoen-relay/tests/session_revocation.rs",
-            "lines": [
-              802,
-              886
-            ],
+            "lines": [802, 886],
             "sha256": "ebfb7491dfbc04cb8f64de389b965286955bb36e22b831f6fdea9465979f067c",
             "qualification": "Private consolidated v165+v169 candidate; no integrated commit yet"
           }
@@ -883,6 +880,8 @@
         "fixtureCleanup": "All five owned fixture attempts, including the two retained setup/cache failures, report postgres terminal and entire fresh cluster/test databases discarded. Successful runs verified the exact fresh data_directory on port 15565; relay listener was 127.0.0.1:0. Protected/shared services were not used. Root runner v181 TCP-only and source-fresh03 changes are fixture-only; original positive/test production bytes unchanged.",
         "upstreamExecution": "NOT_RUN",
         "integrationStatusAtQualification": "ROOT_OPERATED_PRIVATE_TEST_CANDIDATE; live integration is not asserted by this dated record",
+        "integrationCommit": "399bdef392d9661d122c2e3cb9868eabed08dfba",
+        "currentIntegration": "The original Zoen regression is present in the current source ancestry. This records integration only and does not rerun or broaden the dated qualification.",
         "restorationEvidence": {
           "productionSessionSha256": "9f40fc5c97a2d472a7c0a0b062697923d39ef73be6547a81ffa0ad03d97dbeca",
           "positiveAndRestoredTestExecutableSha256": "96a0fa76166922582838cb93d92da15ed7a8dc46e7d057a22f82cac875513d89",
@@ -1364,7 +1363,20 @@
       "adoptionBoundary": "Add a same-space three-intent retry/reopen assertion only if transport ordering policy requires it; preserve per-space log semantics rather than serializing all spaces.",
       "upstreamExecution": "NOT_RUN",
       "zoenStatusAtComparedSource": "partial",
-      "guardedRisk": "Scheduling/restoration can reorder work."
+      "guardedRisk": "Scheduling/restoration can reorder work.",
+      "implementedZoenSubset": {
+        "sourceCommit": "c8d70728a5e3e141a6f9250a1f102d3fbe09a408",
+        "status": "partial",
+        "report": "docs/dev/attachment-publication-order-qualification-2026-10-21.md",
+        "verification": "21 focused media contracts, two actual client WebSocket/MLS cases and two existing MLS-window regressions passed; scoped strict client-core library/tests Clippy and formatting passed. Root and a separate reviewer read the immutable production paths and test assertions; all seven committed source hashes match the receipt. Integrated native and production-cluster qualification remain pending.",
+        "boundary": "Original Zoen tests exercise confirmed File/predecessor admission, transient refusal with exact signed/ciphertext retry, sender/receiver SQLite reopen, terminal failed-intent preservation, atomic rollback and scope isolation. The actual client transport tests distinguish Accepted from canonical Event using a FIFO barrier and prove terminal refusal itself wakes a later ordinary head. This is attachment dependency ordering, not generic FIFO serialization of every message or an execution of the Signal suite.",
+        "receipt": "/Users/enzotironi/.codex/builds/zoen-signal-album-order-v254/source-ready.json",
+        "remaining": [
+          "Confirmed history is replayed once per relevant Space/offer pass; latency, allocation and large-history cost are unmeasured.",
+          "WebSocket uses the production client with an ephemeral ordering fixture, not the production relay/FDB/NATS cluster.",
+          "Public failed-send retry/discard actions remain a separate product gap."
+        ]
+      }
     },
     {
       "id": "C03",
@@ -2083,10 +2095,7 @@
           "project": "signalapp/ringrtc",
           "commit": "84c5b2aff246392b365d73d6628529a149d6aed2",
           "path": "src/rust/tests/outgoing.rs",
-          "lines": [
-            3618,
-            3637
-          ],
+          "lines": [3618, 3637],
           "url": "https://github.com/signalapp/ringrtc/blob/84c5b2aff246392b365d73d6628529a149d6aed2/src/rust/tests/outgoing.rs#L3618-L3637"
         }
       ],
@@ -2239,6 +2248,7 @@
       "date": "2026-10-21",
       "relatedHistoricalScenario": "S04",
       "implementationCommit": "288cec096b011f6e59f412888dc08fde6c2c42b0",
+      "integrationCommit": "00a008bab8227ab12aa3d332881fbd7b386a645e",
       "sourceBase": "fc223f8eef4c71b8bc229d77962b646e554888b3",
       "status": "PASS_BOUNDED_BACKEND_SUBSET",
       "report": "docs/dev/cursor-repair-qualification-2026-10-21.md",
@@ -2263,6 +2273,33 @@
         "Initial catch-up before its first SyncDone retains the previous unbounded path.",
         "60s/30s are Zoen policy choices, not Signal constants or a delivery/capacity promise.",
         "Historical 51 scenario classifications and their immutable source pins remain unchanged; this partial follow-up does not complete S04 or product acceptance."
+      ]
+    },
+    {
+      "id": "C02-media-confirmed-dependencies-2026-10-21",
+      "date": "2026-10-21",
+      "relatedHistoricalScenario": "C02",
+      "implementationCommit": "c8d70728a5e3e141a6f9250a1f102d3fbe09a408",
+      "sourceBase": "e12ddee2f07f926516eee460b0f73c6552ee8410",
+      "status": "PASS_BOUNDED_CLIENT_CORE_SUBSET",
+      "report": "docs/dev/attachment-publication-order-qualification-2026-10-21.md",
+      "receipt": "/Users/enzotironi/.codex/builds/zoen-signal-album-order-v254/source-ready.json",
+      "validation": {
+        "focusedMediaContractsPassed": 21,
+        "actualClientWebSocketMlsCasesPassed": 2,
+        "existingMlsWindowCasesPassed": 2,
+        "strictClippy": "PASS_client-core_library_tests_D_warnings",
+        "immutableSourceHashesVerified": 7,
+        "independentSourceReview": "No actionable regressions found",
+        "upstreamSuitesExecuted": false,
+        "nativeRuntimeQualified": false,
+        "productionClusterQualified": false,
+        "performanceQualified": false
+      },
+      "limits": [
+        "The source gate applies to metadata-bearing single attachments and albums; legacy media and voice retain their existing paths.",
+        "The ordering fixture does not execute the production relay/FDB/NATS cluster.",
+        "The per-offer confirmed-history replay cost and public failed-send recovery remain unqualified."
       ]
     }
   ]
