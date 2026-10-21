@@ -1,6 +1,35 @@
 //! Local peers only. These exercise the real synchronous HttpTransport/reqwest
 //! path, never a provider, account, Gate policy replacement or shared service.
 use super::*;
+
+/// Explicit operator-only probe. Credentials are inherited in memory from the
+/// supported Wrangler CLI; no local Zoen profile or human content is read.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires explicit ZOEN_LIVE_CLEF_QA=1 and Workers AI credentials; one synthetic request"]
+async fn live_clef_configured_gate_synthetic_once() {
+    assert_eq!(std::env::var("ZOEN_LIVE_CLEF_QA").as_deref(), Ok("1"));
+    assert_ne!(std::env::var("ZOEN_AGENT_GATE").as_deref(), Ok("offline"));
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let gate = gate().expect("explicit Workers AI Gate configuration");
+    let decision = gate.check(&gate::Check::new(
+        gate::Point::Inbound,
+        "Synthetic QA weather report: the sky is clear and the temperature is pleasant.",
+    ));
+    assert_eq!(decision.provider, "cloudflare:clef-flash");
+    assert!(
+        !decision.rule.starts_with("fail:"),
+        "the real provider contract must be admitted"
+    );
+    assert_eq!(decision.answers.len(), 2);
+    assert!(decision
+        .answers
+        .values()
+        .all(|p| p.is_finite() && (0.0..=1.0).contains(p)));
+    println!(
+        "{}",
+        json!({"provider":decision.provider,"outcome":decision.outcome.id(),"rule":decision.rule,"answers":decision.answers,"latency_ms":decision.latency_ms,"synthetic_only":true})
+    );
+}
 use std::{
     io::{Read, Write},
     net::{Shutdown, TcpListener, TcpStream},
