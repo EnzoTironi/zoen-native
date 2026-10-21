@@ -49,7 +49,7 @@ function Navigation() {
         },
       }}
     >
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      {process.env.EXPO_OS !== 'ios' && <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />}
       <View style={{ flex: 1, backgroundColor: sky.bottom }}>
         <SkyBackground />
         <MessageContextSession>
@@ -71,6 +71,12 @@ function Navigation() {
                 scrollEdgeEffects: { top: 'hidden', bottom: 'hidden' },
                 headerTintColor: p.navigation.control,
                 contentStyle: { backgroundColor: 'transparent' },
+                ...(process.env.EXPO_OS === 'ios'
+                  ? {
+                      statusBarStyle: scheme === 'dark' ? 'light' : 'dark',
+                      statusBarAnimation: 'none',
+                    }
+                  : {}),
               })}
             >
               <Stack.Screen name="(tabs)" options={{ title: '' }} />

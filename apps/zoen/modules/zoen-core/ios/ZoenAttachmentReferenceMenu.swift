@@ -116,6 +116,7 @@ class ZoenAttachmentContextMenu: UIView {
     guard lifecycle.phase == .idle, source.view?.window === window, isValid(),
           !actions.isEmpty, actions.count <= 10, actions.allSatisfy({ !$0.id.isEmpty && !$0.title.isEmpty }),
           let owner = ZoenAttachmentPresentationOwner(content: self, in: window,
+            policy: extraction == nil ? .referenceContext : .extractedContext,
             onWindowLoss: { [weak self] in self?.remove() }) else { return false }
     presentation = owner; admittedWindow = window
     guard lifecycle.present() else { owner.remove(); return false }
@@ -296,6 +297,7 @@ class ZoenAttachmentContextMenu: UIView {
   }
   func dismiss(animated: Bool) {
     guard lifecycle.dismiss() else { return }
+    presentation?.beginWindowPolicyDismissal()
     isUserInteractionEnabled = false; setHighlighted(nil, animated: false, feedback: false)
     guard animated, window != nil else { remove(); return }
     let layer = glassContainer.layer

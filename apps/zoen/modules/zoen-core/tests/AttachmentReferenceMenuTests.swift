@@ -14,7 +14,7 @@ import UIKit
   }
   private func fixture() -> (UIWindow, UIViewController, UIButton) {
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-    let parent = UIViewController(); window.rootViewController = parent
+    let parent = ZoenPresentationRootController(); window.rootViewController = parent
     let button = UIButton(type: .system); button.frame = CGRect(x: 342, y: 80, width: 44, height: 44)
     parent.view.addSubview(button); window.isHidden = false
     return (window, parent, button)

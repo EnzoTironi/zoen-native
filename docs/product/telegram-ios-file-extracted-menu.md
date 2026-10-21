@@ -78,12 +78,12 @@ begins.
 
 Reduced Motion preserves opacity while omitting transforms. Parent/window loss
 and app deactivation remove the overlay and restore its real row immediately.
-Source-size changes cancel and restore into live row bounds before UIKit reuse;
-continuous animated rotation relayout is not ported. The original extracted
-overlay also hides the status bar. Zoen's shared presentation-controller policy
-does not yet provide that behavior; this port does not add a global status-bar
-override. Reactions, portal surfaces, other extracted messages and Gallery Add
-are outside this batch.
+Unexpected source-size changes cancel and restore into live row bounds before
+UIKit reuse. The follow-up [native window policy](telegram-ios-presentation-policy.md)
+ports the original current-orientation lock for both context source types and
+status hiding for extracted blur, including their distinct dismissal lifetimes.
+Reactions, portal surfaces, other extracted messages and Gallery Add are outside
+this batch.
 
 ## Qualification
 

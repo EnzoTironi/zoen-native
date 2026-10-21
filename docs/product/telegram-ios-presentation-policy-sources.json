@@ -1,0 +1,99 @@
+{
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "selectedLicense": "GPL-3.0 under GPL-2.0-or-later option, combined with Zoen under AGPLv3 section 13",
+  "sources": [
+    {
+      "path": "submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerImpl.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/ContextControllerImpl/Sources/ContextControllerImpl.swift",
+      "sha256": "6bbf0045eae9c35a785d1791c75afabf7a816a119f418834e88d6c888ef1ed58",
+      "bytes": 126315,
+      "ranges": [
+        [1941, 1973],
+        [1986, 1995],
+        [2093, 2107]
+      ]
+    },
+    {
+      "path": "submodules/Display/Source/StatusBar.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/StatusBar.swift",
+      "sha256": "d4fbe422bc56b6df6246a92fe6df18fe4605add624a8573d8aeeffd72a39c4be",
+      "bytes": 5933,
+      "ranges": [[52, 68]]
+    },
+    {
+      "path": "submodules/Display/Source/ViewController.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/Display/Source/ViewController.swift",
+      "sha256": "94eca9861e5aa771125e88115f0a0a07153b882a33208b242e6e937516f546dd",
+      "bytes": 31789,
+      "ranges": [[97, 124]]
+    }
+  ],
+  "installedSDKContractInputs": [
+    {
+      "path": "expo/ios/Expo/ExpoReactNativeFactoryDelegate.swift",
+      "packageVersion": "58.0.16",
+      "sha256": "94e057b3100dc80d480f238748efe0ce93550042e1f32270fef3084a6098596e",
+      "bytes": 700
+    },
+    {
+      "path": "expo-modules-core/ios/ReactDelegates/ExpoReactDelegateHandler.swift",
+      "packageVersion": "58.0.23",
+      "sha256": "f69bf57793683d561b292f2e0ddab7bd4777c4ef4219e6c35febff88252ed2ed",
+      "bytes": 1208
+    },
+    {
+      "path": "expo-modules-core/ios/AppDelegates/ExpoAppDelegateSubscriberRepository.swift",
+      "packageVersion": "58.0.23",
+      "sha256": "780ad6cdbe34df1a87cddfea66801a839fe9d2953969e41737a5939ca0fa912f",
+      "bytes": 2106
+    },
+    {
+      "path": "expo-modules-core/ios/AppDelegates/ExpoAppDelegateSubscriberManager.swift",
+      "packageVersion": "58.0.23",
+      "sha256": "d6d9743d4aebf549ea9b8b51fe368744afe6ff19855ae379755597ad4ae7b0ac",
+      "bytes": 17463
+    },
+    {
+      "path": "expo-modules-autolinking/src/ExpoModuleConfig.ts",
+      "packageVersion": "58.0.13",
+      "sha256": "574fe2af697f0ae77076da3e024620da2e7abb90e1faf48cfb1e9e567f162084",
+      "bytes": 7130
+    },
+    {
+      "path": "react-native/React/CoreModules/RCTStatusBarManager.mm",
+      "packageVersion": "0.88.0",
+      "sha256": "7f0f14ed1c363da47adf83af2b08afe42a1205843187da230e33b262d944af69",
+      "bytes": 5902
+    },
+    {
+      "path": "react-native-screens/ios/UIViewController+RNScreens.mm",
+      "packageVersion": "4.30.0",
+      "sha256": "9f29a89644700df682894ccac44ce756a3242af36ede6380c979e49e0317f4e0",
+      "bytes": 3904
+    },
+    {
+      "path": "react-native-screens/ios/RNSScreen.mm",
+      "packageVersion": "4.30.0",
+      "sha256": "ec603dae9259193c5c40603758f3df6db1dea15fb31204c3abd2244557655697",
+      "bytes": 84807
+    },
+    {
+      "path": "react-native-screens/ios/RNSScreenStack.mm",
+      "packageVersion": "4.30.0",
+      "sha256": "4944be2a1376797977a01f0f29e34ebfcb6f9a3e227c4f0b824dc2818e22842c",
+      "bytes": 64792
+    },
+    {
+      "path": "expo-dev-launcher/ios/ReactDelegateHandler/ExpoDevLauncherReactDelegateHandler.swift",
+      "packageVersion": "58.0.14",
+      "sha256": "f9e30559a84b63d3fbc713350f9bec9b7349804a60a875473dd48c396fe80a1a",
+      "bytes": 7757
+    }
+  ],
+  "officialDocs": [
+    "https://docs.expo.dev/versions/v58.0.0/sdk/status-bar/",
+    "https://docs.expo.dev/config-plugins/development-and-debugging/",
+    "https://docs.expo.dev/router/advanced/stack/"
+  ],
+  "adaptation": "Native root/factory/subscriber and source-owned presentation lease replace Telegram Display window aggregation. UIKit native-stack owns inherited traits; no UIApplication setters, swizzling or JS policy-event latency. Reference and extracted both lock current orientation; only extracted owns hidden status. Status ownership ends at dismissal start; orientation ends on real removal."
+}

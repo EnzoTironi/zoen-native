@@ -142,9 +142,12 @@ final class ZoenAttachmentPresentationOwner {
   private var suspended = false
   private var removed = false
   private var onWindowLoss: (() -> Void)?
+  private var windowPolicy: ZoenPresentationRootController.Lease?
 
-  init?(content: UIView, in window: UIWindow, onWindowLoss: @escaping () -> Void) {
-    guard let parent = Self.presenter(in: window), content.superview == nil else { return nil }
+  init?(content: UIView, in window: UIWindow, policy: ZoenPresentationPolicy = .inherited,
+        onWindowLoss: @escaping () -> Void) {
+    guard let parent = Self.presenter(in: window), content.superview == nil,
+          policy == .inherited || (window.rootViewController is ZoenPresentationRootController && parent === window.rootViewController) else { return nil }
     self.content = content; self.parent = parent; admittedWindow = window
     self.onWindowLoss = onWindowLoss
     // Capture once. Resuming cannot accidentally hide a later system menu or
@@ -162,6 +165,10 @@ final class ZoenAttachmentPresentationOwner {
     parent.view.addSubview(controller.host)
     controller.didMove(toParent: parent)
     controller.endAppearanceTransition()
+    if policy != .inherited, let root = window.rootViewController as? ZoenPresentationRootController {
+      controller.hidesStatusBar = policy == .extractedContext
+      windowPolicy = root.acquire(controller: controller, window: window, hidesStatusBar: controller.hidesStatusBar)
+    }
     acquireAccessibility()
   }
   func isAttached(in window: UIWindow) -> Bool {
@@ -180,11 +187,14 @@ final class ZoenAttachmentPresentationOwner {
     suspended = value
     content?.isHidden = value
     controller?.host.isHidden = value
+    windowPolicy?.setSuspended(value)
     if value { releaseAccessibility() } else { acquireAccessibility() }
   }
   func remove() {
     guard !removed else { return }
     removed = true; onWindowLoss = nil
+    controller?.hidesStatusBar = false
+    windowPolicy?.release(); windowPolicy = nil
     if let controller {
       self.controller = nil
       controller.host.onWindowLoss = nil
@@ -197,6 +207,10 @@ final class ZoenAttachmentPresentationOwner {
     } else { content?.removeFromSuperview() }
     releaseAccessibility()
     backgrounds.removeAll()
+  }
+  func beginWindowPolicyDismissal() {
+    controller?.hidesStatusBar = false
+    windowPolicy?.endStatusOwnership()
   }
   private func windowLost() {
     guard !removed else { return }
@@ -695,8 +709,10 @@ final class ZoenAttachmentContainer: UIView, UIGestureRecognizerDelegate {
 }
 
 @MainActor
-private final class AttachmentPresentationController: UIViewController {
+private final class AttachmentPresentationController: UIViewController, ZoenPresentationOverlayController {
   let host = AttachmentPresentationView()
+  var hidesStatusBar = false
+  override var prefersStatusBarHidden: Bool { hidesStatusBar }
   init(content: UIView) {
     super.init(nibName: nil, bundle: nil)
     host.backgroundColor = .clear

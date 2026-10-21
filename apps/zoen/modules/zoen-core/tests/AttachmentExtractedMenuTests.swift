@@ -15,7 +15,7 @@ import UIKit
   func testRealContentReturnsOnceOnInterruptedDismissAndParentLoss() throws {
     for parentLoss in [false, true] {
       let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-      let parent = UIViewController(); window.rootViewController = parent
+      let parent = ZoenPresentationRootController(); window.rootViewController = parent
       let anchor = UIView(frame: CGRect(x: 16, y: 700, width: 370, height: 60))
       let body = UIView(frame: anchor.bounds), label = UILabel()
       body.addSubview(label); anchor.addSubview(body); parent.view.addSubview(anchor); window.isHidden = false
@@ -36,7 +36,7 @@ import UIKit
   }
   func testPopulatedFileRowExtractionRestoresBeforeRevisionReconfigurationAndRetainedActionIsInert() async throws {
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-    let parent = UIViewController(); window.rootViewController = parent
+    let parent = ZoenPresentationRootController(); window.rootViewController = parent
     var events: [(String, [String: Any])] = []
     let content = ZoenAttachmentFileContent { events.append(($0, $1)) }
     parent.view.addSubview(content.view); content.view.frame = window.bounds; window.isHidden = false
@@ -78,7 +78,7 @@ import UIKit
   }
   func testSelectActsImmediatelyButRevisionUpdateKeepsActualReturnAliveUntilRestoration() async throws {
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-    let parent = UIViewController(); window.rootViewController = parent
+    let parent = ZoenPresentationRootController(); window.rootViewController = parent
     var events: [(String, [String: Any])] = []
     let content = ZoenAttachmentFileContent { events.append(($0, $1)) }
     parent.view.addSubview(content.view); content.view.frame = window.bounds; window.isHidden = false
@@ -111,7 +111,7 @@ import UIKit
   }
   func testCanceledPreviewReturnNeverHandsOffAndFirstMoveAloneDoesNotSelect() throws {
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-    let parent = UIViewController(); window.rootViewController = parent
+    let parent = ZoenPresentationRootController(); window.rootViewController = parent
     let anchor = UIView(frame: CGRect(x: 16, y: 100, width: 370, height: 60))
     let body = UIView(frame: anchor.bounds); anchor.addSubview(body); parent.view.addSubview(anchor)
     window.isHidden = false; defer { window.isHidden = true }
@@ -132,7 +132,7 @@ import UIKit
   }
   func testChangedSourceSizeInterruptsAndRestoresIntoLiveRowBounds() throws {
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
-    let parent = UIViewController(); window.rootViewController = parent
+    let parent = ZoenPresentationRootController(); window.rootViewController = parent
     let anchor = UIView(frame: CGRect(x: 16, y: 100, width: 370, height: 60))
     let body = UIView(frame: anchor.bounds); anchor.addSubview(body); parent.view.addSubview(anchor)
     window.isHidden = false; defer { window.isHidden = true }
