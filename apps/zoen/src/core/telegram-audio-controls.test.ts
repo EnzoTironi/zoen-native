@@ -192,6 +192,7 @@ function fixture(name: keyof typeof sources, dependencies: Record<string, unknow
     '../media/attachment-reply-context': { AttachmentReplyContext: 'AttachmentReplyContext' },
     './message-context': { MessageContext: 'MessageContext' },
     './composer-action': { ComposerAction: 'ComposerAction' },
+    './conversation-composer-access': { ConversationComposerAccess: 'ConversationComposerAccess' },
     './composer-text-field': { ComposerTextField: 'ComposerTextField' },
     ...dependencies,
   };
