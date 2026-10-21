@@ -144,9 +144,8 @@ class ZoenKeyboardPanelHost: ExpoView {
     catch { content.retire(); reject(requested, reason: "invalid"); return }
     let observed = (requested["preferredHeight"] as? Double).flatMap { $0.isFinite && $0 > 0 ? CGFloat($0) : nil } ?? 0
     let height = observed > 0 ? min(observed, window.bounds.height * 0.5) : min(window.bounds.height * 0.5, 216 + window.safeAreaInsets.bottom)
-    let input = PanelInput(height: max(162, height))
+    let input = PanelInput(height: max(162, height), content: content.view)
     input.backgroundColor = appearance(requested, window: window).background
-    input.addSubview(content.view)
     let owner = Owner(token: token, context: context, tag: tag, editor: editor, input: input, content: content)
     self.owner = owner
     input.changedWindow = { [weak self, weak owner] in
@@ -303,12 +302,15 @@ private final class PanelInput: UIInputView {
   var changedWindow: (() -> Void)?
   private let initialHeight: CGFloat
   private var height: CGFloat
-  init(height: CGFloat) {
+  private let content: UIView
+  init(height: CGFloat, content: UIView) {
     self.initialHeight = height
     self.height = height
+    self.content = content
     super.init(frame: CGRect(x: 0, y: 0, width: 0, height: height), inputViewStyle: .keyboard)
     allowsSelfSizing = true
     autoresizingMask = [.flexibleWidth]
+    addSubview(content)
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
   override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: height) }
@@ -318,7 +320,8 @@ private final class PanelInput: UIInputView {
       let next = max(162, min(initialHeight, window.bounds.height * 0.5))
       if abs(height - next) > 0.5 { height = next; invalidateIntrinsicContentSize() }
     }
-    subviews.first?.frame = bounds
+    // UIInputView can insert its own background before our content.
+    content.frame = bounds
   }
   override func didMoveToWindow() { super.didMoveToWindow(); changedWindow?() }
 }
