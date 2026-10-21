@@ -13,7 +13,7 @@ import sys
 import tarfile
 import time
 
-from dependency_experiment import load_experiment, stage_experiment
+from dependency_experiment import EXPERIMENT_NAMES, load_experiment, stage_experiment
 
 ROOT = Path(__file__).resolve().parent
 
@@ -85,7 +85,7 @@ def main():
     parser.add_argument('--cache-target', type=Path, help='Optional existing inactive Cargo target, copied read-only into the private target')
     parser.add_argument('--deadline', type=int, default=1800)
     parser.add_argument('--prepare-only', action='store_true')
-    parser.add_argument('--experiment', choices=['eframe-shift'], help='Explicit unqualified browser dependency experiment; default off')
+    parser.add_argument('--experiment', choices=EXPERIMENT_NAMES, help='Explicit unqualified browser dependency experiment; default off')
     parser.add_argument('--experiment-crate', type=Path, help='Existing local exact dependency .crate archive; never downloads or edits Cargo registry source')
     args = parser.parse_args()
     metadata = json.loads((ROOT / 'upstream.json').read_text())

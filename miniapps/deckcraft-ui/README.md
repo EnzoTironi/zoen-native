@@ -115,3 +115,24 @@ and canonical save/reopen/export proofs must pass before promotion. Keep the
 original assets and manifests for comparison. The independent headless worker
 source/lock is not an input for this experiment. Current dependency license audit
 limits remain; preserve eframe's actual pinned licenses before distribution.
+
+## Opt-in iOS text activation
+
+`--experiment eframe-ios-input` uses the same exact local crate archive and
+includes the Shift correction, one primary Pointer/Touch stream, synchronous
+activation after an accepted textual gesture, and the existing DOM input agent.
+Its six dependency paths and four source paths have separate closed allowlists
+and complete before/after hashes. The original Shift experiment and default
+dependency remain available as controls. No shared Cargo source is modified.
+
+The normal managed engine patch handles surrounding IME deletion through the
+existing Session, composition snapshot and undo/journal. It preserves selected
+text, Unicode scalar bounds, inherited run properties and paragraph marks.
+Commit or navigation produces one canonical replay record; cancellation restores
+the original document. The headless worker keeps its separate pinned recipe.
+
+The real egui harness covers textual admission, Notes focus, cancellation,
+multiple contacts and owner changes. These tests and WASM compilation do not
+prove that WKWebView opens the software keyboard on the first gesture. Keep the
+experiment unqualified until the final iPhone artifact passes input, correction,
+recovery and export. Building this package does not change the runtime asset pins.

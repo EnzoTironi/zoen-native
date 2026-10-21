@@ -57,6 +57,10 @@
     {
       "path": "patches/0014-input-ime-boundary-tests.patch",
       "sha256": "efcffad999bd0a22a28be9db6d6388257f447353a0789cf8e51f0a3bf938e60c"
+    },
+    {
+      "path": "patches/0016-ime-surrounding-replay.patch",
+      "sha256": "9d2b2d69a4c00d9cfc07163e77c0d42c633baae74f8cc80a1e46ab10e8a6f58a"
     }
   ],
   "abi": "zoen-host-v1",
@@ -90,7 +94,8 @@
     "Retained speaker-notes drafts bind to document UID and immutable SlideId, resolving current order only at commit; missing slides remain retryable without writing to replacements.",
     "Host Freeze drains the UI-local Notes body through the existing command before frozen ACK; policy or origin failures keep the draft and refuse teardown instead of reporting clean.",
     "Phone-height hosted landscape windows reuse compact toolbar/status/ribbon/inspector, keeping the safe canvas full width and retaining live choices/drafts across actual wide-panel transitions.",
-    "Actual title/Notes taps assert final egui PlatformOutput.ime before typed input and real document commit; these engine assertions do not claim native DOM/WK keyboard acceptance."
+    "Actual title/Notes taps assert final egui PlatformOutput.ime before typed input and real document commit; these engine assertions do not claim native DOM/WK keyboard acceptance.",
+    "IME surrounding deletion uses Unicode scalar selection bounds and the existing composition snapshot; commit/navigation records one canonical grouped edit, cancellation restores it, and initial run properties plus paragraph end marks survive preedit replacement and replay."
   ],
   "distributionStatus": "Not advertised: final managed release, MCP adapter and iOS runtime proof required."
 }

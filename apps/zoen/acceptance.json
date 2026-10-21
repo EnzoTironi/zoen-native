@@ -4365,6 +4365,25 @@
       "wholeProductAcceptance": false,
       "historicalPolicy": "Earlier failed and partial native batches remain unchanged; this qualifies only the explicit new artifact and scenarios"
     },
+    "subsequentInputSourceBatch": {
+      "date": "2026-10-21",
+      "baseSource": "26aad3739525a7b9bac1731b764d351a37fc915c",
+      "status": "SOURCE_PASS; new iPhone artifact pending",
+      "receipt": "/private/tmp/zoen-deckcraft-input-batch-v233/source-qualification-v235.json",
+      "sourceTreeSha256": "30cfa87709b83b968a038a1579c4f0a729f7f5a36d4bc65299c92f1013f732e0",
+      "engine": "346 passed,0 failed,1 existing long-soak ignored",
+      "ui": "254 passed,0 failed,4 existing screenshot/long-soak tests ignored",
+      "staticChecks": "Strict engine/UI Clippy and managed wasm32 check PASS; Python recipe10 and Node build3 PASS",
+      "appCheck": "1366 passed,0 failed/0 skipped; TypeScript,Oxlint,Oxfmt PASS; no new native artifact",
+      "appCheckReceipt": "/private/tmp/zoen-deckcraft-input-batch-v233/app-check-v235.json",
+      "causalNegatives": "Removing only textual activation fails the real gesture assertion; removing only IME routing leaves texTexto; unresolved rich properties fail complete Presentation replay. Positive source restored and final batch passed",
+      "canonicalReplay": "Grouped composition commit/navigation, selected Unicode scalar bounds, cancel/undo/redo, table/Notes/document ownership, mixed formatting, hyperlinks and paragraph end marks",
+      "recipe": "Pinned upstream archive plus14 managed patches and explicit eframe-ios-input experiment reproduced all621 source files byte-for-byte; default and original Shift dependency recipes retained",
+      "nativeFirstGestureQualified": false,
+      "newNativeArtifact": "NOT_BUILT",
+      "wholeProductAcceptance": false,
+      "historicalPolicy": "Prior native artifacts and intermediate failed source batches retain their exact evidence; source tests do not approve software keyboard behavior in WKWebView"
+    },
     "currentRemaining": [
       "Make first edit gesture open iOS keyboard; qualify IME/autocorrect, selection/delete/undo and broader software keyboard",
       "Qualify retained/failing canonical saves, independent source read, conflicts and version recovery",

@@ -136,6 +136,25 @@ preservando `iosContinuityCheckpoint` e seus artefatos anteriores no
 [registro de aceite](../../apps/zoen/acceptance.json). Nenhuma dessas provas
 parciais aprova o lançamento iOS ou as flags globais.
 
+Na fonte do motor, o lote v235 passou em 346 testes de núcleo e 254 de interface,
+Clippy estrito e verificação wasm32. Os cinco testes já ignorados de screenshots
+e soak longo conservam esse estado. O gesto textual inicial, cancelamento,
+seleção e o caminho real de IME têm controles negativos executados. A composição
+também preserva a apresentação completa no replay, incluindo formatação,
+hyperlinks, marcas de parágrafo, navegação e desfazer. A receita reproduziu os
+621 arquivos da fonte testada byte a byte. O pacote atualizado está em geração;
+teclado de software, correção e recuperação no novo iPhone ainda precisam de
+validação. Recibo: `/private/tmp/zoen-deckcraft-input-batch-v233/source-qualification-v235.json`.
+O check completo do app também passou: 1.366 casos, tipos, Oxlint e Oxfmt;
+o artefato iOS instalado continua sendo o v228 até o próximo build.
+
+O [PR 149](https://github.com/EnzoTironi/zoen-native/pull/149) foi integrado em
+`ff303ec7`. O [PR 150](https://github.com/EnzoTironi/zoen-native/pull/150) recebeu
+a correção do fixture de logs em `266c313d`: recuperação real com dois relays e
+um único socket passou, e mudar somente JSON para texto reproduziu a falha do CI
+anterior. O novo CI está em andamento; a qualificação do núcleo recompilado no
+iPhone permanece pendente.
+
 ## Plataformas e arquitetura
 
 A execução atual conclui o iOS antes de ampliar a validação manual para Web e

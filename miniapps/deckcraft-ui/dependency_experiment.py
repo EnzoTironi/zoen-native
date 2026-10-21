@@ -1,8 +1,32 @@
 """Opt-in, hash-pinned dependency experiment in a fresh managed source tree only."""
 import hashlib
 import json
+import re
 from pathlib import PurePosixPath
 import tarfile
+
+
+# Each opt-in recipe has an exact dependency and reviewed file boundary. No
+# final ios-input metadata or build pins are inferred from these names.
+EXPERIMENT_FILES = {
+    'eframe-shift': ['src/web/text_agent.rs'],
+    'eframe-ios-input': [
+        'src/web/app_runner.rs', 'src/web/backend.rs', 'src/web/events.rs',
+        'src/web/mod.rs', 'src/web/text_agent.rs', 'src/web/text_input_activation.rs',
+    ],
+}
+EXPERIMENT_NAMES = tuple(EXPERIMENT_FILES)
+EXPERIMENT_SOURCE_FILES = {
+    'eframe-shift': ['Cargo.toml', 'Cargo.lock'],
+    'eframe-ios-input': [
+        'Cargo.toml', 'Cargo.lock', 'crates/ui-egui/src/canvas.rs',
+        'crates/ui-egui/src/host_phone_landscape_tests.rs',
+    ],
+}
+
+
+def is_sha(value, length=64):
+    return isinstance(value, str) and re.fullmatch('[0-9a-f]{' + str(length) + '}', value) is not None
 
 
 def digest(data):
@@ -32,19 +56,40 @@ def checked(path, expected):
 
 
 def load_experiment(root, name, upstream):
-    if name != 'eframe-shift':
+    if name not in EXPERIMENT_FILES:
         raise ValueError('Unknown dependency experiment')
     data = json.loads((root / 'experiments' / (name + '.json')).read_text())
-    if (data.get('schema') != 1 or data.get('name') != name
+    if (not isinstance(data, dict) or type(data.get('schema')) is not int
+            or data.get('schema') != 1 or data.get('name') != name
             or data.get('upstreamRevision') != upstream['revision']
             or data.get('baseManagedCargoLockSha256') != upstream['managedCargoLockSha256']):
         raise ValueError('Experiment base changed')
-    crate = data['crate']
-    if (crate['name'] != 'eframe' or crate['version'] != '0.36.2'
-            or crate['prefix'] != 'eframe-0.36.2'
-            or crate['vendorPath'] != 'vendor/eframe-0.36.2'
-            or crate['changedFiles'] != ['src/web/text_agent.rs']):
+    crate = data.get('crate')
+    if (not isinstance(crate, dict) or crate.get('name') != 'eframe'
+            or crate.get('version') != '0.36.2' or crate.get('prefix') != 'eframe-0.36.2'
+            or crate.get('vendorPath') != 'vendor/eframe-0.36.2'
+            or crate.get('changedFiles') != EXPERIMENT_FILES[name]):
         raise ValueError('Unexpected experiment dependency')
+    sources = data.get('sourceFiles')
+    if (not isinstance(sources, list)
+            or any(not isinstance(item, dict) or set(item) != {'path', 'before', 'after'}
+                   or not is_sha(item['before']) or not is_sha(item['after']) for item in sources)
+            or [item['path'] for item in sources] != EXPERIMENT_SOURCE_FILES[name]):
+        raise ValueError('Unexpected experiment source files')
+    patch = data.get('patch')
+    patch_path = patch.get('path') if isinstance(patch, dict) else None
+    if (not isinstance(patch_path, str) or '\\' in patch_path
+            or PurePosixPath(patch_path).parts[:1] != ('patches',)
+            or len(PurePosixPath(patch_path).parts) != 2 or '..' in PurePosixPath(patch_path).parts
+            or PurePosixPath(patch_path).as_posix() != patch_path or not patch_path.endswith('.patch')
+            or not is_sha(patch.get('sha256'))
+            or not isinstance(data.get('status'), str) or not data['status']
+            or not is_sha(data.get('managedCargoLockSha256'))
+            or any(not is_sha(crate.get(key)) for key in ['archiveSha256', 'beforeTreeSha256', 'afterTreeSha256'])
+            or not is_sha(crate.get('sourceRevision'), 40)
+            or sources[1]['before'] != data['baseManagedCargoLockSha256']
+            or sources[1]['after'] != data['managedCargoLockSha256']):
+        raise ValueError('Invalid experiment metadata')
     return data
 
 
