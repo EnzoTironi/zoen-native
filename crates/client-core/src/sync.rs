@@ -1216,25 +1216,7 @@ impl Engine {
     /// Your on-device Zoen (local agent, local DM) until the agent runtime takes over.
     fn seed_personal_agent(&mut self, me: &str) -> R<()> {
         let at = crate::engine::now_ms();
-        if !self.state.spaces.values().any(|space| {
-            space.kind == SpaceKind::Personal
-                && space
-                    .members
-                    .iter()
-                    .any(|(id, role)| id == me && *role == Role::Owner)
-        }) {
-            let personal = new_id("sp");
-            self.append_at(
-                &personal,
-                me,
-                at,
-                EventBody::SpaceCreated {
-                    title: "Personal".into(),
-                    kind: SpaceKind::Personal,
-                    privacy: Privacy::EndToEnd,
-                },
-            )?;
-        }
+        self.ensure_personal_space()?;
         let existing = self
             .identities
             .values()

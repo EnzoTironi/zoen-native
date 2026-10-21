@@ -81,48 +81,73 @@ impl Engine {
         if !self.is_empty() {
             self.wipe()?;
         }
-        self.store.set_meta(META_INITIAL_HISTORY_PENDING, "1")?;
-        self.store.set_meta(META_PRIMARY, &b.primary)?;
-        let me = Identity {
-            owner_proof: None,
-            id: identity.id(),
-            kind: IdentityKind::Person,
-            name: b.name.clone(),
-            handle: b.handle.clone(),
-            tint_hex: crate::sync::tint_for(&identity.id()),
-            glyph: None,
-            owner: None,
-            bio: String::new(),
+        // The account must not become installed unless its signed local bootstrap
+        // is durable. Start after wipe(), which owns its own transaction.
+        let storage_error = |error: rusqlite::Error| CoreError::Storage {
+            message: error.to_string(),
         };
-        self.store.put_identity(&me, None)?;
-        self.identity_order.push(me.id.clone());
-        self.identities.insert(me.id.clone(), me.clone());
-        self.store.set_meta("me", &me.id)?;
-        self.me = Some(me.id.clone());
-        if !b.profile_key.is_empty() {
-            self.store
-                .put_profile_key(&me.id, &b.profile_key, b.profile_key_version)?;
-            if let Ok(fields) = hex::decode(&b.profile_fields) {
+        self.store
+            .conn()
+            .execute_batch("SAVEPOINT linked_account_setup")
+            .map_err(storage_error)?;
+        let result = (|| {
+            self.store.set_meta(META_INITIAL_HISTORY_PENDING, "1")?;
+            self.store.set_meta(META_PRIMARY, &b.primary)?;
+            let me = Identity {
+                owner_proof: None,
+                id: identity.id(),
+                kind: IdentityKind::Person,
+                name: b.name.clone(),
+                handle: b.handle.clone(),
+                tint_hex: crate::sync::tint_for(&identity.id()),
+                glyph: None,
+                owner: None,
+                bio: String::new(),
+            };
+            self.store.put_identity(&me, None)?;
+            self.identity_order.push(me.id.clone());
+            self.identities.insert(me.id.clone(), me.clone());
+            self.store.set_meta("me", &me.id)?;
+            self.me = Some(me.id.clone());
+            if !b.profile_key.is_empty() {
                 self.store
-                    .set_profile_fields(&me.id, b.profile_seen_version, &fields)?;
+                    .put_profile_key(&me.id, &b.profile_key, b.profile_key_version)?;
+                if let Ok(fields) = hex::decode(&b.profile_fields) {
+                    self.store
+                        .set_profile_fields(&me.id, b.profile_seen_version, &fields)?;
+                }
             }
+            self.initialize_linked_profile_sync()?;
+            self.save_linked_account(AccountMeta {
+                identity: me.id.clone(),
+                device: device.id(),
+                cert: b.cert.clone(),
+                relay_url: relay_url.trim_end_matches('/').to_string(),
+                registered: true,
+            })?;
+            self.net.author = Some(Author::certified(me.id.clone(), device, b.cert.clone()));
+            self.ensure_personal_space()?;
+            let mut active = set_of(self.store.meta(META_ACTIVE)?);
+            active.insert(b.primary.clone());
+            self.store.set_meta(
+                META_ACTIVE,
+                &serde_json::to_string(&active).unwrap_or_default(),
+            )?;
+            self.store
+                .conn()
+                .execute_batch("RELEASE linked_account_setup")
+                .map_err(storage_error)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = self
+                .store
+                .conn()
+                .execute_batch("ROLLBACK TO linked_account_setup; RELEASE linked_account_setup");
+            self.net = Default::default();
+            self.reload()?;
         }
-        self.initialize_linked_profile_sync()?;
-        self.save_linked_account(AccountMeta {
-            identity: me.id.clone(),
-            device: device.id(),
-            cert: b.cert.clone(),
-            relay_url: relay_url.trim_end_matches('/').to_string(),
-            registered: true,
-        })?;
-        self.net.author = Some(Author::certified(me.id.clone(), device, b.cert.clone()));
-        let mut active = set_of(self.store.meta(META_ACTIVE)?);
-        active.insert(b.primary.clone());
-        self.store.set_meta(
-            META_ACTIVE,
-            &serde_json::to_string(&active).unwrap_or_default(),
-        )?;
-        Ok(())
+        result
     }
 
     /// What the new device needs of the profile: the key, versions and fields.
