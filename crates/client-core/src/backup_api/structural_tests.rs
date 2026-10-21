@@ -160,16 +160,59 @@ async fn request(socket: &mut tokio::net::TcpStream) -> (String, String, Vec<u8>
     (path, headers, bytes[end..end + length].to_vec())
 }
 
+fn corrupt_table_page(database: &[u8]) -> Vec<u8> {
+    let path = std::env::temp_dir().join(types::new_id("backup-corrupt-page"));
+    std::fs::write(&path, database).unwrap();
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    let page: usize = connection
+        .query_row(
+            "SELECT rootpage FROM sqlite_schema WHERE type='table' AND name='events'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let size: usize = connection
+        .pragma_query_value(None, "page_size", |row| row.get(0))
+        .unwrap();
+    drop(connection);
+    std::fs::remove_file(path).unwrap();
+    let mut corrupt = database.to_vec();
+    let start = (page - 1) * size;
+    assert!(start >= size && start < corrupt.len());
+    assert_ne!(
+        corrupt[start], 0,
+        "fixture must corrupt an actual B-tree page"
+    );
+    corrupt[start] = 0;
+    corrupt
+}
+
 async fn public_restore_case(case: &str) {
     let (mut header, healthy) = snapshot();
     let database = match case {
         "empty" => change_database(&[], "CREATE TABLE removed (x); DROP TABLE removed;"),
         "partial" => change_database(&healthy, "DROP TABLE events;"),
         "malformed" => b"authenticated bytes that are not SQLite".to_vec(),
-        "agreement-short" => {
-            header.agreement_secret = hex::encode([92; 31]);
-            healthy
-        }
+        "corrupt-page" => corrupt_table_page(&healthy),
+        "missing-column" => change_database(&healthy, "ALTER TABLE events DROP COLUMN json;"),
+        "view" => change_database(&healthy, "DROP TABLE events; CREATE VIEW events AS SELECT '' AS space, 0 AS seq, '' AS hash, 0 AS at_ms, '' AS json WHERE 0;"),
+        "invalid-row" => change_database(&healthy, "DROP TABLE media_keys; CREATE TABLE media_keys (plain_sha TEXT, blob_sha TEXT, key TEXT); INSERT INTO media_keys VALUES ('fixture', NULL, 'fixture');"),
+        "duplicate-row" => change_database(&healthy, "DROP TABLE synced_spaces; CREATE TABLE synced_spaces (space TEXT); INSERT INTO synced_spaces VALUES ('duplicate'), ('duplicate');"),
+        "profile-row-type" => change_database(&healthy, "UPDATE profile_keys SET fields='text instead of blob';"),
+        "synced-row-type" => change_database(&healthy, "UPDATE synced_spaces SET space=x'010203';"),
+        "profile-key-invalid" => change_database(&healthy, "UPDATE profile_keys SET key='invalid profile key';"),
+        "invalid-event" => change_database(&healthy, "UPDATE events SET json='{bad';"),
+        "invalid-signature" => change_database(&healthy, "UPDATE events SET json=json_set(json, '$.sig', '00') WHERE seq=1;"),
+        "indexed-event-drift" => change_database(&healthy, "UPDATE events SET at_ms=at_ms+1;"),
+        "missing-format" => change_database(&healthy, "DELETE FROM meta WHERE key='event_format';"),
+        "missing-root" => change_database(&healthy, &format!("DELETE FROM identities WHERE id='{}';", header.identity)),
+        "agreement-short" => { header.agreement_secret = hex::encode([92; 31]); healthy.clone() },
+        "agreement-invalid" => { header.agreement_secret = "not hex".into(); healthy.clone() },
+        "root-short" => { header.identity_secret = hex::encode([91; 31]); healthy.clone() },
+        "root-mismatch" => { header.identity_secret = hex::encode([91; 32]); healthy.clone() },
+        "version" => { header.version += 1; healthy.clone() },
+        "healthy" => healthy.clone(),
+        "compatible-columns" => change_database(&healthy, "ALTER TABLE identities DROP COLUMN secret; ALTER TABLE profile_keys DROP COLUMN seen_version; ALTER TABLE profile_keys DROP COLUMN fields; ALTER TABLE events ADD COLUMN future_optional TEXT; PRAGMA user_version=3;"),
         _ => unreachable!(),
     };
     let key = [93; 32];
@@ -181,9 +224,13 @@ async fn public_restore_case(case: &str) {
     let sealed = backup::seal_payload(&key, &header, &database).unwrap();
     // Prove that the deliberately bad database is a valid authenticated payload,
     // not a wrong-key, format-header or HTTP fixture failure.
-    let (opened, bytes) = backup::open_payload(&key, &header.identity, &sealed).unwrap();
-    assert_eq!(opened.identity, header.identity);
-    assert_eq!(bytes, database);
+    if case == "version" {
+        assert!(backup::open_payload(&key, &header.identity, &sealed).is_err());
+    } else {
+        let (opened, bytes) = backup::open_payload(&key, &header.identity, &sealed).unwrap();
+        assert_eq!(opened.identity, header.identity);
+        assert_eq!(bytes, database);
+    }
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let enrolls = Arc::new(AtomicUsize::new(0));
@@ -191,6 +238,8 @@ async fn public_restore_case(case: &str) {
     let counted = enrolls.clone();
     let calls = observed.clone();
     let identity = header.identity.clone();
+    let served_payload = Arc::new(Mutex::new(sealed));
+    let active_payload = served_payload.clone();
     let server = tokio::spawn(async move {
         loop {
             let (mut socket, _) = listener.accept().await.unwrap();
@@ -216,7 +265,7 @@ async fn public_restore_case(case: &str) {
                         .is_some_and(|(name, value)| name
                             .eq_ignore_ascii_case("x-zoen-backup-auth")
                             && value.trim() == auth)));
-                    sealed.clone()
+                    active_payload.lock().unwrap().clone()
                 }
                 "/v1/backup/restore/enroll" => {
                     let request: serde_json::Value = serde_json::from_slice(&body).unwrap();
@@ -245,15 +294,14 @@ async fn public_restore_case(case: &str) {
         .restore_backup_with_recovery_key(
             format!("http://{address}"),
             "backup_source".into(),
-            recovery,
+            recovery.clone(),
             vault.clone(),
         )
         .await;
-    server.abort();
-    let enrolls = enrolls.load(Ordering::SeqCst);
+    let enrollment_count = enrolls.load(Ordering::SeqCst);
     let writes = vault.writes.load(Ordering::SeqCst);
     let unchanged = target.lock().store.memory_image().unwrap() == before;
-    eprintln!("authenticated {case} SQLite: accepted={}, enrolls={enrolls}, vault_writes={writes}, target_unchanged={unchanged}", result.is_ok());
+    eprintln!("authenticated {case} SQLite: accepted={}, enrolls={enrollment_count}, vault_writes={writes}, target_unchanged={unchanged}", result.is_ok());
     assert!(
         observed
             .lock()
@@ -262,9 +310,40 @@ async fn public_restore_case(case: &str) {
             .any(|path| path.starts_with("/v1/backup/restore/blob?")),
         "fixture must reach authenticated download"
     );
-    assert!(result.is_err() && enrolls == 0 && writes == 0 && unchanged, "{case}: invalid authenticated SQLite must be refused before enrollment, vault writes or target mutation");
-    assert_eq!(*vault.values.lock().unwrap(), vault_before);
-    assert!(target.account().is_none());
+    if matches!(case, "healthy" | "compatible-columns") {
+        assert!(
+            result.is_ok(),
+            "{case}: valid portable compatibility must remain accepted: {result:?}"
+        );
+        assert_eq!(enrollment_count, 1);
+        assert_eq!(writes, 5);
+        assert!(!unchanged);
+        assert_eq!(target.account().unwrap().identity_id, header.identity);
+        assert!(target.lock().logs.values().flat_map(|log| log.events()).any(|event| matches!(&event.body, types::EventBody::MessagePosted { text, .. } if text == "Confirmed portable content")));
+    } else {
+        assert!(result.is_err() && enrollment_count == 0 && writes == 0 && unchanged, "{case}: invalid authenticated SQLite must be refused before enrollment, vault writes or target mutation");
+        assert_eq!(*vault.values.lock().unwrap(), vault_before);
+        assert!(target.account().is_none());
+    }
+    if case == "partial" {
+        // The same real target/vault and authenticated recovery ceremony must
+        // remain usable after refusal, with a healthy payload on the same relay.
+        *served_payload.lock().unwrap() = backup::seal_payload(&key, &header, &healthy).unwrap();
+        let restored = target
+            .restore_backup_with_recovery_key(
+                format!("http://{address}"),
+                "backup_source".into(),
+                recovery,
+                vault.clone(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(restored.identity_id, header.identity);
+        assert_eq!(enrolls.load(Ordering::SeqCst), 1);
+        assert_eq!(vault.writes.load(Ordering::SeqCst), 5);
+        assert!(target.lock().logs.values().flat_map(|log| log.events()).any(|event| matches!(&event.body, types::EventBody::MessagePosted { text, .. } if text == "Confirmed portable content")));
+    }
+    server.abort();
 }
 
 #[tokio::test]
@@ -283,4 +362,110 @@ async fn structural_restore_authenticated_malformed_sqlite_is_refused_without_si
 #[tokio::test]
 async fn structural_restore_authenticated_short_agreement_secret_is_refused_without_side_effects() {
     public_restore_case("agreement-short").await;
+}
+
+#[tokio::test]
+async fn structural_restore_required_columns_real_tables_and_target_constraints_are_validated() {
+    for case in [
+        "missing-column",
+        "corrupt-page",
+        "view",
+        "invalid-row",
+        "duplicate-row",
+    ] {
+        public_restore_case(case).await;
+    }
+}
+#[tokio::test]
+async fn structural_restore_canonical_history_root_and_format_are_validated_before_effects() {
+    for case in [
+        "invalid-event",
+        "invalid-signature",
+        "indexed-event-drift",
+        "missing-format",
+        "missing-root",
+    ] {
+        public_restore_case(case).await;
+    }
+}
+#[tokio::test]
+async fn structural_restore_header_boundaries_precede_effects() {
+    for case in [
+        "agreement-invalid",
+        "root-short",
+        "root-mismatch",
+        "version",
+    ] {
+        public_restore_case(case).await;
+    }
+}
+#[tokio::test]
+async fn structural_restore_healthy_and_compatible_optional_columns_remain_accepted() {
+    for case in ["healthy", "compatible-columns"] {
+        public_restore_case(case).await;
+    }
+}
+#[test]
+fn structural_restore_direct_rejects_invalid_input_before_target_wipe() {
+    let (header, healthy) = snapshot();
+    let databases = [
+        change_database(&[], "CREATE TABLE removed (x); DROP TABLE removed;"),
+        change_database(&healthy, "DROP TABLE events;"),
+        b"not SQLite".to_vec(),
+    ];
+    for database in databases {
+        let target = seeded_target();
+        let before = target.lock().store.memory_image().unwrap();
+        assert!(target
+            .lock()
+            .restore_snapshot(&header, &database, event_log::Signer::generate())
+            .is_err());
+        assert_eq!(target.lock().store.memory_image().unwrap(), before);
+        assert!(target.account().is_none());
+    }
+}
+
+#[test]
+fn structural_restore_direct_requires_every_portable_table_before_wipe() {
+    let (header, healthy) = snapshot();
+    for table in [
+        "identities",
+        "events",
+        "meta",
+        "profile_keys",
+        "peer_agreement_keys",
+        "blocked",
+        "synced_spaces",
+        "media_keys",
+    ] {
+        let database = change_database(&healthy, &format!("DROP TABLE {table};"));
+        let target = seeded_target();
+        let before = target.lock().store.memory_image().unwrap();
+        assert!(
+            target
+                .lock()
+                .restore_snapshot(&header, &database, event_log::Signer::generate())
+                .is_err(),
+            "missing portable table {table}"
+        );
+        assert_eq!(
+            target.lock().store.memory_image().unwrap(),
+            before,
+            "missing {table} must not erase the target"
+        );
+        assert!(target.account().is_none());
+    }
+}
+
+#[tokio::test]
+async fn structural_restore_portable_reader_profile_type_is_validated_before_effects() {
+    public_restore_case("profile-row-type").await;
+}
+#[tokio::test]
+async fn structural_restore_portable_reader_synced_type_is_validated_before_effects() {
+    public_restore_case("synced-row-type").await;
+}
+#[tokio::test]
+async fn structural_restore_portable_reader_profile_key_is_validated_before_effects() {
+    public_restore_case("profile-key-invalid").await;
 }
