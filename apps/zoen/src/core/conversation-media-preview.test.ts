@@ -187,3 +187,14 @@ test('stale borrowed projection is rejected before native admission and >10 cand
   );
   assert.equal(f.requests.length, 1);
 });
+test('direct forwarded candidates remain forbidden in the album helper before canonical reads/native admission', async () => {
+  const f = fixture();
+  const forwarded = structuredClone(f.rows.get('a')!);
+  forwarded.forwarded = true;
+  await assert.rejects(previewConversationMedia(f.store, 'space', 'a', [forwarded]));
+  await assert.rejects(
+    previewConversationMedia(f.store, 'space', 'a', [forwarded, f.rows.get('b')!]),
+  );
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.previews.length, 0);
+});

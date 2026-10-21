@@ -103,6 +103,8 @@ function fixture(
     onInlineUnavailable?: () => void;
     fileInfoError?: boolean;
     materializeError?: boolean;
+    messageSource?: { spaceId: string; entry: TimelineEntry };
+    galleryCapability?: boolean;
   } = {},
 ) {
   const info: FileDto = {
@@ -124,6 +126,9 @@ function fixture(
     info,
   };
   const decoded: DecodedMessageImage[] = [];
+  const legacyPreviews: LocalMediaFile[] = [];
+  const galleryRequests: unknown[][] = [];
+  const materialized: { itemId: string; version?: number }[] = [];
   const slots: { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void }[] = [];
   let cursor = 0;
   let compilerCursor = 0;
@@ -146,11 +151,13 @@ function fixture(
       if (options.fileInfoError) throw new Error('Synthetic metadata unavailable');
       return info;
     },
-    materializeFile: async () => {
+    materializeFile: async (itemId: string, version?: number) => {
+      materialized.push({ itemId, version });
       if (options.materializeError) throw new Error('Synthetic copy unavailable');
       return file;
     },
     releaseLocalFile: async () => {},
+    previewConversationMedia: options.galleryCapability ? async () => {} : undefined,
   };
   const snapshot = { account: null };
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
@@ -205,10 +212,16 @@ function fixture(
     './audio-progress': { AudioWaveform: 'AudioWaveform' },
     './voice-transcript': { VoiceTranscript: 'VoiceTranscript' },
     './VideoClip': { VideoClip: 'VideoClip' },
-    './preview-file': { previewMediaFile: async () => {} },
+    './preview-file': {
+      previewMediaFile: async (_driver: unknown, file: LocalMediaFile) => {
+        legacyPreviews.push(file);
+      },
+    },
     './conversation-media-preview': {
-      previewConversationMedia: async () => {
-        throw new Error('Unexpected conversation viewer admission in inline rendering test');
+      previewConversationMedia: async (...args: unknown[]) => {
+        if (!options.galleryCapability)
+          throw new Error('Unexpected conversation viewer admission in inline rendering test');
+        galleryRequests.push(args);
       },
     },
     './file-size': { formatFileSize },
@@ -263,6 +276,7 @@ function fixture(
       voice: options.voice,
       onImageDecoded: (image: DecodedMessageImage) => decoded.push(image),
       onInlineUnavailable: options.onInlineUnavailable,
+      messageSource: options.messageSource,
     });
     for (const work of effects) work();
     return tree;
@@ -292,6 +306,9 @@ function fixture(
     parts,
     file,
     decoded,
+    legacyPreviews,
+    galleryRequests,
+    materialized,
     ready: async () => {
       render();
       await tick();
@@ -317,6 +334,46 @@ function fixture(
 }
 const near = (actual: unknown, expected: number) =>
   assert.ok(Math.abs(Number(actual) - expected) < 1e-6, `${actual} should be ${expected}`);
+
+test('actual image/video Open preserves the exact single-file preview for forwarded visual messages with gallery capability present', async () => {
+  for (const mime of ['image/jpeg', 'video/mp4']) {
+    const entry = { id: 'forwarded-message', forwarded: true, voice: null } as TimelineEntry;
+    const f = fixture(false, {
+      info: { mime },
+      galleryCapability: true,
+      messageSource: { spaceId: 'qa', entry },
+    });
+    await f.ready();
+    const button = mime.startsWith('image/')
+      ? f.parts().frame
+      : elements(f.render()).find((node) => node.props.testID === 'message-video-gallery-item')!;
+    assert.ok(button, 'Actual visual media Open control');
+    (button.props.onPress as () => void)();
+    await tick();
+    assert.equal(
+      f.galleryRequests.length,
+      0,
+      'Forwarded media must not enter signed-album request helper',
+    );
+    assert.equal(f.legacyPreviews.length, 1);
+    assert.strictEqual(f.legacyPreviews[0], f.file);
+    assert.deepEqual(f.materialized.at(-1), { itemId: 'item', version: 3 });
+    f.unmount();
+  }
+});
+test('actual ordinary image Open still dispatches the chosen canonical message to the gallery helper', async () => {
+  const entry = { id: 'ordinary-message', forwarded: false, voice: null } as TimelineEntry;
+  const f = fixture(false, { galleryCapability: true, messageSource: { spaceId: 'qa', entry } });
+  await f.ready();
+  (f.parts().frame.props.onPress as () => void)();
+  await tick();
+  assert.equal(f.legacyPreviews.length, 0);
+  assert.equal(f.galleryRequests.length, 1);
+  assert.equal(f.galleryRequests[0]![1], 'qa');
+  assert.equal(f.galleryRequests[0]![2], entry.id);
+  assert.strictEqual((f.galleryRequests[0]![3] as TimelineEntry[])[0], entry);
+  f.unmount();
+});
 
 test('actual inline image resolves one bounded frame and both image and rounded mask fill it without cropping', async () => {
   for (const mine of [true, false]) {

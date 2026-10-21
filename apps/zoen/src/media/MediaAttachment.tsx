@@ -225,7 +225,13 @@ function FileAttachmentContent({
     setError(null);
     let file: LocalMediaFile | null = null;
     try {
-      if (messageSource && driver.previewConversationMedia && visual && !voice) {
+      if (
+        messageSource &&
+        !messageSource.entry.forwarded &&
+        driver.previewConversationMedia &&
+        visual &&
+        !voice
+      ) {
         await previewConversationMedia(
           store,
           messageSource.spaceId,
