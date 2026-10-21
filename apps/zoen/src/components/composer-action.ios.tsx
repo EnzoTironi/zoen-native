@@ -1,62 +1,58 @@
-import { Host } from '@expo/ui';
-import { Button } from '@expo/ui/swift-ui';
-import {
-  buttonBorderShape,
-  buttonStyle,
-  controlSize,
-  disabled,
-  foregroundStyle,
-  frame,
-  labelStyle,
-  tint,
-} from '@expo/ui/swift-ui/modifiers';
-import { isLiquidGlassAvailable } from 'expo-glass-effect';
+import { Pressable, View } from 'react-native';
+import { composerSendGeometry } from '../core/telegram-composer-presentation';
 import { useTheme } from '../theme';
 import type { ComposerActionProps } from './composer-action';
+import { ComposerControlSurface, ComposerGlyph } from './composer-control-surface';
 
+/** Telegram's send is a solid inset capsule inside a46pt slot, not a glass button. */
 export function ComposerAction({
   name,
   label,
   onPress,
-  disabled: isDisabled = false,
+  disabled = false,
   prominent = false,
   testID,
-  // Telegram iOS f1dd7a2, ChatTextInputPanelNode.swift:2480–2481.
   size = 40,
+  minimumHeight = 40,
 }: ComposerActionProps) {
-  const { scheme, presentation: p } = useTheme();
-  const glass = isLiquidGlassAvailable();
+  const { presentation: p } = useTheme();
+  const g = composerSendGeometry(minimumHeight);
   return (
-    <Host
-      testID={testID ? `${testID}-host` : undefined}
-      style={{ width: size, height: size }}
-      colorScheme={scheme}
-      ignoreSafeArea="keyboard"
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      hitSlop={2}
+      style={({ pressed }) => ({
+        width: prominent ? g.slotWidth : size,
+        height: prominent ? g.slotHeight : size,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: disabled ? 0.4 : pressed ? 0.65 : 1,
+      })}
     >
-      <Button
-        testID={testID}
-        label={label}
-        systemImage={name}
-        onPress={onPress}
-        modifiers={[
-          buttonStyle(
-            glass
-              ? prominent
-                ? 'glassProminent'
-                : 'glass'
-              : prominent
-                ? 'borderedProminent'
-                : 'bordered',
-          ),
-          buttonBorderShape('circle'),
-          controlSize(size <= 44 ? 'regular' : 'large'),
-          labelStyle('iconOnly'),
-          tint(prominent ? p.chat.input.action : p.chat.input.control),
-          foregroundStyle(prominent ? p.chat.input.actionText : p.chat.input.control),
-          disabled(isDisabled),
-          frame({ width: size, height: size }),
-        ]}
-      />
-    </Host>
+      {prominent ? (
+        <View
+          pointerEvents="none"
+          style={{
+            width: g.fillWidth,
+            height: g.fillHeight,
+            borderRadius: g.fillRadius,
+            backgroundColor: p.chat.input.action,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ComposerGlyph name={name} color={p.chat.input.actionText} />
+        </View>
+      ) : (
+        <ComposerControlSurface size={size}>
+          <ComposerGlyph name={name} color={p.chat.input.panelControl} />
+        </ComposerControlSurface>
+      )}
+    </Pressable>
   );
 }

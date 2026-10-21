@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import ZoenCore from '../../modules/zoen-core/src/ZoenCoreModule';
 import { createComposerFitting, type ComposerFittingSnapshot } from '../core/composer-fitting';
+import { useAttachmentKeyboardField } from '../media/attachment-keyboard-context';
 
 /** Keep one editor mounted while its normal, edit, search and caption values change. */
 export function ComposerTextField({
@@ -27,6 +28,7 @@ export function ComposerTextField({
   const field = useRef<TextInputInstance | null>(null);
   const [width, setWidth] = useState(0);
   const [tag, setTag] = useState<number | null>(null);
+  useAttachmentKeyboardField(tag, context, props.accessibilityLabel ?? '', props.placeholder ?? '');
   const { fontScale } = useWindowDimensions();
   const styledFont = StyleSheet.flatten(props.style)?.fontSize;
   const fontSize =

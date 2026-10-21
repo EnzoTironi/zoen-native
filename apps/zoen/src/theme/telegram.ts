@@ -176,7 +176,9 @@ export function telegramPresentation(
   skyAccent?: string,
 ) {
   const dark = profile === 'night';
-  const selectedAccent = settings.accent ?? (dark ? '#FFFFFF' : '#0088FF');
+  // PresentationData's default auto-Night selects the blue accent (#3E88F7).
+  // Keep the action fill/glyph coherent with a colored outgoing-bubble theme.
+  const selectedAccent = settings.accent ?? (dark ? '#3E88F7' : '#0088FF');
   const accent = settings.accent
     ? (skyAccent ?? customForegroundAccent(selectedAccent, dark))
     : selectedAccent;
@@ -194,7 +196,7 @@ export function telegramPresentation(
     : dark
       ? '#FFFFFF'
       : '#000000';
-  const actionText = contrastingInk(selectedAccent);
+  const actionText = settings.accent ? contrastingInk(selectedAccent) : '#FFFFFF';
   const customOutgoing = !!settings.outgoing;
   const outgoingSecondary = customOutgoing ? `${outgoingText}99` : dark ? '#FFFFFF80' : '#008C09CC';
   const incomingFill = dark ? '#1D1D1DE6' : '#FFFFFF';
@@ -281,6 +283,7 @@ export function telegramPresentation(
         text,
         placeholder: dark ? '#FFFFFF7A' : '#00000066',
         control: dark ? '#FFFFFF80' : '#00000080',
+        panelControl: dark ? '#FFFFFF' : '#000000',
         action: selectedAccent,
         actionText,
         recording: dark ? '#EB5545' : '#ED2521',

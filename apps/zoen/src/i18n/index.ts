@@ -5,6 +5,7 @@ import { auth } from './catalogs/auth.ts';
 import { authProviders } from './catalogs/authProviders.ts';
 import { chat } from './catalogs/chat.ts';
 import { common } from './catalogs/common.ts';
+import { composerKeyboard } from './catalogs/composer-keyboard.ts';
 import { documents } from './catalogs/documents.ts';
 import { decks } from './catalogs/decks.ts';
 import { drawing } from './catalogs/drawing.ts';
@@ -40,6 +41,7 @@ const catalogs = {
   authProviders,
   chat,
   common,
+  composerKeyboard,
   documents,
   drawing,
   decks,

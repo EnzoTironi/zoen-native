@@ -95,12 +95,12 @@ test('Concurrent composers keep distinct browser popover targets', () => {
       createElement(result.exports.MediaActions, {
         disabled: false,
         hasVoiceEditor: false,
-        onChoose() {},
+        async onChoose() {},
       }),
       createElement(result.exports.MediaActions, {
         disabled: false,
         hasVoiceEditor: false,
-        onChoose() {},
+        async onChoose() {},
       }),
     ),
   );

@@ -131,6 +131,8 @@ function fixture() {
     './attachment-photo-session': {},
     './attachment-photo-library': {},
     './attachment-picker': {},
+    './attachment-keyboard-context': { useAttachmentKeyboardSession: () => null },
+    './attachment-photo-keyboard.ios': { AttachmentPhotoKeyboard: 'AttachmentPhotoKeyboard' },
     './attachment-image-surface': { AttachmentImageSurface: 'AttachmentImageSurface' },
   };
   const module = {
@@ -355,6 +357,16 @@ test('actual picker hook never observes Photos at chat mount and removes its nat
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
   const ports: Record<string, unknown> = {
     react: {
+      useState: (initial: unknown) => {
+        const slot = (slots[cursor++] ??= {});
+        if (!Object.hasOwn(slot, 'value')) slot.value = initial;
+        return [
+          slot.value,
+          (value: unknown) => {
+            slot.value = value;
+          },
+        ];
+      },
       useMemo: (read: () => unknown, deps: readonly unknown[]) => {
         const slot = (slots[cursor++] ??= {});
         if (!same(slot.deps, deps)) {
@@ -403,6 +415,8 @@ test('actual picker hook never observes Photos at chat mount and removes its nat
       },
     },
     './attachment-picker': {},
+    './attachment-keyboard-context': { useAttachmentKeyboardSession: () => null },
+    './attachment-photo-keyboard.ios': { AttachmentPhotoKeyboard: 'AttachmentPhotoKeyboard' },
     './attachment-image-surface': {},
     '@expo/ui': {},
     '@expo/ui/swift-ui': {},

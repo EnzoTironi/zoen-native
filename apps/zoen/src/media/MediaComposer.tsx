@@ -990,9 +990,7 @@ export function MediaComposer({
         Boolean(failure)
       }
       hasVoiceEditor={!attachments.active && Boolean(media.voiceEditor)}
-      onChoose={(kind) => {
-        void pick(kind);
-      }}
+      onChoose={(kind) => pick(kind)}
     />
   );
   const voice = (

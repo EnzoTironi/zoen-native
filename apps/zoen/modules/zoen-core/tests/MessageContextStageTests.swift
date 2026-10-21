@@ -158,4 +158,72 @@ final class MessageContextStageTests: XCTestCase {
     XCTAssertNil(source.contentHost.layer.animationKeys())
   }
 
+  func testStationaryHeldReleaseOverRelocatedEditLeavesMenuOpen() async throws {
+    let f = try fixture(), config = try configuration(actions: [["id": "reply", "label": "Reply"], ["id": "edit", "label": "Edit"]])
+    f.source.frame.origin.y = f.window.bounds.height - f.window.safeAreaInsets.bottom - 100
+    let task = Task { try await f.source.present(requestId: UUID().uuidString, expectedBinding: f.binding, gestureId: "", configuration: config) }
+    await Task.yield()
+    let controller = try XCTUnwrap(f.stage.controller)
+    let edit = try XCTUnwrap(button(controller.view, id: "message-context-edit"))
+    let origin = edit.convert(CGPoint(x: edit.bounds.midX, y: edit.bounds.midY), to: f.window)
+    XCTAssertTrue(f.source.convert(f.source.bounds, to: f.window).contains(origin), "the moved Edit row overlaps the original held bubble")
+    controller.trackHeldTouch(origin, origin: origin, ended: true, cancelled: false)
+    XCTAssertTrue(f.stage.controller === controller, "stationary Up must leave the menu open")
+    XCTAssertTrue(f.source.contentHost.superview !== f.source)
+    await f.stage.retireContexts()
+    let selected = try await task.value
+    XCTAssertNil(selected)
+  }
+
+  func testHeldSelectionRequiresMoveBeyondStrictFourPointBoundary() async throws {
+    let f = try fixture(), config = try configuration()
+    let task = Task { try await f.source.present(requestId: UUID().uuidString, expectedBinding: f.binding, gestureId: "", configuration: config) }
+    await Task.yield()
+    let controller = try XCTUnwrap(f.stage.controller)
+    let reply = try XCTUnwrap(button(controller.view, id: "message-context-reply"))
+    let point = reply.convert(CGPoint(x: reply.bounds.midX, y: reply.bounds.midY), to: f.window)
+    let origin = CGPoint(x: point.x, y: point.y - 4)
+    controller.trackHeldTouch(point, origin: origin, ended: false, cancelled: false)
+    controller.trackHeldTouch(point, origin: origin, ended: true, cancelled: false)
+    XCTAssertTrue(f.stage.controller === controller, "4pt jitter is not a deliberate slide")
+    await f.stage.retireContexts()
+    let selected = try await task.value
+    XCTAssertNil(selected)
+  }
+
+  func testHeldReleaseChoosesOnlyPreviouslyAdmittedHoverNotNewRowUnderUp() async throws {
+    let f = try fixture(), config = try configuration(actions: [["id": "reply", "label": "Reply"], ["id": "edit", "label": "Edit"]])
+    let task = Task { try await f.source.present(requestId: UUID().uuidString, expectedBinding: f.binding, gestureId: "", configuration: config) }
+    await Task.yield()
+    let controller = try XCTUnwrap(f.stage.controller)
+    let reply = try XCTUnwrap(button(controller.view, id: "message-context-reply"))
+    let edit = try XCTUnwrap(button(controller.view, id: "message-context-edit"))
+    let point = reply.convert(CGPoint(x: reply.bounds.midX, y: reply.bounds.midY), to: f.window)
+    let end = edit.convert(CGPoint(x: edit.bounds.midX, y: edit.bounds.midY), to: f.window)
+    let origin = CGPoint(x: point.x, y: point.y - 5)
+    controller.trackHeldTouch(point, origin: origin, ended: false, cancelled: false)
+    controller.trackHeldTouch(end, origin: origin, ended: true, cancelled: false)
+    let selected = try await task.value
+    XCTAssertEqual(selected, "reply", "Up cannot retarget to Edit without a Move")
+    XCTAssertNil(f.stage.controller)
+    XCTAssertTrue(f.source.contentHost.superview === f.source)
+  }
+
+  func testCancelledHeldSlideClearsAdmissionAndCannotChooseOnLaterEnd() async throws {
+    let f = try fixture(), config = try configuration()
+    let task = Task { try await f.source.present(requestId: UUID().uuidString, expectedBinding: f.binding, gestureId: "", configuration: config) }
+    await Task.yield()
+    let controller = try XCTUnwrap(f.stage.controller)
+    let reply = try XCTUnwrap(button(controller.view, id: "message-context-reply"))
+    let point = reply.convert(CGPoint(x: reply.bounds.midX, y: reply.bounds.midY), to: f.window)
+    let origin = CGPoint(x: point.x, y: point.y - 5)
+    controller.trackHeldTouch(point, origin: origin, ended: false, cancelled: false)
+    controller.trackHeldTouch(point, origin: origin, ended: true, cancelled: true)
+    controller.trackHeldTouch(point, origin: origin, ended: true, cancelled: false)
+    XCTAssertTrue(f.stage.controller === controller)
+    await f.stage.retireContexts()
+    let selected = try await task.value
+    XCTAssertNil(selected)
+  }
+
 }

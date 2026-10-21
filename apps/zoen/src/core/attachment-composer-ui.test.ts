@@ -1,4 +1,5 @@
 import { composerVerticalInsets } from './telegram-audio-presentation.ts';
+import * as composerPresentation from './telegram-composer-presentation.ts';
 import { telegramPresentation, DEFAULT_THEME_CUSTOMIZATION } from '../theme/telegram.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -56,6 +57,7 @@ async function compileField(platform: Platform) {
     'react/jsx-runtime',
     'react-native',
     '../../modules/zoen-core/src/ZoenCoreModule',
+    '../media/attachment-keyboard-context',
   ]);
   const fieldOutput = await build({
     stdin: { contents: compiledField, resolveDir: dirname(fieldPath), loader: 'js' },
@@ -85,7 +87,7 @@ const fieldOutputs = new Map(
     ),
   ),
 );
-function fixture(platform: Platform = 'ios', fontScale = 1) {
+function fixture(platform: Platform = 'ios', fontScale = 1, liquidGlass = false) {
   type Slot = {
     value?: unknown;
     deps?: readonly unknown[];
@@ -111,6 +113,13 @@ function fixture(platform: Platform = 'ios', fontScale = 1) {
     nonce: number;
   }[] = [];
   const theme = { scheme: 'dark', colors: {}, presentation: telegramPresentation('night') };
+  const keyboardFields: unknown[][] = [];
+  const keyboard = {
+    kind: 'system',
+    toggleEmoji: () => {
+      keyboard.kind = keyboard.kind === 'emoji' ? 'system' : 'emoji';
+    },
+  };
   const pendingFits: { request: Record<string, any>; resolve: (value: any) => void }[] = [];
   let deferFits = false;
   const nativeField = { focus() {}, blur() {} };
@@ -160,8 +169,11 @@ function fixture(platform: Platform = 'ios', fontScale = 1) {
     fieldElement = result;
     return result;
   }
-  const jsx = (type: unknown, props: Record<string, unknown>): Element =>
-    type === fieldModule.exports.ComposerTextField ? renderField(props) : { type, props };
+  const jsx = (type: unknown, props: Record<string, unknown>): Element => {
+    if (type === fieldModule.exports.ComposerTextField) return renderField(props);
+    if (typeof type === 'function' && type.name === 'ComposerInputAccessory') return type(props);
+    return { type, props };
+  };
   const scope = {
     mode: 'account',
     identityId: 'me',
@@ -227,6 +239,7 @@ function fixture(platform: Platform = 'ios', fontScale = 1) {
     'react-native': {
       Text: 'Text',
       View: 'View',
+      Pressable: 'Pressable',
       TextInput: 'TextInput',
       findNodeHandle: () => {
         ++nativeHandleReads;
@@ -260,10 +273,22 @@ function fixture(platform: Platform = 'ios', fontScale = 1) {
     },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34 }) },
     'react-native-reanimated': {
+      __esModule: true,
       default: { View: 'AnimatedView' },
       useAnimatedStyle: (read: () => unknown) => read(),
     },
-    'expo-glass-effect': { GlassView: 'GlassView', isLiquidGlassAvailable: () => false },
+    'expo-glass-effect': {
+      GlassView: 'GlassView',
+      GlassContainer: 'GlassContainer',
+      isLiquidGlassAvailable: () => liquidGlass,
+    },
+    '../media/attachment-keyboard-context': {
+      AttachmentKeyboardProvider: 'AttachmentKeyboardProvider',
+      useAttachmentKeyboard: () => keyboard,
+      useAttachmentKeyboardField: (...args: unknown[]) => keyboardFields.push(args),
+    },
+    './composer-control-surface': { ComposerGlyph: 'ComposerGlyph' },
+    '../core/telegram-composer-presentation': composerPresentation,
     './keyboard-motion': { useKeyboardMotion: () => ({ progress: { value: 0 } }) },
     '../theme': { useTheme: () => theme },
     '../i18n/index.ts': { t: (key: string) => key },
@@ -324,6 +349,8 @@ function fixture(platform: Platform = 'ios', fontScale = 1) {
     calls,
     measurements,
     theme,
+    keyboard,
+    keyboardFields,
     pendingFits,
     deferFits: () => {
       deferFits = true;
@@ -563,7 +590,7 @@ test('the mounted iOS field uses one font for display and scoped native fitting 
       scan(root).filter((node) => node.type === 'MessageContext').length,
     1,
   );
-  const outer = f.renderRoot({});
+  const outer = find(f.renderRoot({}), (node) => node.type === 'AnimatedView');
   const outerStyle = Object.assign({}, ...(outer.props.style as object[]));
   assert.equal(
     outerStyle.paddingBottom,
@@ -627,4 +654,161 @@ test('a theme font change measures the displayed font and rejects late fitting o
       .height,
     88,
   );
+});
+
+const styleOf = (node: Element): Record<string, any> =>
+  Object.assign({}, ...[node.props.style].flat().filter(Boolean));
+const parentOf = (tree: unknown, child: Element): Element =>
+  find(tree, (node) => [node.props.children].flat().includes(child));
+
+test('compiled iOS renderer keeps a full-width field and reserves the source inset only once beside absolute controls', () => {
+  const f = fixture();
+  let tree = f.render();
+  const field = find(tree, byId('message-input'));
+  const surface = find(tree, byId('message-composer-field-surface'));
+  const fieldStyle = styleOf(field);
+  assert.equal(fieldStyle.fontSize, 17);
+  assert.equal(fieldStyle.flex, undefined, 'vertical flex must not collapse multiline fitting');
+  assert.equal(fieldStyle.minWidth, 0);
+  assert.equal(fieldStyle.width, '100%', 'full-width editor is not shortened by the send slot');
+  assert.equal(
+    fieldStyle.paddingRight,
+    67,
+    '32pt mode control measurement +46pt send are reserved once',
+  );
+  assert.equal(fieldStyle.paddingLeft, 12);
+  assert.equal(fieldStyle.paddingTop, 9.5);
+  assert.equal(fieldStyle.paddingBottom, 9.5);
+  assert.equal(field.props.selectionColor, f.theme.presentation.chat.input.action);
+  assert.equal(styleOf(surface).flex, 1);
+  assert.notEqual(
+    styleOf(surface).flexDirection,
+    'row',
+    'children must not shrink the field horizontally',
+  );
+  const mode = find(tree, byId('composer-input-mode'));
+  assert.equal(styleOf(mode).width, 32);
+  assert.equal(styleOf(mode).height, 40);
+  assert.deepEqual(styleOf(parentOf(tree, mode)), { position: 'absolute', bottom: 0, right: 50 });
+  const send = find(tree, byId('send-message'));
+  assert.equal(send.props.minimumHeight, 40);
+  assert.deepEqual(styleOf(parentOf(tree, send)), { position: 'absolute', bottom: 0, right: 0 });
+  tree = f.render(undefined, { value: '' });
+  assert.equal(styleOf(find(tree, byId('message-input'))).paddingRight, 21);
+  const emptyMode = find(tree, byId('composer-input-mode'));
+  assert.deepEqual(styleOf(parentOf(tree, emptyMode)), {
+    position: 'absolute',
+    bottom: 0,
+    right: 4,
+  });
+  assert.ok(
+    (find(tree, byId('message-composer-row')).props.children as unknown[]).includes('Microphone'),
+  );
+});
+
+test('compiled field preserves its actual native owner while input-mode, caption, edit and search change', () => {
+  const f = fixture();
+  const inputRef = { current: null as unknown };
+  let tree = f.render(undefined, { inputRef });
+  const first = find(tree, byId('message-input'));
+  const firstMode = find(tree, byId('composer-input-mode'));
+  assert.equal(find(firstMode, (node) => node.type === 'ComposerGlyph').props.name, 'face.smiling');
+  (firstMode.props.onPress as Handler)();
+  tree = f.render(undefined, { inputRef });
+  assert.equal(f.keyboard.kind, 'emoji');
+  assert.equal(
+    find(find(tree, byId('composer-input-mode')), (node) => node.type === 'ComposerGlyph').props
+      .name,
+    'keyboard',
+  );
+  assert.equal(find(tree, byId('message-input')).props.ref, first.props.ref);
+  assert.equal(inputRef.current, f.nativeField);
+  const cases = [
+    { files: f.file, patch: {}, context: 'space::caption:1', value: '' },
+    {
+      files: undefined,
+      patch: { editing: true, value: 'Edited draft' },
+      context: 'space::edit',
+      value: 'Edited draft',
+    },
+    {
+      files: undefined,
+      patch: {
+        search: {
+          state: {
+            active: true,
+            completed: true,
+            loading: false,
+            hits: [{}],
+            index: 0,
+            cursor: null,
+          },
+          status: '1/1',
+        },
+        value: 'term',
+      },
+      context: 'space::search',
+      value: 'term',
+    },
+    { files: undefined, patch: {}, context: 'space::normal', value: 'My unsent normal text' },
+  ];
+  for (const current of cases) {
+    tree = f.render(current.files, { inputRef, ...current.patch });
+    const field = find(tree, byId('message-input'));
+    assert.equal(field.props.ref, first.props.ref);
+    assert.equal(field.props.value, current.value);
+    assert.equal(scan(tree).filter(byId('message-input')).length, 1);
+    assert.equal(inputRef.current, f.nativeField);
+    assert.ok(
+      f.keyboardFields.some(([tag, context]) => tag === 101 && context === current.context),
+    );
+    if (current.context.endsWith('search'))
+      assert.equal(scan(tree).some(byId('composer-input-mode')), false);
+  }
+  const provider = f.renderRoot({ search: { state: { completed: false } } });
+  assert.equal(provider.type, 'AttachmentKeyboardProvider');
+  assert.equal(provider.props.scope, 'space:');
+  assert.equal(provider.props.enabled, false, 'search retires accessory input authority');
+  assert.equal(f.renderRoot({ suspended: true }).props.enabled, false);
+  assert.equal(f.renderRoot({}).props.enabled, true);
+});
+
+test('compiled source minimum tracks larger named font geometry for field, mode and send without changing the native ref', () => {
+  const f = fixture();
+  const inputRef = { current: null as unknown };
+  const first = find(f.render(undefined, { inputRef }), byId('message-input'));
+  f.theme.presentation = telegramPresentation('night', {
+    ...DEFAULT_THEME_CUSTOMIZATION,
+    textSize: 23,
+  });
+  const tree = f.render(undefined, { inputRef });
+  const field = find(tree, byId('message-input'));
+  assert.equal(field.props.ref, first.props.ref);
+  assert.equal(styleOf(field).fontSize, 23);
+  assert.equal(styleOf(field).minHeight, 47);
+  assert.equal(styleOf(find(tree, byId('message-composer-field-surface'))).borderRadius, 23);
+  assert.equal(styleOf(find(tree, byId('composer-input-mode'))).height, 47);
+  assert.equal(find(tree, byId('send-message')).props.minimumHeight, 47);
+  assert.equal(styleOf(field).paddingRight, 67);
+  assert.equal(inputRef.current, f.nativeField);
+});
+
+test('iOS26 compiled renderer shares the source glass container and interactive tinted field; older iOS keeps semantic fill', () => {
+  const glass = fixture('ios', 1, true);
+  const tree = glass.render();
+  const row = find(tree, byId('message-composer-row'));
+  const field = find(tree, byId('message-composer-field-surface'));
+  assert.equal(row.type, 'GlassContainer');
+  assert.equal(row.props.spacing, 7);
+  assert.equal(field.type, 'GlassView');
+  assert.equal(field.props.glassEffectStyle, 'regular');
+  assert.equal(field.props.isInteractive, true);
+  assert.equal(String(field.props.tintColor).replaceAll(' ', ''), 'rgba(255,255,255,0.025)');
+  assert.equal(styleOf(field).borderRadius, 20);
+  const legacy = fixture('ios', 1, false);
+  const olderTree = legacy.render();
+  assert.equal(find(olderTree, byId('message-composer-row')).type, 'View');
+  const olderField = find(olderTree, byId('message-composer-field-surface'));
+  assert.equal(olderField.type, 'View');
+  assert.equal(styleOf(olderField).backgroundColor, legacy.theme.presentation.chat.input.fill);
 });

@@ -34,6 +34,9 @@ import { AttachmentPhotoSession, type PhotoPickerState } from './attachment-phot
 import { photoLibrary, type PhotoLibraryItem } from './attachment-photo-library';
 import { pickAttachmentAssets } from './attachment-picker';
 import { AttachmentImageSurface } from './attachment-image-surface';
+import { useAttachmentKeyboardSession } from './attachment-keyboard-context';
+import type { KeyboardPresentation } from './attachment-keyboard-session';
+import { AttachmentPhotoKeyboard } from './attachment-photo-keyboard.ios';
 
 function Action({
   label,
@@ -535,6 +538,8 @@ export function AttachmentPhotoPickerSheet({
   );
 }
 export function useAttachmentPhotoPicker() {
+  const keyboard = useAttachmentKeyboardSession();
+  const [keyboardRequest, setKeyboardRequest] = useState<KeyboardPresentation | null>(null);
   const preferredIndex = useRef<number | null>(null);
   const preferred = useRef<string | null>(null);
   const session = useMemo(
@@ -546,6 +551,14 @@ export function useAttachmentPhotoPicker() {
     [],
   );
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
+  useEffect(() => {
+    const unsubscribe = keyboard?.subscribe(() => {
+      if (keyboardRequest && !keyboard.owns(keyboardRequest.id)) session.cancel();
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, [keyboard, keyboardRequest, session]);
   useEffect(() => {
     // Registering the native observer performs a PHAsset fetch: never do it at chat mount.
     if (state.visible && state.permission?.granted)
@@ -564,21 +577,40 @@ export function useAttachmentPhotoPicker() {
     pick: async (remaining: number, current: () => boolean) => {
       preferredIndex.current = null;
       preferred.current = null;
+      const presentation = keyboard?.getSnapshot().presentation;
+      const request =
+        presentation?.kind === 'attachments' && keyboard?.admitPicker(presentation.id)
+          ? presentation
+          : null;
+      if (presentation?.kind === 'attachments' && !request) return [];
+      setKeyboardRequest(request);
       const files = await session.open(remaining, current);
+      setKeyboardRequest(null);
       preferred.current =
         preferredIndex.current === null ? null : (files[preferredIndex.current]?.uri ?? null);
       return files;
     },
     preferredUri: () => preferred.current,
     cancel: session.cancel,
-    view: (
-      <AttachmentPhotoPickerSheet
-        state={state}
-        session={session}
-        onPreferredIndex={(index) => {
-          preferredIndex.current = index;
-        }}
-      />
-    ),
+    view:
+      keyboard && keyboardRequest ? (
+        <AttachmentPhotoKeyboard
+          state={state}
+          session={session}
+          keyboard={keyboard}
+          request={keyboardRequest}
+          onPreferredIndex={(index) => {
+            preferredIndex.current = index;
+          }}
+        />
+      ) : (
+        <AttachmentPhotoPickerSheet
+          state={state}
+          session={session}
+          onPreferredIndex={(index) => {
+            preferredIndex.current = index;
+          }}
+        />
+      ),
   };
 }

@@ -369,6 +369,7 @@ final class ZoenMessageContextController: UIViewController {
   private var sourceFrame = CGRect.zero
   private var pressedScale: CGFloat = 1
   private var hover: UIButton?
+  private var heldSelectionAdmitted = false
   private var reduceMotion: Bool { configuration.reducedMotion || UIAccessibility.isReduceMotionEnabled }
 
   init(source: ZoenMessageContextSource, configuration: ZoenMessageContextConfiguration,
@@ -538,24 +539,35 @@ final class ZoenMessageContextController: UIViewController {
       button.frame = CGRect(x: 2 + CGFloat(index) * 44, y: 6, width: 44, height: 44)
     }
   }
-  func trackHeldTouch(_ point: CGPoint, ended: Bool, cancelled: Bool) {
+  func trackHeldTouch(_ point: CGPoint, origin: CGPoint, ended: Bool, cancelled: Bool) {
     guard isCurrent, !closing else { return }
-    let candidates = reactionButtons + actionButtons
-    let target = cancelled ? nil : candidates.first { button in
+    if cancelled || ended {
+      // Reflow can put a menu row under a stationary finger. Only a preceding
+      // deliberate Move may admit its hover; Up must never hit-test a new row.
+      let selected = !cancelled && heldSelectionAdmitted ? hover : nil
+      heldSelectionAdmitted = false
+      updateHeldHover(nil)
+      if let id = selected?.accessibilityIdentifier?.replacingOccurrences(of: "message-context-", with: "") { choose(id) }
+      return
+    }
+    // Telegram f1dd7a2 ContextControllerImpl ContextGesture branch: vertical >4pt.
+    // The origin is the original held UITouch in the same window coordinates.
+    if !heldSelectionAdmitted && abs(point.y - origin.y) > 4 { heldSelectionAdmitted = true }
+    guard heldSelectionAdmitted else { return }
+    let target = (reactionButtons + actionButtons).first { button in
       guard let parent = button.superview, !parent.isHidden else { return false }
       let local = button.convert(point, from: sourceWindow)
       return button.bounds.contains(local) && parent.bounds.contains(parent.convert(point, from: sourceWindow))
     }
+    updateHeldHover(target)
+  }
+  private func updateHeldHover(_ target: UIButton?) {
     if hover !== target {
       hover?.transform = .identity
       hover?.backgroundColor = hover?.isSelected == true ? UIColor.contextHex(configuration.theme.highlight) : .clear
       hover = target
       target?.backgroundColor = UIColor.contextHex(configuration.theme.highlight)
-      if !reduceMotion { target?.transform = CGAffineTransform(scaleX: 1.15, y: 1.15); UISelectionFeedbackGenerator().selectionChanged() }
-    }
-    if ended {
-      hover?.transform = .identity
-      if let target, let id = target.accessibilityIdentifier?.replacingOccurrences(of: "message-context-", with: "") { choose(id) }
+      if let target, !reduceMotion { target.transform = CGAffineTransform(scaleX: 1.15, y: 1.15); UISelectionFeedbackGenerator().selectionChanged() }
     }
   }
   override var canBecomeFirstResponder: Bool { true }

@@ -1,4 +1,3 @@
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import {
@@ -24,6 +23,7 @@ import {
   telegramAudio,
 } from '../core/telegram-audio-presentation';
 import { VoiceHoldIntent } from './voice-hold-intent';
+import { ComposerControlSurface, ComposerGlyph } from '../components/composer-control-surface';
 
 export function VoiceRecordButton({
   disabled,
@@ -44,10 +44,9 @@ export function VoiceRecordButton({
   onLock: () => void;
   onError: (reason: unknown) => void;
 }) {
-  const { scheme, presentation: p, reducedMotion } = useTheme();
+  const { presentation: p, reducedMotion } = useTheme();
   const native = process.env.EXPO_OS === 'ios';
   const size = native ? 40 : 52;
-  const glass = native && isLiquidGlassAvailable();
   const live = useRef({ disabled, onStart, onReview, onCancel, onLock, onError });
   const alive = useRef(true);
   const held = useRef(false);
@@ -224,19 +223,17 @@ export function VoiceRecordButton({
             />
           </Animated.View>
         ) : null}
-        {glass && !active ? (
-          <GlassView
-            pointerEvents="none"
-            colorScheme={scheme}
-            glassEffectStyle="regular"
-            style={{ position: 'absolute', inset: 0, borderRadius: 20 }}
-          />
+        {native && !active ? (
+          <View pointerEvents="none" style={{ position: 'absolute', inset: 0, borderRadius: 20 }}>
+            <ComposerControlSurface>
+              <View />
+            </ComposerControlSurface>
+          </View>
         ) : null}
         <Animated.View pointerEvents="none" style={icon}>
-          <Icon
-            name={{ ios: 'mic', android: 'mic', web: 'mic' }}
-            size={26}
-            color={native ? p.chat.input.control : p.chat.input.actionText}
+          <ComposerGlyph
+            name="mic"
+            color={native ? p.chat.input.panelControl : p.chat.input.actionText}
           />
         </Animated.View>
       </View>

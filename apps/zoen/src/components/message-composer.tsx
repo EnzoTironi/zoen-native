@@ -1,9 +1,14 @@
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
+import { GlassContainer, GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import type { ReactNode, Ref } from 'react';
-import { Text, View, type TextInputInstance } from 'react-native';
+import { Text, View, Pressable, type TextInputInstance } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardMotion } from './keyboard-motion';
-import { composerVerticalInsets } from '../core/telegram-audio-presentation';
+import {
+  composerFieldInsets,
+  composerGlassAppearance,
+  composerSourceMinimumHeight,
+  telegramComposer,
+} from '../core/telegram-composer-presentation';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { t } from '../i18n/index.ts';
 import { conversationQueryFits, type ConversationSearchState } from '../core/conversation-search';
@@ -16,6 +21,35 @@ import { useTheme } from '../theme';
 import { ComposerAction } from './composer-action';
 import { ComposerTextField } from './composer-text-field';
 import { NativeButton } from './primitives';
+import { ComposerGlyph } from './composer-control-surface';
+import {
+  AttachmentKeyboardProvider,
+  useAttachmentKeyboard,
+} from '../media/attachment-keyboard-context';
+
+function ComposerInputAccessory({ minimumHeight }: { minimumHeight: number }) {
+  const keyboard = useAttachmentKeyboard();
+  const { presentation: p } = useTheme();
+  if (!keyboard) return null;
+  const emoji = keyboard.kind === 'emoji';
+  return (
+    <Pressable
+      testID="composer-input-mode"
+      accessibilityRole="button"
+      accessibilityLabel={t(emoji ? 'composerKeyboard.keyboard' : 'composerKeyboard.emoji')}
+      hitSlop={6}
+      onPress={keyboard.toggleEmoji}
+      style={{
+        width: telegramComposer.inputModeControl,
+        height: minimumHeight,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <ComposerGlyph name={emoji ? 'keyboard' : 'face.smiling'} color={p.chat.input.control} />
+    </Pressable>
+  );
+}
 
 export type ComposerSearchMode = {
   state: ConversationSearchState;
@@ -86,6 +120,10 @@ export function MessageComposer({
     conversationQueryFits(search.state.query.trim()),
   );
   const glass = process.env.EXPO_OS === 'ios' && isLiquidGlassAvailable();
+  // Both shipped sky photographs fall below Telegram's0.35 saturation threshold.
+  const material = composerGlassAppearance(scheme === 'dark', 'panel');
+  const minimumHeight = composerSourceMinimumHeight(p.typography.message.fontSize) ?? 40;
+  const Row = glass ? GlassContainer : View;
   function controls({
     attachment,
     voice,
@@ -99,11 +137,16 @@ export function MessageComposer({
   }) {
     const fieldText = files ? files.value : value;
     const native = process.env.EXPO_OS === 'ios';
-    const inputInsets = composerVerticalInsets(p.typography.message.fontSize);
     // The native send action belongs inside the field; the empty microphone
     // remains a separate control. Telegram f1dd7a2 panel:3407,3453.
     const inlineAction =
       native && (search ? canAsk : Boolean(files || hasText || editing || !voice));
+    const hasInputMode = native && !search;
+    const inputInsets = composerFieldInsets({
+      fontSize: p.typography.message.fontSize,
+      hasSend: inlineAction,
+      accessoryButtonsWidth: hasInputMode ? 34 : 0,
+    }).total;
     const field = (
       <ComposerTextField
         inputRef={inputRef}
@@ -128,6 +171,8 @@ export function MessageComposer({
                 : t('chat.message')
         }
         placeholderTextColor={p.chat.input.placeholder}
+        selectionColor={p.chat.input.action}
+        keyboardAppearance={scheme === 'dark' ? 'dark' : 'light'}
         autoCorrect={search ? false : undefined}
         autoCapitalize={search ? 'none' : undefined}
         multiline
@@ -140,14 +185,12 @@ export function MessageComposer({
         onFocus={onFocus}
         onBlur={onBlur}
         style={{
-          flex: native ? 1 : undefined,
+          width: native ? '100%' : undefined,
           minWidth: native ? 0 : undefined,
-          minHeight: native ? 40 : 52,
+          minHeight: native ? minimumHeight : 52,
           maxHeight: 160,
           paddingLeft: native ? 12 : 18,
-          // Send occupies40pt; upstream's extra clearance is40-10,
-          // plus11pt internal inset, so the text stops41pt before the edge.
-          paddingRight: native ? (inlineAction ? 1 : 11) : 18,
+          paddingRight: native ? inputInsets.right : 18,
           // f1dd7a2: internal5/4 + regular text-container4.5/5.5.
           paddingTop: native ? inputInsets.top : 15,
           paddingBottom: native ? inputInsets.bottom : 14,
@@ -162,6 +205,7 @@ export function MessageComposer({
         <ComposerAction
           testID="ask-conversation"
           name="arrow.up"
+          minimumHeight={minimumHeight}
           label={t('chat.askAboutChat')}
           prominent
           onPress={search.onAsk}
@@ -194,6 +238,7 @@ export function MessageComposer({
       <ComposerAction
         testID="send-attachments"
         name="arrow.up"
+        minimumHeight={minimumHeight}
         label={
           files.retry
             ? t('media.attachmentsRetry')
@@ -207,6 +252,7 @@ export function MessageComposer({
       <ComposerAction
         testID="send-message"
         name={editing ? 'checkmark' : 'arrow.up'}
+        minimumHeight={minimumHeight}
         label={editing ? t('chat.saveEdit') : t('chat.sendMessage')}
         prominent
         disabled={(!hasText && !allowEmptyEdit) || sending || draft?.ready === false}
@@ -245,8 +291,9 @@ export function MessageComposer({
         ) : (
           review
         )}
-        <View
+        <Row
           testID="message-composer-row"
+          {...(glass ? { spacing: telegramComposer.glassSpacing } : {})}
           style={{ flexDirection: 'row', gap: native ? 6 : 10, alignItems: 'flex-end' }}
         >
           {search ? (
@@ -263,96 +310,127 @@ export function MessageComposer({
             <GlassView
               colorScheme={scheme}
               glassEffectStyle="regular"
+              tintColor={material.tintColor}
+              isInteractive
               testID="message-composer-field-surface"
               style={{
                 flex: 1,
-                borderRadius: native ? 20 : 27,
-                flexDirection: native ? 'row' : undefined,
-                alignItems: native ? 'flex-end' : undefined,
+                borderRadius: native ? Math.floor(minimumHeight / 2) : 27,
               }}
             >
               {field}
-              {inlineAction ? action : null}
+              {hasInputMode ? (
+                <View
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    right: 4 + (inlineAction ? telegramComposer.sendSlot : 0),
+                  }}
+                >
+                  <ComposerInputAccessory minimumHeight={minimumHeight} />
+                </View>
+              ) : null}
+              {inlineAction ? (
+                <View style={{ position: 'absolute', bottom: 0, right: 0 }}>{action}</View>
+              ) : null}
             </GlassView>
           ) : (
             <View
               testID="message-composer-field-surface"
               style={{
                 flex: 1,
-                borderRadius: native ? 20 : 27,
+                borderRadius: native ? Math.floor(minimumHeight / 2) : 27,
                 backgroundColor: p.chat.input.fill,
                 borderColor: p.chat.input.stroke,
                 borderWidth: 0.5,
-                flexDirection: native ? 'row' : undefined,
-                alignItems: native ? 'flex-end' : undefined,
               }}
             >
               {field}
-              {inlineAction ? action : null}
+              {hasInputMode ? (
+                <View
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    right: 4 + (inlineAction ? telegramComposer.sendSlot : 0),
+                  }}
+                >
+                  <ComposerInputAccessory minimumHeight={minimumHeight} />
+                </View>
+              ) : null}
+              {inlineAction ? (
+                <View style={{ position: 'absolute', bottom: 0, right: 0 }}>{action}</View>
+              ) : null}
             </View>
           )}
           {!inlineAction ? action : null}
-        </View>
+        </Row>
       </>
     );
   }
   return (
-    <Animated.View
-      style={[
-        {
-          // f1dd7a2 textFieldInsets:1432; separate action gap:3537.
-          paddingHorizontal: process.env.EXPO_OS === 'ios' ? 8 : 12,
-          paddingTop: process.env.EXPO_OS === 'ios' ? 0 : 10,
-          gap: process.env.EXPO_OS === 'ios' ? 0 : 8,
-        },
-        // Choose the native layout on JS, outside the UI-runtime worklet.
-        process.env.EXPO_OS === 'ios' ? { paddingBottom: restingBottom } : keyboardPadding,
-      ]}
+    <AttachmentKeyboardProvider
+      scope={`${spaceId}:${threadRootId ?? ''}`}
+      enabled={!search && !suspended}
     >
-      {draft?.error ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8 }}>
-          <Text
-            accessibilityRole="alert"
-            style={{ flex: 1, color: colors.secondary, fontSize: 12 }}
+      <Animated.View
+        style={[
+          {
+            // f1dd7a2 textFieldInsets:1432; separate action gap:3537.
+            paddingHorizontal: process.env.EXPO_OS === 'ios' ? 8 : 12,
+            paddingTop: process.env.EXPO_OS === 'ios' ? 0 : 10,
+            gap: process.env.EXPO_OS === 'ios' ? 0 : 8,
+          },
+          // Choose the native layout on JS, outside the UI-runtime worklet.
+          process.env.EXPO_OS === 'ios' ? { paddingBottom: restingBottom } : keyboardPadding,
+        ]}
+      >
+        {draft?.error ? (
+          <View
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8 }}
           >
-            {t(
-              draft.rejected
-                ? 'chat.draftSendRejected'
-                : draft.ready
-                  ? 'chat.draftSaveFailed'
-                  : 'chat.draftLoadFailed',
-            )}
-          </Text>
-          <NativeButton
-            testID="retry-message-draft"
-            label={t('chat.tryAgain2')}
-            secondary
-            onPress={draft.onRetry}
+            <Text
+              accessibilityRole="alert"
+              style={{ flex: 1, color: colors.secondary, fontSize: 12 }}
+            >
+              {t(
+                draft.rejected
+                  ? 'chat.draftSendRejected'
+                  : draft.ready
+                    ? 'chat.draftSaveFailed'
+                    : 'chat.draftLoadFailed',
+              )}
+            </Text>
+            <NativeButton
+              testID="retry-message-draft"
+              label={t('chat.tryAgain2')}
+              secondary
+              onPress={draft.onRetry}
+            />
+          </View>
+        ) : null}
+        {mediaEnabled ? (
+          <MediaComposer
+            key={`${spaceId}:${threadRootId ?? 'chat'}`}
+            spaceId={spaceId}
+            replyTo={replyTo}
+            threadRootId={threadRootId ?? null}
+            thread={thread}
+            disabled={sending || editing || Boolean(search) || draft?.ready === false}
+            suspended={suspended || Boolean(search)}
+            onSent={onMediaSent}
+            renderControls={({ attachment, voice, review, files }) =>
+              controls({
+                attachment: editing ? null : attachment,
+                voice: editing ? null : voice,
+                review,
+                files: editing || search ? undefined : files,
+              })
+            }
           />
-        </View>
-      ) : null}
-      {mediaEnabled ? (
-        <MediaComposer
-          key={`${spaceId}:${threadRootId ?? 'chat'}`}
-          spaceId={spaceId}
-          replyTo={replyTo}
-          threadRootId={threadRootId ?? null}
-          thread={thread}
-          disabled={sending || editing || Boolean(search) || draft?.ready === false}
-          suspended={suspended || Boolean(search)}
-          onSent={onMediaSent}
-          renderControls={({ attachment, voice, review, files }) =>
-            controls({
-              attachment: editing ? null : attachment,
-              voice: editing ? null : voice,
-              review,
-              files: editing || search ? undefined : files,
-            })
-          }
-        />
-      ) : (
-        controls({ attachment: null, voice: null })
-      )}
-    </Animated.View>
+        ) : (
+          controls({ attachment: null, voice: null })
+        )}
+      </Animated.View>
+    </AttachmentKeyboardProvider>
   );
 }

@@ -84,7 +84,7 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     lastPoint = touch.location(in: nil)
     if held {
       state = .changed
-      source?.presentation?.trackHeldTouch(lastPoint, ended: false, cancelled: false)
+      source?.presentation?.trackHeldTouch(lastPoint, origin: firstPoint, ended: false, cancelled: false)
     } else if !doubleTap {
       let dx = lastPoint.x - firstPoint.x, dy = lastPoint.y - firstPoint.y
       if dx * dx + dy * dy > 4 { fail() }
@@ -97,7 +97,7 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
     displayLink?.invalidate(); displayLink = nil
     if let touch = touches.first { lastPoint = touch.location(in: nil) }
     if held {
-      source?.presentation?.trackHeldTouch(lastPoint, ended: true, cancelled: false)
+      source?.presentation?.trackHeldTouch(lastPoint, origin: firstPoint, ended: true, cancelled: false)
       state = .ended
     } else if doubleTap { state = .ended }
     else if let source, source.handlesTap {
@@ -119,7 +119,7 @@ final class ZoenMessageContextGesture: UIGestureRecognizer, UIGestureRecognizerD
   }
   override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
     super.touchesCancelled(touches, with: event)
-    source?.presentation?.trackHeldTouch(lastPoint, ended: true, cancelled: true)
+    source?.presentation?.trackHeldTouch(lastPoint, origin: firstPoint, ended: true, cancelled: true)
     fail()
   }
   @objc private func progress() {

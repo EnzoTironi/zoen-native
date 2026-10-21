@@ -19,6 +19,7 @@ export type ComposerActionProps = {
   prominent?: boolean;
   testID?: string;
   size?: 40 | 44 | 52;
+  minimumHeight?: number;
 };
 const material = {
   plus: 'add',

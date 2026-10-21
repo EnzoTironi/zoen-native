@@ -1,0 +1,71 @@
+{
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "license": "GPL-2.0-or-later; GPLv3 selected as documented by existing project notices",
+  "sources": [
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/TelegramUI/Resources/emoji1.txt",
+      "sha256": "6fecb9b7edbd7ddfb18dc757e1f3de6ce2aaa89f1bdab0251caf28169cd3e58c",
+      "bytes": 64319,
+      "lines": null,
+      "contract": "Exact Unicode/category/tone data, unmodified generator input",
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Resources/emoji1.txt"
+    },
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/TelegramUI/Components/EntityKeyboard/Sources/EmojiPagerContentComponentStaticEmoji.swift",
+      "sha256": "d5ab059d6aec1da239df99f0622631114c6cf616ba0e4c240b5d7e0d311396fd",
+      "bytes": 3095,
+      "lines": "1-85",
+      "contract": "First large section, eight section boundaries and newline group/base interpretation",
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/EntityKeyboard/Sources/EmojiPagerContentComponentStaticEmoji.swift#L1"
+    },
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/TelegramUI/Components/EntityKeyboard/Sources/EmojiPagerContentComponent.swift",
+      "sha256": "9b01314a02405529026dba819468b45546edea8ab84bd20a20fd40486dba8fc2",
+      "bytes": 287515,
+      "lines": "345-354,959-1022,1661-1664",
+      "contract": "Category order and compact grid metrics;0.2s generic hold recognition (not a claim of the upstream static-tone UX)",
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/EntityKeyboard/Sources/EmojiPagerContentComponent.swift#L345"
+    },
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/TelegramUI/Components/EntityKeyboard/Sources/EmojiKeyboardItemLayer.swift",
+      "sha256": "c2f44130a907aea5223fb1feeeb14968eb84e5d62e1bf989cd47032dc0f950cc",
+      "bytes": 24261,
+      "lines": "277-294",
+      "contract": "32pt native Unicode static glyph rendering",
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/EntityKeyboard/Sources/EmojiKeyboardItemLayer.swift#L277"
+    },
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/TelegramUI/Components/EntityKeyboard/Sources/EntityKeyboardBottomPanelComponent.swift",
+      "sha256": "6ec3a549f4d9e55b67bb38322d7cf4aece157d66fbf2d86f535859809ccf8897",
+      "bytes": 29393,
+      "lines": "490-525",
+      "contract": "40pt bottom visual panel",
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/EntityKeyboard/Sources/EntityKeyboardBottomPanelComponent.swift#L490"
+    },
+    {
+      "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+      "path": "submodules/TelegramUI/Components/EntityKeyboard/Sources/EmojiPagerContentSignals.swift",
+      "sha256": "3aabcc00178bc7a8b1eeea0e69dcf30cc0f30650f82e1a6ac6185b01d437ef74",
+      "bytes": 118765,
+      "lines": "230-265",
+      "contract": "Static Unicode insertion grouped by source category",
+      "url": "https://github.com/TelegramMessenger/Telegram-iOS/blob/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/EntityKeyboard/Sources/EmojiPagerContentSignals.swift#L230"
+    }
+  ],
+  "data": {
+    "categories": 8,
+    "baseEmoji": 1651,
+    "variantGroups": 320,
+    "allowed": 3491,
+    "sourceSha256": "6fecb9b7edbd7ddfb18dc757e1f3de6ce2aaa89f1bdab0251caf28169cd3e58c",
+    "generatedSha256": "0e8582665a98c11ec87d310ab220c2213392eab642af4e605651297863ce4fd7"
+  },
+  "renderer": "Native iOS Unicode glyphs, no upstream artwork/font/animation assets copied",
+  "adapter": "Original UIKit source adapter; grid/layout/data contracts attributed as translated/derived material",
+  "qualification": "Swift/native tests AUTHORED_NOT_RUN; only deterministic Python data generation/mutated-input rejection executed"
+}

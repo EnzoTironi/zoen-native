@@ -69,6 +69,20 @@ public class ZoenCoreModule: Module {
       OnViewDidUpdateProps { (view: ZoenPageTextInput) in view.bind() }
     }
     // Named presentation-only views; the existing first/default page-input view stays unchanged.
+    View(ZoenKeyboardPanelHost.self) {
+      ViewName("ZoenKeyboardPanelHost")
+      Events("onAction", "onClosed")
+      Prop("binding") { (view: ZoenKeyboardPanelHost, value: String) in view.binding = value }
+      Prop("model") { (view: ZoenKeyboardPanelHost, value: String) in view.model = value }
+      OnViewDidUpdateProps { (view: ZoenKeyboardPanelHost) in view.applyProps() }
+    }
+    View(ZoenEmojiKeyboardPanelHost.self) {
+      ViewName("ZoenEmojiKeyboardPanelHost")
+      Events("onAction", "onClosed")
+      Prop("binding") { (view: ZoenEmojiKeyboardPanelHost, value: String) in view.binding = value }
+      Prop("model") { (view: ZoenEmojiKeyboardPanelHost, value: String) in view.model = value }
+      OnViewDidUpdateProps { (view: ZoenEmojiKeyboardPanelHost) in view.applyProps() }
+    }
     View(ZoenMessageBubbleView.self) {
       ViewName("MessageBubble")
       Prop("ownerKey") { (view: ZoenMessageBubbleView, value: String) in view.ownerKey = value }
@@ -205,6 +219,8 @@ public class ZoenCoreModule: Module {
 }
 
 private actor ZoenSession {
+  // A close returns its exact native UI epoch; a stale open cannot resume a newer retirement.
+  private var keyboardAdmissionTicket: UUID?
   nonisolated private let pickupLifetime = ZoenModulePickupLifetime()
   private var pickupBinding: UUID?
   private var core: Client?
@@ -696,6 +712,7 @@ private actor ZoenSession {
     guard !erasing else { throw ZoenDeviceErasure.Failure.incomplete }
     try await close(cancelOpening: false)
     guard openingAttempt == attempt, !erasing else { throw SessionError.closed }
+    guard let keyboardTicket = keyboardAdmissionTicket else { throw SessionError.closed }
     let openingGeneration = generation
     let root = mode == "account" ? ZoenDeviceErasure.accountRoot
       : URL.applicationSupportDirectory.appending(path: "demo", directoryHint: .isDirectory)
@@ -721,6 +738,8 @@ private actor ZoenSession {
       } else if vault.hasAccountMaterial() { throw SessionError.orphanedKeys }
       let snapshot = try await engine.clientRequest(request: #"{"op":"snapshot"}"#)
       guard generation == openingGeneration, openingAttempt == attempt else { throw SessionError.closed }
+      guard await ZoenKeyboardPanelHost.resumeAdmissions(expected: keyboardTicket) else { throw SessionError.closed }
+      guard generation == openingGeneration, openingAttempt == attempt, !erasing, !closing else { throw SessionError.closed }
       // Publish only the fully validated session. A rejected unlock must leave
       // no callable engine behind; an older async open cannot replace a newer one.
       guard let binding = pickupLifetime.bind(retire: { engine.retireLinkPickup() }) else {
@@ -1466,6 +1485,7 @@ private actor ZoenSession {
     engine.stopSync()
     syncStarted = false
     let task = Task {
+      await ZoenKeyboardPanelHost.retireAll()
       await pageDrain.value
       try await filePreview.clear(before: clearingGeneration)
       await closeAssistants()
@@ -1518,30 +1538,43 @@ private actor ZoenSession {
     let forcedPageDrain = discardEdits ? invalidatePageInputs() : nil
     let retiringCore = core
     retiringCore?.retireLinkPickup()
+    let closeGeneration = generation
     let task = Task {
       defer { self.closing = false; self.forceClosing = false; self.closeTask = nil }
-      if let forcedPageDrain { await forcedPageDrain.value }
-      if discardEdits {
-        // Module destruction drains accepted workers and discards temporary edits.
-        self.generation &+= 1
-        self.filePreview.invalidate(before: self.generation)
-        try await self.filePreview.clear(before: self.generation)
+      let keyboardTicket = await ZoenKeyboardPanelHost.retireAll()
+      self.keyboardAdmissionTicket = keyboardTicket
+      do {
+        if let forcedPageDrain { await forcedPageDrain.value }
+        if discardEdits {
+          // Module destruction drains accepted workers and discards temporary edits.
+          self.generation &+= 1
+          self.filePreview.invalidate(before: self.generation)
+          try await self.filePreview.clear(before: self.generation)
+        }
+        if let erasureTask = self.erasureTask { try await erasureTask.value }
+        await self.closeAssistants()
+        // Keep the exact engine/account live for already admitted edited copies.
+        // New bridge operations are fenced by `closing`; a save failure stays
+        // recoverable in native UI instead of turning account change into data loss.
+        do { try await self.preparePageInputsForClose() }
+        catch { if !self.forceClosing { throw error } }
+        if let pageDrain = self.pageInputForcedDrain { await pageDrain.value }
+        try await self.filePreview.prepareForClose(before: self.generation &+ 1)
+        if let retiringCore { await retiringCore.drainLinkPickup() }
+        if self.requests > 0 {
+          await withCheckedContinuation { self.requestDrain.append($0) }
+        }
+        guard !self.erasing else { throw SessionError.closed }
+        try await self.finishClose()
+      } catch {
+        // A failed graceful close may keep the exact old session available for recovery.
+        // Never reopen UI admissions across erasure, forced teardown or a newer native epoch.
+        if !self.forceClosing, !self.erasing, self.generation == closeGeneration,
+           let retiringCore, self.core === retiringCore {
+          await ZoenKeyboardPanelHost.resumeAdmissions(expected: keyboardTicket)
+        }
+        throw error
       }
-      if let erasureTask = self.erasureTask { try await erasureTask.value }
-      await self.closeAssistants()
-      // Keep the exact engine/account live for already admitted edited copies.
-      // New bridge operations are fenced by `closing`; a save failure stays
-      // recoverable in native UI instead of turning account change into data loss.
-      do { try await self.preparePageInputsForClose() }
-      catch { if !self.forceClosing { throw error } }
-      if let pageDrain = self.pageInputForcedDrain { await pageDrain.value }
-      try await self.filePreview.prepareForClose(before: self.generation &+ 1)
-      if let retiringCore { await retiringCore.drainLinkPickup() }
-      if self.requests > 0 {
-        await withCheckedContinuation { self.requestDrain.append($0) }
-      }
-      guard !self.erasing else { throw SessionError.closed }
-      try await self.finishClose()
     }
     closeTask = task
     try await task.value
