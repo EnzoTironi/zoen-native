@@ -143,10 +143,25 @@ seleção e o caminho real de IME têm controles negativos executados. A composi
 também preserva a apresentação completa no replay, incluindo formatação,
 hyperlinks, marcas de parágrafo, navegação e desfazer. A receita reproduziu os
 621 arquivos da fonte testada byte a byte. O pacote atualizado compilou com
-JS/WASM verificados; teclado de software, correção e recuperação no novo iPhone ainda precisam de
-validação. Recibo: `/private/tmp/zoen-deckcraft-input-batch-v233/source-qualification-v235.json`.
+JS/WASM verificados. Recibo: `/private/tmp/zoen-deckcraft-input-batch-v233/source-qualification-v235.json`.
 O check completo do app também passou: 1.366 casos, tipos, Oxlint e Oxfmt;
-o artefato iOS instalado continua sendo o v228 até o próximo build.
+o artefato instalado agora é o Release v236 de `b691debe`, com a nova tupla
+JS/WASM fixada e verificação dos 452 arquivos e da assinatura após instalação.
+O pacote anterior permanece preservado como controle. A configuração permanente
+do widget foi incluída no build, com extração real dos metadados AppIntents.
+
+No documento QA230 existente, o primeiro duplo toque de edição abriu o teclado
+de software, a digitação a 35 ms funcionou e o iOS corrigiu `teh` para `the`.
+O título exato `v236 the QA222 Native Title` permaneceu depois de fechar,
+reiniciar o processo e reabrir o mesmo documento. O toque simples só selecionou
+o título e continua sem aceite; a hipótese de perda do contato no ganho de foco
+não foi atribuída ao evento nativo sem capturar sua família e ordem de foco.
+Recibo: `/private/tmp/zoen-ios-deck-input-v236/native-result-v236.json`.
+Esta prova não cobre Notes ou novas exportações, todos os caminhos de IME,
+acessibilidade ou aparelho físico. O percurso gravado é diagnóstico, com
+recuperações manuais e coordenadas de canvas, sem aprovação de replay.
+A conversa Teste Zoen foi deixada vazia, sem rascunho nem teclado, preservando
+as outras duas conversas e os Apps existentes. As flags globais seguem falsas.
 
 O [PR 149](https://github.com/EnzoTironi/zoen-native/pull/149) foi integrado em
 `ff303ec7`. O [PR 150](https://github.com/EnzoTironi/zoen-native/pull/150) recebeu
