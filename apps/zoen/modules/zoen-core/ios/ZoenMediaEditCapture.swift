@@ -18,6 +18,33 @@ enum ZoenMediaEditCapture {
     default: nil
     }
   }
+  /// Reserve only the existing private owner directory. AVFoundation requires
+  /// an absent destination; the 0700 protected parent confines its partial file
+  /// from creation, and sealVideo applies 0600 before any ingestion or CAS.
+  static func allocateVideo() -> Result<ZoenPreviewFile, ZoenPDFEditCapture.Failure> {
+    let manager = FileManager.default
+    let directory = URL.cachesDirectory.appendingPathComponent("ZoenMedia/\(UUID().uuidString)", isDirectory: true)
+    let file = ZoenPreviewFile(url: directory.appendingPathComponent("edited.mp4"), directory: directory)
+    do {
+      try manager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+      #if os(iOS)
+      try manager.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: directory.path)
+      #endif
+      return .success(file)
+    } catch {
+      do { try file.remove() }
+      catch { return .failure(.init(cause: error, retained: file)) }
+      return .failure(.init(cause: error, retained: nil))
+    }
+  }
+  static func sealVideo(_ file: ZoenPreviewFile, maximumBytes: UInt64) async throws -> Metadata {
+    try regular(file.url, maximumBytes: maximumBytes)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.url.path)
+    #if os(iOS)
+    try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: file.url.path)
+    #endif
+    return try await validate(file, kind: .video, maximumBytes: maximumBytes)
+  }
   /// The in-app editor renders into memory. Write directly into the same
   /// tracked preview owner; there is no additional disposable plaintext URL.
   static func stageImage(_ png: Data, maximumBytes: UInt64) -> Result<ZoenPreviewFile, ZoenPDFEditCapture.Failure> {

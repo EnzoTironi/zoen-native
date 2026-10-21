@@ -418,6 +418,7 @@ impl<S: Signer> Client<S> {
                     text: t("App adicionado a este Espaço.", "App added to this Space."),
                     attaches: Some(item.into()),
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             ],

@@ -462,6 +462,7 @@ mod tests {
                     text: "Update this presentation with the reviewed edits".into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             )

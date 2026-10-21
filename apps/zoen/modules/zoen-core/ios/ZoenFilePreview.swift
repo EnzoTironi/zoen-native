@@ -100,7 +100,15 @@ extension ZoenFilePreviewPresentation {
   struct MediaEditContext: Sendable {
     let kind: ZoenMediaEditCapture.Kind
     let maximumBytes: UInt64
+    let authorize: @Sendable () async throws -> Void
     let save: @Sendable (ZoenPreviewFile) async throws -> Void
+
+    init(kind: ZoenMediaEditCapture.Kind, maximumBytes: UInt64,
+         authorize: @escaping @Sendable () async throws -> Void = {},
+         save: @escaping @Sendable (ZoenPreviewFile) async throws -> Void) {
+      self.kind = kind; self.maximumBytes = maximumBytes
+      self.authorize = authorize; self.save = save
+    }
   }
 
   @MainActor final class Editing {
@@ -108,6 +116,7 @@ extension ZoenFilePreviewPresentation {
     private let mediaKind: ZoenMediaEditCapture.Kind?
     let allowsEditing: Bool
     fileprivate var captured: ((Result<ZoenPreviewFile, ZoenPDFEditCapture.Failure>) -> Void)?
+    fileprivate var renderVideo: ((@escaping @Sendable (URL, UInt64) async throws -> Void) async throws -> Void)?
     fileprivate init(maximumBytes: UInt64, allowsEditing: Bool, mediaKind: ZoenMediaEditCapture.Kind? = nil) {
       self.maximumBytes = maximumBytes; self.allowsEditing = allowsEditing; self.mediaKind = mediaKind
     }
@@ -119,6 +128,12 @@ extension ZoenFilePreviewPresentation {
     func receiveImage(_ png: Data) {
       guard allowsEditing, mediaKind == .image else { return }
       captured?(ZoenMediaEditCapture.stageImage(png, maximumBytes: maximumBytes))
+    }
+    /// The renderer receives the existing owner's exact destination. It must
+    /// never allocate a second plaintext file or turn UI state into a save ACK.
+    func receiveVideo(_ render: @escaping @Sendable (URL, UInt64) async throws -> Void) async throws {
+      guard allowsEditing, mediaKind == .video, let renderVideo else { throw Failure.changed }
+      try await renderVideo(render)
     }
   }
 
@@ -188,6 +203,8 @@ extension ZoenFilePreviewPresentation {
     var discardRequested = false
     var keepRequested = false
     var viewerGone = false
+    var renderTask: Task<Void, Error>?
+    var renderFile: ZoenPreviewFile?
     var forced: Error?
     init(id: UUID, generation: UInt64, file: ZoenPreviewFile, presentation: any ZoenFilePreviewPresentation,
          continuation: CheckedContinuation<Void, Error>, edit: EditContext?, mediaEdit: MediaEditContext?, editing: Editing?, recovered: [ZoenPreviewFile]) {
@@ -264,6 +281,10 @@ extension ZoenFilePreviewPresentation {
           guard let self, let session else { return }
           self.capture(result, session: session)
         }
+        editing?.renderVideo = { [weak self, weak session] render in
+          guard let self, let session else { throw Failure.changed }
+          try await self.captureVideo(render, session: session)
+        }
         // No suspension occurs between admission and show. UIKit receives only a
         // still-owned file, and any synchronous presentation failure ends it too.
         do {
@@ -337,6 +358,59 @@ extension ZoenFilePreviewPresentation {
       session.presentation.captureFailed(error: error)
       completeEditing(session)
     }
+  }
+
+  private func admitVideoCapture(_ session: Session) throws {
+    try Task.checkCancellation()
+    guard active === session, !session.stopping, !session.viewerGone,
+          session.forced == nil, !session.discardRequested,
+          !session.keepRequested, session.mediaEdit?.kind == .video else { throw Failure.changed }
+    try scope.admit(session.generation) {}
+  }
+
+  private func captureVideo(_ render: @escaping @Sendable (URL, UInt64) async throws -> Void,
+                            session: Session) async throws {
+    try admitVideoCapture(session)
+    guard session.renderTask == nil, session.worker == nil, let context = session.mediaEdit else { throw Failure.busy }
+    let file: ZoenPreviewFile
+    switch ZoenMediaEditCapture.allocateVideo() {
+    case .success(let value): file = value
+    case .failure(let failure):
+      capture(.failure(failure), session: session)
+      throw failure.cause
+    }
+    // This is registered before the first suspension/export. Forced close owns
+    // every partial byte and must drain rendering before deleting the input.
+    session.renderFile = file
+    let task = Task { @MainActor [self, session] in
+      defer {
+        session.renderTask = nil; session.renderFile = nil
+        completeEditing(session)
+      }
+      do {
+        try await context.authorize()
+        try admitVideoCapture(session)
+        try await render(file.url, context.maximumBytes)
+        try admitVideoCapture(session)
+        try await context.authorize()
+        try admitVideoCapture(session)
+        _ = try await ZoenMediaEditCapture.sealVideo(file, maximumBytes: context.maximumBytes)
+        try admitVideoCapture(session)
+        try await context.authorize()
+        try admitVideoCapture(session)
+        capture(.success(file), session: session)
+      } catch {
+        do { try file.remove() }
+        catch {
+          // Deletion failure remains attached to this owner until actual
+          // dismissal/clear retries it; cancellation never loses the lease.
+          session.failedCaptureCopies.append(file)
+        }
+        throw error
+      }
+    }
+    session.renderTask = task
+    try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
   }
 
   private func startWorker(_ session: Session) {
@@ -416,7 +490,8 @@ extension ZoenFilePreviewPresentation {
   }
 
   private func completeEditing(_ session: Session) {
-    guard active === session, session.editable, session.viewerGone, session.worker == nil else { return }
+    guard active === session, session.editable, session.viewerGone,
+          session.worker == nil, session.renderTask == nil else { return }
     if let forced = session.forced {
       for edit in session.pending {
         do { try edit.file.remove() } catch { retained.append(edit.file); session.cleanupFailure = error }
@@ -488,6 +563,7 @@ extension ZoenFilePreviewPresentation {
     guard active === session, !session.stopping else { return }
     session.stopping = true
     session.forced = error
+    session.renderTask?.cancel()
     session.presentation.dismiss { [weak self, weak session] in
       guard let self, let session else { return }
       if !session.editable { self.finish(session, error: error) }
@@ -515,6 +591,7 @@ extension ZoenFilePreviewPresentation {
     catch { retained.append(session.file); result = .failure(error); cleanup = .failure(error) }
     active = nil
     session.editing?.captured = nil
+    session.editing?.renderVideo = nil
     session.continuation.resume(with: result)
     for waiter in session.waiters { waiter.resume(with: cleanup) }
     session.waiters.removeAll()

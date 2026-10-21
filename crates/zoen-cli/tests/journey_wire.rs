@@ -55,6 +55,7 @@ async fn an_event_from_a_newer_client_survives_the_relay_and_an_older_peer() {
             text: "chegou enquete nova".into(),
             attaches: None,
             reply: None,
+            media: None,
             forwarded: false,
         },
     )
@@ -139,6 +140,7 @@ async fn the_relay_refuses_events_signed_on_a_history_it_doesnt_have() {
                 text: "outra história".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         )
@@ -161,6 +163,7 @@ async fn the_relay_refuses_events_signed_on_a_history_it_doesnt_have() {
                 text: "do futuro".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         )
@@ -179,6 +182,7 @@ async fn the_relay_refuses_events_signed_on_a_history_it_doesnt_have() {
                 text: "sem contexto".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         )
@@ -194,6 +198,7 @@ async fn the_relay_refuses_events_signed_on_a_history_it_doesnt_have() {
                 text: "ok".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             }
         )

@@ -117,6 +117,7 @@ impl Engine {
                 text: text.to_string(),
                 attaches,
                 reply: Some(reply),
+                media: None,
                 forwarded: false,
             },
         )?;

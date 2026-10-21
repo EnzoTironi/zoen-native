@@ -79,6 +79,11 @@ enum Content {
     Attachments {
         reply_to: Option<String>,
         items: Vec<Attachment>,
+        #[serde(
+            default,
+            skip_serializing_if = "types::AttachmentSendOptions::is_default"
+        )]
+        options: types::AttachmentSendOptions,
     },
     Voice {
         reply_to: Option<String>,
@@ -215,8 +220,8 @@ fn references(content: &Option<Content>) -> R<Vec<&str>> {
         return Err(invalid());
     }
     match content {
-        Content::Attachments { items, .. } => {
-            if items.is_empty() || items.len() > 10 {
+        Content::Attachments { items, options, .. } => {
+            if !options.validate_count(items.len()) {
                 return Err(invalid());
             }
             let mut mutations = HashSet::new();
@@ -694,10 +699,22 @@ impl Engine {
             };
             let thread = scope.thread_root_id.is_some();
             let entries = match record.content.as_ref().expect("preflight") {
-                Content::Attachments { items, .. } => {
+                Content::Attachments { items, options, .. } => {
+                    let mutations: Vec<&str> =
+                        items.iter().map(|item| item.mutation_id.as_str()).collect();
                     let mut entries = Vec::with_capacity(items.len());
-                    for ((item, asset), bytes) in items.iter().zip(&record.assets).zip(&bytes) {
-                        entries.push(engine.send_file_message_with_caption(
+                    for (index, ((item, asset), bytes)) in
+                        items.iter().zip(&record.assets).zip(&bytes).enumerate()
+                    {
+                        let media = options.metadata(
+                            &scope.expected_identity_id,
+                            &scope.space_id,
+                            reply,
+                            thread,
+                            &mutations,
+                            index,
+                        );
+                        entries.push(engine.send_file_message_with_media(
                             &scope.space_id,
                             &asset.name,
                             &asset.mime,
@@ -707,6 +724,7 @@ impl Engine {
                             thread,
                             &item.mutation_id,
                             &item.caption,
+                            media,
                         )?);
                     }
                     entries

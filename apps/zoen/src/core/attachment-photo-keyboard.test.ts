@@ -57,7 +57,10 @@ const item = (id: string): PhotoLibraryItem =>
     modificationTime: null,
     isFavorite: false,
   }) as PhotoLibraryItem;
-async function fixture(withSubmission = false) {
+async function fixture(
+  withSubmission = false,
+  mediaItems: PhotoLibraryItem[] = [item('a'), item('b'), item('c')],
+) {
   let sequence = 0,
     slotIndex = 0,
     current = true,
@@ -85,7 +88,7 @@ async function fixture(withSubmission = false) {
     requestPermission: async () => {
       throw new Error('not requested at mount');
     },
-    load: async () => [item('a'), item('b'), item('c')],
+    load: async () => mediaItems,
     refresh: async (items) => [...items],
     albums: async () => [{ id: 'album', title: 'Album' }],
     manage: async () => {},
@@ -93,7 +96,7 @@ async function fixture(withSubmission = false) {
       copies.push(values.map((v) => v.id));
       return values.map((v) => ({
         uri: `file:///owned/${v.id.slice(5)}`,
-        mime: 'image/jpeg',
+        mime: v.mediaType === 'video' ? 'video/quicktime' : 'image/jpeg',
         name: v.filename!,
         size: 12,
       }));
@@ -946,4 +949,51 @@ test('a grid common caption replaces item captions on the first selected asset w
   assert.equal(JSON.parse(next.render().props.model).caption.value, '');
   next.retire();
   await tick();
+});
+
+test('supported Photos video Edit stages the current exact selection for the durable owner without sending', async () => {
+  for (const extension of ['mp4', 'mov', 'm4v']) {
+    const video = {
+      ...item('video'),
+      filename: `clip.${extension}`,
+      mediaType: 'video' as PhotoLibraryItem['mediaType'],
+    };
+    const f = await fixture(true, [item('a'), video]);
+    f.photos.select(item('a'));
+    f.act(f.render(), 'preview', video.id);
+    const tree = f.render();
+    assert.equal(JSON.parse(tree.props.model).canEdit, true);
+    f.act(tree, 'edit', video.id, { text: 'Final video caption' });
+    f.act(tree, 'edit', video.id, { text: 'Duplicate' });
+    await tick();
+    assert.equal(f.submissions.length, 1);
+    assert.equal(f.submission()?.send, false);
+    assert.equal(f.submission()?.requestEdit, true);
+    assert.equal(f.submission()?.caption, '');
+    assert.deepEqual(Array.from(f.submission()?.captions ?? []), ['', 'Final video caption']);
+    assert.deepEqual(f.copies, [['ph://a', video.id]]);
+    assert.equal(f.preferred(), 1);
+    assert.equal(f.picked(), undefined, 'Editing must wait for the native presentation to close');
+    f.close(tree);
+    await tick();
+    assert.equal((f.picked() as AttachmentAsset[])[1]?.name, `clip.${extension}`);
+    f.retire();
+  }
+});
+
+test('unsupported Photos video format cannot prepare an edit or fall through to Send', async () => {
+  const video = {
+    ...item('video'),
+    filename: 'clip.webm',
+    mediaType: 'video' as PhotoLibraryItem['mediaType'],
+  };
+  const f = await fixture(true, [video]);
+  f.act(f.render(), 'preview', video.id);
+  const tree = f.render();
+  assert.equal(JSON.parse(tree.props.model).canEdit, false);
+  f.act(tree, 'edit', video.id, { text: 'Unsupported' });
+  await tick();
+  assert.deepEqual(f.submissions, []);
+  assert.deepEqual(f.copies, []);
+  f.retire();
 });

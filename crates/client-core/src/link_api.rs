@@ -1214,6 +1214,7 @@ mod initial_history_tests {
                 text: "Actual durable history".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );

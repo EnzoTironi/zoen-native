@@ -92,3 +92,18 @@ category/Files animations; its license is included in the resource bundle.
 UIKit, ImageIO, AVFoundation and PencilKit adapt rendering to the existing Expo
 module. This does not claim that Telegram's entire paint/filter/video engine,
 server-backed file index or messaging services have been imported.
+
+## Telegram iOS native video scrubber and editor controls
+
+`apps/zoen/modules/zoen-core/ios/TelegramVideoEditing/` adapts eight original
+scrubber, trim, thumbnail and header sources from Telegram-iOS contributors at
+revision `f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838`. Exact official source URLs,
+SHA-256 values and deterministic scoped transformations are recorded in
+`upstream-sources.json`; original Play/Gif/Mute asset provenance is in
+`asset-sources.json`. Selected upstream terms are GPLv3 under the GPL-2.0-or-later
+option, combined with Zoen under AGPLv3 section13. Full GPLv3 text and attribution
+are bundled with the resources. The same directory's `NOTICE.md` records the
+scoped display-link/namespace adaptations and the public AVFoundation player
+and renderer replacement; Telegram's messaging services and converter policy
+are not imported. This integration does not claim the whole video/filter/paint
+engine or delivered GIF metadata parity.

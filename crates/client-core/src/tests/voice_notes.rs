@@ -908,6 +908,7 @@ fn another_author_or_a_removed_author_cannot_deduplicate_an_earlier_note() {
                     text: String::new(),
                     attaches: Some(item),
                     reply: Some(types::ReplyRef::thread(root.id)),
+                    media: None,
                     forwarded: false,
                 },
             )

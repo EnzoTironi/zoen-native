@@ -1,0 +1,32 @@
+{
+  "revision": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "sources": [
+    {
+      "path": "submodules/LegacyComponents/LegacyImages.xcassets/Editor/Play.imageset/ic_editor_play.pdf",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/LegacyImages.xcassets/Editor/Play.imageset/ic_editor_play.pdf",
+      "sha256": "67699ecc05478418245885b1ce833ec2d9fd50faa0453c25497cd08ecc703e10",
+      "bytes": 3993,
+      "output": "Resources/Play.pdf"
+    },
+    {
+      "path": "submodules/LegacyComponents/LegacyImages.xcassets/Editor/Gif.imageset/ic_gif.pdf",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/LegacyImages.xcassets/Editor/Gif.imageset/ic_gif.pdf",
+      "sha256": "90a8d54739f24e98743bdd64ca6e51b844e14ca6c0b22d098fe3ca710b568705",
+      "bytes": 4446,
+      "output": "Resources/Gif.pdf"
+    },
+    {
+      "path": "submodules/LegacyComponents/Resources/LegacyComponentsResources.bundle/PhotoEditorMute@2x.png",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/LegacyComponents/Resources/LegacyComponentsResources.bundle/PhotoEditorMute%402x.png",
+      "sha256": "48e6440532d67d3d941e6d2cae07e03d94a37c2a4df2eae2472949fd1f932e5d",
+      "bytes": 845,
+      "output": "Resources/Mute@2x.png"
+    },
+    {
+      "source": "LICENSES/GPL-3.0.txt",
+      "sha256": "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0",
+      "bytes": 34674,
+      "output": "Resources/Notices/GPL-3.0.txt"
+    }
+  ]
+}

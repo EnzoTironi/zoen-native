@@ -1,0 +1,90 @@
+import AVFoundation
+import CryptoKit
+import Foundation
+
+@main struct RendererProof {
+  static func main() async throws {
+    let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+    let source = root.appendingPathComponent("source.mp4")
+    let sourceBytes = try Data(contentsOf: source)
+    let sourceDigest = SHA256.hash(data: sourceBytes)
+    let asset = AVURLAsset(url: source)
+    let limit: UInt64 = 64 * 1024 * 1024
+    let selected = CMTimeRange(start: CMTime(value: 7, timescale: 10), duration: CMTime(value: 12, timescale: 10))
+    var passed: [String] = []
+    var observations: [[String: Any]] = []
+    func require(_ value: Bool, _ label: String) throws {
+      guard value else { throw NSError(domain: "RendererProof", code: 1, userInfo: [NSLocalizedDescriptionKey: label]) }
+      passed.append(label)
+    }
+    func path(_ name: String) -> URL { root.appendingPathComponent(name + ".mp4") }
+    let normal = try await ZoenTelegramVideoRenderer.render(asset: asset, range: selected, sendAsGif: false,
+      destination: path("trim-audio"), maximumBytes: limit)
+    try require(abs(normal.duration.seconds - 1.2) <= 1.0 / 30.0, "trim exports selected actual duration")
+    try require(normal.hasAudio, "normal trim preserves audio track")
+    try require(normal.dimensions == CGSize(width: 160, height: 120), "trim preserves actual display dimensions")
+    observations.append(["file": "trim-audio.mp4", "duration": normal.duration.seconds, "bytes": normal.bytes, "audio": normal.hasAudio])
+    let silent = try await ZoenTelegramVideoRenderer.render(asset: asset, range: selected, sendAsGif: true,
+      destination: path("trim-silent"), maximumBytes: limit)
+    try require(!silent.hasAudio, "sendAsGif removes actual audio track")
+    try require(abs(silent.duration.seconds - 1.2) <= 1.0 / 30.0, "silent export preserves selected duration")
+    observations.append(["file": "trim-silent.mp4", "duration": silent.duration.seconds, "bytes": silent.bytes, "audio": silent.hasAudio])
+    let silentAgain = try await ZoenTelegramVideoRenderer.render(asset: AVURLAsset(url: path("trim-silent")),
+      range: CMTimeRange(start: .zero, duration: silent.duration), sendAsGif: false,
+      destination: path("source-no-audio"), maximumBytes: limit)
+    try require(!silentAgain.hasAudio, "source without audio remains valid")
+    let invalid: [(String, CMTimeRange)] = [
+      ("negative", CMTimeRange(start: CMTime(value: -1, timescale: 1), duration: CMTime(value: 1, timescale: 1))),
+      ("past-end", CMTimeRange(start: .zero, duration: CMTime(value: 100, timescale: 1))),
+      ("empty", CMTimeRange(start: .zero, duration: .zero)),
+      ("indefinite", CMTimeRange(start: .zero, duration: .indefinite))
+    ]
+    for (name, range) in invalid {
+      do {
+        _ = try await ZoenTelegramVideoRenderer.render(asset: asset, range: range, sendAsGif: false, destination: path(name), maximumBytes: limit)
+        throw NSError(domain: "RendererProof", code: 2)
+      } catch ZoenTelegramVideoFailure.invalidRange {
+        try require(!FileManager.default.fileExists(atPath: path(name).path), name + " rejected before output")
+      }
+    }
+    let existing = path("existing")
+    let sentinel = Data("canonical-owner-existing-bytes".utf8)
+    try sentinel.write(to: existing)
+    do {
+      _ = try await ZoenTelegramVideoRenderer.render(asset: asset, range: selected, sendAsGif: false, destination: existing, maximumBytes: limit)
+      throw NSError(domain: "RendererProof", code: 3)
+    } catch ZoenTelegramVideoFailure.destination {
+      try require(try Data(contentsOf: existing) == sentinel, "existing destination is never overwritten or removed")
+    }
+    let cancelled = Task {
+      _ = try await ZoenTelegramVideoRenderer.render(asset: asset, range: selected, sendAsGif: false, destination: path("cancelled"), maximumBytes: limit)
+    }
+    cancelled.cancel()
+    do { try await cancelled.value; throw NSError(domain: "RendererProof", code: 4) }
+    catch is CancellationError {
+      try require(!FileManager.default.fileExists(atPath: path("cancelled").path), "cancelled admission creates no output")
+    }
+    let tooLarge = path("over-budget")
+    do {
+      _ = try await ZoenTelegramVideoRenderer.render(asset: asset, range: selected, sendAsGif: false, destination: tooLarge, maximumBytes: 1)
+      throw NSError(domain: "RendererProof", code: 5)
+    } catch ZoenTelegramVideoFailure.tooLarge {
+      try require(FileManager.default.fileExists(atPath: tooLarge.path), "failed output stays with canonical cleanup owner")
+      try FileManager.default.removeItem(at: tooLarge)
+      try require(!FileManager.default.fileExists(atPath: tooLarge.path), "canonical owner removes failed partial output")
+    }
+    let audioOnly = AVURLAsset(url: root.appendingPathComponent("audio.m4a"))
+    do {
+      _ = try await ZoenTelegramVideoRenderer.render(asset: audioOnly, range: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 1)), sendAsGif: false,
+        destination: path("audio-only"), maximumBytes: limit)
+      throw NSError(domain: "RendererProof", code: 6)
+    } catch ZoenTelegramVideoFailure.unavailable {
+      try require(!FileManager.default.fileExists(atPath: path("audio-only").path), "nonvideo asset rejected before output")
+    }
+    try require(SHA256.hash(data: Data(contentsOf: source)) == sourceDigest, "source bytes unchanged across success and failure")
+    let output: [String: Any] = ["platform": "host-macOS AVFoundation", "isIOSUIProof": false,
+      "passed": passed, "count": passed.count, "observations": observations,
+      "limits": ["No iOS simulator/device, gallery gesture, hardware media or canonical Rust CAS execution in this harness."]]
+    print(String(data: try JSONSerialization.data(withJSONObject: output, options: [.prettyPrinted, .sortedKeys]), encoding: .utf8)!)
+  }
+}

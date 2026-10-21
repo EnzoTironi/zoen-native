@@ -327,6 +327,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
                     ),
                     attaches: None,
                     reply,
+                    media: None,
                     forwarded: i == 3,
                 },
             );
@@ -395,6 +396,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
                     text: "Rota atualizada 🧭\nPreservar legenda".into(),
                     attaches: Some(FILE.into()),
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             );
@@ -430,6 +432,7 @@ fn canonical_backup_restores_every_row_and_projection_across_new_device_and_cold
             text: "Unsent on the original device".into(),
             attaches: None,
             reply: None,
+            media: None,
             forwarded: false,
         },
     );

@@ -2678,6 +2678,7 @@ mod tests {
                     text: "Waiting for the next commit".into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             )
@@ -2753,6 +2754,7 @@ mod tests {
                 text: "Still pending".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         );
@@ -2938,6 +2940,7 @@ mod tests {
                         text: format!("page-{i}"),
                         attaches: None,
                         reply: None,
+                        media: None,
                         forwarded: false,
                     },
                 )
@@ -3126,6 +3129,7 @@ mod tests {
                             text: format!("page-{i}"),
                             attaches: None,
                             reply: None,
+                            media: None,
                             forwarded: false,
                         },
                     )
@@ -3142,6 +3146,7 @@ mod tests {
                     text: "other-space".into(),
                     attaches: None,
                     reply: None,
+                    media: None,
                     forwarded: false,
                 },
             )
@@ -3224,6 +3229,7 @@ mod tests {
             text: text.into(),
             attaches: None,
             reply: None,
+            media: None,
             forwarded: false,
         }
     }

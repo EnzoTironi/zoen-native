@@ -75,7 +75,7 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
       <div className={`zm-bubble${entry.deleted ? ' zm-deleted' : ''}${entry.file && !entry.deleted ? ` zm-media zm-media-${kindOf(entry.file.mime)}` : ''}`}>
         {entry.forwarded && !entry.deleted ? <span className="zm-forwarded">Encaminhada</span> : null}
         {entry.quote && !entry.deleted ? <span className="zm-quote"><b>{entry.quote.name || 'Mensagem'}</b>{entry.quote.text || 'Mensagem apagada'}</span> : null}
-        {entry.file && !entry.deleted ? <FileView file={entry.file} messages={messages} /> : null}
+        {entry.file && !entry.deleted ? <FileView file={entry.file} messages={messages} presentation={entry.media?.presentation} /> : null}
         {entry.deleted || entry.text || !entry.file ? <span className="zm-text">{entry.deleted ? 'Mensagem apagada' : entry.text}</span> : null}
         <span className="zm-meta">{entry.edited && !entry.deleted ? 'editada · ' : ''}<time dateTime={new Date(entry.at_ms).toISOString()}>{time(entry.at_ms)}</time>{own ? <Ticks state={state} /> : null}</span>
       </div>

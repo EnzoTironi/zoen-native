@@ -1012,7 +1012,10 @@ private actor ZoenSession {
     draftMediaEdits[token] = DraftMediaEditBinding(engine: engine, generation: generation, scope: value.scope,
       kind: kind, gate: gate, revision: revision, assetId: assetId, mutationId: mutationId, sha256: asset.sha256)
     let preview = filePreview
-    let edit = ZoenFilePreview.MediaEditContext(kind: kind, maximumBytes: ZoenMediaFiles.maximumBytes) { [weak self] file in
+    let edit = ZoenFilePreview.MediaEditContext(kind: kind, maximumBytes: ZoenMediaFiles.maximumBytes, authorize: { [weak self] in
+      guard let self else { throw CancellationError() }
+      try await self.authorizeDraftMediaEdit(token)
+    }) { [weak self] file in
       guard let self else { throw CancellationError() }
       try await self.saveDraftMediaEdit(file, token: token)
     }
@@ -1022,6 +1025,8 @@ private actor ZoenSession {
       try await preview.open(id: id, title: asset.name, edit: nil, mediaEdit: edit) { editing in
         if kind == .image, let editing {
           ZoenAttachmentPhotoEditor(presenter: presenter, editing: editing)
+        } else if kind == .video, let editing {
+          ZoenAttachmentVideoEditor(presenter: presenter, editing: editing)
         } else {
           ZoenQuickLookPreview(presenter: presenter, editing: editing)
         }
@@ -1036,6 +1041,25 @@ private actor ZoenSession {
     guard self.core === engine else { throw SessionError.closed }
     _ = try mediaDraftCore(value.scope)
     return try ZoenMediaFiles.json(ZoenMediaDraftBridge.object(engine.mediaDraft(scope: value.scope.core)))
+  }
+
+  /// Render checkpoints consult the same exact canonical selection that owns
+  /// the CAS; a renamed/reordered/replaced item is never silently rebound.
+  private func authorizeDraftMediaEdit(_ token: UUID) throws {
+    guard let binding = draftMediaEdits[token], !erasing, !closing,
+          generation == binding.generation, self.core === binding.engine else { throw SessionError.closed }
+    _ = try mediaDraftCore(binding.scope)
+    try binding.gate.admitted {
+      let draft = try binding.engine.mediaDraft(scope: binding.scope.core)
+      guard draft.revision == binding.revision, !draft.attempted, binding.attempt == nil,
+            let content = try ZoenMediaDraftBridge.content(draft.contentJson),
+            content["kind"] as? String == "attachments",
+            let entries = content["items"] as? [[String: Any]],
+            entries.contains(where: { $0["asset_id"] as? String == binding.assetId && $0["mutation_id"] as? String == binding.mutationId }),
+            draft.assets.contains(where: { $0.id == binding.assetId && $0.sha256 == binding.sha256 }) else {
+        throw ZoenFilePreview.Failure.changed
+      }
+    }
   }
 
   private func saveDraftMediaEdit(_ file: ZoenPreviewFile, token: UUID) async throws {

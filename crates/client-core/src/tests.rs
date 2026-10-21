@@ -2171,6 +2171,7 @@ fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
                 text: "não vou mais".into(),
                 attaches: None,
                 reply: None,
+                media: None,
                 forwarded: false,
             },
         ))
@@ -2185,6 +2186,7 @@ fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
             text: "ok, entendi".into(),
             attaches: None,
             reply: None,
+            media: None,
             forwarded: false,
         },
     );

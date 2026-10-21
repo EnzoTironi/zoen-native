@@ -1,6 +1,7 @@
 import type {
   MaterializedMediaDraftAsset,
   MediaDraftAsset,
+  MediaDraftAttachmentOptions,
   MediaDraftContent,
   MediaDraftDto,
   MediaDraftIngest,
@@ -100,7 +101,8 @@ function contentValue(input: unknown): {
   if (!target(raw.reply_to)) invalid();
   let content: MediaDraftContent;
   if (raw.kind === 'attachments') {
-    keys(raw, ['kind', 'reply_to', 'items']);
+    const hasOptions = Object.hasOwn(raw, 'options');
+    keys(raw, ['kind', 'reply_to', 'items', ...(hasOptions ? ['options'] : [])]);
     if (!Array.isArray(raw.items) || !raw.items.length || raw.items.length > 10) invalid();
     const items = raw.items.map((item: unknown) => {
       const entry = object(item);
@@ -111,7 +113,26 @@ function contentValue(input: unknown): {
       return { asset_id: entry.asset_id, caption: entry.caption, mutation_id: entry.mutation_id };
     });
     if (new Set(items.map((item) => item.mutation_id)).size !== items.length) invalid();
-    content = { kind: 'attachments', reply_to: raw.reply_to, items };
+    let options: MediaDraftAttachmentOptions | undefined;
+    if (hasOptions) {
+      const value = object(raw.options);
+      keys(value, ['presentation', 'grouping']);
+      if (
+        (value.presentation !== 'media' && value.presentation !== 'file') ||
+        (value.grouping !== 'separate' && value.grouping !== 'grouped') ||
+        (value.grouping === 'grouped' && items.length < 2)
+      )
+        invalid();
+      // Keep legacy content JSON unchanged so its durable save receipts remain valid.
+      if (value.presentation !== 'media' || value.grouping !== 'separate')
+        options = { presentation: value.presentation, grouping: value.grouping };
+    }
+    content = {
+      kind: 'attachments',
+      reply_to: raw.reply_to,
+      items,
+      ...(options ? { options } : {}),
+    };
   } else if (raw.kind === 'voice') {
     keys(raw, ['kind', 'reply_to', 'source_asset_id', 'editor', 'render']);
     if (!id(raw.source_asset_id)) invalid();

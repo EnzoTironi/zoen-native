@@ -280,11 +280,58 @@ impl Engine {
         self.approval_replay_needed = true;
         let mut order = self.store.space_ids()?;
         let pending = self.store.outbox()?;
+        // These source events stay in the one existing outbox. References below are
+        // display-only recovery facts, never a second durable or writer authority.
+        let sources: HashMap<_, _> = pending
+            .iter()
+            .filter_map(|row| match &row.event.body {
+                EventBody::ItemCreated {
+                    item,
+                    kind: types::ItemKind::File,
+                    ..
+                } => Some((
+                    (
+                        row.event.space.as_str(),
+                        item.as_str(),
+                        row.event.author.as_str(),
+                    ),
+                    &row.event,
+                )),
+                _ => None,
+            })
+            .collect();
+        let mut recovery_sources: HashMap<&str, Vec<(&Event, &Event)>> = HashMap::new();
+        if let Some(local) = self.me.as_deref() {
+            for row in pending.iter().filter(|row| row.failed) {
+                if let EventBody::MessagePosted {
+                    attaches: Some(item),
+                    media: Some(_),
+                    ..
+                } = &row.event.body
+                {
+                    if let Some(source) =
+                        sources.get(&(row.event.space.as_str(), item.as_str(), local))
+                    {
+                        recovery_sources
+                            .entry(row.event.space.as_str())
+                            .or_default()
+                            .push((&row.event, source));
+                    }
+                }
+            }
+        }
         let mut projections = HashMap::new();
         let mut confirmed = HashSet::new();
         let mut plans = PlanReplay::new(&self.store, &self.logs);
         for space in &order {
             let mut scoped = State::default();
+            if let (Some(local), Some(recovery)) =
+                (self.me.as_deref(), recovery_sources.get(space.as_str()))
+            {
+                for (event, source) in recovery {
+                    scoped.reserve_failed_attachment(event, local, source);
+                }
+            }
             if let Some(log) = self.logs.get(space) {
                 for (end, e) in log.events().iter().enumerate() {
                     confirmed.insert((e.space.clone(), e.client_id.clone()));
@@ -299,8 +346,8 @@ impl Engine {
             projections.insert(space.clone(), scoped);
         }
         let mut optimistic = HashSet::new();
-        for p in pending {
-            let e = p.event;
+        for p in &pending {
+            let e = &p.event;
             if confirmed.contains(&(e.space.clone(), e.client_id.clone())) {
                 continue;
             }
@@ -311,7 +358,22 @@ impl Engine {
                         .is_some_and(|scoped| scoped.spaces.contains_key(&e.space))
                 {
                     let scoped = projections.get_mut(&e.space).expect("checked above");
-                    if matches!(e.body, EventBody::MessagePosted { .. }) {
+                    if let EventBody::MessagePosted {
+                        attaches: Some(item),
+                        media: Some(_),
+                        ..
+                    } = &e.body
+                    {
+                        if let Some(local) = self.me.as_deref() {
+                            scoped.retain_failed_attachment(
+                                &e,
+                                local,
+                                sources
+                                    .get(&(e.space.as_str(), item.as_str(), local))
+                                    .copied(),
+                            );
+                        }
+                    } else if matches!(e.body, EventBody::MessagePosted { .. }) {
                         let context = plans.pending(scoped, &self.identities, &e)?;
                         scoped.apply_checked(&e, &self.identities, &context);
                     } else {
