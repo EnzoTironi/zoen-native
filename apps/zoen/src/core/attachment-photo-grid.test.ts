@@ -7,6 +7,11 @@ import { AttachmentPhotoSession } from '../media/attachment-photo-session.ts';
 import type { PhotoPickerSubmission } from '../media/attachment-photo-session';
 import type { PhotoLibraryItem } from '../media/attachment-photo-library';
 import type { AttachmentAsset } from '../media/attachment-draft';
+import {
+  AttachmentRecentSession,
+  recentAttachmentId,
+  type RecentAttachmentConfiguration,
+} from '../media/attachment-recent-session.ts';
 
 type Tree = { type: unknown; props: Record<string, any> };
 type Slot = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
@@ -140,7 +145,7 @@ type Hook = {
   preferredUri(): string | null;
   cancel(): void;
 };
-function fixture() {
+function fixture(recentConfiguration?: RecentAttachmentConfiguration) {
   let serial = 0,
     current = true,
     width = 402,
@@ -155,6 +160,8 @@ function fixture() {
     copies: string[][] = [],
     discarded: string[] = [];
   const nativePorts: Record<string, unknown> = {
+    './attachment-recent-session': { AttachmentRecentSession, recentAttachmentId },
+    '../../modules/zoen-core/src/ZoenCoreModule': { releaseLocalFile: async () => {} },
     'expo-crypto': { randomUUID: () => `standalone-${++serial}` },
     expo: { requireNativeView: (_module: string, name: string) => name },
     'react-native': {
@@ -230,15 +237,17 @@ function fixture() {
     './attachment-keyboard-context': { useAttachmentKeyboardSession: () => null },
     './attachment-photo-keyboard.ios': { AttachmentPhotoKeyboard: 'AttachmentPhotoKeyboard' },
   });
-  const usePicker = hookRuntime.load(hookCode).useAttachmentPhotoPicker as () => Hook;
+  const usePicker = hookRuntime.load(hookCode).useAttachmentPhotoPicker as (
+    configuration?: RecentAttachmentConfiguration,
+  ) => Hook;
   const panelRuntime = runtime(nativePorts);
   panelRuntime.values['./keyboard-panel-native.ios'] = panelRuntime.load(bindingCode);
   const component = panelRuntime.load(panelCode).AttachmentPhotoKeyboard as (
     props: Record<string, any>,
   ) => Tree;
-  let hook = hookRuntime.render(usePicker);
+  let hook = hookRuntime.render(() => usePicker(recentConfiguration));
   const renderHook = () => {
-    hook = hookRuntime.render(usePicker);
+    hook = hookRuntime.render(() => usePicker(recentConfiguration));
     return hook;
   };
   const panel = () => {
@@ -457,5 +466,68 @@ test('background cancels the standalone request and removes Photos observation w
   await f.close(tree);
   assert.deepEqual(f.copies, []);
   assert.deepEqual(f.calls, []);
+  f.unmount();
+});
+
+test('route retirement cancels an in-flight recent preview immediately without waiting for unchanged photo token', async () => {
+  let signal: AbortSignal | null = null;
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const row = {
+    reference: {
+      space_id: 'source',
+      message_id: 'message',
+      item_id: 'item',
+      version: 1,
+      sha256: 'a'.repeat(64),
+    },
+    name: 'file.pdf',
+    mime: 'application/pdf',
+    bytes: '12',
+    at_ms: '10',
+    author_title: 'Author',
+    space_title: 'Source',
+    ready: true,
+  };
+  const f = fixture({
+    scope: {
+      expected_identity_id: 'account',
+      expected_device_id: 'device',
+      space_id: 'space',
+      thread_root_id: null,
+    },
+    port: {
+      list: async () => ({ items: [row], next_cursor: null }),
+      materialize: async () => {
+        throw new Error('Preview cannot select');
+      },
+      release: async () => {},
+      preview: async (_scope, _kind, _reference, value) => {
+        signal = value;
+        await pending;
+      },
+    },
+  });
+  const result = f.pick();
+  await tick();
+  f.act(f.panel(), 'category', 'document');
+  f.panel();
+  await tick();
+  const files = f.panel();
+  f.act(files, 'recentPreview', recentAttachmentId(row));
+  f.close(files);
+  await tick();
+  assert.ok(signal);
+  assert.equal((signal as AbortSignal).aborted, false);
+  // Native removal already set visible=false. Blur must cancel directly, even
+  // though the busy PhotoSession retains its same token/category until drain.
+  f.retire();
+  assert.equal((signal as AbortSignal).aborted, true);
+  finish();
+  await tick();
+  assert.deepEqual(await result, []);
+  assert.equal(f.renderHook().view, null);
   f.unmount();
 });

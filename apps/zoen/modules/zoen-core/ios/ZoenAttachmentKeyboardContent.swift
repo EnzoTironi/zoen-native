@@ -25,7 +25,7 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     if activeCategory != "photos" { return fileLanding.scrollView }
     return grid
   }
-  var attachmentHasKeyboardFocus: Bool { caption.isFirstResponder || (galleryVisible && gallery.hasKeyboardFocus) }
+  var attachmentHasKeyboardFocus: Bool { caption.isFirstResponder || (galleryVisible && gallery.hasKeyboardFocus) || (activeCategory != "photos" && fileLanding.hasKeyboardFocus) }
   var attachmentHandlesVerticalGesture: Bool { screen == "preview" || screen == "albums" }
   var attachmentPrefersFullScreen: Bool { screen == "preview" }
   var attachmentDidBeginEditing: (() -> Void)?
@@ -73,10 +73,11 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
   private lazy var albumMenu = ZoenAttachmentAlbumMenu(select: { [weak self] id in
     self?.emit("album", id: id)
   }, dismiss: { [weak self] in self?.emit("back") }, details: { [weak self] id in self?.emit("albumDetails", id: id) })
-  private lazy var fileLanding = AttachmentFileLandingView { [weak self] in
-    guard let self, self.activeCategory == "document" || self.activeCategory == "audio" else { return }
-    self.emit(self.activeCategory)
+  private lazy var fileLanding = ZoenAttachmentFileContent { [weak self] action, payload in
+    guard let self, !self.retired, !self.busy, self.activeCategory != "photos" else { return }
+    self.send(action, payload)
   }
+  private var recentSelected: [String] = []
   private var items: [[String: Any]] = []
   private var selected: [String] = []
   private var labels: [String: String] = [:]
@@ -162,9 +163,14 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     sendButton.setImage(ZoenTelegramAttachmentGlyph.image(.send), for: .normal)
     sendButton.layer.cornerRadius = 22; sendButton.accessibilityIdentifier = "attachment-send"
     sendButton.addAction(UIAction { [weak self] _ in
-      guard let self, !self.retired, !self.busy, !self.captionSending, !self.selected.isEmpty, self.captionEnabled,
+      guard let self, !self.retired, !self.busy, !self.captionSending,
+            (self.activeCategory == "photos" ? !self.selected.isEmpty : !self.recentSelected.isEmpty), self.captionEnabled,
             self.caption.text.utf16.count <= 4096, !self.caption.text.contains("\0") else { return }
-      self.send("send", ["text": self.caption.text ?? ""])
+      self.send(self.activeCategory == "photos" ? "send" : "recentSend", ["text": self.caption.text ?? ""])
+    }, for: .touchUpInside)
+    review.addAction(UIAction { [weak self] _ in
+      guard let self, !self.retired, !self.busy, self.activeCategory != "photos", self.fileLanding.searchAvailable else { return }
+      self.send("recentSearch", [:])
     }, for: .touchUpInside)
     countLabel.font = .systemFont(ofSize: 11, weight: .semibold); countLabel.textAlignment = .center
     countLabel.layer.cornerRadius = 9; countLabel.clipsToBounds = true
@@ -190,7 +196,8 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
       self?.grid.visibleCells.compactMap { $0 as? PhotoCell }.first(where: { $0.identifier == id })?.transitionView
     }
     root.addSubview(albumMenu)
-    root.insertSubview(fileLanding, aboveSubview: grid)
+    root.insertSubview(fileLanding.view, aboveSubview: grid)
+    fileLanding.didBeginEditing = { [weak self] in self?.attachmentDidBeginEditing?() }
     gallery.didBeginEditing = { [weak self] in self?.attachmentDidBeginEditing?() }
     manage.titleLabel?.font = .systemFont(ofSize: 14)
     manage.addAction(UIAction { [weak self] _ in self?.emit("manage") }, for: .touchUpInside)
@@ -292,8 +299,21 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     captionBackground.update(isDark: isDark, cornerRadius: 22)
     headerLeftSurface.update(isDark: isDark, cornerRadius: 22)
     headerRightSurface.update(isDark: isDark, cornerRadius: 22)
+    try fileLanding.update(model: model, appearance: appearance)
+    fileLanding.setVisible(activeCategory != "photos" && !galleryVisible)
+    recentSelected = (model["recent"] as? [String: Any])?["selected"] as? [String] ?? []
     try updateCaption(model["caption"] as? [String: Any])
-    fileLanding.update(labels: labels, appearance: appearance, enabled: !busy, visible: activeCategory != "photos" && !galleryVisible)
+    if activeCategory != "photos" {
+      review.menu = nil; review.showsMenuAsPrimaryAction = false
+      review.setImage(ZoenTelegramFileVisuals.searchIcon(), for: .normal)
+      review.accessibilityLabel = labels["search"]
+      review.isEnabled = !busy && fileLanding.searchAvailable
+      review.isHidden = !fileLanding.searchAvailable
+      headerRightSurface.isHidden = !fileLanding.searchAvailable
+    } else {
+      review.showsMenuAsPrimaryAction = true
+      review.setImage(ZoenTelegramAttachmentGlyph.image(.more), for: .normal)
+    }
     rebuildCategories(model["categories"] as? [[String: String]])
     if galleryVisible {
       var galleryModel = model; galleryModel["source"] = "photos"
@@ -313,7 +333,7 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
       albumMenu.isHidden = screen != "albums"
       UIAccessibility.post(notification: .layoutChanged, argument: galleryVisible ? gallery.view : (screen == "albums" ? albumMenu : header))
     }
-    let nextSelecting = !selected.isEmpty
+    let nextSelecting = activeCategory == "photos" ? !selected.isEmpty : !recentSelected.isEmpty
     if selecting != nextSelecting {
       selecting = nextSelecting
       if !selecting { caption.resignFirstResponder() }
@@ -332,6 +352,9 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
       }
     }
     reflow()
+    if activeCategory != "photos" && fileLanding.searching {
+      DispatchQueue.main.async { [weak self] in self?.fileLanding.focusSearch() }
+    }
     if screenChanged { attachmentPresentationChanged?() }
   }
 
@@ -352,8 +375,9 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     caption.textColor = appearance?.text; caption.tintColor = appearance?.accent
     captionPlaceholder.textColor = appearance?.secondary; captionPlaceholder.isHidden = !caption.text.isEmpty
     sendButton.backgroundColor = appearance?.accent; sendButton.tintColor = .white
-    sendButton.isEnabled = !busy && !captionSending && !selected.isEmpty
-    countLabel.text = String(selected.count); countLabel.backgroundColor = appearance?.background; countLabel.textColor = appearance?.accent
+    let selectedCount = activeCategory == "photos" ? selected.count : recentSelected.count
+    sendButton.isEnabled = !busy && !captionSending && selectedCount > 0
+    countLabel.text = String(selectedCount); countLabel.backgroundColor = appearance?.background; countLabel.textColor = appearance?.accent
   }
 
   private func rebuildCategories(_ supplied: [[String: String]]?) {
@@ -431,7 +455,7 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     gallery.view.frame = root.bounds
     gallery.view.isHidden = !galleryVisible
     if galleryVisible {
-      for view in [grid, fileLanding, header, footer, captionPanel, manage, message, settings, retry, activity] { view.isHidden = true }
+      for view in [grid, fileLanding.view, header, footer, captionPanel, manage, message, settings, retry, activity] { view.isHidden = true }
       albumMenu.isHidden = true
       cameraPreview.setRunning(false)
       return
@@ -506,9 +530,12 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
       captionPanel.isHidden = !selecting || !captionEnabled; footer.isHidden = selecting && captionEnabled
     }
     let footerTop = selecting && captionEnabled ? captionPanel.frame.minY : footer.frame.minY
-    fileLanding.frame = root.bounds
-    fileLanding.isHidden = activeCategory == "photos"
-    fileLanding.updateLayout(navigationHeight: headerHeight, bottomInset: max(0, height - footerTop), safeArea: safeArea)
+    fileLanding.view.frame = root.bounds
+    fileLanding.view.isHidden = activeCategory == "photos"
+    fileLanding.updateLayout(navigationHeight: headerHeight, bottomInset: max(0, height - footerTop, fileLanding.searching ? keyboardHeight : 0), safeArea: safeArea)
+    if activeCategory != "photos" && fileLanding.searching {
+      header.isHidden = true; footer.isHidden = true; captionPanel.isHidden = true
+    }
     footer.isUserInteractionEnabled = screen != "albums"
     captionPanel.isUserInteractionEnabled = screen != "albums"
     grid.contentInset.bottom = max(0, height - footerTop + 12); grid.verticalScrollIndicatorInsets.bottom = grid.contentInset.bottom
@@ -683,82 +710,6 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
     cameraPreview.retire(completion: completion)
   }
   private enum Failure: Error { case invalid }
-}
-
-// AttachmentFileController.swift:313–351, 885–926 and
-// AttachmentFileEmptyItem.swift:120–168. Recent-file indexing remains a Zoen
-// adapter capability; this real empty state retains the working Files action.
-@MainActor
-private final class AttachmentFileLandingView: UIView {
-  let scrollView = UIScrollView()
-  private let browse = UIButton(type: .custom)
-  private let icon = UIImageView(image: ZoenTelegramAttachmentGlyph.image(.cloud))
-  private let title = UILabel()
-  private let intro = ZoenTelegramAttachmentFileIntroView(frame: .zero)
-  private let explanation = UILabel()
-  private let open: () -> Void
-  private var retired = false
-
-  var animatedViews: [UIView] { [self, scrollView, browse, icon, title, intro, explanation] }
-  init(open: @escaping () -> Void) {
-    self.open = open
-    super.init(frame: .zero)
-    isHidden = true
-    addSubview(scrollView)
-    scrollView.accessibilityIdentifier = "attachment-file-list"
-    scrollView.contentInsetAdjustmentBehavior = .never
-    scrollView.showsVerticalScrollIndicator = false
-    scrollView.keyboardDismissMode = .onDrag
-    scrollView.addSubview(browse)
-    browse.addSubview(icon); browse.addSubview(title)
-    browse.layer.cornerRadius = 26; browse.layer.cornerCurve = .continuous
-    browse.accessibilityIdentifier = "attachment-file-browse"
-    browse.addAction(UIAction { [weak self] _ in
-      guard let self, !self.retired, self.browse.isEnabled else { return }
-      self.open()
-    }, for: .touchUpInside)
-    title.font = .systemFont(ofSize: 17)
-    title.isUserInteractionEnabled = false
-    explanation.font = .systemFont(ofSize: 15)
-    explanation.numberOfLines = 0; explanation.textAlignment = .center
-    explanation.isUserInteractionEnabled = false
-    for child in [intro, explanation] { scrollView.addSubview(child) }
-  }
-  required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
-  func update(labels: [String: String], appearance: ZoenKeyboardPanelAppearance, enabled: Bool, visible: Bool) {
-    guard !retired else { return }
-    title.text = labels["browseFiles"]
-    browse.accessibilityLabel = title.text
-    browse.isEnabled = enabled
-    title.textColor = appearance.accent; icon.tintColor = appearance.accent
-    browse.backgroundColor = appearance.text.withAlphaComponent(appearance.isDark ? 0.06 : 0.035)
-    explanation.text = labels["filesIntro"]?.replacingOccurrences(of: "\n", with: " ")
-    explanation.textColor = appearance.secondary
-    intro.setVisible(visible)
-  }
-  func updateLayout(navigationHeight: CGFloat, bottomInset: CGFloat, safeArea: UIEdgeInsets) {
-    scrollView.frame = bounds
-    let left = safeArea.left + 16, right = safeArea.right + 16
-    let rowHeight = title.font.lineHeight + 30
-    browse.frame = CGRect(x: left, y: navigationHeight + 24, width: max(0, bounds.width - left - right), height: rowHeight)
-    let iconSize = icon.image?.size ?? .zero
-    icon.frame = CGRect(x: floor((59 - iconSize.width) / 2) + 1, y: floor((rowHeight - iconSize.height) / 2), width: iconSize.width, height: iconSize.height)
-    title.frame = CGRect(x: 59, y: 15, width: max(0, browse.bounds.width - 59 - 16), height: title.font.lineHeight)
-    var imageSize = CGSize(width: 144, height: 144)
-    var topInset: CGFloat = 120
-    if bounds.width == 320 { imageSize = CGSize(width: 112, height: 112); topInset = -60 }
-    let imageHeight: CGFloat = bounds.width < bounds.height ? imageSize.height + 12 : 0
-    let availableWidth = max(0, bounds.width - safeArea.left - safeArea.right - 40)
-    let textSize = explanation.sizeThatFits(CGSize(width: availableWidth, height: max(1, bounds.height - topInset - bottomInset)))
-    // Source reserves the optional 52pt button geometry even for intro content.
-    let totalHeight = imageHeight + 12 + textSize.height + 15 + 52 + 33
-    let top = topInset + floor((bounds.height - topInset - bottomInset - totalHeight) / 2)
-    intro.isHidden = imageHeight == 0
-    intro.frame = CGRect(x: floor((bounds.width - imageSize.width) / 2), y: top, width: imageSize.width, height: imageSize.height)
-    explanation.frame = CGRect(x: safeArea.left + floor((bounds.width - textSize.width - safeArea.left - safeArea.right) / 2), y: top + imageHeight + 12, width: textSize.width, height: textSize.height)
-    scrollView.contentSize = CGSize(width: bounds.width, height: max(bounds.height, browse.frame.maxY + bottomInset))
-  }
-  func retire() { retired = true; isUserInteractionEnabled = false; intro.retire() }
 }
 
 // AttachmentPanel.AttachButtonComponent:326–432. Explicit icon/title geometry

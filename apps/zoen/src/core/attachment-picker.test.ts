@@ -6,6 +6,7 @@ import type { AttachmentAsset } from '../media/attachment-draft.ts';
 type PickerFixture = {
   cameras: Record<string, unknown>[];
   galleries: Record<string, unknown>[];
+  documents: Record<string, unknown>[];
   permission(): Promise<{ granted: boolean }>;
 };
 const globals = globalThis as typeof globalThis & { __zoenAttachmentPicker?: PickerFixture };
@@ -34,7 +35,7 @@ const output = await build({
               'expo-file-system':
                 'export class File { constructor(uri) { this.uri=uri; this.exists=true; this.size=42; } }',
               'expo-document-picker':
-                'export const getDocumentAsync = async () => ({canceled:true});',
+                'export const getDocumentAsync = async options => { globalThis.__zoenAttachmentPicker.documents.push(options); return {canceled:true}; };',
               '../i18n': 'export const t = key => key;',
               'expo-image-picker': `
             export const requestCameraPermissionsAsync = () => globalThis.__zoenAttachmentPicker.permission();
@@ -61,12 +62,14 @@ const { pickAttachmentAssets } = (await import(
     kind: string,
     remaining: number,
     current: () => boolean,
+    filter?: { mime: 'audio/*' },
   ): Promise<AttachmentAsset[]>;
 };
 function fixture() {
   const value: PickerFixture = {
     cameras: [],
     galleries: [],
+    documents: [],
     permission: async () => ({ granted: true }),
   };
   globals.__zoenAttachmentPicker = value;
@@ -111,4 +114,14 @@ test('gallery retains ordered multi-selection and the remaining batch limit', as
       exif: false,
     },
   ]);
+});
+
+test('Audio Browse applies the SDK58 MIME filter without invoking camera or gallery', async () => {
+  const f = fixture();
+  await pickAttachmentAssets('document', 3, () => true, { mime: 'audio/*' });
+  assert.deepEqual(f.documents, [
+    { copyToCacheDirectory: true, multiple: true, type: 'audio/*', base64: false },
+  ]);
+  assert.deepEqual(f.cameras, []);
+  assert.deepEqual(f.galleries, []);
 });

@@ -107,3 +107,20 @@ scoped display-link/namespace adaptations and the public AVFoundation player
 and renderer replacement; Telegram's messaging services and converter policy
 are not imported. This integration does not claim the whole video/filter/paint
 engine or delivered GIF metadata parity.
+
+## Telegram iOS File and Audio attachment list
+
+`apps/zoen/modules/zoen-core/ios/TelegramFileAttachment/` adapts original
+`AttachmentFileController`, `AttachmentFileSearchItem`, `AttachmentFileEmptyItem`,
+`ListMessageFileItemNode`, `ItemListPeerActionItem`, `ItemListSectionHeaderItem`
+and `ItemListSelectableControlNode` geometry/conditions and the original Search
+PDF from Telegram-iOS contributors at revision
+`f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838`. Exact source URLs, SHA256 values,
+ranges and adaptations are retained in that folder's source/asset manifests.
+The upstream GPL-2.0-or-later option is retained and GPLv3 selected, combined
+with Zoen under AGPLv3 section 13. Full selected terms are bundled at
+`TelegramFileAttachment/Resources/Notices/Telegram-GPL-3.0.txt` and retained in
+`LICENSES/GPL-3.0.txt` and root `LICENSE`. The authorized query, file transport,
+preview and encrypted draft authority belong to Zoen. No Telegram account,
+Postbox store, profile music or remote music provider is imported. This is a
+bounded UIKit adaptation, not a full controller or runtime pixel-parity claim.

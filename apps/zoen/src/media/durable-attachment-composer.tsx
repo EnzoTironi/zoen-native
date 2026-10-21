@@ -52,7 +52,14 @@ export function useDurableAttachmentComposer(
   channel: MediaDraftChannel | null,
 ) {
   const { store, snapshot } = useClient();
-  const photos = useAttachmentPhotoPicker();
+  const recentConfiguration = useMemo(
+    () =>
+      channel && store.driver.media?.recentAttachments
+        ? { scope: channel.scope, port: store.driver.media.recentAttachments }
+        : undefined,
+    [channel, store],
+  );
+  const photos = useAttachmentPhotoPicker(recentConfiguration);
   const cancelPhotos = photos.cancel;
   const { colors } = useTheme();
   const state = useSyncExternalStore(
@@ -446,7 +453,10 @@ export function useDurableAttachmentComposer(
         for (const asset of additions)
           runtime.previews.set(asset.id, {
             ...asset,
-            release: async () => discardCacheCopy(asset.uri),
+            release: async () => {
+              await store.driver.media?.releaseLocalFile(asset.uri);
+              discardCacheCopy(asset.uri);
+            },
           });
         delegated = true;
         const preferred = kind === 'photo' ? photos.preferredUri?.() : null;
@@ -483,6 +493,7 @@ export function useDurableAttachmentComposer(
       if (!delegated)
         for (const asset of selected) {
           try {
+            await store.driver.media?.releaseLocalFile(asset.uri);
             discardCacheCopy(asset.uri);
           } catch (reason) {
             failure(reason);

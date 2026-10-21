@@ -11,6 +11,7 @@ import {
 } from '../media/attachment-photo-session.ts';
 import type { PhotoLibraryItem } from '../media/attachment-photo-library';
 import type { AttachmentAsset } from '../media/attachment-draft';
+import { AttachmentRecentSession, recentAttachmentId } from '../media/attachment-recent-session.ts';
 const compile = async (name: string) =>
   (
     await build({
@@ -60,6 +61,7 @@ const item = (id: string): PhotoLibraryItem =>
 async function fixture(
   withSubmission = false,
   mediaItems: PhotoLibraryItem[] = [item('a'), item('b'), item('c')],
+  recent?: AttachmentRecentSession,
 ) {
   let sequence = 0,
     slotIndex = 0,
@@ -131,6 +133,8 @@ async function fixture(
     !!a && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   const jsx = (type: unknown, props: Record<string, any>) => ({ type, props });
   const ports: Record<string, unknown> = {
+    './attachment-recent-session': { AttachmentRecentSession, recentAttachmentId },
+    '../../modules/zoen-core/src/ZoenCoreModule': { releaseLocalFile: async () => {} },
     react: {
       useSyncExternalStore: (_s: unknown, get: () => unknown) => get(),
       useState: (initial: unknown) => {
@@ -213,6 +217,7 @@ async function fixture(
       session: photos,
       keyboard,
       request,
+      ...(recent ? { recent: { session: recent, state: recent.getSnapshot() } } : {}),
       onPreferredIndex: (value: number | null) => {
         preferred = value;
       },
@@ -709,6 +714,8 @@ test('actual Photos hook subscription retains its initial task owner across a re
   keyboard.bind({ tag: 7, context: 'chat', label: 'Message', placeholder: 'Message' });
   const jsx = (type: unknown, props: Record<string, any>) => ({ type, props });
   const ports: Record<string, unknown> = {
+    './attachment-recent-session': { AttachmentRecentSession, recentAttachmentId },
+    '../../modules/zoen-core/src/ZoenCoreModule': { releaseLocalFile: async () => {} },
     react: {
       useState: (initial: unknown) => {
         const current = slot();
@@ -995,5 +1002,209 @@ test('unsupported Photos video format cannot prepare an edit or fall through to 
   await tick();
   assert.deepEqual(f.submissions, []);
   assert.deepEqual(f.copies, []);
+  f.retire();
+});
+
+const recentScope = {
+  expected_identity_id: 'account',
+  expected_device_id: 'device',
+  space_id: 'space',
+  thread_root_id: null,
+};
+function recentFixture() {
+  const rows = ['a', 'b'].map((id) => ({
+    reference: {
+      space_id: 'source',
+      message_id: id,
+      item_id: `file-${id}`,
+      version: 1,
+      sha256: 'a'.repeat(64),
+    },
+    name: `${id}.pdf`,
+    mime: 'application/pdf',
+    bytes: '12',
+    at_ms: '100',
+    space_title: 'Source',
+    author_title: 'Author',
+    ready: true,
+  }));
+  const materialized: string[] = [],
+    previews: string[] = [],
+    released: string[] = [];
+  let fail = false;
+  const port = {
+    list: async () => ({ items: rows, next_cursor: null }),
+    materialize: async (
+      _scope: unknown,
+      _kind: unknown,
+      reference: (typeof rows)[number]['reference'],
+    ) => {
+      if (fail) throw new Error('Source changed');
+      materialized.push(reference.message_id);
+      return {
+        uri: `file:///native-owned/${reference.message_id}`,
+        name: `${reference.message_id}.pdf`,
+        mime: 'application/pdf',
+        size: 12,
+      };
+    },
+    preview: async (
+      _scope: unknown,
+      _kind: unknown,
+      reference: (typeof rows)[number]['reference'],
+    ) => {
+      previews.push(reference.message_id);
+    },
+    release: async (uri: string) => {
+      released.push(uri);
+    },
+  };
+  return {
+    recent: new AttachmentRecentSession(),
+    port,
+    rows,
+    materialized,
+    previews,
+    released,
+    fail: () => {
+      fail = true;
+    },
+  };
+}
+
+test('real File recent projection sends exact owned copies and final caption only after native removal', async () => {
+  const r = recentFixture(),
+    f = await fixture(true, undefined, r.recent);
+  f.photos.showCategory('document');
+  r.recent.activate({ scope: recentScope, port: r.port }, 'file', 3, () =>
+    f.photos.isCurrent(f.photos.getSnapshot().token),
+  );
+  await tick();
+  const first = f.render(),
+    model = JSON.parse(first.props.model);
+  assert.deepEqual(
+    Array.from(model.fileItems, (row: any) => row.id),
+    r.rows.map(recentAttachmentId),
+  );
+  assert.deepEqual(model.audioItems, []);
+  f.act(first, 'recentSelect', recentAttachmentId(r.rows[1]!));
+  f.act(f.render(), 'recentSelect', recentAttachmentId(r.rows[0]!));
+  const selected = f.render(),
+    selectedModel = JSON.parse(selected.props.model);
+  assert.equal(selectedModel.caption.count, 2);
+  assert.equal(selectedModel.caption.sendEnabled, true);
+  f.act(selected, 'document');
+  assert.equal(
+    f.photos.getSnapshot().visible,
+    true,
+    'Browse cannot drop existing recent selections',
+  );
+  f.act(selected, 'recentSend', undefined, { text: 'Final native caption' });
+  await tick();
+  assert.deepEqual(r.materialized, ['b', 'a']);
+  assert.equal(f.picked(), undefined);
+  assert.equal(f.submission()?.send, true);
+  assert.deepEqual(Array.from(f.submission()?.captions ?? []), ['Final native caption', '']);
+  f.close(selected);
+  await tick();
+  assert.deepEqual(
+    (f.picked() as AttachmentAsset[]).map((file) => file.uri),
+    ['file:///native-owned/b', 'file:///native-owned/a'],
+  );
+  assert.equal(
+    (f.picked() as AttachmentAsset[]).some((file) => 'reference' in file),
+    false,
+  );
+  r.recent.retire();
+  f.retire();
+});
+
+test('failed recent Send cannot leak its submission intent into an ordinary Browse result', async () => {
+  const r = recentFixture(),
+    f = await fixture(true, undefined, r.recent);
+  f.photos.showCategory('document');
+  r.recent.activate({ scope: recentScope, port: r.port }, 'file', 3, () =>
+    f.photos.isCurrent(f.photos.getSnapshot().token),
+  );
+  await tick();
+  r.fail();
+  f.act(f.render(), 'recentOpen', recentAttachmentId(r.rows[0]!));
+  await tick();
+  assert.equal(f.photos.getSnapshot().visible, true);
+  assert.equal(f.submission(), undefined);
+  const browsing = f.render();
+  f.act(browsing, 'document');
+  assert.equal(f.submission()?.send, false);
+  f.close(browsing);
+  await tick();
+  assert.equal((f.picked() as AttachmentAsset[])[0]?.name, 'document.pdf');
+  assert.equal(f.submission()?.send, false);
+  r.recent.retire();
+  f.retire();
+});
+
+test('recent Preview waits for native removal and resumes the same File child without preparing Send', async () => {
+  const r = recentFixture(),
+    f = await fixture(true, undefined, r.recent);
+  f.photos.showCategory('document');
+  r.recent.activate({ scope: recentScope, port: r.port }, 'file', 3, () =>
+    f.photos.isCurrent(f.photos.getSnapshot().token),
+  );
+  await tick();
+  const tree = f.render();
+  f.act(tree, 'recentPreview', recentAttachmentId(r.rows[0]!));
+  assert.deepEqual(r.previews, []);
+  assert.equal(f.photos.getSnapshot().visible, false);
+  f.close(tree);
+  await tick();
+  assert.deepEqual(r.previews, ['a']);
+  assert.equal(f.photos.getSnapshot().visible, true);
+  assert.equal(f.photos.getSnapshot().category, 'document');
+  assert.equal(f.submission(), undefined);
+  assert.deepEqual(r.materialized, []);
+  assert.equal(f.picked(), undefined);
+  assert.equal(f.resumed.length, 1);
+  r.recent.retire();
+  f.retire();
+});
+
+test('recent state revision rejects an old row action after search activation', async () => {
+  const r = recentFixture(),
+    f = await fixture(true, undefined, r.recent);
+  f.photos.showCategory('document');
+  r.recent.activate({ scope: recentScope, port: r.port }, 'file', 3, () =>
+    f.photos.isCurrent(f.photos.getSnapshot().token),
+  );
+  await tick();
+  const old = f.render();
+  f.act(old, 'recentSearch');
+  f.render();
+  f.act(old, 'recentOpen', recentAttachmentId(r.rows[0]!));
+  await tick();
+  assert.deepEqual(r.materialized, []);
+  assert.equal(f.submission(), undefined);
+  r.recent.retire();
+  f.retire();
+});
+
+test('Audio Browse always selects ordinary audio files and never falls back to voice recording', async () => {
+  const f = await fixture(true);
+  f.browseNext(async () => [
+    { uri: 'file:///owned/music.m4a', name: 'music.m4a', mime: 'audio/mp4', size: 12 },
+  ]);
+  f.act(f.render(), 'category', 'audio');
+  const audio = f.render();
+  f.act(audio, 'audio');
+  assert.equal(f.submission()?.send, false);
+  assert.equal(f.photos.getSnapshot().visible, false);
+  f.close(audio);
+  await tick();
+  assert.deepEqual(
+    f.calls.filter((call) => call === 'audio'),
+    [],
+  );
+  assert.equal(f.calls.includes('browse'), true);
+  assert.equal((f.picked() as AttachmentAsset[])[0]?.mime, 'audio/mp4');
+  assert.equal('voiceSourceId' in (f.picked() as AttachmentAsset[])[0]!, false);
   f.retire();
 });

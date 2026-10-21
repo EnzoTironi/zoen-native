@@ -260,8 +260,9 @@ class ZoenKeyboardPanelHost: ExpoView {
             ids.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 2048 && !$0.contains("\0") }) else { return }
       event["ids"] = ids
     }
-    if action == "caption" || action == "send" || action == "edit" {
-      guard owner.attachment != nil, let text = payload["text"] as? String, text.utf16.count <= 4096, !text.contains("\0") else { return }
+    if action == "caption" || action == "send" || action == "edit" || action == "recentSend" || action == "recentQuery" {
+      guard owner.attachment != nil, let text = payload["text"] as? String,
+            text.utf16.count <= (action == "recentQuery" ? 512 : 4096), !text.contains("\0") else { return }
       event["text"] = text
     }
     if let currentRevision { event["revision"] = currentRevision }

@@ -91,6 +91,7 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
   let sendCalls = 0;
   const sendReceipts = new Map<string, { entries: never; draft: MediaDraftDto }>();
   const released: string[] = [],
+    nativeReleased: string[] = [],
     discarded: string[] = [],
     writes: string[] = [],
     sent: string[] = [];
@@ -178,7 +179,14 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
   const coordinator = new PlaybackCoordinator();
   const channel = new MediaDraftChannel(owner, port, () => active);
   const store = {
-    driver: { media: { drafts: port } },
+    driver: {
+      media: {
+        drafts: port,
+        releaseLocalFile: async (uri: string) => {
+          nativeReleased.push(uri);
+        },
+      },
+    },
     subscribe: (listener: () => void) => {
       storeListeners.add(listener);
       return () => storeListeners.delete(listener);
@@ -354,6 +362,7 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     render,
     unmount,
     released,
+    nativeReleased,
     discarded,
     writes,
     sent,
@@ -548,6 +557,7 @@ test('picker completion after route unmount discards only its owned copies and c
   wait.resolve([photo()]);
   await picking;
   await f.channel.flush();
+  assert.deepEqual(f.nativeReleased, [photo().uri]);
   assert.deepEqual(f.discarded, [photo().uri]);
   assert.equal(f.writes.length, 0);
 });
