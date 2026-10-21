@@ -50,3 +50,10 @@ ran. The Native17 integrated batch must execute the relevant UIKit tests and
 repeat Preview/X dismissal, search, sensitive interruption and caption return.
 The pending visual run is required before claiming that the recorded flash is
 absent in the installed app.
+
+The later [Native17 integrated batch](native-media-batch-17-qualification-2026-10-21.md)
+executed Preview/X and outside-cancel in the installed Release app. Independent
+inspection of all 586 captured night-mode frames found populated rows preserved
+through both exits; day-mode outside-cancel also showed no lingering highlight.
+This closes the bounded visual regression, not the unexecuted XCTest or sensitive
+interruption/search/caption acceptance cases above.
