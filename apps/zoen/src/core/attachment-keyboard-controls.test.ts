@@ -44,6 +44,8 @@ function fixture() {
     react: {
       useSyncExternalStore: (_s: unknown, get: () => unknown) => get(),
       useLayoutEffect: (run: () => void) => run(),
+      useRef: (value: unknown) => ({ current: value }),
+      useCallback: (callback: unknown) => callback,
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     '@expo/ui': { Host: 'Host' },

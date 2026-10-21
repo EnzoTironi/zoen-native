@@ -11,11 +11,11 @@ import {
   tint,
 } from '@expo/ui/swift-ui/modifiers';
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
-import { useLayoutEffect, useSyncExternalStore } from 'react';
+import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { useAttachmentKeyboardSession } from './attachment-keyboard-context';
 import { t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
-import type { MediaActionsProps } from './media-actions.types';
+import type { MediaActionsProps, MediaPickKind } from './media-actions.types';
 import { ComposerAction } from '../components/composer-action';
 
 function MediaActionsMenu({ disabled: isDisabled, hasVoiceEditor, onChoose }: MediaActionsProps) {
@@ -66,14 +66,21 @@ const emptyPanel = () => null;
 const subscribeEmptyPanel = () => () => {};
 export function MediaActions(props: MediaActionsProps) {
   const panel = useAttachmentKeyboardSession();
+  const choose = useRef(props.onChoose);
+  useLayoutEffect(() => {
+    choose.current = props.onChoose;
+  }, [props.onChoose]);
+  const dispatch = useCallback((kind: MediaPickKind) => choose.current(kind), []);
   const state = useSyncExternalStore(
     panel?.subscribe ?? subscribeEmptyPanel,
     panel?.getSnapshot ?? emptyPanel,
     panel?.getSnapshot ?? emptyPanel,
   );
   useLayoutEffect(
-    () => panel?.register(props.onChoose, props.hasVoiceEditor, !props.disabled),
-    [panel, props.onChoose, props.hasVoiceEditor, props.disabled],
+    // Callback identity can change on every composer render. Keep one admitted
+    // registration; its committed callback updates without cleanup/publish loops.
+    () => panel?.register(dispatch, props.hasVoiceEditor, !props.disabled),
+    [panel, dispatch, props.hasVoiceEditor, props.disabled],
   );
   if (!panel) return <MediaActionsMenu {...props} />;
   return (
