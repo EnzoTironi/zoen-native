@@ -26,5 +26,5 @@
     "GalleryPagerNode.swift": "20pt edge gap420\u2013424, current\u00b11 window680\u2013716",
     "GalleryControllerNode.swift": "simple animation420\u2013515, vertical dismiss560\u2013610"
   },
-  "adaptation": "UIKit reuses existing gallery content, AVKit playback controls, FilePreview copy owner. No Telegram backend/state/media-manager dependencies imported."
+  "adaptation": "UIKit reuses existing gallery content, original Telegram viewer transport adapted to UIKit/AVPlayerLayer, and FilePreview copy owner. No Telegram backend/state/media-manager dependencies imported. See ios/TelegramConversationVideo/SOURCES.json."
 }

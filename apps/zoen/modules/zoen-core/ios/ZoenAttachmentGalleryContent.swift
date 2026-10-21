@@ -1,4 +1,4 @@
-import AVKit
+import AVFoundation
 import ImageIO
 import Photos
 import UIKit
@@ -36,7 +36,6 @@ import UIKit
   var hasKeyboardFocus: Bool { caption.isFirstResponder }
   var didBeginEditing: (() -> Void)?
   var transitionSourceView: ((String) -> UIView?)?
-  weak var mediaController: UIViewController?
   private let send: (String,[String:Any]) -> Void
   private let pager = UIScrollView()
   private let selection = UIScrollView()
@@ -308,7 +307,7 @@ import UIKit
   }
   private func updateControls() {
     let aligned = previewIsVisible
-    pager.isScrollEnabled = !busy && pages[previewId]?.isZoomed != true
+    pager.isScrollEnabled = !busy && pages[previewId]?.isZoomed != true && pages[previewId]?.isScrubbing != true
     close.isEnabled = !busy; edit.isEnabled = !busy && canEdit && aligned
     add.isEnabled = !busy && canAdd
     sendButton.isEnabled = !busy && canSend && aligned; sendGlass.alpha = sendButton.isEnabled ? 1 : 0.2
@@ -335,6 +334,7 @@ import UIKit
     position.isHidden = source != "conversation" || controlsHidden
     strip.isHidden = controlsHidden || !railVisible || hasKeyboardFocus || selectedMode
     captionPanel.isUserInteractionEnabled = !controlsHidden
+    for page in pages.values {page.updateVideoPresentation(visible:!controlsHidden,safeArea:safe,captionFrame:conversationCaption.isHidden ? .zero:conversationCaption.frame)}
   }
   private var previewIsVisible:Bool {
     if selectedMode{return true}
@@ -351,7 +351,7 @@ import UIKit
       }
       for item in wanted {
         if pages[item.id] == nil {
-          let page=GalleryMediaView(item:item,allowNetwork:false,controller:mediaController)
+          let page=GalleryMediaView(item:item,allowNetwork:false,conversation:true)
           page.accessibilityIdentifier="conversation-gallery-item-\(item.id)"
           page.toggle = { [weak self] in self?.toggleControls() }
           page.zoomChanged = { [weak self] _ in self?.updateControls() }
@@ -376,7 +376,7 @@ import UIKit
       guard let index = items.firstIndex(where:{$0.id == previewId}) else{return}
       for position in max(0,index-1)...min(items.count-1,index+1) {
         let item = items[position]
-        let page = GalleryMediaView(item:item,allowNetwork:position == index,controller:source == "conversation" ? mediaController:nil)
+        let page = GalleryMediaView(item:item,allowNetwork:position == index,conversation:source == "conversation")
         page.active = position == index
         page.toggle = { [weak self] in self?.toggleControls() }
         page.zoomChanged = { [weak self] _ in self?.updateControls() }
@@ -578,6 +578,7 @@ import UIKit
   private func toggleControls() {
     guard !retired,!busy,!hasKeyboardFocus else{return}
     controlsHidden.toggle()
+    for page in pages.values {page.updateVideoPresentation(visible:!controlsHidden,safeArea:safe,captionFrame:conversationCaption.isHidden ? .zero:conversationCaption.frame)}
     UIView.animate(withDuration:UIAccessibility.isReduceMotionEnabled ? 0 : 0.2,delay:0,
       options:[.beginFromCurrentState,.curveLinear],animations:{[weak self] in
         guard let self else{return}; for v in [toolbar,captionPanel,counter,check,recipient,recipientArrow,strip,conversationCaption,position] {v.alpha = controlsHidden ? 0 : 1}
@@ -824,17 +825,26 @@ private struct GalleryItem:Equatable {
   private let zoom=UIScrollView()
   private var player:AVPlayer?
   private var playerLayer:AVPlayerLayer?
-  private weak var controller:UIViewController?
-  private var playerController:AVPlayerViewController?
+  private let conversation:Bool
+  private var playback:ZoenConversationVideoPlayback?
+  private var videoControls:ZoenConversationVideoControls?
+  private var chromeVisible=true
+  private var chromeSafe=UIEdgeInsets.zero
+  private var chromeCaption=CGRect.zero
   private var playerStatus:NSKeyValueObservation?
   private var videoRequest:PHImageRequestID?
   private let videoManager=PHImageManager()
   private let play=UIButton(type:.system)
   var toggle:(()->Void)?;var zoomChanged:((Bool)->Void)?
-  var active=false {didSet{if !active{stop()}}}
+  var active=false {didSet{
+    guard !retired else{return}
+    if active,conversation,item.video,playback == nil,let uri=item.uri {install(AVPlayerItem(url:uri),autoplay:false)}
+    playback?.setActive(active);if !active{stop()};refreshVideoPresentation()
+  }}
   var isZoomed:Bool{abs(zoom.zoomScale-1)>0.01}
-  init(item:GalleryItem,allowNetwork:Bool,controller:UIViewController?=nil){
-    self.controller=controller
+  var isScrubbing:Bool{playback?.state.scrubbing == true}
+  init(item:GalleryItem,allowNetwork:Bool,conversation:Bool=false){
+    self.conversation=conversation
     super.init(item:item,targetPixels:2048,allowNetwork:allowNetwork)
     image.removeFromSuperview();zoom.addSubview(image);addSubview(zoom)
     promoteStatus()
@@ -847,10 +857,10 @@ private struct GalleryItem:Equatable {
     play.accessibilityLabel=item.name;play.addAction(UIAction{[weak self] _ in self?.playVideo()},for:.touchUpInside);play.isHidden = !item.video;addSubview(play)
   }
   required init?(coder:NSCoder){return nil}
-  override func layoutSubviews(){super.layoutSubviews();zoom.frame=bounds;if !isZoomed{image.frame=zoom.bounds};playerLayer?.frame=bounds;playerController?.view.frame=bounds;play.frame=CGRect(x:bounds.midX-30,y:bounds.midY-30,width:60,height:60)}
+  override func layoutSubviews(){super.layoutSubviews();zoom.frame=bounds;if !isZoomed{image.frame=zoom.bounds};playerLayer?.frame=bounds;videoControls?.frame=bounds;play.frame=CGRect(x:bounds.midX-30,y:bounds.midY-30,width:60,height:60)}
   func viewForZooming(in scrollView:UIScrollView)->UIView?{image}
   func scrollViewDidZoom(_ scrollView:UIScrollView){zoomChanged?(isZoomed)}
-  @objc private func singleTap(){if item.video,let player,player.rate>0{player.pause();play.isHidden=false}else{toggle?()}}
+  @objc private func singleTap(){if conversation{toggle?()}else if item.video,let player,player.rate>0{player.pause();play.isHidden=false}else{toggle?()}}
   @objc private func doubleTap(_ tap:UITapGestureRecognizer){
     guard !item.video,!retired,active else{return}
     if isZoomed{zoom.setZoomScale(1,animated:!UIAccessibility.isReduceMotionEnabled)}
@@ -860,6 +870,7 @@ private struct GalleryItem:Equatable {
     guard item.video,active,!retired else{return}
     if let player {
       if player.currentItem?.status == .failed,let uri=item.uri{install(AVPlayerItem(url:uri))}
+      else if let playback {playback.toggle()}
       else {player.rate==0 ? player.play() : player.pause()};return
     }
     if let url=item.uri{install(AVPlayerItem(url:url))}
@@ -870,21 +881,20 @@ private struct GalleryItem:Equatable {
       }
     }
   }
-  private func install(_ item:AVPlayerItem){
+  private func install(_ item:AVPlayerItem,autoplay:Bool=true){
     playerStatus=nil;player?.pause();player?.replaceCurrentItem(with:nil)
     let player=AVPlayer(playerItem:item);player.allowsExternalPlayback=false
     self.player=player
-    if let controller {
-      let child:AVPlayerViewController
-      if let existing=playerController {child=existing}
-      else {
-        child=AVPlayerViewController();child.allowsPictureInPicturePlayback=false
-        controller.addChild(child);addSubview(child.view);child.didMove(toParent:controller);playerController=child
-      }
-      child.player=player;child.view.frame=bounds;bringSubviewToFront(play)
-    } else {
-      let layer=AVPlayerLayer(player:player);layer.videoGravity = .resizeAspect;self.layer.insertSublayer(layer,above:zoom.layer)
-      playerLayer?.removeFromSuperlayer();playerLayer=layer;layer.frame=bounds
+    let layer=AVPlayerLayer(player:player);layer.videoGravity = .resizeAspect
+    self.layer.insertSublayer(layer,above:zoom.layer)
+    playerLayer?.removeFromSuperlayer();playerLayer=layer;layer.frame=bounds
+    if conversation {
+      playback?.retire();videoControls?.retire();videoControls?.removeFromSuperview()
+      let transport=ZoenConversationVideoPlayback(player:player)
+      let controls=ZoenConversationVideoControls(playback:transport)
+      playback=transport;videoControls=controls;addSubview(controls);controls.frame=bounds;bringSubviewToFront(play)
+      controls.interacting = { [weak self] _ in self?.zoomChanged?(false) }
+      transport.setActive(active);refreshVideoPresentation()
     }
     playerStatus=item.observe(\.status,options:[.initial,.new]){[weak self,weak player] item,_ in
       Task{@MainActor [weak self,weak player] in
@@ -892,15 +902,24 @@ private struct GalleryItem:Equatable {
         if item.status == .failed {play.isHidden=false;play.accessibilityLabel=NSLocalizedString("Try again",comment:"Retry conversation video")}
       }
     }
-    play.isHidden=true;player.play()
+    play.isHidden=true
+    if autoplay {if let playback {playback.play()}else{player.play()}}
   }
-  func stop(){player?.pause()}
+  func updateVideoPresentation(visible:Bool,safeArea:UIEdgeInsets,captionFrame:CGRect) {
+    chromeVisible=visible;chromeSafe=safeArea;chromeCaption=captionFrame;refreshVideoPresentation()
+  }
+  private func refreshVideoPresentation() {
+    videoControls?.updatePresentation(active:active,chromeVisible:chromeVisible,safeArea:chromeSafe,captionFrame:chromeCaption)
+  }
+  func stop(){if let playback {playback.pause()}else{player?.pause()}}
+
   override func retire(){
     guard !retired else{return}
     // Preserve the last rendered conversation frame through a user dismissal;
     // authority/player work retires now, and the parent removes this surface.
-    if let child=playerController,let snapshot=child.view.snapshotView(afterScreenUpdates:false){snapshot.frame=bounds;addSubview(snapshot)}
-    super.retire();stop();if let videoRequest{videoManager.cancelImageRequest(videoRequest)};videoRequest=nil;playerStatus=nil;player?.replaceCurrentItem(with:nil);player=nil;playerLayer?.removeFromSuperlayer();playerLayer=nil;playerController?.willMove(toParent:nil);playerController?.view.removeFromSuperview();playerController?.removeFromParent();playerController=nil;toggle=nil;zoomChanged=nil
+    if conversation,player != nil,let snapshot=snapshotView(afterScreenUpdates:false){snapshot.frame=bounds;addSubview(snapshot)}
+    playback?.retire();videoControls?.retire()
+    super.retire();stop();if let videoRequest{videoManager.cancelImageRequest(videoRequest)};videoRequest=nil;playerStatus=nil;player?.replaceCurrentItem(with:nil);player=nil;playerLayer?.removeFromSuperlayer();playerLayer=nil;playback=nil;videoControls=nil;toggle=nil;zoomChanged=nil
   }
 }
 

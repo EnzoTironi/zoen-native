@@ -109,7 +109,6 @@ import UIKit
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .allButUpsideDown }
     override func viewDidLoad() {
       super.viewDidLoad(); view.backgroundColor = .clear
-      gallery.mediaController = self
       view.addSubview(gallery.view)
       refresh(); loadWindow()
     }

@@ -12,8 +12,15 @@ indexed message lookup or a scalability qualification of that query.
 `ZoenAttachmentGalleryContent` supplies the already ported image/zoom/pan/glass
 and video thumbnail controls. Conversation mode removes Send, selection, editing,
 reorder and add controls, even if a model attempts to enable them. It shows the
-current canonical author, caption and position. AVKit supplies read-only playback
-controls for conversation videos with proper child-controller containment.
+current canonical author, caption and position. Conversation videos use one
+read-only Telegram transport over AVPlayerLayer, with the Gallery's single close
+control. The pinned viewer's64/92/30pt play/pause/15-second seek controls, original
+play/pause animation and arrows,44pt scrubber, elapsed/remaining text and source
+footer insets are adapted to UIKit using the already ported original glass and
+official Lottie renderer. `TelegramConversationVideo/SOURCES.json` records the
+exact upstream blobs, ranges and adaptations. No AVKit chrome competes with the
+Gallery toolbar. Photos/durable attachment preview and explicit editing remain
+separate existing presentations.
 Documents/PDFs, including their existing explicit edit/recovery flow, remain on
 Quick Look. Unsupported visual formats keep an authorized single-file fallback.
 
@@ -26,6 +33,17 @@ source-to-image hero transitions are not claimed: Fabric source rows may have
 virtualized. Closing restores the existing conversation/scroll origin without
 retargeting a first album child or requiring the source row to stay mounted.
 Neighbor arrival preserves the current page, zoom and player instance.
+
+Playback does not require exportability or exactly one video track. The transport
+uses the already authorized private URI; it never copies, exports, edits or saves
+media. A paused current page prepares its player/controls; neighboring pages do
+not start players. Periodic observation runs only while the page is active.
+Paging pauses, deselection cancels pending seeks and observation, and retirement
+rejects queued actions and releases observers. Reactivation stays paused. Relative
+scrubbing commits an exact seek on release, restores the origin on cancel and
+resumes only the prior active playback. The44pt adjustable scrubber exposes
+15-second accessibility steps; hidden/inactive/retired controls cannot dispatch.
+Caption and transport occupy distinct footer rows in portrait and landscape.
 
 All temporary copies belong to `ZoenFilePreview.ReadOnlyCopies`, including the
 initial page. The owner enforces three copies, retires display requests/players
@@ -57,8 +75,15 @@ ephemeral request snapshot, not a second message projection or authorization sto
 Qualification is scoped: Node contract/production composition tests, actual host
 FilePreview cleanup tests and private UIKit SDK typechecking. Authored UIKit
 regressions cover chosen viewport/gap, read-only chrome, bounded pages, neighbor
-replacement and stale paging revisions. Simulator/render/hit-test/real keyboard,
+replacement and stale paging revisions. New playback-only host scenarios execute
+real AVPlayer time/seek/scrub/cancellation and a two-video-track composition. New
+UIKit transport regressions are authored and SDK-typechecked, **not executed**.
+Simulator/render/hit-test/real keyboard,
 full Expo linkage, physical devices, media performance and full Telegram Gallery
 parity are separate pending gates. Advanced gallery sharing/actions, recognition,
 PiP and history pagination are outside this slice; existing per-message sharing
 remains available. No service or user data is changed by the proof harness.
+Viewer speed, chapters, scrub-frame previews, vertical precision scaling, fetch
+shimmer, interactive glass morph and blur visibility transitions are not ported
+by the bounded playback controls adaptation. Source metrics/assets do not imply
+full Telegram pixel or interaction parity.

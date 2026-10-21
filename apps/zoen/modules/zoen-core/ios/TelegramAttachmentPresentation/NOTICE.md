@@ -66,3 +66,11 @@ recorded in the asset manifest and `telegram-ios-media-albums-sources.json`.
 The conversation uses the same already attributed original MosaicLayout
 implementation as selected previews; the bounded Expo geometry bridge and
 canonical signed-message composition are Zoen adapters.
+
+Conversation video playback uses the original Media Gallery backward/forward
+PDFs and anim_playpause TGS (gzip-decompressed unchanged JSON), with the pinned
+VideoPlaybackControlsComponent, ChatVideoGalleryItemScrubberView, MediaPlayer
+scrubbing/time and Gallery footer geometry adapted to UIKit. Source hashes and
+unported behaviors are recorded in `../TelegramConversationVideo/SOURCES.json`.
+Existing original glass/Lottie render the controls; AVPlayer renders only the
+authorized FilePreview copy. No Telegram media manager or account state is used.

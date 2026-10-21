@@ -1,0 +1,84 @@
+{
+  "pin": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "sources": [
+    {
+      "path": "submodules/TelegramUI/Components/VideoPlaybackControlsComponent/Sources/VideoPlaybackControlsComponent.swift",
+      "bytes": 17078,
+      "gitBlob": "fd4898fb986523419c95138a17257e2c3b47fa02",
+      "sha256": "6e30af69fcecd3ed7e0ed629bdb40161ae037914d69ff59cdfce2436a8a8370f",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Components/VideoPlaybackControlsComponent/Sources/VideoPlaybackControlsComponent.swift"
+    },
+    {
+      "path": "submodules/GalleryUI/Sources/ChatVideoGalleryItemScrubberView.swift",
+      "bytes": 28525,
+      "gitBlob": "ea0aaa8fa3fc90b680a630890294d86702544e50",
+      "sha256": "7baab66147397c67efb1468e03a271719977c99f48018595241efd53bf39a96a",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/GalleryUI/Sources/ChatVideoGalleryItemScrubberView.swift"
+    },
+    {
+      "path": "submodules/MediaPlayer/Sources/MediaPlayerScrubbingNode.swift",
+      "bytes": 59374,
+      "gitBlob": "98029012c86da63ef70bdf4f8671132ddc9e2204",
+      "sha256": "d1a7935b85d67b6e6bebd0e52091eea547da9ca9c6657fc52f97f990de53594e",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/MediaPlayer/Sources/MediaPlayerScrubbingNode.swift"
+    },
+    {
+      "path": "submodules/MediaPlayer/Sources/MediaPlayerTimeTextNode.swift",
+      "bytes": 9736,
+      "gitBlob": "9ad39a6e6808d0a10e3e2b4b03006874b94b6161",
+      "sha256": "25a0c8bd6d41a71ca4bc221fbb3cb8066266bfe5c2db3962152b18518dd3e82b",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/MediaPlayer/Sources/MediaPlayerTimeTextNode.swift"
+    },
+    {
+      "path": "submodules/GalleryUI/Sources/ChatItemGalleryFooterContentNode.swift",
+      "bytes": 148830,
+      "gitBlob": "91a21e75005d25d4e47d0a42aeef9c39ccd07d1d",
+      "sha256": "5d9b12260ccc043ebbb65111bf69e315a92e1b61faa8d6b415df6d0cb442d3b5",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/GalleryUI/Sources/ChatItemGalleryFooterContentNode.swift"
+    },
+    {
+      "path": "submodules/TelegramUI/Images.xcassets/Media Gallery/BackwardButton.imageset/back.pdf",
+      "bytes": 5735,
+      "gitBlob": "6d608954d4f8cc30ae7a483506a3e0a06c613de1",
+      "sha256": "98e1f98979627230415ed8f34b50de7cbc8e30cf85c7b07a115009c33f2aadd5",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Images.xcassets/Media Gallery/BackwardButton.imageset/back.pdf"
+    },
+    {
+      "path": "submodules/TelegramUI/Images.xcassets/Media Gallery/ForwardButton.imageset/forward.pdf",
+      "bytes": 5736,
+      "gitBlob": "b9c89b04b33804e2358722f33dfddd585cb5cc38",
+      "sha256": "b77c2ebe1d922ea7d27b5b62285bdb414c8938a9e64e7f168fa8ace0e287b313",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Images.xcassets/Media Gallery/ForwardButton.imageset/forward.pdf"
+    },
+    {
+      "path": "submodules/TelegramUI/Resources/Animations/anim_playpause.tgs",
+      "bytes": 1785,
+      "gitBlob": "d6e7b0953d9d25ba76c86874e439d0a425cee422",
+      "sha256": "e5067f055c855f3d83740224184a2aeb0827af746cf6a36c45399adc9d80116c",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/TelegramUI/Resources/Animations/anim_playpause.tgs"
+    },
+    {
+      "path": "submodules/GalleryUI/Sources/Items/UniversalVideoGalleryItem.swift",
+      "bytes": 226175,
+      "gitBlob": "6d4538623aa63d32b55d577487696ebea54eb6f5",
+      "sha256": "09365852f4acb9354b522604a302d5e6593e55809604ab3ac6a901ad267ab0fa",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/GalleryUI/Sources/Items/UniversalVideoGalleryItem.swift"
+    }
+  ],
+  "license": "GPL-2.0-or-later; GPLv3 selected; combined under AGPLv3 section13",
+  "ports": {
+    "VideoPlaybackControlsComponent.swift": "View geometry64/92/spacing30,clear tint0.2,icon0.9+5pt; original PlayPause frames0\u201341/41\u201383 with0.35s; PlaybackIconView arrows1.4,text16rounded,press.18linear/release.2linear,rotation\u03c0/4+.226",
+    "ChatVideoGalleryItemScrubberView.swift": "standard line8pt/round/nohandle,white42% background,13pt monospaced medium time,44pt row,y15+14pt wrapper,58pt reservations/long timestamp expansion,22pt glass radius",
+    "MediaPlayerScrubbingNode.swift": "relative origin+duration*fraction clamp,commit-on-release/cancel restoration,8pt line centered in14pt wrapper,pixel-floor progress",
+    "MediaPlayerTimeTextNode.swift": "floor elapsed and abs(floor(position-duration)) remaining,h:mm:ss formatting",
+    "ChatItemGalleryFooterContentNode.swift": "44pt scrubber,8pt bottom,8/26pt source side inset condition; existing Zoen read-only caption retains own block and10pt separation",
+    "UniversalVideoGalleryItem.swift": "1281\u20131318 center transport64/92/30;15s seeks; no AVKit chrome"
+  },
+  "adaptations": [
+    "UIKit UIControl replaces ComponentFlow/ASDisplayNode/Signal plumbing; existing original glass and official Lottie4.6.1 are reused.",
+    "AVPlayer playback-only owner has no exportability/track-count/editor gate; current FilePreview authorization/copies stay unchanged.",
+    "Same original TGS gzip payload is decompressed to JSON for existing presentation resource bundle; original PDFs unchanged.",
+    "No full gallery footer Share/actions,PiP,speed,chapter UI,fetch shimmer,scrubbing thumbnail preview,vertical precision scaling,interactive glass morph or blur-10px visibility animation are claimed.",
+    "Gallery keeps existing caption/author/close and current\u00b11 ownership. No independent state store or rendered output."
+  ]
+}

@@ -155,3 +155,14 @@ with Zoen under AGPLv3 section 13. Full selected terms are bundled at
 preview and encrypted draft authority belong to Zoen. No Telegram account,
 Postbox store, profile music or remote music provider is imported. This is a
 bounded UIKit adaptation, not a full controller or runtime pixel-parity claim.
+
+## Telegram iOS conversation video transport
+
+`apps/zoen/modules/zoen-core/ios/TelegramConversationVideo/` adapts the original
+viewer play/pause/seek, scrubber, timestamps and footer layout from Telegram-iOS
+contributors at `f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838`. Its `SOURCES.json`
+records exact upstream blobs, hashes, ranges and UIKit/AVPlayer adaptations.
+Original arrow PDFs and the gzip-decompressed unchanged play/pause animation are
+in the existing attributed presentation bundle and asset manifest. The same
+GPL-2.0-or-later option/GPLv3 selection and AGPLv3 section13 combination above
+apply. No Telegram state, services, media store or converter is imported.
