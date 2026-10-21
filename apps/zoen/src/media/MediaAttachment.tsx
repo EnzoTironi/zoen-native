@@ -73,7 +73,8 @@ function FileAttachmentContent({
         }
       : null,
   );
-  const ink = message && mine ? colors.onMine : colors.text;
+  // Voice sits on its message bubble; generic file fallbacks sit on the sky.
+  const ink = message && mine && voice ? colors.onMine : colors.text;
   const [info, setInfo] = useState<FileDto | null>(null);
   const [local, setLocal] = useState<LocalMediaFile | null>(null);
   const [busy, setBusy] = useState(false);
@@ -466,7 +467,7 @@ function FileAttachmentContent({
             <Text numberOfLines={2} style={{ color: ink, fontSize: 15, fontWeight: '600' }}>
               {label}
             </Text>
-            <Text style={{ color: ink, opacity: 0.72, fontSize: 12 }}>{readiness}</Text>
+            <Text style={{ color: colors.secondary, fontSize: 12 }}>{readiness}</Text>
           </View>
         </Pressable>
       )}

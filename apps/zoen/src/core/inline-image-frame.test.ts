@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -8,11 +9,33 @@ import { build } from 'esbuild';
 import type { FileDto } from './generated/FileDto.ts';
 import type { LocalMediaFile } from '../media/types.ts';
 import type { DecodedMessageImage } from '../media/inline-image-frame.ts';
+import { contrastRatio, resolveSkyTheme, skyBackdrops } from '../theme/sky.ts';
+import { DEFAULT_THEME_CUSTOMIZATION } from '../theme/telegram.ts';
+import { formatFileSize } from '../media/file-size.ts';
 
 const sourcePath = fileURLToPath(new URL('../media/MediaAttachment.tsx', import.meta.url));
+const require = createRequire(import.meta.url);
+const { transformSync } = require('@babel/core');
+const code = transformSync(
+  `${readFileSync(process.env.ZOEN_MEDIA_ATTACHMENT_SOURCE ?? sourcePath, 'utf8')}\nexport { FileAttachmentContent };`,
+  {
+    filename: sourcePath,
+    configFile: false,
+    babelrc: false,
+    presets: [require.resolve('babel-preset-expo')],
+    caller: {
+      name: 'metro',
+      platform: 'ios',
+      engine: 'hermes',
+      isDev: false,
+      supportsReactCompiler: true,
+    },
+  },
+).code as string;
+assert.match(code, /react\/compiler-runtime/, 'Actual installed iOS Babel/React compiler');
 const compiled = await build({
   stdin: {
-    contents: `${readFileSync(process.env.ZOEN_MEDIA_ATTACHMENT_SOURCE ?? sourcePath, 'utf8')}\nexport { FileAttachmentContent };`,
+    contents: code,
     resolveDir: dirname(sourcePath),
     loader: 'tsx',
   },
@@ -26,7 +49,9 @@ const compiled = await build({
       name: 'inline-image-native-ports',
       setup(builder) {
         builder.onResolve({ filter: /./ }, ({ path }) =>
-          path === './inline-image-frame' ? undefined : { path, external: true },
+          path === './inline-image-frame' || path.startsWith('@babel/runtime/helpers/')
+            ? undefined
+            : { path, external: true },
         );
       },
     },
@@ -49,7 +74,14 @@ function style(node: Element) {
 const tick = async () => {
   for (let i = 0; i < 12; i++) await Promise.resolve();
 };
-function fixture(mine = true) {
+function fixture(
+  mine = true,
+  options: {
+    theme?: ReturnType<typeof resolveSkyTheme>;
+    info?: Partial<FileDto>;
+    voice?: Record<string, unknown>;
+  } = {},
+) {
   const info: FileDto = {
     name: 'photo.jpg',
     path: '',
@@ -60,6 +92,7 @@ function fixture(mine = true) {
     chunks: 1,
     chunks_here: 1,
     has_thumbnail: false,
+    ...options.info,
   };
   const file: LocalMediaFile = {
     uri: 'file:///synthetic/verified-photo.jpg',
@@ -70,6 +103,8 @@ function fixture(mine = true) {
   const decoded: DecodedMessageImage[] = [];
   const slots: { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void }[] = [];
   let cursor = 0;
+  let compilerCursor = 0;
+  const caches: unknown[][] = [];
   let effects: (() => void)[] = [];
   const slot = () => (slots[cursor++] ??= {});
   const same = (a?: readonly unknown[], b?: readonly unknown[]) =>
@@ -109,6 +144,10 @@ function fixture(mine = true) {
       useEffect: effect,
       useCallback: (work: unknown) => work,
     },
+    'react/compiler-runtime': {
+      c: (size: number) =>
+        (caches[compilerCursor++] ??= Array(size).fill(Symbol.for('react.memo_cache_sentinel'))),
+    },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-native': { View: 'View', Text: 'Text', ActivityIndicator: 'ActivityIndicator' },
     'expo-image': { Image: 'Image' },
@@ -118,7 +157,9 @@ function fixture(mine = true) {
     '../core/provider': {
       useClient: () => ({ store: { driver: { media: driver } }, snapshot, mode: 'account' }),
     },
-    '../theme': { useTheme: () => ({ colors: {}, scheme: 'dark' }) },
+    '../theme': {
+      useTheme: () => options.theme ?? resolveSkyTheme('night', new Date('2026-10-18T12:00:00')),
+    },
     '../components/primitives': { Icon: 'Icon' },
     './AudioClip': {
       AudioClip: 'AudioClip',
@@ -130,7 +171,7 @@ function fixture(mine = true) {
     './voice-transcript': { VoiceTranscript: 'VoiceTranscript' },
     './VideoClip': { VideoClip: 'VideoClip' },
     './preview-file': { previewMediaFile: async () => {} },
-    './file-size': { formatFileSize: () => '12 B' },
+    './file-size': { formatFileSize },
   };
   const module = {
     exports: {} as { FileAttachmentContent(props: Record<string, unknown>): Element },
@@ -145,12 +186,14 @@ function fixture(mine = true) {
   });
   const render = () => {
     cursor = 0;
+    compilerCursor = 0;
     effects = [];
     const tree = module.exports.FileAttachmentContent({
       itemId: 'item',
       version: 3,
       presentation: 'message',
       mine,
+      voice: options.voice,
       onImageDecoded: (image: DecodedMessageImage) => decoded.push(image),
     });
     for (const work of effects) work();
@@ -253,4 +296,59 @@ test('actual inline image recomputes both dimensions after available width chang
   f.unmount();
   late({ source: { url: f.file.uri, width: 1000, height: 1 } });
   assert.equal(f.decoded.length, accepted);
+});
+
+test('generic files and oversized image fallbacks use resolved sky ink independently of outgoing bubble color', async () => {
+  for (const phase of ['night', 'day'] as const) {
+    for (const outgoing of ['#FFFFFF', '#000000']) {
+      const theme = resolveSkyTheme(phase, new Date('2026-10-18T12:00:00'), {
+        ...DEFAULT_THEME_CUSTOMIZATION,
+        outgoing,
+      });
+      for (const mine of [true, false]) {
+        for (const mime of ['image/png', 'application/pdf']) {
+          const f = fixture(mine, { theme, info: { name: 'large-file', mime, bytes: '52533657' } });
+          await f.ready();
+          const tree = f.render();
+          assert.equal(
+            elements(tree).some((node) => node.type === 'Image'),
+            false,
+          );
+          const icon = elements(tree).find((node) => node.type === 'Icon')!;
+          const [name, size] = elements(tree).filter((node) => node.type === 'Text');
+          assert.equal(size!.props.children, formatFileSize(f.file.info.bytes, 'en-US'));
+          assert.equal(style(tree).backgroundColor, 'transparent');
+          assert.equal(icon.props.color, theme.colors.text);
+          assert.equal(style(name!).color, theme.colors.text);
+          assert.equal(style(size!).color, theme.colors.secondary);
+          assert.equal(
+            style(size!).opacity,
+            undefined,
+            'The resolved secondary ink already accounts for the sky',
+          );
+          for (const background of skyBackdrops(theme.sky)) {
+            assert.ok(contrastRatio(style(name!).color as string, background) >= 4.5);
+            assert.ok(contrastRatio(style(size!).color as string, background) >= 4.5);
+          }
+          f.unmount();
+        }
+      }
+    }
+  }
+});
+
+test('outgoing voice fallback retains its resolved bubble ink', async () => {
+  const theme = resolveSkyTheme('night', new Date('2026-10-18T12:00:00'), {
+    ...DEFAULT_THEME_CUSTOMIZATION,
+    outgoing: '#FFFFFF',
+  });
+  const f = fixture(true, {
+    theme,
+    info: { mime: 'audio/aac' },
+    voice: { ms: '1000', levels: [0.2] },
+  });
+  await f.ready();
+  const icon = elements(f.render()).find((node) => node.type === 'Icon')!;
+  assert.equal(icon.props.color, theme.colors.onMine);
+  f.unmount();
 });
