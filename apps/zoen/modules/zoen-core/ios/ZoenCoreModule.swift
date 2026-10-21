@@ -232,7 +232,9 @@ public class ZoenCoreModule: Module {
     }
     AsyncFunction("previewConversationMedia") { (request: String, presentationId: String) async throws in
       let presenter = await MainActor.run { self.appContext?.utilities?.currentViewController() }
-      try await self.session.previewConversationMedia(request, presentationId: presentationId, presenter: presenter)
+      try await ZoenConversationGalleryCompletion.awaitDismissal {
+        try await self.session.previewConversationMedia(request, presentationId: presentationId, presenter: presenter)
+      }
     }
     AsyncFunction("cancelConversationMedia") { (presentationId: String) async throws in
       try await self.session.cancelMediaDraftPreview(presentationId)

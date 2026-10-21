@@ -87,6 +87,9 @@ function FileAttachmentContent({
   const [local, setLocal] = useState<LocalMediaFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Presentation failures do not change whether the canonical file can render
+  // inline. Only metadata, inline materialization or decoding can release a tile.
+  const [inlineFailed, setInlineFailed] = useState(false);
   const [ratio, setRatio] = useState(1);
   const [availableWidth, setAvailableWidth] = useState(0);
   const [autoplay, setAutoplay] = useState(false);
@@ -115,10 +118,12 @@ function FileAttachmentContent({
           if (active) setInfo(value);
         })
         .catch((reason: unknown) => {
-          if (active)
+          if (active) {
+            setInlineFailed(true);
             setError(
               reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'),
             );
+          }
         });
     return () => {
       active = false;
@@ -144,9 +149,12 @@ function FileAttachmentContent({
   useEffect(() => {
     // A signed media group can contain a generic/large file. Retain its ordinary
     // canonical row rather than squeezing a file action into a visual mosaic.
-    if (mounted.current && (error || (info && (!visual || Number(info.bytes) > 16 * 1048576))))
+    if (
+      mounted.current &&
+      (inlineFailed || (info && (!visual || Number(info.bytes) > 16 * 1048576)))
+    )
       onInlineUnavailable?.();
-  }, [info, visual, error, onInlineUnavailable]);
+  }, [info, visual, inlineFailed, onInlineUnavailable]);
   useEffect(() => {
     if (!driver || !message || !info?.ready || !visual || Number(info.bytes) > 16 * 1048576) return;
     let active = true;
@@ -163,8 +171,10 @@ function FileAttachmentContent({
         if (previous) await driver.releaseLocalFile(previous.uri);
       })
       .catch((reason: unknown) => {
-        if (active && mounted.current && expectedGeneration === generation.current)
+        if (active && mounted.current && expectedGeneration === generation.current) {
+          setInlineFailed(true);
           setError(reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'));
+        }
       });
     return () => {
       active = false;
@@ -343,8 +353,10 @@ function FileAttachmentContent({
               }
             }}
             onError={() => {
-              if (mounted.current && owned.current === local)
+              if (mounted.current && owned.current === local) {
+                setInlineFailed(true);
                 setError(t('media.thisFileCouldNotBeOpened'));
+              }
             }}
             style={{ position: 'absolute', inset: 0 }}
           />

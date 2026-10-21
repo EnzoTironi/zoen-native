@@ -72,6 +72,13 @@ Native source changes also coalesce a bounded revalidation of the active request
 so revocation does not depend on a responsive JavaScript renderer. This is an
 ephemeral request snapshot, not a second message projection or authorization store.
 
+Expected native lifecycle cancellation completes as a normal read-only close only
+after the existing FilePreview owner has dismissed its hierarchy and verified copy
+cleanup. Real cleanup and presentation failures still reject. A failed viewer
+action does not mark the inline file as unavailable: signed albums retain their
+mosaic on background/close or a busy presenter. Actual inline metadata, copy,
+image-decode and player failures retain their existing canonical-row fallback.
+
 Qualification is scoped: Node contract/production composition tests, actual host
 FilePreview cleanup tests and private UIKit SDK typechecking. Authored UIKit
 regressions cover chosen viewport/gap, read-only chrome, bounded pages, neighbor

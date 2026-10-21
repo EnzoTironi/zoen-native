@@ -77,3 +77,13 @@ struct ZoenConversationGalleryRequest: Decodable {
     return messages.sorted { $0.index! < $1.index! }
   }
 }
+
+/// A read-only presentation may end because the app backgrounds or its source
+/// retires. The operation must await FilePreview's dismissal and verified cleanup
+/// first; any real cleanup/presentation error still rejects the bridge Promise.
+enum ZoenConversationGalleryCompletion {
+  static func awaitDismissal(_ operation: () async throws -> Void) async throws {
+    do { try await operation() }
+    catch is CancellationError { }
+  }
+}

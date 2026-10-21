@@ -16,6 +16,8 @@ import { albumDelivery, type MediaAlbum } from './media-albums.ts';
 import { messageCard } from './message-presentation.ts';
 import { messageText } from './presentation.ts';
 import type { TimelineEntry } from './types';
+import type { ClientStore } from './store';
+import type { previewConversationMedia as ConversationPreview } from '../media/conversation-media-preview';
 
 const sourcePath = fileURLToPath(new URL('../media/MediaAttachment.tsx', import.meta.url));
 const require = createRequire(import.meta.url);
@@ -77,6 +79,34 @@ const albumCode = (
     write: false,
   })
 ).outputFiles[0]!.text;
+const conversationCode = (
+  await build({
+    stdin: {
+      contents: readFileSync(
+        new URL('../media/conversation-media-preview.ts', import.meta.url),
+        'utf8',
+      ),
+      loader: 'ts',
+    },
+    bundle: false,
+    platform: 'node',
+    format: 'cjs',
+    write: false,
+  })
+).outputFiles[0]!.text;
+const conversationModule = {
+  exports: {} as { previewConversationMedia: typeof ConversationPreview },
+};
+runInNewContext(conversationCode, {
+  module: conversationModule,
+  exports: conversationModule.exports,
+  AbortController,
+  require: (name: string) => {
+    if (name === '../i18n/index.ts') return { t: (key: string) => key };
+    assert.equal(name, './playback-owner');
+    return { mediaPlayback: { pauseAll() {} } };
+  },
+});
 type Element = { type: unknown; props: Record<string, unknown> };
 function elements(value: unknown): Element[] {
   if (Array.isArray(value)) return value.flatMap(elements);
@@ -105,6 +135,8 @@ function fixture(
     materializeError?: boolean;
     messageSource?: { spaceId: string; entry: TimelineEntry };
     galleryCapability?: boolean;
+    galleryEntries?: readonly TimelineEntry[];
+    actualGallery?: boolean;
   } = {},
 ) {
   const info: FileDto = {
@@ -157,8 +189,53 @@ function fixture(
       return file;
     },
     releaseLocalFile: async () => {},
-    previewConversationMedia: options.galleryCapability ? async () => {} : undefined,
+    previewConversationMedia: options.galleryCapability
+      ? async (_request: unknown, signal: AbortSignal) => {
+          if (!options.actualGallery) return;
+          await new Promise<void>((resolve, reject) => {
+            nativeCompletion = { resolve, reject };
+            signal.addEventListener(
+              'abort',
+              () => reject(new Error('Synthetic native cancellation')),
+              { once: true },
+            );
+          });
+        }
+      : undefined,
   };
+  let nativeCompletion: { resolve(): void; reject(reason: Error): void } | undefined;
+  let retiring = false;
+  const stateListeners = new Set<() => void>();
+  const canonicalListeners = new Set<(spaces?: readonly string[]) => void>();
+  const cleanups = new Set<() => Promise<void>>();
+  const store = {
+    sessionEpoch: 1,
+    get isSessionRetiring() {
+      return retiring;
+    },
+    getSnapshot: () => ({ phase: 'ready', erasePending: false }),
+    subscribe: (listener: () => void) => {
+      stateListeners.add(listener);
+      return () => stateListeners.delete(listener);
+    },
+    subscribeCanonicalChanges: (listener: (spaces?: readonly string[]) => void) => {
+      canonicalListeners.add(listener);
+      return () => canonicalListeners.delete(listener);
+    },
+    registerSessionCleanup: (cleanup: () => Promise<void>) => {
+      cleanups.add(cleanup);
+      return () => cleanups.delete(cleanup);
+    },
+    driver: {
+      media: driver,
+      request: async (request: { message_id: string }) =>
+        structuredClone(
+          (options.galleryEntries ?? [options.messageSource?.entry]).find(
+            (entry) => entry?.id === request.message_id,
+          ),
+        ),
+    },
+  } as unknown as ClientStore;
   const snapshot = { account: null };
   const jsx = (type: unknown, props: Record<string, unknown>) => ({ type, props });
   const ports: Record<string, unknown> = {
@@ -197,7 +274,7 @@ function fixture(
     '../i18n/index.ts': { t: (key: string) => key, formatLocale: 'en-US' },
     '../components/message-interaction': { MessagePressable: 'MessagePressable' },
     '../core/provider': {
-      useClient: () => ({ store: { driver: { media: driver } }, snapshot, mode: 'account' }),
+      useClient: () => ({ store, snapshot, mode: 'account' }),
     },
     '../theme': {
       useTheme: () => options.theme ?? resolveSkyTheme('night', new Date('2026-10-18T12:00:00')),
@@ -222,6 +299,10 @@ function fixture(
         if (!options.galleryCapability)
           throw new Error('Unexpected conversation viewer admission in inline rendering test');
         galleryRequests.push(args);
+        if (options.actualGallery)
+          await conversationModule.exports.previewConversationMedia(
+            ...(args as Parameters<typeof ConversationPreview>),
+          );
       },
     },
     './file-size': { formatFileSize },
@@ -277,6 +358,7 @@ function fixture(
       onImageDecoded: (image: DecodedMessageImage) => decoded.push(image),
       onInlineUnavailable: options.onInlineUnavailable,
       messageSource: options.messageSource,
+      galleryEntries: options.galleryEntries,
     });
     for (const work of effects) work();
     return tree;
@@ -309,6 +391,16 @@ function fixture(
     legacyPreviews,
     galleryRequests,
     materialized,
+    nativeIsOpen: () => nativeCompletion != null,
+    rejectNative: (reason: Error) => {
+      assert.ok(nativeCompletion);
+      nativeCompletion.reject(reason);
+    },
+    abortGallery: () => {
+      retiring = true;
+      for (const listener of stateListeners) listener();
+    },
+    galleryListenerCount: () => stateListeners.size + canonicalListeners.size + cleanups.size,
     ready: async () => {
       render();
       await tick();
@@ -374,6 +466,84 @@ test('actual ordinary image Open still dispatches the chosen canonical message t
   assert.strictEqual((f.galleryRequests[0]![3] as TimelineEntry[])[0], entry);
   f.unmount();
 });
+
+for (const failure of ['abort', 'background', 'busy', 'unavailable', 'cleanup'] as const) {
+  test(`actual image Open through the real gallery helper keeps the signed album after native ${failure}`, async () => {
+    const parent = fixture();
+    const album: MediaAlbum = {
+      id: 'qa-signed-group',
+      spaceId: 'qa',
+      presentation: 'media',
+      entries: [0, 1].map(
+        (index) =>
+          ({
+            id: `member-${index}`,
+            author: { id: 'qa', is_me: true },
+            delivery: 'Sent',
+            deleted: false,
+            forwarded: false,
+            voice: null,
+            kind: {
+              Message: {
+                text: `Caption ${index}`,
+                card: { item_id: index ? 'other' : 'item', kind_id: 'file', version: 3 },
+              },
+            },
+            media: {
+              presentation: 'media',
+              group: { id: `album_${'a'.repeat(64)}`, index, count: 2 },
+            },
+          }) as TimelineEntry,
+      ),
+    };
+    const before = parent.renderAlbum(album) as Element;
+    const media = before.props.albumContent as { media: Element };
+    const leaf = (media.media.props.children as Element[])[0]!.props.children as Element;
+    const file = fixture(true, {
+      onInlineUnavailable: (leaf.props.albumPart as { onInlineUnavailable(): void })
+        .onInlineUnavailable,
+      messageSource: { spaceId: 'qa', entry: album.entries[0]! },
+      galleryEntries: album.entries,
+      galleryCapability: true,
+      actualGallery: true,
+    });
+    await file.ready();
+    (file.parts().frame.props.onPress as () => void)();
+    await tick();
+    assert.equal(
+      file.nativeIsOpen(),
+      true,
+      'Real helper queried canonical children before native admission',
+    );
+    if (failure === 'abort') file.abortGallery();
+    else
+      file.rejectNative(
+        new Error(
+          failure === 'background'
+            ? 'Synthetic native cancellation'
+            : `Synthetic presenter ${failure}`,
+        ),
+      );
+    await tick();
+    const after = file.render();
+    await tick();
+    assert.equal(
+      file.galleryListenerCount(),
+      0,
+      'Rejecting native abort settles cleanup rather than leaving listeners',
+    );
+    assert.ok(
+      elements(after).some((node) => node.props.accessibilityRole === 'alert'),
+      'A real rejection remains visible rather than being ignored',
+    );
+    assert.ok(
+      !Array.isArray(parent.renderAlbum(album)),
+      `${failure} must not disqualify canonical inline content`,
+    );
+    file.unmount();
+    parent.unmount();
+  });
+}
 
 test('actual inline image resolves one bounded frame and both image and rounded mask fill it without cropping', async () => {
   for (const mine of [true, false]) {
