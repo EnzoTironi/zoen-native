@@ -137,6 +137,7 @@ function fixture(
     galleryCapability?: boolean;
     galleryEntries?: readonly TimelineEntry[];
     actualGallery?: boolean;
+    tile?: { width: number; height: number };
   } = {},
 ) {
   const info: FileDto = {
@@ -359,6 +360,7 @@ function fixture(
       onInlineUnavailable: options.onInlineUnavailable,
       messageSource: options.messageSource,
       galleryEntries: options.galleryEntries,
+      tile: options.tile,
     });
     for (const work of effects) work();
     return tree;
@@ -506,6 +508,7 @@ for (const failure of ['abort', 'background', 'busy', 'unavailable', 'cleanup'] 
       galleryEntries: album.entries,
       galleryCapability: true,
       actualGallery: true,
+      tile: (leaf.props.albumPart as { tile: { width: number; height: number } }).tile,
     });
     await file.ready();
     (file.parts().frame.props.onPress as () => void)();
@@ -532,10 +535,18 @@ for (const failure of ['abort', 'background', 'busy', 'unavailable', 'cleanup'] 
       0,
       'Rejecting native abort settles cleanup rather than leaving listeners',
     );
-    assert.ok(
-      elements(after).some((node) => node.props.accessibilityRole === 'alert'),
-      'A real rejection remains visible rather than being ignored',
+    const alert = elements(after).find((node) => node.props.accessibilityRole === 'alert');
+    assert.ok(alert, 'A real rejection remains accessible rather than being ignored');
+    assert.equal(
+      style(alert).position,
+      'absolute',
+      'Action feedback must overlay the clipped tile rather than flow below it',
     );
+    assert.equal(style(alert).bottom, 0);
+    assert.equal(style(alert).left, 0);
+    assert.equal(style(alert).right, 0);
+    assert.equal(style(alert).maxHeight, style(after).height);
+    assert.equal(alert.props.numberOfLines, 2);
     assert.ok(
       !Array.isArray(parent.renderAlbum(album)),
       `${failure} must not disqualify canonical inline content`,

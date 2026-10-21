@@ -561,7 +561,23 @@ function FileAttachmentContent({
         <Text
           selectable
           accessibilityRole="alert"
-          style={{ color: ink, fontSize: 13, lineHeight: 19, padding: message ? 12 : 0 }}
+          numberOfLines={tile ? 2 : undefined}
+          style={{
+            color: tile ? '#FFFFFF' : ink,
+            fontSize: 13,
+            lineHeight: 19,
+            padding: message ? 12 : 0,
+            ...(tile
+              ? {
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  maxHeight: tile.height,
+                  backgroundColor: '#000000B3',
+                }
+              : {}),
+          }}
         >
           {error}
         </Text>
