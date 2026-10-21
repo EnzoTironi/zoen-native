@@ -118,7 +118,11 @@ class ZoenKeyboardPanelHost: ExpoView {
       if requested["closing"] as? Bool == true { reject(requested, reason: "closed") }
       return
     }
-    guard active, let window,
+    // Fabric can deliver the initial props before attaching this host. Keep
+    // that presentation pending until didMoveToWindow retries; it is not a
+    // terminal rejection, and session retirement still fences admission above.
+    guard let window else { return }
+    guard active,
           window.windowScene?.activationState == .foregroundActive,
           let tag = requested["tag"] as? Int, tag > 0,
           let token = requested["token"] as? String, !token.isEmpty, token.utf8.count <= 128,
