@@ -262,6 +262,9 @@ impl State {
         content: &ItemContent,
         origin: &str,
     ) {
+        // A validated creation in the signed projection, rather than readable
+        // failed-outbox bytes, establishes an Item's authority.
+        self.recovery_items.remove(item);
         self.items.insert(
             item.to_string(),
             ItemState {
@@ -325,12 +328,52 @@ impl State {
         }
     }
 
+    pub(crate) fn is_recovery_item(&self, item: &str) -> bool {
+        self.recovery_items.contains(item)
+    }
+
+    /// Reserve a failed local identity before confirmed events are replayed. A
+    /// legacy attachment claim must not acquire a card when recovery bytes are
+    /// inserted later. A validated ItemCreated clears this derived reservation.
+    pub(crate) fn reserve_failed_attachment(&mut self, event: &Event, local: &str, source: &Event) {
+        let EventBody::MessagePosted {
+            attaches: Some(item),
+            media: Some(media),
+            forwarded,
+            ..
+        } = &event.body
+        else {
+            return;
+        };
+        let EventBody::ItemCreated {
+            item: source_item,
+            kind: ItemKind::File,
+            content: ItemContent::File(doc),
+            ..
+        } = &source.body
+        else {
+            return;
+        };
+        if event.author == local
+            && source.author == local
+            && event.space == source.space
+            && item == source_item
+            && !doc.is_voice()
+            && media.is_valid()
+            && !(*forwarded && media.group.is_some())
+            && event_log::verify_author(event).is_ok()
+            && event_log::verify_author(source).is_ok()
+        {
+            self.recovery_items.insert(item.clone());
+        }
+    }
+
     /// New metadata cannot point at another space's file or splice into another
     /// author's album. Partial arrival is allowed, but membership is ordered and
     /// unique within the signed (space, author, album id) scope.
     fn media_message_valid(&self, space: &str, author: &str, body: &EventBody) -> bool {
         let EventBody::MessagePosted {
-            media: Some(media),
+            media,
             attaches,
             reply,
             forwarded,
@@ -345,6 +388,9 @@ impl State {
         {
             return false;
         }
+        let Some(media) = media else {
+            return true;
+        };
         if !self
             .media_groups
             .allows(space, author, reply, *forwarded, media)

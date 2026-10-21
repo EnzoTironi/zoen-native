@@ -53,3 +53,12 @@ make recovered-only files eligible for a new attachment claim. Received metadata
 uses the same ordered group cursor on native and Web. A shared signed fixture
 covers reversed indices, duplicates, count/presentation/reply drift and forwarded
 album claims; invalid events remain in history without gaining a message view.
+
+Recovery-only identities are reserved from authenticated failed outbox sources
+before confirmed history is folded. This also rejects legacy messages without
+`media` metadata and signed version/revert events, including after reopening;
+later insertion of readable recovery bytes cannot grant them authority. File
+editing affordances and mutations reject those targets before writing chunks or
+keys. A validated File creation in the canonical projection clears the derived
+reservation. An explicit copy of readable bytes creates a fresh File through the
+existing writer checks and remains supported.

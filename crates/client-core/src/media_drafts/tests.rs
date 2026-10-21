@@ -1850,3 +1850,269 @@ fn media_contract_received_ordered_fixtures_use_the_same_cursor_as_browser() {
         );
     }
 }
+
+fn media_contract_recovered_writer() -> (Fixture, String) {
+    media_contract_recovered_writer_at(":memory:")
+}
+
+fn media_contract_recovered_writer_at(path: &str) -> (Fixture, String) {
+    let f = fixture(path);
+    media_contract_confirm_scope(&f);
+    let draft = save(
+        &f,
+        "0",
+        &media_options(&["recovery"], "file", "separate"),
+        vec![input("recovery")],
+    );
+    let sent = f
+        .engine
+        .send_media_draft(f.scope.clone(), draft.revision)
+        .unwrap();
+    let crate::EntryKind::Message {
+        card: Some(card), ..
+    } = &sent.entries[0].kind
+    else {
+        panic!("missing original file")
+    };
+    let item = card.item_id.clone();
+    media_contract_receive(
+        &f,
+        types::EventBody::MemberRemoved {
+            identity: f.scope.expected_identity_id.clone(),
+        },
+        false,
+    );
+    let pending = f.engine.lock().store.outbox().unwrap();
+    for row in pending {
+        assert!(f
+            .engine
+            .lock()
+            .reject(&row.event.client_id, "permission denied", true, None)
+            .user_failed());
+    }
+    media_contract_receive(
+        &f,
+        types::EventBody::MemberAdded {
+            identity: f.scope.expected_identity_id.clone(),
+            role: types::Role::Member,
+        },
+        false,
+    );
+    assert_eq!(
+        f.engine.file_bytes(item.clone(), None).unwrap().unwrap(),
+        input("recovery").bytes
+    );
+    (f, item)
+}
+
+fn media_contract_recovery_command_refused(command: &str) {
+    let (f, item) = media_contract_recovered_writer();
+    let before = counts(&f.engine);
+    let result = {
+        let mut engine = f.engine.lock();
+        match command {
+            "legacy" => engine
+                .post_as(
+                    &f.scope.space_id,
+                    &f.scope.expected_identity_id,
+                    "new legacy claim on recovery bytes",
+                    Some(item.clone()),
+                )
+                .map(|_| ()),
+            "version" => engine.file_new_version_typed(
+                &item,
+                b"must never replace recovery bytes",
+                None,
+                "unauthorized version",
+                "changed.pdf",
+                "application/pdf",
+            ),
+            "revert" => engine
+                .restore_version(&item, 1, "unauthorized restore")
+                .map(|_| ()),
+            _ => unreachable!(),
+        }
+    };
+    assert!(result.is_err(), "recovery-only target authorized {command}");
+    assert_eq!(counts(&f.engine), before, "{command} wrote before refusal");
+    let file = f.engine.file_info(item.clone()).unwrap().unwrap();
+    assert!(!f
+        .engine
+        .lock()
+        .file_edit_allowed(&item, 1, &file.sha256)
+        .unwrap());
+    assert_eq!(
+        f.engine.file_bytes(item, None).unwrap().unwrap(),
+        input("recovery").bytes
+    );
+}
+
+#[test]
+fn media_contract_recovery_only_file_refuses_legacy_attachment_command() {
+    media_contract_recovery_command_refused("legacy");
+}
+
+#[test]
+fn media_contract_recovery_only_file_refuses_new_version_before_writes() {
+    media_contract_recovery_command_refused("version");
+}
+
+#[test]
+fn media_contract_recovery_only_file_refuses_revert_command() {
+    media_contract_recovery_command_refused("revert");
+}
+
+#[test]
+fn media_contract_recovery_only_file_refuses_signed_projection_and_ingest() {
+    for operation in ["legacy", "version", "revert"] {
+        let dir = temp();
+        let path = dir.join("recovery-authority.sqlite");
+        let (f, item) = media_contract_recovered_writer_at(path.to_str().unwrap());
+        let content = f.engine.lock().state.items[&item].current().content.clone();
+        let body = match operation {
+            "legacy" => types::EventBody::MessagePosted {
+                message: types::new_id("msg"),
+                text: "signed remote recovery claim".into(),
+                attaches: Some(item.clone()),
+                media: None,
+                reply: None,
+                forwarded: false,
+            },
+            "version" => types::EventBody::ItemVersioned {
+                item: item.clone(),
+                content,
+                note: "signed remote version".into(),
+            },
+            "revert" => types::EventBody::ItemReverted {
+                item: item.clone(),
+                to_version: 1,
+                note: "signed remote revert".into(),
+            },
+            _ => unreachable!(),
+        };
+        {
+            let mut engine = f.engine.lock();
+            let event = engine
+                .author_for(&f.scope.expected_identity_id)
+                .unwrap()
+                .sign_event(
+                    &f.scope.space_id,
+                    &types::new_id("remote"),
+                    crate::engine::now_ms(),
+                    engine.logs[&f.scope.space_id].head(),
+                    body.clone(),
+                );
+            event_log::verify_author(&event).unwrap();
+            let context = crate::pages::PlanReplay::new(&engine.store, &engine.logs)
+                .local(&engine.state, &engine.identities, &event)
+                .unwrap();
+            let identities = engine.identities.clone();
+            assert_eq!(
+                engine.state.apply_checked(&event, &identities, &context),
+                crate::pages::Projection::Refused,
+                "signed {operation} gained authority in the recovery overlay"
+            );
+        }
+        media_contract_receive(&f, body, false);
+        assert_eq!(f.engine.lock().state.items[&item].versions.len(), 1);
+        assert!(!f
+            .engine
+            .timeline(f.scope.space_id.clone())
+            .unwrap()
+            .iter()
+            .any(
+                |entry| matches!(&entry.kind, crate::EntryKind::Message { text, .. }
+                if text == "signed remote recovery claim")
+            ));
+        let vault = f.vault.clone();
+        let scope = f.scope.clone();
+        drop(f);
+        let reopened = Client::open(path.to_string_lossy().into(), "en".into()).unwrap();
+        assert!(reopened.unlock(vault).unwrap());
+        assert_eq!(reopened.lock().state.items[&item].versions.len(), 1);
+        assert!(!reopened.timeline(scope.space_id).unwrap().iter().any(
+            |entry| matches!(&entry.kind, crate::EntryKind::Message { text, .. }
+                if text == "signed remote recovery claim")
+        ));
+        assert_eq!(
+            reopened.file_bytes(item, None).unwrap(),
+            Some(input("recovery").bytes)
+        );
+        drop(reopened);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
+fn media_contract_recovery_bytes_can_be_explicitly_copied_to_a_fresh_file() {
+    let (f, item) = media_contract_recovered_writer();
+    let bytes = f.engine.file_bytes(item.clone(), None).unwrap().unwrap();
+    let copied = f
+        .engine
+        .lock()
+        .file_add(
+            &f.scope.space_id,
+            "",
+            "copied.pdf",
+            "application/pdf",
+            &bytes,
+            None,
+        )
+        .unwrap();
+    assert_ne!(copied, item);
+    f.engine
+        .lock()
+        .post_as(
+            &f.scope.space_id,
+            &f.scope.expected_identity_id,
+            "explicit fresh copy",
+            Some(copied.clone()),
+        )
+        .unwrap();
+    assert_eq!(f.engine.file_bytes(copied, None).unwrap(), Some(bytes));
+}
+
+#[test]
+fn media_contract_recovery_reservation_yields_to_a_validated_file_creation() {
+    let (f, item) = media_contract_recovered_writer();
+    let source = f
+        .engine
+        .lock()
+        .store
+        .outbox()
+        .unwrap()
+        .into_iter()
+        .find(|row| matches!(&row.event.body, types::EventBody::ItemCreated { item: id, .. } if id == &item))
+        .unwrap()
+        .event;
+    {
+        let mut engine = f.engine.lock();
+        event_log::verify_author(&source).unwrap();
+        let event = engine.logs[&f.scope.space_id]
+            .clone()
+            .sequence(source)
+            .clone();
+        let _ = engine.ingest(protocol::Sequenced {
+            seq: event.seq,
+            prev: event.prev.clone(),
+            hash: event.hash.clone(),
+            env: protocol::Envelope::plain(&event),
+        });
+    }
+    assert!(!f.engine.lock().state.is_recovery_item(&item));
+    f.engine
+        .lock()
+        .file_new_version_typed(
+            &item,
+            b"authorized after actual creation",
+            None,
+            "real version",
+            "confirmed.pdf",
+            "application/pdf",
+        )
+        .unwrap();
+    assert_eq!(
+        f.engine.file_bytes(item, None).unwrap(),
+        Some(b"authorized after actual creation".to_vec())
+    );
+}

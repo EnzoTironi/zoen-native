@@ -692,7 +692,10 @@ impl Engine {
     ) -> R<FileEditStatus> {
         let me = self.me_id()?;
         let (it, current) = self.file_item(item)?;
-        if !self.state.writer(&it.space, &me) || !it.voice_edit_allowed(&me, None) {
+        if self.state.is_recovery_item(item)
+            || !self.state.writer(&it.space, &me)
+            || !it.voice_edit_allowed(&me, None)
+        {
             return Ok(FileEditStatus::Forbidden);
         }
         if it.current().number != expected_version || current.sha256 != expected_sha256 {
@@ -793,7 +796,10 @@ impl Engine {
         let me = self.me_id()?;
         let (it, cur) = self.file_item(item)?;
         let space = it.space.clone();
-        if !self.state.writer(&space, &me) || !it.voice_edit_allowed(&me, None) {
+        if self.state.is_recovery_item(item)
+            || !self.state.writer(&space, &me)
+            || !it.voice_edit_allowed(&me, None)
+        {
             return Err(CoreError::Forbidden {
                 reason: t("edição de arquivo não autorizada", "unauthorized file edit"),
             });

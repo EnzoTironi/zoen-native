@@ -300,11 +300,38 @@ impl Engine {
                 _ => None,
             })
             .collect();
+        let mut recovery_sources: HashMap<&str, Vec<(&Event, &Event)>> = HashMap::new();
+        if let Some(local) = self.me.as_deref() {
+            for row in pending.iter().filter(|row| row.failed) {
+                if let EventBody::MessagePosted {
+                    attaches: Some(item),
+                    media: Some(_),
+                    ..
+                } = &row.event.body
+                {
+                    if let Some(source) =
+                        sources.get(&(row.event.space.as_str(), item.as_str(), local))
+                    {
+                        recovery_sources
+                            .entry(row.event.space.as_str())
+                            .or_default()
+                            .push((&row.event, source));
+                    }
+                }
+            }
+        }
         let mut projections = HashMap::new();
         let mut confirmed = HashSet::new();
         let mut plans = PlanReplay::new(&self.store, &self.logs);
         for space in &order {
             let mut scoped = State::default();
+            if let (Some(local), Some(recovery)) =
+                (self.me.as_deref(), recovery_sources.get(space.as_str()))
+            {
+                for (event, source) in recovery {
+                    scoped.reserve_failed_attachment(event, local, source);
+                }
+            }
             if let Some(log) = self.logs.get(space) {
                 for (end, e) in log.events().iter().enumerate() {
                     confirmed.insert((e.space.clone(), e.client_id.clone()));
