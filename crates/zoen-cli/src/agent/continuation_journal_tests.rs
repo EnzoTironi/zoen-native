@@ -29,6 +29,7 @@ fn step(id: &str) -> ToolStep {
 }
 fn tools<'a>(client: &'a Arc<Client>, journal: &'a Path) -> SpaceTools<'a> {
     SpaceTools {
+        selection: None,
         e: client,
         journal,
         source: "synthetic-source",

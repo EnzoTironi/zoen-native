@@ -12,6 +12,7 @@ fn unoffered_binary_binding_cannot_replay_a_cached_success_without_authority() {
         arguments: json!({"artifactId":item,"version":1,"sha256":"00".repeat(32),"slideId":257,"id":258,"text":"retained"}),
     };
     let host = SpaceTools {
+        selection: None,
         e: &e,
         journal: &journal,
         source: "prior-source",
