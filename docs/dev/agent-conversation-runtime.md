@@ -115,8 +115,8 @@ permission checks or signed history. Reprojection will refuse a historical child
 Request whose sole source was that removed synthetic receipt; it does not cancel
 or delete its signed events. The original genuine-source Request remains valid.
 The focused batch passed 53 core approval tests and strict all-target Clippy.
-Native26 still contains the earlier Core, so this source correction is not yet
-qualified by a fresh installed native journey.
+That Native26 observation used the earlier Core. The later Native27 installation
+checkpoint below is separate from real Agent editing acceptance.
 
 Both hosts exited normally, with their owned process groups absent. A normal CLI
 read after the resume recovered the same v1 file, 4,592 bytes and unchanged
@@ -131,6 +131,22 @@ The outcome receipts are retained under
 The original partial attempt, operator claims and decisions remain preserved.
 Real Agent editing, fresh manual editor input, completed-result recovery in this
 native journey, public operation and production/scale acceptance remain open.
+
+A later Native27/Core29 build from `5a9a8d07` was installed into the same QA
+profile with its data retained; its bundle manifest and strict code signature
+matched the recorded installation. After a cold open and stable wait, the latest
+visible viewport retained the original task and approved **Read presentation**.
+It did not show the old synthetic receipt row or its child Read request that had
+been visible on Native26. This snapshot used a private-AX fallback and reported a
+repeated-navigation warning: it does not prove deletion or a complete history
+reprojection, nor a new accepted Agent edit.
+
+A separately qualified normal CLI from `005c43bc` used the existing public API to
+recover the unchanged v1 baseline: 4,592 bytes with SHA256
+`c1eabc895761e375e7516389cd7f4b029d29fef0da9382effbb831b0453b42d9`.
+This checkpoint made no new task, owner approval, host run or model/provider call.
+Native27 uses `5a9a8d07`; the CLI uses `005c43bc`. These are separate source and
+artifact qualifications, not a joined editing journey.
 
 Source: [Gate points](../../crates/gate/src/lib.rs),
 [citizen runtime](../../crates/zoen-agentd/src/citizen/host.rs),
