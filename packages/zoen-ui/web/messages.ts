@@ -470,7 +470,10 @@ export class Messages {
   }
 
   get #operations(): MessageOperations {
-    const owner = this;
+    return Messages.#borrow(this);
+  }
+
+  static #borrow(owner: Messages): MessageOperations {
     return {
       get core() {
         return owner.core;

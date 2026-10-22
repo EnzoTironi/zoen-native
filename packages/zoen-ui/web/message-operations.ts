@@ -4,7 +4,7 @@ import { type StoredSession } from './session.ts';
 import { type CoreWorker } from './worker-client.ts';
 import { type BrowserVault } from './vault.ts';
 import { type Conversation } from './message-model.ts';
-import { type ConnectionState, AuthenticatedTransport, type RelayFrame } from './transport.ts';
+import { type ConnectionState, type AuthenticatedTransport, type RelayFrame } from './transport.ts';
 import { type HistoryResult } from './history.ts';
 import { type AttachmentIntent, type FileDoc } from './message-file-model.ts';
 
