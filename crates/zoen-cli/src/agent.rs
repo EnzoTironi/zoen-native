@@ -33,6 +33,7 @@ use zoen_agentd::{
 };
 
 mod startup;
+mod trace;
 pub(crate) use startup::Readiness;
 
 /// History the brain sees: the Space's last messages before the one it answers.
@@ -436,7 +437,7 @@ async fn turn(
             Some(n) if owner_note(e, cx, &t.id).is_none() => {
                 let mut n: serde_json::Value = serde_json::from_str(&n).unwrap_or_default();
                 n["booking"]["source"] = t.id.clone().into();
-                tell_owner(e, cx, n)
+                tell_owner(e, cx, n, space, &t.id)
             }
             _ => true,
         };
@@ -551,7 +552,9 @@ async fn turn(
             ) {
                 Ok(results) => results,
                 Err(_) => {
-                    say("completed continuation is stale, unauthorized or lacks a canonical receipt");
+                    say(
+                        "completed continuation is stale, unauthorized or lacks a canonical receipt",
+                    );
                     return true;
                 }
             };
@@ -601,6 +604,7 @@ async fn turn(
             .turn_with_tools(tc, &history, &inbound, &tools, done)
             .await
     };
+    trace::turn_result(space, &t.id, &result);
     let out = match result {
         Ok(o) => o,
         Err(err) => {
@@ -616,8 +620,12 @@ async fn turn(
         }
         TurnOutcome::Say { text } => reply(e, space, &text, &t.id),
         TurnOutcome::ToolAsk { ask } => match tools.stage_approval(&ask) {
-            Ok(()) => true,
+            Ok(()) => {
+                trace::delivery(space, &t.id, trace::Delivery::ApprovalStaging, true);
+                true
+            }
             Err(error) => {
+                trace::delivery(space, &t.id, trace::Delivery::ApprovalStaging, false);
                 say(format_args!("tool approval refused: {error}"));
                 true
             }
@@ -627,6 +635,8 @@ async fn turn(
             cx,
             json!({"ask_owner": {"space": space, "source": t.id, "from": t.author.id,
                                  "draft": draft, "rule": rule}}),
+            space,
+            &t.id,
         ),
         TurnOutcome::ProposeAgent { spec, confirmation } => {
             propose(e, cx, space, t, &spec, confirmation.as_deref())
@@ -636,7 +646,9 @@ async fn turn(
 
 fn reply(e: &Arc<Client>, space: &str, text: &str, source: &str) -> bool {
     fault("before-send");
-    match e.send_reply(space.into(), text.into(), source.into(), false) {
+    let result = e.send_reply(space.into(), text.into(), source.into(), false);
+    trace::delivery(space, source, trace::Delivery::Reply, result.is_ok());
+    match result {
         Ok(_) => {
             say(format_args!(
                 "woke in {} -> replied",
@@ -666,6 +678,8 @@ fn propose(
         cx,
         json!({"agent_proposal": {"source": t.id, "space": space, "spec": spec,
                                   "confirmation": confirmation}}),
+        space,
+        &t.id,
     ) {
         return false;
     }
@@ -677,12 +691,21 @@ fn propose(
 }
 
 /// A structured note to the owner (their app renders it), tagged with its source message.
-fn tell_owner(e: &Arc<Client>, cx: &Ctx, body: serde_json::Value) -> bool {
+fn tell_owner(
+    e: &Arc<Client>,
+    cx: &Ctx,
+    body: serde_json::Value,
+    space: &str,
+    source: &str,
+) -> bool {
     let Ok(dm) = e.start_direct(cx.owner.clone()) else {
+        trace::delivery(space, source, trace::Delivery::OwnerNote, false);
         return false;
     };
     let text = format!("```json\n{body}\n```");
-    match e.send_message(dm, text) {
+    let result = e.send_message(dm, text);
+    trace::delivery(space, source, trace::Delivery::OwnerNote, result.is_ok());
+    match result {
         Ok(_) => {
             say("told the owner");
             true
@@ -733,7 +756,7 @@ impl JournalState {
         let bytes = match std::fs::read(path) {
             Ok(bytes) => bytes,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Self::default())
+                return Ok(Self::default());
             }
             Err(_) => return Err("The tool journal could not be read".into()),
         };

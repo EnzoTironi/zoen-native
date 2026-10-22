@@ -71,6 +71,7 @@ fn check(c: &Case) -> Check {
     let point = match c.point.as_str() {
         "tool-call" => Point::ToolCall,
         "inbound" => Point::Inbound,
+        "conversation-message" => Point::ConversationMessage,
         "bundle" => Point::Bundle,
         _ => Point::Outbound,
     };

@@ -2,6 +2,9 @@ use super::*;
 use crate::agent_binary_documents::tests::{counts, fixture, turn, Fixture, CHANGED, ORIGINAL};
 use types::{Annotation, Grant, IdentityKind, Role};
 
+#[path = "projection_tests.rs"]
+mod projection;
+
 const WORKER: &str = "4444444444444444444444444444444444444444444444444444444444444444";
 
 fn owner_decide(
