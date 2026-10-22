@@ -5,6 +5,8 @@ mod app_documents;
 mod attachments;
 #[path = "client_tests/crypto_interop.rs"]
 mod crypto_interop;
+#[path = "client_tests/cursor_repair.rs"]
+mod cursor_repair;
 #[path = "client_tests/page_documents.rs"]
 mod page_documents;
 #[path = "client_tests/projection.rs"]
