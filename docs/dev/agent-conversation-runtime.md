@@ -25,19 +25,54 @@ hosted classification accuracy.
 
 ## Bounded outcome diagnostics
 
-The CLI emits best-effort `zoen.agent.outcome.v1` diagnostic lines around actual
-runtime results and enqueue/staging results. Phase, outcome and optional rule
-class use closed vocabularies. The correlation is a domain-separated,
-length-framed SHA256 of the Space and source locators; it is not a content hash.
-The trace excludes message text, persona, rules, tool arguments/results, raw
-provider errors, audit summaries and credentials.
+The CLI emits best-effort `zoen.agent.outcome.v1` diagnostic lines for selected
+continuation paths, runtime outcomes, and enqueue/staging results. Phase, outcome,
+request status and optional rule class use closed vocabularies. The source
+correlation is a domain-separated, length-framed SHA256 of the Space and source
+locators. A separate `requestCorrelation` includes the exact returned Request
+locator. Neither correlation is a content hash or an authorization token. The
+trace excludes message text, persona, rules, tool names, arguments/results, raw
+errors, audit summaries, content hashes and credentials.
 
-`approval_staging: ok` means staging succeeded or reused an existing request.
-`reply: queued` and `owner_note: queued` confirm enqueue only. None proves
-delivery, approval, tool execution or an accepted document mutation. Early
-returns before the runtime call are not traced. Provider dispatch and internal
-retry counts are not measured. Existing CLI output may contain private content;
-the trace does not make all stdout suitable for logging.
+`continuation: normal` selects the ordinary turn path; it can include previously
+recorded steps and does not mean a new task. `approved` selects the existing
+approved-call path. `progress` selects completed-result recovery after the
+existing core verification and persistent attempt reservation. These events occur
+before Runtime continuation; they do not prove that its remaining checks passed,
+that the model consumed the context, or that a new effect executed.
+
+A held `ToolAsk` reports `completedSteps`, `failedSteps`, `remainingCalls` and the
+zero-based `roundIndex` from its actual runtime object. Failed steps are a subset
+of completed context steps, not successful effects. Approved/progress paths also
+report their retained context counts; the normal path has only step counts.
+Counts are bounded by the existing runtime limits; invalid counts are omitted,
+never clamped or treated as zero. None measures provider dispatch, internal
+retries, billing or accepted mutations.
+
+`approval_staging: ok` reports the Request actually returned by the core, its
+projected status and held step index. Staging may return an existing Request. The
+same Request correlation identifies the same canonical locator; it does not claim
+that a Request was newly appended, that approval was reused as permission, or
+that authorization remains current. Selected continuation early returns now emit
+closed stop categories for waiting/denied/cancelled/stale requests, missing or
+invalid continuation state, refused recovery/admission/reservation, the attempt
+limit, and an existing reply. This does not trace every host early return.
+
+`reply: queued` and `owner_note: queued` confirm enqueue only. Diagnostics confer
+no delivery, approval, execution or mutation authority, and failed diagnostic
+writes cannot change a task result or trigger retries. Existing CLI output may
+contain private content; the trace does not make all stdout suitable for logging.
+A collector must validate the phase-specific fields and counter bounds and
+otherwise discard the entire record, including unknown or raw fields.
+
+[Trace contract tests](../../crates/zoen-cli/src/agent/trace/tests.rs) exercise
+actual typed outcomes, payload canaries, bounded counts, Request correlation and
+failed writers. The existing
+[offline canonical read/cold-recovery fixture](../../crates/zoen-cli/src/agent/canonical_read_recovery_tests.rs)
+asserts actual emitted normal, pending, recovered-progress and reply-dedup paths
+alongside its accepted-effect and cold-replay checks. Its controlled interruption
+invokes Runtime directly, so it does not qualify a joined normal-host approved
+path or the real model/MLS/iPhone journey below.
 
 ## Read-context contracts
 
