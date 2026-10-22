@@ -452,7 +452,9 @@ impl Session {
             }
             ClientFrame::Publish { env } => self.publish(env).await,
             ClientFrame::Sync { cursors, all } => self.sync(cursors, all).await,
-            ClientFrame::Ephemeral { space, kind } => self.ephemeral(space, kind).await,
+            ClientFrame::Ephemeral { space, kind } => {
+                return self.ephemeral(space, kind).await && !self.revoked.load(Ordering::Acquire);
+            }
             ClientFrame::Hello { .. } | ClientFrame::Auth { .. } => {
                 self.send(ServerFrame::error(ErrorCode::Other, "already logged in"))
                     .await

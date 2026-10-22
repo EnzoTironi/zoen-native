@@ -6,18 +6,18 @@ impl Session {
         skip_all,
         fields(identity = %pseudo(&self.identity), space = %pseudo(&space), delivered_here = Empty)
     )]
-    pub(super) async fn ephemeral(&self, space: String, kind: protocol::EphemeralKind) {
+    pub(super) async fn ephemeral(&self, space: String, kind: protocol::EphemeralKind) -> bool {
         if self.st.limits.ephemeral_device.check(&self.device).is_err() {
-            return;
+            return true;
         }
         // One read: the member list answers both "may I?" and "who hears it?". Typing and
         // receipts are the most frequent frames, so a second transaction here doubled the
         // log store's read load for no extra information.
         let Ok(members) = self.st.log.members(&space).await else {
-            return;
+            return true;
         };
         if !members.iter().any(|(m, _)| *m == self.identity) {
-            return;
+            return true;
         }
         let receipt = match kind {
             protocol::EphemeralKind::Read { seq } => Some((0, seq)),
@@ -25,9 +25,19 @@ impl Session {
             _ => None,
         };
         if let Some((delivered, read)) = receipt {
-            self.st
+            if !self
+                .st
                 .receipts
-                .raise(&space, &self.identity, delivered, read);
+                .raise(&space, &self.identity, delivered, read)
+            {
+                Metrics::inc(&self.st.metrics.receipts_overloaded);
+                self.send(ServerFrame::error(
+                    ErrorCode::Unavailable,
+                    "receipt backlog full; reconnect to replay",
+                ))
+                .await;
+                return false;
+            }
         }
         // Receipts also reach my other devices (read on the phone clears the Mac), never
         // this session itself.
@@ -54,6 +64,7 @@ impl Session {
         );
         tracing::Span::current().record("delivered_here", n as i64);
         Metrics::inc(&self.st.metrics.ephemeral_forwarded);
+        true
     }
 
     /// In a large Space a receipt goes to the authors of the messages it acknowledges and
