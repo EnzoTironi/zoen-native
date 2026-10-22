@@ -58,6 +58,31 @@ pub(crate) const EVENT_FORMAT_META: &str = "event_format";
 /// Format v3 (signed protobuf bytes). Older logs were signed over JSON and restart.
 pub(crate) const EVENT_FORMAT_VALUE: &str = "3";
 
+/// The author's authenticated intent, before relay sequencing. A client ID alone
+/// cannot acknowledge an outbox row, even when another valid member reuses it.
+/// The verified log authenticates these bytes, not the hex spelling of a signature.
+/// Borrow existing signed bytes; this is a disposable index, not another receipt store.
+#[derive(Hash, PartialEq, Eq)]
+struct PendingCommitment<'a> {
+    space: &'a str,
+    client_id: &'a str,
+    author: &'a str,
+    device: Option<&'a str>,
+    content: &'a [u8],
+}
+
+impl<'a> PendingCommitment<'a> {
+    fn of(event: &'a Event) -> Self {
+        Self {
+            space: &event.space,
+            client_id: &event.client_id,
+            author: &event.author,
+            device: event.device.as_deref(),
+            content: &event.content,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct AccountMeta {
     pub identity: IdentityId,
@@ -259,17 +284,17 @@ impl Engine {
         self.net.failed.clear();
         self.net.profiles.forget_shared();
 
-        let confirmed: HashSet<String> = self
+        let confirmed: HashSet<_> = self
             .net
             .synced
             .iter()
             .filter_map(|s| self.logs.get(s))
-            .flat_map(|l| l.events().iter().map(|e| e.client_id.clone()))
+            .flat_map(|l| l.events().iter().map(PendingCommitment::of))
             .collect();
         let outbox = self.store.outbox()?;
         for p in outbox {
             let e = p.event;
-            if confirmed.contains(&e.client_id) {
+            if confirmed.contains(&PendingCommitment::of(&e)) {
                 // Crashed between storing the confirmed copy and clearing the outbox.
                 self.store.outbox_remove(&e.client_id)?;
                 continue;
@@ -418,7 +443,7 @@ impl Engine {
             }
             if let Some(log) = self.logs.get(space) {
                 for (end, e) in log.events().iter().enumerate() {
-                    confirmed.insert((e.space.clone(), e.client_id.clone()));
+                    confirmed.insert(PendingCommitment::of(e));
                     let context = plans.before(&scoped, &self.identities, e, end)?;
                     scoped.apply_checked(e, &self.identities, &context);
                 }
@@ -432,7 +457,7 @@ impl Engine {
         let mut optimistic = HashSet::new();
         for p in &pending {
             let e = &p.event;
-            if confirmed.contains(&(e.space.clone(), e.client_id.clone())) {
+            if confirmed.contains(&PendingCommitment::of(e)) {
                 continue;
             }
             if p.failed {
@@ -507,9 +532,11 @@ impl Engine {
 
     pub(crate) fn delivery(&self, e: &Entry) -> Delivery {
         let source = e.client_id.strip_suffix(":result").unwrap_or(&e.client_id);
-        if self.net.failed.contains_key(source) {
+        // Confirmed remote aliases retain their own receipt; only unsequenced
+        // optimistic rows inherit the local outbox status.
+        if e.hash.is_empty() && self.net.failed.contains_key(source) {
             Delivery::Failed
-        } else if self.net.pending.contains_key(source) {
+        } else if e.hash.is_empty() && self.net.pending.get(source) == Some(&e.space) {
             Delivery::Sending
         } else if self.net.synced.contains(&e.space) || self.net.receipts.contains_key(&e.space) {
             self.receipt_for(e)
@@ -621,6 +648,17 @@ impl Engine {
         r
     }
 
+    pub(crate) fn pending_for_confirmation(&self, space: &str, id: &str) -> R<Option<Event>> {
+        if self.net.pending.get(id).map(String::as_str) != Some(space) {
+            return Ok(None);
+        }
+        // A read failure must not become either a guessed receipt or a removal.
+        Ok(self
+            .store
+            .outbox_get(id)?
+            .filter(|pending| pending.space == space))
+    }
+
     fn ingest_plain(&mut self, e: Event) -> Ingest {
         let space = e.space.clone();
         let next = self.logs.get(&space).map(|l| l.next_seq()).unwrap_or(0);
@@ -635,6 +673,12 @@ impl Engine {
         if e.seq > next {
             return Ingest::Gap { next };
         }
+        let own = match self.pending_for_confirmation(&space, &e.client_id) {
+            Ok(pending) => pending
+                .as_ref()
+                .is_some_and(|pending| PendingCommitment::of(pending) == PendingCommitment::of(&e)),
+            Err(error) => return Ingest::Invalid(error.to_string()),
+        };
         let accept_err = {
             let log = self
                 .logs
@@ -645,7 +689,6 @@ impl Engine {
         if let Some(err) = accept_err {
             return self.refuse_unaccepted(&space, &err, &e);
         }
-        let own = self.net.pending.get(&e.client_id) == Some(&space);
         // The confirmed event, its catch-up scope and an own pending copy describe
         // one receipt. Never publish a confirmation whose bookkeeping failed.
         let stored = (|| -> store::Result<()> {
@@ -741,8 +784,9 @@ impl Engine {
     ) -> bool {
         let stamp = |entries: &mut Vec<Entry>| {
             for entry in entries.iter_mut().filter(|entry| {
-                entry.client_id == client_id
-                    || entry.client_id.strip_suffix(":result") == Some(client_id)
+                entry.hash.is_empty()
+                    && (entry.client_id == client_id
+                        || entry.client_id.strip_suffix(":result") == Some(client_id))
             }) {
                 entry.seq = seq;
                 entry.hash = hash.to_string();
