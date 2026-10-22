@@ -21,7 +21,7 @@
   },
   "patch": {
     "path": "patches/0018-egui-touch-input.patch",
-    "sha256": "5413f8fc852c867daf2885e08f4868229af9bb2af9db1be8a04bcfeda7903eb1"
+    "sha256": "8e44a72c2d5ecd7684668c67ee429d39e7cb31ab615428ae7b5a849ce4069882"
   },
   "sourceFiles": [
     {
@@ -37,7 +37,7 @@
     {
       "path": "crates/ui-egui/src/host_phone_landscape_tests.rs",
       "before": "7ec0046ffd9dc5f93f01a30089ca5eb2055027771b6712db46e860d7ce67277d",
-      "after": "b8750f1d3d37db10e9c4dddc8afccd2e82cac63f96641a779fe0c1ba7a87368b"
+      "after": "dc20b3f4f2e3c020e15e2e58eef4f309e91231f08feb535f433e1c170a1e8cb3"
     }
   ]
 }

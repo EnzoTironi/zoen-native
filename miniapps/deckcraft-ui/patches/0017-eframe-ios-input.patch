@@ -927,7 +927,7 @@
                  || event.meta_key()
 --- /dev/null
 +++ b/vendor/eframe-0.36.2/src/web/text_input_activation.rs
-@@ -0,0 +1,226 @@
+@@ -0,0 +1,228 @@
 +//! A primary contact has one release-family owner. This is not a gesture clock:
 +//! egui remains responsible for click/drag thresholds and textual admission.
 +
@@ -1046,7 +1046,9 @@
 +        && let Some(id) = ctx.memory(|memory| memory.focused())
 +        && let Some(response) = ctx.read_response(id)
 +        && response.enabled()
-+        && response.has_focus()
++        // DOM focus may arrive only after this real first textual click.
++        // Bind to the current TextEdit owner without bypassing release/IME gates.
++        && ctx.memory(|memory| memory.has_focus(response.id))
 +        && response.clicked_by(egui::PointerButton::Primary)
 +    {
 +        return true;

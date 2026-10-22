@@ -28,7 +28,7 @@
   "ahash",
 --- a/crates/ui-egui/src/host_phone_landscape_tests.rs
 +++ b/crates/ui-egui/src/host_phone_landscape_tests.rs
-@@ -520,3 +520,38 @@
+@@ -520,3 +520,81 @@
      primary_event(&mut h, at, false);
      assert!(!activation_after_current_frame(&h));
  }
@@ -66,6 +66,49 @@
 +            response.has_focus()
 +        );
 +    }
++}
++
++// Regression probe: eframe updates RawInput.focused from document.activeElement
++// before the user-gesture path evaluates standard TextEdit admission.
++fn first_notes_click_with_viewport_focus(focused: bool) {
++    let portrait = layout(430.0, 932.0, 0.0, 0.0);
++    let mut h = fixture(Some(portrait), vec2(430.0, 932.0));
++    h.get_by_label("Speaker notes").click();
++    h.run_steps(2);
++    h.input_mut().focused = focused;
++    h.run_steps(1);
++    let at = h.query_all_by_role(Role::MultilineTextInput).next().unwrap().rect().center();
++    primary_event(&mut h, at, true);
++    primary_event(&mut h, at, false);
++    let actual_focused = h.ctx.input(|input| input.focused);
++    let owner = h.ctx.memory(|memory| memory.focused());
++    let response = owner.and_then(|id| h.ctx.read_response(id));
++    let clicked = response.as_ref().is_some_and(|response| response.clicked_by(egui::PointerButton::Primary));
++    let response_focus = response.as_ref().is_some_and(|response| response.has_focus());
++    let ime = h.output().platform_output.ime.is_some();
++    let accepted = activation_after_current_frame(&h);
++    println!(
++        "notes_focus_probe viewport={actual_focused} text_edit={} memory_owner={} clicked={clicked} response_focus={response_focus} ime={ime} accepted={accepted}",
++        h.ctx.text_edit_focused(),
++        owner.is_some()
++    );
++    assert_eq!(actual_focused, focused, "the actual raw viewport focus is the independent variable");
++    assert!(owner.is_some(), "the actual Notes TextEdit owns egui memory focus");
++    assert!(clicked, "the same real first Notes click was admitted by egui");
++    assert!(accepted, "a real first Notes click must admit its current TextEdit owner to the synchronous web input path");
++    assert!(!web_text_activation::accepted_current_text(&h.ctx, false), "no IME output cannot authorize a keyboard");
++    h.run_steps(1);
++    assert!(!activation_after_current_frame(&h), "the same focused owner without a fresh click cannot authorize a later frame");
++}
++
++#[test]
++fn notes_viewport_focus_probe_true_control() {
++    first_notes_click_with_viewport_focus(true);
++}
++
++#[test]
++fn notes_viewport_focus_probe_false_requires_current_text_owner() {
++    first_notes_click_with_viewport_focus(false);
 +}
 --- a/vendor/egui-0.36.2/src/text_selection/text_cursor_state.rs
 +++ b/vendor/egui-0.36.2/src/text_selection/text_cursor_state.rs
