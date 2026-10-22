@@ -25,6 +25,10 @@ impl SecretVault for Vault {
 pub(super) enum Mode {
     Normal,
     Unsynced,
+    InvalidStatus,
+    InvalidKind,
+    DefinitionKindMismatch,
+    DefinitionVersionMismatch,
 }
 pub(super) struct Relay {
     pub url: String,
@@ -126,7 +130,9 @@ pub(super) async fn relay(mode: Mode) -> Relay {
                         } => {
                             seen.lock().unwrap().push("agent_state");
                             let result = Ok(Reply::AgentState(AgentStateRecord {
-                                status: "active".into(), kind: "User".into(), definition_version: 2,
+                                status: if matches!(mode, Mode::InvalidStatus) { "future-status" } else { "active" }.into(),
+                                kind: if matches!(mode, Mode::InvalidKind) { "future-kind" } else if matches!(mode, Mode::DefinitionKindMismatch) { "Creator" } else { "User" }.into(),
+                                definition_version: if matches!(mode, Mode::DefinitionVersionMismatch) { 3 } else { 2 },
                                 definition: br#"{"version":2,"kind":"user","persona":"Synthetic source fixture","rules":[],"state":{},"model_tier":"cheap"}"#.to_vec(),
                                 cursors: positions.lock().unwrap().clone(),
                             }));

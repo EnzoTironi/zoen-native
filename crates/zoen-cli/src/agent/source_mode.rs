@@ -3,6 +3,55 @@ use super::*;
 use client_core::{Delivery, RequestStatus};
 use sha2::{Digest, Sha256};
 
+pub(super) type Head = Option<(String, RequestStatus)>;
+pub(super) struct Attempt {
+    pub handled: bool,
+    /// Canonical head actually read inside turn, not a snapshot taken after its await.
+    pub observed: Option<Head>,
+}
+
+pub(super) fn definition(
+    status: &str,
+    kind: &str,
+    version: u32,
+    bytes: &[u8],
+) -> Result<Definition, String> {
+    if !matches!(status, "active" | "paused" | "revoked") || !matches!(kind, "User" | "Creator") {
+        return Err("agent_host_source_invalid_state".into());
+    }
+    if status == "revoked" {
+        return Err("agent_host_source_revoked".into());
+    }
+    let definition =
+        Definition::decode(bytes).map_err(|_| "agent_host_source_definition_unavailable")?;
+    if version == 0 || definition.version != version || definition.kind.relay_kind() != kind {
+        return Err("agent_host_source_definition_mismatch".into());
+    }
+    Ok(definition)
+}
+
+pub(super) async fn admit(e: &Client, timeout_ms: u64) -> Result<Vec<(String, u64)>, String> {
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
+    startup::settle(e, timeout_ms)
+        .await
+        .map_err(|_| "agent_host_source_startup_unavailable")?;
+    let state = tokio::time::timeout_at(deadline, e.agent_state())
+        .await
+        .map_err(|_| "agent_host_source_state_unavailable")?
+        .map_err(|_| "agent_host_source_state_unavailable")?;
+    definition(
+        &state.status,
+        &state.kind,
+        state.definition_version,
+        &state.definition,
+    )?;
+    let mut spaces = BTreeSet::new();
+    if state.cursors.iter().any(|(space, _)| !spaces.insert(space)) {
+        return Err("agent_host_source_invalid_state".into());
+    }
+    Ok(state.cursors)
+}
+
 pub(crate) struct Source {
     id: String,
 }
@@ -192,7 +241,7 @@ impl Bound {
 /// remains the existing recovery authority. No cursor or completion record is written.
 pub(super) struct Run {
     bound: Bound,
-    observed: Option<Option<(String, RequestStatus)>>,
+    observed: Option<Head>,
 }
 impl Run {
     pub(super) fn prepare(e: &Client, source: Source) -> Result<Self, String> {
@@ -265,7 +314,7 @@ impl Run {
         // An unknown result terminates this run, never implicit provider replay.
         self.observed = Some(head);
         self.check(e)?;
-        let handled = tokio::time::timeout(
+        let attempt = tokio::time::timeout(
             deadline.saturating_duration_since(Instant::now()),
             super::turn::selected(
                 e,
@@ -280,7 +329,10 @@ impl Run {
         .await
         .map_err(|_| "agent_host_source_outcome_unknown")?;
         self.check(e)?;
-        if !handled {
+        if let Some(observed) = attempt.observed {
+            self.observed = Some(observed);
+        }
+        if !attempt.handled {
             return Err("agent_host_source_outcome_unknown".into());
         }
         Ok(false)

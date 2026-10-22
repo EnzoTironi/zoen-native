@@ -11,7 +11,7 @@ pub(super) async fn turn(
     before: &[TimelineEntry],
     t: &TimelineEntry,
 ) -> bool {
-    checked(e, cx, def, space, before, t, None).await
+    checked(e, cx, def, space, before, t, None, &mut None).await
 }
 
 pub(super) async fn selected(
@@ -22,13 +22,22 @@ pub(super) async fn selected(
     before: &[TimelineEntry],
     t: &TimelineEntry,
     selection: &source_mode::Bound,
-) -> bool {
+) -> source_mode::Attempt {
     if selection.dispatch(e, cx, space, t).is_err() {
-        return false;
+        return source_mode::Attempt {
+            handled: false,
+            observed: None,
+        };
     }
-    checked(e, cx, def, space, before, t, Some(selection)).await
+    let mut observed = None;
+    let handled = checked(e, cx, def, space, before, t, Some(selection), &mut observed).await;
+    source_mode::Attempt { handled, observed }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "normal turn inputs plus optional selector and its actual canonical observation"
+)]
 async fn checked(
     e: &Arc<Client>,
     cx: &Ctx,
@@ -37,6 +46,7 @@ async fn checked(
     before: &[TimelineEntry],
     t: &TimelineEntry,
     selection: Option<&source_mode::Bound>,
+    observed: &mut Option<source_mode::Head>,
 ) -> bool {
     if selection.is_some_and(|selection| selection.check(e).is_err()) {
         return false;
@@ -106,12 +116,18 @@ async fn checked(
     let done = tools.done();
     let pending = e.tool_approval_requests(space, &t.id);
     let resumed = pending.last();
+    if selection.is_some() && resumed.is_none() {
+        *observed = Some(None);
+    }
     let result = if let Some(request) = resumed {
         let stop = |category| trace::stop(space, &t.id, category, Some(&request.id));
         let Some(dto) = e.requests().into_iter().find(|r| r.id == request.id) else {
             stop(trace::Stop::RequestUnavailable);
             return true;
         };
+        if selection.is_some() {
+            *observed = Some(Some((dto.id.clone(), dto.status)));
+        }
         if let Some(category) = trace::Stop::request_status(dto.status) {
             stop(category);
             return true;

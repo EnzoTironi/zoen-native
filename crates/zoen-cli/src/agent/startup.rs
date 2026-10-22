@@ -87,6 +87,18 @@ pub(super) async fn settled_cursors(
     client: &Client,
     timeout_ms: u64,
 ) -> Result<Vec<(String, u64)>, String> {
+    settle(client, timeout_ms).await?;
+    let state = client
+        .agent_state()
+        .await
+        .map_err(|error| error.to_string())?;
+    if state.status == "revoked" {
+        return Err("this agent was revoked by its owner".into());
+    }
+    Ok(state.cursors)
+}
+
+pub(super) async fn settle(client: &Client, timeout_ms: u64) -> Result<(), String> {
     client
         .wait_until_settled(timeout_ms)
         .await
@@ -99,14 +111,7 @@ pub(super) async fn settled_cursors(
                 observed.pending
             )
         })?;
-    let state = client
-        .agent_state()
-        .await
-        .map_err(|error| error.to_string())?;
-    if state.status == "revoked" {
-        return Err("this agent was revoked by its owner".into());
-    }
-    Ok(state.cursors)
+    Ok(())
 }
 
 #[cfg(test)]

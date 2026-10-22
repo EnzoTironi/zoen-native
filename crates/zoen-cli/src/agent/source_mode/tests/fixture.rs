@@ -16,11 +16,22 @@ pub(super) struct Fixture {
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
-        self.client.stop_sync();
+        self.close();
         let _ = std::fs::remove_dir_all(&self.path);
     }
 }
 impl Fixture {
+    fn close(&mut self) {
+        self.client.stop_sync();
+        let empty = Client::open(":memory:".into(), "en".into()).unwrap();
+        let current = std::mem::replace(&mut self.client, empty);
+        assert_eq!(
+            Arc::strong_count(&current),
+            1,
+            "fixture must own the only Client before offline transfer"
+        );
+        drop(current); // release the real Store's exclusive SQLite connection
+    }
     pub(super) fn new(relay: &str) -> Self {
         let path = std::env::temp_dir().join(types::new_id("host-source-test"));
         std::fs::create_dir(&path).unwrap();
@@ -123,7 +134,7 @@ impl Fixture {
         }
     }
     pub(super) fn reopen(&mut self) {
-        self.client.stop_sync();
+        self.close();
         let client = Client::open(
             self.path.join("agent.sqlite").to_str().unwrap().into(),
             "en".into(),
@@ -133,7 +144,7 @@ impl Fixture {
         self.client = client;
     }
     pub(super) fn append(&mut self, body: types::EventBody, owner: bool) -> String {
-        self.client.stop_sync();
+        self.close();
         flush(&self.path, "agent.sqlite", "agent.sqlite", &self.space);
         let db = store::Store::open(self.path.join("agent.sqlite").to_str().unwrap()).unwrap();
         let mut log = SpaceLog::from_events(&self.space, db.events(&self.space).unwrap()).unwrap();
@@ -156,7 +167,7 @@ impl Fixture {
         event.client_id
     }
     pub(super) async fn approve(&mut self, request: &client_core::AgentRequestDto) {
-        self.client.stop_sync();
+        self.close();
         flush(&self.path, "agent.sqlite", "owner.sqlite", &self.space);
         let owner = Client::open(
             self.path.join("owner.sqlite").to_str().unwrap().into(),

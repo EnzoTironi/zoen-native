@@ -141,6 +141,45 @@ async fn missing_target_refuses_before_provider_construction_and_never_seeds_or_
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unknown_state_and_definition_metadata_mismatch_refuse_before_providers_or_readiness() {
+    for (mode, expected) in [
+        (Mode::InvalidStatus, "agent_host_source_invalid_state"),
+        (Mode::InvalidKind, "agent_host_source_invalid_state"),
+        (
+            Mode::DefinitionKindMismatch,
+            "agent_host_source_definition_mismatch",
+        ),
+        (
+            Mode::DefinitionVersionMismatch,
+            "agent_host_source_definition_mismatch",
+        ),
+    ] {
+        let server = relay(mode).await;
+        let f = Fixture::new(&server.url);
+        online(&f.client, true).await;
+        let lock = crate::agent_host_lock::HostLock::acquire(&f.path).unwrap();
+        let ready = startup::Readiness::reset(&f.path, &lock).unwrap();
+        assert_eq!(
+            host(&f.client, &f.path, &ready, Some(1), Some(source(&f.source))).await,
+            Err(expected.into())
+        );
+        assert!(!f.path.join("agent-ready").exists());
+        assert!(!f.path.join("agent-tool-steps.json").exists());
+        assert!(server.cursors.lock().unwrap().is_empty());
+        assert!(!server
+            .calls
+            .lock()
+            .unwrap()
+            .contains(&"forbidden_agent_operation"));
+        assert!(!server.calls.lock().unwrap().contains(&"read_receipt"));
+    }
+    // The same production validator is applied to every status poll, before turn.
+    let bytes = definition().encode().unwrap();
+    assert!(super::definition("future-status", "User", 1, &bytes).is_err());
+    assert!(super::definition("active", "future-kind", 1, &bytes).is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn real_signed_projection_selects_one_source_and_preserves_all_cursors_and_read_state() {
     let server = relay(Mode::Normal).await;
     let mut f = Fixture::new(&server.url);
@@ -193,6 +232,7 @@ async fn selected_turn_refuses_another_valid_signed_message_before_runtime() {
             &run.bound
         )
         .await
+        .handled
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert!(!f.path.join("source-steps.json").exists());

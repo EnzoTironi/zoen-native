@@ -190,9 +190,7 @@ pub async fn host(
             }
         })?;
     let (mut cursors, mut selected) = if let Some(source) = source {
-        let cursors = startup::settled_cursors(e, 15000)
-            .await
-            .map_err(|_| "agent_host_source_startup_unavailable")?;
+        let cursors = source_mode::admit(e, 15000).await?;
         (
             cursors.into_iter().collect(),
             Some(source_mode::Run::prepare(e, source)?),
@@ -303,11 +301,24 @@ pub async fn host(
         if let Some(selected) = &selected {
             selected.check(e)?;
         }
+        let selected_definition = if scoped {
+            Some(source_mode::definition(
+                &status.status,
+                &status.kind,
+                status.definition_version,
+                &status.definition,
+            )?)
+        } else {
+            None
+        };
         if status.status == "revoked" {
             say("revoked by the owner");
             break;
         }
-        let def = match Definition::decode(&status.definition) {
+        let def = match selected_definition
+            .map(Ok)
+            .unwrap_or_else(|| Definition::decode(&status.definition))
+        {
             Ok(d) => d,
             Err(_) => {
                 say("no definition yet");
