@@ -332,6 +332,7 @@ class CargoSourceGuardTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout.decode())
         self.assertNotEqual(first["before"]["contextDigest"], second["before"]["contextDigest"])
         self.assertEqual(len(second["cleanedPackages"]), 1)
+        self.assertEqual(first["before"]["context"]["configurationHelper"], hashlib.sha256(GUARD.with_name("cargo_guard_configuration.py").read_bytes()).hexdigest())
         self.assertNotIn(secret, json.dumps(first))
         self.assertNotIn(secret, json.dumps(second))
 

@@ -7,7 +7,7 @@ import hashlib
 import json
 import os
 import pathlib
-import re
+import runpy
 import shutil
 import signal
 import stat
@@ -15,10 +15,14 @@ import subprocess
 import sys
 import tempfile
 import time
-try:
-    import tomllib
-except ImportError:
+if sys.version_info < (3, 11):
     raise SystemExit("cargo-source-guard requires Python 3.11+ (stdlib tomllib)")
+
+# Load the bound helper source without consulting timestamp-based bytecode caches.
+CONFIGURATION_HELPER = pathlib.Path(__file__).with_name("cargo_guard_configuration.py")
+_configuration = runpy.run_path(str(CONFIGURATION_HELPER))
+cargo_configuration = _configuration["cargo_configuration"]
+compilation_scope = _configuration["compilation_scope"]
 
 
 class GuardError(Exception):
@@ -72,38 +76,6 @@ def inside(path, directory):
     return path == directory or directory in path.parents
 
 
-def cargo_configuration(directory, env):
-    # Cargo's documented precedence: Cargo home, then ancestors, then cwd.
-    home = pathlib.Path(env.get("CARGO_HOME", str(pathlib.Path.home() / ".cargo"))).resolve()
-    directories = [home] + [path / ".cargo" for path in reversed((directory, *directory.parents))]
-    paths = []
-    for item in directories:
-        path = item / "config"
-        if not path.is_file():
-            path = item / "config.toml"
-        if path.is_file():
-            path = path.resolve()
-            if path in paths:
-                paths.remove(path)
-            paths.append(path)
-    hashes, targets = {}, None
-    for path in paths:
-        hashes[str(path)] = file_hash(path)
-        with path.open("rb") as stream:
-            value = tomllib.load(stream).get("build", {}).get("target")
-        if value is not None:
-            if not isinstance(value, str) and not (isinstance(value, list) and all(isinstance(item, str) for item in value)):
-                raise GuardError("Unsupported Cargo build.target configuration")
-            if isinstance(targets, list) and isinstance(value, list):
-                targets += value
-            elif targets is not None and type(targets) is not type(value):
-                raise GuardError("Cargo target configuration types disagree")
-            else:
-                targets = value
-    if env.get("CARGO_BUILD_TARGET"):
-        targets = env["CARGO_BUILD_TARGET"]
-    return hashes, targets
-
 
 def snapshot(cargo, manifest, target, sidecar, receipt, env, extra_env, extra_files):
     workspace = pathlib.Path(manifest).parent
@@ -140,7 +112,7 @@ def snapshot(cargo, manifest, target, sidecar, receipt, env, extra_env, extra_fi
             raise GuardError("A Cargo target source is not Git-visible; declare it with --input-file")
         packages[package["id"]] = {"name": package["name"], "manifest": str(package_manifest), "inputs": inputs, "digest": digest(inputs)}
     git_root = pathlib.Path(capture(["git", "rev-parse", "--show-toplevel"], workspace, env).strip()).resolve()
-    config, configured_targets = cargo_configuration(manifest.parent, env)
+    config, configured_targets = cargo_configuration(manifest.parent, env, file_hash)
     directory = manifest.parent
     while True:
         for name in (".cargo/config", ".cargo/config.toml", "rust-toolchain", "rust-toolchain.toml"):
@@ -167,7 +139,7 @@ def snapshot(cargo, manifest, target, sidecar, receipt, env, extra_env, extra_fi
         if env.get(name):
             path = pathlib.Path(shutil.which(env[name]) or env[name]).resolve(strict=True)
             programs[name] = {"path": str(path), "sha256": file_hash(path)}
-    context = {"workspace": str(workspace), "manifest": str(manifest), "target": str(target), "config": config, "configuredTargets": configured_targets, "guard": file_hash(pathlib.Path(__file__)), "cargo": capture([cargo, "-Vv"], workspace, env), "rustc": capture([env.get("RUSTC") or "rustc", "-Vv"], workspace, env), "compilerPrograms": programs, "environment": {name: digest(env[name]) if name in env else None for name in sorted(names)}}
+    context = {"workspace": str(workspace), "manifest": str(manifest), "target": str(target), "config": config, "configuredTargets": configured_targets, "guard": file_hash(pathlib.Path(__file__)), "configurationHelper": file_hash(CONFIGURATION_HELPER), "cargo": capture([cargo, "-Vv"], workspace, env), "rustc": capture([env.get("RUSTC") or "rustc", "-Vv"], workspace, env), "compilerPrograms": programs, "environment": {name: digest(env[name]) if name in env else None for name in sorted(names)}}
     return {"context": context, "contextDigest": digest(context), "packages": packages, "thirdPartyNames": sorted({p["name"] for p in metadata["packages"] if p["source"] is not None}), "thirdPartyIds": sorted(digest(p["id"]) for p in metadata["packages"] if p["source"] is not None)}
 
 
@@ -229,41 +201,6 @@ def cargo_command(command, cwd, env, lock_fd, launched):
             stop_owned(child)
         child.stdout.close()
 
-
-def compilation_scope(arguments, configured_targets):
-    targets = []
-    profile = "dev"
-    index = 0
-    while index < len(arguments):
-        arg = arguments[index]
-        if arg in ("--target", "--profile"):
-            index += 1
-            if index == len(arguments):
-                raise GuardError("Missing target/profile value")
-            value = arguments[index]
-        elif arg.startswith(("--target=", "--profile=")):
-            arg, value = arg.split("=", 1)
-        elif arg in ("--release", "-r"):
-            profile = "release"
-            index += 1
-            continue
-        else:
-            index += 1
-            continue
-        if not re.fullmatch(r"[A-Za-z0-9_.-]+", value):
-            raise GuardError("Use explicit target triples/profile names; custom target JSON is unsupported")
-        if arg == "--target":
-            targets.append(value)
-        else:
-            profile = {"test": "dev", "bench": "release"}.get(value, value)
-        index += 1
-    if not targets and configured_targets is not None:
-        targets = [configured_targets] if isinstance(configured_targets, str) else configured_targets
-        if not targets:
-            raise GuardError("Cargo has an empty target list and would build no artifacts")
-        if any(not re.fullmatch(r"[A-Za-z0-9_.-]+", value) for value in targets):
-            raise GuardError("Custom target JSON is unsupported; pass target triples")
-    return {"targets": sorted(set(targets)), "profile": profile}
 
 
 def main():

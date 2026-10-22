@@ -35,7 +35,9 @@ The owned private sidecar holds an OS lease and atomic source stamps for each
 target/profile namespace. Git-visible local package inputs, Cargo configuration
 hierarchy, toolchain versions, compiler wrapper files and build-environment
 fingerprints bind the actual workspace. Values of environment inputs are hashed,
-not recorded. `--input-env NAME` adds an application-specific compile input;
+not recorded. Both the guard and its Cargo-configuration helper are source-hashed;
+the helper is loaded directly from source without timestamp-based bytecode reuse.
+`--input-env NAME` adds an application-specific compile input;
 `--input-file FILE` adds ignored/external sources or build inputs. Credentials
 files are never inspected.
 
