@@ -241,10 +241,3 @@ impl Cell {
         trx.set(&self.root.pack(&("i", who, space)), b"");
     }
 }
-
-/// Append transactions run again after a conflict (two writers on one Space head) or a
-/// retryable error, since start: the contention signal for hot Spaces (ADR 0022).
-pub static APPEND_RETRIES: AtomicU64 = AtomicU64::new(0);
-
-/// Append transactions run (one per batch). Appends per batch is the group-commit gain.
-pub static APPEND_BATCHES: AtomicU64 = AtomicU64::new(0);

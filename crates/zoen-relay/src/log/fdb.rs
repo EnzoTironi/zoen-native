@@ -418,6 +418,13 @@ mod apply;
 mod cell;
 mod store;
 
+/// Append transactions run again after a conflict (two writers on one Space head) or a
+/// retryable error, since start: the contention signal for hot Spaces (ADR 0022).
+pub static APPEND_RETRIES: AtomicU64 = AtomicU64::new(0);
+
+/// Append transactions run (one per batch). Appends per batch is the group-commit gain.
+pub static APPEND_BATCHES: AtomicU64 = AtomicU64::new(0);
+
 #[async_trait]
 impl Batcher for Cell {
     /// `None` until loaded, and again after a failed batch.
