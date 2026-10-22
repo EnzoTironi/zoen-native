@@ -6,9 +6,10 @@ text, then explicitly chooses **Apply these changes**. The Agent keeps its
 identity. Editing does not grant chat, App, tool, trust or spending authority,
 configure a provider, start the host, pause/resume it or revoke it.
 
-This document describes source at `bb5e1274`, including Core `206543be` and the
-native editor with exact raw relay comparison. Native owner-edit execution is
-still pending at this checkpoint; enrollment's earlier native journey is separate.
+This checkpoint is `dfd76938`, including Core `206543be`, exact raw relay comparison
+and the compiler-aware editor action fix. Native26 passed a bounded real owner
+edit and process-cold recovery against the private local relay. Enrollment's
+earlier native journey and the remaining MLS/provider/tool journey are separate.
 
 ## Read, review and apply
 
@@ -115,15 +116,40 @@ all-target Clippy. Private ephemeral WebSocket tests cover read/review/update,
 lost ACK, cold recovery, raw relay changes and legacy receipt refusal. Actual
 isolated PostgreSQL tests passed four relay cases, including concurrency,
 owner-only bytes and size bounds. UI's exact-raw follow-up passed 86 affected
-tests; the integrated app check passed 1,713 tests plus types, Oxlint and Oxfmt.
-Core28 and the Native25 Release build/signature passed; all 420 installed QA
-bundle files matched, and the main simulator was untouched.
+tests. The earlier `bb5e1274` baseline passed 1,713 integrated app tests and
+Core28/Native25 packaging, but did not prove that the compiled editor accepted input.
 
-These checks do not establish actual native owner editing, real MLS/provider/tool
-approval, persistent host supervision, public production or scale acceptance.
-Those remain separate journeys; global readiness flags remain false. Provider
+Native25 exposed a real no-op: React Compiler cached null action tokens from the
+first render because their reads depended only on the stable mutable session.
+The route now passes its subscribed immutable snapshot to `ticket`, `confirmation`
+and `dirty`; stale snapshots are refused. The actual compiler-transformed route
+regression retained memo caches across activation: original source failed two of
+three cases; the fix passed four focused and 90 affected cases. This changes no
+header geometry, Core contract or provider authority.
+
+At `dfd76938`, all 1,717 integrated app tests, types, Oxlint and Oxfmt passed.
+Native26 Release/signature passed with exact unchanged Core28 reuse; all 420
+installed QA bundle files matched before and after. Normal owner UI read the
+current definition, accepted and read back the edited persona with the existing
+rule unchanged, reached Review with the keyboard open, hid it on one explicit
+Review, and showed Confirmed after one explicit Apply. Process-cold relaunch
+preserved the account and Agent, restored Confirmed before/after/current text
+through reconcile-first recovery without another Apply, and **Concluir** returned
+to the same Agent profile. The main simulator was untouched.
+
+This proves that bounded native owner-edit journey. The UI does not display the
+numeric definition version, and an independent wire Define count was not measured.
+The next normal host read must verify the exact version and bytes. No model call
+or host startup occurred. Real MLS/provider/tool approval, persistent host
+supervision, public production and scale acceptance remain separate journeys;
+global readiness flags remain false. Provider
 selection and authentication are documented in
 [independent enrollment](independent-agent-enrollment.md#local-host-provider-configuration).
+
+The retained native receipt is `zoen-owner-definition-native26-v321/source-ready.json`
+in the local build evidence directory. The initial compiled failure and focused
+fix remain under `zoen-owner-definition-compiler-v319`; the earlier source/build
+proofs retain their original checkpoint.
 
 Source: [Core contract](../../crates/client-core/src/agent_definition.rs),
 [relay Status/Define](../../crates/zoen-relay/src/agents/mod.rs) and

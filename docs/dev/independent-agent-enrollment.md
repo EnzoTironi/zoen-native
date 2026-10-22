@@ -129,13 +129,18 @@ preview action, preserves secure entry, and opts this flow into keyboard insets
 and persistent taps. Sixty affected tests and the associated integrated app check
 (1,627 tests, types, Oxlint and Oxfmt) passed. Native24 predates this correction;
 Native25 packages it. Keyboard geometry, long labels and Dynamic Type still await
-their actual native QA at this checkpoint.
+their Connect-flow native QA. Native26's Behavior-editor keyboard check is a
+separate bounded journey.
 
 The owner [definition editor](agent-owner-definition.md) now has typed Core/native
-source, exact-byte owner Status reads and protected update recovery. Its focused
-Core/relay tests and integrated app/native builds passed; actual native behavior
-editing is still awaiting its own runtime qualification at this documentation
-checkpoint. Version-only status remains insufficient after an ambiguous update.
+source, exact-byte owner Status reads and protected update recovery. After fixing
+React Compiler's cached first-render action tokens, Native26 passed normal owner
+read, persona edit with the rule unchanged, explicit Review/Apply, Confirmed UI,
+process-cold reconcile-first recovery and Done. The edited Agent kept its identity.
+That UI proof does not display a numeric version or independently measure wire
+dispatch count; the next normal host read must verify exact version and bytes.
+No model or host was started. Version-only status remains insufficient after an
+ambiguous update.
 Real MLS tasks with native tool approvals, persistent host supervision, natural
 expiry races and physical pairing remain separate acceptance work. None of these
 partial proofs changes full product, production or scale acceptance.
