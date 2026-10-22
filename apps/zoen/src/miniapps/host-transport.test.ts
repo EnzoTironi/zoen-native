@@ -13,6 +13,7 @@ import {
   nativeMiniappNavigation,
 } from './host-transport.ts';
 import { sandboxHtml } from './sandbox.ts';
+import { chromeEndpoint, type ChromeStartup } from './chrome-startup.fixtures.ts';
 
 const nonce = 'a24582bd-0377-4fee-bb76-73d465c927c3';
 const other = 'c34128af-3476-4ce2-ba34-37d459c934d6';
@@ -42,6 +43,10 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
   // and its stdio may still be open after 'exit'.
   const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
   let stderr = '';
+  const startup: ChromeStartup = { portFile: 'missing' };
+  child.stderr.on('data', (data: Buffer) => {
+    stderr = (stderr + data.toString()).slice(-16_384);
+  });
   const failure = (message: string, cause?: Error) =>
     new Error(
       `${message}: ${JSON.stringify({
@@ -51,6 +56,7 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
         signalCode: child.signalCode,
         ...(cause ? { spawnError: cause.message } : {}),
         stderr,
+        startup,
       })}`,
     );
   let socket: WebSocket | undefined;
@@ -58,25 +64,7 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
   try {
     return await Promise.race([
       (async () => {
-        const endpoint = await new Promise<string>((resolve, reject) => {
-          const timer = setTimeout(() => reject(failure('Owned Chrome did not start')), 10_000);
-          child.once('error', (error) => {
-            clearTimeout(timer);
-            reject(failure('Owned Chrome could not spawn', error));
-          });
-          child.once('exit', () => {
-            clearTimeout(timer);
-            reject(failure('Owned Chrome exited before connection'));
-          });
-          child.stderr.on('data', (data: Buffer) => {
-            stderr = (stderr + data.toString()).slice(-16_384);
-            const match = stderr.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/);
-            if (match) {
-              clearTimeout(timer);
-              resolve(match[1]!);
-            }
-          });
-        });
+        const endpoint = await chromeEndpoint(child, join(folder, 'profile'), startup, failure);
         socket = new WebSocket(endpoint);
         const connection = socket;
         await new Promise<void>((resolve, reject) => {
