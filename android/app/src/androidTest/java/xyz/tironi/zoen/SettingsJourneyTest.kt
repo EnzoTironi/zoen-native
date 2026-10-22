@@ -95,7 +95,29 @@ class SettingsJourneyTest {
         compose.waitUntil(15_000) { compose.onAllNodesWithTag("settings:backupTurnOn").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("settings:restore").assertDoesNotExist()
         compose.onNodeWithTag("settings:backupTurnOn").performClick()
-        compose.waitUntil(5_000) { compose.onAllNodesWithTag("recovery-saved").fetchSemanticsNodes().any { SemanticsProperties.Disabled !in it.config } }
+        var readinessObserved = false
+        var dialogPresent = false
+        var keyNodePresent = false
+        var savedNodeCount = 0
+        var savedEnabledCount = 0
+        try {
+            compose.waitUntil(5_000) {
+                val saved = compose.onAllNodesWithTag("recovery-saved").fetchSemanticsNodes()
+                val currentDialogPresent = compose.onAllNodesWithText("Chave de recuperação").fetchSemanticsNodes().isNotEmpty()
+                val currentKeyNodePresent = compose.onAllNodesWithTag("recovery-key").fetchSemanticsNodes().isNotEmpty()
+                // Cache only nonsecret readiness metadata; never retain or log key text or nodes.
+                dialogPresent = currentDialogPresent
+                keyNodePresent = currentKeyNodePresent
+                savedNodeCount = saved.size
+                savedEnabledCount = saved.count { SemanticsProperties.Disabled !in it.config }
+                readinessObserved = true
+                saved.any { SemanticsProperties.Disabled !in it.config }
+            }
+        } catch (error: ComposeTimeoutException) {
+            // No new UI query or key generation after timeout; keep the original failure.
+            android.util.Log.e("RecoveryReadiness", "observed=$readinessObserved dialogPresent=$dialogPresent keyNodePresent=$keyNodePresent savedNodeCount=$savedNodeCount savedEnabledCount=$savedEnabledCount")
+            throw error
+        }
         compose.onNodeWithTag("recovery-key").assertExists()
         compose.onNodeWithTag("recovery-saved").performClick()
         // Synthetic incorrect input only: never read/type/log the generated secret.
