@@ -581,6 +581,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                         }) { Text(stringResource(R.string.approve)) }
                         RequestStatus.APPROVED -> Icon(Icons.Rounded.CheckCircle, stringResource(R.string.status_approved), tint = MaterialTheme.colorScheme.primary)
                         RequestStatus.DENIED -> Icon(Icons.Rounded.Cancel, stringResource(R.string.status_denied), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        RequestStatus.CANCELLED -> Icon(Icons.Rounded.Cancel, stringResource(R.string.status_cancelled), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         RequestStatus.STALE -> Icon(Icons.Rounded.Update, stringResource(R.string.status_stale), tint = MaterialTheme.colorScheme.tertiary)
                         null -> Icon(Icons.Rounded.ChevronRight, stringResource(R.string.review))
                     }
