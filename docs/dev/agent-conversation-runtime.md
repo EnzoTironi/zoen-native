@@ -172,6 +172,36 @@ The post-rotation normal API recovery retained the exact baseline file. These
 checks establish layout and panel-state observations only; manual text input,
 unsaved-edit recovery and all-App rotation acceptance remain open.
 
+The corrective source `904201a7` freezes recursively sorted tool arguments and
+command actions, and pins the shared `float_roundtrip` parser. Native-default
+and CLI-feature approval batches each passed 24 cases, including the reproduced
+key-order and precision failures, signed noncanonical-event retention, exact
+intent vectors, reload and one-time approval. Existing signed proposal strings
+and hash domains are unchanged. Older noncanonical events are retained and
+refused; this does not migrate arbitrary previously accepted command receipts.
+The actual QA presentation had no accepted Write before this change.
+
+With that normal CLI, canonical recovery resumed the existing approved Read
+continuations and produced Write proposals that were visible on Native27. The
+operator cancelled the older Native26 QA proposal, reviewed the Native27 text
+against v1, let the host exit normally, then approved that exact Write once on
+the iPhone while the host was offline. A fresh normal host resumed the same
+original source and delivered its reply in the native conversation. A planned
+new ordinary task was therefore never sent; the earlier operator binding and
+claim remain preserved, with the actual dispatch outcome recorded separately.
+
+Fresh normal API processes recovered exactly two versions: owner-created v1 and
+Agent-authored v2. The accepted file is 4,629 bytes, SHA256
+`a3052589efca4a2ff6d6a547ab9efdc5873e6557144ca41f079fbdda090f2ed7`.
+Only the first slide's notes changed, to
+`Native27 shared editing verified - 2026-10-22`; every other JSON value and the
+MIME entry matched the baseline. Both bounded hosts exited normally with their
+owned process groups absent. Evidence is retained under
+`zoen-normal-host-json-interop-v364` and `zoen-canonical-write-resume-v365`.
+This qualifies the observed text/integer Notes journey on Native27/Core29, not
+precision-f64 compatibility on that older installed Core. The rebuilt Core30
+and manual editor input/save/reopen/export batch remain separate pending work.
+
 Source: [Gate points](../../crates/gate/src/lib.rs),
 [citizen runtime](../../crates/zoen-agentd/src/citizen/host.rs),
 [normal host](../../crates/zoen-cli/src/agent.rs) and
