@@ -88,6 +88,43 @@ pub fn bound_transaction(trx: &Transaction) -> Result<(), FdbBindingError> {
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+enum ResolveStorePhase {
+    Maintenance,
+    LeaseRead,
+    LeaseRefresh,
+}
+
+impl ResolveStorePhase {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Maintenance => "maintenance",
+            Self::LeaseRead => "lease_read",
+            Self::LeaseRefresh => "lease_refresh",
+        }
+    }
+}
+
+/// The public rejection stays retryable and payload-free. Preserve a numeric
+/// FoundationDB cause before the ownership boundary intentionally collapses it.
+fn unavailable(phase: ResolveStorePhase, error: anyhow::Error) -> crate::log::Reject {
+    let code = fdb_code(&error);
+    tracing::error!(
+        phase = phase.label(),
+        fdb_error_code = code.unwrap_or(0),
+        cause = if code.is_some() { "fdb" } else { "other" },
+        "ownership resolution storage error"
+    );
+    crate::log::Reject::unavailable()
+}
+
+fn fdb_code(error: &anyhow::Error) -> Option<i32> {
+    error
+        .downcast_ref::<FdbBindingError>()
+        .and_then(FdbBindingError::get_fdb_error)
+        .map(|error| error.code())
+}
+
 fn corrupt(reason: impl Into<String>) -> FdbBindingError {
     FdbBindingError::CustomError(Box::new(crate::log::StoreError(reason.into())))
 }
@@ -251,7 +288,7 @@ impl NodeOwner {
     ) -> Result<Fence, crate::log::Reject> {
         self.maintain_if_due(false, &can_renew)
             .await
-            .map_err(|_| crate::log::Reject::unavailable())?;
+            .map_err(|error| unavailable(ResolveStorePhase::Maintenance, error))?;
         for attempt in 0..2 {
             let lease = self
                 .db
@@ -263,14 +300,14 @@ impl NodeOwner {
                         .filter(|l| l.expires_version > version))
                 })
                 .await
-                .map_err(|_| crate::log::Reject::unavailable())?;
+                .map_err(|error| unavailable(ResolveStorePhase::LeaseRead, error.into()))?;
             if let Some(l) = lease {
                 return Ok(l.fence);
             }
             if attempt == 0 {
                 self.maintain_if_due(true, &can_renew)
                     .await
-                    .map_err(|_| crate::log::Reject::unavailable())?;
+                    .map_err(|error| unavailable(ResolveStorePhase::LeaseRefresh, error))?;
             }
         }
         Err(crate::log::Reject::retry("partition ownership is changing"))
@@ -312,6 +349,53 @@ impl NodeOwner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolution_storage_diagnostics_preserve_code_without_changing_public_rejection() {
+        #[derive(Clone, Default)]
+        struct Capture(Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Capture {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let captured = Capture::default();
+        let writer = captured.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::ERROR)
+            .without_time()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            let error = anyhow::Error::new(FdbBindingError::from(
+                foundationdb::FdbError::from_code(1020),
+            ))
+            .context("private fixture canary");
+            assert_eq!(fdb_code(&error), Some(1020));
+            let rejected = unavailable(ResolveStorePhase::Maintenance, error);
+            assert!(!rejected.permanent);
+            assert_eq!(rejected.reason, "log store unavailable");
+            let error = anyhow::anyhow!("untrusted storage detail canary");
+            assert_eq!(fdb_code(&error), None);
+            let rejected = unavailable(ResolveStorePhase::LeaseRead, error);
+            assert!(!rejected.permanent);
+            assert_eq!(rejected.reason, "log store unavailable");
+        });
+        let output = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+        assert!(output.contains("phase=\"maintenance\""));
+        assert!(output.contains("phase=\"lease_read\""));
+        assert!(output.contains("fdb_error_code=1020"));
+        assert!(output.contains("fdb_error_code=0"));
+        assert!(output.contains("cause=\"fdb\""));
+        assert!(output.contains("cause=\"other\""));
+        assert!(!output.contains("private fixture canary"));
+        assert!(!output.contains("untrusted storage detail canary"));
+    }
 
     #[test]
     fn hash_mod_is_stable_and_balanced() {
