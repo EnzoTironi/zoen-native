@@ -20,6 +20,7 @@ fn scope() -> Scope {
         device: "b".repeat(64),
         certificate_sha256: "c".repeat(64),
         relay: "https://relay.example".into(),
+        configured_relay: "https://relay.example".into(),
         agent: "d".repeat(64),
     }
 }
@@ -83,7 +84,14 @@ fn review_digest_binds_full_scope_before_after_and_status() {
         review.current.definition_sha256,
         review.proposed.definition_sha256
     );
-    for field in ["owner", "device", "certificate_sha256", "relay", "agent"] {
+    for field in [
+        "owner",
+        "device",
+        "certificate_sha256",
+        "relay",
+        "agent",
+        "configured_relay",
+    ] {
         let mut encoded = serde_json::to_value(&receipt).unwrap();
         encoded["scope"][field] = "changed".into();
         assert!(serde_json::from_value::<Receipt>(encoded)
@@ -294,6 +302,16 @@ fn owner(path: String, relay: &str) -> (Arc<Client>, [u8; 32]) {
         .unwrap();
     c.lock().set_registered(true).unwrap(); // Offline test server, not real relay acceptance.
     (c, device)
+}
+fn owner_with_configured_relay(path: String, relay: &str) -> (Arc<Client>, [u8; 32]) {
+    let (c, key) = owner(path, relay);
+    // Legacy account creation strips trailing slashes. The existing linked
+    // account writer preserves the exact configured value exposed by AccountDto.
+    let mut account = c.lock().account().unwrap().clone();
+    account.relay_url = relay.into();
+    c.lock().save_linked_account(account).unwrap();
+    assert_eq!(c.account().unwrap().relay_url, relay);
+    (c, key)
 }
 fn target(c: &Client) -> DefinitionTarget {
     let a = c.account().unwrap();
@@ -590,6 +608,182 @@ async fn paused_definition_edit_preserves_status_and_malformed_receipt_never_dis
     assert_eq!(
         c.lock().store.meta(&scope.key().unwrap()).unwrap().unwrap(),
         "malformed retained recovery context"
+    );
+    c.stop_sync();
+}
+
+#[test]
+fn configured_relay_dto_preserves_accepted_case_default_port_and_transport_spellings() {
+    for (raw, canonical) in [
+        ("https://RELAY.example:443/", "https://relay.example"),
+        ("https://relay.example:443////", "https://relay.example"),
+        ("wss://RELAY.example:443/", "https://relay.example"),
+        ("ws://LOCALHOST:80/", "http://localhost"),
+        ("relay.example:443/", "https://relay.example"),
+    ] {
+        let dir = Directory::new();
+        let (c, _) = owner_with_configured_relay(dir.path(), raw);
+        let t = target(&c);
+        let captured = Scope::capture(&c.lock(), &t).unwrap();
+        assert_eq!(captured.relay, canonical);
+        assert_eq!(captured.configured_relay, raw);
+        let review = Receipt::prepare(captured, record(1, BASE), edit())
+            .unwrap()
+            .review()
+            .unwrap();
+        assert_eq!(review.current.relay_url, raw);
+        assert_eq!(review.proposed.relay_url, raw);
+        assert_eq!(c.account().unwrap().relay_url, raw);
+    }
+}
+
+#[test]
+fn original_authority_key_is_byte_exact_and_raw_configuration_is_in_review_binding() {
+    let original = scope();
+    let legacy = format!("{{\"owner\":\"{}\",\"device\":\"{}\",\"certificate_sha256\":\"{}\",\"relay\":\"{}\",\"agent\":\"{}\"}}", original.owner, original.device, original.certificate_sha256, original.relay, original.agent);
+    assert_eq!(
+        original.key().unwrap(),
+        format!(
+            "agent.definition.owner-update.v1:{}",
+            sha(legacy.as_bytes())
+        )
+    );
+    let mut raw_changed = original.clone();
+    raw_changed.configured_relay.push('/');
+    assert_eq!(original.key().unwrap(), raw_changed.key().unwrap());
+    let before = Receipt::prepare(original, record(1, BASE), edit()).unwrap();
+    let after = Receipt::prepare(raw_changed, record(1, BASE), edit()).unwrap();
+    assert_ne!(before.preview_digest, after.preview_digest);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn real_loopback_read_update_and_cold_reconcile_keep_exact_configured_relay() {
+    for spelling in ["slash", "websocket", "host-case"] {
+        let dir = Directory::new();
+        let mut r = relay().await;
+        let raw = match spelling {
+            "slash" => format!("{}/", r.url),
+            "websocket" => format!("{}/", r.url.replacen("http://", "ws://", 1)),
+            _ => format!("{}/", r.url.replace("127.0.0.1", "LOCALHOST")),
+        };
+        let (c, key) = owner_with_configured_relay(dir.path(), &raw);
+        online(&c).await;
+        let c2 = c.clone();
+        let input = command(&c, "agent_definition_read");
+        let task = tokio::spawn(async move { c2.client_request(input.to_string()).await });
+        call(&mut r.calls).await.status(&record(1, BASE));
+        let read: AgentDefinitionDto = serde_json::from_str(&task.await.unwrap().unwrap()).unwrap();
+        assert_eq!(read.relay_url, raw);
+        let p = preview(&c, &mut r).await;
+        assert_eq!(p.current.relay_url, raw);
+        let task = update(&c, &p);
+        call(&mut r.calls).await.status(&record(1, BASE));
+        let define = call(&mut r.calls).await;
+        assert!(matches!(define.op, AgentRequest::Define { version: 2, .. }));
+        let t = target(&c);
+        let scope = Scope::capture(&c.lock(), &t).unwrap();
+        let held = Receipt::load(&c.lock(), &scope).unwrap().unwrap();
+        define
+            .response
+            .send(Err("synthetic lost reply after accepted update".into()))
+            .unwrap();
+        call(&mut r.calls).await.status(&held.after);
+        let result = response(task.await.unwrap().unwrap());
+        assert_eq!(result.outcome, AgentDefinitionUpdateOutcome::Confirmed);
+        assert_eq!(result.current.unwrap().relay_url, raw);
+        c.stop_sync();
+        drop(c);
+        let cold = Client::open(dir.path(), "en".into()).unwrap();
+        assert!(cold.lock().unlock(Some(key.to_vec())).unwrap());
+        online(&cold).await;
+        let c2 = cold.clone();
+        let input = command(&cold, "agent_definition_reconcile");
+        let task = tokio::spawn(async move { c2.client_request(input.to_string()).await });
+        call(&mut r.calls).await.status(&held.after); // Read only; never another Define.
+        let result = response(task.await.unwrap().unwrap());
+        assert_eq!(result.outcome, AgentDefinitionUpdateOutcome::Confirmed);
+        assert_eq!(result.review.current.relay_url, raw);
+        assert_eq!(result.current.unwrap().relay_url, raw);
+        cold.stop_sync();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn raw_only_configuration_change_retires_inflight_read_and_same_key_receipt() {
+    let dir = Directory::new();
+    let mut r = relay().await;
+    let raw = format!("{}/", r.url);
+    let (c, _) = owner_with_configured_relay(dir.path(), &raw);
+    online(&c).await;
+    let t = target(&c);
+    let original = Scope::capture(&c.lock(), &t).unwrap();
+    let held = Receipt::prepare(original.clone(), record(1, BASE), edit()).unwrap();
+    c.lock()
+        .store
+        .set_meta(
+            &original.key().unwrap(),
+            &serde_json::to_string(&held).unwrap(),
+        )
+        .unwrap();
+    let c2 = c.clone();
+    let input = command(&c, "agent_definition_read");
+    let task = tokio::spawn(async move { c2.client_request(input.to_string()).await });
+    let request = call(&mut r.calls).await;
+    {
+        let mut engine = c.lock();
+        let mut account = engine.account().unwrap().clone();
+        account.relay_url = r.url.clone();
+        engine.save_linked_account(account).unwrap();
+    }
+    request.status(&record(1, BASE));
+    assert!(task.await.unwrap().is_err());
+    let t = target(&c);
+    let changed = Scope::capture(&c.lock(), &t).unwrap();
+    assert_eq!(original.relay, changed.relay);
+    assert_ne!(original.configured_relay, changed.configured_relay);
+    assert_eq!(original.key().unwrap(), changed.key().unwrap());
+    assert!(c.agent_definition_reconcile(target(&c)).await.is_err());
+    assert!(update(&c, &held.review().unwrap()).await.unwrap().is_err());
+    assert!(r.calls.try_recv().is_err());
+    assert!(c
+        .lock()
+        .store
+        .meta(&original.key().unwrap())
+        .unwrap()
+        .is_some());
+    c.stop_sync();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn legacy_v306_same_key_receipt_fails_closed_before_any_new_dispatch() {
+    let dir = Directory::new();
+    let mut r = relay().await;
+    let (c, _) = owner(dir.path(), &r.url);
+    online(&c).await;
+    let t = target(&c);
+    let scope = Scope::capture(&c.lock(), &t).unwrap();
+    let held = Receipt::prepare(scope.clone(), record(1, BASE), edit()).unwrap();
+    let review = held.review().unwrap();
+    let mut legacy = serde_json::to_value(&held).unwrap();
+    legacy["scope"]
+        .as_object_mut()
+        .unwrap()
+        .remove("configured_relay");
+    let bytes = serde_json::to_string(&legacy).unwrap();
+    c.lock()
+        .store
+        .set_meta(&scope.key().unwrap(), &bytes)
+        .unwrap();
+    assert!(c.agent_definition_reconcile(target(&c)).await.is_err());
+    assert!(update(&c, &review).await.unwrap().is_err());
+    assert!(r.calls.try_recv().is_err());
+    assert_eq!(
+        c.lock()
+            .store
+            .meta(&scope.key().unwrap())
+            .unwrap()
+            .as_deref(),
+        Some(bytes.as_str())
     );
     c.stop_sync();
 }

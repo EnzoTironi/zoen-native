@@ -139,6 +139,7 @@ struct Scope {
     certificate_sha256: String,
     relay: String,
     agent: String,
+    configured_relay: String,
 }
 impl Scope {
     fn capture(engine: &Engine, target: &DefinitionTarget) -> R<Self> {
@@ -156,6 +157,7 @@ impl Scope {
             certificate_sha256: owner.certificate_sha256,
             relay: owner.relay,
             agent: target.agent.clone(),
+            configured_relay: engine.account().ok_or_else(changed)?.relay_url.clone(),
         })
     }
     fn check(&self, engine: &Engine) -> R<()> {
@@ -173,9 +175,26 @@ impl Scope {
         Ok(())
     }
     fn key(&self) -> R<String> {
+        // Preserve v306's exact key bytes/order. Adding a configured spelling
+        // must never hide a retained unknown attempt as an absent receipt.
+        #[derive(Serialize)]
+        struct AuthorityKey<'a> {
+            owner: &'a str,
+            device: &'a str,
+            certificate_sha256: &'a str,
+            relay: &'a str,
+            agent: &'a str,
+        }
+        let authority = AuthorityKey {
+            owner: &self.owner,
+            device: &self.device,
+            certificate_sha256: &self.certificate_sha256,
+            relay: &self.relay,
+            agent: &self.agent,
+        };
         Ok(format!(
             "agent.definition.owner-update.v1:{}",
-            sha(&serde_json::to_vec(self).map_err(|_| changed())?)
+            sha(&serde_json::to_vec(&authority).map_err(|_| changed())?)
         ))
     }
 }
@@ -223,7 +242,7 @@ impl Record {
             agent_id: scope.agent.clone(),
             owner_id: scope.owner.clone(),
             device_id: scope.device.clone(),
-            relay_url: scope.relay.clone(),
+            relay_url: scope.configured_relay.clone(),
             status: self.status()?,
             version: self.version,
             definition_sha256: sha(self.bytes.as_bytes()),
@@ -360,7 +379,7 @@ impl Client {
             scope.check(&self.lock())?;
             let net = net.as_ref().ok_or_else(changed)?;
             if net
-                .authenticated_relay_name(&scope.relay, &scope.owner, &scope.device)
+                .authenticated_relay_name(&scope.configured_relay, &scope.owner, &scope.device)
                 .is_none()
             {
                 return Err(changed());
