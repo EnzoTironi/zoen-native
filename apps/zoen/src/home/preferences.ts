@@ -1,4 +1,3 @@
-import type { ItemDetail } from '../core/generated/ItemDetail';
 import {
   emptyState,
   HomeFailure,

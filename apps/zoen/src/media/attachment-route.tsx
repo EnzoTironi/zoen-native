@@ -16,10 +16,7 @@ import { useClient } from '../core/provider';
 import { homeOwnerFor, homeSpacesFor } from '../home/access';
 import { t } from '../i18n';
 import { useTheme } from '../theme';
-import {
-  conversationAttachmentCategory,
-  type ConversationAttachmentCategory,
-} from './attachment-categories';
+import type { ConversationAttachmentCategory } from './attachment-categories';
 import { captureArticleDraft, stageContactAttachment } from './attachment-route-actions';
 import {
   appendAttachmentText,
@@ -35,7 +32,7 @@ import {
   prepareContactFile,
 } from './attachment-route-platform';
 import { sensitiveCacheWork } from './cache-work';
-import { renderPollAttachmentFields } from './poll-attachment-fields';
+import { PollAttachmentFields } from './poll-attachment-fields';
 
 import type { AttachmentDestination } from './attachment-route-types';
 
@@ -492,22 +489,22 @@ export function AttachmentRoute({
               ) : null}
             </>
           ) : null}
-          {kind === 'poll'
-            ? renderPollAttachmentFields({
-                question,
-                options,
-                locked,
-                unknownPoll,
-                colors,
-                current,
-                working,
-                pollAttempted,
-                setQuestion,
-                setOptions,
-                perform,
-                createPoll,
-              })
-            : null}
+          {kind === 'poll' ? (
+            <PollAttachmentFields
+              question={question}
+              options={options}
+              locked={locked}
+              unknownPoll={unknownPoll}
+              colors={colors}
+              current={current}
+              working={working}
+              pollAttempted={pollAttempted}
+              setQuestion={setQuestion}
+              setOptions={setOptions}
+              perform={perform}
+              createPoll={createPoll}
+            />
+          ) : null}
         </>
       )}
       {normal?.error || error ? (

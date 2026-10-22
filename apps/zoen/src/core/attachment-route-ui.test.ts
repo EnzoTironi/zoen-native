@@ -33,9 +33,11 @@ function nodes(value: unknown): Element[] {
   const node = value as Element;
   return [node, ...nodes(node.props.children)];
 }
+const renderElement = (type: unknown, props: object): unknown =>
+  typeof type === 'function' ? type(props) : { type, props };
 const jsx = {
-  jsx: (type: unknown, props: object) => ({ type, props }),
-  jsxs: (type: unknown, props: object) => ({ type, props }),
+  jsx: renderElement,
+  jsxs: renderElement,
   Fragment: 'Fragment',
 };
 function hooks() {
@@ -181,91 +183,91 @@ function fixture(kind = 'article') {
   const module: { exports: any } = { exports: {} };
   let guard: { enabled: boolean; action: (value: any) => void } | undefined;
   const routeDependency = (name: string): any => {
-      if (name.startsWith('./')) name = `../../media/${name.slice(2)}`;
-      else if (name.startsWith('../')) name = `../${name}`;
-      if (name.startsWith('@babel/runtime/helpers/')) return require(name);
-      if (name === 'react') return h.react;
-      if (name === 'react/compiler-runtime') return h.runtime;
-      if (name === 'react/jsx-runtime') return jsx;
-      if (name === 'react-native')
-        return {
-          Text: 'Text',
-          View: 'View',
-          ScrollView: 'ScrollView',
-          Linking: { openURL: async () => {} },
-          AppState: {
-            currentState: 'active',
-            addEventListener: (_: string, listener: typeof foregroundListener) => {
-              foregroundListener = listener;
-              return { remove() {} };
-            },
+    if (name.startsWith('./')) name = `../../media/${name.slice(2)}`;
+    else if (name.startsWith('../')) name = `../${name}`;
+    if (name.startsWith('@babel/runtime/helpers/')) return require(name);
+    if (name === 'react') return h.react;
+    if (name === 'react/compiler-runtime') return h.runtime;
+    if (name === 'react/jsx-runtime') return jsx;
+    if (name === 'react-native')
+      return {
+        Text: 'Text',
+        View: 'View',
+        ScrollView: 'ScrollView',
+        Linking: { openURL: async () => {} },
+        AppState: {
+          currentState: 'active',
+          addEventListener: (_: string, listener: typeof foregroundListener) => {
+            foregroundListener = listener;
+            return { remove() {} };
           },
-        };
-      if (name === 'expo-router')
-        return {
-          Stack: { Screen: 'StackScreen' },
-          router: {
-            back: () => {
-              backs++;
-            },
+        },
+      };
+    if (name === 'expo-router')
+      return {
+        Stack: { Screen: 'StackScreen' },
+        router: {
+          back: () => {
+            backs++;
           },
-          useLocalSearchParams: () => ({}),
-          useFocusEffect: (read: () => void | (() => void)) =>
-            h.effect(() => {
-              focusCleanup = read() ?? undefined;
-              return focusCleanup;
-            }, []),
-          usePreventRemove: (enabled: boolean, action: (value: any) => void) => {
-            guard = { enabled, action };
-            return () => {
-              guard!.enabled = false;
-            };
-          },
-        };
-      if (name === 'expo-crypto') return { randomUUID: () => 'synthetic-id' };
-      if (name === '../../components/dialogs')
-        return { useDialogs: () => ({ confirm: async () => true }) };
-      if (name === '../../core/provider')
-        return { useClient: () => ({ ...state(), snapshot: { synthetic: true }, store }) };
-      if (name === '../../home/access')
-        return {
-          homeOwnerFor: (value: any) => value.owner,
-          homeSpacesFor: () => new Set(member ? [scope.spaceId] : []),
-        };
-      if (name === '../../i18n') return { t: (key: string) => key };
-      if (name === '../../theme') return { useTheme: () => ({ colors: {} }) };
-      if (name === '../../components/primitives')
-        return { Field: 'Field', Loading: 'Loading', NativeButton: 'NativeButton' };
-      if (name === '../../media/attachment-categories') return categories;
-      if (name === '../../media/attachment-content') return content;
-      if (name === '../../media/attachment-route-actions') return actions;
-      if (name === '../../media/article-editor') return { ArticleEditor: 'ArticleEditor' };
-      if (name === '../../media/attachment-route-platform')
-        return {
-          chooseStaticLocation: async () => {
-            geoReads++;
-            return content.staticLocation(1, 2);
-          },
-          chooseSharedContact: async () => {
-            contactReads++;
-            return content.sharedContact('Synthetic', ['+000']);
-          },
-          prepareContactFile: async () => {
-            throw Error('not used');
-          },
-        };
-      if (name === '../../media/cache-work')
-        return { sensitiveCacheWork: { run: (work: () => unknown) => work() } };
-      if (name === '../../media/poll-attachment-fields') {
-        const fields = { exports: {} };
-        runInNewContext(pollFieldsCode, {
-          module: fields,
-          exports: fields.exports,
-          require: routeDependency,
-        });
-        return fields.exports;
-      }
-      throw new Error(`Unexpected route dependency ${name}`);
+        },
+        useLocalSearchParams: () => ({}),
+        useFocusEffect: (read: () => void | (() => void)) =>
+          h.effect(() => {
+            focusCleanup = read() ?? undefined;
+            return focusCleanup;
+          }, []),
+        usePreventRemove: (enabled: boolean, action: (value: any) => void) => {
+          guard = { enabled, action };
+          return () => {
+            guard!.enabled = false;
+          };
+        },
+      };
+    if (name === 'expo-crypto') return { randomUUID: () => 'synthetic-id' };
+    if (name === '../../components/dialogs')
+      return { useDialogs: () => ({ confirm: async () => true }) };
+    if (name === '../../core/provider')
+      return { useClient: () => ({ ...state(), snapshot: { synthetic: true }, store }) };
+    if (name === '../../home/access')
+      return {
+        homeOwnerFor: (value: any) => value.owner,
+        homeSpacesFor: () => new Set(member ? [scope.spaceId] : []),
+      };
+    if (name === '../../i18n') return { t: (key: string) => key };
+    if (name === '../../theme') return { useTheme: () => ({ colors: {} }) };
+    if (name === '../../components/primitives')
+      return { Field: 'Field', Loading: 'Loading', NativeButton: 'NativeButton' };
+    if (name === '../../media/attachment-categories') return categories;
+    if (name === '../../media/attachment-content') return content;
+    if (name === '../../media/attachment-route-actions') return actions;
+    if (name === '../../media/article-editor') return { ArticleEditor: 'ArticleEditor' };
+    if (name === '../../media/attachment-route-platform')
+      return {
+        chooseStaticLocation: async () => {
+          geoReads++;
+          return content.staticLocation(1, 2);
+        },
+        chooseSharedContact: async () => {
+          contactReads++;
+          return content.sharedContact('Synthetic', ['+000']);
+        },
+        prepareContactFile: async () => {
+          throw Error('not used');
+        },
+      };
+    if (name === '../../media/cache-work')
+      return { sensitiveCacheWork: { run: (work: () => unknown) => work() } };
+    if (name === '../../media/poll-attachment-fields') {
+      const fields = { exports: {} };
+      runInNewContext(pollFieldsCode, {
+        module: fields,
+        exports: fields.exports,
+        require: routeDependency,
+      });
+      return fields.exports;
+    }
+    throw new Error(`Unexpected route dependency ${name}`);
   };
   runInNewContext(routeCode, {
     module,
