@@ -121,7 +121,7 @@ final class ZoenAttachmentKeyboardContent: NSObject, ZoenAttachmentOverlayConten
   private var frozenGallery: UIView?
   private var appearance: ZoenKeyboardPanelAppearance?
   private static let categoryGlyphs: [String: ZoenTelegramAttachmentGlyph] = ["photos": .gallery, "document": .file,
-    "audio": .audio, "location": .location, "poll": .poll, "contact": .contact]
+    "audio": .audio, "location": .location, "poll": .poll, "contact": .contact, "article": .article]
 
   init(send: @escaping (String, [String: Any]) -> Void) {
     self.send = send

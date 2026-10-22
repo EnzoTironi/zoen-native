@@ -8,7 +8,9 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { AppState, Keyboard, View, Text } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import type { ConversationAttachmentCategory } from './attachment-categories';
+import { conversationAttachmentCategories } from './attachment-categories';
 import { randomUUID } from 'expo-crypto';
 import { NativeButton } from '../components/primitives';
 import { useClient } from '../core/provider';
@@ -61,14 +63,50 @@ export function useDurableAttachmentComposer(
         : undefined,
     [channel, store],
   );
-  const photos = useAttachmentPhotoPicker(recentConfiguration);
-  const cancelPhotos = photos.cancel;
-  const { colors } = useTheme();
   const state = useSyncExternalStore(
     channel?.subscribe ?? emptySubscribe,
     channel?.getSnapshot ?? emptySnapshot,
     channel?.getSnapshot ?? emptySnapshot,
   );
+  const routesAvailable =
+    state?.phase === 'ready' && !state.frozen && !state.sending && !state.saving && !state.content;
+  const routes = useMemo(
+    () =>
+      channel && routesAvailable
+        ? {
+            categories: conversationAttachmentCategories.filter(
+              (kind) => kind !== 'poll' || channel.scope.thread_root_id === null,
+            ),
+            open: (kind: ConversationAttachmentCategory, pickerCurrent: () => boolean) => {
+              if (!pickerCurrent() || !store.mediaDrafts.isCurrent(channel)) return;
+              const latest = channel.getSnapshot();
+              if (
+                latest.phase !== 'ready' ||
+                latest.frozen ||
+                latest.sending ||
+                latest.saving ||
+                latest.content
+              )
+                return;
+              router.push({
+                pathname: '/chat-attachment/[id]',
+                params: {
+                  id: channel.scope.space_id,
+                  kind,
+                  thread: channel.scope.thread_root_id ?? '',
+                  identity: channel.scope.expected_identity_id,
+                  device: channel.scope.expected_device_id,
+                  epoch: String(store.sessionEpoch),
+                },
+              });
+            },
+          }
+        : undefined,
+    [channel, store, routesAvailable],
+  );
+  const photos = useAttachmentPhotoPicker(recentConfiguration, routes);
+  const cancelPhotos = photos.cancel;
+  const { colors } = useTheme();
   const runtime = useMemo(
     () => ({
       channel,

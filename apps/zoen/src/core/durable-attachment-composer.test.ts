@@ -1,3 +1,4 @@
+import * as attachmentCategories from '../media/attachment-categories.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -249,6 +250,7 @@ function fixture(initial = empty(), owner: MediaDraftScope = scope) {
     submission: () => photoSubmission,
   };
   const ports: Record<string, unknown> = {
+    './attachment-categories': attachmentCategories,
     react: {
       useMemo: memo,
       useCallback: (read: unknown, deps: readonly unknown[]) => memo(() => read, deps),

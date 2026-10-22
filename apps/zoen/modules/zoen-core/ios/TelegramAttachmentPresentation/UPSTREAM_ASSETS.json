@@ -288,6 +288,22 @@
       "resource": "ConversationPlayPause.json",
       "resourceSha256": "02e7374507e80851e20efa53362ddce1ac6dc5b66c038884ff926dfe22e7d51c",
       "transform": "gzip.decompress(original TGS), JSON bytes otherwise unchanged"
+    },
+    {
+      "logicalName": "TabArticle",
+      "upstreamPath": "submodules/TelegramUI/Resources/Animations/TabArticle.tgs",
+      "sha256": "933a88183e58c22527b409da0f254602a21159f67167796cb03cc1bcee8dc573",
+      "resource": "TabArticle.tgs",
+      "jsonResource": "TabArticle.json",
+      "jsonSHA256": "10cf5f370c2e367a5e60f98014674ca12adfe8d7c0c23644e3112f12f01fdc3e",
+      "transform": "gzip.decompress; original animation structure unchanged",
+      "startFrame": 0,
+      "endFrame": 37,
+      "framesPerSecond": 60,
+      "width": 512,
+      "height": 512,
+      "idle": "start",
+      "selectionPlayback": "once"
     }
   ]
 }

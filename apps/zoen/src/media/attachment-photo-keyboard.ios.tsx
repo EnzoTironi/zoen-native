@@ -4,6 +4,10 @@ import { Linking, useWindowDimensions } from 'react-native';
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import * as Haptics from 'expo-haptics';
 import { t } from '../i18n';
+import {
+  conversationAttachmentCategory,
+  type ConversationAttachmentCategory,
+} from './attachment-categories';
 import { photoSendOptions, type PhotoSendMode } from './attachment-photo-options';
 import type { MediaDraftAttachmentOptions } from './media-draft-types';
 import type {
@@ -40,6 +44,7 @@ export function AttachmentPhotoKeyboard({
   recent,
   sendAsFileAllowed = false,
   existingOptions,
+  routes,
 }: {
   state: PhotoPickerState;
   session: AttachmentPhotoSession;
@@ -51,6 +56,10 @@ export function AttachmentPhotoKeyboard({
   recent?: { session: AttachmentRecentSession; state: RecentAttachmentState };
   sendAsFileAllowed?: boolean;
   existingOptions?: MediaDraftAttachmentOptions;
+  routes?: {
+    categories: readonly ConversationAttachmentCategory[];
+    open(category: ConversationAttachmentCategory, current: () => boolean): void;
+  };
 }) {
   const [draft, setDraft] = useState<{
     token: number;
@@ -98,9 +107,10 @@ export function AttachmentPhotoKeyboard({
       recent: recent?.state,
       sendAsFileAllowed,
       existingOptions,
+      routes,
       revision: randomUUID(),
     }),
-    [state, request, owner, recent?.state, sendAsFileAllowed, existingOptions],
+    [state, request, owner, recent?.state, sendAsFileAllowed, existingOptions, routes],
   );
   const revision = renderOwner.revision;
   const committed = useRef<object | null>(null);
@@ -138,6 +148,18 @@ export function AttachmentPhotoKeyboard({
     columns: width > height ? 5 : 3,
     screen: state.screen,
     activeCategory: state.category,
+    ...(routes
+      ? {
+          categories: [
+            { id: 'photos', label: t('media.attachmentGallery') },
+            { id: 'document', label: t('media.file2') },
+            ...(owner.hasAudio || recent
+              ? [{ id: 'audio', label: t('media.attachmentAudio') }]
+              : []),
+            ...routes.categories.map((id) => ({ id, label: t(`attachmentTabs.${id}`) })),
+          ],
+        }
+      : {}),
     canEdit,
     fileItems:
       recent?.state.kind === 'file'
@@ -479,7 +501,14 @@ export function AttachmentPhotoKeyboard({
             }
             break;
           case 'category':
-            if (recentSelection.length) break;
+            if (recentSelection.length || state.selected.length) break;
+            {
+              const category = conversationAttachmentCategory(event.id);
+              if (category && routes?.categories.includes(category)) {
+                session.openRoute((current) => routes.open(category, current));
+                break;
+              }
+            }
             if (
               event.id === 'photos' ||
               event.id === 'document' ||
