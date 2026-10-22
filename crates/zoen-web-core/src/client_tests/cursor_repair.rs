@@ -136,7 +136,7 @@ impl Fixture {
         let views = self.client.conversations();
         assert_eq!(views.len(), 1);
         assert_eq!(views[0].messages.len(), 1);
-        assert_eq!(views[0].messages[0].id, "msg_final_retained");
+        assert_eq!(views[0].messages[0].id, "final-retained-message");
         assert_eq!(views[0].messages[0].text, TEXT);
         assert_eq!(views[0].messages[0].seq, Some(3));
         assert_eq!(views[0].messages[0].delivery, "confirmed");
