@@ -24,16 +24,18 @@ commands.append(run([ffmpeg, '-v', 'error', '-nostdin', '-f', 'lavfi', '-i', 'te
     '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100', '-t', '3', '-c:v', 'libx264',
     '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-threads', '2', str(output / 'source.mp4')], 'fixture'))
 sdk = subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-path'], text=True).strip()
-shared = [ios / name for name in ['ZoenFilePreview.swift', 'ZoenPDFEditCapture.swift', 'ZoenMediaEditCapture.swift']]
+shared = sorted(ios.glob('ZoenFilePreview*.swift')) + [ios / name for name in ['ZoenPDFEditCapture.swift', 'ZoenMediaEditCapture.swift']]
 video = [source / 'ZoenTelegramVideoFailure.swift', source / 'ZoenTelegramVideoRenderer.swift']
 for test, count in [('VideoEditTests', 7), ('MediaEditTests', 7), ('FilePreviewTests', 11), ('PDFEditTests', None)]:
     testSource = core / 'tests' / (test + '.swift')
-    sources = shared + (video if test == 'VideoEditTests' else []) + [testSource]
+    testSources = [testSource] + sorted((core / 'tests').glob(test + '+*.swift'))
+    sources = shared + (video if test == 'VideoEditTests' else []) + testSources
     commands.append(run(['xcrun', 'swiftc', '-parse-as-library', '-warnings-as-errors', '-swift-version', '5',
         '-target', 'arm64-apple-macos15.0', '-sdk', sdk] + [str(p) for p in sources] + ['-o', str(output / test)], test + '-compile'))
     commands.append(run([str(output / test)] + ([str(output / 'source.mp4')] if test == 'VideoEditTests' else []), test))
 inventory = [{'path': str(p), 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in shared + video +
-    [core / 'tests' / (name + '.swift') for name in ['VideoEditTests', 'MediaEditTests', 'FilePreviewTests', 'PDFEditTests']]]
+    [p for name in ['VideoEditTests', 'MediaEditTests', 'FilePreviewTests', 'PDFEditTests']
+     for p in [core / 'tests' / (name + '.swift')] + sorted((core / 'tests').glob(name + '+*.swift'))]]
 result = {'status': 'PASS', 'platform': 'macOS host AVFoundation', 'sdk': sdk,
     'commands': commands, 'sourceInventory': inventory, 'newVideoScenarios': 7,
     'limits': ['Actual FilePreview/capture and renderer, synthetic presentation and save callbacks; no Rust CAS or iOS UIKit/Expo runtime proof.',
