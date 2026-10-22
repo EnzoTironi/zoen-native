@@ -51,14 +51,18 @@ impl DecisionProvider for AskReadOnly {
 }
 
 struct Counters {
+    expected_read: String,
+    read_context_checks: AtomicUsize,
     initial: AtomicUsize,
     write_proposal: AtomicUsize,
     confirmation: AtomicUsize,
     writes: AtomicUsize,
 }
 impl Counters {
-    fn new() -> Arc<Self> {
+    fn new(expected_read: &Value) -> Arc<Self> {
         Arc::new(Self {
+            expected_read: expected_read.to_string(),
+            read_context_checks: AtomicUsize::new(0),
             initial: AtomicUsize::new(0),
             write_proposal: AtomicUsize::new(0),
             confirmation: AtomicUsize::new(0),
@@ -104,11 +108,15 @@ fn context(
                     1 => {
                         assert_eq!(steps[0].call, read);
                         assert!(!steps[0].is_error);
+                        assert_eq!(steps[0].result, counters.expected_read);
+                        counters.read_context_checks.fetch_add(1, Ordering::SeqCst);
                         counters.write_proposal.fetch_add(1, Ordering::SeqCst);
                         Ok(BrainOut::CallTools(vec![write.clone()]))
                     }
                     2 => {
                         assert_eq!(steps[0].call, read);
+                        assert_eq!(steps[0].result, counters.expected_read);
+                        counters.read_context_checks.fetch_add(1, Ordering::SeqCst);
                         assert_eq!(steps[1].call, write);
                         assert!(!steps[1].is_error);
                         let result: Value = serde_json::from_str(&steps[1].result).unwrap();
@@ -184,6 +192,12 @@ async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effe
     let worker = crate::deckcraft::tests::worker();
     let fixture = crate::deckcraft::tests::fixture();
     let inspected = crate::deckcraft::tests::inspect(&fixture, &worker).await;
+    assert!(!inspected["slides"].as_array().unwrap().is_empty());
+    assert!(inspected["slides"][0]["id"].is_u64());
+    assert!(!inspected["slides"][0]["shapes"]
+        .as_array()
+        .unwrap()
+        .is_empty());
     let space = fixture
         .client
         .item(fixture.base.item_id.clone())
@@ -199,7 +213,7 @@ async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effe
         name: crate::deckcraft::model_name("deckcraft_slide_notes", &fixture.base.item_id).unwrap(),
         arguments: json!({"artifactId":fixture.base.item_id,"version":fixture.base.version,"sha256":fixture.base.sha256,"slideId":inspected["slides"][0]["id"],"text":"Accepted once, recovered without another edit."}),
     };
-    let counters = Counters::new();
+    let counters = Counters::new(&inspected);
     let checks = Arc::new(Mutex::new(Vec::new()));
     let journal = fixture.path.join("canonical-read-recovery-steps.json");
     let cx = context(
@@ -305,6 +319,7 @@ async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effe
         assert_eq!(progress.round, 0);
         assert_eq!(progress.steps.len(), 1);
         assert_eq!(progress.steps[0].call, read);
+        assert_eq!(progress.steps[0].result, counters.expected_read);
         let prepared = budget.prepared.as_ref().unwrap();
         assert_eq!(prepared.round, 1);
         assert_eq!(prepared.call, write);
@@ -331,6 +346,7 @@ async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effe
     assert_eq!(counters.write_proposal.load(Ordering::SeqCst), 1);
     assert_eq!(counters.writes.load(Ordering::SeqCst), 1);
     assert_eq!(counters.confirmation.load(Ordering::SeqCst), 1);
+    assert_eq!(counters.read_context_checks.load(Ordering::SeqCst), 2);
     assert_eq!(
         checks.lock().unwrap().len(),
         4,
