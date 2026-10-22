@@ -177,21 +177,24 @@ pub async fn state(
     })
 }
 
+type OwnerStateRow = (String, Option<String>, i32, bool, bool, Vec<u8>);
+
 /// Owner only: an agent's status for its owner's app ("active", "paused" or "revoked"),
-/// with its kind and definition version. Never the definition or cursors.
+/// with bounded exact definition bytes for owner review. Runtime cursors stay private.
 pub async fn owner_status(
     pool: &PgPool,
     caller: &str,
     agent: &str,
 ) -> Result<AgentStateRecord, AgentCitizenError> {
-    let row: Option<(String, Option<String>, i32, bool, bool)> = sqlx::query_as(
-        "SELECT owner, kind, definition_version, paused_at IS NOT NULL, revoked_at IS NOT NULL
+    let row: Option<OwnerStateRow> = sqlx::query_as(
+        "SELECT owner, kind, definition_version, paused_at IS NOT NULL, revoked_at IS NOT NULL,
+         CASE WHEN octet_length(definition) <= 65536 THEN definition ELSE ''::bytea END
          FROM agent_citizens WHERE agent = $1",
     )
     .bind(agent)
     .fetch_optional(pool)
     .await?;
-    let Some((owner, kind, version, paused, revoked)) = row else {
+    let Some((owner, kind, version, paused, revoked, definition)) = row else {
         return Err(AgentCitizenError::NotAgent);
     };
     if caller != owner {
@@ -206,7 +209,7 @@ pub async fn owner_status(
         status: status.into(),
         kind: kind.unwrap_or_default(),
         definition_version: version.max(0) as u32,
-        definition: Vec::new(),
+        definition,
         cursors: Vec::new(),
     })
 }

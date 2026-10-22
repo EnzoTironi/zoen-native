@@ -1719,6 +1719,50 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn agent_definition_configured_http_name_keeps_case_and_default_port_binding() {
+        for raw in [
+            "https://RELAY.example:443/",
+            "wss://RELAY.example:443/",
+            "ws://LOCALHOST:80/",
+            "relay.example:443/",
+        ] {
+            let (cmd, _commands) = mpsc::unbounded_channel();
+            let (_status, status) = watch::channel(NetStatus {
+                state: ConnState::Online,
+                synced: true,
+                registered: true,
+                error: None,
+                authenticated_relay: Some(AuthenticatedRelay {
+                    base: http_base(raw),
+                    name: "synthetic-qualified-relay".into(),
+                    identity: "owner".into(),
+                    device: "device".into(),
+                }),
+            });
+            let net = Net {
+                rt: None,
+                cmd,
+                status,
+                engine: EngineLease::new(Arc::new(Mutex::new(Engine::open(":memory:").unwrap()))),
+            };
+            assert_eq!(
+                net.authenticated_relay_name(raw, "owner", "device")
+                    .as_deref(),
+                Some("synthetic-qualified-relay")
+            );
+            assert!(net
+                .authenticated_relay_name(raw, "stranger", "device")
+                .is_none());
+            assert!(net
+                .authenticated_relay_name(raw, "owner", "foreign-device")
+                .is_none());
+            assert!(net
+                .authenticated_relay_name("https://different.example", "owner", "device")
+                .is_none());
+        }
+    }
     use ::mls::{sealed::state_key, Device, Opened, SUITE_ID};
     use event_log::{
         chain_hash, content::InnerEvent, content::Sealed, content::SealedKind, Author, Signer,

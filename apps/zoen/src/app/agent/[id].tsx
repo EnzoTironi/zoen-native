@@ -350,6 +350,14 @@ export default function Agent() {
                   ? t('agents.revoked')
                   : t('agents.checkingStatus')}
           </Text>
+          {process.env.EXPO_OS === 'ios' ? (
+            <NativeButton
+              testID="agent-definition-open"
+              secondary
+              label={t('agentDefinition.title')}
+              onPress={() => router.push({ pathname: '/agent-definition/[id]', params: { id } })}
+            />
+          ) : null}
           {status.data === 'Active' || status.data === 'Paused' ? (
             <NativeButton
               secondary

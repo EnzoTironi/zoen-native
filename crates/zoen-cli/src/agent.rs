@@ -32,6 +32,9 @@ use zoen_agentd::{
     ToolHost, ToolProgress, ToolResult, ToolStep, Turn, TurnContext, TurnOutcome,
 };
 
+mod startup;
+pub(crate) use startup::Readiness;
+
 /// History the brain sees: the Space's last messages before the one it answers.
 const HISTORY: usize = 16;
 /// A message whose brain call keeps failing is skipped after this many tries.
@@ -228,54 +231,31 @@ struct Ctx {
 }
 
 /// Runs the wake loop for `for_secs` (or until revoked).
-pub async fn host(e: &Arc<Client>, home: &Path, for_secs: Option<u64>) {
-    let runtime = Runtime::new(
-        gate().unwrap_or_else(|err| crate::die(err)),
-        brain().unwrap_or_else(|err| crate::die(err)),
-    );
-    let acct = e.account().unwrap_or_else(|| crate::die("no account"));
+pub async fn host(
+    e: &Arc<Client>,
+    home: &Path,
+    readiness: &Readiness<'_>,
+    for_secs: Option<u64>,
+) -> Result<(), String> {
+    let runtime = Runtime::new(gate()?, brain()?);
+    let acct = e.account().ok_or("no account")?;
     let owner = e
         .agent_owner()
-        .unwrap_or_else(|| crate::die("this account is not an agent with an owner"));
+        .ok_or("this account is not an agent with an owner")?;
     let cx = Ctx {
         me: acct.identity_id.clone(),
         device: acct.device_id.clone(),
         owner,
         runtime,
-        deckcraft: crate::deckcraft::configured().unwrap_or_else(|error| crate::die(error)),
+        deckcraft: crate::deckcraft::configured()?,
         journal: home.join("agent-tool-steps.json"),
     };
     let waker = Arc::new(Waker::default());
     e.stop_sync();
     e.start_sync(Some(waker.clone() as Arc<dyn CoreListener>))
-        .unwrap_or_else(|err| crate::die(err));
-    // Ready only once our key packages are on the relay, so a DM can add our device.
-    e.wait_until_idle(15000).await;
-
-    let state = e.agent_state().await.unwrap_or_else(|err| crate::die(err));
-    if state.status == "revoked" {
-        crate::die("this agent was revoked by its owner");
-    }
-    let mut cursors: BTreeMap<String, u64> = state.cursors.into_iter().collect();
-    // No cursor yet: start from the current head, never replay old traffic.
-    let mut fresh = Vec::new();
-    for s in e.spaces() {
-        if cursors.contains_key(&s.id) {
-            continue;
-        }
-        let head = e
-            .timeline(s.id.clone())
-            .ok()
-            .and_then(|tl| tl.iter().map(|t| t.seq).max())
-            .unwrap_or(0);
-        cursors.insert(s.id.clone(), head);
-        fresh.push((s.id, head));
-    }
-    for (space, head) in fresh {
-        let _ = e.agent_advance(space, head).await;
-    }
+        .map_err(|error| error.to_string())?;
+    let mut cursors = startup::prepare(e, readiness, 15000).await?;
     let mut known: BTreeSet<String> = cursors.keys().cloned().collect();
-    let _ = std::fs::write(home.join("agent-ready"), b"");
     say(format_args!("agent @{} hosting", acct.handle));
 
     let deadline = for_secs.map(|s| Instant::now() + Duration::from_secs(s));
@@ -420,6 +400,7 @@ pub async fn host(e: &Arc<Client>, home: &Path, for_secs: Option<u64>) {
         wait(&waker, deadline).await;
     }
     e.wait_until_idle(8000).await;
+    Ok(())
 }
 
 async fn wait(w: &Waker, deadline: Option<Instant>) {

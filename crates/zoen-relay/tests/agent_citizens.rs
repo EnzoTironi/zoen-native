@@ -232,7 +232,8 @@ async fn definitions_are_versioned_and_owner_controlled() {
         .await
         .unwrap();
     assert_eq!(seen.status, "paused");
-    assert!(seen.definition.is_empty() && seen.cursors.is_empty());
+    assert_eq!(seen.definition, b"{\"v\":2}");
+    assert!(seen.cursors.is_empty());
     assert!(matches!(
         agents::owner_status(&d.pool, &carla.id, &bot.id).await,
         Err(AgentCitizenError::Owner)
@@ -307,5 +308,108 @@ async fn cursors_never_move_back_and_leave_with_the_space() {
         .await
         .unwrap();
     assert_eq!(st.cursors, vec![("sp_a".to_string(), 5)]);
+    d.finish().await;
+}
+
+#[tokio::test]
+async fn competing_exact_next_definitions_do_not_overwrite_and_owner_reads_exact_bounded_bytes() {
+    let d = Database::new().await;
+    let (owner, owner_device) = d.person("definition_owner").await;
+    let (stranger, _) = d.person("definition_stranger").await;
+    let (agent, runtime) = d.agent("definition_agent", &owner, &owner_device).await;
+    agents::define(
+        &d.pool,
+        &agent.id,
+        dev(&runtime),
+        &agent.id,
+        1,
+        "User",
+        b"initial",
+    )
+    .await
+    .unwrap();
+    let (a, b) = tokio::join!(
+        agents::define(
+            &d.pool,
+            &owner.id,
+            dev(&owner_device),
+            &agent.id,
+            2,
+            "User",
+            b"reviewed-a"
+        ),
+        agents::define(
+            &d.pool,
+            &owner.id,
+            dev(&owner_device),
+            &agent.id,
+            2,
+            "User",
+            b"reviewed-b"
+        )
+    );
+    assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    assert!(matches!(
+        if a.is_err() { a } else { b },
+        Err(AgentCitizenError::Version)
+    ));
+    let current = agents::owner_status(&d.pool, &owner.id, &agent.id)
+        .await
+        .unwrap();
+    assert_eq!(current.definition_version, 2);
+    assert!(current.definition == b"reviewed-a" || current.definition == b"reviewed-b");
+    assert!(current.cursors.is_empty());
+    assert!(matches!(
+        agents::owner_status(&d.pool, &stranger.id, &agent.id).await,
+        Err(AgentCitizenError::Owner)
+    ));
+    agents::define(
+        &d.pool,
+        &owner.id,
+        dev(&owner_device),
+        &agent.id,
+        3,
+        "User",
+        b"concurrent-forward",
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        agents::define(
+            &d.pool,
+            &owner.id,
+            dev(&owner_device),
+            &agent.id,
+            2,
+            "User",
+            b"stale-next"
+        )
+        .await,
+        Err(AgentCitizenError::Version)
+    ));
+    assert_eq!(
+        agents::owner_status(&d.pool, &owner.id, &agent.id)
+            .await
+            .unwrap()
+            .definition,
+        b"concurrent-forward"
+    );
+    // Direct storage-layer legacy/oversized input cannot produce a partial read.
+    agents::define(
+        &d.pool,
+        &owner.id,
+        dev(&owner_device),
+        &agent.id,
+        4,
+        "User",
+        &vec![0; 65537],
+    )
+    .await
+    .unwrap();
+    let oversized = agents::owner_status(&d.pool, &owner.id, &agent.id)
+        .await
+        .unwrap();
+    assert_eq!(oversized.definition_version, 4);
+    assert!(oversized.definition.is_empty() && oversized.cursors.is_empty());
     d.finish().await;
 }
