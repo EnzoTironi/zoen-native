@@ -6,22 +6,17 @@ import { useTheme } from '../theme';
 import { ChatTitle, type ChatHeaderProps } from './chat-title';
 import { Icon } from './primitives';
 import { NavigationGlass } from './navigation-glass';
+import { navigationGlassAppearance } from './navigation-appearance';
 
 export function ChatHeader(props: ChatHeaderProps) {
   return (
     <Stack.Screen
       options={{
+        ...navigationGlassAppearance,
         title: props.title,
         headerShown: true,
         headerBackButtonDisplayMode: 'minimal',
-        // Clear inherited transparent appearances so SDK58 keeps UIKit's bar.
-        // The system soft edge owns the blur and its transition into content.
-        headerTransparent: undefined,
-        headerStyle: {},
-        headerLargeStyle: {},
-        headerBlurEffect: undefined,
         headerBackground: undefined,
-        scrollEdgeEffects: { top: 'soft', bottom: 'hidden' },
         headerTitle: () => <ChatTitle {...props} />,
         unstable_headerRightItems: () => [
           {

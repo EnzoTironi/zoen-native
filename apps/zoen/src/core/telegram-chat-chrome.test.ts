@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { telegramPresentation } from '../theme/telegram.ts';
+import { navigationGlassAppearance } from '../components/navigation-appearance.ts';
 
 type Element = { type: unknown; props: Record<string, any> };
 const compiled = await Promise.all(
@@ -98,6 +99,7 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
     './primitives': { Icon: 'Icon' },
     './navigation-container': { NavigationContainer: 'View' },
     './chat-title': { ChatTitle: 'ChatTitle' },
+    './navigation-appearance': { navigationGlassAppearance },
   };
   const load = (code: string) => {
     const module = { exports: {} as Record<string, (props: any) => Element> };
@@ -150,21 +152,21 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
   };
 }
 
-test('native bar owns the soft edge and Back while title, Details and Search remain actionable', () => {
+test('native bar keeps the inbox backdrop and Back while title, Details and Search remain actionable', () => {
   const f = fixture();
   const options = f.header().props.options;
   assert.equal(options.headerShown, true);
   assert.equal(options.header, undefined);
   assert.equal(options.headerLeft, undefined);
   assert.equal(options.headerBackButtonDisplayMode, 'minimal');
-  assert.equal(options.headerTransparent, undefined);
-  assert.deepEqual(Object.keys(options.headerStyle), []);
-  assert.deepEqual(Object.keys(options.headerLargeStyle), []);
-  assert.equal(options.headerBlurEffect, undefined);
+  assert.equal(options.headerTransparent, true);
+  assert.equal(options.headerStyle.backgroundColor, 'transparent');
+  assert.equal(options.headerLargeStyle.backgroundColor, 'transparent');
+  assert.equal(options.headerBlurEffect, 'none');
   assert.equal(options.headerBackground, undefined);
   assert.equal(options.headerRight, undefined);
   assert.equal(options.unstable_headerRightItems()[0].hidesSharedBackground, true);
-  assert.equal(options.scrollEdgeEffects.top, 'soft');
+  assert.equal(options.scrollEdgeEffects.top, 'hidden');
   assert.equal(options.scrollEdgeEffects.bottom, 'hidden');
   assert.equal(options.gestureEnabled, undefined);
   const title = options.headerTitle();
