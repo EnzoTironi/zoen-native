@@ -7,7 +7,7 @@ import Lottie
 private final class ZoenTelegramAttachmentResources: NSObject {}
 
 enum ZoenTelegramAttachmentGlyph: String, CaseIterable {
-  case gallery, file, audio, location, contact, poll
+  case gallery, file, audio, location, contact, poll, article
   case camera, openCamera, send, composerSend, sendAsFile, sendUngrouped, close, more, keyboard
   case back, titleExpand, pencil, check, selected, contextSelect, recipientArrow, cloud, image, crop, rotate, done, cropCorners, play
 
@@ -26,6 +26,7 @@ enum ZoenTelegramAttachmentGlyph: String, CaseIterable {
     case .location: return "TabLocation"
     case .contact: return "TabContacts"
     case .poll: return "TabPoll"
+    case .article: return "TabArticle"
     default: return nil
     }
   }
@@ -34,7 +35,7 @@ enum ZoenTelegramAttachmentGlyph: String, CaseIterable {
   // animation's additional 1.78 scale and one-device-pixel vertical offset.
   fileprivate var nominalSize: CGSize {
     switch self {
-    case .gallery, .file, .audio, .location, .contact, .poll: return CGSize(width: 30, height: 30)
+    case .gallery, .file, .audio, .location, .contact, .poll, .article: return CGSize(width: 30, height: 30)
     default: return .zero
     }
   }

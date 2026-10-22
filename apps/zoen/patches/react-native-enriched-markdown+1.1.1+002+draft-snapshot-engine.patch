@@ -1,0 +1,346 @@
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.h
+index fd601ac2445e69d2510fdcc23f8697ecf7396f62..27f488c268609c39544e077d45eafe4520ac8194 100644
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.h
+@@ -27,6 +27,8 @@ typedef void (^ENRMAutoLinkCallback)(NSString *text, NSString *url, NSRange rang
+ /// Remove any auto-link marker attribute in the given range.
+ /// Call when a manual link is applied over an auto-detected one.
+ - (void)clearAutoLinkInRange:(NSRange)range;
++/// Installs validated, copied detected-link semantics during native draft restoration.
++- (void)restoreDraftDetectedRanges:(NSArray<ENRMFormattingRange *> *)ranges;
+ 
+ @end
+ 
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.mm
+index 2d1bb66addb56f49a8e427f7e1b785a7d62be925..a9717c8e85b6a9f7cad0907840a292eb8580d775 100644
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMAutoLinkDetector.mm
+@@ -100,6 +100,17 @@ - (void)clearAutoLinkInRange:(NSRange)range
+   [textStorage removeAttribute:ENRMAutomaticLinkAttributeName range:range];
+ }
+ 
++- (void)restoreDraftDetectedRanges:(NSArray<ENRMFormattingRange *> *)ranges
++{
++  NSTextStorage *storage = _textStorage;
++  if (storage.length) [storage removeAttribute:ENRMAutomaticLinkAttributeName range:NSMakeRange(0,storage.length)];
++  for (ENRMFormattingRange *range in ranges) {
++    if (range.url && range.type == ENRMInputStyleTypeLink && NSMaxRange(range.range) <= storage.length)
++      [storage addAttribute:ENRMAutomaticLinkAttributeName value:[range.url copy] range:range.range];
++  }
++  [self refreshStyling];
++}
++
+ #pragma mark - Link matching
+ 
+ - (nullable NSString *)detectNewLinkAtRange:(NSRange)wordRange
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot.mm
+new file mode 100644
+index 0000000000000000000000000000000000000000..429bb124e36e6e58e65779b69b896c57fabd0d5e
+--- /dev/null
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMDraftSnapshot.mm
+@@ -0,0 +1,274 @@
++#import "ENRMDraftSnapshot+Internal.h"
++#import "ENRMInputFormatter.h"
++#import "ENRMDetectorPipeline.h"
++#import <CoreFoundation/CoreFoundation.h>
++
++NSErrorDomain const ENRMDraftSnapshotErrorDomain = @"ENRMDraftSnapshot";
++NSError *ENRMDraftError(ENRMDraftSnapshotError code)
++{
++  return [NSError errorWithDomain:ENRMDraftSnapshotErrorDomain code:code
++                        userInfo:@{NSLocalizedDescriptionKey: @"The native editor checkpoint could not be retained."}];
++}
++
++@interface ENRMDraftSinkEntry : NSObject
++@property (nonatomic, strong) id<ENRMDraftCheckpointSink> sink;
++@property (nonatomic, weak) id<ENRMDraftSnapshotProducer> producer;
++@end
++@implementation ENRMDraftSinkEntry
++@end
++
++@implementation ENRMDraftCheckpointRegistry
+++ (NSMutableDictionary<NSString *, ENRMDraftSinkEntry *> *)entries
++{
++  static NSMutableDictionary *entries;
++  static dispatch_once_t once;
++  dispatch_once(&once, ^{ entries = [NSMutableDictionary dictionary]; });
++  return entries;
++}
+++ (NSString *)registerSink:(id<ENRMDraftCheckpointSink>)sink
++{
++  NSAssert(NSThread.isMainThread, @"Native input checkpoints require main-thread ownership");
++  NSString *token = NSUUID.UUID.UUIDString;
++  ENRMDraftSinkEntry *entry = [ENRMDraftSinkEntry new];
++  entry.sink = sink;
++  self.entries[token] = entry;
++  return token;
++}
+++ (void)revokeToken:(NSString *)token
++{
++  NSAssert(NSThread.isMainThread, @"Native input checkpoints require main-thread ownership");
++  ENRMDraftSinkEntry *entry = self.entries[token];
++  [self.entries removeObjectForKey:token];
++  [entry.producer unbindDraftCheckpoint];
++}
+++ (BOOL)flushToken:(NSString *)token error:(NSError **)error
++{
++  NSAssert(NSThread.isMainThread, @"Native input checkpoints require main-thread ownership");
++  id<ENRMDraftSnapshotProducer> producer = self.entries[token].producer;
++  if (!producer) {
++    if (error) *error = ENRMDraftError(ENRMDraftSnapshotUnavailable);
++    return NO;
++  }
++  return [producer flushDraftSnapshotWithError:error];
++}
+++ (BOOL)sealToken:(NSString *)token error:(NSError **)error
++{
++  NSAssert(NSThread.isMainThread, @"Native input checkpoints require main-thread ownership");
++  // Do not claim a free token or substitute another view for the bound producer.
++  id<ENRMDraftSnapshotProducer> producer = self.entries[token].producer;
++  if (!producer) {
++    if (error) *error = ENRMDraftError(ENRMDraftSnapshotUnavailable);
++    return NO;
++  }
++  return [producer sealDraftSnapshotWithError:error];
++}
+++ (id<ENRMDraftSnapshotProducer>)freezeForDiscardToken:(NSString *)token error:(NSError **)error
++{
++  NSAssert(NSThread.isMainThread, @"Native input discard freeze requires main-thread ownership");
++  ENRMDraftSinkEntry *entry = self.entries[token];
++  id<ENRMDraftSnapshotProducer> producer = entry.producer;
++  if (!producer) {
++    if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return nil;
++  }
++  if (![producer freezeDraftInputForDiscardWithError:error]) return nil;
++  // Retain the exact object for the application's asynchronous durable discard.
++  // Neither a freed entry nor a replacement producer may acknowledge this token.
++  if (self.entries[token] != entry || entry.producer != producer) {
++    if(error)*error=ENRMDraftError(ENRMDraftSnapshotUnavailable);return nil;
++  }
++  return producer;
++}
+++ (id<ENRMDraftCheckpointSink>)claimToken:(NSString *)token producer:(id<ENRMDraftSnapshotProducer>)producer
++{
++  NSAssert(NSThread.isMainThread, @"Native input checkpoints require main-thread ownership");
++  ENRMDraftSinkEntry *entry = self.entries[token];
++  if (!entry || (entry.producer && entry.producer != producer)) return nil;
++  entry.producer = producer;
++  return entry.sink;
++}
+++ (void)releaseToken:(NSString *)token producer:(id<ENRMDraftSnapshotProducer>)producer
++{
++  NSAssert(NSThread.isMainThread, @"Native input checkpoints require main-thread ownership");
++  ENRMDraftSinkEntry *entry = self.entries[token];
++  if (entry.producer == producer) entry.producer = nil;
++}
++@end
++
++static NSArray<NSString *> *styles(void)
++{
++  return @[@"strong", @"emphasis", @"underline", @"strikethrough", @"link", @"spoiler"];
++}
++static BOOL scalarBoundary(NSString *text, NSUInteger index)
++{
++  if (index > text.length) return NO;
++  return index == 0 || index == text.length ||
++    !(CFStringIsSurrogateHighCharacter([text characterAtIndex:index - 1]) &&
++      CFStringIsSurrogateLowCharacter([text characterAtIndex:index]));
++}
++static BOOL validRange(NSString *text, NSRange range)
++{
++  return range.location <= text.length && range.length <= text.length - range.location &&
++    scalarBoundary(text, range.location) && scalarBoundary(text, NSMaxRange(range));
++}
++static NSDictionary *wireRange(NSRange range)
++{
++  return @{@"start": @(range.location), @"end": @(NSMaxRange(range))};
++}
++static BOOL integer(id value, NSUInteger maximum)
++{
++  if (![value isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()) return NO;
++  double n = [value doubleValue];
++  return isfinite(n) && n >= 0 && n <= maximum && floor(n) == n;
++}
++static BOOL keys(NSDictionary *value, NSArray *expected)
++{
++  return [NSSet setWithArray:value.allKeys].count == expected.count &&
++    [[NSSet setWithArray:value.allKeys] isEqualToSet:[NSSet setWithArray:expected]];
++}
++static BOOL readRange(id value, NSString *text, NSRange *result)
++{
++  if (![value isKindOfClass:NSDictionary.class] || !keys(value,@[@"start",@"end"]) ||
++      !integer(value[@"start"],text.length) || !integer(value[@"end"],text.length)) return NO;
++  NSUInteger start = [value[@"start"] unsignedIntegerValue], end = [value[@"end"] unsignedIntegerValue];
++  if (end < start || !validRange(text,NSMakeRange(start,end-start))) return NO;
++  *result = NSMakeRange(start,end-start);
++  return YES;
++}
++
++@implementation ENRMDraftSnapshotModel {
++  NSTextStorage *_storage;
++  ENRMEditPipeline *_pipeline;
++}
++- (instancetype)initWithText:(NSString *)text ranges:(NSArray *)ranges detected:(NSArray *)detected blocks:(NSArray *)blocks
++{
++  if (self = [super init]) {
++    _storage = [[NSTextStorage alloc] initWithString:text];
++    _formatting = [ENRMFormattingStore new];
++    _detected = [ENRMFormattingStore new];
++    _blocks = [ENRMBlockStore new];
++    [_formatting setRanges:[[NSArray alloc] initWithArray:ranges copyItems:YES]];
++    [_detected setRanges:[[NSArray alloc] initWithArray:detected copyItems:YES]];
++    [_blocks setRanges:[[NSArray alloc] initWithArray:blocks copyItems:YES]];
++    _pipeline = [[ENRMEditPipeline alloc] initWithFormattingStore:_formatting blockStore:_blocks
++       formatter:[ENRMInputFormatter new] detectorPipeline:[ENRMDetectorPipeline new] host:self];
++  }
++  return self;
++}
++- (NSString *)plainText { return _storage.string; }
++- (NSString *)text { return [_storage.string copy]; }
++- (NSTextStorage *)textStorage { return _storage; }
++- (BOOL)replaceRange:(NSRange)range text:(NSString *)replacement preimage:(NSString *)preimage
++          pendingAdd:(NSSet *)add pendingRemove:(NSSet *)remove error:(NSError **)error
++{
++  if (![self.text isEqualToString:preimage] || !validRange(preimage,range) ||
++      ![replacement dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:NO]) {
++    if (error) *error = ENRMDraftError(ENRMDraftSnapshotUnexplainedMutation);
++    return NO;
++  }
++  NSRange paragraph = [preimage paragraphRangeForRange:NSMakeRange(range.location,0)];
++  ENRMBlockRange *block = [_blocks blockStartingAtLocation:paragraph.location];
++  BOOL hadNewline = [preimage rangeOfCharacterFromSet:NSCharacterSet.newlineCharacterSet options:0 range:range].location != NSNotFound;
++  BOOL wasEmpty = [[preimage substringWithRange:paragraph] stringByTrimmingCharactersInSet:NSCharacterSet.newlineCharacterSet].length == 0;
++  ENRMEditContext *context = [[ENRMEditContext alloc] initWithEditLocation:range.location deletedLength:range.length
++    insertedLength:replacement.length preEditReplacedNewline:hadNewline
++    preEditBlockType:block ? block.type : ENRMInputBlockTypeParagraph preEditBlockLevel:block ? block.level : 0
++    preEditParagraphWasEmpty:wasEmpty pendingStyles:add pendingStyleRemovals:remove];
++  [_storage replaceCharactersInRange:range withString:replacement];
++  [_pipeline processTextChangeWithContext:context];
++  [_detected adjustForEditAtLocation:range.location deletedLength:range.length insertedLength:replacement.length];
++  return YES;
++}
++- (NSData *)encodeSequence:(uint64_t)sequence selection:(NSRange)selection composition:(NSRange)composition
++                       add:(NSSet *)add remove:(NSSet *)remove error:(NSError **)error
++{
++  if (!validRange(self.text,selection) || (composition.location != NSNotFound && !validRange(self.text,composition))) {
++    if (error) *error = ENRMDraftError(ENRMDraftSnapshotInvalid); return nil;
++  }
++  NSMutableArray *inlineRanges=[NSMutableArray array],*blockRanges=[NSMutableArray array];
++  for (NSUInteger origin=0;origin<2;origin++) {
++    for (ENRMFormattingRange *r in origin ? _detected.allRanges : _formatting.allRanges) {
++      if (!validRange(self.text,r.range) || r.type<0 || r.type>5) { if(error)*error=ENRMDraftError(ENRMDraftSnapshotInvalid);return nil; }
++      NSMutableDictionary *value=[wireRange(r.range) mutableCopy];
++      [value addEntriesFromDictionary:@{@"type":styles()[r.type],@"url":r.url ?: NSNull.null,@"origin":origin ? @"detected" : @"stored"}];
++      [inlineRanges addObject:value];
++    }
++  }
++  for (ENRMBlockRange *r in _blocks.allRanges) {
++    if (!validRange(self.text,r.range)) {if(error)*error=ENRMDraftError(ENRMDraftSnapshotInvalid);return nil;}
++    NSMutableDictionary *value=[wireRange(r.range) mutableCopy];
++    [value addEntriesFromDictionary:@{@"type":@(r.type),@"level":@(r.level),@"ordinal":@(r.ordinal)}];
++    [blockRanges addObject:value];
++  }
++  NSMutableArray *adds=[NSMutableArray array],*removals=[NSMutableArray array];
++  for (NSUInteger i=0;i<styles().count;i++) {
++    if([add containsObject:@(i)])[adds addObject:styles()[i]];
++    if([remove containsObject:@(i)])[removals addObject:styles()[i]];
++  }
++  NSDictionary *value=@{@"schema":@"enrm-ios/1",@"sequence":[NSString stringWithFormat:@"%llu",(unsigned long long)sequence],
++    @"mode":@"rich",@"text":self.text,@"selection":wireRange(selection),
++    @"composition":composition.location==NSNotFound ? NSNull.null : wireRange(composition),
++    @"inline":inlineRanges,@"blocks":blockRanges,@"typing":@{@"add":adds,@"remove":removals}};
++  NSData *data=[NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingSortedKeys error:error];
++  return data && [self.class decode:data error:error] ? data : nil;
++}
+++ (NSDictionary *)decode:(NSData *)data error:(NSError **)error
++{
++  if(data.length==0 || data.length>1024*1024)goto invalid;
++  {
++    id value=[NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
++    if(![value isKindOfClass:NSDictionary.class] || !keys(value,@[@"schema",@"sequence",@"mode",@"text",@"selection",@"composition",@"inline",@"blocks",@"typing"]) ||
++      ![value[@"schema"] isEqual:@"enrm-ios/1"] || ![value[@"mode"] isEqual:@"rich"] || ![value[@"text"] isKindOfClass:NSString.class])goto invalid;
++    NSString *text=value[@"text"],*sequence=value[@"sequence"];
++    if(![sequence isKindOfClass:NSString.class] || sequence.length==0 || sequence.length>20 ||
++      [sequence rangeOfCharacterFromSet:[NSCharacterSet characterSetWithCharactersInString:@"0123456789"].invertedSet].location!=NSNotFound ||
++      (sequence.length>1 && [sequence hasPrefix:@"0"]) || (sequence.length==20 && [sequence compare:@"18446744073709551615" options:NSLiteralSearch]==NSOrderedDescending) ||
++      ![text dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:NO])goto invalid;
++    NSRange range;
++    if(!readRange(value[@"selection"],text,&range) || (value[@"composition"]!=NSNull.null && !readRange(value[@"composition"],text,&range)))goto invalid;
++    if(![value[@"inline"] isKindOfClass:NSArray.class] || [value[@"inline"] count]>8192 ||
++      ![value[@"blocks"] isKindOfClass:NSArray.class] || [value[@"blocks"] count]>8192)goto invalid;
++    for(id r in value[@"inline"]){
++      if(![r isKindOfClass:NSDictionary.class] || !keys(r,@[@"start",@"end",@"type",@"url",@"origin"]) ||
++        !readRange(@{@"start":r[@"start"],@"end":r[@"end"]},text,&range) || ![styles() containsObject:r[@"type"]] ||
++        ![@[@"stored",@"detected"] containsObject:r[@"origin"]] ||
++        (r[@"url"]!=NSNull.null && (![r[@"url"] isKindOfClass:NSString.class] || [r[@"url"] length]>8192)) ||
++        ([r[@"type"] isEqual:@"link"] ? r[@"url"]==NSNull.null : r[@"url"]!=NSNull.null) ||
++        ([r[@"origin"] isEqual:@"detected"] && ![r[@"type"] isEqual:@"link"]) ||
++        (r[@"url"]!=NSNull.null && ![r[@"url"] dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:NO]))goto invalid;
++    }
++    for(id r in value[@"blocks"]){
++      if(![r isKindOfClass:NSDictionary.class] || !keys(r,@[@"start",@"end",@"type",@"level",@"ordinal"]) ||
++        !readRange(@{@"start":r[@"start"],@"end":r[@"end"]},text,&range) ||
++        !integer(r[@"type"],8) || !integer(r[@"level"],6) || !integer(r[@"ordinal"],1000000) || [r[@"ordinal"] integerValue]<1)goto invalid;
++    }
++    id typing=value[@"typing"];
++    if(![typing isKindOfClass:NSDictionary.class] || !keys(typing,@[@"add",@"remove"]))goto invalid;
++    for(NSString *key in @[@"add",@"remove"]){
++      id list=typing[key];if(![list isKindOfClass:NSArray.class] || [list count]>6 || [NSSet setWithArray:list].count!=[list count])goto invalid;
++      for(id style in list)if(![styles() containsObject:style])goto invalid;
++    }
++    for(id style in typing[@"add"])if([typing[@"remove"] containsObject:style])goto invalid;
++    return value;
++  }
++invalid:
++  if(error)*error=ENRMDraftError(ENRMDraftSnapshotInvalid);return nil;
++}
+++ (instancetype)modelFromValue:(NSDictionary *)value error:(NSError **)error
++{
++  NSData *data=[NSJSONSerialization dataWithJSONObject:value options:0 error:error];
++  if(!data || ![self decode:data error:error])return nil;
++  NSMutableArray *stored=[NSMutableArray array],*detected=[NSMutableArray array],*blocks=[NSMutableArray array];
++  for(NSDictionary *r in value[@"inline"]){
++    NSRange range=NSMakeRange([r[@"start"] unsignedIntegerValue],[r[@"end"] unsignedIntegerValue]-[r[@"start"] unsignedIntegerValue]);
++    ENRMFormattingRange *copy=[ENRMFormattingRange rangeWithType:(ENRMInputStyleType)[styles() indexOfObject:r[@"type"]]
++      range:range url:r[@"url"]==NSNull.null ? nil : r[@"url"]];
++    [([r[@"origin"] isEqual:@"stored"] ? stored : detected) addObject:copy];
++  }
++  for(NSDictionary *r in value[@"blocks"]){
++    ENRMBlockRange *copy=[ENRMBlockRange rangeWithType:(ENRMInputBlockType)[r[@"type"] integerValue]
++      range:NSMakeRange([r[@"start"] unsignedIntegerValue],[r[@"end"] unsignedIntegerValue]-[r[@"start"] unsignedIntegerValue]) level:[r[@"level"] integerValue]];
++    copy.ordinal=[r[@"ordinal"] integerValue];[blocks addObject:copy];
++  }
++  return [[self alloc] initWithText:value[@"text"] ranges:stored detected:detected blocks:blocks];
++}
++@end
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.h b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.h
+index e7e23593c51f4eecef1e623c37f00e175796c139..937b2281be8d96eab0d402a9b8535188e8c1af5b 100644
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.h
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.h
+@@ -33,6 +33,7 @@ NS_ASSUME_NONNULL_BEGIN
+ - (void)syncWithPendingStyles;
+ - (void)resetForSelectionChange;
+ - (void)clearListParagraphStyle;
++- (void)restoreDraftPendingStyles:(NSSet<NSNumber *> *)add removals:(NSSet<NSNumber *> *)remove;
+ 
+ @property (nonatomic, readonly) NSSet<NSNumber *> *pendingStyles;
+ @property (nonatomic, readonly) NSSet<NSNumber *> *pendingStyleRemovals;
+diff --git a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.mm b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.mm
+index 8acb7c09a7cf7bcb75f3dc305a7ab531654005a2..7ed63241cd36075793436cf8489e7714c1fdbaf1 100644
+--- a/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.mm
++++ b/node_modules/react-native-enriched-markdown/ios/input/ENRMInputTypingAttributesController.mm
+@@ -40,6 +40,14 @@ - (instancetype)initWithTextView:(ENRMPlatformTextView *)textView
+   return [_pendingStyleRemovals copy];
+ }
+ 
++- (void)restoreDraftPendingStyles:(NSSet<NSNumber *> *)add removals:(NSSet<NSNumber *> *)remove
++{
++  _pendingStyles = [add mutableCopy];
++  _pendingStyleRemovals = [remove mutableCopy];
++  [self syncWithCursorBlock];
++  [self syncWithPendingStyles];
++}
++
+ #pragma mark - Style queries
+ 
+ - (BOOL)isEffectiveStyleActive:(ENRMInputStyleType)type atPosition:(NSUInteger)position

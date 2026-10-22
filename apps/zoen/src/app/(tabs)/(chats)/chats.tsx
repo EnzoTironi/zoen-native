@@ -11,6 +11,7 @@ import { MessageReceipt } from '../../../components/message-receipt';
 import { ChatsActions } from '../../../components/chats-actions';
 import { useHome } from '../../../home/provider';
 import { MiniappRail } from '../../../miniapps/rail';
+import { AppCardEditControls } from '../../../miniapps/card-edit-controls';
 
 const filters = [
   { id: 'all', label: t('chat.all') },
@@ -26,6 +27,7 @@ export default function Chats() {
   const home = useHome();
   const { items } = home;
   const [filter, setFilter] = useState<string>('all');
+  const [cardPending, setCardPending] = useState(false);
   const conversations = useMemo(
     () =>
       (snapshot?.conversations ?? [])
@@ -69,27 +71,50 @@ export default function Chats() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: 16,
+                gap: 4,
               }}
             >
               <Text
                 testID="chats-title"
                 accessibilityRole="header"
-                style={{ ...p.typography.largeTitle, color: p.text }}
+                numberOfLines={1}
+                style={{ ...p.typography.largeTitle, color: p.text, flexShrink: 1 }}
               >
                 {t('chat.chats')}
               </Text>
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                {home.editing ? (
+                  <AppCardEditControls
+                    pending={cardPending || home.editSaving}
+                    onDone={() => {
+                      void home.commitEdit().catch(() => {});
+                    }}
+                    onDiscard={home.discardEdit}
+                  />
+                ) : null}
+              </View>
               <ChatsActions />
             </View>
             <MiniappRail
               key={home.ownerKey}
               items={items}
-              onReorder={home.reorderItems}
+              paddingVertical={2}
+              editing={home.editing}
+              onEditingChange={(value) => (value ? home.beginEdit() : home.discardEdit())}
+              onPendingChange={setCardPending}
+              onReorder={(next, expected) => {
+                home.requireEdit();
+                return home.reorderItems(next, expected);
+              }}
               error={home.error}
-              onRemove={(item) => home.hide(item.id)}
-              onTogglePin={(item) =>
-                home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id)
-              }
+              onRemove={(item) => {
+                home.requireEdit();
+                return home.hide(item.id);
+              }}
+              onTogglePin={(item) => {
+                home.requireEdit();
+                return home.isPinned(item.id) ? home.unpin(item.id) : home.pin(item.id);
+              }}
               isPinned={home.isPinned}
               restoreLabel={t('home.restoreHiddenCount', { count: home.hiddenItems.length })}
               onRestore={

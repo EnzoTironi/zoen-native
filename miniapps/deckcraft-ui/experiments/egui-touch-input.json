@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "name": "egui-touch-input",
+  "status": "SOURCE_TESTED_NATIVE_PENDING",
+  "upstreamRevision": "a31b990d32f2c8562f1588562f922960c3fde48b",
+  "baseManagedCargoLockSha256": "ea1b257672f1e4e0f73644766b0163ebd166ea0358a976563d81420eaa826a00",
+  "managedCargoLockSha256": "f7b09397f728b4c508a81a5365e3a41d68af9bf5a34b6c1bdf5e16f28b161270",
+  "crate": {
+    "name": "egui",
+    "version": "0.36.2",
+    "prefix": "egui-0.36.2",
+    "vendorPath": "vendor/egui-0.36.2",
+    "archiveSha256": "dc938cc27cd911415e1e4d151bc56ff9df063d8db081374e87aeb805ea74b2ba",
+    "sourceRevision": "49682f8baa058bf49e011035cfbd6e825f88a5ef",
+    "beforeTreeSha256": "fc060c4f317b0741f25cf9814fc7d69df76cf3c698e5ff793cd4d7790e127aed",
+    "afterTreeSha256": "f7d7b72b52256981e8691f4a6932ca61e58f784e99dfa0262a687d9f10337ff9",
+    "changedFiles": [
+      "src/text_selection/text_cursor_state.rs",
+      "src/text_selection/touch_input_tests.rs"
+    ]
+  },
+  "patch": {
+    "path": "patches/0018-egui-touch-input.patch",
+    "sha256": "8e44a72c2d5ecd7684668c67ee429d39e7cb31ab615428ae7b5a849ce4069882"
+  },
+  "sourceFiles": [
+    {
+      "path": "Cargo.toml",
+      "before": "10b4611b202ce26d7299f37a1716ada04012fd368e74d0a765f2d894a968bf12",
+      "after": "6eda48073555ff661c43efaad5a2a5b67479e468485d5ad2f954ced4c341628e"
+    },
+    {
+      "path": "Cargo.lock",
+      "before": "ea1b257672f1e4e0f73644766b0163ebd166ea0358a976563d81420eaa826a00",
+      "after": "f7b09397f728b4c508a81a5365e3a41d68af9bf5a34b6c1bdf5e16f28b161270"
+    },
+    {
+      "path": "crates/ui-egui/src/host_phone_landscape_tests.rs",
+      "before": "7ec0046ffd9dc5f93f01a30089ca5eb2055027771b6712db46e860d7ce67277d",
+      "after": "dc20b3f4f2e3c020e15e2e58eef4f309e91231f08feb535f433e1c170a1e8cb3"
+    }
+  ]
+}

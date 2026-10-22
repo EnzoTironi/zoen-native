@@ -1,6 +1,6 @@
+import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { build } from 'esbuild';
 import type { CoreDriver } from './types.ts';
 
 // Bundle the real platform driver so Node uses the same extension resolution as
@@ -13,7 +13,7 @@ const output = await build({
   write: false,
 });
 const module = await import(
-  `data:text/javascript;base64,${Buffer.from(output.outputFiles[0]!.text).toString('base64')}`
+  `data:text/javascript;base64,${Buffer.from(output.outputFiles[0]!.text + '\n//# sourceURL=zoen-browser-driver.fixture.js').toString('base64')}`
 );
 const scope = { identity_id: 'synthetic-owner', device_id: 'synthetic-device' };
 function fixture(erase: () => Promise<void>) {
@@ -83,4 +83,117 @@ test('an old erase intent cannot affect a different live browser account', async
   await assert.rejects(driver.eraseDevice(scope), /conta mudou/);
   assert.equal(calls, 0);
   assert.deepEqual(events, []);
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+test('delegated device projection reads the live device after transport settles', async () => {
+  const { driver, fields } = fixture(async () => {});
+  const gate = deferred<unknown>();
+  const first = '11'.repeat(32),
+    second = '22'.repeat(32);
+  fields.session = { kind: 'linked', account: { identity: scope.identity_id, device: first } };
+  fields.messages = { devices: () => gate.promise };
+  const pending = driver.request({ op: 'devices' });
+  // A controlled port projection change isolates the getter order, not a new-session admission.
+  fields.session = { kind: 'linked', account: { identity: scope.identity_id, device: second } };
+  gate.resolve({
+    kind: 'devices',
+    devices: [
+      { device: first, revoked: false },
+      { device: second, revoked: false },
+    ],
+  });
+  assert.deepEqual(
+    (await pending).map((value) => value.this_device),
+    [false, true],
+  );
+});
+
+test('delegated handle result reads the current account only after the write completes', async () => {
+  const { driver, fields } = fixture(async () => {});
+  const gate = deferred<void>();
+  fields.messages = { updateHandle: () => gate.promise };
+  const pending = driver.request({ op: 'update_handle', handle: 'new_handle' });
+  fields.session = {
+    kind: 'linked',
+    account: {
+      identity: scope.identity_id,
+      device: scope.device_id,
+      handle: 'new_handle',
+      relay: 'https://qa.example',
+      name: 'Synthetic',
+    },
+  };
+  gate.resolve();
+  assert.equal((await pending)?.handle, 'new_handle');
+});
+
+for (const operation of ['devices', 'update_handle'] as const) {
+  test(`closing the real driver retires a delegated ${operation} result after await`, async () => {
+    const { driver, fields } = fixture(async () => {});
+    const gate = deferred<unknown>();
+    fields.messages = { stop() {}, devices: () => gate.promise, updateHandle: () => gate.promise };
+    const pending = driver.request(
+      operation === 'devices' ? { op: 'devices' } : { op: 'update_handle', handle: 'queued' },
+    );
+    const refused = assert.rejects(pending, /conta mudou/);
+    await driver.close();
+    gate.resolve(operation === 'devices' ? { kind: 'devices', devices: [] } : undefined);
+    await refused;
+    assert.equal(fields.selfProfile, null);
+  });
+}
+
+test('even an already computed delegated read is fenced across the added async boundary', async () => {
+  const { driver, fields } = fixture(async () => {});
+  fields.state = { kind: 'active', conversations: [{ id: 'empty', messages: [] }] };
+  const pending = driver.request({ op: 'timeline', space_id: 'empty', before: null, limit: 20 });
+  const refused = assert.rejects(pending, /conta mudou/);
+  await driver.close();
+  await refused;
+  assert.deepEqual(fields.session, { kind: 'empty' });
+});
+
+test('profile refresh does not reuse an old linked session after its first await', async () => {
+  const { driver, fields } = fixture(async () => {});
+  const gate = deferred<unknown>();
+  let reads = 0;
+  fields.messages = {
+    stop() {},
+    profileRequest: () => {
+      reads++;
+      return gate.promise;
+    },
+  };
+  const pending = driver.request({
+    op: 'update_profile',
+    name: 'Reviewed',
+    bio: 'Exact',
+    photo_sha256: null,
+  });
+  const refused = assert.rejects(pending, /conta mudou/);
+  await driver.close();
+  gate.resolve(null);
+  await refused;
+  assert.equal(reads, 1, 'No profile query is authorized by the retired linked session');
+  assert.equal(fields.selfProfile, null);
+});
+
+test('unsupported enrollment remains closed without borrowing a transport method', async () => {
+  const { driver } = fixture(async () => {});
+  await assert.rejects(
+    driver.request({
+      op: 'agent_enrollment_status',
+      expected_identity_id: scope.identity_id,
+      expected_device_id: scope.device_id,
+    }),
+    /integrado ao cliente web/,
+  );
 });

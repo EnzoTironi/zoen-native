@@ -331,6 +331,31 @@ class StagedFileLimitTests(unittest.TestCase):
         self.write("unicode.md", ("é" * 10_001).encode())
         self.assertEqual(self.audit().returncode, 1)
 
+    def test_original_article_animation_is_pinned_in_both_git_formats(self):
+        name = "apps/zoen/modules/zoen-core/ios/TelegramAttachmentPresentation/Resources/TabArticle.json"
+        original = (ROOT / name).read_bytes()
+        self.assertGreater(len(original), 20_000)
+        for object_format in ("sha1", "sha256"):
+            with self.subTest(object_format=object_format):
+                shutil.rmtree(self.repo / ".git")
+                self.git("init", "--quiet", "--object-format=" + object_format)
+                self.write(name, original)
+                self.assertEqual(self.hook().returncode, 0)
+                self.assertEqual(self.audit().returncode, 0)
+                self.write(name, original + b"\n", stage=False)
+                self.assertEqual(self.hook().returncode, 0)
+                self.git("add", name)
+                self.assertEqual(self.hook().returncode, 1)
+                self.assertEqual(self.audit().returncode, 1)
+                self.write(name, original)
+                neighbor = name.replace("TabArticle.json", "AuthoredArticle.json")
+                self.write(neighbor, original)
+                self.assertIn(ascii(neighbor).encode(), self.hook().stderr)
+                self.assertEqual(self.audit().returncode, 1)
+                self.git("rm", "--cached", neighbor)
+                self.write(name, b"x" * 20_001)
+                self.assertEqual(self.hook().returncode, 1)
+
     def test_full_audit_fails_closed_on_unmerged_index(self):
         self.write("source.py", b"initial\n")
         self.git("commit", "--quiet", "-m", "seed")

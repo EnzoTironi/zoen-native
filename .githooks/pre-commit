@@ -26,6 +26,10 @@ PINNED_UPSTREAM_BLOBS = {
         b"c8bb01d991a35e0ea20157a7e7623425e6c99fd8",
         b"77cea53cf77e68e06eaeb276d379057e0dcdad72e0de7d8ca4e49d52e956ee9a",
     },
+    "apps/zoen/modules/zoen-core/ios/TelegramAttachmentPresentation/Resources/TabArticle.json": {
+        b"f8a9d152fc7666a9016ed1a9f6f567cda6e729a6",
+        b"5067b06d24eac4b3d608ef4c1f5a1cfb539dab5f318af87c951d101c1f1909b0",
+    },
 }
 # Compiled outputs: the authored entry points/builders remain checked. Producer
 # and upstream provenance are recorded in docs/dev/file-size-artifact-exclusions.md.

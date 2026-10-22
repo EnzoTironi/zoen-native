@@ -39,7 +39,9 @@ export function IconButton({
   label,
   onPress,
   disabled = false,
+  testID,
 }: {
+  testID?: string;
   name: SymbolViewProps['name'];
   label: string;
   onPress: () => void;
@@ -48,6 +50,7 @@ export function IconButton({
   const { presentation: p } = useTheme();
   return (
     <Pressable
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={label}
       disabled={disabled}

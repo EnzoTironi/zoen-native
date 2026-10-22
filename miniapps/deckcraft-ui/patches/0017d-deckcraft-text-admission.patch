@@ -1,0 +1,110 @@
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -324,6 +324,19 @@
+         return;
+     }
+     let Some(r) = ime_area(app, xf) else { return };
++    // A multipass frame may change owner after the pointer was admitted. Keep
++    // only a pulse whose owner is still the final custom text/IME owner.
++    let current = app
++        .session
++        .active()
++        .and_then(|st| st.selection.text.as_ref())
++        .filter(|selection| !selection.notes)
++        .and_then(|selection| text_input_owner(app, selection.shape));
++    let key = egui::Id::new("eframe.text_input_activation");
++    let pulse = ctx.data(|data| data.get_temp::<Option<(u64, egui::Id)>>(key)).flatten();
++    if pulse.is_some_and(|(frame, owner)| frame != ctx.cumulative_frame_nr() || Some(owner) != current) {
++        ctx.data_mut(|data| data.remove::<Option<(u64, egui::Id)>>(key));
++    }
+     let to_global = ctx.layer_transform_to_global(ui.layer_id()).unwrap_or_default();
+     let r = to_global * r;
+     ctx.output_mut(|o| {
+@@ -706,6 +719,12 @@
+     }
+ }
+ 
++// Content-free egui owner, scoped to the real document/target/slide/shape.
++fn text_input_owner(app: &SlideApp, shape: deckcraft_model::ShapeId) -> Option<egui::Id> {
++    let st = app.session.active()?;
++    Some(egui::Id::new(("canvas-text", st.uid)).with((format!("{:?}", st.selection.target), st.selection.slide, shape.0)))
++}
++
+ fn pointer(app: &mut SlideApp, ui: &Ui, resp: &egui::Response, xf: Xf) {
+     if crate::eyedropper::canvas(app, ui, resp, xf) {
+         return;
+@@ -734,7 +753,26 @@
+         let _ = app.session.pointer(ev(PointerKind::Move));
+     }
+     let secondary = resp.hovered() && ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Secondary));
+-    let r = if secondary && !app.session.tool.dragging() {
++    let arm = resp.id.with("text-contact-owner");
++    let cancelled = ui.input(|i| {
++        i.events.iter().any(|event| matches!(event, egui::Event::Touch { phase: egui::TouchPhase::Cancel, .. }))
++            || i.multi_touch().is_some()
++            || (i.events.iter().any(|event| matches!(event, egui::Event::PointerGone)) && !i.pointer.primary_released())
++    });
++    if cancelled || !ui.is_enabled() {
++        ui.data_mut(|data| data.remove::<Option<egui::Id>>(arm));
++    }
++    // Hit-test does not authorize activation. It only binds a possible Down to
++    // its owner; the accepted engine result/current text selection on Up does.
++    let pressed_owner = if primary && resp.hovered() && !cancelled && ui.is_enabled() {
++        match app.session.hit_test(p, tol) {
++            Some(Hit::Shape { id, text: true }) => text_input_owner(app, id),
++            _ => None,
++        }
++    } else {
++        None
++    };
++    let mut r = if secondary && !app.session.tool.dragging() {
+         // Select what's under the pointer before the context menu opens (on release).
+         app.session.pointer(ev(PointerKind::ContextClick))
+     } else if resp.triple_clicked() {
+@@ -750,6 +788,46 @@
+     } else {
+         Ok(serde_json::Value::Null)
+     };
++    if r.is_ok()
++        && !cancelled
++        && ui.is_enabled()
++        && ui.input(|i| i.pointer.primary_released())
++        && (resp.double_clicked() || resp.triple_clicked())
++        && app.session.active().is_some_and(|state| state.selection.text.as_ref().is_some_and(|selection| !selection.notes))
++        && app.session.tool.dragging()
++    {
++        // The multi-click command chooses the word/paragraph before release.
++        // Complete its pending text-selection gesture with the real Up too.
++        // Otherwise Drag::TextSelect survives this frame and blocks admission.
++        r = app.session.pointer(ev(PointerKind::Up));
++    }
++    if primary {
++        ui.data_mut(|data| {
++            data.insert_temp(arm, if r.is_ok() { pressed_owner } else { None });
++        });
++    }
++    if ui.input(|i| i.pointer.primary_released()) {
++        let pressed = ui.data_mut(|data| data.remove_temp::<Option<egui::Id>>(arm)).flatten();
++        let current = app
++            .session
++            .active()
++            .and_then(|st| st.selection.text.as_ref())
++            .filter(|selection| !selection.notes)
++            .and_then(|selection| text_input_owner(app, selection.shape));
++        if r.is_ok()
++            && !cancelled
++            && ui.is_enabled()
++            && resp.clicked_by(egui::PointerButton::Primary)
++            && !app.session.tool.dragging()
++            && current.is_some()
++            && current == pressed
++        {
++            // Generic eframe custom-editor pulse: only this egui frame/current
++            // owner, no content. AppRunner clears/consumes in the same run.
++            let pulse = current.map(|owner| (ui.ctx().cumulative_frame_nr(), owner));
++            ui.data_mut(|data| data.insert_temp(egui::Id::new("eframe.text_input_activation"), pulse));
++        }
++    }
+     if let Err(e) = r {
+         app.set_status(e.to_string());
+     }
