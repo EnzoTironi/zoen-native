@@ -909,3 +909,6 @@ fn generic_standing_decision_never_resolves_or_labels_a_pending_tool_request() {
     assert!(!request.by_standing);
     assert!(!request.can_always_approve);
 }
+
+#[path = "json_order_tests.rs"]
+mod json_order;

@@ -72,6 +72,14 @@ pub fn is_model_name(name: &str) -> bool {
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     })
 }
+/// Compact JSON with recursively sorted object keys, independent of serde_json's
+/// map feature. Arrays, scalar values and the caller's frozen input are preserved.
+pub fn canonical_json(value: &Value) -> serde_json::Result<String> {
+    let mut sorted = value.clone();
+    sorted.sort_all_objects();
+    serde_json::to_string(&sorted)
+}
+
 pub type ParsedCommand = (Option<u32>, Option<String>, Option<Value>);
 
 pub fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
@@ -179,9 +187,9 @@ pub fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
         "deckcraft_slide_new" => "slide.new",
         _ => return Err("Unknown presentation tool".into()),
     };
-    Ok((
-        Some(version),
-        Some(sha),
-        Some(json!({"command":command,"params":params})),
-    ))
+    // These exact action bytes also enter the native/host mutation intent hash.
+    // Never let a dependency's map feature select a different command identity.
+    let mut action = json!({"command":command,"params":params});
+    action.sort_all_objects();
+    Ok((Some(version), Some(sha), Some(action)))
 }
