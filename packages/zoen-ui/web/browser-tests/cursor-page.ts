@@ -12,6 +12,7 @@ declare global {
 }
 window.cursorEntry = true;
 let phase = 'setup';
+let progress: () => Record<string, unknown> = () => ({ phase });
 class ContractFailure extends Error {}
 const check = (condition: unknown, label: string): void => {
   if (!condition) throw new ContractFailure(label);
@@ -101,6 +102,23 @@ async function run() {
     completedSyncs = 0;
   const syncSnapshots = new Set<string>();
   const localText = 'Synthetic retained outbox during cursor repair';
+  progress = () => {
+    const observed = currentState();
+    const entries =
+      observed?.kind === 'active' || observed?.kind === 'failed'
+        ? (observed.conversations[0]?.messages ?? [])
+        : [];
+    return {
+      phase,
+      completedSyncs,
+      reconciliations,
+      decodedPongs,
+      lastStateKind: observed?.kind ?? 'none',
+      lastConnectionKind: observed?.kind === 'active' ? observed.connection.kind : 'none',
+      selectedMessages: entries.filter((message) => message.id === 'final-retained-message').length,
+      pendingFixtureMessages: entries.filter((message) => message.text === localText).length,
+    };
+  };
   let firstAdmission: number | undefined;
   let armReadHold = false,
     holdNextSave = false,
@@ -181,7 +199,7 @@ async function run() {
     releaseSave();
     await write;
     // Real monotonic time and the unchanged60s production policy; no timer/clock injection.
-    await until(verified, 80_000);
+    await until(() => verified() && completedSyncs >= 2, 80_000);
     check(state?.kind === 'active', 'Missing active projection');
     if (state?.kind !== 'active') throw new Error('Missing active projection');
     const first = state.conversations[0]!.messages.find(
@@ -279,6 +297,7 @@ run().then(
       status: 'failed',
       phase,
       category: 'synthetic_browser_contract',
+      progress: progress(),
       reason: error instanceof ContractFailure ? error.message : 'core_or_transport',
     };
   },
