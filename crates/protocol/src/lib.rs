@@ -31,6 +31,7 @@ pub use frames::{
     InvitePreview, KeyPackageRecord, Op, Reply, SealedProfile, ServerFrame,
 };
 
+pub mod cursor_repair;
 pub mod experiments;
 pub mod links;
 pub mod push;

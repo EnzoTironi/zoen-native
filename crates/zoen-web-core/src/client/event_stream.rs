@@ -3,6 +3,16 @@ use super::*;
 
 impl<S: Signer> Client<S> {
     pub fn bootstrap(&mut self) -> Result<Update, String> {
+        self.bootstrap_at(Duration::ZERO)
+    }
+
+    pub fn bootstrap_at(&mut self, now: Duration) -> Result<Update, String> {
+        Self::validate_repair_clock(now)?;
+        self.repair_now = now;
+        self.cursor_repair = Some(protocol::cursor_repair::CursorRepair::new(
+            protocol::cursor_repair::CursorRepairPolicy::DEFAULT,
+            now,
+        ));
         self.synced = false;
         self.sent.clear();
         self.announced_receipts.clear();
@@ -39,6 +49,16 @@ impl<S: Signer> Client<S> {
     }
 
     pub fn receive(&mut self, bytes: &[u8], now_ms: i64) -> Result<Update, String> {
+        self.receive_at(bytes, now_ms, self.repair_now)
+    }
+
+    pub fn receive_at(
+        &mut self,
+        bytes: &[u8],
+        now_ms: i64,
+        repair_now: Duration,
+    ) -> Result<Update, String> {
+        self.note_repair_clock(repair_now)?;
         self.view_now_ms = now_ms;
         let mut extra = Vec::new();
         match ServerFrame::decode(bytes).map_err(|e| e.to_string())? {
@@ -56,6 +76,7 @@ impl<S: Signer> Client<S> {
                 let space = ev.env.space().to_string();
                 let next = self.logs.get(&space).map(SpaceLog::next_seq).unwrap_or(0);
                 if ev.seq > next {
+                    self.repair_submitted()?;
                     return self.update(vec![ClientFrame::Sync {
                         cursors: vec![Cursor {
                             space,
@@ -67,6 +88,15 @@ impl<S: Signer> Client<S> {
                 }
                 let author = ev.env.author().to_string();
                 self.ingest(ev, now_ms)?;
+                if self
+                    .logs
+                    .get(&space)
+                    .is_some_and(|log| log.next_seq() > next)
+                {
+                    if let Some(repair) = &mut self.cursor_repair {
+                        repair.progressed(repair_now);
+                    }
+                }
                 if self.synced {
                     extra.extend(self.delivered());
                     if !self.saved.profiles.contains_key(&author) {
@@ -91,6 +121,9 @@ impl<S: Signer> Client<S> {
                 }
             }
             ServerFrame::SyncDone => {
+                if let Some(repair) = &mut self.cursor_repair {
+                    repair.completed(repair_now);
+                }
                 self.synced = true;
                 extra.extend(self.delivered());
                 self.ask_rejoin(now_ms)?;
@@ -112,13 +145,16 @@ impl<S: Signer> Client<S> {
                     );
                 }
             }
-            ServerFrame::Joined { space } => extra.push(
-                ClientFrame::Sync {
-                    cursors: vec![Cursor { space, next_seq: 0 }],
-                    all: false,
-                }
-                .encode(),
-            ),
+            ServerFrame::Joined { space } => {
+                self.repair_submitted()?;
+                extra.push(
+                    ClientFrame::Sync {
+                        cursors: vec![Cursor { space, next_seq: 0 }],
+                        all: false,
+                    }
+                    .encode(),
+                );
+            }
             ServerFrame::KeyPackagesLow { device, .. }
                 if device == self.account.device && self.saved.packages.is_none() =>
             {

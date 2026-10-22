@@ -133,6 +133,35 @@ impl BrowserCore {
         let _language = localization::enter(self.lang);
         serde_json::to_string(&self.client.bootstrap().map_err(error)?).map_err(error)
     }
+    pub fn cursor_repair_config(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.client.cursor_repair_config()).map_err(error)
+    }
+    pub fn bootstrap_at(&mut self, clock_ms: f64) -> Result<String, JsValue> {
+        let _language = localization::enter(self.lang);
+        let clock = std::time::Duration::from_millis(time(clock_ms)? as u64);
+        serde_json::to_string(&self.client.bootstrap_at(clock).map_err(error)?).map_err(error)
+    }
+    pub fn receive_at(
+        &mut self,
+        bytes: &[u8],
+        now_ms: f64,
+        clock_ms: f64,
+    ) -> Result<String, JsValue> {
+        let _language = localization::enter(self.lang);
+        let clock = std::time::Duration::from_millis(time(clock_ms)? as u64);
+        serde_json::to_string(
+            &self
+                .client
+                .receive_at(bytes, time(now_ms)?, clock)
+                .map_err(error)?,
+        )
+        .map_err(error)
+    }
+    pub fn reconcile(&mut self, clock_ms: f64) -> Result<String, JsValue> {
+        let _language = localization::enter(self.lang);
+        let clock = std::time::Duration::from_millis(time(clock_ms)? as u64);
+        serde_json::to_string(&self.client.reconcile(clock).map_err(error)?).map_err(error)
+    }
     pub fn receive(&mut self, bytes: &[u8], now_ms: f64) -> Result<String, JsValue> {
         let _language = localization::enter(self.lang);
         serde_json::to_string(&self.client.receive(bytes, time(now_ms)?).map_err(error)?)

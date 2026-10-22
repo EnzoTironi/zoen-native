@@ -6,7 +6,9 @@ pub mod media;
 mod primary;
 mod wire;
 
-pub use client::{Client, DocumentResponse, Update};
+pub use client::{
+    Client, CursorRepairConfig, CursorRepairStatus, CursorRepairTick, DocumentResponse, Update,
+};
 pub use link::{complete_link, create_link, LinkedAccount, PendingLink};
 pub use primary::Primary;
 pub use wire::{decode_server, hello, request, ServerMessage};

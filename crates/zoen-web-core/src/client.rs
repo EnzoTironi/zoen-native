@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Duration;
 
 use event_log::{
     content::{InnerEvent, Payload, Sealed, SealedKind, SignedContent},
@@ -19,6 +20,7 @@ mod apps;
 mod attachments;
 mod conversation_view;
 mod crypto_outbox;
+mod cursor_repair;
 mod documents;
 mod event_stream;
 mod file_outbox;
@@ -31,6 +33,7 @@ mod profile;
 mod profile_photo;
 mod publication;
 mod receipts;
+pub use cursor_repair::{CursorRepairConfig, CursorRepairStatus, CursorRepairTick};
 pub use documents::DocumentResponse;
 
 const PACKAGES_REQUEST: u64 = 0x8000_0001;
@@ -249,6 +252,7 @@ pub struct Update {
     pub conversations: Vec<ConversationView>,
     pub maintenance_ms: Option<u32>,
     pub history_ready: bool,
+    pub cursor_repair: Option<CursorRepairStatus>,
 }
 
 /// The same OpenMLS crypto, log verification and binary protocol used by native clients.
@@ -272,6 +276,9 @@ pub struct Client<S> {
     linking_net: linking::Network,
     history_ready: bool,
     attachment_producer: attachments::Producer,
+    // Connection-local scheduling only; saved logs/outbox remain the authority.
+    cursor_repair: Option<protocol::cursor_repair::CursorRepair<Duration>>,
+    repair_now: Duration,
 }
 
 impl<S: Signer> Client<S> {
@@ -331,6 +338,8 @@ impl<S: Signer> Client<S> {
             linking_net: linking::Network::default(),
             history_ready: false,
             attachment_producer: attachments::Producer::new(),
+            cursor_repair: None,
+            repair_now: Duration::ZERO,
         };
         client.device()?;
         client.load_linked_profile();

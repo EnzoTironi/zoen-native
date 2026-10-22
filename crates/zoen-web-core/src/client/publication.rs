@@ -114,6 +114,7 @@ impl<S: Signer> Client<S> {
         Ok(Update {
             snapshot,
             frames,
+            cursor_repair: self.cursor_repair_status(),
             history_ready: std::mem::take(&mut self.history_ready),
             conversations: self.conversations(),
             maintenance_ms: self

@@ -178,12 +178,16 @@ fn forged_retained_tail_never_advances_the_browser_cursor() {
 #[test]
 fn healthy_browser_requests_the_unannounced_retained_final_event() {
     let mut f = Fixture::new();
-    let _tail = f.retained_tail();
+    let tail = f.retained_tail();
     let next = f.client.logs[SPACE].next_seq();
     assert_eq!(next, 3);
     // No new Event, Joined, control notice, Pong or reconnect reaches this client.
-    // The original maintenance entrypoint cannot discover the retained final row.
-    let update = f.client.maintenance(60_008).unwrap();
+    // A separate monotonic tick admits the repair, without UI/crypto maintenance.
+    let crate::CursorRepairTick::Update { update } =
+        f.client.reconcile(Duration::from_millis(60_008)).unwrap()
+    else {
+        panic!("the scheduled repair must fit the original deadline")
+    };
     let cursors = update
         .frames
         .iter()
@@ -198,5 +202,225 @@ fn healthy_browser_requests_the_unannounced_retained_final_event() {
             space: SPACE.into(),
             next_seq: next
         }]
+    );
+    assert_eq!(
+        update.cursor_repair.unwrap().abort_deadline_ms,
+        Some(90_000)
+    );
+    f.client
+        .receive_at(&tail, 10, Duration::from_millis(60_009))
+        .unwrap();
+    let saved = f
+        .client
+        .receive_at(
+            &ServerFrame::SyncDone.encode(),
+            11,
+            Duration::from_millis(60_010),
+        )
+        .unwrap();
+    f.assert_tail();
+    f.client = Client::new(
+        f.client.account.clone(),
+        f.client.signer.clone(),
+        &saved.snapshot,
+    )
+    .unwrap();
+    f.assert_tail();
+    let cold = f.client.bootstrap_at(Duration::from_millis(100)).unwrap();
+    let sync = cold
+        .frames
+        .iter()
+        .find_map(|b| match ClientFrame::decode(b).unwrap() {
+            ClientFrame::Sync { cursors, all: true } => Some(cursors),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        sync,
+        vec![Cursor {
+            space: SPACE.into(),
+            next_seq: 4
+        }]
+    );
+    f.client
+        .receive_at(&tail, 12, Duration::from_millis(101))
+        .unwrap();
+    f.client
+        .receive_at(
+            &ServerFrame::SyncDone.encode(),
+            13,
+            Duration::from_millis(102),
+        )
+        .unwrap();
+    f.assert_tail();
+}
+
+#[test]
+fn ordered_browser_partials_and_pong_cannot_finish_or_postpone_a_full_repair() {
+    let mut f = Fixture::new();
+    let clock = |ms| Duration::from_millis(ms);
+    f.client
+        .receive_at(
+            &ServerFrame::Joined {
+                space: SPACE.into(),
+            }
+            .encode(),
+            9,
+            clock(10),
+        )
+        .unwrap();
+    let crate::CursorRepairTick::Update { update } = f.client.reconcile(clock(60_008)).unwrap()
+    else {
+        panic!("repair must be admitted")
+    };
+    assert_eq!(
+        update.cursor_repair.unwrap().abort_deadline_ms,
+        Some(90_000)
+    );
+    f.client
+        .receive_at(
+            &ServerFrame::Joined {
+                space: SPACE.into(),
+            }
+            .encode(),
+            10,
+            clock(60_009),
+        )
+        .unwrap();
+    let pong = f
+        .client
+        .receive_at(
+            &ServerFrame::Pong {
+                server_time_ms: None,
+            }
+            .encode(),
+            11,
+            clock(60_010),
+        )
+        .unwrap();
+    assert_eq!(pong.cursor_repair.unwrap().abort_deadline_ms, Some(90_000));
+    let partial = f
+        .client
+        .receive_at(&ServerFrame::SyncDone.encode(), 12, clock(60_011))
+        .unwrap();
+    assert_eq!(
+        partial.cursor_repair.unwrap().abort_deadline_ms,
+        Some(90_000)
+    );
+    let full = f
+        .client
+        .receive_at(&ServerFrame::SyncDone.encode(), 13, clock(60_012))
+        .unwrap();
+    assert_eq!(full.cursor_repair.unwrap().admission_ms, Some(120_012));
+    let later = f
+        .client
+        .receive_at(&ServerFrame::SyncDone.encode(), 14, clock(65_000))
+        .unwrap();
+    assert_eq!(later.cursor_repair.unwrap().admission_ms, Some(120_012));
+    let unsolicited = f
+        .client
+        .receive_at(&ServerFrame::SyncDone.encode(), 15, clock(70_000))
+        .unwrap();
+    assert_eq!(
+        unsolicited.cursor_repair.unwrap().admission_ms,
+        Some(120_012)
+    );
+}
+
+#[test]
+fn initial_verified_cursor_progress_renews_only_before_expiry_and_pong_cannot_do_so() {
+    let mut f = Fixture::new();
+    f.client.bootstrap_at(Duration::ZERO).unwrap();
+    let tail = f.retained_tail();
+    let progressed = f
+        .client
+        .receive_at(&tail, 10, Duration::from_millis(59_000))
+        .unwrap();
+    assert_eq!(
+        progressed.cursor_repair.unwrap().abort_deadline_ms,
+        Some(119_000)
+    );
+    let duplicate = f
+        .client
+        .receive_at(&tail, 11, Duration::from_millis(118_000))
+        .unwrap();
+    assert_eq!(
+        duplicate.cursor_repair.unwrap().abort_deadline_ms,
+        Some(119_000)
+    );
+    let pong = f
+        .client
+        .receive_at(
+            &ServerFrame::Pong {
+                server_time_ms: None,
+            }
+            .encode(),
+            12,
+            Duration::from_millis(118_999),
+        )
+        .unwrap();
+    assert_eq!(pong.cursor_repair.unwrap().abort_deadline_ms, Some(119_000));
+    assert!(matches!(
+        f.client.reconcile(Duration::from_millis(119_000)).unwrap(),
+        crate::CursorRepairTick::Expired
+    ));
+    assert!(matches!(
+        f.client.reconcile(Duration::from_millis(119_001)).unwrap(),
+        crate::CursorRepairTick::Expired
+    ));
+    f.assert_tail();
+}
+
+#[test]
+fn elapsed_or_backwards_clock_cannot_emit_late_sync_or_revive_a_prior_socket() {
+    let mut f = Fixture::new();
+    assert!(matches!(
+        f.client.reconcile(Duration::from_millis(90_000)).unwrap(),
+        crate::CursorRepairTick::Expired
+    ));
+    assert!(f.client.reconcile(Duration::from_millis(89_999)).is_err());
+    let snapshot = f.client.update(Vec::new()).unwrap().snapshot;
+    f.client = Client::new(f.client.account.clone(), f.client.signer.clone(), &snapshot).unwrap();
+    assert!(
+        f.client.reconcile(Duration::ZERO).is_err(),
+        "cold state has no socket owner"
+    );
+    let fresh = f.client.bootstrap_at(Duration::from_millis(7)).unwrap();
+    assert_eq!(fresh.cursor_repair.unwrap().abort_deadline_ms, Some(60_007));
+    let sync = fresh
+        .frames
+        .iter()
+        .find_map(|b| match ClientFrame::decode(b).unwrap() {
+            ClientFrame::Sync { cursors, all: true } => Some(cursors),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        sync,
+        vec![Cursor {
+            space: SPACE.into(),
+            next_seq: 3
+        }]
+    );
+}
+
+#[test]
+fn invalid_browser_clock_cannot_reset_the_existing_repair_owner_or_snapshot() {
+    let mut f = Fixture::new();
+    let before = f.client.update(Vec::new()).unwrap();
+    assert!(f.client.bootstrap_at(Duration::MAX).is_err());
+    assert!(f.client.bootstrap_at(Duration::from_nanos(1)).is_err());
+    assert!(f.client.reconcile(Duration::MAX).is_err());
+    let after = f.client.update(Vec::new()).unwrap();
+    assert_eq!(before.snapshot, after.snapshot);
+    assert_eq!(before.cursor_repair, after.cursor_repair);
+    let config = f.client.cursor_repair_config();
+    assert_eq!(
+        (
+            config.interval_ms,
+            config.timeout_ms,
+            config.initial_inactivity_ms
+        ),
+        (60_000, 30_000, 60_000)
     );
 }
