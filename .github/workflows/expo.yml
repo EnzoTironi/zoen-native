@@ -150,6 +150,12 @@ jobs:
         run: npm ci --prefix apps/zoen
       - name: Install pinned Excalidraw dependencies
         run: npm ci --prefix miniapps/excalidraw-ui
+      - name: Identify runner Chrome before real renderer tests
+        timeout-minutes: 1
+        run: |
+          set -o pipefail
+          readlink -f /usr/bin/google-chrome
+          timeout --signal=KILL 5s /usr/bin/google-chrome --version | head -c 1024
       - name: Verify pinned Excalidraw UI and early MCP event delivery
         run: |
           npm test --prefix miniapps/excalidraw-ui
@@ -198,6 +204,12 @@ jobs:
           npm run core:types
           git diff --exit-code -- src/core/generated
           test -z "$(git ls-files --others --exclude-standard src/core/generated)"
+      - name: Identify runner Chrome before real App transport tests
+        timeout-minutes: 1
+        run: |
+          set -o pipefail
+          readlink -f /usr/bin/google-chrome
+          timeout --signal=KILL 5s /usr/bin/google-chrome --version | head -c 1024
       - name: TypeScript, Oxlint, Oxfmt and client tests
         run: npm run check
       - name: Expo SDK compatibility

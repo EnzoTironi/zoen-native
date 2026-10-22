@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
 import { build } from 'esbuild';
+import { annotateOwnedBrowserFailure } from '../../../../tools/miniapp-build/browser-startup.ts';
 import {
   nativeMiniappCommand,
   nativeMiniappHtml,
@@ -36,12 +37,16 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
       `--user-data-dir=${join(folder, 'profile')}`,
       'about:blank',
     ],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
+    { stdio: ['ignore', 'pipe', 'pipe'] },
   );
   // Register before awaiting anything: a signaled process can exit before cleanup,
   // and its stdio may still be open after 'exit'.
   const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
   let stderr = '';
+  let stdout = '';
+  child.stdout.on('data', (data: Buffer) => {
+    stdout = (stdout + data.toString()).slice(-16_384);
+  });
   const failure = (message: string, cause?: Error) =>
     new Error(
       `${message}: ${JSON.stringify({
@@ -51,6 +56,7 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
         signalCode: child.signalCode,
         ...(cause ? { spawnError: cause.message } : {}),
         stderr,
+        stdout,
       })}`,
     );
   let socket: WebSocket | undefined;
@@ -149,6 +155,10 @@ async function realBrowserResult(chrome: string, folder: string, path: string): 
         );
       }),
     ]);
+  } catch (error) {
+    // Observe before owned cleanup; post-kill /proc cannot explain a startup stall.
+    await annotateOwnedBrowserFailure(error, child, join(folder, 'profile'));
+    throw error;
   } finally {
     clearTimeout(deadline);
     socket?.close();
