@@ -46,6 +46,7 @@ export function useChatController() {
   const cards = useConversationCards(id);
   const headerHeight = useHeaderHeight();
   const { top: statusBarHeight } = useSafeAreaInsets();
+  const timelineTopInset = process.env.EXPO_OS === 'ios' ? 0 : statusBarHeight;
   const { progress: keyboardProgress } = useKeyboardMotion();
   const conversationMiniapps = cards.visible;
   const { inform } = useDialogs();
@@ -59,6 +60,7 @@ export function useChatController() {
   const sendingNow = useRef(false);
   const [loadedSpace, setLoadedSpace] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
+  const [nativeTimeline, setNativeTimeline] = useState<{ scope: string; tag: number } | null>(null);
   const [railHeight, setRailHeight] = useState(0);
   const [noticeHeight, setNoticeHeight] = useState(0);
   const composerText = editing ? editDraft : draft;
@@ -134,6 +136,18 @@ export function useChatController() {
   );
   const visibleEntries = useMemo(() => rows.map((row) => row.entry), [rows]);
   const timelineKey = searchState.active && searchThread ? `${id}:${searchThread.root}` : id;
+  const nativeTimelineScope = `${timelineKey}:${owner}`;
+  const nativeScrollTag = nativeTimeline?.scope === nativeTimelineScope ? nativeTimeline.tag : 0;
+  const bindNativeTimeline = useCallback(() => {
+    if (process.env.EXPO_OS !== 'ios') return;
+    const tag = list.current?.getScrollableNode();
+    if (typeof tag !== 'number' || !Number.isSafeInteger(tag) || tag <= 0) return;
+    setNativeTimeline((previous) =>
+      previous?.scope === nativeTimelineScope && previous.tag === tag
+        ? previous
+        : { scope: nativeTimelineScope, tag },
+    );
+  }, [nativeTimelineScope]);
   const initialEnd = useMemo(
     () =>
       new InitialTimelineEnd(`${id}:${owner}`, undefined, {
@@ -145,7 +159,7 @@ export function useChatController() {
     entries: [] as readonly TimelineEntry[],
     ready: false,
     headerHeight,
-    statusBarHeight,
+    timelineTopInset,
     railHeight,
     noticeHeight,
   });
@@ -179,7 +193,7 @@ export function useChatController() {
           bottomAligned: true,
           topObstruction:
             current.headerHeight -
-            current.statusBarHeight +
+            current.timelineTopInset +
             current.railHeight * (1 - Math.min(1, Math.max(0, keyboardProgress.value))) +
             current.noticeHeight +
             8,
@@ -213,7 +227,7 @@ export function useChatController() {
         !cards.loading &&
         (conversationMiniapps.length === 0 || railHeight > 0),
       headerHeight,
-      statusBarHeight,
+      timelineTopInset,
       railHeight,
       noticeHeight,
     };
@@ -226,7 +240,7 @@ export function useChatController() {
     cards.loading,
     conversationMiniapps.length,
     headerHeight,
-    statusBarHeight,
+    timelineTopInset,
     railHeight,
     noticeHeight,
     searchReveal,
@@ -402,7 +416,7 @@ export function useChatController() {
           viewPosition: 0,
           viewOffset: -(
             headerHeight -
-            statusBarHeight +
+            timelineTopInset +
             railHeight * (1 - Math.min(1, Math.max(0, keyboardProgress.value))) +
             noticeHeight +
             8
@@ -423,7 +437,7 @@ export function useChatController() {
     visibleEntries,
     inform,
     headerHeight,
-    statusBarHeight,
+    timelineTopInset,
     railHeight,
     noticeHeight,
     keyboardProgress,
@@ -485,6 +499,8 @@ export function useChatController() {
     chat,
     id,
     activityLabel,
+    nativeScrollTag,
+    bindNativeTimeline,
     searchState,
     cancelInitialEnd,
     store,
@@ -512,7 +528,7 @@ export function useChatController() {
     colors,
     notice,
     page,
-    statusBarHeight,
+    timelineTopInset,
     list,
     setLoadedSpace,
     timelineKey,

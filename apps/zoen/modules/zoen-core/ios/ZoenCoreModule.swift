@@ -76,6 +76,12 @@ public class ZoenCoreModule: Module {
     }
     Constant("composerGlassVersion") { 1 }
     Constant("failedMediaRecoveryVersion") { 1 }
+    Constant("navigationContainerVersion") { 1 }
+    View(ZoenNavigationContainer.self) {
+      ViewName("NavigationContainer")
+      Prop("scrollViewTag") { (view: ZoenNavigationContainer, value: Int) in view.scrollViewTag = value }
+      OnViewDidUpdateProps { (view: ZoenNavigationContainer) in view.bind() }
+    }
     View(ZoenComposerGlassSurface.self) {
       ViewName("ComposerGlassSurface")
       Prop("isDark") { (view: ZoenComposerGlassSurface, value: Bool) in view.isDark = value }

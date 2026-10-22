@@ -9,6 +9,7 @@ import { Icon } from './primitives';
 
 export type ChatHeaderProps = {
   id: string;
+  scrollViewTag?: number;
   title: string;
   counterpart?: Persona | null;
   activityLabel?: string | null;
