@@ -9,7 +9,7 @@ import {
   settle,
   login,
   conversation,
-} from '../transport-fixture.ts';
+} from './fixture.ts';
 import { type CoreOperation } from '../worker-client.ts';
 import { Messages } from '../messages.ts';
 import assert from 'node:assert/strict';
@@ -76,7 +76,7 @@ export const scenario29 = async (t: TestContext) => {
   const codec = messagingCore();
   let retained = false,
     uploaded = false;
-  const sealed = [4, 5, 6, ...new Array<number>(16).fill(7)];
+  const sealed = [4, 5, 6, ...Array.from({ length: 16 }, () => 7)];
   const work = () =>
     uploaded
       ? { kind: 'complete', messages: 2 }

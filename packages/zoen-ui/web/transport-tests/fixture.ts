@@ -1,9 +1,9 @@
 // The original single transport/message fixture; no copied socket or state.
-import { type CoreOperation } from './worker-client.ts';
+import { type CoreOperation } from '../worker-client.ts';
 import assert from 'node:assert/strict';
-import test from 'node:test';
-import { type StoredSession } from './session.ts';
-import { type FileDoc, Messages } from './messages.ts';
+import type test from 'node:test';
+import { type StoredSession } from '../session.ts';
+import { type FileDoc, Messages } from '../messages.ts';
 
 // These tests exercise connection/storage ordering. Native protobuf/MLS
 // interoperability requires the separate owned native relay fixture journey.
@@ -126,6 +126,13 @@ export function messagingCore() {
       return closed;
     },
     text: async (operation: CoreOperation) => {
+      if (operation.kind === 'cursor_repair_config')
+        return JSON.stringify({
+          version: 1,
+          interval_ms: 60_000,
+          timeout_ms: 30_000,
+          initial_inactivity_ms: 60_000,
+        });
       if (operation.kind === 'document_uploads') return '[]';
       if (operation.kind === 'link_request')
         return JSON.stringify({

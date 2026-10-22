@@ -6,6 +6,7 @@ import { persistBeforeOutgoing } from './persistence.ts';
 import type { MessageOperations } from './message-operations.ts';
 type MessageLifecyclePort = Pick<
   MessageOperations,
+  | 'cursorRepair'
   | 'enqueue'
   | 'core'
   | 'session'
@@ -35,6 +36,7 @@ export function start(this: MessageLifecyclePort): Promise<void> {
       snapshot: this.session.snapshot,
     });
     this.conversations = array(JSON.parse(json)).map(parseConversation);
+    this.cursorRepair.configure(await this.core.text({ kind: 'cursor_repair_config' }));
     if (this.closed) return;
     this.publish();
     this.transport.start();
@@ -52,14 +54,16 @@ export function received(
       return Promise.resolve();
   }
   const generation = this.generation;
+  const repairNow = this.cursorRepair.now();
+  if (frame.kind === 'ready') this.cursorRepair.start(generation, repairNow);
   return this.enqueue(async () => {
     if (generation !== this.generation || this.connection.kind !== 'ready') return;
     if (frame.kind === 'ready' || frame.kind === 'pong')
       await this.core.text({ kind: 'claim_clock', value: this.transport.claimClock });
     const update =
       frame.kind === 'ready'
-        ? await this.core.text({ kind: 'bootstrap' })
-        : await this.core.text({ kind: 'receive', bytes: raw, now: Date.now() });
+        ? await this.core.text({ kind: 'bootstrap', repairNow })
+        : await this.core.text({ kind: 'receive', bytes: raw, now: Date.now(), repairNow });
     if (frame.kind === 'rejected' && frame.permanent) this.notice = frame.reason;
     await this.apply(update, generation);
     {
@@ -92,10 +96,13 @@ export async function apply(
     emit: (frame) => {
       // A reconnect bootstraps again from the saved outbox; never emit stale frames.
       if (this.closed || this.connection.kind !== 'ready' || generation !== this.generation) return;
+      if (!this.cursorRepair.check(generation)) return;
       this.transport.sendRetained(frame);
     },
   });
-  if (this.closed) return;
+  if (this.closed || generation !== this.generation) return;
+  this.cursorRepair.update(update.cursorRepair, generation);
+  if (this.closed || generation !== this.generation) return;
   this.conversations = update.conversations;
   this.scheduleMaintenance(update.maintenance, generation);
   if (update.historyReady) this.scheduleHistory();

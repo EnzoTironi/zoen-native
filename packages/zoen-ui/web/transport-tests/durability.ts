@@ -10,7 +10,7 @@ import {
   settle,
   Socket,
   conversation,
-} from '../transport-fixture.ts';
+} from './fixture.ts';
 import { type MessagesState, Messages } from '../messages.ts';
 import assert from 'node:assert/strict';
 import { type CoreOperation } from '../worker-client.ts';

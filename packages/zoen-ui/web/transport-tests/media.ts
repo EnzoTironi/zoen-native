@@ -12,7 +12,7 @@ import {
   socket,
   settle,
   mediaMessages,
-} from '../transport-fixture.ts';
+} from './fixture.ts';
 import { type MessagesState, type FileDoc, Messages } from '../messages.ts';
 import { type CoreOperation } from '../worker-client.ts';
 import assert from 'node:assert/strict';

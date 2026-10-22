@@ -13,7 +13,7 @@ import {
   ready,
   messagingCore,
   linked,
-} from '../transport-fixture.ts';
+} from './fixture.ts';
 import { type ConnectionState, AuthenticatedTransport } from '../transport.ts';
 import assert from 'node:assert/strict';
 import { type CoreOperation } from '../worker-client.ts';
@@ -55,7 +55,7 @@ export const scenario01 = async (t: TestContext) => {
 export const scenario02 = async (t: TestContext) => {
   install(t);
   const codec = unitCodec();
-  let finish = (_: string) => {};
+  let finish: (_: string) => void = () => {};
   const delayed = new Promise<string>((resolve) => {
     finish = resolve;
   });
@@ -105,7 +105,7 @@ export const scenario02 = async (t: TestContext) => {
 export const scenario03 = async (t: TestContext) => {
   install(t);
   const codec = unitCodec();
-  let finish = (_: Uint8Array<ArrayBuffer>) => {};
+  let finish: (_: Uint8Array<ArrayBuffer>) => void = () => {};
   const delayed = new Promise<Uint8Array<ArrayBuffer>>((resolve) => {
     finish = resolve;
   });
@@ -199,7 +199,7 @@ export const scenario09 = async (t: TestContext) => {
 export const scenario23 = async (t: TestContext) => {
   install(t);
   const codec = unitCodec();
-  let release = (_: Uint8Array) => {};
+  let release: (_: Uint8Array) => void = () => {};
   const delayed = new Promise<Uint8Array>((resolve) => {
     release = resolve;
   });
