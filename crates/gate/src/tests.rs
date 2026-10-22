@@ -283,6 +283,7 @@ pub fn to_check(c: &Case) -> Check {
     let point = match c.point.as_str() {
         "tool-call" => Point::ToolCall,
         "inbound" => Point::Inbound,
+        "conversation-message" => Point::ConversationMessage,
         "bundle" => Point::Bundle,
         _ => Point::Outbound,
     };
@@ -405,4 +406,8 @@ fn journey_clef_without_workers_ai_access_fails_closed() {
 
 mod clef_contract {
     include!("clef_tests.rs");
+}
+
+mod conversation_contract {
+    include!("conversation_tests.rs");
 }

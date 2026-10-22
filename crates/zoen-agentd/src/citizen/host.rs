@@ -15,6 +15,9 @@ use std::collections::BTreeMap;
 /// The capability a Creator's `create_agent` action is gated as.
 pub const CREATE_AGENT_CAPABILITY: &str = "agent.create";
 
+/// A conversation message admitted by the host from its authenticated timeline.
+/// The host establishes authenticity; constructing this value is not proof.
+/// The author and text do not grant tool access or bypass the owner's policy.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Turn {
     pub space: String,
@@ -636,7 +639,7 @@ impl Runtime {
 
     fn resume_block(inbound: &Turn, host: &dyn ToolHost, ask: &ToolAsk) -> Option<TurnOutcome> {
         if let Some((Outcome::Block, rule)) =
-            gate::hard_rules(&Check::new(Point::Inbound, &inbound.text))
+            gate::hard_rules(&Check::new(Point::ConversationMessage, &inbound.text))
         {
             return Some(TurnOutcome::Blocked { reason: rule });
         }
@@ -807,7 +810,9 @@ impl Runtime {
 
     /// The inbound gate: `Some` when the message never reaches the brain.
     fn inbound(&self, inbound: &Turn) -> Option<TurnOutcome> {
-        let d = self.gate.check(&Check::new(Point::Inbound, &inbound.text));
+        let d = self
+            .gate
+            .check(&Check::new(Point::ConversationMessage, &inbound.text));
         match d.outcome {
             Outcome::Block => Some(TurnOutcome::Blocked { reason: d.rule }),
             Outcome::Ask => Some(TurnOutcome::AskOwner {
@@ -968,6 +973,10 @@ impl Host {
         Ok(out)
     }
 }
+
+#[cfg(test)]
+#[path = "conversation_gate_tests.rs"]
+mod conversation_gate_tests;
 
 #[cfg(test)]
 mod continuation_tests {
