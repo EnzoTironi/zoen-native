@@ -1188,6 +1188,58 @@ mod own_sync_tests {
     }
 
     #[test]
+    fn incoming_profile_ciphertext_obeys_existing_size_ceiling_before_cache() {
+        let (mut engine, identity) = fixture();
+        let bytes = vec![17; MAX_PHOTO_BYTES + 1];
+        let (key, sealed) = crate::media::seal(&bytes);
+        let photo = ProfilePhoto {
+            sha256: hex::encode(Sha256::digest(&bytes)),
+            blob: hex::encode(Sha256::digest(&sealed)),
+            key: hex::encode(key),
+            mime: "image/jpeg".into(),
+        };
+        assert!(photo.valid(), "well-formed authenticated reference");
+        assert!(photo.open(&sealed).is_none(), "existing profile size policy");
+        let fields = ProfileFields {
+            name: "Synthetic second-device profile".into(),
+            photo: Some(photo.clone()),
+            ..Default::default()
+        };
+        let mut incoming = remote(&engine, &identity, 2, "Synthetic", false);
+        incoming.ciphertext = seal_profile(
+            &engine.my_fields(&identity.id()).unwrap().0,
+            &identity.id(),
+            2,
+            &fields,
+        );
+        incoming.signed = sign_upload(
+            &Author::device(&identity, Signer::from_secret(&[92; 32])),
+            2,
+            &incoming.ciphertext,
+        )
+        .unwrap();
+        assert_eq!(
+            engine.sealed_profiles_arrived(vec![incoming], &[identity.id()]),
+            [identity.id()]
+        );
+        let wanted = engine
+            .wanted_profile_photos()
+            .into_iter()
+            .find(|wanted| wanted.plain == photo.sha256)
+            .expect("actual authenticated photo demand");
+        let profile_before = engine.my_fields(&identity.id()).unwrap().3;
+        let events_before = engine.store.event_count().unwrap();
+        assert!(
+            !engine.media_arrived(&wanted, &sealed),
+            "oversized valid ciphertext must not enter the media cache"
+        );
+        assert!(engine.media(&photo.sha256).unwrap().is_none());
+        assert!(engine.store.media_key(&photo.sha256).unwrap().is_none());
+        assert_eq!(engine.my_fields(&identity.id()).unwrap().3, profile_before);
+        assert_eq!(engine.store.event_count().unwrap(), events_before);
+    }
+
+    #[test]
     fn concurrent_self_profile_preserves_pending_and_exact_retry_across_network_reset() {
         let (mut engine, identity) = fixture();
         engine
