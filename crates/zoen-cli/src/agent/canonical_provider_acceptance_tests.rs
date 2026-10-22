@@ -124,7 +124,7 @@ struct Expected {
     item: String,
     version: u32,
     head: String,
-    slide: Value,
+    worker_binding: String,
 }
 impl Expected {
     fn read(&self) -> ToolCall {
@@ -134,19 +134,52 @@ impl Expected {
             arguments: json!({"artifactId":self.item}),
         }
     }
-    fn write(&self) -> ToolCall {
-        ToolCall {
+    fn write(&self, read: &ToolStep) -> Result<ToolCall, String> {
+        if read.is_error
+            || read.call.name != self.read().name
+            || read.call.arguments != self.read().arguments
+        {
+            return Err("acceptance guard: verified-read-required".into());
+        }
+        let result: Value = serde_json::from_str(&read.result)
+            .map_err(|_| "acceptance guard: invalid-read-result")?;
+        if result["scope"]["artifactId"] != self.item {
+            return Err("acceptance guard: read-artifact".into());
+        }
+        if result["engineRevision"] != zoen_agentd::deckcraft::ENGINE_REVISION {
+            return Err("acceptance guard: read-engine".into());
+        }
+        if result["head"]["version"]
+            .as_str()
+            .and_then(|v| v.parse::<u32>().ok())
+            != Some(self.version)
+        {
+            return Err("acceptance guard: read-version".into());
+        }
+        if result["head"]["sha256"] != self.head {
+            return Err("acceptance guard: read-hash".into());
+        }
+        let slide = result["slides"][0]["id"]
+            .as_u64()
+            .filter(|id| *id <= u32::MAX as u64)
+            .ok_or("acceptance guard: native-slide-id")?;
+        Ok(ToolCall {
             id: "synthetic-write".into(),
             name: crate::deckcraft::model_name("deckcraft_slide_notes", &self.item).unwrap(),
-            arguments: json!({"artifactId":self.item,"version":self.version,"sha256":self.head,"slideId":self.slide,"text":NOTES}),
-        }
+            arguments: json!({"artifactId":self.item,"version":self.version,"sha256":self.head,"slideId":slide,"text":NOTES}),
+        })
     }
-    fn admit(&self, steps: &[ToolStep], output: &BrainOut) -> Result<(), String> {
-        let reject = || {
-            "model proposal exceeds the one-read/one-write synthetic acceptance scope".to_string()
-        };
+    fn admit(
+        &self,
+        worker_binding: &str,
+        steps: &[ToolStep],
+        output: &BrainOut,
+    ) -> Result<(), String> {
+        if worker_binding != self.worker_binding {
+            return Err("acceptance guard: worker-binding".into());
+        }
         if steps.iter().any(|s| s.is_error) {
-            return Err(reject());
+            return Err("acceptance guard: failed-step".into());
         }
         match (steps, output) {
             ([], BrainOut::CallTools(calls))
@@ -156,48 +189,76 @@ impl Expected {
             {
                 Ok(())
             }
-            ([read], BrainOut::CallTools(calls))
-                if calls.len() == 1
-                    && read.call.name == self.read().name
-                    && read.call.arguments == self.read().arguments
-                    && calls[0].id != read.call.id
-                    && calls[0].name == self.write().name
-                    && calls[0].arguments == self.write().arguments =>
-            {
-                let result: Value = serde_json::from_str(&read.result).map_err(|_| reject())?;
-                if result["head"]["version"]
-                    .as_str()
-                    .and_then(|v| v.parse::<u32>().ok())
-                    != Some(self.version)
-                    || result["head"]["sha256"] != self.head
-                    || result["slides"][0]["id"] != self.slide
-                {
-                    return Err(reject());
+            ([read], BrainOut::CallTools(calls)) => {
+                let expected = self.write(read)?;
+                if calls.len() != 1 {
+                    return Err("acceptance guard: write-call-count".into());
+                }
+                if calls[0].id == read.call.id || calls[0].name != expected.name {
+                    return Err("acceptance guard: write-call-identity".into());
+                }
+                if calls[0].arguments != expected.arguments {
+                    return Err("acceptance guard: write-arguments".into());
                 }
                 Ok(())
             }
-            ([read, write], BrainOut::Say(text))
-                if text == REPLY
-                    && read.call.name == self.read().name
-                    && write.call.name == self.write().name
-                    && write.call.arguments == self.write().arguments =>
-            {
+            ([read, write], BrainOut::Say(text)) => {
+                let expected = self.write(read)?;
+                if text != REPLY
+                    || write.call.id == read.call.id
+                    || write.call.name != expected.name
+                    || write.call.arguments != expected.arguments
+                {
+                    return Err("acceptance guard: final-reply-or-step".into());
+                }
                 Ok(())
             }
-            _ => Err(reject()),
+            _ => Err("acceptance guard: route".into()),
         }
     }
+    fn shape(&self, worker_binding: &str, steps: &[ToolStep], output: &BrainOut) -> Value {
+        let (kind, calls) = match output {
+            BrainOut::CallTools(calls) => ("call", calls.as_slice()),
+            BrainOut::Say(_) => ("say", &[][..]),
+            BrainOut::Silence => ("quiet", &[][..]),
+            BrainOut::CreateAgent { .. } => ("create-agent", &[][..]),
+        };
+        let read = steps
+            .first()
+            .and_then(|s| serde_json::from_str::<Value>(&s.result).ok());
+        json!({"kind":kind,"callCount":calls.len(),"completedStepCount":steps.len(),
+            "workerBindingMatches":worker_binding==self.worker_binding,
+            "readFirstNativeSlideId":read.as_ref().and_then(|r|r["slides"][0]["id"].as_u64()),
+            "calls":calls.iter().map(|call|json!({
+                "readAliasMatches":call.name==self.read().name,
+                "writeAliasMatches":call.name==crate::deckcraft::model_name("deckcraft_slide_notes",&self.item).unwrap(),
+                "argumentKeys":call.arguments.as_object().map(|a|a.keys().filter(|k|["artifactId","version","sha256","slideId","text"].contains(&k.as_str())).cloned().collect::<Vec<_>>()),
+                "argumentKeyCount":call.arguments.as_object().map(|a|a.len()),
+                "artifactMatches":call.arguments["artifactId"]==self.item,
+                "versionMatches":call.arguments["version"].as_u64()==Some(self.version as u64),
+                "hashMatches":call.arguments["sha256"]==self.head,
+                "nativeSlideId":call.arguments["slideId"].as_u64(),
+                "textMatches":call.arguments["text"]==NOTES
+            })).collect::<Vec<_>>()})
+    }
 }
-fn guarded(inner: Box<dyn Brain>, budget: &Arc<Budget>, expected: Expected) -> Box<dyn Brain> {
+fn guarded(
+    inner: Box<dyn Brain>,
+    budget: &Arc<Budget>,
+    expected: Expected,
+    worker_binding: String,
+) -> Box<dyn Brain> {
     let before = budget.clone();
     let after = budget.clone();
     Box::new(GuardedBrain {
         inner,
         before: Arc::new(move || before.reserve("codex").map(|_| ())),
         after: Arc::new(move |steps, output| {
-            expected.admit(steps, output)?;
-            after.note(json!({"kind":"codex-result","completedSteps":steps.len(),"state":"admitted-synthetic-shape"}));
-            Ok(())
+            let decision = expected.admit(&worker_binding, steps, output);
+            after.note(json!({"kind":"codex-result","completedSteps":steps.len(),
+                "state":if decision.is_ok(){"admitted-synthetic-shape"}else{"rejected-synthetic-shape"},
+                "reason":decision.as_ref().err(),"shape":expected.shape(&worker_binding,steps,output)}));
+            decision
         }),
     })
 }
@@ -226,6 +287,7 @@ fn context(
                 brain().expect("explicit production Codex selector required"),
                 budget,
                 expected,
+                worker.binding_sha256().into(),
             ),
         ),
         deckcraft: Some(worker),
@@ -441,8 +503,7 @@ async fn operator_codex_clef_canonical_approval_replay_and_cold_reopen() {
         item: base.item_id.clone(),
         version: base.version,
         head: base.sha256.clone(),
-        // Pinned original.deckcraft fixture. The observed read must confirm it.
-        slide: json!(1),
+        worker_binding: worker.binding_sha256().into(),
     };
     let journal = path.join("agent-tool-steps.json");
     let mut approvals = Vec::new();
@@ -517,7 +578,7 @@ async fn operator_codex_clef_canonical_approval_replay_and_cold_reopen() {
             &source,
             &owner,
             "deckcraft_slide_notes",
-            &expected.write().arguments,
+            &expected.write(&steps[0]).unwrap().arguments,
         )
         .await
         .unwrap(),
@@ -584,7 +645,7 @@ mod guards {
             item: "synthetic-deck".into(),
             version: 1,
             head: "11".repeat(32),
-            slide: json!(1),
+            worker_binding: "88".repeat(32),
         }
     }
     #[test]
@@ -765,10 +826,12 @@ mod guards {
                     Err("synthetic failure".into())
                 }),
             };
-            assert!(guarded(Box::new(inner), &budget, expected())
-                .think(cx, &[], &inbound)
-                .await
-                .is_err());
+            assert!(
+                guarded(Box::new(inner), &budget, expected(), "88".repeat(32))
+                    .think(cx, &[], &inbound)
+                    .await
+                    .is_err()
+            );
         }
         assert_eq!(calls.load(Ordering::SeqCst), 3);
         assert_eq!(budget.snapshot()["codexTurnsStarted"], 3);
@@ -778,32 +841,238 @@ mod guards {
         let expected = expected();
         let read = expected.read();
         assert!(expected
-            .admit(&[], &BrainOut::CallTools(vec![read.clone()]))
+            .admit(
+                &expected.worker_binding,
+                &[],
+                &BrainOut::CallTools(vec![read.clone()])
+            )
             .is_ok());
         assert!(expected
-            .admit(&[], &BrainOut::CallTools(vec![read.clone(), read.clone()]))
+            .admit(
+                &expected.worker_binding,
+                &[],
+                &BrainOut::CallTools(vec![read.clone(), read.clone()])
+            )
             .is_err());
         let mut foreign = read.clone();
         foreign.arguments["artifactId"] = json!("foreign");
         assert!(expected
-            .admit(&[], &BrainOut::CallTools(vec![foreign]))
+            .admit(
+                &expected.worker_binding,
+                &[],
+                &BrainOut::CallTools(vec![foreign])
+            )
             .is_err());
-        let steps = vec![ToolStep {
-            call: read.clone(),
-            result: json!({"head":{"version":"1","sha256":expected.head},"slides":[{"id":1}]})
-                .to_string(),
-            is_error: false,
-        }];
+        let steps = vec![verified_read(&expected)];
         assert!(expected
-            .admit(&steps, &BrainOut::CallTools(vec![expected.write()]))
+            .admit(
+                &expected.worker_binding,
+                &steps,
+                &BrainOut::CallTools(vec![native_write(&expected, json!(257))])
+            )
             .is_ok());
         assert!(expected
-            .admit(&steps, &BrainOut::CallTools(vec![read]))
+            .admit(
+                &expected.worker_binding,
+                &steps,
+                &BrainOut::CallTools(vec![read])
+            )
             .is_err());
-        let mut stale = expected.write();
+        let mut stale = native_write(&expected, json!(257));
         stale.arguments["version"] = json!(2);
         assert!(expected
-            .admit(&steps, &BrainOut::CallTools(vec![stale]))
+            .admit(
+                &expected.worker_binding,
+                &steps,
+                &BrainOut::CallTools(vec![stale])
+            )
             .is_err());
+    }
+    fn verified_read(expected: &Expected) -> ToolStep {
+        ToolStep {
+            call: expected.read(),
+            result: json!({"engineRevision":zoen_agentd::deckcraft::ENGINE_REVISION,
+                "scope":{"artifactId":expected.item},
+                "head":{"version":expected.version.to_string(),"sha256":expected.head},
+                "slides":[{"id":257}]})
+            .to_string(),
+            is_error: false,
+        }
+    }
+    fn native_write(expected: &Expected, slide: Value) -> ToolCall {
+        ToolCall {
+            id: "independent-write-proposal".into(),
+            name: crate::deckcraft::model_name("deckcraft_slide_notes", &expected.item).unwrap(),
+            arguments: json!({"artifactId":expected.item,"version":expected.version,"sha256":expected.head,"slideId":slide,"text":NOTES}),
+        }
+    }
+    #[test]
+    fn native_id_guard_accepts_observed_257_and_rejects_positional_unknown_missing_or_unread_ids() {
+        let expected = expected();
+        let read = verified_read(&expected);
+        let valid = native_write(&expected, json!(257));
+        assert!(expected
+            .admit(
+                &expected.worker_binding,
+                std::slice::from_ref(&read),
+                &BrainOut::CallTools(vec![valid.clone()])
+            )
+            .is_ok());
+        for id in [json!(1), json!(258), Value::Null, json!("257"), json!(-1)] {
+            let proposal = native_write(&expected, id);
+            assert!(expected
+                .admit(
+                    &expected.worker_binding,
+                    std::slice::from_ref(&read),
+                    &BrainOut::CallTools(vec![proposal])
+                )
+                .is_err());
+        }
+        let mut missing = valid.clone();
+        missing.arguments.as_object_mut().unwrap().remove("slideId");
+        assert!(expected
+            .admit(
+                &expected.worker_binding,
+                std::slice::from_ref(&read),
+                &BrainOut::CallTools(vec![missing])
+            )
+            .is_err());
+        assert!(expected
+            .admit(
+                &expected.worker_binding,
+                &[],
+                &BrainOut::CallTools(vec![valid])
+            )
+            .is_err());
+    }
+    #[test]
+    fn native_id_guard_rejects_unverified_head_artifact_engine_worker_and_read_shape() {
+        let expected = expected();
+        let read = verified_read(&expected);
+        let valid = native_write(&expected, json!(257));
+        for pointer in [
+            "/head/sha256",
+            "/head/version",
+            "/scope/artifactId",
+            "/engineRevision",
+            "/slides/0/id",
+        ] {
+            let mut changed: Value = serde_json::from_str(&read.result).unwrap();
+            *changed.pointer_mut(pointer).unwrap() = Value::Null;
+            let mut step = read.clone();
+            step.result = changed.to_string();
+            assert!(
+                expected
+                    .admit(
+                        &expected.worker_binding,
+                        &[step],
+                        &BrainOut::CallTools(vec![valid.clone()])
+                    )
+                    .is_err(),
+                "{pointer}"
+            );
+        }
+        for id in [json!(-1), json!(u64::MAX), json!(1.5), json!("257")] {
+            let mut changed: Value = serde_json::from_str(&read.result).unwrap();
+            changed["slides"][0]["id"] = id;
+            let mut step = read.clone();
+            step.result = changed.to_string();
+            assert!(expected
+                .admit(
+                    &expected.worker_binding,
+                    &[step],
+                    &BrainOut::CallTools(vec![valid.clone()])
+                )
+                .is_err());
+        }
+        let mut changed = valid.clone();
+        changed.arguments["sha256"] = json!("00".repeat(32));
+        assert!(expected
+            .admit(
+                &expected.worker_binding,
+                std::slice::from_ref(&read),
+                &BrainOut::CallTools(vec![changed])
+            )
+            .is_err());
+        assert!(expected
+            .admit(
+                &"99".repeat(32),
+                std::slice::from_ref(&read),
+                &BrainOut::CallTools(vec![valid])
+            )
+            .is_err());
+    }
+    #[tokio::test]
+    async fn rejected_proposal_persists_only_reason_shape_flags_and_cumulative_counts() {
+        let expected = expected();
+        let read = verified_read(&expected);
+        let mut candidate = native_write(&expected, json!(1));
+        candidate.arguments["untrusted-key-DO_NOT_LOG"] = json!("untrusted-value-DO_NOT_LOG");
+        let path = std::env::temp_dir().join(types::new_id("redacted-provider-rejection"));
+        std::fs::create_dir(&path).unwrap();
+        let budget = Budget::with_evidence(&path);
+        let inner = zoen_agentd::citizen::testing::ControlledToolBrain {
+            evaluate: Box::new(move |_| Ok(BrainOut::CallTools(vec![candidate.clone()]))),
+        };
+        let definition = definition();
+        let cx = TurnContext {
+            agent: "synthetic",
+            device: "synthetic",
+            owner: "synthetic",
+            definition: &definition,
+        };
+        let inbound = Turn {
+            space: "synthetic".into(),
+            from: "synthetic".into(),
+            text: "synthetic".into(),
+        };
+        let result = guarded(Box::new(inner), &budget, expected, "88".repeat(32))
+            .think_with_tools(cx, &[], &inbound, &[], &[read])
+            .await;
+        assert_eq!(result, Err("acceptance guard: write-arguments".into()));
+        let saved = std::fs::read_to_string(path.join("provider-trace.json")).unwrap();
+        assert!(!saved.contains("DO_NOT_LOG"));
+        let value: Value = serde_json::from_str(&saved).unwrap();
+        assert_eq!(value["codexTurnsStarted"], 1);
+        assert_eq!(value["clefDispatches"], 0);
+        assert_eq!(value["trace"][1]["state"], "rejected-synthetic-shape");
+        assert_eq!(value["trace"][1]["shape"]["calls"][0]["nativeSlideId"], 1);
+        assert_eq!(value["trace"][1]["shape"]["readFirstNativeSlideId"], 257);
+        std::fs::remove_dir_all(path).unwrap();
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "offline only; requires the actual operator-signed pinned WASI worker"]
+    async fn native_slide_id_from_actual_signed_worker_is_admitted() {
+        let worker = crate::deckcraft::configured()
+            .unwrap()
+            .expect("explicit signed worker required");
+        let fixture = crate::deckcraft::tests::fixture();
+        let result = crate::deckcraft::tests::inspect(&fixture, &worker).await;
+        assert_eq!(result["slides"][0]["id"], json!(257));
+        let expected = Expected {
+            item: fixture.base.item_id.clone(),
+            version: fixture.base.version,
+            head: fixture.base.sha256.clone(),
+            worker_binding: worker.binding_sha256().into(),
+        };
+        let read = ToolStep {
+            call: expected.read(),
+            result: result.to_string(),
+            is_error: false,
+        };
+        let write = native_write(&expected, result["slides"][0]["id"].clone());
+        let admitted = expected.admit(
+            worker.binding_sha256(),
+            &[read],
+            &BrainOut::CallTools(vec![write]),
+        );
+        println!("actual signed worker read nativeSlideId=257; guarded single-write admission={admitted:?}; no provider dispatch");
+        let path = fixture.path.clone();
+        drop(fixture);
+        std::fs::remove_dir_all(path).unwrap();
+        assert!(
+            admitted.is_ok(),
+            "the verified native first-slide ID must be admitted: {admitted:?}"
+        );
     }
 }
