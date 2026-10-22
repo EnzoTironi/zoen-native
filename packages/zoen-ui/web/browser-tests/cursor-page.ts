@@ -148,7 +148,7 @@ async function run() {
             await heldSave;
           }
           await vault.save(session);
-          if (syncSnapshots.delete(session.snapshot)) ++completedSyncs;
+          if (session.kind === 'linked' && syncSnapshots.delete(session.snapshot)) ++completedSyncs;
         },
       },
       session: session as Extract<StoredSession, { kind: 'linked' }>,

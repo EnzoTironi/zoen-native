@@ -61,6 +61,7 @@ export function syntheticRelay(server, fixture, failures) {
     pongs: 0,
     delayedPong: false,
     fullSync: [],
+    allPublicationCopies: 0,
     publicationCopies: 0,
     publicationBytesIdentical: true,
   };
@@ -141,6 +142,19 @@ export function syntheticRelay(server, fixture, failures) {
         return;
       }
       if (kind === 4) {
+        ++metrics.allPublicationCopies;
+        const envelope = fields(body),
+          content = fields(value(envelope, 1));
+        const sealed = value(content, 9);
+        // Observe only this fixture Space's encrypted application outbox. Clear
+        // profile/key-sharing traffic remains an unrelated publication domain.
+        if (
+          value(content, 1) !== 4 ||
+          text(content, 2) !== fixture.space ||
+          !sealed ||
+          value(fields(sealed), 1) !== 1
+        )
+          return;
         ++metrics.publicationCopies;
         if (publication) metrics.publicationBytesIdentical &&= publication.equals(body);
         else publication = Buffer.from(body);
