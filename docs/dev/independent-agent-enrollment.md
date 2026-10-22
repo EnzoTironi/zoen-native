@@ -74,7 +74,8 @@ An unset `ZOEN_BRAIN` selects the separate Workers AI conversational Brain; it d
 not select Codex. Provider selection, credentials and provider model IDs are never embedded
 in the Agent Definition. The dated [combined provider qualification](cloudflare-clef-gate-qualification-2026-10-21.md#corrected-source-combined-provider-qualification)
 used synthetic signed relay input. Actual relay/MLS tasks and native tool approval
-remain a separate acceptance journey.
+remain a separate acceptance journey, with the current partial result recorded in
+[conversation runtime and recovery](agent-conversation-runtime.md).
 
 ## Host startup and readiness
 
