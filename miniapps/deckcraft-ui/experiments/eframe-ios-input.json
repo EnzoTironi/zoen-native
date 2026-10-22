@@ -13,7 +13,7 @@
     "archiveSha256": "55ad41fac6e3149abb4866e93df37dbd33baa95db525c3368c944584e95a5dc2",
     "sourceRevision": "49682f8baa058bf49e011035cfbd6e825f88a5ef",
     "beforeTreeSha256": "6d5168aabcbf959b2c7670dd255baef5d79b9e89ad274b9f2a8b20f7acd3aac2",
-    "afterTreeSha256": "51b9fd73a2cdc8ad45738933cff2c3789058543525614f3c0be9de5949639dba",
+    "afterTreeSha256": "62656f7a492d7b907ae0dd19e712c887198d57b17c1bf67676691835b3073d8d",
     "changedFiles": [
       "src/web/app_runner.rs",
       "src/web/backend.rs",
@@ -25,7 +25,7 @@
   },
   "patch": {
     "path": "patches/0017-eframe-ios-input.patch",
-    "sha256": "20ac9af88b43e2cb3bb387349af3a0fce7c0c49031db029596adeb852cfc461b"
+    "sha256": "8fe0cc6aeb9a31248c310c0a21c666e474caf4ba960e349ed8752bccfd0c5604"
   },
   "sourceFiles": [
     {

@@ -165,3 +165,22 @@ actual DeckCraft Notes release callback with its existing admission gate. These
 source tests do not establish that the final WKWebView artifact opens the iOS
 keyboard or saves real user input. Candidate assets need separate native input,
 canonical save/reopen and export qualification before promotion.
+
+## First-touch admission before DOM focus
+
+The successor input recipe keeps the same eframe/egui revisions and opt-in
+chain. A real first Notes click can already own the egui TextEdit and publish
+IME while the DOM viewport is still unfocused. `Response::has_focus` includes
+that viewport state, so it previously refused this admitted click. The bounded
+host regression reproduces refusal with `RawInput.focused = false` and passes
+with `true` as the control.
+
+Patch 0017 now requires the current TextEdit memory owner for that real clicked,
+enabled response, together with current IME. It retains the synchronous outer
+contact/release eligibility, focus-loss cancellation, multitouch, drag and custom
+canvas ownership gates. It does not change global egui focus behavior. Patch
+0018 carries both real Notes focus cases, no-IME refusal and later-frame refusal.
+The recipe hashes bind these source changes; retained candidate04/05 packages
+and their receipts remain unchanged. These host tests do not establish the
+actual WebKit focus transition or software-keyboard acceptance. Candidate06
+still needs iPhone manual edit/save/reopen/export qualification (issue #174).
