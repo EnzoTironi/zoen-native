@@ -17,12 +17,14 @@ pub const MANIFEST: &str = match option_env!("ZOEN_DECKCRAFT_RESOURCE_MANIFEST_J
     Some(manifest) => manifest,
     None => include_str!("../../resources/deckcraft.manifest.json"),
 };
-// Candidate 05 adds the shared egui first-touch cursor fix to the verified input package.
+// Candidate 06 admits a genuine Notes click before the DOM viewport gains focus.
 // Native keyboard, edit/save and export acceptance remain separate.
-const MODULE_FILE: &str = "deckcraft-web-9848d4c343e786ef.js";
-const MODULE_SHA: &str = "9dd3081704ac39c04a8f78e56ccbf904b032bd5569186ce1df3cd6e0ebd88c77";
-const WASM_FILE: &str = "deckcraft-web-55e43aa6139c5bb4_bg.wasm";
-const WASM_SHA: &str = "cd911a688e3a6793cc0dbbab14a824646a7732a4391fdf50c976f28ed8e1d2d5";
+const MODULE_FILE: &str = "deckcraft-web-4576e715d9c77da4.js";
+const MODULE_BYTES: u64 = 157_851;
+const MODULE_SHA: &str = "7144d8766ed42db97e9f8366515328c7ef353a04d80d66c213ae107619c12ead";
+const WASM_FILE: &str = "deckcraft-web-b023d45fa5023a1a_bg.wasm";
+const WASM_BYTES: u64 = 36_382_474;
+const WASM_SHA: &str = "c9ff98889b779e3c11661e290c1c74317fd6aa9eecbe7705c085f7ff74cd4c0e";
 fn exact_keys(value: &Value, expected: &[&str]) -> bool {
     value.as_object().is_some_and(|object| {
         object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
@@ -115,7 +117,7 @@ pub fn valid_resource(html: &str, manifest: &str) -> bool {
     let Some(module) = asset(
         &runtime["module"],
         MODULE_FILE,
-        157_851,
+        MODULE_BYTES,
         MODULE_SHA,
         "text/javascript",
     ) else {
@@ -124,7 +126,7 @@ pub fn valid_resource(html: &str, manifest: &str) -> bool {
     let Some(wasm) = asset(
         &runtime["wasm"],
         WASM_FILE,
-        36_385_233,
+        WASM_BYTES,
         WASM_SHA,
         "application/wasm",
     ) else {
@@ -220,9 +222,30 @@ pub fn spec() -> Option<AppSpec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_runtime_opens_the_catalog_and_genuine_seed_without_document_supplied_code() {
+        if option_env!("ZOEN_DECKCRAFT_RESOURCE_MANIFEST_JSON").is_some() {
+            assert!(valid_resource(HTML, MANIFEST));
+            let registered = spec().expect("the explicitly configured package must be available");
+            assert_eq!(registered.resource_uri, RESOURCE);
+            assert_eq!(registered.manifest, Some(MANIFEST));
+            let (title, metadata) = create(&json!({"title":"Configured presentation"})).unwrap();
+            assert_eq!(title, "Configured presentation");
+            assert_eq!(metadata["slides"], 1);
+        } else {
+            assert!(
+                !available(),
+                "the endpoint-neutral default cannot expose a runtime"
+            );
+            assert!(spec().is_none());
+            assert!(create(&json!({"title":"Unavailable presentation"})).is_err());
+        }
+    }
+
     fn fixture(html: &str) -> Value {
         let directory = format!("https://runtime.invalid/deckcraft/{ENGINE_REVISION}/");
-        json!({"id":APP,"resourceUri":RESOURCE,"mimeType":crate::MIME,"bytes":html.len(),"sha256":format!("{:x}",Sha256::digest(html.as_bytes())),"capabilities":[],"allowedDomains":[],"linkDomains":[],"permissions":{},"csp":{"connectDomains":[],"resourceDomains":[],"frameDomains":[],"baseUriDomains":[]},"runtimePackage":{"schema":1,"engine":APP,"revision":ENGINE_REVISION,"abi":"zoen-host-v1","module":{"url":format!("{directory}{MODULE_FILE}"),"bytes":157851,"sha256":MODULE_SHA,"mime":"text/javascript"},"wasm":{"url":format!("{directory}{WASM_FILE}"),"bytes":36385233,"sha256":WASM_SHA,"mime":"application/wasm"}}})
+        json!({"id":APP,"resourceUri":RESOURCE,"mimeType":crate::MIME,"bytes":html.len(),"sha256":format!("{:x}",Sha256::digest(html.as_bytes())),"capabilities":[],"allowedDomains":[],"linkDomains":[],"permissions":{},"csp":{"connectDomains":[],"resourceDomains":[],"frameDomains":[],"baseUriDomains":[]},"runtimePackage":{"schema":1,"engine":APP,"revision":ENGINE_REVISION,"abi":"zoen-host-v1","module":{"url":format!("{directory}{MODULE_FILE}"),"bytes":MODULE_BYTES,"sha256":MODULE_SHA,"mime":"text/javascript"},"wasm":{"url":format!("{directory}{WASM_FILE}"),"bytes":WASM_BYTES,"sha256":WASM_SHA,"mime":"application/wasm"}}})
     }
     #[test]
     fn runtime_config_requires_exact_html_code_identity_and_zero_guest_network_authority() {
@@ -317,22 +340,34 @@ mod tests {
         }
     }
     #[test]
-    fn touch_input_candidate_requires_its_exact_pair_and_rejects_retired_or_mixed_assets() {
+    fn unfocused_notes_candidate_requires_its_exact_pair_and_rejects_retired_or_mixed_assets() {
         let directory = format!("https://runtime.invalid/deckcraft/{ENGINE_REVISION}/");
         let mut candidate = fixture(HTML);
         candidate["runtimePackage"]["module"] = json!({
+            "url":format!("{directory}deckcraft-web-4576e715d9c77da4.js"),
+            "bytes":157851,
+            "sha256":"7144d8766ed42db97e9f8366515328c7ef353a04d80d66c213ae107619c12ead",
+            "mime":"text/javascript"
+        });
+        candidate["runtimePackage"]["wasm"] = json!({
+            "url":format!("{directory}deckcraft-web-b023d45fa5023a1a_bg.wasm"),
+            "bytes":36382474,
+            "sha256":"c9ff98889b779e3c11661e290c1c74317fd6aa9eecbe7705c085f7ff74cd4c0e",
+            "mime":"application/wasm"
+        });
+        assert!(valid_resource(HTML, &candidate.to_string()));
+        let previous_touch_module = json!({
             "url":format!("{directory}deckcraft-web-9848d4c343e786ef.js"),
             "bytes":157851,
             "sha256":"9dd3081704ac39c04a8f78e56ccbf904b032bd5569186ce1df3cd6e0ebd88c77",
             "mime":"text/javascript"
         });
-        candidate["runtimePackage"]["wasm"] = json!({
+        let previous_touch_wasm = json!({
             "url":format!("{directory}deckcraft-web-55e43aa6139c5bb4_bg.wasm"),
             "bytes":36385233,
             "sha256":"cd911a688e3a6793cc0dbbab14a824646a7732a4391fdf50c976f28ed8e1d2d5",
             "mime":"application/wasm"
         });
-        assert!(valid_resource(HTML, &candidate.to_string()));
         let previous_module = json!({
             "url":format!("{directory}deckcraft-web-1eb288115950a000.js"),
             "bytes":157851,
@@ -351,7 +386,11 @@ mod tests {
             "sha256":"2c6ab9025a157f346849dcbb4e7cc956e2afbb6665048727654f60995eee24c6",
             "mime":"application/wasm"
         });
-        for previous_wasm in [reproduced_wasm, missing_original_wasm] {
+        for (previous_module, previous_wasm) in [
+            (previous_touch_module, previous_touch_wasm),
+            (previous_module.clone(), reproduced_wasm),
+            (previous_module, missing_original_wasm),
+        ] {
             for (module, wasm) in [
                 (previous_module.clone(), previous_wasm.clone()),
                 (
