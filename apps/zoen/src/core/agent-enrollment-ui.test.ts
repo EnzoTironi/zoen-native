@@ -138,6 +138,34 @@ test('actual paste option only reveals the field; checking and confirmation rema
   assert.equal(target(f.render(), 'agent-enrollment-check').props.disabled, true);
 });
 
+test('actual connection input masks the full code without transformation or automatic preview', () => {
+  const code = 'zoen-agent-enroll:1:Exact_Case-and+bytes/==';
+  const f = fixture({ ...emptyEnrollmentState, code });
+  const received: string[] = [];
+  f.props.onCode = (value: string) => received.push(value);
+  const field = target(f.render(), 'agent-enrollment-code-input');
+  assert.equal(field.props.secureTextEntry, true);
+  assert.equal(field.props.multiline, false);
+  assert.equal(field.props.autoCapitalize, 'none');
+  assert.equal(field.props.autoCorrect, false);
+  assert.equal(field.props.spellCheck, false);
+  assert.equal(field.props.autoComplete, 'off');
+  assert.equal(field.props.textContentType, 'none');
+  assert.equal(field.props.importantForAutofill, 'no');
+  assert.equal(field.props.value, code);
+  assert.equal(String(field.props.label).includes(code), false);
+  field.props.onChangeText(code);
+  assert.deepEqual(received, [code]);
+  assert.deepEqual(f.actions, []);
+  target(f.render(), 'agent-enrollment-check').props.onPress();
+  assert.deepEqual(f.actions, ['check']);
+  f.props.state = { ...f.props.state, phase: 'review', review };
+  assert.equal(
+    nodes(f.render()).some((node) => node.props.testID === 'agent-enrollment-code-input'),
+    false,
+  );
+});
+
 test('actual review shows all human rules and the exact code, with no fixed-height truncation', () => {
   const f = fixture({ ...emptyEnrollmentState, phase: 'review', review });
   const tree = f.render();

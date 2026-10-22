@@ -277,7 +277,10 @@ export function ConnectAgentView(props: ConnectAgentViewProps) {
                 autoCorrect={false}
                 spellCheck={false}
                 autoComplete="off"
-                multiline
+                textContentType="none"
+                importantForAutofill="no"
+                secureTextEntry
+                multiline={false}
                 editable={state.phase !== 'checking'}
               />
               <NativeButton
