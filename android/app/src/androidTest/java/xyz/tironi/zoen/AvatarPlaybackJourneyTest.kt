@@ -34,11 +34,13 @@ class AvatarPlaybackJourneyTest {
         val show = mutableStateOf(true)
         try {
             setMotion(1f)
-            awaitWindowFocus()
             val asset = AvatarArt.assets(compose.activity).first()
             compose.setContent {
                 ZoenTheme { Box(Modifier.fillMaxSize()) { if (show.value) AvatarDrawing(asset, 96) } }
             }
+            // Supply the window's actual content before waiting for its focus/draw lifecycle.
+            // The same bounded focus requirement still gates every playback assertion.
+            awaitWindowFocus()
             lateinit var image: ImageView
             lateinit var animation: AnimatedImageDrawable
             awaitNative {
