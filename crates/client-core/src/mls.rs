@@ -758,11 +758,33 @@ impl Engine {
             return Ingest::Invalid("not sealed".into());
         };
         let client_id = ev.env.client_id().to_string();
-        let own = self.net.pending.get(&client_id) == Some(&space)
-            && self.net.account.as_ref().is_some_and(|account| {
-                account.identity == ev.env.author()
-                    && ev.env.device() == Some(account.device.as_str())
-            });
+        let own_account = self.net.account.as_ref().is_some_and(|account| {
+            account.identity == ev.env.author() && ev.env.device() == Some(account.device.as_str())
+        });
+        let pending = if own_account {
+            match self.pending_for_confirmation(&space, &client_id) {
+                Ok(pending) => pending,
+                Err(error) => return Ingest::Invalid(error.to_string()),
+            }
+        } else {
+            None
+        };
+        let own_pending = pending.filter(|pending| {
+            pending.author == ev.env.author()
+                && pending.device.as_deref() == ev.env.device()
+                && pending.at_ms == ev.env.at_ms()
+                && pending.seen == ev.env.seen()
+                && if kind == SealedKind::Application {
+                    // A valid older publication can arrive after maintenance
+                    // resealed this same signed intent. Its authenticated author,
+                    // device and header bind the original pending application;
+                    // the current ciphertext cache is not an ACK authority.
+                    must_seal(&pending.body) && !matches!(&pending.body, EventBody::Sealed { .. })
+                } else {
+                    pending.content == ev.env.content()
+                }
+        });
+        let own = own_pending.is_some();
         let roster = self.roster(&space);
         let admitted_sender = ::mls::Leaf {
             identity: ev.env.author().into(),
@@ -770,7 +792,7 @@ impl Engine {
             cert: ev.env.cert.clone().unwrap_or_default(),
         };
         let own_copy = if own && kind == SealedKind::Application {
-            self.store.outbox_get(&client_id).ok().flatten()
+            own_pending
         } else {
             None
         };
