@@ -174,6 +174,31 @@ async fn real_signed_projection_selects_one_source_and_preserves_all_cursors_and
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn selected_turn_refuses_another_valid_signed_message_before_runtime() {
+    let server = relay(Mode::Normal).await;
+    let f = Fixture::new(&server.url);
+    online(&f.client, true).await;
+    let run = Run::prepare(&f.client, source(&f.source)).unwrap();
+    let timeline = f.client.timeline(f.space.clone()).unwrap();
+    let entry = timeline.iter().find(|entry| entry.id == f.other).unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    assert!(
+        !super::super::turn::selected(
+            &f.client,
+            &context(&f, &calls, false),
+            &definition(),
+            &f.space,
+            &[],
+            entry,
+            &run.bound
+        )
+        .await
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(!f.path.join("source-steps.json").exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn unknown_outcome_is_not_automatically_retried_on_a_wake() {
     let server = relay(Mode::Normal).await;
     let f = Fixture::new(&server.url);

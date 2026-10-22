@@ -23,6 +23,9 @@ pub(super) async fn selected(
     t: &TimelineEntry,
     selection: &source_mode::Bound,
 ) -> bool {
+    if selection.dispatch(e, cx, space, t).is_err() {
+        return false;
+    }
     checked(e, cx, def, space, before, t, Some(selection)).await
 }
 

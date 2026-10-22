@@ -93,6 +93,26 @@ pub(super) struct Bound {
     text_sha256: Vec<u8>,
 }
 impl Bound {
+    pub(super) fn dispatch(
+        &self,
+        e: &Client,
+        cx: &Ctx,
+        space: &str,
+        entry: &TimelineEntry,
+    ) -> Result<(), String> {
+        self.check(e)?;
+        if space != self.space
+            || entry.id != self.id
+            || entry.author.id != self.author
+            || cx.me != self.scope.agent
+            || cx.device != self.scope.device
+            || cx.owner != self.scope.owner
+            || Sha256::digest(Self::text(entry)?.as_bytes()).to_vec() != self.text_sha256
+        {
+            return Err("agent_host_source_changed".into());
+        }
+        Ok(())
+    }
     fn text(entry: &TimelineEntry) -> Result<&str, String> {
         match &entry.kind {
             EntryKind::Message { text, card: None }
