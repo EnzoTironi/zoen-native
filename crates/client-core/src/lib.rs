@@ -7,6 +7,12 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 mod agent_binary_documents;
+mod agent_enrollment;
+pub use agent_enrollment::{
+    AgentEnrollmentDeliveryDto, AgentEnrollmentDeliveryOutcome, AgentEnrollmentHostOffer,
+    AgentEnrollmentHostProgress, AgentEnrollmentHostRequest, AgentEnrollmentPreviewDto,
+    AgentEnrollmentStatusDto,
+};
 /// Closed, shared schema validation only; this module grants no execution authority.
 pub use miniapps::deckcraft::agent_tools as deckcraft_agent_tools;
 mod agent_notes;

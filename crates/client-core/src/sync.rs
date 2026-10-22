@@ -42,6 +42,18 @@ type R<T> = Result<T, CoreError>;
 
 pub(crate) const VAULT_IDENTITY: &str = "zoen.identity.v1";
 pub(crate) const VAULT_DEVICE: &str = "zoen.device.v1";
+
+/// Keys are prepared by the caller before installation. This borrowed internal
+/// input neither loads a vault nor creates fresh keys while replaying a setup.
+pub(crate) struct PreparedAccount<'a> {
+    pub(crate) root: &'a [u8; 32],
+    pub(crate) device: &'a [u8; 32],
+    pub(crate) agreement: &'a [u8; 32],
+    pub(crate) name: &'a str,
+    pub(crate) handle: &'a str,
+    pub(crate) relay: &'a str,
+    pub(crate) agent: Option<(&'a str, &'a types::AgentOwnerProof)>,
+}
 pub(crate) const EVENT_FORMAT_META: &str = "event_format";
 /// Format v3 (signed protobuf bytes). Older logs were signed over JSON and restart.
 pub(crate) const EVENT_FORMAT_VALUE: &str = "3";
@@ -1340,8 +1352,32 @@ impl Engine {
         setup: &crate::provider_auth::ProviderSetup,
     ) -> R<()> {
         self.validate_provider_setup(setup)?;
-        let root = Signer::from_secret(&setup.root);
-        let device = Signer::from_secret(&setup.device);
+        self.install_prepared_account(
+            PreparedAccount {
+                root: &setup.root,
+                device: &setup.device,
+                agreement: &setup.agreement,
+                name: &setup.name,
+                handle: &setup.handle,
+                relay: &setup.relay,
+                agent: None,
+            },
+            true,
+            |engine| engine.validate_installed_provider_setup(setup),
+        )
+    }
+
+    /// The only initial account writer. Callers validate their own setup scope;
+    /// durable setup paths retain all supplied keys before entering this savepoint.
+    /// This method never wipes an account or generates a replacement device.
+    pub(crate) fn install_prepared_account(
+        &mut self,
+        setup: PreparedAccount<'_>,
+        provider_signup: bool,
+        validate: impl FnOnce(&mut Self) -> R<()>,
+    ) -> R<()> {
+        let root = Signer::from_secret(setup.root);
+        let device = Signer::from_secret(setup.device);
         let identity = root.id();
         let author = Author::device(&root, device.clone());
         let storage_error = |error: rusqlite::Error| CoreError::Storage {
@@ -1349,21 +1385,30 @@ impl Engine {
         };
         self.store
             .conn()
-            .execute_batch("SAVEPOINT provider_setup")
+            .execute_batch("SAVEPOINT prepared_account")
             .map_err(storage_error)?;
         let result = (|| {
-            self.store.set_meta("provider_signup_pending", "1")?;
+            if provider_signup {
+                self.store.set_meta("provider_signup_pending", "1")?;
+            }
             if !self.identities.contains_key(&identity) {
+                let (owner, owner_proof) = setup.agent.map_or((None, None), |(owner, proof)| {
+                    (Some(owner.to_string()), Some(Box::new(proof.clone())))
+                });
                 let me = Identity {
                     id: identity.clone(),
-                    kind: IdentityKind::Person,
-                    name: setup.name.clone(),
-                    handle: setup.handle.clone(),
+                    kind: if setup.agent.is_some() {
+                        IdentityKind::Agent
+                    } else {
+                        IdentityKind::Person
+                    },
+                    name: setup.name.into(),
+                    handle: setup.handle.into(),
                     tint_hex: tint_for(&identity),
                     glyph: None,
-                    owner: None,
+                    owner,
                     bio: String::new(),
-                    owner_proof: None,
+                    owner_proof,
                 };
                 self.store.put_identity(&me, None)?;
                 self.identity_order.push(identity.clone());
@@ -1375,21 +1420,23 @@ impl Engine {
                 identity: identity.clone(),
                 device: device.id(),
                 cert: author.cert.clone().unwrap_or_default(),
-                relay_url: setup.relay.clone(),
+                relay_url: setup.relay.into(),
                 registered: false,
             })?;
             self.net.author = Some(author);
-            let agreement = event_log::profile::AgreementKey::from_secret(setup.agreement);
+            let agreement = event_log::profile::AgreementKey::from_secret(*setup.agreement);
             if self.store.profile_key(&identity)?.is_none() {
-                self.init_profile_with_agreement(&identity, &setup.name, agreement)?;
+                self.init_profile_with_agreement(&identity, setup.name, agreement)?;
             } else {
                 self.net.profiles.agreement = Some(agreement);
             }
-            self.seed_personal_agent(&identity)?;
-            self.validate_installed_provider_setup(setup)?;
+            if setup.agent.is_none() {
+                self.seed_personal_agent(&identity)?;
+            }
+            validate(self)?;
             self.store
                 .conn()
-                .execute_batch("RELEASE provider_setup")
+                .execute_batch("RELEASE prepared_account")
                 .map_err(storage_error)?;
             Ok(())
         })();
@@ -1397,7 +1444,7 @@ impl Engine {
             let _ = self
                 .store
                 .conn()
-                .execute_batch("ROLLBACK TO provider_setup; RELEASE provider_setup");
+                .execute_batch("ROLLBACK TO prepared_account; RELEASE prepared_account");
             self.net = Default::default();
             self.reload()?;
         }
@@ -1469,49 +1516,23 @@ impl Engine {
         if !self.is_empty() {
             self.wipe()?;
         }
-        if provider_signup {
-            self.store.set_meta("provider_signup_pending", "1")?;
-        }
-        let device = Signer::generate();
-        let author = Author::device(&root, device.clone());
-        let is_agent = agent.is_some();
-        let (owner, owner_proof) = match agent {
-            Some((o, p)) => (Some(o), Some(Box::new(p))),
-            None => (None, None),
-        };
-        let me = Identity {
-            owner_proof,
-            id: root.id(),
-            kind: if is_agent {
-                IdentityKind::Agent
-            } else {
-                IdentityKind::Person
+        let root_secret = root.secret();
+        let device = Signer::generate().secret();
+        let agreement = event_log::profile::AgreementKey::generate().secret();
+        self.install_prepared_account(
+            PreparedAccount {
+                root: &root_secret,
+                device: &device,
+                agreement: &agreement,
+                name,
+                handle: &handle,
+                relay: relay_url.trim_end_matches('/'),
+                agent: agent.as_ref().map(|(owner, proof)| (owner.as_str(), proof)),
             },
-            name: name.to_string(),
-            handle: handle.clone(),
-            tint_hex: tint_for(&root.id()),
-            glyph: None,
-            owner,
-            bio: String::new(),
-        };
-        self.store.put_identity(&me, None)?;
-        self.identity_order.push(me.id.clone());
-        self.identities.insert(me.id.clone(), me.clone());
-        self.store.set_meta("me", &me.id)?;
-        self.me = Some(me.id.clone());
-        self.save_account(AccountMeta {
-            identity: me.id.clone(),
-            device: device.id(),
-            cert: author.cert.clone().unwrap_or_default(),
-            relay_url: relay_url.trim_end_matches('/').to_string(),
-            registered: false,
-        })?;
-        self.net.author = Some(author);
-        let agreement = self.init_profile(&me.id, &me.name)?;
-        if !is_agent {
-            self.seed_personal_agent(&me.id)?;
-        }
-        Ok((root.secret(), device.secret(), agreement))
+            provider_signup,
+            |_| Ok(()),
+        )?;
+        Ok((root_secret, device, agreement))
     }
 
     /// After a backup's tables land (ADR 0046): this device becomes a new device of the

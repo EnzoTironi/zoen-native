@@ -7884,6 +7884,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "types",
+ "zeroize",
  "zoen-agentd",
 ]
 

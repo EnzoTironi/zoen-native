@@ -153,21 +153,69 @@ impl PickupControl {
         budget: Duration,
         lang: i18n::Lang,
     ) -> Result<PickupWaiter, CoreError> {
-        self.begin_with_factory(load, budget, move |key, relay, box_id, deadline| {
-            // The closure, not this call, constructs the concrete large future.
-            // Its boxed return type prevents that future entering Worker's type.
-            Box::new(move || -> PickupFuture {
-                Box::pin(i18n::scope(lang, async move {
-                    crate::net::fetch_link_box(&relay, &key, &box_id, deadline).await
-                }))
-            })
-        })
+        self.begin_for(load, budget, lang, "identity".into())
     }
 
+    pub(crate) fn begin_agent(
+        &self,
+        load: impl FnOnce() -> Result<Pending, CoreError>,
+        offer_digest: &str,
+        budget: Duration,
+        lang: i18n::Lang,
+    ) -> Result<PickupWaiter, CoreError> {
+        if offer_digest.len() != 64
+            || !offer_digest
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(invalid("Invalid Agent enrollment digest."));
+        }
+        self.begin_for(
+            load,
+            budget,
+            lang,
+            format!("agent-enrollment-owner-v1:{offer_digest}"),
+        )
+    }
+
+    fn begin_for(
+        &self,
+        load: impl FnOnce() -> Result<Pending, CoreError>,
+        budget: Duration,
+        lang: i18n::Lang,
+        purpose: String,
+    ) -> Result<PickupWaiter, CoreError> {
+        self.begin_with_purpose(
+            load,
+            budget,
+            purpose,
+            move |key, relay, box_id, deadline| {
+                // The closure, not this call, constructs the concrete large future.
+                // Its boxed return type prevents that future entering Worker's type.
+                Box::new(move || -> PickupFuture {
+                    Box::pin(i18n::scope(lang, async move {
+                        crate::net::fetch_link_box(&relay, &key, &box_id, deadline).await
+                    }))
+                })
+            },
+        )
+    }
+
+    #[cfg(test)]
     fn begin_with_factory(
         &self,
         load: impl FnOnce() -> Result<Pending, CoreError>,
         budget: Duration,
+        make: impl FnOnce(PickupKey, String, String, Instant) -> PickupFactory,
+    ) -> Result<PickupWaiter, CoreError> {
+        self.begin_with_purpose(load, budget, "identity".into(), make)
+    }
+
+    fn begin_with_purpose(
+        &self,
+        load: impl FnOnce() -> Result<Pending, CoreError>,
+        budget: Duration,
+        purpose: String,
         make: impl FnOnce(PickupKey, String, String, Instant) -> PickupFactory,
     ) -> Result<PickupWaiter, CoreError> {
         // The already-entered UniFFI Compat runtime owns its dedicated driver.
@@ -185,7 +233,7 @@ impl PickupControl {
                 .try_into()
                 .map_err(|_| invalid("Invalid link request."))?,
         );
-        let box_id = crate::link::box_id(&secret, "identity");
+        let box_id = crate::link::box_id(&secret, &purpose);
         let relay = material.pending.relay.clone();
         // Preserve the existing start after synchronous pending preparation.
         let deadline = Instant::now()
@@ -282,6 +330,22 @@ impl PickupControl {
     pub(crate) fn cancel(&self) {
         Self::revoke(&mut self.lock());
         self.notify();
+    }
+
+    /// Compare under the same gate as install before cancelling a particular
+    /// request. A stale cancellation cannot stop a newly prepared pickup.
+    pub(crate) fn cancel_request(
+        &self,
+        matches: impl FnOnce() -> Result<bool, CoreError>,
+    ) -> Result<bool, CoreError> {
+        let mut state = self.lock();
+        if !matches()? {
+            return Ok(false);
+        }
+        Self::revoke(&mut state);
+        drop(state);
+        self.notify();
+        Ok(true)
     }
 
     /// Terminal for this Client instance, called synchronously at owner teardown.

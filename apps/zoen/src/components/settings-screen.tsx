@@ -1,23 +1,26 @@
 import type { ReactNode } from 'react';
 import { Stack } from 'expo-router';
-import { ScrollView } from 'react-native';
+import { ScrollView, type ScrollViewProps } from 'react-native';
 import { useTheme } from '../theme';
 
 export function SettingsScreen({
   title,
   testID,
   children,
+  keyboardShouldPersistTaps = 'handled',
+  automaticallyAdjustKeyboardInsets = false,
 }: {
   title: string;
   testID: string;
   children: ReactNode;
-}) {
+} & Pick<ScrollViewProps, 'keyboardShouldPersistTaps' | 'automaticallyAdjustKeyboardInsets'>) {
   const { presentation: p } = useTheme();
   return (
     <ScrollView
       testID={testID}
       contentInsetAdjustmentBehavior="automatic"
-      keyboardShouldPersistTaps="handled"
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+      automaticallyAdjustKeyboardInsets={automaticallyAdjustKeyboardInsets}
       contentContainerStyle={{
         padding: 16,
         paddingBottom: 48,

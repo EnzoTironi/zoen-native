@@ -8,9 +8,10 @@ import { useTheme } from '../../theme';
 import { t } from '../../i18n/index.ts';
 
 export default function PermissionsSettings() {
-  const { snapshot } = useClient();
+  const { snapshot, mode } = useClient();
   const { colors } = useTheme();
   const agents = snapshot?.agents ?? [];
+  const canConnect = mode === 'account' && process.env.EXPO_OS === 'ios';
   return (
     <SettingsScreen title={t('settings.permissions')} testID="settings-permissions-screen">
       <SettingsRows
@@ -25,7 +26,7 @@ export default function PermissionsSettings() {
           },
         ]}
       />
-      {agents.length ? (
+      {agents.length || canConnect ? (
         <View style={{ gap: 8 }}>
           <Text
             accessibilityRole="header"
@@ -35,16 +36,38 @@ export default function PermissionsSettings() {
           </Text>
           <SettingsRows
             testID="settings-agent-permissions-rows"
-            rows={agents.map((agent) => ({
-              id: `settings-agent-${agent.persona.id}`,
-              title: agent.persona.name,
-              hint: t('settings.agentPermissions', { name: agent.persona.name }),
-              leading: (
-                <Avatar name={agent.persona.name} color={agent.persona.tint_hex} agent size={36} />
-              ),
-              onPress: () =>
-                router.push({ pathname: '/agent/[id]', params: { id: agent.persona.id } }),
-            }))}
+            rows={[
+              ...(canConnect
+                ? [
+                    {
+                      id: 'settings-connect-agent',
+                      title: t('agentEnrollment.connect'),
+                      hint: t('agentEnrollment.connectHint'),
+                      icon: {
+                        ios: 'qrcode.viewfinder' as const,
+                        android: 'qr_code_scanner' as const,
+                        web: 'qr_code_scanner' as const,
+                      },
+                      onPress: () => router.push('/connect-agent'),
+                    },
+                  ]
+                : []),
+              ...agents.map((agent) => ({
+                id: `settings-agent-${agent.persona.id}`,
+                title: agent.persona.name,
+                hint: t('settings.agentPermissions', { name: agent.persona.name }),
+                leading: (
+                  <Avatar
+                    name={agent.persona.name}
+                    color={agent.persona.tint_hex}
+                    agent
+                    size={36}
+                  />
+                ),
+                onPress: () =>
+                  router.push({ pathname: '/agent/[id]', params: { id: agent.persona.id } }),
+              })),
+            ]}
           />
         </View>
       ) : null}
