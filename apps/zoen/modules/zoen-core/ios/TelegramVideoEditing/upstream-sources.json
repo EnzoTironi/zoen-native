@@ -15,7 +15,42 @@
       "bytes": 62426,
       "sha256": "71462d1df6964a875363dcd31304c3bcc57d569b64749b0ab6bfa993a1d9eaa4",
       "output": "Sources/ZoenTGMediaPickerGalleryVideoScrubber.m",
-      "output_sha256": "a4a36996a7770c99ed66b6893a0aaabc8f8f43b2170c64d256c2aba4a7d06583"
+      "output_sha256": "b5880626bc819b76cddd503408af3bc28c452d2678e6ed769873b129610791ed",
+      "previous_output_sha256": "a4a36996a7770c99ed66b6893a0aaabc8f8f43b2170c64d256c2aba4a7d06583",
+      "local_files": [
+        {
+          "path": "Sources/Private/ZoenTGMediaPickerGalleryVideoScrubberPrivate.h",
+          "sha256": "609c20d1b202bf88c74d71cfe42ed1686c9fb14463a61707257fd5c6bfc56e8c",
+          "bytes": 2607
+        },
+        {
+          "path": "Sources/ZoenTGMediaPickerGalleryVideoScrubber+Zoom.inc",
+          "sha256": "2893fa9710a1117ac077258cba7637ebb87fd1aff4172b730ebceb4868dd2564",
+          "bytes": 10414
+        },
+        {
+          "path": "Sources/ZoenTGMediaPickerGalleryVideoScrubber+Thumbnails.inc",
+          "sha256": "64e39b9144ea75686865bd73aba0484f9013e502f65739de4505622b009c0fe6",
+          "bytes": 12630
+        },
+        {
+          "path": "Sources/ZoenTGMediaPickerGalleryVideoScrubber+Playback.inc",
+          "sha256": "f1f17705342f7ddf328732e79742b6baac0af83acff1132fa315f29da38f89c6",
+          "bytes": 4518
+        },
+        {
+          "path": "Sources/ZoenTGMediaPickerGalleryVideoScrubber+Gestures.inc",
+          "sha256": "0a4eb58f049013f9ef511020fe2f52776d99fabac2bad45f78a2b37738983497",
+          "bytes": 6849
+        },
+        {
+          "path": "Sources/ZoenTGMediaPickerGalleryVideoScrubber+TrimLayout.inc",
+          "sha256": "d6fe15612f4e3ef9d27418ee53277be6dfe0b48d858ae1a1c1c836a9e5903a5c",
+          "bytes": 8763
+        }
+      ],
+      "local_adaptations": "Same original @implementation, exact initializer and method bodies/order/synthesis. Private declarations and cohesive authored .inc method groups are textually included in the single translation unit; no categories, extra owner, generated-source exemption or upstream hash change.",
+      "source_commit_before_split": "3fad78d2def4f8c364561eeaa25bda8e0a936dcc"
     },
     {
       "path": "submodules/LegacyComponents/Sources/TGMediaPickerGalleryVideoScrubberThumbnailView.h",
