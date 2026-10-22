@@ -27,7 +27,7 @@ impl<S: Signer> Client<S> {
     pub(super) fn validate_repair_clock(now: Duration) -> Result<(), String> {
         // Same integral-millisecond domain as the browser boundary. Keeping
         // representable deadlines here also protects direct Rust callers.
-        if now.as_millis() > 281_474_976_710_655 || now.subsec_nanos() % 1_000_000 != 0 {
+        if now.as_millis() > 281_474_976_710_655 || !now.subsec_nanos().is_multiple_of(1_000_000) {
             return Err("invalid browser reconciliation clock".into());
         }
         Ok(())
