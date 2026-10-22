@@ -144,9 +144,11 @@ impl DecisionProvider for SystemOneHttp {
 
 // ── Cloudflare Clef ──
 
-// Text-only Gate profile: bound the complete state + questions conservatively
-// below Clef's 64K-token context, leaving room for provider-side framing.
-const MAX_CLEF_REQUEST_BYTES: usize = 32 * 1024;
+// Text-only Gate profile: bound the complete serialized state + questions.
+// Clef-flash documents 24,576 context tokens; use a smaller 16-KiB application
+// envelope to leave framing headroom, rather than relying on remote truncation.
+// This byte budget is not a tokenizer or an upstream maximum.
+const MAX_CLEF_REQUEST_BYTES: usize = 16 * 1024;
 
 /// Cloudflare's Clef decision models on Workers AI (`@cf/cloudflare/clef`, `clef-flash`).
 /// System One's request and answers, inside Cloudflare's `{ success, result, errors }`

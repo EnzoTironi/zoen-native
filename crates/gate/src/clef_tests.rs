@@ -279,7 +279,7 @@ fn clef_contract_gate_oversize_context_never_judges_only_a_prefix() {
         remote: Some(Box::new(clef)),
         ..Gate::default()
     };
-    let mut check = Check::new(Point::Inbound, "🙂".repeat(6000));
+    let mut check = Check::new(Point::Inbound, "x".repeat(6000));
     assert_eq!(gate.check_with(&check, false).outcome, Outcome::Allow);
     assert_eq!(transport.requests.lock().unwrap()[0]["state"], check.text);
     check.text.push('x');
@@ -314,6 +314,33 @@ fn clef_contract_gate_invalid_probability_obeys_existing_fail_policy() {
 fn clef_contract_complete_text_and_questions_share_one_conservative_byte_budget() {
     let mut req = request();
     req.input = "🙂".repeat(6000);
+    if let Question::Predicate { instructions, .. } = &mut req.questions[0] {
+        *instructions = "🙂".repeat(6000);
+    }
+    let (clef, transport) = provider(LIVE.into());
+    assert!(clef.decide(&req).is_err());
+    assert!(transport.requests.lock().unwrap().is_empty());
+}
+
+#[test]
+fn clef_contract_multibyte_context_is_refused_before_remote_truncation() {
+    let (clef, transport) = provider(inbound_reply());
+    let gate = Gate {
+        remote: Some(Box::new(clef)),
+        ..Gate::default()
+    };
+    // Still within the existing character limit, but nearly 24 KiB before the
+    // conversation questions and provider framing are added.
+    let mut check = Check::new(Point::ConversationMessage, "🙂".repeat(6000));
+    assert_eq!(gate.check_with(&check, false).outcome, Outcome::Ask);
+    check.irreversible = true;
+    assert_eq!(gate.check_with(&check, false).outcome, Outcome::Block);
+    assert!(transport.requests.lock().unwrap().is_empty());
+}
+
+#[test]
+fn clef_contract_large_question_uses_the_same_smaller_flash_envelope() {
+    let mut req = request();
     if let Question::Predicate { instructions, .. } = &mut req.questions[0] {
         *instructions = "🙂".repeat(6000);
     }
