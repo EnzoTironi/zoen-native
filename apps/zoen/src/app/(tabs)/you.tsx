@@ -115,6 +115,28 @@ function YouContent() {
           ]}
         />
       </View>
+      {mode === 'account' ? (
+        <View style={{ gap: 8 }}>
+          <Text
+            accessibilityRole="header"
+            style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
+          >
+            {t('settings.privacyAndSafety')}
+          </Text>
+          <SettingsRows
+            testID="you-privacy-rows"
+            rows={[
+              {
+                id: 'settings-blocked-people',
+                title: t('settings.blockedPeople'),
+                hint: t('settings.blockedPeopleDescription'),
+                icon: { ios: 'hand.raised.slash', android: 'block', web: 'block' },
+                onPress: () => router.push('/settings/blocked-people'),
+              },
+            ]}
+          />
+        </View>
+      ) : null}
       {preferenceError ? (
         <Text selectable accessibilityRole="alert" style={{ color: colors.danger }}>
           {preferenceError}
