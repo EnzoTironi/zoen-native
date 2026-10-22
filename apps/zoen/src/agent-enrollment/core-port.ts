@@ -99,7 +99,7 @@ export function createEnrollmentPort(
       current(scope);
       return value;
     },
-    async registered(review, scope) {
+    async registration(review, scope) {
       current(scope);
       // Existing canonical discovery persists the public profile in the normal
       // identity projection, so it remains in Permissions after closing this flow.
@@ -115,10 +115,10 @@ export function createEnrollmentPort(
             person.is_mine,
         )
       )
-        return false;
+        return null;
       const status = await store.driver.request({ op: 'agent_status', agent_id: review.agent });
       current(scope);
-      return status === 'Active' || status === 'Paused';
+      return status;
     },
   };
 }

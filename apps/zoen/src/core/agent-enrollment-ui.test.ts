@@ -213,3 +213,25 @@ test('only the registered projection exposes Open profile; unknown receipt canno
   target(f.render(), 'agent-enrollment-profile').props.onPress();
   assert.deepEqual(f.actions, ['profile']);
 });
+
+test('revoked registration shows the terminal state without waiting, profile or approval actions', () => {
+  const f = fixture({
+    ...emptyEnrollmentState,
+    phase: 'revoked',
+    review,
+    receipt: 'receipt',
+    receiptKnown: true,
+  });
+  const tree = f.render();
+  assert.ok(nodes(tree).some((node) => node.props.children === t('agentEnrollment.revoked')));
+  assert.equal(
+    nodes(tree).some((node) =>
+      ['agent-enrollment-status', 'agent-enrollment-profile', 'agent-enrollment-confirm'].includes(
+        node.props.testID,
+      ),
+    ),
+    false,
+  );
+  assert.equal(target(tree, 'agent-enrollment-another').props.disabled, false);
+  assert.deepEqual(f.actions, []);
+});

@@ -164,7 +164,7 @@ for (const change of ['owner', 'device', 'relay', 'lock', 'phase', 'erase', 'dem
     await assert.rejects(f.port.approve('code', review, scope));
     await assert.rejects(f.port.receipt(scope));
     await assert.rejects(f.port.dismiss('receipt', review, scope));
-    await assert.rejects(f.port.registered(review, scope));
+    await assert.rejects(f.port.registration(review, scope));
     assert.equal(f.calls.length, 0);
   });
 }
@@ -200,13 +200,13 @@ test('registered navigation requires exact public Agent ID, handle, owner and ow
       assert.equal(command.op, 'find_people');
       return [{ ...person, ...changed }];
     });
-    assert.equal(await f.port.registered(review, scope), false);
+    assert.equal(await f.port.registration(review, scope), null);
     assert.equal(f.calls.length, 1);
   }
   for (const status of ['Active', 'Paused', 'Revoked']) {
     f.calls.length = 0;
     f.handle(async (command) => (command.op === 'find_people' ? [person] : status));
-    assert.equal(await f.port.registered(review, scope), status !== 'Revoked');
+    assert.equal(await f.port.registration(review, scope), status);
     assert.deepEqual(f.calls, [
       { kind: 'refresh', command: { op: 'find_people', query: 'booking' } },
       { kind: 'read', command: { op: 'agent_status', agent_id: 'agent' } },

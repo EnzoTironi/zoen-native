@@ -51,9 +51,9 @@ function fixture() {
     },
     receipt: async () => null,
     dismiss: async () => true,
-    registered: async (review, scope) => {
+    registration: async (review, scope) => {
       calls.push({ action: 'registered', review, scope });
-      return false;
+      return null;
     },
   };
   const session = new EnrollmentSession(port, () => now);
@@ -240,7 +240,7 @@ test('restoring a public delivery receipt only resumes status, never approval or
     ['registered'],
   );
   assert.equal(f.session.getSnapshot().phase, 'waiting');
-  f.port.registered = async () => true;
+  f.port.registration = async () => 'Active';
   await f.session.reconcile();
   assert.equal(f.session.getSnapshot().phase, 'registered');
   assert.equal(f.session.getSnapshot().outcome, 'Unknown');
@@ -265,18 +265,18 @@ test('status failure remains actionable and stale status cannot publish after re
     { review: review(), receipt: 'receipt', outcome: 'Sent' },
     f.session.inputTicket()!,
   );
-  f.port.registered = async () => {
+  f.port.registration = async () => {
     throw Error('offline');
   };
   await f.session.reconcile();
   assert.equal(f.session.getSnapshot().phase, 'waiting');
   assert.equal(f.session.getSnapshot().error, 'status');
-  const pending = deferred<boolean>();
-  f.port.registered = () => pending.promise;
+  const pending = deferred<'Active'>();
+  f.port.registration = () => pending.promise;
   const check = f.session.reconcile();
   assert.equal(f.session.getSnapshot().reconciling, true);
   f.session.retire();
-  pending.resolve(true);
+  pending.resolve('Active');
   await check;
   assert.equal(f.session.getSnapshot().phase, 'entry');
   assert.equal(f.session.getSnapshot().review, null);
@@ -352,4 +352,36 @@ test('failed CAS preserves the receipt and late dismissal cannot reset a newer f
   pending.resolve(true);
   await task;
   assert.equal(f.session.getSnapshot().code, 'new-code');
+});
+
+test('a registered Agent revoked after delivery stops waiting without enabling approval again', async () => {
+  const f = fixture();
+  f.session.restore(
+    { review: review(), receipt: 'receipt', outcome: 'Sent' },
+    f.session.inputTicket()!,
+  );
+  f.port.registration = async () => 'Revoked';
+  await f.session.reconcile();
+  assert.equal(f.session.getSnapshot().phase, 'revoked');
+  assert.equal(f.session.confirmation(), null);
+  assert.equal(f.session.getSnapshot().code, '');
+  assert.ok(f.session.restartConfirmation());
+});
+
+test('a false dismissal CAS with a newer held receipt cannot clear or replace this flow', async () => {
+  const f = fixture();
+  f.session.restore(
+    { review: review(), receipt: 'old', outcome: 'Unknown' },
+    f.session.inputTicket()!,
+  );
+  f.port.dismiss = async () => false;
+  f.port.receipt = async () => ({
+    review: review({ digest: 'new' }),
+    receipt: 'new',
+    outcome: 'Unknown',
+  });
+  await f.session.startAnother(f.session.restartConfirmation()!);
+  assert.equal(f.session.getSnapshot().receipt, 'old');
+  assert.equal(f.session.getSnapshot().phase, 'waiting');
+  assert.equal(f.session.getSnapshot().error, 'dismiss');
 });

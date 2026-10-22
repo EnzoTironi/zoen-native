@@ -153,14 +153,18 @@ export function ConnectAgentView(props: ConnectAgentViewProps) {
               >
                 {state.phase === 'registered'
                   ? t('agentEnrollment.connected')
-                  : t('agentEnrollment.waiting')}
+                  : state.phase === 'revoked'
+                    ? t('agentEnrollment.revoked')
+                    : t('agentEnrollment.waiting')}
               </Text>
               <Text selectable style={paragraph}>
                 {state.phase === 'registered'
                   ? t('agentEnrollment.connectedExplanation')
-                  : state.outcome === 'Sent'
-                    ? t('agentEnrollment.sent')
-                    : t('agentEnrollment.unknown')}
+                  : state.phase === 'revoked'
+                    ? t('agentEnrollment.revokedExplanation')
+                    : state.outcome === 'Sent'
+                      ? t('agentEnrollment.sent')
+                      : t('agentEnrollment.unknown')}
               </Text>
               {state.error === 'status' || state.error === 'dismiss' ? (
                 <Text
@@ -173,22 +177,24 @@ export function ConnectAgentView(props: ConnectAgentViewProps) {
                     : t('agentEnrollment.statusFailed')}
                 </Text>
               ) : null}
-              <NativeButton
-                testID={
-                  state.phase === 'registered'
-                    ? 'agent-enrollment-profile'
-                    : 'agent-enrollment-status'
-                }
-                label={
-                  state.phase === 'registered'
-                    ? t('agentEnrollment.profile')
-                    : state.reconciling
-                      ? t('agentEnrollment.statusChecking')
-                      : t('agentEnrollment.status')
-                }
-                disabled={state.reconciling || state.dismissing}
-                onPress={state.phase === 'registered' ? props.onProfile : props.onReconcile}
-              />
+              {state.phase !== 'revoked' ? (
+                <NativeButton
+                  testID={
+                    state.phase === 'registered'
+                      ? 'agent-enrollment-profile'
+                      : 'agent-enrollment-status'
+                  }
+                  label={
+                    state.phase === 'registered'
+                      ? t('agentEnrollment.profile')
+                      : state.reconciling
+                        ? t('agentEnrollment.statusChecking')
+                        : t('agentEnrollment.status')
+                  }
+                  disabled={state.reconciling || state.dismissing}
+                  onPress={state.phase === 'registered' ? props.onProfile : props.onReconcile}
+                />
+              ) : null}
               <NativeButton secondary label={t('agentEnrollment.done')} onPress={props.onDismiss} />
               <NativeButton
                 testID="agent-enrollment-another"

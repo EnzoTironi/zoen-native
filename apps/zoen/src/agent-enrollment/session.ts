@@ -1,4 +1,5 @@
 import type { AccountDto } from '../core/generated/AccountDto.ts';
+import type { AgentStatus } from '../core/generated/AgentStatus.ts';
 
 export type EnrollmentScope = Readonly<{ owner: string; device: string; relay: string }>;
 /** Display projection of a core-validated offer; this is not a wire or permission store. */
@@ -26,11 +27,11 @@ export type EnrollmentPort = {
   ): Promise<{ receipt: string; agent: string; digest: string; outcome: 'Sent' | 'Unknown' }>;
   receipt(scope: EnrollmentScope): Promise<EnrollmentReceipt | null>;
   dismiss(receipt: string, review: EnrollmentReview, scope: EnrollmentScope): Promise<boolean>;
-  registered(review: EnrollmentReview, scope: EnrollmentScope): Promise<boolean>;
+  registration(review: EnrollmentReview, scope: EnrollmentScope): Promise<AgentStatus | null>;
 };
 export type EnrollmentState = Readonly<{
   scope: string;
-  phase: 'entry' | 'checking' | 'review' | 'submitting' | 'waiting' | 'registered';
+  phase: 'entry' | 'checking' | 'review' | 'submitting' | 'waiting' | 'registered' | 'revoked';
   code: string;
   review: EnrollmentReview | null;
   outcome: 'Sent' | 'Unknown' | null;
@@ -244,11 +245,11 @@ export class EnrollmentSession {
         receipt: receipt?.receipt ?? null,
         outcome: receipt?.outcome ?? this.state.outcome,
       });
-      const registered = await this.port.registered(review, scope);
+      const registration = await this.port.registration(review, scope);
       if (!this.accepts(ticket)) return;
       this.publish({
         ...this.state,
-        phase: registered ? 'registered' : 'waiting',
+        phase: registration === 'Revoked' ? 'revoked' : registration ? 'registered' : 'waiting',
         reconciling: false,
       });
     } catch {
@@ -262,7 +263,7 @@ export class EnrollmentSession {
       this.state.review &&
       !this.state.reconciling &&
       !this.state.dismissing &&
-      ['waiting', 'registered'].includes(this.state.phase)
+      ['waiting', 'registered', 'revoked'].includes(this.state.phase)
       ? {
           ticket: { generation: this.generation, scope: this.state.scope },
           receipt: this.state.receipt,
@@ -279,7 +280,7 @@ export class EnrollmentSession {
       !this.accepts(confirmation.ticket) ||
       confirmation.receipt !== this.state.receipt ||
       confirmation.digest !== this.state.review?.digest ||
-      !['waiting', 'registered'].includes(this.state.phase)
+      !['waiting', 'registered', 'revoked'].includes(this.state.phase)
     )
       return;
     const scope = this.scope;

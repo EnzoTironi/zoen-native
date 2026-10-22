@@ -33,6 +33,8 @@ export const agentEnrollment = defineFeature(
     deliveryNotice: 'Leaving this screen does not undo a confirmation that has already been sent.',
     connected: 'Agent connected',
     connectedExplanation: 'You can now review its profile and choose its permissions.',
+    revoked: 'Agent access revoked',
+    revokedExplanation: 'This agent no longer has access. Connect a new agent to continue.',
     profile: 'Open agent profile',
     another: 'Connect another agent',
     anotherExplanation:
@@ -82,6 +84,8 @@ export const agentEnrollment = defineFeature(
     deliveryNotice: 'Sair desta tela não desfaz uma confirmação que já foi enviada.',
     connected: 'Agente conectado',
     connectedExplanation: 'Agora você pode conferir o perfil e escolher as permissões.',
+    revoked: 'Acesso do agente revogado',
+    revokedExplanation: 'Este agente não tem mais acesso. Conecte um novo agente para continuar.',
     profile: 'Abrir perfil do agente',
     another: 'Conectar outro agente',
     anotherExplanation:
