@@ -2,6 +2,7 @@ import { access } from './catalogs/access.ts';
 import { activity } from './catalogs/activity.ts';
 import { agents } from './catalogs/agents.ts';
 import { agentEnrollment } from './catalogs/agent-enrollment.ts';
+import { agentDefinition } from './catalogs/agent-definition.ts';
 import { auth } from './catalogs/auth.ts';
 import { authProviders } from './catalogs/authProviders.ts';
 import { chat } from './catalogs/chat.ts';
@@ -39,6 +40,7 @@ const catalogs = {
   activity,
   agents,
   agentEnrollment,
+  agentDefinition,
   auth,
   authProviders,
   chat,
