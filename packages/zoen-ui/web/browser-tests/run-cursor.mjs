@@ -90,7 +90,7 @@ const resources = new Map([
     [
       'text/html',
       Buffer.from(
-        '<!doctype html><meta charset="utf-8"><title>Owned browser cursor fixture</title><script type="module" src="/main.js"></script>',
+        '<!doctype html><html data-fixture="cursor"><meta charset="utf-8"><title>Owned browser cursor fixture</title><script type="module" src="/main.js"></script>',
       ),
     ],
   ],
@@ -100,7 +100,10 @@ const resources = new Map([
   ['/fixture.json', ['application/json', fixtureBytes]],
 ]);
 let relay;
+const requests = {};
 const server = createServer((request, response) => {
+  const route = resources.has(request.url) || request.url === '/metrics' ? request.url : 'other';
+  requests[route] = (requests[route] ?? 0) + 1;
   response.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   response.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
   response.setHeader('Cache-Control', 'no-store');
@@ -146,13 +149,16 @@ try {
 const receipt = {
   format: 'zoen-owned-browser-cursor-proof-v1',
   status: failure ? 'failed' : 'passed',
-  seconds: Math.round((performance.now() - start) * 1000) / 1000,
+  seconds: Math.round(performance.now() - start) / 1000,
   browser: chrome,
   fixtureSha256: createHash('sha256').update(fixtureBytes).digest('hex'),
   wasmSha256: createHash('sha256').update(wasm).digest('hex'),
   workerSha256: createHash('sha256').update(worker).digest('hex'),
   pageSha256: createHash('sha256').update(page).digest('hex'),
   result,
+  diagnostics: failure?.cursorDiagnostics,
+  lifecycle: result?.lifecycle ?? failure?.cursorLifecycle,
+  requests,
   peerFailures: failures,
   metrics: relay.metrics,
   limitations:

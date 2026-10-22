@@ -26,6 +26,7 @@ export async function runBrowser(chrome, folder, url) {
   );
   const owned = observeOwnedChild(child, { processGroup: process.platform !== 'win32' });
   let socket, closeBrowser, startup, hardwall;
+  const diagnostics = { navigation: 'not_started', exceptions: [], entry: null };
   return withCleanup(
     () =>
       Promise.race([
@@ -55,6 +56,23 @@ export async function runBrowser(chrome, folder, url) {
           const pending = new Map();
           socket.addEventListener('message', (event) => {
             const packet = JSON.parse(String(event.data));
+            if (packet.method === 'Runtime.exceptionThrown') {
+              const details = packet.params.exceptionDetails;
+              const match = String(details.exception?.description ?? '')
+                .split('\n')[0]
+                .match(/^ReferenceError: ([A-Za-z_$][A-Za-z_0-9$]{0,63}) is not defined$/);
+              diagnostics.exceptions.push({
+                kind: ['ReferenceError', 'TypeError', 'SyntaxError'].includes(
+                  details.exception?.className,
+                )
+                  ? details.exception.className
+                  : 'Other',
+                missingIdentifier: match?.[1] ?? null,
+                line: details.lineNumber,
+                column: details.columnNumber,
+              });
+              if (diagnostics.exceptions.length > 8) diagnostics.exceptions.shift();
+            }
             if (packet.id === undefined) return;
             const call = pending.get(packet.id);
             pending.delete(packet.id);
@@ -73,22 +91,45 @@ export async function runBrowser(chrome, folder, url) {
             if (socket.readyState === WebSocket.OPEN)
               socket.send(JSON.stringify({ id: ++sequence, method: 'Browser.close' }));
           };
+          const version = await send('Browser.getVersion');
+          diagnostics.browserProduct = version.product;
           const target = await send('Target.createTarget', { url: 'about:blank' });
           const { sessionId } = await send('Target.attachToTarget', {
             targetId: target.targetId,
             flatten: true,
           });
+          await send('Runtime.enable', {}, sessionId);
           await send('Page.enable', {}, sessionId);
-          await send('Page.navigate', { url }, sessionId);
+          const navigation = await send('Page.navigate', { url }, sessionId);
+          diagnostics.navigation =
+            typeof navigation.errorText === 'string' &&
+            /^net::ERR_[A-Z_]+$/.test(navigation.errorText)
+              ? navigation.errorText
+              : 'accepted';
+          if (navigation.errorText) throw Error('Owned fixture navigation failed');
+          const entryDeadline = performance.now() + 5_000;
           const deadline = performance.now() + 100_000;
           while (performance.now() < deadline) {
             const result = await send(
               'Runtime.evaluate',
-              { expression: 'window.cursorResult??null', returnByValue: true },
+              {
+                expression:
+                  '({result:window.cursorResult??null,entry:window.cursorEntry===true,html:document.documentElement?.dataset.fixture==="cursor",ready:document.readyState,scripts:document.scripts.length})',
+                returnByValue: true,
+              },
               sessionId,
             );
-            if (result.result?.value)
-              return { result: result.result.value, lifecycle: owned.state };
+            const value = result.result?.value;
+            if (value)
+              diagnostics.entry = {
+                entry: value.entry,
+                html: value.html,
+                ready: value.ready,
+                scripts: value.scripts,
+              };
+            if (value?.result) return { result: value.result, lifecycle: owned.state, diagnostics };
+            if (!value?.entry && performance.now() >= entryDeadline)
+              throw Error('Owned browser fixture entry was not observed');
             await new Promise((resolve) => setTimeout(resolve, 100));
           }
           throw Error('Owned real browser cursor proof exceeded100s');
@@ -115,5 +156,9 @@ export async function runBrowser(chrome, folder, url) {
         });
       }
     },
-  );
+  ).catch((error) => {
+    error.cursorDiagnostics = diagnostics;
+    error.cursorLifecycle = owned.state;
+    throw error;
+  });
 }

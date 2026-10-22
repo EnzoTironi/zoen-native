@@ -55,7 +55,7 @@ function websocketFrame(bytes) {
 }
 export function syntheticRelay(server, fixture, failures) {
   const sockets = new Set();
-  const metrics = { connections: 0, authenticated: 0, pongs: 0, fullSync: [] };
+  const metrics = { connections: 0, authenticated: 0, pongs: 0, delayedPong: false, fullSync: [] };
   const publicKey = createPublicKey({
     key: Buffer.concat([
       Buffer.from('302a300506032b6570032100', 'hex'),
@@ -72,7 +72,11 @@ export function syntheticRelay(server, fixture, failures) {
     sockets.add(socket);
     ++metrics.connections;
     const connection = metrics.connections;
-    socket.once('close', () => sockets.delete(socket));
+    let delayedPong;
+    socket.once('close', () => {
+      clearTimeout(delayedPong);
+      sockets.delete(socket);
+    });
     socket.on('error', () => {});
     const accept = createHash('sha1')
       .update(request.headers['sec-websocket-key'] + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
@@ -115,8 +119,16 @@ export function syntheticRelay(server, fixture, failures) {
         return;
       }
       if (kind === 7) {
-        ++metrics.pongs;
-        send(fixture.pong);
+        const pong = () => {
+          ++metrics.pongs;
+          send(fixture.pong);
+        };
+        if (connection === 1 && metrics.pongs === 1) {
+          // A bounded1s response delay stays inside the unchanged15s heartbeat
+          // budget and queues Pong AFTER the60s repair while a save is held.
+          metrics.delayedPong = true;
+          delayedPong = setTimeout(pong, 1_000);
+        } else pong();
         return;
       }
       if (kind !== 5) return; // Unrelated ordinary requests are not fabricated as success.

@@ -7,8 +7,10 @@ declare const FIXTURE_WORKER_INTEGRITY: string;
 declare global {
   interface Window {
     cursorResult?: unknown;
+    cursorEntry?: boolean;
   }
 }
+window.cursorEntry = true;
 let phase = 'setup';
 class ContractFailure extends Error {}
 const check = (condition: unknown, label: string): void => {
@@ -80,6 +82,7 @@ async function run() {
   check(crossOriginIsolated, 'The real signing bridge requires isolation');
   const fixture = await (await fetch('/fixture.json')).json();
   check(fixture.format === 'zoen-synthetic-browser-cursor-fixture-v1', 'Not the synthetic fixture');
+  phase = 'vault_seed';
   await seedSyntheticVault(fixture.account.device);
   let vault = await BrowserVault.open();
   check((await vault.device()) === fixture.account.device, 'Synthetic signer mismatch');
@@ -88,11 +91,21 @@ async function run() {
     account: { ...fixture.account, relay: location.origin },
     snapshot: fixture.snapshot,
   });
+  phase = 'worker_restore';
   let core = await CoreWorker.create(vault, FIXTURE_WORKER_INTEGRITY, 'en');
   let state: MessagesState | undefined;
   const currentState = (): MessagesState | undefined => state;
   let messages: Messages | undefined;
-  let reconciliations = 0;
+  let reconciliations = 0,
+    decodedPongs = 0;
+  let firstAdmission: number | undefined;
+  let armReadHold = false,
+    holdNextSave = false,
+    saveHeld = false;
+  let releaseSave = () => {};
+  const heldSave = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
   const make = async () => {
     const session = await vault.load();
     check(session.kind === 'linked', 'Durable linked fixture missing');
@@ -100,12 +113,34 @@ async function run() {
       core: {
         text: async (operation) => {
           if (operation.kind === 'reconcile') ++reconciliations;
-          return core.text(operation);
+          const value = await core.text(operation);
+          if (operation.kind === 'decode_server' && JSON.parse(value).kind === 'pong')
+            ++decodedPongs;
+          if (operation.kind === 'receive') {
+            const metadata = JSON.parse(value).cursor_repair;
+            if (firstAdmission === undefined && typeof metadata?.admission_ms === 'number')
+              firstAdmission = metadata.admission_ms;
+          }
+          if (operation.kind === 'mark_read' && armReadHold) {
+            armReadHold = false;
+            holdNextSave = true;
+          }
+          return value;
         },
         bytes: (operation) => core.bytes(operation),
         close: () => core.close(),
       },
-      vault,
+      vault: {
+        sign: (bytes) => vault.sign(bytes),
+        save: async (session) => {
+          if (holdNextSave) {
+            holdNextSave = false;
+            saveHeld = true;
+            await heldSave;
+          }
+          await vault.save(session);
+        },
+      },
       session: session as Extract<StoredSession, { kind: 'linked' }>,
       changed: (value) => {
         state = value;
@@ -121,6 +156,18 @@ async function run() {
   try {
     await make();
     phase = 'periodic_repair';
+    await until(() => firstAdmission !== undefined, 10_000);
+    const due = firstAdmission!;
+    await until(() => performance.now() >= due - 1_000, 65_000);
+    armReadHold = true;
+    const read = messages!.markRead(fixture.space);
+    await until(() => saveHeld, 1_000);
+    check(performance.now() < due, 'The synthetic write must block before repair admission');
+    await until(() => decodedPongs >= 2 && performance.now() >= due + 2_000, 10_000);
+    check(reconciliations === 0, 'The blocked serial must retain the admitted repair');
+    await until(() => performance.now() >= due + 5_000, 5_000);
+    releaseSave();
+    await read;
     // Real monotonic time and the unchanged60s production policy; no timer/clock injection.
     await until(verified, 80_000);
     check(state?.kind === 'active', 'Missing active projection');
@@ -143,7 +190,7 @@ async function run() {
       'Repair must use the durable cursor',
     );
     check(
-      initial.fullSync[1].elapsedMs >= 60_000 && initial.pongs >= 1,
+      initial.fullSync[1].elapsedMs >= 60_000 && initial.pongs >= 2 && initial.delayedPong === true,
       'Healthy Pong stream did not span the real interval',
     );
     messages!.stop();
@@ -184,12 +231,15 @@ async function run() {
       initialCursor: 3,
       finalCursor: 4,
       reconciliations,
+      blockedSaveReleasedWithinBudget: true,
+      delayedPongAfterQueuedTick: true,
       healthyConnectionsBeforeCold: 1,
       verifiedMessagesAfterCold: 1,
       pongs: metrics.pongs,
       firstRepairElapsedMs: metrics.fullSync[1].elapsedMs,
     };
   } finally {
+    releaseSave();
     messages?.stop();
     core.close();
     vault.close();
