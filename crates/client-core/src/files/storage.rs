@@ -20,6 +20,7 @@ impl Engine {
         }
     }
 
+    /// The key shared by every version of a file (kept in the device database).
     pub(crate) fn file_key(&mut self, item: Option<&str>) -> R<[u8; 32]> {
         if let Some(item) = item {
             if let Some(k) = self.store.meta(&format!("file_key:{item}"))? {
@@ -33,6 +34,7 @@ impl Engine {
         Ok(random_key())
     }
 
+    /// Stores `plain` locally and, in a relay-synced Space, queues its encrypted copy.
     pub(super) fn put_chunk(
         &mut self,
         space: &str,
@@ -71,6 +73,7 @@ impl Engine {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn file_doc(
         &mut self,
         space: &str,
@@ -116,6 +119,8 @@ impl Engine {
         })
     }
 
+    /// Adds a file to a Space as a new Item (version 1).
+    #[allow(clippy::too_many_arguments)]
     pub fn file_add(
         &mut self,
         space: &str,

@@ -3,6 +3,8 @@
 use super::*;
 
 impl DeviceCore {
+    /// Installs public profiles and a certified device without local personas,
+    /// root secrets, demo grants, Space membership or enrollment claims.
     pub fn bootstrap(device: UnlockedDevice, relay_url: &str) -> Result<Self> {
         if relay_url.is_empty() || relay_url.len() > 2048 {
             return Err(NativeError::Bounds);
@@ -29,6 +31,8 @@ impl DeviceCore {
         Self::install(engine, device)
     }
 
+    /// Called by the custody owner after authenticating a committed capsule.
+    /// Rejects unsupported formats before Engine's legacy reset/migrations.
     pub fn restore(image: NativeImage, device: UnlockedDevice) -> Result<Self> {
         let store = Store::from_memory_image(image.as_bytes()).map_err(|_| NativeError::Image)?;
         validate_image(&store)?;
@@ -78,6 +82,8 @@ impl DeviceCore {
         Ok(NativeImage(Zeroizing::new(bytes)))
     }
 
+    /// Retains the matching private OpenMLS material before a host publishes
+    /// these public packages. A host must activate this image before delivery.
     pub fn key_packages(&mut self, count: usize) -> Result<(Vec<Vec<u8>>, NativeImage)> {
         if !self.usable {
             return Err(NativeError::History);
@@ -100,6 +106,8 @@ impl DeviceCore {
         result
     }
 
+    /// Partial ingestion never permits a partial activation: on error the cloud
+    /// actor must discard this workspace and reload its committed capsule.
     pub fn ingest(&mut self, batch: Vec<Sequenced>) -> Result<NativeImage> {
         if !self.usable {
             return Err(NativeError::History);

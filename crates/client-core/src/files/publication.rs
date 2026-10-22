@@ -3,6 +3,9 @@
 use super::*;
 
 impl Engine {
+    /// Stores an ordinary file and posts its attachment as one durable operation.
+    /// A receipt binds retries to the original intent, including reply/thread scope.
+    #[allow(clippy::too_many_arguments)]
     pub fn send_file_message(
         &mut self,
         space: &str,
@@ -27,6 +30,8 @@ impl Engine {
         )
     }
 
+    /// The caption and file share one signed message and one retry receipt.
+    #[allow(clippy::too_many_arguments)]
     pub fn send_file_message_with_caption(
         &mut self,
         space: &str,
@@ -53,6 +58,7 @@ impl Engine {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn send_file_message_with_media(
         &mut self,
         space: &str,
@@ -175,6 +181,11 @@ impl Engine {
         })
     }
 
+    /// Sends a voice note: the audio as an end-to-end encrypted file Item (the same chunked
+    /// path as any file, so every client, the web included, can fetch and play it), tagged
+    /// with its length, waveform and transcript. With `reply_to` it answers that message
+    /// (inline, or in its thread).
+    #[allow(clippy::too_many_arguments)]
     pub fn send_voice_note(
         &mut self,
         space: &str,
@@ -215,6 +226,7 @@ impl Engine {
         )
     }
 
+    /// Copies one current verified file, freshly encrypted for its new audience.
     pub(crate) fn forward_file_message(
         &mut self,
         from_space: &str,

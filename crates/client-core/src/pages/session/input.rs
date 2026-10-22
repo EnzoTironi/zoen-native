@@ -219,6 +219,8 @@ impl PageSession {
         })
     }
 
+    /// Releases an owned binding which has no accepted pending input.
+    /// Captured input must still be consumed through its exact capture CAS.
     pub(in crate::pages) fn input_release_empty(
         &mut self,
         engine: &Engine,

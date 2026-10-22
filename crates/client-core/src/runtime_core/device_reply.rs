@@ -7,6 +7,7 @@ impl DeviceCore {
         self.extract(space, trigger, at_ms)
     }
 
+    /// Applied native position only. This is not a current relay head or grant.
     pub fn retained_head(&self, space: &str) -> Result<Option<Seen>> {
         if !self.usable {
             return Err(NativeError::History);

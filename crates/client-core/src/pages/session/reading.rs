@@ -147,6 +147,7 @@ impl PageSession {
         })
     }
 
+    /// Pending legacy intent can use its existing writer; unreadable journals cannot.
     pub(in crate::pages) fn legacy_read_blocked(&self) -> bool {
         matches!(
             self.blocked,

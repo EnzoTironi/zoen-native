@@ -3,6 +3,8 @@
 use super::*;
 
 impl Engine {
+    /// A demand never inherits authority from JS or an old account. Recheck the
+    /// exact canonical manifest and current read membership on every worker pass.
     pub(crate) fn file_demand_key(
         &self,
         item: &str,
@@ -72,6 +74,8 @@ impl Engine {
             .collect()
     }
 
+    /// A foreground open is a bounded fresh attempt, not evidence of a human
+    /// button press. Initial loads use the same API; background snapshots do not.
     pub(crate) fn take_foreground_file_attempts(&self) -> std::collections::HashSet<Wanted> {
         let mut out = std::collections::HashSet::new();
         for (key, bound) in self.net.file_demands.foreground_attempts() {
@@ -122,6 +126,7 @@ impl Engine {
         out
     }
 
+    /// Chunks, previews and page blobs that relay-synced Spaces show and this device lacks.
     pub(crate) fn wanted_item_blobs(&self) -> Vec<Wanted> {
         let mut out = Vec::new();
         let mut seen = std::collections::HashSet::new();
@@ -192,6 +197,7 @@ impl Engine {
         out
     }
 
+    /// Seals a page payload too big for an event as an encrypted blob.
     pub(crate) fn page_blob(&mut self, space: &str, bytes: &[u8]) -> R<ChunkRef> {
         let key = random_key();
         self.put_chunk(

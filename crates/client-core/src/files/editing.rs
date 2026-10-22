@@ -23,6 +23,8 @@ impl Engine {
         Ok(FileEditStatus::Allowed)
     }
 
+    /// A current, writable file at exactly the version and hash the editor saw.
+    /// This is a read-only affordance; the checked mutation revalidates it.
     pub fn file_edit_allowed(
         &self,
         item: &str,
@@ -35,6 +37,8 @@ impl Engine {
         ))
     }
 
+    /// Commit only against the observed base. The FFI keeps this check and the
+    /// mutation under one engine lock; chunks and the signed version commit together.
     pub fn file_new_version_checked(
         &mut self,
         item: &str,
@@ -65,6 +69,7 @@ impl Engine {
         })
     }
 
+    /// A new version of a file (an edit, a markup, a trim). Unchanged chunks are re-used.
     pub fn file_new_version(
         &mut self,
         item: &str,
@@ -75,6 +80,7 @@ impl Engine {
         self.file_new_version_inner(item, bytes, thumbnail, note, None)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn file_new_version_typed(
         &mut self,
         item: &str,

@@ -3,6 +3,7 @@
 use super::*;
 
 impl Engine {
+    /// The file's bytes at `version` (latest when `None`), if every chunk is here.
     pub fn file_bytes(&self, item: &str, version: Option<u32>) -> R<Option<Vec<u8>>> {
         self.file_bytes_bounded(item, version, MAX_FILE_BYTES as u64)
     }
