@@ -118,7 +118,13 @@ class PlanPageJourneyTest {
         capture("historical-version-is-read-only")
         compose.onNodeWithTag("preview-restore").performClick()
         compose.onNodeWithTag("preview-confirm-restore").performClick()
-        compose.waitUntil(10_000) { detail().version == removedVersion + 1u }
+        // The core commits before the preview calls back() and ItemScreen reloads the Plan.
+        // Observe the destination in the same restore budget before querying its scroll node.
+        compose.waitUntil(10_000) {
+            detail().version == removedVersion + 1u &&
+                compose.onAllNodesWithTag("version-preview").fetchSemanticsNodes().isEmpty() &&
+                compose.onAllNodesWithTag("plan-lines").fetchSemanticsNodes().size == 1
+        }
         val restored = read()
         assertEquals(exact, line(restored, legacyId).text)
         assertEquals(1L, (line(restored, legacyId).content as PlanPageContentDto.Line).costCents)
