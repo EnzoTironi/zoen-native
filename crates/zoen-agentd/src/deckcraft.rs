@@ -8,6 +8,7 @@ use crate::{
 use bytes::Bytes;
 use ed25519_dalek::VerifyingKey;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::time::Duration;
 
 pub const DOCUMENT_LIMIT: usize = 512 * 1024;
@@ -17,6 +18,7 @@ pub const WORKER_ID: &str = "deckcraft-canonical-v1";
 pub struct DeckcraftWorker {
     tier: WasmTier,
     tool: WasmTool,
+    binding_sha256: String,
 }
 pub struct DeckcraftReply {
     pub metadata: Value,
@@ -40,7 +42,17 @@ impl DeckcraftWorker {
         }
         let tier = WasmTier::new(trusted, 1, 256 * 1024 * 1024).map_err(|e| e.to_string())?;
         let tool = tier.load(manifest, component).map_err(|e| e.to_string())?;
-        Ok(Self { tier, tool })
+        let binding_sha256 = hex::encode(Sha256::digest(
+            serde_json::to_vec(manifest).map_err(|_| "Invalid worker binding")?,
+        ));
+        Ok(Self {
+            tier,
+            tool,
+            binding_sha256,
+        })
+    }
+    pub fn binding_sha256(&self) -> &str {
+        &self.binding_sha256
     }
     pub async fn run(&self, metadata: &Value, document: &[u8]) -> Result<DeckcraftReply, String> {
         if document.is_empty() || document.len() > DOCUMENT_LIMIT {

@@ -1300,7 +1300,11 @@ impl Engine {
             .grants
             .iter()
             .rev()
-            .filter(|g| !g.revoked && g.grant.grantee.as_deref() == Some(agent))
+            .filter(|g| {
+                !g.revoked
+                    && g.grant.expires_at_ms.is_none_or(|at| at > now_ms())
+                    && g.grant.grantee.as_deref() == Some(agent)
+            })
             .filter(|g| Some(g.grant.grantor.as_str()) == owner.as_deref())
             .filter(|g| g.grant.scope == GrantScope::Space(space.to_string()))
             .find_map(|g| match g.grant.capability {
@@ -1763,7 +1767,14 @@ impl Engine {
         let mut status = match r.status {
             ReqStatus::Pending => RequestStatus::Pending,
             ReqStatus::Approved => RequestStatus::Approved,
-            ReqStatus::Denied => RequestStatus::Denied,
+            ReqStatus::Denied => {
+                if r.resolution.as_ref().and_then(|r| r.tool_decision) == Some(ToolDecision::Cancel)
+                {
+                    RequestStatus::Cancelled
+                } else {
+                    RequestStatus::Denied
+                }
+            }
         };
         if status == RequestStatus::Pending
             && matches!(self.request_currentness(&r.req), Ok(Currentness::Changed))
@@ -1772,6 +1783,16 @@ impl Engine {
         }
         let decision = self.decide(&r.req.agent, &r.space, &r.req.action, 0);
         AgentRequestDto {
+            tool_approval: r.req.tool_proposal.as_ref().map(|p| ToolApprovalDto {
+                content_hash: r.req.content_hash.clone(),
+                artifact_id: p.artifact.clone(),
+                artifact_title: self.state.items.get(&p.artifact)
+                    .and_then(|i|i.versions.iter().find(|version|version.number==p.version))
+                    .map(|version|version.content.title()).unwrap_or_default(),
+                version: p.version,
+                operation: crate::agent_binary_documents::tool_approvals::operation(&p.canonical_tool),
+                expires_ms: p.expires_at_ms,
+            }),
             id: r.req.id.clone(),
             agent: self.persona(&r.req.agent),
             space_id: r.space.clone(),
@@ -1804,8 +1825,8 @@ impl Engine {
             item_id: r.req.item.clone().or_else(|| r.resolution.as_ref().and_then(|r| r.created_item.clone())),
             line_id: r.req.line.clone(),
             action_key: standing_key(&r.req.action).into(),
-            can_always_approve: standing_allow_permitted(&r.req.action, &self.policy),
-            by_standing: r.resolved_ms.is_some_and(|at| {
+            can_always_approve: r.req.tool_proposal.is_none() && standing_allow_permitted(&r.req.action, &self.policy),
+            by_standing: r.req.tool_proposal.is_none() && r.resolved_ms.is_some_and(|at| {
                 let key = standing_key(&r.req.action);
                 self.state.grants.iter().any(|g| {
                     g.at_ms <= at
@@ -1824,6 +1845,18 @@ impl Engine {
         let Some(request) = self.state.requests.get(&req.id) else {
             return Ok(Currentness::Changed);
         };
+        if let Some(p) = &req.tool_proposal {
+            return Ok(
+                if p.expires_at_ms > now_ms()
+                    && self.state.tool_request_matches(req, &request.space)
+                    && self.state.tool_app_act(p, now_ms())
+                {
+                    Currentness::Current
+                } else {
+                    Currentness::Changed
+                },
+            );
+        }
         PlanReplay::new(&self.store, &self.logs).current(&self.state, req, &request.space)
     }
 
@@ -2976,6 +3009,7 @@ impl Engine {
                     None => content_hash(&(title, detail, audience)),
                 };
                 let req = AgentRequest {
+                    tool_proposal: None,
                     id: new_id("rq"),
                     agent: agent.into(),
                     title: title.into(),
@@ -3003,6 +3037,16 @@ impl Engine {
     /// (agent + kind of action + this Space) and settle the other pending requests it
     /// covers; from then on `decide` applies it without asking.
     pub fn decide_request(&mut self, id: &str, decision: RequestDecision) -> R<DecideOutcome> {
+        if self
+            .state
+            .requests
+            .get(id)
+            .is_some_and(|r| r.req.tool_proposal.is_some())
+        {
+            return Err(CoreError::Invalid {
+                reason: "Use the exact reviewed-action decision for this request.".into(),
+            });
+        }
         let r = self
             .state
             .requests
@@ -3040,6 +3084,7 @@ impl Engine {
                 .filter_map(|rid| self.state.requests.get(rid))
                 .filter(|o| {
                     o.status == ReqStatus::Pending
+                        && o.req.tool_proposal.is_none()
                         && o.req.agent == r.req.agent
                         && o.space == r.space
                         && standing_key(&o.req.action) == key
@@ -3928,6 +3973,7 @@ impl Engine {
                 !g.revoked
                     && g.grant.grantee.as_deref() == Some(grantee.as_str())
                     && g.grant.scope == GrantScope::Item(item.to_string())
+                    && g.grant.expires_at_ms.is_none_or(|at| at > now_ms())
             })
             .find_map(|g| match g.grant.capability {
                 Capability::Trust(l) => Some(l),

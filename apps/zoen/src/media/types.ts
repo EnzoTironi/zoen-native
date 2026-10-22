@@ -44,6 +44,13 @@ export type LocalMediaFile = {
   info: FileDto;
 };
 
+/** Candidates only: native reconstructs and authorizes the signed album. */
+export type ConversationMediaRequest = Readonly<{
+  spaceId: string;
+  selectedId: string;
+  entries: readonly Readonly<{ messageId: string; itemId: string; version: number }>[];
+}>;
+
 /** Bytes stay in native storage. The bridge carries local URIs and small metadata only. */
 export interface MediaDriver {
   recentAttachments?: RecentAttachmentPort;
@@ -61,5 +68,6 @@ export interface MediaDriver {
   materializeFile(itemId: string, version?: number): Promise<LocalMediaFile | null>;
   /** Resolves after the native viewer closes, while retaining its own preview copy. */
   previewFile?(file: LocalMediaFile): Promise<void>;
+  previewConversationMedia?(request: ConversationMediaRequest, signal: AbortSignal): Promise<void>;
   releaseLocalFile(uri: string): Promise<void>;
 }

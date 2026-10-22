@@ -4,6 +4,7 @@ import type { TimelineEntry } from './types';
 import {
   messageCanEdit,
   messageCanInteract,
+  messageCanRecoverMedia,
   messageCard,
   messagesAreGrouped,
   sameMessageDay,
@@ -60,6 +61,32 @@ test('deleted message never exposes its retained media/card or mutation actions'
   assert.equal(messageCard(attached), null);
   assert.equal(messageCanEdit(attached), false);
   assert.equal(messageCanInteract(attached), false);
+});
+
+test('recovery selection is limited to own Failed media and never claims durable authorization', () => {
+  const media = entry({
+    delivery: 'Failed',
+    kind: {
+      Message: {
+        text: '',
+        card: { item_id: 'a', kind_id: 'file' } as NonNullable<ReturnType<typeof messageCard>>,
+      },
+    },
+  });
+  assert.equal(messageCanRecoverMedia(media), true);
+  for (const changed of [
+    entry(),
+    { ...media, delivery: 'Sent' as const },
+    { ...media, deleted: true },
+    { ...media, author: { ...media.author, is_me: false } },
+  ])
+    assert.equal(messageCanRecoverMedia(changed), false);
+  assert.equal(
+    messageCanRecoverMedia(
+      entry({ delivery: 'Failed', voice: { item_id: 'voice' } as TimelineEntry['voice'] }),
+    ),
+    true,
+  );
 });
 
 test('text and file-caption editing is author-only, excludes voice/miniapps and log activity', () => {

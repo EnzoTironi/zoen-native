@@ -124,3 +124,27 @@ Não houve alteração no LIVE, contas/histórico reais do Zoen,
 login/configuração do usuário, provedor comercial, serviço principal ou build
 iOS/Pods. SIWC comercial, finanças/admissão durável, cancelamento em máquina
 remota, outros sistemas operacionais e capacidade em escala continuam pendentes.
+
+## Host local: exclusão entre processos
+
+O comando `agent-host` agora adquire um lock exclusivo do sistema operacional
+antes de abrir o vault, o Client, a sincronização ou os provedores. O mesmo guard
+permanece vivo durante o loop e até a revogação do engine no encerramento da
+sincronização. Outro processo cooperativo com o mesmo diretório persistente
+recusa a execução. O arquivo de lock não é apagado: após uma saída normal ou
+morte do processo, o sistema libera o lock sobre o mesmo inode. Erros ao abrir
+ou adquirir o lock recusam a inicialização. Nenhuma dependência foi adicionada.
+
+A fonte `8e323ce8` passou em seis testes com processos reais do sistema, cobrindo
+contenção, saída normal, morte do holder, diretórios independentes e lifetime do
+guard; a seleção CLI passou em 30 testes, com seis casos externos explícitos
+ignorados, além de Clippy estrito. A execução foi em Darwin arm64. Isso impede
+concorrência local cooperativa; não estabelece fencing distribuído, garantias de
+filesystem de rede, join global de tarefas assíncronas nem um ledger de tentativas
+desconhecidas de provedores.
+
+A [qualificação Clef](cloudflare-clef-gate-qualification-2026-10-21.md) registra a
+prova conjunta com Codex, duas aprovações canônicas, uma edição real e recuperação
+da mesma versão. O cadastro do host pelo iPhone e a jornada pelo relay/MLS real
+ainda não foram comprovados. O runtime gerenciado remoto continua fechado sem
+custódia e continuidade implementadas; não é substituído por este processo local.

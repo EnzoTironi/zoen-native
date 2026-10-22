@@ -92,6 +92,14 @@ function SafeMessageActions(props: MessageActionsProps) {
         { label: t('chat.copyText'), image: 'doc.on.doc', run: current?.onCopy },
         { label: t('media.share'), image: 'square.and.arrow.up', run: current?.onShare },
         {
+          label: t('media.prepareNewSend'),
+          image: 'arrow.clockwise',
+          run:
+            entry.author.is_me && !entry.deleted && entry.delivery === 'Failed'
+              ? current?.onRecover
+              : undefined,
+        },
+        {
           label: t('chat.edit'),
           image: 'pencil',
           run: entry.author.is_me && !entry.deleted ? current?.onEdit : undefined,

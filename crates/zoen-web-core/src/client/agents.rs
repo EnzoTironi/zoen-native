@@ -346,6 +346,10 @@ impl<S: Signer> Client<S> {
                     && writer(state, space, &event.author)
                     && self.agent_owner(&request.agent).is_some() =>
             {
+                // This client has no typed tool-approval execution port. Fail closed.
+                if request.tool_proposal.is_some() {
+                    return Ok(());
+                }
                 if request.proposal.is_some()
                     && self.agent_request_current(state, request, space)? != RequestScope::Current
                 {
@@ -1044,6 +1048,7 @@ impl<S: Signer> Client<S> {
                 format!("Ok, não vou {}.", read.request.title)
             };
             let receipt = RequestResolution {
+                tool_decision: None,
                 message: text.clone(),
                 created_item: if approve {
                     read.request
@@ -1351,6 +1356,7 @@ mod tests {
                 ai_cost_cents: 37,
             };
             let mut request = AgentRequest {
+                tool_proposal: None,
                 id: "rq_proposal".into(),
                 agent: self.agent.identity.clone(),
                 title: "Create plan".into(),
@@ -1464,6 +1470,7 @@ mod tests {
     fn red_lines_cannot_be_always_approved_and_another_member_cannot_resolve_a_request() {
         let mut fixture = Fixture::new();
         let request = AgentRequest {
+            tool_proposal: None,
             id: "rq_money".into(),
             agent: fixture.agent.identity.clone(),
             title: "Book".into(),
@@ -1529,6 +1536,7 @@ mod tests {
         );
         let line = &plan.sections[0].lines[0];
         let request = AgentRequest {
+            tool_proposal: None,
             id: "rq_line".into(),
             agent: fixture.agent.identity.clone(),
             title: "Execute".into(),

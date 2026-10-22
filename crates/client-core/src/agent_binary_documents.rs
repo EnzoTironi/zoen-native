@@ -8,6 +8,9 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use sha2::{Digest, Sha256};
 use types::{IdentityKind, ItemContent};
 
+pub(crate) mod tool_approvals;
+pub use tool_approvals::{AgentToolApprovalInput, ApprovedToolTurn};
+
 pub const AGENT_BINARY_DOCUMENT_LIMIT: usize = 512 * 1024;
 fn denied() -> CoreError {
     CoreError::Forbidden {
@@ -30,6 +33,7 @@ pub struct AgentBinaryTurn {
     source: String,
     serving: String,
     source_sha256: String,
+    approval: Option<tool_approvals::ApprovalBinding>,
 }
 impl AgentBinaryTurn {
     pub fn document(&self) -> &AppBinaryDocumentDto {
@@ -109,6 +113,20 @@ impl Engine {
         {
             return Err(denied());
         }
+        if write
+            && matches!(
+                self.decide(
+                    &turn.document.actor_id,
+                    &turn.space,
+                    &types::ActionClass::Reversible,
+                    0
+                ),
+                grants::Decision::Block(_)
+            )
+        {
+            return Err(denied());
+        }
+        self.recheck_tool_turn(turn, None)?;
         Ok(())
     }
 }
@@ -157,6 +175,7 @@ impl Client {
             source: source.into(),
             serving: serving.into(),
             source_sha256,
+            approval: None,
         })
     }
     /// A worker result must not reveal the inspected source after access or its
@@ -174,6 +193,7 @@ impl Client {
     ) -> R<Option<AppBinaryDocumentDto>> {
         let e = self.lock();
         e.recheck_agent_binary_turn(turn, true)?;
+        e.recheck_tool_turn(turn, Some((mutation, intent_sha256)))?;
         e.app_binary_result(
             &turn.document.item_id,
             turn.document.version,
@@ -201,6 +221,7 @@ impl Client {
         }
         let mut e = self.lock();
         e.recheck_agent_binary_turn(turn, true)?;
+        e.recheck_tool_turn(turn, Some((mutation, intent_sha256)))?;
         e.app_binary_save(
             &turn.document.item_id,
             turn.document.version,

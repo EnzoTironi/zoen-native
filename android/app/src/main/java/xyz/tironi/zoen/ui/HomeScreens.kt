@@ -213,7 +213,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
     val mentions = loadedMentions
     val tasks = state.items.filter { it.kindId == "task" || it.plan?.sections?.any { section -> section.lines.any { line -> !line.done } } == true }
     val pending = state.requests.filter { it.agent.isMine && (it.status == RequestStatus.PENDING || it.status == RequestStatus.STALE) }
-    val resolved = state.requests.filter { it.status == RequestStatus.APPROVED || it.status == RequestStatus.DENIED }
+    val resolved = state.requests.filter { it.status == RequestStatus.APPROVED || it.status == RequestStatus.DENIED || it.status == RequestStatus.CANCELLED }
     var review by remember { mutableStateOf<List<AgentRequestDto>?>(null) }
     var busy by remember { mutableStateOf(false) }
     Scaffold(topBar = { HomeBar(stringResource(R.string.activity), state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
@@ -311,6 +311,7 @@ fun requestStatusLabel(status: RequestStatus): Int = when (status) {
     RequestStatus.PENDING -> R.string.status_pending
     RequestStatus.APPROVED -> R.string.status_approved
     RequestStatus.DENIED -> R.string.status_denied
+    RequestStatus.CANCELLED -> R.string.status_cancelled
     RequestStatus.STALE -> R.string.status_stale
 }
 

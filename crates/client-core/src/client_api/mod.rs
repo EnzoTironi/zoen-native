@@ -13,7 +13,8 @@ use std::sync::Arc;
 
 use crate::{
     AccountDto, AgentProfile, AgentRequestDto, Client, ConnectionDto, CoreError, PageBlockDto,
-    Persona, RequestDecision, SecretVault, SpaceSummary, TimelineEntry, TrustLevelDto, UndoToken,
+    Persona, RequestDecision, SecretVault, SpaceSummary, TimelineEntry, ToolRequestDecision,
+    TrustLevelDto, UndoToken,
 };
 
 pub(crate) const MAX_REQUEST_BYTES: usize = 1 << 20;
@@ -96,6 +97,12 @@ enum Command {
         space_id: String,
         thread_root_id: Option<String>,
         expected_revision: String,
+    },
+    RecoverFailedMediaDraft {
+        scope: crate::MediaDraftScope,
+        message_id: String,
+        expected_revision: String,
+        expected_message_revision: String,
     },
     SendMessage {
         space_id: String,
@@ -315,6 +322,11 @@ enum Command {
     DecideRequest {
         request_id: String,
         decision: RequestDecision,
+    },
+    DecideToolRequest {
+        request_id: String,
+        observed_content_hash: String,
+        decision: ToolRequestDecision,
     },
     StandingDecisions {},
     RevokeStanding {
@@ -763,6 +775,20 @@ impl Client {
                 };
                 encode(&self.lock().send_message_draft(&scope, &expected_revision)?)
             }
+            RecoverFailedMediaDraft {
+                scope,
+                message_id,
+                expected_revision,
+                expected_message_revision,
+            } => {
+                let draft = self.lock().recover_failed_media_draft(
+                    &scope,
+                    &message_id,
+                    &expected_revision,
+                    &expected_message_revision,
+                )?;
+                encode(&draft)
+            }
             SendMessage {
                 space_id,
                 text,
@@ -958,6 +984,11 @@ impl Client {
                 request_id,
                 decision,
             } => encode(&self.decide_request(request_id, decision)?),
+            DecideToolRequest {
+                request_id,
+                observed_content_hash,
+                decision,
+            } => encode(&self.decide_tool_request(request_id, observed_content_hash, decision)?),
             StandingDecisions {} => encode(&self.standing_decisions()),
             RevokeStanding { grant_id } => encode(&self.revoke_standing(grant_id)?),
             Agents {} => encode(&self.agents()),

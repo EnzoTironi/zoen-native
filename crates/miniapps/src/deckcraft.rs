@@ -7,6 +7,7 @@ use std::{
     io::{Cursor, Read},
 };
 
+pub mod agent_tools;
 pub mod registration;
 
 pub const APP: &str = "deckcraft";

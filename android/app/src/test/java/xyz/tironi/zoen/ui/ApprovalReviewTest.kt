@@ -19,8 +19,10 @@ class ApprovalReviewTest {
         photoSha256 = null, photoReady = false, photoMime = null, isMe = mine, isMine = true,
     )
     private fun request(id: String, chat: String = "chat", action: String = "reversible", always: Boolean = true) = AgentRequestDto(
-        id, persona("agent"), chat, "Chat", id, "Detail", "Chat members", "Edit", null, "Ask first", RequestStatus.PENDING,
-        1, null, null, null, action, always, false,
+        toolApproval = null, id = id, agent = persona("agent"), spaceId = chat, spaceTitle = "Chat",
+        title = id, detail = "Detail", audience = "Chat members", actionLabel = "Edit", costCents = null,
+        reason = "Ask first", status = RequestStatus.PENDING, openedMs = 1, resolvedMs = null,
+        itemId = null, lineId = null, actionKey = action, canAlwaysApprove = always, byStanding = false,
     )
     private fun app(vararg requests: AgentRequestDto) = MutableStateFlow(AppState(me = persona("me", true), requests = requests.toList()))
 

@@ -8,6 +8,7 @@ import type {
   MediaDraftDto,
   MediaDraftPort,
   MediaDraftSendResult,
+  MediaDraftVoice,
 } from '../media/media-draft-types.ts';
 import type { VoiceNativePort } from '../media/voice-session.ts';
 
@@ -32,7 +33,7 @@ const empty = (): MediaDraftDto => ({
 });
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
-async function fixture(canonicalize = false) {
+async function fixture(canonicalize = false, importedFinal = false) {
   const events: string[] = [];
   let value = empty(),
     revision = 0,
@@ -46,6 +47,31 @@ async function fixture(canonicalize = false) {
   let saving: Promise<void> = Promise.resolve();
   let preparation: Promise<void> = Promise.resolve();
   const descriptors = new Map<string, MediaDraftAsset>();
+  const restored: MediaDraftVoice | undefined = importedFinal
+    ? {
+        kind: 'voice',
+        reply_to: null,
+        source_asset_id: 'recovered_final',
+        editor: null,
+        render: null,
+      }
+    : undefined;
+  if (restored) {
+    const asset = {
+      id: restored.source_asset_id,
+      name: 'sent-final.m4a',
+      mime: 'audio/mp4',
+      size: 128,
+      sha256: 'a'.repeat(64),
+    };
+    descriptors.set(asset.id, asset);
+    value = {
+      revision: 'recovered_revision',
+      content_json: JSON.stringify(restored),
+      assets: [asset],
+      attempted: false,
+    };
+  }
   const accepted = new Map<string, MediaDraftSendResult>();
   const port: MediaDraftPort = {
     load: async () => clone(value),
@@ -63,6 +89,13 @@ async function fixture(canonicalize = false) {
           size: 128,
           sha256: 'a'.repeat(64),
         });
+      if (restored && assets.some((asset) => asset.id === restored.source_asset_id)) {
+        const imported = assets.find((asset) => asset.id === restored.source_asset_id)!;
+        assert.equal(imported.voice_role, 'source');
+        assert.match(imported.voice_source_id!, /^native_/);
+        assert.equal(imported.name, 'sent-final.m4a');
+        assert.equal(imported.mime, 'audio/mp4');
+      }
       const parsed = JSON.parse(content);
       if (canonicalize && parsed) {
         // The real Rust codec normalizes opaque f64 JSON and stores render
@@ -155,6 +188,7 @@ async function fixture(canonicalize = false) {
     },
     onError: (error) => errors.push(error),
     id: () => `id_${++ids}`,
+    restored,
   });
   return {
     draft,
@@ -208,6 +242,25 @@ test('finalized voice ingestion gates Ready, retains only opaque editor metadata
     'voice',
     'leaving the route preserves encrypted draft intent',
   );
+});
+
+test('recovered final voice render becomes a freshly decoded authenticated source without restoring old edits or sending', async () => {
+  const f = await fixture(false, true);
+  assert.equal(JSON.parse(f.value.content_json).editor, null);
+  await f.draft.prepare();
+  const state = f.draft.owner.session.getSnapshot();
+  assert.equal(state.phase, 'ready');
+  const content = JSON.parse(f.value.content_json);
+  assert.equal(content.source_asset_id, 'recovered_final');
+  assert.equal(content.editor.draft.original.id, 'recovered_final');
+  assert.equal(content.editor.draft.original.sampleRate, 1000);
+  assert.equal(content.editor.draft.original.frameCount, 4000);
+  assert.deepEqual(content.editor.draft.undo, []);
+  assert.deepEqual(content.editor.draft.redo, []);
+  assert.equal(content.render, null);
+  assert.equal(f.events.filter((event) => event === 'source-ingest').length, 1);
+  assert.equal(f.publications, 0);
+  await f.draft.owner.close();
 });
 
 test('canonical decimal normalization acknowledges the real voice owner before Ready and preserves later edits and send', async () => {

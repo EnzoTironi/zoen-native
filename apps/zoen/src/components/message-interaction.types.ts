@@ -4,6 +4,8 @@ export type MessageInteractionProps = Readonly<{
   messageId: string;
   mine: boolean;
   disabled?: boolean;
+  /** Keep controls live while an album's nested rows own reply/thread swipes. */
+  swipeEnabled?: boolean;
   onReply: () => void;
   onThread: () => void;
   /** Bubble MessagePressable owns physical callbacks; the wrapper recognises pan only. */

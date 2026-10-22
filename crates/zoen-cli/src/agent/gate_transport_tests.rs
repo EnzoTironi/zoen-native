@@ -38,10 +38,15 @@ use std::{
 };
 
 const PEER_FALLBACK: Duration = Duration::from_secs(3);
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct Observed {
     request: Vec<u8>,
     tls_bytes: usize,
+    accepted_after_ms: Option<u128>,
+    tls_read_started_after_ms: Option<u128>,
+    tls_read_finished_after_ms: Option<u128>,
+    tls_read_outcome: Option<Result<usize, String>>,
+    tls_client_hello_record: bool,
     body_bytes_sent: usize,
     fallback_closed: bool,
 }
@@ -51,6 +56,7 @@ struct Peer {
     stop: Arc<(Mutex<bool>, Condvar)>,
     socket: Arc<Mutex<Option<TcpStream>>>,
     thread: Option<JoinHandle<()>>,
+    tls_published: mpsc::Receiver<()>,
 }
 enum Reply {
     HoldHeaders,
@@ -129,6 +135,8 @@ impl Peer {
         let socket = Arc::new(Mutex::new(None));
         let (state, stopping, control) = (observed.clone(), stop.clone(), socket.clone());
         let (ready, started) = mpsc::sync_channel(1);
+        let (publish_tls, tls_published) = mpsc::sync_channel(1);
+        let epoch = Instant::now();
         let thread = thread::spawn(move || {
             ready.send(()).unwrap();
             let until = Instant::now() + PEER_FALLBACK;
@@ -145,13 +153,27 @@ impl Peer {
                     Err(error) => panic!("owned local accept: {error}"),
                 }
             };
+            stream.set_nonblocking(false).unwrap();
+            state.lock().unwrap().accepted_after_ms = Some(epoch.elapsed().as_millis());
             stream.set_read_timeout(Some(PEER_FALLBACK)).unwrap();
             stream.set_write_timeout(Some(PEER_FALLBACK)).unwrap();
             *control.lock().unwrap() = Some(stream.try_clone().unwrap());
             if matches!(&reply, Reply::HoldTls) {
                 let mut hello = [0; 4096];
-                let bytes = stream.read(&mut hello).unwrap_or(0);
-                state.lock().unwrap().tls_bytes = bytes;
+                state.lock().unwrap().tls_read_started_after_ms = Some(epoch.elapsed().as_millis());
+                let result = stream.read(&mut hello);
+                {
+                    let mut observed = state.lock().unwrap();
+                    observed.tls_read_finished_after_ms = Some(epoch.elapsed().as_millis());
+                    observed.tls_bytes = result.as_ref().copied().unwrap_or(0);
+                    observed.tls_client_hello_record =
+                        observed.tls_bytes >= 6 && hello[0] == 22 && hello[1] == 3 && hello[5] == 1;
+                    observed.tls_read_outcome =
+                        Some(result.map_err(|error| format!("{:?}", error.kind())));
+                }
+                // Publish only after the observation is complete. The caller
+                // waits after measuring transport elapsed, outside its budget.
+                let _ = publish_tls.send(());
                 hold(&stopping, &state, &stream);
                 return;
             }
@@ -210,6 +232,7 @@ impl Peer {
             stop,
             socket,
             thread: Some(thread),
+            tls_published,
         }
     }
     fn did_receive_http(&self) {
@@ -304,15 +327,27 @@ async fn gate_transport_connect_deadline_covers_stalled_tls_before_later_total_d
     )
     .unwrap();
     let start = Instant::now();
-    assert_eq!(call(&transport, &peer), Err("transport".into()));
+    let result = call(&transport, &peer);
+    let transport_elapsed = start.elapsed();
+    let published = peer.tls_published.recv_timeout(PEER_FALLBACK);
+    let state = peer.observed.lock().unwrap();
+    println!(
+        "local_tls_diagnostic transport={result:?} transport_elapsed_ms={} published={published:?} peer={state:?}",
+        transport_elapsed.as_millis()
+    );
+    assert_eq!(result, Err("transport".into()));
     assert!(
-        start.elapsed() < Duration::from_millis(1500),
+        transport_elapsed < Duration::from_millis(1500),
         "connect must expire before the3s request/peer deadline"
     );
-    let state = peer.observed.lock().unwrap();
+    assert!(published.is_ok(), "TLS peer must publish its read outcome");
     assert!(
         state.tls_bytes > 0,
         "actual TCP connection and TLS client hello required"
+    );
+    assert!(
+        state.tls_client_hello_record,
+        "TLS ClientHello record required"
     );
     assert!(!state.fallback_closed);
 }

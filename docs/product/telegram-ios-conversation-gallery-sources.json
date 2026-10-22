@@ -1,0 +1,30 @@
+{
+  "pin": "f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838",
+  "license": "GPL-2.0-or-later; GPLv3 selected",
+  "sources": [
+    {
+      "path": "submodules/GalleryUI/Sources/GalleryController.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/GalleryUI/Sources/GalleryController.swift",
+      "bytes": 114269,
+      "sha256": "d13d4139df1a688c5127bde41421b238d76783b425ac7b61b5fbb0f99b708c1e"
+    },
+    {
+      "path": "submodules/GalleryUI/Sources/GalleryPagerNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/GalleryUI/Sources/GalleryPagerNode.swift",
+      "bytes": 39636,
+      "sha256": "c5bf71d78d62037ef84c95a95e860445a95b26097a77340f3ef0e5340770e563"
+    },
+    {
+      "path": "submodules/GalleryUI/Sources/GalleryControllerNode.swift",
+      "url": "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838/submodules/GalleryUI/Sources/GalleryControllerNode.swift",
+      "bytes": 33195,
+      "sha256": "858233e35024a232f74794da2c6c35dcf41b765015482d75f4cdde12e6e0a481"
+    }
+  ],
+  "ports": {
+    "GalleryController.swift": "selected canonical identity and per-page chrome1668\u20131737",
+    "GalleryPagerNode.swift": "20pt edge gap420\u2013424, current\u00b11 window680\u2013716",
+    "GalleryControllerNode.swift": "simple animation420\u2013515, vertical dismiss560\u2013610"
+  },
+  "adaptation": "UIKit reuses existing gallery content, original Telegram viewer transport adapted to UIKit/AVPlayerLayer, and FilePreview copy owner. No Telegram backend/state/media-manager dependencies imported. See ios/TelegramConversationVideo/SOURCES.json."
+}

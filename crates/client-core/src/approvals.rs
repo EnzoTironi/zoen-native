@@ -54,6 +54,13 @@ impl State {
         space: &str,
         plan: &PlanRead,
     ) -> Currentness {
+        if req.tool_proposal.is_some() {
+            return if self.tool_request_matches(req, space) {
+                Currentness::Current
+            } else {
+                Currentness::Changed
+            };
+        }
         if matches!(plan, PlanRead::Waiting)
             && req.proposal.is_none()
             && self.writer(space, &req.agent)
@@ -79,6 +86,9 @@ impl State {
         space: &str,
         read_plan: Option<&PlanDoc>,
     ) -> bool {
+        if req.tool_proposal.is_some() {
+            return self.tool_request_matches(req, space);
+        }
         if !self.writer(space, &req.agent) {
             return false;
         }
@@ -243,6 +253,18 @@ impl State {
                     && identities
                         .get(&request.agent)
                         .is_some_and(|i| i.kind == IdentityKind::Agent && i.owner.is_some())
+                    && request.tool_proposal.as_ref().is_none_or(|p| {
+                        request.proposal.is_none()
+                            && self.tool_request_matches(request, &e.space)
+                            && p.expires_at_ms > e.at_ms
+                            && p.expires_at_ms <= e.at_ms.saturating_add(15 * 60 * 1000)
+                            && e.device.as_deref() == Some(p.device.as_str())
+                            && identities.get(&request.agent).is_some_and(|i| {
+                                i.owner.as_deref() == Some(p.owner.as_str())
+                                    && event_log::agent_owner::profile_authorized(i)
+                            })
+                            && self.tool_app_act(p, e.at_ms)
+                    })
                     && (request.proposal.is_none() || self.request_matches(request, &e.space, None))
                     && request.proposal.as_ref().is_none_or(|p| {
                         p.ai_cost_cents == 0
@@ -289,6 +311,27 @@ impl State {
                             (None, None) => false,
                             _ => true,
                         })
+                {
+                    return false;
+                }
+                if let Some(p) = &r.req.tool_proposal {
+                    let Some(receipt) = resolution else {
+                        return false;
+                    };
+                    return receipt.created_item.is_none()
+                        && receipt.ai_cost_cents == 0
+                        && receipt.standing_grant.is_none()
+                        && matches!(
+                            (approved, receipt.tool_decision),
+                            (true, Some(ToolDecision::ApproveOnce))
+                                | (false, Some(ToolDecision::Deny | ToolDecision::Cancel))
+                        )
+                        && (!approved
+                            || (p.expires_at_ms > e.at_ms && self.tool_app_act(p, e.at_ms)));
+                }
+                if resolution
+                    .as_ref()
+                    .is_some_and(|receipt| receipt.tool_decision.is_some())
                 {
                     return false;
                 }
@@ -450,6 +493,7 @@ impl Engine {
             }),
             grants::Decision::Request(reason) => {
                 let mut request = AgentRequest {
+                    tool_proposal: None,
                     id: new_id("rq"),
                     agent: agent.into(),
                     title,
@@ -532,6 +576,16 @@ impl Engine {
         approve: bool,
         standing: bool,
     ) -> R<ApproveOutcome> {
+        if self
+            .state
+            .requests
+            .get(id)
+            .is_some_and(|r| r.req.tool_proposal.is_some())
+        {
+            return Err(CoreError::Invalid {
+                reason: "Use the exact reviewed-action decision for this request.".into(),
+            });
+        }
         let me = self.me_id()?;
         let r = self
             .state
@@ -648,6 +702,7 @@ impl Engine {
             tr!("Ok, não vou {}.", "Ok, I won't {}.", r.req.title)
         };
         let receipt = RequestResolution {
+            tool_decision: None,
             message: message.clone(),
             created_item: if approve {
                 proposal.map(|p| p.item.clone())

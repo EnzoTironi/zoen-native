@@ -3,6 +3,81 @@
 
 use super::host::Brain;
 
+/// Test-only admission hooks around an actual Brain. Hooks may reject, never
+/// replace its output. Production builds do not enable the scripted feature.
+#[cfg(feature = "scripted")]
+pub type BrainAdmission = dyn Fn() -> Result<(), String> + Send + Sync;
+#[cfg(feature = "scripted")]
+pub type BrainOutputAdmission =
+    dyn Fn(&[super::host::ToolStep], &super::host::BrainOut) -> Result<(), String> + Send + Sync;
+#[cfg(feature = "scripted")]
+pub struct GuardedBrain {
+    pub inner: Box<dyn Brain>,
+    pub before: std::sync::Arc<BrainAdmission>,
+    pub after: std::sync::Arc<BrainOutputAdmission>,
+}
+#[cfg(feature = "scripted")]
+#[async_trait::async_trait]
+impl Brain for GuardedBrain {
+    async fn think(
+        &self,
+        cx: super::host::TurnContext<'_>,
+        history: &[super::host::Turn],
+        inbound: &super::host::Turn,
+    ) -> Result<super::host::BrainOut, String> {
+        self.think_with_tools(cx, history, inbound, &[], &[]).await
+    }
+    async fn think_with_tools(
+        &self,
+        cx: super::host::TurnContext<'_>,
+        history: &[super::host::Turn],
+        inbound: &super::host::Turn,
+        tools: &[super::host::ToolDef],
+        steps: &[super::host::ToolStep],
+    ) -> Result<super::host::BrainOut, String> {
+        (self.before)()?;
+        let out = self
+            .inner
+            .think_with_tools(cx, history, inbound, tools, steps)
+            .await?;
+        (self.after)(steps, &out)?;
+        Ok(out)
+    }
+}
+
+/// Synchronous controlled output for offline integration tests. No provider,
+/// network, environment or credentials; absent from every production build.
+#[cfg(feature = "scripted")]
+pub type ControlledToolEvaluation =
+    dyn Fn(&[super::host::ToolStep]) -> Result<super::host::BrainOut, String> + Send + Sync;
+
+#[cfg(feature = "scripted")]
+pub struct ControlledToolBrain {
+    pub evaluate: Box<ControlledToolEvaluation>,
+}
+#[cfg(feature = "scripted")]
+#[async_trait::async_trait]
+impl Brain for ControlledToolBrain {
+    async fn think(
+        &self,
+        _: super::host::TurnContext<'_>,
+        _: &[super::host::Turn],
+        _: &super::host::Turn,
+    ) -> Result<super::host::BrainOut, String> {
+        (self.evaluate)(&[])
+    }
+    async fn think_with_tools(
+        &self,
+        _: super::host::TurnContext<'_>,
+        _: &[super::host::Turn],
+        _: &super::host::Turn,
+        _: &[super::host::ToolDef],
+        steps: &[super::host::ToolStep],
+    ) -> Result<super::host::BrainOut, String> {
+        (self.evaluate)(steps)
+    }
+}
+
 /// `ZOEN_AGENT_SCRIPT` (a JSON map of substring → reply) as a brain, in journey builds.
 pub fn scripted_brain_from_env() -> Option<Result<Box<dyn Brain>, String>> {
     #[cfg(feature = "scripted")]

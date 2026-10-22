@@ -69,6 +69,31 @@ export function createDriver(): CoreDriver {
             async load(scope) {
               return JSON.parse(await core().loadMediaDraft(JSON.stringify({ scope })));
             },
+            recoverFailed:
+              NativeCore?.failedMediaRecoveryVersion === 1
+                ? async (scope, messageId, expectedRevision, expectedMessageRevision) => {
+                    const value = JSON.parse(
+                      await core().request(
+                        JSON.stringify({
+                          op: 'recover_failed_media_draft',
+                          scope,
+                          message_id: messageId,
+                          expected_revision: expectedRevision,
+                          expected_message_revision: expectedMessageRevision,
+                        }),
+                      ),
+                    );
+                    // The general JSON API carries u64 as decimal strings. The media
+                    // journal validator admits only exact, bounded draft asset sizes.
+                    return {
+                      ...value,
+                      assets: value.assets.map((asset: { size: string }) => ({
+                        ...asset,
+                        size: Number(asset.size),
+                      })),
+                    };
+                  }
+                : undefined,
             async save(scope, expectedRevision, contentJson, assets) {
               return JSON.parse(
                 await core().saveMediaDraft(
@@ -200,6 +225,24 @@ export function createDriver(): CoreDriver {
       Platform.OS === 'ios' && typeof NativeCore?.previewLocalFile === 'function'
         ? async (file) => {
             await core().previewLocalFile(file.uri);
+          }
+        : undefined,
+    previewConversationMedia:
+      Platform.OS === 'ios' &&
+      typeof NativeCore?.previewConversationMedia === 'function' &&
+      typeof NativeCore?.cancelConversationMedia === 'function'
+        ? async (request, signal) => {
+            if (signal.aborted) return;
+            const token = randomUUID();
+            const cancel = () => {
+              void core().cancelConversationMedia!(token).catch(() => {});
+            };
+            signal.addEventListener('abort', cancel, { once: true });
+            try {
+              await core().previewConversationMedia!(JSON.stringify(request), token);
+            } finally {
+              signal.removeEventListener('abort', cancel);
+            }
           }
         : undefined,
     async releaseLocalFile(uri) {

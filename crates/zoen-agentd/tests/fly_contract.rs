@@ -189,6 +189,9 @@ impl MockFly {
             while !worker_stop.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        // Keep accept pollable, but make this bounded request
+                        // parser independent of inherited nonblocking mode.
+                        stream.set_nonblocking(false).unwrap();
                         stream
                             .set_read_timeout(Some(Duration::from_secs(2)))
                             .unwrap();

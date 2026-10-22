@@ -64,9 +64,16 @@ export class VoiceDraftOwner {
   }
 
   private async prepared(source: VoicePreparedSource, editor: VoiceEditorState, restored: boolean) {
+    const importedFinalRender = restored && this.content.editor === null;
+    const importedAsset = importedFinalRender
+      ? this.channel
+          .getSnapshot()
+          .value?.assets.find((asset) => asset.id === this.content.source_asset_id)
+      : undefined;
+    if (importedFinalRender && !importedAsset) throw new VoiceSessionFailure('prepare');
     this.editorJson = JSON.stringify(editor);
     this.content = { ...this.content, editor };
-    if (restored) return;
+    if (restored && !importedFinalRender) return;
     const extension = source.uri.split('.').at(-1)?.toLowerCase();
     const mime =
       extension === 'wav'
@@ -82,8 +89,8 @@ export class VoiceDraftOwner {
       {
         id: this.content.source_asset_id,
         uri: source.uri,
-        name: `original.${extension || 'm4a'}`,
-        mime,
+        name: importedAsset?.name ?? `original.${extension || 'm4a'}`,
+        mime: importedAsset?.mime ?? mime,
         voice_source_id: source.id,
         voice_role: 'source',
       },

@@ -307,6 +307,43 @@ export class NormalMessageDrafts {
     });
   }
 
+  /** Read-only admission barrier. Unlike flush/retry, this NEVER resumes an
+   * ambiguous Send. New typing remains owned by its later queued autosave. */
+  async withEmptyDraft<T>(
+    scope: NormalDraftScope,
+    work: (revision: string, current: () => boolean) => Promise<T>,
+  ): Promise<T> {
+    await this.activate(scope);
+    return this.enqueue(async () => {
+      const record = this.record(scope);
+      this.requireOpen(record);
+      if (
+        record.intent ||
+        record.failedSave ||
+        record.state.sending ||
+        record.state.saving ||
+        record.state.error ||
+        record.state.text ||
+        record.state.replyTo ||
+        record.persisted.text ||
+        record.persisted.reply_to
+      )
+        throw new NormalDraftFailure('conflict');
+      const textRevision = record.state.textRevision,
+        replyRevision = record.state.replyRevision;
+      const revision = record.persisted.revision;
+      const current = () =>
+        !this.retirement &&
+        !record.intent &&
+        record.state.textRevision === textRevision &&
+        record.state.replyRevision === replyRevision &&
+        record.persisted.revision === revision &&
+        !record.state.text &&
+        !record.state.replyTo;
+      return work(revision, current);
+    });
+  }
+
   send(scope: NormalDraftScope): Promise<TimelineEntry> {
     const record = this.record(scope);
     try {

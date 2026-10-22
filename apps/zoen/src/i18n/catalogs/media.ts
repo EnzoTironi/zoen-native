@@ -2,6 +2,10 @@ import { defineFeature } from '../catalog.ts';
 
 export const media = defineFeature(
   {
+    prepareNewSend: 'Prepare New Send',
+    recoveryUnavailable: 'Could not prepare a new send',
+    recoveryDraftOccupied:
+      'The composer changed. Your current draft has been preserved. Review it before preparing another send.',
     fileCaptionUnavailable: 'Send attachments with captions from your iPhone for now.',
     attachmentDraftCount: { one: '%{count} attachment', other: '%{count} attachments' },
     previewAttachment: 'Preview %{name}',
@@ -187,6 +191,10 @@ export const media = defineFeature(
     shareFileLabel: 'Share %{name}',
   },
   {
+    prepareNewSend: 'Preparar novo envio',
+    recoveryUnavailable: 'Não foi possível preparar um novo envio',
+    recoveryDraftOccupied:
+      'O campo de mensagem mudou. Seu rascunho atual foi preservado. Revise-o antes de preparar outro envio.',
     fileCaptionUnavailable: 'Por enquanto, envie anexos com legenda pelo iPhone.',
     attachmentDraftCount: { one: '%{count} anexo', other: '%{count} anexos' },
     previewAttachment: 'Visualizar %{name}',

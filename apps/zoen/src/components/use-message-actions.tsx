@@ -4,7 +4,12 @@ import * as Clipboard from 'expo-clipboard';
 import { KeyboardController } from 'react-native-keyboard-controller';
 import type { TimelineEntry } from '../core/types';
 import { useClient } from '../core/provider';
-import { messageCanEdit, messageCanInteract, messageCard } from '../core/message-presentation';
+import {
+  messageCanEdit,
+  messageCanInteract,
+  messageCanRecoverMedia,
+  messageCard,
+} from '../core/message-presentation';
 import { messageText } from '../core/presentation';
 import { shareMessageMedia } from '../media/share-message';
 import { t } from '../i18n/index.ts';
@@ -218,6 +223,29 @@ export function useMessageActions({
       pending.current = false;
       // This releases an interaction latch, never old account content. A scope
       // change must not leave the newly focused conversation permanently busy.
+      if (mounted.current) setBusy(false);
+    }
+  }
+  async function recover(entry: TimelineEntry) {
+    const value = current(entry);
+    if (!value || !messageCanRecoverMedia(value) || pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    try {
+      await store.mediaDrafts.recoverFailed(
+        spaceId,
+        value.in_thread,
+        value.id,
+        () => mounted.current && Boolean(current(value) && messageCanRecoverMedia(current(value)!)),
+      );
+    } catch (reason) {
+      if (mounted.current && current(value))
+        void inform(
+          t('media.recoveryUnavailable'),
+          reason instanceof Error ? reason.message : t('chat.tryAgain'),
+        );
+    } finally {
+      pending.current = false;
       if (mounted.current) setBusy(false);
     }
   }
@@ -454,11 +482,19 @@ export function useMessageActions({
               : undefined
           }
           onEdit={
-            selected && messageCanEdit(selected)
+            selected && !messageCanRecoverMedia(selected) && messageCanEdit(selected)
               ? () => {
                   const value = current(selected);
                   if (value && messageCanEdit(value)) onEdit(value);
                 }
+              : undefined
+          }
+          onRecover={
+            selected &&
+            messageCanRecoverMedia(selected) &&
+            mode === 'account' &&
+            store.driver.media?.drafts?.recoverFailed
+              ? recover
               : undefined
           }
           onDelete={

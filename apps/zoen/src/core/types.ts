@@ -48,6 +48,7 @@ import type { AppResourceDto } from './generated/AppResourceDto';
 import type { MessageDraftDto } from './generated/MessageDraftDto';
 import type { MessageDraftSendResult } from './generated/MessageDraftSendResult';
 import type { NativeSurfaceItemDto } from './generated/NativeSurfaceItemDto';
+import type { MediaDraftDto } from '../media/media-draft-types';
 
 export type { Command, Snapshot, TimelinePage, TimelineEntry, ItemDetail, PageDto, PlanPageDto };
 export type Mode = 'account' | 'demo';
@@ -70,6 +71,9 @@ type Results = {
   message_draft: MessageDraftDto;
   save_message_draft: MessageDraftDto;
   send_message_draft: MessageDraftSendResult;
+  recover_failed_media_draft: Omit<MediaDraftDto, 'assets'> & {
+    assets: (Omit<MediaDraftDto['assets'][number], 'size'> & { size: string })[];
+  };
   thread: TimelineEntry[];
   items: ItemDetail[];
   item: ItemDetail;
@@ -91,6 +95,7 @@ type Results = {
   app_device_allowed: boolean;
   grant_app_device: string;
   decide_request: DecideOutcome;
+  decide_tool_request: DecideOutcome;
   app_resource: AppResourceDto;
   raise_budget: AgentProfile;
   search: SearchHit[];

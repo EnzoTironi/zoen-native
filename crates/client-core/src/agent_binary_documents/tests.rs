@@ -7,10 +7,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 use types::{Annotation, EventBody, Privacy, Role, SpaceKind};
-const ORIGINAL: &[u8] = include_bytes!("../app_binary_documents/fixtures/original.deckcraft");
-const CHANGED: &[u8] = include_bytes!("../app_binary_documents/fixtures/changed.deckcraft");
+pub(super) const ORIGINAL: &[u8] =
+    include_bytes!("../app_binary_documents/fixtures/original.deckcraft");
+pub(super) const CHANGED: &[u8] =
+    include_bytes!("../app_binary_documents/fixtures/changed.deckcraft");
 #[derive(Default)]
-struct Vault(Mutex<HashMap<String, Vec<u8>>>);
+pub(super) struct Vault(Mutex<HashMap<String, Vec<u8>>>);
 impl SecretVault for Vault {
     fn load(&self, key: String) -> Option<Vec<u8>> {
         self.0.lock().unwrap().get(&key).cloned()
@@ -23,14 +25,15 @@ impl SecretVault for Vault {
         self.0.lock().unwrap().remove(&key);
     }
 }
-struct Fixture {
-    agent: Arc<Client>,
-    owner: String,
-    space: String,
-    source: String,
-    base: AppBinaryDocumentDto,
+pub(super) struct Fixture {
+    pub(super) agent: Arc<Client>,
+    pub(super) agent_vault: Arc<Vault>,
+    pub(super) owner: String,
+    pub(super) space: String,
+    pub(super) source: String,
+    pub(super) base: AppBinaryDocumentDto,
 }
-fn fixture() -> Fixture {
+pub(super) fn fixture() -> Fixture {
     let owner = Client::open(":memory:".into(), "en".into()).unwrap();
     let vault = Arc::new(Vault::default());
     let owner_id = owner
@@ -46,6 +49,7 @@ fn fixture() -> Fixture {
     let agent_id = Signer::from_secret(&root).id();
     let proof = owner.authorize_agent_json(agent_id).unwrap();
     let agent = Client::open(":memory:".into(), "en".into()).unwrap();
+    let agent_vault = Arc::new(Vault::default());
     agent
         .create_agent_account(
             "Worker".into(),
@@ -54,7 +58,7 @@ fn fixture() -> Fixture {
             root.to_vec(),
             owner_id.clone(),
             proof,
-            Arc::new(Vault::default()),
+            agent_vault.clone(),
         )
         .unwrap();
     // Test fixture only: retain the synthetic human's root so its real signed
@@ -117,13 +121,14 @@ fn fixture() -> Fixture {
         .id;
     Fixture {
         agent,
+        agent_vault,
         owner: owner_id,
         space,
         source,
         base,
     }
 }
-fn turn(f: &Fixture) -> AgentBinaryTurn {
+pub(super) fn turn(f: &Fixture) -> AgentBinaryTurn {
     f.agent
         .agent_binary_turn(
             &f.base.item_id,
@@ -134,7 +139,7 @@ fn turn(f: &Fixture) -> AgentBinaryTurn {
         )
         .unwrap()
 }
-fn counts(f: &Fixture) -> Vec<i64> {
+pub(super) fn counts(f: &Fixture) -> Vec<i64> {
     let e = f.agent.lock();
     [
         "events",

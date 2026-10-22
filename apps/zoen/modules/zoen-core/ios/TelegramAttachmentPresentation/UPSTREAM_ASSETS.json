@@ -263,6 +263,31 @@
       "upstreamPath": "submodules/TelegramUI/Images.xcassets/Media Grid/GroupingOff.imageset/albumoff_24.pdf",
       "sha256": "0f457517b5e1a7aaf5097dd082ad8fae15eb1596fc37e2849dc4164ae170c6ae",
       "resource": "sendUngrouped.pdf"
+    },
+    {
+      "logicalName": "conversationBackward",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Media Gallery/BackwardButton.imageset/back.pdf",
+      "sha256": "98e1f98979627230415ed8f34b50de7cbc8e30cf85c7b07a115009c33f2aadd5",
+      "gitBlob": "6d608954d4f8cc30ae7a483506a3e0a06c613de1",
+      "resource": "conversationBackward.pdf",
+      "resourceSha256": "98e1f98979627230415ed8f34b50de7cbc8e30cf85c7b07a115009c33f2aadd5"
+    },
+    {
+      "logicalName": "conversationForward",
+      "upstreamPath": "submodules/TelegramUI/Images.xcassets/Media Gallery/ForwardButton.imageset/forward.pdf",
+      "sha256": "b77c2ebe1d922ea7d27b5b62285bdb414c8938a9e64e7f168fa8ace0e287b313",
+      "gitBlob": "b9c89b04b33804e2358722f33dfddd585cb5cc38",
+      "resource": "conversationForward.pdf",
+      "resourceSha256": "b77c2ebe1d922ea7d27b5b62285bdb414c8938a9e64e7f168fa8ace0e287b313"
+    },
+    {
+      "logicalName": "ConversationPlayPause",
+      "upstreamPath": "submodules/TelegramUI/Resources/Animations/anim_playpause.tgs",
+      "sha256": "e5067f055c855f3d83740224184a2aeb0827af746cf6a36c45399adc9d80116c",
+      "gitBlob": "d6e7b0953d9d25ba76c86874e439d0a425cee422",
+      "resource": "ConversationPlayPause.json",
+      "resourceSha256": "02e7374507e80851e20efa53362ddce1ac6dc5b66c038884ff926dfe22e7d51c",
+      "transform": "gzip.decompress(original TGS), JSON bytes otherwise unchanged"
     }
   ]
 }

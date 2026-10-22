@@ -12,6 +12,8 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use zeroize::Zeroizing;
 
+mod recovery;
+
 pub const MEDIA_DRAFT_REVISION_ZERO: &str = "0";
 const PREFIX: &str = "media.draft.";
 const DOMAIN: &[u8] = b"zoen.media.draft.v1";
@@ -419,6 +421,29 @@ impl Engine {
         }
         Ok(())
     }
+    /// Shared encrypted replacement. The caller owns the transaction; this
+    /// helper cannot append events, mutate the projection, or run transport.
+    fn persist_media_replacement(
+        &self,
+        storage: &Storage,
+        previous: &Record,
+        record: &Record,
+        fresh: &[(MediaDraftAsset, Zeroizing<Vec<u8>>)],
+    ) -> R<()> {
+        for (asset, bytes) in fresh {
+            let encrypted =
+                crate::local_sealed::seal(&storage.key, &storage.asset_aad(asset)?, bytes)
+                    .map_err(|_| storage_error())?;
+            self.store
+                .set_meta(&storage.asset_key(&asset.id), &encrypted)?;
+        }
+        for asset in &previous.assets {
+            if !record.assets.iter().any(|next| next.id == asset.id) {
+                self.store.meta_delete(&storage.asset_key(&asset.id))?;
+            }
+        }
+        self.persist_media_record(storage, record)
+    }
     fn load_media_asset(
         &self,
         storage: &Storage,
@@ -620,20 +645,7 @@ impl Engine {
             },
         )?;
         self.atomic_agent_action(|engine| {
-            for (asset, bytes) in fresh {
-                let encrypted =
-                    crate::local_sealed::seal(&storage.key, &storage.asset_aad(&asset)?, &bytes)
-                        .map_err(|_| storage_error())?;
-                engine
-                    .store
-                    .set_meta(&storage.asset_key(&asset.id), &encrypted)?;
-            }
-            for asset in &previous.assets {
-                if !record.assets.iter().any(|next| next.id == asset.id) {
-                    engine.store.meta_delete(&storage.asset_key(&asset.id))?;
-                }
-            }
-            engine.persist_media_record(&storage, &record)?;
+            engine.persist_media_replacement(&storage, &previous, &record, &fresh)?;
             Ok(MediaDraftSaveResult {
                 accepted_revision: record.revision.clone(),
                 draft: record.dto()?,

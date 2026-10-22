@@ -75,6 +75,14 @@ export const agents = defineFeature(
     theContentHasChanged: 'The content has changed',
     approved: 'Approved',
     notAllowed: 'Not allowed',
+    requestCancelled: 'Cancelled',
+    cancelRequest: 'Cancel request',
+    toolArtifactVersion: '%{title} · Version %{version}',
+    toolApprovalExpires: 'Approval available until %{time}',
+    toolApprovalExpired:
+      'This request has expired. Ask the agent for a new proposal to approve it.',
+    toolApprovalUnavailable:
+      'This request cannot be reviewed safely. Ask the agent for a new proposal.',
     alwaysAllowThisTypeOfAction: 'Always allow this type of action?',
     alwaysDenyThisTypeOfAction: 'Always deny this type of action?',
     thisDecisionCouldNotBeSaved: 'This decision could not be saved.',
@@ -197,6 +205,13 @@ export const agents = defineFeature(
     theContentHasChanged: 'O conteúdo mudou',
     approved: 'Aprovado',
     notAllowed: 'Não permitido',
+    requestCancelled: 'Cancelado',
+    cancelRequest: 'Cancelar pedido',
+    toolArtifactVersion: '%{title} · Versão %{version}',
+    toolApprovalExpires: 'Aprovação disponível até %{time}',
+    toolApprovalExpired: 'Este pedido expirou. Peça uma nova proposta ao agente para aprová-lo.',
+    toolApprovalUnavailable:
+      'Não é possível revisar este pedido com segurança. Peça uma nova proposta ao agente.',
     alwaysAllowThisTypeOfAction: 'Sempre permitir este tipo de ação?',
     alwaysDenyThisTypeOfAction: 'Sempre negar este tipo de ação?',
     thisDecisionCouldNotBeSaved: 'Não foi possível guardar esta decisão.',

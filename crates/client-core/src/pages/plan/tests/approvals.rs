@@ -31,6 +31,7 @@ fn agent(fixture: &mut Fixture) -> String {
 fn linked(fixture: &Fixture, agent: &str, document: &PlanDoc) -> AgentRequest {
     let line = &document.sections[0].lines[0];
     AgentRequest {
+        tool_proposal: None,
         id: new_id("linked-request"),
         agent: agent.into(),
         title: "Owner decision".into(),
@@ -67,6 +68,7 @@ fn decision(request: &AgentRequest, approved: bool) -> EventBody {
         approved,
         content_hash: request.content_hash.clone(),
         resolution: Some(RequestResolution {
+            tool_decision: None,
             message: "Owner decision recorded".into(),
             created_item: None,
             ai_cost_cents: 0,
@@ -824,6 +826,7 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
     let mut fixture = Fixture::new();
     let agent = agent(&mut fixture);
     let mut proposal = AgentRequest {
+        tool_proposal: None,
         id: new_id("proposal"),
         agent: agent.clone(),
         title: "Legacy proposal".into(),
@@ -879,6 +882,7 @@ fn proposal_created_legacy_plans_remain_valid_without_minting_duplicate_origins(
         approved: true,
         content_hash: proposal.content_hash.clone(),
         resolution: Some(RequestResolution {
+            tool_decision: None,
             message: "Created proposal".into(),
             created_item: Some(item.clone()),
             ai_cost_cents: 0,

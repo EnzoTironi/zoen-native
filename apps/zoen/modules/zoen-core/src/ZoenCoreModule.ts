@@ -13,6 +13,7 @@ declare class ZoenCoreModule extends NativeModule<{
   onChange: (event: CoreEvent) => void;
   onPageInputStatus: (event: { json: string }) => void;
 }> {
+  readonly failedMediaRecoveryVersion?: number;
   attachmentMosaicLayout?(
     width: number,
     height: number,
@@ -67,6 +68,8 @@ declare class ZoenCoreModule extends NativeModule<{
   materializeRecentAttachment?(request: string): Promise<string>;
   previewRecentAttachment?(request: string, presentationId: string): Promise<void>;
   previewLocalFile(uri: string): Promise<void>;
+  previewConversationMedia?(request: string, presentationId: string): Promise<void>;
+  cancelConversationMedia?(presentationId: string): Promise<void>;
   releaseLocalFile(uri: string): Promise<void>;
   releaseMediaLibraryExport?(uri: string): Promise<void>;
   saveProfile(request: string): Promise<void>;

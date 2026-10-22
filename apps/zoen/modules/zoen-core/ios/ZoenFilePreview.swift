@@ -59,6 +59,67 @@ extension ZoenFilePreviewPresentation {
 /// The main-actor owner is independent of the message row and Expo's presentation
 /// Promise. Its continuation ends only after actual dismissal and copy deletion.
 @MainActor final class ZoenFilePreview {
+  final class ReadOnlyRegistration: @unchecked Sendable {
+    // Accessed only while the containing Scope lock is held.
+    fileprivate var retired = false
+  }
+  /// Disposable pages belong to this same preview session, including the first
+  /// page. A virtualized source row never becomes the owner of these copies.
+  @MainActor final class ReadOnlyCopies {
+    nonisolated let registration = ReadOnlyRegistration()
+    private var files: [String: ZoenPreviewFile] = [:]
+    fileprivate var admit: (() throws -> Void)?
+    fileprivate var failed: ((ZoenPreviewFile) -> Void)?
+    fileprivate var transfer: ((UUID) throws -> ZoenPreviewFile)?
+    fileprivate var pending: (() -> [ZoenPreviewFile])?
+    fileprivate var live = false
+    fileprivate var bound = false
+
+    /// The actor registers BEFORE it returns. Forced clear can therefore own a
+    /// copy even while this MainActor continuation is still queued.
+    func accept(_ ticket: UUID, key: String) throws -> URL {
+      guard let transfer else { throw Failure.changed }
+      let file = try transfer(ticket)
+      try retain(file, key: key)
+      return file.url
+    }
+
+    fileprivate func retain(_ file: ZoenPreviewFile, key: String) throws {
+      do {
+        guard live, files[key] == nil, files.count < 3 else { throw Failure.changed }
+        try admit?()
+        files[key] = file
+      } catch {
+        do { try file.remove() } catch { failed?(file) }
+        throw error
+      }
+    }
+
+    /// Call only after the corresponding display requests/player are retired.
+    func release(except keys: Set<String>) throws {
+      var failure: Error?
+      for key in Array(files.keys) where !keys.contains(key) {
+        guard let file = files.removeValue(forKey: key) else { continue }
+        do { try file.remove() } catch { failed?(file); failure = error }
+      }
+      if let failure { throw failure }
+    }
+
+    fileprivate func finish() throws {
+      live = false
+      // A cancelled async page may return after dismissal. Its failed deletion
+      // must still reach this owner's retained-cleanup list.
+      defer { admit = nil }
+      var failure: Error?
+      do { try release(except: []) } catch { failure = error }
+      for file in pending?() ?? [] {
+        do { try file.remove() } catch { failed?(file); failure = error }
+      }
+      pending = nil
+      if let failure { throw failure }
+    }
+  }
+
   enum Failure: Error, LocalizedError {
     case changed, busy, unavailable, cleanup, editedPDF, editedMedia, recovered
     var errorDescription: String? {
@@ -142,6 +203,7 @@ extension ZoenFilePreviewPresentation {
       let generation: UInt64
       let file: ZoenPreviewFile
       let recovered: [ZoenPreviewFile]
+      let owner: ReadOnlyRegistration?
       var files: [ZoenPreviewFile] { [file] + recovered }
     }
     private let lock = NSLock()
@@ -150,8 +212,34 @@ extension ZoenFilePreviewPresentation {
     func register(file: ZoenPreviewFile, generation: UInt64, recovered: [ZoenPreviewFile]) -> UUID {
       lock.lock(); defer { lock.unlock() }
       let id = UUID()
-      pending[id] = Transfer(generation: generation, file: file, recovered: recovered)
+      pending[id] = Transfer(generation: generation, file: file, recovered: recovered, owner: nil)
       return id
+    }
+    func registerReadOnly(file: ZoenPreviewFile, generation: UInt64, owner: ReadOnlyRegistration) throws -> UUID {
+      lock.lock(); defer { lock.unlock() }
+      let id = UUID()
+      let transfer = Transfer(generation: generation, file: file, recovered: [], owner: owner)
+      guard !owner.retired, generation >= floor else {
+        do { try file.remove() }
+        catch { pending[id] = transfer; throw error }
+        throw Failure.changed
+      }
+      pending[id] = transfer
+      return id
+    }
+    func finishReadOnly(_ owner: ReadOnlyRegistration) -> [ZoenPreviewFile] {
+      lock.lock(); defer { lock.unlock() }
+      owner.retired = true
+      let ids = pending.keys.filter { pending[$0]?.owner === owner }
+      return ids.compactMap { pending.removeValue(forKey: $0) }.flatMap(\.files)
+    }
+    /// A late producer may fail deletion after finishReadOnly already drained
+    /// its registration. Transfer that retained failure to the ordinary owner's
+    /// cleanup/busy guard, rather than waiting for a future account generation.
+    func drainRetiredReadOnly() -> [ZoenPreviewFile] {
+      lock.lock(); defer { lock.unlock() }
+      let ids = pending.keys.filter { pending[$0]?.owner?.retired == true }
+      return ids.compactMap { pending.removeValue(forKey: $0) }.flatMap(\.files)
     }
     func take(_ id: UUID) -> Transfer? {
       lock.lock(); defer { lock.unlock() }
@@ -192,6 +280,7 @@ extension ZoenFilePreviewPresentation {
     let mediaEdit: MediaEditContext?
     var editable: Bool { edit != nil || mediaEdit != nil }
     let editing: Editing?
+    let readOnlyCopies: ReadOnlyCopies?
     var base: EditBase?
     var pending: [Edit] = []
     var worker: Task<Void, Never>?
@@ -207,10 +296,11 @@ extension ZoenFilePreviewPresentation {
     var renderFile: ZoenPreviewFile?
     var forced: Error?
     init(id: UUID, generation: UInt64, file: ZoenPreviewFile, presentation: any ZoenFilePreviewPresentation,
-         continuation: CheckedContinuation<Void, Error>, edit: EditContext?, mediaEdit: MediaEditContext?, editing: Editing?, recovered: [ZoenPreviewFile]) {
+         continuation: CheckedContinuation<Void, Error>, edit: EditContext?, mediaEdit: MediaEditContext?, editing: Editing?, recovered: [ZoenPreviewFile], readOnlyCopies: ReadOnlyCopies?) {
       self.id = id; self.generation = generation; self.file = file; self.presentation = presentation
       self.continuation = continuation
       self.edit = edit; self.mediaEdit = mediaEdit; self.editing = editing; self.base = edit?.base
+      self.readOnlyCopies = readOnlyCopies
       pending = recovered.map { Edit(file: $0) }
       if !recovered.isEmpty { failure = Failure.recovered }
     }
@@ -229,6 +319,9 @@ extension ZoenFilePreviewPresentation {
   /// a transferred file even if its queued main-actor presentation never starts.
   nonisolated func register(file: ZoenPreviewFile, generation: UInt64, recovered: [ZoenPreviewFile] = []) -> UUID {
     scope.register(file: file, generation: generation, recovered: recovered)
+  }
+  nonisolated func registerReadOnly(file: ZoenPreviewFile, generation: UInt64, owner: ReadOnlyRegistration) throws -> UUID {
+    try scope.registerReadOnly(file: file, generation: generation, owner: owner)
   }
 
   /// Return an unpresented transfer after partial native preparation fails.
@@ -249,16 +342,20 @@ extension ZoenFilePreviewPresentation {
   }
 
   func open(id: UUID, title: String, edit: EditContext?, mediaEdit: MediaEditContext? = nil,
+            readOnlyCopies: ReadOnlyCopies? = nil, initialKey: String = "initial",
             makePresentation: @MainActor (Editing?) throws -> any ZoenFilePreviewPresentation) async throws {
     guard let transfer = scope.take(id) else { throw Failure.changed }
     let file = transfer.file
     let generation = transfer.generation
     let presentation: any ZoenFilePreviewPresentation
-    guard edit == nil || mediaEdit == nil else { throw Failure.unavailable }
     let editing = edit.map { Editing(maximumBytes: $0.maximumBytes, allowsEditing: $0.canCapture) }
       ?? mediaEdit.map { Editing(maximumBytes: $0.maximumBytes, allowsEditing: true, mediaKind: $0.kind) }
     do {
+      guard edit == nil || mediaEdit == nil,
+            readOnlyCopies == nil || (edit == nil && mediaEdit == nil && transfer.recovered.isEmpty && readOnlyCopies?.bound == false) else { throw Failure.unavailable }
+      if let owner = transfer.owner { guard owner === readOnlyCopies?.registration else { throw Failure.changed } }
       guard !Task.isCancelled else { throw Failure.changed }
+      retained.append(contentsOf: scope.drainRetiredReadOnly())
       guard active == nil, retained.isEmpty else { throw Failure.busy }
       guard transfer.recovered.isEmpty || edit != nil else { throw Failure.unavailable }
       guard !title.contains("\0"), title.utf8.count <= 1024 else { throw Failure.unavailable }
@@ -275,8 +372,33 @@ extension ZoenFilePreviewPresentation {
     try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
         let session = Session(id: id, generation: generation, file: file, presentation: presentation,
-                              continuation: continuation, edit: edit, mediaEdit: mediaEdit, editing: editing, recovered: transfer.recovered)
+                              continuation: continuation, edit: edit, mediaEdit: mediaEdit, editing: editing, recovered: transfer.recovered, readOnlyCopies: readOnlyCopies)
         active = session
+        if let copies = readOnlyCopies {
+          copies.bound = true
+          copies.live = true
+          copies.admit = { [weak self, weak session] in
+            guard let self, let session, self.active === session, !session.stopping else { throw Failure.changed }
+            try self.scope.admit(session.generation) {}
+          }
+          copies.failed = { [weak self] file in self?.retained.append(file) }
+          copies.transfer = { [weak self, weak copies] ticket in
+            guard let self, let copies, let transfer = self.scope.take(ticket) else { throw Failure.changed }
+            guard transfer.generation == generation, transfer.recovered.isEmpty, transfer.owner === copies.registration else {
+              for file in transfer.files {
+                do { try file.remove() } catch { self.retained.append(file) }
+              }
+              throw Failure.changed
+            }
+            return transfer.file
+          }
+          copies.pending = { [weak self, weak copies] in
+            guard let self, let copies else { return [] }
+            return self.scope.finishReadOnly(copies.registration)
+          }
+          do { try copies.retain(file, key: initialKey) }
+          catch { finish(session, error: error); return }
+        }
         editing?.captured = { [weak self, weak session] result in
           guard let self, let session else { return }
           self.capture(result, session: session)
@@ -543,12 +665,15 @@ extension ZoenFilePreviewPresentation {
   func clear(before generation: UInt64) async throws {
     invalidate(before: generation)
     for transfer in scope.drain(before: generation) { retained.append(contentsOf: transfer.files) }
+    retained.append(contentsOf: scope.drainRetiredReadOnly())
     if let active, active.generation < generation {
       try await withCheckedThrowingContinuation { continuation in
         active.waiters.append(continuation)
         stop(active, error: Failure.changed)
       }
     }
+    // Include a failed late producer that arrived during UIKit dismissal.
+    retained.append(contentsOf: scope.drainRetiredReadOnly())
     let previous = retained
     retained = []
     var failure: Error?
@@ -587,7 +712,10 @@ extension ZoenFilePreviewPresentation {
     var result: Result<Void, Error> = error.map { .failure($0) } ?? .success(())
     var cleanup: Result<Void, Error> = session.cleanupFailure.map { .failure($0) } ?? .success(())
     if let error = session.cleanupFailure { result = .failure(error) }
-    do { try session.file.remove() }
+    do {
+      if let copies = session.readOnlyCopies { try copies.finish() }
+      else { try session.file.remove() }
+    }
     catch { retained.append(session.file); result = .failure(error); cleanup = .failure(error) }
     active = nil
     session.editing?.captured = nil

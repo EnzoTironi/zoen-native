@@ -21,6 +21,7 @@ export type MessageActionsProps = Readonly<{
   onForward?: (entry: TimelineEntry) => void;
   onCopy?: (entry: TimelineEntry) => void;
   onEdit?: (entry: TimelineEntry) => void;
+  onRecover?: (entry: TimelineEntry) => void;
   onDelete?: (entry: TimelineEntry) => void;
   onShare?: (entry: TimelineEntry) => void;
 }>;

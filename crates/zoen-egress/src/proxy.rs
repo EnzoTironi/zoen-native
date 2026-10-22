@@ -805,6 +805,7 @@ impl Egress {
             .as_bytes(),
         ));
         let request = AgentRequest {
+            tool_proposal: None,
             id: id.clone(),
             agent: policy.agent.clone(),
             title: format!("Permitir acesso a {}", target.host),

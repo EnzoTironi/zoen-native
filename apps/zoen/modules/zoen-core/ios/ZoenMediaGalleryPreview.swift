@@ -5,7 +5,7 @@ import UIKit
 /// Read-only visual presentation under the existing ZoenFilePreview lease/session.
 /// Editing and PDFs continue through Quick Look and its canonical capture path.
 @MainActor final class ZoenMediaGalleryPreview: NSObject, ZoenFilePreviewPresentation {
-  static func supports(mime: String) -> Bool {
+  nonisolated static func supports(mime: String) -> Bool {
     ["image/jpeg", "image/png", "image/heic", "image/heif", "image/webp", "video/mp4", "video/quicktime", "video/x-m4v"].contains(mime)
   }
   private weak var presenter: UIViewController?

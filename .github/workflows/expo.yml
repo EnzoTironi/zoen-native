@@ -128,7 +128,7 @@ jobs:
 
   miniapp-resources:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -142,12 +142,14 @@ jobs:
             packages/zoen-ui/package-lock.json
             apps/zoen/package-lock.json
             miniapps/excalidraw-ui/package-lock.json
-      - name: Install pinned miniapp, host and DOM test dependencies
-        run: |
-          npm ci --prefix tools/miniapp-build
-          npm ci --prefix packages/zoen-ui
-          npm ci --prefix apps/zoen
-          npm ci --prefix miniapps/excalidraw-ui
+      - name: Install pinned App build dependencies
+        run: npm ci --prefix tools/miniapp-build
+      - name: Install pinned shared UI and DOM test dependencies
+        run: npm ci --prefix packages/zoen-ui
+      - name: Install pinned Expo client dependencies
+        run: npm ci --prefix apps/zoen
+      - name: Install pinned Excalidraw dependencies
+        run: npm ci --prefix miniapps/excalidraw-ui
       - name: Verify pinned Excalidraw UI and early MCP event delivery
         run: |
           npm test --prefix miniapps/excalidraw-ui

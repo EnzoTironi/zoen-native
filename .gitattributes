@@ -2,5 +2,5 @@
 miniapps/deckcraft-ui/licenses/** -text -whitespace
 miniapps/deckcraft-ui/patches/*.patch -text -whitespace
 miniapps/deckcraft-ui/BOOTSTRAP-LICENSES.txt -text -whitespace
-# ts-rs emits a trailing space before the signed-author field documentation.
-apps/zoen/src/core/generated/AppBinaryDocumentDto.ts -whitespace
+# Preserve ts-rs output exactly, including spaces before generated field documentation.
+apps/zoen/src/core/generated/*.ts -whitespace

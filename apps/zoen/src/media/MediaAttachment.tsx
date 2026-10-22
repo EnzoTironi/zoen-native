@@ -16,6 +16,7 @@ import { AudioWaveform } from './audio-progress';
 import { VoiceTranscript } from './voice-transcript';
 import { VideoClip } from './VideoClip';
 import { previewMediaFile } from './preview-file';
+import { previewConversationMedia } from './conversation-media-preview';
 import { formatFileSize } from './file-size';
 import { inlineImageFrame, type DecodedMessageImage } from './inline-image-frame';
 
@@ -33,6 +34,7 @@ type FileAttachmentProps = {
   onActions?: () => void;
   onImageDecoded?: (image: DecodedMessageImage) => void;
   messageSource?: { spaceId: string; entry: TimelineEntry };
+  galleryEntries?: readonly TimelineEntry[];
   tile?: MediaTile;
   onInlineUnavailable?: () => void;
 };
@@ -59,6 +61,7 @@ function FileAttachmentContent({
   onActions,
   onImageDecoded,
   messageSource,
+  galleryEntries,
   tile,
   onInlineUnavailable,
 }: FileAttachmentProps) {
@@ -84,6 +87,9 @@ function FileAttachmentContent({
   const [local, setLocal] = useState<LocalMediaFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Presentation failures do not change whether the canonical file can render
+  // inline. Only metadata, inline materialization or decoding can release a tile.
+  const [inlineFailed, setInlineFailed] = useState(false);
   const [ratio, setRatio] = useState(1);
   const [availableWidth, setAvailableWidth] = useState(0);
   const [autoplay, setAutoplay] = useState(false);
@@ -112,10 +118,12 @@ function FileAttachmentContent({
           if (active) setInfo(value);
         })
         .catch((reason: unknown) => {
-          if (active)
+          if (active) {
+            setInlineFailed(true);
             setError(
               reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'),
             );
+          }
         });
     return () => {
       active = false;
@@ -141,9 +149,12 @@ function FileAttachmentContent({
   useEffect(() => {
     // A signed media group can contain a generic/large file. Retain its ordinary
     // canonical row rather than squeezing a file action into a visual mosaic.
-    if (mounted.current && (error || (info && (!visual || Number(info.bytes) > 16 * 1048576))))
+    if (
+      mounted.current &&
+      (inlineFailed || (info && (!visual || Number(info.bytes) > 16 * 1048576)))
+    )
       onInlineUnavailable?.();
-  }, [info, visual, error, onInlineUnavailable]);
+  }, [info, visual, inlineFailed, onInlineUnavailable]);
   useEffect(() => {
     if (!driver || !message || !info?.ready || !visual || Number(info.bytes) > 16 * 1048576) return;
     let active = true;
@@ -160,8 +171,10 @@ function FileAttachmentContent({
         if (previous) await driver.releaseLocalFile(previous.uri);
       })
       .catch((reason: unknown) => {
-        if (active && mounted.current && expectedGeneration === generation.current)
+        if (active && mounted.current && expectedGeneration === generation.current) {
+          setInlineFailed(true);
           setError(reason instanceof Error ? reason.message : t('media.thisFileCouldNotBeOpened'));
+        }
       });
     return () => {
       active = false;
@@ -222,6 +235,21 @@ function FileAttachmentContent({
     setError(null);
     let file: LocalMediaFile | null = null;
     try {
+      if (
+        messageSource &&
+        !messageSource.entry.forwarded &&
+        driver.previewConversationMedia &&
+        visual &&
+        !voice
+      ) {
+        await previewConversationMedia(
+          store,
+          messageSource.spaceId,
+          messageSource.entry.id,
+          galleryEntries ?? [messageSource.entry],
+        );
+        return;
+      }
       // A separate native-viewer lease outlives the virtualized message row.
       file = await materialize(driver);
       if (!mounted.current || expectedGeneration !== generation.current) return;
@@ -325,8 +353,10 @@ function FileAttachmentContent({
               }
             }}
             onError={() => {
-              if (mounted.current && owned.current === local)
+              if (mounted.current && owned.current === local) {
+                setInlineFailed(true);
                 setError(t('media.thisFileCouldNotBeOpened'));
+              }
             }}
             style={{ position: 'absolute', inset: 0 }}
           />
@@ -531,7 +561,23 @@ function FileAttachmentContent({
         <Text
           selectable
           accessibilityRole="alert"
-          style={{ color: ink, fontSize: 13, lineHeight: 19, padding: message ? 12 : 0 }}
+          numberOfLines={tile ? 2 : undefined}
+          style={{
+            color: tile ? '#FFFFFF' : ink,
+            fontSize: 13,
+            lineHeight: 19,
+            padding: message ? 12 : 0,
+            ...(tile
+              ? {
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  maxHeight: tile.height,
+                  backgroundColor: '#000000B3',
+                }
+              : {}),
+          }}
         >
           {error}
         </Text>
@@ -548,6 +594,7 @@ export function MessageMedia({
   onImageDecoded,
   tile,
   onInlineUnavailable,
+  galleryEntries,
 }: {
   spaceId: string;
   entry: TimelineEntry;
@@ -556,6 +603,7 @@ export function MessageMedia({
   onImageDecoded?: (image: DecodedMessageImage) => void;
   tile?: MediaTile;
   onInlineUnavailable?: () => void;
+  galleryEntries?: readonly TimelineEntry[];
 }) {
   if (entry.deleted) return null;
   if (entry.voice)
@@ -580,6 +628,8 @@ export function MessageMedia({
       onImageDecoded={onImageDecoded}
       tile={tile}
       onInlineUnavailable={onInlineUnavailable}
+      messageSource={{ spaceId, entry }}
+      galleryEntries={galleryEntries}
       presentation={presentation}
       renderAsFile={entry.media?.presentation === 'file'}
       mine={entry.author.is_me}

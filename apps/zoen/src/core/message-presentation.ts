@@ -77,6 +77,16 @@ export function messageCanInteract(entry: TimelineEntry) {
   return !entry.deleted && 'Message' in entry.kind;
 }
 
+/** Selection only; the core rechecks the signed Failed outbox and both drafts. */
+export function messageCanRecoverMedia(entry: TimelineEntry) {
+  return (
+    messageCanInteract(entry) &&
+    entry.author.is_me &&
+    entry.delivery === 'Failed' &&
+    Boolean(entry.voice || messageCard(entry)?.kind_id === 'file')
+  );
+}
+
 export function messageHasAttachment(entry: TimelineEntry) {
   return !entry.deleted && Boolean(entry.voice || messageCard(entry));
 }
