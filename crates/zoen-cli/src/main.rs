@@ -11,9 +11,9 @@
 mod agent;
 mod agent_host_lock;
 mod deckcraft;
+mod file_vault;
 
 use std::{
-    io::Write,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -23,33 +23,19 @@ use client_core::{
     Client, ConnectionDto, CoreListener, Delivery, EntryKind, MarkdownFileDto, PhotoChange,
     PrivacyDto, ProfileDto, SecretVault, SpaceKindDto,
 };
-
-struct FileVault {
-    dir: PathBuf,
-}
+use file_vault::FileVault;
 
 impl SecretVault for FileVault {
     fn load(&self, key: String) -> Option<Vec<u8>> {
-        std::fs::read(self.dir.join(key)).ok()
+        self.read_bytes(&key).ok()
     }
     fn save(&self, key: String, value: Vec<u8>) -> bool {
-        if std::fs::create_dir_all(&self.dir).is_err() {
-            return false;
-        }
-        let path = self.dir.join(key);
-        let mut opts = std::fs::OpenOptions::new();
-        opts.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            opts.mode(0o600);
-        }
-        opts.open(path)
-            .and_then(|mut f| f.write_all(&value))
-            .is_ok()
+        self.write_bytes(&key, &value).is_ok()
     }
     fn delete(&self, key: String) {
-        let _ = std::fs::remove_file(self.dir.join(key));
+        // SecretVault cannot report deletion errors. Callers needing confirmed
+        // removal must still reconcile with the retained enrollment/setup state.
+        let _ = self.remove(&key);
     }
 }
 
