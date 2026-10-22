@@ -153,6 +153,7 @@ impl Peer {
                     Err(error) => panic!("owned local accept: {error}"),
                 }
             };
+            stream.set_nonblocking(false).unwrap();
             state.lock().unwrap().accepted_after_ms = Some(epoch.elapsed().as_millis());
             stream.set_read_timeout(Some(PEER_FALLBACK)).unwrap();
             stream.set_write_timeout(Some(PEER_FALLBACK)).unwrap();
