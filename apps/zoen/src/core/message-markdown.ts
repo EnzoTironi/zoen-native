@@ -1,7 +1,7 @@
 /** Candidate selection only. The maintained Markdown renderer owns parsing. */
-export function messageMayContainMarkdown(text: string): boolean {
+export function messageMayContainMarkdown(text: string, nativeMediaDisabled = false): boolean {
   return (
-    !messageMarkdownMayLoadMedia(text) &&
+    (nativeMediaDisabled || !messageMarkdownMayLoadMedia(text)) &&
     /[*_`~[\]|]|(?:^|\n) {0,3}(?:#{1,6}\s|>\s?|[-+]\s|\d{1,9}[.)]\s)/u.test(text)
   );
 }
@@ -25,8 +25,8 @@ export function messageMarkdownLink(value: string): string | null {
 }
 
 /** The installed parser can fetch image nodes and promote HTML video blocks.
- * Keep possible media markup as exact plain text until native image admission exists.
- * This conservative candidate check intentionally includes escaped/code examples. */
+ * Platforms without qualified native admission keep possible media markup as exact plain text.
+ * This conservative fallback intentionally includes escaped/code examples. */
 export function messageMarkdownMayLoadMedia(text: string): boolean {
   return text.includes('![') || text.includes('<');
 }

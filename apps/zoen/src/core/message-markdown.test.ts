@@ -82,14 +82,14 @@ const compiled = await build({
   ],
 });
 
-function fixture() {
+function fixture(platform = 'ios') {
   const opened: string[] = [];
   const colors = { accent: '#1478d4', secondary: '#798088', surface: '#232933', line: '#3b424b' };
   const module = { exports: {} as Record<string, unknown> };
   runInNewContext(compiled.outputFiles[0]!.text, {
     module,
     exports: module.exports,
-    process: { env: { EXPO_OS: 'ios' } },
+    process: { env: { EXPO_OS: platform } },
     URL,
     require(name: string) {
       if (name === 'react')
@@ -174,23 +174,32 @@ test('rendered link events use the navigation boundary, and text selection is an
   assert.equal(props.enableBlockContextMenu, true);
 });
 
-test('possible images and HTML video never reach native media loading; exact source remains plain text', () => {
-  const f = fixture();
-  for (const text of [
-    '![remote](https://example.com/private.png)',
-    '![local](file:///private/file)',
-    '![data](data:image/png;base64,AA)',
-    '![reference][id]\n\n[id]: https://example.com/image',
-    '**Bold** and ![x](https://example.com/x)',
-    '<video src="https://example.com/video.mp4"></video>',
-    '<IMG src="file:///private/file">',
-    '`![literal](image)`',
-  ]) {
-    assert.equal(messageMarkdownMayLoadMedia(text), true);
-    assert.equal(messageMayContainMarkdown(text), false);
-    const rendered = f.render({ text, color: '#123456', fontSize: 17, maxWidth: 280 });
-    assert.equal(rendered.type, 'PlainText');
-    assert.equal(rendered.props.children, text);
+test('iOS opts into the native media-free parser while other platforms retain exact plain-text media fallback', () => {
+  for (const platform of ['ios', 'android', 'web']) {
+    const f = fixture(platform);
+    for (const text of [
+      '![remote](https://example.invalid/private.png)',
+      '![local](file:///private/synthetic-file)',
+      '![data](data:image/png;base64,AA)',
+      '![reference][id]\n\n[id]: https://example.invalid/image',
+      '**Bold** and ![x](https://example.invalid/x)',
+      '<video src="https://example.invalid/video.mp4"></video>',
+      '<IMG src="file:///private/synthetic-file">',
+      '`![literal](image)`',
+    ]) {
+      assert.equal(messageMarkdownMayLoadMedia(text), true);
+      assert.equal(messageMayContainMarkdown(text), false);
+      const rendered = f.render({ text, color: '#123456', fontSize: 17, maxWidth: 280 });
+      if (platform === 'ios') {
+        assert.equal(rendered.type, 'NativeMarkdownText');
+        assert.equal(rendered.props.markdown, text);
+        assert.equal((rendered.props.md4cFlags as { noMedia: boolean }).noMedia, true);
+      } else {
+        assert.equal(rendered.type, 'PlainText');
+        assert.equal(rendered.props.children, text);
+      }
+    }
   }
   assert.equal(messageMayContainMarkdown('**Hello**!'), true);
+  assert.equal(messageMayContainMarkdown('```c\nx < y; // ![literal](url)\n```', true), true);
 });

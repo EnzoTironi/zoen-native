@@ -86,7 +86,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       spoiler: { color: colors.secondary },
     };
   }, [color, colors, fontSize]);
-  if (messageMarkdownMayLoadMedia(text))
+  if (process.env.EXPO_OS !== 'ios' && messageMarkdownMayLoadMedia(text))
     return (
       <Text
         testID={testID}
@@ -104,7 +104,12 @@ export const MessageMarkdown = memo(function MessageMarkdown({
       flavor="github"
       markdownStyle={markdownStyle}
       containerStyle={{ minWidth: 0, maxWidth, flexShrink: 1 }}
-      md4cFlags={{ hardSoftBreaks: true, preserveBlankLines: true, latexMath: false }}
+      md4cFlags={{
+        hardSoftBreaks: true,
+        preserveBlankLines: true,
+        latexMath: false,
+        noMedia: process.env.EXPO_OS === 'ios',
+      }}
       selectable={selectable}
       allowFontScaling
       enableLinkPreview={false}
