@@ -11,7 +11,7 @@ export default function AgentDefinition() {
   const dialogs = useDialogs();
   const [leaving, setLeaving] = useState(false);
   const dialogPending = useRef(false);
-  const dirty = session.dirty() && ['editing', 'previewing', 'review'].includes(state.phase);
+  const dirty = session.dirty(state) && ['editing', 'previewing', 'review'].includes(state.phase);
   usePreventRemove(!leaving && dirty, ({ repeat }) => {
     const ticket = session.ticket();
     if (!ticket || dialogPending.current) return;
@@ -34,8 +34,8 @@ export default function AgentDefinition() {
         dialogPending.current = false;
       });
   });
-  const observed = session.confirmation();
-  const rendered = session.ticket();
+  const observed = session.confirmation(state);
+  const rendered = session.ticket(state);
   const active = () => rendered && session.acceptsSession(rendered);
   return (
     <DefinitionView

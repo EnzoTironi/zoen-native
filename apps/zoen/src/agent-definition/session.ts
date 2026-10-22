@@ -124,8 +124,8 @@ export class DefinitionSession {
   retire() {
     this.activate(null);
   }
-  ticket(): DefinitionTicket | null {
-    return this.scope
+  ticket(observed: DefinitionState = this.state): DefinitionTicket | null {
+    return this.scope && observed === this.state
       ? { generation: this.generation, revision: this.revision, scope: this.state.scope }
       : null;
   }
@@ -233,10 +233,11 @@ export class DefinitionSession {
       if (ticket.generation === this.generation) this.loading = false;
     }
   }
-  dirty() {
+  dirty(observed: DefinitionState = this.state) {
     return (
-      !!this.state.current &&
-      !sameText(this.state.current, { persona: this.state.persona, rules: [...this.state.rules] })
+      observed === this.state &&
+      !!observed.current &&
+      !sameText(observed.current, { persona: observed.persona, rules: [...observed.rules] })
     );
   }
   edit(persona: string, rules: readonly string[]) {
@@ -333,10 +334,10 @@ export class DefinitionSession {
       if (this.accepts(ticket)) this.publish({ ...this.state, phase: 'editing', error: 'preview' });
     }
   }
-  confirmation(): DefinitionConfirmation | null {
-    const ticket = this.ticket();
-    return ticket && this.state.phase === 'review' && this.state.review
-      ? { ...ticket, digest: this.state.review.preview_digest }
+  confirmation(observed: DefinitionState = this.state): DefinitionConfirmation | null {
+    const ticket = this.ticket(observed);
+    return ticket && observed.phase === 'review' && observed.review
+      ? { ...ticket, digest: observed.review.preview_digest }
       : null;
   }
   async apply(observed: DefinitionConfirmation) {
