@@ -14,13 +14,22 @@ EXPERIMENT_FILES = {
         'src/web/app_runner.rs', 'src/web/backend.rs', 'src/web/events.rs',
         'src/web/mod.rs', 'src/web/text_agent.rs', 'src/web/text_input_activation.rs',
     ],
+    'egui-touch-input': [
+        'src/text_selection/text_cursor_state.rs',
+        'src/text_selection/touch_input_tests.rs',
+    ],
 }
 EXPERIMENT_NAMES = tuple(EXPERIMENT_FILES)
+EXPERIMENT_CHAINS = (('eframe-shift',), ('eframe-ios-input',),
+                     ('eframe-ios-input', 'egui-touch-input'))
 EXPERIMENT_SOURCE_FILES = {
     'eframe-shift': ['Cargo.toml', 'Cargo.lock'],
     'eframe-ios-input': [
         'Cargo.toml', 'Cargo.lock', 'crates/ui-egui/src/canvas.rs',
         'crates/ui-egui/src/host_phone_landscape_tests.rs',
+    ],
+    'egui-touch-input': [
+        'Cargo.toml', 'Cargo.lock', 'crates/ui-egui/src/host_phone_landscape_tests.rs',
     ],
 }
 
@@ -65,9 +74,11 @@ def load_experiment(root, name, upstream):
             or data.get('baseManagedCargoLockSha256') != upstream['managedCargoLockSha256']):
         raise ValueError('Experiment base changed')
     crate = data.get('crate')
-    if (not isinstance(crate, dict) or crate.get('name') != 'eframe'
-            or crate.get('version') != '0.36.2' or crate.get('prefix') != 'eframe-0.36.2'
-            or crate.get('vendorPath') != 'vendor/eframe-0.36.2'
+    crate_name = 'egui' if name == 'egui-touch-input' else 'eframe'
+    prefix = crate_name + '-0.36.2'
+    if (not isinstance(crate, dict) or crate.get('name') != crate_name
+            or crate.get('version') != '0.36.2' or crate.get('prefix') != prefix
+            or crate.get('vendorPath') != 'vendor/' + prefix
             or crate.get('changedFiles') != EXPERIMENT_FILES[name]):
         raise ValueError('Unexpected experiment dependency')
     sources = data.get('sourceFiles')

@@ -1,0 +1,361 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -2,7 +2,7 @@
+ resolver = "3"
+ members = ["crates/*", "apps/*", "xtask"]
+ default-members = ["crates/*", "apps/deckcraft", "apps/deckcraft-cli"]
+-exclude = ["vendor/eframe-0.36.2"]
++exclude = ["vendor/eframe-0.36.2", "vendor/egui-0.36.2"]
+ 
+ [workspace.package]
+ version = "0.9.0"
+@@ -98,4 +98,5 @@
+ 
+ [patch.crates-io]
+ eframe = { path = "vendor/eframe-0.36.2" }
++egui = { path = "vendor/egui-0.36.2" }
+ krilla = { git = "https://github.com/storytold/craft-libs", rev = "c3487320b2d1de657b860b3c8abb44e1f2b32bd8", version = "=0.8.2" }
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1389,8 +1389,6 @@
+ [[package]]
+ name = "egui"
+ version = "0.36.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "dc938cc27cd911415e1e4d151bc56ff9df063d8db081374e87aeb805ea74b2ba"
+ dependencies = [
+  "accesskit",
+  "ahash",
+--- a/crates/ui-egui/src/host_phone_landscape_tests.rs
++++ b/crates/ui-egui/src/host_phone_landscape_tests.rs
+@@ -520,3 +520,38 @@
+     primary_event(&mut h, at, false);
+     assert!(!activation_after_current_frame(&h));
+ }
++
++#[test]
++fn actual_notes_touch_release_with_pointergone_admits_hint_input() {
++    for size in [vec2(402.0, 874.0), vec2(430.0, 932.0)] {
++        let portrait = layout(size.x, size.y, 0.0, 0.0);
++        let mut h = fixture(Some(portrait), size);
++        h.get_by_label("Speaker notes").click();
++        h.run_steps(2);
++        let rect = h.query_all_by_role(Role::MultilineTextInput).next().unwrap().rect();
++        let at = rect.left_top() + vec2(59.0, 7.0);
++        h.input_mut().time = Some(h.ctx.input(|input| input.time) + 0.05);
++        h.input_mut().events.extend([
++            Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE },
++            Event::Touch { device_id: egui::TouchDeviceId(0), id: egui::TouchId::from(7), phase: egui::TouchPhase::Start, pos: at, force: None },
++        ]);
++        h.step();
++        h.input_mut().time = Some(h.ctx.input(|input| input.time) + 0.05);
++        h.input_mut().events.extend([
++            Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE },
++            Event::PointerGone,
++            Event::Touch { device_id: egui::TouchDeviceId(0), id: egui::TouchId::from(7), phase: egui::TouchPhase::End, pos: at, force: None },
++        ]);
++        h.step();
++        let id = egui::Id::new("notes_edit");
++        let response = h.ctx.read_response(id).unwrap();
++        assert!(
++            activation_after_current_frame(&h),
++            "size={size:?} rect={rect:?} focused={} clicked={} ime={} response_focus={}",
++            h.ctx.text_edit_focused(),
++            response.clicked_by(egui::PointerButton::Primary),
++            h.output().platform_output.ime.is_some(),
++            response.has_focus()
++        );
++    }
++}
+--- a/vendor/egui-0.36.2/src/text_selection/text_cursor_state.rs
++++ b/vendor/egui-0.36.2/src/text_selection/text_cursor_state.rs
+@@ -75,8 +75,11 @@
+             let ccursor_range = select_line_at(text, cursor_at_pointer);
+             self.set_char_range(Some(ccursor_range));
+             true
+-        } else if response.sense.senses_drag() {
+-            if response.hovered() && ui.input(|i| i.pointer.any_pressed()) {
++        } else if response.sense.senses_drag() || response.clicked() {
++            // Unfocused touch editors sense clicks so their parent can scroll.
++            // A real tap must still place the cursor in this release frame:
++            // mobile backends need its IME output inside the user gesture.
++            if response.clicked() || (response.hovered() && ui.input(|i| i.pointer.any_pressed())) {
+                 // The start of a drag (or a click).
+                 if ui.input(|i| i.modifiers.shift) {
+                     if let Some(mut cursor_range) = self.range(galley) {
+@@ -505,3 +508,7 @@
+         }
+     }
+ }
++
++#[cfg(test)]
++#[path = "touch_input_tests.rs"]
++mod touch_input_tests;
+--- /dev/null
++++ b/vendor/egui-0.36.2/src/text_selection/touch_input_tests.rs
+@@ -0,0 +1,265 @@
++//! Real TextEdit touch gestures must initialize the cursor in their release frame.
++use crate::text::CCursor;
++use crate::text_edit::TextEditOutput;
++use crate::{
++    Context, Event, FullOutput, Id, Modifiers, PointerButton, Pos2, RawInput, Rect, TextEdit,
++    TouchDeviceId, TouchId, TouchPhase, vec2,
++};
++
++struct Editor {
++    ctx: Context,
++    text: String,
++    time: f64,
++    multiline: bool,
++    enabled: bool,
++    interactive: bool,
++}
++impl Editor {
++    fn new(text: &str, multiline: bool) -> Self {
++        Self {
++            ctx: Context::default(),
++            text: text.into(),
++            time: 0.0,
++            multiline,
++            enabled: true,
++            interactive: true,
++        }
++    }
++    fn frame(
++        &mut self,
++        mut events: Vec<Event>,
++        modifiers: Modifiers,
++    ) -> (FullOutput, TextEditOutput) {
++        self.time += 0.05;
++        events.insert(0, Event::ModifiersChanged(modifiers));
++        let mut edit = None;
++        let mut full = self.ctx.run_ui(
++            RawInput {
++                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(402.0, 874.0))),
++                events,
++                time: Some(self.time),
++                ..Default::default()
++            },
++            |ui| {
++                edit = Some(
++                    ui.add_enabled_ui(self.enabled, |ui| {
++                        let field = if self.multiline {
++                            TextEdit::multiline(&mut self.text)
++                        } else {
++                            TextEdit::singleline(&mut self.text)
++                        };
++                        field
++                            .id(Id::new("field"))
++                            .interactive(self.interactive)
++                            .hint_text("Add notes")
++                            .desired_rows(2)
++                            .show(ui)
++                    })
++                    .inner,
++                );
++            },
++        );
++        full.textures_delta.clear();
++        (full, edit.unwrap())
++    }
++    fn point(out: &TextEditOutput, index: usize) -> Pos2 {
++        out.galley_pos
++            + out
++                .galley
++                .pos_from_cursor(CCursor::new(index))
++                .center()
++                .to_vec2()
++    }
++    fn down(
++        &mut self,
++        at: Pos2,
++        touch: bool,
++        modifiers: Modifiers,
++    ) -> (FullOutput, TextEditOutput) {
++        let mut events = vec![
++            Event::PointerMoved(at),
++            Event::PointerButton {
++                pos: at,
++                button: PointerButton::Primary,
++                pressed: true,
++                modifiers,
++            },
++        ];
++        if touch {
++            events.push(touch_event(at, TouchPhase::Start));
++        }
++        self.frame(events, modifiers)
++    }
++    fn up(&mut self, at: Pos2, touch: bool, modifiers: Modifiers) -> (FullOutput, TextEditOutput) {
++        let mut events = vec![Event::PointerButton {
++            pos: at,
++            button: PointerButton::Primary,
++            pressed: false,
++            modifiers,
++        }];
++        if touch {
++            // This is eframe's real touch-end event order, not a synthetic click.
++            events.push(Event::PointerGone);
++            events.push(touch_event(at, TouchPhase::End));
++        }
++        self.frame(events, modifiers)
++    }
++    fn tap(&mut self, at: Pos2, touch: bool, modifiers: Modifiers) -> (FullOutput, TextEditOutput) {
++        self.down(at, touch, modifiers);
++        self.up(at, touch, modifiers)
++    }
++}
++fn touch_event(pos: Pos2, phase: TouchPhase) -> Event {
++    Event::Touch {
++        device_id: TouchDeviceId(0),
++        id: TouchId::from(7),
++        phase,
++        pos,
++        force: None,
++    }
++}
++fn selection(out: &TextEditOutput) -> std::ops::Range<usize> {
++    let range = out
++        .state
++        .cursor
++        .char_range()
++        .unwrap()
++        .as_sorted_char_range();
++    range.start.0..range.end.0
++}
++
++#[test]
++fn first_touch_on_empty_singleline_and_multiline_has_current_release_ime() {
++    for multiline in [false, true] {
++        let mut editor = Editor::new("", multiline);
++        let (_, field) = editor.frame(vec![], Modifiers::NONE);
++        let (full, field) = editor.tap(field.response.rect.center(), true, Modifiers::NONE);
++        assert!(field.response.clicked() && field.response.has_focus());
++        assert_eq!(selection(&field), 0..0);
++        assert!(
++            full.platform_output.ime.is_some(),
++            "the user-gesture release must publish IME now"
++        );
++        assert!(editor.text.is_empty(), "focus never inserts text");
++    }
++}
++
++#[test]
++fn first_touch_places_nonempty_cursor_at_real_pointer_not_default_end() {
++    let mut editor = Editor::new("alpha beta", true);
++    let (_, field) = editor.frame(vec![], Modifiers::NONE);
++    let at = Editor::point(&field, 2);
++    let (full, field) = editor.tap(at, true, Modifiers::NONE);
++    assert_eq!(selection(&field), 2..2);
++    assert!(full.platform_output.ime.is_some());
++    assert_eq!(editor.text, "alpha beta");
++}
++
++#[test]
++fn mouse_click_and_shift_extension_keep_their_cursor_semantics() {
++    let mut editor = Editor::new("alpha beta", true);
++    let (_, field) = editor.frame(vec![], Modifiers::NONE);
++    let at = Editor::point(&field, 2);
++    let (full, field) = editor.tap(at, false, Modifiers::NONE);
++    assert_eq!(selection(&field), 2..2);
++    assert!(full.platform_output.ime.is_some());
++    editor.time += 1.0; // A deliberate new single click, not a double click.
++    let at = Editor::point(&field, 7);
++    let modifiers = Modifiers {
++        shift: true,
++        ..Modifiers::NONE
++    };
++    let (_, field) = editor.tap(at, false, modifiers);
++    assert_eq!(selection(&field), 2..7);
++}
++
++#[test]
++fn touch_double_and_triple_click_keep_word_and_line_selection() {
++    let mut editor = Editor::new("alpha beta\nsecond", true);
++    let (_, field) = editor.frame(vec![], Modifiers::NONE);
++    let at = Editor::point(&field, 2);
++    editor.tap(at, true, Modifiers::NONE);
++    let (full, field) = editor.tap(at, true, Modifiers::NONE);
++    assert!(field.response.double_clicked());
++    assert_eq!(selection(&field), 0..5);
++    assert!(full.platform_output.ime.is_some());
++    let (full, field) = editor.tap(at, true, Modifiers::NONE);
++    assert!(field.response.triple_clicked());
++    assert_eq!(selection(&field), 0..10);
++    assert!(full.platform_output.ime.is_some());
++}
++
++#[test]
++fn unfocused_touch_drag_and_cancel_do_not_admit_text_but_next_tap_recovers() {
++    for cancel in [false, true] {
++        let mut editor = Editor::new("alpha beta", true);
++        let (_, field) = editor.frame(vec![], Modifiers::NONE);
++        let at = field.response.rect.center();
++        editor.down(at, true, Modifiers::NONE);
++        let (full, field) = if cancel {
++            // eframe cancels button state without fabricating a clickable Up.
++            editor
++                .ctx
++                .input_mut(|input| input.pointer = crate::PointerState::default());
++            editor.frame(
++                vec![Event::PointerGone, touch_event(at, TouchPhase::Cancel)],
++                Modifiers::NONE,
++            )
++        } else {
++            let moved = at + vec2(0.0, 35.0);
++            editor.frame(
++                vec![
++                    Event::PointerMoved(moved),
++                    touch_event(moved, TouchPhase::Move),
++                ],
++                Modifiers::NONE,
++            );
++            editor.up(moved, true, Modifiers::NONE)
++        };
++        assert!(!field.response.clicked());
++        assert!(!field.response.has_focus());
++        assert!(full.platform_output.ime.is_none());
++        editor.time += 1.0;
++        let (full, field) = editor.tap(at, true, Modifiers::NONE);
++        assert!(field.response.clicked() && field.response.has_focus());
++        assert!(full.platform_output.ime.is_some());
++    }
++}
++
++#[test]
++fn focused_pointer_and_touch_drag_selection_is_not_collapsed_on_release() {
++    for touch in [false, true] {
++        let mut editor = Editor::new("alpha beta", true);
++        let (_, field) = editor.frame(vec![], Modifiers::NONE);
++        editor.tap(Editor::point(&field, 0), touch, Modifiers::NONE);
++        // A normal paint establishes the focused widget's drag sense before
++        // the next independent gesture is hit-tested against previous widgets.
++        editor.frame(vec![], Modifiers::NONE);
++        editor.time += 1.0;
++        let at = Editor::point(&field, 1);
++        editor.down(at, touch, Modifiers::NONE);
++        let moved = Editor::point(&field, 8);
++        let mut events = vec![Event::PointerMoved(moved)];
++        if touch {
++            events.push(touch_event(moved, TouchPhase::Move));
++        }
++        editor.frame(events, Modifiers::NONE);
++        let (_, field) = editor.up(moved, touch, Modifiers::NONE);
++        assert!(!field.response.clicked());
++        assert_eq!(selection(&field), 1..8, "touch={touch}");
++    }
++}
++
++#[test]
++fn disabled_and_noninteractive_text_do_not_request_ime() {
++    for disabled in [false, true] {
++        let mut editor = Editor::new("unchanged", true);
++        editor.enabled = !disabled;
++        editor.interactive = disabled;
++        let (_, field) = editor.frame(vec![], Modifiers::NONE);
++        let (full, field) = editor.tap(field.response.rect.center(), true, Modifiers::NONE);
++        assert!(!field.response.has_focus());
++        assert!(full.platform_output.ime.is_none());
++        assert_eq!(editor.text, "unchanged");
++    }
++}

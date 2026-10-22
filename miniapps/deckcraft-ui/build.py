@@ -13,7 +13,7 @@ import sys
 import tarfile
 import time
 
-from dependency_experiment import EXPERIMENT_NAMES, load_experiment, stage_experiment
+from dependency_experiment import EXPERIMENT_CHAINS, EXPERIMENT_NAMES, load_experiment, stage_experiment
 
 ROOT = Path(__file__).resolve().parent
 
@@ -29,7 +29,7 @@ def checked_file(path, digest):
 def run(command, cwd, env=None, timeout=30):
     return subprocess.check_output(command, cwd=cwd, env=env, timeout=timeout, stderr=subprocess.STDOUT).decode()
 
-def prepare(upstream, fonts, work, metadata, experiment=None, experiment_crate=None):
+def prepare(upstream, fonts, work, metadata, experiments=()):
     # Archive the pinned Git object, never the caller's working tree or local changes.
     archive = subprocess.check_output(['git', '-C', str(upstream), 'archive', '--format=tar', metadata['revision']], timeout=30)
     source = work / 'source'
@@ -47,12 +47,16 @@ def prepare(upstream, fonts, work, metadata, experiment=None, experiment_crate=N
         run(['git', 'apply', '--check', str(path)], source)
         run(['git', 'apply', str(path)], source)
     checked_file(source / 'Cargo.lock', metadata['managedCargoLockSha256'])
-    if experiment is not None:
+    proofs = []
+    for experiment, archive in experiments:
         def apply_dependency_patch(target, patch):
             run(['git', 'apply', '--check', str(patch)], target)
             run(['git', 'apply', str(patch)], target)
-        proof = stage_experiment(source, experiment, experiment_crate, ROOT, apply_dependency_patch)
-        (work / 'dependency-experiment.json').write_text(json.dumps(proof, indent=2) + '\n')
+        proofs.append(stage_experiment(source, experiment, archive, ROOT, apply_dependency_patch))
+    if len(proofs) == 1:
+        (work / 'dependency-experiment.json').write_text(json.dumps(proofs[0], indent=2) + '\n')
+    elif proofs:
+        (work / 'dependency-experiments.json').write_text(json.dumps(proofs, indent=2) + '\n')
     index = source / 'apps/deckcraft-web/index.html'
     original = index.read_text()
     marker = 'data-bin="deckcraft-web"'
@@ -85,13 +89,20 @@ def main():
     parser.add_argument('--cache-target', type=Path, help='Optional existing inactive Cargo target, copied read-only into the private target')
     parser.add_argument('--deadline', type=int, default=1800)
     parser.add_argument('--prepare-only', action='store_true')
-    parser.add_argument('--experiment', choices=EXPERIMENT_NAMES, help='Explicit unqualified browser dependency experiment; default off')
-    parser.add_argument('--experiment-crate', type=Path, help='Existing local exact dependency .crate archive; never downloads or edits Cargo registry source')
+    parser.add_argument('--experiment', choices=EXPERIMENT_NAMES, action='append', default=[], help='Explicit ordered dependency experiment; repeat only for a reviewed chain, default off')
+    parser.add_argument('--experiment-crate', type=Path, action='append', default=[], help='Matching ordered exact local .crate archive; never downloads or edits Cargo registry source')
     args = parser.parse_args()
     metadata = json.loads((ROOT / 'upstream.json').read_text())
-    if bool(args.experiment) != bool(args.experiment_crate):
+    if len(args.experiment) != len(args.experiment_crate):
         raise ValueError('Experiment and exact local crate input must be supplied together')
-    experiment = load_experiment(ROOT, args.experiment, metadata) if args.experiment else None
+    if args.experiment and tuple(args.experiment) not in EXPERIMENT_CHAINS:
+        raise ValueError('Unreviewed dependency experiment chain')
+    experiments = []
+    stage_base = metadata
+    for name, archive in zip(args.experiment, args.experiment_crate):
+        experiment = load_experiment(ROOT, name, stage_base)
+        experiments.append((experiment, archive.resolve(strict=True)))
+        stage_base = dict(metadata, managedCargoLockSha256=experiment['managedCargoLockSha256'])
     if not 1 <= args.deadline <= 3600 or not args.work.is_absolute():
         raise ValueError('Use an absolute private directory and a bounded deadline <=3600s')
     work = args.work.resolve()
@@ -100,11 +111,13 @@ def main():
     if args.base_url and not args.base_url.endswith('/'):
         raise ValueError('An explicit code-asset base URL must end in /; build does not publish it')
     work.mkdir(exist_ok=False, parents=True)
-    source, fonts = prepare(args.upstream.resolve(), args.fonts.resolve(), work, metadata, experiment, args.experiment_crate.resolve() if args.experiment_crate else None)
+    source, fonts = prepare(args.upstream.resolve(), args.fonts.resolve(), work, metadata, experiments)
     receipt = {'revision': metadata['revision'], 'patches': metadata['patches'], 'prepared': True, 'advertised': False,
                'jobs': 1, 'binaryenCores': 1, 'deadlineSeconds': args.deadline}
-    if experiment is not None:
+    if len(experiments) == 1:
         receipt['dependencyExperiment'] = json.loads((work / 'dependency-experiment.json').read_text())
+    elif experiments:
+        receipt['dependencyExperiments'] = json.loads((work / 'dependency-experiments.json').read_text())
     (work / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
     if args.prepare_only:
         (work / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')

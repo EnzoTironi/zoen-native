@@ -136,3 +136,32 @@ multiple contacts and owner changes. These tests and WASM compilation do not
 prove that WKWebView opens the software keyboard on the first gesture. Keep the
 experiment unqualified until the final iPhone artifact passes input, correction,
 recovery and export. Building this package does not change the runtime asset pins.
+
+## First-touch cursor correction
+
+The reviewed successor recipe repeats the dependency arguments in this order:
+
+```sh
+--experiment eframe-ios-input --experiment-crate /absolute/eframe-0.36.2.crate \
+--experiment egui-touch-input --experiment-crate /absolute/egui-0.36.2.crate
+```
+
+The second stage uses the same checked archive/patch mechanism for egui 0.36.2.
+It requires the exact first-stage lock and source hashes, and records both
+dependency proofs. Other chains are refused before creating the output tree.
+The original recipes and their pins remain available.
+
+An initially unfocused touch TextEdit senses clicks so its parent can scroll.
+The pinned egui cursor code handled drag-capable responses but did not initialize
+the cursor for that click-only tap. Focus arrived on release with no cursor or
+IME output; the later frame missed the synchronous mobile activation opportunity.
+Patch 0018 initializes the cursor at a genuine click through the shared text
+selection path. It applies to ordinary eframe text fields across Craft apps.
+The existing eframe admission, drag thresholds and Notes save commands are retained.
+
+The focused regressions exercise the actual widget, first-release cursor/IME,
+pointer and touch selection, multiclicks, cancellation, disabled fields, and the
+actual DeckCraft Notes release callback with its existing admission gate. These
+source tests do not establish that the final WKWebView artifact opens the iOS
+keyboard or saves real user input. Candidate assets need separate native input,
+canonical save/reopen and export qualification before promotion.
