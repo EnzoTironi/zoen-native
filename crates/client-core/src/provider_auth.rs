@@ -160,7 +160,7 @@ impl ProviderSetup {
     }
 }
 
-fn relay_base(value: &str) -> Result<String, CoreError> {
+pub(crate) fn relay_base(value: &str) -> Result<String, CoreError> {
     let parsed = reqwest::Url::parse(value).map_err(|_| invalid("Servidor inválido."))?;
     let loopback = matches!(parsed.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
     if !(parsed.scheme() == "https" || (parsed.scheme() == "http" && loopback))

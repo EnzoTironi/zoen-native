@@ -212,6 +212,28 @@ enum Command {
     AgentStatus {
         agent_id: String,
     },
+    AgentEnrollmentPreview {
+        code: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    AgentEnrollmentApprove {
+        code: String,
+        observed_offer_digest: String,
+        confirmed_pairing_check: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    AgentEnrollmentStatus {
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    AgentEnrollmentDismiss {
+        receipt_id: String,
+        observed_offer_digest: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
     OpenAgentLink {
         target: String,
     },
@@ -558,6 +580,9 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::DecideOutcome::export_all(&config)?;
     crate::PageEditResult::export_all(&config)?;
     crate::AgentStatus::export_all(&config)?;
+    crate::AgentEnrollmentPreviewDto::export_all(&config)?;
+    crate::AgentEnrollmentDeliveryDto::export_all(&config)?;
+    crate::AgentEnrollmentStatusDto::export_all(&config)?;
     crate::UniversalResults::export_all(&config)?;
     Ok(())
 }
@@ -879,6 +904,47 @@ impl Client {
             LeaveSpace { space_id } => encode(&self.leave_space(space_id)?),
             EncryptChat { space_id } => encode(&self.encrypt_chat(space_id)?),
             AgentStatus { agent_id } => encode(&self.agent_status(agent_id).await?),
+            AgentEnrollmentPreview {
+                code,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(&self.agent_enrollment_preview(
+                &code,
+                &expected_identity_id,
+                &expected_device_id,
+            )?),
+            AgentEnrollmentApprove {
+                code,
+                observed_offer_digest,
+                confirmed_pairing_check,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(
+                &self
+                    .agent_enrollment_approve(
+                        &code,
+                        &observed_offer_digest,
+                        &expected_identity_id,
+                        &expected_device_id,
+                        &confirmed_pairing_check,
+                    )
+                    .await?,
+            ),
+            AgentEnrollmentStatus {
+                expected_identity_id,
+                expected_device_id,
+            } => encode(&self.agent_enrollment_status(&expected_identity_id, &expected_device_id)?),
+            AgentEnrollmentDismiss {
+                receipt_id,
+                observed_offer_digest,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(&self.agent_enrollment_dismiss(
+                &receipt_id,
+                &observed_offer_digest,
+                &expected_identity_id,
+                &expected_device_id,
+            )?),
             OpenAgentLink { target } => encode(&self.open_agent_link(target).await?),
             ControlAgent { agent_id, action } => {
                 encode(&self.control_agent(agent_id, action).await?)

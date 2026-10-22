@@ -207,6 +207,7 @@ impl Engine {
 
     /// A new account's profile key, first version and agreement key. Returns the agreement
     /// secret for the vault.
+    #[cfg(test)]
     pub(crate) fn init_profile(&mut self, me: &str, name: &str) -> R<[u8; 32]> {
         self.init_profile_with_agreement(me, name, AgreementKey::generate())
     }

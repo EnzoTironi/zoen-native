@@ -847,3 +847,38 @@ fn spawning_on_an_actual_closed_runtime_cannot_deadlock_completion_under_the_gat
         std::thread::sleep(Duration::from_millis(10));
     }
 }
+
+#[tokio::test]
+async fn agent_purpose_uses_distinct_mailbox_and_same_revocable_install_lease() {
+    let control = PickupControl::default();
+    let material = pending("https://relay.example".into());
+    let secret: [u8; 32] = hex::decode(&material.secret).unwrap().try_into().unwrap();
+    let digest = "a".repeat(64);
+    let context = format!("agent-enrollment-owner-v1:{digest}");
+    let expected = crate::link::box_id(&secret, &context);
+    assert_ne!(expected, crate::link::box_id(&secret, "identity"));
+    let (send, receive) = oneshot::channel();
+    let mut waiter = control
+        .begin_with_purpose(
+            || Ok(material),
+            budget(),
+            context,
+            move |key, _, box_id, _| {
+                assert_eq!(box_id, expected);
+                Box::new(move || {
+                    send.send(key).ok().unwrap();
+                    Box::pin(std::future::pending())
+                })
+            },
+        )
+        .unwrap();
+    let key = receive.await.unwrap();
+    assert!(!control.cancel_request(|| Ok(false)).unwrap());
+    assert!(key.check().is_ok());
+    assert!(control.cancel_request(|| Ok(true)).unwrap());
+    assert!(key.sign(b"revoked agent pickup").is_err());
+    assert_typed_cancel(waiter.with_install(|_, _| Ok(())));
+    assert_typed_cancel(waiter.wait().await);
+    drop(waiter);
+    tokio::time::timeout(BOUND, control.drain()).await.unwrap();
+}

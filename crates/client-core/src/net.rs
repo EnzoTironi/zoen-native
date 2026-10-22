@@ -691,6 +691,11 @@ async fn session_with_repair_policy(
     let clock_negotiated = advertised_clock.is_some();
     let mut claim_clock = advertised_clock;
     if !relay_knows_me || !registered {
+        if let Err(error) =
+            engine!(|engine| engine.agent_enrollment_registration_allowed(relay_knows_me))
+        {
+            return Exit::Blocked(error.to_string());
+        }
         if let Err(e) = register(&mut sink, &mut stream, profile, &mut early).await {
             return if e == "handle_taken" {
                 Exit::Blocked(e)
