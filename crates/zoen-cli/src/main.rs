@@ -9,6 +9,7 @@
 //! connect, catch up, act, flush, exit. Killing it at any point loses nothing.
 
 mod agent;
+mod agent_enrollment;
 mod agent_host_lock;
 mod deckcraft;
 mod file_vault;
@@ -207,6 +208,9 @@ fn usage() -> ! {
          read CHAT [--older]              --older: ask your other device for an older page\n\
          agent-keys | agent-init --name N --handle H --owner ID --proof JSON --definition FILE\n\
          agent-host [--for SECS]          run this agent citizen (relay-backed cursors)\n\
+         agent-enroll-request --owner ID --relay URL --name N --handle H --definition FILE\n\
+         agent-enroll-wait [--timeout MS]  recover or wait for owner consent, then register\n\
+         agent-enroll-cancel --offer-digest HASH   discard only an unused offer\n\
          app CHAT install APP JSON        install a catalog mini-app in CHAT\n\
          app CHAT view                    each mini-app in CHAT as you see it (JSON)\n\
          authorize-agent AGENT_ID         owner: sign an agent's root\n\
@@ -425,15 +429,29 @@ async fn main() {
     let cmd = cli.args.remove(0);
     // Hold the local host's OS lock through sync shutdown, before opening any
     // account state or provider. Early returns and process death release it too.
-    let agent_host_lock = if cmd == "agent-host" {
+    let enrollment = agent_enrollment::Action::parse(&cmd, &cli.args, timeout, offline)
+        .unwrap_or_else(|err| die(err));
+    let agent_host_lock = if agent_enrollment::requires_home_lock(&cmd) {
         Some(agent_host_lock::HostLock::acquire(&home).unwrap_or_else(|err| die(err)))
     } else {
         None
     };
-    let vault: Arc<dyn SecretVault> = Arc::new(FileVault {
+    let concrete_vault = Arc::new(FileVault {
         dir: home.join("vault"),
     });
+    if let Some(action) = &enrollment {
+        action
+            .preflight(&concrete_vault)
+            .unwrap_or_else(|err| die(err));
+    }
+    let vault: Arc<dyn SecretVault> = concrete_vault.clone();
     let e = open(&home);
+    if let Some(action) = enrollment {
+        let result = action.run(&e, concrete_vault).await;
+        e.stop_sync();
+        println!("{}", result.unwrap_or_else(|err| die(err)));
+        return;
+    }
 
     // Growth (ADR 0044): what a fresh install does before there is an account.
     if cmd == "open" {
