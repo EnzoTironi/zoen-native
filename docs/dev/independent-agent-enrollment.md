@@ -76,6 +76,32 @@ in the Agent Definition. The dated [combined provider qualification](cloudflare-
 used synthetic signed relay input. Actual relay/MLS tasks and native tool approval
 remain a separate acceptance journey.
 
+## Host startup and readiness
+
+The normal `agent-host` path waits up to 15 seconds through the existing
+`Client.wait_until_settled` before reading Agent state or timeline heads. Online,
+synced and an empty event outbox alone are insufficient: unknown identities,
+uploads, profile work and MLS work must also be settled. A timeout fails startup.
+
+Existing relay cursors are preserved. A Space without a cursor starts at its
+current readable timeline head, so earlier traffic is deliberately skipped. A
+valid empty timeline may seed zero; a failed timeline read may not. Each initial
+`Advance` must be acknowledged before its cursor enters the local runtime map.
+A failure leaves startup failed, even if earlier seed ACKs already committed.
+The next startup reads those retained relay cursors rather than rolling them back.
+
+After acquiring the existing local home OS lock, the CLI clears only the known
+`agent-ready` marker, before opening the vault/account or configuring providers.
+An unremovable marker refuses startup. Only settled sync and all initial seed
+ACKs permit fresh marker creation; replacement or creation failure refuses
+startup. The unchanged `agent @HANDLE hosting` line and task loop follow success.
+
+The marker records that startup checkpoint, not current liveness, continuous
+catch-up, distributed fencing or permission to act. Normal return removes it
+before releasing the lock; startup errors stop sync and clean up. Abrupt death
+or cleanup failure can leave a filename, which the next locked startup must clear
+or refuse. The lock, current grants and runtime admission retain their own roles.
+
 ## Persistence and authority
 
 The host owns distinct root, device, agreement and pickup keys. A signed offer
@@ -105,6 +131,7 @@ registered public Agent and owner binding before opening its profile.
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
 | Core enrollment, signature and pickup tests | Invalid/substituted offers, prepared-key recovery, failed saves and lease cancellation covered                | Synthetic transport/fault tests do not prove hardware durability                               |
 | CLI source `651d12a2`                       | 12 enrollment tests, strict all-target Clippy and normal binary build passed                                  | Enrollment does not start the runtime                                                          |
+| CLI startup source `9ee341ab`               | Eight startup, six lock and 12 enrollment tests, strict all-target Clippy and formatting passed               | Synthetic loopback/OS fault proof; actual relay-host/provider execution remains separate       |
 | Actual local relay journey                  | Normal owner approval, production pickup, independent registration, exact definition and cold recovery passed | Explicit opt-in; retains synthetic relay rows; slow natural expiry case was not run            |
 | iOS Native24 (`7dd9a49f`, Core26)           | Secure entry, explicit approval, actual CLI/relay registration, profile and process-cold recovery passed      | Dedicated QA simulator; no human pairing, model, tool, message or Space access in this journey |
 
@@ -115,6 +142,16 @@ local service, and never starts or resets it. Run only in that disposable local
 test scope; normal protocol writes retain synthetic public history even after
 the test revokes its Agent and removes its own local keys. Its separate natural
 expiry variant additionally requires an explicit slow-test opt-in.
+
+The startup regressions reproduced five failures against extracted original
+behavior: unsettled sync, online/synced/empty-outbox with unsettled MLS, unavailable
+timeline, refused cursor ACK and failed fresh-marker creation. The same eight
+tests passed with strict checks, including delayed multiple ACKs, preserved
+existing cursors and valid zero heads. Evidence is retained under
+`zoen-agent-host-startup-v323` in the local build evidence directory.
+A normal `cargo build --locked -p zoen-cli --bin zoen` produces the dev-profile
+operational CLI; this source/test proof does not qualify that built binary or a
+CLI Release artifact. Native26/Core28 iOS packaging remains separate and unchanged.
 
 Native24 used the existing QA relay origin through an owned raw loopback tunnel
 to the real local relay. It did not use a signed fixture projection. The same
