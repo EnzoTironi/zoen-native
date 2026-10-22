@@ -436,6 +436,17 @@ async fn main() {
     } else {
         None
     };
+    let agent_readiness = if cmd == "agent-host" {
+        Some(
+            agent::Readiness::reset(
+                &home,
+                agent_host_lock.as_ref().expect("agent-host home lock"),
+            )
+            .unwrap_or_else(|error| die(error)),
+        )
+    } else {
+        None
+    };
     let concrete_vault = Arc::new(FileVault {
         dir: home.join("vault"),
     });
@@ -1083,7 +1094,19 @@ async fn main() {
             );
         }
         "agent-host" => {
-            agent::host(&e, &home, for_secs).await;
+            if let Err(error) = agent::host(
+                &e,
+                &home,
+                agent_readiness.as_ref().expect("agent-host readiness"),
+                for_secs,
+            )
+            .await
+            {
+                e.stop_sync();
+                drop(agent_readiness);
+                drop(agent_host_lock);
+                die(error);
+            }
         }
         // Owner controls over an agent you answer for: `agent-pause @bot`, `agent-resume @bot`,
         // `agent-revoke @bot`, `agent-define @bot --definition def.json --version N`.
@@ -1593,6 +1616,7 @@ async fn main() {
         _ => usage(),
     }
     e.stop_sync();
+    drop(agent_readiness);
     drop(agent_host_lock);
 }
 
