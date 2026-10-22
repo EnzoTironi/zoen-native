@@ -1,0 +1,71 @@
+{
+  "date": "2026-10-20",
+  "source": "e16c755dac85ee5222ba90767b3b8d2bb70a59a1",
+  "pullRequest": "https://github.com/EnzoTironi/zoen-native/pull/147",
+  "status": "PARTIAL; real compact dark WK and unchanged-version native exports passed; manual keyboard input failed",
+  "appCheck": {
+    "status": "PASS",
+    "passed": 1094,
+    "failed": 0,
+    "skipped": 0,
+    "typescript": true,
+    "oxlint": true,
+    "oxfmt": true,
+    "receipt": "/private/tmp/zoen-deckcraft-live-v171/app-check-01.json"
+  },
+  "nativeCoreBuild": "/private/tmp/zoen-deckcraft-live-v171/native-build-source-complete-01.json",
+  "resourceManifestSha256": "3b49ddba097a2171e6e6e1e6514539dc1529ece66ea0c45e46d30cbfecf6bf25",
+  "controlledArtifact": {
+    "sourceHead": "e16c755dac85ee5222ba90767b3b8d2bb70a59a1",
+    "seal": "/private/tmp/zoen-deckcraft-live-v171/release-01/seal.json",
+    "configuration": "Release",
+    "executableSha256": "0449df9ee8f46a06ffdd0295d14b16e1c0a19f1bc9dd1019164ff03601b8f86c",
+    "bundleManifestSha256": "25f1519420121f2144f0697f16d5ea6abfef28264c3d24fec31f3370a5e506ea",
+    "bundleFiles": 431,
+    "installedExactFilesAndSignature": "PASS",
+    "device": "591F1216-9B73-4BE1-807A-309DB937D6FA"
+  },
+  "nativeObserved": {
+    "realWKCompactDarkOpen": "PASS",
+    "firstColdOpenElapsedMs": 8245,
+    "nativeSearchSoftwareKeyboard": "PASS Portuguese keyboard and QA160 field value",
+    "manualTitleEdit": "FAIL; taps, genuine double-tap and native keyboard events did not produce visible text",
+    "notesInput": "UNACCEPTED; egui caret visible without software keyboard",
+    "rotation": "Both landscape orientations and portrait restoration observed; desktop status labels overlap in landscape; usability UNACCEPTED",
+    "PDF": {
+      "nativeShare": "PASS original unchanged version1",
+      "bytes": 13764,
+      "sha256": "1a1db51807f92d90cd4eb14f6c8960bd5535fd8ba97057db0ed72ffcef06e417",
+      "independentInspection": "PDF signature only"
+    },
+    "PPTX": {
+      "nativeShare": "PASS original unchanged version1",
+      "bytes": 21710,
+      "sha256": "4ef43db2a3b8975df01591702f47d616c0496efd97efd1dbed7c24c83a34a89a",
+      "independentInspection": "ZIP CRC, required XML parse and one slide"
+    },
+    "privateExportFilesAfterCancel": 0,
+    "externalRecipientSend": "NOT_RUN",
+    "manualEditedDocumentRecovery": "NOT_RUN"
+  },
+  "nativeReceipt": "/private/tmp/zoen-deckcraft-live-v171/native-qa-01/outcome.json",
+  "recordingBoundary": "Diagnostic takes only; retained native search label/value and PPTX caption oracle failures, plus unsafe unlabeled canvas targets. No qualified replay or portable screenshot bundle: temporary v171 screenshots were deleted at server cleanup before copying; JSON observations and exported bytes remain.",
+  "keyboardPolicyNegativeControl": {
+    "source": "0085b9cb6632b2630721e1ce0294e3183bf31a5b",
+    "result": "Supported RN-WebView keyboardDisplayRequiresUserAction=false did not open the keyboard for title or Notes; no manual text accepted",
+    "scope": "Diagnostic only; installed library class-method override is process-wide",
+    "revertedBy": "61efc97aef78c7771b3a2f740defb3eab2391cdd",
+    "baselineRestore": "PASS exact431files/signature, app terminated after install",
+    "receipt": "/private/tmp/zoen-deckcraft-keyboard-control-v176/native-qa-01/outcome.json",
+    "savedScreens": 8
+  },
+  "signalReliabilityMerge": {
+    "pullRequest": "https://github.com/EnzoTironi/zoen-native/pull/146",
+    "mergeCommit": "fc223f8eef4c71b8bc229d77962b646e554888b3",
+    "status": "MERGED after11/11 CI and independent review",
+    "receipt": "/private/tmp/zoen-signal-media-pr-v167/merge-receipt.json",
+    "upstreamSuites": "NOT_RUN"
+  },
+  "wholeProductAcceptance": false,
+  "historicalPolicy": "Earlier batch objects retain their source/artifact and failed/partial results."
+}

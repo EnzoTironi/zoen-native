@@ -1,0 +1,40 @@
+{
+  "checkpoint": "v92",
+  "sourceCommit": "11ce6ac3810a30f8e92821fb0bd43f3a14f70392",
+  "sourceManifest": "/private/tmp/zoen-iphone-release-v92-inputs.json",
+  "sourceInputs": 941,
+  "sourceSha256": "f875c20abe46309aaacc9d50c2aa20fa6a7a7eacea96d0bbdaa70b86b6144d27",
+  "configuration": "signed Release ARM64 iOS Simulator; no Metro",
+  "archivePath": "/private/tmp/zoen-iphone-artifacts/v92/Zoen.app",
+  "appBytes": 158808595,
+  "appFileCount": 342,
+  "appTreeAlgorithm": "sha256 of sorted path/bytes/sha256 records encoded as compact JSON with sorted keys",
+  "appTreeSha256": "8141390104e6514abe3a67bafd5b56ee8d596307beb45c45a439c2c034ee1975",
+  "executableSha256": "c2a27828392b71a6b57aab7149bbda1d462e738069639a286704bb03552a892b",
+  "javascript": {
+    "bytes": 21033107,
+    "sha256": "58432b00c8d0e1afe488f3fb6ba49846203d320633a736517d9ed4787f736db3"
+  },
+  "buildVerification": "/private/tmp/zoen-iphone-release-v92-verification.json",
+  "scope": "Latest recorded public bundle/signature verification and bounded native MCP/Home checks on both simulators. These do not replace the v85 whole-application baseline or certify later source.",
+  "controlled": {
+    "device": "isolated iPhone18 Pro / iOS27 simulator",
+    "deviceUdid": "388CA707-A103-4845-B5FE-BAA9526D3D57",
+    "preservingInstall": "/private/tmp/zoen-builtins-native-iphone-v92/isolated-v92-install.json",
+    "installedPublicVerification": "/private/tmp/zoen-builtins-native-iphone-v92/isolated-v92-verify-after.json",
+    "executableJavascriptStrictSignature": "PASS"
+  },
+  "human": {
+    "device": "human iPhone18 Pro / iOS27 simulator",
+    "deviceUdid": "E2B33D1A-D73F-4793-96E7-5FC43E64053F",
+    "preservingInstall": "/private/tmp/zoen-builtins-native-iphone-v92/human-v92-install.json",
+    "installedPublicVerification": "/private/tmp/zoen-builtins-native-iphone-v92/human-v92-verify-after.json",
+    "executableJavascriptStrictSignature": "PASS",
+    "homeSmoke": {
+      "receipt": "/private/tmp/zoen-builtins-native-iphone-v92/human-home-smoke.json",
+      "sha256": "5584423f4ad4ab4e0b48c8e90859a2956ec3d9db582802721bc39479318c6ac0",
+      "retained": "Recipe 6/8 and 2 servings; Pet asleep/rest 100%; Praia Nov 15; ExactBRL one cost line 100%/alternative 0%. Keyboard closed, no modal or visible error."
+    },
+    "scope": "Home/larger-text retention only; no human data mutations or full history/media/provider reacceptance."
+  }
+}

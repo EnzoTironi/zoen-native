@@ -1,0 +1,21 @@
+{
+  "receipt": {
+    "path": "/private/tmp/zoen-home-card-menu-v123/implementation/final-seal/acceptance.json",
+    "sha256": "e34a7164dae32663cd5d7b1eba06188f065d9b5804eea583dd7908aa02c7dae3"
+  },
+  "integratedSourcePaths": 10,
+  "combinedFocusedComponentTestsPassed": 25,
+  "actualChromeComponentChecksPassed": 18,
+  "actualComponentLocales": ["en-US", "pt-BR"],
+  "currentNativeAndroidPopupAccepted": false,
+  "currentPersistedWebHomePinReorderAccepted": false,
+  "limits": "Prior exact APK has one real popup opening and immediate Back dismissal, but pin did not persist and another hardware Back returned Launcher with popup state unobserved. Cause unknown; no complete popup/pin/reorder acceptance. Current Web shared-host/Home release checks and remaining caller parity stay open.",
+  "actualCurrentAndroid48dpTriggerAppearanceAccepted": true,
+  "actualNativePopupOpenedAndOneBackDismissed": true,
+  "actualHomePinPersistenceAccepted": false,
+  "actualHomeReorderAccepted": false,
+  "nativeUiFollowupReceipt": {
+    "path": "/private/tmp/zoen-expo-android-fresh-v126/ui-followup/acceptance.json",
+    "sha256": "0cbcf0e41320cb51cf4e0fd5fe15a380bc326f3e63877fc944dd90af6d3bfc19"
+  }
+}

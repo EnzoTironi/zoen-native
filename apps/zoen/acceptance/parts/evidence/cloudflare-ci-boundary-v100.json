@@ -1,0 +1,39 @@
+{
+  "status": "PARTIAL_PASS_WORKFLOW_FAILED_TWO_RETAINED_LOCAL_SOCKET_GATES",
+  "run": 39215512310,
+  "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39215512310",
+  "head": "f43b23f32474fc91c5e7597ba17c7733494a2212",
+  "merge": "14e32b200061d7ca53db7fee8316b5ba685c3d05",
+  "headAndMergeTree": "96eda73c6649912647dc9cfd055a78bf7187b22a",
+  "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-f43b-evidence/acceptance.json",
+  "receiptSha256": "f34fc45232adfeecf9c1872f3e11ad9f5fa0ed49479cc696cd58993c28c14a53",
+  "browserCheckpointsPerLocale": 22,
+  "browserErrors": 0,
+  "providerNativeSqlScenarios": 20,
+  "providerWorkerdCases": 35,
+  "directoryWorkerd": {
+    "passed": 32,
+    "failed": 2,
+    "skipped": 0
+  },
+  "client": {
+    "passed": 793,
+    "failed": 0,
+    "darwinOnlySkipped": 2
+  },
+  "androidBuild": "PASS_BUILD_LOG_ONLY_NO_NEW_RUNTIME_ACCEPTANCE",
+  "sourceFilesVerified": 79,
+  "recordedArtifactHashesVerified": 21,
+  "sourceHashDrift": [],
+  "isolatedRuntimeCandidate": {
+    "workerd": "1.20261019.1",
+    "status": "DOES_NOT_FIX_UNCHANGED_MINIMAL_REPRODUCTION",
+    "untouchedCasesClosedWithin5s": 0,
+    "untouchedCases": 6,
+    "inboundControlClosed": true,
+    "repositoryPinsAndDeadlinesUnchanged": true,
+    "receipt": "/private/tmp/zoen-cloudflare-web-v96/workerd-ab-20261019-01/acceptance.json",
+    "receiptSha256": "1e0fb2ba591a377780d29c453d42c9ce08977ddee532717ddc50b995eee69da0"
+  },
+  "limits": "Audit of this exact CI run and isolated official runtime A/B only. Overall workflow stays red; separate remote8/8, previous Android runtime and public hosting retain their original artifact boundaries. No deployment or whole-app parity inference."
+}

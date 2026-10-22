@@ -1,0 +1,22 @@
+{
+  "receipt": {
+    "path": "/private/tmp/zoen-continuous-tab-sky-v126/acceptance.json",
+    "sha256": "6d3f35c1a67dda6bcb46f6c057d02f4c70af4cd5312645bdb93f24db43ff112e"
+  },
+  "integratedProductionPaths": 6,
+  "outsideCompiledMappingChecksPassed": 6,
+  "scopedNativeSchemeAndSkyBarColors": true,
+  "iosPropsPreserved": true,
+  "actualCurrentDayNightAppearanceAndTabFocusAccepted": false,
+  "limits": "Prior flat-color Day/Deepnight and four-tab observations remain historical. The current source makes bar/host/tab content transparent and shares the actual global photo; exact current APK Day/Deepnight pixels, seam, insets and tab focus remain pending.",
+  "actualCurrentDarkHomeBarAppearanceAccepted": false,
+  "historicalFlatColorSourceReceipt": {
+    "path": "/private/tmp/zoen-android-tab-sky-v124/acceptance.json",
+    "sha256": "1252db1c319680c1f1a803051cb956cb33ce84f6ef58cc4e9122275dbae5b4e8"
+  },
+  "actualCurrentContinuousPhotoDayDeepNightAccepted": false,
+  "historicalFlatColorDayNightFourTabsReceipt": {
+    "path": "/private/tmp/zoen-expo-android-fresh-v126/ui-followup/acceptance.json",
+    "sha256": "0cbcf0e41320cb51cf4e0fd5fe15a380bc326f3e63877fc944dd90af6d3bfc19"
+  }
+}

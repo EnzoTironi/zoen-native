@@ -1,0 +1,236 @@
+{
+  "status": "FINAL25_BOUNDED_ANDROID_GESTURE_AND_ORDINARY_COLD_PIXEL_PLATFORM_AX_PEER_PASS",
+  "baseHead": "eff1f0dd40790a389ae612a9b870d81948ddde2e",
+  "sourceCut": {
+    "path": "/private/tmp/zoen-android-pull-down-v134/source-cut-25.json",
+    "sha256": "e8bf8dfc59b70962451e68daa2d16c5ec8655d16c9151b17116041d3f4675beb"
+  },
+  "sourcePaths": 25,
+  "behavior": "Android-only 48dp Pan/Tap and accessible close target in existing fullScreenModal dispatches to exact root App removal; existing descendant guard owns flush/failure/replay. This is guarded dismissal intent, not an interactive Material sheet.",
+  "sharedResourceCorrection": {
+    "sourcePaths": 5,
+    "generatedOutputs": 16,
+    "consumers": "Six builtins plus Schedule and Hike explicitly consume negotiated safe-area CSS aliases; no third-party auto-safe-area claim.",
+    "standardProducersAndChecks": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/resources-03/acceptance.json",
+      "sha256": "5f3d4413c166b4ea9e8843a2465908cbac62ffe5fa7da4bc6047a89fe38d84a5"
+    },
+    "allEightHtmlAndManifestRebuilt": true,
+    "excalidrawSha256": "7860e6dd3f6d6e613823757e6455b39ff8552cde3e29391969a23099aedf38e5",
+    "excalidrawBytes": 6195767
+  },
+  "checks": {
+    "appLog": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/app-check-04.log",
+      "sha256": "3e2320a0ae350e83f5a3179d9e792b219a05285f375726b64f08fc817b6b0e31"
+    },
+    "appPassed": 886,
+    "causalNavigation": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/navigation-final-seal/acceptance.json",
+      "sha256": "6122784e7620b18ee3c6f0cf931f7323452e479e1a6b2ccfbeb0714ad4b961eb"
+    },
+    "navigationPassed": 17,
+    "originalNavigationCasesPreserved": 8,
+    "priorExcalidrawSuitePassed": 62,
+    "priorExcalidrawSuiteScope": "Passed before shared SDK/style update; Excalidraw resource and grabber/navigation inputs remain unchanged. Not relabeled as a new full 25-path execution.",
+    "sdkFullCiSuite": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/sdk-full-suite-01/acceptance.json",
+      "sha256": "807b1ca7934fbfcfc9f92698bfd4697503f8f31f48c20f90e4b6c0440f6ec219"
+    },
+    "sdkSuitePassed": 52,
+    "priorSdkCases": 43,
+    "newSafeAreaCases": 9,
+    "realChromeSafeAreaGeometryCases": 5,
+    "failed": 0,
+    "skipped": 0,
+    "sourceOnlyBoundary": "Controlled fixtures exercise actual component/Expo guard/SDK/AppBridge and produced UI. They do not establish native canceled/duplicate/stale-focus input, TalkBack or held/failing pending-network save acceptance; actual bounded warm gesture results are separate below."
+  },
+  "nativeAndRelease": {
+    "native": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/android-native-02/acceptance.json",
+      "sha256": "f2cd82501ee1a2a4900cde4e7f2de96ff033220d30b195828d42304197e72333"
+    },
+    "build": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/android-release-02/acceptance.json",
+      "sha256": "3a56543ef42117c7464da6d5f9bd0d073d57535672e5a48fa393eb1e7836d76e"
+    },
+    "independentPreinstallGate": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/android-release-02/root-preinstall-gate.json",
+      "sha256": "880c9693ae839ed60066521b632e778b8cef43b56376db4fa848aef0726c3abf"
+    },
+    "apkSha256": "ced05640d40afca385c078f859d3a191efb4ee2139c65f1f7d2dc2783afc9b3e",
+    "embeddedHbcSha256": "92e6a762878c291f0cdb87b9a55a268e9508f3bd2efcaf395790c46ab524ca7d",
+    "hbcUnchangedFromApk01": "Expected: same reviewed App JavaScript; changed miniapp HTML/manifest bodies are compiled into new native payload.",
+    "producerJniSha256": "70004fb5418e360d8161d6286ed38e344e3faaf39805ea63b234a0ef49a112a5",
+    "packagedJniSha256": "64fed6f673143c1ff0ee915c506b98271a5e4bf28dc7b6817bbcd10031cc33dc",
+    "standardStripReproducesPackagedJni": true,
+    "allEightUpdatedHtmlManifestAndUnchangedExcalidrawInNative": true,
+    "metadata": 331,
+    "checksums": 218,
+    "old216Retained": true,
+    "freshJvmPassed": 28,
+    "effectiveReleaseInputsExact": 658,
+    "scope": "Non-debuggable minified arm64 Release, QA debug-keystore signing, unchanged loopback-only overlay; no physical/store/distribution acceptance."
+  },
+  "priorApk01MaterialNegative": {
+    "receipt": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/runtime-01/acceptance-negative.json",
+      "sha256": "1fd8fcd0f19a774fed88759eaebd53d814c52dd1e7efb9635ba97a7b1a32e60b"
+    },
+    "apkSha256": "ba780784895e905bf994c513a010bf0c33855016228e22dd2e7ade391574ab6c",
+    "genericListHeadingAndProgressUnderStatusGrabber": true,
+    "gestureEditPeerCold": "NOT_RUN_AFTER_GEOMETRY_FAILURE",
+    "gRpcToolFailureAndOwnedSetupRebootPreserved": true,
+    "runtimeAccepted": false
+  },
+  "actualRuntime": {
+    "receipt": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/runtime-02/acceptance-partial.json",
+      "sha256": "7da9d959b0d85304cb2feddcefc98fc67808bf05fa183be172a35b8ea708fd00"
+    },
+    "status": "WARM_GESTURES_PASS_ORIGINAL_AX_UNMET_WITH_PIXEL_CONTRADICTION",
+    "accepted": false,
+    "actualWarm": {
+      "listHeadingProgressClearGrabberAndFullUniformBackground": true,
+      "excalidrawFullCanvasControlsClearGrabber": true,
+      "downCloses": true,
+      "upAndLateralRetain": true,
+      "listTapClose": true,
+      "mostlyVerticalRectangleDoesNotClose": true,
+      "nextGrabberDownAfterEditReachesHome": true
+    },
+    "peerAfterEdit": {
+      "bytes": 678,
+      "sha256": "74c2b72c8daef8856c5eadd89565fb2c49bb4b1362e7c95adb26624ce7c73fd2",
+      "elementCount": 1
+    },
+    "cold": {
+      "beforePid": 3813,
+      "afterPid": 4293,
+      "homeRetainsSameItemAndOneElement": true,
+      "editorGateSeconds": 60,
+      "editorAccepted": false,
+      "actualState": "Argent accessibility description Opening drawing; same-call and late original screenshots show full editor. First retained pixel proof is about73.2s after tap, so the old60s readiness gate remains unproven.",
+      "nativeCrashClaim": false,
+      "screenshot": {
+        "path": "/private/tmp/zoen-android-pull-down-v134/runtime-02/screens/03-cold-wait-negative.png",
+        "sha256": "887a84f214724f787dd6ba3c3da4a1e098c249a46374bc60e2b797943fab5e75"
+      }
+    },
+    "peerAfterColdDataOnly": {
+      "exitCode": 0,
+      "bytes": 678,
+      "sha256": "74c2b72c8daef8856c5eadd89565fb2c49bb4b1362e7c95adb26624ce7c73fd2",
+      "bytesEqualAfterEditPeerRead": true,
+      "elementCount": 1,
+      "coldEditorUiAccepted": false,
+      "readOnlyIndependentDataCheckAfterUnmetUi": true
+    },
+    "preservedSelectorFailure": "First List AX wait used TextView, actual StaticText;45s negative retained, corrected selector passed without source/timeout changes.",
+    "limits": "Original60s AX wait remains unmet; no historical backfill. No renderer-stall cause established. No native follow-finger Material sheet, native canceled/duplicate/stale-focus or held/failing save, TalkBack, physical devices, generic no-view fallback, performance or store qualification. Flow observations are not passing replays.",
+    "backendReadOnly": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/runtime02-backend-readonly/observation.json",
+      "sha256": "3764944384d680349ce111ed8f8e34d3a50c92ad210b4adbea280a383c65fdc5"
+    },
+    "backendScope": "Healthy endpoints/containers and recorded peer export only; no Android request or fresh S3-read observation and no renderer-stall cause claim.",
+    "originalClassificationSuperseded": true
+  },
+  "priorIosAndAndroidProofsPreserved": "Existing appsPresentationV133 data and receipts remain unchanged, including old 20-source iOS negative, iOS 22-source native/archive/runtime and Android 18-source hardware-Back/peer proof. No new shared SDK/resource qualification on the user-owned iOS artifact.",
+  "previousHeadCi": {
+    "head": "eff1f0dd40790a389ae612a9b870d81948ddde2e",
+    "snapshot": {
+      "path": "/private/tmp/zoen-ci-pr140-eff1f0dd/watch-independent/terminal-eff1f0dd.json",
+      "sha256": "adb47a77ebe49f63ee30d052d1fdb92294cbe1399e01620bee32ae461dce7fbd"
+    },
+    "success": 9,
+    "failed": 2,
+    "rust": "PASS",
+    "api28": {
+      "diagnosis": {
+        "path": "/private/tmp/zoen-ci-pr140-eff1f0dd/watch-independent/android28-diagnosis/diagnosis-summary.json",
+        "sha256": "4ef4b471f7916a72bb35d94e84323ce72c7797003be4c1086ce0fae2f4d42daa"
+      },
+      "status": "PageDraftRecovery timeout; exact UI cause unresolved. Two unchanged WebView-capability JUnit skips remain separate.",
+      "junitSkipped": 2,
+      "skipReasons": {
+        "path": "/private/tmp/zoen-ci-pr140-eff1f0dd/watch-independent/android28-diagnosis/two-skip-reasons-proof.json",
+        "sha256": "6b0c23afcd83a76a4c14b5f0bef487d821253311135dbd584ef783d33220e3ed"
+      },
+      "skipBoundary": "Unchanged provider unsupported origin-scoped messaging/isolated profiles; distinct from zero job-level skips."
+    },
+    "api35": {
+      "diagnosis": {
+        "path": "/private/tmp/zoen-ci-pr140-eff1f0dd/watch-independent/android35-diagnosis/platform-error-proof.json",
+        "sha256": "fe3e91a33cf7eabbb21bf0f26ea90a0b4a40061830dfc4a69f15f947a1e9179c"
+      },
+      "status": "All 106 instrumentation tests pass with 0 skips; job fails during offline-device UTP2002 teardown."
+    },
+    "scope": "Previous eff head only; never qualifies the new 25-path source or waives either failed job.",
+    "terminal": true,
+    "jobLevelSkipped": 0
+  },
+  "fullAppParityAccepted": false,
+  "productionReadinessAccepted": false,
+  "scaleReadinessAccepted": false,
+  "evidenceCorrections": {
+    "root": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/runtime-02/root-pixel-ax-correction.json",
+      "sha256": "d2ee38d2cb6455bd9d40cf814dc2200e061f2d26dc58fdf5e02364aa8ecc4dc7"
+    },
+    "peer": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/cold-diagnostics-01/runtime02-evidence-reconciliation.json",
+      "sha256": "84f177664dde1f65d28ba460a8359d06be5a9f557dc0f872280af8f52473e5af"
+    },
+    "originalReceiptPreserved": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/runtime-02/acceptance-partial.json",
+      "sha256": "7da9d959b0d85304cb2feddcefc98fc67808bf05fa183be172a35b8ea708fd00"
+    },
+    "old60SecondAxWait": "UNMET preserved; same-call pixels contradict the old claimed still-loading renderer",
+    "firstOriginalPixelProofSecondsAfterTap": 73.2,
+    "notProofReadyWithin60Seconds": true
+  },
+  "ordinaryColdComparison": {
+    "receipt": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/runtime-04-normal-pixel-ax/acceptance.json",
+      "sha256": "a0c01ccd01ad9724b41d39259dd7d40be5607f7380490df3e338550d45c0d4a8"
+    },
+    "manifest": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/runtime-04-normal-pixel-ax/manifest.json",
+      "sha256": "597ac65aeae594818e970ac7f3b048a6ab30e78236e9a7092cbd8d239cc9527c"
+    },
+    "rootIndependentVerification": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/runtime-04-normal-pixel-ax/root-normal-comparison-verification.json",
+      "sha256": "33d761c428bcaac3a97a25d4791914da7f8cc768fa3e128ea06c8367645157bf"
+    },
+    "boundedPixelPlatformAxAndPeerAccepted": true,
+    "actualProcessCold": {
+      "before": 5118,
+      "after": 5236
+    },
+    "pixelsReadyObservedBySecondsAfterTap": 11.024966955184937,
+    "notPreciseTtiOrPerformanceAcceptance": true,
+    "publicPlatformXmlContainsCanvasAndControls": true,
+    "argentAxDisagreesMechanismUnclassified": true,
+    "peerBytes": 678,
+    "peerSha256": "74c2b72c8daef8856c5eadd89565fb2c49bb4b1362e7c95adb26624ce7c73fd2",
+    "peerByteEqualOriginalEdit": true,
+    "originalAxUnmetNotPromoted": true
+  },
+  "temporaryDiagnosticOnly": {
+    "receipt": {
+      "path": "/private/tmp/zoen-android-pull-down-v134/android-diagnostic-03/runtime-01/acceptance-diagnostic.json",
+      "sha256": "bb8cdbad6b6a00f4724ff24a9dea772ed522d01dcc46d6921a5a49a17dca6f2a"
+    },
+    "records": 107,
+    "source2RestoredBeforeHashes": true,
+    "source25AndOriginal658InputsExactAfter": true,
+    "additionalColdAndCdp": "NOT_RUN after evidence correction",
+    "productionAcceptance": false,
+    "causalProductFixClaim": false
+  },
+  "latestIosPhysicalTopEdgeRequest": {
+    "status": "PENDING_NEW_PRESENTATION_AND_ARTIFACT",
+    "existingIos22Boundary": "Titleless, square canvas within native UIKit formSheet bounds; status area still shows underlying Sky. No exposed iOS formSheet overflow-to-pixel0 option in pinned source.",
+    "followup": "Full-screen native modal with explicit guarded close target requires separate source, artifact and runtime qualification; no change applied or accepted here."
+  }
+}

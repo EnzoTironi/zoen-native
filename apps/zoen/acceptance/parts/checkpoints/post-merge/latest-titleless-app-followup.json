@@ -1,0 +1,76 @@
+{
+  "id": "v129",
+  "status": "final-source-check-pass-and-bounded-historical-native-demo-ui-pass",
+  "sourceHeadAtPrepare": "acdedb52262e97732d2964d0b1890544ffa86f2a",
+  "sourceIncludesUncommittedChanges": true,
+  "behavior": "No App main title/header/visible save-status band; fullbleed native canvas, parent iOS pull-down sheet dismissal retains child document-close guard; Details uses existing Home/conversation card menus and manage route.",
+  "optionalNetworkGrantEntry": "Integrated exact existing Permissions route/helper/test cut plus genericReadyView !fill band condition; resource SRI, byte/policy equality, account/device/epoch/focus/membership and per-host existing Rust grant checks preserved. No native device-grant UI flow is accepted.",
+  "sourceCheckReceipt": {
+    "path": "/private/tmp/zoen-app-fullbleed-v129-check-final.json",
+    "sha256": "439e16f0ff5dad2061f0ba63f9c70adec0a69e5766f8a66f4da2966faa88d6ff"
+  },
+  "runtimeReceipt": {
+    "path": "/private/tmp/zoen-ios-app-sheet-gesture-v129/final.json",
+    "sha256": "4949dddffe1e3ac3626c4eb3aca9ed89d9ec8047d12fb3c36db4dab8bc8e08af"
+  },
+  "sourceChecksAccepted": true,
+  "runtimeAccepted": false,
+  "currentAndroidRuntimeAccepted": false,
+  "currentIosNativeBodiesAccepted": false,
+  "uiReceipt": {
+    "path": "/private/tmp/zoen-ios-app-sheet-gesture-v129/ui-acceptance.json",
+    "sha256": "291e9cf9d8cc4aff75724e16c29998425dbe468660469202e2ead6336edb0afd"
+  },
+  "runtimeSourceBoundary": {
+    "path": "/private/tmp/zoen-app-fullbleed-v129-source-cut.json",
+    "sha256": "a31d068d07003febb5813cbf117af6aba5f88c7375bd8bc04e90a64c3c9eefcb"
+  },
+  "historicalNativeDemoUiAccepted": true,
+  "runtimeQualification": "Actual own iOS simulator, explicit Demo mode and historical signed Debugv110 native body, with all12productionJS hashes matching the13path source cut (one test-only). No current native/public-account/backend acceptance.",
+  "visibleHeaderAndSavedBandRemovedAccepted": true,
+  "fullbleedCanvasAndFooterVisualAccepted": true,
+  "actualHandPanAndNativeGrabberDismissAccepted": true,
+  "rapidSecondRectangleDismissReopenTwoElementsAccepted": true,
+  "heldPendingNetworkPhaseInduced": false,
+  "publicFileHashOrVersionRead": false,
+  "initialAnomaly": {
+    "status": "retained-inconclusive",
+    "receipt": {
+      "path": "/private/tmp/zoen-ios-app-sheet-gesture-v129/gesture-first-negative.json",
+      "sha256": "f9c088bb52dd1580019de8ce59f36bb4e1f45e5a803c5ea1c74eb98ff3117653"
+    },
+    "detail": "First transition sequence showed unexpected Hike/Pet/blank before direct Home capture. Clean scoped restart/re-entry passed; exact initial cause remains unproven."
+  },
+  "cleanup": {
+    "path": "/private/tmp/zoen-ios-app-sheet-gesture-v129/cleanup.json",
+    "sha256": "78fbfa081b47f00e8cb609ac0b2e6b2dc550a6d51df4d1ae41a40916d421b3c3"
+  },
+  "bestScreenshot": {
+    "path": "/private/tmp/zoen-ios-app-sheet-gesture-v129/screens/09-two-rectangles-reopened-full.png",
+    "sha256": "8e063123b3ede2f8195ea434904b999380cee39eb741f8fa14da5e66330dc29a"
+  },
+  "limits": "Demo-only native UI: no new native build, public enrollment/history/peer-byte proof, provider login, Android runtime, induced pending-network save stall or whole-platform acceptance. Original public-link stack-guard SIGBUS remains unwaived.",
+  "integratedCheckSourcePaths": 16,
+  "committedAfterCheck": "cd578f8c70034b454ee8cb7463b1c1178eec042f",
+  "networkSourceReceipt": {
+    "path": "/private/tmp/zoen-app-network-permissions-v129/acceptance.json",
+    "sha256": "5260d288a2c40e5e0ee33286b52e5f3d42ee4ba044127eac36ebe0fdedcb137f"
+  },
+  "networkSourceManifest": {
+    "path": "/private/tmp/zoen-app-network-permissions-v129/manifest.json",
+    "sha256": "686887330ce7726a8e9f09c5053bf79e1bccf3279bb739a86896eccd7259d4ed"
+  },
+  "networkSourceTests": {
+    "focusedPassed": 8,
+    "existingConsentQueuePassed": 17,
+    "oldConsumerControl": "7pass/1fail own-first-grant retirement; current8pass",
+    "actualDeviceOrAuthGrantFlowAccepted": false
+  },
+  "runtimeDoesNotQualifyLaterNetworkPermissionSources": true,
+  "laterRuntimeSourceDelta": {
+    "path": "apps/zoen/src/miniapps/view-host.tsx",
+    "runtimeSha256": "c968235744a37dc90be91018af1b6cf4ad170675eba03c08c8f052e421b728e6",
+    "finalCheckedSha256": "a961620ad4e0036527b1e36e941fd7ee05bcde8e481334ed379114ca2e38f8fa",
+    "qualification": "Only generic ReadyView network-enable band now requires !fill. Canonical Excalidraw/frame/native header branch unchanged after UI receipt; added Permissions helper/route/test not exercised by Demo UI."
+  }
+}

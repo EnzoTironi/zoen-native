@@ -1,0 +1,27 @@
+{
+  "id": "ordinary-transport-presence-v114a",
+  "progressDocument": "docs/dev/zoen-product-progress.md",
+  "receipt": {
+    "path": "/private/tmp/zoen-ordinary-presence-v114/acceptance.json",
+    "sha256": "f5d9e83a79e7319af9050b601a728233b75b4c15dc4214cc5adbb0c1df3046d0"
+  },
+  "scope": "Actual local native and candidate protocol baseline only; standalone wire oracle has retained source/binary/raw evidence, portable checked-in integration pending. No public deployment or full app/platform/protocol/scale acceptance.",
+  "sharedRustTests": 147,
+  "presenceRegistrySchedulerUnits": 28,
+  "directoryWorkerdCases": 48,
+  "directoryNativeSignedSteps": 71,
+  "originalIdleAndCapacityDeadlinesMs": 5000,
+  "originalIdleAndCapacityBodiesUnchanged": true,
+  "actualAbruptOrphanRecovery": true,
+  "actualCloseSqlFaultRecoveredByRealAlarm": true,
+  "actualMlsPageCrossingMessages": 520,
+  "canonicalDirectEvents": 531,
+  "canonicalGroupEvents": 20,
+  "realAccounts": 2,
+  "sameIdentitySecondDevice": true,
+  "actualServerAndClientSQLiteReopen": true,
+  "completePostRestartSyncAndMlsDecrypt": true,
+  "taskOwnedCleanupVerified": true,
+  "publicDeploymentAccepted": false,
+  "fullProtocolQualified": false
+}

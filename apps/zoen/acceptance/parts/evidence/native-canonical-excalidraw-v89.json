@@ -1,0 +1,74 @@
+{
+  "status": "PASS_NATIVE_CANONICAL_EDIT_AND_COLD_REOPEN",
+  "checkpoint": "v89",
+  "sourceCommit": "85c4a1f3b319b0cd016f03a6c9118229e6be7907",
+  "sourceManifest": "/private/tmp/zoen-iphone-release-v89-inputs.json",
+  "sourceSha256": "adda8004b473561b4eaa520eed0123572a47a79af3d9189f4ccc695ca36b5e6c",
+  "sourceInputs": 901,
+  "signedArtifactVerification": "/private/tmp/zoen-iphone-release-v89-verification.json",
+  "evidenceRoot": "/private/tmp/zoen-excalidraw-canonical-iphone-qa-v89",
+  "nativeProof": "/private/tmp/zoen-excalidraw-canonical-iphone-qa-v89/native-proof.json",
+  "canonicalItem": {
+    "id": "it_01m58hskre9krj16jhx2125qtd",
+    "title": "Zoen + MCP",
+    "observedElements": 5,
+    "scope": "The same canonical Zoen App Item and Home card, not an external provider checkpoint."
+  },
+  "nativeAcceptance": "The preserving v89 update opened the rectangle saved under v88. Native touch added a second horizontal rectangle, iOS keyboard labels Zoen and MCP Apps, and a connecting arrow. Saved status and guarded Back returned a Home card with 5 elementos. A full process restart retained that count; opening the same card rendered both rectangles, both labels and the arrow. No Metro or runtime JavaScript injection; native instrumentation was used for accessibility inspection.",
+  "coldReopenReplay": {
+    "flow": ".argent/flows/excalidraw-canonical-iphone-v89-reopen.yaml",
+    "passed": 4,
+    "failed": 0,
+    "errored": 0,
+    "skipped": 0,
+    "durationSeconds": 13.7,
+    "scope": "One uninterrupted replay of process restart, Home count, same-card open and editor readiness. The first recorded take supplies the visible five-element diagram proof. Not a two-pass regression or full editing replay."
+  },
+  "screenshot": ".argent/screenshots/excalidraw-canonical-iphone-v89.png",
+  "sourceChecks": {
+    "receipt": "/private/tmp/zoen-excalidraw-canonical-iphone-qa-v89/source-checks.json",
+    "app": 775,
+    "typescript": true,
+    "oxlint": true,
+    "oxfmt": true,
+    "rendererTests": 15,
+    "scopedRustAppsTests": 11,
+    "documentCases": 16,
+    "fullFfiAttribution": "501 passed under prior v88; the v89 caption change has scoped checks, not a fresh full FFI run.",
+    "exactSourceExpoCiRun": 39172474600,
+    "exactSourceExpoCiReceipt": "/private/tmp/zoen-excalidraw-canonical-iphone-qa-v89/exact-source-expo-ci.json",
+    "exactSourceExpoCiJobs": "client, schedule-miniapp and release-web-e2e all PASS"
+  },
+  "limits": [
+    "Single synthetic account on an iOS Simulator. No independent recipient or encrypted-document byte comparison, physical iPhone, timing/performance, new accessibility or full native-surface acceptance.",
+    "This native take does not insert an image or induce conflicts, copy failures or owner-retirement faults. Image bytes and those failure boundaries retain their separate source/browser-test attribution.",
+    "No arbitrary MCP provider, Notion OAuth, remote export or complete Excalidraw/product-parity acceptance. The v87 real remote-server readback remains separate evidence.",
+    "Human acceptance here is limited to the preserving install and retained Home cards/larger text. Whole-application main and human acceptance remains attributed to the unchanged v85 artifact objects."
+  ],
+  "fullAppParityAccepted": false,
+  "combinedVideo": {
+    "path": ".argent/recordings/excalidraw-canonical-iphone-v89-proof.mp4",
+    "seconds": 62.3,
+    "composition": "Sequential stream-copy concatenation of the two original recordings, retaining their static trimming. No new app actions or frame overlays.",
+    "bytes": 4686291,
+    "sha256": "a1f3160f6f8ef90bddb3264c30e6dbebcb65eafa99346446cb7a9a8f31f8481e"
+  },
+  "videos": [
+    {
+      "path": ".argent/recordings/screen-recording-388CA707-A103-4845-B5FE-BAA9526D3D57-1792363094692.mp4",
+      "seconds": 44.067,
+      "wallClockSeconds": 137.351,
+      "trimmedSeconds": 93.284,
+      "bytes": 2600440,
+      "sha256": "4748d280af93c3e34c9da610ebfcb9ff49ddfe7321655bb6db41be93e4166ca3"
+    },
+    {
+      "path": ".argent/recordings/screen-recording-388CA707-A103-4845-B5FE-BAA9526D3D57-1792363242116.mp4",
+      "seconds": 18.233,
+      "wallClockSeconds": 27.402,
+      "trimmedSeconds": 9.169,
+      "bytes": 2086263,
+      "sha256": "328dd0f58384b815c7e297deeb4ec7ecdb23c770d3df5d294a64f3302774f27e"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "status": "PASS_PRIVATE_BUCKET_PROVISIONING_ONLY",
+  "bucket": "zoen-private-blobs",
+  "createdAt": "2026-10-19T10:23:12.997Z",
+  "storageClass": "Standard",
+  "location": "ENAM",
+  "publicAccessEnabled": false,
+  "r2DevEnabled": false,
+  "customDomains": [],
+  "initialObjects": 0,
+  "initialBytes": 0,
+  "billingAgreementSubmittedThisTurn": false,
+  "newApiTokens": false,
+  "receipt": "/private/tmp/zoen-cloudflare-r2-v100/provisioning-acceptance.json",
+  "receiptSha256": "bd9864fffc859dfc803bf998b2d64cdc8e6cf4da28032a57a06ef2a8a77ee41b",
+  "limits": "Dashboard already exposed active R2 after explicit user authorization. Bucket creation and official Wrangler read-only privacy checks only. Encrypted-object roundtrip/deployment is recorded separately in V100; no backup recovery or public app acceptance."
+}

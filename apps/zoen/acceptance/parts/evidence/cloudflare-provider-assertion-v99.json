@@ -1,0 +1,10 @@
+{
+  "status": "PASS_PRIVATE_ASSERTION_EQUIVALENCE_ONLY",
+  "sourceCommit": "b7813e534233f5c65ab10aa41e93e05c60e21cc0",
+  "nativeCases": 18,
+  "nodeWasmCases": 18,
+  "workerdWasmCases": 18,
+  "committedReceipt": "/private/tmp/zoen-cloudflare-auth-v99/committed-acceptance.json",
+  "committedReceiptSha256": "7700acc635dfd9238af98f0ea31fcfab1aac93f45fa2e6d7e08e351cb40252b9",
+  "limits": "Shared RS256 assertion rules and fixed native cache delegation only. Enrollment/HTTP host work is separate; no public provider flow/deployment. Original working-tree build also contained then-uncommitted socket sources, retained in original receipt."
+}

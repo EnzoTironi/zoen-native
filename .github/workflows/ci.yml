@@ -5,7 +5,7 @@ name: ci
 
 on:
   push:
-    branches: [main, 'real/**']
+    branches: [main, "real/**"]
   pull_request:
 
 concurrency:
@@ -17,9 +17,9 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  CARGO_INCREMENTAL: '0'
-  CARGO_PROFILE_DEV_DEBUG: '0'
-  RUST_TOOLCHAIN: '1.99.0'
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  RUST_TOOLCHAIN: "1.99.0"
   ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     env:
-      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,6 +47,9 @@ jobs:
 
       - name: Staged file size hook contracts
         run: python3 -m unittest discover -s scripts/git-hooks -p 'test_*.py' -v
+
+      - name: Canonical acceptance composition and source writes
+        run: python3 scripts/test-acceptance.py
 
   rust:
     runs-on: ubuntu-24.04

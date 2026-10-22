@@ -1,0 +1,28 @@
+{
+  "visibleLiteralsChanged": 224,
+  "internalIdentifiersPreserved": true,
+  "receipt": {
+    "path": "/private/tmp/zoen-apps-copy-v121/final-source-receipt.json",
+    "sha256": "f12cfc8c516ff11e272a918421a03c8921b0be266b2114a30b86476e31fc2c8f"
+  },
+  "optimizedAndroidCoreBuildPassed": true,
+  "installedNativeCopyAccepted": false,
+  "freshWebCoreCopyAccepted": true,
+  "freshWebRelease": {
+    "receipt": {
+      "path": "/private/tmp/zoen-apps-web-v122/final-seal-current-cli/acceptance.json",
+      "sha256": "814a3c0e8a8cc8cd423f0ebf0bd04e246a067722014f88eb4b8ff0fa3410e7d8"
+    },
+    "actualUiCatalogAndFormInstallation": true,
+    "newMessageIdAndAuthorVerified": true,
+    "nativePeerAdditionalOccurrences": 1,
+    "historicalIdsAndUtf8MessageBytesPreserved": true,
+    "currentNativeCliAndWasmUsed": true,
+    "locales": ["en-US", "pt-BR"],
+    "qualificationBoundary": "Historical qualified WASM/CLI/export at its exact receipt boundary; predates the newer shared App host, Home/media menu controller and current ten-file UI cut. The 48 checks do not qualify current source.",
+    "headAtSeal": "2b879f177baa03df4eaa41c235943383380d42d1",
+    "sourceCutIncludesUncommittedChanges": true,
+    "ownedSourcePathsAtSeal": 6,
+    "relatedSourcePathsAtSeal": 3
+  }
+}

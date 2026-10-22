@@ -1,0 +1,83 @@
+{
+  "nativePdfEditDraftRecoveryV85": {
+    "$part": "evidence/native-pdf-edit-draft-recovery-v85.json"
+  },
+  "nativeCanonicalExcalidrawV89": {
+    "$part": "evidence/native-canonical-excalidraw-v89.json"
+  },
+  "nativeExcalidrawImageV90": {
+    "$part": "evidence/native-excalidraw-image-v90.json"
+  },
+  "bundledMcpViewsV91": {
+    "$part": "evidence/bundled-mcp-views-v91.json"
+  },
+  "nativeBundledMcpViewsV92": {
+    "$part": "evidence/native-bundled-mcp-views-v92.json"
+  },
+  "pageInputFoundationV94": {
+    "$part": "evidence/page-input-foundation-v94.json"
+  },
+  "sessionRetirementAndInputReleaseV95": {
+    "$part": "evidence/session-retirement-and-input-release-v95.json"
+  },
+  "webV96": {
+    "$part": "evidence/web-v96.json"
+  },
+  "publicWebHostingV96": {
+    "$part": "evidence/public-web-hosting-v96.json"
+  },
+  "androidV96": {
+    "$part": "evidence/android-v96.json"
+  },
+  "cloudflareAdmissionFoundationV96": {
+    "$part": "evidence/cloudflare-admission-foundation-v96.json"
+  },
+  "cloudflareClosedGroupsV96": {
+    "$part": "evidence/cloudflare-closed-groups-v96.json"
+  },
+  "webDrawingsV97": {
+    "$part": "evidence/web-drawings-v97.json"
+  },
+  "cloudflareDirectoryV97": {
+    "$part": "evidence/cloudflare-directory-v97.json"
+  },
+  "webReleaseArtifactV97": {
+    "$part": "evidence/web-release-artifact-v97.json"
+  },
+  "cloudflareDirectoryKeyPackagesV98": {
+    "$part": "evidence/cloudflare-directory-key-packages-v98.json"
+  },
+  "legacyAndroidSourceV98": {
+    "$part": "evidence/legacy-android-source-v98.json"
+  },
+  "cloudflareProviderAssertionV99": {
+    "$part": "evidence/cloudflare-provider-assertion-v99.json"
+  },
+  "cloudflareDirectorySocketV99": {
+    "$part": "evidence/cloudflare-directory-socket-v99.json"
+  },
+  "cloudflareProviderEnrollmentExtractionV99": {
+    "$part": "evidence/cloudflare-provider-enrollment-extraction-v99.json"
+  },
+  "cloudflareProviderHostV99": {
+    "$part": "evidence/cloudflare-provider-host-v99.json"
+  },
+  "cloudflareCiBoundaryV100": {
+    "$part": "evidence/cloudflare-ci-boundary-v100.json"
+  },
+  "cloudflareR2BucketV100": {
+    "$part": "evidence/cloudflare-r2-bucket-v100.json"
+  },
+  "cloudflareMediaV100": {
+    "$part": "evidence/cloudflare-media-v100.json"
+  },
+  "productExecutionV102": {
+    "$part": "evidence/product-execution-v102.json"
+  },
+  "productExecutionV103": {
+    "$part": "evidence/product-execution-v103.json"
+  },
+  "productExecutionV105": {
+    "$part": "evidence/product-execution-v105.json"
+  }
+}

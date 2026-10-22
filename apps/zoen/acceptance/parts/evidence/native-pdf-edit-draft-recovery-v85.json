@@ -1,0 +1,36 @@
+{
+  "status": "BOUNDED_PASS_ISOLATED_PDF_RECOVERY_AND_HUMAN_RETENTION",
+  "checkpoint": "v85",
+  "sourceCommit": "7245d02aa4d4230f504c0aedcde2bef16a67d112",
+  "sourceInputs": 839,
+  "sourceSha256": "9101e92963c880a0fb70e2fda8164c17a48ee44da50af3e88cd80105bb851320",
+  "runtime": "/private/tmp/zoen-pdf-edit-journal-qa-v85/native-acceptance.json",
+  "artifactVerification": "/private/tmp/zoen-pdf-edit-journal-qa-v85/accepted-artifact-verification.json",
+  "sourceHeadExpoCi": {
+    "head": "7245d02aa4d4230f504c0aedcde2bef16a67d112",
+    "run": 39159913407,
+    "url": "https://github.com/EnzoTironi/zoen-native/actions/runs/39159913407",
+    "jobs": {
+      "release-web-e2e": "success",
+      "schedule-miniapp": "success",
+      "client": "success"
+    },
+    "receipt": "/private/tmp/zoen-pdf-edit-journal-qa-v85/documentation/source-ci.json",
+    "scope": "Exact-source Expo jobs only, separate from native UI. Web 39159913405 and messenger-search-edit 39159913406 also succeed; no blanket claim about other workflows."
+  },
+  "limits": [
+    "Recovery begins after Quick Look delivers a complete edited copy and synchronous encrypted retention acknowledges it. Strokes not yet delivered by Quick Look are not promised recoverable.",
+    "Actual iOS Simulator acceptance covers one writable existing PDF, Keep across cold reopen and explicit Save to one new version. Remote-conflict/MIME-changed recovery UI, multi-capture fault interleavings and backup exclusion are covered by source/host tests where recorded, not equivalent native UI journeys.",
+    "No physical iPhone, independent recipient or edited-PDF byte comparison, backup/restore UI, performance/allocation boundary, broader accessibility/provider/Push/calls or complete comparative product-parity claim."
+  ],
+  "fullAppParityAccepted": false,
+  "scope": "Controlled process death after acknowledged encrypted PDF capture; same stroke recovered, Keep/cold retains v2, explicit Save/cold yields exactly one v3. Both preserving installs and human Home/recipe/larger-text/six-page history/old Delivered voice retention pass.",
+  "sourceChecks": {
+    "appPassed": 696,
+    "ffiPassed": 476,
+    "pdfJournalSubset": 13,
+    "typescriptOxlintOxfmt": "PASS",
+    "receipt": "/private/tmp/zoen-pdf-edit-journal-qa-v85/documentation/source-checks.json",
+    "separateSwiftHostChecks": "14 journal, 21 PDF-owner, 11 preview-owner scenarios and four core-process phases; separate counts, not additions to suite totals."
+  }
+}

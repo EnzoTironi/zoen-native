@@ -1,0 +1,27 @@
+{
+  "id": "prelaunch-core-cleanup-v111",
+  "progressDocument": "docs/dev/zoen-product-progress.md",
+  "expoVersion": "58.0.16",
+  "sharedPackagesRenamed": 13,
+  "nativeObject": "Client",
+  "nativeBindings": "client_core",
+  "compatibilityAliasesAdded": false,
+  "nativeProof": {
+    "path": "/private/tmp/zoen-client-rename-v110/acceptance.json",
+    "sha256": "4d39212739054d7d70a773cf02e8aca4ebc0c95b07c7e6b4dc40a17caac6340d"
+  },
+  "javascriptChecks": {
+    "path": "/private/tmp/zoen-transfer-v102/v111-development-link-app-check.json",
+    "sha256": "9acc5013924872e48ac0f3aaf1ec36b5a592ae26f6fd747525bbd6fb6827fc0d",
+    "tests": 815,
+    "failures": 0,
+    "skipped": 0
+  },
+  "scope": "Bounded source, regenerated ABI, native Android host and signed Expo iOS Debug simulator checks. Earlier receipts retain their original source; no complete Expo Android, signed Release, public provider/backend, full-app or scale acceptance follows.",
+  "javascriptRuntimeProof": {
+    "path": "/private/tmp/zoen-client-routing-v111/acceptance.json",
+    "sha256": "32357c97359875e1ce2d1e6cf541b5a0c109bdf2cbf864b544f45ccbde27673d",
+    "scope": "Current served bundle, cold/warm development-client links followed by explicit demo entry, retained five card IDs/four message IDs; no invalid-link detour. Development-client redelivery reloads JavaScript; demo mode is session-only."
+  },
+  "checkpointReceipt": "/private/tmp/zoen-naming-v110/acceptance.json"
+}

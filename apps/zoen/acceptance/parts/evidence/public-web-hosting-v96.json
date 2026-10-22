@@ -1,0 +1,118 @@
+{
+  "status": "PASS_PUBLIC_HOSTING_AND_GUEST_ONBOARDING_ONLY",
+  "url": "https://app.tryzoen.com",
+  "version": "359e0cd0-41c5-4e53-b64c-fef8e1b4d0e1",
+  "date": "2026-10-19",
+  "hostingPathsPassed": 10,
+  "exactSigningWorkerIntegrity": "PASS",
+  "build": "Fresh production export of891d6d9b with canonical Excalidraw, measured header inset, release-only WASM name removal and reproducible worker output. Separate from loopback QA.",
+  "documentation": "infra/cloudflare/README.md",
+  "limits": "Encrypted journeys were not run against the public domain. Production relay remains unavailable; public encrypted sync and provider OAuth unaccepted. Provider origins, separateOAuthWorker and otherhostnames unchanged.",
+  "receipt": "/private/tmp/zoen-app-domain-v96/release-09-public/acceptance.json",
+  "priorGuestBoot": {
+    "receipt": "/private/tmp/zoen-web-v96/public-preview/acceptance.json",
+    "scope": "Guest onboarding boot on prior deployment02, crossOriginIsolated=true, no JavaScript page errors. Provider challenge calls failed against unavailable configured relay; no provider login, WASM initialization or encrypted-sync acceptance."
+  },
+  "previewUrl": "https://zoen-web.agenttironi.workers.dev",
+  "origins": ["https://app.tryzoen.com", "https://zoen-web.agenttironi.workers.dev"],
+  "hostingPathsPassedEach": 10,
+  "exactSpaBytesAndNoTransform": "PASS",
+  "domainRoute": {
+    "pattern": "app.tryzoen.com/*",
+    "worker": "zoen-web",
+    "failOpen": false,
+    "recordChanges": "Only original app A/AAAA toggled toProxied; contents/AutoTTL unchanged; no deletion",
+    "receipt": "/private/tmp/zoen-app-domain-v96/migration-proxy-acceptance.json"
+  },
+  "currentGuestBoot": {
+    "receipts": [
+      {
+        "path": "/private/tmp/zoen-app-domain-v96/release-09-public/canonical/guest-boot.json",
+        "bytes": 3879,
+        "sha256": "efdc2ce5242d3d66c3e0c04ad45fd3b011c40272a17e47cc6c72f2dd87a0e2df"
+      },
+      {
+        "path": "/private/tmp/zoen-app-domain-v96/release-09-public/workers-preview/guest-boot.json",
+        "bytes": 4317,
+        "sha256": "767d692bdb29d43e62e9be32f4e83d115610d6b07580379a748a7cd4885e9442"
+      }
+    ],
+    "browser": "155.0.8059.85",
+    "origins": ["https://app.tryzoen.com", "https://zoen-web.agenttironi.workers.dev"],
+    "friendlyLocalizedErrorVisible": true,
+    "unhandledPageErrors": 0,
+    "unrequestedAnalyticsScript": false,
+    "rootIsolated": true,
+    "signInIsolated": false,
+    "retryFont": "system-ui",
+    "providerState": {
+      "apple": "unavailable",
+      "google": "unavailable"
+    },
+    "scope": "Publicrelease09hosting+empty-profile guest rendering bothorigins. No successfulWASMinitialization, login/account/linking/authenticatedsync or fullparity acceptance."
+  },
+  "localHeaderChecks": {
+    "pagesPaths": 9,
+    "workersPaths": 10,
+    "receipts": [
+      "/private/tmp/zoen-app-domain-v96/local-header-check-final.log",
+      "/private/tmp/zoen-app-domain-v96/local-workers-hosting.log"
+    ]
+  },
+  "priorRelease06": {
+    "version": "13975cc7-93e5-47f6-9f89-c769f1bd0756",
+    "receipt": "/private/tmp/zoen-app-domain-v96/live-hosting-final.json",
+    "build": "Fresh production configuration including final accessibility/auth corrections and no-transform policy; separate from loopback QA.",
+    "currentGuestBoot": {
+      "receipt": "/private/tmp/zoen-app-domain-v96/final-web/guest-boot.json",
+      "browser": "155.0.8059.85",
+      "friendlyLocalizedErrorVisible": true,
+      "unhandledPageErrors": 0,
+      "unrequestedAnalyticsScript": false,
+      "scope": "Own empty-profile guest onboarding and popup-safe sign-in on canonical domain; provider preparation failed against unavailable configured relay. No provider confirmation, account/device linking, WASM initialization or encrypted sync.",
+      "retryFont": "system-ui"
+    }
+  },
+  "sourceCommit": "891d6d9b170148708f01a250ab6d5c3d09fc4b27",
+  "receiptSha256": "5c9210eccb0267bd60d59255c830ccdfc0f79fd29097532054e03a8444394ac0",
+  "workerIntegrity": "sha384-pImaTmN20eB49OhAsS9/4uCr8hZDDmu0NhVTfWUyy5IEBLeeGXkVY+YR8YeYLGlH",
+  "wasmBytes": 23251769,
+  "artifactManifestSha256": "d182d994fcd239b770aaa2035e3f5914aa2d72e3e1456744f237ffdabfc83110",
+  "priorRelease07": {
+    "version": "4d56e30f-a989-4de4-be9b-60b70d03d430",
+    "build": "Fresh production export of d4a0590d, including canonical Web Excalidraw and measured Web miniapp header inset. Separate from loopback QA.",
+    "receipt": "/private/tmp/zoen-app-domain-v96/release-07-public/acceptance.json",
+    "receiptSha256": "306b367117f5e39a8bc0ac05abfb1a692cf88abd4e243ad2a6df8c257aa9541b",
+    "sourceCommit": "d4a0590d68b33aa9d5a13039af26c9bcd77ede3c",
+    "workerIntegrity": "sha384-dYc1Ds6ChZA3cp5LAy6/3BNbEuwGze2+MlxwJotYmJoXyigQWBHsMy9h5GHmbjwN",
+    "wasmBytes": 25876496,
+    "artifactManifestSha256": "fb32ad206989bb24e8842a56a26c0d7d6ea2ccd13647010ccbffde86b93607bc",
+    "currentGuestBoot": {
+      "receipts": [
+        {
+          "path": "/private/tmp/zoen-app-domain-v96/release-07-public/canonical/guest-boot.json",
+          "sha256": "afb5fe24b4ba60b183abb7b723b33bd4a02b520c4e1fa8596c83d4a0c0a3d06c",
+          "bytes": 3879
+        },
+        {
+          "path": "/private/tmp/zoen-app-domain-v96/release-07-public/workers-preview/guest-boot.json",
+          "sha256": "95ac5a41c92e7f0359c53233438d33463e168a8b69e7904fd0ee7266e5f55868",
+          "bytes": 4307
+        }
+      ],
+      "browser": "155.0.8059.85",
+      "origins": ["https://app.tryzoen.com", "https://zoen-web.agenttironi.workers.dev"],
+      "friendlyLocalizedErrorVisible": true,
+      "unhandledPageErrors": 0,
+      "unrequestedAnalyticsScript": false,
+      "rootIsolated": true,
+      "signInIsolated": false,
+      "retryFont": "system-ui",
+      "providerState": {
+        "apple": "unavailable",
+        "google": "unavailable"
+      },
+      "scope": "Public release07 hosting + empty-profile guest onboarding on canonical and workers.dev origins only. No provider login/account/linking, successful WASM initialization, authenticated sync, or whole-platform acceptance."
+    }
+  }
+}

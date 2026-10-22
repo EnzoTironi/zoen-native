@@ -1,0 +1,32 @@
+{
+  "guide": "infra/local/FRONTDOOR.md",
+  "ownershipIntegrityUnitCases": 26,
+  "healthyServices": 7,
+  "actualPublicClientChecksPassed": 7,
+  "differentLiveUpstreamsWithoutReconnect": true,
+  "encryptedMessageAndDeliveredReadVerified": true,
+  "originalSixNativeProcessesPreserved": true,
+  "enabledGatewayBackupRestoreDrillAccepted": true,
+  "highAvailabilityAccepted": false,
+  "receipt": {
+    "path": "/private/tmp/zoen-local-frontdoor-v120/management-activation-01/final-receipt.json",
+    "sha256": "739f0d792c51f9260dd1a78509dcb9d535f1cd6e961ef8148789e0a2304c3ab0"
+  },
+  "enabledGatewayBackupRestore": {
+    "receipt": {
+      "path": "/private/tmp/zoen-gateway-restore-v122/acceptance.json",
+      "sha256": "702911d9630a413b0343e400d2636df81677ca21ca710a7c38737b39bfad3f97"
+    },
+    "freshVolumes": 4,
+    "sameHistoricalImagesVaultKeysAndRuntimeConfig": true,
+    "validArchiveRestoresDespiteCorruptCurrentRuntimeConfig": true,
+    "sameCanonicalUrlWithoutIdentityOrStorageRewrite": true,
+    "samePersistentClientReopensAndMakesAuthenticatedWrite": true,
+    "newPubliclyLinkedDeviceDecryptsRestoredHistory": true,
+    "newDeviceAttachmentBytesExact": 1049393,
+    "statelessRestoredCiphertextGetBytesExact": 1049433,
+    "originalDefaultSevenProcessesPreserved": true,
+    "releasedPortTimeWaitRegressionAndActiveListenerRefusalVerified": true,
+    "limits": "Local cold backup only. No public TLS, WAN, HA, power-loss, physical-device or scale acceptance."
+  }
+}

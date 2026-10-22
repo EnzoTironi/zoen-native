@@ -1,0 +1,40 @@
+{
+  "ciRun": 39204333325,
+  "head": "52da9729e76e74fbfb3156c4ce39885717ccb653",
+  "api28": {
+    "discovered": 106,
+    "passed": 104,
+    "skipped": 2,
+    "skipReason": "Unsupported WebView MCP cases"
+  },
+  "api35": {
+    "discovered": 106,
+    "passed": 103,
+    "failed": 3,
+    "failures": [
+      "MCP list/native confirmation",
+      "MCP offline Hike",
+      "Recovered Page final save timeout"
+    ]
+  },
+  "mcpFixCommit": "819e58cb110fc4b31c6494819b90e5b1ef33ee1c",
+  "browserProtocolTests": 2,
+  "browserReceipt": "/private/tmp/zoen-cloudflare-admission-v96/validation/legacy-native-shim-acceptance.json",
+  "browserReceiptSha256": "df648978b837590e88cee1e0481d973beeba6cc916ecc096aafc10f48636b353",
+  "pageDiagnosticCommit": "fd85a05e",
+  "limits": "Original52da failures retained above. Fresh c727 API35 CI passes recovered Page final save; the two MCP native WebView cases still fail despite the separate Chromium SDK proof. No Expo parity is inferred from legacy tests.",
+  "latestCi": {
+    "run": 39207994306,
+    "head": "c727b1f94ccfbf31f7cd42d748fc8370024bfd00",
+    "api35": {
+      "discovered": 106,
+      "passed": 104,
+      "failed": 2,
+      "skipped": 0,
+      "failures": ["MCP list/native confirmation", "MCP offline Hike"],
+      "recoveredPageFinalSave": "PASS"
+    },
+    "receipt": "/private/tmp/zoen-cloudflare-web-v96/ci-c727-evidence/acceptance.json",
+    "receiptSha256": "47ba634a497895c0479035eb9b3241b18cc7ca11edb722a479eba66570c8b1d0"
+  }
+}

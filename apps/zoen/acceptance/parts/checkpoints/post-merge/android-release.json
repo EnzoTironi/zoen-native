@@ -1,0 +1,97 @@
+{
+  "baselineReceipt": {
+    "path": "/private/tmp/zoen-expo-android-v121/baseline-acceptance.json",
+    "sha256": "19314338316b36613430c1559962c2ea38795b1865b4122737c96f0db4ff4c00"
+  },
+  "optimizedRustCoreAndReleaseApkBuilt": true,
+  "actualSecureLinkAndEncryptedHistoryVerified": true,
+  "actualGroupAndTwoIdentityDirectMessageExchangeVerified": true,
+  "actualDeliveredReceiptAndColdRetainedMessageIdsVerified": true,
+  "actualNativeSearchRetainsOriginalMessageId": true,
+  "fullAndroidJourneyAccepted": false,
+  "opaqueOriginTransport": {
+    "androidOnlyExactNullOrigin": true,
+    "exactNonceAndDocumentGenerationRequired": true,
+    "compiledActualFrameAndHostTestsPassed": 9,
+    "actualNativeEventUrlObserved": false,
+    "updatedReleaseApk": "71689f40e8dd5211a70e7ebb85052e304e35622acf3ec55517bd75bf705d737a",
+    "sourceInputsUnchangedDuringBuild": 496,
+    "genuineOptimizedJniReusedWithTwoExplicitUnusedWebInputDeltas": true,
+    "runtimeAttempt": {
+      "path": "/private/tmp/zoen-expo-android-apps-v122/attempt-01-runtime.json",
+      "sha256": "babc3f1725ed9d110ce9ad65c31c6877a4d860f3c7f644198b4c8fda851e1b24"
+    },
+    "loadingObservedSeconds": 72.35,
+    "actualExcalidrawConnectEditReopenAccepted": false,
+    "nextStep": "Latest v129 titleless/fullbleed follow-up requires its own runtime; the old5554 device remains protected and fresh owned5556 is shut down with data retained after partial v128 QA.",
+    "historicalArtifactBoundary": "The updatedReleaseApk, sourceInputsUnchangedDuringBuild, runtimeAttempt, loadingObservedSeconds and actualExcalidrawConnectEditReopenAccepted retain the original unsuccessful APK71689f40 attempt. Independent accepted runtime below binds APKba0c8ad1 only.",
+    "acceptedRuntimeReceipt": {
+      "path": "/private/tmp/zoen-expo-android-fresh-v126/apps-acceptance.json",
+      "sha256": "0bdab9e7475b73503c3bc7d29c57c1200b45f82838d7f2146d043397af1d33f6"
+    },
+    "acceptedRuntimeApk": "ba0c8ad1f95885fd91c6ca03dd02be0538c4424e2f20b13a4aedc822216f5a5f"
+  },
+  "remainingObservedGaps": [
+    "Latest titleless/fullbleed iOS interactions pass only in explicit Demo/historicalv110 UI, with exact12production source boundary. Final16source checks pass; no new Android APK/runtime, current iOS native bodies, public linking or actual device network-grant flow is qualified.",
+    "v128 APK59839a92 first editor visual has nativeClose/Details, maximum available content and no Home ghosting. Details/close/save/reopen, List, hardwareBack and current continuous-photo Day/Deepnight/four-tab behavior remain unqualified.",
+    "A prior real Pin to Home tap did not persist; reorder, complete popup/accessibility and hardwareBack causes remain unestablished.",
+    "Android outgoing media, real providers and complete platform journeys remain open.",
+    "Current API28 mandatory repeats pass; the earlier Compose repeat4 crash was not reproduced and its root cause remains unproven."
+  ],
+  "causalLoadDiagnostic": {
+    "receipt": {
+      "path": "/private/tmp/zoen-expo-android-diagnostic-v124/acceptance.json",
+      "sha256": "a2aa7f75a29c9625c04bc2e2012b9d242f79456d351cbd57e3952e9b214568d4"
+    },
+    "temporaryInstrumentedApkOnly": true,
+    "firstSha256Seconds": 23.8504,
+    "duplicateSha256EndObserved": false,
+    "stopThresholdSeconds": 90,
+    "nativeShellHtmlSeconds": 5.2114,
+    "nativeSourceOriginObserved": false,
+    "actualEditorReadyEditReopenAccepted": false,
+    "limits": "Old measured path only. No production speedup claim; shell cost remains a separate unresolved residual."
+  },
+  "currentReleaseQualification": {
+    "receipt": {
+      "path": "/private/tmp/zoen-expo-android-final-v125/acceptance.json",
+      "sha256": "4470f8acd702727c4ec529ca2143a206a7b2316839af6b4d975161d52e4b837e"
+    },
+    "apkSha256": "ba0c8ad1f95885fd91c6ca03dd02be0538c4424e2f20b13a4aedc822216f5a5f",
+    "buildElapsedSeconds": 234.92,
+    "exactBeforeAfterRuntimeInputs": 500,
+    "peakOwnedRssBytes": 2659188736,
+    "genuineOptimizedJniReusedWithTwoExplicitUnusedWebInputDeltas": true,
+    "actualRetainedHomeDarkBarAnd48dpEllipsisAppearanceAccepted": true,
+    "actualDayTabPopupPinReorderEditorAccepted": false,
+    "unattributedSignedSceneDrift": {
+      "previousVersion": 1,
+      "previousElements": 0,
+      "currentVersion": 7,
+      "currentElements": 3,
+      "actorOrAuthoringDeviceKnown": false
+    },
+    "protectedDeviceHandoff": {
+      "path": "/private/tmp/zoen-android-user-handoff-v125/handoff.json",
+      "sha256": "6b113b5aa4e4ad1be6ccc20a363e00116bab71f1f33719e8896675d9db5aafb8"
+    },
+    "limits": "Bounded first Home visual observation only; no popup/tab/theme/editor interaction. Treat emulator-5554/account as potentially human-owned: no further control, reset or force-stop. Next QA requires a fresh distinct owned AVD and genuine public enrollment/link. QA signing is not store-distribution acceptance.",
+    "qualificationBoundary": "Prior APK ba0c8ad1 only; the new ten-file UI cut runtime is not qualified by this receipt."
+  },
+  "freshOwnedAvdApps": {
+    "receipt": {
+      "path": "/private/tmp/zoen-expo-android-fresh-v126/apps-acceptance.json",
+      "sha256": "0bdab9e7475b73503c3bc7d29c57c1200b45f82838d7f2146d043397af1d33f6"
+    },
+    "releaseApk": "ba0c8ad1f95885fd91c6ca03dd02be0538c4424e2f20b13a4aedc822216f5a5f",
+    "freshOwnedAvdAndGenuinePublicSecureLink": true,
+    "noIdentityKeystoreOrAvdClone": true,
+    "actualEditorOpenEditSaveColdReopenAccepted": true,
+    "sameIdentityOtherLinkedPublicCliSceneBytes": 680,
+    "sameSceneSha256": "be5ce5ec25b32fe0098768d27b8226995a475eea7bcefab99edc35c41afcbb98",
+    "firstEditorObservedBySeconds": 20.577,
+    "coldEditorObservedBySeconds": 17.093,
+    "actualNativeSourceUrlObserved": false,
+    "limits": "UI observation upper bounds include automation delay, not native callback phases or an A/B speedup proof. APK ba0c8ad1 predates the new continuous-photo bar and native App-sheet navigation."
+  }
+}

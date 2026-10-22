@@ -1,0 +1,39 @@
+{
+  "status": "SOURCE_CHECKS_PASS_PARTIAL_NATIVE_V91_WITH_GESTURE_FAILURE",
+  "sourceCommit": "1ea2477649b047afae1ad3a299b59e09821f9638",
+  "receipt": "/private/tmp/zoen-builtins-v91/source-checks/source-freeze-final.json",
+  "receiptSha256": "8b085972de08fcbab6661323a3e042a8d8e2f966d742353dc617a563f863b3d9",
+  "sourceManifestSha256": "6dffd215708be99650490bd5e60f22401026a77e79980d7def042d1a64232ee0",
+  "sourceFiles": 63,
+  "standardViews": ["pet", "poll", "list", "maptap", "recipe", "countdown"],
+  "coverage": "Six existing core-bundled apps use shared React UI and official MCP Apps; Hike/Schedule shared-SDK resources regenerated, Excalidraw unchanged. Legacy six-app native mutation fallback removed; historical state retained read-only.",
+  "checks": {
+    "clientTests": 777,
+    "clientAttribution": "777 passed plus current TypeScript/Oxlint/Oxfmt. Final readonly historical checkbox semantics have focused static checks after the suite.",
+    "rustAppTests": 13,
+    "focusedFfiTests": 2,
+    "strictAppClippy": "PASS",
+    "builderFocusedTests": 11,
+    "embeddedResourcePairsRebuiltExactly": 8,
+    "nativeAcceptance": "Bounded v91 Pet, Recipe, Countdown and MapTap interactions/reopen observed; MapTap horizontal drag still popped Home. Poll/List not tested in v91; v92 gesture correction is separately attributed."
+  },
+  "limitations": [
+    "Source/DOM bridge and scoped Rust proof plus bounded signed v91 native observations; not all-six native or whole-app acceptance.",
+    "Old Swift Pet unboxing, ambient doodles and local emotes remain visual differences.",
+    "Whole-app v85 baseline and bounded v90 drawing evidence remain separately attributed."
+  ],
+  "nativeFindings": {
+    "receipt": "/private/tmp/zoen-builtins-native-iphone-v91/native-acceptance.json",
+    "observations": "/private/tmp/zoen-builtins-native-iphone-v91/observations.json",
+    "screenshots": "/private/tmp/zoen-builtins-native-iphone-v91/screenshots.json",
+    "scopedViews": ["pet", "recipe", "countdown", "maptap"],
+    "scope": "Pet care/sleep/tab-paused Dash/score and reopen; Recipe servings/checklist/reopen and a separately observed shared cooking step, whose persistence was not rechecked; Countdown local date/ticking; MapTap accessible rotation/guess/result and reopen.",
+    "maptapResult": "One guess acknowledged 6,983 km and 48 points, retained as 1/5 on reopen; native horizontal globe drag incorrectly navigated Home in v91.",
+    "diagnostics": "71-step retired one-use recording, 18 cross-tree warnings and one offscreen-control wait; no replay or process-restart claim."
+  },
+  "diagnosticRecording": {
+    "path": "/private/tmp/zoen-builtins-native-iphone-v91/.argent/flows/builtin-six-v91-continuation.yaml",
+    "bytes": 6515,
+    "sha256": "df00fa8606ea478d7418be0593b9eb84717c4c1bc3c17546a717ee7c50889243"
+  }
+}

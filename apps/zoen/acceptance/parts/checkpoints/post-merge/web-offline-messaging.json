@@ -1,0 +1,21 @@
+{
+  "actualCheckpointsPerLocale": 24,
+  "locales": ["en-US", "pt-BR"],
+  "originalIdsRetainedAcrossColdRouteReload": true,
+  "realNativePeerOccurrencesAfterReconnect": 1,
+  "actualAuthAndEncryptedHistoryUsed": true,
+  "fullPwaOfflineColdLoadAccepted": false,
+  "retainedWasmPredatesAppsCopy": false,
+  "initialRetainedCoreReceipt": {
+    "path": "/private/tmp/zoen-web-offline-v121/final-seal/acceptance.json",
+    "sha256": "5c34237918cfab5e33ab5ab74850228883815a74bdf03a8884ae1fd3655698f9"
+  },
+  "receipt": {
+    "path": "/private/tmp/zoen-apps-web-v122/final-seal-current-cli/acceptance.json",
+    "sha256": "814a3c0e8a8cc8cd423f0ebf0bd04e246a067722014f88eb4b8ff0fa3410e7d8"
+  },
+  "currentNativeCliAndWasmUsed": true,
+  "currentSharedHostReleaseRecheckPending": true,
+  "headAtSeal": "2b879f177baa03df4eaa41c235943383380d42d1",
+  "sourceCutIncludesUncommittedChanges": true
+}

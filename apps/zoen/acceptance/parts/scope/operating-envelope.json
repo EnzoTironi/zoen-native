@@ -1,0 +1,17 @@
+{
+  "status": "DECLARED_NOT_MEASURED",
+  "targetsMustPrecedeVerification": true,
+  "requiredMetrics": [
+    "concurrent-active-connections-and-workload-mix",
+    "sustained-and-peak-messages-events-media-and-call-throughput",
+    "p50-p95-p99-interaction-delivery-and-sync-latency",
+    "availability-error-budget-and-backpressure",
+    "history-size-device-count-and-offline-reconnect-backlog",
+    "recovery-time-recovery-point-and-acknowledged-write-durability",
+    "cost-per-active-user-message-media-and-operating-tier"
+  ],
+  "comparisonPolicy": "Measured product comparisons and declared workload envelopes only. Architecture diagrams, private capacity bounds and a successful load test do not establish parity with a competitor's global scale.",
+  "specification": "docs/dev/zoen-operating-envelope-v1.json",
+  "specificationSha256": "4a3a1c3f8bb80a349c4133cfcc7463a46b5aa347261fdc16bd649b8de0468a6d",
+  "qualificationAccepted": false
+}

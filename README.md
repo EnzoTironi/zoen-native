@@ -10,7 +10,8 @@ The standalone SwiftUI and Compose clients are retired. Swift and Kotlin under `
 
 ## Current progress
 
-The [Expo acceptance manifest](apps/zoen/acceptance.json) records current artifacts,
+The [Expo acceptance manifest](apps/zoen/acceptance.json), composed through its
+[canonical reader](apps/zoen/acceptance/README.md), records current artifacts,
 required journeys and exact evidence. Full comparative product parity is incomplete.
 
 | Platform           | Accepted boundary                                                                                                                                                                                                                            | Remaining scope                                                                                                                                          |

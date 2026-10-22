@@ -1,0 +1,10 @@
+{
+  "nativeBrowserPopover": true,
+  "actualKeyboardPointerAndFileChooserVerified": true,
+  "actualNarrowViewportVerified": true,
+  "receipt": {
+    "path": "/private/tmp/zoen-web-attachments-v120/attachment-qualification.json",
+    "sha256": "7690e3ebb7d78411a6ac5750412222b96036fc11f25e033eb3057308bc254098"
+  },
+  "currentSharedControllerReleaseRecheckPending": true
+}
