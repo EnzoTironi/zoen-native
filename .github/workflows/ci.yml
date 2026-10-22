@@ -118,6 +118,13 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # Workspace feature unification includes the CLI's insertion-ordered JSON.
+      # Qualify the native core separately so it cannot hide a cross-client drift.
+      - name: Native and CLI tool JSON contracts
+        run: |
+          cargo test --locked -p client-core --lib agent_binary_documents::tool_approvals::tests::json_order
+          cargo test --locked -p client-core --lib --features serde_json/preserve_order,serde_json/float_roundtrip,serde_json/raw_value agent_binary_documents::tool_approvals::tests::json_order
+
       - name: Tests and journeys
         run: cargo test --workspace --no-fail-fast
 

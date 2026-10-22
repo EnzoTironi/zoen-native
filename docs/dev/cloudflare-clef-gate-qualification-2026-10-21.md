@@ -40,10 +40,10 @@ Four-decimal distribution rounding is bounded explicitly; probabilities are neve
 renormalized and a missing confidence does not become certainty. Invalid replies
 use the existing `Ask`/irreversible `Block` failure path, without automatic retry.
 Other provider wire formats are not migrated to the Clef schema.
-The complete serialized text-only request is capped at 32 KiB, including question
-instructions and criteria. This conservative Zoen profile leaves room within the
-documented 64K-token model context; it is not a tokenizer implementation or an
-upstream maximum. A separate RED against the intermediate 256-KiB budget proves
+The original qualification capped the complete serialized text-only request at
+32 KiB, including question instructions and criteria. That profile has been
+superseded by the 22 October update below; the old 64K-token assumption does not
+describe the current Clef-flash documentation. A separate RED against the intermediate 256-KiB budget proves
 that two individually admitted 6,000-character fields could otherwise exceed the
 complete-request budget. The request is refused without dispatch or clipping.
 
@@ -142,3 +142,28 @@ iPhone approval screen or persistent host. Those end-to-end product proofs remai
 open, as do managed remote custody, provider billing/internal retry measurement
 and production readiness. Local Codex authentication stays delegated to the
 supported app-server; no `auth.json` was read or copied by the adapter or wrapper.
+
+## 22 October: current Clef-flash context profile
+
+The [official Clef-flash model page](https://developers.cloudflare.com/workers-ai/models/clef-flash/),
+checked on 22 October 2026, reports a 24,576-token context window and states that
+text state is truncated to the remaining space after questions and media. The
+previous 32-KiB byte guard was not a proof that a request would fit: the existing
+6,000-character limit also admits 24,000 UTF-8 bytes before question framing.
+No actual hosted truncation was observed in this update.
+
+The text-only Clef adapter now caps the entire serialized request at **16 KiB**,
+including all question instructions, choices and rubric text. This is a
+conservative application profile with room for framing, not an exact token count
+or a claim about an upstream maximum. It applies to both supported Clef model
+variants. Oversized requests are refused before HTTP, keeping the existing Ask
+policy and irreversible Block policy; no local clipping, new retry or provider
+fallback is added. The 6,000-character ceiling remains in place independently.
+
+Two regressions reproduced the gap with the old 32-KiB profile: a conversation
+state containing 6,000 four-byte characters reached the transport and received
+Allow from its controlled reply, and an equally large question was admitted.
+The new profile refuses both without dispatch. The separate character-limit
+test uses 6,000 ASCII characters so it continues to verify full-state forwarding
+at that ceiling and rejection beyond it. These are offline contract tests, not
+new model-accuracy, live truncation or iPhone acceptance results.

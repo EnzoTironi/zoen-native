@@ -451,6 +451,7 @@ async fn turn(
         .iter()
         .any(|m| m.author.id == cx.me && m.reply_to.as_ref().is_some_and(|q| q.id == t.id))
     {
+        trace::stop(space, &t.id, trace::Stop::AlreadyReplied, None);
         return true;
     }
     if let Some(note) = owner_note(e, cx, &t.id) {
@@ -492,26 +493,35 @@ async fn turn(
     let pending = e.tool_approval_requests(space, &t.id);
     let resumed = pending.last();
     let result = if let Some(request) = resumed {
+        let stop = |category| trace::stop(space, &t.id, category, Some(&request.id));
         let Some(dto) = e.requests().into_iter().find(|r| r.id == request.id) else {
+            stop(trace::Stop::RequestUnavailable);
             return true;
         };
-        if dto.status != client_core::RequestStatus::Approved {
+        if let Some(category) = trace::Stop::request_status(dto.status) {
+            stop(category);
             return true;
         }
         let Some(worker) = tools.deckcraft else {
+            stop(trace::Stop::ExecutorUnavailable);
             return true;
         };
         let Some(proposal) = &request.tool_proposal else {
+            stop(trace::Stop::InvalidContinuation);
             return true;
         };
         let ask: ToolAsk = match serde_json::from_str(&proposal.continuation_json) {
             Ok(ask) => ask,
-            Err(_) => return true,
+            Err(_) => {
+                stop(trace::Stop::InvalidContinuation);
+                return true;
+            }
         };
         let checkpoint = match tools.recovery_checkpoint(&request.id, &request.content_hash) {
             Ok(checkpoint) => checkpoint,
             Err(error) => {
                 say(format_args!("continuation checkpoint refused: {error}"));
+                stop(trace::Stop::CheckpointRefused);
                 return true;
             }
         };
@@ -528,6 +538,7 @@ async fn turn(
                         != Some(&prepared.definition)
                 {
                     say("prepared continuation changed");
+                    stop(trace::Stop::InvalidContinuation);
                     return true;
                 }
                 progress = ToolProgress {
@@ -543,7 +554,10 @@ async fn turn(
             }
             let encoded = match serde_json::to_string(&progress.steps) {
                 Ok(encoded) => encoded,
-                Err(_) => return true,
+                Err(_) => {
+                    stop(trace::Stop::InvalidContinuation);
+                    return true;
+                }
             };
             let verified = match e.recover_tool_results(
                 &request.id,
@@ -555,12 +569,16 @@ async fn turn(
                     say(
                         "completed continuation is stale, unauthorized or lacks a canonical receipt",
                     );
+                    stop(trace::Stop::RecoveryRefused);
                     return true;
                 }
             };
             progress.steps = match serde_json::from_str(&verified) {
                 Ok(steps) => steps,
-                Err(_) => return true,
+                Err(_) => {
+                    stop(trace::Stop::InvalidContinuation);
+                    return true;
+                }
             };
             Some(progress)
         } else {
@@ -572,14 +590,17 @@ async fn turn(
             Ok(true) => {}
             Ok(false) => {
                 say("reviewed action reached its continuation retry limit");
+                stop(trace::Stop::AttemptLimit);
                 return true;
             }
             Err(error) => {
                 say(format_args!("continuation reservation refused: {error}"));
+                stop(trace::Stop::ReservationRefused);
                 return true;
             }
         }
         if let Some(progress) = recovered {
+            trace::progress(space, &t.id, &request.id, &progress);
             cx.runtime
                 .resume_tool_progress(tc, &history, &inbound, &tools, ask, progress)
                 .await
@@ -588,6 +609,7 @@ async fn turn(
                 Ok(permit) => permit,
                 Err(_) => {
                     say("reviewed action is stale or no longer authorized");
+                    stop(trace::Stop::ApprovalRefused);
                     return true;
                 }
             };
@@ -595,11 +617,13 @@ async fn turn(
                 tools: &tools,
                 permit,
             };
+            trace::approved(space, &t.id, &request.id, &ask);
             cx.runtime
                 .resume_tool_ask(tc, &history, &inbound, &tools, ask, &admission)
                 .await
         }
     } else {
+        trace::normal(space, &t.id, &done);
         cx.runtime
             .turn_with_tools(tc, &history, &inbound, &tools, done)
             .await
@@ -620,8 +644,8 @@ async fn turn(
         }
         TurnOutcome::Say { text } => reply(e, space, &text, &t.id),
         TurnOutcome::ToolAsk { ask } => match tools.stage_approval(&ask) {
-            Ok(()) => {
-                trace::delivery(space, &t.id, trace::Delivery::ApprovalStaging, true);
+            Ok(dto) => {
+                trace::staged(space, &t.id, &ask, &dto);
                 true
             }
             Err(error) => {
@@ -1075,7 +1099,7 @@ impl<'a> SpaceTools<'a> {
         }
     }
 
-    fn stage_approval(&self, ask: &ToolAsk) -> Result<(), String> {
+    fn stage_approval(&self, ask: &ToolAsk) -> Result<client_core::AgentRequestDto, String> {
         let (_, item, tool) = self
             .names
             .iter()
@@ -1105,8 +1129,7 @@ impl<'a> SpaceTools<'a> {
                     gate_rule: ask.rule.clone(),
                 },
             )
-            .map_err(|e| e.to_string())?;
-        Ok(())
+            .map_err(|e| e.to_string())
     }
 
     fn load(&self) -> Vec<(String, Vec<ToolStep>)> {

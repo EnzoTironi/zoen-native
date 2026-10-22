@@ -203,6 +203,7 @@ async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effe
         .item(fixture.base.item_id.clone())
         .unwrap()
         .space_id;
+    let trace = trace::tests::capture(&space, &fixture.source);
     let read = ToolCall {
         id: "held_synthetic_read".into(),
         name: crate::deckcraft::model_name("read_deckcraft", &fixture.base.item_id).unwrap(),
@@ -242,6 +243,28 @@ async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effe
         fixture.client.requests()[0].status,
         client_core::RequestStatus::Pending
     );
+    let emitted = trace.values();
+    assert_eq!(emitted.len(), 3);
+    assert_eq!(emitted[0]["phase"], "continuation");
+    assert_eq!(emitted[0]["outcome"], "normal");
+    assert_eq!(emitted[0]["completedSteps"], 0);
+    assert_eq!(emitted[1]["outcome"], "tool_ask");
+    assert_eq!(emitted[1]["completedSteps"], 0);
+    assert_eq!(emitted[1]["failedSteps"], 0);
+    assert_eq!(emitted[1]["remainingCalls"], 0);
+    assert_eq!(emitted[1]["roundIndex"], 0);
+    assert_eq!(emitted[2]["phase"], "approval_staging");
+    assert_eq!(emitted[2]["stepIndex"], 0);
+    assert_eq!(emitted[2]["requestStatus"], "pending");
+    let request_correlation = emitted[2]["requestCorrelation"].clone();
+    handle(&fixture.client, &cx, &space, &fixture.source).await;
+    let emitted = trace.values();
+    assert_eq!(emitted.len(), 4);
+    assert_eq!(emitted[3]["phase"], "continuation_stop");
+    assert_eq!(emitted[3]["outcome"], "pending");
+    assert_eq!(emitted[3]["requestCorrelation"], request_correlation);
+    assert_eq!(checks.lock().unwrap().len(), 2);
+    assert_eq!(counters.initial.load(Ordering::SeqCst), 1);
     let path = fixture.path.clone();
     let vault = fixture.vault.clone();
     let item = fixture.base.item_id.clone();
@@ -342,6 +365,17 @@ async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effe
         true,
     );
     handle(&client, &cx, &space, &source).await;
+    let emitted = trace.values();
+    let recovered = emitted
+        .iter()
+        .find(|record| record["phase"] == "continuation" && record["outcome"] == "progress")
+        .unwrap();
+    assert_eq!(recovered["requestCorrelation"], request_correlation);
+    assert_eq!(recovered["completedSteps"], 2);
+    assert_eq!(recovered["failedSteps"], 0);
+    assert_eq!(recovered["remainingCalls"], 0);
+    assert_eq!(recovered["roundIndex"], 1);
+    assert!(!emitted.iter().any(|record| record["outcome"] == "approved"));
     assert_eq!(counters.initial.load(Ordering::SeqCst), 1);
     assert_eq!(counters.write_proposal.load(Ordering::SeqCst), 1);
     assert_eq!(counters.writes.load(Ordering::SeqCst), 1);
@@ -382,6 +416,9 @@ async fn offline_read_ask_accepted_write_and_cold_recovery_never_repeat_the_effe
         .count();
     assert_eq!(replies, 1);
     handle(&client, &cx, &space, &source).await;
+    let emitted = trace.values();
+    assert_eq!(emitted.last().unwrap()["phase"], "continuation_stop");
+    assert_eq!(emitted.last().unwrap()["outcome"], "already_replied");
     assert_eq!(checks.lock().unwrap().len(), 4);
     assert_eq!(counters.confirmation.load(Ordering::SeqCst), 1);
     assert_eq!(
