@@ -5,4 +5,3 @@ export type AttachmentDestination = {
   device: string;
   epoch: string;
 };
-

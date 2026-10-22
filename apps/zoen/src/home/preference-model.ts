@@ -129,4 +129,3 @@ export function projectHomeItems(items: readonly ItemDetail[], preference: HomeP
 }
 export const sameOrder = (first: readonly string[], second: readonly string[]) =>
   first.length === second.length && first.every((id, index) => id === second[index]);
-

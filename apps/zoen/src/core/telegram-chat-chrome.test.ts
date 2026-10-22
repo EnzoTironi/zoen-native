@@ -118,12 +118,8 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
     props,
     header: () => header.ChatHeader!(props),
     title: () => title.ChatTitle!(props),
-    bar(back = true) {
-      const screen = header.ChatHeader!(props);
-      const element = screen.props.options.header({
-        back: back ? { title: 'Chats' } : undefined,
-        navigation: { goBack: () => backs++ },
-      });
+    bar() {
+      const element = header.ChatHeader!(props).props.options.headerRight();
       return element.type(element.props) as Element;
     },
     titleWithBounds(availableWidth: number, onLayout?: (event: any) => void) {
@@ -138,37 +134,34 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
   };
 }
 
-test('public custom header is the only bar and preserves real Back, title, Details and Search', () => {
+test('native bar owns the soft edge and Back while title, Details and Search remain actionable', () => {
   const f = fixture();
-  const screen = f.header();
-  const options = screen.props.options;
+  const options = f.header().props.options;
   assert.equal(options.headerShown, true);
-  assert.equal(options.headerTransparent, true);
-  assert.equal(typeof options.header, 'function');
-  assert.equal(options.headerTitle, undefined);
+  assert.equal(options.header, undefined);
   assert.equal(options.headerLeft, undefined);
+  assert.equal(options.headerBackButtonDisplayMode, 'minimal');
+  assert.equal(options.headerTransparent, undefined);
+  assert.deepEqual(Object.keys(options.headerStyle), []);
+  assert.deepEqual(Object.keys(options.headerLargeStyle), []);
+  assert.equal(options.headerBlurEffect, undefined);
+  assert.equal(options.headerBackground, undefined);
+  assert.equal(options.scrollEdgeEffects.top, 'soft');
+  assert.equal(options.scrollEdgeEffects.bottom, 'hidden');
   assert.equal(options.gestureEnabled, undefined);
-  assert.equal(nodes(screen).filter((node) => node.type === 'StackScreen').length, 1);
+  const title = options.headerTitle();
+  assert.equal(title.type, 'ChatTitle');
+  assert.equal(title.props.activityLabel, 'typing');
+  assert.equal(title.props.id, 'space-one');
+  const all = nodes(f.bar());
   assert.equal(
-    nodes(screen).some((node) => node.type === 'StackTitle' || node.type === 'StackToolbar'),
+    all.some((node) => node.type === 'GlassView'),
     false,
   );
-  const all = nodes(f.bar());
-  assert.equal(f.bar().props.scrollViewTag, 1234);
-  assert.equal(options.scrollEdgeEffects.top, 'automatic');
-  assert.equal(options.scrollEdgeEffects.bottom, 'hidden');
-  const back = all.find((node) => node.props.testID === 'chat-back')!;
-  assert.equal(back.props.accessibilityLabel, 'access.back');
-  back.props.onPress();
-  assert.equal(f.backs(), 1);
   const search = all.find((node) => node.props.testID === 'chat-search')!;
   assert.equal(search.props.accessibilityLabel, 'chat.searchThisChat');
   search.props.onPress();
   assert.equal(f.searches(), 1);
-  const title = all.find((node) => node.type === 'ChatTitle')!;
-  assert.equal(title.props.activityLabel, 'typing');
-  assert.equal(title.props.id, 'space-one');
-  assert.equal(title.props.availableWidth, 218);
   const avatar = all.find((node) => node.props.testID === 'chat-details-avatar')!;
   assert.equal(avatar.props.style({ pressed: false }).width, 44);
   assert.equal(nodes(avatar).find((node) => node.type === 'ProfileAvatar')!.props.size, 38);
@@ -180,10 +173,6 @@ test('public custom header is the only bar and preserves real Back, title, Detai
   assert.equal(
     nodes(f.bar()).find((node) => node.props.testID === 'chat-search')!.props.accessibilityLabel,
     'chat.closeSearch',
-  );
-  assert.equal(
-    nodes(f.bar(false)).some((node) => node.props.testID === 'chat-back'),
-    false,
   );
 });
 
@@ -217,62 +206,6 @@ test('title centers its own source typography and preserves details/long-press w
   const other = fixture('android');
   assert.ok(nodes(other.title()).some((node) => node.type === 'ProfileAvatar'));
   assert.equal(other.title().props.onLongPress, undefined);
-});
-
-test('rendered preferred title width centers first then clamps clear of the actual right group', () => {
-  const f = fixture();
-  let all = nodes(f.bar());
-  assert.equal(
-    all.find((node) => node.props.testID === 'chat-navigation-bar')!.props.style.height,
-    122,
-  );
-  const title = all.find((node) => node.type === 'ChatTitle')!;
-  title.props.onLayout({ nativeEvent: { layout: { width: 178 } } });
-  all = nodes(f.bar());
-  assert.equal(
-    all.find((node) => node.props.testID === 'chat-title-position')!.props.style.left,
-    110,
-  );
-  title.props.onLayout({ nativeEvent: { layout: { width: 190 + 2 / 3 } } });
-  all = nodes(f.bar());
-  assert.equal(
-    all.find((node) => node.props.testID === 'chat-title-position')!.props.style.left,
-    288 - (190 + 2 / 3),
-  );
-  const position = all.find((node) => node.props.testID === 'chat-title-position')!.props.style;
-  assert.equal(position.top, 72);
-  assert.equal(position.transform, undefined);
-});
-
-test('old conversation/viewport measurements cannot move the current title', () => {
-  const f = fixture();
-  const old = nodes(f.bar()).find((node) => node.type === 'ChatTitle')!;
-  f.props.id = 'space-two';
-  f.props.title = 'Another conversation';
-  let current = nodes(f.bar()).find((node) => node.type === 'ChatTitle')!;
-  current.props.onLayout({ nativeEvent: { layout: { width: 178 } } });
-  old.props.onLayout({ nativeEvent: { layout: { width: 50 } } });
-  assert.equal(
-    nodes(f.bar()).find((node) => node.props.testID === 'chat-title-position')!.props.style.left,
-    110,
-  );
-  f.frame.width = 874;
-  f.safe.top = 0;
-  f.safe.left = 62;
-  const wide = nodes(f.bar());
-  const fresh = wide.find((node) => node.type === 'ChatTitle')!;
-  fresh.props.onLayout({ nativeEvent: { layout: { width: 178 } } });
-  current.props.onLayout({ nativeEvent: { layout: { width: 100 } } });
-  const after = nodes(f.bar());
-  assert.equal(f.bar().props.scrollViewTag, 1234);
-  assert.equal(
-    after.find((node) => node.props.testID === 'chat-title-position')!.props.style.left,
-    348,
-  );
-  assert.equal(
-    after.find((node) => node.props.testID === 'chat-navigation-bar')!.props.style.height,
-    60,
-  );
 });
 
 test('title bound reaches the actual Pressable and can be narrower than the former88pt floor', () => {

@@ -35,10 +35,7 @@
       "upstreamPath": "submodules/TelegramUI/Components/LiquidLens/Sources/LiquidLensView.swift",
       "upstreamSHA256": "c106323abb6ec03a2788606d450a0ce617f6a642e54c15571a2f9904eba01af4",
       "adaptations": "Removed Display, ComponentFlow and GlassBackgroundComponent upstream module imports because the preserved rendering types are compiled together in ZoenCore; implementation otherwise unchanged. Local source is mechanically separated by content, rendering, geometry, image or animation responsibility; original callable bodies, one owner/cache and upstream hashes are retained.",
-      "localFiles": [
-        "TelegramLiquidLens.swift",
-        "TelegramLiquidLens+Rendering.swift"
-      ]
+      "localFiles": ["TelegramLiquidLens.swift", "TelegramLiquidLens+Rendering.swift"]
     },
     {
       "file": "TelegramGlassMeshGeneration.swift",
@@ -372,10 +369,7 @@
       "previousLocalSHA256": "40d24e0ae9787cd2101d84e05e437b86e70acdf305fcceff62a8a80184cb9aed",
       "previousLocalBytes": 22617,
       "sourceCommitBeforeSplit": "3fad78d2def4f8c364561eeaa25bda8e0a936dcc",
-      "localFiles": [
-        "TelegramLiquidLens.swift",
-        "TelegramLiquidLens+Rendering.swift"
-      ]
+      "localFiles": ["TelegramLiquidLens.swift", "TelegramLiquidLens+Rendering.swift"]
     }
   ]
 }

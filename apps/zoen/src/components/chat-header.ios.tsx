@@ -1,15 +1,10 @@
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
-import { Stack, router, type NativeStackHeaderProps } from 'expo-router';
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { PixelRatio, Pressable, View, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { chatHeaderLayout, chatHeaderTitlePlacement } from '../core/telegram-chat-header-layout';
+import { Stack, router } from 'expo-router';
+import { Pressable, View } from 'react-native';
 import { t } from '../i18n/index.ts';
 import { ProfileAvatar } from '../profile/profile-avatar';
 import { useTheme } from '../theme';
 import { ChatTitle, type ChatHeaderProps } from './chat-title';
 import { Icon } from './primitives';
-import { NavigationContainer } from './navigation-container';
 
 export function ChatHeader(props: ChatHeaderProps) {
   return (
@@ -17,174 +12,70 @@ export function ChatHeader(props: ChatHeaderProps) {
       options={{
         title: props.title,
         headerShown: true,
-        headerTransparent: true,
-        scrollEdgeEffects: { top: 'automatic', bottom: 'hidden' },
-        // NativeStackView hides its UIKit bar for this public replacement and
-        // measures its full height. ScreenStackItem/stack gestures remain native.
-        header: (native) => <ChatNavigationBar {...props} native={native} />,
+        headerBackButtonDisplayMode: 'minimal',
+        // Clear inherited transparent appearances so SDK58 keeps UIKit's bar.
+        // The system soft edge owns the blur and its transition into content.
+        headerTransparent: undefined,
+        headerStyle: {},
+        headerLargeStyle: {},
+        headerBlurEffect: undefined,
+        headerBackground: undefined,
+        scrollEdgeEffects: { top: 'soft', bottom: 'hidden' },
+        headerTitle: () => <ChatTitle {...props} />,
+        headerRight: () => <ChatHeaderActions {...props} />,
       }}
     />
   );
 }
 
-function ChatNavigationBar({
-  native,
-  ...props
-}: ChatHeaderProps & { native: NativeStackHeaderProps }) {
-  const { presentation: p, scheme } = useTheme();
-  const { width, fontScale } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+function ChatHeaderActions(props: ChatHeaderProps) {
+  const { presentation: p } = useTheme();
   const search = props.search;
-  const layout = chatHeaderLayout({
-    width,
-    top: insets.top,
-    left: insets.left,
-    right: insets.right,
-    back: native.back != null,
-    search: search != null,
-  });
-  const geometry = [
-    props.id,
-    width,
-    insets.left,
-    insets.right,
-    !!native.back,
-    !!search,
-    fontScale,
-  ].join('|');
-  const render = JSON.stringify([geometry, props.title, props.activityLabel]);
-  const currentRender = useRef<string | null>(render);
-  useLayoutEffect(() => {
-    currentRender.current = render;
-    return () => {
-      if (currentRender.current === render) currentRender.current = null;
-    };
-  }, [render]);
-  const [measured, setMeasured] = useState<{ geometry: string; width: number } | null>(null);
-  const titlePlacement = chatHeaderTitlePlacement(
-    width,
-    layout,
-    measured?.geometry === geometry ? measured.width : layout.availableWidth,
-    PixelRatio.get(),
-  );
-  const group = (children: ReactNode) =>
-    isLiquidGlassAvailable() ? (
-      <GlassView
-        isInteractive
-        colorScheme={scheme}
-        glassEffectStyle="regular"
-        style={{ borderRadius: 22 }}
-      >
-        {children}
-      </GlassView>
-    ) : (
-      <View style={{ borderRadius: 22, backgroundColor: p.navigation.background }}>{children}</View>
-    );
+  // UINavigationBar supplies the shared glass background for this item.
   return (
-    <NavigationContainer
-      scrollViewTag={props.scrollViewTag ?? 0}
-      testID="chat-navigation-bar"
-      pointerEvents="box-none"
-      style={{ height: layout.height, width: '100%' }}
-    >
-      {native.back ? (
-        <View style={{ position: 'absolute', top: layout.controlTop, left: layout.leading }}>
-          {group(
-            <Pressable
-              testID="chat-back"
-              accessibilityRole="button"
-              accessibilityLabel={t('access.back')}
-              onPress={() => native.navigation.goBack()}
-              style={({ pressed }) => ({
-                width: 44,
-                height: 44,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: pressed ? 0.65 : 1,
-              })}
-            >
-              <Icon
-                name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
-                size={22}
-                color={p.navigation.control}
-              />
-            </Pressable>,
-          )}
-        </View>
+    <View style={{ flexDirection: 'row', width: search ? 88 : 44, height: 44 }}>
+      {search ? (
+        <Pressable
+          testID="chat-search"
+          accessibilityRole="button"
+          accessibilityLabel={t(search.active ? 'chat.closeSearch' : 'chat.searchThisChat')}
+          onPress={search.onToggle}
+          style={({ pressed }) => ({
+            width: 44,
+            height: 44,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: pressed ? 0.65 : 1,
+          })}
+        >
+          <Icon
+            name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
+            size={22}
+            color={p.navigation.control}
+          />
+        </Pressable>
       ) : null}
-      <View
-        testID="chat-title-position"
-        style={{
-          position: 'absolute',
-          top: layout.controlTop,
-          left: titlePlacement.x,
-          maxWidth: layout.availableWidth,
-        }}
+      <Pressable
+        testID="chat-details-avatar"
+        accessibilityRole="button"
+        accessibilityLabel={props.title}
+        accessibilityHint={t('chat.chatDetails')}
+        onPress={() => router.push({ pathname: '/space/[id]', params: { id: props.id } })}
+        style={({ pressed }) => ({
+          width: 44,
+          height: 44,
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: pressed ? 0.65 : 1,
+        })}
       >
-        <ChatTitle
-          {...props}
-          availableWidth={layout.availableWidth}
-          onLayout={(event) => {
-            if (currentRender.current !== render) return;
-            const measuredWidth = event.nativeEvent.layout.width;
-            if (!Number.isFinite(measuredWidth) || measuredWidth < 0) return;
-            const boundedWidth = Math.min(layout.availableWidth, measuredWidth);
-            setMeasured((prior) =>
-              prior?.geometry === geometry && prior.width === boundedWidth
-                ? prior
-                : { geometry, width: boundedWidth },
-            );
-          }}
+        <ProfileAvatar
+          person={props.counterpart}
+          name={props.title}
+          color={props.counterpart?.tint_hex}
+          size={38}
         />
-      </View>
-      <View style={{ position: 'absolute', top: layout.controlTop, left: layout.trailing }}>
-        {group(
-          <View style={{ flexDirection: 'row', width: layout.trailingWidth }}>
-            {search ? (
-              <Pressable
-                testID="chat-search"
-                accessibilityRole="button"
-                accessibilityLabel={t(search.active ? 'chat.closeSearch' : 'chat.searchThisChat')}
-                onPress={search.onToggle}
-                style={({ pressed }) => ({
-                  width: 44,
-                  height: 44,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: pressed ? 0.65 : 1,
-                })}
-              >
-                <Icon
-                  name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
-                  size={22}
-                  color={p.navigation.control}
-                />
-              </Pressable>
-            ) : null}
-            <Pressable
-              testID="chat-details-avatar"
-              accessibilityRole="button"
-              accessibilityLabel={props.title}
-              accessibilityHint={t('chat.chatDetails')}
-              onPress={() => router.push({ pathname: '/space/[id]', params: { id: props.id } })}
-              style={({ pressed }) => ({
-                width: 44,
-                height: 44,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: pressed ? 0.65 : 1,
-              })}
-            >
-              <ProfileAvatar
-                person={props.counterpart}
-                name={props.title}
-                color={props.counterpart?.tint_hex}
-                size={38}
-              />
-            </Pressable>
-          </View>,
-        )}
-      </View>
-    </NavigationContainer>
+      </Pressable>
+    </View>
   );
 }

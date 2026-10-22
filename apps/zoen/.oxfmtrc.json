@@ -10,6 +10,7 @@
     "modules/zoen-core/generated/**",
     "modules/zoen-core/ios/generated/**",
     "modules/zoen-core/ios/TelegramAttachmentPresentation/Resources/*.json",
+    "modules/zoen-core/ios/TelegramVideoEditing/Sources/*.inc",
     "modules/zoen-core/android/build/**",
     ".expo/**",
     "dist/**",
