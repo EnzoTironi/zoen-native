@@ -62,7 +62,15 @@ pub(super) async fn prepare(
     client
         .wait_until_settled(timeout_ms)
         .await
-        .map_err(|error| format!("agent sync did not settle: {error}"))?;
+        .map_err(|error| {
+            let observed = client.connection();
+            format!(
+                "agent sync did not settle: {error}; observed online={} synced={} pending={}",
+                observed.state == "online",
+                observed.synced,
+                observed.pending
+            )
+        })?;
     let state = client
         .agent_state()
         .await
