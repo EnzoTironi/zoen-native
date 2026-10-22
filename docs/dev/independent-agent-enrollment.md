@@ -102,6 +102,18 @@ before releasing the lock; startup errors stop sync and clean up. Abrupt death
 or cleanup failure can leave a filename, which the next locked startup must clear
 or refuse. The lock, current grants and runtime admission retain their own roles.
 
+The 22 October local run used the normal dev-profile CLI from `90509e29`, the
+retained independently keyed Agent home, managed Codex and hosted Clef-flash.
+Strict startup completed before the owner sent a task through Native26. The
+Agent replied asking permission to inspect and edit the existing DeckCraft
+presentation. After one natural owner answer, no further reply or formal tool
+request was observed, and the presentation remained at version 1. The host
+returned normally and its process group was absent. This is partial actual
+relay/MLS/provider-path evidence, not successful App editing or canonical tool
+approval. Raw child payloads and provider dispatch counts were not retained;
+the absence of a visible result does not identify its cause. The original
+conversation, App and independent Agent home remain preserved.
+
 ## Persistence and authority
 
 The host owns distinct root, device, agreement and pickup keys. A signed offer
