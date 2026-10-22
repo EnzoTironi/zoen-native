@@ -79,7 +79,7 @@ fn parsed(p: &ToolProposal) -> R<(Value, Option<Value>)> {
         return Err(malformed());
     }
     let args: Value = serde_json::from_str(&p.arguments_json).map_err(|_| malformed())?;
-    if serde_json::to_string(&args).map_err(|_| malformed())? != p.arguments_json
+    if agent_tools::canonical_json(&args).map_err(|_| malformed())? != p.arguments_json
         || args["artifactId"].as_str() != Some(p.artifact.as_str())
     {
         return Err(malformed());
@@ -424,7 +424,8 @@ impl Client {
             version: turn.document.version,
             sha256: turn.document.sha256.clone(),
             canonical_tool: input.canonical_tool,
-            arguments_json: serde_json::to_string(&input.arguments).map_err(|_| malformed())?,
+            arguments_json: agent_tools::canonical_json(&input.arguments)
+                .map_err(|_| malformed())?,
             worker_binding: input.worker_binding,
             engine_revision: turn.document.engine_revision.clone(),
             continuation_json: input.continuation_json,
