@@ -173,26 +173,64 @@ pub(super) async fn invites_are_bounded_by_uses() {
 }
 
 pub(super) async fn two_storage_clients_share_one_chain_and_one_membership() {
+    two_clients(false).await;
+}
+
+pub(super) async fn two_storage_clients_keep_the_chain_during_explicit_lease_renewals() {
+    tokio::time::timeout(std::time::Duration::from_secs(60), two_clients(true))
+        .await
+        .expect("bounded explicit-renewal contention contract");
+}
+
+pub(super) async fn two_clients(renew_during_writes: bool) {
     let cell = types::new_id("t");
     let relays = [store_on(&cell), store_on(&cell)];
     let ana = Arc::new(Author::root(Signer::generate()));
     let (space, genesis) = create(&relays[0], &ana).await;
+    let renewal_barrier = renew_during_writes.then(|| Arc::new(tokio::sync::Barrier::new(10)));
+    let mut renewers = Vec::new();
+    if let Some(barrier) = &renewal_barrier {
+        // A fast baseline finishes before the normal five-second maintenance interval.
+        // Explicitly overlap two independent owner clients with the second half of
+        // the SAME eight writers; keep the production TTL/retry/deadline untouched.
+        relays[1].owner.maintain().await.unwrap();
+        for log in &relays {
+            let (log, barrier) = (log.clone(), barrier.clone());
+            renewers.push(tokio::spawn(async move {
+                barrier.wait().await;
+                for _ in 0..4 {
+                    log.owner.maintain().await.expect("explicit owner renewal");
+                }
+            }));
+        }
+    }
     let mut tasks = Vec::new();
     for w in 0..8 {
         let log = relays[w % 2].clone();
         let (a, space, genesis) = (ana.clone(), space.clone(), genesis.clone());
+        let renewal_barrier = renewal_barrier.clone();
         tasks.push(tokio::spawn(async move {
             for i in 0..40 {
+                if i == 20 {
+                    if let Some(barrier) = &renewal_barrier {
+                        barrier.wait().await;
+                    }
+                }
                 let env = sign(&a, &space, Some(genesis.clone()), message(w * 100 + i));
-                assert!(matches!(
-                    log.append(&env, true).await,
-                    Ok(Sequencing::New { .. })
-                ));
+                let result = log.append(&env, true).await;
+                assert!(
+                    matches!(&result, Ok(Sequencing::New { .. })),
+                    "concurrent append rejection: {:?}",
+                    result.err()
+                );
             }
         }));
     }
     for t in tasks {
         t.await.unwrap();
+    }
+    for renewal in renewers {
+        renewal.await.unwrap();
     }
     let events = read_all(&relays[1], &space, 1000).await;
     assert_eq!(events.len(), 321);
