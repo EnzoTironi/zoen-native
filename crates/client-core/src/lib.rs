@@ -7,6 +7,11 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 mod agent_binary_documents;
+mod agent_definition;
+pub use agent_definition::{
+    AgentDefinitionDto, AgentDefinitionPreviewDto, AgentDefinitionUpdateDto,
+    AgentDefinitionUpdateOutcome,
+};
 mod agent_enrollment;
 pub use agent_enrollment::{
     AgentEnrollmentDeliveryDto, AgentEnrollmentDeliveryOutcome, AgentEnrollmentHostOffer,

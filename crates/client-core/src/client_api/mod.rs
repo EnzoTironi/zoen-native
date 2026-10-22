@@ -212,6 +212,42 @@ enum Command {
     AgentStatus {
         agent_id: String,
     },
+    AgentDefinitionRead {
+        agent_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    AgentDefinitionPreview {
+        agent_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_version: u32,
+        observed_definition_sha256: String,
+        persona: String,
+        rules: Vec<String>,
+    },
+    AgentDefinitionUpdate {
+        agent_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        observed_version: u32,
+        observed_definition_sha256: String,
+        persona: String,
+        rules: Vec<String>,
+        observed_preview_digest: String,
+    },
+    AgentDefinitionReconcile {
+        agent_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+    },
+    AgentDefinitionDismiss {
+        agent_id: String,
+        expected_identity_id: String,
+        expected_device_id: String,
+        receipt_id: String,
+        observed_preview_digest: String,
+    },
     AgentEnrollmentPreview {
         code: String,
         expected_identity_id: String,
@@ -580,11 +616,27 @@ pub fn export_typescript(path: &std::path::Path) -> Result<(), ts_rs::ExportErro
     crate::DecideOutcome::export_all(&config)?;
     crate::PageEditResult::export_all(&config)?;
     crate::AgentStatus::export_all(&config)?;
+    crate::AgentDefinitionDto::export_all(&config)?;
+    crate::AgentDefinitionPreviewDto::export_all(&config)?;
+    crate::AgentDefinitionUpdateDto::export_all(&config)?;
+    crate::AgentDefinitionUpdateOutcome::export_all(&config)?;
     crate::AgentEnrollmentPreviewDto::export_all(&config)?;
     crate::AgentEnrollmentDeliveryDto::export_all(&config)?;
     crate::AgentEnrollmentStatusDto::export_all(&config)?;
     crate::UniversalResults::export_all(&config)?;
     Ok(())
+}
+
+fn definition_target(
+    agent: String,
+    identity: String,
+    device: String,
+) -> crate::agent_definition::DefinitionTarget {
+    crate::agent_definition::DefinitionTarget {
+        agent,
+        identity,
+        device,
+    }
 }
 
 fn invalid(message: impl Into<String>) -> CoreError {
@@ -904,6 +956,87 @@ impl Client {
             LeaveSpace { space_id } => encode(&self.leave_space(space_id)?),
             EncryptChat { space_id } => encode(&self.encrypt_chat(space_id)?),
             AgentStatus { agent_id } => encode(&self.agent_status(agent_id).await?),
+            AgentDefinitionRead {
+                agent_id,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(
+                &self
+                    .agent_definition_read(definition_target(
+                        agent_id,
+                        expected_identity_id,
+                        expected_device_id,
+                    ))
+                    .await?,
+            ),
+            AgentDefinitionPreview {
+                agent_id,
+                expected_identity_id,
+                expected_device_id,
+                observed_version,
+                observed_definition_sha256,
+                persona,
+                rules,
+            } => encode(
+                &self
+                    .agent_definition_preview(
+                        definition_target(agent_id, expected_identity_id, expected_device_id),
+                        crate::agent_definition::DefinitionEdit {
+                            version: observed_version,
+                            sha256: observed_definition_sha256,
+                            persona,
+                            rules,
+                        },
+                    )
+                    .await?,
+            ),
+            AgentDefinitionUpdate {
+                agent_id,
+                expected_identity_id,
+                expected_device_id,
+                observed_version,
+                observed_definition_sha256,
+                persona,
+                rules,
+                observed_preview_digest,
+            } => encode(
+                &self
+                    .agent_definition_update(
+                        definition_target(agent_id, expected_identity_id, expected_device_id),
+                        crate::agent_definition::DefinitionEdit {
+                            version: observed_version,
+                            sha256: observed_definition_sha256,
+                            persona,
+                            rules,
+                        },
+                        &observed_preview_digest,
+                    )
+                    .await?,
+            ),
+            AgentDefinitionReconcile {
+                agent_id,
+                expected_identity_id,
+                expected_device_id,
+            } => encode(
+                &self
+                    .agent_definition_reconcile(definition_target(
+                        agent_id,
+                        expected_identity_id,
+                        expected_device_id,
+                    ))
+                    .await?,
+            ),
+            AgentDefinitionDismiss {
+                agent_id,
+                expected_identity_id,
+                expected_device_id,
+                receipt_id,
+                observed_preview_digest,
+            } => encode(&self.agent_definition_dismiss(
+                definition_target(agent_id, expected_identity_id, expected_device_id),
+                &receipt_id,
+                &observed_preview_digest,
+            )?),
             AgentEnrollmentPreview {
                 code,
                 expected_identity_id,

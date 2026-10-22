@@ -46,46 +46,7 @@ fn canonical_relay(value: &str) -> R<String> {
     crate::provider_auth::relay_base(&crate::net::http_base(value))
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct BootstrapDefinition {
-    version: u32,
-    kind: String,
-    persona: String,
-    rules: Vec<String>,
-    state: serde_json::Value,
-    model_tier: String,
-}
-impl BootstrapDefinition {
-    fn parse(value: &str) -> R<Self> {
-        if value.len() > 1024 {
-            return Err(malformed());
-        }
-        let definition: Self = serde_json::from_str(value).map_err(|_| malformed())?;
-        if definition.version != 1
-            || definition.kind != "user"
-            || definition.model_tier != "cheap"
-            || !definition
-                .state
-                .as_object()
-                .is_some_and(|state| state.is_empty())
-            || definition.persona.is_empty()
-            || definition.persona.len() > 768
-            || definition
-                .persona
-                .chars()
-                .any(|c| c.is_control() && c != '\n')
-            || definition.rules.len() > 8
-            || definition.rules.iter().any(|rule| {
-                rule.is_empty() || rule.len() > 256 || rule.chars().any(char::is_control)
-            })
-            || serde_json::to_string(&definition).map_err(|_| malformed())? != value
-        {
-            return Err(invalid("This enrollment supports a User v1 bootstrap with Cheap tier and empty state. Unsupported behavior is not substituted."));
-        }
-        Ok(definition)
-    }
-}
+use crate::agent_definition::UserDefinition as BootstrapDefinition;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -130,7 +91,7 @@ impl Offer {
         {
             return Err(malformed());
         }
-        BootstrapDefinition::parse(&self.definition_json)
+        BootstrapDefinition::parse_bootstrap(&self.definition_json)
     }
     fn digest(&self) -> R<String> {
         Ok(sha(&serde_json::to_vec(&(
@@ -273,10 +234,10 @@ struct OwnerReceipt {
     relay: String,
     status: AgentEnrollmentStatusDto,
 }
-struct OwnerContext {
-    author: Author,
-    relay: String,
-    certificate_sha256: String,
+pub(crate) struct OwnerContext {
+    pub(crate) author: Author,
+    pub(crate) relay: String,
+    pub(crate) certificate_sha256: String,
 }
 impl OwnerReceipt {
     fn matches(&self, context: &OwnerContext) -> bool {
@@ -292,7 +253,7 @@ impl OwnerReceipt {
     }
 }
 fn preview(code: &Code) -> R<AgentEnrollmentPreviewDto> {
-    let definition = BootstrapDefinition::parse(&code.offer.definition_json)?;
+    let definition = BootstrapDefinition::parse_bootstrap(&code.offer.definition_json)?;
     Ok(AgentEnrollmentPreviewDto {
         agent_id: code.offer.agent_id.clone(),
         offer_digest: code.offer.digest()?,
@@ -304,7 +265,7 @@ fn preview(code: &Code) -> R<AgentEnrollmentPreviewDto> {
         expires_ms: code.offer.expires_ms,
     })
 }
-fn owner_context(e: &crate::Engine, identity: &str, device: &str) -> R<OwnerContext> {
+pub(crate) fn owner_context(e: &crate::Engine, identity: &str, device: &str) -> R<OwnerContext> {
     let account = e.account().ok_or_else(changed)?;
     let author = e.net.author.as_ref().ok_or_else(changed)?;
     if account.identity != identity
