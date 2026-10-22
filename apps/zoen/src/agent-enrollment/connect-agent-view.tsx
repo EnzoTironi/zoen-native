@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { Keyboard, Text, View } from 'react-native';
 import { Field, Icon, Loading, NativeButton } from '../components/primitives';
 import { SettingsRows } from '../components/settings-rows';
 import { SettingsScreen } from '../components/settings-screen';
@@ -33,8 +33,18 @@ export function ConnectAgentView(props: ConnectAgentViewProps) {
   const review = state.review;
   const paragraph = { color: p.secondary, fontSize: 15, lineHeight: 21 };
   const unavailable = props.availability !== 'ready';
+  const checkCode = () => {
+    if (unavailable || state.phase !== 'entry' || !state.code.trim()) return;
+    Keyboard.dismiss();
+    props.onCheck();
+  };
   return (
-    <SettingsScreen title={t('agentEnrollment.connect')} testID="agent-enrollment-screen">
+    <SettingsScreen
+      title={t('agentEnrollment.connect')}
+      testID="agent-enrollment-screen"
+      keyboardShouldPersistTaps="always"
+      automaticallyAdjustKeyboardInsets
+    >
       {unavailable ? (
         props.availability === 'loading' ? (
           <Loading label={t('agentEnrollment.checking')} />
@@ -267,29 +277,38 @@ export function ConnectAgentView(props: ConnectAgentViewProps) {
             />
           )}
           {enterCode || state.code ? (
-            <>
-              <Field
-                testID="agent-enrollment-code-input"
-                label={t('agentEnrollment.code')}
-                value={state.code}
-                onChangeText={props.onCode}
-                autoCapitalize="none"
-                autoCorrect={false}
-                spellCheck={false}
-                autoComplete="off"
-                textContentType="none"
-                importantForAutofill="no"
-                secureTextEntry
-                multiline={false}
-                editable={state.phase !== 'checking'}
-              />
-              <NativeButton
-                testID="agent-enrollment-check"
-                label={t('agentEnrollment.checkCode')}
-                disabled={!state.code.trim() || state.phase === 'checking'}
-                onPress={props.onCheck}
-              />
-            </>
+            <View
+              testID="agent-enrollment-code-row"
+              style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}
+            >
+              <View style={{ flexGrow: 1, flexBasis: 200, minWidth: 160, maxWidth: '100%' }}>
+                <Field
+                  testID="agent-enrollment-code-input"
+                  label={t('agentEnrollment.code')}
+                  value={state.code}
+                  onChangeText={props.onCode}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  autoComplete="off"
+                  textContentType="none"
+                  importantForAutofill="no"
+                  secureTextEntry
+                  multiline={false}
+                  returnKeyType="go"
+                  onSubmitEditing={checkCode}
+                  editable={state.phase !== 'checking'}
+                />
+              </View>
+              <View style={{ flexShrink: 1, maxWidth: '100%', paddingBottom: 5 }}>
+                <NativeButton
+                  testID="agent-enrollment-check"
+                  label={t('agentEnrollment.checkCode')}
+                  disabled={!state.code.trim() || state.phase === 'checking'}
+                  onPress={checkCode}
+                />
+              </View>
+            </View>
           ) : null}
           {props.scannerError || state.error === 'preview' ? (
             <Text

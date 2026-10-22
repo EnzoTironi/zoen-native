@@ -2,10 +2,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import { telegramPresentation } from '../theme/telegram.ts';
 import { t } from '../i18n/index.ts';
-import { emptyEnrollmentState, type EnrollmentState } from '../agent-enrollment/session.ts';
+import {
+  EnrollmentSession,
+  emptyEnrollmentState,
+  type EnrollmentState,
+} from '../agent-enrollment/session.ts';
 
 type Element = { type: unknown; props: Record<string, any> };
 const output = await build({
@@ -48,6 +53,7 @@ const review: NonNullable<EnrollmentState['review']> = {
 };
 function fixture(state: EnrollmentState, availability = 'ready') {
   let paste = false;
+  let keyboardDismissals = 0;
   const actions: string[] = [];
   const props: Record<string, any> = {
     state,
@@ -84,7 +90,12 @@ function fixture(state: EnrollmentState, availability = 'ready') {
           jsxs: (type: unknown, props: object) => ({ type, props }),
           Fragment: 'Fragment',
         };
-      if (name === 'react-native') return { Text: 'Text', View: 'View' };
+      if (name === 'react-native')
+        return {
+          Text: 'Text',
+          View: 'View',
+          Keyboard: { dismiss: () => keyboardDismissals++ },
+        };
       if (name === '../theme')
         return { useTheme: () => ({ presentation: telegramPresentation('night') }) };
       if (name === '../i18n') return { t };
@@ -98,13 +109,179 @@ function fixture(state: EnrollmentState, availability = 'ready') {
     },
   });
   const render = () => module.exports.ConnectAgentView(props) as Element;
-  return { actions, props, render };
+  return { actions, props, render, keyboardDismissals: () => keyboardDismissals };
 }
 const target = (tree: Element, id: string) => {
   const found = nodes(tree).find((node) => node.props.testID === id);
   assert.ok(found, id);
   return found;
 };
+
+const require = createRequire(import.meta.url);
+const { transformSync } = require('@babel/core');
+const generate = require('@babel/generator').default;
+const responderProperties: unknown[] = [];
+transformSync(
+  readFileSync(
+    require.resolve('react-native/Libraries/Components/ScrollView/ScrollView.js'),
+    'utf8',
+  ),
+  {
+    filename: 'ScrollView.js',
+    babelrc: false,
+    configFile: false,
+    presets: ['module:@react-native/babel-preset'],
+    plugins: [
+      () => ({
+        visitor: {
+          ClassProperty(path: any) {
+            if (
+              [
+                '_handleStartShouldSetResponder',
+                '_handleStartShouldSetResponderCapture',
+                '_handleResponderRelease',
+              ].includes(path.node.key.name)
+            )
+              responderProperties.push(path.node);
+          },
+        },
+      }),
+    ],
+  },
+);
+assert.equal(responderProperties.length, 3);
+const settingsOutput = await build({
+  stdin: {
+    contents: readFileSync(new URL('../components/settings-screen.tsx', import.meta.url), 'utf8'),
+    loader: 'tsx',
+  },
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  jsx: 'automatic',
+  write: false,
+  external: ['*'],
+});
+function settingsScroll(tree: Element) {
+  const module: { exports: Record<string, any> } = { exports: {} };
+  runInNewContext(settingsOutput.outputFiles[0]!.text, {
+    module,
+    require: (name: string) => {
+      if (name === 'react-native') return { ScrollView: 'ScrollView' };
+      if (name === 'expo-router') return { Stack: { Screen: 'Screen' } };
+      if (name === '../theme')
+        return { useTheme: () => ({ presentation: telegramPresentation('night') }) };
+      if (name === 'react/jsx-runtime')
+        return {
+          jsx: (type: unknown, props: object) => ({ type, props }),
+          jsxs: (type: unknown, props: object) => ({ type, props }),
+        };
+      throw Error(`Unexpected SettingsScreen import: ${name}`);
+    },
+  });
+  return module.exports.SettingsScreen(tree.props) as Element;
+}
+function nativeHostedTap(scroll: Element, press: () => void) {
+  let blurred = false;
+  const input = {};
+  const inputState = {
+    currentlyFocusedInput: () => input,
+    isTextInput: (target: object) => target === input,
+    blurTextInput: () => {
+      blurred = true;
+    },
+  };
+  const ScrollResponder = runInNewContext(
+    `(class { constructor(props) { this.props=props; }
+      _keyboardIsDismissible=()=>true;
+      _softKeyboardIsDetached=()=>false;
+      _isAnimating=()=>false;
+      ${responderProperties.map((node) => generate(node).code).join('\n')}
+    })`,
+    {
+      __DEV__: false,
+      TextInputState: inputState,
+      _TextInputState: { default: inputState },
+    },
+  );
+  const responder = new ScrollResponder(scroll.props);
+  const event = { target: {}, nativeEvent: { touches: [] } };
+  const intercepted =
+    responder._handleStartShouldSetResponderCapture(event) ||
+    responder._handleStartShouldSetResponder(event);
+  if (intercepted) responder._handleResponderRelease(event);
+  else press();
+  return { intercepted, blurred };
+}
+
+test('actual RN responder delivers the first native Check tap to preview with keyboard visible', async () => {
+  const calls: string[] = [];
+  const session = new EnrollmentSession(
+    {
+      preview: async (code: string) => {
+        calls.push(`preview:${code}`);
+        return review;
+      },
+      approve: async () => {
+        throw Error('Preview must not approve');
+      },
+    } as any,
+    () => 1000n,
+  );
+  session.activate({ owner: 'owner', device: 'phone', relay: 'https://relay.example' });
+  session.setCode('synthetic-code');
+  const f = fixture(session.getSnapshot());
+  f.props.onCheck = () => session.check();
+  const tree = f.render();
+  const scroll = settingsScroll(tree);
+  // The real installed RN responder explains the old native-host interception.
+  assert.equal(
+    nativeHostedTap(
+      { ...scroll, props: { ...scroll.props, keyboardShouldPersistTaps: 'handled' } },
+      () => {},
+    ).intercepted,
+    true,
+  );
+  const tap = nativeHostedTap(scroll, () => target(tree, 'agent-enrollment-check').props.onPress());
+  assert.equal(tap.intercepted, false);
+  assert.equal(tap.blurred, false);
+  assert.equal(f.keyboardDismissals(), 1);
+  assert.deepEqual(calls, ['preview:synthetic-code']);
+  await Promise.resolve();
+  assert.equal(session.getSnapshot().phase, 'review');
+  assert.equal(scroll.props.automaticallyAdjustKeyboardInsets, true);
+});
+
+test('explicit keyboard Go shares Check, and the session fences a simultaneous second preview', async () => {
+  const calls: string[] = [];
+  const session = new EnrollmentSession(
+    {
+      preview: async (code: string) => {
+        calls.push(code);
+        return review;
+      },
+    } as any,
+    () => 1000n,
+  );
+  session.activate({ owner: 'owner', device: 'phone', relay: 'https://relay.example' });
+  session.setCode('exact-code');
+  const f = fixture(session.getSnapshot());
+  f.props.onCheck = () => session.check();
+  const tree = f.render();
+  const field = target(tree, 'agent-enrollment-code-input');
+  assert.equal(field.props.returnKeyType, 'go');
+  field.props.onSubmitEditing();
+  target(tree, 'agent-enrollment-check').props.onPress();
+  assert.deepEqual(calls, ['exact-code']);
+  await Promise.resolve();
+  assert.equal(session.getSnapshot().phase, 'review');
+  assert.equal(f.keyboardDismissals(), 2);
+  const row = target(tree, 'agent-enrollment-code-row');
+  assert.equal(row.props.style.flexDirection, 'row');
+  assert.equal(row.props.style.flexWrap, 'wrap');
+  assert.ok(nodes(row).includes(field));
+  assert.ok(nodes(row).includes(target(tree, 'agent-enrollment-check')));
+});
 
 for (const availability of ['loading', 'restore-error', 'account-required', 'unsupported']) {
   test(`actual view exposes no scanner/input/confirmation while ${availability}`, () => {
