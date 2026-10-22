@@ -1,4 +1,3 @@
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { router } from 'expo-router';
 import { Pressable, Text, View, useWindowDimensions, type ViewProps } from 'react-native';
 import type { Persona } from '../core/generated/Persona';
@@ -6,6 +5,7 @@ import { t } from '../i18n/index.ts';
 import { ProfileAvatar } from '../profile/profile-avatar';
 import { useTheme } from '../theme';
 import { Icon } from './primitives';
+import { NavigationGlass } from './navigation-glass';
 
 export type ChatHeaderProps = {
   id: string;
@@ -25,9 +25,8 @@ export function ChatTitle({
   availableWidth,
   onLayout,
 }: ChatHeaderProps & { availableWidth?: number; onLayout?: ViewProps['onLayout'] }) {
-  const { colors, presentation: p, scheme } = useTheme();
+  const { colors, presentation: p } = useTheme();
   const { width, fontScale } = useWindowDimensions();
-  const glass = process.env.EXPO_OS === 'ios' && isLiquidGlassAvailable();
   const native = process.env.EXPO_OS === 'ios';
   const nativeWidth = availableWidth ?? Math.max(88, width - 176);
   // f1dd7a2 ChatTitleComponent:365,626,1047,1084. The avatar is
@@ -100,19 +99,10 @@ export function ChatTitle({
       onLongPress={native && !search?.active ? search?.onToggle : undefined}
       style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
     >
-      {glass ? (
-        <GlassView
-          isInteractive
-          colorScheme={scheme}
-          glassEffectStyle="regular"
-          style={{ borderRadius: native ? 22 : 24 }}
-        >
-          {content}
-        </GlassView>
+      {native ? (
+        <NavigationGlass radius={22}>{content}</NavigationGlass>
       ) : (
-        <View style={{ borderRadius: native ? 22 : 24, backgroundColor: colors.surface }}>
-          {content}
-        </View>
+        <View style={{ borderRadius: 24, backgroundColor: colors.surface }}>{content}</View>
       )}
     </Pressable>
   );

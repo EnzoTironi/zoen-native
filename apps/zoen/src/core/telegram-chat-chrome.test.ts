@@ -11,6 +11,8 @@ const compiled = await Promise.all(
     '../components/chat-header.ios.tsx',
     '../components/chat-title.tsx',
     './telegram-chat-header-layout.ts',
+    '../components/navigation-glass.tsx',
+    '../components/chats-actions.ios.tsx',
   ].map(async (name) => {
     const source = new URL(name, import.meta.url);
     const output = await build({
@@ -38,7 +40,7 @@ function nodes(tree: unknown): Element[] {
   const node = tree as Element;
   return [node, ...nodes(node.props.children)];
 }
-function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1) {
+function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1, glass = true) {
   const paths: unknown[] = [];
   let searches = 0;
   let backs = 0;
@@ -75,7 +77,15 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
         Toolbar: Object.assign('StackToolbar', { Button: 'ToolbarButton', View: 'ToolbarView' }),
       },
     },
-    'expo-glass-effect': { GlassView: 'GlassView', isLiquidGlassAvailable: () => true },
+    'expo-glass-effect': { GlassView: 'GlassView', isLiquidGlassAvailable: () => glass },
+    '@expo/ui': { Host: 'Host' },
+    '@expo/ui/swift-ui': { Button: 'Button', HStack: 'HStack' },
+    '@expo/ui/swift-ui/modifiers': Object.fromEntries(
+      ['buttonStyle', 'font', 'foregroundStyle', 'frame', 'labelStyle'].map((name) => [
+        name,
+        (value: unknown) => ({ [name]: value }),
+      ]),
+    ),
     '../i18n/index.ts': { t: (key: string) => key },
     '../profile/profile-avatar': { ProfileAvatar: 'ProfileAvatar' },
     '../theme': {
@@ -104,8 +114,11 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
   };
   const geometry = load(compiled[2]!);
   ports['../core/telegram-chat-header-layout'] = geometry;
+  const material = load(compiled[3]!);
+  ports['./navigation-glass'] = material;
   const header = load(compiled[0]!);
   const title = load(compiled[1]!);
+  const chats = load(compiled[4]!);
   const props = {
     id: 'space-one',
     scrollViewTag: 1234,
@@ -118,8 +131,11 @@ function fixture(platform: 'ios' | 'android' = 'ios', width = 402, fontScale = 1
     props,
     header: () => header.ChatHeader!(props),
     title: () => title.ChatTitle!(props),
+    inbox: () => chats.ChatsActions!({}),
+    material: material.NavigationGlass!,
     bar() {
-      const element = header.ChatHeader!(props).props.options.headerRight();
+      const element =
+        header.ChatHeader!(props).props.options.unstable_headerRightItems()[0].element;
       return element.type(element.props) as Element;
     },
     titleWithBounds(availableWidth: number, onLayout?: (event: any) => void) {
@@ -146,6 +162,8 @@ test('native bar owns the soft edge and Back while title, Details and Search rem
   assert.deepEqual(Object.keys(options.headerLargeStyle), []);
   assert.equal(options.headerBlurEffect, undefined);
   assert.equal(options.headerBackground, undefined);
+  assert.equal(options.headerRight, undefined);
+  assert.equal(options.unstable_headerRightItems()[0].hidesSharedBackground, true);
   assert.equal(options.scrollEdgeEffects.top, 'soft');
   assert.equal(options.scrollEdgeEffects.bottom, 'hidden');
   assert.equal(options.gestureEnabled, undefined);
@@ -154,10 +172,7 @@ test('native bar owns the soft edge and Back while title, Details and Search rem
   assert.equal(title.props.activityLabel, 'typing');
   assert.equal(title.props.id, 'space-one');
   const all = nodes(f.bar());
-  assert.equal(
-    all.some((node) => node.type === 'GlassView'),
-    false,
-  );
+  assert.equal(f.bar().type, f.material);
   const search = all.find((node) => node.props.testID === 'chat-search')!;
   assert.equal(search.props.accessibilityLabel, 'chat.searchThisChat');
   search.props.onPress();
@@ -174,6 +189,32 @@ test('native bar owns the soft edge and Back while title, Details and Search rem
     nodes(f.bar()).find((node) => node.props.testID === 'chat-search')!.props.accessibilityLabel,
     'chat.closeSearch',
   );
+});
+
+test('inbox, conversation actions and title share one native material without a second bar background', () => {
+  for (const available of [true, false]) {
+    const f = fixture('ios', 402, 1, available);
+    const surfaces = [f.inbox(), f.bar(), ...nodes(f.title()).filter((n) => n.type === f.material)];
+    assert.equal(surfaces.length, 3);
+    for (const surface of surfaces) {
+      assert.equal(surface.type, f.material);
+      const rendered = f.material(surface.props);
+      assert.equal(rendered.type, available ? 'GlassView' : 'View');
+      if (available) {
+        assert.equal(rendered.props.glassEffectStyle, 'regular');
+        assert.equal(rendered.props.isInteractive, true);
+        assert.equal(rendered.props.colorScheme, 'dark');
+        assert.equal(rendered.props.tintColor, undefined);
+      } else {
+        assert.equal(
+          rendered.props.style.backgroundColor,
+          telegramPresentation('night').navigation.background,
+        );
+      }
+      assert.equal(rendered.props.style.opacity, undefined);
+      assert.equal(rendered.props.style.overflow, undefined);
+    }
+  }
 });
 
 test('title centers its own source typography and preserves details/long-press without claiming native window placement', () => {
