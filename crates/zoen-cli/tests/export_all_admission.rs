@@ -45,6 +45,8 @@ async fn explicit_offline_export_keeps_the_cached_subset_without_connecting() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(String::from_utf8_lossy(&output.stdout).starts_with("1 pages,"));
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .contains("offline cache export: remote catch-up was not checked"));
     fixture.assert_exact_export("cached", false);
     fixture.assert_no_connection();
 }

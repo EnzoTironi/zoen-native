@@ -110,6 +110,18 @@ pub(super) async fn run(cmd: &str, cli: &mut Cli, context: Context) {
                             .map(String::as_str)
                             .unwrap_or_else(|| usage()),
                     );
+                    if offline {
+                        eprintln!("offline cache export: remote catch-up was not checked");
+                    } else {
+                        // Startup already spent the command's wait budget. Check
+                        // its actual completion, without another wait or retry,
+                        // before enumerating a projection that may omit items.
+                        e.wait_until_settled(0).await.unwrap_or_else(|err| {
+                            die(format!(
+                                "export-all: {err}; no files were written. Use --offline to export only this device's cached pages."
+                            ))
+                        });
+                    }
                     let (mut n, mut bytes, mut missing) = (0, 0, 0);
                     for i in e
                         .items()
