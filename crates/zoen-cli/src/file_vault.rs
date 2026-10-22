@@ -364,19 +364,23 @@ mod tests {
         let vault = home.vault();
         let value = vec![0; 32_769];
         vault.write_bytes("same_key", &value).unwrap();
-        let barrier = std::sync::Barrier::new(8);
         std::thread::scope(|scope| {
+            let (ready, waiting) = std::sync::mpsc::channel();
+            let mut releases = Vec::new();
             for id in 1..=8 {
                 let vault = &vault;
-                let barrier = &barrier;
+                let ready = ready.clone();
+                let (release, proceed) = std::sync::mpsc::channel();
+                releases.push(release);
                 scope.spawn(move || {
                     for round in 0..4 {
                         vault
                             .write_observed("same_key", &vec![id; 32_769], |stage| {
                                 if round == 0 && stage == SaveStage::TemporaryCreated {
-                                    barrier.wait();
-                                    assert_eq!(temporary_count(vault), 8);
-                                    barrier.wait();
+                                    ready.send(()).map_err(io::Error::other)?;
+                                    proceed
+                                        .recv_timeout(Duration::from_secs(5))
+                                        .map_err(io::Error::other)?;
                                 }
                                 Ok(())
                             })
@@ -387,6 +391,15 @@ mod tests {
                     }
                 });
             }
+            drop(ready);
+            for _ in 0..8 {
+                waiting.recv_timeout(Duration::from_secs(5)).unwrap();
+            }
+            let simultaneous = temporary_count(&vault);
+            for release in releases {
+                let _ = release.send(());
+            }
+            assert_eq!(simultaneous, 8);
         });
         assert_eq!(temporary_count(&vault), 0);
     }
