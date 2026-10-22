@@ -110,6 +110,7 @@ fn an_ordered_denial_wins_over_an_optimistic_approval_before_its_echo() {
             approved: false,
             content_hash: r.req.content_hash,
             resolution: Some(RequestResolution {
+                tool_decision: None,
                 message: "Declined on another device".into(),
                 created_item: None,
                 ai_cost_cents: 37,

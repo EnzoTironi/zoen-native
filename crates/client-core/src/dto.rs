@@ -465,6 +465,7 @@ pub struct EditOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub enum RequestStatus {
+    Cancelled,
     Pending,
     Approved,
     Denied,
@@ -474,7 +475,27 @@ pub enum RequestStatus {
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub struct ToolApprovalDto {
+    pub content_hash: String,
+    pub artifact_id: String,
+    pub artifact_title: String,
+    pub version: u32,
+    pub operation: String,
+    pub expires_ms: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
+pub enum ToolRequestDecision {
+    ApproveOnce,
+    Deny,
+    Cancel,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "client-types", derive(ts_rs::TS))]
 pub struct AgentRequestDto {
+    pub tool_approval: Option<ToolApprovalDto>,
     pub id: String,
     pub agent: Persona,
     pub space_id: String,

@@ -1,9 +1,14 @@
 import { t, formatLocale } from '../i18n/index.ts';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import type { AgentRequestDto } from '../core/generated/AgentRequestDto';
-import type { RequestDecision } from '../core/generated/RequestDecision';
+import {
+  requestDecisionCommand,
+  toolApprovalExpired,
+  toolApprovalValid,
+  type RequestCardDecision,
+} from '../core/tool-request-decision';
 import { useClient } from '../core/provider';
 import { money } from '../core/presentation';
 import { Avatar, NativeButton, Surface } from '../components/primitives';
@@ -15,6 +20,7 @@ const statuses = {
   Stale: t('agents.theContentHasChanged'),
   Approved: t('agents.approved'),
   Denied: t('agents.notAllowed'),
+  Cancelled: t('agents.requestCancelled'),
 };
 export function RequestCard({
   request,
@@ -33,10 +39,17 @@ export function RequestCard({
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const deciding = useRef(false);
+  const tool = request.tool_approval;
+  const toolValid = tool == null || toolApprovalValid(tool);
+  const toolExpired = tool != null && toolApprovalExpired(tool);
+  const itemId = tool == null ? request.item_id : toolValid ? tool.artifact_id : null;
   const pending = request.status === 'Pending' || request.status === 'Stale';
-  const canDecide = pending && request.agent.is_mine && !busy && !disabled;
-  async function decide(decision: RequestDecision) {
-    if (!canDecide) return;
+  const canDecide = pending && toolValid && request.agent.is_mine && !busy && !disabled;
+  async function decide(decision: RequestCardDecision) {
+    if (!canDecide || deciding.current) return;
+    const command = requestDecisionCommand(request, decision);
+    if (!command) return;
     const always = decision === 'AlwaysApprove' || decision === 'AlwaysDeny';
     if (
       always &&
@@ -56,15 +69,12 @@ export function RequestCard({
       }))
     )
       return;
+    deciding.current = true;
     setBusy(true);
     setFailure(null);
     setResult(null);
     try {
-      const outcome = await store.request({
-        op: 'decide_request',
-        request_id: request.id,
-        decision,
-      });
+      const outcome = await store.request(command);
       setResult(
         outcome.also_resolved
           ? t('agents.alsoResolved', { message: outcome.message, count: outcome.also_resolved })
@@ -76,6 +86,7 @@ export function RequestCard({
         reason instanceof Error ? reason.message : t('agents.thisDecisionCouldNotBeSaved'),
       );
     } finally {
+      deciding.current = false;
       setBusy(false);
     }
   }
@@ -117,14 +128,36 @@ export function RequestCard({
       >
         {request.detail}
       </Text>
+      {tool != null && toolValid ? (
+        <View style={{ gap: 6 }}>
+          <Text selectable style={{ color: colors.text, fontWeight: '600', lineHeight: 22 }}>
+            {t('agents.toolArtifactVersion', {
+              title: tool.artifact_title,
+              version: tool.version,
+            })}
+          </Text>
+          <Text selectable style={{ color: colors.secondary, lineHeight: 21 }}>
+            {t('agents.requestAction', { action: tool.operation })}
+          </Text>
+          {toolValid ? (
+            <Text selectable style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
+              {t('agents.toolApprovalExpires', {
+                time: new Date(Number(tool.expires_ms)).toLocaleString(formatLocale),
+              })}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       {!compact ? (
         <View style={{ gap: 8 }}>
           <Text selectable style={{ color: colors.secondary }}>
             {t('agents.requestAudience', { audience: request.audience })}
           </Text>
-          <Text selectable style={{ color: colors.secondary }}>
-            {t('agents.requestAction', { action: request.action_label })}
-          </Text>
+          {tool == null ? (
+            <Text selectable style={{ color: colors.secondary }}>
+              {t('agents.requestAction', { action: request.action_label })}
+            </Text>
+          ) : null}
           {request.cost_cents === null ? null : (
             <Text
               selectable
@@ -154,11 +187,19 @@ export function RequestCard({
           fontWeight: '600',
         }}
       >
-        {request.by_standing
+        {tool == null && request.by_standing
           ? t('agents.standingDecisionStatus', { status: statuses[request.status] })
           : statuses[request.status]}
       </Text>
-      {request.status === 'Stale' ? (
+      {!toolValid ? (
+        <Text accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 21 }}>
+          {t('agents.toolApprovalUnavailable')}
+        </Text>
+      ) : tool != null && pending && toolExpired ? (
+        <Text style={{ color: colors.danger, lineHeight: 21 }}>
+          {t('agents.toolApprovalExpired')}
+        </Text>
+      ) : request.status === 'Stale' ? (
         <Text style={{ color: colors.danger, lineHeight: 21 }}>
           {t('agents.thePreviousApprovalDoesNotMatchTheCurrent')}
         </Text>
@@ -186,18 +227,26 @@ export function RequestCard({
             onPress={() => router.push({ pathname: '/request/[id]', params: { id: request.id } })}
           />
         ) : null}
-        {request.item_id ? (
+        {itemId ? (
           <NativeButton
             secondary
             label={t('agents.openItem')}
             disabled={busy}
-            onPress={() =>
-              router.push({ pathname: '/item/[id]', params: { id: request.item_id! } })
-            }
+            onPress={() => router.push({ pathname: '/item/[id]', params: { id: itemId } })}
           />
         ) : null}
         {pending ? (
           <>
+            {tool != null ? (
+              <NativeButton
+                secondary
+                label={t('agents.cancelRequest')}
+                disabled={!canDecide}
+                onPress={() => {
+                  void decide('Cancel');
+                }}
+              />
+            ) : null}
             <NativeButton
               secondary
               label={t('agents.doNotAllow')}
@@ -208,15 +257,15 @@ export function RequestCard({
             />
             <NativeButton
               label={busy ? t('agents.saving') : t('agents.allowOnce')}
-              disabled={!canDecide || request.status === 'Stale'}
+              disabled={!canDecide || request.status === 'Stale' || toolExpired}
               onPress={() => {
-                void decide('Approve');
+                void decide(tool == null ? 'Approve' : 'ApproveOnce');
               }}
             />
           </>
         ) : null}
       </View>
-      {!compact && pending && request.agent.is_mine ? (
+      {!compact && pending && request.agent.is_mine && tool == null ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 6 }}>
           {request.can_always_approve ? (
             <NativeButton

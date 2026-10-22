@@ -7,8 +7,12 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 mod agent_binary_documents;
+/// Closed, shared schema validation only; this module grants no execution authority.
+pub use miniapps::deckcraft::agent_tools as deckcraft_agent_tools;
 mod agent_notes;
-pub use agent_binary_documents::{AgentBinaryTurn, AGENT_BINARY_DOCUMENT_LIMIT};
+pub use agent_binary_documents::{
+    AgentBinaryTurn, AgentToolApprovalInput, ApprovedToolTurn, AGENT_BINARY_DOCUMENT_LIMIT,
+};
 mod app_binary_documents;
 pub use app_binary_documents::AppBinaryDocumentDto;
 mod app_documents;
@@ -475,6 +479,16 @@ impl Client {
         decision: RequestDecision,
     ) -> Result<DecideOutcome, CoreError> {
         self.lock().decide_request(&request_id, decision)
+    }
+
+    pub fn decide_tool_request(
+        &self,
+        request_id: String,
+        observed_content_hash: String,
+        decision: ToolRequestDecision,
+    ) -> Result<DecideOutcome, CoreError> {
+        self.lock()
+            .decide_tool_request(&request_id, &observed_content_hash, decision)
     }
 
     /// Standing "always approve / always deny" decisions you gave your agents.

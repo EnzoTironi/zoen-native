@@ -200,6 +200,7 @@ fn card(agent: &str, m: &ToolManifest) -> AgentRequest {
         serde_json::to_vec(m).expect("manifest serializes"),
     ));
     AgentRequest {
+        tool_proposal: None,
         id: types::new_id("req"),
         agent: agent.into(),
         title,

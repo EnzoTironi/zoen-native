@@ -20,10 +20,11 @@ pub mod wasm;
 
 pub use browser::{BrowserCall, BrowserTools};
 pub use citizen::{
-    approve_agent, claim_citizen, creator_definition, AgentKind, AgentSpec, Avatar, Brain, Citizen,
-    CitizenRecord, Definition, Host, HostError, ModelTier, PublicArtifactReferences, Runtime,
-    ToolCall, ToolDef, ToolHost, ToolStep, Turn, TurnContext, TurnOutcome, AVATAR_STYLE,
-    CHEAP_CHAT_PROFILE, CREATOR_HANDLE, CREATOR_NAME,
+    approve_agent, claim_citizen, creator_definition, AgentKind, AgentSpec, ApprovedToolAdmission,
+    Avatar, Brain, Citizen, CitizenRecord, Definition, Host, HostError, ModelTier,
+    PublicArtifactReferences, Runtime, ToolAsk, ToolAskEnvelope, ToolCall, ToolDef, ToolHost,
+    ToolProgress, ToolResult, ToolStep, Turn, TurnContext, TurnOutcome, AVATAR_STYLE,
+    CHEAP_CHAT_PROFILE, CREATOR_HANDLE, CREATOR_NAME, MAX_TOOL_CONTINUATION_BYTES, MAX_TOOL_STEPS,
 };
 pub use manifest::{EgressRule, Needs, SecretBinding, SignedManifest, ToolManifest};
 pub use router::{Route, Router, Tier};

@@ -20,6 +20,7 @@ use client_core::{AppCallStatus, Client, ConnectionDto, CoreListener, EntryKind,
 use gate::{Clef, ClefModel, Gate, HttpTransport};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -27,8 +28,8 @@ use tokio::sync::Notify;
 use zoen_agentd::citizen::testing::{fault, scripted_brain_from_env};
 use zoen_agentd::citizen::{CodexBrain, ModelBrain};
 use zoen_agentd::{
-    AgentSpec, Brain, Definition, Runtime, ToolCall, ToolDef, ToolHost, ToolStep, Turn,
-    TurnContext, TurnOutcome,
+    AgentSpec, ApprovedToolAdmission, Brain, Definition, Runtime, ToolAsk, ToolCall, ToolDef,
+    ToolHost, ToolProgress, ToolResult, ToolStep, Turn, TurnContext, TurnOutcome,
 };
 
 /// History the brain sees: the Space's last messages before the one it answers.
@@ -355,6 +356,14 @@ pub async fn host(e: &Arc<Client>, home: &Path, for_secs: Option<u64>) {
             let Ok(tl) = e.timeline(s.id.clone()) else {
                 continue;
             };
+            // Canonical Requests survive cursor advancement and cold restart. An
+            // owner's resolution resumes the original source, never a new model task.
+            let continuations = e.approved_tool_sources(&s.id);
+            for source in continuations {
+                if let Some(index) = tl.iter().position(|entry| entry.id == source) {
+                    let _ = turn(e, &cx, &def, &s.id, &tl[..index], &tl[index]).await;
+                }
+            }
             let mut from = cursors.get(&s.id).copied().unwrap_or(0);
             // Our own messages are skipped, but not our own mini-app edits: a booking we
             // made for a client in chat still tells the owner.
@@ -498,11 +507,120 @@ async fn turn(
     };
     let tools = SpaceTools::new(e, cx, space, &t.author.id, &t.id);
     let done = tools.done();
-    let out = match cx
-        .runtime
-        .turn_with_tools(tc, &history, &inbound, &tools, done)
-        .await
-    {
+    let pending = e.tool_approval_requests(space, &t.id);
+    let resumed = pending.last();
+    let result = if let Some(request) = resumed {
+        let Some(dto) = e.requests().into_iter().find(|r| r.id == request.id) else {
+            return true;
+        };
+        if dto.status != client_core::RequestStatus::Approved {
+            return true;
+        }
+        let Some(worker) = tools.deckcraft else {
+            return true;
+        };
+        let Some(proposal) = &request.tool_proposal else {
+            return true;
+        };
+        let ask: ToolAsk = match serde_json::from_str(&proposal.continuation_json) {
+            Ok(ask) => ask,
+            Err(_) => return true,
+        };
+        let checkpoint = match tools.recovery_checkpoint(&request.id, &request.content_hash) {
+            Ok(checkpoint) => checkpoint,
+            Err(error) => {
+                say(format_args!("continuation checkpoint refused: {error}"));
+                return true;
+            }
+        };
+        let recovered = if let Some((mut progress, prepared)) = checkpoint {
+            if let Some(prepared) = prepared {
+                if prepared.envelope != ask.envelope
+                    || prepared.policy_sha256 != ask.policy_sha256
+                    || prepared.round < progress.round
+                    || prepared.steps != progress.steps
+                    || tools
+                        .tools()
+                        .iter()
+                        .find(|definition| definition.name == prepared.call.name)
+                        != Some(&prepared.definition)
+                {
+                    say("prepared continuation changed");
+                    return true;
+                }
+                progress = ToolProgress {
+                    round: prepared.round,
+                    steps: prepared.steps,
+                    remaining: prepared.remaining,
+                };
+                progress.steps.push(ToolStep {
+                    call: prepared.call,
+                    result: String::new(),
+                    is_error: false,
+                });
+            }
+            let encoded = match serde_json::to_string(&progress.steps) {
+                Ok(encoded) => encoded,
+                Err(_) => return true,
+            };
+            let verified = match e.recover_tool_results(
+                &request.id,
+                worker.binding_sha256(),
+                &encoded,
+            ) {
+                Ok(results) => results,
+                Err(_) => {
+                    say("completed continuation is stale, unauthorized or lacks a canonical receipt");
+                    return true;
+                }
+            };
+            progress.steps = match serde_json::from_str(&verified) {
+                Ok(steps) => steps,
+                Err(_) => return true,
+            };
+            Some(progress)
+        } else {
+            None
+        };
+        // Both fresh execution and completed-result recovery retain the same
+        // persistent operational attempt budget. This is not a provider meter.
+        match tools.begin_resume(&request.id, &request.content_hash) {
+            Ok(true) => {}
+            Ok(false) => {
+                say("reviewed action reached its continuation retry limit");
+                return true;
+            }
+            Err(error) => {
+                say(format_args!("continuation reservation refused: {error}"));
+                return true;
+            }
+        }
+        if let Some(progress) = recovered {
+            cx.runtime
+                .resume_tool_progress(tc, &history, &inbound, &tools, ask, progress)
+                .await
+        } else {
+            let permit = match e.approved_tool_turn(&request.id, worker.binding_sha256()) {
+                Ok(permit) => permit,
+                Err(_) => {
+                    say("reviewed action is stale or no longer authorized");
+                    return true;
+                }
+            };
+            let admission = CanonicalToolAdmission {
+                tools: &tools,
+                permit,
+            };
+            cx.runtime
+                .resume_tool_ask(tc, &history, &inbound, &tools, ask, &admission)
+                .await
+        }
+    } else {
+        cx.runtime
+            .turn_with_tools(tc, &history, &inbound, &tools, done)
+            .await
+    };
+    let out = match result {
         Ok(o) => o,
         Err(err) => {
             say(format_args!("turn failed: {err}"));
@@ -516,6 +634,13 @@ async fn turn(
             true
         }
         TurnOutcome::Say { text } => reply(e, space, &text, &t.id),
+        TurnOutcome::ToolAsk { ask } => match tools.stage_approval(&ask) {
+            Ok(()) => true,
+            Err(error) => {
+                say(format_args!("tool approval refused: {error}"));
+                true
+            }
+        },
         TurnOutcome::AskOwner { draft, rule } => tell_owner(
             e,
             cx,
@@ -602,11 +727,272 @@ fn owner_note(e: &Arc<Client>, cx: &Ctx, source: &str) -> Option<serde_json::Val
     })
 }
 
+/// Operational recovery data in the existing tool journal. It is neither an approval
+/// nor a provider billing record; canonical native Requests remain the only authority.
+#[derive(Default)]
+struct JournalState {
+    steps: Vec<(String, Vec<ToolStep>)>,
+    continuations: BTreeMap<String, ResumeAttempts>,
+}
+struct ResumeAttempts {
+    content_hash: String,
+    attempts: u32,
+    source: Option<String>,
+    prepared: Option<ToolAsk>,
+    progress: Option<ToolProgress>,
+}
+impl JournalState {
+    fn valid_hash(hash: &str) -> bool {
+        hash.len() == 64
+            && hash
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    }
+    fn load(path: &Path) -> Result<Self, String> {
+        let bytes = match std::fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Self::default())
+            }
+            Err(_) => return Err("The tool journal could not be read".into()),
+        };
+        let value: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|_| "The tool journal is corrupt")?;
+        if value.is_array() {
+            return Ok(Self {
+                steps: serde_json::from_value(value).map_err(|_| "The tool journal is corrupt")?,
+                continuations: BTreeMap::new(),
+            });
+        }
+        let root = value.as_object().ok_or("The tool journal is corrupt")?;
+        if root.len() != 3 || root.get("version").and_then(serde_json::Value::as_u64) != Some(1) {
+            return Err("The tool journal version is unsupported".into());
+        }
+        let steps = serde_json::from_value(
+            root.get("steps")
+                .cloned()
+                .ok_or("The tool journal is corrupt")?,
+        )
+        .map_err(|_| "The tool journal is corrupt")?;
+        let metadata = root
+            .get("continuations")
+            .and_then(serde_json::Value::as_object)
+            .ok_or("The tool journal is corrupt")?;
+        let mut continuations = BTreeMap::new();
+        for (request, budget) in metadata {
+            let budget = budget
+                .as_object()
+                .filter(|budget| {
+                    budget.keys().all(|key| {
+                        matches!(
+                            key.as_str(),
+                            "content_hash" | "attempts" | "source" | "prepared" | "progress"
+                        )
+                    })
+                })
+                .ok_or("The continuation budget is corrupt")?;
+            let content_hash = budget
+                .get("content_hash")
+                .and_then(serde_json::Value::as_str)
+                .filter(|hash| Self::valid_hash(hash))
+                .ok_or("The continuation budget is corrupt")?;
+            let attempts = budget
+                .get("attempts")
+                .and_then(serde_json::Value::as_u64)
+                .filter(|attempts| *attempts > 0 && *attempts <= MAX_TRIES as u64)
+                .ok_or("The continuation budget is corrupt")? as u32;
+            if request.is_empty() || request.len() > 128 {
+                return Err("The continuation request is invalid".into());
+            }
+            let source = match budget.get("source") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::String(source))
+                    if !source.is_empty() && source.len() <= 128 =>
+                {
+                    Some(source.clone())
+                }
+                _ => return Err("The continuation source is corrupt".into()),
+            };
+            let prepared: Option<ToolAsk> = budget
+                .get("prepared")
+                .filter(|value| !value.is_null())
+                .map(|value| {
+                    serde_json::from_value(value.clone())
+                        .map_err(|_| "The prepared tool is corrupt")
+                })
+                .transpose()?;
+            let progress: Option<ToolProgress> = budget
+                .get("progress")
+                .filter(|value| !value.is_null())
+                .map(|value| {
+                    serde_json::from_value(value.clone())
+                        .map_err(|_| "The completed progress is corrupt")
+                })
+                .transpose()?;
+            if prepared.as_ref().is_some_and(|ask| {
+                ask.version != 1
+                    || ask.round >= 4
+                    || ask.steps.len() >= 16
+                    || ask.remaining.len() > 3
+                    || ask.steps.len() + 1 + ask.remaining.len() > 16
+            }) || progress.as_ref().is_some_and(|progress| {
+                progress.round >= 4
+                    || progress.steps.is_empty()
+                    || progress.steps.len() > 16
+                    || progress.remaining.len() > 3
+                    || progress.steps.len() + progress.remaining.len() > 16
+            }) {
+                return Err("The continuation progress budget is corrupt".into());
+            }
+            if prepared.as_ref().is_some_and(|ask| {
+                serde_json::to_vec(ask).map_or(true, |bytes| {
+                    bytes.len() > zoen_agentd::MAX_TOOL_CONTINUATION_BYTES
+                })
+            }) || progress.as_ref().is_some_and(|progress| {
+                serde_json::to_vec(progress).map_or(true, |bytes| {
+                    bytes.len() > zoen_agentd::MAX_TOOL_CONTINUATION_BYTES
+                })
+            }) {
+                return Err("The continuation progress exceeds its capacity".into());
+            }
+            continuations.insert(
+                request.clone(),
+                ResumeAttempts {
+                    content_hash: content_hash.into(),
+                    attempts,
+                    source,
+                    prepared,
+                    progress,
+                },
+            );
+        }
+        Ok(Self {
+            steps,
+            continuations,
+        })
+    }
+    fn bytes(&self) -> Result<Vec<u8>, String> {
+        if self.continuations.is_empty() {
+            return serde_json::to_vec(&self.steps)
+                .map_err(|_| "The tool journal could not be encoded".into());
+        }
+        let continuations: serde_json::Map<String, serde_json::Value> = self
+            .continuations
+            .iter()
+            .map(|(request, budget)| {
+                (
+                    request.clone(),
+                    json!({"content_hash":budget.content_hash,"attempts":budget.attempts,"source":budget.source,"prepared":budget.prepared,"progress":budget.progress}),
+                )
+            })
+            .collect();
+        serde_json::to_vec(&json!({"version":1,"steps":self.steps,"continuations":continuations}))
+            .map_err(|_| "The tool journal could not be encoded".into())
+    }
+    /// Reserve the temp path before reading the old state so simultaneous local writers
+    /// cannot overwrite a newer retry count with a stale snapshot. A leftover temp file
+    /// after interruption refuses another attempt until the host/operator reconciles it.
+    fn update(
+        path: &Path,
+        apply: impl FnOnce(&mut Self) -> Result<bool, String>,
+    ) -> Result<bool, String> {
+        let temporary = path.with_extension("tmp");
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options
+            .open(&temporary)
+            .map_err(|_| "The tool journal is busy or unwritable")?;
+        struct Temporary(Option<std::path::PathBuf>);
+        impl Drop for Temporary {
+            fn drop(&mut self) {
+                if let Some(path) = &self.0 {
+                    let _ = std::fs::remove_file(path);
+                }
+            }
+        }
+        let mut temporary_guard = Temporary(Some(temporary.clone()));
+        let mut state = Self::load(path)?;
+        if !apply(&mut state)? {
+            return Ok(false);
+        }
+        file.write_all(&state.bytes()?)
+            .map_err(|_| "The tool journal could not be written")?;
+        file.sync_all()
+            .map_err(|_| "The tool journal could not be synchronized")?;
+        drop(file);
+        std::fs::rename(&temporary, path).map_err(|_| "The tool journal could not be committed")?;
+        temporary_guard.0 = None;
+        #[cfg(unix)]
+        {
+            let directory = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new("."));
+            std::fs::File::open(directory)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|_| "The tool journal directory could not be synchronized")?;
+        }
+        Ok(true)
+    }
+    fn begin_resume(
+        path: &Path,
+        request: &str,
+        content_hash: &str,
+        source: Option<&str>,
+    ) -> Result<bool, String> {
+        if request.is_empty()
+            || request.len() > 128
+            || !Self::valid_hash(content_hash)
+            || source.is_some_and(|source| source.is_empty() || source.len() > 128)
+        {
+            return Err("The continuation request is invalid".into());
+        }
+        Self::update(path, |state| {
+            if let Some(budget) = state.continuations.get_mut(request) {
+                if budget.content_hash != content_hash
+                    || (source.is_some()
+                        && budget
+                            .source
+                            .as_deref()
+                            .is_some_and(|old| Some(old) != source))
+                {
+                    return Err("The continuation request hash changed".into());
+                }
+                if budget.attempts >= MAX_TRIES {
+                    return Ok(false);
+                }
+                budget.attempts += 1;
+                if budget.source.is_none() {
+                    budget.source = source.map(str::to_string);
+                }
+            } else {
+                state.continuations.insert(
+                    request.into(),
+                    ResumeAttempts {
+                        content_hash: content_hash.into(),
+                        attempts: 1,
+                        source: source.map(str::to_string),
+                        prepared: None,
+                        progress: None,
+                    },
+                );
+            }
+            Ok(true)
+        })
+    }
+}
+
 /// The mini-app tools of one chat, for one turn: calls run as the agent serving `serving`.
 struct SpaceTools<'a> {
     e: &'a Arc<Client>,
     journal: &'a Path,
     source: &'a str,
+    space: String,
     serving: &'a str,
     /// Model-facing name → (item, tool).
     names: Vec<(ToolDef, String, String)>,
@@ -677,6 +1063,7 @@ impl<'a> SpaceTools<'a> {
             e,
             journal: &cx.journal,
             source,
+            space: space.into(),
             serving,
             names,
             deckcraft: cx.deckcraft.as_ref(),
@@ -684,10 +1071,43 @@ impl<'a> SpaceTools<'a> {
         }
     }
 
+    fn stage_approval(&self, ask: &ToolAsk) -> Result<(), String> {
+        let (_, item, tool) = self
+            .names
+            .iter()
+            .find(|(definition, _, _)| definition.name == ask.call.name)
+            .ok_or("The held tool is no longer offered")?;
+        if !self.deckcraft_items.contains(item) || !crate::deckcraft::recognizes(tool) {
+            return Err("This tool has no supported canonical approval shape".into());
+        }
+        let worker = self
+            .deckcraft
+            .ok_or("The presentation executor is unavailable")?;
+        let (version, hash, _) =
+            client_core::deckcraft_agent_tools::command(tool, &ask.call.arguments)?;
+        let turn = self
+            .e
+            .agent_binary_turn(item, self.source, self.serving, version, hash.as_deref())
+            .map_err(|e| e.to_string())?;
+        self.e
+            .stage_tool_approval(
+                &turn,
+                client_core::AgentToolApprovalInput {
+                    canonical_tool: tool.clone(),
+                    arguments: ask.call.arguments.clone(),
+                    worker_binding: worker.binding_sha256().into(),
+                    continuation_json: serde_json::to_string(ask)
+                        .map_err(|_| "Invalid held call")?,
+                    gate_rule: ask.rule.clone(),
+                },
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     fn load(&self) -> Vec<(String, Vec<ToolStep>)> {
-        std::fs::read(self.journal)
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
+        JournalState::load(self.journal)
+            .map(|state| state.steps)
             .unwrap_or_default()
     }
 
@@ -700,28 +1120,264 @@ impl<'a> SpaceTools<'a> {
             .unwrap_or_default()
     }
 
-    fn record(&self, step: ToolStep) {
-        let mut all = self.load();
-        match all.iter_mut().find(|(s, _)| s == self.source) {
-            Some((_, steps)) => steps.push(step),
-            None => all.push((self.source.to_string(), vec![step])),
+    fn begin_resume(&self, request: &str, content_hash: &str) -> Result<bool, String> {
+        JournalState::begin_resume(self.journal, request, content_hash, Some(self.source))
+    }
+
+    fn canonical_continuation(&self) -> Result<Option<(String, String, ToolAsk)>, String> {
+        let requests = self.e.tool_approval_requests(&self.space, self.source);
+        let Some(request) = requests.last() else {
+            return Ok(None);
+        };
+        let proposal = request
+            .tool_proposal
+            .as_ref()
+            .ok_or("The canonical tool proposal is missing")?;
+        let original: ToolAsk = serde_json::from_str(&proposal.continuation_json)
+            .map_err(|_| "The canonical tool continuation is invalid")?;
+        if proposal.source != self.source
+            || original.envelope.space != self.space
+            || original.envelope.from != self.serving
+        {
+            return Err("The canonical tool source changed".into());
         }
-        let drop = all.len().saturating_sub(JOURNAL_KEEP);
-        all.drain(..drop);
-        let tmp = self.journal.with_extension("tmp");
-        let ok = serde_json::to_vec(&all)
-            .ok()
-            .and_then(|b| std::fs::write(&tmp, b).ok())
-            .and_then(|_| std::fs::rename(&tmp, self.journal).ok());
-        if ok.is_none() {
+        Ok(Some((
+            request.id.clone(),
+            request.content_hash.clone(),
+            original,
+        )))
+    }
+
+    fn recovery_checkpoint(
+        &self,
+        request: &str,
+        hash: &str,
+    ) -> Result<Option<(ToolProgress, Option<ToolAsk>)>, String> {
+        let state = JournalState::load(self.journal)?;
+        let Some(budget) = state.continuations.get(request) else {
+            return Ok(None);
+        };
+        if budget.content_hash != hash || budget.source.as_deref() != Some(self.source) {
+            return Err("The continuation checkpoint binding changed".into());
+        }
+        match (budget.progress.clone(), budget.prepared.clone()) {
+            (Some(progress), prepared) => Ok(Some((progress, prepared))),
+            (None, None) => Ok(None),
+            (None, Some(_)) => Err("The prepared call has no completed checkpoint".into()),
+        }
+    }
+
+    fn same_calls(prefix: &[ToolStep], steps: &[ToolStep]) -> bool {
+        prefix.len() <= steps.len()
+            && prefix
+                .iter()
+                .zip(steps)
+                .all(|(old, new)| old.call == new.call)
+    }
+
+    fn prepare_continuation(&self, prepared: &ToolAsk) -> Result<(), String> {
+        if prepared.version != 1
+            || prepared.round >= 4
+            || prepared.steps.len() >= 16
+            || prepared.remaining.len() > 3
+            || prepared.steps.len() + 1 + prepared.remaining.len() > 16
+            || serde_json::to_vec(prepared).map_or(true, |bytes| {
+                bytes.len() > zoen_agentd::MAX_TOOL_CONTINUATION_BYTES
+            })
+        {
+            return Err("The prepared continuation exceeds its capacity".into());
+        }
+        let Some((request, hash, original)) = self.canonical_continuation()? else {
+            return Ok(());
+        };
+        if prepared.envelope != original.envelope
+            || prepared.policy_sha256 != original.policy_sha256
+            || prepared.round < original.round
+            || prepared.steps.len() <= original.steps.len()
+            || !Self::same_calls(&original.steps, &prepared.steps)
+            || prepared.steps[original.steps.len()].call != original.call
+            || self
+                .names
+                .iter()
+                .find(|(definition, _, _)| definition.name == prepared.call.name)
+                .map(|(definition, _, _)| definition)
+                != Some(&prepared.definition)
+        {
+            return Err("The prepared continuation changed its canonical context".into());
+        }
+        JournalState::update(self.journal, |state| {
+            let budget = state
+                .continuations
+                .get_mut(&request)
+                .ok_or("The continuation attempt was not reserved")?;
+            if budget.content_hash != hash
+                || budget.source.as_deref() != Some(self.source)
+                || budget
+                    .prepared
+                    .as_ref()
+                    .is_some_and(|prior| prior != prepared)
+                || budget.progress.as_ref().is_none_or(|prior| {
+                    prior.round > prepared.round || !Self::same_calls(&prior.steps, &prepared.steps)
+                })
+            {
+                return Err("The prepared continuation conflicts with retained progress".into());
+            }
+            budget.prepared = Some(prepared.clone());
+            Ok(true)
+        })
+        .map(|_| ())
+    }
+
+    fn checkpoint_continuation(&self, progress: &ToolProgress) -> Result<(), String> {
+        if serde_json::to_vec(progress).map_or(true, |bytes| {
+            bytes.len() > zoen_agentd::MAX_TOOL_CONTINUATION_BYTES
+        }) {
+            return Err("The completed continuation exceeds its capacity".into());
+        }
+        let Some((request, hash, original)) = self.canonical_continuation()? else {
+            return Ok(());
+        };
+        if progress.round < original.round
+            || progress.round >= 4
+            || progress.steps.len() <= original.steps.len()
+            || progress.steps.len() > 16
+            || progress.remaining.len() > 3
+            || progress.steps.len() + progress.remaining.len() > 16
+            || !Self::same_calls(&original.steps, &progress.steps)
+            || progress.steps[original.steps.len()].call != original.call
+        {
+            return Err("The completed continuation changed its canonical context".into());
+        }
+        JournalState::update(self.journal, |state| {
+            let budget = state
+                .continuations
+                .get_mut(&request)
+                .ok_or("The continuation attempt was not reserved")?;
+            if budget.content_hash != hash
+                || budget.source.as_deref() != Some(self.source)
+                || budget.progress.as_ref().is_some_and(|prior| {
+                    prior.round > progress.round || !Self::same_calls(&prior.steps, &progress.steps)
+                })
+            {
+                return Err("The completed continuation conflicts with retained progress".into());
+            }
+            if let Some(prepared) = &budget.prepared {
+                let matches = prepared.round == progress.round
+                    && prepared.remaining == progress.remaining
+                    && progress.steps.len() == prepared.steps.len() + 1
+                    && Self::same_calls(&prepared.steps, &progress.steps)
+                    && progress
+                        .steps
+                        .last()
+                        .is_some_and(|step| step.call == prepared.call);
+                if !matches {
+                    return Err("The completed call does not match the prepared effect".into());
+                }
+                budget.prepared = None;
+            }
+            budget.progress = Some(progress.clone());
+            match state
+                .steps
+                .iter_mut()
+                .find(|(source, _)| source == self.source)
+            {
+                Some((_, steps)) => *steps = progress.steps.clone(),
+                None => state
+                    .steps
+                    .push((self.source.into(), progress.steps.clone())),
+            }
+            let drop = state.steps.len().saturating_sub(JOURNAL_KEEP);
+            state.steps.drain(..drop);
+            Ok(true)
+        })
+        .map(|_| ())
+    }
+
+    fn record(&self, step: ToolStep) {
+        let result = JournalState::update(self.journal, |state| {
+            match state
+                .steps
+                .iter_mut()
+                .find(|(source, _)| source == self.source)
+            {
+                Some((_, steps)) => steps.push(step),
+                None => state.steps.push((self.source.to_string(), vec![step])),
+            }
+            let drop = state.steps.len().saturating_sub(JOURNAL_KEEP);
+            state.steps.drain(..drop);
+            Ok(true)
+        });
+        if result.is_err() {
             say("tool journal write failed");
         }
+    }
+}
+
+struct CanonicalToolAdmission<'a, 'b> {
+    tools: &'a SpaceTools<'b>,
+    permit: client_core::ApprovedToolTurn,
+}
+impl ApprovedToolAdmission for CanonicalToolAdmission<'_, '_> {
+    fn execute(&self, ask: &ToolAsk) -> Result<ToolResult, String> {
+        let p = self.permit.proposal();
+        if serde_json::to_string(ask).map_err(|_| "Invalid held call")? != p.continuation_json {
+            return Err("The approved intent changed".into());
+        }
+        let worker = self
+            .tools
+            .deckcraft
+            .ok_or("The presentation executor is unavailable")?;
+        // Native authorization is rechecked even for a cached read result. Writes
+        // always recover through their canonical binary receipt instead.
+        self.tools
+            .e
+            .agent_binary_finish_read(self.permit.turn())
+            .map_err(|e| e.to_string())?;
+        let result = if p.canonical_tool == "read_deckcraft" {
+            self.tools
+                .done()
+                .into_iter()
+                .find(|step| step.call == ask.call)
+                .map(|step| step.result)
+        } else {
+            None
+        };
+        let result = match result {
+            Some(result) => result,
+            None => tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(crate::deckcraft::call_approved(
+                    self.tools.e,
+                    worker,
+                    &self.permit,
+                ))
+            })?,
+        };
+        if !self.tools.done().iter().any(|step| step.call == ask.call) {
+            fault("before-journal");
+            self.tools.record(ToolStep {
+                call: ask.call.clone(),
+                result: result.clone(),
+                is_error: false,
+            });
+            fault("after-tool");
+        }
+        Ok(ToolResult {
+            result,
+            is_error: false,
+        })
     }
 }
 
 impl ToolHost for SpaceTools<'_> {
     fn tools(&self) -> Vec<ToolDef> {
         self.names.iter().map(|(d, _, _)| d.clone()).collect()
+    }
+
+    fn prepare(&self, prepared: &ToolAsk) -> Result<(), String> {
+        self.prepare_continuation(prepared)
+    }
+    fn checkpoint(&self, progress: &ToolProgress) -> Result<(), String> {
+        self.checkpoint_continuation(progress)
     }
 
     fn gate_public_references(
@@ -1116,6 +1772,7 @@ mod deckcraft_binding_tests {
             e: &e,
             journal: &journal,
             source: "prior-source",
+            space: "synthetic-space".into(),
             serving: "prior-member",
             names: vec![],
             deckcraft: None,
@@ -1309,3 +1966,15 @@ mod deckcraft_binding_tests {
 mod codex_brain_tests;
 #[cfg(test)]
 pub(crate) use codex_brain_tests::exercise_codex_deckcraft;
+
+#[cfg(test)]
+#[path = "agent/canonical_tool_approval_tests.rs"]
+mod canonical_tool_approval_tests;
+
+#[cfg(test)]
+#[path = "agent/continuation_journal_tests.rs"]
+mod continuation_journal_tests;
+
+#[cfg(test)]
+#[path = "agent/canonical_read_recovery_tests.rs"]
+mod canonical_read_recovery_tests;

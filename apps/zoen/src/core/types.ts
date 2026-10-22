@@ -95,6 +95,7 @@ type Results = {
   app_device_allowed: boolean;
   grant_app_device: string;
   decide_request: DecideOutcome;
+  decide_tool_request: DecideOutcome;
   app_resource: AppResourceDto;
   raise_budget: AgentProfile;
   search: SearchHit[];

@@ -151,6 +151,7 @@ fn resolution(r: &RequestState) -> EventBody {
         approved: true,
         content_hash: r.req.content_hash.clone(),
         resolution: Some(RequestResolution {
+            tool_decision: None,
             message: p.message.clone(),
             created_item: Some(p.item.clone()),
             ai_cost_cents: p.ai_cost_cents,

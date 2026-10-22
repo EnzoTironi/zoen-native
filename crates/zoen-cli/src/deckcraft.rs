@@ -54,180 +54,17 @@ pub fn configured() -> Result<Option<Arc<DeckcraftWorker>>, String> {
     )?)))
 }
 pub fn tools() -> Vec<ToolDef> {
-    let base = json!({"artifactId":{"type":"string","minLength":1,"maxLength":128},"version":{"type":"integer","minimum":1,"maximum":4294967294_u32},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"}});
-    let mut out = vec![ToolDef{name:"read_deckcraft".into(),description:"Read this presentation's accepted version/hash, slide and shape IDs before editing. Isolated executor supports at most 512 KiB.".into(),parameters:json!({"type":"object","properties":{"artifactId":{"type":"string","minLength":1,"maxLength":128}},"required":["artifactId"],"additionalProperties":false})}];
-    for (name, description, properties, required) in [
-        (
-            "deckcraft_text_set",
-            "Replace one shape's text",
-            json!({"slideId":{"type":"integer","minimum":0},"id":{"type":"integer","minimum":0},"text":{"type":"string","maxLength":8192}}),
-            vec!["slideId", "id", "text"],
-        ),
-        (
-            "deckcraft_slide_notes",
-            "Replace one slide's notes",
-            json!({"slideId":{"type":"integer","minimum":0},"text":{"type":"string","maxLength":8192}}),
-            vec!["slideId", "text"],
-        ),
-        (
-            "deckcraft_shape_insert",
-            "Insert one reviewed shape",
-            json!({"slideId":{"type":"integer","minimum":0},"preset":{"enum":["rect","ellipse","roundRect"]},"rect":{"type":"array","minItems":4,"maxItems":4,"items":{"type":"number"}},"text":{"type":"string","maxLength":8192}}),
-            vec!["slideId", "preset", "rect", "text"],
-        ),
-        (
-            "deckcraft_slide_new",
-            "Insert one slide after an existing slide",
-            json!({"afterSlideId":{"type":"integer","minimum":0},"layout":{"enum":["blank","title","titleAndContent"]},"title":{"type":"string","maxLength":8192},"body":{"type":"string","maxLength":8192}}),
-            vec!["afterSlideId", "layout", "title", "body"],
-        ),
-    ] {
-        let mut properties = properties.as_object().cloned().unwrap_or_default();
-        properties.extend(base.as_object().cloned().unwrap_or_default());
-        let required: Vec<&str> = [vec!["artifactId", "version", "sha256"], required].concat();
-        out.push(ToolDef{name:name.into(),description:format!("{description}; exact observed version/hash required. 512 KiB executor capacity; four explicit reversible commands only."),parameters:json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})});
-    }
-    out
-}
-pub fn recognizes(tool: &str) -> bool {
-    tools().iter().any(|t| t.name == tool)
-}
-/// Compact stable alias; the server mapping and required artifactId still
-/// retain/check the entire canonical ID, including its 72-character form.
-pub fn model_name(tool: &str, item: &str) -> Option<String> {
-    let digest = hash(item.as_bytes());
-    let name = format!("{tool}__{}", &digest[..40]);
-    (recognizes(tool)
-        && !item.is_empty()
-        && item.len() <= 128
-        && item
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
-        && name.len() <= 64)
-        .then_some(name)
-}
-pub fn is_model_name(name: &str) -> bool {
-    name.rsplit_once("__").is_some_and(|(tool, digest)| {
-        recognizes(tool)
-            && digest.len() == 40
-            && digest
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    })
-}
-type ParsedCommand = (Option<u32>, Option<String>, Option<Value>);
-
-fn command(tool: &str, args: &Value) -> Result<ParsedCommand, String> {
-    let definition = tools()
+    client_core::deckcraft_agent_tools::tools()
         .into_iter()
-        .find(|t| t.name == tool)
-        .ok_or("Unknown presentation tool")?;
-    let args = args
-        .as_object()
-        .ok_or("Presentation arguments must be an object")?;
-    let allowed = definition.parameters["properties"]
-        .as_object()
-        .ok_or("Invalid presentation schema")?;
-    if args.keys().any(|key| !allowed.contains_key(key)) {
-        return Err("Unexpected presentation argument".into());
-    }
-    if args
-        .get("artifactId")
-        .and_then(Value::as_str)
-        .is_none_or(|id| {
-            id.is_empty()
-                || id.len() > 128
-                || !id
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+        .map(|definition| ToolDef {
+            name: definition.name,
+            description: definition.description,
+            parameters: definition.parameters,
         })
-    {
-        return Err("An exact canonical artifactId is required".into());
-    }
-    if tool == "read_deckcraft" {
-        return Ok((None, None, None));
-    }
-    let version = args
-        .get("version")
-        .and_then(Value::as_u64)
-        .filter(|n| *n >= 1 && *n < u32::MAX as u64)
-        .ok_or("An observed version is required")? as u32;
-    let sha = args
-        .get("sha256")
-        .and_then(Value::as_str)
-        .filter(|s| {
-            s.len() == 64
-                && s.bytes()
-                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-        })
-        .ok_or("An observed hash is required")?
-        .to_owned();
-    for field in ["slideId", "id", "afterSlideId"] {
-        if allowed.contains_key(field)
-            && args
-                .get(field)
-                .and_then(Value::as_u64)
-                .is_none_or(|id| id > u32::MAX as u64)
-        {
-            return Err("A native slide/shape ID is required".into());
-        }
-    }
-    for field in ["text", "title", "body"] {
-        if allowed.contains_key(field)
-            && args
-                .get(field)
-                .and_then(Value::as_str)
-                .is_none_or(|text| text.len() > 8192)
-        {
-            return Err("Presentation text must be a string up to 8192 UTF-8 bytes".into());
-        }
-    }
-    for (field, values) in [
-        ("preset", &["rect", "ellipse", "roundRect"][..]),
-        ("layout", &["blank", "title", "titleAndContent"][..]),
-    ] {
-        if allowed.contains_key(field)
-            && args
-                .get(field)
-                .and_then(Value::as_str)
-                .is_none_or(|value| !values.contains(&value))
-        {
-            return Err("Unsupported presentation command variant".into());
-        }
-    }
-    let mut params = args.clone();
-    params.remove("artifactId");
-    params.remove("version");
-    params.remove("sha256");
-    if tool == "deckcraft_shape_insert" {
-        let rect = params
-            .get_mut("rect")
-            .and_then(Value::as_array_mut)
-            .filter(|rect| rect.len() == 4)
-            .ok_or("A four-number rectangle is required")?;
-        // Match the pinned bridge's f64 DTO. JSON integer coordinates and float
-        // coordinates are the same geometric command and must hash/verify alike.
-        for coordinate in rect {
-            let number = coordinate
-                .as_f64()
-                .filter(|n| n.is_finite())
-                .ok_or("Invalid rectangle coordinate")?;
-            *coordinate = json!(number);
-        }
-    }
-    let command = match tool {
-        "deckcraft_text_set" => "text.set",
-        "deckcraft_slide_notes" => "slide.notes",
-        "deckcraft_shape_insert" => "shape.insert",
-        "deckcraft_slide_new" => "slide.new",
-        _ => return Err("Unknown presentation tool".into()),
-    };
-    Ok((
-        Some(version),
-        Some(sha),
-        Some(json!({"command":command,"params":params})),
-    ))
+        .collect()
 }
+use client_core::deckcraft_agent_tools::command;
+pub use client_core::deckcraft_agent_tools::{is_model_name, model_name, recognizes};
 /// Read-only classification of exact canonical references, not permission to run
 /// a command. `call` revalidates authority/CAS after Runtime's unchanged Gate.
 pub(crate) fn gate_public_references(
@@ -274,6 +111,47 @@ pub async fn call(
     let turn = client
         .agent_binary_turn(item, source, serving, version, sha.as_deref())
         .map_err(|e| e.to_string())?;
+    execute_turn(client, worker, &turn, item, source, serving, tool, action).await
+}
+/// Execute only the frozen, natively approved call using its pinned source/head.
+pub async fn call_approved(
+    client: &Client,
+    worker: &DeckcraftWorker,
+    approved: &client_core::ApprovedToolTurn,
+) -> Result<String, String> {
+    let p = approved.proposal();
+    if worker.binding_sha256() != p.worker_binding {
+        return Err("The reviewed executor changed".into());
+    }
+    let args: Value =
+        serde_json::from_str(&p.arguments_json).map_err(|_| "Invalid reviewed arguments")?;
+    let (_, _, action) = command(&p.canonical_tool, &args)?;
+    execute_turn(
+        client,
+        worker,
+        approved.turn(),
+        &p.artifact,
+        &p.source,
+        &p.serving,
+        &p.canonical_tool,
+        action,
+    )
+    .await
+}
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the native turn carries the unchanged existing command intent fields"
+)]
+async fn execute_turn(
+    client: &Client,
+    worker: &DeckcraftWorker,
+    turn: &client_core::AgentBinaryTurn,
+    item: &str,
+    source: &str,
+    serving: &str,
+    tool: &str,
+    action: Option<Value>,
+) -> Result<String, String> {
     let doc = turn.document();
     let scope = json!({"artifactId":doc.item_id,"actorId":doc.actor_id,"actorKind":"agent"});
     let head = json!({"version":doc.version.to_string(),"sha256":doc.sha256});
@@ -294,7 +172,7 @@ pub async fn call(
     let mutation = format!("deckcmd_{intent}");
     if action.is_some() {
         if let Some(accepted) = client
-            .agent_binary_result(&turn, &mutation, &intent)
+            .agent_binary_result(turn, &mutation, &intent)
             .map_err(|e| e.to_string())?
         {
             return Ok(receipt(&accepted, true));
@@ -331,7 +209,7 @@ pub async fn call(
             return Err("The worker proposal does not match the exact command".into());
         }
         let accepted = client
-            .agent_binary_save(&turn, &mutation, &intent, &STANDARD.encode(reply.bytes))
+            .agent_binary_save(turn, &mutation, &intent, &STANDARD.encode(reply.bytes))
             .map_err(|e| e.to_string())?;
         Ok(receipt(&accepted, false))
     } else {
@@ -339,14 +217,14 @@ pub async fn call(
             return Err("The worker inspected another source".into());
         }
         client
-            .agent_binary_finish_read(&turn)
+            .agent_binary_finish_read(turn)
             .map_err(|e| e.to_string())?;
         Ok(reply.metadata.to_string())
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use client_core::SecretVault;
     use ed25519_dalek::SigningKey;
@@ -355,7 +233,7 @@ mod tests {
     const ORIGINAL: &[u8] =
         include_bytes!("../../client-core/src/app_binary_documents/fixtures/original.deckcraft");
     #[derive(Default)]
-    struct Vault(Mutex<HashMap<String, Vec<u8>>>);
+    pub(crate) struct Vault(Mutex<HashMap<String, Vec<u8>>>);
     impl SecretVault for Vault {
         fn load(&self, key: String) -> Option<Vec<u8>> {
             self.0.lock().unwrap().get(&key).cloned()
@@ -368,15 +246,15 @@ mod tests {
             self.0.lock().unwrap().remove(&key);
         }
     }
-    struct Fixture {
-        path: std::path::PathBuf,
-        client: Arc<Client>,
-        vault: Arc<Vault>,
-        owner: String,
-        source: String,
-        base: AppBinaryDocumentDto,
+    pub(crate) struct Fixture {
+        pub(crate) path: std::path::PathBuf,
+        pub(crate) client: Arc<Client>,
+        pub(crate) vault: Arc<Vault>,
+        pub(crate) owner: String,
+        pub(crate) source: String,
+        pub(crate) base: AppBinaryDocumentDto,
     }
-    fn fixture() -> Fixture {
+    pub(crate) fn fixture() -> Fixture {
         let path = std::env::temp_dir().join(types::new_id("deckcraft-worker-test"));
         std::fs::create_dir_all(&path).unwrap();
         fixture_at(path, [72; 32])
@@ -491,7 +369,7 @@ mod tests {
             base,
         }
     }
-    fn worker() -> Arc<DeckcraftWorker> {
+    pub(crate) fn worker() -> Arc<DeckcraftWorker> {
         if [
             "ZOEN_DECKCRAFT_WORKER_COMPONENT",
             "ZOEN_DECKCRAFT_WORKER_MANIFEST",
@@ -532,7 +410,7 @@ mod tests {
     mod codex {
         include!("deckcraft/codex_tests.rs");
     }
-    async fn inspect(f: &Fixture, worker: &DeckcraftWorker) -> Value {
+    pub(crate) async fn inspect(f: &Fixture, worker: &DeckcraftWorker) -> Value {
         serde_json::from_str(
             &call(
                 &f.client,

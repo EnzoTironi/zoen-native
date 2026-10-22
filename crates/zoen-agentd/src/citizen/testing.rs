@@ -3,6 +3,39 @@
 
 use super::host::Brain;
 
+/// Synchronous controlled output for offline integration tests. No provider,
+/// network, environment or credentials; absent from every production build.
+#[cfg(feature = "scripted")]
+pub type ControlledToolEvaluation =
+    dyn Fn(&[super::host::ToolStep]) -> Result<super::host::BrainOut, String> + Send + Sync;
+
+#[cfg(feature = "scripted")]
+pub struct ControlledToolBrain {
+    pub evaluate: Box<ControlledToolEvaluation>,
+}
+#[cfg(feature = "scripted")]
+#[async_trait::async_trait]
+impl Brain for ControlledToolBrain {
+    async fn think(
+        &self,
+        _: super::host::TurnContext<'_>,
+        _: &[super::host::Turn],
+        _: &super::host::Turn,
+    ) -> Result<super::host::BrainOut, String> {
+        (self.evaluate)(&[])
+    }
+    async fn think_with_tools(
+        &self,
+        _: super::host::TurnContext<'_>,
+        _: &[super::host::Turn],
+        _: &super::host::Turn,
+        _: &[super::host::ToolDef],
+        steps: &[super::host::ToolStep],
+    ) -> Result<super::host::BrainOut, String> {
+        (self.evaluate)(steps)
+    }
+}
+
 /// `ZOEN_AGENT_SCRIPT` (a JSON map of substring → reply) as a brain, in journey builds.
 pub fn scripted_brain_from_env() -> Option<Result<Box<dyn Brain>, String>> {
     #[cfg(feature = "scripted")]

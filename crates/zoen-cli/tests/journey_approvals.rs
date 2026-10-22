@@ -107,6 +107,7 @@ async fn setup(w: &World, path: &Path) -> (Engine, Owner, RawClient, RawClient, 
 
 async fn propose(e: &mut Engine, agent: &mut RawClient, space: &str, title: &str) -> AgentRequest {
     let mut request = AgentRequest {
+        tool_proposal: None,
         id: new_id("rq"),
         agent: agent.identity(),
         title: title.into(),
@@ -307,6 +308,7 @@ async fn ordered_change_before_approval_echo(removal: bool) {
             approved: false,
             content_hash: request.content_hash,
             resolution: Some(RequestResolution {
+                tool_decision: None,
                 message: "Declined on the other owner device".into(),
                 created_item: None,
                 ai_cost_cents: 37,

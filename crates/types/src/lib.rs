@@ -526,6 +526,40 @@ pub struct AgentRequest {
     /// Exact reversible output, retained while the owner decides and across restarts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proposal: Option<Box<ItemProposal>>,
+    /// Frozen, versioned tool intent. Never authorizes generic tools or standing grants.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_proposal: Option<Box<ToolProposal>>,
+}
+
+/// Inert continuation bound to one existing signed request. Only native core can
+/// turn an exact owner resolution into present execution authority.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ToolProposal {
+    pub schema: u8,
+    pub source: String,
+    pub serving: IdentityId,
+    pub source_sha256: String,
+    pub device: String,
+    pub owner: IdentityId,
+    pub task_sha256: String,
+    pub step: u32,
+    pub artifact: ItemId,
+    pub version: u32,
+    pub sha256: String,
+    pub canonical_tool: String,
+    pub arguments_json: String,
+    pub worker_binding: String,
+    pub engine_revision: String,
+    pub continuation_json: String,
+    pub expires_at_ms: i64,
+    pub gate_rule: String,
+}
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolDecision {
+    ApproveOnce,
+    Deny,
+    Cancel,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -540,6 +574,23 @@ pub struct ItemProposal {
 }
 
 impl AgentRequest {
+    pub fn tool_proposal_hash(&self, space: &str) -> Option<String> {
+        use sha2::{Digest, Sha256};
+        let proposal = self.tool_proposal.as_ref()?;
+        let bytes = serde_json::to_vec(&(
+            "zoen.tool-proposal.v1",
+            space,
+            &self.id,
+            &self.agent,
+            &self.title,
+            &self.detail,
+            &self.audience,
+            &self.action,
+            proposal,
+        ))
+        .ok()?;
+        Some(hex::encode(Sha256::digest(bytes)))
+    }
     pub fn proposal_hash(&self, space: &str) -> Option<String> {
         use sha2::{Digest, Sha256};
         let proposal = self.proposal.as_ref()?;
@@ -568,6 +619,8 @@ pub struct RequestResolution {
     pub ai_cost_cents: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub standing_grant: Option<Grant>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_decision: Option<ToolDecision>,
 }
 
 // ───────────────────────────── Evento (substrato) ─────────────────────────────
@@ -911,6 +964,7 @@ mod tests {
     fn event_body_roundtrips_through_json() {
         let body = EventBody::RequestOpened {
             request: AgentRequest {
+                tool_proposal: None,
                 id: "rq_1".into(),
                 agent: "ab".into(),
                 title: "Reservar".into(),

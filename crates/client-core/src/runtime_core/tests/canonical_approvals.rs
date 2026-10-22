@@ -96,6 +96,7 @@ fn missing_canonical_bytes_block_both_native_authority_consumers_until_repaired(
     });
     let line = &document.sections[0].lines[0];
     let request = AgentRequest {
+        tool_proposal: None,
         id: "native-linked-request".into(),
         agent: fixture.agent_profile.id.clone(),
         title: "Owner decision".into(),
