@@ -9,6 +9,7 @@
 //! connect, catch up, act, flush, exit. Killing it at any point loses nothing.
 
 mod agent;
+mod agent_host_lock;
 mod deckcraft;
 
 use std::{
@@ -436,6 +437,13 @@ async fn main() {
         usage();
     }
     let cmd = cli.args.remove(0);
+    // Hold the local host's OS lock through sync shutdown, before opening any
+    // account state or provider. Early returns and process death release it too.
+    let agent_host_lock = if cmd == "agent-host" {
+        Some(agent_host_lock::HostLock::acquire(&home).unwrap_or_else(|err| die(err)))
+    } else {
+        None
+    };
     let vault: Arc<dyn SecretVault> = Arc::new(FileVault {
         dir: home.join("vault"),
     });
@@ -1581,6 +1589,7 @@ async fn main() {
         _ => usage(),
     }
     e.stop_sync();
+    drop(agent_host_lock);
 }
 
 fn getrandom_fill(buf: &mut [u8]) {
