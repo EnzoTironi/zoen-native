@@ -51,6 +51,7 @@ The current source checkpoint and pause are recorded in the [complete handoff](d
 - [Authenticated web source/build contract](../packages/zoen-ui/web/README.md)
 - [Development setup](dev/setup.md)
 - [Independent Agent enrollment](dev/independent-agent-enrollment.md)
+- [Owner-reviewed Agent behavior](dev/agent-owner-definition.md)
 - [Shared-main development workflow](dev/shared-main-workflow.md)
 - [Live Page session API and offline Plan admission](dev/live-page-session.md)
 

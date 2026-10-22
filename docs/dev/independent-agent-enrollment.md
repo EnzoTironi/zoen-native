@@ -31,8 +31,9 @@ The initial JSON definition requires all six fields: `version: 1`, `kind: "user"
 an explicit bounded `persona`, `rules`, `state: {}` and `model_tier: "cheap"`.
 Unsupported fields and behavior are rejected rather than silently substituted.
 Providers and their credentials belong to the host's separate runtime
-configuration; they are not enrollment fields. Codex and Workers AI Clef have
-their own [provider qualification](cloudflare-clef-gate-qualification-2026-10-21.md).
+configuration; they are not enrollment fields. The registered Agent's owner can
+later review persona and rules in the iOS [Behavior editor](agent-owner-definition.md).
+That update preserves the Agent identity and grants no additional access.
 
 Resume `agent-enroll-wait` with the same home after an interrupted or uncertain
 attempt. It recovers accepted setup before waiting again and confirms the exact
@@ -40,6 +41,40 @@ registered identity and definition. It does not start `agent-host`. To cancel an
 unused offer, pass its observed public digest to
 `agent-enroll-cancel --offer-digest OFFER_DIGEST`; accepted or uncertain setup is
 preserved. Cancelling an unused offer is not Agent revocation.
+
+## Local host provider configuration
+
+For the managed Codex Brain with hosted Workers AI Clef Gate, explicitly select
+`ZOEN_BRAIN=codex-local` and set `ZOEN_CODEX_BIN` to the existing absolute path to
+the supported Codex executable. The adapter currently requires `codex-cli 0.163.0`;
+another version requires adapter qualification. `ZOEN_CODEX_MODEL` is optional and
+must identify a model in that managed account's returned catalog.
+
+Supply `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_WORKERS_AI_TOKEN` through the host
+process's protected environment. With `ZOEN_AGENT_GATE` unset, the existing Gate
+factory uses Workers AI `@cf/cloudflare/clef-flash`. Missing credentials refuse
+startup. `ZOEN_AGENT_GATE=offline` is a separate explicit offline mode, outside
+the hosted Clef qualification.
+
+```sh
+# Cloudflare credentials are already supplied to this process; no values here.
+ZOEN_BRAIN=codex-local ZOEN_CODEX_BIN=/absolute/path/to/codex \
+  zoen --home AGENT_HOME agent-host
+```
+
+The installed Codex owns its managed ChatGPT login. Zoen uses its supported stdio
+app-server and checks the account type; it does not read or copy `auth.json`,
+import owner keys or fall back to an API key. The Agent home remains separate
+from that managed login. This adapter is for explicitly selected local development,
+not a hosted or commercial authentication flow. Codex returns proposals with its
+own execution tools disabled; Zoen's Gate, canonical approval and ToolHost retain
+execution authority. Clef classifies checks and does not generate chat replies.
+
+An unset `ZOEN_BRAIN` selects the separate Workers AI conversational Brain; it does
+not select Codex. Provider selection, credentials and provider model IDs are never embedded
+in the Agent Definition. The dated [combined provider qualification](cloudflare-clef-gate-qualification-2026-10-21.md#corrected-source-combined-provider-qualification)
+used synthetic signed relay input. Actual relay/MLS tasks and native tool approval
+remain a separate acceptance journey.
 
 ## Persistence and authority
 
@@ -55,8 +90,10 @@ existing recovery slots, and shares the process-lifetime home lock with
 Unix directory sync. This is single-key durability, not a multi-key transaction,
 hardware power-loss qualification or cross-platform durability guarantee.
 
-The native owner stores a bounded public receipt before dispatch. A known ACK is
-displayed as Sent; an ambiguous outcome stays Unknown. Reopening restores the
+The native owner stores a bounded recovery receipt in its protected local account
+database before dispatch. Its reviewed persona and rules are private local
+metadata, not a public log or export. A known ACK is displayed as Sent; an ambiguous
+outcome stays Unknown. Reopening restores the
 same receipt. The same approval is not automatically dispatched again. Mailbox
 pickup remains destructive and is not an exactly-once durable queue: a lost
 response can require a new deliberate pairing. The UI separately checks the
@@ -89,12 +126,16 @@ evidence directory.
 
 The later keyboard correction makes Check and keyboard Go share the guarded
 preview action, preserves secure entry, and opts this flow into keyboard insets
-and persistent taps. Sixty affected tests and the final integrated app check
+and persistent taps. Sixty affected tests and the associated integrated app check
 (1,627 tests, types, Oxlint and Oxfmt) passed. Native24 predates this correction;
-its keyboard geometry, long labels and Dynamic Type await the next native batch.
+Native25 packages it. Keyboard geometry, long labels and Dynamic Type still await
+their actual native QA at this checkpoint.
 
-The owner definition editor, real MLS task with native tool approvals, persistent
-host supervision, natural expiry races and physical pairing remain separate
-acceptance work. Version-only owner status cannot verify exact definition bytes
-after an ambiguous update. None of these partial proofs changes full product,
-production or scale acceptance.
+The owner [definition editor](agent-owner-definition.md) now has typed Core/native
+source, exact-byte owner Status reads and protected update recovery. Its focused
+Core/relay tests and integrated app/native builds passed; actual native behavior
+editing is still awaiting its own runtime qualification at this documentation
+checkpoint. Version-only status remains insufficient after an ambiguous update.
+Real MLS tasks with native tool approvals, persistent host supervision, natural
+expiry races and physical pairing remain separate acceptance work. None of these
+partial proofs changes full product, production or scale acceptance.
