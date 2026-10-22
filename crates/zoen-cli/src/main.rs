@@ -504,7 +504,7 @@ async fn main() {
         }
         _ => {
             commands::run(
-                &cmd,
+                cmd,
                 &mut cli,
                 commands::Context {
                     e: e.clone(),
