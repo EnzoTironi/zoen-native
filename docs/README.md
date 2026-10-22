@@ -30,7 +30,7 @@ The current source checkpoint and pause are recorded in the [complete handoff](d
 - [Infrastructure](infra.md)
 - [Mini-apps in the chat (MCP Apps + Wabi's experiences)](mini-apps.md)
 - [Zoen implementation plan](plan-real.md)
-- [Repensado do zero: pessoas, comunidades e agentes](repensado.md)
+- [Repensado do zero: pessoas, comunidades e agentes — índice e capítulos](repensado.md)
 - [Roadmap status: the complete Zoen product](roadmap-status.md)
 - [Zoen security and privacy](security.md)
 - [Zoen system design](system-design.md)
