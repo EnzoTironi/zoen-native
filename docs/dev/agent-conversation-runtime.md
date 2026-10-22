@@ -39,6 +39,17 @@ returns before the runtime call are not traced. Provider dispatch and internal
 retry counts are not measured. Existing CLI output may contain private content;
 the trace does not make all stdout suitable for logging.
 
+## Read-context contracts
+
+The signed WASI worker's actual read result reaches the next fake Codex process
+as exact `completed_tool_steps`, including slide/shape IDs, content, scope and
+head. Replacing it with only a receipt fails the same assertion. A separate
+approved/cold-recovery fixture checks exact read JSON at the next controlled
+Brain, retained checkpoint and cold continuation. Seven ordinary fake-Codex
+cases and both explicit WASI cases passed, with strict affected Clippy and
+formatting. These are adjacent offline contracts, not one joined real-model,
+native MLS editing journey or proof that a model chooses the requested edit.
+
 ## Actual local MLS checkpoint — 22 October 2026
 
 Native26 created a real DeckCraft App in an MLS conversation with an independently
