@@ -89,3 +89,56 @@ worktree, simulator, parent service or user authentication configuration is chan
 by this isolated branch. The probe does not configure persistent provider
 credentials for an existing agent host; that host still requires the documented
 environment variables in its own process.
+
+## Canonical approval operator attempt
+
+A later bounded synthetic attempt at source `1ad13832a27dc77365d4610936b505e07c517693`
+ran the real managed Codex Brain and Cloudflare Workers AI Clef Gate together.
+It reserved two Clef dispatches and two Codex turns, completed in 50.392 seconds,
+and performed no automatic rerun. The low-confidence read decision remained Ask;
+the owner approved its exact canonical proposal hash through
+`Client.client_request` / `decide_tool_request`. After reopening the Client, the
+same frozen read executed against the signed DeckCraft worker and returned the
+accepted v1 document. This is a signed fixture relay projection, not an iPhone
+approval-screen or persistent-daemon qualification.
+
+The run did not reach an edit, publication, accepted-write replay or final cold
+proof. The document remained v1 with its original SHA256. A test-only proposal
+guard expected positional slide `1` while the real editor returned native slide ID
+`257`; a separate offline signed-worker regression reproduced that mismatch. The
+actual rejected second model proposal was not retained, so its correctness is
+not inferred from the diagnosed guard defect. No runtime permission, Gate rule,
+confidence threshold, remote provider response or worker authority was changed to
+obtain a pass.
+
+The attempt, its one-shot markers and redacted evidence remain under
+`/Users/enzotironi/.codex/builds/zoen-real-canonical-provider-one-attempt-v282/`.
+`root-qualified-outcome.json` records the partial result explicitly. The test-only correction at `47499f43` passed an actual signed-worker read
+regression and the strict admission negatives before a separate operator attempt.
+No prior marker, outcome or counter was reset.
+
+## Corrected-source combined provider qualification
+
+The separately reviewed corrected-source attempt at `47499f43` completed in
+64.543 seconds: four actual Workers AI Clef dispatches, three managed Codex turns,
+one signed-worker read and one canonical write. Both tool checks retained the
+real low-confidence Ask decision. Two exact typed owner approvals resumed the
+frozen read and notes edit through the existing Client command. The accepted
+read identified native slide `257`; the write used that observed ID and exact
+version/hash. The artifact advanced from v1 to v2, published a reply and retained
+SHA256 `c418c74ce5d9ae574fa0f04cd599d761384967790c5805ebe3a8b14588d62309`.
+
+Accepted-result replay returned the same v2 receipt with `replayed: true` and
+unchanged provider counters. Cold Client reopen recovered the same v2 bytes/hash.
+The real factories and ordinary core authorization/CAS/worker path were used;
+no Gate threshold, provider classification, grant or budget was overridden.
+There was no automatic retry. The previous partial attempt and all its one-shot
+claims remain unchanged. Evidence and the bounded Root consistency checks are
+under `/Users/enzotironi/.codex/builds/zoen-real-canonical-provider-corrected-v289/`.
+
+This qualifies the synthetic combined provider and canonical approval journey.
+Its relay projection is a signed test fixture; it is not the real relay/MLS,
+iPhone approval screen or persistent host. Those end-to-end product proofs remain
+open, as do managed remote custody, provider billing/internal retry measurement
+and production readiness. Local Codex authentication stays delegated to the
+supported app-server; no `auth.json` was read or copied by the adapter or wrapper.
