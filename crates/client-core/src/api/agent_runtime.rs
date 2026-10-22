@@ -100,7 +100,7 @@ impl Client {
             .await
     }
 
-    async fn agent_done(&self, req: protocol::AgentRequest) -> Result<(), CoreError> {
+    pub(super) async fn agent_done(&self, req: protocol::AgentRequest) -> Result<(), CoreError> {
         match self.request(Op::Agent(req)).await? {
             Reply::Done => Ok(()),
             _ => Err(unexpected()),

@@ -150,13 +150,19 @@ fn deadline_schema_is_closed_bounded_and_records_only_evaluated_flags() {
     assert!(!String::from_utf8(bytes).unwrap().contains("canary"));
 }
 
-#[tokio::test(start_paused = true)]
-async fn actual_wait_keeps_the_original_deadline_and_does_not_make_offline_ready() {
+#[test]
+fn actual_zero_deadline_does_not_schedule_an_extra_wait_or_make_offline_ready() {
+    use futures_util::FutureExt;
     let client = Client::open(":memory:".into(), "en".into()).unwrap();
-    let start = tokio::time::Instant::now();
-    let result = client.wait_until_idle(80).await;
-    assert_eq!(start.elapsed(), Duration::from_millis(80));
+    let result = client
+        .wait_until_idle(0)
+        .now_or_never()
+        .expect("zero budget must return on its first poll");
     assert_eq!(result.state, "offline");
     assert!(!result.synced);
-    assert!(client.wait_until_settled(0).await.is_err());
+    assert!(client
+        .wait_until_settled(0)
+        .now_or_never()
+        .expect("no second wait")
+        .is_err());
 }

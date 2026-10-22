@@ -153,28 +153,81 @@ pub(super) fn parse_sync(bytes: &[u8], success: bool) -> SyncResult {
     }
 }
 
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum JourneyKind {
+    Files,
+    PageCompletion,
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum CommandKind {
+    Init,
+    Sync,
+    PageImport,
+    PageExport,
+    Other,
+}
+
+impl CommandKind {
+    fn from_args(args: &[&str]) -> Self {
+        let args = match args {
+            ["--timeout", ms, rest @ ..] if ms.parse::<u64>().is_ok() => rest,
+            _ => args,
+        };
+        match args {
+            ["init", ..] => Self::Init,
+            ["sync"] => Self::Sync,
+            ["page", "import", ..] => Self::PageImport,
+            ["page", "export-all", ..] => Self::PageExport,
+            _ => Self::Other,
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct Observed<T> {
+    command: CommandKind,
+    sequence: u64,
+    process_success: bool,
+    observation: T,
+}
+
 #[derive(Clone, Default)]
 struct Captured {
-    first_sync: Option<SyncResult>,
-    last_sync: Option<SyncResult>,
-    deadlines: Vec<Deadline>,
+    first_sync: Option<Observed<SyncResult>>,
+    last_sync: Option<Observed<SyncResult>>,
+    deadlines: Vec<Observed<Deadline>>,
+    next_sequence: u64,
     rejected_deadlines: u64,
     discarded_deadlines: u64,
 }
 
 pub(super) struct JourneyDiagnostics {
     directory: Option<PathBuf>,
+    journey: JourneyKind,
     captured: Mutex<Captured>,
 }
 
 impl JourneyDiagnostics {
-    pub(super) fn from_env() -> Self {
-        Self::at(std::env::var_os("ZOEN_SYNC_DIAGNOSTIC_DIR").map(PathBuf::from))
+    pub(super) fn from_env(name: &str) -> Self {
+        let journey = match name {
+            "files" => JourneyKind::Files,
+            "page-completion" => JourneyKind::PageCompletion,
+            _ => return Self::at(None),
+        };
+        Self {
+            directory: std::env::var_os("ZOEN_SYNC_DIAGNOSTIC_DIR").map(PathBuf::from),
+            journey,
+            captured: Mutex::new(Captured::default()),
+        }
     }
 
     pub(super) fn at(directory: Option<PathBuf>) -> Self {
         Self {
             directory,
+            journey: JourneyKind::Files,
             captured: Mutex::new(Captured::default()),
         }
     }
@@ -188,15 +241,29 @@ impl JourneyDiagnostics {
             return;
         }
         let mut captured = self.captured.lock().unwrap_or_else(|p| p.into_inner());
+        captured.next_sequence = captured.next_sequence.saturating_add(1);
+        let sequence = captured.next_sequence;
+        let command = CommandKind::from_args(args);
+        let process_success = output.status.success();
         let is_sync = matches!(args, ["sync"])
             || matches!(args, ["--timeout", ms, "sync"] if ms.parse::<u64>().is_ok());
         if is_sync {
             let mut result = parse_sync(&output.stdout, output.status.success());
             if captured.first_sync.is_none() {
-                captured.first_sync = Some(result.clone());
+                captured.first_sync = Some(Observed {
+                    command,
+                    sequence,
+                    process_success,
+                    observation: result.clone(),
+                });
             }
             result.phase = "last";
-            captured.last_sync = Some(result);
+            captured.last_sync = Some(Observed {
+                command,
+                sequence,
+                process_success,
+                observation: result,
+            });
         }
         for line in output.stderr.split(|b| *b == b'\n') {
             if !line.starts_with(DEADLINE_PREFIX) {
@@ -211,7 +278,12 @@ impl JourneyDiagnostics {
                     captured.deadlines.remove(0);
                     captured.discarded_deadlines = captured.discarded_deadlines.saturating_add(1);
                 }
-                captured.deadlines.push(record);
+                captured.deadlines.push(Observed {
+                    command,
+                    sequence,
+                    process_success,
+                    observation: record,
+                });
             } else {
                 captured.rejected_deadlines = captured.rejected_deadlines.saturating_add(1);
             }
@@ -227,18 +299,42 @@ impl JourneyDiagnostics {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .clone();
+        #[derive(Serialize)]
+        struct Artifact<'a, T> {
+            event: &'static str,
+            version: u8,
+            journey: JourneyKind,
+            observed: &'a Observed<T>,
+        }
         for record in [captured.first_sync, captured.last_sync]
             .into_iter()
             .flatten()
         {
-            write_record(directory, &record);
+            write_record(
+                directory,
+                &Artifact {
+                    event: "zoen_journey_sync_observation",
+                    version: 1,
+                    journey: self.journey,
+                    observed: &record,
+                },
+            );
         }
         for record in captured.deadlines {
-            write_record(directory, &record);
+            write_record(
+                directory,
+                &Artifact {
+                    event: "zoen_journey_sync_observation",
+                    version: 1,
+                    journey: self.journey,
+                    observed: &record,
+                },
+            );
         }
         #[derive(Serialize)]
         struct Summary {
             event: &'static str,
+            journey: JourneyKind,
             rejected_deadlines: u64,
             discarded_deadlines: u64,
         }
@@ -246,6 +342,7 @@ impl JourneyDiagnostics {
             directory,
             &Summary {
                 event: "zoen_journey_sync_diagnostics",
+                journey: self.journey,
                 rejected_deadlines: captured.rejected_deadlines,
                 discarded_deadlines: captured.discarded_deadlines,
             },

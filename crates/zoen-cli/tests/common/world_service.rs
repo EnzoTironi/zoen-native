@@ -60,7 +60,7 @@ impl World {
             relay_name: String::new(),
             nodes: Vec::new(),
             ports: vec![reservation],
-            diagnostics: diagnostics::JourneyDiagnostics::from_env(),
+            diagnostics: diagnostics::JourneyDiagnostics::from_env(name),
         };
         w.start_relay();
         w

@@ -112,7 +112,13 @@ fn successful_world_capture_writes_nothing_until_the_failure_path() {
             &output(b"connection=online synced=true pending=0\n", b"", true),
         );
         diagnostics.observe(
-            &["page", "secret-argument-canary"],
+            &[
+                "--timeout",
+                "80",
+                "page",
+                "export-all",
+                "secret-argument-canary",
+            ],
             &output(b"secret-content-canary", DEADLINE.as_bytes(), false),
         );
         assert!(dir.records().is_empty());
@@ -120,17 +126,27 @@ fn successful_world_capture_writes_nothing_until_the_failure_path() {
     }
     let records = dir.records();
     assert_eq!(records.len(), 4);
-    let initial = records.iter().find(|v| v["phase"] == "initial").unwrap();
-    let last = records.iter().find(|v| v["phase"] == "last").unwrap();
-    assert_eq!(initial["synced"], false);
-    assert_eq!(initial["pending"], 3);
-    assert_eq!(last["synced"], true);
-    assert_eq!(last["pending"], 0);
+    let initial = records
+        .iter()
+        .find(|v| v["observed"]["observation"]["phase"] == "initial")
+        .unwrap();
+    let last = records
+        .iter()
+        .find(|v| v["observed"]["observation"]["phase"] == "last")
+        .unwrap();
+    assert_eq!(initial["observed"]["observation"]["synced"], false);
+    assert_eq!(initial["observed"]["observation"]["pending"], 3);
+    assert_eq!(last["observed"]["observation"]["synced"], true);
+    assert_eq!(last["observed"]["observation"]["pending"], 0);
     let deadline = records
         .iter()
-        .find(|v| v["event"] == "zoen_sync_wait_deadline")
+        .find(|v| v["observed"]["observation"]["event"] == "zoen_sync_wait_deadline")
         .unwrap();
-    assert_eq!(deadline["mls_ready"], false);
+    assert_eq!(deadline["observed"]["observation"]["mls_ready"], false);
+    assert_eq!(deadline["observed"]["command"], "page_export");
+    assert_eq!(deadline["observed"]["sequence"], 3);
+    assert_eq!(deadline["observed"]["process_success"], false);
+    assert_eq!(deadline["journey"], "files");
     assert!(!serde_json::to_string(&records).unwrap().contains("canary"));
     #[cfg(unix)]
     for entry in std::fs::read_dir(&dir.0).unwrap() {
@@ -245,4 +261,10 @@ fn disabled_missing_and_symlink_directories_cannot_mask_the_original_failure() {
         diagnostics.publish_failure();
         assert!(target.records().is_empty());
     }
+}
+
+#[test]
+fn only_the_two_named_synthetic_journeys_enable_environment_capture() {
+    let diagnostics = JourneyDiagnostics::from_env("secret-unrecognized-journey-canary");
+    assert!(!diagnostics.enabled());
 }
