@@ -1,151 +1,28 @@
-import type { AudioClipPlayback, AudioClipPlaybackState } from './audio-clip-controller.ts';
-import type { PlaybackCoordinator, PlaybackIntent, PlaybackOwner } from './playback-owner.ts';
+import type { AudioClipPlaybackState } from './audio-clip-controller.ts';
+import { MessageAudioChannel } from './message-audio-channel.ts';
+import {
+  metadata,
+  scopeKey,
+  snapshot,
+  sourceKey,
+  type Active,
+  type Focus,
+  type Intent,
+  type MessageAudioPort,
+  type MessageAudioRuntime,
+  type MessageAudioSource,
+  type Metadata,
+  type Preparation,
+  type Retired,
+} from './message-audio-contract.ts';
 import type { LocalMediaFile } from './types.ts';
-
-export type MessageAudioScope = Readonly<{
-  identityId: string;
-  deviceId: string;
-  epoch: number;
-}>;
-export type MessageAudioSource = Readonly<{
-  scope: MessageAudioScope;
-  spaceId: string;
-  messageId: string;
-  itemId: string;
-  sha256: string;
-  durationMs: number;
-}>;
-export type MessageAudioRuntime = Readonly<{
-  playback: AudioClipPlayback;
-  /** Setup failures still return an owned runtime so disposal can be retried. */
-  failure?: Error;
-  /** The controller reached native Play; buffering need not be audible yet. */
-  hasPlayRequest(): boolean;
-  /** Fence callbacks immediately; drain seeks before releasing the SharedObject. */
-  dispose(): Promise<void>;
-}>;
-export type MessageAudioPort = Readonly<{
-  coordinator: PlaybackCoordinator;
-  scope(): MessageAudioScope | null;
-  authorized(source: MessageAudioSource): boolean;
-  /** Read the canonical nondeleted message AND current file item; return its pinned version. */
-  verify(source: MessageAudioSource): Promise<number>;
-  materialize(source: MessageAudioSource, version: number): Promise<LocalMediaFile | null>;
-  release(file: LocalMediaFile): Promise<void>;
-  create(
-    source: MessageAudioSource,
-    file: LocalMediaFile,
-    current: () => boolean,
-  ): MessageAudioRuntime;
-}>;
-type Metadata = Readonly<{ seconds: number; duration: number; rate: 1 | 1.5 | 2 }>;
-type Focus = Readonly<{ scope: string; spaceId: string }>;
-type Intent = {
-  owner: PlaybackOwner;
-  token: PlaybackIntent | null;
-  handoff: boolean;
-  cancelled: boolean;
-};
-type Preparation = { channel: MessageAudioChannel; serial: number; intent: Intent };
-type Active = {
-  channel: MessageAudioChannel;
-  file: LocalMediaFile;
-  runtime: MessageAudioRuntime;
-  serial: number;
-  unsubscribe: () => void;
-  firstPlay: Intent | null;
-  initial: boolean;
-  startSeconds: number;
-  validating: boolean;
-  validationAgain: boolean;
-  validationIntent: Intent | null;
-};
-type Retired = {
-  file: LocalMediaFile;
-  runtime: MessageAudioRuntime | null;
-  runtimeDisposed: boolean;
-  task: Promise<void> | null;
-};
-const scopeKey = (scope: MessageAudioScope | null) =>
-  scope ? JSON.stringify([scope.identityId, scope.deviceId, scope.epoch]) : null;
-const sourceKey = (source: MessageAudioSource) =>
-  JSON.stringify([
-    source.scope.identityId,
-    source.scope.deviceId,
-    source.scope.epoch,
-    source.spaceId,
-    source.messageId,
-    source.itemId,
-    source.sha256,
-  ]);
-const metadata = (source: MessageAudioSource): Metadata => ({
-  seconds: 0,
-  duration:
-    Number.isFinite(source.durationMs) && source.durationMs > 0 ? source.durationMs / 1000 : 0,
-  rate: 1,
-});
-const snapshot = (value: Metadata, admitted = true): AudioClipPlaybackState =>
-  Object.freeze({
-    loaded: admitted,
-    playing: false,
-    buffering: false,
-    currentSeconds: value.seconds,
-    durationSeconds: value.duration,
-    rate: value.rate,
-    error: null,
-    loadFailed: false,
-    busy: false,
-  });
-
-/** Controls have no native player or decrypted URI, and may outlive a recycled row. */
-export class MessageAudioChannel implements AudioClipPlayback {
-  readonly source: MessageAudioSource;
-  readonly key: string;
-  private readonly session: MessageAudioSession;
-  private state: AudioClipPlaybackState;
-  private readonly listeners = new Set<() => void>();
-  constructor(session: MessageAudioSession, source: MessageAudioSource) {
-    this.session = session;
-    this.source = Object.freeze({ ...source, scope: Object.freeze({ ...source.scope }) });
-    this.key = sourceKey(this.source);
-    this.state = session.initial(this.source);
-  }
-  getSnapshot = () => this.state;
-  subscribe = (listener: () => void) => {
-    this.listeners.add(listener);
-    this.session.attach(this);
-    return () => {
-      this.listeners.delete(listener);
-      if (!this.listeners.size) this.session.detach(this);
-    };
-  };
-  publish(state: AudioClipPlaybackState) {
-    if (
-      Object.keys(state).every((key) =>
-        Object.is(
-          state[key as keyof AudioClipPlaybackState],
-          this.state[key as keyof AudioClipPlaybackState],
-        ),
-      )
-    )
-      return;
-    this.state = Object.freeze({ ...state });
-    for (const listener of this.listeners) {
-      try {
-        listener();
-      } catch {
-        // Observer failures cannot interrupt player/file cleanup or updates to
-        // other controls.
-      }
-    }
-  }
-  playFrom = (seconds?: number) => this.session.play(this, seconds);
-  pause = () => this.session.pause(this);
-  invalidate = () => this.pause();
-  seekSeconds = (seconds: number) => this.session.seek(this, seconds);
-  setRate = (rate: 1 | 1.5 | 2) => this.session.rate(this, rate);
-  retry = () => this.session.retry(this);
-}
+export { MessageAudioChannel } from './message-audio-channel.ts';
+export type {
+  MessageAudioPort,
+  MessageAudioRuntime,
+  MessageAudioScope,
+  MessageAudioSource,
+} from './message-audio-contract.ts';
 
 /** One account-session transport; Rust remains the only durable owner. */
 export class MessageAudioSession {

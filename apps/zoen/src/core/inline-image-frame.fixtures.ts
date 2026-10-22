@@ -20,10 +20,9 @@ import type { TimelineEntry } from './types';
 export const sourcePath = fileURLToPath(new URL('../media/MediaAttachment.tsx', import.meta.url));
 export const require = createRequire(import.meta.url);
 export const { transformSync } = require('@babel/core');
-export const code = transformSync(
-  `${readFileSync(process.env.ZOEN_MEDIA_ATTACHMENT_SOURCE ?? sourcePath, 'utf8')}\nexport { FileAttachmentContent };`,
-  {
-    filename: sourcePath,
+function transformAttachment(source: string, filename: string): string {
+  return transformSync(source, {
+    filename,
     configFile: false,
     babelrc: false,
     presets: [require.resolve('babel-preset-expo')],
@@ -34,8 +33,12 @@ export const code = transformSync(
       isDev: false,
       supportsReactCompiler: true,
     },
-  },
-).code as string;
+  }).code as string;
+}
+export const code = transformAttachment(
+  `${readFileSync(process.env.ZOEN_MEDIA_ATTACHMENT_SOURCE ?? sourcePath, 'utf8')}\nexport { FileAttachmentContent };`,
+  sourcePath,
+);
 assert.match(code, /react\/compiler-runtime/, 'Actual installed iOS Babel/React compiler');
 export const compiled = await build({
   stdin: {
@@ -53,10 +56,16 @@ export const compiled = await build({
       name: 'inline-image-native-ports',
       setup(builder) {
         builder.onResolve({ filter: /./ }, ({ path }) =>
-          path === './inline-image-frame' || path.startsWith('@babel/runtime/helpers/')
+          path === './inline-image-frame' ||
+          path === './file-attachment-content' ||
+          path.startsWith('@babel/runtime/helpers/')
             ? undefined
             : { path, external: true },
         );
+        builder.onLoad({ filter: /file-attachment-content\.tsx$/ }, ({ path }) => ({
+          contents: transformAttachment(readFileSync(path, 'utf8'), path),
+          loader: 'tsx',
+        }));
       },
     },
   ],
