@@ -283,6 +283,42 @@ class StagedFileLimitTests(unittest.TestCase):
         self.assertEqual(report["violations"][0]["path"], "historical.py")
         self.assertEqual(report["violations"][0]["tokens"], 5000.25)
 
+    def test_pinned_upstream_source_is_exempt_only_while_byte_exact(self):
+        name = "miniapps/excalidraw-ui/src/sounds.ts"
+        original = (ROOT / name).read_bytes()
+        self.assertGreater(len(original), 20_000)
+        self.write(name, original)
+        self.assertEqual(self.hook().returncode, 0)
+        self.assertEqual(self.audit().returncode, 0)
+        self.write(name, original + b"\n// Local fork\n", stage=False)
+        self.assertEqual(self.hook().returncode, 0, "only the staged import matters")
+        self.git("add", name)
+        self.assertEqual(self.hook().returncode, 1)
+        self.assertEqual(self.audit().returncode, 1)
+
+    def test_pinned_upstream_bytes_do_not_exempt_an_authored_neighbor(self):
+        original = (ROOT / "miniapps/excalidraw-ui/src/sounds.ts").read_bytes()
+        name = "miniapps/excalidraw-ui/src/local-sounds.ts"
+        self.write(name, original)
+        self.assertIn(ascii(name).encode(), self.hook().stderr)
+        self.assertEqual(self.audit().returncode, 1)
+
+    def test_pinned_upstream_filename_does_not_exempt_different_bytes(self):
+        self.write("miniapps/excalidraw-ui/src/sounds.ts", b"x" * 20_001)
+        self.assertEqual(self.hook().returncode, 1)
+        self.assertEqual(self.audit().returncode, 1)
+
+    def test_pinned_upstream_source_in_sha256_repository(self):
+        shutil.rmtree(self.repo / ".git")
+        self.git("init", "--quiet", "--object-format=sha256")
+        name = "miniapps/excalidraw-ui/src/sounds.ts"
+        self.write(name, (ROOT / name).read_bytes())
+        self.assertEqual(self.hook().returncode, 0)
+        self.assertEqual(self.audit().returncode, 0)
+        self.write(name, (ROOT / name).read_bytes() + b"\n// Local fork\n")
+        self.assertEqual(self.hook().returncode, 1)
+        self.assertEqual(self.audit().returncode, 1)
+
     def test_full_audit_uses_same_index_boundary_and_exclusions(self):
         import json
         self.write("unicode.md", ("é" * 10_000).encode())

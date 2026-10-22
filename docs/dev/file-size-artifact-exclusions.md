@@ -26,3 +26,17 @@ Do not split compiled bundles, Unicode catalogs or license texts into arbitrary
 chunks just to satisfy a source-size rule. Do not mark maintained code as an
 artifact. Additional upstream code needs its own provenance review; this list
 does not exempt entire Telegram directories or their Zoen adapters.
+
+## Byte-pinned upstream source
+
+`miniapps/excalidraw-ui/src/sounds.ts` is the unmodified embedded-audio input from
+[official commit 157aa23](https://github.com/excalidraw/excalidraw-mcp/blob/157aa23ceb1976008aadc89eb05e3444060f09d6/src/sounds.ts).
+Its 55,492 bytes were compared directly with that official GitHub blob. SHA-256 is
+`c197a890a699a9ed3348cc5ff12d676b2e9923ab25fcb80045cdad10f4baff4f`;
+`upstream.json` pins it and the existing `build.mjs` verifies it before bundling.
+
+This exception requires both the exact path and original staged Git blob ID
+(SHA-1 or SHA-256 repository format). It does not exempt a local fork, a filename
+alone or identical bytes copied into an authored neighbor. The hook and full
+audit both check the index ID; an unstaged edit cannot change their decision.
+No sound, App source, builder or compiled resource was modified for this review.

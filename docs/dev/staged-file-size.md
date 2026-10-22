@@ -37,6 +37,9 @@ conventions in `.githooks/pre-commit`:
 - The exact generated bundles and original external resources documented in
   [artifact exclusions](file-size-artifact-exclusions.md), with their actual
   producer or upstream provenance. Their authored source/builders remain checked.
+- Exact unmodified upstream source imports listed in `PINNED_UPSTREAM_BLOBS`.
+  Both the path and staged Git blob must match; editing that import removes its
+  exception automatically. No content marker or commit-author claim is trusted.
 
 Authored JSON, SVG, tests, documentation and upstream patch files remain subject
 to the limit. Add exclusions only for actual generated or external artifacts,

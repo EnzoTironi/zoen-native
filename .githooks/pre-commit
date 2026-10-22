@@ -19,6 +19,14 @@ THIRD_PARTY_DIRS = {"node_modules", "vendor", "vendored", "third_party", "third-
 GENERATED_ROOTS = ("apps/zoen/ios/", "apps/zoen/android/")
 UPSTREAM_ROOTS = ("miniapps/deckcraft-ui/licenses/",)
 UPSTREAM_FILES = {"miniapps/deckcraft-ui/BOOTSTRAP-LICENSES.txt"}
+# Exact unmodified upstream imports only. A locally edited fork loses its
+# exception automatically; both Git object formats identify the same bytes.
+PINNED_UPSTREAM_BLOBS = {
+    "miniapps/excalidraw-ui/src/sounds.ts": {
+        b"c8bb01d991a35e0ea20157a7e7623425e6c99fd8",
+        b"77cea53cf77e68e06eaeb276d379057e0dcdad72e0de7d8ca4e49d52e956ee9a",
+    },
+}
 # Compiled outputs: the authored entry points/builders remain checked. Producer
 # and upstream provenance are recorded in docs/dev/file-size-artifact-exclusions.md.
 GENERATED_FILES = {
@@ -55,8 +63,8 @@ def git(*args, input_bytes=None):
     ).stdout
 
 
-def exempt(path):
-    """Explicit repository conventions, never commit-author identity or file contents."""
+def exempt(path, oid=None):
+    """Repository conventions and pinned imports, never author identity or claims."""
     name = PurePosixPath(path)
     return (
         name.name in LOCKFILES
@@ -66,6 +74,7 @@ def exempt(path):
         or path in UPSTREAM_FILES
         or path in GENERATED_FILES
         or path in EXTERNAL_FILES
+        or oid in PINNED_UPSTREAM_BLOBS.get(path, ())
         or name.suffix.lower() in BINARY_SUFFIXES
     )
 
@@ -83,7 +92,7 @@ def staged_candidates():
             raise ValueError("Cannot parse staged file metadata")
         path = os.fsdecode(fields[index + 1])
         # Symlinks contain link text, not the target file; submodules aren't files.
-        if header[1] in (b"100644", b"100755") and not exempt(path):
+        if header[1] in (b"100644", b"100755") and not exempt(path, header[3]):
             candidates.append((path, header[3]))
     return candidates
 

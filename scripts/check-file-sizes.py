@@ -26,7 +26,7 @@ def main():
         if stage != b"0":
             raise ValueError("Resolve unmerged index entries before auditing file sizes")
         path = os.fsdecode(path_bytes)
-        if mode in (b"100644", b"100755") and not policy["exempt"](path):
+        if mode in (b"100644", b"100755") and not policy["exempt"](path, oid):
             candidates.append((path, oid))
     sizes = policy["object_sizes"](candidates)
     violations = []
