@@ -124,6 +124,42 @@ async function fixture(t) {
   };
 }
 
+async function retainedFixture(f) {
+  const folder = await mkdtemp(join(scratch, "retained-"));
+  const root = join(folder, "assets");
+  const directory = join(root, "deckcraft", revision);
+  await mkdir(directory, { recursive: true });
+  const module = Buffer.from("export const previousRuntime = true;\n");
+  const wasm = Buffer.concat([wasmBytes, Buffer.from([0, 1, 0])]);
+  const runtime = structuredClone(f.runtime);
+  runtime.module = {
+    ...runtime.module,
+    url: runtime.module.url.replace("runtime.js", "previous.js"),
+    bytes: module.length,
+    sha256: hash(module),
+  };
+  runtime.wasm = {
+    ...runtime.wasm,
+    url: runtime.wasm.url.replace("runtime.wasm", "previous.wasm"),
+    bytes: wasm.length,
+    sha256: hash(wasm),
+  };
+  const packagePath = join(folder, "previous-package.json");
+  await writeFile(join(directory, "previous.js"), module);
+  await writeFile(join(directory, "previous.wasm"), wasm);
+  const save = async () => {
+    const bytes = JSON.stringify(runtime, null, 2) + "\n";
+    await writeFile(packagePath, bytes);
+    Object.assign(f.options, {
+      retainedPackage: packagePath,
+      retainedPackageSha256: hash(bytes),
+      retainedRoot: root,
+    });
+  };
+  await save();
+  return { runtime, root, directory, packagePath, module, wasm, save };
+}
+
 async function fetchAsset(options, path, extra = {}) {
   return new Promise((done, reject) => {
     const req = request(
@@ -182,6 +218,7 @@ test("real TLS serves only the admitted bytes with exact MIME, CORS and HEAD sem
   assert.equal(receipt.status, "ready");
   assert.equal(receipt.packageSha256, f.options.packageSha256);
   assert.equal(receipt.assets.length, 2);
+  assert.equal(Object.hasOwn(receipt, "retainedPackage"), false);
   assert.ok(!JSON.stringify(receipt).includes("PRIVATE KEY"));
 });
 
@@ -375,8 +412,9 @@ test("shutdown cannot remove or overwrite a replaced foreign lease", async (t) =
   assert.equal(JSON.parse(await readFile(service.receiptPath)).status, "ready");
 });
 
-test("foreground CLI SIGTERM closes its real listener and records a closed receipt", async (t) => {
+async function foregroundLifecycle(t, withRetained = false) {
   const f = await fixture(t);
+  const retained = withRetained ? await retainedFixture(f) : null;
   const args = [
     "--package",
     f.options.package,
@@ -393,11 +431,27 @@ test("foreground CLI SIGTERM closes its real listener and records a closed recei
     "--port",
     String(f.options.port),
   ];
+  if (retained)
+    args.push(
+      "--retained-package",
+      f.options.retainedPackage,
+      "--retained-package-sha256",
+      f.options.retainedPackageSha256,
+      "--retained-root",
+      f.options.retainedRoot,
+    );
+  const captured = { stdout: "", stderr: "" };
   const child = spawn(
     process.execPath,
     [new URL("./serve.mjs", import.meta.url).pathname, ...args],
     { stdio: ["ignore", "pipe", "pipe"] },
   );
+  child.stdout.on("data", (chunk) => {
+    captured.stdout += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    captured.stderr += chunk;
+  });
   const exited = new Promise((done, reject) => {
     child.once("error", reject);
     child.once("exit", (code, signal) => done({ code, signal }));
@@ -424,11 +478,212 @@ test("foreground CLI SIGTERM closes its real listener and records a closed recei
   const receipt = JSON.parse(line);
   assert.equal(receipt.origin, `https://localhost:${f.options.port}`);
   assert.equal((await fetchAsset(f.options, new URL(f.runtime.module.url).pathname)).status, 200);
+  if (retained) {
+    assert.equal(
+      (await fetchAsset(f.options, new URL(retained.runtime.module.url).pathname)).status,
+      200,
+    );
+    assert.equal(
+      (await fetchAsset(f.options, new URL(retained.runtime.wasm.url).pathname)).status,
+      200,
+    );
+    assert.equal(JSON.parse(await readFile(receipt.receipt)).assets.length, 4);
+  }
   child.kill("SIGTERM");
   assert.deepEqual(await exited, { code: 0, signal: null });
   assert.equal(JSON.parse(await readFile(receipt.receipt)).status, "closed");
+  assert.doesNotMatch(captured.stdout + captured.stderr, /PRIVATE KEY|BEGIN CERTIFICATE/);
+  assert.equal(captured.stderr, "");
+  assert.deepEqual(Object.keys(JSON.parse(captured.stdout.trim())).sort(), ["origin", "receipt"]);
   await assert.rejects(readFile(join(f.options.profile, "active.json")), { code: "ENOENT" });
   await assert.rejects(fetchAsset(f.options, new URL(f.runtime.module.url).pathname), {
     code: "ECONNREFUSED",
   });
+}
+
+test("foreground CLI SIGTERM closes its real listener and records a closed receipt", (t) =>
+  foregroundLifecycle(t));
+test("foreground CLI admits one retained tuple and closes without key logging", (t) =>
+  foregroundLifecycle(t, true));
+
+test("one retained package serves all four exact assets and binds both immutable tuples", async (t) => {
+  const f = await fixture(t);
+  const retained = await retainedFixture(f);
+  const service = await f.start();
+  for (const [asset, expected] of [
+    [f.runtime.module, moduleBytes],
+    [f.runtime.wasm, wasmBytes],
+    [retained.runtime.module, retained.module],
+    [retained.runtime.wasm, retained.wasm],
+  ]) {
+    const response = await fetchAsset(f.options, new URL(asset.url).pathname);
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.bytes, expected);
+    assert.equal(response.headers["content-type"], asset.mime);
+    assert.equal(hash(response.bytes), asset.sha256);
+  }
+  await writeFile(
+    join(retained.directory, "previous.js"),
+    "disk changes are not new admitted code",
+  );
+  assert.deepEqual(
+    (await fetchAsset(f.options, new URL(retained.runtime.module.url).pathname)).bytes,
+    retained.module,
+  );
+  const receipt = JSON.parse(await readFile(service.receiptPath));
+  assert.equal(receipt.packageSha256, f.options.packageSha256);
+  assert.deepEqual(receipt.retainedPackage, {
+    root: retained.root,
+    packagePath: retained.packagePath,
+    packageSha256: f.options.retainedPackageSha256,
+  });
+  assert.equal(receipt.assets.length, 4);
+  assert.ok(!JSON.stringify(receipt).includes("PRIVATE KEY"));
+  await service.close();
+  assert.equal(JSON.parse(await readFile(service.receiptPath)).status, "closed");
+  await assert.rejects(readFile(join(f.options.profile, "active.json")), { code: "ENOENT" });
+  await assert.rejects(fetchAsset(f.options, new URL(retained.runtime.module.url).pathname), {
+    code: "ECONNREFUSED",
+  });
+});
+
+test("retained admission refuses incomplete tuples and independently checks package and asset pins", async (t) => {
+  for (const variant of [
+    "missing-package",
+    "missing-hash",
+    "missing-root",
+    "package-hash",
+    "asset-hash",
+    "asset-length",
+    "shape",
+    "array",
+  ]) {
+    const f = await fixture(t);
+    const retained = await retainedFixture(f);
+    if (variant.startsWith("missing-"))
+      delete f.options[
+        {
+          "missing-package": "retainedPackage",
+          "missing-hash": "retainedPackageSha256",
+          "missing-root": "retainedRoot",
+        }[variant]
+      ];
+    if (variant === "package-hash") f.options.retainedPackageSha256 = "0".repeat(64);
+    if (variant === "asset-hash") {
+      retained.runtime.wasm.sha256 = "0".repeat(64);
+      await retained.save();
+    }
+    if (variant === "asset-length") {
+      retained.runtime.wasm.bytes++;
+      await retained.save();
+    }
+    if (variant === "shape") {
+      retained.runtime.document = "not admitted";
+      await retained.save();
+    }
+    if (variant === "array") f.options.retainedPackage = [f.options.retainedPackage];
+    await assert.rejects(f.start(), undefined, variant);
+    await assert.rejects(readFile(join(f.options.profile, "active.json")), { code: "ENOENT" });
+  }
+});
+
+test("retained routes must share the exact origin and never overwrite even identical paths", async (t) => {
+  for (const variant of ["foreign-origin", "duplicate-package", "colliding-module"]) {
+    const f = await fixture(t);
+    const retained = await retainedFixture(f);
+    if (variant === "foreign-origin") {
+      retained.runtime.module.url = retained.runtime.module.url.replace("localhost", "127.0.0.1");
+      retained.runtime.wasm.url = retained.runtime.wasm.url.replace("localhost", "127.0.0.1");
+      await retained.save();
+    } else if (variant === "duplicate-package") {
+      Object.assign(f.options, {
+        retainedPackage: f.options.package,
+        retainedPackageSha256: f.options.packageSha256,
+        retainedRoot: f.options.root,
+      });
+    } else {
+      retained.runtime.module = { ...f.runtime.module };
+      await retained.save();
+    }
+    await assert.rejects(
+      f.start(),
+      variant === "foreign-origin" ? /origin/ : /[Dd]uplicate|[Cc]ollid/,
+    );
+    await assert.rejects(readFile(join(f.options.profile, "active.json")), { code: "ENOENT" });
+  }
+});
+
+test("retained files keep the existing ownership and canonical-root checks", async (t) => {
+  for (const variant of ["symlink-root", "symlink-file", "writable-file"]) {
+    const f = await fixture(t);
+    const retained = await retainedFixture(f);
+    if (variant === "symlink-root") {
+      const alias = join(scratch, "retained-root-link");
+      await symlink(retained.root, alias);
+      f.options.retainedRoot = alias;
+    } else if (variant === "symlink-file") {
+      await rm(join(retained.directory, "previous.js"));
+      await symlink(f.options.package, join(retained.directory, "previous.js"));
+    } else await chmod(join(retained.directory, "previous.js"), 0o666);
+    await assert.rejects(f.start(), /canonical|symlinks|safe permissions/);
+    await assert.rejects(readFile(join(f.options.profile, "active.json")), { code: "ENOENT" });
+  }
+});
+
+test("retained package changes require a new service profile", async (t) => {
+  const f = await fixture(t);
+  const retained = await retainedFixture(f);
+  const service = await f.start();
+  await service.close();
+  const replacement = Buffer.from("export const explicitlyChanged = true;\n");
+  await writeFile(join(retained.directory, "previous.js"), replacement);
+  retained.runtime.module.bytes = replacement.length;
+  retained.runtime.module.sha256 = hash(replacement);
+  await retained.save();
+  await assert.rejects(f.start(), /changed service profile/);
+});
+
+test("foreground CLI refuses partial retained tuples and duplicate retained flags before listening", async (t) => {
+  const f = await fixture(t);
+  const retained = await retainedFixture(f);
+  const args = [
+    "--package",
+    f.options.package,
+    "--package-sha256",
+    f.options.packageSha256,
+    "--root",
+    f.options.root,
+    "--cert",
+    cert,
+    "--key",
+    key,
+    "--profile",
+    f.options.profile,
+    "--port",
+    String(f.options.port),
+  ];
+  for (const extra of [
+    ["--retained-package", retained.packagePath],
+    ["--retained-package", retained.packagePath, "--retained-package", retained.packagePath],
+  ]) {
+    assert.throws(
+      () =>
+        execFileSync(
+          process.execPath,
+          [new URL("./serve.mjs", import.meta.url).pathname, ...args, ...extra],
+          { stdio: "pipe", timeout: 5000 },
+        ),
+      (error) => {
+        assert.equal(error.status, 1);
+        assert.equal(error.stdout.length, 0);
+        assert.match(
+          error.stderr.toString(),
+          /Complete retained package tuple required|Expected unique/,
+        );
+        assert.doesNotMatch(error.stderr.toString(), /PRIVATE KEY|BEGIN CERTIFICATE/);
+        return true;
+      },
+    );
+    await assert.rejects(readFile(join(f.options.profile, "active.json")), { code: "ENOENT" });
+  }
 });

@@ -146,36 +146,64 @@ async function leaseMatches(filename, lease) {
 export async function startCodeAssetService(options) {
   const port = options.port ?? 9446;
   if (!Number.isInteger(port) || port < 1024 || port > 65535) fail("Port must be 1024..65535");
-  if (typeof options.packageSha256 !== "string" || !HASH.test(options.packageSha256))
+  const packageSha256 = options.packageSha256;
+  if (typeof packageSha256 !== "string" || !HASH.test(packageSha256))
     fail("Explicit package SHA-256 required");
   const packagePath = absolute(options.package, "Package");
   const root = absolute(options.root, "Asset root");
   const profile = absolute(options.profile, "Profile");
   const certPath = absolute(options.cert, "Certificate");
   const keyPath = absolute(options.key, "Private key");
-  if ((await realpath(root)) !== root) fail("Asset root must be canonical");
-  const rootStat = await lstat(root);
-  owned(rootStat, "Asset root");
-  if (!rootStat.isDirectory()) fail("Asset root must be a directory");
-  const packageBytes = await readBounded(packagePath, 64 * 1024);
-  if (sha256(packageBytes) !== options.packageSha256) fail("Package SHA-256 mismatch");
-  const runtime = parsePackage(JSON.parse(packageBytes.toString("utf8")), port);
-  // Same in-memory allowlist as managed-startup-browser.mjs, without fixtures or fallback routes.
-  const only = new Map();
-  for (const asset of runtime.assets) {
-    const filename = join(root, asset.url.pathname.slice(1));
-    if ((await realpath(filename)) !== filename) fail("Asset path must not contain symlinks");
-    const bytes = await readBounded(filename, LIMITS[asset.kind]);
-    if (bytes.length !== asset.bytes || sha256(bytes) !== asset.sha256)
-      fail("Code asset hash or length mismatch");
+  const retainedCount = [
+    options.retainedPackage,
+    options.retainedPackageSha256,
+    options.retainedRoot,
+  ].filter((value) => value !== undefined).length;
+  if (retainedCount !== 0 && retainedCount !== 3) fail("Complete retained package tuple required");
+  // At most one explicit retained tuple. This is not a package registry or filesystem router.
+  const packages = [{ root, packagePath, packageSha256 }];
+  if (retainedCount) {
     if (
-      asset.kind === "wasm" &&
-      !bytes.subarray(0, 8).equals(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]))
+      typeof options.retainedPackageSha256 !== "string" ||
+      !HASH.test(options.retainedPackageSha256)
     )
-      fail("Invalid WASM header");
-    if (asset.kind === "module") new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    only.set(asset.url.pathname, { bytes, mime: asset.mime });
+      fail("Explicit retained package SHA-256 required");
+    packages.push({
+      root: absolute(options.retainedRoot, "Retained asset root"),
+      packagePath: absolute(options.retainedPackage, "Retained package"),
+      packageSha256: options.retainedPackageSha256,
+    });
   }
+  // Same immutable in-memory allowlist, with all packages verified before any lease or listener.
+  const only = new Map();
+  for (const packageInput of packages) {
+    const { root, packagePath, packageSha256 } = packageInput;
+    if ((await realpath(root)) !== root) fail("Asset root must be canonical");
+    const rootStat = await lstat(root);
+    owned(rootStat, "Asset root");
+    if (!rootStat.isDirectory()) fail("Asset root must be a directory");
+    const packageBytes = await readBounded(packagePath, 64 * 1024);
+    if (sha256(packageBytes) !== packageSha256) fail("Package SHA-256 mismatch");
+    const runtime = parsePackage(JSON.parse(packageBytes.toString("utf8")), port);
+    packageInput.runtime = runtime;
+    if (runtime.origin !== packages[0].runtime.origin) fail("Retained package origin mismatch");
+    for (const asset of runtime.assets) {
+      if (only.has(asset.url.pathname)) fail("Duplicate code asset route");
+      const filename = join(root, asset.url.pathname.slice(1));
+      if ((await realpath(filename)) !== filename) fail("Asset path must not contain symlinks");
+      const bytes = await readBounded(filename, LIMITS[asset.kind]);
+      if (bytes.length !== asset.bytes || sha256(bytes) !== asset.sha256)
+        fail("Code asset hash or length mismatch");
+      if (
+        asset.kind === "wasm" &&
+        !bytes.subarray(0, 8).equals(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]))
+      )
+        fail("Invalid WASM header");
+      if (asset.kind === "module") new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      only.set(asset.url.pathname, { bytes, mime: asset.mime });
+    }
+  }
+  const runtime = packages[0].runtime;
   const cert = await readBounded(certPath, 256 * 1024);
   const key = await readBounded(keyPath, 64 * 1024, true);
   const leaf = new X509Certificate(cert);
@@ -196,8 +224,17 @@ export async function startCodeAssetService(options) {
     origin: runtime.origin,
     root,
     packagePath,
-    packageSha256: options.packageSha256,
+    packageSha256,
     certSha256,
+    ...(retainedCount
+      ? {
+          retainedPackage: {
+            root: packages[1].root,
+            packagePath: packages[1].packagePath,
+            packageSha256: packages[1].packageSha256,
+          },
+        }
+      : {}),
   };
   // mkdir is intentionally nonrecursive: the caller owns/provisions the private parent.
   await mkdir(profile, { mode: 0o700 }).catch((error) => {
@@ -224,12 +261,14 @@ export async function startCodeAssetService(options) {
     ...contract,
     ...lease,
     startedAt: new Date().toISOString(),
-    assets: runtime.assets.map((asset) => ({
-      path: asset.url.pathname,
-      bytes: asset.bytes,
-      sha256: asset.sha256,
-      mime: asset.mime,
-    })),
+    assets: packages.flatMap(({ runtime }) =>
+      runtime.assets.map((asset) => ({
+        path: asset.url.pathname,
+        bytes: asset.bytes,
+        sha256: asset.sha256,
+        mime: asset.mime,
+      })),
+    ),
   };
   const sockets = new Set();
   let server;
@@ -313,6 +352,9 @@ async function main(argv) {
     ["--package", "package"],
     ["--package-sha256", "packageSha256"],
     ["--root", "root"],
+    ["--retained-package", "retainedPackage"],
+    ["--retained-package-sha256", "retainedPackageSha256"],
+    ["--retained-root", "retainedRoot"],
     ["--cert", "cert"],
     ["--key", "key"],
     ["--profile", "profile"],
@@ -322,7 +364,9 @@ async function main(argv) {
   for (let index = 0; index < argv.length; index += 2) {
     const name = names.get(argv[index]);
     if (!name || !argv[index + 1] || Object.hasOwn(options, name))
-      fail("Expected unique --package --package-sha256 --root --cert --key --profile [--port]");
+      fail(
+        "Expected unique --package --package-sha256 --root --cert --key --profile [--port] [--retained-package --retained-package-sha256 --retained-root]",
+      );
     options[name] = name === "port" ? Number(argv[index + 1]) : argv[index + 1];
   }
   const service = await startCodeAssetService(options);
