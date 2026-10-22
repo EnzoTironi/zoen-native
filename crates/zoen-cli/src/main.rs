@@ -11,6 +11,7 @@
 mod agent;
 mod agent_enrollment;
 mod agent_host_lock;
+mod agent_inspect;
 mod cli;
 mod commands;
 mod deckcraft;
@@ -237,12 +238,24 @@ async fn main() {
         usage();
     }
     let cmd = cli.args.remove(0);
+    if cmd == "agent-inspect" {
+        agent_inspect::validate_args(&std::env::args().skip(1).collect::<Vec<_>>())
+            .unwrap_or_else(|error| die(error));
+        agent_inspect::existing_home(&home).unwrap_or_else(|error| die(error));
+    }
     // Hold the local host's OS lock through sync shutdown, before opening any
     // account state or provider. Early returns and process death release it too.
     let enrollment = agent_enrollment::Action::parse(&cmd, &cli.args, timeout, offline)
         .unwrap_or_else(|err| die(err));
     let agent_host_lock = if agent_enrollment::requires_home_lock(&cmd) {
-        Some(agent_host_lock::HostLock::acquire(&home).unwrap_or_else(|err| die(err)))
+        Some(
+            agent_host_lock::HostLock::acquire(&home).unwrap_or_else(|err| {
+                if cmd == "agent-inspect" {
+                    die("agent_inspect_home_locked_or_unavailable");
+                }
+                die(err)
+            }),
+        )
     } else {
         None
     };
@@ -266,7 +279,29 @@ async fn main() {
             .unwrap_or_else(|err| die(err));
     }
     let vault: Arc<dyn SecretVault> = concrete_vault.clone();
-    let e = open(&home);
+    let e = if cmd == "agent-inspect" {
+        agent_inspect::open_existing(&home).unwrap_or_else(|error| die(error))
+    } else {
+        open(&home)
+    };
+    if cmd == "agent-inspect" {
+        let result = async {
+            if !e
+                .unlock(vault.clone())
+                .map_err(|_| "agent_inspect_unlock_failed")?
+            {
+                return Err("agent_inspect_missing_account");
+            }
+            agent_inspect::preflight(&e)?;
+            e.start_sync(None)
+                .map_err(|_| "agent_inspect_sync_start_failed")?;
+            agent_inspect::inspect(&e, timeout).await
+        }
+        .await;
+        e.stop_sync();
+        println!("{}", result.unwrap_or_else(|error| die(error)));
+        return;
+    }
     if let Some(action) = enrollment {
         let result = action.run(&e, concrete_vault).await;
         e.stop_sync();

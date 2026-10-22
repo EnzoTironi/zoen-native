@@ -15,6 +15,7 @@ pub(crate) fn usage() -> ! {
          read CHAT [--older]              --older: ask your other device for an older page\n\
          agent-keys | agent-init --name N --handle H --owner ID --proof JSON --definition FILE\n\
          agent-host [--for SECS]          run this agent citizen (relay-backed cursors)\n\
+         agent-inspect [--timeout MS]     read this agent's projected cursors/requests (no execution)\n\
          agent-enroll-request --owner ID --relay URL --name N --handle H --definition FILE\n\
          agent-enroll-wait [--timeout MS]  recover or wait for owner consent, then register\n\
          agent-enroll-cancel --offer-digest HASH   discard only an unused offer\n\
