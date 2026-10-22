@@ -148,6 +148,30 @@ This checkpoint made no new task, owner approval, host run or model/provider cal
 Native27 uses `5a9a8d07`; the CLI uses `005c43bc`. These are separate source and
 artifact qualifications, not a joined editing journey.
 
+The subsequent Native27 journey used a new ordinary task sent after the normal
+host reported readiness. The iPhone displayed its exact **Read presentation**
+proposal, and the owner approved it once. The real-provider host then reported
+one completed step, zero failed steps, and a pending **Update slide notes**
+proposal. It exited normally with its owned process group absent. The agent's
+normal API read retained that proposal, but the iPhone's conversation and
+Activity view did not expose it, including after a cold app open. No Write was
+approved or accepted. A fresh normal API recovery still returned v1, 4,592 bytes,
+with the baseline SHA256 above. The original operator claim and result remain
+unchanged under `zoen-normal-host-native27-v359`.
+
+Source investigation identified a feature-dependent JSON boundary to reproduce:
+the CLI enables `serde_json/preserve_order`, while the native Core does not.
+Re-serializing a parsed multi-field tool argument can therefore produce different
+bytes. This observation does not by itself establish the exact rejected native
+event; the cross-feature regression and corrective change are tracked separately.
+
+On the same installation, actual portrait and both landscape orientations were
+observed in the editor. The Notes panel stayed open across rotation, the editor
+fitted the available area, and closing it returned to the same conversation.
+The post-rotation normal API recovery retained the exact baseline file. These
+checks establish layout and panel-state observations only; manual text input,
+unsaved-edit recovery and all-App rotation acceptance remain open.
+
 Source: [Gate points](../../crates/gate/src/lib.rs),
 [citizen runtime](../../crates/zoen-agentd/src/citizen/host.rs),
 [normal host](../../crates/zoen-cli/src/agent.rs) and
