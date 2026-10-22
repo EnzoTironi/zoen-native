@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""Limit staged, maintained text files to 5,000 estimated tokens (bytes / 4)."""
+
+import os
+from pathlib import PurePosixPath
+import subprocess
+import sys
+
+
+MAX_BYTES = 20_000
+LOCKFILES = {
+    "Cargo.lock", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock",
+    "pnpm-lock.yaml", "bun.lock", "bun.lockb", "Podfile.lock", "Package.resolved",
+    "Gemfile.lock", "composer.lock", "poetry.lock", "uv.lock", "Pipfile.lock",
+    "packages.lock.json", "flake.lock", "deno.lock", ".terraform.lock.hcl",
+}
+GENERATED_DIRS = {"generated", "__generated__"}
+THIRD_PARTY_DIRS = {"node_modules", "vendor", "vendored", "third_party", "third-party"}
+GENERATED_ROOTS = ("apps/zoen/ios/", "apps/zoen/android/")
+UPSTREAM_ROOTS = ("miniapps/deckcraft-ui/licenses/",)
+UPSTREAM_FILES = {"miniapps/deckcraft-ui/BOOTSTRAP-LICENSES.txt"}
+BINARY_SUFFIXES = {
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".ico",
+    ".avif", ".icns", ".mp4", ".mov", ".webm", ".mkv", ".m4a", ".mp3",
+    ".wav", ".ogg", ".flac", ".aac", ".pdf", ".woff", ".woff2", ".ttf",
+    ".otf", ".wasm", ".zip", ".gz", ".bz2", ".xz", ".7z", ".tar",
+    ".a", ".so", ".dylib", ".dll", ".exe", ".o", ".rlib", ".rmeta",
+    ".pptx", ".docx", ".xlsx", ".deckcraft",
+}
+
+
+def git(*args, input_bytes=None):
+    return subprocess.run(
+        ["git", *args], input=input_bytes, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, check=True,
+    ).stdout
+
+
+def exempt(path):
+    """Explicit repository conventions, never commit-author identity or file contents."""
+    name = PurePosixPath(path)
+    return (
+        name.name in LOCKFILES
+        or bool(set(name.parts) & (GENERATED_DIRS | THIRD_PARTY_DIRS))
+        or ".generated." in name.name
+        or path.startswith(GENERATED_ROOTS + UPSTREAM_ROOTS)
+        or path in UPSTREAM_FILES
+        or name.suffix.lower() in BINARY_SUFFIXES
+    )
+
+
+def staged_candidates():
+    # --no-renames represents a rename as delete/add; only its new blob is checked.
+    fields = git(
+        "diff", "--cached", "--raw", "--no-abbrev", "--no-renames",
+        "--diff-filter=ACMT", "-z", "--",
+    ).split(b"\0")
+    candidates = []
+    for index in range(0, len(fields) - 1, 2):
+        header = fields[index].split()
+        if len(header) != 5 or not header[0].startswith(b":"):
+            raise ValueError("Cannot parse staged file metadata")
+        path = os.fsdecode(fields[index + 1])
+        # Symlinks contain link text, not the target file; submodules aren't files.
+        if header[1] in (b"100644", b"100755") and not exempt(path):
+            candidates.append((path, header[3]))
+    return candidates
+
+
+def object_sizes(candidates):
+    ids = sorted({oid for _, oid in candidates})
+    if not ids:
+        return {}
+    result = git(
+        "cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)",
+        input_bytes=b"\n".join(ids) + b"\n",
+    )
+    sizes = {}
+    for line in result.splitlines():
+        fields = line.split()
+        if len(fields) != 3 or fields[1] != b"blob":
+            raise ValueError("Cannot inspect a staged blob")
+        sizes[fields[0]] = int(fields[2])
+    if set(sizes) != set(ids):
+        raise ValueError("Missing staged blob metadata")
+    return sizes
+
+
+def is_binary(oid):
+    # Git's usual binary heuristic. Read a bounded prefix, never a whole large blob.
+    process = subprocess.Popen(
+        ["git", "cat-file", "blob", oid.decode("ascii")],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    )
+    try:
+        prefix = process.stdout.read(8192)
+    finally:
+        process.stdout.close()
+        process.wait()
+    if len(prefix) != 8192:
+        raise ValueError("Cannot read a staged blob")
+    return b"\0" in prefix
+
+
+def main():
+    try:
+        candidates = staged_candidates()
+        sizes = object_sizes(candidates)
+        violations = [
+            (path, sizes[oid]) for path, oid in candidates
+            if sizes[oid] > MAX_BYTES and not is_binary(oid)
+        ]
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print("pre-commit: unable to check staged file sizes: " + str(error), file=sys.stderr)
+        return 1
+    if not violations:
+        return 0
+    print(
+        "\nCommit blocked: staged authored files must be <= 5,000 tokens "
+        "(20,000 bytes; tokens = bytes / 4).", file=sys.stderr,
+    )
+    for path, size in violations:
+        print("  {}: {:,} bytes = {:,.2f} tokens".format(ascii(path), size, size / 4),
+              file=sys.stderr)
+    print(
+        "\nSplit the staged files before committing:\n"
+        "  1. Extract cohesive responsibilities into sibling modules; keep the public\n"
+        "     entry point thin. Each resulting file must be <= 20,000 bytes.\n"
+        "  2. Split tests by behavior and share intentional helpers/fixtures. Split\n"
+        "     documents by topic with index links; use supported includes for configs.\n"
+        "  3. Update imports, exports and callers; run the affected checks.\n"
+        "  4. git add the revised files and new modules, then commit again.\n"
+        "Do not minify, strip comments, arbitrarily chunk lines, or label authored\n"
+        "code as generated/vendor to evade the limit. Only staged blobs are checked.\n"
+        "Policy and exclusions: docs/dev/staged-file-size.md\n",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
