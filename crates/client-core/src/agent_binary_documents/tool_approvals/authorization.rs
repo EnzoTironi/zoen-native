@@ -3,11 +3,11 @@
 use super::*;
 
 impl Engine {
-    pub(super) fn tool_non_blocked(&self, req: &AgentRequest) -> bool {
+    pub(crate) fn tool_non_blocked(&self, req: &AgentRequest) -> bool {
         let Some(p) = &req.tool_proposal else {
             return false;
         };
-        let action = if p.canonical_tool == "read_deckcraft" {
+        let action = if matches!(p.canonical_tool.as_str(), "read_deckcraft" | "read_page") {
             ActionClass::Reply
         } else {
             ActionClass::Reversible
@@ -27,7 +27,7 @@ impl Engine {
         )
     }
 
-    pub(super) fn tool_resolution(
+    pub(crate) fn tool_resolution(
         &self,
         id: &str,
         hash: &str,

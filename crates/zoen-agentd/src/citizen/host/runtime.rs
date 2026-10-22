@@ -286,8 +286,16 @@ impl Runtime {
                 Some(def) => {
                     let check = Self::tool_check(inbound, host, &call, def);
                     let d = self.gate.check(&check);
-                    match d.outcome {
-                        Outcome::Block => (format!("blocked: {}", d.rule), true),
+                    // A native first-delivery review is narrower than Gate Allow.
+                    // Block and Ask retain their original policy outcome/rule.
+                    let (outcome, rule) =
+                        if d.outcome == Outcome::Allow && host.requires_native_review(&call) {
+                            (Outcome::Ask, NATIVE_REVIEW_REQUIRED.to_string())
+                        } else {
+                            (d.outcome, d.rule)
+                        };
+                    match outcome {
+                        Outcome::Block => (format!("blocked: {}", rule), true),
                         Outcome::Ask => {
                             let ask = ToolAsk {
                                 version: 1,
@@ -298,7 +306,7 @@ impl Runtime {
                                 steps: steps.clone(),
                                 remaining: calls.collect(),
                                 round,
-                                rule: d.rule,
+                                rule,
                             };
                             ask.validate(cx, inbound)?;
                             return Ok(Some(ask));
@@ -313,7 +321,7 @@ impl Runtime {
                                 steps: steps.clone(),
                                 remaining: calls.clone().collect(),
                                 round,
-                                rule: d.rule,
+                                rule,
                             };
                             prepared.validate(cx, inbound)?;
                             host.prepare(&prepared)

@@ -20,6 +20,7 @@ fn unoffered_binary_binding_cannot_replay_a_cached_success_without_authority() {
         names: vec![],
         deckcraft: None,
         deckcraft_items: vec![],
+        page_items: vec![],
     };
     host.record(ToolStep {
         call: call.clone(),

@@ -37,6 +37,9 @@ use providers::{brain, gate};
 mod turn;
 use turn::turn;
 mod journal;
+#[cfg(test)]
+mod page_tool_tests;
+mod page_tools;
 mod space_tools;
 #[cfg(test)]
 mod test_support;
@@ -445,11 +448,12 @@ struct SpaceTools<'a> {
     names: Vec<(ToolDef, String, String)>,
     deckcraft: Option<&'a Arc<zoen_agentd::deckcraft::DeckcraftWorker>>,
     deckcraft_items: Vec<String>,
+    page_items: Vec<String>,
 }
 
 struct CanonicalToolAdmission<'a, 'b> {
     tools: &'a SpaceTools<'b>,
-    permit: client_core::ApprovedToolTurn,
+    permit: page_tools::CanonicalPermit,
 }
 
 #[cfg(test)]

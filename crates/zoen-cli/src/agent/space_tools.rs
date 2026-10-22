@@ -61,6 +61,38 @@ impl<'a> SpaceTools<'a> {
                 names.extend(offered);
             }
         }
+        let mut page_items = Vec::new();
+        for item in e
+            .items()
+            .into_iter()
+            .filter(|item| item.space_id == space && item.kind_id == "page")
+        {
+            if e.agent_page_turn(&item.id, source, serving).is_err() {
+                continue;
+            }
+            let mut offered = Vec::new();
+            for mut definition in page_tools::definitions() {
+                let tool = definition.name.clone();
+                let Some(name) = client_core::agent_page_tools::model_name(&tool, &item.id) else {
+                    offered.clear();
+                    break;
+                };
+                if names.iter().any(|(existing, _, _)| existing.name == name) {
+                    offered.clear();
+                    break;
+                }
+                definition.name = name;
+                definition.parameters["properties"]["artifactId"]["enum"] = json!([item.id]);
+                definition.description =
+                    format!("{} (Page {:?})", definition.description, item.title);
+                offered.push((definition, item.id.clone(), tool));
+            }
+            if offered.is_empty() || names.len() + offered.len() > 64 {
+                continue;
+            }
+            page_items.push(item.id);
+            names.extend(offered);
+        }
         Self {
             e,
             journal: &cx.journal,
@@ -70,6 +102,7 @@ impl<'a> SpaceTools<'a> {
             names,
             deckcraft: cx.deckcraft.as_ref(),
             deckcraft_items,
+            page_items,
         }
     }
 
@@ -82,6 +115,9 @@ impl<'a> SpaceTools<'a> {
             .iter()
             .find(|(definition, _, _)| definition.name == ask.call.name)
             .ok_or("The held tool is no longer offered")?;
+        if self.page_items.contains(item) && client_core::agent_page_tools::recognizes(tool) {
+            return self.stage_page(item, tool, ask);
+        }
         if !self.deckcraft_items.contains(item) || !crate::deckcraft::recognizes(tool) {
             return Err("This tool has no supported canonical approval shape".into());
         }
