@@ -1978,3 +1978,7 @@ mod continuation_journal_tests;
 #[cfg(test)]
 #[path = "agent/canonical_read_recovery_tests.rs"]
 mod canonical_read_recovery_tests;
+
+#[cfg(test)]
+#[path = "agent/canonical_provider_acceptance_tests.rs"]
+mod canonical_provider_acceptance_tests;

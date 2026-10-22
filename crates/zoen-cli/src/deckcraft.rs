@@ -250,6 +250,7 @@ pub(crate) mod tests {
         pub(crate) path: std::path::PathBuf,
         pub(crate) client: Arc<Client>,
         pub(crate) vault: Arc<Vault>,
+        pub(crate) owner_vault: Arc<Vault>,
         pub(crate) owner: String,
         pub(crate) source: String,
         pub(crate) base: AppBinaryDocumentDto,
@@ -259,7 +260,7 @@ pub(crate) mod tests {
         std::fs::create_dir_all(&path).unwrap();
         fixture_at(path, [72; 32])
     }
-    fn fixture_at(path: std::path::PathBuf, root: [u8; 32]) -> Fixture {
+    pub(crate) fn fixture_at(path: std::path::PathBuf, root: [u8; 32]) -> Fixture {
         let owner_path = path.join("owner.sqlite");
         let owner_vault = Arc::new(Vault::default());
         let human = Client::open(owner_path.to_str().unwrap().into(), "en".into()).unwrap();
@@ -364,6 +365,7 @@ pub(crate) mod tests {
             path,
             client,
             vault,
+            owner_vault,
             owner,
             source,
             base,
@@ -790,6 +792,7 @@ pub(crate) mod tests {
             owner,
             source,
             base,
+            ..
         } = f;
         drop(client);
         let restored = Client::open(
