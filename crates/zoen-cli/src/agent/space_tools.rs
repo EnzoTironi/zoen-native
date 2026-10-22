@@ -70,13 +70,22 @@ impl<'a> SpaceTools<'a> {
             names,
             deckcraft: cx.deckcraft.as_ref(),
             deckcraft_items,
+            selection: None,
         }
+    }
+
+    pub(super) fn check_selection(&self) -> Result<(), String> {
+        if let Some(selection) = self.selection {
+            selection.check(self.e)?;
+        }
+        Ok(())
     }
 
     pub(super) fn stage_approval(
         &self,
         ask: &ToolAsk,
     ) -> Result<client_core::AgentRequestDto, String> {
+        self.check_selection()?;
         let (_, item, tool) = self
             .names
             .iter()
@@ -94,7 +103,8 @@ impl<'a> SpaceTools<'a> {
             .e
             .agent_binary_turn(item, self.source, self.serving, version, hash.as_deref())
             .map_err(|e| e.to_string())?;
-        self.e
+        let staged = self
+            .e
             .stage_tool_approval(
                 &turn,
                 client_core::AgentToolApprovalInput {
@@ -106,7 +116,9 @@ impl<'a> SpaceTools<'a> {
                     gate_rule: ask.rule.clone(),
                 },
             )
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string());
+        self.check_selection()?;
+        staged
     }
 
     pub(super) fn load(&self) -> Vec<(String, Vec<ToolStep>)> {
@@ -125,12 +137,14 @@ impl<'a> SpaceTools<'a> {
     }
 
     pub(super) fn begin_resume(&self, request: &str, content_hash: &str) -> Result<bool, String> {
+        self.check_selection()?;
         JournalState::begin_resume(self.journal, request, content_hash, Some(self.source))
     }
 
     pub(super) fn canonical_continuation(
         &self,
     ) -> Result<Option<(String, String, ToolAsk)>, String> {
+        self.check_selection()?;
         let requests = self.e.tool_approval_requests(&self.space, self.source);
         let Some(request) = requests.last() else {
             return Ok(None);
@@ -159,6 +173,7 @@ impl<'a> SpaceTools<'a> {
         request: &str,
         hash: &str,
     ) -> Result<Option<(ToolProgress, Option<ToolAsk>)>, String> {
+        self.check_selection()?;
         let state = JournalState::load(self.journal)?;
         let Some(budget) = state.continuations.get(request) else {
             return Ok(None);

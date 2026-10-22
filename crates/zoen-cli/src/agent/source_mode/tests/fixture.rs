@@ -1,0 +1,239 @@
+//! Own ephemeral homes and real signed/projected events; no user DB or provider.
+use super::*;
+use client_core::SecretVault;
+use event_log::{Signer, SpaceLog};
+use relay::Vault;
+
+pub(super) struct Fixture {
+    pub path: std::path::PathBuf,
+    pub client: Arc<Client>,
+    pub vault: Arc<Vault>,
+    owner_vault: Arc<Vault>,
+    pub owner: String,
+    pub space: String,
+    pub source: String,
+    pub other: String,
+}
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        self.client.stop_sync();
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+impl Fixture {
+    pub(super) fn new(relay: &str) -> Self {
+        let path = std::env::temp_dir().join(types::new_id("host-source-test"));
+        std::fs::create_dir(&path).unwrap();
+        let owner_vault = Arc::new(Vault::default());
+        let human = Client::open(
+            path.join("owner.sqlite").to_str().unwrap().into(),
+            "en".into(),
+        )
+        .unwrap();
+        let owner = human
+            .create_account(
+                "Source owner".into(),
+                "source_owner".into(),
+                relay.into(),
+                owner_vault.clone(),
+            )
+            .unwrap()
+            .identity_id;
+        let root = [91; 32];
+        let agent = Signer::from_secret(&root);
+        let proof = human.authorize_agent_json(agent.id()).unwrap();
+        drop(human);
+        let owner_store = store::Store::open(path.join("owner.sqlite").to_str().unwrap()).unwrap();
+        let profile = owner_store
+            .identities()
+            .unwrap()
+            .into_iter()
+            .find(|(p, _)| p.id == owner)
+            .unwrap()
+            .0;
+        drop(owner_store);
+        let vault = Arc::new(Vault::default());
+        let db = path.join("agent.sqlite");
+        let client = Client::open(db.to_str().unwrap().into(), "en".into()).unwrap();
+        client
+            .create_agent_account(
+                "Source host".into(),
+                "source_host".into(),
+                relay.into(),
+                root.to_vec(),
+                owner.clone(),
+                proof,
+                vault.clone(),
+            )
+            .unwrap();
+        drop(client);
+        let key: [u8; 32] = owner_vault
+            .load("zoen.identity.v1".into())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let signer = Signer::from_secret(&key);
+        let store = store::Store::open(db.to_str().unwrap()).unwrap();
+        store.put_identity(&profile, None).unwrap(); // public only, no owner key import
+        let space = types::new_id("source_space");
+        let mut log = SpaceLog::new(&space);
+        store
+            .append_event(log.append(
+                &agent,
+                1_792_510_809_000,
+                types::EventBody::SpaceCreated {
+                    title: "Source fixture".into(),
+                    kind: types::SpaceKind::Group,
+                    privacy: types::Privacy::Closed,
+                },
+            ))
+            .unwrap();
+        store
+            .append_event(log.append(
+                &agent,
+                1_792_510_809_001,
+                types::EventBody::MemberAdded {
+                    identity: owner.clone(),
+                    role: types::Role::Member,
+                },
+            ))
+            .unwrap();
+        let mut post = |text: &str| {
+            let event = log
+                .append(&signer, 1_792_510_809_002, message(text, None))
+                .clone();
+            store.append_event(&event).unwrap();
+            event.client_id
+        };
+        let other = post("Other source must never be executed by this run.");
+        let source = post("Inspect only the selected source.");
+        log.verify().unwrap();
+        drop(store);
+        let client = Client::open(db.to_str().unwrap().into(), "en".into()).unwrap();
+        assert!(client.unlock(vault.clone()).unwrap());
+        Self {
+            path,
+            client,
+            vault,
+            owner_vault,
+            owner,
+            space,
+            source,
+            other,
+        }
+    }
+    pub(super) fn reopen(&mut self) {
+        self.client.stop_sync();
+        let client = Client::open(
+            self.path.join("agent.sqlite").to_str().unwrap().into(),
+            "en".into(),
+        )
+        .unwrap();
+        assert!(client.unlock(self.vault.clone()).unwrap());
+        self.client = client;
+    }
+    pub(super) fn append(&mut self, body: types::EventBody, owner: bool) -> String {
+        self.client.stop_sync();
+        flush(&self.path, "agent.sqlite", "agent.sqlite", &self.space);
+        let db = store::Store::open(self.path.join("agent.sqlite").to_str().unwrap()).unwrap();
+        let mut log = SpaceLog::from_events(&self.space, db.events(&self.space).unwrap()).unwrap();
+        let key = if owner {
+            self.owner_vault
+                .load("zoen.identity.v1".into())
+                .unwrap()
+                .try_into()
+                .unwrap()
+        } else {
+            [91; 32]
+        };
+        let event = log
+            .append(&Signer::from_secret(&key), 1_792_510_810_000, body)
+            .clone();
+        db.append_event(&event).unwrap();
+        log.verify().unwrap();
+        drop(db);
+        self.reopen();
+        event.client_id
+    }
+    pub(super) async fn approve(&mut self, request: &client_core::AgentRequestDto) {
+        self.client.stop_sync();
+        flush(&self.path, "agent.sqlite", "owner.sqlite", &self.space);
+        let owner = Client::open(
+            self.path.join("owner.sqlite").to_str().unwrap().into(),
+            "en".into(),
+        )
+        .unwrap();
+        assert!(owner.unlock(self.owner_vault.clone()).unwrap());
+        let command = json!({"op":"decide_tool_request","request_id":request.id,
+            "observed_content_hash":request.tool_approval.as_ref().unwrap().content_hash,"decision":"ApproveOnce"});
+        let value: serde_json::Value =
+            serde_json::from_str(&owner.client_request(command.to_string()).await.unwrap())
+                .unwrap();
+        assert_eq!(value["request"]["status"], "Approved");
+        assert_eq!(value["standing_grant_id"], serde_json::Value::Null);
+        drop(owner);
+        flush(&self.path, "owner.sqlite", "agent.sqlite", &self.space);
+        self.reopen();
+    }
+}
+
+pub(super) fn message(text: &str, attaches: Option<String>) -> types::EventBody {
+    types::EventBody::MessagePosted {
+        message: types::new_id("message"),
+        text: text.into(),
+        attaches,
+        media: None,
+        reply: None,
+        forwarded: false,
+    }
+}
+
+// Sequence only signed fixture outbox entries and copy public profiles/events.
+fn flush(path: &Path, from: &str, to: &str, space: &str) {
+    let source = store::Store::open(path.join(from).to_str().unwrap()).unwrap();
+    let mut log = SpaceLog::from_events(space, source.events(space).unwrap()).unwrap();
+    for pending in source
+        .outbox()
+        .unwrap()
+        .into_iter()
+        .filter(|p| p.event.space == space)
+    {
+        if !log
+            .events()
+            .iter()
+            .any(|e| e.client_id == pending.event.client_id)
+        {
+            event_log::verify_author(&pending.event).unwrap();
+            source
+                .append_event(log.sequence(pending.event.clone()))
+                .unwrap();
+        }
+        source.outbox_remove(&pending.event.client_id).unwrap();
+    }
+    log.verify().unwrap();
+    let events = source.events(space).unwrap();
+    let public: Vec<_> = source
+        .identities()
+        .unwrap()
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
+    drop(source);
+    let target = store::Store::open(path.join(to).to_str().unwrap()).unwrap();
+    for profile in public {
+        target.put_identity(&profile, None).unwrap();
+    }
+    let existing = target.events(space).unwrap();
+    assert!(existing.len() <= events.len());
+    assert_eq!(
+        serde_json::to_value(&existing).unwrap(),
+        serde_json::to_value(&events[..existing.len()]).unwrap()
+    );
+    for event in &events[existing.len()..] {
+        target.append_event(event).unwrap();
+    }
+    SpaceLog::from_events(space, target.events(space).unwrap())
+        .unwrap()
+        .verify()
+        .unwrap();
+}

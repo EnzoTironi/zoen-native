@@ -22,7 +22,7 @@ impl<'host> Readiness<'host> {
         Ok(Self { path, _host: host })
     }
 
-    fn publish(&self) -> Result<(), String> {
+    pub(super) fn publish(&self) -> Result<(), String> {
         let mut options = File::options();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -59,6 +59,34 @@ pub(super) async fn prepare(
     readiness: &Readiness<'_>,
     timeout_ms: u64,
 ) -> Result<BTreeMap<String, u64>, String> {
+    let mut cursors: BTreeMap<String, u64> = settled_cursors(client, timeout_ms)
+        .await?
+        .into_iter()
+        .collect();
+    let mut fresh = Vec::new();
+    for space in client.spaces() {
+        if cursors.contains_key(&space.id) {
+            continue;
+        }
+        let head = current_head(client, space.id.clone())?;
+        fresh.push((space.id, head));
+    }
+    for (space, head) in fresh {
+        client
+            .agent_advance(space.clone(), head)
+            .await
+            .map_err(|error| format!("initial agent cursor was not acknowledged: {error}"))?;
+        cursors.insert(space, head);
+    }
+    readiness.publish()?;
+    Ok(cursors)
+}
+
+/// Common admission only. Source mode deliberately never calls cursor seeding.
+pub(super) async fn settled_cursors(
+    client: &Client,
+    timeout_ms: u64,
+) -> Result<Vec<(String, u64)>, String> {
     client
         .wait_until_settled(timeout_ms)
         .await
@@ -78,24 +106,7 @@ pub(super) async fn prepare(
     if state.status == "revoked" {
         return Err("this agent was revoked by its owner".into());
     }
-    let mut cursors: BTreeMap<String, u64> = state.cursors.into_iter().collect();
-    let mut fresh = Vec::new();
-    for space in client.spaces() {
-        if cursors.contains_key(&space.id) {
-            continue;
-        }
-        let head = current_head(client, space.id.clone())?;
-        fresh.push((space.id, head));
-    }
-    for (space, head) in fresh {
-        client
-            .agent_advance(space.clone(), head)
-            .await
-            .map_err(|error| format!("initial agent cursor was not acknowledged: {error}"))?;
-        cursors.insert(space, head);
-    }
-    readiness.publish()?;
-    Ok(cursors)
+    Ok(state.cursors)
 }
 
 #[cfg(test)]
