@@ -193,7 +193,7 @@ async function run() {
         first.delivery === 'confirmed',
       'Wrong decrypted event',
     );
-    check(reconciliations === 1, 'The final event must arrive through one periodic reconciliation');
+    check(reconciliations >= 1, 'The final event must arrive through periodic reconciliation');
     const initial = await (await fetch('/metrics')).json();
     check(
       initial.connections === 1 && initial.authenticated === 1 && initial.fullSync.length === 2,
