@@ -569,7 +569,7 @@ impl Engine {
                     mime: photo.mime,
                     space: String::new(),
                     profile: Some(row.identity),
-                    maximum_sealed_bytes: None,
+                    maximum_sealed_bytes: Some(MAX_PHOTO_BYTES as u64 + 40),
                 })
             })
             .collect()
@@ -1199,7 +1199,10 @@ mod own_sync_tests {
             mime: "image/jpeg".into(),
         };
         assert!(photo.valid(), "well-formed authenticated reference");
-        assert!(photo.open(&sealed).is_none(), "existing profile size policy");
+        assert!(
+            photo.open(&sealed).is_none(),
+            "existing profile size policy"
+        );
         let fields = ProfileFields {
             name: "Synthetic second-device profile".into(),
             photo: Some(photo.clone()),
@@ -1232,6 +1235,11 @@ mod own_sync_tests {
         assert!(
             !engine.media_arrived(&wanted, &sealed),
             "oversized valid ciphertext must not enter the media cache"
+        );
+        assert_eq!(
+            wanted.maximum_sealed_bytes,
+            Some(MAX_PHOTO_BYTES as u64 + 40),
+            "the actual download demand is bounded before HTTP reads"
         );
         assert!(engine.media(&photo.sha256).unwrap().is_none());
         assert!(engine.store.media_key(&photo.sha256).unwrap().is_none());

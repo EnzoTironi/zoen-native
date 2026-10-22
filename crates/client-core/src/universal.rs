@@ -12,7 +12,7 @@ use crate::i18n::t;
 use crate::CoreError;
 
 /// Largest attachment the core accepts (background photos are ~0.5 MB after resizing).
-const MAX_MEDIA_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) const MAX_MEDIA_BYTES: usize = 8 * 1024 * 1024;
 
 impl Engine {
     // ── media ──

@@ -1,0 +1,252 @@
+{
+  "schema": 1,
+  "date": "2026-10-22",
+  "comparedProductionBase": "1e66b98aaf2b6680d8b9708eff8d24642bf4b065",
+  "boundedScope": "Eight scenario families, assertion-read only; no Signal suite execution or code/fixture transplant. Classifications are source comparison, not whole-product equivalence.",
+  "upstreamExecution": "NOT_RUN",
+  "upstreamCodeCopiedIntoProduct": false,
+  "corrections": {
+    "C09": "At the pinned Android commit the actual source is app/src/test/java (Robolectric), not the historical androidTest path, which returned404. All assertions were read at the corrected pinned path.",
+    "C04": "The assertion-read parser test starts streamJobs before adding the mixed inputs; it is not a paused durable-queue restoration test as the historical initial-state description suggested."
+  },
+  "excludedAlreadyOwnedFix": {
+    "issue": 139,
+    "pullRequest": 190,
+    "head": "54c4cfe6f50acef4ca7ac9208bbf1307047fba3f",
+    "reason": "Current Root frozen batch already contains authenticated pending commitments. Do not duplicate or claim this fix from the eight source mappings."
+  },
+  "scenarios": [
+    {
+      "historicalId": "C01",
+      "contract": "Persisted send retries retain one message identity",
+      "initialState": "Outgoing message and durable job exist in the same DB transaction.",
+      "sequence": "Set up queue; provide retryable timeout errors; force reachability retries until completion rejects.",
+      "introducedFault": "111 timeout attempts in this specific test.",
+      "upstreamAssertedResult": "All error stubs consumed; sent-ID list equals the same ID repeated111; exhausted queue job absent. Permanent-error companion attempts one ID once and removes the job.",
+      "upstreamAssertionLimit": "These are sender stub invocations, not 111 real network sends or proof of remote deduplication. Job removal does not assert deletion of the failed message. The retry count is Signal policy, not a portable requirement.",
+      "upstreamSources": [
+        {
+          "repository": "signalapp/Signal-iOS",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a",
+          "path": "SignalServiceKit/tests/Network/MessageSendJobQueueTest.swift",
+          "sha256": "bd3565411449a5744be994d7f7cb5d5e54a5a8eba7c163032c38f88982e7232a",
+          "assertionReadLines": [89, 175],
+          "url": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Network/MessageSendJobQueueTest.swift#L89-L175"
+        }
+      ],
+      "currentZoenClassification": "equivalent",
+      "currentZoenSource": [
+        "crates/client-core/src/mls/tests/durability_tests.rs::plain_confirmation_cleanup_failure_keeps_exact_outbox_for_cold_retry",
+        "crates/client-core/src/mls/tests/durability_tests.rs::failed_ciphertext_retention_rolls_back_sender_ratchet_before_cold_retry"
+      ],
+      "qualificationBoundary": "Exact intent/ciphertext survive failed SQLite confirmation and cold reopen; receiver deduplicates. Transport/storage fault model differs from Signal sender stubs."
+    },
+    {
+      "historicalId": "C02",
+      "contract": "Same-conversation send order and dependency admission",
+      "initialState": "Three pending outgoing messages for the same thread persisted together.",
+      "sequence": "Restore queue; stub three successes; await all completions.",
+      "introducedFault": "No explicit fault injected; restore a persisted same-thread queue and stub successful sends.",
+      "upstreamAssertedResult": "Sent unique IDs exactly equal original ordered IDs.",
+      "upstreamAssertionLimit": "Only one contact thread and successful stubs; does not establish all-room global ordering or crashes between each send.",
+      "upstreamSources": [
+        {
+          "repository": "signalapp/Signal-iOS",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a",
+          "path": "SignalServiceKit/tests/Network/MessageSendJobQueueTest.swift",
+          "sha256": "bd3565411449a5744be994d7f7cb5d5e54a5a8eba7c163032c38f88982e7232a",
+          "assertionReadLines": [35, 65],
+          "url": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Network/MessageSendJobQueueTest.swift#L35-L65"
+        }
+      ],
+      "currentZoenClassification": "partial",
+      "currentZoenSource": [
+        "crates/client-core/src/net/tests/media_dependencies.rs::media_dependencies_ws_retry_keeps_ciphertext_and_cold_receiver_album",
+        "crates/client-core/src/sync.rs::outbox_envelopes_except"
+      ],
+      "qualificationBoundary": "File/predecessor dependencies and same-Space head blocking exist. This batch did not find or execute an exact generic three-message FIFO cold-restoration differential."
+    },
+    {
+      "historicalId": "C04",
+      "contract": "Malformed durable jobs never execute actions",
+      "initialState": "A fresh test queue has an active stream and a parser that accepts only the known valid payload.",
+      "sequence": "Submit invalid, invalid, valid, invalid, invalid values; inspect the run stub. The companion awaits invalid completions and inspects stored jobs.",
+      "introducedFault": "Parser throws for invalid serialized data.",
+      "upstreamAssertedResult": "The run stub is called once with only the valid payload; the companion retains the valid job and removes rejected jobs.",
+      "upstreamAssertionLimit": "Discarding a malformed worker record is not permission to discard unrecoverable user content. No authorization proof follows from the parser-only test.",
+      "upstreamSources": [
+        {
+          "repository": "signalapp/Signal-Desktop",
+          "commit": "f3040f3e13b6dca5021c3db149320e0f7a771f0a",
+          "path": "ts/test-node/jobs/JobQueue_test.node.ts",
+          "sha256": "69c0fb72478434422aa21dbbd39f5058519d68e9758b2b199d2ca8c7d7ccb701",
+          "assertionReadLines": [506, 576],
+          "url": "https://github.com/signalapp/Signal-Desktop/blob/f3040f3e13b6dca5021c3db149320e0f7a771f0a/ts/test-node/jobs/JobQueue_test.node.ts#L506-L576"
+        }
+      ],
+      "currentZoenClassification": "partial",
+      "currentZoenSource": [
+        "crates/client-core/src/mls/tests/durability_tests.rs",
+        "crates/client-core/src/media_drafts/tests/recovery.rs::failed_media_recovery_missing_corrupt_chunks_and_private_storage_failure_rollback_every_copy"
+      ],
+      "qualificationBoundary": "Missing or corrupted private recovery chunks fail before publication; SQLite refusal rolls back the entire recovery copy. Retained-ciphertext storage-fault rollback is a different assertion. Neither establishes a generic durable-worker quarantine or authorizes deleting user intent."
+    },
+    {
+      "historicalId": "C05",
+      "contract": "Receipt before sent-message sync is reconciled later",
+      "initialState": "Linked-device local state has no matching outgoing message yet.",
+      "sequence": "Process server delivery receipt at timestamp101; then process encrypted linked-device sent-sync with same timestamp.",
+      "introducedFault": "Receipt arrives before its message.",
+      "upstreamAssertedResult": "Fetched outgoing message exists; matching recipient state exists and is delivered; receipt timestamp exists and is greater than1650000000000.",
+      "upstreamAssertionLimit": "This scenario does not cold-restart between receipt and sync; timestamp identity is Signal-specific.",
+      "upstreamSources": [
+        {
+          "repository": "signalapp/Signal-iOS",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a",
+          "path": "SignalServiceKit/tests/Messages/MessageProcessingIntegrationTest.swift",
+          "sha256": "1958cbfa6b383ca77422942cdd49b59a105775ce770f8e0bb9d9ad5773ec6387",
+          "assertionReadLines": [176, 251],
+          "url": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Messages/MessageProcessingIntegrationTest.swift#L176-L251"
+        }
+      ],
+      "currentZoenClassification": "partial",
+      "currentZoenSource": [
+        "crates/client-core/src/tests/peer_receipts.rs::early_receipts_survive_sync_boundaries_until_membership_and_foreign_pairs_stay_bounded",
+        "crates/client-core/src/tests/peer_receipts.rs::independent_watermark_maxima_are_exact_u64_and_stale_replay_cannot_lower_them"
+      ],
+      "qualificationBoundary": "Deferred authenticated watermarks survive repeated sync boundaries/SQL refusal; durable maxima survive cold reopen. The exact early linked-device own-echo order is not the Signal timestamp scenario."
+    },
+    {
+      "historicalId": "C06",
+      "contract": "Wrong local destination is rejected before accepted content",
+      "initialState": "Otherwise plausible incoming ciphertext with a destination identity different from the local identity.",
+      "sequence": "Validate envelope, and separately decrypt ACI/PNI destination combinations.",
+      "introducedFault": "Wrong destination UUID / keys belonging to a different destination.",
+      "upstreamAssertedResult": "Envelope validation throws wrongDestinationUuid; decryption helper requires failure for mismatched destination and asserts the relevant error class.",
+      "upstreamAssertionLimit": "ACI/PNI, prekeys and these error types are Signal-specific; rejection tests alone do not prove metadata privacy or all invalid input behavior.",
+      "upstreamSources": [
+        {
+          "repository": "signalapp/Signal-iOS",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a",
+          "path": "SignalServiceKit/tests/Messages/ValidatedIncomingEnvelopeTest.swift",
+          "sha256": "9947eb2e136c1655ec6d0cb1d281d83cd232ce4772f4c3b49da1acae85117b1e",
+          "assertionReadLines": [1, 31],
+          "url": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Messages/ValidatedIncomingEnvelopeTest.swift#L1-L31"
+        },
+        {
+          "repository": "signalapp/Signal-iOS",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a",
+          "path": "SignalServiceKit/tests/Messages/MessageDecryptionTest.swift",
+          "sha256": "e48d1578defb2589cbd5e2fe1d15a58bdb9af54e79b76bb07d188ca1758c80f9",
+          "assertionReadLines": [183, 255],
+          "url": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Messages/MessageDecryptionTest.swift#L183-L255"
+        }
+      ],
+      "currentZoenClassification": "partial",
+      "currentZoenSource": [
+        "crates/client-core/src/net/file_demand_tests.rs::foreground_attempt_revalidates_scope_and_retains_unsynced_demand",
+        "crates/client-core/src/net/file_demand_tests.rs::historical_file_demand_rechecks_membership_before_accepting_inflight_bytes"
+      ],
+      "qualificationBoundary": "Own identity/device/version/hash and current membership are rechecked for media demands. This does not establish all incoming MLS destination combinations. Pending-confirmation authorization is already separately fixed by PR190 and excluded here."
+    },
+    {
+      "historicalId": "C07",
+      "contract": "Invalid incoming frame does not poison subsequent valid ingest",
+      "initialState": "Real incoming-message-observer test rule creates peers and ratchet sessions.",
+      "sequence": "Deliver malformed envelope; then deliver valid text from same peer and drain jobs.",
+      "introducedFault": "Malformed encrypted input precedes a good envelope.",
+      "upstreamAssertedResult": "Before the good envelope there is no message with body subsequent; afterward that body exists and sender matches.",
+      "upstreamAssertionLimit": "The first assertion looks for the later body, not all unexpected message rows. Rule is skipped without the specialized -PimoTests runner; websocket consumption alone is followed by job-drain markers.",
+      "upstreamSources": [
+        {
+          "repository": "signalapp/Signal-Android",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb",
+          "path": "app/src/androidTest/java/org/thoughtcrime/securesms/messages/incomingmessageobserver/DecryptionErrorTest.kt",
+          "sha256": "0952eb8edb17d952973ed673de316f49a20aa44d10910d1edc4af3406b984df8",
+          "assertionReadLines": [1, 27],
+          "url": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/androidTest/java/org/thoughtcrime/securesms/messages/incomingmessageobserver/DecryptionErrorTest.kt#L1-L27"
+        },
+        {
+          "repository": "signalapp/Signal-Android",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb",
+          "path": "app/src/androidTest/java/org/thoughtcrime/securesms/testing/incomingmessageobserver/IncomingMessageObserverRule.kt",
+          "sha256": "32436caf7b643fb104fa599d3bf9dd5537b852494550decf7898f43a2f594def",
+          "assertionReadLines": [28, 138],
+          "url": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/androidTest/java/org/thoughtcrime/securesms/testing/incomingmessageobserver/IncomingMessageObserverRule.kt#L28-L138"
+        },
+        {
+          "repository": "signalapp/Signal-Android",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb",
+          "path": "app/src/androidTest/java/org/thoughtcrime/securesms/testing/incomingmessageobserver/IncomingMessageObserverAssertions.kt",
+          "sha256": "bf30baccc4d4aac0d8dc1042d499ee79a7ba240831fc403bacaa1dc50970033b",
+          "assertionReadLines": [24, 54],
+          "url": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/androidTest/java/org/thoughtcrime/securesms/testing/incomingmessageobserver/IncomingMessageObserverAssertions.kt#L24-L54"
+        }
+      ],
+      "currentZoenClassification": "partial",
+      "currentZoenSource": [
+        "crates/client-core/src/net/tests/incoming_pipeline.rs::malformed_wire_and_rejected_signature_do_not_poison_following_messages_or_readable_receipts"
+      ],
+      "qualificationBoundary": "Actual socket decoder and rejected clear-event signature are followed by two valid messages/replay with exact cardinality and no false readable receipt. Corrupted MLS ciphertext pipeline recovery is a distinct contract."
+    },
+    {
+      "historicalId": "C09",
+      "contract": "Deleting one reference must not delete shared attachment data",
+      "initialState": "One metadata record referenced by either one or two messages.",
+      "sequence": "Delete attachment references of first message, then second.",
+      "introducedFault": "Cleanup sees shared ownership.",
+      "upstreamAssertedResult": "Unique metadata disappears after its only message is deleted; shared metadata survives first deletion and disappears after both; null metadata companion is only a no-crash test.",
+      "upstreamAssertionLimit": "Checks metadata-row existence, not all disk-file removal, secure erase or crash behavior.",
+      "upstreamSources": [
+        {
+          "repository": "signalapp/Signal-Android",
+          "commit": "c56038f39c4cc0280e49a346ebabbc15edb2dadb",
+          "path": "app/src/test/java/org/thoughtcrime/securesms/database/AttachmentTableTest_deleteAttachmentsForMessage.kt",
+          "sha256": "7395c59c68da4364d60dfe89749ae8df13be18714382a06c27a60c731ad30467",
+          "assertionReadLines": [1, 135],
+          "url": "https://github.com/signalapp/Signal-Android/blob/c56038f39c4cc0280e49a346ebabbc15edb2dadb/app/src/test/java/org/thoughtcrime/securesms/database/AttachmentTableTest_deleteAttachmentsForMessage.kt#L1-L135"
+        }
+      ],
+      "currentZoenClassification": "incompatible",
+      "currentZoenSource": [
+        "crates/client-core/src/media_drafts/tests.rs",
+        "crates/client-core/src/media_drafts/tests/recovery.rs::failed_media_recovery_copies_single_or_whole_signed_album_without_sending_or_reusing_intents"
+      ],
+      "qualificationBoundary": "Zoen immutable file/history retention differs from deleting Signal message metadata. Shared-reference lifetime is transferable; this batch neither changes retention nor claims physical garbage-collection proof."
+    },
+    {
+      "historicalId": "C11",
+      "contract": "Attachment limits are tested by MIME classes and both mixed orders",
+      "initialState": "Empty set, max visual count, one nonvisual, optional oversize text.",
+      "sequence": "Evaluate boundary inputs; parameterize PDF/AAC/octet-stream; reverse visual/nonvisual ordering.",
+      "introducedFault": "Limit+1, duplicate oversize text, two nonvisual, forbidden mixed batch.",
+      "upstreamAssertedResult": "Empty accepted; objects/order preserved for valid inputs; each nonvisual MIME accepted alone; boundary counts accepted and excess/forbidden mixtures throw; missing MIME image filenames infer visual.",
+      "upstreamAssertionLimit": "Signal limits and no-mixed-media policy differ from Zoen. One @Test(arguments: three MIME values) is multiple cases, not one runnable case; inventories do not expand it.",
+      "upstreamSources": [
+        {
+          "repository": "signalapp/Signal-iOS",
+          "commit": "d13b9da9e4622e16297b111243755c4c2972091a",
+          "path": "SignalServiceKit/tests/Attachments/AttachmentLimitsTest.swift",
+          "sha256": "26e279089a0d5509ac28e8d2745e9340cb1fd61d4d9efbbba86ed5fb98759df7",
+          "assertionReadLines": [1, 126],
+          "url": "https://github.com/signalapp/Signal-iOS/blob/d13b9da9e4622e16297b111243755c4c2972091a/SignalServiceKit/tests/Attachments/AttachmentLimitsTest.swift#L1-L126"
+        }
+      ],
+      "currentZoenClassification": "incompatible",
+      "currentZoenSource": [
+        "crates/client-core/src/media.rs::wanted_media",
+        "crates/client-core/src/profile.rs::wanted_profile_photos",
+        "crates/client-core/src/net.rs::media_worker"
+      ],
+      "qualificationBoundary": "Signal MIME-class/count combinations are a product policy. The derived Zoen gap197 concerns its own existing byte ceilings at download/cache boundaries, not equivalence to these upstream composition assertions."
+    }
+  ],
+  "derivedZoenWork": {
+    "issue": 197,
+    "sourceFinding": "Profile/background media downloads used unbounded response.bytes; generic profile cache admission bypassed existing ProfilePhoto.open size policy.",
+    "redCommit": "bad864246adf8e2f99a11e9c93ce51c2e51770a9",
+    "redTest": "profile::own_sync_tests::incoming_profile_ciphertext_obeys_existing_size_ceiling_before_cache",
+    "status": "RED_REPRODUCED_GREEN_28_FOCUSED_PASS",
+    "policy": "Reuse existing Zoen 5 MiB profile and 8 MiB background limits and existing descriptor lengths; never import Signal constants."
+  }
+}
