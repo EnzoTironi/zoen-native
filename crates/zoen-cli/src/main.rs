@@ -29,7 +29,7 @@ use client_core::{
     PrivacyDto, ProfileDto, SecretVault, SpaceKindDto,
 };
 use file_vault::FileVault;
-use terminal::{line, receive_history, title_of, Printer};
+use terminal::{line, receive_history, Printer, Progress};
 
 impl SecretVault for FileVault {
     fn load(&self, key: String) -> Option<Vec<u8>> {

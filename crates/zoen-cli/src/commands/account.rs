@@ -1,7 +1,7 @@
 //! Account commands use the same already-open Client.
 use super::*;
 
-pub(super) async fn run(cmd: &str, cli: &mut Cli, context: Context) {
+pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
     let Context {
         e,
         vault,
@@ -10,7 +10,7 @@ pub(super) async fn run(cmd: &str, cli: &mut Cli, context: Context) {
         for_secs,
         ..
     } = context;
-    match cmd {
+    match cmd.as_str() {
         "backup" => {
             let sub = if cli.args.is_empty() {
                 "status".to_string()

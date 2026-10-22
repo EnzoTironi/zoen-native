@@ -1,7 +1,7 @@
 //! Conversations commands use the same already-open Client.
 use super::*;
 
-pub(super) async fn run(cmd: &str, cli: &mut Cli, context: Context) {
+pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
     let Context {
         e,
         timeout,
@@ -9,7 +9,7 @@ pub(super) async fn run(cmd: &str, cli: &mut Cli, context: Context) {
         for_secs,
         ..
     } = context;
-    match cmd {
+    match cmd.as_str() {
         "whoami" | "status" => {
             let a = e.account().unwrap_or_else(|| die("no account"));
             let c = e.connection();

@@ -2,7 +2,7 @@
 use super::*;
 
 /// Prints a history transfer's progress.
-struct Progress;
+pub(crate) struct Progress;
 
 impl client_core::TransferListener for Progress {
     fn on_progress(&self, done: u32, total: u32) {

@@ -1,14 +1,14 @@
 //! Operations commands use the same already-open Client.
 use super::*;
 
-pub(super) async fn run(cmd: &str, cli: &mut Cli, context: Context) {
+pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
     let Context {
         e,
         timeout,
         for_secs,
         ..
     } = context;
-    match cmd {
+    match cmd.as_str() {
         "app" => {
             let space = chat(
                 &e,

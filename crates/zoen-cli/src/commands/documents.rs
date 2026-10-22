@@ -1,14 +1,14 @@
 //! Documents commands use the same already-open Client.
 use super::*;
 
-pub(super) async fn run(cmd: &str, cli: &mut Cli, context: Context) {
+pub(super) async fn run(cmd: String, cli: &mut Cli, context: Context) {
     let Context {
         e,
         timeout,
         offline,
         ..
     } = context;
-    match cmd {
+    match cmd.as_str() {
         "pages" | "files" => {
             let space = chat(
                 &e,
