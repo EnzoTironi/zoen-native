@@ -1,6 +1,7 @@
 # Signal: oito contratos e uma correção de limite de mídia
 
-Comparação da fonte `1e66b98aaf2b6680d8b9708eff8d24642bf4b065` com as
+Comparação inicial em `1e66b98a`, integrada normalmente com main
+`06fc52be846c3a874ba1e225ff60ba43857c2d03`, com as
 asserções upstream fixadas no [registro deste lote](signal-contract-batch-2026-10-22.json).
 O JSON contém estado inicial, sequência, falha, resultado realmente assertado,
 commit, hash SHA-256 de cada arquivo lido e limite de cada classificação.
@@ -25,8 +26,8 @@ no novo registro, sem mudar silenciosamente o resultado histórico. Em C04, a
 leitura também corrigiu a descrição inicial: o stream já está ativo quando
 os valores inválidos são adicionados; não é uma restauração de fila pausada.
 
-A autorização de confirmações pendentes em #139/PR #190 já pertence ao lote
-congelado do responsável principal (`54c4cfe6`). Este trabalho não a duplica e
+A autorização de confirmações pendentes em #139/PR #190 foi integrada em main
+(`06fc52be`), com a fonte qualificada pelo responsável principal. Este trabalho não a duplica e
 não atribui sua correção aos oito mapeamentos acima.
 
 ## Defeito reproduzido e corrigido: #197

@@ -389,4 +389,4 @@ upstream fixadas e corrige explicitamente o caminho C09. A comparação revelou 
 política de tamanho já existente. A prova RED e os 28 casos focados GREEN, com
 Clippy estrito, estão delimitados no relatório; não representam execução do
 Signal, da suíte completa ou de uma jornada móvel. #139/PR #190 continua sendo
-um reparo separado de confirmação autenticada, já pertencente ao lote principal.
+um reparo separado de confirmação autenticada, já integrado em main.

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-22",
-  "comparedProductionBase": "1e66b98aaf2b6680d8b9708eff8d24642bf4b065",
+  "comparedProductionBase": "06fc52be846c3a874ba1e225ff60ba43857c2d03",
   "boundedScope": "Eight scenario families, assertion-read only; no Signal suite execution or code/fixture transplant. Classifications are source comparison, not whole-product equivalence.",
   "upstreamExecution": "NOT_RUN",
   "upstreamCodeCopiedIntoProduct": false,
@@ -13,7 +13,8 @@
     "issue": 139,
     "pullRequest": 190,
     "head": "54c4cfe6f50acef4ca7ac9208bbf1307047fba3f",
-    "reason": "Current Root frozen batch already contains authenticated pending commitments. Do not duplicate or claim this fix from the eight source mappings."
+    "reason": "PR190 is now merged into main and already qualified by its owner; do not duplicate or attribute its authorization fix to this bounded media work.",
+    "mergeCommit": "06fc52be846c3a874ba1e225ff60ba43857c2d03"
   },
   "scenarios": [
     {
@@ -248,5 +249,6 @@
     "redTest": "profile::own_sync_tests::incoming_profile_ciphertext_obeys_existing_size_ceiling_before_cache",
     "status": "RED_REPRODUCED_GREEN_28_FOCUSED_PASS",
     "policy": "Reuse existing Zoen 5 MiB profile and 8 MiB background limits and existing descriptor lengths; never import Signal constants."
-  }
+  },
+  "initialResearchBase": "1e66b98aaf2b6680d8b9708eff8d24642bf4b065"
 }
